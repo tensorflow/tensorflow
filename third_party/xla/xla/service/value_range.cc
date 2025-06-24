@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "xla/comparison_util.h"
-#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
@@ -92,10 +92,11 @@ Range RecordAndReturnRange(
 Range RecursivelyIdentifyRange(
     const HloInstruction* instr,
     absl::flat_hash_map<const HloInstruction*, Range>& known_ranges,
-    const HloAliasAnalysis* alias_analysis) {
+    const HloDataflowAnalysis* dataflow_analysis) {
   // Non scalar or non-integer HLO. Abort.
-  if ((!instr->shape().IsInteger() && instr->shape().element_type() != PRED) ||
-      instr->shape().dimensions_size() != 0) {
+  if ((!instr->shape().AreAllLeavesIntegers() &&
+       instr->shape().element_type() != PRED) ||
+      (instr->shape().IsArray() && !instr->shape().dimensions().empty())) {
     return Range{};
   }
   VLOG(5) << "Computing Range for " << instr->ToString();
@@ -103,11 +104,13 @@ Range RecursivelyIdentifyRange(
   if (it != known_ranges.end()) {
     VLOG(5) << "Found range: " << it->second.ToString();
     return it->second;
-  } else if (alias_analysis != nullptr) {
-    auto value_set =
-        alias_analysis->dataflow_analysis().GetFlattenedValueSet(instr);
-    for (const auto& value : value_set.TakeValues()) {
-      for (const HloPosition& position : value->positions()) {
+  } else if (dataflow_analysis != nullptr) {
+    auto value_set = dataflow_analysis->GetFlattenedValueSet(instr);
+    // We could be smarter here by merging the ranges, but it's likely not worth
+    // the complexity at this point.
+    const std::vector<const HloValue*>& values = value_set.values();
+    if (values.size() == 1) {
+      for (const HloPosition& position : values.at(0)->positions()) {
         auto it = known_ranges.find(position.instruction);
         if (it != known_ranges.end()) {
           VLOG(5) << "Found range in defining instruction: "
@@ -119,10 +122,9 @@ Range RecursivelyIdentifyRange(
   }
   switch (instr->opcode()) {
     case HloOpcode::kGetTupleElement: {
-      if (alias_analysis != nullptr) {
-        auto value_set =
-            alias_analysis->dataflow_analysis().GetFlattenedValueSet(instr);
-        std::vector<const HloValue*> values = value_set.TakeValues();
+      if (dataflow_analysis != nullptr) {
+        auto value_set = dataflow_analysis->GetFlattenedValueSet(instr);
+        const std::vector<const HloValue*>& values = value_set.values();
         if (values.size() != 1) {
           VLOG(5) << "Ambiguous value set";
           return Range{};
@@ -131,7 +133,7 @@ Range RecursivelyIdentifyRange(
             values.at(0)->defining_instruction();
         if (defining_instruction != nullptr) {
           return RecursivelyIdentifyRange(defining_instruction, known_ranges,
-                                          alias_analysis);
+                                          dataflow_analysis);
         }
       }
       return Range{};
@@ -139,9 +141,9 @@ Range RecursivelyIdentifyRange(
     case HloOpcode::kCompare: {
       VLOG(5) << "Handling Compare";
       Range lhs = RecursivelyIdentifyRange(instr->operand(0), known_ranges,
-                                           alias_analysis);
+                                           dataflow_analysis);
       Range rhs = RecursivelyIdentifyRange(instr->operand(1), known_ranges,
-                                           alias_analysis);
+                                           dataflow_analysis);
       VLOG(5) << "Returned Rhs: " << rhs.ToString()
               << " Lhs: " << lhs.ToString();
       // Only kLt supported right now.
@@ -166,7 +168,7 @@ Range RecursivelyIdentifyRange(
     }
     case HloOpcode::kConstant: {
       if (instr->shape().element_type() == PRED &&
-          instr->shape().dimensions_size() == 0) {
+          instr->shape().dimensions().empty()) {
         if (instr->literal().IsAll(true)) {
           return RecordAndReturnRange(
               Range{ConstantValue::GetOne(/*bitwidth=*/1, /*is_signed=*/false),
@@ -180,7 +182,7 @@ Range RecursivelyIdentifyRange(
                   /*is_linear=*/true},
             instr, known_ranges);
       }
-      if (!instr->shape().IsInteger()) {
+      if (!instr->shape().AreAllLeavesIntegers()) {
         return Range{};
       }
       VLOG(5) << "Handling Constant";
@@ -206,14 +208,14 @@ Range RecursivelyIdentifyRange(
           instr, known_ranges);
     }
     case HloOpcode::kAdd: {
-      if (!instr->shape().IsInteger()) {
+      if (!instr->shape().AreAllLeavesIntegers()) {
         return Range{};
       }
       VLOG(5) << "Handling Add";
       Range lhs = RecursivelyIdentifyRange(instr->operand(0), known_ranges,
-                                           alias_analysis);
+                                           dataflow_analysis);
       Range rhs = RecursivelyIdentifyRange(instr->operand(1), known_ranges,
-                                           alias_analysis);
+                                           dataflow_analysis);
       VLOG(5) << "Returned Rhs: " << rhs.ToString()
               << " Lhs: " << lhs.ToString();
       if (lhs.IsEmpty() || rhs.IsEmpty()) {
@@ -236,14 +238,14 @@ Range RecursivelyIdentifyRange(
           instr, known_ranges);
     }
     case HloOpcode::kMultiply: {
-      if (!instr->shape().IsInteger()) {
+      if (!instr->shape().AreAllLeavesIntegers()) {
         return Range{};
       }
       VLOG(5) << "Handling Multiply";
       Range lhs = RecursivelyIdentifyRange(instr->operand(0), known_ranges,
-                                           alias_analysis);
+                                           dataflow_analysis);
       Range rhs = RecursivelyIdentifyRange(instr->operand(1), known_ranges,
-                                           alias_analysis);
+                                           dataflow_analysis);
       VLOG(5) << "Returned Rhs: " << rhs.ToString()
               << " Lhs: " << lhs.ToString();
       if (lhs.IsEmpty() || rhs.IsEmpty()) {
@@ -265,6 +267,10 @@ Range RecursivelyIdentifyRange(
                                       instr, known_ranges);
         }
         ConstantValue step = operand_range.step()->mul(single_value);
+        // Zero step makes it difficult to simulate the range; update it to 1.
+        if (step.GetSignedValue() == 0) {
+          step = ConstantValue::GetOne(/*bitwidth=*/64, /*is_signed=*/true);
+        }
         return RecordAndReturnRange(
             Range{min, max, step, operand_range.IsLinear()}, instr,
             known_ranges);
@@ -275,6 +281,10 @@ Range RecursivelyIdentifyRange(
             known_ranges);
       }
       ConstantValue step = operand_range.step()->mul(single_value);
+      // Zero step makes it difficult to simulate the range; update it to 1.
+      if (step.GetSignedValue() == 0) {
+        step = ConstantValue::GetOne(/*bitwidth=*/64, /*is_signed=*/true);
+      }
       return RecordAndReturnRange(
           Range{min, std::nullopt, step, operand_range.IsLinear()}, instr,
           known_ranges);
@@ -283,7 +293,7 @@ Range RecursivelyIdentifyRange(
       VLOG(5) << "Handling Select: " << instr->ToString();
       const HloInstruction* cmp = instr->operand(0);
       Range cmp_range =
-          RecursivelyIdentifyRange(cmp, known_ranges, alias_analysis);
+          RecursivelyIdentifyRange(cmp, known_ranges, dataflow_analysis);
       // Support only when the select has a constant value as condition.
       if (cmp_range.IsEmpty() || !cmp_range.IsSingleValue()) {
         VLOG(5) << "Select failed";
@@ -292,23 +302,23 @@ Range RecursivelyIdentifyRange(
       if (cmp_range.GetSingleSignedValue() == 0) {
         return RecordAndReturnRange(
             RecursivelyIdentifyRange(instr->operand(2), known_ranges,
-                                     alias_analysis),
+                                     dataflow_analysis),
             instr, known_ranges);
       }
       return RecordAndReturnRange(
           RecursivelyIdentifyRange(instr->operand(1), known_ranges,
-                                   alias_analysis),
+                                   dataflow_analysis),
           instr, known_ranges);
     }
     case HloOpcode::kSubtract: {
-      if (!instr->shape().IsInteger()) {
+      if (!instr->shape().AreAllLeavesIntegers()) {
         return Range{};
       }
       VLOG(5) << "Handling Subtract";
       Range lhs = RecursivelyIdentifyRange(instr->operand(0), known_ranges,
-                                           alias_analysis);
+                                           dataflow_analysis);
       Range rhs = RecursivelyIdentifyRange(instr->operand(1), known_ranges,
-                                           alias_analysis);
+                                           dataflow_analysis);
       VLOG(5) << "Returned Rhs: " << rhs.ToString()
               << " Lhs: " << lhs.ToString();
       if (lhs.IsEmpty() || rhs.IsEmpty()) {

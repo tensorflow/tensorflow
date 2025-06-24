@@ -26,26 +26,31 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/layout.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 
@@ -64,12 +69,13 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   // inspect a particular computation or instruction.
   static HloComputation* FindComputation(HloModule* module,
                                          absl::string_view name);
-  static HloInstruction* FindInstruction(HloModule* module,
+  static HloInstruction* FindInstruction(const HloModule* module,
                                          absl::string_view name);
   // Gets the instruction from the given module with the given opcode.
-  static HloInstruction* FindInstruction(HloModule* module, HloOpcode opcode);
+  static HloInstruction* FindInstruction(const HloModule* module,
+                                         HloOpcode opcode);
   // Gets all the instructions from the given module with the given opcode.
-  static std::vector<HloInstruction*> FindInstructions(HloModule* module,
+  static std::vector<HloInstruction*> FindInstructions(const HloModule* module,
                                                        HloOpcode opcode);
 
  protected:
@@ -95,14 +101,26 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   std::unique_ptr<VerifiedHloModule> CreateNewVerifiedModule(
       const std::string& name = TestName(), int64_t replica_count = 1) const;
 
+  // Returns a default device assignment for the given replica and partition
+  // counts.
+  static DeviceAssignment GetDefaultDeviceAssignment(int64_t replica_count,
+                                                     int64_t num_partitions);
+
   // Parses the given string and returns module as a VerifiedHloModule.
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
-  ParseAndReturnVerifiedModule(absl::string_view hlo_text,
-                               int64_t replica_count = 1,
-                               int64_t num_partitions = 1) const;
+  ParseAndReturnVerifiedModule(
+      absl::string_view hlo_text, int64_t replica_count = 1,
+      int64_t num_partitions = 1,
+      std::optional<DeviceAssignment> device_assignment = std::nullopt) const;
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
-  ParseAndReturnVerifiedModule(absl::string_view hlo_text,
-                               const HloModuleConfig& config) const;
+  ParseAndReturnVerifiedModule(
+      absl::string_view hlo_text, const HloModuleConfig& config,
+      const HloParserOptions& parser_options = HloParserOptions()) const;
+  absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
+  ParseAndReturnVerifiedModule(
+      absl::string_view hlo_text, const HloModuleConfig& config,
+      const HloParserOptions& parser_options,
+      std::function<int64_t(const xla::Shape&)> shape_size_fn) const;
 
   // Runs the hlo_pass with the provided module and returns the result. This
   // function also verifies that the module remains unchanged when hlo_pass
@@ -135,12 +153,22 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   static void SetAotFastMathDebugOptions(DebugOptions* options);
 
   // Runs pass `hlo_pass` on input HLO module `hlo` with optional config, and
+  // FileChecks the result against interleaved expected `CHECK` directives.
+  //
+  // If the rewrite has changed the module, also runs `additional_checks` on the
+  // result.
+  void RunAndFilecheckHloRewrite(
+      absl::string_view hlo_with_checks, HloPassInterface&& hlo_pass,
+      std::function<void(HloModule*)> after_pass_checks = nullptr,
+      const HloModuleConfig* config = nullptr) const;
+
+  // Runs pass `hlo_pass` on input HLO module `hlo` with optional config, and
   // FileChecks the result against `expected`.
   //
   // If the rewrite has changed the module, also runs `additional_checks` on the
   // result.
   void RunAndFilecheckHloRewrite(
-      absl::string_view hlo, HloPassInterface&& hlo_pass,
+      absl::string_view hlo_with_filecheck_lines, HloPassInterface&& hlo_pass,
       std::optional<absl::string_view> expected,
       std::function<void(HloModule*)> after_pass_checks = nullptr,
       const HloModuleConfig* config = nullptr) const;
@@ -160,8 +188,19 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   // changed the module or not based on expect_change flag.  Returns unique_ptr
   // to the HLO module for further inspection.
   absl::StatusOr<std::unique_ptr<HloModule>> RunAndCheckHloRewrite(
-      absl::string_view hlo_template, HloPassInterface&& hlo_pass,
+      absl::string_view hlo_template, HloPassInterface* hlo_pass,
       bool expect_change = true, FixedMapping params = {}) const;
+
+  // Reference overload.
+  absl::StatusOr<std::unique_ptr<HloModule>> RunAndCheckHloRewrite(
+      absl::string_view hlo_template, const HloPassInterface& hlo_pass,
+      bool expect_change = true, FixedMapping params = {}) const {
+    // HloPassInterface::Run is non-const historically.
+    HloPassInterface& non_const_hlo_pass =
+        const_cast<HloPassInterface&>(hlo_pass);
+    return RunAndCheckHloRewrite(hlo_template, &non_const_hlo_pass,
+                                 expect_change, params);
+  }
 
   // Populates debug options from command-line flags and adjusts the options for
   // testing. It is recommended to use this when you need to pass in
@@ -171,13 +210,26 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   // options (e.g. disabling additional passes).
   virtual DebugOptions GetDebugOptionsForTest() const;
 
+  void TearDown() override {
+    absl::MutexLock ml(&device_assignment_mu_);
+    default_device_assignment_.reset();
+  }
   // Gets an HloModuleConfig with options appropriate for tests.
-  HloModuleConfig GetModuleConfigForTest(int64_t replica_count = 1,
-                                         int64_t num_partitions = 1) const {
+  HloModuleConfig GetModuleConfigForTest(
+      int64_t replica_count = 1, int64_t num_partitions = 1,
+      std::optional<DeviceAssignment> device_assignment = std::nullopt) const {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     config.set_replica_count(replica_count);
     config.set_num_partitions(num_partitions);
+    if (device_assignment.has_value()) {
+      config.set_static_device_assignment(*device_assignment);
+    } else {
+      absl::MutexLock ml(&device_assignment_mu_);
+      default_device_assignment_ = std::make_unique<DeviceAssignment>(
+          GetDefaultDeviceAssignment(replica_count, num_partitions));
+      config.set_static_device_assignment(*default_device_assignment_);
+    }
     return config;
   }
 
@@ -259,6 +311,10 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   bool allow_mixed_precision_in_hlo_verifier_;
   HloPredicate instruction_can_change_layout_func_;
   std::unique_ptr<HloVerifier> hlo_verifier_;
+  mutable absl::Mutex device_assignment_mu_;
+  mutable std::unique_ptr<DeviceAssignment> default_device_assignment_
+      ABSL_GUARDED_BY(device_assignment_mu_)
+          ABSL_PT_GUARDED_BY(device_assignment_mu_);
 };
 
 }  // namespace xla

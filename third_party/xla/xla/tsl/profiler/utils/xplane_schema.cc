@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/profiler/utils/tf_op_utils.h"
 
@@ -43,6 +42,7 @@ const absl::string_view kScopeRangeIdTreePlaneName =
     "/host:__ScopeRangeCallStack__";
 const absl::string_view kTpuRuntimePlaneName = "/host:TPU-runtime";
 const absl::string_view kCuptiDriverApiPlaneName = "/host:CUPTI";
+const absl::string_view kCuptiActivityNvtxPlaneName = "/host:NVTX-CUPTI";
 const absl::string_view kRoctracerApiPlaneName = "/host:ROCTRACER";
 const absl::string_view kMetadataPlaneName = "/host:metadata";
 const absl::string_view kTFStreamzPlaneName = "/host:tfstreamz";
@@ -52,6 +52,8 @@ const absl::string_view kSyscallsPlaneName = "Syscalls";
 
 const absl::string_view kStepLineName = "Steps";
 const absl::string_view kSparseCoreStepLineName = "Sparse Core Steps";
+const absl::string_view kSparseCoreModuleLineName = "Sparse Core Modules";
+const absl::string_view kSparseCoreOpLineName = "Sparse Core Ops";
 const absl::string_view kTensorFlowNameScopeLineName = "Framework Name Scope";
 const absl::string_view kTensorFlowOpLineName = "Framework Ops";
 const absl::string_view kXlaModuleLineName = "XLA Modules";
@@ -61,6 +63,8 @@ const absl::string_view kKernelLaunchLineName = "Launch Stats";
 const absl::string_view kSourceLineName = "Source code";
 const absl::string_view kHostOffloadOpLineName = "Host Offload Ops";
 const absl::string_view kCounterEventsLineName = "_counters_";
+const absl::string_view kTensorCoreSyncFlagLineName = "Tensor Core Sync Flag";
+const absl::string_view kSparseCoreSyncsLineName = "Sparse Core Syncs";
 
 const absl::string_view kDeviceVendorNvidia = "Nvidia";
 const absl::string_view kDeviceVendorAMD = "AMD";
@@ -95,7 +99,7 @@ using LineIdTypeMap = absl::flat_hash_map<absl::string_view, LineIdType>;
 using LineIdTypeStrMap = absl::flat_hash_map<LineIdType, absl::string_view>;
 
 const HostEventTypeMap& GetHostEventTypeMap() {
-  static auto* host_event_type_map = new HostEventTypeMap({
+  static auto* const host_event_type_map = new HostEventTypeMap({
       {"UnknownHostEventType", kUnknownHostEventType},
       {"TraceContext", kTraceContext},
       {"SessionRun", kSessionRun},
@@ -203,7 +207,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
 }
 
 const StatTypeMap& GetStatTypeMap() {
-  static auto* stat_type_map = new StatTypeMap(
+  static auto* const stat_type_map = new StatTypeMap(
       {{"UnknownStatType", kUnknownStatType},
        // TraceMe arguments.
        {"id", kStepId},
@@ -285,6 +289,8 @@ const StatTypeMap& GetStatTypeMap() {
        {"bytes_transferred", kBytesTransferred},
        {"queue", kDmaQueue},
        {"dcn_collective_info", kDcnCollectiveInfo},
+       {"all_reduce_id", kAllReduceId},
+       {"all_reduce_unique_id", kAllReduceUniqueId},
        // Performance counter related.
        {"Raw Value", kRawValue},
        {"Scaled Value", kScaledValue},
@@ -361,18 +367,29 @@ const StatTypeMap& GetStatTypeMap() {
        {"device_offset_ps", kDeviceOffsetPs},
        {"device_duration_ps", kDeviceDurationPs},
        {"scope_range_id", kScopeRangeId},
-       {"core_details", kCoreDetails}});
+       {"core_details", kCoreDetails},
+       // IFRT Stats
+       {"mlir_program", kMlIRProgram},
+       {"cuda_graph_node_id", kCudaGraphNodeId},
+       {"cuda_orig_graph_id", kCudaOrigGraphId},
+       {"cuda_graph_orig_node_id", kCudaGraphOrigNodeId},
+       {"cuda_graph_map_id", kCudaGraphMapId},
+       {"cuda_graph_map_value_id", kCudaGraphMapValueId},
+       {"cuda_graph_node_map_id", kCudaGraphNodeMapId},
+       {"graph_metadata_line_id", kGraphMetadataLineId}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }
 
 const MegaScaleStatTypeMap& GetMegaScaleStatTypeMap() {
-  static auto* stat_type_map = new MegaScaleStatTypeMap(
+  static auto* const stat_type_map = new MegaScaleStatTypeMap(
       {{"graph_key", kMegaScaleGraphKey},
        {"local_device_id", kMegaScaleLocalDeviceId},
        {"num_actions", kMegaScaleNumActions},
        {"collective_type", kMegaScaleCollectiveType},
        {"input_size", kMegaScaleInputSize},
+       {"send_channel_id", kMegaScaleSendChannelId},
+       {"recv_channel_id", kMegaScaleRecvChannelId},
        {"slack_us", kMegaScaleSlackUs},
        {"action_type", kMegaScaleActionType},
        {"start_end_type", kMegaScaleStartEndType},
@@ -398,7 +415,7 @@ const MegaScaleStatTypeMap& GetMegaScaleStatTypeMap() {
 }
 
 const LineIdTypeMap& GetLineIdTypeMap() {
-  static auto* line_id_type_map = new LineIdTypeMap({
+  static auto* const line_id_type_map = new LineIdTypeMap({
       {"UnknownLineIdType", kUnknownLineIdType},
       {"DcnHostTraffic", kDcnHostTraffic},
       {"DcnCollectiveTraffic", kDcnCollectiveTraffic},
@@ -408,25 +425,25 @@ const LineIdTypeMap& GetLineIdTypeMap() {
 }
 
 const HostEventTypeStrMap& GetHostEventTypeStrMap() {
-  static auto* host_event_type_str_map = new HostEventTypeStrMap(
+  static auto* const host_event_type_str_map = new HostEventTypeStrMap(
       gtl::ReverseMap<HostEventTypeStrMap>(GetHostEventTypeMap()));
   return *host_event_type_str_map;
 }
 
 const StatTypeStrMap& GetStatTypeStrMap() {
-  static auto* stat_type_str_map =
+  static auto* const stat_type_str_map =
       new StatTypeStrMap(gtl::ReverseMap<StatTypeStrMap>(GetStatTypeMap()));
   return *stat_type_str_map;
 }
 
 const MegaScaleStatTypeStrMap& GetMegaScaleStatTypeStrMap() {
-  static auto* stat_type_str_map = new MegaScaleStatTypeStrMap(
+  static auto* const stat_type_str_map = new MegaScaleStatTypeStrMap(
       gtl::ReverseMap<MegaScaleStatTypeStrMap>(GetMegaScaleStatTypeMap()));
   return *stat_type_str_map;
 }
 
 const LineIdTypeStrMap& GetLineIdTypeStrMap() {
-  static auto* line_id_type_str_map = new LineIdTypeStrMap(
+  static auto* const line_id_type_str_map = new LineIdTypeStrMap(
       gtl::ReverseMap<LineIdTypeStrMap>(GetLineIdTypeMap()));
   return *line_id_type_str_map;
 }
@@ -440,7 +457,7 @@ constexpr int kNumTaskEnvStatTypes = TaskEnvStatType::kLastTaskEnvStatType -
                                      TaskEnvStatType::kFirstTaskEnvStatType + 1;
 
 const TaskEnvStatTypeMap& GetTaskEnvStatTypeMap() {
-  static auto* task_env_stat_type_map = new TaskEnvStatTypeMap({
+  static auto* const task_env_stat_type_map = new TaskEnvStatTypeMap({
       {"profile_start_time", kEnvProfileStartTime},
       {"profile_stop_time", kEnvProfileStopTime},
   });
@@ -449,7 +466,7 @@ const TaskEnvStatTypeMap& GetTaskEnvStatTypeMap() {
 }
 
 const TaskEnvStatTypeStrMap& GetTaskEnvStatTypeStrMap() {
-  static auto* task_env_stat_type_str_map = new TaskEnvStatTypeStrMap(
+  static auto* const task_env_stat_type_str_map = new TaskEnvStatTypeStrMap(
       gtl::ReverseMap<TaskEnvStatTypeStrMap>(GetTaskEnvStatTypeMap()));
   return *task_env_stat_type_str_map;
 }

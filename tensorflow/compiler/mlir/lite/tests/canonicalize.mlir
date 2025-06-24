@@ -1,4 +1,4 @@
-// RUN: tf-opt -canonicalize=test-convergence -tfl-runtime-verify -split-input-file -verify-diagnostics %s | FileCheck %s
+// RUN: litert-opt -canonicalize=test-convergence -tfl-runtime-verify -split-input-file -verify-diagnostics %s | FileCheck %s
 
 // CHECK-LABEL: @squeeze_folder
 func.func @squeeze_folder(%arg0 : tensor<?x?xf32>) -> tensor<?x?xf32> {
@@ -186,7 +186,7 @@ func.func @WhileCanonicalizeBug(%arg0: tensor<i32>, %arg1: tensor<f32>) -> tenso
 // result. Canonicalize will think it can remove both slot#0 and slot#1 and do
 // so without replacing all operands, and in assert builds it will fail an
 // assert failure ( op->use_empty() && "expected 'op' to have no uses")
-// CHECK-LABEL: @WhileCanonicalizeBug1
+// CHECK-LABEL: WhileCanonicalizeBug1
 func.func @WhileCanonicalizeBug1(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   %0:2 = "tfl.while"(%arg0, %arg1) ({
   ^bb0(%carg0: tensor<f32>, %carg1: tensor<f32>):
@@ -240,17 +240,6 @@ func.func @RemoveFcZeroBias(%arg0: tensor<1x37xf32>, %arg1: tensor<40x37xf32>) -
 // CHECK: "tfl.fully_connected"
 // CHECK-SAME: (tensor<1x37xf32>, tensor<40x37xf32>, none) -> tensor<1x40xf32>
   func.return %1 : tensor<1x40xf32>
-}
-
-// CHECK-LABEL: forceAsymmetricQuantizeInput
-func.func @forceAsymmetricQuantizeInput(%arg0: tensor<4x2xf32>) -> tensor<4x2xf32> {
-  %cst0 = arith.constant dense<[[1.0, 2.0], [3.0, 4.0]]> : tensor<2x2xf32>
-  %cst1 = arith.constant dense<2.0> : tensor<2xf32>
-
-  %0 = "tfl.fully_connected"(%arg0, %cst0, %cst1) {asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<4x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
-  func.return %0 : tensor<4x2xf32>
-  // CHECK %0 = "tfl.fully_connected"(%arg0, %cst0, %cst1) {asymmetric_quantize_inputs = true, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<4x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
-  // CHECK return %0
 }
 
 // CHECK-LABEL: RemoveLstmQuantZeroBias
@@ -315,7 +304,7 @@ func.func @broadcast_to_to_reshape(%arg0: tensor<4x4x4xf32>, %arg1 : tensor<4xi3
 
 // Converts tfl.broadcast_to to tfl.reshape if input and output have the same
 // number of elements.
-// CHECK-LABEL: broadcast_to_to_reshape_i64
+// CHECK-LABEL: @broadcast_to_to_reshape_i64
 func.func @broadcast_to_to_reshape_i64(%arg0: tensor<4x4x4xf32>, %arg1 : tensor<4xi64>) -> tensor<1x4x4x4xf32> {
   %0 = "tfl.broadcast_to"(%arg0, %arg1) : (tensor<4x4x4xf32>, tensor<4xi64>) -> tensor<1x4x4x4xf32>
   // CHECK: "tfl.cast"
@@ -328,7 +317,7 @@ func.func @broadcast_to_to_reshape_i64(%arg0: tensor<4x4x4xf32>, %arg1 : tensor<
 
 // Converts tfl.broadcast_to to tfl.reshape if input and output have the same
 // number of elements.
-// CHECK-LABEL: broadcast_to_to_reshape_i64_const
+// CHECK-LABEL: @broadcast_to_to_reshape_i64_const
 func.func @broadcast_to_to_reshape_i64_const(%arg0: tensor<4x4x4xf32>) -> tensor<1x4x4x4xf32> {
   %cst = arith.constant dense<[1, 4, 4, 4]> : tensor<4xi64>
   %0 = "tfl.broadcast_to"(%arg0, %cst) : (tensor<4x4x4xf32>, tensor<4xi64>) -> tensor<1x4x4x4xf32>
@@ -340,6 +329,7 @@ func.func @broadcast_to_to_reshape_i64_const(%arg0: tensor<4x4x4xf32>) -> tensor
 
 // -----
 
+// CHECK-LABEL: @trivial_dynamic_update_slice
 func.func @trivial_dynamic_update_slice(%arg0: tensor<2x7x14xf32>, %arg1: tensor<2x7x14xf32>) -> tensor<2x7x14xf32> {
   %0 = arith.constant dense<0> : tensor<3xi32>
   %1 = "tfl.dynamic_update_slice"(%arg0, %arg1, %0) : (tensor<2x7x14xf32>, tensor<2x7x14xf32>, tensor<3xi32>) -> tensor<2x7x14xf32>
@@ -349,6 +339,7 @@ func.func @trivial_dynamic_update_slice(%arg0: tensor<2x7x14xf32>, %arg1: tensor
 
 // -----
 
+// CHECK-LABEL: @trivial_dynamic_update_slice_wrong_update_shape
 func.func @trivial_dynamic_update_slice_wrong_update_shape(%arg0: tensor<2x7x14xf32>, %arg1: tensor<2x7x7xf32>) -> tensor<2x7x14xf32> {
   %0 = arith.constant dense<0> : tensor<3xi32>
   %1 = "tfl.dynamic_update_slice"(%arg0, %arg1, %0) : (tensor<2x7x14xf32>, tensor<2x7x7xf32>, tensor<3xi32>) -> tensor<2x7x14xf32>
@@ -392,4 +383,10 @@ func.func @ConstPadToI32(%arg0: tensor<15600xf32>) -> tensor<15602xf32> {
   // CHECK: "tfl.pad"(%arg0, %cst) : (tensor<15600xf32>, tensor<1x2xi32>) -> tensor<15602xf32>
 }
 
-
+// CHECK-LABEL: @RemoveNoopTranspose
+func.func @RemoveNoopTranspose(%arg0: tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32> {
+  %cst = arith.constant dense<[0, 1, 2, 3]> : tensor<4xi32>
+  %0 = "tfl.transpose"(%arg0, %cst) : (tensor<1x2x3x4xf32>, tensor<4xi32>) -> tensor<1x2x3x4xf32>
+  func.return %0 : tensor<1x2x3x4xf32>
+  // CHECK: return %arg0
+}

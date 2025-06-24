@@ -221,6 +221,8 @@ void AllocateAndParseFlags() {
   build_ops_flags->tf_xla_check_cluster_output_numerics = false;
   build_ops_flags->tf_xla_disable_constant_folding = false;
   build_ops_flags->tf_xla_disable_full_embedding_pipelining = false;
+  build_ops_flags->tf_xla_disable_full_embedding_pipelining_with_summaries =
+      true;
   build_ops_flags->tf_xla_embedding_parallel_iterations = 0;
 
   mark_for_compilation_flags = new MarkForCompilationPassFlags;
@@ -312,6 +314,11 @@ void AllocateAndParseFlags() {
             &build_ops_flags->tf_xla_disable_full_embedding_pipelining,
             "If true then disables full embedding pipelining and instead use "
             "strict SparseCore / TensorCore sequencing."),
+       Flag("tf_xla_disable_full_embedding_pipelining_with_summaries",
+            &build_ops_flags
+                 ->tf_xla_disable_full_embedding_pipelining_with_summaries,
+            "If true then disables full embedding pipelining when summary ops "
+            "are detected."),
        Flag("tf_xla_embedding_parallel_iterations",
             &build_ops_flags->tf_xla_embedding_parallel_iterations,
             "If >0 then use this many parallel iterations in "

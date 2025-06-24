@@ -22,15 +22,16 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-using StochasticConvertTest = HloTestBase;
+using StochasticConvertTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+
 const char* const kModuleStr = R"(
   HloModule stochastic-convert
 
@@ -42,7 +43,7 @@ const char* const kModuleStr = R"(
   }
 )";
 
-XLA_TEST_F(StochasticConvertTest, CorrectComputation) {
+TEST_F(StochasticConvertTest, CorrectComputation) {
   EXPECT_TRUE(RunAndCompare(kModuleStr, ErrorSpec{0.001}));
 }
 

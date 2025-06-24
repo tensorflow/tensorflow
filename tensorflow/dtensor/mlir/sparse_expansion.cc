@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <optional>
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/LogicalResult.h"

@@ -475,7 +475,7 @@ TEST(CachingTaskRunnerTest, Errors) {
             if (element.ok()) {
               result.push_back(*element);
             }
-            if (errors::IsInvalidArgument(element.status())) {
+            if (absl::IsInvalidArgument(element.status())) {
               EXPECT_THAT(
                   element.status(),
                   StatusIs(error::INVALID_ARGUMENT,

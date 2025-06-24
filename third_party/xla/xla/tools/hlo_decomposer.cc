@@ -116,8 +116,10 @@ absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> DecomposeHloModule(
   return modules;
 }
 
-std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
-    const std::vector<HloInstruction*>& instructions) {
+std::unique_ptr<HloModule> ExtractCollectiveOperationsIntoNewModule(
+    const std::vector<HloInstruction*>& instructions,
+    const absl::flat_hash_set<HloOpcode>& done_ops,
+    const absl::flat_hash_set<HloOpcode>& non_optimized_ops) {
   CHECK(!instructions.empty());
   HloInstruction& first_instruction = *instructions[0];
   auto new_hlo_module = std::make_unique<HloModule>(
@@ -128,24 +130,42 @@ std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
   int parameter_number = 0;
   HloComputation::Builder builder("entry_computation");
   HloCloneContext clone_context(new_hlo_module.get());
-  std::vector<HloInstruction*> new_instructions;
+  std::vector<HloInstruction*> result_instructions;
+  absl::flat_hash_map<std::string, HloInstruction*> start_op_map;
   for (auto* hlo : instructions) {
-    std::vector<HloInstruction*> new_operands;
-    for (const HloInstruction* operand : hlo->operands()) {
-      std::unique_ptr<HloInstruction> new_parameter =
-          HloInstruction::CreateParameter(parameter_number, operand->shape(),
-                                          operand->name());
-      ++parameter_number;
-      new_operands.push_back(builder.AddInstruction(std::move(new_parameter)));
+    if (done_ops.contains(hlo->opcode())) {
+      std::vector<HloInstruction*> new_operands;
+      for (const HloInstruction* operand : hlo->operands()) {
+        if (start_op_map.contains(operand->name())) {
+          new_operands.push_back(start_op_map[operand->name()]);
+        }
+      }
+      result_instructions.push_back(
+          builder.AddInstruction(hlo->CloneWithNewOperands(
+              hlo->shape(), new_operands, &clone_context)));
+    } else {
+      std::vector<HloInstruction*> new_operands;
+      for (const HloInstruction* operand : hlo->operands()) {
+        std::unique_ptr<HloInstruction> new_parameter =
+            HloInstruction::CreateParameter(parameter_number, operand->shape(),
+                                            operand->name());
+        ++parameter_number;
+        new_operands.push_back(
+            builder.AddInstruction(std::move(new_parameter)));
+      }
+      std::unique_ptr<HloInstruction> new_instruction =
+          hlo->CloneWithNewOperands(hlo->shape(), new_operands, &clone_context);
+      HloInstruction* new_instr_ptr =
+          builder.AddInstruction(std::move(new_instruction));
+      if (non_optimized_ops.contains(hlo->opcode())) {
+        result_instructions.push_back(new_instr_ptr);
+      }
+      start_op_map[hlo->name()] = new_instr_ptr;
     }
-    std::unique_ptr<HloInstruction> new_instruction =
-        hlo->CloneWithNewOperands(hlo->shape(), new_operands, &clone_context);
-    new_instructions.push_back(
-        builder.AddInstruction(std::move(new_instruction)));
   }
 
   std::unique_ptr<HloInstruction> tuple_instruction =
-      HloInstruction::CreateTuple(new_instructions);
+      HloInstruction::CreateTuple(result_instructions);
   builder.AddInstruction(std::move(tuple_instruction));
   new_hlo_module->AddEntryComputationWithLayouts(builder.Build());
   return new_hlo_module;

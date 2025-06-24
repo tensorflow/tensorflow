@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {

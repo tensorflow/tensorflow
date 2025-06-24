@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/iterator_util.h"
+#include "xla/online_topsort.h"
 #include "xla/printer.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_layout.h"
@@ -53,7 +54,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 
@@ -87,7 +89,7 @@ class HloModule {
   HloModule(const std::string& name,
             std::shared_ptr<const HloModuleConfig> config,
             std::unique_ptr<CompilationEnvironments> comp_envs);
-  virtual ~HloModule() = default;
+  virtual ~HloModule();
 
   // Adds an entry computation to the module. A module can only have one entry
   // computation. Returns a pointer to the newly added computation.
@@ -118,8 +120,8 @@ class HloModule {
   // Marks duplicate fusions with the same name to be able to group them for
   // analysis purposes (e.g. through Xprof).
   void MarkFusionDuplications(
-      const absl::flat_hash_map<HloComputation*, HloComputation*>&
-          replacements);
+      const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements)
+      const;
 
   // Replaces all uses of computations that are keys of 'replacements' with
   // the corresponding values in 'replacements'. Replaces the entry computation,
@@ -130,7 +132,7 @@ class HloModule {
   // computations.
   //
   // N.B.: This function does not update the computations_ field of the
-  // HloModule with the newly added compututations. Therefore, along with
+  // HloModule with the newly added computations. Therefore, along with
   // invoking this function, if a replacement computation is not already present
   // in module, it should be separately added into the module using
   // `AddEmbeddedComputation`.
@@ -230,8 +232,9 @@ class HloModule {
   // with respect to HloInstruction::Identical() method.
   template <typename H>
   friend H AbslHashValue(H h, const HloModule& module) {
-    if (module.config().has_entry_computation_layout())
+    if (module.config().has_entry_computation_layout()) {
       h = H::combine(std::move(h), module.entry_computation_layout());
+    }
     // Use MakeComputationSorted() instead of MakeComputationPostOrder()
     // because naming may affect the order of MakeComputationPostOrder() but not
     // MakeComputationSorted().
@@ -285,7 +288,7 @@ class HloModule {
 
   // Returns the computation in this module that has the name `name`.  Returns
   // null if there is no such computation.
-  HloComputation* GetComputationWithName(absl::string_view name);
+  HloComputation* GetComputationWithName(absl::string_view name) const;
 
   // Gets the number of computations in this module.
   int64_t computation_count() const { return computations_.size(); }
@@ -306,27 +309,36 @@ class HloModule {
     }
   }
 
-  // Compute and return a post order of all computations in the module. The sort
-  // is defined like so: if computation A has an instruction which calls
-  // computation B, then A will appear after B in the sort.
-  std::vector<HloComputation*> MakeComputationPostOrder() const {
-    return MakeComputationPostOrder({});
+  // Compute and return a topological sort of all computations in the module.
+  // The sort is defined like so: if computation A has an instruction which
+  // calls computation B, then A will appear after B in the sort.
+  // If `dfs_postorder` is true, the order is a DFS postorder, otherwise it is
+  // any reverse topological sort of the computations. The dfs_postorder is
+  // primarily used for printing an HLO module; it is more expensive to
+  // compute.
+  std::vector<HloComputation*> MakeComputationPostOrder(
+      bool dfs_postorder = false) const {
+    return MakeComputationPostOrder({}, dfs_postorder);
   }
   // Similar as above but only returns computations with specified
   // `execution_threads`. Empty `execution_threads` list means all execution
   // threads are included.
   std::vector<HloComputation*> MakeComputationPostOrder(
-      const absl::flat_hash_set<absl::string_view>& execution_threads) const;
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      bool dfs_postorder = false) const;
   // Same as MakeComputationPostOrder() but only returns the computations that
   // are on specified `execution_threads` and are also found in the passed in
   // allowList. Empty `execution_threads` list means all execution threads are
   // included.
   std::vector<HloComputation*> MakeComputationPostOrder(
       const absl::flat_hash_set<absl::string_view>& execution_threads,
-      const absl::flat_hash_set<HloComputation*>& allow_list) const;
+      const absl::flat_hash_set<HloComputation*>& allow_list,
+      bool dfs_postorder = false) const;
 
   // If config().content_aware_computation_sorting() is true, sorts computations
-  // by their contents, otherwise returns MakeComputationPostOrder().
+  // by their contents, otherwise returns MakeComputationPostOrder(). Note that
+  // the sort is potentially expensive, so this should be used only if a
+  // consistent order is required.
   std::vector<HloComputation*> MakeComputationSorted() const {
     return MakeComputationSorted({});
   }
@@ -353,6 +365,8 @@ class HloModule {
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
   // Same as MakeNonfusionComputations() but sorting computations by content.
+  // Note that the sort is potentially expensive, so this should be used only if
+  // a consistent order is required.
   std::vector<HloComputation*> MakeNonfusionComputationsSorted() const {
     return MakeNonfusionComputationsSorted({});
   }
@@ -400,9 +414,9 @@ class HloModule {
 
   // Return a string representation of the module.
   //
-  // (We express the default options using an overload rather than a default
-  // param because gdb ignores default params, but does resolve overloads.)
-  std::string ToString() const { return ToString(HloPrintOptions::Default()); }
+  // By default, we take the default print options but adjust them based on
+  // debug options flags.
+  std::string ToString() const;
   std::string ToString(const HloPrintOptions& options) const;
 
   // Returns a Cord representation of the module.
@@ -412,17 +426,21 @@ class HloModule {
   absl::Cord ToCord() const { return ToCord(HloPrintOptions::Default()); }
   absl::Cord ToCord(const HloPrintOptions& options) const;
 
+  // Returns a stable fingerprint of the module using the given print options.
+  uint64_t ToFingerprint(const HloPrintOptions& options) const;
+
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
       const HloModuleProto& proto, const HloModuleConfig& module_config,
-      bool prohibit_empty_literal = true);
+      bool prohibit_empty_literal = true,
+      std::unique_ptr<CompilationEnvironments> comp_envs = nullptr);
 
   // Convert an HloModule to or from a proto that includes module configuration
   HloModuleProtoWithConfig ToProtoWithConfig() const;
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
-      const HloModuleProtoWithConfig& proto,
-      bool prohibit_empty_literal = true);
+      const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal = true,
+      std::unique_ptr<CompilationEnvironments> comp_envs = nullptr);
 
   // Creates and returns an HloModuleConfig with an appropriate program shape
   // for the HLO module in the given proto.
@@ -457,8 +475,8 @@ class HloModule {
   NameUniquer& computation_name_uniquer() { return computation_name_uniquer_; }
 
   // Assign a new unique dense id for an instruction
-  int NewUniqueInstructionId() {
-    int result = next_unique_id_;
+  int64_t NewUniqueInstructionId() {
+    int64_t result = next_unique_id_;
     next_unique_id_++;
     return result;
   }
@@ -499,8 +517,8 @@ class HloModule {
   bool has_schedule() const { return schedule_.has_value(); }
 
   // Returns the schedule of the module. CHECK fails if no schedule is set.
-  const HloSchedule& schedule() const { return *schedule_; }
-  HloSchedule& schedule() { return *schedule_; }
+  const HloSchedule& schedule() const { return schedule_.value(); }
+  HloSchedule& schedule() { return schedule_.value(); }
 
   HloComputation* AddComputation(std::unique_ptr<HloComputation> computation,
                                  bool is_entry) {
@@ -690,6 +708,8 @@ class HloModule {
   StackFrame get_stack_frame(int id) const;
 
  private:
+  friend class HloComputation;
+
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
       bool uniquify_identifiers, bool preserve_entry_layouts);
@@ -714,7 +734,7 @@ class HloModule {
   // unique per module.
   NameUniquer computation_name_uniquer_{/*separator=*/"."};
   NameUniquer instruction_name_uniquer_{/*separator=*/"."};
-  int next_unique_id_ = 0;
+  int64_t next_unique_id_ = 0;
 
   // Used to keep track of the next unique module id that should be assigned.
   static std::atomic<int> next_unique_module_id_;
@@ -785,6 +805,19 @@ class HloModule {
 
   // Stack frame indexes flat representation.
   std::optional<StackFrameIndexProto> stack_frame_index_;
+
+  // Topological ordering of the computations in this module.
+  // The topological order only contains computations whose parent() is this
+  // module.
+  // TODO(phawkins): unique_id_ may not be as dense as we might like for this
+  // data structure.
+  TopologicalSort<HloComputation, int64_t,
+                  &HloComputation::topological_sort_node_,
+                  &HloComputation::unique_id_, HloComputation::NeighborIterator,
+                  &HloComputation::callers_begin, &HloComputation::callers_end,
+                  HloComputation::NeighborIterator,
+                  &HloComputation::callees_begin, &HloComputation::callees_end>
+      topological_sort_;
 };
 
 }  // namespace xla

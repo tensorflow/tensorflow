@@ -16,8 +16,8 @@ limitations under the License.
 #include "llvm/IR/DataLayout.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 class CpuByteSizeOfTest : public ::testing::Test {};
 

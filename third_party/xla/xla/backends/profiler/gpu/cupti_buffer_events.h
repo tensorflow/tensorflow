@@ -31,9 +31,9 @@ limitations under the License.
 #include "absl/container/node_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/profiler/utils/buffer_pool.h"
 #include "xla/tsl/profiler/utils/lock_free_queue.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace xla {
@@ -140,6 +140,8 @@ struct CudaGraphDetails {
                            // instantiated. Note graph_id is put into general
                            // fields as if trace in node mode, many activity
                            // events will contains graph id.
+  uint64_t orig_graph_node_id;  // The original graph node from which new graph
+                                // node is cloned.
 };
 
 inline std::string ToXStat(const KernelDetails& kernel_info,
@@ -177,6 +179,7 @@ enum class CuptiTracerEventType {
   ThreadMarkerRange = 16,
   ThreadMarkerStart = 17,
   ThreadMarkerEnd = 18,
+  CudaGraphNodeMap = 19,
   Generic = 100,
 };
 
@@ -217,6 +220,7 @@ struct CuptiTracerEvent {
   int64_t stream_id = kInvalidStreamId;
   uint32_t graph_id = 0;
   int64_t scope_range_id = 0;
+  uint64_t graph_node_id = 0;
   union {
     // For Memcpy API and activities. `type` must be Memcpy*.
     MemcpyDetails memcpy_info;
@@ -327,20 +331,20 @@ class CuptiActivityBufferManager {
   void ReclaimBuffer(uint8_t* p) { buffer_pool_.ReclaimBuffer(p); }
 
   void CacheCuptiFilledActivityBuffer(uint8_t* p, size_t sz) {
-    tsl::mutex_lock lock(buffer_mutex_);
+    absl::MutexLock lock(&buffer_mutex_);
     cached_buffers_.emplace_back(p, sz);
   }
 
   std::list<ActivityBufferAndSize> PopCachedBuffers() {
     std::list<ActivityBufferAndSize> result;
-    tsl::mutex_lock lock(buffer_mutex_);
+    absl::MutexLock lock(&buffer_mutex_);
     std::swap(result, cached_buffers_);
     return result;
   }
 
  private:
   tsl::profiler::BufferPool buffer_pool_;
-  tsl::mutex buffer_mutex_;
+  absl::Mutex buffer_mutex_;
   std::list<ActivityBufferAndSize> cached_buffers_ TF_GUARDED_BY(buffer_mutex_);
 };
 

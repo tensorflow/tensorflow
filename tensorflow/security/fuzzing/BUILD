@@ -16,7 +16,6 @@ package(
 py_strict_library(
     name = "python_fuzzing",
     srcs = ["python_fuzzing.py"],
-    srcs_version = "PY3",
     deps = ["//tensorflow:tensorflow_py_no_contrib"],
 )
 

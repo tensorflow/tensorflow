@@ -38,6 +38,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -47,9 +50,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -343,14 +343,15 @@ absl::Status CreateHloModules(
   auto debug_options = xla::DebugOptions();
   debug_options.set_xla_step_marker_location(metadata.step_marker_location());
   TF_ASSIGN_OR_RETURN(
+      auto program_shape,
+      xla::ProgramShape::FromProto(
+          compilation_result.computation->proto().host_program_shape()));
+  TF_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::HloModuleConfig> module_config,
-      CreateModuleConfig(
-          xla::ProgramShape(
-              compilation_result.computation->proto().host_program_shape()),
-          compilation_result.xla_input_shapes,
-          compilation_result.xla_output_shape, device_assignment,
-          metadata.num_replicas(), metadata.num_cores_per_replica(),
-          &debug_options));
+      CreateModuleConfig(program_shape, compilation_result.xla_input_shapes,
+                         compilation_result.xla_output_shape, device_assignment,
+                         metadata.num_replicas(),
+                         metadata.num_cores_per_replica(), &debug_options));
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::HloModule> hlo_module,

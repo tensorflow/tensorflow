@@ -21,11 +21,15 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/arg_ret_placement.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
+#include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/gradients.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -36,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/single_threaded_executor.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
@@ -52,13 +57,13 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tsl/platform/random.h"
-#include "tsl/platform/statusor.h"
 
 // See core/kernels/function_ops.cc for related kernels.
 
@@ -347,6 +352,10 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
                            const InstantiateOptions& options,
                            Handle* handle) override;
 
+  // Finalizes the function library runtime by finalizing the function body of
+  // the instantiated functions.
+  absl::Status Finalize() override;
+
   absl::Status ReleaseHandle(Handle handle) override;
 
   const FunctionBody* GetFunctionBody(Handle handle) override;
@@ -368,6 +377,9 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   bool IsStateful(const string& function) const override;
 
+  // TODO: b/396484774 - Consider handling the case where the FLR is already
+  // finalized instead of always returning the pointer to the unowned library
+  // definition that could have been freed.
   const FunctionLibraryDefinition* GetFunctionLibraryDefinition()
       const override {
     return base_lib_def_;
@@ -415,6 +427,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   int next_handle_ TF_GUARDED_BY(mu_);
 
+  bool finalized_ TF_GUARDED_BY(mu_) = false;
+
   // The instantiated and transformed function is encoded as a Graph
   // object, and an executor is created for the graph.
   struct Item {
@@ -427,12 +441,18 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
     string executor_type;
     bool allow_small_function_optimizations = false;
     bool allow_control_flow_sync_execution = false;
+    bool function_runs_at_most_once = false;
 
     ~Item() {
       delete this->func_graph;
       delete this->exec;
     }
   };
+
+  DoneCallback DeleteExecutorStateAsync(const Item* item, DoneCallback done,
+                                        Handle handle);
+  absl::Status DeleteExecutorStateSync(const Item* item, Handle handle);
+
   std::unique_ptr<absl::flat_hash_map<Handle, std::unique_ptr<Item>>> items_
       TF_GUARDED_BY(mu_);
   std::unique_ptr<FunctionHandleCache> function_handle_cache_;
@@ -780,6 +800,12 @@ absl::Status FunctionLibraryRuntimeImpl::Instantiate(
 
   {
     mutex_lock l(mu_);
+    if (finalized_) {
+      return absl::FailedPreconditionError(
+          "FunctionLibraryRuntimeImpl is finalized and cannot instantiate a "
+          "new function handle.");
+    }
+
     *handle = parent_->GetHandle(key);
     if (*handle != kInvalidHandle) {
       FunctionLibraryRuntime::LocalHandle handle_on_device =
@@ -845,6 +871,7 @@ absl::Status FunctionLibraryRuntimeImpl::Instantiate(
           options.allow_small_function_optimizations;
       item->allow_control_flow_sync_execution =
           options.allow_control_flow_sync_execution;
+      item->function_runs_at_most_once = options.function_runs_at_most_once;
       if (options.lib_def) {
         TF_ASSIGN_OR_RETURN(
             FunctionLibraryDefinition reachable_lib_def,
@@ -862,6 +889,17 @@ absl::Status FunctionLibraryRuntimeImpl::Instantiate(
     TF_RETURN_IF_ERROR(GetOrCreateItem(local_handle, &item));
   }
 
+  return absl::OkStatus();
+}
+
+absl::Status FunctionLibraryRuntimeImpl::Finalize() {
+  mutex_lock l(mu_);
+  if (finalized_) return absl::OkStatus();
+  for (auto& [_, item] : *items_) {
+    TF_RETURN_IF_ERROR(item->func_graph->Finalize());
+    item->graph.reset();
+  }
+  finalized_ = true;
   return absl::OkStatus();
 }
 
@@ -942,6 +980,7 @@ absl::Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
     DeleteNonCachedKernel(kernel);
   };
   params.session_metadata = session_metadata_;
+
   std::unique_ptr<Executor> exec;
 
   // When the instantiation options request small function optimizations, all
@@ -1010,6 +1049,73 @@ void FunctionLibraryRuntimeImpl::ExecutorArgsFromOptions(
   exec_args->stack_trace = run_opts.stack_trace;
 }
 
+FunctionLibraryRuntimeImpl::DoneCallback
+FunctionLibraryRuntimeImpl::DeleteExecutorStateAsync(const Item* item,
+                                                     DoneCallback done,
+                                                     Handle handle) {
+  CHECK(item->function_runs_at_most_once);  // Crash OK
+  done = [this, handle, original_done_cb = std::move(done)](
+             const absl::Status& status) mutable {
+    TF_CHECK_OK(ReleaseHandle(handle));
+    original_done_cb(status);
+  };
+  return done;
+}
+
+absl::Status FunctionLibraryRuntimeImpl::DeleteExecutorStateSync(
+    const Item* item, Handle handle) {
+  CHECK(item->function_runs_at_most_once);  // Crash OK
+  return ReleaseHandle(handle);
+}
+
+namespace {
+
+// Get the alloc attrs for the args obtained from either the nodes or the
+// function body via output parameter.
+absl::Status GetAllocAttrsForArgs(
+    const FunctionBody* fbody,
+    std::vector<AllocatorAttributes>& args_alloc_attrs) {
+  args_alloc_attrs.clear();
+  args_alloc_attrs.reserve(fbody->arg_nodes.size());
+
+  // Get the alloc attrs for the args from the nodes, if not available in the
+  // function body.
+  if (fbody->arg_types.size() != fbody->args_alloc_attrs.size()) {
+    return full_type::SetAllocAttrsForArgs(fbody->arg_nodes, fbody->arg_types,
+                                           args_alloc_attrs);
+  }
+
+  // Otherwise, use the alloc attrs from the function body.
+  for (const AllocatorAttributes& alloc_attr : fbody->args_alloc_attrs) {
+    args_alloc_attrs.push_back(alloc_attr);
+  }
+  return absl::OkStatus();
+}
+
+// Get the alloc attrs for the return values obtained from either the nodes or
+// the function body via output parameter.
+absl::Status GetAllocAttrsForRets(
+    const FunctionBody* fbody,
+    std::vector<AllocatorAttributes>& rets_alloc_attrs) {
+  rets_alloc_attrs.clear();
+  rets_alloc_attrs.reserve(fbody->ret_nodes.size());
+
+  // Get the alloc attrs for the rets from the nodes, if not available in the
+  // function body.
+  if (fbody->ret_types.size() != fbody->rets_alloc_attrs.size()) {
+    return full_type::SetAllocAttrsForRets(fbody->ret_nodes, fbody->ret_types,
+                                           rets_alloc_attrs);
+  }
+
+  // Otherwise, use the alloc attrs from the function body.
+  for (const AllocatorAttributes& alloc_attr : fbody->rets_alloc_attrs) {
+    rets_alloc_attrs.push_back(alloc_attr);
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
+
 void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
                                            absl::Span<const Tensor> args,
                                            std::vector<Tensor>* rets,
@@ -1038,14 +1144,12 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
   ExecutorArgsFromOptions(opts, frame, exec_args);
 
   std::vector<AllocatorAttributes> args_alloc_attrs, rets_alloc_attrs;
-  s = full_type::SetAllocAttrsForArgs(fbody->arg_nodes, fbody->arg_types,
-                                      args_alloc_attrs);
+  s = GetAllocAttrsForArgs(fbody, args_alloc_attrs);
   if (!s.ok()) {
     done(s);
     return;
   }
-  s = full_type::SetAllocAttrsForRets(fbody->ret_nodes, fbody->ret_types,
-                                      rets_alloc_attrs);
+  s = GetAllocAttrsForRets(fbody, rets_alloc_attrs);
   if (!s.ok()) {
     done(s);
     return;
@@ -1058,6 +1162,9 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
   // computation is done and stored in *rets, we send the return values back
   // to the source_device (caller) so that the ProcFLR can receive them later.
   std::vector<Tensor>* remote_args = new std::vector<Tensor>;
+  if (item->function_runs_at_most_once) {
+    done = DeleteExecutorStateAsync(item, std::move(done), handle);
+  }
   ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
       source_device, target_device, "arg_", src_incarnation, args.size(),
       device_context, args_alloc_attrs, rendezvous, remote_args,
@@ -1167,6 +1274,9 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
       tsl::profiler::TraceMeLevel::kInfo);
 
   bool allow_dead_tensors = run_opts.allow_dead_tensors;
+  if (item->function_runs_at_most_once) {
+    done = DeleteExecutorStateAsync(item, std::move(done), handle);
+  }
   item->exec->RunAsync(
       // Executor args
       exec_args,
@@ -1239,6 +1349,9 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
       tsl::profiler::ContextType::kTfExecutor, *exec_args.function_trace_id,
       tsl::profiler::TraceMeLevel::kInfo);
 
+  if (item->function_runs_at_most_once) {
+    done = DeleteExecutorStateAsync(item, std::move(done), handle);
+  }
   item->exec->RunAsync(exec_args, std::move(done));
 }
 
@@ -1299,6 +1412,9 @@ absl::Status FunctionLibraryRuntimeImpl::RunSync(Options opts, Handle handle,
   ExecutorArgsFromOptions(opts, &frame, &exec_args);
 
   TF_RETURN_IF_ERROR(item->exec->Run(exec_args));
+  if (item->function_runs_at_most_once) {
+    TF_RETURN_IF_ERROR(DeleteExecutorStateSync(item, handle));
+  }
   return frame.ConsumeRetvals(rets, opts.allow_dead_tensors);
 }
 
@@ -1313,7 +1429,11 @@ absl::Status FunctionLibraryRuntimeImpl::RunSync(
 
   Executor::Args exec_args;
   ExecutorArgsFromOptions(opts, call_frame, &exec_args);
-  return item->exec->Run(exec_args);
+  TF_RETURN_IF_ERROR(item->exec->Run(exec_args));
+  if (item->function_runs_at_most_once) {
+    TF_RETURN_IF_ERROR(DeleteExecutorStateSync(item, handle));
+  }
+  return absl::OkStatus();
 }
 
 bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) const {

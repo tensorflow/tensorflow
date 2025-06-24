@@ -80,6 +80,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Check conditions for different types.
   switch (input->type) {
     case kTfLiteFloat32:
+    case kTfLiteFloat16:
+    case kTfLiteBFloat16:
     case kTfLiteUInt8:
     case kTfLiteInt4:
     case kTfLiteInt8:
@@ -215,6 +217,12 @@ TfLiteStatus DispatchEvalInputType(TfLiteContext* const context,
   switch (input->type) {
     case kTfLiteFloat32:
       return Gather<float, PosT>(context, *params, input, positions, output);
+    case kTfLiteFloat16:
+      return Gather<Eigen::half, PosT>(context, *params, input, positions,
+                                       output);
+    case kTfLiteBFloat16:
+      return Gather<Eigen::bfloat16, PosT>(context, *params, input, positions,
+                                           output);
     case kTfLiteUInt8:
       return Gather<uint8_t, PosT>(context, *params, input, positions, output);
     case kTfLiteInt4:

@@ -31,6 +31,21 @@ namespace xla {
 // computation on constants.
 class HloConstantFolding : public HloModulePass {
  public:
+  enum class Level {
+    // The default choice that only folds in the cases where it is expected to
+    // always improve runtime performance as well as limiting compile time
+    // overhead.
+    kDefault,
+    // Aggressively folds all operations where it is possible to do so,
+    // including evaluating an unbounded number of while loop iterations.
+    // This has been shown to give significant performance improvements for
+    // some workloads, but it can have deteremental effects on others as well as
+    // having a large increase in compile time.
+    // Use with caution.
+    kAggressive,
+  };
+
+  explicit HloConstantFolding(Level level = Level::kDefault) : level_(level) {}
   absl::string_view name() const override { return "constant_folding"; }
 
   // Run constant folding operations on the given module. Returns whether the
@@ -44,6 +59,8 @@ class HloConstantFolding : public HloModulePass {
   // Number of slow constant-folds we've encountered.  Used for firing
   // SlowOperationAlarms.
   static std::atomic<int64_t> slow_op_counter_;
+
+  Level level_;
 };
 
 }  // namespace xla

@@ -26,13 +26,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace sharding_internal {

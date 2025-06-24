@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/transforms/collectives/all_reduce_contiguous.h"
 
+#include <cstdint>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"

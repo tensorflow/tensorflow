@@ -346,7 +346,7 @@ TEST_F(DeviceResDistTest, DifferentIncarnation) {
   const string task_name = "/job:worker/replica:0/task:1";
   const string device_name = absl::StrCat(task_name, "/device:CPU:0");
   IssueRequest(task_name, device_name, num_workers * num_devices);
-  EXPECT_TRUE(errors::IsFailedPrecondition(status_[device_name]));
+  EXPECT_TRUE(absl::IsFailedPrecondition(status_[device_name]));
 }
 
 TEST_F(DeviceResDistTest, BroadcastSourceRank0) {

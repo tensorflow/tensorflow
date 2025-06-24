@@ -1,0 +1,27 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize --inline |\
+// RUN: FileCheck %s
+// RUN: test_correctness %s --bijection_inputs=scatter:2
+
+HloModule scatter
+
+reducer {
+  p0 = s8[] parameter(0)
+  p1 = s8[] parameter(1)
+  ROOT sum = s8[] add(p0, p1)
+}
+
+scatter_fusion {
+  p0 = s8[16,528,1,256] parameter(0)
+  p1 = s32[96,2] parameter(1)
+  p2 = s8[16,6,256] parameter(2)
+  bitcast = s8[96,1,1,1,256] bitcast(p2)
+  ROOT scatter = s8[16,528,1,256] scatter(p0, p1, bitcast),
+    update_window_dims={1,2,3,4},
+    inserted_window_dims={},
+    scatter_dims_to_operand_dims={0,1},
+    index_vector_dim=1,
+    to_apply=reducer
+}
+// There should be only one function in the module after inlining.
+// CHECK: func.func
+// CHECK-NOT: func.func

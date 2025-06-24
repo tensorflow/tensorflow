@@ -23,7 +23,7 @@ limitations under the License.
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/post_calibration.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/testing/passes.h"  // IWYU pragma: keep
@@ -70,7 +70,7 @@ void TestPostCalibrationComponentPass::runOnOperation() {
   PipelineConfig pipeline_config;
   pipeline_config.set_unpack_quantized_types(unpack_quantized_types_);
 
-  PostCalibrationComponent component(&ctx);
+  quant::stablehlo::PostCalibrationComponent component(&ctx);
   component.AddPasses(pm, new_config.specs(), pipeline_config);
 
   if (failed(runPipeline(pm, module_op))) {

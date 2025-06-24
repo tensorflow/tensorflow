@@ -27,10 +27,11 @@ namespace core {
 
 void Bitmap::Reset(size_t n) {
   const size_t num_words = NumWords(n);
+
   if (num_words != NumWords(nbits_)) {
     // Reallocate.
     Word* w = new Word[num_words];
-    delete[] word_;
+    if (word_ != nullptr) delete[] word_;
     word_ = w;
   }
   memset(word_, 0, sizeof(word_[0]) * num_words);
@@ -40,6 +41,17 @@ void Bitmap::Reset(size_t n) {
 // Return 1+index of the first set bit in w; return 0 if w == 0.
 static size_t FindFirstSet(uint32_t w) {
   return w == 0 ? 0 : absl::countr_zero(w) + 1;
+}
+
+bool Bitmap::IsAllSet() const { return CountOnes() == nbits_; }
+
+size_t Bitmap::CountOnes() const {
+  const size_t nwords = NumWords(nbits_);
+  size_t count = 0;
+  for (size_t i = 0; i < nwords; i++) {
+    count += absl::popcount(word_[i]);
+  }
+  return count;
 }
 
 size_t Bitmap::FirstUnset(size_t start) const {

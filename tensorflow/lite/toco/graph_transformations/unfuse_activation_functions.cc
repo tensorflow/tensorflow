@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
@@ -27,9 +28,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status UnfuseActivationFunctions::Run(Model* model,
-                                                    std::size_t op_index,
-                                                    bool* modified) {
+absl::Status UnfuseActivationFunctions::Run(Model* model, std::size_t op_index,
+                                            bool* modified) {
   *modified = false;
   const auto it = model->operators.begin() + op_index;
   auto* op = it->get();

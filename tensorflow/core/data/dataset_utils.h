@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
@@ -354,6 +355,9 @@ inline int GetCpuBudget() {
 // Returns the initial value for parallelism parameter before the first Autotune
 // optimization.
 int64 GetAutotuneDefaultParallelism(IteratorContext* ctx);
+
+// Returns the minimum parallelism value for Autotune optimization.
+int64_t GetAutotuneMinParallelism(IteratorContext* ctx);
 
 // Creates an iterator context appropriate for a nested dataset's iterator. A
 // nested dataset is a dataset created within another dataset, e.g. by the

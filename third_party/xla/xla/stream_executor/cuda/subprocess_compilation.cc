@@ -227,8 +227,8 @@ static void LogPtxasTooOld(const std::string& ptxas_path, int cc_major,
   using AlreadyLoggedSetTy =
       absl::flat_hash_set<std::tuple<std::string, int, int>>;
 
-  static absl::Mutex* mutex = new absl::Mutex;
-  static AlreadyLoggedSetTy* already_logged = new AlreadyLoggedSetTy;
+  static absl::Mutex* const mutex = new absl::Mutex;
+  static AlreadyLoggedSetTy* const already_logged = new AlreadyLoggedSetTy;
 
   absl::MutexLock lock(mutex);
 
@@ -294,7 +294,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
   // On Hopper, default to sm_90a so that all instructions can be used. But
   // only sm_90 is forward compatible, so don't use sm_90a with newer hardware:
   // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
-  std::string extension = (cc.major == 9 && cc.minor == 0) ? "a" : "";
+  std::string extension = ShouldUsePtxExtension(cc) ? "a" : "";
   std::vector<std::string> ptxas_args = {
       std::string{ptxas_path},
       ptx_path,
@@ -515,7 +515,7 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
   };
   std::vector<std::string> args;
   args.push_back(std::string{nvlink_path});
-  absl::string_view extension = (cc.major == 9 && cc.minor == 0) ? "a" : "";
+  absl::string_view extension = ShouldUsePtxExtension(cc) ? "a" : "";
   args.push_back(absl::StrCat("-arch=sm_", cc.major, cc.minor, extension));
   for (int i = 0; i < images.size(); i++) {
     args.push_back(temp_files[i]);
@@ -552,6 +552,26 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
       tsl::ReadFileToString(tsl::Env::Default(), output_path, &cubin));
   std::vector<uint8_t> cubin_vector(cubin.begin(), cubin.end());
   return cubin_vector;
+}
+
+absl::StatusOr<std::string> FindNvdisasmExecutable(
+    absl::string_view preferred_cuda_dir) {
+  static constexpr SemanticVersion kMinimumSupportedNvdisasmAsVersion{3, 1, 7};
+  static constexpr absl::Span<const SemanticVersion> kNoExcludedVersions{};
+  static constexpr absl::string_view kNvdisasmAsBinaryName = "nvdisasm";
+
+  return FindCudaExecutable(kNvdisasmAsBinaryName, preferred_cuda_dir,
+                            kMinimumSupportedNvdisasmAsVersion,
+                            kNoExcludedVersions);
+}
+
+absl::StatusOr<SemanticVersion> GetNvdisasmVersion(
+    absl::string_view preferred_cuda_dir) {
+  // Make sure nvdisasm exists and is executable.
+  TF_ASSIGN_OR_RETURN(std::string bin_path,
+                      FindNvdisasmExecutable(preferred_cuda_dir));
+
+  return GetToolVersion(bin_path);
 }
 
 }  // namespace stream_executor

@@ -22,17 +22,18 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/rocm/rocm_diagnostics.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_executor.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -48,7 +49,7 @@ static absl::Status InternalInitialize() {
   }
 
   LOG(ERROR) << "failed call to hipInit: " << ToString(res);
-  Diagnostician::LogDiagnosticInformation();
+  rocm::Diagnostician::LogDiagnosticInformation();
   return absl::AbortedError(
       absl::StrCat("failed call to hipInit: ", ToString(res)));
 }

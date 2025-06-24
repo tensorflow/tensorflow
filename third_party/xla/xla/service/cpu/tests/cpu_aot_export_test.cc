@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
@@ -68,7 +68,7 @@ class CpuAotCompilationTest : public HloTestBase {
     // Load Executable from AOT compilation result.
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<Executable> executable,
-        loaded_aot_result->LoadExecutable(compiler, stream_exec));
+        std::move(*loaded_aot_result).LoadExecutable(compiler, stream_exec));
   }
 };
 

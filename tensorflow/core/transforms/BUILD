@@ -15,16 +15,11 @@ package(
 
 gentbl_cc_library(
     name = "PassIncGen",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "--name",
-                "TFGraph",
-            ],
-            "passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"passes.h.inc": [
+        "-gen-pass-decls",
+        "--name",
+        "TFGraph",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes.td",
     deps = [
@@ -52,9 +47,15 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:tensor_proto_cc",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir/importexport:convert_tensor",
         "//tensorflow/core/ir/importexport:graphdef_export",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -63,12 +64,7 @@ cc_library(
 
 gentbl_cc_library(
     name = "PDLLUtilsIncGen",
-    tbl_outs = [
-        (
-            ["-x=cpp"],
-            "utils/pdll/PDLLUtils.h.inc",
-        ),
-    ],
+    tbl_outs = {"utils/pdll/PDLLUtils.h.inc": ["-x=cpp"]},
     tblgen = "@llvm-project//mlir:mlir-pdll",
     td_file = "utils/pdll/utils.pdll",
     deps = [
@@ -101,7 +97,10 @@ cc_library(
     hdrs = ["utils/op_cat_helper.h"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:op_def_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/ir:Dialect",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -145,6 +144,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -161,6 +161,7 @@ tf_cc_test(
         "//tensorflow/core/common_runtime:graph_constructor",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],

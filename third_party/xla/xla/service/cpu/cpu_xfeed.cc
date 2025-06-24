@@ -80,7 +80,7 @@ class CpuOutfeedBuffer : public cpu::runtime::XfeedBuffer {
   void* destination_;
   int32_t length_;
   absl::StatusOr<Shape> status_;
-  tsl::Notification done_;
+  absl::Notification done_;
 };
 
 // Transfers infeed data to device. InfeedBuffer->Done() must be called to
@@ -253,7 +253,7 @@ absl::Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
   }
 
   std::vector<std::pair<void*, int64_t>> buffer_data;
-  for (int i = 0; i < literal.shape().tuple_shapes_size(); ++i) {
+  for (int i = 0; i < literal.shape().tuple_shapes().size(); ++i) {
     const Shape& tuple_element_shape =
         ShapeUtil::GetTupleElementShape(literal.shape(), i);
     int64_t size = cpu::runtime::GetByteSizeRequirement(tuple_element_shape,
@@ -309,8 +309,8 @@ absl::Status ReadDynamicShapesOnCpu(
             reinterpret_cast<const int32_t*>(buffer_8 + offset);
 
         // Update shape size from metadata.
-        for (int64_t i = 0; i < device_sub_shape.rank(); ++i) {
-          device_sub_shape.mutable_dimensions()[i] = metadata_buffer[i];
+        for (int64_t i = 0; i < device_sub_shape.dimensions().size(); ++i) {
+          device_sub_shape.set_dimensions(i, metadata_buffer[i]);
         }
         return absl::OkStatus();
       }));

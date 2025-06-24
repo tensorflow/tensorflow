@@ -57,11 +57,11 @@ TEST_P(SolGPUCostModelTest, TestRingLatency) {
 INSTANTIATE_TEST_SUITE_P(
     SolGPUCostModelTests, SolGPUCostModelTest,
     ValuesIn<RingLatencyTestCase>({
-        {SolGPUCostModel::CollectiveType::kAllGather, absl::Microseconds(298)},
-        {SolGPUCostModel::CollectiveType::kAllReduce, absl::Microseconds(497)},
+        {SolGPUCostModel::CollectiveType::kAllGather, absl::Microseconds(299)},
+        {SolGPUCostModel::CollectiveType::kAllReduce, absl::Microseconds(498)},
         {SolGPUCostModel::CollectiveType::kReduceScatter,
-         absl::Microseconds(298)},
-        {SolGPUCostModel::CollectiveType::kSendRecv, absl::Microseconds(350)},
+         absl::Microseconds(299)},
+        {SolGPUCostModel::CollectiveType::kSendRecv, absl::Microseconds(353)},
     }));
 }  // namespace
 }  // namespace gpu

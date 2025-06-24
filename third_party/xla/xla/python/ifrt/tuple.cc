@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "xla/python/ifrt/tuple.h"
 
-#include <memory>
-#include <vector>
-
 namespace xla {
 namespace ifrt {
 

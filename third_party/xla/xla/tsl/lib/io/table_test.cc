@@ -117,7 +117,7 @@ class StringSink : public WritableFile {
 
 class StringSource : public RandomAccessFile {
  public:
-  explicit StringSource(const absl::string_view& contents)
+  explicit StringSource(absl::string_view contents)
       : contents_(contents.data(), contents.size()), bytes_read_(0) {}
 
   ~StringSource() override {}
@@ -158,7 +158,7 @@ class Constructor {
   explicit Constructor() : data_(STLLessThan()) {}
   virtual ~Constructor() {}
 
-  void Add(const string& key, const absl::string_view& value) {
+  void Add(const string& key, absl::string_view value) {
     data_[key] = string(value);
   }
 
@@ -173,7 +173,7 @@ class Constructor {
     }
     data_.clear();
     absl::Status s = FinishImpl(options, *kvmap);
-    ASSERT_TRUE(s.ok()) << s.ToString();
+    ASSERT_TRUE(s.ok()) << s;
   }
 
   // Construct the data structure from the data in "data"
@@ -230,7 +230,7 @@ class TableConstructor : public Constructor {
       TF_CHECK_OK(builder.status());
     }
     absl::Status s = builder.Finish();
-    TF_CHECK_OK(s) << s.ToString();
+    TF_CHECK_OK(s) << s;
 
     CHECK_EQ(sink.contents().size(), builder.FileSize());
 
@@ -242,7 +242,7 @@ class TableConstructor : public Constructor {
 
   Iterator* NewIterator() const override { return table_->NewIterator(); }
 
-  uint64 ApproximateOffsetOf(const absl::string_view& key) const {
+  uint64 ApproximateOffsetOf(absl::string_view key) const {
     return table_->ApproximateOffsetOf(key);
   }
 

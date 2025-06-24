@@ -13,7 +13,7 @@ candidate for replacement.
 
 1.  Run a JAX test with snapshots enabled:
 
-    ```
+    ```sh
     bazel test some-jax-test
       --test_env=XLA_FLAGS="--xla_cpu_use_xla_runtime --xla_dump_to=/tmp/dump
       --xla_dump_hlo_snapshots" --test_filter=SomeSpecific.Test
@@ -22,7 +22,7 @@ candidate for replacement.
 
 1.  Figure out the culprit module and pass (sorry, no automation yet):
 
-    ```
+    ```sh
     bazel run tensorflow/compiler/xla/mlir/tools/mlir_replay:mlir_replay -- \
       --mlir-compilation-trace=/tmp/dump/module_0000.jit__something.mlir-trace.pb \
       --hlo-snapshot=/tmp/dump/module_0000.jit__something.snapshot.0.pb \
@@ -35,10 +35,10 @@ candidate for replacement.
     the bisect tool.
 
     Note: If the failing pass is bufferization, you may have to use an earlier
-    snapshot, e.g. before EmptyTensorToAllocTensor.
+    snapshot, e.g. before `EmptyTensorToAllocTensor`.
 1.  Run bisect:
 
-    ```
+    ```sh
     bazel run tensorflow/compiler/xla/mlir/tools/mlir_bisect:mlir-bisect -- \
       --hlo-snapshot=/tmp/dump/module_0000.jit_something.snapshot.0.pb \
       --pass-pipeline="builtin.module(empty-tensor-to-alloc-tensor,one-shot-bufferize{allow-return-allocs bufferize-function-boundaries create-deallocs=0})" \
@@ -50,7 +50,7 @@ candidate for replacement.
 To add a reduction, create a function that generates the candidates and register
 it:
 
-```
+```cpp
 SmallVector<OwningOpRef<ModuleOp>>
 FrobulateAndDefenestrate(BisectState&, dialect::SomeOp some_op) {
   auto [cloned_module_1, cloned_op_1] = CloneModuleFor(some_op);
@@ -68,7 +68,7 @@ REGISTER_MLIR_REDUCE_STRATEGY(FrobulateAndDefenestrate);
 Then, add a test for the strategy. Make sure your strategy is linked into
 mlir-bisect and has `alwayslink` set.
 
-```
+```mlir
 // RUN: mlir-bisect %s --debug-strategy=FrobulateAndDefenestrate | FileCheck %s
 
 func.func @main() {

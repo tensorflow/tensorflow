@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/layout.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <ostream>
@@ -29,22 +30,19 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 
 TileProto Tile::ToProto() const {
   TileProto tile_proto;
-  SetProto(tile_proto);
-  return tile_proto;
-}
-
-void Tile::SetProto(TileProto& tile_proto) const {
-  tile_proto.Clear();
   for (int64_t i : dimensions()) {
     tile_proto.add_dimensions(i);
   }
+  return tile_proto;
 }
 
 void Tile::Print(Printer* printer) const {
@@ -83,23 +81,10 @@ SplitConfigProto SplitConfig::ToProto() const {
   return split_config_proto;
 }
 
-void SplitConfig::SetProto(SplitConfigProto& split_config_proto) const {
-  split_config_proto.Clear();
-  split_config_proto.set_dimension(dimension_);
-  for (int64_t i : split_indices_) {
-    split_config_proto.add_split_indices(i);
-  }
-}
-
 std::string SplitConfig::ToString() const {
   return absl::StrCat("(", dimension_, ":", absl::StrJoin(split_indices_, ","),
                       ")");
 }
-
-Layout::Layout(absl::Span<const int64_t> minor_to_major)
-    : index_primitive_type_(PRIMITIVE_TYPE_INVALID),
-      pointer_primitive_type_(PRIMITIVE_TYPE_INVALID),
-      minor_to_major_(minor_to_major.begin(), minor_to_major.end()) {}
 
 Layout::Layout(absl::Span<const int64_t> minor_to_major,
                absl::Span<const Tile> tiles, int64_t element_size_in_bits)
@@ -110,12 +95,9 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major,
       tiles_(tiles.begin(), tiles.end()) {}
 
 Layout::Layout(absl::Span<const int64_t> minor_to_major,
-               absl::Span<const DimLevelType> dim_level_types,
-               absl::Span<const bool> dim_unique,
-               absl::Span<const bool> dim_ordered, absl::Span<const Tile> tiles,
-               int64_t tail_padding_alignment_in_elements,
-               PrimitiveType index_primitive_type,
+               absl::Span<const Tile> tiles, PrimitiveType index_primitive_type,
                PrimitiveType element_primitive_type,
+               int64_t tail_padding_alignment_in_elements,
                int64_t element_size_in_bits, int64_t memory_space,
                absl::Span<const SplitConfig> split_configs,
                std::unique_ptr<Shape> physical_shape,
@@ -131,29 +113,11 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major,
       physical_shape_(std::move(physical_shape)),
       dynamic_shape_metadata_prefix_bytes_(
           dynamic_shape_metadata_prefix_bytes) {
-  // Grow dim_attributes_ to the maximum length of "dim_level_types",
-  // "dim_unique", and "dim_ordered", and then initialize the attributes that
-  // should exist.
-  n_dim_level_types_ = dim_level_types.size();
-  n_dim_unique_ = dim_unique.size();
-  n_dim_ordered_ = dim_ordered.size();
-  const int n_attributes = std::max<int>(
-      n_dim_level_types_, std::max<int>(n_dim_unique_, n_dim_ordered_));
-  dim_attributes_.resize(n_attributes);
-  for (int i = 0; i < n_attributes; i++) {
-    if (i < n_dim_level_types_)
-      dim_attributes_[i].dim_level_type = dim_level_types[i];
-    if (i < n_dim_unique_) dim_attributes_[i].dim_unique = dim_unique[i];
-    if (i < n_dim_ordered_) dim_attributes_[i].dim_ordered = dim_ordered[i];
-  }
+  CHECK_GE(tail_padding_alignment_in_elements, 1);
 }
 
 Layout::Layout(const Layout& other)
-    : dim_attributes_(other.dim_attributes_),
-      n_dim_level_types_(other.n_dim_level_types_),
-      n_dim_unique_(other.n_dim_unique_),
-      n_dim_ordered_(other.n_dim_ordered_),
-      index_primitive_type_(other.index_primitive_type_),
+    : index_primitive_type_(other.index_primitive_type_),
       pointer_primitive_type_(other.pointer_primitive_type_),
       memory_space_(other.memory_space_),
       element_size_in_bits_(other.element_size_in_bits_),
@@ -174,10 +138,6 @@ Layout::~Layout() = default;
 
 Layout& Layout::operator=(const Layout& other) {
   if (this != &other) {
-    dim_attributes_ = other.dim_attributes_;
-    n_dim_level_types_ = other.n_dim_level_types_;
-    n_dim_unique_ = other.n_dim_unique_;
-    n_dim_ordered_ = other.n_dim_ordered_;
     minor_to_major_ = other.minor_to_major_;
     tiles_ = other.tiles_;
     tail_padding_alignment_in_elements_ =
@@ -200,30 +160,23 @@ Layout& Layout::operator=(const Layout& other) {
 
 Layout& Layout::operator=(Layout&& other) = default;
 
-/* static */ Layout Layout::CreateFromProto(const LayoutProto& proto) {
+/* static */ absl::StatusOr<Layout> Layout::FromProto(
+    const LayoutProto& proto) {
   Layout layout;
-  for (int dim_level_type : proto.dim_level_types()) {
-    layout.add_dim_level_type(static_cast<DimLevelType>(dim_level_type));
-  }
-  for (bool dim_unique : proto.dim_unique()) {
-    layout.add_dim_unique(dim_unique);
-  }
-  for (bool dim_ordered : proto.dim_ordered()) {
-    layout.add_dim_ordered(dim_ordered);
-  }
   layout.minor_to_major_.reserve(proto.minor_to_major_size());
   for (const int64_t dimension : proto.minor_to_major()) {
     layout.add_minor_to_major(dimension);
   }
   for (const TileProto& tile_proto : proto.tiles()) {
-    *layout.add_tiles() = Tile::CreateFromProto(tile_proto);
+    TF_ASSIGN_OR_RETURN(*layout.add_tiles(), Tile::FromProto(tile_proto));
   }
-  if (proto.tail_padding_alignment_in_elements() != 0) {
-    layout.set_tail_padding_alignment_in_elements(
-        proto.tail_padding_alignment_in_elements());
-  } else {
-    layout.set_tail_padding_alignment_in_elements(1);
-  }
+  // If the proto does not have tail_padding_alignment_in_elements set, or have
+  // it set to 0, we treat it as 1.
+  const auto alignment = proto.tail_padding_alignment_in_elements() != 0
+                             ? proto.tail_padding_alignment_in_elements()
+                             : 1;
+  TF_RET_CHECK(alignment > 0);
+  layout.set_tail_padding_alignment_in_elements(alignment);
   layout.set_index_primitive_type(proto.index_primitive_type());
   layout.set_pointer_primitive_type(proto.pointer_primitive_type());
   layout.set_element_size_in_bits(proto.element_size_in_bits());
@@ -232,7 +185,8 @@ Layout& Layout::operator=(Layout&& other) = default;
     layout.add_split_configs(SplitConfig::CreateFromProto(split_config_proto));
   }
   if (proto.has_physical_shape()) {
-    *layout.mutable_physical_shape() = Shape(proto.physical_shape());
+    TF_ASSIGN_OR_RETURN(*layout.mutable_physical_shape(),
+                        Shape::FromProto(proto.physical_shape()));
   }
   layout.set_dynamic_shape_metadata_prefix_bytes(
       proto.dynamic_shape_metadata_prefix_bytes());
@@ -241,27 +195,13 @@ Layout& Layout::operator=(Layout&& other) = default;
 
 LayoutProto Layout::ToProto() const {
   LayoutProto proto;
-  SetProto(proto);
-  return proto;
-}
-
-void Layout::SetProto(LayoutProto& proto) const {
   proto.Clear();
-  for (int i = 0; i < n_dim_level_types_; i++) {
-    proto.add_dim_level_types(dim_level_type(i));
-  }
-  for (int i = 0; i < n_dim_unique_; i++) {
-    proto.add_dim_unique(dim_unique(i));
-  }
-  for (int i = 0; i < n_dim_ordered_; i++) {
-    proto.add_dim_ordered(dim_ordered(i));
-  }
-  proto.mutable_minor_to_major()->Reserve(minor_to_major_size());
+  proto.mutable_minor_to_major()->Reserve(minor_to_major().size());
   for (const int64_t dimension : minor_to_major()) {
     proto.add_minor_to_major(dimension);
   }
   for (const Tile& tile : tiles()) {
-    tile.SetProto(*proto.add_tiles());
+    *proto.add_tiles() = tile.ToProto();
   }
   proto.set_tail_padding_alignment_in_elements(
       tail_padding_alignment_in_elements());
@@ -270,17 +210,23 @@ void Layout::SetProto(LayoutProto& proto) const {
   proto.set_element_size_in_bits(element_size_in_bits_);
   proto.set_memory_space(memory_space_);
   for (const SplitConfig& split_config : split_configs()) {
-    split_config.SetProto(*proto.add_split_configs());
+    *proto.add_split_configs() = split_config.ToProto();
   }
   if (has_physical_shape()) {
     *proto.mutable_physical_shape() = physical_shape_->ToProto();
   }
   proto.set_dynamic_shape_metadata_prefix_bytes(
       dynamic_shape_metadata_prefix_bytes_);
+  return proto;
 }
 
-namespace {
-absl::string_view DimLevelTypeAbbrev(DimLevelType dim_level_type) {
+// Converts a DimLevelType to a single-character abbreviation:
+//   D: DIM_DENSE
+//   C: DIM_COMPRESSED
+//   S: DIM_SINGLETON
+//   H: DIM_LOOSE_COMPRESSED
+//   ?: the DimLevelType is invalid.
+static absl::string_view DimLevelTypeAbbrev(DimLevelType dim_level_type) {
   switch (dim_level_type) {
     case DIM_DENSE:
       return "D";
@@ -291,59 +237,44 @@ absl::string_view DimLevelTypeAbbrev(DimLevelType dim_level_type) {
     case xla::DIM_LOOSE_COMPRESSED:
       return "H";
     default:
-      LOG(FATAL) << "Invalid DimLevelType value: " << dim_level_type;
+      return "?";
   }
 }
-}  // namespace
 
 void Layout::Print(Printer* printer) const {
   printer->Append("{");
   AppendJoin(printer, minor_to_major(), ",");
 
   bool colon_printed = false;
-  auto print_colon = [&]() {
-    if (colon_printed) return;
-    printer->Append(":");
-    colon_printed = true;
+  auto print_colon_if_have_not = [&]() {
+    if (!colon_printed) {
+      printer->Append(":");
+      colon_printed = true;
+    }
   };
 
-  if (n_dim_level_types_ > 0) {
-    auto print_one = [&](int i) {
-      printer->Append(DimLevelTypeAbbrev(dim_level_type(i)));
-      if (n_dim_unique_ > 0 && !dim_unique(i)) {
-        printer->Append("+");
-      }
-      if (n_dim_ordered_ > 0 && !dim_ordered(i)) {
-        printer->Append("~");
-      }
-    };
-    print_colon();
-    printer->Append("D(");
-    print_one(0);
-    for (int i = 1; i < n_dim_level_types_; ++i) {
-      printer->Append(",");
-      print_one(i);
-    }
-    printer->Append(")");
-  }
-
+  // Print the tiles as T(...)...(...).
   if (!tiles().empty()) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("T");
     for (const Tile& tile : tiles()) {
       tile.Print(printer);
     }
   }
 
+  // Print the tail padding alignment as L(n). Omit this if n is 1.
   if (tail_padding_alignment_in_elements() != 1) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("L(");
     printer->Append(tail_padding_alignment_in_elements());
     printer->Append(")");
   }
 
+  // Print the primitive type used for indices as #(type). Print
+  // #(invalid) if the type is valid but not an integer. Omit this if the type
+  // is PRIMITIVE_TYPE_INVALID.
   if (index_primitive_type() != PRIMITIVE_TYPE_INVALID) {
-    print_colon();
+    print_colon_if_have_not();
     if (primitive_util::IsIntegralType(index_primitive_type())) {
       printer->Append("#(");
       printer->Append(
@@ -354,8 +285,11 @@ void Layout::Print(Printer* printer) const {
     }
   }
 
+  // Print the primitive type used for poitners as *(type). Print *(invalid) if
+  // the type is valid but not a pointer. Omit this if the type is
+  // PRIMITIVE_TYPE_INVALID.
   if (pointer_primitive_type() != PRIMITIVE_TYPE_INVALID) {
-    print_colon();
+    print_colon_if_have_not();
     if (primitive_util::IsIntegralType(pointer_primitive_type())) {
       printer->Append("*(");
       printer->Append(
@@ -366,36 +300,45 @@ void Layout::Print(Printer* printer) const {
     }
   }
 
+  // Print the element size in bits as E(n). Omit this if n is 0.
   if (element_size_in_bits() != 0) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("E(");
     printer->Append(element_size_in_bits());
     printer->Append(")");
   }
 
+  // Print the memory space as S(n). Omit this if n is 0.
   if (memory_space() != 0) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("S(");
     printer->Append(memory_space());
     printer->Append(")");
   }
+
+  // Print the split configs as SC(...)...(...). Omit this if the split configs
+  // are empty.
   if (!split_configs().empty()) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("SC");
     for (const auto& split_config : split_configs()) {
       printer->Append(split_config.ToString());
     }
   }
 
+  // Print the physical shape as P(physical_shape). Omit this if the physical
+  // shape is not set.
   if (has_physical_shape()) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("P(");
     physical_shape_->Print(printer, /*print_layout=*/true);
     printer->Append(")");
   }
 
+  // Print the dynamic shape metadata prefix bytes as M(n). Omit this if n is
+  // 0.
   if (dynamic_shape_metadata_prefix_bytes_ > 0) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("M(");
     printer->Append(dynamic_shape_metadata_prefix_bytes());
     printer->Append(")");
@@ -411,35 +354,6 @@ std::string Layout::ToString() const {
 }
 
 bool Layout::Equal::operator()(const Layout& lhs, const Layout& rhs) {
-  if (!LayoutUtil::IsDense(lhs) || !LayoutUtil::IsDense(rhs)) {
-    // dim_level_types
-    if (lhs.dim_level_types_size() != rhs.dim_level_types_size()) {
-      return false;
-    }
-    for (int i = 0; i < lhs.dim_level_types_size(); i++) {
-      if (lhs.dim_level_type(i) != rhs.dim_level_type(i)) {
-        return false;
-      }
-    }
-    // dim_unique
-    if (lhs.dim_unique_size() != rhs.dim_unique_size()) {
-      return false;
-    }
-    for (int i = 0; i < lhs.dim_unique_size(); i++) {
-      if (lhs.dim_unique(i) != rhs.dim_unique(i)) {
-        return false;
-      }
-    }
-    // dim_ordered
-    if (lhs.dim_ordered_size() != rhs.dim_ordered_size()) {
-      return false;
-    }
-    for (int i = 0; i < lhs.dim_ordered_size(); i++) {
-      if (lhs.dim_ordered(i) != rhs.dim_ordered(i)) {
-        return false;
-      }
-    }
-  }
   if (lhs.minor_to_major() != rhs.minor_to_major()) {
     return false;
   }
@@ -505,8 +419,10 @@ Shape* Layout::mutable_physical_shape() {
 
 void Layout::clear_physical_shape() { physical_shape_ = nullptr; }
 
-Layout& Layout::DeleteDimension(int64_t dim_to_delete) {
-  for (int64_t i = 0; i < minor_to_major_.size();) {
+Layout& Layout::DeleteDimension(int dim_to_delete) {
+  CHECK_GE(dim_to_delete, 0);
+  CHECK_LT(dim_to_delete, minor_to_major_.size());
+  for (int i = 0; i < minor_to_major_.size();) {
     if (minor_to_major_[i] == dim_to_delete) {
       minor_to_major_.erase(minor_to_major_.begin() + i);
       continue;
@@ -515,13 +431,6 @@ Layout& Layout::DeleteDimension(int64_t dim_to_delete) {
       minor_to_major_[i] -= 1;
     }
     ++i;
-  }
-  // Delete the corresponding dim level types.
-  if (LayoutUtil::IsSparse(*this)) {
-    if (dim_to_delete < n_dim_level_types_) n_dim_level_types_--;
-    if (dim_to_delete < n_dim_unique_) n_dim_unique_--;
-    if (dim_to_delete < n_dim_ordered_) n_dim_ordered_--;
-    dim_attributes_.erase(dim_attributes_.begin() + dim_to_delete);
   }
   return *this;
 }

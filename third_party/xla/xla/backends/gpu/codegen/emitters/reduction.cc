@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -30,6 +31,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -46,8 +49,9 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/backends/gpu/codegen/emitters/reduction_base.h"
-#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
+#include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/type_util.h"
@@ -56,11 +60,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/reduction_utils.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -110,7 +114,7 @@ struct ReductionFusion::EmitterState {
       root_indices[&root.instruction()] = root_index;
       fusion_result_index_starts[&root.instruction()] = output_index;
       output_index +=
-          root.shape().IsTuple() ? root.shape().tuple_shapes_size() : 1;
+          root.shape().IsTuple() ? root.shape().tuple_shapes().size() : 1;
     }
   }
 
@@ -207,7 +211,14 @@ PerThreadOutputs ReductionFusion::EmitterState::EmitPerThreadElements(
       reduce_args.append(ProvideParameterRange(computation, reduction, 0, arity,
                                                indices, call_target,
                                                entry_function, nested_b));
-      const auto& reducer = GetReducer(reduction);
+      auto reducer = GetReducer(reduction);
+      // Annotate all AddF ops in the reducer with the no signed zeros fastmath
+      // flag. This allows to fold the initial add with the zero init constant.
+      auto no_signed_zeros = mlir::arith::FastMathFlagsAttr::get(
+          nested_b.getContext(), mlir::arith::FastMathFlags::nsz);
+      reducer.walk([&](mlir::arith::AddFOp addf) {
+        addf->setAttr("fastmath", no_signed_zeros);
+      });
       absl::c_copy(
           nested_b.create<PureCallOp>(reducer, reduce_args).getResults(),
           results.begin() + start);
@@ -506,10 +517,11 @@ std::optional<IndexingMap> ReductionFusion::ComputeThreadIdToInputIndexing(
   if (!groups_.is_reduction_root[root_index]) {
     return ComposeIndexingMaps(
         *ComputeThreadIdToOutputIndexing(root_index, ctx),
-        *ComputeOutputToInputIndexing(
-             &analysis_.fusion_root(root_index).instruction(), 0, ctx)
-             .indexing_maps[hero_operand_index]
-             .begin());
+        ComputeOutputToInputIndexing(
+            &analysis_.fusion_root(root_index).instruction(), 0, ctx)
+            .indexing_maps[hero_operand_index]
+            .begin()
+            ->map());
   }
   auto projected_map = ComputeReductionInputIndexing(ctx);
   AddGroupIdConstraint(projected_map, root_index, groups_);
@@ -588,9 +600,9 @@ ColumnReductionFusion::ColumnReductionFusion(const HloFusionAnalysis& analysis)
                   reduction_dimensions_.dimensions[1],
                   reduction_dimensions_.dimensions[2]};
   vector_size_ = GetVectorSizeForMlir(
-      analysis, /*minor_dim=*/input_shape_.back(), WarpSize());
-  int64_t num_warps_per_column = WarpSize();
-  num_threads_ = {num_warps_per_column, WarpSize()};
+      analysis, /*minor_dim=*/input_shape_.back(), kTileSize);
+  int64_t num_warps_per_column = kTileSize;
+  num_threads_ = {num_warps_per_column, kTileSize};
   int64_t num_col_elements_per_thread =
       CeilOfRatio(reduction_dimensions_
                       .dimensions[ReductionDimensions::kColReducedDimension],
@@ -604,7 +616,7 @@ ColumnReductionFusion::ColumnReductionFusion(const HloFusionAnalysis& analysis)
       reduction_dimensions_
           .dimensions[ReductionDimensions::kColMinorKeptDimension];
   int64_t num_blocks_per_row =
-      CeilOfRatio(minor_kept_dim, WarpSize() * vector_size_);
+      CeilOfRatio(minor_kept_dim, kTileSize * vector_size_);
   num_blocks_ = {major_kept_dim, num_blocks_per_row};
 }
 
@@ -617,7 +629,7 @@ IndexingMap ColumnReductionFusion::ComputeReductionOutputIndexing(
   auto vector_index = getAffineSymbolExpr(0, ctx);
   SmallVector<AffineExpr, 2> results{
       block_id[0],
-      (block_id[1] * WarpSize() + thread_id[0]) * vector_size_ + vector_index};
+      (block_id[1] * kTileSize + thread_id[0]) * vector_size_ + vector_index};
   IndexingMap projected_index =
       GetIndexingMap(results, /*symbol_sizes=*/{vector_size_});
   projected_index.AddConstraint(thread_id[1], {0, 0});
@@ -635,7 +647,7 @@ IndexingMap ColumnReductionFusion::ComputeReductionInputIndexing(
 
   SmallVector<AffineExpr, 3> results{
       block_id[0], thread_id[0] + element_index * num_threads_[1],
-      (block_id[1] * WarpSize() + thread_id[1]) * vector_size_ + vector_index};
+      (block_id[1] * kTileSize + thread_id[1]) * vector_size_ + vector_index};
   IndexingMap map = GetIndexingMap(results, tile_sizes_per_thread_);
   for (auto [result, dim_size] :
        llvm::zip(results, reduction_dimensions_.dimensions)) {
@@ -683,20 +695,20 @@ SmallColumnReductionFusion::SmallColumnReductionFusion(
   // We emit a single loop over the dimensions 1 and 2, so we use their total
   // size when computing the vector size.
   vector_size_ = GetVectorSizeForMlir(
-      analysis, /*minor_dim=*/input_shape_[1] * input_shape_[2], WarpSize());
+      analysis, /*minor_dim=*/input_shape_[1] * input_shape_[2], kTileSize);
   num_threads_ = {128};
   shared_rows_ = vector_size_ * num_threads_[0] / input_shape_[kColMinorKept];
 
   // If we have more than 32 shared rows, we'd have to go through shared
   // memory one extra time. We don't currently support that, and it's not been
   // tried, so we have to reduce the vector size/number of threads.
-  while (shared_rows_ > WarpSize() && vector_size_ > 1) {
+  while (shared_rows_ > kTileSize && vector_size_ > 1) {
     vector_size_ /= 2;
     shared_rows_ /= 2;
   }
-  if (shared_rows_ > WarpSize()) {
-    num_threads_[0] /= (shared_rows_ / WarpSize());
-    shared_rows_ = WarpSize();
+  if (shared_rows_ > kTileSize) {
+    num_threads_[0] /= (shared_rows_ / kTileSize);
+    shared_rows_ = kTileSize;
   }
 
   num_blocks_ = {input_shape_[kColMajorKept]};
@@ -779,55 +791,74 @@ RowReductionFusion::RowReductionFusion(const HloFusionAnalysis& analysis)
     : ReductionFusion(analysis) {
   CHECK(reduction_dimensions_.is_row_reduction);
   Vector3 shape = reduction_dimensions_.dimensions;
-  constexpr int64_t kMinorReducedElementsPerThread = 16;
+  int64_t kMinorReducedElementsPerThread = 8;
 
-  int64_t num_threads_kept = 1;
-  int64_t num_threads_reduced = [&] {
-    int64_t max_block_size = MinThreadsXRowReduction();
-    return std::min(max_block_size,
-                    RoundUpTo(CeilOfRatio(shape[kRowMinorReduced],
-                                          kMinorReducedElementsPerThread),
-                              WarpSize()));
-  }();
+  do {
+    kMinorReducedElementsPerThread *= 2;
+    int64_t num_threads_kept = 1;
+    // Number of threads doing the reduction.
+    int64_t num_threads_reduced = [&] {
+      int64_t max_block_size = MinThreadsXRowReduction();
+      return std::min(max_block_size,
+                      RoundUpTo(CeilOfRatio(shape[kRowMinorReduced],
+                                            kMinorReducedElementsPerThread),
+                                WarpSize()));
+    }();
 
-  // If we're limited by the size of the x dimension, add additional parallelism
-  // in the y dimension. The code generator doesn't currently support
-  // parallelizing the z dimension (major reduced dimensions). The general
-  // recommendation is to use between 128 and 512 threads, so we just go for
-  // 256. See https://forums.developer.nvidia.com/t/55529
-  constexpr int64_t kThreadsPerBlockTarget = 256;
-  if (num_threads_reduced * 2 <= kThreadsPerBlockTarget) {
-    int64_t kept_size = reduction_dimensions_.dimensions[kRowKept];
-    // Increase the size of the y dimension as long as there's remaining
-    // parallelism.
-    if (kept_size * num_threads_reduced <= kThreadsPerBlockTarget) {
-      num_threads_kept = kept_size;
-    } else {
-      num_threads_kept = kThreadsPerBlockTarget / num_threads_reduced;
+    // If we're limited by the size of the x dimension, add additional
+    // parallelism in the y dimension. The code generator doesn't currently
+    // support parallelizing the z dimension (major reduced dimensions). The
+    // general recommendation is to use between 128 and 512 threads, so we just
+    // go for 256. See https://forums.developer.nvidia.com/t/55529
+    constexpr int64_t kThreadsPerBlockTarget = 256;
+    if (num_threads_reduced * 2 <= kThreadsPerBlockTarget) {
+      int64_t kept_size = reduction_dimensions_.dimensions[kRowKept];
+      // Increase the size of the y dimension as long as there's remaining
+      // parallelism.
+      if (kept_size * num_threads_reduced <= kThreadsPerBlockTarget) {
+        num_threads_kept = kept_size;
+      } else {
+        num_threads_kept = kThreadsPerBlockTarget / num_threads_reduced;
+      }
     }
-  }
 
-  int vector_size = GetVectorSizeForMlir(analysis, /*minor_dim=*/shape.back(),
-                                         num_threads_reduced);
-  num_threads_ = {num_threads_kept, num_threads_reduced};
-  // TODO(jreiffers): Get rid of `vector_size` in here.
-  input_shape_ = {shape[0], shape[1], shape[2] / vector_size, vector_size};
-  // TODO(jreiffers): Tighten ranges based on constraints when simplifying
-  // instead of using min here. For example, based on
-  //
-  //   s1 in [0, 127]
-  //   d0 floordiv 32 + s1 * 32 in [0, 63]
-  //
-  // Tighten the bound of s1 to [0, 1].
-  int minor_reduced_tile_size =
-      std::min(kMinorReducedElementsPerThread / vector_size,
-               CeilOfRatio(input_shape_[2], num_threads_[1]));
+    int vector_size = GetVectorSizeForMlir(analysis, /*minor_dim=*/shape.back(),
+                                           num_threads_reduced);
+    num_threads_ = {num_threads_kept, num_threads_reduced};
+    // TODO(jreiffers): Get rid of `vector_size` in here.
+    input_shape_ = {shape[0], shape[1], shape[2] / vector_size, vector_size};
+    // TODO(jreiffers): Tighten ranges based on constraints when simplifying
+    // instead of using min here. For example, based on
+    //
+    //   s1 in [0, 127]
+    //   d0 floordiv 32 + s1 * 32 in [0, 63]
+    //
+    // Tighten the bound of s1 to [0, 1].
+    int minor_reduced_tile_size =
+        std::min(kMinorReducedElementsPerThread / vector_size,
+                 CeilOfRatio(input_shape_[2], num_threads_[1]));
 
-  tile_sizes_per_thread_ = {shape[0], minor_reduced_tile_size, vector_size};
-  tile_sizes_per_block_ = {num_threads_kept,
-                           minor_reduced_tile_size * num_threads_reduced};
-  num_blocks_ = {CeilOfRatio(input_shape_[1], tile_sizes_per_block_[0]),
-                 CeilOfRatio(input_shape_[2], tile_sizes_per_block_[1])};
+    tile_sizes_per_thread_ = {shape[0], minor_reduced_tile_size, vector_size};
+    tile_sizes_per_block_ = {num_threads_kept,
+                             minor_reduced_tile_size * num_threads_reduced};
+    num_blocks_ = {CeilOfRatio(input_shape_[1], tile_sizes_per_block_[0]),
+                   CeilOfRatio(input_shape_[2], tile_sizes_per_block_[1])};
+    /* ROCm hipModuleLaunchKernel limitation
+     * https://rocm.docs.amd.com/projects/HIP/en/latest/doxygen/html/group___module.html#ga2e4de5937aa8171e9eda16c881ed0674
+     */
+  } while (xla::PlatformUtil::CanonicalPlatformName("gpu").value() == "rocm" &&
+           kMinorReducedElementsPerThread < 65536 &&
+           ((Product(num_blocks_) * Product(num_threads_)) >
+            std::numeric_limits<uint32_t>::max()));
+
+  VLOG(3) << absl::StrFormat(
+      "RowReductionFusion::RowReductionFusion selected parameters: num_threads "
+      "= [%s], tile_sizes_per_thread = [%s], tile_sizes_per_block = [%s], "
+      "num_blocks = [%s]",
+      absl::StrJoin(num_threads_, ","),
+      absl::StrJoin(tile_sizes_per_thread_, ","),
+      absl::StrJoin(tile_sizes_per_block_, ","),
+      absl::StrJoin(num_blocks_, ","));
 }
 
 IndexingMap RowReductionFusion::ComputeReductionInputIndexing(
@@ -933,6 +964,8 @@ std::unique_ptr<ReductionFusion> MultiRowReductionFusion::TryCreate(
   // This emitter only supports reductions where the reduced dimension is a
   // power of 2.
   if (shape[kRowMinorReduced] & (shape[kRowMinorReduced] - 1)) {
+    VLOG(3) << "MultiRowReductionFusion::TryCreate shape[kRowMinorReduced] = "
+            << shape[kRowMinorReduced] << " is not a power of 2";
     return nullptr;
   }
 
@@ -963,12 +996,19 @@ std::unique_ptr<ReductionFusion> MultiRowReductionFusion::TryCreate(
   // a bit on the high side, but remember that we also have very small inputs
   // or outputs.
   if (largest_input_or_output_bits >= 32) {
+    VLOG(3) << "MultiRowReductionFusion::TryCreate limiting vector size to 16 "
+               "bytes as largest_input_or_output_bits is "
+            << largest_input_or_output_bits;
     vector_size = std::min(128 / largest_input_or_output_bits, vector_size);
   }
 
   // The reduced dimension must fit into a single warp.
   const int64_t warp_size = analysis.device_info().threads_per_warp();
   if (shape[kRowMinorReduced] > warp_size * vector_size) {
+    VLOG(3) << "MultiRowReductionFusion::TryCreate reduced dimension "
+            << shape[kRowMinorReduced] << " is larger than warp size "
+            << warp_size << " * vector size " << vector_size
+            << ". Will not use multi-row reduction";
     return nullptr;
   }
 
@@ -987,9 +1027,15 @@ std::unique_ptr<ReductionFusion> MultiRowReductionFusion::TryCreate(
   // Check again that the reduced dimension fits after potentially reducing the
   // vector size.
   if (shape[kRowMinorReduced] > warp_size * vector_size) {
+    VLOG(3) << "MultiRowReductionFusion::TryCreate reduced dimension "
+            << shape[kRowMinorReduced] << " is larger than warp size "
+            << warp_size << " * vector size " << vector_size
+            << ". Will not use multi-row reduction";
     return nullptr;
   }
 
+  VLOG(3) << "MultiRowReductionFusion::TryCreate selected vector_size = "
+          << vector_size;
   return std::make_unique<MultiRowReductionFusion>(analysis, vector_size);
 }
 

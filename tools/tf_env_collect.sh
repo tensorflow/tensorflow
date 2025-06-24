@@ -29,14 +29,34 @@ die() {
 echo "Collecting system information..."
 
 OUTPUT_FILE=tf_env.txt
-python_bin_path=$(which python || which python3 || die "Cannot find Python binary")
+PYTHON_BIN_PATH="$(which python || which python3 || die "Cannot find Python binary")"
+
+HEADER_WIDTH=68
+# Create a string of HEADER_WIDTH "=" characters
+HEADER=$(printf "%*s" "$HEADER_WIDTH" "" | sed 's/ /=/g')
+
+print_header () {
+  # This function simply prints the header with even spacing, 
+  # and also prints it to STDERR so that the human running
+  # the script sees progress.
+  local TITLE="$1"
+  echo
+  # This line is a bit cryptic, but it essentially
+  # just pads the title with "=" to be the desired length.
+  local PADDED_TITLE="== $TITLE ${HEADER:${#TITLE}+4}"
+  # Echo to STDOUT
+  echo "$PADDED_TITLE"
+  # Echo to STDERR (to show progress to the user as it runs)
+  echo "$PADDED_TITLE" 1>&2
+}
+
+# Clear the output file
+echo > "$OUTPUT_FILE"
 
 {
-echo
-echo '== check python ==================================================='
-} >> ${OUTPUT_FILE}
+  print_header "check python"
 
-cat <<EOF > /tmp/check_python.py
+  "${PYTHON_BIN_PATH}" <<EOF
 import platform
 
 print("""python version: %s
@@ -52,84 +72,86 @@ platform.python_compiler(),
 platform.python_implementation(),
 ))
 EOF
-${python_bin_path} /tmp/check_python.py 2>&1  >> ${OUTPUT_FILE}
 
-{
-echo
-echo '== check os platform ==============================================='
-} >> ${OUTPUT_FILE}
+  print_header "check os platform"
 
-cat <<EOF > /tmp/check_os.py
+  "${PYTHON_BIN_PATH}" <<EOF
 import platform
 
-print("""os: %s
-os kernel version: %s
-os release version: %s
-os platform: %s
-linux distribution: %s
-linux os distribution: %s
-mac version: %s
-uname: %s
-architecture: %s
-machine: %s
-""" % (
-platform.system(),
-platform.version(),
-platform.release(),
-platform.platform(),
-platform.linux_distribution(),
-platform.dist(),
-platform.mac_ver(),
-platform.uname(),
-platform.architecture(),
-platform.machine(),
-))
-EOF
-${python_bin_path} /tmp/check_os.py 2>&1  >> ${OUTPUT_FILE}
+PLATFORM_ENTRIES = [
+    ("os", "system"),
+    ("os kernel version", "version"),
+    ("os release version", "release"),
+    ("os platform", "platform"),
+    ("freedesktop os release", "freedesktop_os_release"),
+    ("mac version", "mac_ver"),
+    ("uname", "uname"),
+    ("architecture", "architecture"),
+    ("machine", "machine"),
+]
 
-{
-  echo
-  echo '== are we in docker ============================================='
-  num=`cat /proc/1/cgroup | grep docker | wc -l`;
-  if [ $num -ge 1 ]; then
+for label, function_name in PLATFORM_ENTRIES:
+    if hasattr(platform, function_name):
+        function = getattr(platform, function_name)
+        result = function()  # Call the function
+        print(f"{label}: {result}")
+    else:
+        print(f"{label}: N/A")
+EOF
+
+
+  print_header 'are we in docker'
+  if grep -q docker /proc/1/cgroup; then
     echo "Yes"
   else
     echo "No"
   fi
   
-  echo
-  echo '== compiler ====================================================='
-  c++ --version 2>&1
+  print_header 'c++ compiler'
+  if which c++; then
+    c++ --version 2>&1
+  else
+    echo "Not found"
+  fi
   
-  echo
-  echo '== check pips ==================================================='
-  pip list 2>&1 | grep "proto\|numpy\|tensorflow"
+  print_header 'check pips'
+  pip list 2>&1 | grep -E 'proto|numpy|tensorflow|tf_nightly'
   
   
-  echo
-  echo '== check for virtualenv ========================================='
-  ${python_bin_path} -c "import sys;print(hasattr(sys, \"real_prefix\"))"
-  
-  echo
-  echo '== tensorflow import ============================================'
-} >> ${OUTPUT_FILE}
+  print_header 'check for virtualenv'
+  "${PYTHON_BIN_PATH}" <<EOF
+import sys
 
-cat <<EOF > /tmp/check_tf.py
-import tensorflow as tf;
-print("tf.version.VERSION = %s" % tf.version.VERSION)
-print("tf.version.GIT_VERSION = %s" % tf.version.GIT_VERSION)
-print("tf.version.COMPILER_VERSION = %s" % tf.version.COMPILER_VERSION)
-with tf.Session() as sess:
-  print("Sanity check: %r" % sess.run(tf.constant([1,2,3])[:1]))
+if hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
+    print("Running inside a virtual environment.")
+else:
+    print("Not running inside a virtual environment.")
 EOF
-${python_bin_path} /tmp/check_tf.py 2>&1  >> ${OUTPUT_FILE}
 
-LD_DEBUG=libs ${python_bin_path} -c "import tensorflow"  2>>${OUTPUT_FILE} > /tmp/loadedlibs
+  print_header 'tensorflow import'
 
-{
-  grep libcudnn.so /tmp/loadedlibs
-  echo
-  echo '== env =========================================================='
+  "${PYTHON_BIN_PATH}" <<EOF 2>&1
+import tensorflow as tf;
+print(f"""
+tf.version.VERSION = {tf.version.VERSION}
+tf.version.GIT_VERSION = {tf.version.GIT_VERSION}
+tf.version.COMPILER_VERSION = {tf.version.COMPILER_VERSION}
+""")
+print("Sanity check: %r" % tf.constant([1,2,3])[:1])
+EOF
+
+  # Record libraries loaded by tensorflow
+  LD_DEBUG=libs "${PYTHON_BIN_PATH}" -c "import tensorflow" 2> /tmp/loadedlibs >/dev/null
+  if grep libcudnn /tmp/loadedlibs; then
+    echo "libcudnn found"
+  else
+    echo "libcudnn not found"
+  fi
+
+  print_header env
+
+  # Note: the usage of "set -u" above would cause these to error if the
+  #   basic form [[ -z $LD_LIBRARY_PATH ]] was used.
   if [ -z ${LD_LIBRARY_PATH+x} ]; then
     echo "LD_LIBRARY_PATH is unset";
   else
@@ -142,35 +164,33 @@ LD_DEBUG=libs ${python_bin_path} -c "import tensorflow"  2>>${OUTPUT_FILE} > /tm
   fi
   
   
-  echo
-  echo '== nvidia-smi ==================================================='
+  print_header nvidia-smi
   nvidia-smi 2>&1
   
-  echo
-  echo '== cuda libs  ==================================================='
-} >> ${OUTPUT_FILE}
+  print_header 'cuda libs'
 
-find /usr/local -type f -name 'libcudart*'  2>/dev/null | grep cuda |  grep -v "\\.cache" >> ${OUTPUT_FILE}
-find /usr/local -type f -name 'libudnn*'  2>/dev/null | grep cuda |  grep -v "\\.cache" >> ${OUTPUT_FILE}
+  # Find cudart/cudnn files
+  find /usr -type f -name 'libcud*'  2>/dev/null | grep -E 'cuda.*(cudart|cudnn)' | grep -v -F '.cache'
 
-{
-  echo
-  echo '== tensorflow installed from info =================='
-  pip show tensorflow
+  print_header 'tensorflow installation'
+  if ! pip show tensorflow; then
+    echo "tensorflow not found"
+  fi
 
-  echo
-  echo '== python version  =============================================='
+  print_header 'tf_nightly installation'
+  if ! pip show tf_nightly; then
+    echo "tf_nightly not found"
+  fi
+
+  print_header 'python version'
   echo '(major, minor, micro, releaselevel, serial)'
-  python -c 'import sys; print(sys.version_info[:])'
+  "${PYTHON_BIN_PATH}" -c 'import sys; print(sys.version_info[:])'
   
-  echo
-  echo '== bazel version  ==============================================='
+  print_header 'bazel version'
   bazel version
-} >> ${OUTPUT_FILE}
 
-# Remove any words with google.
-mv $OUTPUT_FILE old-$OUTPUT_FILE
-grep -v -i google old-${OUTPUT_FILE} > $OUTPUT_FILE
+# Remove any lines with google.
+} | grep -v -i google >> "$OUTPUT_FILE"
 
 echo "Wrote environment to ${OUTPUT_FILE}. You can review the contents of that file."
 echo "and use it to populate the fields in the github issue template."

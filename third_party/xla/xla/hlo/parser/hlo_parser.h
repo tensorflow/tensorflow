@@ -19,12 +19,16 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/status/statusor.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/parser/hlo_lexer.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/layout.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -50,9 +54,20 @@ class HloParserOptions {
     return fill_shortform_constants_with_random_values_;
   }
 
+  // Keep module auto layouts, i.e. do not reset unset entry computation layouts
+  // to the default layout.  This is a subset of what fill_missing_layouts=false
+  // does.
+  HloParserOptions& set_keep_module_auto_layouts(bool value) {
+    keep_module_auto_layouts_ = value;
+    return *this;
+  }
+
+  bool keep_module_auto_layouts() const { return keep_module_auto_layouts_; }
+
  private:
   bool fill_missing_layouts_ = true;
   bool fill_shortform_constants_with_random_values_ = true;
+  bool keep_module_auto_layouts_ = false;
 };
 
 // Given a string in the HloModule::ToString() format, parses the string and
@@ -109,6 +124,10 @@ absl::StatusOr<Layout> ParseLayout(absl::string_view str);
 absl::StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly(
     absl::string_view str);
 
+// Parses and returns a `CollectiveDeviceList` from a `str`.
+absl::StatusOr<CollectiveDeviceList> ParseCollectiveDeviceListOnly(
+    absl::string_view str);
+
 class HloParser {
  public:
   // Runs the parser and constructs the resulting HLO in the given (empty)
@@ -118,7 +137,8 @@ class HloParser {
 
  private:
   static std::unique_ptr<HloParser> CreateHloParserForTests(
-      absl::string_view str);
+      absl::string_view str,
+      const HloParserOptions& options = HloParserOptions());
   friend class VerifiedHloModule;
 };
 

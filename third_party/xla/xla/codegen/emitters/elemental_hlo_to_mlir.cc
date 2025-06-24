@@ -62,8 +62,8 @@ limitations under the License.
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/type_util.h"
-#include "xla/codegen/ir/xla_ops.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -180,7 +180,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitReduce(
   auto* mlir_context = b.getContext();
   HloInstructionIndexing indexing =
       ComputeOutputToInputIndexing(instr, 0, mlir_context);
-  const auto& indexing_map = *indexing.indexing_maps[0].begin();
+  const IndexingMap& indexing_map = indexing.indexing_maps[0].begin()->map();
 
   SmallVector<Value, 1> init_values;
   for (int i = instr->operand_count() / 2; i < instr->operand_count(); ++i) {
@@ -213,7 +213,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitReduceWindow(
   MLIRContext* mlir_context = b.getContext();
   HloInstructionIndexing indexing =
       ComputeOutputToInputIndexing(instr, 0, mlir_context);
-  auto indexing_map = *indexing.indexing_maps[0].begin();
+  IndexingMap indexing_map = indexing.indexing_maps[0].begin()->map();
   indexing_map.RescaleSymbols();
 
   auto reduce_window = DynCast<HloReduceWindowInstruction>(instr);
@@ -319,7 +319,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDynamicSlice(
   SmallVector<Value, 3> input_indices(indices);
 
   const auto& input_shape = instr->operand(0)->shape();
-  for (int i = 0; i < input_shape.rank(); ++i) {
+  for (int i = 0; i < input_shape.dimensions().size(); ++i) {
     TF_ASSIGN_OR_RETURN(
         auto offset, GetSingleOperandValue(operand_provider, instr, i + 1, {}));
     offset =
@@ -343,7 +343,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDynamicUpdateSlice(
   Value is_in_bounds = b.create<ConstantOp>(b.getIntegerAttr(b.getI1Type(), 1));
   mlir::SmallVector<Value, 3> update_indices;
   const auto& updates_shape = instr->operand(1)->shape();
-  for (int i = 0; i < instr->shape().rank(); ++i) {
+  for (int i = 0; i < instr->shape().dimensions().size(); ++i) {
     int64_t update_size = updates_shape.dimensions(i);
     TF_ASSIGN_OR_RETURN(
         auto start_index,
@@ -391,25 +391,26 @@ absl::StatusOr<SmallVector<Value, 1>> EmitGather(
   auto zero = b.create<ConstantIndexOp>(0);
   // Gather allows the index vector to contain fewer elements than the rank
   // of the input. In that case, the remaining indices are 0.
-  SmallVector<Value, 3> operand_indices(instr->operand(0)->shape().rank(),
-                                        zero);
+  SmallVector<Value, 3> operand_indices(
+      instr->operand(0)->shape().dimensions().size(), zero);
 
   // Produce start indices.
   // HLO allows the index vector dimension to be implicit, and the algebraic
   // simplifier prefers this form. Therefore, we need to check the rank of the
   // indices here and do the implicit reshape in place.
   const auto& indices_shape = instr->operand(1)->shape();
-  int num_indices = indices_shape.rank() == 1 ? 1 : indices_shape.dimensions(1);
+  int num_indices =
+      indices_shape.dimensions().size() == 1 ? 1 : indices_shape.dimensions(1);
   for (int i = 0; i < num_indices; ++i) {
     auto i_val = i == 0 ? zero : b.create<ConstantIndexOp>(i);
     int64_t slice_size = instr->gather_slice_sizes()[i];
     int64_t input_size = instr->operand(0)->shape().dimensions()[i];
     // Read and clamp index.
-    TF_ASSIGN_OR_RETURN(
-        auto input_index,
-        operand_provider(instr, 1,
-                         indices_shape.rank() == 1 ? ValueRange{row}
-                                                   : ValueRange{row, i_val}));
+    TF_ASSIGN_OR_RETURN(auto input_index,
+                        operand_provider(instr, 1,
+                                         indices_shape.dimensions().size() == 1
+                                             ? ValueRange{row}
+                                             : ValueRange{row, i_val}));
     TF_RET_CHECK(input_index.size() == 1)
         << "Expected operand to be a single value.";
     operand_indices[i] =
@@ -437,7 +438,8 @@ SmallVector<SmallVector<Value, 3>, 2> GetInputIndices(
   for (auto& maps : indexing.indexing_maps) {
     CHECK_EQ(maps.size(), 1);
     CHECK(!maps.begin()->IsUndefined());
-    indices.push_back(ApplyIndexing(*maps.begin(), output_indices, {}, b));
+    indices.push_back(
+        ApplyIndexing(maps.begin()->map(), output_indices, {}, b));
   }
   return indices;
 }
@@ -448,7 +450,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitPad(
   auto result_element_type =
       PrimitiveTypeToMlirType(instr->shape().element_type(), b);
   auto indexing = ComputeOutputToInputIndexing(instr, 0, b.getContext());
-  const auto& indexing_map = *indexing.indexing_maps[0].begin();
+  const IndexingMap& indexing_map = indexing.indexing_maps[0].begin()->map();
   Value is_in_bounds = CheckConstraints(indexing_map, indices, {}, b);
 
   auto if_op = b.create<IfOp>(mlir::TypeRange{result_element_type},
@@ -501,6 +503,11 @@ absl::StatusOr<Value> EmitMulAdd(Value lhs, Value rhs, Value accumulator,
     return b.create<arith::OrIOp>(accumulator,
                                   b.create<arith::AndIOp>(lhs, rhs));
   }
+  if (primitive_util::IsComplexType(result_element_type)) {
+    // Handle complex types (e.g., C64, C128)
+    Value mul = b.create<mlir::complex::MulOp>(accumulator_type, lhs, rhs);
+    return b.create<mlir::complex::AddOp>(accumulator_type, accumulator, mul);
+  }
   return b.create<arith::AddIOp>(accumulator,
                                  b.create<arith::MulIOp>(lhs, rhs));
 }
@@ -512,13 +519,30 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDotLoop(
       PrimitiveTypeToMlirType(instr->shape().element_type(), b);
   HloInstructionIndexing indexing =
       ComputeOutputToInputIndexing(instr, /*output_id=*/0, b.getContext());
-  const IndexingMap& lhs_indexing_map = *indexing.indexing_maps.at(0).begin();
-  const IndexingMap& rhs_indexing_map = *indexing.indexing_maps.at(1).begin();
+  const IndexingMap& lhs_indexing_map =
+      indexing.indexing_maps.at(0).begin()->map();
+  const IndexingMap& rhs_indexing_map =
+      indexing.indexing_maps.at(1).begin()->map();
 
   const mlir::Type accumulator_type =
       result_element_type.isBF16() ? b.getF32Type() : result_element_type;
-  Value accum_init_value =
-      b.create<ConstantOp>(b.getZeroAttr(accumulator_type)).getResult();
+  Value accum_init_value;
+  if (auto complex_ty = mlir::dyn_cast<mlir::ComplexType>(accumulator_type)) {
+    // For complex, build real-zero and imag-zero separately:
+    mlir::Type element_ty = complex_ty.getElementType();
+
+    // E.g. float zero
+    auto real_zero = b.create<arith::ConstantOp>(b.getZeroAttr(element_ty));
+    auto imag_zero = b.create<arith::ConstantOp>(b.getZeroAttr(element_ty));
+
+    // Create a complex<element_ty> from these two scalars
+    accum_init_value =
+        b.create<mlir::complex::CreateOp>(complex_ty, real_zero, imag_zero);
+  } else {
+    // For non-complex, just build a float or integer zero directly
+    accum_init_value =
+        b.create<arith::ConstantOp>(b.getZeroAttr(accumulator_type));
+  }
 
   // For convolutions with `batch_group_count` > 1, there is an additional
   // symbol for LHS (group id) - ignore it for RHS.
@@ -690,7 +714,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitTuple(
   while (first_shape->IsTuple()) {
     first_shape = &first_shape->tuple_shapes(0);
   }
-  CHECK_EQ(first_shape->rank(), indices.size())
+  CHECK_EQ(first_shape->dimensions().size(), indices.size())
       << "Indices for tuple must be for the first tuple element";
   SmallVector<Value, 1> operands;
   for (int i = 0; i < instr->operand_count(); ++i) {
@@ -757,10 +781,10 @@ absl::StatusOr<SmallVector<Value, 2>> GetOperands(
   if (is_elementwise && instr->shape().IsArray()) {
     // Check if the instruction is really elementwise. There may be some
     // broadcasting.
-    int64_t rank = instr->shape().rank();
+    int64_t rank = instr->shape().dimensions().size();
     is_elementwise &=
         absl::c_all_of(instr->operands(), [&](const HloInstruction* operand) {
-          return operand->shape().rank() == rank;
+          return operand->shape().dimensions().size() == rank;
         });
   }
 
@@ -1188,6 +1212,7 @@ ValueRange ProvideParameter(const PartitionedComputation& computation,
   auto callee = call_target_provider(operand);
   SmallVector<Value> operands(
       this_fn.getArguments().take_front(instr->parent()->num_parameters()));
+
   absl::c_copy(indices, std::back_inserter(operands));
   auto results = builder.create<PureCallOp>(callee, operands).getResults();
   auto callee_subgraph = computation.FindSubgraph(operand);
@@ -1201,7 +1226,7 @@ ValueRange ProvideParameter(const PartitionedComputation& computation,
   int offset = 0;
   for (auto root : callee_subgraph.roots) {
     int root_arity =
-        root->shape().IsTuple() ? root->shape().tuple_shapes_size() : 1;
+        root->shape().IsTuple() ? root->shape().tuple_shapes().size() : 1;
     if (root == operand) {
       return results.slice(offset, root_arity);
     }
@@ -1284,7 +1309,7 @@ absl::StatusOr<SmallVector<Value>> SubgraphConverter::Convert() {
       auto injected =
           this_fn_.getArguments().take_back(subgraph_.num_injected_values);
       int arity =
-          root->shape().IsTuple() ? root->shape().tuple_shapes_size() : 1;
+          root->shape().IsTuple() ? root->shape().tuple_shapes().size() : 1;
       absl::c_copy(injected.slice(it->second, arity),
                    std::back_inserter(results));
       continue;
@@ -1698,6 +1723,10 @@ SmallVector<Value, 2> InlineBlock(OpBuilder& builder, Block& src_block,
     mapped_results.push_back(mapping.lookup(result));
   }
   return mapped_results;
+}
+
+bool IsSupportedElementalOp(HloOpcode opcode) {
+  return !kUnsupportedOps.contains(opcode);
 }
 
 }  // namespace emitters

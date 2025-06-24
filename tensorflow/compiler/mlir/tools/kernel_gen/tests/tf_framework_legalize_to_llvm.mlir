@@ -36,7 +36,7 @@ func.func @alloc(%ctx: !tf_framework.op_kernel_context,
 // CHECK-SAME: [[CANDIDATES_PTR]])
 
 // Build memref descriptor.
-// CHECK: [[DESC_0:%.*]] = llvm.mlir.undef : [[DESC_TY]]
+// CHECK: [[DESC_0:%.*]] = llvm.mlir.poison : [[DESC_TY]]
 
 // Set pointers and offset.
 // CHECK: [[DESC_1:%.*]] = llvm.insertvalue [[BYTES_PTR]], [[DESC_0]][0]
@@ -68,7 +68,7 @@ func.func @dealloc(%ctx: !tf_framework.op_kernel_context,
   func.return
 }
 // Extract allocated ptr from the memref descriptor.
-// CHECK: %{{.*}} = llvm.mlir.undef : [[DESC_TY:!.*]]
+// CHECK: %{{.*}} = llvm.mlir.poison : [[DESC_TY:!.*]]
 // CHECK: [[FLOAT_PTR:%.*]] = llvm.extractvalue %{{.*}}[0] : [[DESC_TY]]
 
 // Deallocate.
@@ -98,7 +98,7 @@ func.func @unranked_null_memref() {
   func.return
 }
 // CHECK: [[C0:%.*]] = llvm.mlir.constant(0 : index) : i64
-// CHECK: [[DESC_0:%.*]] = llvm.mlir.undef : !llvm.struct<(i64, ptr)>
+// CHECK: [[DESC_0:%.*]] = llvm.mlir.poison : !llvm.struct<(i64, ptr)>
 // CHECK: [[DESC_1:%.*]] = llvm.insertvalue [[C0]], [[DESC_0]][0]
 // CHECK: [[PTR:%.*]] = llvm.alloca {{.*}} x i8
 // CHECK: [[DESC_2:%.*]] = llvm.insertvalue [[PTR]], [[DESC_1]][1]
@@ -117,7 +117,7 @@ func.func @ranked_null_memref() {
 
 // CHECK: llvm.mlir.zero
 // CHECK: %[[NULL:.*]] = llvm.mlir.zero : !llvm.ptr
-// CHECK-NEXT: %[[DESC_0:.*]] = llvm.mlir.undef :
+// CHECK-NEXT: %[[DESC_0:.*]] = llvm.mlir.poison :
 // CHECK-SAME:   !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
 // CHECK-NEXT: %[[DESC_1:.*]] = llvm.insertvalue %[[NULL]], %[[DESC_0]][0]
 // CHECK-NEXT: %[[DESC_2:.*]] = llvm.insertvalue %[[NULL]], %[[DESC_1]][1]
@@ -207,7 +207,7 @@ func.func @jit_compile_from_str(%ctx: !tf_framework.op_kernel_context)
 func.func @jit_execute(%ctx: !tf_framework.op_kernel_context,
     %callable : !tf_framework.jit_callable, %arg : memref<*xf32>)
     -> memref<*xf32> {
-  // CHECK: %[[T0:.*]] = llvm.mlir.undef
+  // CHECK: %[[T0:.*]] = llvm.mlir.poison
   // CHECK: %[[T1:.*]] = llvm.insertvalue %[[RANK]], %[[T0]][0]
   // CHECK: %[[ARG:.*]] = llvm.insertvalue %[[ARG_DESCR]], %[[T1]][1]
   // CHECK: %[[C1:.*]] = llvm.mlir.constant(1 : i64)
@@ -228,7 +228,7 @@ func.func @jit_execute(%ctx: !tf_framework.op_kernel_context,
   // CHECK: %[[RESULT_DESCR:.*]] = llvm.extractvalue %[[RESULT]][1]
   // CHECK: "llvm.intr.memcpy"(%[[STACK_RESULT_DESCR]], %[[RESULT_DESCR]], %[[RESULT_DESCR_SIZE]]) <{isVolatile = false}>
   // CHECK: llvm.call @free(%[[RESULT_DESCR]])
-  // CHECK: %[[T0:.*]] = llvm.mlir.undef
+  // CHECK: %[[T0:.*]] = llvm.mlir.poison
   // CHECK: %[[RANK:.*]] = llvm.extractvalue %[[RESULT]][0]
   // CHECK: %[[T1:.*]] = llvm.insertvalue %[[RANK]], %[[T0]][0]
   // CHECK: %[[RESULT:.*]] = llvm.insertvalue %[[STACK_RESULT_DESCR]], %[[T1]][1]
@@ -238,7 +238,7 @@ func.func @jit_execute(%ctx: !tf_framework.op_kernel_context,
   // CHECK: %[[HEAP_RESULT_DESCR:.*]] = llvm.call @malloc(%[[RESULT_DESCR_SIZE:[0-9]*]])
   // CHECK: %[[STACK_RESULT_DESCR:.*]] = llvm.extractvalue %[[RESULT]][1]
   // CHECK: "llvm.intr.memcpy"(%[[HEAP_RESULT_DESCR]], %[[STACK_RESULT_DESCR]], %[[RESULT_DESCR_SIZE]]) <{isVolatile = false}>
-  // CHECK: %[[T0:.*]] = llvm.mlir.undef
+  // CHECK: %[[T0:.*]] = llvm.mlir.poison
   // CHECK: %[[RANK:.*]] = llvm.extractvalue %[[RESULT]][0]
   // CHECK: %[[T1:.*]] = llvm.insertvalue %[[RANK]], %[[T0]][0]
   // CHECK: %[[RESULT:.*]] = llvm.insertvalue %[[HEAP_RESULT_DESCR]], %[[T1]][1]

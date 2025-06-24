@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/compiler/compiled_node.h"
 
-#include <memory>
+#include <algorithm>
 #include <vector>
 
 #include <gmock/gmock.h>

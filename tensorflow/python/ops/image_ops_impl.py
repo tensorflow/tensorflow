@@ -3223,6 +3223,11 @@ decode_png = tf_export(
     'image.decode_png',
     v1=['io.decode_png', 'image.decode_png'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_png))
+decode_webp = tf_export(
+    'io.decode_webp',
+    'image.decode_webp',
+    v1=['io.decode_webp', 'image.decode_webp'],
+)(dispatch.add_dispatch_support(gen_image_ops.decode_web_p))
 
 encode_jpeg = tf_export(
     'io.encode_jpeg',
@@ -3278,17 +3283,18 @@ def decode_image(contents,
                  expand_animations=True):
   """Function for `decode_bmp`, `decode_gif`, `decode_jpeg`, and `decode_png`.
 
-  Detects whether an image is a BMP, GIF, JPEG, or PNG, and performs the
+  Detects whether an image is a BMP, GIF, JPEG, WebP or PNG, and performs the
   appropriate operation to convert the input bytes `string` into a `Tensor`
   of type `dtype`.
 
-  Note: `decode_gif` returns a 4-D array `[num_frames, height, width, 3]`, as
-  opposed to `decode_bmp`, `decode_jpeg` and `decode_png`, which return 3-D
-  arrays `[height, width, num_channels]`. Make sure to take this into account
-  when constructing your graph if you are intermixing GIF files with BMP, JPEG,
-  and/or PNG files. Alternately, set the `expand_animations` argument of this
-  function to `False`, in which case the op will return 3-dimensional tensors
-  and will truncate animated GIF files to the first frame.
+  Note: `decode_gif` and `decode_webp` return a 4-D array of
+  `[num_frames, height, width, 3]`, as opposed to the other image
+  formats which always return 3-D arrays of the form `[height, width,
+  num_channels]`. Make sure to take this into account when
+  constructing your graph if you are intermixing animation with static
+  images. Alternately, set the `expand_animations` argument of this
+  function to `False`, in which case the op will return 3-dimensional
+  tensors and will truncate animations to the first frame.
 
   NOTE: If the first frame of an animated GIF does not occupy the entire
   canvas (maximum frame width x maximum frame height), then it fills the
@@ -3304,10 +3310,9 @@ def decode_image(contents,
     name: A name for the operation (optional)
     expand_animations: An optional `bool`. Defaults to `True`. Controls the
       shape of the returned op's output. If `True`, the returned op will produce
-      a 3-D tensor for PNG, JPEG, and BMP files; and a 4-D tensor for all GIFs,
-      whether animated or not. If, `False`, the returned op will produce a 3-D
-      tensor for all file types and will truncate animated GIFs to the first
-      frame.
+      a 4-D tensor for all GIFs and WebP images, animated or not, and a 3-D
+      tensor in all other cases. If, `False`, the returned op will produce a 3-D
+      tensor for all file types and will truncate animations to the first frame.
 
   Returns:
     `Tensor` with type `dtype` and a 3- or 4-dimensional shape, depending on

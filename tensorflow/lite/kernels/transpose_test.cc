@@ -14,13 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
+#include <algorithm>
 #include <initializer_list>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -31,7 +34,56 @@ limitations under the License.
 namespace tflite {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+
+class TransposeOpInt4Model : public SingleOpModel {
+ public:
+  TransposeOpInt4Model(std::initializer_list<int> input_shape,
+                       std::initializer_list<int> perm_shape,
+                       std::initializer_list<int> perm) {
+    input_ = AddInput({TensorType_INT4, input_shape});
+    perm_ = AddConstInput(TensorType_INT32, perm, perm_shape);
+    output_ = AddOutput(TensorType_INT4);
+    SetBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
+                 CreateTransposeOptions(builder_).Union());
+    BuildInterpreter({input_shape});
+  }
+
+  void SetInput(const std::vector<int8_t> data) {
+    auto non_const = *const_cast<std::vector<int8_t>*>(&data);
+    std::vector<int8_t> data_int8(non_const.size());
+    std::copy(non_const.begin(), non_const.end(), data_int8.begin());
+    PopulateTensor4bit(0, 0, data_int8.data(),
+                       data_int8.data() + data_int8.size());
+  }
+
+  void SetPerm(std::initializer_list<int> data) {
+    PopulateTensor<int>(perm_, data);
+  }
+
+  std::vector<int8_t> GetOutput() {
+    const auto* tensor = interpreter_->tensor(output_);
+    const std::vector<int8_t> data_int8 = std::vector<int8_t>(
+        tensor->data.raw, tensor->data.raw + GetTensorSize(output_));
+    int num_elements = 1;
+    auto shape = GetTensorShape(output_);
+    for (int i = 0; i < shape.size(); i++) {
+      num_elements *= shape[i];
+    }
+    std::vector<int8_t> inflated_output(num_elements);
+    tensor_utils::UnpackDenseInt4IntoInt8(data_int8.data(), num_elements,
+                                          inflated_output.data());
+    return inflated_output;
+  }
+
+  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+
+ protected:
+  int input_;
+  int perm_;
+  int output_;
+};
 
 class TransposeOpModel : public SingleOpModel {
  public:
@@ -104,6 +156,33 @@ TEST(TransposeTest, TestPermOutOfBounds) {
                "Transpose op permutations array is out of bounds.");
 }
 #endif
+
+TEST(TransposeTest, TestInt41DInputConstTensor) {
+  TransposeOpInt4Model m({3}, {1}, {0});
+  m.SetInput({1, 2, 3});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAre(1, 2, 3));
+}
+
+TEST(TransposeTest, TestInt42DInputConstTensor) {
+  TransposeOpInt4Model m({3, 2}, {2}, {1, 0});
+  m.SetInput({0, 1, 2, 3, 4, 5});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 2, 4, 1, 3, 5}));
+}
+
+TEST(TransposeTest, TestInt43DInputConstTensor) {
+  TransposeOpInt4Model m({2, 3, 4}, {3}, {2, 0, 1});
+  m.SetInput(
+      {0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 1, 2, 3, 0, 1, 2, 3, 4, 0, 1, 2, 3});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 2, 3}));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({0, 4, 1, 1, 1, 0, 1, 5, 2, 2, 2, 1,
+                                2, 6, 3, 3, 3, 2, 3, 0, 4, 0, 4, 3}));
+}
 
 TEST(TransposeTest, Test1DInputConstTensor) {
   TransposeOpConstModel m({3}, {1}, {0});

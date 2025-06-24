@@ -35,6 +35,8 @@ limitations under the License.
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/saved_model/reader.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -47,8 +49,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/saved_model/saved_model.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace tensorflow {
 namespace tfrt_stub {

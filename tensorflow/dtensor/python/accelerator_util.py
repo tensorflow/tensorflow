@@ -153,8 +153,6 @@ def initialize_accelerator_system(
       The default value is `localhost` in local mode, and
       `worker` when in the multi-client mode. All DTensor clients within the
       same multi-client cluster share the same job name.
-  - `DTENSOR_USE_PARALLEL_EXECUTOR`: string, with its value being `pw` to
-      specify that the backend is Pathways, and TensorFlow otherwise.
 
   Args:
     device_type: Type of accelerator to use, can be CPU, GPU, or TPU. If None,
@@ -259,7 +257,7 @@ def initialize_accelerator_system(
       )._collective_use_nccl_communication = config.gpu_use_nccl_communication(
       )
 
-  if device_type == "TPU" and not config.backend_is_pw():
+  if device_type == "TPU":
     tpu_util.initialize_tpu_system(use_megacore=experimental_enable_megcore)
 
   _INITIALIZED_ACCELERATOR_SYSTEM_TYPE = device_type
@@ -291,7 +289,7 @@ def shutdown_accelerator_system() -> None:
           "not supported."
       )
 
-    if device_type == "TPU" and not config.backend_is_pw():
+    if device_type == "TPU":
       tpu_util.shutdown_tpu_system()
 
     # reset TF context to stop gRPC servers.

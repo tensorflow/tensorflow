@@ -16,6 +16,7 @@
 
 import numpy as np
 import tensorflow as tf  # pylint: disable=g-bad-import-order
+from tensorflow.lite.python import lite
 from tensorflow.lite.tutorials import dataset
 flags = tf.app.flags
 
@@ -66,7 +67,7 @@ def run_eval(interpreter, input_image):
 
 
 def main(_):
-  interpreter = tf.lite.Interpreter(model_path=flags.model_file)
+  interpreter = lite.Interpreter(model_path=flags.model_file)
   interpreter.allocate_tensors()
   num_correct, total = 0, 0
   for input_data in test_image_generator():

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 

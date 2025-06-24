@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utility functions for types information, incuding full type information."""
+"""Utility functions for types information, including full type information."""
 
 from typing import List
 
@@ -96,11 +96,11 @@ def _specs_for_flat_tensors(element_spec):
   for the "batchable tensor list" encoding used by datasets and map_fn
   internally (in C++/graphs). The ability to batch, unbatch and change
   batch size is one important characteristic of this encoding. A second
-  important characteristic is that it represets a ragged tensor or sparse
+  important characteristic is that it represents a ragged tensor or sparse
   tensor as a single tensor of type variant (and this encoding uses special
   ops to encode/decode to/from variants).
 
-  (In constrast, the more typical encoding, e.g. the C++/graph
+  (In contrast, the more typical encoding, e.g. the C++/graph
   representation when calling a tf.function, is "component encoding" which
   represents sparse and ragged tensors as multiple dense tensors and does
   not use variants or special ops for encoding/decoding.)
@@ -156,7 +156,7 @@ def fulltypes_for_flat_tensors(element_spec):
       map_fn).
 
   Returns:
-    A list of FullTypeDef correspoinding to ELEMENT_SPEC. The items
+    A list of FullTypeDef corresponding to ELEMENT_SPEC. The items
     in this list correspond to the items in `_flat_tensor_specs`.
   """
   specs = _specs_for_flat_tensors(element_spec)

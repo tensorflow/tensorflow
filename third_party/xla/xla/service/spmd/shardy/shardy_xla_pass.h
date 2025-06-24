@@ -16,11 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_SPMD_SHARDY_SHARDY_XLA_PASS_H_
 #define XLA_SERVICE_SPMD_SHARDY_SHARDY_XLA_PASS_H_
 
-#include <string>
-
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "shardy/dialect/sdy/transforms/propagation/passes.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
@@ -28,13 +27,16 @@ namespace xla {
 namespace sdy {
 
 // An HloModulePass to run Shardy. The pass:
-// 1. converts the HLO module into MLIR MHLO and the SDY (Shardy) dialect,
+// 1. converts the HLO module into StableHLO and the SDY (Shardy) dialect,
 // 2. runs Shardy passes, including sharding propagation and partitioner,
-// 3. converts the MLIR MHLO back to the HLO module.
+// 3. converts the StableHLO back to the HLO module.
 class ShardyXLA : public xla::HloModulePass {
  public:
-  explicit ShardyXLA(bool runSdyShardingPropagation = true)
-      : runSdyShardingPropagation(runSdyShardingPropagation) {}
+  explicit ShardyXLA(bool runSdyShardingPropagation = true,
+                     mlir::sdy::PropagationOptions defaultOptions =
+                         mlir::sdy::PropagationOptions{})
+      : runSdyShardingPropagation(runSdyShardingPropagation),
+        defaultOptions(defaultOptions) {}
 
   absl::string_view name() const override { return "shardy-xla"; }
 
@@ -49,6 +51,7 @@ class ShardyXLA : public xla::HloModulePass {
 
  private:
   bool runSdyShardingPropagation;
+  mlir::sdy::PropagationOptions defaultOptions;
   // TODO. Run other SDY passes with flags.
 };
 

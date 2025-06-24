@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/ops/array_ops.h"

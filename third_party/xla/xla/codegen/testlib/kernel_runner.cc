@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"

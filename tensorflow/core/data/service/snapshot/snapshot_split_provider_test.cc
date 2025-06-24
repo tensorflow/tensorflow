@@ -25,6 +25,10 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/io/compression.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -37,11 +41,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/test.h"
 
 namespace tensorflow {
 namespace data {

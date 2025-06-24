@@ -15,16 +15,21 @@ limitations under the License.
 
 #include "xla/service/platform_util.h"
 
+#include <cstdlib>
 #include <optional>
 #include <set>
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/compiler.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/host/host_platform_id.h"
@@ -32,12 +37,11 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -99,6 +103,17 @@ PlatformUtil::GetSupportedPlatforms() {
 }
 
 absl::StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
+  const char* maybe_allow_get_default_platform =
+      getenv("XLA_ALLOW_GET_DEFAULT_PLATFORM");
+  if (maybe_allow_get_default_platform != nullptr) {
+    std::string allow_get_default_platform(maybe_allow_get_default_platform);
+    TF_RET_CHECK(allow_get_default_platform == "true")
+        << "GetDefaultPlatform is not allowed (XLA_ALLOW_GET_DEFAULT_PLATFORM="
+        << allow_get_default_platform
+        << ") and the platform must be specified. If this is a test that has "
+           "been migrated to PJRT, double-check that you are using a "
+           "PJRT-compatible test class.";
+  }
   TF_ASSIGN_OR_RETURN(auto platforms, GetSupportedPlatforms());
 
   se::Platform* platform = nullptr;

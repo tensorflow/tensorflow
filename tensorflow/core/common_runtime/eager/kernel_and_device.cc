@@ -247,6 +247,7 @@ absl::Status KernelAndDeviceFunc::InstantiateFunc(
   options.config_proto.set_log_device_placement(log_device_placement);
 
   options.int_args_and_retvals_on_device = int_args_and_retvals_on_device_;
+  options.function_runs_at_most_once = function_runs_at_most_once_;
 
   if (xla_compile_device_type_.has_value()) {
     options.xla_compile_device_type = xla_compile_device_type_.value();

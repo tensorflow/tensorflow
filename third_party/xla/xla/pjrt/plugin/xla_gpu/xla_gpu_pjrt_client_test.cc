@@ -18,14 +18,21 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
-#include "tsl/platform/test.h"
+#include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
 
 namespace xla {
 
 TEST(XlaCpuPjrtClientTest, GetXlaPjrtGpuClient) {
-  GpuClientOptions options;
-  ASSERT_OK_AND_ASSIGN(auto client, GetXlaPjrtGpuClient(options));
+  ASSERT_OK_AND_ASSIGN(auto client, GetXlaPjrtGpuClient({}));
   EXPECT_EQ(client->platform_name(), "cuda");
+  EXPECT_NE(dynamic_cast<StreamExecutorGpuClient*>(client.get()), nullptr);
+}
+
+TEST(XlaCpuPjrtClientTest, GetXlaPjrtGpuClientWithTfrtClient) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetXlaPjrtGpuClient({.use_tfrt_gpu_client = true}));
+  EXPECT_EQ(client->platform_name(), "cuda");
+  EXPECT_NE(dynamic_cast<TfrtGpuClient*>(client.get()), nullptr);
 }
 
 }  // namespace xla

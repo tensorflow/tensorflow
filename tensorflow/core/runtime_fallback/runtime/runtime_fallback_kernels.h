@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "llvm/Support/Error.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"

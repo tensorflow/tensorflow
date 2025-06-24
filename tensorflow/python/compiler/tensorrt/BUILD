@@ -23,7 +23,6 @@ exports_files(glob([
 py_strict_library(
     name = "init_py",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
     deps = [
         ":tf_trt_integration_test_base",  # build_cleaner: keep
         ":trt_convert_py",
@@ -33,7 +32,6 @@ py_strict_library(
 py_strict_library(
     name = "trt_convert_py",
     srcs = ["trt_convert.py"],
-    srcs_version = "PY3",
     deps = [
         ":utils",
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
@@ -84,7 +82,6 @@ py_strict_library(
 
 py_strict_library(
     name = "tf_trt_integration_test_base",
-    srcs_version = "PY3",
     deps = [
         ":trt_convert_py",
         ":utils",
@@ -123,7 +120,6 @@ cuda_py_strict_test(
     data = [
         "//tensorflow/python/compiler/tensorrt/test:trt_convert_test_data",
     ],
-    python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
         # TODO(b/297490791): Reenable after TensorRT regression has been fixed

@@ -96,6 +96,7 @@ def _api_extractor_impl(target, ctx):
             outputs = [output],
             arguments = [args],
             progress_message = "Extracting " + api + " APIs for %{label} to %{output}.",
+            use_default_shell_env = True,
         )
 
         direct_api.append(output)
@@ -219,6 +220,7 @@ def _generate_api_impl(ctx):
         outputs = ctx.outputs.output_files,
         arguments = [args],
         progress_message = "Generating APIs for %{label} to %{output}.",
+        use_default_shell_env = True,
     )
 
     # Convert output_paths to the list of corresponding modules for the further testing

@@ -20,17 +20,17 @@ func.func @main() -> tensor<f32> {
 
 // CHECK: %[[NEGATE_BRANCH:.*]] ({{.*}}: f32[]) -> f32[] {
 // CHECK:   %[[ARG:.*]] = f32[] parameter(0)
-// CHECK:   ROOT %[[RESULT:.*]] = f32[] negate(f32[] %[[ARG]])
+// CHECK:   ROOT %[[RESULT:.*]] = f32[] negate(%[[ARG]])
 // CHECK: }
 
 // CHECK: %[[COPY_BRANCH:.*]] ({{.*}}: f32[]) -> f32[] {
 // CHECK:   %[[ARG:.*]] = f32[] parameter(0)
-// CHECK:   ROOT %[[RESULT:.*]] = f32[] copy(f32[] %[[ARG]])
+// CHECK:   ROOT %[[RESULT:.*]] = f32[] copy(%[[ARG]])
 // CHECK: }
 
 // CHECK: %[[FLOOR_BRANCH:.*]] ({{.*}}: f32[]) -> f32[] {
 // CHECK:   %[[ARG:.*]] = f32[] parameter(0)
-// CHECK:   ROOT %[[RESULT:.*]] = f32[] floor(f32[] %[[ARG]])
+// CHECK:   ROOT %[[RESULT:.*]] = f32[] floor(%[[ARG]])
 // CHECK: }
 
 // CHECK-LABEL: ENTRY
@@ -40,7 +40,7 @@ func.func @main() -> tensor<f32> {
 // CHECK-DAG: %[[OPERAND_1:.*]] = f32[] constant(56)
 // CHECK-DAG: %[[OPERAND_2:.*]] = f32[] constant(12)
 // CHECK-DAG: %[[OPERAND_3:.*]] = f32[] constant(13)
-// CHECK: ROOT %[[RESULT:.*]] = f32[] conditional(s32[] %[[INDEX]], f32[] %[[OPERAND_1]], f32[] %[[OPERAND_2]], f32[] %[[OPERAND_3]]), branch_computations={%[[NEGATE_BRANCH]], %[[COPY_BRANCH]], %[[FLOOR_BRANCH]]}
+// CHECK: ROOT %[[RESULT:.*]] = f32[] conditional(%[[INDEX]], %[[OPERAND_1]], %[[OPERAND_2]], %[[OPERAND_3]]), branch_computations={%[[NEGATE_BRANCH]], %[[COPY_BRANCH]], %[[FLOOR_BRANCH]]}
 
 // -----
 
@@ -64,20 +64,20 @@ func.func @main() -> (tensor<f32>, tensor<f32>) {
 
 // CHECK: %[[NEGATE_BRANCH:.*]] ({{.*}}: f32[]) -> (f32[], f32[]) {
 // CHECK:   %[[ARG:.*]] = f32[] parameter(0)
-// CHECK:   %[[NEGATE:.*]] = f32[] negate(f32[] %[[ARG]])
-// CHECK:   ROOT %[[TUPLE:.*]] = (f32[], f32[]) tuple(f32[] %[[NEGATE]], f32[] %[[NEGATE]])
+// CHECK:   %[[NEGATE:.*]] = f32[] negate(%[[ARG]])
+// CHECK:   ROOT %[[TUPLE:.*]] = (f32[], f32[]) tuple(%[[NEGATE]], %[[NEGATE]])
 // CHECK: }
 
 // CHECK: %[[COPY_BRANCH:.*]] ({{.*}}: f32[]) -> (f32[], f32[]) {
 // CHECK:   %[[ARG:.*]] = f32[] parameter(0)
-// CHECK:   %[[COPY:.*]] = f32[] copy(f32[] %[[ARG]])
-// CHECK:   ROOT %[[TUPLE:.*]] = (f32[], f32[]) tuple(f32[] %[[COPY]], f32[] %[[COPY]])
+// CHECK:   %[[COPY:.*]] = f32[] copy(%[[ARG]])
+// CHECK:   ROOT %[[TUPLE:.*]] = (f32[], f32[]) tuple(%[[COPY]], %[[COPY]])
 // CHECK: }
 
 // CHECK: %[[FLOOR_BRANCH:.*]] ({{.*}}: f32[]) -> (f32[], f32[]) {
 // CHECK:   %[[ARG:.*]] = f32[] parameter(0)
-// CHECK:   %[[FLOOR:.*]] = f32[] floor(f32[] %[[ARG]])
-// CHECK:   ROOT %[[TUPLE:.*]] = (f32[], f32[]) tuple(f32[] %[[FLOOR]], f32[] %[[FLOOR]])
+// CHECK:   %[[FLOOR:.*]] = f32[] floor(%[[ARG]])
+// CHECK:   ROOT %[[TUPLE:.*]] = (f32[], f32[]) tuple(%[[FLOOR]], %[[FLOOR]])
 // CHECK: }
 
 // CHECK-LABEL: ENTRY
@@ -87,13 +87,13 @@ func.func @main() -> (tensor<f32>, tensor<f32>) {
 // CHECK-DAG: %[[OPERAND_1:.*]] = f32[] constant(56)
 // CHECK-DAG: %[[OPERAND_2:.*]] = f32[] constant(12)
 // CHECK-DAG: %[[OPERAND_3:.*]] = f32[] constant(13)
-// CHECK: %[[TUPLE:.*]] = (f32[], f32[]) conditional(s32[] %[[INDEX]], f32[] %[[OPERAND_1]], f32[] %[[OPERAND_2]], f32[] %[[OPERAND_3]]), branch_computations={%[[NEGATE_BRANCH]], %[[COPY_BRANCH]], %[[FLOOR_BRANCH]]}
-// CHECK: %[[RES_1:.*]] = f32[] get-tuple-element((f32[], f32[]) %[[TUPLE]]), index=0
-// CHECK: %[[RES_2:.*]] = f32[] get-tuple-element((f32[], f32[]) %[[TUPLE]]), index=1
-// CHECK: ROOT %[[RESULT:.*]] = (f32[], f32[]) tuple(f32[] %[[RES_1]], f32[] %[[RES_2]])
+// CHECK: %[[TUPLE:.*]] = (f32[], f32[]) conditional(%[[INDEX]], %[[OPERAND_1]], %[[OPERAND_2]], %[[OPERAND_3]]), branch_computations={%[[NEGATE_BRANCH]], %[[COPY_BRANCH]], %[[FLOOR_BRANCH]]}
+// CHECK: %[[RES_1:.*]] = f32[] get-tuple-element(%[[TUPLE]]), index=0
+// CHECK: %[[RES_2:.*]] = f32[] get-tuple-element(%[[TUPLE]]), index=1
+// CHECK: ROOT %[[RESULT:.*]] = (f32[], f32[]) tuple(%[[RES_1]], %[[RES_2]])
 
 // -----
-// Test export mhlo::CaseOp with diffrent number of block-arguments (even 0).
+// Test export mhlo::CaseOp with different number of block-arguments (even 0).
 
 func.func @main() -> (tensor<f32>, tensor<f32>) {
   %cst = arith.constant dense<1> : tensor<i32>
@@ -117,24 +117,24 @@ func.func @main() -> (tensor<f32>, tensor<f32>) {
 
 // CHECK: %[[NEGATE_BRANCH:.*]] ({{.*}}: f32[]) -> (f32[], f32[]) {
 // CHECK:   %[[ARG:.*]] = f32[] parameter(0)
-// CHECK:   %[[NEGATE:.*]] = f32[] negate(f32[] %[[ARG]])
-// CHECK:   ROOT %[[TUPLE:.*]] = (f32[], f32[]) tuple(f32[] %[[NEGATE]], f32[] %[[NEGATE]])
+// CHECK:   %[[NEGATE:.*]] = f32[] negate(%[[ARG]])
+// CHECK:   ROOT %[[TUPLE:.*]] = (f32[], f32[]) tuple(%[[NEGATE]], %[[NEGATE]])
 // CHECK: }
 
 // CHECK: %[[COPY_BRANCH:.*]] ({{.*}}: (f32[], f32[])) -> (f32[], f32[]) {
 // CHECK:   %[[ARG:.*]] = (f32[], f32[]) parameter(0)
-// CHECK-DAG:   %[[GTE1:.*]] = f32[] get-tuple-element((f32[], f32[]) %[[ARG]]), index=0
-// CHECK-DAG:   %[[COPY1:.*]] = f32[] copy(f32[] %[[GTE1]])
-// CHECK-DAG:   %[[GTE2:.*]] = f32[] get-tuple-element((f32[], f32[]) %[[ARG]]), index=1
-// CHECK-DAG:   %[[COPY2:.*]] = f32[] copy(f32[] %[[GTE2]])
-// CHECK:   ROOT %[[TUPLE:.*]] = (f32[], f32[]) tuple(f32[] %[[COPY1]], f32[] %[[COPY2]])
+// CHECK-DAG:   %[[GTE1:.*]] = f32[] get-tuple-element(%[[ARG]]), index=0
+// CHECK-DAG:   %[[COPY1:.*]] = f32[] copy(%[[GTE1]])
+// CHECK-DAG:   %[[GTE2:.*]] = f32[] get-tuple-element(%[[ARG]]), index=1
+// CHECK-DAG:   %[[COPY2:.*]] = f32[] copy(%[[GTE2]])
+// CHECK:   ROOT %[[TUPLE:.*]] = (f32[], f32[]) tuple(%[[COPY1]], %[[COPY2]])
 // CHECK: }
 
 // CHECK: %[[FLOOR_BRANCH:.*]] ({{.*}}: ()) -> (f32[], f32[]) {
 // CHECK:   %[[ARG:.*]] = () parameter(0)
 // CHECK:   %[[CST:.*]] = f32[] constant
-// CHECK:   %[[FLOOR:.*]] = f32[] floor(f32[] %[[CST]])
-// CHECK:   ROOT %[[TUPLE:.*]] = (f32[], f32[]) tuple(f32[] %[[FLOOR]], f32[] %[[FLOOR]])
+// CHECK:   %[[FLOOR:.*]] = f32[] floor(%[[CST]])
+// CHECK:   ROOT %[[TUPLE:.*]] = (f32[], f32[]) tuple(%[[FLOOR]], %[[FLOOR]])
 // CHECK: }
 
 // CHECK-LABEL: ENTRY
@@ -144,11 +144,11 @@ func.func @main() -> (tensor<f32>, tensor<f32>) {
 // CHECK-DAG: %[[OPERAND_1:.*]] = f32[] constant(56)
 // CHECK-DAG: %[[OPERAND_2:.*]] = f32[] constant(12)
 // CHECK-DAG: %[[OPERAND_3:.*]] = f32[] constant(13)
-// CHECK-DAG: %[[TUPLE1:.*]] = (f32[], f32[]) tuple(f32[] %[[OPERAND_2]], f32[] %[[OPERAND_3]])
+// CHECK-DAG: %[[TUPLE1:.*]] = (f32[], f32[]) tuple(%[[OPERAND_2]], %[[OPERAND_3]])
 // CHECK-DAG: %[[TUPLE2:.*]] = () tuple()
 
-// CHECK: %[[COND:.*]] = (f32[], f32[]) conditional(s32[] %[[INDEX]], f32[] %[[OPERAND_1]], (f32[], f32[]) %[[TUPLE1]], () %[[TUPLE2]]), branch_computations={%[[NEGATE_BRANCH]], %[[COPY_BRANCH]], %[[FLOOR_BRANCH]]}
+// CHECK: %[[COND:.*]] = (f32[], f32[]) conditional(%[[INDEX]], %[[OPERAND_1]], %[[TUPLE1]], %[[TUPLE2]]), branch_computations={%[[NEGATE_BRANCH]], %[[COPY_BRANCH]], %[[FLOOR_BRANCH]]}
 
-// CHECK: %[[RES_1:.*]] = f32[] get-tuple-element((f32[], f32[]) %[[COND]]), index=0
-// CHECK: %[[RES_2:.*]] = f32[] get-tuple-element((f32[], f32[]) %[[COND]]), index=1
-// CHECK: ROOT %[[RESULT:.*]] = (f32[], f32[]) tuple(f32[] %[[RES_1]], f32[] %[[RES_2]])
+// CHECK: %[[RES_1:.*]] = f32[] get-tuple-element(%[[COND]]), index=0
+// CHECK: %[[RES_2:.*]] = f32[] get-tuple-element(%[[COND]]), index=1
+// CHECK: ROOT %[[RESULT:.*]] = (f32[], f32[]) tuple(%[[RES_1]], %[[RES_2]])

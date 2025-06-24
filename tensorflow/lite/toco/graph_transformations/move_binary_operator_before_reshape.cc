@@ -13,6 +13,7 @@
  limitations under the License.
  ==============================================================================*/
 #include <algorithm>
+#include <cstddef>
 #include <string>
 
 #include "absl/log/check.h"

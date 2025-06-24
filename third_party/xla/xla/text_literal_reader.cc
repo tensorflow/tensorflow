@@ -37,11 +37,11 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/io/buffered_inputstream.h"
 #include "xla/tsl/lib/io/random_inputstream.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/file_system.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -115,11 +115,11 @@ absl::StatusOr<Literal> TextLiteralReader::ReadAllLines() {
       }
       coordinate_values.push_back(coordinate_value);
     }
-    if (coordinate_values.size() != shape.dimensions_size()) {
+    if (coordinate_values.size() != shape.dimensions().size()) {
       return InvalidArgument(
           "line did not have expected number of coordinates; want %d got %u: "
           "\"%s\"",
-          shape.dimensions_size(), coordinate_values.size(), line);
+          shape.dimensions().size(), coordinate_values.size(), line);
     }
     result.Set<float>(coordinate_values, value);
   }

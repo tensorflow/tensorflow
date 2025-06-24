@@ -20,16 +20,10 @@ package(
 gentbl_cc_library(
     name = "tensorflow_dtensor_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "ir/tf_dtensor.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "ir/tf_dtensor.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "ir/tf_dtensor.h.inc": ["-gen-op-decls"],
+        "ir/tf_dtensor.cc.inc": ["-gen-op-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_dtensor.td",
     td_srcs = [
@@ -48,13 +42,10 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "dtensor_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [(
-        [
-            "-gen-pass-decls",
-            "-name=DTensor",
-        ],
-        "dtensor_passes.h.inc",
-    )],
+    tbl_outs = {"dtensor_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=DTensor",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "Passes.td",
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
@@ -266,6 +257,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
@@ -281,9 +273,9 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/builder:sharding_builder",
+        "@local_xla//xla/tsl/platform:status",
     ],
     alwayslink = 1,
 )
@@ -309,7 +301,9 @@ cc_library(
         "//tensorflow/dtensor/cc:constants",
         "//tensorflow/dtensor/cc:dstatus",
         "//tensorflow/dtensor/cc:tensor_layout",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

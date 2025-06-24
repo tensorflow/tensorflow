@@ -354,19 +354,19 @@ def _update_confusion_matrix_variables_optimized(
       to `bool`.
     y_pred: A floating point `Tensor` of arbitrary shape and whose values are in
       the range `[0, 1]`.
-    thresholds: A sorted floating point `Tensor` with value in `[0, 1]`.
-      It need to be evenly distributed (the diff between each element need to be
-      the same).
+    thresholds: A sorted floating point `Tensor` with value in `[0, 1]`. It need
+      to be evenly distributed (the diff between each element need to be the
+      same).
     multi_label: Optional boolean indicating whether multidimensional
       prediction/labels should be treated as multilabel responses, or flattened
-      into a single label. When True, the valus of `variables_to_update` must
+      into a single label. When True, the values of `variables_to_update` must
       have a second dimension equal to the number of labels in y_true and
       y_pred, and those tensors must not be RaggedTensors.
     sample_weights: Optional `Tensor` whose rank is either 0, or the same rank
       as `y_true`, and must be broadcastable to `y_true` (i.e., all dimensions
       must be either `1`, or the same as the corresponding `y_true` dimension).
-    label_weights: Optional tensor of non-negative weights for multilabel
-      data. The weights are applied when calculating TP, FP, FN, and TN without
+    label_weights: Optional tensor of non-negative weights for multilabel data.
+      The weights are applied when calculating TP, FP, FN, and TN without
       explicit multilabel handling (i.e. when the data is to be flattened).
     thresholds_with_epsilon: Optional boolean indicating whether the leading and
       tailing thresholds has any epsilon added for floating point imprecisions.
@@ -485,7 +485,7 @@ def is_evenly_distributed_thresholds(thresholds):
 
   We could leverage evenly distributed thresholds to use less memory when
   calculate metrcis like AUC where each individual threshold need to be
-  evaluted.
+  evaluated.
 
   Args:
     thresholds: A python list or tuple, or 1D numpy array whose value is ranged
@@ -548,7 +548,7 @@ def update_confusion_matrix_variables(variables_to_update,
       be either `1`, or the same as the corresponding `y_true` dimension).
     multi_label: Optional boolean indicating whether multidimensional
       prediction/labels should be treated as multilabel responses, or flattened
-      into a single label. When True, the valus of `variables_to_update` must
+      into a single label. When True, the values of `variables_to_update` must
       have a second dimension equal to the number of labels in y_true and
       y_pred, and those tensors must not be RaggedTensors.
     label_weights: (optional) tensor of non-negative weights for multilabel

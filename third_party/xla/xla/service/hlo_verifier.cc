@@ -24,6 +24,7 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -59,11 +60,12 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -104,27 +106,6 @@ int64_t GetSubgroupSize(HloCollectiveInstruction* hlo,
                  ? config.num_partitions()
                  : hlo->replica_groups()[0].replica_ids_size();
   }
-}
-
-absl::Status CheckNestedComputationThreadNameEqual(
-    const HloComputation* comp, bool skip_nested_async_op_check) {
-  for (const HloInstruction* instr : comp->instructions()) {
-    if (skip_nested_async_op_check && instr->IsAsynchronous()) {
-      continue;
-    }
-    for (const HloComputation* called_cmp : instr->called_computations()) {
-      if (called_cmp->execution_thread() != comp->execution_thread()) {
-        return Internal(
-            "Nested computations expects same computation's thread name: %s vs "
-            "%s, in called computation `%s` vs caller computation `%s`",
-            called_cmp->execution_thread(), comp->execution_thread(),
-            called_cmp->name(), comp->name());
-      }
-      TF_RETURN_IF_ERROR(CheckNestedComputationThreadNameEqual(
-          called_cmp, skip_nested_async_op_check));
-    }
-  }
-  return absl::OkStatus();
 }
 
 absl::Status CheckUnaryOpWithResultAccuracy(HloInstruction* unary) {
@@ -168,8 +149,8 @@ absl::Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
                            hlo->ToString());
   }
   if (hlo->shape().has_layout()) {
-    if (hlo->shape().layout().minor_to_major_size() !=
-        hlo->shape().dimensions_size()) {
+    if (hlo->shape().layout().minor_to_major().size() !=
+        hlo->shape().dimensions().size()) {
       return InvalidArgument(
           "Instruction has mismatched minor-to-major size and dimension size: "
           "%s",
@@ -238,27 +219,7 @@ absl::Status ShapeVerifier::HandleDot(HloInstruction* dot) {
           dot->operand(0)->shape(), dot->operand(1)->shape(),
           dot->dot_dimension_numbers(),
           /*preferred_element_type=*/dot->shape().element_type(), sparsity));
-  if (auto nibble_count =
-          absl::c_count(dot->precision_config().operand_precision(),
-                        PrecisionConfig::PACKED_NIBBLE)) {
-    if (nibble_count == 1) {
-      return InvalidArgument("Dot cannot have a single packed nibble argument");
-    }
-    if (nibble_count == 2) {
-      if (!ShapeUtil::ElementIsIntegralWithBits(dot->operand(0)->shape(), 8)) {
-        return InvalidArgument(
-            "Packed nibble precision can only apply to 8 bit integers. LHS is "
-            "%s.",
-            dot->operand(0)->ToString());
-      }
-      if (!ShapeUtil::ElementIsIntegralWithBits(dot->operand(1)->shape(), 8)) {
-        return InvalidArgument(
-            "Packed nibble precision can only apply to 8 bit integers. RHS is "
-            "%s.",
-            dot->operand(1)->ToString());
-      }
-    }
-  }
+
   for (int i = 0; i < sparsity.size(); ++i) {
     const SparsityDescriptor& descriptor = sparsity[i];
     TF_RET_CHECK(descriptor.index() == 0 || descriptor.index() == 1);
@@ -301,42 +262,7 @@ absl::Status ShapeVerifier::HandleConvolution(HloInstruction* convolution) {
           convolution->feature_group_count(), convolution->batch_group_count(),
           convolution->window(), convolution->convolution_dimension_numbers(),
           /*preferred_element_type=*/convolution->shape().element_type()));
-  if (auto nibble_count =
-          absl::c_count(convolution->precision_config().operand_precision(),
-                        PrecisionConfig::PACKED_NIBBLE)) {
-    if (nibble_count == 1) {
-      return InvalidArgument(
-          "Convolution cannot have a single packed nibble argument");
-    }
-    if (nibble_count == 2) {
-      if (convolution->feature_group_count() != 1) {
-        return InvalidArgument(
-            "Packed nibble precision does not support feature group count "
-            "%s.",
-            convolution->ToString());
-      }
-      if (convolution->batch_group_count() != 1) {
-        return InvalidArgument(
-            "Packed nibble precision does not support batch group count "
-            "%s.",
-            convolution->ToString());
-      }
-      if (!ShapeUtil::ElementIsIntegralWithBits(
-              convolution->operand(0)->shape(), 8)) {
-        return InvalidArgument(
-            "Packed nibble precision can only apply to 8 bit integers. LHS is "
-            "%s.",
-            convolution->operand(0)->ToString());
-      }
-      if (!ShapeUtil::ElementIsIntegralWithBits(
-              convolution->operand(1)->shape(), 8)) {
-        return InvalidArgument(
-            "Packed nibble precision can only apply to 8 bit integers. RHS is "
-            "%s.",
-            convolution->operand(1)->ToString());
-      }
-    }
-  }
+
   return CheckShape(convolution, expected);
 }
 
@@ -476,7 +402,9 @@ static absl::Status CheckCommonAllGatherInvariants(
 
   int64_t shard_count;
   for (int64_t i = 0; i < ag->operand_count(); ++i) {
-    TF_RET_CHECK(ag->all_gather_dimension() < ag->operand(i)->shape().rank());
+    TF_RET_CHECK(
+        ag->all_gather_dimension() <
+        static_cast<int64_t>(ag->operand(i)->shape().dimensions().size()));
 
     Shape output_shape;
     if (hlo->opcode() == HloOpcode::kAllGather) {
@@ -488,7 +416,8 @@ static absl::Status CheckCommonAllGatherInvariants(
                          ? ag->shape().tuple_shapes(1)
                          : ag->shape().tuple_shapes(1).tuple_shapes(i);
     }
-    TF_RET_CHECK(ag->all_gather_dimension() < output_shape.rank());
+    TF_RET_CHECK(ag->all_gather_dimension() <
+                 static_cast<int64_t>(output_shape.dimensions().size()));
     if (i == 0) {
       shard_count = CeilOfRatio(
           output_shape.dimensions(ag->all_gather_dimension()),
@@ -563,12 +492,15 @@ absl::Status ShapeVerifier::HandleReduceScatter(HloInstruction* hlo) {
   TF_RET_CHECK(ars->operand_count() >= 1);
 
   for (int64_t i = 0; i < ars->operand_count(); ++i) {
-    TF_RET_CHECK(ars->scatter_dimension() < ars->operand(i)->shape().rank());
+    TF_RET_CHECK(
+        ars->scatter_dimension() <
+        static_cast<int64_t>(ars->operand(i)->shape().dimensions().size()));
 
     const Shape& output_shape = (ars->operand_count() == 1)
                                     ? ars->shape()
                                     : ars->shape().tuple_shapes(i);
-    TF_RET_CHECK(ars->scatter_dimension() < output_shape.rank());
+    TF_RET_CHECK(ars->scatter_dimension() <
+                 static_cast<int64_t>(output_shape.dimensions().size()));
   }
 
   const Shape& output0_shape =
@@ -649,12 +581,31 @@ absl::Status ShapeVerifier::HandleRaggedAllToAll(HloInstruction* hlo) {
 
   TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, group_mode));
 
+  const int64_t kNumRaggedOperands = 6;
   TF_RET_CHECK(all_to_all != nullptr);
-  TF_RET_CHECK(hlo->operand_count() == 6);
+  TF_RET_CHECK(hlo->operand_count() == kNumRaggedOperands);
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : hlo->operands()) {
     operand_shapes.push_back(&operand->shape());
   }
+
+  // Check that *_offsets/*_sizes operands all have the same shape and
+  // are rank 1 or rank 2.
+  const int64_t kOffsetsSizesOperandsStart = 2;
+  for (int64_t i = kOffsetsSizesOperandsStart + 1; i < kNumRaggedOperands;
+       ++i) {
+    if (operand_shapes[i - 1]->dimensions().size() != 1 &&
+        operand_shapes[i - 1]->dimensions().size() != 2) {
+      return Internal("RaggedAllToAll operand %d must be rank 1 or 2: %s",
+                      i - 1, hlo->ToString());
+    }
+    if (!ShapeUtil::Equal(*operand_shapes[i - 1], *operand_shapes[i])) {
+      return Internal(
+          "RaggedAllToAll operands have different shapes (%d, %d): %s", i - 1,
+          i, hlo->ToString());
+    }
+  }
+
   return CheckShape(hlo,
                     ShapeInference::InferRaggedAllToAllShape(operand_shapes));
 }
@@ -690,14 +641,15 @@ absl::Status CheckBufferOffset(const Shape& buffer_shape,
     if (absl::c_any_of(buffer_offset_shape.tuple_shapes(),
                        [&buffer_shape](const Shape& shape) {
                          return ShapeUtil::TupleElementCount(shape) !=
-                                buffer_shape.rank();
+                                buffer_shape.dimensions().size();
                        })) {
       return Internal(
           "Buffer offset index should have the same number of "
           "elements as the buffer's rank.");
     }
   } else {
-    if (buffer_offset_shape.tuple_shapes_size() != buffer_shape.rank()) {
+    if (buffer_offset_shape.tuple_shapes().size() !=
+        buffer_shape.dimensions().size()) {
       return Internal(
           "Buffer offset index should have the same number of "
           "elements as the buffer's rank.");
@@ -706,10 +658,12 @@ absl::Status CheckBufferOffset(const Shape& buffer_shape,
   return absl::OkStatus();
 }
 
-absl::Status CheckInplaceCollectivePermute(HloInstruction* collective_permute) {
-  if (collective_permute->operand_count() == 1) {
+absl::Status CheckInplaceCollectivePermute(
+    HloCollectivePermuteInstruction* collective_permute) {
+  if (!collective_permute->inplace()) {
     return absl::OkStatus();
   }
+  // TODO support grouped partial collective permute
   if (collective_permute->operand_count() != 4) {
     return Internal("Unexpected number of operands: %d.",
                     collective_permute->operand_count());
@@ -721,16 +675,10 @@ absl::Status CheckInplaceCollectivePermute(HloInstruction* collective_permute) {
   const Shape& output_offset_shape = collective_permute->operand(3)->shape();
 
   if (input_buffer_shape.IsArray() && output_buffer_shape.IsArray()) {
-    absl::Status check_input_buffer_offset =
-        CheckBufferOffset(input_buffer_shape, input_offset_shape);
-    if (!check_input_buffer_offset.ok()) {
-      return check_input_buffer_offset;
-    }
-    absl::Status check_output_buffer_offset =
-        CheckBufferOffset(output_buffer_shape, output_offset_shape);
-    if (!check_output_buffer_offset.ok()) {
-      return check_output_buffer_offset;
-    }
+    TF_RETURN_IF_ERROR(
+        CheckBufferOffset(input_buffer_shape, input_offset_shape));
+    TF_RETURN_IF_ERROR(
+        CheckBufferOffset(output_buffer_shape, output_offset_shape));
   } else if (input_buffer_shape.IsTuple() && output_buffer_shape.IsTuple()) {
     if (ShapeUtil::TupleElementCount(input_buffer_shape) !=
         ShapeUtil::TupleElementCount(output_buffer_shape)) {
@@ -741,26 +689,20 @@ absl::Status CheckInplaceCollectivePermute(HloInstruction* collective_permute) {
             ShapeUtil::TupleElementCount(input_buffer_shape)) {
       return Internal("Unmatching input buffers and input offset.");
     }
-    for (int i = 0; i < input_buffer_shape.tuple_shapes_size(); ++i) {
-      absl::Status check_input_buffer_offset =
-          CheckBufferOffset(input_buffer_shape.tuple_shapes(i),
-                            input_offset_shape.tuple_shapes(i));
-      if (!check_input_buffer_offset.ok()) {
-        return check_input_buffer_offset;
-      }
+
+    for (int i = 0; i < input_buffer_shape.tuple_shapes().size(); ++i) {
+      TF_RETURN_IF_ERROR(CheckBufferOffset(input_buffer_shape.tuple_shapes(i),
+                                           input_offset_shape.tuple_shapes(i)));
     }
     if (!output_offset_shape.IsTuple() ||
         ShapeUtil::TupleElementCount(output_offset_shape) !=
             ShapeUtil::TupleElementCount(output_buffer_shape)) {
       return Internal("Unmatching output buffers and output offset.");
     }
-    for (int i = 0; i < output_buffer_shape.tuple_shapes_size(); ++i) {
-      absl::Status check_output_buffer_offset =
+    for (int i = 0; i < output_buffer_shape.tuple_shapes().size(); ++i) {
+      TF_RETURN_IF_ERROR(
           CheckBufferOffset(output_buffer_shape.tuple_shapes(i),
-                            output_offset_shape.tuple_shapes(i));
-      if (!check_output_buffer_offset.ok()) {
-        return check_output_buffer_offset;
-      }
+                            output_offset_shape.tuple_shapes(i)));
     }
   } else {
     return Internal("Unmatching input buffers and output buffers.");
@@ -768,52 +710,59 @@ absl::Status CheckInplaceCollectivePermute(HloInstruction* collective_permute) {
   return absl::OkStatus();
 }
 
-absl::Status CheckDuplicatedSourceOrTarget(HloInstruction* hlo,
-                                           CollectiveOpGroupMode group_mode) {
+absl::Status CheckDuplicatedSourceOrTarget(
+    HloCollectivePermuteInstruction* collective_permute) {
+  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                      GetCollectiveOpGroupMode(collective_permute));
+
   // A source or target cannot appear twice in the collective-permute's
   // source-target pairs. Also, based on the group formation mode, check if the
   // source and target IDs are within expected range.
 
   // Note: for collective-permute, only kCrossReplica and kCrossPartition modes
   // are valid.
-  const HloModuleConfig& config = hlo->GetModule()->config();
+  const HloModuleConfig& config = collective_permute->GetModule()->config();
   const int64_t limit = group_mode == CollectiveOpGroupMode::kCrossReplica
                             ? config.replica_count()
                             : config.num_partitions();
   absl::flat_hash_map<int64_t, std::vector<int64_t>> seen_source_to_targets;
   absl::flat_hash_map<int64_t, std::vector<int64_t>> seen_target_to_sources;
   int allowed_seen_count = 1;
-  if (hlo->operand_count() == 4) {
-    if (hlo->operand(0)->shape().IsArray()) {
-      allowed_seen_count = hlo->operand(2)->shape().tuple_shapes_size();
-    } else {
+  if (collective_permute->inplace()) {
+    if (collective_permute->operand(0)->shape().IsArray()) {
       allowed_seen_count =
-          hlo->operand(2)->shape().tuple_shapes(0).tuple_shapes_size();
+          collective_permute->operand(2)->shape().tuple_shapes().size();
+    } else {
+      allowed_seen_count = collective_permute->operand(2)
+                               ->shape()
+                               .tuple_shapes(0)
+                               .tuple_shapes()
+                               .size();
     }
   }
 
-  for (const auto& p : hlo->source_target_pairs()) {
+  for (const auto& p : collective_permute->source_target_pairs()) {
     TF_RET_CHECK(p.first >= 0)
         << "Source " << p.first
         << " in the instruction's source-target pair must be >= 0 : "
-        << hlo->ToString();
+        << collective_permute->ToString();
     TF_RET_CHECK(limit == 1 || p.first < limit)
         << "Source " << p.first
         << " in the instruction's source-target pair must be < " << limit
-        << " : " << hlo->ToString();
+        << " : " << collective_permute->ToString();
     if (seen_source_to_targets.contains(p.first) &&
         seen_source_to_targets[p.first].size() == allowed_seen_count) {
       if (allowed_seen_count == 1) {
         return Internal(
             "Source %d appears more than once in instruction's source-target "
             "pairs: %s",
-            p.first, hlo->ToString());
+            p.first, collective_permute->ToString());
       } else {
         return Internal(
             "Source %d appears more than %d times in instruction's "
             "source-target "
             "pairs: %s",
-            p.first, allowed_seen_count, hlo->ToString());
+            p.first, allowed_seen_count, collective_permute->ToString());
       }
     } else {
       seen_source_to_targets[p.first].push_back(p.second);
@@ -821,24 +770,24 @@ absl::Status CheckDuplicatedSourceOrTarget(HloInstruction* hlo,
     TF_RET_CHECK(p.second >= 0)
         << "Target " << p.second
         << " in the instruction's source-target pair must be >= 0 : "
-        << hlo->ToString();
+        << collective_permute->ToString();
     TF_RET_CHECK(limit == 1 || p.second < limit)
         << "Target " << p.second
         << " in the instruction's source-target pair must be < " << limit
-        << " : " << hlo->ToString();
+        << " : " << collective_permute->ToString();
     if (seen_target_to_sources.contains(p.second) &&
         seen_target_to_sources[p.second].size() == allowed_seen_count) {
       if (allowed_seen_count == 1) {
         return Internal(
             "Target %d appears more than once in instruction's source-target "
             "pairs: %s",
-            p.second, hlo->ToString());
+            p.second, collective_permute->ToString());
       } else {
         return Internal(
             "Target %d appears more than %d times in instruction's "
             "source-target "
             "pairs: %s",
-            p.second, allowed_seen_count, hlo->ToString());
+            p.second, allowed_seen_count, collective_permute->ToString());
       }
     } else {
       seen_target_to_sources[p.second].push_back(p.first);
@@ -859,38 +808,39 @@ absl::Status ShapeVerifier::HandleCollectiveBroadcast(HloInstruction* hlo) {
 }
 
 absl::Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
-  TF_ASSIGN_OR_RETURN(
-      CollectiveOpGroupMode group_mode,
-      GetCollectiveOpGroupMode(hlo->channel_id().has_value(),
-                               /*use_global_device_ids=*/std::nullopt));
-  TF_RETURN_IF_ERROR(CheckInplaceCollectivePermute(hlo));
-  TF_RETURN_IF_ERROR(CheckDuplicatedSourceOrTarget(hlo, group_mode));
+  HloCollectivePermuteInstruction* collective_permute =
+      Cast<HloCollectivePermuteInstruction>(hlo);
+  TF_RETURN_IF_ERROR(CheckInplaceCollectivePermute(collective_permute));
+  TF_RETURN_IF_ERROR(CheckDuplicatedSourceOrTarget(collective_permute));
   std::vector<const Shape*> operand_shapes;
   absl::c_transform(
-      hlo->operands(), std::back_inserter(operand_shapes),
+      collective_permute->operands(), std::back_inserter(operand_shapes),
       [](const HloInstruction* operand) { return &(operand->shape()); });
-  return CheckShape(
-      hlo, ShapeInference::InferCollectivePermuteShape(operand_shapes));
+  return CheckShape(hlo, ShapeInference::InferCollectivePermuteShape(
+                             operand_shapes, collective_permute->inplace()));
 }
 
 absl::Status ShapeVerifier::HandleCollectivePermuteStart(HloInstruction* hlo) {
-  TF_ASSIGN_OR_RETURN(
-      CollectiveOpGroupMode group_mode,
-      GetCollectiveOpGroupMode(hlo->channel_id().has_value(),
-                               /*use_global_device_ids=*/std::nullopt));
-  TF_RETURN_IF_ERROR(CheckInplaceCollectivePermute(hlo));
-  TF_RETURN_IF_ERROR(CheckDuplicatedSourceOrTarget(hlo, group_mode));
+  HloCollectivePermuteInstruction* collective_permute_start =
+      Cast<HloCollectivePermuteInstruction>(hlo);
+
+  TF_RETURN_IF_ERROR(CheckInplaceCollectivePermute(collective_permute_start));
+  TF_RETURN_IF_ERROR(CheckDuplicatedSourceOrTarget(collective_permute_start));
   std::vector<const Shape*> operand_shapes;
   absl::c_transform(
-      hlo->operands(), std::back_inserter(operand_shapes),
+      collective_permute_start->operands(), std::back_inserter(operand_shapes),
       [](const HloInstruction* operand) { return &(operand->shape()); });
   std::vector<Shape> context_shapes;
-  if (hlo->shape().tuple_shapes_size() > 2) {
-    context_shapes = std::vector<Shape>(hlo->shape().tuple_shapes().begin() + 2,
-                                        hlo->shape().tuple_shapes().end());
+  if (collective_permute_start->shape().IsTuple() &&
+      collective_permute_start->shape().tuple_shapes().size() > 2) {
+    context_shapes = std::vector<Shape>(
+        collective_permute_start->shape().tuple_shapes().begin() + 2,
+        collective_permute_start->shape().tuple_shapes().end());
   }
-  return CheckShape(hlo, ShapeInference::InferCollectivePermuteStartShape(
-                             operand_shapes, context_shapes));
+  return CheckShape(
+      collective_permute_start,
+      ShapeInference::InferCollectivePermuteStartShape(
+          operand_shapes, context_shapes, collective_permute_start->inplace()));
 }
 
 absl::Status ShapeVerifier::HandleCollectivePermuteDone(HloInstruction* hlo) {
@@ -1022,7 +972,7 @@ absl::Status ShapeVerifier::HandleRngBitGenerator(HloInstruction* hlo) {
   if (!hlo->shape().IsTuple()) {
     return absl::OkStatus();
   }
-  if (hlo->shape().IsTuple() && hlo->shape().tuple_shapes_size() != 2) {
+  if (hlo->shape().IsTuple() && hlo->shape().tuple_shapes().size() != 2) {
     return Internal(
         "Expected tuple shape with 2 elements for RngBitGenerator. Got: %s",
         hlo->shape().ToString(true));
@@ -1118,11 +1068,12 @@ absl::Status ShapeVerifier::HandleSort(HloInstruction* hlo) {
   }
 
   // Verify the sort_dimension.
-  if (sort->sort_dimension() >= sort->operand(0)->shape().rank()) {
+  if (sort->sort_dimension() >=
+      static_cast<int64_t>(sort->operand(0)->shape().dimensions().size())) {
     return Internal(
         "Expected the sort_dimension %d of sort to be smaller than the rank %d "
         "of the operand(s).",
-        sort->sort_dimension(), sort->shape().rank());
+        sort->sort_dimension(), sort->shape().dimensions().size());
   }
 
   return CheckVariadicShape(sort);
@@ -1142,7 +1093,7 @@ absl::Status ShapeVerifier::HandleIota(HloInstruction* hlo) {
   if (!iota->shape().IsArray()) {
     return Internal("Iota does not support non-array result.");
   }
-  const int64_t rank = iota->shape().rank();
+  const int64_t rank = iota->shape().dimensions().size();
   if (rank == 0) {
     return Internal("Iota does not support scalars.");
   }
@@ -1244,13 +1195,15 @@ absl::Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
   // Check for mixed precision.
   TF_RET_CHECK(SameElementType(broadcast->shape(), operand_shape))
       << broadcast->ToString();
-  TF_RET_CHECK(operand_shape.rank() == broadcast->dimensions().size())
+  TF_RET_CHECK(operand_shape.dimensions().size() ==
+               broadcast->dimensions().size())
       << broadcast->ToString();
-  for (int64_t operand_dimension = 0; operand_dimension < operand_shape.rank();
+  for (int64_t operand_dimension = 0;
+       operand_dimension < operand_shape.dimensions().size();
        ++operand_dimension) {
     int64_t output_dimension = broadcast->dimensions()[operand_dimension];
-    TF_RET_CHECK((output_dimension < broadcast->shape().rank()) &&
-                 output_dimension >= 0 &&
+    TF_RET_CHECK(output_dimension >= 0 &&
+                 output_dimension < broadcast->shape().dimensions().size() &&
                  (broadcast->shape().dimensions(output_dimension) ==
                   operand_shape.dimensions(operand_dimension)))
         << broadcast->ToString() << " operand shape " << operand_shape;
@@ -1265,7 +1218,7 @@ absl::Status ShapeVerifier::HandleDynamicReshape(
   TF_RET_CHECK(SameElementType(dynamic_reshape->shape(), operand_shape));
   TF_RET_CHECK(ShapeUtil::ElementsIn(dynamic_reshape->shape()) ==
                ShapeUtil::ElementsIn(operand_shape));
-  TF_RET_CHECK(dynamic_reshape->shape().rank() + 1 ==
+  TF_RET_CHECK(dynamic_reshape->shape().dimensions().size() + 1 ==
                dynamic_reshape->operand_count());
   for (int64_t i = 1; i < dynamic_reshape->operand_count(); ++i) {
     TF_RET_CHECK(dynamic_reshape->operand(i)->shape().element_type() == S32);
@@ -1354,8 +1307,9 @@ absl::Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
       }
     } else {
       TF_RET_CHECK(ShapeUtil::Compatible(output_subshape, operand_subshape))
-          << "Different aliasing shapes: " << operand_subshape.ToString()
-          << " vs " << output_subshape.ToString();
+          << "Different aliasing shapes: "
+          << operand_subshape.ToString(/*print_layout=*/true) << " vs "
+          << output_subshape.ToString(/*print_layout=*/true);
     }
   }
   return absl::OkStatus();
@@ -1421,6 +1375,8 @@ absl::Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
       TF_RET_CHECK(LayoutUtil::HasLayout(operand_shape_with_layout));
     }
   }
+  bool ignore_buffer = custom_call->IsCustomCall(kPinCustomCallTarget) ||
+                       custom_call->IsCustomCall(kUnpinCustomCallTarget);
   for (const auto& pair : custom_call->output_to_operand_aliasing()) {
     TF_RET_CHECK(pair.second.first < custom_call->operand_count())
         << "Invalid aliasing operand index.";
@@ -1429,18 +1385,27 @@ absl::Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
         << "Invalid aliasing operand shape index.";
     TF_RET_CHECK(ShapeUtil::IndexIsValid(custom_call->shape(), pair.first))
         << "Invalid aliasing output shape index.";
+    if (custom_call->frontend_attributes().map().contains(
+            "xla_skip_custom_call_alias_shape_check")) {
+      return absl::OkStatus();
+    }
     const Shape& output_subshape =
         ShapeUtil::GetSubshape(custom_call->shape(), pair.first);
     const Shape& operand_subshape = ShapeUtil::GetSubshape(
         custom_call->operand(pair.second.first)->shape(), pair.second.second);
     if (opts_.layout_sensitive) {
-      TF_RET_CHECK(operand_subshape == output_subshape)
-          << "Different aliasing shapes: " << operand_subshape.ToString()
-          << " vs " << output_subshape.ToString();
+      TF_RET_CHECK(Shape::Equal().IgnoreBuffer(ignore_buffer)(operand_subshape,
+                                                              output_subshape))
+          << "Different aliasing shapes: "
+          << operand_subshape.ToString(/*print_layout=*/true) << " vs "
+          << output_subshape.ToString(/*print_layout=*/true);
     } else {
-      TF_RET_CHECK(ShapeUtil::Compatible(output_subshape, operand_subshape))
-          << "Different aliasing shapes: " << operand_subshape.ToString()
-          << " vs " << output_subshape.ToString();
+      TF_RET_CHECK(
+          Shape::Equal().IgnoreDynamicDimension().IgnoreLayout().IgnoreBuffer(
+              ignore_buffer)(output_subshape, operand_subshape))
+          << "Different aliasing shapes: "
+          << operand_subshape.ToString(/*print_layout=*/true) << " vs "
+          << output_subshape.ToString(/*print_layout=*/true);
     }
   }
   return absl::OkStatus();
@@ -1482,7 +1447,9 @@ absl::Status ShapeVerifier::HandleMap(HloInstruction* map) {
   int64_t max_operand_rank = 0;
   for (const HloInstruction* operand : map->operands()) {
     operand_shapes.push_back(&operand->shape());
-    max_operand_rank = std::max(max_operand_rank, operand->shape().rank());
+    max_operand_rank =
+        std::max(max_operand_rank,
+                 static_cast<int64_t>(operand->shape().dimensions().size()));
   }
   // TODO(b/65689298) Remove code below once Map is generalized to accept
   // arbitrary map dimensions.
@@ -1554,7 +1521,7 @@ absl::Status ShapeVerifier::HandleConditional(HloInstruction* conditional) {
   if (!ShapeUtil::IsScalar(conditional->operand(0)->shape())) {
     return InvalidArgument(
         "The first operand of conditional must be a scalar. Got %s",
-        conditional->operand(0)->shape().DebugString());
+        conditional->operand(0)->shape().ToString());
   }
   const int num_branches = conditional->branch_count();
   PrimitiveType operand0_type = conditional->operand(0)->shape().element_type();
@@ -1624,13 +1591,11 @@ absl::Status CheckAsyncOpComputationThreadName(const HloInstruction* async_op) {
         HloOpcodeString(async_op->opcode()), async_execution_thread,
         async_op->async_wrapped_computation()->execution_thread());
   }
-  return CheckNestedComputationThreadNameEqual(
-      async_op->async_wrapped_computation(),
-      /*skip_nested_async_op_check=*/false);
+  return absl::OkStatus();
 }
 
 absl::Status CheckCallableInstructionThreadName(
-    const HloInstruction* instruction, bool skip_nested_async_op_check) {
+    const HloInstruction* instruction) {
   for (const HloComputation* computation : instruction->called_computations()) {
     if (instruction->parent() != nullptr) {
       if (instruction->parent()->execution_thread() !=
@@ -1642,8 +1607,6 @@ absl::Status CheckCallableInstructionThreadName(
             computation->execution_thread());
       }
     }
-    TF_RETURN_IF_ERROR(CheckNestedComputationThreadNameEqual(
-        computation, skip_nested_async_op_check));
   }
   return absl::OkStatus();
 }
@@ -1651,11 +1614,12 @@ absl::Status CheckCallableInstructionThreadName(
 
 absl::Status ShapeVerifier::CheckAsyncOpComputationShapes(
     const HloInstruction* async_op, const Shape& async_shape) {
-  if (!async_shape.IsTuple() || async_shape.tuple_shapes_size() < 2) {
+  if (!async_shape.IsTuple() || async_shape.tuple_shapes().size() < 2) {
     return Internal(
         "The %s expects the async shape to be a tuple of at least two "
         "elements, found %s.",
-        HloOpcodeString(async_op->opcode()), async_shape.ToString());
+        HloOpcodeString(async_op->opcode()),
+        async_shape.ToString(/*print_layout=*/true));
   }
 
   ProgramShape computation_shape =
@@ -1830,6 +1794,7 @@ absl::Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kConstant:
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:
+    case HloOpcode::kRaggedDot:
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
@@ -2508,9 +2473,6 @@ absl::Status VerifyOriginalValue(const HloModule& module) {
 // collectives).
 absl::Status VerifyChannels(const HloModule& module,
                             const HloVerifierOpts& opts) {
-  absl::flat_hash_map<int64_t, std::vector<const HloInstruction*>>
-      channel_instructions;
-
   // Send/recv instruction must have a unique user. If it is the corresponding
   // send-done/recv-done operation, channel IDs must match.
   for (const HloComputation* computation : module.computations()) {
@@ -2519,7 +2481,6 @@ absl::Status VerifyChannels(const HloModule& module,
       if (!channel_instr || !channel_instr->channel_id()) {
         continue;
       }
-      channel_instructions[*channel_instr->channel_id()].push_back(instruction);
 
       switch (instruction->opcode()) {
         case HloOpcode::kSend: {
@@ -2558,29 +2519,6 @@ absl::Status VerifyChannels(const HloModule& module,
           break;
         default:
           break;
-      }
-    }
-  }
-
-  // Iterate over each channel to check invariants.
-  for (auto& [channel_id, instructions] : channel_instructions) {
-    const HloInstruction* first = instructions[0];
-    if (const auto* sendrecv = DynCast<HloSendRecvInstruction>(first)) {
-      absl::flat_hash_set<HloOpcode> opcodes;
-      for (const HloInstruction* instr : instructions) {
-        opcodes.insert(instr->opcode());
-        auto cast = DynCast<HloSendRecvInstruction>(instr);
-        TF_RET_CHECK(cast != nullptr)
-            << "channel " << channel_id
-            << " is used for different types of channel instructions";
-      }
-    } else {
-      if (opts.verify_unique_channel_ids) {
-        for (const HloInstruction* instr : instructions) {
-          TF_RET_CHECK(first->opcode() == instr->opcode())
-              << "channel " << channel_id
-              << " is used for different types of channel instructions";
-        }
       }
     }
   }
@@ -2645,7 +2583,8 @@ absl::Status CheckFusionInstruction(HloInstruction* fusion) {
   for (auto* instruction :
        fusion->fused_instructions_computation()->instructions()) {
     if (instruction != fused_root) {
-      if (instruction->user_count() == 0) {
+      if (instruction->user_count() == 0 &&
+          !instruction->HasSideEffectNoRecurse()) {
         return Internal("Non-root instruction %s in %s must have users.",
                         instruction->ToString(), fusion->ToString());
       }
@@ -2778,8 +2717,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   absl::Status HandleFusion(HloInstruction* fusion) override {
-    TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(
-        fusion, /*skip_nested_async_op_check*/ false));
+    TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(fusion));
     return CheckFusionInstruction(fusion);
   }
 
@@ -2789,11 +2727,11 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     // op. See https://groups.google.com/forum/#!topic/xla-dev/9LqijHmTt_I
     // or ComputationLowerer::Visit()
     TF_RET_CHECK(broadcast->dimensions().size() ==
-                 broadcast->operand(0)->shape().rank())
+                 broadcast->operand(0)->shape().dimensions().size())
         << "Broadcast HLO (" << broadcast->ToShortString()
         << ") has invalid number of dimensions: "
         << broadcast->dimensions().size()
-        << " != " << broadcast->operand(0)->shape().rank();
+        << " != " << broadcast->operand(0)->shape().dimensions().size();
     if (opts_.verify_broadcast_dimensions_order) {
       TF_RET_CHECK(absl::c_is_sorted(broadcast->dimensions()))
           << "Broadcast dimensions should be ordered, got: "
@@ -2826,8 +2764,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
           xla_while->operand_count(), xla_while->ToString());
     }
     // Allow kWhile to contain computations on separate thread.
-    TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(
-        xla_while, /*skip_nested_async_op_check=*/true));
+    TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(xla_while));
 
     // Verify consistency of sharding of while instructions and related
     // instructions (parameters, root) in its called computations.
@@ -2840,9 +2777,19 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   absl::Status HandleCall(HloInstruction* call) override {
-    // Allow kCall to contain computations on separate thread.
-    return CheckCallableInstructionThreadName(
-        call, /*skip_nested_async_op_check=*/true);
+    if (opts_.verify_call_nested_computation_thread_name) {
+      return CheckCallableInstructionThreadName(call);
+    }
+
+    // As opposed to other callable instructions, nothing respects input/output
+    // aliasing for call instructions, so make sure it's not set.
+    const HloCallableInstruction* callable =
+        DynCast<const HloCallableInstruction>(call);
+    TF_RET_CHECK(callable != nullptr);
+    TF_RET_CHECK(callable->output_to_operand_aliasing().empty())
+        << "Call instruction " << call->ToString()
+        << " may not have an output-to-operand aliasing set.";
+    return absl::OkStatus();
   }
 
   absl::Status HandleConditional(HloInstruction* conditional) override {
@@ -2863,8 +2810,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
           branch_computation->root_instruction());
     }
     // Allow kConditional to contain computations on separate thread.
-    TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(
-        conditional, /*skip_nested_async_op_check=*/true));
+    TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(conditional));
 
     // Verify consistency of sharding of conditional instructions and roots of
     // its branches.
@@ -2923,16 +2869,15 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   absl::Status HandleCustomCall(HloInstruction* hlo) override {
-    if (opts_.verify_custom_call_nested_computation_thread_name) {
+    if (opts_.verify_call_nested_computation_thread_name) {
       // Allow kCustomCall to contain computations on separate thread.
-      return CheckCallableInstructionThreadName(
-          hlo, /*skip_nested_async_op_check=*/true);
+      return CheckCallableInstructionThreadName(hlo);
     }
     return absl::OkStatus();
   }
 
   absl::Status HandleScatter(HloInstruction* scatter) override {
-    int64_t rank = scatter->operand(0)->shape().rank();
+    int64_t rank = scatter->operand(0)->shape().dimensions().size();
     for (int64_t operand_dim :
          scatter->scatter_dimension_numbers().scatter_dims_to_operand_dims()) {
       if (operand_dim > rank) {
@@ -2965,7 +2910,8 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
       }
     }
 
-    if (instruction->has_to_apply() &&
+    if (opts_.verify_call_nested_computation_thread_name &&
+        instruction->has_to_apply() &&
         instruction->to_apply()->execution_thread() !=
             instruction->parent()->execution_thread()) {
       return Internal(
@@ -2978,24 +2924,29 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   absl::Status Postprocess(HloInstruction* instruction) override {
+    if (opts_.verify_no_host_memory_space) {
+      TF_RETURN_IF_ERROR(VerifyNoHostMemorySpace(instruction));
+    }
     if (!opts_.InstructionCanChangeLayout(instruction) &&
-        LayoutUtil::IsDenseArray(instruction->shape()) &&
-        instruction->shape().has_layout()) {
+        instruction->shape().IsArray() && instruction->shape().has_layout()) {
       const Shape& result_shape = instruction->shape();
       const Layout& result_layout = result_shape.layout();
       for (HloInstruction* operand : instruction->operands()) {
         const Shape& operand_shape = operand->shape();
-        if (LayoutUtil::IsDenseArray(operand_shape) &&
-            operand_shape.rank() == result_shape.rank() &&
+        if (operand_shape.IsArray() &&
+            operand_shape.dimensions().size() ==
+                result_shape.dimensions().size() &&
             operand_shape.has_layout()) {
           const Layout& operand_layout = operand_shape.layout();
           Layout::Equal equal_predicate =
               Layout::Equal().IgnoreTiles().IgnoreMemorySpace();
           if (instruction->opcode() == HloOpcode::kConvert ||
               instruction->opcode() == HloOpcode::kCompare ||
+              instruction->opcode() == HloOpcode::kIsFinite ||
               (instruction->opcode() == HloOpcode::kSelect &&
-               operand_shape.element_type() == PRED)) {
-            // Convert and Compare instructions can change element_size_in_bits
+               operand_shape.element_type() == PRED) ||
+              instruction->opcode() == HloOpcode::kScatter) {
+            // Some instructions can change element_size_in_bits
             // Select instructions ignore element_size_in_bits for predicate
             equal_predicate.IgnoreElementSize();
           } else if (instruction->opcode() == HloOpcode::kDynamicSlice ||
@@ -3071,10 +3022,360 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     return absl::OkStatus();
   }
 
+  // Returns an error status if an instruction or any operand contains host
+  // memory space.
+  static absl::Status VerifyNoHostMemorySpace(
+      const HloInstruction* instruction) {
+    return ShapeUtil::ForEachSubshapeWithStatus(
+        instruction->shape(),
+        [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
+          if (subshape.has_layout()) {
+            const Layout& result_layout = subshape.layout();
+            if (result_layout.memory_space() == Layout::kHostMemorySpace) {
+              return absl::InternalError(absl::StrCat(
+                  "Instruction shouldn't have the layout of host memory "
+                  "space: ",
+                  instruction->ToString()));
+            }
+          }
+          return absl::OkStatus();
+        });
+  }
+
   absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name_;
   const HloVerifierOpts& opts_;
   std::optional<int64_t> num_devices_;
 };
+
+bool IsCollectivesGroupComputation(HloComputation* computation) {
+  auto maybe_caller = computation->GetUniqueCaller(HloOpcode::kAsyncStart);
+  if (!maybe_caller.has_value()) {
+    return false;
+  }
+  return (*maybe_caller)
+      ->get_frontend_attribute(kCollectivesGroupAttr)
+      .has_value();
+}
+
+int64_t CountWriters(const HloInstruction* inst,
+                     absl::Span<const int64_t> shape_index);
+
+// Returns the number of writers for the value produced by the instruction in
+// the given shape_index and used by the given user.
+//
+// An example of a buffer with multiple writers:
+//    b1 = b(f32[32]) custom-call(b0),
+//      custom_call_target="foo",
+//      output_to_operand_aliasing={{}: (0, {})}
+//    call1 = b(f32[32]) custom-call(b1),
+//      custom_call_target="writer_1",
+//      output_to_operand_aliasing={{}: (0, {})},
+//    call2 = b(f32[32]) custom-call(b1),
+//      custom_call_target="writer_2",
+//      output_to_operand_aliasing={{}: (0, {})},
+int64_t CountWritersInUser(const HloInstruction* inst,
+                           absl::Span<const int64_t> shape_index,
+                           const HloInstruction* user) {
+  if (dynamic_cast<const HloCallableInstruction*>(user) ||
+      user->opcode() == HloOpcode::kWhile ||
+      user->opcode() == HloOpcode::kConditional) {
+    // For HloCallableInstruction, we may overcount here if we will allow
+    // a buffer operand not in results.
+    //
+    // For other case, Without interprocedural analysis, we assume if a buffer
+    // is passed into a while loop, it is written there.
+    return 1;
+  }
+  if (user->opcode() == HloOpcode::kGetTupleElement &&
+      user->tuple_index() == shape_index[0]) {
+    return CountWriters(user, shape_index.subspan(1));
+  }
+  if (user->opcode() == HloOpcode::kTuple) {
+    if (inst->parent()->root_instruction() == user) {
+      // We assume if a buffer is passed into a while-body root, it will be
+      // written to.
+      if (!inst->parent()->caller_instructions(HloOpcode::kWhile).empty()) {
+        return 1;
+      }
+    } else {
+      std::vector<int64_t> new_shape_index;
+      new_shape_index.reserve(shape_index.size() + 1);
+      new_shape_index.push_back(user->operand_index(inst));
+      new_shape_index.insert(new_shape_index.end(), shape_index.begin(),
+                             shape_index.end());
+      return CountWriters(user, new_shape_index);
+    }
+  }
+
+  return 0;
+}
+
+// Returns the number of writers for the value produced by the instruction in
+// the given shape_index. This is to support the verification that a buffer can
+// have at most one writer and we may return early when we find more than one
+// writers, but we choose not to return early.
+int64_t CountWriters(const HloInstruction* inst,
+                     absl::Span<const int64_t> shape_index) {
+  int64_t num_writers = 0;
+  for (const HloInstruction* user : inst->users()) {
+    num_writers += CountWritersInUser(inst, shape_index, user);
+  }
+
+  return num_writers;
+}
+
+// Verifies a buffer result produced by the given instruction can have at most
+// one writer.
+absl::Status CheckBufferHasUniqueWriter(const HloInstruction* inst,
+                                        const ShapeIndex& result_index) {
+  if (CountWriters(inst, result_index) > 1) {
+    return InvalidArgument(
+        "an HLO buffer value has more than one writers (or unpins): '%s' '%s'",
+        inst->ToString(), result_index.ToString());
+  }
+
+  return absl::OkStatus();
+}
+
+// Verifies all buffer results produced by the given instruction can have at
+// most one writer.
+absl::Status CheckBufferHasUniqueWriters(const HloInstruction* inst) {
+  return ShapeUtil::ForEachSubshapeWithStatus(
+      inst->shape(),
+      [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
+        if (subshape.IsBuffer()) {
+          TF_RETURN_IF_ERROR(CheckBufferHasUniqueWriter(inst, index));
+        }
+        return absl::OkStatus();
+      });
+}
+
+absl::Status VerifyPin(const HloCustomCallInstruction* inst) {
+  if (inst->operand_count() != 1 || !inst->operand(0)->shape().IsArray() ||
+      inst->operand(0)->shape().IsBuffer()) {
+    return InvalidArgument(
+        "custom-call to Pin must have one array non-buffer operand");
+  }
+
+  if (!inst->shape().IsBuffer()) {
+    return InvalidArgument("custom-call to Pin must have one buffer result");
+  }
+
+  if (!xla::Shape::Equal()(inst->operand(0)->shape(),
+                           inst->shape().buffer_shape())) {
+    return InvalidArgument(
+        "custom-call to Pin must have the same shape as the operand");
+  }
+
+  if (inst->output_to_operand_aliasing().size() != 1) {
+    return InvalidArgument(
+        "custom-call to Pin must have one output-to-operand aliasing");
+  }
+
+  return CheckBufferHasUniqueWriter(inst, {});
+}
+
+absl::Status VerifyCreateBuffer(const HloInstruction* inst) {
+  if (inst->operand_count() != 0) {
+    return InvalidArgument("custom-call to CreateBuffer can't have an operand");
+  }
+
+  if (!inst->shape().IsBuffer()) {
+    return InvalidArgument(
+        "custom-call to CreateBuffer must have one buffer result");
+  }
+
+  return CheckBufferHasUniqueWriter(inst, {});
+}
+
+absl::Status VerifyUnpin(const HloCustomCallInstruction* inst) {
+  if (inst->operand_count() != 1 || !inst->operand(0)->shape().IsBuffer()) {
+    return InvalidArgument("custom-call to Unpin must have one buffer operand");
+  }
+
+  if (!inst->shape().IsArray() || inst->shape().IsBuffer()) {
+    return InvalidArgument(
+        "custom-call to Unpin must have one array non-buffer result");
+  }
+
+  if (!xla::Shape::Equal()(inst->operand(0)->shape().buffer_shape(),
+                           inst->shape())) {
+    return InvalidArgument(
+        "custom-call to Unpin must have the same shape as the operand");
+  }
+
+  if (inst->output_to_operand_aliasing().size() != 1) {
+    return InvalidArgument(
+        "custom-call to Unpin must have one output-to-operand aliasing");
+  }
+
+  return absl::OkStatus();
+}
+
+absl::Status VerifyNoBuffers(const Shape& shape, const HloInstruction* inst) {
+  return ShapeUtil::ForEachSubshapeWithStatus(
+      shape,
+      [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
+        if (subshape.IsBuffer()) {
+          return InvalidArgument(
+              "Seen buffers while buffers aren't allowed "
+              "in this context: %s",
+              inst->ToString());
+        }
+        return absl::OkStatus();
+      });
+}
+
+// Verifies that an operand with a buffer type should be mentioned in one pair
+// of output-to-operand-aliasing.
+absl::Status VerifyBuffersInOperands(const HloCustomCallInstruction* inst) {
+  // Collect the operand parts that are mentioned in the output-to-operand
+  // aliasing, and the number of times they are mentioned.
+  absl::flat_hash_map<std::pair<int64_t, ShapeIndex>, int32_t>
+      aliasing_part_to_count;
+  for (const auto& pair : inst->output_to_operand_aliasing()) {
+    if (aliasing_part_to_count.contains(pair.second)) {
+      aliasing_part_to_count[pair.second]++;
+    } else {
+      aliasing_part_to_count[pair.second] = 1;
+    }
+  }
+
+  int64_t operand_index = 0;
+  for (auto* operand : inst->operands()) {
+    TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+        operand->shape(),
+        [&](const Shape& subshape,
+            const ShapeIndex& shape_index) -> absl::Status {
+          if (!subshape.IsBuffer()) {
+            return absl::OkStatus();
+          }
+          std::pair<int64_t, ShapeIndex> operand_part =
+              std::make_pair(operand_index, shape_index);
+          if (!aliasing_part_to_count.contains(operand_part)) {
+            return InvalidArgument(
+                "buffer is used in operands but not in results: operand %d "
+                "ShapeIndex %s",
+                operand_index, shape_index.ToString());
+          }
+          // The operand aliases with multiple results.
+          if (aliasing_part_to_count[operand_part] > 1) {
+            return InvalidArgument(
+                "buffer is used in results multiple times: operand %d "
+                "ShapeIndex "
+                "%s",
+                operand_index, shape_index.ToString());
+          }
+          return absl::OkStatus();
+        }));
+    operand_index++;
+  }
+
+  return absl::OkStatus();
+}
+
+// Verifies that a result with a buffer type should be mentioned in one pair
+// of output-to-operand-aliasing, and returns the ShapeIndex for the buffers
+// in the results.
+absl::Status VerifyBuffersInResults(
+    const HloCustomCallInstruction* inst,
+    absl::flat_hash_set<ShapeIndex>& buffer_results) {
+  // Collect the results that are mentioned in the output-to-operand aliasing,
+  // and the number of times they are mentioned.
+  absl::flat_hash_map<ShapeIndex, int32_t> aliasing_part_to_count;
+  for (const auto& pair : inst->output_to_operand_aliasing()) {
+    if (aliasing_part_to_count.contains(pair.first)) {
+      aliasing_part_to_count[pair.first]++;
+    } else {
+      aliasing_part_to_count[pair.first] = 1;
+    }
+  }
+
+  return ShapeUtil::ForEachSubshapeWithStatus(
+      inst->shape(),
+      [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
+        if (subshape.IsBuffer()) {
+          if (!aliasing_part_to_count.contains(index)) {
+            return InvalidArgument(
+                "buffer is used in results but not in operands: %s",
+                index.ToString());
+          }
+          // The result aliases with multiple operands.
+          if (aliasing_part_to_count[index] > 1) {
+            return InvalidArgument(
+                "buffer is used in operands multiple times: %s",
+                index.ToString());
+          }
+          buffer_results.insert(index);
+        }
+        return absl::OkStatus();
+      });
+}
+
+// Verifies pin/unpin related custom-calls as well as general custom-calls that
+// may use buffers.
+//
+// For general custom-calls, before we reach here, we already verify that an
+// alias pair of operand and result should be both buffers or both non-buffers.
+// We further verify the following:
+// - An operand or result with a buffer type should be mentioned in one pair of
+//   output-to-operand-aliasing.
+// - An HLO buffer result can only be updated at most once.
+//
+absl::Status VerifyCustomCall(const HloCustomCallInstruction* inst) {
+  if (inst->IsCustomCall(kPinCustomCallTarget)) {
+    return VerifyPin(Cast<HloCustomCallInstruction>(inst));
+  }
+  if (inst->IsCustomCall(kCreateBufferCustomCallTarget)) {
+    return VerifyCreateBuffer(inst);
+  }
+  if (inst->IsCustomCall(kUnpinCustomCallTarget)) {
+    return VerifyUnpin(Cast<HloCustomCallInstruction>(inst));
+  }
+
+  TF_RETURN_IF_ERROR(VerifyBuffersInOperands(inst));
+  // Record the ShapeIndex for the buffers in the results.
+  absl::flat_hash_set<ShapeIndex> buffer_results;
+  TF_RETURN_IF_ERROR(VerifyBuffersInResults(inst, buffer_results));
+
+  // Ensure that an SSA buffer result can have at most one writer.
+  for (const auto& result_index : buffer_results) {
+    TF_RETURN_IF_ERROR(CheckBufferHasUniqueWriter(inst, result_index));
+  }
+
+  return absl::OkStatus();
+}
+
+absl::Status VerifyNoBuffersInContext(const HloInstruction* inst) {
+  TF_RETURN_IF_ERROR(VerifyNoBuffers(inst->shape(), inst));
+  for (auto* operand : inst->operands()) {
+    TF_RETURN_IF_ERROR(VerifyNoBuffers(operand->shape(), inst));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status VerifyBuffers(const HloModule& module) {
+  for (auto* comp : module.computations()) {
+    for (auto* inst : comp->instructions()) {
+      if (inst->opcode() == HloOpcode::kCustomCall) {
+        TF_RETURN_IF_ERROR(
+            VerifyCustomCall(Cast<HloCustomCallInstruction>(inst)));
+      } else if (inst->opcode() == HloOpcode::kWhile) {
+        TF_RETURN_IF_ERROR(CheckBufferHasUniqueWriters(inst));
+      } else if (inst->opcode() == HloOpcode::kParameter) {
+        if (comp->IsEntryComputation()) {
+          TF_RETURN_IF_ERROR(VerifyNoBuffersInContext(inst));
+        }
+        TF_RETURN_IF_ERROR(CheckBufferHasUniqueWriters(inst));
+      } else if (inst->opcode() != HloOpcode::kGetTupleElement &&
+                 inst->opcode() != HloOpcode::kTuple) {
+        TF_RETURN_IF_ERROR(VerifyNoBuffersInContext(inst));
+      }
+    }
+  }
+
+  return absl::OkStatus();
+}
 
 }  // namespace
 
@@ -3111,10 +3412,13 @@ absl::StatusOr<bool> HloVerifier::Run(
       // collection of send/recv instructions. This is needed to represent NCCL
       // groups on GPU.
       if (computation->IsAsyncComputation() &&
-          !computation->OnlyContainsSendRecv()) {
+          !computation->OnlyContainsSendRecv() &&
+          !IsCollectivesGroupComputation(computation)) {
         TF_RETURN_IF_ERROR(VerifyAsyncComputation(computation));
       }
     }
+
+    TF_RETURN_IF_ERROR(VerifyBuffers(*module));
 
     TF_RETURN_IF_ERROR(shape_verifier->VerifyEntryComputationLayout(*module));
 

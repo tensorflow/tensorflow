@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/scatter.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <memory>
 #include <numeric>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -45,10 +47,12 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/type_util.h"
-#include "xla/codegen/ir/xla_ops.h"
+#include "xla/codegen/emitters/utils.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -61,7 +65,6 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/scatter_simplifier.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -81,6 +84,7 @@ using emitters::PartitionedComputations;
 using emitters::ProvideParameter;
 using llvm::APFloat;
 using llvm::APInt;
+using llvm::ArrayRef;
 using llvm::SmallVector;
 using mlir::AffineExpr;
 using mlir::AffineMap;
@@ -171,7 +175,7 @@ Value UpdateIsInbounds(ImplicitLocOpBuilder& b, Value is_inbounds,
       .front();
 }
 
-SmallVector<Value> Pack(llvm::ArrayRef<ValueRange> ranges) {
+SmallVector<Value> Pack(ArrayRef<ValueRange> ranges) {
   int64_t total_size = 0;
   for (auto& range : ranges) {
     total_size += range.size();
@@ -184,8 +188,7 @@ SmallVector<Value> Pack(llvm::ArrayRef<ValueRange> ranges) {
   return result;
 }
 
-SmallVector<ValueRange> Unpack(ValueRange range,
-                               llvm::ArrayRef<int64_t> sizes) {
+SmallVector<ValueRange> Unpack(ValueRange range, ArrayRef<int64_t> sizes) {
   int64_t total_size = 0;
   for (auto& size : sizes) {
     total_size += size;
@@ -210,49 +213,6 @@ SmallVector<Value, 4> PadWithZeros(ValueRange values, int64_t size,
     padded_values.push_back(zero);
   }
   return padded_values;
-}
-
-// Creates a new indexing map that is the same as `map` but with the range
-// variable at `range_var_index` replaced with the new dimension variable at
-// `dimension_{dim_var_size)`. Potentially, it can be moved to indexing_map.h.
-IndexingMap ConvertRangeVariableToDimension(const IndexingMap& map,
-                                            int64_t range_var_index) {
-  auto* mlir_context = map.GetMLIRContext();
-
-  AffineMap affine_map = map.GetAffineMap();
-  // Update the affine map.
-  SmallVector<AffineExpr, 4> symbol_replacements;
-  symbol_replacements.reserve(affine_map.getNumSymbols());
-  for (int i = 0; i < affine_map.getNumSymbols(); ++i) {
-    if (i == range_var_index) {
-      symbol_replacements.push_back(
-          getAffineDimExpr(affine_map.getNumDims(), mlir_context));
-    } else {
-      symbol_replacements.push_back(
-          getAffineSymbolExpr(i > range_var_index ? i - 1 : i, mlir_context));
-    }
-  }
-
-  AffineMap converted_affine_map = affine_map.replaceDimsAndSymbols(
-      {}, symbol_replacements, affine_map.getNumDims() + 1,
-      affine_map.getNumSymbols() - 1);
-
-  // Update the constraints.
-  std::vector<std::pair<AffineExpr, Interval>> constraints;
-  constraints.reserve(map.GetConstraintsCount());
-  for (auto constraint : map.GetConstraints()) {
-    constraints.push_back({constraint.first.replaceSymbols(symbol_replacements),
-                           constraint.second});
-  }
-  // Update the variables.
-  std::vector<IndexingMap::Variable> dims = map.GetDimVars();
-  std::vector<IndexingMap::Variable> range_vars = map.GetRangeVars();
-  std::vector<IndexingMap::Variable> rt_vars = map.GetRTVars();
-
-  dims.push_back(range_vars[range_var_index]);
-  range_vars.erase(range_vars.begin() + range_var_index);
-  return IndexingMap{converted_affine_map, std::move(dims),
-                     std::move(range_vars), std::move(rt_vars), constraints};
 }
 
 }  // namespace
@@ -299,7 +259,8 @@ class EmitterHelper {
 
   Value WriteAccumulatorToOutput(ImplicitLocOpBuilder& b,
                                  Value write_to_output_required,
-                                 ValueRange thread_and_block_ids, Value iv,
+                                 ValueRange thread_and_block_ids,
+                                 Value index_id,
                                  const IndexingMap& slice_indexing,
                                  ValueRange offsets, Value accumulator,
                                  Value output_tensor) const;
@@ -370,10 +331,10 @@ SmallVector<Value> EmitterHelper::WriteAccumulatedElementToOutput(
 
 Value EmitterHelper::WriteAccumulatorToOutput(
     ImplicitLocOpBuilder& b, Value write_to_output_required,
-    ValueRange thread_and_block_ids, Value iv,
+    ValueRange thread_and_block_ids, Value index_id,
     const IndexingMap& slice_indexing, ValueRange offsets, Value accumulator,
     Value output_tensor) const {
-  SmallVector<Value> dims = Pack({thread_and_block_ids, iv});
+  SmallVector<Value> dims = Pack({thread_and_block_ids, index_id});
   return EmitUpdateIf(
              b, write_to_output_required, output_tensor,
              [&](ImplicitLocOpBuilder& if_builder) -> SmallVector<Value> {
@@ -525,42 +486,48 @@ void EmitNaiveImplementation(ImplicitLocOpBuilder& b,
       emitters::ApplyIndexing(thread_id_to_update_id_map, thread_and_block_ids,
                               {}, b)
           .front();
+  Value index_id_in_bounds = b.createOrFold<arith::CmpIOp>(
+      arith::CmpIPredicate::ult, thread_id_to_index_id_value,
+      b.create<arith::ConstantIndexOp>(description.num_slices));
+  auto result = EmitUpdateIf(
+      b, index_id_in_bounds, {output_tensor},
+      [&](ImplicitLocOpBuilder& outer_nested_b) -> SmallVector<Value> {
+        SmallVector<Value, 4> update_offsets =
+            helper.ExtractOffsets(outer_nested_b, thread_id_to_index_id_value);
 
-  SmallVector<Value, 4> update_offsets =
-      helper.ExtractOffsets(b, thread_id_to_index_id_value);
+        Value in_bounds =
+            EmitBoundsCheck(outer_nested_b, description.slice_shape,
+                            description.output_shape, update_offsets);
 
-  Value in_bounds = EmitBoundsCheck(b, description.slice_shape,
-                                    description.output_shape, update_offsets);
-
-  Value predicated_update =
-      EmitUpdateIf(
-          b, in_bounds, {output_tensor},
-          [&](ImplicitLocOpBuilder& nested_b) -> SmallVector<Value> {
-            return EmitXlaLoopOp(
-                nested_b, thread_and_block_ids, {output_tensor}, updates_map,
-                [&](ImplicitLocOpBuilder& update_loop_b,
-                    ValueRange symbol_values, ValueRange map_results,
-                    ValueRange output_tensors) -> SmallVector<Value> {
-                  // Extract update element.
-                  auto update_elem =
-                      helper.GetUpdateElement(update_loop_b, map_results);
-                  auto output_indices = std::move(update_offsets);
-                  int64_t output_rank = description.output_shape.size();
-                  output_indices =
-                      PadWithZeros(output_indices, output_rank, update_loop_b);
-                  for (int i = 0; i < output_indices.size(); ++i) {
-                    output_indices[i] = update_loop_b.create<arith::AddIOp>(
-                        map_results[i + 1], output_indices[i]);
-                  }
-                  Value output_tensor = output_tensors.front();
-                  Value updated_output = helper.EmitScatterComputation(
-                      update_loop_b, output_indices, update_elem,
-                      output_tensor);
-                  return {updated_output};
-                });
-          })
-          .front();
-  b.create<ReturnOp>(predicated_update);
+        ValueRange predicated_update = EmitUpdateIf(
+            outer_nested_b, in_bounds, {output_tensor},
+            [&](ImplicitLocOpBuilder& nested_b) -> SmallVector<Value> {
+              return EmitXlaLoopOp(
+                  nested_b, thread_and_block_ids, {output_tensor}, updates_map,
+                  [&](ImplicitLocOpBuilder& update_loop_b,
+                      ValueRange symbol_values, ValueRange map_results,
+                      ValueRange output_tensors) -> SmallVector<Value> {
+                    // Extract update element.
+                    auto update_elem =
+                        helper.GetUpdateElement(update_loop_b, map_results);
+                    auto output_indices = std::move(update_offsets);
+                    int64_t output_rank = description.output_shape.size();
+                    output_indices = PadWithZeros(output_indices, output_rank,
+                                                  update_loop_b);
+                    for (int i = 0; i < output_indices.size(); ++i) {
+                      output_indices[i] = update_loop_b.create<arith::AddIOp>(
+                          map_results[i + 1], output_indices[i]);
+                    }
+                    Value output_tensor = output_tensors.front();
+                    Value updated_output = helper.EmitScatterComputation(
+                        update_loop_b, output_indices, update_elem,
+                        output_tensor);
+                    return {updated_output};
+                  });
+            });
+        return predicated_update;
+      });
+  b.create<ReturnOp>(result.front());
 }
 
 absl::Status ScatterWithDistributedUpdates::EmitEntryFunctionImpl(
@@ -569,9 +536,9 @@ absl::Status ScatterWithDistributedUpdates::EmitEntryFunctionImpl(
     ValueRange thread_and_block_ids, Value output_tensor) const {
   if (VLOG_IS_ON(5)) {
     llvm::errs() << "Settings for ScatterWithDistributedUpdates: \n"
-                 << "vector_size_: " << vector_size_ << "\n"
-                 << "num_warps_: " << num_warps_ << "\n"
-                 << "num_blocks_: " << num_blocks_;
+                 << "vector_size: " << vector_size_ << "\n"
+                 << "num_warps: " << num_warps_ << "\n"
+                 << "num_blocks: " << num_blocks_ << "\n";
   }
   EmitNaiveImplementation(b, description_, helper, updates_map, indices_map,
                           thread_and_block_ids, output_tensor);
@@ -581,10 +548,11 @@ absl::Status ScatterWithDistributedUpdates::EmitEntryFunctionImpl(
 ScatterWithDistributedIndices::ScatterWithDistributedIndices(
     const HloFusionAnalysis& analysis, const ScatterDescription& description,
     int64_t vector_size, int64_t num_warps_per_slice,
-    int64_t num_indices_per_warp)
+    int64_t num_indices_per_warp, int64_t indices_vector_size)
     : ScatterFusion(analysis, description, vector_size),
       num_warps_per_slice_(num_warps_per_slice),
-      num_indices_per_warp_(num_indices_per_warp) {
+      num_indices_per_warp_(num_indices_per_warp),
+      indices_vector_size_(indices_vector_size) {
   num_warps_ = kNumWarpsPerBlock;
   num_blocks_ = CeilOfRatio(description.num_slices * num_warps_per_slice_,
                             num_indices_per_warp_ * num_warps_);
@@ -605,32 +573,40 @@ void ScatterWithDistributedIndices::ComputeIndexing(
       (block_x * num_warps_ + warp_id) % num_warps_per_slice_;
   auto lane_id = thread_x % warp_size_;
   auto index_id_loop = getAffineSymbolExpr(0, ctx);
+  auto index_vector_id = getAffineSymbolExpr(1, ctx);
 
-  auto index_id_expr = slice_id * num_indices_per_warp_ + index_id_loop;
-  std::pair<AffineExpr, Interval> index_id_constraint =
-      std::make_pair(index_id_expr, Interval{0, description_.num_slices - 1});
+  auto vectorized_index_id_expr = slice_id * num_indices_per_warp_ +
+                                  index_id_loop * indices_vector_size_ +
+                                  index_vector_id;
 
   auto grid_vars =
       DimVarsFromGPUGrid({num_warps_ * warp_size_, 1, 1, num_blocks_, 1, 1});
   if (indices_map) {
-    auto index_dim_loop = getAffineSymbolExpr(1, ctx);
+    auto index_dim_loop = getAffineSymbolExpr(2, ctx);
     *indices_map = IndexingMap{
-        AffineMap::get(6, 2, {index_id_expr, index_dim_loop}, ctx),
+        AffineMap::get(6, 3, {vectorized_index_id_expr, index_dim_loop}, ctx),
         grid_vars,
-        {IndexingMap::Variable{{0, num_indices_per_warp_ - 1}, "index_id_loop"},
+        {IndexingMap::Variable{
+             {0, num_indices_per_warp_ / indices_vector_size_ - 1},
+             "index_id_loop"},
+         IndexingMap::Variable{{0, indices_vector_size_ - 1},
+                               "index_vector_id"},
          IndexingMap::Variable{{0, description_.index_vector_length - 1},
                                "index_dim"}},
         /*rt_vars=*/{},
-        {index_id_constraint}};
+        {std::make_pair(vectorized_index_id_expr,
+                        Interval{0, description_.num_slices - 1})}};
 
     indices_map->Simplify();
   }
 
   if (updates_map) {
+    auto index_id = getAffineSymbolExpr(0, ctx);
     auto update_dim_loop = getAffineSymbolExpr(1, ctx);
     auto vector_id = getAffineSymbolExpr(2, ctx);
     auto num_elements_per_slice = Product(description_.slice_shape);
 
+    auto index_id_expr = slice_id * num_indices_per_warp_ + index_id;
     auto linear_slice_index =
         warp_id_in_slice * warp_size_ * vector_size_ +
         update_dim_loop * vector_size_ * warp_size_ * num_warps_per_slice_ +
@@ -652,29 +628,13 @@ void ScatterWithDistributedIndices::ComputeIndexing(
          IndexingMap::Variable{{0, vector_size_ - 1}, "vector_id"}},
         /*rt_vars=*/{},
         std::vector<std::pair<AffineExpr, Interval>>{
-            index_id_constraint,
+            std::make_pair(index_id_expr,
+                           Interval{0, description_.num_slices - 1}),
             std::make_pair(linear_slice_index,
                            Interval{0, num_elements_per_slice - 1})}};
 
     updates_map->Simplify();
   }
-}
-
-DenseElementsAttr GetShapedZeroConstantAttr(VectorType vector_type) {
-  auto elem_type = vector_type.getElementType();
-  if (auto float_type = mlir::dyn_cast<mlir::FloatType>(elem_type)) {
-    std::vector<llvm::APFloat> values(
-        vector_type.getNumElements(),
-        APFloat::getZero(float_type.getFloatSemantics()));
-    return DenseElementsAttr::get(vector_type, values);
-  }
-  if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(elem_type)) {
-    std::vector<llvm::APInt> values(
-        vector_type.getNumElements(),
-        APInt::getZero(int_type.getIntOrFloatBitWidth()));
-    return DenseElementsAttr::get(vector_type, values);
-  }
-  llvm_unreachable("Unsupported vector element type");
 }
 
 Value ScatterWithDistributedIndices::InitializeAccumulator(
@@ -686,7 +646,7 @@ Value ScatterWithDistributedIndices::InitializeAccumulator(
   auto accumulator_type =
       VectorType::get({update_iterations_per_thread, vector_size_}, elem_type);
   return b.create<arith::ConstantOp>(
-      accumulator_type, GetShapedZeroConstantAttr(accumulator_type));
+      accumulator_type, emitters::GetZeroDenseElementsAttr(accumulator_type));
 }
 
 absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
@@ -695,11 +655,12 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
     ValueRange thread_and_block_ids, Value output_tensor) const {
   if (VLOG_IS_ON(5)) {
     llvm::errs() << "Settings for ScatterWithDistributedIndices: \n"
-                 << "vector_size_: " << vector_size_ << "\n"
-                 << "num_warps_: " << num_warps_ << "\n"
-                 << "num_blocks_: " << num_blocks_
-                 << "num_warps_per_slice_: " << num_warps_per_slice_ << "\n"
-                 << "num_indices_per_warp_: " << num_indices_per_warp_;
+                 << "vector_size: " << vector_size_ << "\n"
+                 << "num_warps: " << num_warps_ << "\n"
+                 << "num_blocks: " << num_blocks_ << "\n"
+                 << "num_warps_per_slice: " << num_warps_per_slice_ << "\n"
+                 << "num_indices_per_warp: " << num_indices_per_warp_ << "\n"
+                 << "indices_vector_size: " << indices_vector_size_ << "\n";
   }
   if (num_indices_per_warp_ == 1) {
     EmitNaiveImplementation(b, description_, helper, updates_map, indices_map,
@@ -709,12 +670,17 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
   MLIRContext* mlir_context = b.getContext();
 
   auto thread_id_to_update_id_map = IndexingMap(
-      AffineMap::get(6, 1, {updates_map.GetAffineMap().getResult(0)},
+      AffineMap::get(6, 2, {indices_map.GetAffineMap().getResult(0)},
                      mlir_context),
-      updates_map.GetDimVars(),
-      /*range_vars = */ {updates_map.GetRangeVars().front()},
-      /*rt vars = */ {});
-  IndexingMap slice_indexing = ConvertRangeVariableToDimension(updates_map, 0);
+      indices_map.GetDimVars(),
+      /*range_vars = */
+      {indices_map.GetRangeVars().begin(),
+       indices_map.GetRangeVars().begin() + 2},
+      /*rt vars = */ {}, indices_map.GetConstraints());
+
+  // Convert index_id_loop and index_vector_id to dimension variables.
+  IndexingMap slice_indexing =
+      ConvertRangeVariablesToDimensions(updates_map, {0});
 
   // Prepare loop initial values. Inits are packed as
   // [index_changed, is_inbounds, index_0,  ..., accumulator].
@@ -740,7 +706,14 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
     Value iter_is_inbounds = iter_args_unpack[2].front();
     Value iter_acc = iter_args_unpack[3].front();
     Value iter_output = iter_args_unpack[4].front();
-    Value iter_slice_id = ivs.front();
+    CHECK_EQ(ivs.size(), 2);
+    Value index_loop_id = ivs.front();
+    Value index_vector_id = ivs.back();
+    Value iter_slice_id = nested_b.create<arith::AddIOp>(
+        nested_b.create<arith::MulIOp>(
+            index_loop_id,
+            nested_b.create<arith::ConstantIndexOp>(indices_vector_size_)),
+        index_vector_id);
 
     SmallVector<Value> offsets =
         PadWithZeros(trimmed_offsets, output_rank, nested_b);
@@ -921,37 +894,44 @@ std::unique_ptr<ScatterFusion> CreateScatterFusion(
   int64_t max_vectorized_elements = kMaxVectorizedBits / elem_type_bits;
   int64_t vector_size = GetSingleSliceVectorSize(
       num_elements_per_slice, max_vectorized_elements, warp_size);
-  int64_t num_active_threads_per_warp =
-      std::min(warp_size, num_elements_per_slice / vector_size);
-
   int64_t max_active_warps =
       kNumWarpsPerBlock * analysis.device_info().core_count();
-  // For sorted scatter, we try to estimate the number of updates per warp by
-  // computing the ratio of the number of the given updates to the number of the
-  // possible valid indices. If we do not have multiple updates per warp, there
-  // is no reason to use this algorithm.
-  // TODO(b/385081952): Investigate why bf16 and f64 leads to incorrect results.
+
+  // If indices are sorted and not unique, we can use the distributed indices
+  // implementation to accumulate the updates before writing them to the output
+  // tensor.
   if (description.scatter->indices_are_sorted() &&
-      description.elem_type != BF16 && num_slices > 2 * max_active_warps) {
-    int64_t num_indices_per_warp = CeilOfRatio(
-        num_slices, GetNumPossibleValidIndices(
-                        description.slice_shape, description.output_shape,
-                        description.index_vector_length));
+      !description.scatter->unique_indices() && num_slices > max_active_warps) {
+    int64_t num_indices_per_warp = 1;
+    int64_t indices_vector_size = 1;
     int64_t num_warps_per_slice = 1;
-    if (num_indices_per_warp > 2 &&
-        num_active_threads_per_warp > warp_size / 2) {
-      return std::make_unique<ScatterWithDistributedIndices>(
-          analysis, description, vector_size, num_warps_per_slice,
-          num_indices_per_warp);
+    // We try to estimate the number of updates per warp by computing the ratio
+    // of the number of the given updates to the number of the possible valid
+    // indices. If we do not have multiple updates per warp, there is no reason
+    // to use this algorithm.
+    num_indices_per_warp = CeilOfRatio(
+        num_slices,
+        std::max(max_active_warps,
+                 GetNumPossibleValidIndices(description.slice_shape,
+                                            description.output_shape,
+                                            description.index_vector_length)));
+
+    // If the index_vector_length is 1, we can vectorize the indices read.
+    int64_t index_elem_type_bits = primitive_util::BitWidth(
+        description.scatter->scatter_indices()->shape().element_type());
+    int64_t max_vectorized_indices = kMaxVectorizedBits / index_elem_type_bits;
+    if (description.index_vector_length == 1 &&
+        num_indices_per_warp > max_vectorized_indices) {
+      // Pad num_indices_per_warp to the next multiple of
+      // max_vectorized_indices.
+      num_indices_per_warp =
+          CeilOfRatio(num_indices_per_warp, max_vectorized_indices) *
+          max_vectorized_indices;
+      indices_vector_size = max_vectorized_indices;
     }
-  }
-  // If we have enough data, we assign each warp to process a single
-  // slice.
-  if (num_slices > max_active_warps &&
-      num_active_threads_per_warp > warp_size / 2) {
     return std::make_unique<ScatterWithDistributedIndices>(
-        analysis, description, vector_size,
-        /*num_warps_per_slice=*/1, /*num_indices_per_warp=*/1);
+        analysis, description, vector_size, num_warps_per_slice,
+        num_indices_per_warp, indices_vector_size);
   }
   // Otherwise, we distribute the linearized updates tensor.
   vector_size =

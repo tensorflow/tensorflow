@@ -27,6 +27,7 @@ limitations under the License.
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server_builder.h"
 #include "absl/strings/numbers.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -279,11 +280,13 @@ absl::Status GrpcServer::Init(const GrpcServerOptions& opts) {
                                          opts.worker_service_options)
                         .release();
   eager_service_ = new eager::GrpcEagerServiceImpl(&worker_env_, &builder);
-  thread::ThreadPool* compute_pool = ComputePool(sess_opts);
-  coordination_service_ =
-      new GrpcCoordinationServiceImpl(compute_pool, &builder);
+  coordination_compute_pool_ = std::make_unique<tsl::thread::ThreadPool>(
+      env_, "CoordinationServiceRpcHandler",
+      /*num_threads=*/4);
+  coordination_service_ = new GrpcCoordinationServiceImpl(
+      coordination_compute_pool_.get(), &builder);
 
-  profiler_service_ = profiler::CreateProfilerService();
+  profiler_service_ = tsl::profiler::CreateProfilerService();
   builder.RegisterService(profiler_service_.get());
 
   // Add any extra services to be started.
@@ -331,7 +334,7 @@ absl::Status GrpcServer::Init(const GrpcServerOptions& opts) {
         return WorkerCacheFactory(options, worker_cache);
       },
       grpc_coordination_service->GetRpcHandler());
-  worker_env_.compute_pool = compute_pool;
+  worker_env_.compute_pool = ComputePool(sess_opts);
 
   // Finish setting up master environment.
   master_env_.ops = OpRegistry::Global();
@@ -522,7 +525,7 @@ absl::Status GrpcServer::SetCoordinationServiceAgentInstance(
 }
 
 absl::Status GrpcServer::SetCoordinationServiceInstance(
-    tsl::CoordinationServiceInterface* service) {
+    tsl::CoordinationService* service) {
   auto* coord_service =
       static_cast<GrpcCoordinationServiceImpl*>(coordination_service_);
   coord_service->SetCoordinationServiceInstance(service);

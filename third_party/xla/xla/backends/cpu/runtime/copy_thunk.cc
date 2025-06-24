@@ -30,6 +30,8 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -42,10 +44,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
 
@@ -134,7 +134,6 @@ CopyThunk::ParallelBlockParams CopyThunk::ComputeParallelBlockParams(
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> CopyThunk::Execute(
     const ExecuteParams& params) {
-  tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
 
   const BufferAllocations* allocations = params.buffer_allocations;
 

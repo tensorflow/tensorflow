@@ -1,0 +1,20 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN:   FileCheck %s --dump-input=fail
+// RUN: test_correctness %s
+
+ fusion {
+   p0 = f16[512,3072]{0,1} parameter(0)
+   bitcast1 = f16[3072,512] bitcast(p0)
+   slice1 = f16[1024,512] slice(bitcast1), slice={[2048:3072], [0:512]}
+   bitcast2 = f16[16,64,512] bitcast(slice1)
+   transpose1 = f16[16,512,64] transpose(bitcast2), dimensions={0,2,1}
+   slice2 = f16[1024,512] slice(bitcast1), slice={[0:1024], [0:512]}
+   slice3 = f16[1024,512] slice(bitcast1), slice={[1024:2048], [0:512]}
+   bitcast3 = f16[16,64,512] bitcast(slice3)
+   transpose2 = f16[16,512,64] transpose(bitcast3), dimensions={0,2,1}
+   bitcast4 = f16[16,64,512] bitcast(slice2)
+   transpose3 = f16[16,512,64] transpose(bitcast4), dimensions={0,2,1}
+   ROOT tuple = (f16[16,512,64], f16[1024,512], f16[16,512,64], f16[16,512,64])
+     tuple(transpose1, slice2, transpose2, transpose3)
+ }
+// CHECK-COUNT-2:  xla_gpu.allocate_shared : tensor<64x64xf16>

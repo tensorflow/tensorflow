@@ -13,7 +13,6 @@ py_strict_library(
     srcs = [
         "free_vars_detect.py",
     ],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:inspect_utils",
@@ -28,7 +27,6 @@ py_strict_library(
 py_strict_test(
     name = "free_vars_detect_test",
     srcs = ["free_vars_detect_test.py"],
-    python_version = "PY3",
     tags = [
         "no_oss",  # TODO(b/247102978)
     ],
@@ -44,7 +42,6 @@ py_strict_test(
 py_strict_test(
     name = "by_ref_capture_test",
     srcs = ["by_ref_capture_test.py"],
-    python_version = "PY3",
     deps = [
         "@absl_py//absl/testing:parameterized",
         #internal proto upb dep
@@ -62,7 +59,6 @@ pytype_strict_library(
     srcs = [
         "capture_container.py",
     ],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tfe",
@@ -75,7 +71,6 @@ pytype_strict_library(
 py_strict_test(
     name = "capture_container_test",
     srcs = ["capture_container_test.py"],
-    python_version = "PY3",
     deps = [
         ":capture_container",
         "@absl_py//absl/testing:parameterized",
@@ -88,7 +83,6 @@ py_strict_test(
 py_strict_library(
     name = "restore_captures",
     srcs = ["restore_captures.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core/function/polymorphism:function_type",

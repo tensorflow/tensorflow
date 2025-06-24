@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/Inliner.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tfr/ir/tfr_ops.h"
@@ -142,8 +143,9 @@ LogicalResult SimplifySCFIfOp::InlineRegion(Location loc,
                                             Operation *inline_point,
                                             Region *region) const {
   InlinerInterface interface(loc.getContext());
-  if (failed(inlineRegion(interface, region, inline_point, {},
-                          inline_point->getResults(), loc,
+  InlinerConfig config;
+  if (failed(inlineRegion(interface, config.getCloneCallback(), region,
+                          inline_point, {}, inline_point->getResults(), loc,
                           /*shouldCloneInlinedRegion=*/true))) {
     return failure();
   }

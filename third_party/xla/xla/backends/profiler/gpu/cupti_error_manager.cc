@@ -18,12 +18,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/debugging/leak_check.h"
+#include "absl/synchronization/mutex.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
 namespace profiler {
-
-using tsl::mutex_lock;
 
 CuptiErrorManager::CuptiErrorManager(std::unique_ptr<CuptiInterface> interface)
     : interface_(std::move(interface)), disabled_(0), undo_disabled_(false) {}
@@ -51,7 +50,7 @@ CuptiErrorManager::CuptiErrorManager(std::unique_ptr<CuptiInterface> interface)
 
 void CuptiErrorManager::RegisterUndoFunction(
     const CuptiErrorManager::UndoFunction& func) {
-  mutex_lock lock(undo_stack_mu_);
+  absl::MutexLock lock(&undo_stack_mu_);
   undo_stack_.push_back(func);
 }
 
@@ -227,7 +226,7 @@ void CuptiErrorManager::UndoAndDisable() {
     return;
   }
   // Iterates undo log and call undo APIs one by one.
-  mutex_lock lock(undo_stack_mu_);
+  absl::MutexLock lock(&undo_stack_mu_);
   undo_disabled_ = true;
   while (!undo_stack_.empty()) {
     LOG(ERROR) << "CuptiErrorManager is disabling profiling automatically.";
@@ -271,6 +270,14 @@ CUptiResult CuptiErrorManager::GetGraphId(CUgraph graph, uint32_t* graph_id) {
   return error;
 }
 
+CUptiResult CuptiErrorManager::GetGraphNodeId(CUgraphNode node,
+                                              uint64_t* nodeId) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->GetGraphNodeId(node, nodeId);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
 CUptiResult CuptiErrorManager::GetGraphExecId(CUgraphExec graph_exec,
                                               uint32_t* graph_id) {
   IGNORE_CALL_IF_DISABLED;
@@ -291,7 +298,7 @@ void CuptiErrorManager::CleanUp() {
   if (undo_disabled_) {  // prevent deadlock
     return;
   }
-  mutex_lock lock(undo_stack_mu_);
+  absl::MutexLock lock(&undo_stack_mu_);
   undo_disabled_ = true;
   while (!undo_stack_.empty()) {
     undo_stack_.pop_back();

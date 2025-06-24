@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/refcount.h"
 #include "tsl/profiler/lib/traceme.h"
 

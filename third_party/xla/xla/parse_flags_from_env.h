@@ -62,7 +62,8 @@ namespace xla {
 // Raises a fatal error if any flags in `envvar` were not recognized, or if flag
 // parsing failed.
 void ParseFlagsFromEnvAndDieIfUnknown(absl::string_view envvar,
-                                      const std::vector<tsl::Flag>& flag_list);
+                                      const std::vector<tsl::Flag>& flag_list,
+                                      bool reset_envvar = false);
 
 // Calls tsl::Flags::Parse(argc, argv, flag_list) against any as yet
 // unrecognized flags passed in the environment variable `envvar`, and returns
@@ -70,7 +71,8 @@ void ParseFlagsFromEnvAndDieIfUnknown(absl::string_view envvar,
 //
 // Ignores unknown flags, raises a fatal if flag parsing failed.
 void ParseFlagsFromEnvAndIgnoreUnknown(absl::string_view envvar,
-                                       const std::vector<tsl::Flag>& flag_list);
+                                       const std::vector<tsl::Flag>& flag_list,
+                                       bool reset_envvar = false);
 
 // Used only for testing.  Not to be used by clients.
 void ResetFlagsFromEnvForTesting(absl::string_view envvar, int** pargc,

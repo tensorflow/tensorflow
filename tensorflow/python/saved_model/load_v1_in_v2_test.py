@@ -17,6 +17,8 @@
 import os
 import shutil
 
+from absl.testing import parameterized
+
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
@@ -55,7 +57,7 @@ from tensorflow.python.saved_model import utils_impl
 from tensorflow.python.training import saver
 
 
-class LoadTest(test.TestCase):
+class LoadTest(test.TestCase, parameterized.TestCase):
 
   def _v1_single_metagraph_saved_model(self, use_resource):
     export_graph = ops.Graph()
@@ -105,13 +107,13 @@ class LoadTest(test.TestCase):
     concrete_fn = imported.signatures["serving_default"]
 
     summary = (
-        "(*, start: TensorSpec(shape=<unknown>, dtype=tf.float32,"
+        "(start: TensorSpec(shape=<unknown>, dtype=tf.float32,"
         " name='start')) -> Dict[['output', TensorSpec(shape=<unknown>,"
         " dtype=tf.float32, name=None)]]"
     )
     details = (
         r"Input Parameters:\n"
-        r"  start \(KEYWORD_ONLY\): TensorSpec\(shape=<unknown>,"
+        r"  start \(POSITIONAL_OR_KEYWORD\): TensorSpec\(shape=<unknown>,"
         r" dtype=tf\.float32, name='start'\)\n"
         r"Output Type:\n"
         r"  Dict\[\['output', TensorSpec\(shape=<unknown>,"
@@ -666,8 +668,6 @@ class LoadTest(test.TestCase):
     return path
 
   def test_load_sparse_inputs(self):
-    # TODO(b/372535913): Figure out why this test fails.
-    self.skipTest("b/372535913")
     path = self._model_with_sparse_input()
     imported = load.load(path)
     imported_fn = imported.signatures["serving_default"]
@@ -786,6 +786,105 @@ class LoadTest(test.TestCase):
     self.assertAllEqual(
         kwargs, {"start": tensor_spec.TensorSpec(shape=None, name="start")}
     )
+
+  def _model_with_multiple_inputs(self, input_names, compute_fn, var_value):
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      inputs = tuple(
+          array_ops.placeholder(shape=(), dtype=dtypes.float32, name=name)
+          for name in input_names
+      )
+      v = resource_variable_ops.ResourceVariable(var_value)
+      output = array_ops.identity(compute_fn(inputs, v), name="output")
+      with session_lib.Session() as session:
+        session.run(v.initializer)
+        path = os.path.join(
+            self.get_temp_dir(), "tf1_saved_model", str(ops.uid())
+        )
+        builder = builder_impl.SavedModelBuilder(path)
+        feeds = {
+            name: utils_impl.build_tensor_info(input)
+            for name, input in zip(input_names, inputs)
+        }
+        builder.add_meta_graph_and_variables(
+            session,
+            tags=[tag_constants.SERVING],
+            signature_def_map={
+                "serving_default": signature_def_utils.build_signature_def(
+                    feeds,
+                    {"output": utils_impl.build_tensor_info(output)},
+                )
+            },
+        )
+        builder.save()
+    return path
+
+  @parameterized.named_parameters(
+      (f"_{input_names_idx}_{reverse}", input_names, reverse)  # pylint: disable=g-complex-comprehension
+      for reverse in (False, True)
+      for input_names_idx, input_names in enumerate((
+          ("input1", "input2"),
+          ("input1", "input./-"),
+      ))
+  )
+  def test_multiple_inputs(self, input_names, reverse):
+    if reverse:
+      input_names = tuple(reversed(input_names))
+
+    def compute_fn(ls, a):
+      result = a
+      for x in ls:
+        result = (result + x) * a
+      return result
+
+    var_value = 21.0
+    path = self._model_with_multiple_inputs(
+        input_names, compute_fn=compute_fn, var_value=21.0
+    )
+    imported = load.load(path)
+    sorted_with_idx = sorted(
+        zip(range(len(input_names)), input_names), key=lambda x: x[1]
+    )
+    fn = imported.signatures["serving_default"]
+    for i, (_, input_name) in enumerate(sorted_with_idx):
+      self.assertEqual(fn.inputs[i].name, f"{input_name}:0")
+    inputs = tuple(i + 2.0 for i in range(len(input_names)))
+    expected_output = compute_fn(inputs, var_value)
+    # Call `fn`` with keyword arguments
+    self.assertEqual(
+        self.evaluate(
+            fn(**{
+                name: constant_op.constant(v)
+                for name, v in zip(input_names, inputs)
+            })["output"]
+        ),
+        expected_output,
+    )
+    # Call `fn`` with positional arguments
+    self.assertEqual(
+        self.evaluate(fn(*(inputs[i] for i, _ in sorted_with_idx))["output"]),
+        expected_output,
+    )
+
+    # Test saving the model again in TF2
+    path2 = os.path.join(self.get_temp_dir(), "tf2_saved_model", str(ops.uid()))
+    save.save(imported, path2, imported.signatures)
+
+    imported2 = load.load(path2)
+    fn = imported2.signatures["serving_default"]
+    # Call `fn`` with keyword arguments
+    self.assertEqual(
+        self.evaluate(
+            fn(**{
+                name: constant_op.constant(v)
+                for name, v in zip(input_names, inputs)
+            })["output"]
+        ),
+        expected_output,
+    )
+    # `fn` can no longer be called with positional arguments, because
+    # during TF2 saving, those positional-keyword-hybrid arguments are
+    # converted to keyword-only arguments.
 
   def _v1_multi_input_saved_model(self):
     export_graph = ops.Graph()

@@ -24,10 +24,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -43,6 +45,10 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+// The maximum number of times to run the algebraic simplifier to reach a fixed
+// point.
+static constexpr int64_t kAlgSimpRerunLimit = 50;
 
 class AlgebraicSimplifierOptions {
  public:
@@ -207,8 +213,7 @@ class AlgebraicSimplifierOptions {
     return enable_scalar_multiply_reduction_;
   }
 
-  // Also the algebraic simplifer to treat floating point values like real
-  // numbers.
+  // Set the algebraic simplifier to treat floats as real numbers.
   void set_enable_floats_are_real(bool enable_floats_are_real) {
     enable_floats_are_real_ = enable_floats_are_real;
   }
@@ -332,6 +337,24 @@ class AlgebraicSimplifierOptions {
     return enable_remove_no_op_reduce_precision_;
   }
 
+  bool enable_onednn_support() const { return enable_onednn_support_; }
+
+  void set_enable_onednn_support(bool enable_onednn_support) {
+    enable_onednn_support_ = enable_onednn_support;
+  }
+
+  bool rewrite_reshape_transpose_as_slice_concatenate() const {
+    return rewrite_reshape_transpose_as_slice_concatenate_;
+  }
+
+  void set_rewrite_reshape_transpose_as_slice_concatenate(bool value) {
+    rewrite_reshape_transpose_as_slice_concatenate_ = value;
+  }
+
+  bool run_to_fixed_point() const { return run_to_fixed_point_; }
+
+  void set_run_to_fixed_point(bool value) { run_to_fixed_point_ = value; }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplifierOptions that can be later used in an
@@ -375,6 +398,9 @@ class AlgebraicSimplifierOptions {
   bool enable_fast_math_{false};
   bool enable_broadcast_degenerate_dimension_{true};
   bool enable_remove_no_op_reduce_precision_{false};
+  bool enable_onednn_support_{false};
+  bool rewrite_reshape_transpose_as_slice_concatenate_{true};
+  bool run_to_fixed_point_{true};
   Metadata metadata_;
 };
 
@@ -570,7 +596,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
  private:
   // Returns whether the dot precision config is supported by simplifier.
-  virtual bool SupportedDotPrecisionConfig(const PrecisionConfig& config);
+  virtual bool SupportedDotPrecisionConfig(const PrecisionConfig& config,
+                                           bool has_contracting_dim);
 
   // Makes algorithm specific set of instructions for multiply with precision
   // algorithm in mind. In the trivial case it returns just multiply.
@@ -684,9 +711,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Same as above but takes shape arguments directly.
   bool SameShape(const Shape& lhs, const Shape& rhs) const;
 
-  // A Broadcast that feeds an element-wise operation with a unique non-scalar
-  // operand can sink to after the operation.
-  absl::StatusOr<bool> TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
+  // Attempts to sink broadcasts to after element-wise operations if all
+  // operands of that element-wise operation are compatible broadcasts. Returns
+  // whether a change was made.
+  absl::StatusOr<bool> TryToSinkBroadcastAfterElementwiseOps(
       HloInstruction* broadcast);
 
   absl::StatusOr<HloInstruction*> OptimizeDotOfConcat(HloInstruction* dot);
@@ -733,7 +761,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   // Checks if the given convolution is in BF16 and is oneDNN rewritable, if not
   // then it promotes the data type of the convolution to F32
-  absl::StatusOr<bool> IsOneDnnRewritableBF16Conv(HloInstruction** convolution);
+  absl::StatusOr<bool> PromoteConvolutionToF32IfNotOnednnCompatible(
+      HloInstruction** convolution);
 
   // Tries to use a kDot in place of the given convolution.
   absl::StatusOr<bool> SimplifyConvToDot(HloInstruction* convolution);
@@ -763,7 +792,7 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   absl::StatusOr<bool> TrySimplifyTautologicalCompare(
       HloInstruction* conjunction);
 
-  // Tries to simlplify (bitcast-convert (concat (bitcast-convert A) ...)) where
+  // Tries to simplify (bitcast-convert (concat (bitcast-convert A) ...)) where
   // the types of inner and outer bitcast-convert cancel out.
   absl::StatusOr<bool> TrySimplifyTautologicalBitcastConvert(
       HloInstruction* bitcast);
@@ -781,6 +810,39 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   // Useful when we want to use the same visitor over multiple computations.
   void ResetState(HloComputation* computation);
+
+  // For cases where the stride won't end up being used, we update the limit
+  // and reset the stride to 1. Returns true if the stride is redundant (and the
+  // slice instruction is replaced).
+  // - For example in slices=([0:X:X]), where X == dimension
+  absl::StatusOr<bool> RemoveRedundantStride(
+      HloInstruction* absl_nonnull slice);
+
+  // Helper function for HandleReduce. Replaces a reduce with a broadcast of the
+  // init values if the reduce is operating on a zero-element array or the
+  // result of the reduce is a zero-element array.
+  absl::Status BroadcastReduce(const Shape& reduce_result_shape,
+                               bool multi_output_reduce,
+                               HloReduceInstruction* reduce);
+
+  // Helper function for HandleReduce. Converts a (both single and multi output)
+  // reduce to a reshape.
+  absl::Status ReplaceReduceWithReshape(const Shape& reduce_result_shape,
+                                        bool multi_output_reduce,
+                                        HloReduceInstruction* reduce);
+
+  // Helper function for HandleReduce. Reorders reduce dot
+  // to a dot reduce. reduce(dot(A, B)) to dot(A, reduce(B))
+  std::optional<absl::Status> ReorderReduceDotToDotReduce(
+      HloInstruction* arg, HloInstruction* init_value, HloComputation* function,
+      HloReduceInstruction* reduce);
+
+  // Helper function for HandleReduce. Merge two reduces with same computation
+  // and initial value into a single reduce.
+  absl::Status MergeReduces(const Shape& reduce_result_shape,
+                            HloInstruction* init_value,
+                            HloComputation* function, HloInstruction* arg,
+                            HloReduceInstruction* reduce);
 
   // Current HloComputation instance the AlgebraicSimplifierVisitor is
   // traversing.

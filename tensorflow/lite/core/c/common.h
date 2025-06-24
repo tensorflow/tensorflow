@@ -322,12 +322,18 @@ typedef struct TfLiteBFloat16 {
 const char* TfLiteTypeGetName(TfLiteType type);
 
 /// SupportedQuantizationTypes.
+#ifdef __cplusplus
 typedef enum TfLiteQuantizationType : int {
+#else
+typedef enum TfLiteQuantizationType {
+#endif
   /// No quantization.
   kTfLiteNoQuantization = 0,
   /// Affine quantization (with support for per-channel quantization).
   /// Corresponds to TfLiteAffineQuantization.
   kTfLiteAffineQuantization = 1,
+  /// Blockwise quantization.
+  kTfLiteBlockwiseQuantization = 2,
 } TfLiteQuantizationType;
 
 /// Structure specifying the quantization used by the tensor, if-any.
@@ -352,6 +358,20 @@ typedef struct TfLiteAffineQuantization {
   TfLiteIntArray* zero_point;
   int32_t quantized_dimension;
 } TfLiteAffineQuantization;
+
+/// Parameters for blockwise quantization across the output channels dimension.
+/// For a particular value in quantized_dimension, quantized values can be
+/// converted back to float using:
+///     `real_value = scale * (quantized_value - zero_point)`
+typedef struct TfLiteBlockwiseQuantization {
+  // Index of the tensor containing the scales.
+  int32_t scale;
+  // Index of the tensor containing the zero points.
+  int32_t zero_point;
+  // Quantization blocksize.
+  int32_t blocksize;
+  int32_t quantized_dimension;
+} TfLiteBlockwiseQuantization;
 
 /// A union of pointers that points to memory for a given tensor.
 ///
@@ -396,6 +416,9 @@ typedef union TfLitePtrUnion {
 ///  * `kTfLiteVariantObject`: Allocation is an arbitrary type-erased C++
 ///  object.
 ///        Allocation and deallocation are done through `new` and `delete`.
+///  * `kTfLiteNonCpu`: Tensor buffer is in non-CPU memory, such as AHWB, GPU
+///        memory. This tensor is not accessed by the CPU.
+///        This is only used by LiteRt API.
 typedef enum TfLiteAllocationType {
   kTfLiteMemNone = 0,
   kTfLiteMmapRo,
@@ -405,6 +428,7 @@ typedef enum TfLiteAllocationType {
   kTfLitePersistentRo,
   kTfLiteCustom,
   kTfLiteVariantObject,
+  kTfLiteNonCpu,
 } TfLiteAllocationType;
 
 /// Memory allocation strategies.
@@ -553,8 +577,10 @@ typedef struct TfLiteTensor {
   /// only populated when unknown dimensions exist in a read-write tensor (i.e.
   /// an input or output tensor). (e.g.  `dims` contains [1, 1, 1, 3] and
   /// `dims_signature` contains [1, -1, -1, 3]).  If no unknown dimensions exist
-  /// then `dims_signature` is either null, or set to an empty array.  Note that
-  /// this field only exists when TF_LITE_STATIC_MEMORY is not defined.
+  /// then `dims_signature` is either null, or set to an empty array.  Use
+  /// `TfLiteTensorGetDimsSignature` to get `dims_signature` if non-empty or
+  /// otherwise fallback to `dims`.  Note that this field only exists when
+  /// TF_LITE_STATIC_MEMORY is not defined.
   const TfLiteIntArray* dims_signature;
 } TfLiteTensor;
 
@@ -734,6 +760,9 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
 /// quantization, sparsity, ...
 TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst);
 
+/// Returns a tensor holding a deep copy of src.
+TfLiteTensor TfLiteTensorClone(TfLiteTensor src);
+
 /// Change the size of the memory block owned by `tensor` to `num_bytes`.
 /// Tensors with allocation types other than `kTfLiteDynamic` will be ignored
 /// and a `kTfLiteOk` will be returned. `tensor`'s internal data buffer will be
@@ -753,6 +782,12 @@ TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
 /// start of the region up to the minimum of the old and new sizes. In the case
 /// of NULL tensor, or an error allocating new memory, returns `kTfLiteError`.
 TfLiteStatus TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
+
+/// Returns the shape of the tensor, with -1 for any unknown dimension sizes.
+/// If any dimension is unknown, this is the same as `t->dims_signature`.
+/// If all dimensions are known, this is the same as `t->dims`.
+/// (`dims_signature` is NULL or empty if all dimensions are known.)
+const TfLiteIntArray* TfLiteTensorGetDimsSignature(const TfLiteTensor* t);
 #endif  // TF_LITE_STATIC_MEMORY
 
 /// WARNING: This is an experimental interface that is subject to change.

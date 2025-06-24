@@ -127,15 +127,19 @@ mlir::LogicalResult PrependDeviceIdToCallsites(mlir::OpBuilder* builder,
           llvm::dyn_cast<mlir::TF::StatefulPartitionedCallOp>(op)) {
     new_call = builder->create<mlir::TF::StatefulPartitionedCallOp>(
         op->getLoc(), op->getResultTypes(), new_operands,
-        stateful_partitioned_call.getF(), stateful_partitioned_call.getConfig(),
+        /*args_attrs=*/nullptr,
+        /*res_attrs=*/nullptr, stateful_partitioned_call.getF(),
+        stateful_partitioned_call.getConfig(),
         stateful_partitioned_call.getConfigProto(),
         stateful_partitioned_call.getExecutorType());
   } else {
     auto partitioned_call = llvm::cast<mlir::TF::PartitionedCallOp>(op);
     new_call = builder->create<mlir::TF::PartitionedCallOp>(
         op->getLoc(), op->getResultTypes(), new_operands,
-        partitioned_call.getF(), partitioned_call.getConfig(),
-        partitioned_call.getConfigProto(), partitioned_call.getExecutorType());
+        /*args_attrs=*/nullptr,
+        /*res_attrs=*/nullptr, partitioned_call.getF(),
+        partitioned_call.getConfig(), partitioned_call.getConfigProto(),
+        partitioned_call.getExecutorType());
   }
 
   for (auto results : llvm::zip(op->getResults(), new_call->getResults()))

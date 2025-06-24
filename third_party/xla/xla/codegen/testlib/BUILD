@@ -1,5 +1,5 @@
-load("//xla:pytype.default.bzl", "pytype_strict_library")
-load("//xla:strict.default.bzl", "py_strict_test")
+load("//xla:py_strict.bzl", "py_strict_test")
+load("//xla:pytype.bzl", "pytype_strict_library")
 load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -26,6 +26,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",
@@ -47,16 +48,27 @@ tsl_pybind_extension(
         "@nanobind",
         "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla:comparison_util",
+        "//xla:debug_options_flags",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_emitter",
+        "//xla/codegen:kernel_source",
         "//xla/codegen:kernel_spec",
+        "//xla/codegen:llvm_ir_kernel_source",
+        "//xla/codegen:llvm_kernel_definition",
+        "//xla/codegen:llvm_kernel_emitter",
+        "//xla/codegen:mlir_kernel_definition",
+        "//xla/codegen:mlir_kernel_emitter",
+        "//xla/codegen:mlir_kernel_source",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/python:nb_absl_inlined_vector",
         "//xla/python:nb_absl_span",
         "//xla/service:buffer_assignment",
+        "//xla/service:hlo_module_config",
     ],
 )
 
@@ -67,12 +79,11 @@ pytype_strict_library(
         "__init__.py",
         "utilities.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":_extension",
         "//third_party/py/numpy",
         "//xla/python:xla_extension",
-        "@ml_dtypes",  # buildcleaner: keep (transitively depend on it via xla_extension)
+        "@ml_dtypes_py//ml_dtypes",  # buildcleaner: keep (transitively depend on it via xla_extension)
     ],
 )
 
@@ -80,15 +91,14 @@ py_strict_test(
     name = "kernel_runner_test_py",
     srcs = ["kernel_runner_test.py"],
     main = "kernel_runner_test.py",
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "no_oss",
     ],
     deps = [
-        ":_extension",
+        ":_extension",  # buildcleaner: keep
         ":testlib",
         "//third_party/py/numpy",
+        "//xla/python:xla_extension",
         "@absl_py//absl/testing:absltest",
     ],
 )

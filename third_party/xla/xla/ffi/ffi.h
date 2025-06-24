@@ -28,7 +28,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 
 // IWYU pragma: begin_exports
 #include "xla/ffi/api/api.h"
@@ -62,12 +61,14 @@ limitations under the License.
 namespace xla::ffi {
 
 // Type tags to bind parameters passed via execution context to FFI handler.
-struct Stream {};             // binds `se::Stream*`
-struct DeviceOrdinal {};      // binds `int32_t` with device ordinal
-struct Allocator {};          // binds `se::DeviceMemoryAllocator*`
-struct ScratchAllocator {};   // binds `se::OwningScratchAllocator`
-struct CalledComputation {};  // binds `HloComputation*`
-struct IntraOpThreadPool {};  // binds `const Eigen::ThreadPoolDevice*`
+struct Stream {};               // binds `se::Stream*`
+struct DeviceOrdinal {};        // binds `int32_t` with device ordinal
+struct Allocator {};            // binds `se::DeviceMemoryAllocator*`
+struct ScratchAllocator {};     // binds `se::OwningScratchAllocator`
+struct CalledComputation {};    // binds `HloComputation*`
+struct IntraOpThreadPool {};    // binds `const Eigen::ThreadPoolDevice*`
+struct FfiApi {};               // binds `const XLA_FFI_Api*`
+struct FfiExecutionContext {};  // binds `XLA_FFI_ExecutionContext*`
 
 template <typename T>
 struct PlatformStream {};  // binds a platform stream, e.g. `cudaStream_t`
@@ -80,8 +81,23 @@ namespace internal {
 
 inline constexpr size_t kDynamicRank = std::numeric_limits<size_t>::max();
 
+// NativeTypeOf<dtype>::type is the native type for implementing the given dtype
+// in the FFI.
 template <PrimitiveType dtype>
-using NativeType = typename primitive_util::PrimitiveTypeToNative<dtype>::type;
+struct NativeTypeOf {
+  using type = typename primitive_util::PrimitiveTypeToNative<dtype>::type;
+};
+// PrimitiveTypeToNative<PrimitiveType::TOKEN> is not defined, so we need to
+// specialize it here.
+template <>
+struct NativeTypeOf<PrimitiveType::TOKEN> {
+  using type = void;
+};
+
+// NativeType<dtype> is the alias for the native type for implementing the given
+// dtype in the FFI.
+template <PrimitiveType dtype>
+using NativeType = typename NativeTypeOf<dtype>::type;
 
 }  // namespace internal
 
@@ -93,7 +109,7 @@ class AnyBuffer {
  public:
   using Dimensions = absl::Span<const int64_t>;
 
-  explicit AnyBuffer(absl::Nonnull<const XLA_FFI_Buffer*> buf) : buf_(buf) {
+  explicit AnyBuffer(const XLA_FFI_Buffer* absl_nonnull buf) : buf_(buf) {
     DCHECK(buf_ != nullptr) << "XLA_FFI_Buffer must be non-null";
   }
 
@@ -148,7 +164,7 @@ class Buffer {
  public:
   using Dimensions = AnyBuffer::Dimensions;
 
-  explicit Buffer(absl::Nonnull<const XLA_FFI_Buffer*> buf) : buf_(buf) {
+  explicit Buffer(const XLA_FFI_Buffer* absl_nonnull buf) : buf_(buf) {
     DCHECK(buf_ != nullptr) << "XLA_FFI_Buffer must be non-null";
   }
 
@@ -407,16 +423,16 @@ XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(double, XLA_FFI_DataType_F64);
 template <>
 struct AttrDecoding<absl::string_view> {
   using Type = absl::string_view;
-  static std::optional<std::string_view> Decode(XLA_FFI_AttrType type,
-                                                void* attr,
-                                                DiagnosticEngine& diagnostic) {
+  static std::optional<absl::string_view> Decode(XLA_FFI_AttrType type,
+                                                 void* attr,
+                                                 DiagnosticEngine& diagnostic) {
     if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_STRING)) {
       return diagnostic.Emit("Wrong attribute type: expected ")
              << XLA_FFI_AttrType_STRING << " but got " << type;
     }
 
     auto* span = reinterpret_cast<XLA_FFI_ByteSpan*>(attr);
-    return std::string_view(span->ptr, span->len);
+    return absl::string_view(span->ptr, span->len);
   }
 };
 
@@ -452,7 +468,7 @@ class Dictionary : public internal::DictionaryBase {
   using internal::DictionaryBase::DictionaryBase;
 
   template <typename T>
-  absl::StatusOr<T> get(std::string_view name) const {
+  absl::StatusOr<T> get(absl::string_view name) const {
     DiagnosticEngine diagnostic;
     std::optional<T> value = internal::DictionaryBase::get<T>(name, diagnostic);
     if (!value.has_value()) {
@@ -572,6 +588,28 @@ struct CtxDecoding<IntraOpThreadPool> {
   }
 };
 
+template <>
+struct CtxDecoding<FfiApi> {
+  using Type = const XLA_FFI_Api*;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine&) {
+    return api;
+  }
+};
+
+template <>
+struct CtxDecoding<FfiExecutionContext> {
+  using Type = XLA_FFI_ExecutionContext*;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine&) {
+    return ctx;
+  }
+};
+
 template <typename T>
 struct CtxDecoding<PlatformStream<T>> {
   using Type = T;
@@ -585,6 +623,17 @@ struct CtxDecoding<PlatformStream<T>> {
           stream.value()->platform_specific_handle().stream);
     }
     return std::nullopt;
+  }
+};
+
+template <>
+struct CtxDecoding<RunId> {
+  using Type = RunId;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    return RunId{api->internal_api->XLA_FFI_INTERNAL_RunId_Get(ctx)};
   }
 };
 

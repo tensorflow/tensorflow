@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_CONDITIONAL_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_CONDITIONAL_THUNK_H_
 
-#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -24,22 +23,17 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/host_memory_pool.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
-
-struct ConditionalThunkConfig {
-  bool branch_index_is_bool;
-  int64_t branch_count;
-  std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
-};
 
 // ConditionalThunk implements the conditional instruction on GPU by reading the
 // predicate of the conditional and executing the true or the false computation
@@ -53,8 +47,11 @@ struct ConditionalThunkConfig {
 // false computation share the same allocation.
 class ConditionalThunk : public Thunk {
  public:
-  ConditionalThunk(ThunkInfo thunk_info, ConditionalThunkConfig config,
-                   const BufferAllocation::Slice& branch_index_buffer_index);
+  ConditionalThunk(
+      ThunkInfo thunk_info,
+      const BufferAllocation::Slice& branch_index_buffer_index,
+      std::vector<std::unique_ptr<SequentialThunk>>&& branch_thunks,
+      bool branch_index_is_bool);
 
   ConditionalThunk(const ConditionalThunk&) = delete;
   ConditionalThunk& operator=(const ConditionalThunk&) = delete;
@@ -65,7 +62,7 @@ class ConditionalThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   absl::Span<const std::unique_ptr<SequentialThunk>> branch_thunks() const {
-    return config_.branch_thunks;
+    return branch_thunks_;
   }
 
   const BufferAllocation::Slice& branch_index_buffer() const {
@@ -73,16 +70,33 @@ class ConditionalThunk : public Thunk {
   }
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
+  bool branch_index_is_bool() const { return branch_index_is_bool_; }
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
+  // Deserializes a ConditionalThunk from its proto representation.
+  // Parameters:
+  // - thunk_info: Metadata about the thunk
+  // - thunk_proto: Serialized ConditionalThunk proto message.
+  // - buffer_allocations: Buffer allocations available for use by the thunk.
+  // - deserializer: Callable (e.g., lambda) for deserializing nested thunks.
+  //
+  // Returns a unique_ptr to a ConditionalThunk on success, or an error status
+  // on failure.
+  static absl::StatusOr<std::unique_ptr<ConditionalThunk>> FromProto(
+      ThunkInfo thunk_info, const ConditionalThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations,
+      const Deserializer& deserializer);
 
  private:
-  const ConditionalThunkConfig config_;
   const BufferAllocation::Slice branch_index_buffer_index_;
+  std::vector<std::unique_ptr<SequentialThunk>> branch_thunks_;
+  bool branch_index_is_bool_;
 
-  // Pinned host memory for transferring predicate value from device to host.
+  // Host memory pool for transferring predicate value from device to host.
   absl::Mutex mutex_;
-  absl::flat_hash_map<se::StreamExecutor*,
-                      std::unique_ptr<se::MemoryAllocation>>
-      predicates_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<HostMemoryPool>>
+      host_memory_pools_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

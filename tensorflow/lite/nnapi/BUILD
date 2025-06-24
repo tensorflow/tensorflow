@@ -86,6 +86,7 @@ cc_library(
         ":nnapi_lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework",
+        "@com_google_absl//absl/log:check",
     ],
 )
 

@@ -25,6 +25,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/function.h"
@@ -52,8 +54,6 @@ limitations under the License.
 #include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/threadpool.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -195,6 +195,11 @@ class BatchResource : public serving::BatchResourceBase {
       std::unique_ptr<BatchResource>* resource) {
     BatcherT::Options batcher_options;
     batcher_options.num_batch_threads = num_batch_threads;
+    if (mixed_priority_batching_policy ==
+        serving::MixedPriorityBatchingPolicy::kPriorityMerge) {
+      batcher_options.use_global_scheduler = true;
+      batcher_options.rank_queues = true;
+    }
     std::shared_ptr<BatcherT> batcher;
     TF_RETURN_IF_ERROR(BatcherT::Create(batcher_options, &batcher));
 

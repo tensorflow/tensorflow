@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_CRASH_ANALYSIS_H_
 #define TENSORFLOW_CORE_PLATFORM_CRASH_ANALYSIS_H_
 
+#include "xla/tsl/platform/crash_analysis.h"
 #include "tensorflow/core/platform/platform.h"
-#include "tsl/platform/crash_analysis.h"
 
 #endif  // TENSORFLOW_CORE_PLATFORM_CRASH_ANALYSIS_H_

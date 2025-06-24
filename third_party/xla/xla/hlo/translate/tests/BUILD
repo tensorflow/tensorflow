@@ -10,12 +10,21 @@ lit_test_suite(
     name = "all_tests",
     srcs = enforce_glob(
         [
-            "simple.mlir",
+            # go/keep-sorted start
+            "chlo.mlir",
+            "emit_mhlo.hlo",
             "emit_proto.mlir",
             "print_large_constants.mlir",
             "print_layouts.mlir",
             "simple.hlo",
-            "emit_mhlo.hlo",
+            "simple.mlir",
+            "stablehlo.mlir",
+            "stablehlo_invalid.mlir",
+            "stablehlo_unary_elementwise.mlir",
+            "stablehlo_while.mlir",
+            "stablehlo_while_free_vars.mlir",
+            "vhlo_input.mlir",
+            # go/keep-sorted end
         ],
         include = [
             "*.mlir",
@@ -23,9 +32,14 @@ lit_test_suite(
         ],
     ),
     cfg = "//xla:lit.cfg.py",
-    data = [":test_utilities"],
+    data = [
+        "vhlo_input.mlir.bc",
+        ":test_utilities",
+    ],
     tools = [
         "//xla/hlo/tools:hlo-translate",
+        "//xla/hlo/translate:xla-translate",
+        "//xla/mlir_hlo:mlir-hlo-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",
     ],

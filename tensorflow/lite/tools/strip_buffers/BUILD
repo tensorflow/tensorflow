@@ -24,6 +24,7 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@flatbuffers//:runtime_cc",
     ],
@@ -41,6 +42,7 @@ cc_binary(
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/tools:command_line_flags",
+        "@com_google_absl//absl/log",
         "@flatbuffers//:runtime_cc",
     ],
 )
@@ -57,6 +59,7 @@ cc_binary(
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/tools:command_line_flags",
+        "@com_google_absl//absl/log",
         "@flatbuffers//:runtime_cc",
     ],
 )

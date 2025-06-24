@@ -20,6 +20,7 @@
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -29,22 +30,26 @@
 #include "grpcpp/completion_queue.h"
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/server_builder.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt_proxy/common/grpc_credentials.h"
+#include "xla/python/ifrt_proxy/common/grpc_credentials_possibly_insecure_wrapper.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/server/grpc_service_impl.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
 #include "xla/python/ifrt_proxy/server/ifrt_backend.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 namespace proxy {
 
 GrpcServer::~GrpcServer() {
+  LOG(INFO) << "GrpcServer::~GrpcServer(): before Shutdown.";
   server_->Shutdown();
+  LOG(INFO) << "GrpcServer::~GrpcServer(): after Shutdown, before Wait.";
   server_->Wait();
+  LOG(INFO) << "GrpcServer::~GrpcServer(): done with Wait.";
 }
 
 absl::StatusOr<std::unique_ptr<GrpcServer>> GrpcServer::Create(
@@ -61,7 +66,8 @@ absl::StatusOr<std::unique_ptr<GrpcServer>> GrpcServer::Create(
   builder.AddChannelArgument(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH, -1);
   builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH, -1);
   builder.RegisterService(impl.get());
-  builder.AddListeningPort(std::string(address), GetServerCredentials());
+  builder.AddListeningPort(std::string(address),
+                           GetServerCredentialsPossiblyInsecure());
   auto server = builder.BuildAndStart();
   if (server == nullptr) {
     return absl::UnavailableError(
@@ -75,7 +81,8 @@ absl::StatusOr<std::unique_ptr<GrpcServer>> GrpcServer::Create(
 absl::StatusOr<std::unique_ptr<GrpcServer>>
 GrpcServer::CreateFromIfrtClientFactory(
     absl::string_view address,
-    absl::AnyInvocable<absl::StatusOr<std::shared_ptr<xla::ifrt::Client>>()>
+    absl::AnyInvocable<absl::StatusOr<std::shared_ptr<xla::ifrt::Client>>(
+        AttributeMap initialization_data)>
         backend_ifrt_client_factory) {
   if (backend_ifrt_client_factory == nullptr) {
     return absl::InvalidArgumentError(
@@ -85,9 +92,12 @@ GrpcServer::CreateFromIfrtClientFactory(
   auto service = std::make_unique<GrpcServiceImpl>(
       [ifrt_client_factory = std::move(backend_ifrt_client_factory)](
           IfrtProxyVersion version, uint64_t session_id,
-          std::shared_ptr<HostBufferStore> host_buffer_store) mutable
-      -> absl::StatusOr<std::unique_ptr<BackendInterface>> {
-        TF_ASSIGN_OR_RETURN(auto ifrt_client, ifrt_client_factory());
+          std::shared_ptr<HostBufferStore> host_buffer_store,
+          AttributeMap initialization_data) mutable
+          -> absl::StatusOr<std::unique_ptr<BackendInterface>> {
+        TF_ASSIGN_OR_RETURN(
+            auto ifrt_client,
+            ifrt_client_factory(std::move(initialization_data)));
         return IfrtBackend::Create(version, session_id, std::move(ifrt_client),
                                    std::move(host_buffer_store));
       });

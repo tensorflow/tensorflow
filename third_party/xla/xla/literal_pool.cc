@@ -24,12 +24,12 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/literal.h"
 #include "xla/shape.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla {
 
 LiteralPool* LiteralPool::Default() {
-  static auto* pool = new LiteralPool();
+  static auto* const pool = new LiteralPool();
   return pool;
 }
 

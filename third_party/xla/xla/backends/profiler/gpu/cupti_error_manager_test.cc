@@ -80,7 +80,7 @@ class CuptiErrorManagerTest : public ::testing::Test {
   }
 
   void EnableProfiling(const CuptiTracerOptions& option) {
-    cupti_tracer_->Enable(option, cupti_collector_.get());
+    cupti_tracer_->Enable(option, cupti_collector_.get()).IgnoreError();
   }
 
   void DisableProfiling() { cupti_tracer_->Disable(); }
@@ -118,7 +118,7 @@ TEST_F(CuptiErrorManagerTest, GpuTraceActivityEnableTest) {
   EXPECT_CALL(*mock_, Subscribe(_, _, _))
       .InSequence(s1)
       .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::Subscribe));
-  const int cb_enable_times = IsCudaNewEnoughForGraphTraceTest() ? 4 : 1;
+  const int cb_enable_times = IsCudaNewEnoughForGraphTraceTest() ? 6 : 1;
   EXPECT_CALL(*mock_, EnableCallback(1, _, _, _))
       .Times(cb_enable_times)
       .InSequence(s1)
@@ -174,7 +174,7 @@ TEST_F(CuptiErrorManagerTest, GpuTraceAutoEnableTest) {
   EXPECT_CALL(*mock_, Subscribe(_, _, _))
       .InSequence(s1)
       .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::Subscribe));
-  const int cb_enable_times = IsCudaNewEnoughForGraphTraceTest() ? 3 : 0;
+  const int cb_enable_times = IsCudaNewEnoughForGraphTraceTest() ? 5 : 0;
   if (cb_enable_times > 0) {
     EXPECT_CALL(*mock_, EnableCallback(1, _, _, _))
         .Times(cb_enable_times)

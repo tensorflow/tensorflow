@@ -15,22 +15,26 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/move_copy_to_users.h"
 
+#include <memory>
 #include <optional>
 
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/layout_assignment.h"
-#include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-class MoveCopyToUsersTest : public HloTestBase {
+class MoveCopyToUsersTest : public HloHardwareIndependentTestBase {
  public:
   MoveCopyToUsersTest()
-      : HloTestBase(/*verifier_layout_sensitive=*/true,
-                    /*allow_mixed_precision_in_hlo_verifier=*/true,
-                    LayoutAssignment::InstructionCanChangeLayout) {}
+      : HloHardwareIndependentTestBase(
+            /*verifier_layout_sensitive=*/true,
+            /*allow_mixed_precision_in_hlo_verifier=*/true,
+            LayoutAssignment::InstructionCanChangeLayout) {}
   void CheckMoveCopyToUsers(absl::string_view hlo,
                             std::optional<absl::string_view> expected) {
     RunAndFilecheckHloRewrite(hlo, MoveCopyToUsers{}, expected);
@@ -268,6 +272,28 @@ ENTRY main {
 )";
 
   CheckMoveCopyToUsers(hlo, std::nullopt);
+}
+
+TEST_F(MoveCopyToUsersTest, ConvergesInSecondStep) {
+  const char* const kHloString = R"(
+HloModule ConvergeTest
+
+ENTRY main {
+  p0 = c64[3,3]{1,0} parameter(0)
+  copy = c64[3,3]{0,1} copy(p0)
+  real = f32[3,3]{0,1} real(copy)
+  ROOT res = f32[3,3]{1,0} copy(real)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+
+  MoveCopyToUsers pass;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  EXPECT_TRUE(changed);
+  TF_ASSERT_OK_AND_ASSIGN(changed, pass.Run(module.get()));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

@@ -22,14 +22,14 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
-using DynamicParameterBindingTest = HloTestBase;
+using DynamicParameterBindingTest = HloHardwareIndependentTestBase;
 
 TEST_F(DynamicParameterBindingTest, SimpleBinding) {
   // 'b' is a dynamic shape; 'a' represents the real size of b's first

@@ -38,24 +38,6 @@ namespace tsl {
     return value;                                                \
   }
 
-bool CudnnUseFrontend() {
-  static bool result = [] {
-    bool value = false;
-#if GOOGLE_CUDA
-    if (CUDNN_VERSION >= 8100) {
-      // cuDNN 8.1.0 + the frontend has issues regarding fused convolution.
-      absl::Status status = ReadBoolFromEnvVar("TF_CUDNN_USE_FRONTEND",
-                                               CUDNN_VERSION >= 8200, &value);
-      if (!status.ok()) {
-        LOG(ERROR) << status;
-      }
-    }
-#endif  // GOOGLE_CUDA
-    return value;
-  }();
-  return result;
-}
-
 // Whether to enable Cudnn runtime compiled kernels which are able to support
 // more general fusion patterns but might increase the warmup time.
 // TODO(kaixih@nvidia): we can make it default when Cudnn further improves the
@@ -64,12 +46,10 @@ bool CudnnUseRuntimeFusion() {
   static bool result = [] {
     bool value = false;
 #if GOOGLE_CUDA
-    if (CUDNN_VERSION >= 8400) {
-      absl::Status status =
-          ReadBoolFromEnvVar("TF_CUDNN_USE_RUNTIME_FUSION", false, &value);
-      if (!status.ok()) {
-        LOG(ERROR) << status;
-      }
+    absl::Status status =
+        ReadBoolFromEnvVar("TF_CUDNN_USE_RUNTIME_FUSION", false, &value);
+    if (!status.ok()) {
+      LOG(ERROR) << status;
     }
 #endif  // GOOGLE_CUDA
     return value;

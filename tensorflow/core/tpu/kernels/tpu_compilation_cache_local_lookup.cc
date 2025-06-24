@@ -18,11 +18,11 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 namespace tpu {

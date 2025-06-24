@@ -45,6 +45,7 @@ from tensorflow.python.ops import functional_ops  # pylint: disable=unused-impor
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
@@ -461,6 +462,34 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         self.assertIsNotNone(output[0])
       else:
         self.assertIsNone(output[0])
+
+  def testOptimizeIdentityN(self):
+    with ops.Graph().as_default():
+      #  a    b
+      #  |    |
+      # IdentityN
+      #  |    |
+      #  c    d
+      a = constant_op.constant(1.0)
+      b = constant_op.constant(1.0)
+      c, d = array_ops.identity_n([a, b])
+
+      def OptimizedGradients(y, x):
+        return gradients_util._GradientsHelper(
+            ys=y,
+            xs=x,
+            optimize_identity_n=True,
+        )
+
+      self.assertIsNone(OptimizedGradients(d, a)[0])
+      self.assertIsNone(OptimizedGradients(c, b)[0])
+
+      self.assertIsNotNone(gradients.gradients(d, a)[0])
+      self.assertIsNotNone(gradients.gradients(c, b)[0])
+
+      for grad_impl in [gradients.gradients, OptimizedGradients]:
+        self.assertIsNotNone(grad_impl(c, a)[0])
+        self.assertIsNotNone(grad_impl(d, b)[0])
 
   @parameterized.parameters(unconnected_gradients.UnconnectedGradients.ZERO,
                             unconnected_gradients.UnconnectedGradients.NONE)

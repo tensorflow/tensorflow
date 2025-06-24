@@ -15,7 +15,6 @@ package(
 pytype_strict_library(
     name = "sharding_policies",
     srcs = ["sharding_policies.py"],
-    srcs_version = "PY3",
     deps = [
         ":sharding_util",
         "//tensorflow/python/eager:context",
@@ -36,7 +35,6 @@ pytype_strict_library(
 tf_py_strict_test(
     name = "sharding_policies_test",
     srcs = ["sharding_policies_test.py"],
-    srcs_version = "PY3",
     deps = [
         ":sharding_policies",
         ":sharding_util",
@@ -64,7 +62,6 @@ tf_py_strict_test(
 pytype_strict_library(
     name = "sharding_util",
     srcs = ["sharding_util.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:dtypes",
@@ -81,7 +78,6 @@ pytype_strict_library(
 tf_py_strict_test(
     name = "sharding_util_test",
     srcs = ["sharding_util_test.py"],
-    srcs_version = "PY3",
     deps = [
         ":sharding_policies",
         ":sharding_util",

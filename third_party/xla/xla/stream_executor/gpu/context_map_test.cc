@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/context_map.h"
 
+#include <gtest/gtest.h>
 #include "tsl/platform/test.h"
 
 namespace stream_executor::gpu {

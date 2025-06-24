@@ -28,8 +28,6 @@ py_strict_library(
 py_strict_test(
     name = "special_functions_test",
     srcs = ["special_functions_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         #internal proto upb dep
         "//third_party/py/numpy",

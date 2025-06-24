@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_alias_analysis.h"
 
+#include <cassert>
 #include <cstdint>
 #include <initializer_list>
 #include <optional>

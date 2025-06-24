@@ -34,8 +34,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/host_info.h"
-#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 namespace rocm {
@@ -92,12 +92,6 @@ absl::StatusOr<DriverVersion> StringToDriverVersion(const std::string& value) {
           << DriverVersionToString(result);
   return result;
 }
-
-}  // namespace rocm
-}  // namespace stream_executor
-
-namespace stream_executor {
-namespace gpu {
 
 // -- class Diagnostician
 
@@ -233,5 +227,5 @@ absl::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   return status;
 }
 
-}  // namespace gpu
+}  // namespace rocm
 }  // namespace stream_executor

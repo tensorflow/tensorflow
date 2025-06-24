@@ -53,7 +53,7 @@ class Tuple : public llvm::RTTIExtends<Tuple, Value> {
   virtual int Arity() = 0;
 
   // Unpacks the tuple into its constituent pieces.
-  virtual absl::Status Unpack(absl::Span<tsl::RCReference<Value>> values) = 0;
+  virtual absl::Status Unpack(absl::Span<ValueRef> values) = 0;
 
   static char ID;  // NOLINT
 };

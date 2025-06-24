@@ -20,10 +20,12 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <iterator>
 #include <limits>
-#include <numeric>
+#include <memory>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -47,11 +49,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/stacktrace.h"
 
 namespace xla {
@@ -102,7 +105,8 @@ ScopedLoggingTimer::ScopedLoggingTimer(absl::string_view label, bool enabled,
 void ScopedLoggingTimer::StopAndLog() {
   if (enabled_) {
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
-    double secs = (end_micros - start_micros_) / 1000000.0;
+    uint64_t elapsed_micros = end_micros - start_micros_;
+    double secs = elapsed_micros / 1000000.0;
 
     TimerStats& stats = *timer_stats_;
     absl::MutexLock lock(&stats.stats_mutex);
@@ -114,6 +118,7 @@ void ScopedLoggingTimer::StopAndLog() {
 
     LOG(INFO).AtLocation(file_, line_)
         << label_ << " time: " << tsl::strings::HumanReadableElapsedTime(secs)
+        << " (" << elapsed_micros << " us)"
         << " (cumulative: "
         << tsl::strings::HumanReadableElapsedTime(stats.cumulative_secs)
         << ", max: " << tsl::strings::HumanReadableElapsedTime(stats.max_secs)
@@ -148,6 +153,7 @@ std::string Reindent(absl::string_view original,
 
 template <typename FloatT>
 static void RoundTripNanPayload(FloatT value, std::string* result) {
+  static_assert(std::numeric_limits<FloatT>::has_quiet_NaN);
   static_assert(!std::is_same<FloatT, tsl::float8_e4m3fn>::value,
                 "RoundTripNanPayload does not support E4M3FN");
   static_assert(!std::is_same<FloatT, tsl::float8_e4m3fnuz>::value,
@@ -172,6 +178,10 @@ static std::string GenericRoundTripFpToString(FloatT value) {
   int max_decimal_digits = std::numeric_limits<FloatT>::max_digits10;
   return absl::StrFormat("%.*g", max_decimal_digits,
                          static_cast<double>(value));
+}
+
+std::string RoundTripFpToString(tsl::float4_e2m1fn value) {
+  return GenericRoundTripFpToString(value);
 }
 
 std::string RoundTripFpToString(tsl::float8_e5m2 value) {
@@ -209,6 +219,11 @@ std::string RoundTripFpToString(tsl::float8_e4m3b11fnuz value) {
 std::string RoundTripFpToString(tsl::float8_e3m4 value) {
   std::string result = GenericRoundTripFpToString(value);
   RoundTripNanPayload(value, &result);
+  return result;
+}
+
+std::string RoundTripFpToString(tsl::float8_e8m0fnu value) {
+  std::string result = GenericRoundTripFpToString(value);
   return result;
 }
 
@@ -338,8 +353,8 @@ void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
 }
 
 int64_t Product(absl::Span<const int64_t> xs) {
-  return std::accumulate(xs.begin(), xs.end(), static_cast<int64_t>(1),
-                         std::multiplies<int64_t>());
+  return absl::c_accumulate(xs, static_cast<int64_t>(1),
+                            std::multiplies<int64_t>());
 }
 
 std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
@@ -353,7 +368,8 @@ std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
 
 absl::InlinedVector<std::pair<int64_t, int64_t>, 8> CommonFactors(
     absl::Span<const int64_t> a, absl::Span<const int64_t> b) {
-  CHECK_EQ(Product(a), Product(b));
+  CHECK_EQ(Product(a), Product(b)) << "a=[" << absl::StrJoin(a, ",") << "], b=["
+                                   << absl::StrJoin(b, ",") << "]";
   absl::InlinedVector<std::pair<int64_t, int64_t>, 8> bounds;
   if (absl::c_equal(a, b)) {
     bounds.reserve(a.size() + 1);
@@ -503,6 +519,54 @@ std::string SanitizeFileName(std::string file_name) {
 bool DistinctNumbersAreConsecutiveIfSorted(absl::Span<const int64_t> seq) {
   return *absl::c_max_element(seq) - *absl::c_min_element(seq) ==
          seq.size() - 1;
+}
+
+std::string PrintAllFields(const tsl::protobuf::Message& message) {
+  tsl::protobuf::TextFormat::Printer tsl_printer;
+  const tsl::protobuf::Reflection* reflection = message.GetReflection();
+  std::stringstream result;
+  std::string buffer;
+  const tsl::protobuf::Descriptor* descriptor = message.GetDescriptor();
+  for (int i = 0; i < descriptor->field_count(); ++i) {
+    const tsl::protobuf::FieldDescriptor* field = descriptor->field(i);
+    if (field->is_repeated()) {
+      result << field->name() << ": [";
+      for (int j = 0; j < reflection->FieldSize(message, field); ++j) {
+        if (j > 0) {
+          result << ", ";
+        }
+        tsl_printer.PrintFieldValueToString(message, field, j, &buffer);
+        result << buffer;
+      }
+      result << "]\n";
+    } else {
+      result << field->name() << ": ";
+      tsl_printer.PrintFieldValueToString(message, field, -1, &buffer);
+      result << buffer << "\n";
+    }
+  }
+  return result.str();
+}
+
+std::unique_ptr<void, FreeDeleter> AlignedAlloc(std::size_t alignment,
+                                                std::size_t size) {
+  CHECK_GT(alignment, 0) << "alignment must be positive";
+  CHECK(IsPowerOf2(alignment))
+      << "alignment must be a power of 2, but got " << alignment;
+  CHECK_GT(size, 0) << "size must be positive";
+#ifdef _WIN32
+  void* raw_ptr = _aligned_malloc(size, alignment);  // Note argument order
+#elif defined(__ANDROID__) && __ANDROID_API__ < 28
+  // Use posix_memalign as a fallback for older Android APIs
+  void* raw_ptr;
+  int result = posix_memalign(&raw_ptr, alignment, size);
+  CHECK_EQ(result, 0) << "posix_memalign failed with error code: " << result;
+#else
+  void* raw_ptr = std::aligned_alloc(alignment, size);
+#endif
+  CHECK_NE(raw_ptr, nullptr) << "aligned_alloc failed";
+  // Return unique_ptr managing the memory.
+  return std::unique_ptr<void, FreeDeleter>(raw_ptr, FreeDeleter());
 }
 
 }  // namespace xla

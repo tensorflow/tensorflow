@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/compiler/compiled_node.h"
 
 #include <algorithm>
+#include <iterator>
 #include <string>
 
 #include "absl/container/flat_hash_set.h"

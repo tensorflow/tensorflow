@@ -22,6 +22,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/c/tensor_interface.h"

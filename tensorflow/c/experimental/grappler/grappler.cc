@@ -34,6 +34,8 @@ limitations under the License.
 #include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -44,8 +46,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 
 namespace {
 

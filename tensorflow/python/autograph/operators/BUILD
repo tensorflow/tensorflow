@@ -147,8 +147,6 @@ py_strict_library(
 py_strict_test(
     name = "data_structures_test",
     srcs = ["data_structures_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":data_structures",
         #internal proto upb dep
@@ -165,8 +163,6 @@ py_strict_test(
 py_strict_test(
     name = "conditional_expressions_test",
     srcs = ["conditional_expressions_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":conditional_expressions",
         #internal proto upb dep
@@ -180,8 +176,6 @@ py_strict_test(
 py_strict_test(
     name = "control_flow_test",
     srcs = ["control_flow_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "no_gpu",  # b/127001953
     ],
@@ -211,8 +205,6 @@ py_strict_test(
 py_strict_test(
     name = "exceptions_test",
     srcs = ["exceptions_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":exceptions",
         #internal proto upb dep
@@ -226,8 +218,6 @@ py_strict_test(
 py_strict_test(
     name = "logical_test",
     srcs = ["logical_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":logical",
         #internal proto upb dep
@@ -240,8 +230,6 @@ py_strict_test(
 py_strict_test(
     name = "py_builtins_test",
     srcs = ["py_builtins_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":data_structures",
         ":py_builtins",
@@ -264,8 +252,6 @@ py_strict_test(
 py_strict_test(
     name = "slices_test",
     srcs = ["slices_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":slices",
         #internal proto upb dep
@@ -278,8 +264,6 @@ py_strict_test(
 py_strict_test(
     name = "variables_test",
     srcs = ["variables_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":variables",
         #internal proto upb dep

@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/schedule_config.h"
 #include "xla/service/sharding_config.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
@@ -68,10 +69,12 @@ std::string HloModuleConfig::compilation_cache_key() const {
   if (entry_computation_layout_.has_value()) {
     for (const ShapeLayout& param_layout :
          entry_computation_layout_->parameter_layouts()) {
-      params.push_back(param_layout.shape().DebugString());
+      params.push_back(param_layout.shape().ToString());
     }
     StrAppend(&key, absl::StrJoin(params, ", "), ") => ",
-              entry_computation_layout_->result_shape().SerializeAsString());
+              entry_computation_layout_->result_shape()
+                  .ToProto()
+                  .SerializeAsString());
   }
   if (seed() != 0) {
     static std::atomic<int> counter{0};
@@ -80,6 +83,8 @@ std::string HloModuleConfig::compilation_cache_key() const {
   StrAppend(&key, "::exec_time_optimization_effort=",
             exec_time_optimization_effort());
   StrAppend(&key, "::memory_fitting_effort=", memory_fitting_effort());
+  StrAppend(&key, "::optimization_level=", optimization_level());
+  StrAppend(&key, "::memory_fitting_level=", memory_fitting_level());
   if (replica_count() != 1) {
     StrAppend(&key, "::replica_count=", replica_count());
   }
@@ -289,6 +294,8 @@ HloModuleConfigProto HloModuleConfig::ToProto() const {
   }
   proto.set_exec_time_optimization_effort(exec_time_optimization_effort_);
   proto.set_memory_fitting_effort(memory_fitting_effort_);
+  proto.set_optimization_level(optimization_level_);
+  proto.set_memory_fitting_level(memory_fitting_level_);
   proto.set_deduplicate_hlo(deduplicate_hlo_);
   proto.set_intra_op_parallelism_threads(intra_op_parallelism_threads_);
   proto.set_device_type(device_type_);
@@ -333,6 +340,7 @@ HloModuleConfigProto HloModuleConfig::ToProto() const {
   proto.set_device_memory_size(device_memory_size_);
   proto.set_use_shardy_partitioner(use_shardy_partitioner_);
   *proto.mutable_sharding_config() = ShardingConfig::ToProto(sharding_config_);
+  *proto.mutable_schedule_config() = ScheduleConfig::ToProto(schedule_config_);
   return proto;
 }
 
@@ -341,7 +349,9 @@ HloModuleConfig::CreateFromProto(const HloModuleConfigProto& proto) {
   auto config = std::make_unique<HloModuleConfig>();
 
   if (proto.has_entry_computation_layout()) {
-    auto comp_layout = ProgramShape{proto.entry_computation_layout()};
+    TF_ASSIGN_OR_RETURN(
+        auto comp_layout,
+        ProgramShape::FromProto(proto.entry_computation_layout()));
     config->SetComputationLayoutIfExists(comp_layout);
   } else {
     config->clear_entry_computation_layout();
@@ -364,6 +374,8 @@ HloModuleConfig::CreateFromProto(const HloModuleConfigProto& proto) {
   config->exec_time_optimization_effort_ =
       proto.exec_time_optimization_effort();
   config->memory_fitting_effort_ = proto.memory_fitting_effort();
+  config->optimization_level_ = proto.optimization_level();
+  config->memory_fitting_level_ = proto.memory_fitting_level();
   config->deduplicate_hlo_ = proto.deduplicate_hlo();
   config->intra_op_parallelism_threads_ = proto.intra_op_parallelism_threads();
   config->device_type_ = proto.device_type();
@@ -407,6 +419,7 @@ HloModuleConfig::CreateFromProto(const HloModuleConfigProto& proto) {
   config->device_memory_size_ = proto.device_memory_size();
   config->use_shardy_partitioner_ = proto.use_shardy_partitioner();
   config->sharding_config_ = ShardingConfig::FromProto(proto.sharding_config());
+  config->schedule_config_ = ScheduleConfig::FromProto(proto.schedule_config());
   return std::move(config);
 }
 

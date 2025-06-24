@@ -42,9 +42,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal_util.h"
-#include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/gpu_autotuning.pb.h"
+#include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
@@ -66,14 +66,14 @@ limitations under the License.
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "third_party/gpus/cudnn/cudnn.h"  // IWYU pragma: keep
@@ -83,7 +83,7 @@ limitations under the License.
 #else
 #include "third_party/gpus/cudnn/cudnn_ops_infer.h"
 #endif  // CUDNN_VERSION >= 90000
-#include "xla/service/gpu/buffer_comparator.h"
+#include "xla/backends/gpu/runtime/buffer_comparator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #endif
 
@@ -160,8 +160,8 @@ absl::StatusOr<se::DeviceMemory<uint8_t>> ScratchAllocator::AllocateBytes(
 }
 
 absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
-    const GpuConvConfig& config, se::Stream* stream, bool use_cudnn_frontend,
-    bool use_fallback, const se::NumericOptions& numeric_options) {
+    const GpuConvConfig& config, se::Stream* stream, bool use_fallback,
+    const se::NumericOptions& numeric_options) {
   TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
                       GetDNNConvKindFromCudnnConvKind(config.kind));
 
@@ -188,7 +188,6 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
       }
       std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>> runners;
       TF_RETURN_IF_ERROR(dnn->GetFusedConvolveRunners(
-          use_cudnn_frontend,
           // This refers to the kind of convolution op inside the fusion, not
           // the whole fused graph.
           se::dnn::ConvolutionKind::FORWARD, input_type,
@@ -234,8 +233,7 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
       // This path is cuDNN-only, where the DeviceMemoryBase arguments and the
       // allocator are unused; so, they're all provided as nullptr.
       TF_RETURN_IF_ERROR(dnn->GetConvolveRunners(
-          use_cudnn_frontend, kind, input_type, output_type, stream,
-          config.input_descriptor,
+          kind, input_type, output_type, stream, config.input_descriptor,
           /* input_data = */ DeviceMemoryBase(nullptr),
           config.filter_descriptor,
           /* filter_data = */ DeviceMemoryBase(nullptr),
@@ -282,9 +280,8 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
     return absl::InvalidArgumentError("No DNN in stream executor.");
   }
   TF_RETURN_IF_ERROR(dnn->GetConvolveRunners(
-      /* use_cudnn_frontend = */ false, kind, dtype, dtype, stream,
-      params.config->input_descriptor, params.input_buf,
-      params.config->filter_descriptor, params.filter_buf,
+      kind, dtype, dtype, stream, params.config->input_descriptor,
+      params.input_buf, params.config->filter_descriptor, params.filter_buf,
       params.config->output_descriptor, params.output_buf,
       params.config->conv_desc,
       /* use_fallback = */ false, scratch_allocator, numeric_options,
@@ -448,10 +445,16 @@ absl::StatusOr<GpuConvAlgorithmPicker::AutotuneRuntimeArguments>
 GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
     const HloCustomCallInstruction* instr, const AutotuneConfig& config,
     const DebugOptions& debug_options) {
-  TF_ASSIGN_OR_RETURN(auto rz_buffers,
-                      RedzoneBuffers::FromInstruction(
-                          *instr, config, debug_options,
-                          RedzoneBuffers::kAllInputsOutputsNoScratch));
+  bool should_init_buffers = config.should_init_buffers();
+  bool should_check_correctness = config.should_check_correctness();
+  int redzone_padding_bytes = debug_options.xla_gpu_redzone_padding_bytes();
+  TF_ASSIGN_OR_RETURN(se::Stream * stream, config.GetStream());
+  TF_ASSIGN_OR_RETURN(
+      auto rz_buffers,
+      RedzoneBuffers::FromInstruction(
+          *instr, config.GetAllocator(), stream,
+          RedzoneBuffers::kAllInputsOutputsNoScratch, should_init_buffers,
+          should_check_correctness, redzone_padding_bytes));
 
   // Get canonical HLO.
   std::string canonical_hlo(
@@ -561,27 +564,10 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   }
 
   GpuConvConfig config = runtime_arguments.gpu_conv_config;
-  auto activation_mode =
-      config.fusion ? config.fusion->mode : se::dnn::ActivationMode::kNone;
-
   // For fused convolutions with the identity function as the activation, only
   // ALGO_IMPLICIT_PRECOMP_GEMM does the right thing. Other algorithms
   // silently do Relu. See
   // https://docs.nvidia.com/deeplearning/sdk/cudnn-developer-guide/index.html#cudnnConvolutionBiasActivationForward
-  //
-  // For cuDNN Frontend, there is no way to check whether we're using a broken
-  // algorithm, so on versions where some algorithms are broken, we don't use
-  // the cuDNN Frontend for these convs at all.  As such, if we get a
-  // frontend-based runner, we can be sure it's not one of the broken
-  // algorithms we're checking for.
-  if (!alg.is_cudnn_frontend() &&
-      config.kind == CudnnConvKind::kForwardActivation &&
-      activation_mode == se::dnn::ActivationMode::kNone &&
-      alg.algo_id() != CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM) {
-    return make_failure(AutotuneResult::DISQUALIFIED,
-                        "Disqualified for implicit RELU.");
-  }
-
   TF_ASSIGN_OR_RETURN(se::Stream * stream, config_.GetStream());
   se::RedzoneAllocator scratch_allocator(
       stream, config_.GetAllocator(),
@@ -824,8 +810,6 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
         blas_version, runtime_arguments.canonical_hlo.value());
   }
 
-  const bool cudnn_frontend_enabled =
-      debug_options.xla_gpu_enable_cudnn_frontend();
   bool allow_tf32 = true;
   // TODO(b/284371623): Properly set allow_tf32 even if instr==nullptr, which is
   // the case when running an AOT compiled executable with runtime autotuning.
@@ -846,7 +830,6 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   TF_ASSIGN_OR_RETURN(
       std::vector<GenericConvRunner> runners,
       GetAlgorithms(runtime_arguments.gpu_conv_config, stream,
-                    cudnn_frontend_enabled,
                     /* use_fallback = */ false, numeric_options));
 
   std::vector<AutotuneResult> profile_results;
@@ -870,7 +853,6 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     TF_ASSIGN_OR_RETURN(
         std::vector<GenericConvRunner> fallback_runners,
         GetAlgorithms(runtime_arguments.gpu_conv_config, stream,
-                      cudnn_frontend_enabled,
                       /* use_fallback = */ true, numeric_options));
 
     for (auto& runner_cache : fallback_runners) {
@@ -969,9 +951,9 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
   }
 
   std::vector<se::DeviceMemoryBase> result_buffers(
-      instr->shape().tuple_shapes_size());
+      instr->shape().tuple_shapes().size());
   if (instr->shape().IsTuple()) {
-    for (int i = 0; i < instr->shape().tuple_shapes_size(); ++i) {
+    for (int i = 0; i < instr->shape().tuple_shapes().size(); ++i) {
       TF_ASSIGN_OR_RETURN(
           result_buffers[i],
           input_output_allocator.AllocateBytes(
@@ -1109,8 +1091,8 @@ absl::StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(
   HloComputation* computation = instr->parent();
   std::vector<Shape> new_call_element_shapes;
   // Add the shapes of the outputs of the convolution.
-  new_call_element_shapes.reserve(instr->shape().tuple_shapes_size() - 1);
-  for (int i = 0; i < instr->shape().tuple_shapes_size() - 1; ++i) {
+  new_call_element_shapes.reserve(instr->shape().tuple_shapes().size() - 1);
+  for (int i = 0; i < instr->shape().tuple_shapes().size() - 1; ++i) {
     new_call_element_shapes.emplace_back(instr->shape().tuple_shapes(i));
   }
   // The final element is the size of the workspace.
@@ -1140,8 +1122,8 @@ absl::StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(
   TF_RETURN_IF_ERROR(new_call->set_backend_config(gpu_backend_config));
 
   std::vector<HloInstruction*> new_tuple_elements;
-  new_tuple_elements.reserve(new_call->shape().tuple_shapes_size() - 1);
-  for (int i = 0; i < new_call->shape().tuple_shapes_size() - 1; ++i) {
+  new_tuple_elements.reserve(new_call->shape().tuple_shapes().size() - 1);
+  for (int i = 0; i < new_call->shape().tuple_shapes().size() - 1; ++i) {
     new_tuple_elements.emplace_back(
         computation->AddInstruction(HloInstruction::CreateGetTupleElement(
             new_call->shape().tuple_shapes(i), new_call, i)));

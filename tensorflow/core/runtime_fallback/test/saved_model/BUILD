@@ -17,8 +17,6 @@ package_group(
 pytype_strict_binary(
     name = "gen_saved_model_v1",
     srcs = ["gen_saved_model_v1.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/distribute:input_lib",  # build_cleaner: keep;

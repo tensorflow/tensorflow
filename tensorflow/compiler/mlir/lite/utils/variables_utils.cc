@@ -29,17 +29,15 @@ namespace utils {
 bool IsSupportedVariableType(Operation* op) {
   ShapedType type;
   if (llvm::isa<TF::ReadVariableOp>(op)) {
-    type = op->getResult(0).getType().cast<ShapedType>();
+    type = llvm::cast<ShapedType>(op->getResult(0).getType());
   } else if (llvm::isa<TF::AssignVariableOp>(op)) {
-    type = op->getOperand(1).getType().cast<ShapedType>();
+    type = llvm::cast<ShapedType>(op->getOperand(1).getType());
   } else if (llvm::isa<TF::VarHandleOp>(op)) {
-    type = op->getResult(0)
-               .getType()
-               .cast<ShapedType>()
-               .getElementType()
-               .cast<TF::TensorFlowTypeWithSubtype>()
-               .GetSubtypes()
-               .back();
+    type =
+        llvm::cast<tf_type::TensorFlowTypeWithSubtype>(
+            llvm::cast<ShapedType>(op->getResult(0).getType()).getElementType())
+            .GetSubtypes()
+            .back();
   }
   return IsSupportedVariableType(type);
 }
@@ -47,13 +45,13 @@ bool IsSupportedVariableType(Operation* op) {
 bool IsSupportedVariableType(ShapedType type) {
   auto element_type = type.getElementType();
   // Check complex types.
-  if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
+  if (auto complex_type = llvm::dyn_cast<ComplexType>(element_type)) {
     auto complex_element_type = complex_type.getElementType();
     if (complex_element_type.isF32() || complex_element_type.isF64())
       return true;
   }
   // Check quantized types.
-  if (auto quant_type = element_type.dyn_cast<mlir::quant::QuantizedType>()) {
+  if (auto quant_type = llvm::dyn_cast<quant::QuantizedType>(element_type)) {
     // TFLite supports QI16, QI32, QI8, and QUI8
     if ((quant_type.getStorageTypeIntegralWidth() == 16 &&
          quant_type.isSigned()) ||

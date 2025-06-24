@@ -49,6 +49,10 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/tpu/tpu_node_context.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -74,10 +78,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_execute.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/macros.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -242,7 +242,7 @@ absl::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
         return absl::InvalidArgumentError(absl::StrCat(
             "Run-time shape mismatch for TPUExecute argument[", i, "] (",
             context->op_kernel().requested_input(i), "). Expected ",
-            expected.DebugString(),
+            expected.ToString(),
             "; got empty tensor. If you are running "
             "with TF2 TPU, make sure you set `drop_remainder=False` when "
             "calling `dataset.batch` on the `tf.data.Dataset` so dynamic batch "
@@ -255,7 +255,7 @@ absl::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
         return absl::InvalidArgumentError(absl::StrCat(
             "Run-time shape mismatch for TPUExecute argument[", i, "] (",
             context->op_kernel().requested_input(i), "). Expected ",
-            expected.DebugString(), "; got ", xla_shape.DebugString()));
+            expected.ToString(), "; got ", xla_shape.ToString()));
       }
     }
 
@@ -679,7 +679,8 @@ absl::Status TPUExecuteOp::DoWork(OpKernelContext* context) {
 
   TF_RET_CHECK(executable.input_shapes_size() == 1);
 
-  xla::Shape host_shape(executable.input_shapes(0));
+  TF_ASSIGN_OR_RETURN(xla::Shape host_shape,
+                      xla::Shape::FromProto(executable.input_shapes(0)));
 
   TF_ASSIGN_OR_RETURN(
       auto variable_update_map,

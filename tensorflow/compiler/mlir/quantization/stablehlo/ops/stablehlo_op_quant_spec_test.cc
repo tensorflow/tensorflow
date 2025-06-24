@@ -25,9 +25,9 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/func.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -65,11 +65,11 @@ constexpr absl::string_view kModuleCompositeSameScale = R"mlir(
   module {
     func.func @same_scale_after_composite() -> tensor<3x1xf32> {
       %0 = "tf.XlaCallModule"() {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn_1, _stablehlo_version = "1.0.0", _original_entry_function = "composite_dot_general_fn_1", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : () -> tensor<1x3xf32>
-      %1 = "quantfork.qcast"(%0) {volatile} : (tensor<1x3xf32>) -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
-      %2 = "quantfork.dcast"(%1) : (tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<1x3xf32>
+      %1 = "quantization.qcast"(%0) {volatile} : (tensor<1x3xf32>) -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+      %2 = "quantization.dcast"(%1) : (tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<1x3xf32>
       %3 = stablehlo.reshape %2 : (tensor<1x3xf32>) -> tensor<3x1xf32>
-      %4 = "quantfork.qcast"(%3) {volatile} : (tensor<3x1xf32>) -> tensor<3x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
-      %5 = "quantfork.dcast"(%4) : (tensor<3x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<3x1xf32>
+      %4 = "quantization.qcast"(%3) {volatile} : (tensor<3x1xf32>) -> tensor<3x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+      %5 = "quantization.dcast"(%4) : (tensor<3x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<3x1xf32>
       return %5 : tensor<3x1xf32>
     }
   }
@@ -166,11 +166,12 @@ TEST_F(IsOpQuantizableStableHloTest, QuantizeDequantizeOpNotQuantizable) {
       module_op->lookupSymbol<func::FuncOp>("same_scale_after_composite");
   ASSERT_THAT(test_func, NotNull());
 
-  auto quantize_op = FindOperationOfType<quantfork::QuantizeCastOp>(test_func);
+  auto quantize_op =
+      FindOperationOfType<mlir::quant::ir::QuantizeCastOp>(test_func);
   EXPECT_FALSE(IsOpQuantizableStableHlo(quantize_op));
 
   auto dequantize_op =
-      FindOperationOfType<quantfork::DequantizeCastOp>(test_func);
+      FindOperationOfType<mlir::quant::ir::DequantizeCastOp>(test_func);
   EXPECT_FALSE(IsOpQuantizableStableHlo(dequantize_op));
 }
 

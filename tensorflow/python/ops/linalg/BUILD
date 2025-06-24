@@ -9,7 +9,6 @@ package(
 py_strict_library(
     name = "linalg_impl",
     srcs = ["linalg_impl.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -36,7 +35,6 @@ py_strict_library(
 py_strict_library(
     name = "linear_operator_util",
     srcs = ["linear_operator_util.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",

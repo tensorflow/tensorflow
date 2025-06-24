@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/cpu_device.h"
 
+#include <cstdint>
+#include <memory>
+#include <utility>
+
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -24,31 +28,35 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
+#include "xla/pjrt/cpu/cpu_async_execution_tracker.h"
+#include "xla/pjrt/cpu/execution_stream_event_map.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/cpu/cpu_xfeed.h"
 
 namespace xla {
 
-TfrtCpuDevice::TfrtCpuDevice(int process_id, int local_device_id,
+PjRtCpuDevice::PjRtCpuDevice(int process_id, int local_device_id,
                              int max_inflight_computations)
     : description_(process_id, local_device_id),
       max_inflight_computations_semaphore_(
-          /*capacity=*/max_inflight_computations) {}
+          /*capacity=*/max_inflight_computations),
+      async_execution_tracker_(std::make_unique<CpuAsyncExecutionTracker>()),
+      stream_event_map_(std::make_unique<ExecutionStreamEventMap>()) {}
 
-absl::Status TfrtCpuDevice::TransferToInfeed(const LiteralSlice& literal) {
+absl::Status PjRtCpuDevice::TransferToInfeed(const LiteralSlice& literal) {
   return TransferLiteralToInfeedOnCpu(local_hardware_id().value(), literal);
 }
 
-absl::Status TfrtCpuDevice::TransferFromOutfeed(
+absl::Status PjRtCpuDevice::TransferFromOutfeed(
     MutableBorrowingLiteral literal) {
   return TransferLiteralFromOutfeedOnCpu(local_hardware_id().value(), literal);
 }
 
-void TfrtCpuDevice::AttachMemorySpace(PjRtMemorySpace* memory_space) {
+void PjRtCpuDevice::AttachMemorySpace(PjRtMemorySpace* memory_space) {
   CHECK(memory_space != nullptr);
   CHECK(client_ == memory_space->client()) << absl::StrFormat(
-      "Could not attach a TfrtCpuDevice to a PjRtMemorySpace owned by a "
+      "Could not attach a PjRtCpuDevice to a PjRtMemorySpace owned by a "
       "different client, the device's client: %s, the memory space's client: "
       "%s.",
       client_->platform_name(), memory_space->client()->platform_name());
@@ -57,15 +65,19 @@ void TfrtCpuDevice::AttachMemorySpace(PjRtMemorySpace* memory_space) {
   memory_spaces_by_id_.emplace(memory_space->kind_id(), memory_space);
 }
 
-absl::Span<PjRtMemorySpace* const> TfrtCpuDevice::memory_spaces() const {
+absl::Span<PjRtMemorySpace* const> PjRtCpuDevice::memory_spaces() const {
   return memory_spaces_;
 }
 
-absl::StatusOr<PjRtMemorySpace*> TfrtCpuDevice::default_memory_space() const {
-  return memory_space_by_kind_id(UnpinnedHostMemorySpace::kKindId);
+absl::StatusOr<PjRtMemorySpace*> PjRtCpuDevice::default_memory_space() const {
+  if (memory_spaces_.empty()) {
+    return absl::FailedPreconditionError(
+        "PjRtCpuDevice::default_memory_space(): No memory space found.");
+  }
+  return memory_spaces_.front();
 }
 
-absl::StatusOr<PjRtMemorySpace*> TfrtCpuDevice::memory_space_by_kind(
+absl::StatusOr<PjRtMemorySpace*> PjRtCpuDevice::memory_space_by_kind(
     absl::string_view memory_space_kind) const {
   auto it =
       absl::c_find_if(memory_spaces_, [memory_space_kind](PjRtMemorySpace* ms) {
@@ -78,7 +90,7 @@ absl::StatusOr<PjRtMemorySpace*> TfrtCpuDevice::memory_space_by_kind(
       absl::StrCat("No memory space found (kind: ", memory_space_kind, ")"));
 }
 
-absl::StatusOr<PjRtMemorySpace*> TfrtCpuDevice::memory_space_by_kind_id(
+absl::StatusOr<PjRtMemorySpace*> PjRtCpuDevice::memory_space_by_kind_id(
     int id) const {
   auto it = memory_spaces_by_id_.find(id);
   if (it == memory_spaces_by_id_.end()) {
@@ -86,6 +98,11 @@ absl::StatusOr<PjRtMemorySpace*> TfrtCpuDevice::memory_space_by_kind_id(
         absl::StrCat("No memory space found (kind_id: ", id, ")"));
   }
   return it->second;
+}
+
+absl::StatusOr<bool> PjRtCpuDevice::PoisonExecution(int32_t launch_id,
+                                                    absl::Status error) {
+  return async_execution_tracker_->SetError(launch_id, std::move(error));
 }
 
 }  // namespace xla

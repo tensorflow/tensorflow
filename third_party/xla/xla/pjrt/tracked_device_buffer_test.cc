@@ -35,7 +35,9 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -81,7 +83,7 @@ class TestDevice : public PjRtDevice {
 
 absl::StatusOr<std::shared_ptr<TrackedDeviceBuffer>> MakeArray(
     const Shape& shape, LocalClient* client, PjRtDevice* device) {
-  std::vector<stream_executor::DeviceMemoryBase> device_buffers;
+  std::vector<tsl::RCReference<RawSEDeviceMemory>> device_buffers;
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       client->backend().transfer_manager()->HostShapeToDeviceShape(shape),
       [&](const Shape& subshape, const ShapeIndex&) -> absl::Status {
@@ -91,12 +93,14 @@ absl::StatusOr<std::shared_ptr<TrackedDeviceBuffer>> MakeArray(
                 /*device_ordinal=*/0,
                 client->backend().transfer_manager()->GetByteSizeRequirement(
                     subshape)));
-        device_buffers.push_back(device_memory.Release());
+        device_buffers.push_back(RawSEDeviceMemory::Create(
+            device_memory.Release(), device->local_device_id(),
+            client->backend().memory_allocator()));
         return absl::OkStatus();
       }));
   return std::make_shared<TrackedDeviceBuffer>(
-      client->backend().memory_allocator(), device, device_buffers,
-      absl::Span<const std::shared_ptr<BufferSequencingEvent>>(), nullptr);
+      device, device_buffers[0],
+      absl::Span<const std::shared_ptr<BufferSequencingEvent>>());
 }
 
 TEST(TrackedDeviceBufferTest, AsShapedBuffer) {
@@ -110,12 +114,9 @@ TEST(TrackedDeviceBufferTest, AsShapedBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto b_buffer, MakeArray(b_shape, client, &device));
   TF_ASSERT_OK_AND_ASSIGN(auto c_buffer, MakeArray(c_shape, client, &device));
 
-  ASSERT_EQ(a_buffer->device_memory().size(), 1);
-  ASSERT_EQ(b_buffer->device_memory().size(), 1);
-  ASSERT_EQ(c_buffer->device_memory().size(), 1);
   std::vector<se::DeviceMemoryBase> expected_buffer_sequence = {
-      a_buffer->device_memory()[0], b_buffer->device_memory()[0],
-      c_buffer->device_memory()[0]};
+      a_buffer->device_memory()->mem(), b_buffer->device_memory()->mem(),
+      c_buffer->device_memory()->mem()};
   ShapedBuffer shaped_a = a_buffer->AsShapedBuffer(
       client->backend().transfer_manager()->HostShapeToDeviceShape(a_shape));
   ShapedBuffer shaped_b = b_buffer->AsShapedBuffer(
@@ -142,26 +143,6 @@ TEST(TrackedDeviceBufferTest, AsShapedBuffer) {
     ++expected_it;
   }
   EXPECT_TRUE(expected_it == expected_buffer_sequence.end());
-}
-
-TEST(TrackedDeviceBufferTest, FromScopedShapedBuffer) {
-  TestDevice device;
-  LocalClient* client = ClientLibrary::LocalClientOrDie();
-
-  Literal literal = LiteralUtil::MakeTupleOwned(
-      LiteralUtil::CreateFullWithDescendingLayout<float>({10, 3, 7}, 33.4f),
-      LiteralUtil::One(S64));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      ScopedShapedBuffer shaped_buffer,
-      client->LiteralToShapedBuffer(literal, /*device_ordinal=*/0));
-  std::shared_ptr<TrackedDeviceBuffer> device_buffer =
-      TrackedDeviceBuffer::FromScopedShapedBuffer(&shaped_buffer, {}, &device);
-
-  EXPECT_EQ(device_buffer->device_memory().size(),
-            ShapeUtil::SubshapeCount(
-                client->backend().transfer_manager()->HostShapeToDeviceShape(
-                    literal.shape())));
 }
 
 }  // namespace

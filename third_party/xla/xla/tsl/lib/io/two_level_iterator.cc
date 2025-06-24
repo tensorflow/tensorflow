@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/lib/io/two_level_iterator.h"
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/io/block.h"
 #include "xla/tsl/lib/io/format.h"
 #include "xla/tsl/lib/io/iterator.h"
@@ -25,7 +26,7 @@ namespace table {
 
 namespace {
 
-typedef Iterator* (*BlockFunction)(void*, const absl::string_view&);
+typedef Iterator* (*BlockFunction)(void*, absl::string_view);
 
 class TwoLevelIterator : public Iterator {
  public:
@@ -34,7 +35,7 @@ class TwoLevelIterator : public Iterator {
 
   ~TwoLevelIterator() override;
 
-  void Seek(const absl::string_view& target) override;
+  void Seek(absl::string_view target) override;
   void SeekToFirst() override;
   void Next() override;
 
@@ -91,7 +92,7 @@ TwoLevelIterator::~TwoLevelIterator() {
   delete data_iter_;
 }
 
-void TwoLevelIterator::Seek(const absl::string_view& target) {
+void TwoLevelIterator::Seek(absl::string_view target) {
   index_iter_->Seek(target);
   InitDataBlock();
   if (data_iter_ != nullptr) data_iter_->Seek(target);

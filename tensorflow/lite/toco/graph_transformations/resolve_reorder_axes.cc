@@ -12,13 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <algorithm>
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
@@ -82,8 +84,8 @@ void ReorderAxes(AxesOrder input_axes_order, AxesOrder output_axes_order,
   }
 }
 
-::tensorflow::Status ResolveReorderAxes::Run(Model* model, std::size_t op_index,
-                                             bool* modified) {
+absl::Status ResolveReorderAxes::Run(Model* model, std::size_t op_index,
+                                     bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   auto* op = it->get();

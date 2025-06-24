@@ -41,14 +41,15 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
+#include "xla/python/safe_static_init.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/python/lib/core/numpy.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -58,6 +59,7 @@ namespace {
 
 struct CustomDtypes {
   nb_dtype bfloat16;
+  std::optional<nb_dtype> float4_e2m1fn;
   std::optional<nb_dtype> float8_e3m4;
   std::optional<nb_dtype> float8_e4m3;
   nb_dtype float8_e4m3fn;
@@ -65,6 +67,7 @@ struct CustomDtypes {
   nb_dtype float8_e4m3fnuz;
   nb_dtype float8_e5m2;
   nb_dtype float8_e5m2fnuz;
+  std::optional<nb_dtype> float8_e8m0fnu;
   std::optional<nb_dtype> int2;
   nb_dtype int4;
   std::optional<nb_dtype> uint2;
@@ -72,10 +75,14 @@ struct CustomDtypes {
 };
 
 const CustomDtypes& GetCustomDtypes() {
-  static const CustomDtypes& custom_dtypes = *[]() {
+  const CustomDtypes& custom_dtypes = SafeStaticInit<CustomDtypes>([]() {
     nb::module_ ml_dtypes = nb::module_::import_("ml_dtypes");
-    auto* dtypes = new CustomDtypes;
+    auto dtypes = std::make_unique<CustomDtypes>();
     dtypes->bfloat16 = nb_dtype::from_args(ml_dtypes.attr("bfloat16"));
+    if (nb::hasattr(ml_dtypes, "float4_e2m1fn")) {
+      dtypes->float4_e2m1fn =
+          nb_dtype::from_args(ml_dtypes.attr("float4_e2m1fn"));
+    }
     if (nb::hasattr(ml_dtypes, "float8_e3m4")) {
       dtypes->float8_e3m4 = nb_dtype::from_args(ml_dtypes.attr("float8_e3m4"));
     }
@@ -91,6 +98,10 @@ const CustomDtypes& GetCustomDtypes() {
         nb_dtype::from_args(ml_dtypes.attr("float8_e4m3fnuz"));
     dtypes->float8_e5m2fnuz =
         nb_dtype::from_args(ml_dtypes.attr("float8_e5m2fnuz"));
+    if (nb::hasattr(ml_dtypes, "float8_e8m0fnu")) {
+      dtypes->float8_e8m0fnu =
+          nb_dtype::from_args(ml_dtypes.attr("float8_e8m0fnu"));
+    }
     dtypes->int4 = nb_dtype::from_args(ml_dtypes.attr("int4"));
     dtypes->uint4 = nb_dtype::from_args(ml_dtypes.attr("uint4"));
     if (nb::hasattr(ml_dtypes, "int2")) {
@@ -100,7 +111,7 @@ const CustomDtypes& GetCustomDtypes() {
       dtypes->uint2 = nb_dtype::from_args(ml_dtypes.attr("uint2"));
     }
     return dtypes;
-  }();
+  });
   return custom_dtypes;
 }
 
@@ -142,11 +153,15 @@ absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type) {
   struct DtypeHash {
     ssize_t operator()(const nb_dtype& key) const { return nb::hash(key); }
   };
-  static auto* custom_dtype_map = []() {
+  const auto& custom_dtype_map = SafeStaticInit<
+      absl::flat_hash_map<nb_dtype, PrimitiveType, DtypeHash, DtypeEq>>([]() {
     const CustomDtypes& custom_dtypes = GetCustomDtypes();
-    auto* map =
-        new absl::flat_hash_map<nb_dtype, PrimitiveType, DtypeHash, DtypeEq>();
+    auto map = std::make_unique<
+        absl::flat_hash_map<nb_dtype, PrimitiveType, DtypeHash, DtypeEq>>();
     map->emplace(custom_dtypes.bfloat16, BF16);
+    if (custom_dtypes.float4_e2m1fn.has_value()) {
+      map->emplace(*custom_dtypes.float4_e2m1fn, F4E2M1FN);
+    }
     if (custom_dtypes.float8_e3m4.has_value()) {
       map->emplace(*custom_dtypes.float8_e3m4, F8E3M4);
     }
@@ -158,6 +173,9 @@ absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type) {
     map->emplace(custom_dtypes.float8_e4m3fnuz, F8E4M3FNUZ);
     map->emplace(custom_dtypes.float8_e5m2, F8E5M2);
     map->emplace(custom_dtypes.float8_e5m2fnuz, F8E5M2FNUZ);
+    if (custom_dtypes.float8_e8m0fnu.has_value()) {
+      map->emplace(*custom_dtypes.float8_e8m0fnu, F8E8M0FNU);
+    }
     if (custom_dtypes.int2.has_value()) {
       map->emplace(*custom_dtypes.int2, S2);
     }
@@ -167,10 +185,10 @@ absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type) {
     }
     map->emplace(custom_dtypes.uint4, U4);
     return map;
-  }();
+  });
 
-  auto custom_it = custom_dtype_map->find(np_type);
-  if (custom_it != custom_dtype_map->end()) {
+  auto custom_it = custom_dtype_map.find(np_type);
+  if (custom_it != custom_dtype_map.end()) {
     return custom_it->second;
   }
   return InvalidArgument("Unknown NumPy dtype %s char %c kind %c itemsize %d",
@@ -217,6 +235,11 @@ absl::StatusOr<nb_dtype> PrimitiveTypeToNbDtype(PrimitiveType type) {
       return to_nb_dtype(NPY_UINT32);
     case U64:
       return to_nb_dtype(NPY_UINT64);
+    case F4E2M1FN:
+      if (custom_dtypes.float4_e2m1fn.has_value()) {
+        return *custom_dtypes.float4_e2m1fn;
+      }
+      break;
     case F8E3M4:
       if (custom_dtypes.float8_e3m4.has_value()) {
         return *custom_dtypes.float8_e3m4;
@@ -237,6 +260,11 @@ absl::StatusOr<nb_dtype> PrimitiveTypeToNbDtype(PrimitiveType type) {
       return custom_dtypes.float8_e5m2;
     case F8E5M2FNUZ:
       return custom_dtypes.float8_e5m2fnuz;
+    case F8E8M0FNU:
+      if (custom_dtypes.float8_e8m0fnu.has_value()) {
+        return *custom_dtypes.float8_e8m0fnu;
+      }
+      break;
     case BF16:
       return custom_dtypes.bfloat16;
     case F16:
@@ -307,6 +335,11 @@ absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype) {
       return to_nb_dtype(NPY_COMPLEX64);
     case ifrt::DType::kC128:
       return to_nb_dtype(NPY_COMPLEX128);
+    case ifrt::DType::kF4E2M1FN:
+      if (custom_dtypes.float4_e2m1fn.has_value()) {
+        return *custom_dtypes.float4_e2m1fn;
+      }
+      break;
     case ifrt::DType::kF8E3M4:
       if (custom_dtypes.float8_e3m4.has_value()) {
         return *custom_dtypes.float8_e3m4;
@@ -327,6 +360,11 @@ absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype) {
       return custom_dtypes.float8_e5m2;
     case ifrt::DType::kF8E5M2FNUZ:
       return custom_dtypes.float8_e5m2fnuz;
+    case ifrt::DType::kF8E8M0FNU:
+      if (custom_dtypes.float8_e8m0fnu.has_value()) {
+        return *custom_dtypes.float8_e8m0fnu;
+      }
+      break;
     case ifrt::DType::kString:
       // PEP 3118 code for "pointer to Python Object". We use Python objects
       // instead of 'U' (Unicode string) or 'V' (raw data) because the latter
@@ -341,7 +379,11 @@ absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype) {
   return Unimplemented("Unimplemented primitive type %s", dtype.DebugString());
 }
 
-absl::StatusOr<ifrt::DType> DtypeToIfRtDType(nb_dtype dtype) {
+absl::StatusOr<ifrt::DType> DtypeToIfRtDType(const nb_dtype& dtype) {
+  // String does not have a corresponding XLA primitive type.
+  if (dtype.kind() == 'T') {
+    return ifrt::DType(ifrt::DType::kString);
+  }
   TF_ASSIGN_OR_RETURN(auto primitive_type, DtypeToPrimitiveType(dtype));
   return ifrt::ToDType(primitive_type);
 }
@@ -358,8 +400,9 @@ absl::StatusOr<nb_dtype> IfrtDtypeToDtypeWithTokenCanonicalization(
 }
 
 const NumpyScalarTypes& GetNumpyScalarTypes() {
-  static const NumpyScalarTypes* singleton = []() {
-    NumpyScalarTypes* dtypes = new NumpyScalarTypes();
+  auto init_fn = []() {
+    std::unique_ptr<NumpyScalarTypes> dtypes =
+        std::make_unique<NumpyScalarTypes>();
     nb::module_ numpy = nb::module_::import_("numpy");
     nb::module_ ml_dtypes = nb::module_::import_("ml_dtypes");
     dtypes->np_bool = nb::object(numpy.attr("bool_"));
@@ -380,6 +423,9 @@ const NumpyScalarTypes& GetNumpyScalarTypes() {
     dtypes->np_uint32 = nb::object(numpy.attr("uint32"));
     dtypes->np_uint64 = nb::object(numpy.attr("uint64"));
     dtypes->np_bfloat16 = nb::object(ml_dtypes.attr("bfloat16"));
+    if (nb::hasattr(ml_dtypes, "float4_e2m1fn")) {
+      dtypes->np_float4_e2m1fn = nb::object(ml_dtypes.attr("float4_e2m1fn"));
+    }
     if (nb::hasattr(ml_dtypes, "float8_e3m4")) {
       dtypes->np_float8_e3m4 = nb::object(ml_dtypes.attr("float8_e3m4"));
     }
@@ -392,6 +438,9 @@ const NumpyScalarTypes& GetNumpyScalarTypes() {
     dtypes->np_float8_e5m2 = nb::object(ml_dtypes.attr("float8_e5m2"));
     dtypes->np_float8_e4m3fnuz = nb::object(ml_dtypes.attr("float8_e4m3fnuz"));
     dtypes->np_float8_e5m2fnuz = nb::object(ml_dtypes.attr("float8_e5m2fnuz"));
+    if (nb::hasattr(ml_dtypes, "float8_e8m0fnu")) {
+      dtypes->np_float8_e8m0fnu = nb::object(ml_dtypes.attr("float8_e8m0fnu"));
+    }
     dtypes->np_float16 = nb::object(numpy.attr("float16"));
     dtypes->np_float32 = nb::object(numpy.attr("float32"));
     dtypes->np_float64 = nb::object(numpy.attr("float64"));
@@ -400,8 +449,10 @@ const NumpyScalarTypes& GetNumpyScalarTypes() {
     dtypes->np_longlong = nb::object(numpy.attr("longlong"));
     dtypes->np_intc = nb::object(numpy.attr("intc"));
     return dtypes;
-  }();
-  return *singleton;
+  };
+
+  const NumpyScalarTypes& singleton = SafeStaticInit<NumpyScalarTypes>(init_fn);
+  return singleton;
 }
 
 const char* PEP3118FormatDescriptorForPrimitiveType(PrimitiveType type) {

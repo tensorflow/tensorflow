@@ -16,8 +16,8 @@ limitations under the License.
 #include "xla/tools/prepare_reference_module.h"
 
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -39,7 +39,7 @@ const char* const kModuleStr = R"(
   }
 )";
 
-using PrepareReferenceModuleTest = HloTestBase;
+using PrepareReferenceModuleTest = HloHardwareIndependentTestBase;
 
 // Ideally 'Despecializer' pass should be mocked. Because it is not feasible
 // with the current design, despecialization tests in this file are based on

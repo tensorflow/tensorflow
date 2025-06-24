@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 
 #define EIGEN_USE_THREADS
 
@@ -334,8 +334,8 @@ absl::StatusOr<Shape> AdjustAddendShape(const HloInstruction* contraction,
     // TODO(intel-tf): Modify this condition when Contraction + Bias +
     // Add is enabled.
     if (IsOneDnnConvolutionInstr(contraction) &&
-        ShapeUtil::TrueRank(addend->shape()) == 1 &&
-        addend->shape().rank() != 1) {
+        ShapeUtil::TrueNumDimensions(addend->shape()) == 1 &&
+        addend->shape().dimensions_size() != 1) {
       return ShapeUtil::FilterDimensions(
           [&addend](int64_t dim) {
             return ShapeUtil::GetDimension(addend->shape(), dim) != 1;
@@ -361,7 +361,7 @@ absl::StatusOr<Shape> AdjustAddendShape(const HloInstruction* contraction,
   //      bitcast = f32[3,1,1,6]{3,2,1,0} bitcast(arg)
   //      fused = f32[3,4,5,6]{3,2,1,0} custom-call((..., bitcast)
   auto kept_dimensions = bcast->dimensions();
-  for (int i = 0; i < new_shape.rank(); i++) {
+  for (int i = 0; i < new_shape.dimensions_size(); i++) {
     if (!absl::c_linear_search(kept_dimensions, i)) {
       new_shape.set_dimensions(i, 1);
     }
@@ -370,7 +370,8 @@ absl::StatusOr<Shape> AdjustAddendShape(const HloInstruction* contraction,
   // If rank(new_shape) > rank(instr), extra dimensions with value = 1 can be
   // deleted from the new_shape.
   auto instr_shape = contraction->shape();
-  int64_t rank_difference = new_shape.rank() - instr_shape.rank();
+  int64_t rank_difference =
+      new_shape.dimensions_size() - instr_shape.dimensions_size();
   auto new_dims = new_shape.dimensions();
   std::vector<int64_t> dims_to_delete;
   for (int i = 0; i < rank_difference; ++i) {
@@ -382,7 +383,7 @@ absl::StatusOr<Shape> AdjustAddendShape(const HloInstruction* contraction,
 
   // New shape for bias should satisfy the condition:
   //   rank(new_shape) <= rank(instr).
-  if (new_shape.rank() > instr_shape.rank()) {
+  if (new_shape.dimensions_size() > instr_shape.dimensions_size()) {
     return absl::CancelledError(
         "Bias shape could not be adjusted for a fusion.");
   }
@@ -455,10 +456,13 @@ bool OneDnnContractionRewriter::ShouldRewriteDot(
   }
   // OneDNN only supports rank <= kOneDnnMaxNDims and singular non-contracting
   // dimensions. We should not rewrite if any of these conditions are violated.
-  if (lhs_shape.rank() <= 0 || lhs_shape.rank() > kOneDnnMaxNDims ||
-      rhs_shape.rank() <= 0 || rhs_shape.rank() > kOneDnnMaxNDims ||
-      output_shape.rank() > std::min({lhs_shape.rank(), rhs_shape.rank(),
-                                      static_cast<int64_t>(kOneDnnMaxNDims)})) {
+  if (lhs_shape.dimensions_size() <= 0 ||
+      lhs_shape.dimensions_size() > kOneDnnMaxNDims ||
+      rhs_shape.dimensions_size() <= 0 ||
+      rhs_shape.dimensions_size() > kOneDnnMaxNDims ||
+      output_shape.dimensions_size() >
+          std::min({lhs_shape.dimensions_size(), rhs_shape.dimensions_size(),
+                    kOneDnnMaxNDims})) {
     return false;
   }
 
@@ -477,7 +481,8 @@ bool OneDnnContractionRewriter::ShouldRewriteDot(
   int64_t lhs_dim_k = dot_dim_numbers.lhs_contracting_dimensions(0);
   int64_t rhs_dim_k = dot_dim_numbers.rhs_contracting_dimensions(0);
   // Supported contraction is only in one of last two dimensions.
-  if (lhs_dim_k < lhs_shape.rank() - 2 || rhs_dim_k < rhs_shape.rank() - 2) {
+  if (lhs_dim_k < lhs_shape.dimensions_size() - 2 ||
+      rhs_dim_k < rhs_shape.dimensions_size() - 2) {
     return false;
   }
 
@@ -488,7 +493,7 @@ bool OneDnnContractionRewriter::ShouldRewriteDot(
   // matmul is achieved.
   auto num_flops = xla::HloCostAnalysis::GetDotFlops(lhs_shape, output_shape,
                                                      dot_dim_numbers);
-  auto rank = output_shape.rank();
+  auto rank = output_shape.dimensions_size();
   auto flops_threshold = (rank <= 2) ? (1 << 24) : (1 << 19);
   return (num_flops >= flops_threshold);
 }
@@ -516,8 +521,8 @@ bool OneDnnContractionRewriter::ShouldRewriteConv(
   auto dims = conv_instr->window().dimensions().size();
   if (dims >= 4 || dims <= 0) return false;
 
-  if (inp_shape.rank() != ker_shape.rank() ||
-      inp_shape.rank() != out_shape.rank()) {
+  if (inp_shape.dimensions_size() != ker_shape.dimensions_size() ||
+      inp_shape.dimensions_size() != out_shape.dimensions_size()) {
     return false;
   }
 
@@ -557,8 +562,8 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     BackendConfig backend_config;
     OneDnnMatMulConfig* matmul_config =
         backend_config.mutable_onednn_matmul_config();
-    bool transpose_a = (lhs_dim_k != lhs_shape.rank() - 1);
-    bool transpose_b = (rhs_dim_k != rhs_shape.rank() - 2);
+    bool transpose_a = (lhs_dim_k != lhs_shape.dimensions_size() - 1);
+    bool transpose_b = (rhs_dim_k != rhs_shape.dimensions_size() - 2);
     matmul_config->set_transpose_a(transpose_a);
     matmul_config->set_transpose_b(transpose_b);
     TF_RETURN_IF_ERROR(matmul_call->set_backend_config(backend_config));
@@ -580,7 +585,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     OneDnnConvolutionConfig* conv_config =
         backend_config.mutable_onednn_conv_config();
 
-    conv_config->set_dims(conv_shape.rank());
+    conv_config->set_dims(conv_shape.dimensions_size());
     conv_config->set_feature_groups(conv->feature_group_count());
     conv_config->mutable_input()->mutable_data()->set_batch_dim(
         conv_dims.input_batch_dimension());
@@ -668,14 +673,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     if (Match(instr, pattern)) {
       if (!IsSupportedType(contraction->shape().element_type()))
         return absl::OkStatus();
-      // TODO(intel-tf): Remove the condition below when the fusion Contraction
-      // + Add(bias) + Add(e.g., residual) is enabled.
-      auto contraction_config = contraction->backend_config<BackendConfig>();
-      auto orig_fusion_config = GetFusionsConfig(&contraction_config);
-      if (!orig_fusion_config->ops().empty() &&
-          orig_fusion_config->ops(0) == OneDnnFusionConfig::BIAS) {
-        return absl::OkStatus();
-      }
+
       std::vector<HloInstruction*> new_operands;
       for (auto operand : contraction->operands()) {
         new_operands.push_back(operand);
@@ -705,7 +703,8 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
 
       // oneDNN library requires Convolution biases to always have rank 1.
       // Therefore, these bias shapes should remain unchanged.
-      if (IsOneDnnMatmulInstr(contraction) || addend->shape().rank() != 1) {
+      if (IsOneDnnMatmulInstr(contraction) ||
+          addend->shape().dimensions_size() != 1) {
         auto new_shape =
             AdjustAddendShape(contraction, addend, optional_addend_broadcast);
         if (!new_shape.ok()) {
@@ -718,8 +717,11 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       }
 
       // Validate addend for fusion.
+      auto addend_user_count = addend->user_count();
+      auto addend_idx = -1;
       if (IsSupportedType(addend->shape().element_type()) &&
           IsOperandFusible(addend, contraction)) {
+        addend_idx = new_operands.size();
         new_operands.push_back(addend);
       } else {
         return absl::OkStatus();
@@ -730,17 +732,27 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
               contraction->shape(), new_operands)));
 
       auto backend_config = custom_call->backend_config<BackendConfig>();
+      bool can_fuse_sum =
+          (ShapeUtil::Equal(custom_call->shape(), addend->shape()) &&
+           addend_user_count == 1 &&
+           custom_call->output_operand_aliasing().empty());
       auto fusions_config = GetFusionsConfig(&backend_config);
       auto optimization_config = GetOptimizationsConfig(&backend_config);
       // TODO(intel-tf): Here, we allow 1D addends only when they are the first
       // fused op. Remove this restriction once oneDNN has an optimized
       // implementation for broadcasted add across all dimensions.
       OneDnnFusionConfig_FusionKind kind =
-          (ShapeUtil::TrueRank(addend->shape()) == 1)
+          (ShapeUtil::TrueNumDimensions(addend->shape()) == 1)
               ? (fusions_config->ops().empty() ? OneDnnFusionConfig::BIAS
                                                : OneDnnFusionConfig::UNDEFINED)
-              : OneDnnFusionConfig::BINARY_ADD;
+          : can_fuse_sum ? OneDnnFusionConfig::SUM
+                         : OneDnnFusionConfig::BINARY_ADD;
       if (kind == OneDnnFusionConfig::UNDEFINED) return absl::OkStatus();
+
+      // Alias output buffers to addend for in-place accumulation
+      if (kind == OneDnnFusionConfig::SUM) {
+        custom_call->set_output_to_operand_aliasing({{{}, {addend_idx, {}}}});
+      }
 
       fusions_config->add_ops(kind);
 
@@ -919,7 +931,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       fusions_config->add_ops(OneDnnFusionConfig::LINEAR);
       // Casting to int32 because of issues in proto config for decimal types
       // handling.
-      fusions_config->set_alpha_typecast(
+      fusions_config->add_alpha_typecast(
           *(reinterpret_cast<int32_t*>(&constant_value.value())));
       TF_RETURN_IF_ERROR(custom_call->set_backend_config(*backend_config));
       HloInstruction* new_instr;
@@ -958,6 +970,31 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
         return FuseActivation(OneDnnFusionConfig::SIGMOID, instr, contraction,
                               intermediate_instr, optional_bitcast);
       }
+    }
+    return absl::OkStatus();
+  }
+
+  absl::Status HandleCopy(HloInstruction* instr) override {
+    HloInstruction *copy, *transpose, *custom_call;
+    if (Match(instr,
+              m::Copy(&copy, m::Transpose(&transpose,
+                                          OneDnnMatmulInstr(&custom_call))))) {
+      auto backend_config = custom_call->backend_config<BackendConfig>();
+      auto dimensions = backend_config->mutable_onednn_matmul_config()
+                            ->mutable_result()
+                            ->mutable_tensor()
+                            ->mutable_dimensions();
+      dimensions->Resize(transpose->dimensions().size(), 0);
+      // Configure inverse transpose dimensions
+      int counter = 1;
+      for (auto x : transpose->dimensions()) {
+        dimensions->Set(x, counter++);
+      }
+      auto matmul_call = Cast<HloCustomCallInstruction>(
+          custom_call->AddInstruction(custom_call->CloneWithNewOperands(
+              copy->shape(), custom_call->mutable_operands())));
+      TF_RETURN_IF_ERROR(matmul_call->set_backend_config(*backend_config));
+      TF_RETURN_IF_ERROR(ReplaceInstruction(copy, matmul_call));
     }
     return absl::OkStatus();
   }
@@ -1022,12 +1059,12 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
 
     auto lhs_batch_dims = dim_numbers.lhs_batch_dimensions();
     auto lhs_contraction_dims = dim_numbers.lhs_contracting_dimensions();
-    bool is_lhs_vector = lhs->shape().rank() ==
+    bool is_lhs_vector = lhs->shape().dimensions_size() ==
                          (lhs_batch_dims.size() + lhs_contraction_dims.size());
 
     auto rhs_batch_dims = dim_numbers.rhs_batch_dimensions();
     auto rhs_contraction_dims = dim_numbers.rhs_contracting_dimensions();
-    bool is_rhs_vector = rhs->shape().rank() ==
+    bool is_rhs_vector = rhs->shape().dimensions_size() ==
                          (rhs_batch_dims.size() + rhs_contraction_dims.size());
 
     if (!is_lhs_vector && !is_rhs_vector) return dot_instr;
@@ -1131,13 +1168,43 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
 #endif
   }
 
-  absl::Status HandleCustomCall(HloInstruction* custom_call) override {
-    HloInstruction* matmul;
-    if (Match(custom_call, OneDnnMatmulInstr(&matmul))) {
-      return HandleCustomCallInternal<dnnl::matmul::primitive_desc>(
-          custom_call);
+  void UpdateTransposeDimensions(
+      HloInstruction* matmul, absl::InlinedVector<HloInstruction*, 2>& new_ops,
+      int operand_idx, absl::StatusOr<BackendConfig>* backend_config) {
+    HloInstruction *transpose, *operand;
+    // Update the dimensions only when the transpose does not involve the batch
+    // dimension, as modifying it could significantly impact the performance.
+    if (Match(matmul->mutable_operand(operand_idx),
+              m::Copy(m::Transpose(&transpose, m::Op(&operand)))) &&
+        transpose->dimensions()[0] == 0) {
+      new_ops[operand_idx] = operand;
+      for (auto x : transpose->dimensions()) {
+        (*GetOperandTensor(operand_idx, backend_config))->Add(x + 1);
+      }
     }
+  }
 
+  absl::Status HandleCustomCall(HloInstruction* custom_call) override {
+    HloInstruction* contraction;
+    if (Match(custom_call, OneDnnMatmulInstr(&contraction))) {
+      auto backend_config = contraction->backend_config<BackendConfig>();
+
+      auto new_ops = contraction->mutable_operands();
+
+      UpdateTransposeDimensions(contraction, new_ops, 0, &backend_config);
+      UpdateTransposeDimensions(contraction, new_ops, 1, &backend_config);
+
+      auto matmul_call = Cast<HloCustomCallInstruction>(
+          contraction->AddInstruction(contraction->CloneWithNewOperands(
+              contraction->shape(), new_ops)));
+      TF_RETURN_IF_ERROR(matmul_call->set_backend_config(*backend_config));
+      TF_RETURN_IF_ERROR(ReplaceInstruction(contraction, matmul_call));
+      return HandleCustomCallInternal<dnnl::matmul::primitive_desc>(
+          matmul_call);
+    } else if (Match(custom_call, OneDnnConvolutionInstr(&contraction))) {
+      return HandleCustomCallInternal<
+          dnnl::convolution_forward::primitive_desc>(custom_call);
+    }
     return DefaultAction(custom_call);
   }
 
@@ -1146,12 +1213,20 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
     auto scratch_add = AddScratch<PrimDesc>(custom_call);
     if (scratch_add.ok()) {
       custom_call = *scratch_add;
+      auto aliases = custom_call->output_operand_aliasing();
+      if (!aliases.empty()) {
+        custom_call->set_output_to_operand_aliasing({{{0}, aliases[0].second}});
+      }
     } else {
       VLOG(2) << scratch_add.status();
     }
-    auto weights_prepack = PrepackWeights<PrimDesc>(custom_call);
-    if (!weights_prepack.ok()) {
-      VLOG(2) << weights_prepack.status();
+    // TODO(intel-tf): Remove this condition after enabling weights prepacking
+    // for convolutions
+    if constexpr (std::is_same_v<PrimDesc, dnnl::matmul::primitive_desc>) {
+      auto weights_prepack = PrepackWeights<PrimDesc>(custom_call);
+      if (!weights_prepack.ok()) {
+        VLOG(2) << weights_prepack.status();
+      }
     }
     return absl::OkStatus();
   }
@@ -1168,8 +1243,8 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
   template <typename>
   bool GetUserScratch(HloInstruction*);
 
-  // Add scratch for matmul by changing the result of custom-call to
-  // tuple(result, scratch)
+  // Add scratch for matmul and convolution by changing the result of
+  // custom-call to tuple(result, scratch)
   template <typename PrimDesc>
   absl::StatusOr<HloInstruction*> AddScratch(HloInstruction* custom_call) {
     if (GetUserScratch<PrimDesc>(custom_call)) {
@@ -1202,7 +1277,7 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
     auto weights = custom_call->operand(1);
     auto weights_shape = weights->shape();
     Literal weights_literal;
-    if (!(weights_shape.rank() == 2 &&
+    if (!(weights_shape.dimensions_size() == 2 &&
           evaluator_.TryEvaluate(weights, &weights_literal, true))) {
       return absl::CancelledError(
           "Cannot prepack weights. Not constant 2D weights.");
@@ -1233,6 +1308,18 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
     } else {
       return custom_call;
     }
+  }
+
+  absl::StatusOr<tsl::protobuf::RepeatedField<uint64_t>*> GetOperandTensor(
+      int operand_idx, absl::StatusOr<BackendConfig>* backend_config) {
+    if (operand_idx > 1) {
+      return absl::CancelledError("Operand index must be either 0 or 1");
+    }
+    auto operand =
+        (operand_idx == 0)
+            ? (*backend_config)->mutable_onednn_matmul_config()->mutable_lhs()
+            : (*backend_config)->mutable_onednn_matmul_config()->mutable_rhs();
+    return operand->mutable_tensor()->mutable_dimensions();
   }
 
   void ReorderWeight(const dnnl::memory::desc& src_md, void* src_buf,
@@ -1272,6 +1359,9 @@ EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(GetWeightsPrepack,
                                        dnnl::matmul::primitive_desc,
                                        onednn_matmul_config,
                                        optimization_config, weights_prepacked);
+EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(
+    GetUserScratch, dnnl::convolution_forward::primitive_desc,
+    onednn_conv_config, optimization_config, user_scratchpad);
 
 #define EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SETTER, PRIM_DESC, CONFIG_TYPE, \
                                                CONFIG, SUB_CONFIG, FIELD)      \
@@ -1293,6 +1383,10 @@ EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SetUserScratch,
                                        dnnl::matmul::primitive_desc,
                                        OneDnnMatMulConfig, onednn_matmul_config,
                                        optimization_config, user_scratchpad);
+EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(
+    SetUserScratch, dnnl::convolution_forward::primitive_desc,
+    OneDnnConvolutionConfig, onednn_conv_config, optimization_config,
+    user_scratchpad);
 
 absl::StatusOr<bool> OneDnnContractionRewriter::Run(
     HloModule* module,
@@ -1315,4 +1409,4 @@ absl::StatusOr<bool> OneDnnContractionRewriter::Run(
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL

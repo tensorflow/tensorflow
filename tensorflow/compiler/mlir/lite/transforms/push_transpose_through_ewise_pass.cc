@@ -316,7 +316,7 @@ void PushTransposeThroughEwisePass::runOnOperation() {
 
   patterns.add<CommuteTransposeWithEwiseOps>(&getContext());
   patterns.add<CommuteBothInputsTransposedWithEwiseOps>(&getContext());
-  if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
     signalPassFailure();
   }
 }

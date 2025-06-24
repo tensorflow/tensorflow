@@ -22,11 +22,12 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/ffi/type_id_registry.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::ffi {
 
@@ -75,6 +76,11 @@ class ExecutionContext {
     TF_ASSIGN_OR_RETURN(auto user_data, LookupUserData(type_id));
     return user_data->data();
   }
+
+  // Visit all user data in the execution context.
+  void ForEach(absl::FunctionRef<void(TypeId type_id, void* data)> fn) const;
+  absl::Status ForEachWithStatus(
+      absl::FunctionRef<absl::Status(TypeId type_id, void* data)> fn) const;
 
  private:
   // An RAII wrapper for opaque user data. Optional deleter will be called when

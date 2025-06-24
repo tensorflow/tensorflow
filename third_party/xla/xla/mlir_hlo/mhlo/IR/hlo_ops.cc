@@ -51,6 +51,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/MathExtras.h"
 #include "mhlo/IR/hlo_ops.h.inc"
 #include "mhlo/IR/hlo_ops_common.h"
@@ -84,6 +85,7 @@ limitations under the License.
 #include "mlir/Transforms/InliningUtils.h"
 #include "stablehlo/dialect/AssemblyFormat.h"
 #include "stablehlo/dialect/Base.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/dialect/TypeInference.h"
 #include "utils/convert_op_folder.h"
 #include "utils/hlo_utils.h"
@@ -977,12 +979,12 @@ namespace {
 // Mode 1, where the ragged dimension is an lhs non-contracting dim (m).
 //   lhs : [b, m, k]
 //   rhs : [g, b, k, n]
-//   group_sizes : [g]
+//   group_sizes : [b, g]
 //   result : [b, m, n]
 // Mode 2, where the ragged dimension is an lhs/rhs contracting dim (k).
 //   lhs : [b, m, k]
 //   rhs : [b, k, n]
-//   group_sizes : [g]
+//   group_sizes : [b, g]
 //   result : [g, b, m, n]
 // Mode 3, where the ragged dimension is an lhs/rhs batch dim (b).
 //   lhs : [b, m, k]
@@ -991,9 +993,18 @@ namespace {
 //   result : [b, m, n]
 // As with dot_general, the lhs and rhs can have arbitrary batching,
 // contracting and non-contracting dimensions.
+// The group_sizes arg has the shape [b...,x...,g], where:
+// - b... are all the lhs batch dims before (outer-to) the lhs ragged dim,
+// - x... are,
+//   - in mode 1, all the lhs non-contracting dims before the lhs ragged dim,
+//   - in mode 2, all the lhs contracting dims before the lhs ragged dim, and
+//   - in mode 3, empty;
+// - g is the number of groups in the lhs ragged dim.
 // Additionally:
 //   - In all modes, the lhs must have exactly one ragged dimension.
 //   - In mode 1, the rhs must have exactly one group dimension.
+//   - If a group_sizes of shape [g] is passed, it is broadcasted according to
+//     the rules above.
 LogicalResult checkRaggedDotConstraints(
     std::optional<Location> location, RankedTensorType rankedLhsType,
     RankedTensorType rankedRhsType, RankedTensorType rankedGroupSizesType,
@@ -1003,14 +1014,6 @@ LogicalResult checkRaggedDotConstraints(
     ArrayRef<int64_t> rhsContractingDimensions,
     ArrayRef<int64_t> lhsRaggedDimensions,
     ArrayRef<int64_t> rhsGroupDimensions) {
-  // Check that the group sizes has rank=1.
-  if (rankedGroupSizesType.getRank() != 1) {
-    return emitOptionalError(
-        location, "expected rank of group_sizes of ragged dot to be 1, got ",
-        rankedGroupSizesType.getRank());
-  }
-  auto numGroups = rankedGroupSizesType.getDimSize(0);
-
   // Check that there is exactly one lhs ragged dimension.
   if (lhsRaggedDimensions.size() != 1) {
     return emitOptionalError(
@@ -1024,6 +1027,81 @@ LogicalResult checkRaggedDotConstraints(
                                    "lhs_rank"))) {
     return failure();
   }
+
+  enum Mode {
+    // Ragged non-contracting (m): [b,m,k], [g,b,k,n], [b,g] -> [b,m,n].
+    kNonContracting,
+    // Ragged contracting (k):     [b,m,k], [b,k,n],   [b,g] -> [g,b,m,n].
+    kContracting,
+    // Ragged batch (b):           [b,m,k], [b,k,n],   [g]   -> [b,m,n].
+    kBatch
+  };
+  Mode mode;
+  if (llvm::is_contained(lhsBatchingDimensions, lhsRaggedDim)) {
+    mode = kBatch;
+  } else if (llvm::is_contained(lhsContractingDimensions, lhsRaggedDim)) {
+    mode = kContracting;
+  } else {
+    mode = kNonContracting;
+  }
+
+  // Validate the shape of group_sizes.
+  {
+    // Construct the expected shape [b...,x...,g] of group_sizes.
+    SmallVector<int64_t> prefixDims;
+    prefixDims.reserve(rankedLhsType.getRank() - 1);
+    prefixDims.insert(prefixDims.end(), lhsBatchingDimensions.begin(),
+                      lhsBatchingDimensions.end());
+    switch (mode) {
+      case kBatch:
+        prefixDims.resize(
+            std::distance(lhsBatchingDimensions.begin(),
+                          llvm::find(lhsBatchingDimensions, lhsRaggedDim)));
+        break;
+      case kContracting:
+        prefixDims.insert(prefixDims.end(), lhsContractingDimensions.begin(),
+                          llvm::find(lhsContractingDimensions, lhsRaggedDim));
+        break;
+      case kNonContracting:
+        for (int64_t i = 0; i < lhsRaggedDim; ++i) {
+          if (!llvm::is_contained(lhsBatchingDimensions, i) &&
+              !llvm::is_contained(lhsContractingDimensions, i)) {
+            prefixDims.push_back(i);
+          }
+        }
+        break;
+    }
+    SmallVector<int64_t> expectedPrefix;
+    expectedPrefix.reserve(prefixDims.size());
+    for (const int64_t dim : prefixDims) {
+      expectedPrefix.push_back(rankedLhsType.getDimSize(dim));
+    }
+
+    // Validate the actual shape, if it was passed as something other than [g].
+    if (rankedGroupSizesType.getRank() != 1) {
+      if (rankedGroupSizesType.getRank() != expectedPrefix.size() + 1) {
+        return emitOptionalError(location, "expected group_sizes to have rank ",
+                                 expectedPrefix.size() + 1, ", got ",
+                                 rankedGroupSizesType.getRank());
+      }
+      auto groupSizesShape = rankedGroupSizesType.getShape();
+      if (!std::equal(expectedPrefix.begin(), expectedPrefix.end(),
+                      rankedGroupSizesType.getShape().begin())) {
+        auto nonEmptyShapeStr = [](ArrayRef<int64_t> shape) {
+          std::string s = "";
+          for (int64_t i = 0; i < shape.size() - 1; ++i) {
+            s += std::to_string(shape[i]) + ", ";
+          }
+          return s + std::to_string(shape.back());
+        };
+        return emitOptionalError(
+            location, "group_sizes is expected to have shape [",
+            nonEmptyShapeStr(expectedPrefix), ", ", groupSizesShape.back(),
+            "], got [", nonEmptyShapeStr(groupSizesShape), "]");
+      }
+    }
+  }
+  const int64_t numGroups = rankedGroupSizesType.getShape().back();
 
   // Validate basic properties of the rhs group dimension(s).
   for (auto rhsGroupDim : rhsGroupDimensions) {
@@ -1041,33 +1119,34 @@ LogicalResult checkRaggedDotConstraints(
           "rhs_group_dimensions", "rhs_contracting_dimensions"))) {
     return failure();
   }
-
-  if (llvm::is_contained(lhsBatchingDimensions, lhsRaggedDim) ||
-      llvm::is_contained(lhsContractingDimensions, lhsRaggedDim)) {
-    // Ragged batch (b):       [b,m,k], [b,k,n], [g] -> [b,m,n].
-    // Ragged contracting (k): [b,m,k], [b,k,n], [g] -> [g,b,m,n].
-    if (!rhsGroupDimensions.empty()) {
-      return emitOptionalError(
-          location,
-          "There must be zero group dimensions in the rhs when the "
-          "ragged dimension is batch or contracting.");
-    }
-  } else {
-    // Ragged non-contracting (m): [b,m,k], [g,b,k,n], [g] -> [b,m,n].
-    if (rhsGroupDimensions.size() != 1) {
-      return emitOptionalError(
-          location,
-          "There must be exactly one group dimension in the rhs when the lhs "
-          "ragged dimension is non-contracting.");
-    }
-    // Compare the group dimension size with the number of groups.
-    const int64_t rhsGroupDim = rhsGroupDimensions[0];
-    if (!hlo::verifyCompatibleDims(numGroups,
-                                   rankedRhsType.getDimSize(rhsGroupDim))) {
-      return emitOptionalError(
-          location, "group_sizes is expected to have shape=[",
-          rankedRhsType.getDimSize(rhsGroupDim), "], got [", numGroups, "]");
-    }
+  switch (mode) {
+    case kBatch:
+      [[fallthrough]];
+    case kContracting:
+      if (!rhsGroupDimensions.empty()) {
+        return emitOptionalError(
+            location,
+            "There must be zero group dimensions in the rhs when the "
+            "ragged dimension is batch or contracting.");
+      }
+      break;
+    case kNonContracting:
+      if (rhsGroupDimensions.size() != 1) {
+        return emitOptionalError(location,
+                                 "There must be exactly one group dimension "
+                                 "in the rhs when the lhs "
+                                 "ragged dimension is non-contracting.");
+      }
+      // Compare the group dimension size with the number of groups.
+      const int64_t rhsGroupDim = rhsGroupDimensions[0];
+      if (!hlo::verifyCompatibleDims(numGroups,
+                                     rankedRhsType.getDimSize(rhsGroupDim))) {
+        return emitOptionalError(
+            location,
+            "rhs group dimension is expected to have size=", numGroups,
+            ", got ", rankedRhsType.getDimSize(rhsGroupDim));
+      }
+      break;
   }
   return success();
 }
@@ -1104,10 +1183,10 @@ LogicalResult inferRaggedDotOp(
           lhsRaggedDimensions, rhsGroupDimensions))) {
     return failure();
   }
-  // Already checked that group_sizes is 1-D.
-  const int64_t numGroups = rankedGroupSizesType.getDimSize(0);
   // Already checked that there is exactly one lhs ragged dim.
   const int64_t lhsRaggedDim = lhsRaggedDimensions[0];
+  // Already checked the shape of group_sizes.
+  const int64_t numGroups = rankedGroupSizesType.getShape().back();
 
   // Infer the output dimensions of the ragged dot operation.
   SmallVector<int64_t> dimensions;
@@ -1211,6 +1290,170 @@ LogicalResult SparseDotOp::verify() {
                              hlo::dimSizesToString(inferredShape.getDims()),
                              "' is incompatible with return type of operation ",
                              resultType);
+  return success();
+}
+
+LogicalResult ResultAccuracyAttr::verify(
+    ::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError, APFloat atol,
+    APFloat rtol, int64_t ulps, ResultAccuracyModeAttr mode) {
+  return hlo::verifyResultAccuracyAttr(
+      emitError, std::move(atol), std::move(rtol), ulps,
+      stringifyResultAccuracyMode(mode.getValue()));
+}
+
+// ===---------------------------------------------------------------------===//
+// CbrtOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CbrtOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    return ResultAccuracyAttr::verify([&] { return emitError(); },
+                                      attr.getAtol(), attr.getRtol(),
+                                      attr.getUlps(), attr.getMode());
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// CosineOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CosineOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    return ResultAccuracyAttr::verify([&] { return emitError(); },
+                                      attr.getAtol(), attr.getRtol(),
+                                      attr.getUlps(), attr.getMode());
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// ExpOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ExpOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    return ResultAccuracyAttr::verify([&] { return emitError(); },
+                                      attr.getAtol(), attr.getRtol(),
+                                      attr.getUlps(), attr.getMode());
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// Expm1Op
+//===----------------------------------------------------------------------===//
+
+LogicalResult Expm1Op::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    return ResultAccuracyAttr::verify([&] { return emitError(); },
+                                      attr.getAtol(), attr.getRtol(),
+                                      attr.getUlps(), attr.getMode());
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// LogOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult LogOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    return ResultAccuracyAttr::verify([&] { return emitError(); },
+                                      attr.getAtol(), attr.getRtol(),
+                                      attr.getUlps(), attr.getMode());
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// Log1pOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult Log1pOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    return ResultAccuracyAttr::verify([&] { return emitError(); },
+                                      attr.getAtol(), attr.getRtol(),
+                                      attr.getUlps(), attr.getMode());
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// LogisticOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult LogisticOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    return ResultAccuracyAttr::verify([&] { return emitError(); },
+                                      attr.getAtol(), attr.getRtol(),
+                                      attr.getUlps(), attr.getMode());
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// RsqrtOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult RsqrtOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    return ResultAccuracyAttr::verify([&] { return emitError(); },
+                                      attr.getAtol(), attr.getRtol(),
+                                      attr.getUlps(), attr.getMode());
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// SinOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult SineOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    return ResultAccuracyAttr::verify([&] { return emitError(); },
+                                      attr.getAtol(), attr.getRtol(),
+                                      attr.getUlps(), attr.getMode());
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// SqrtOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult SqrtOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    return ResultAccuracyAttr::verify([&] { return emitError(); },
+                                      attr.getAtol(), attr.getRtol(),
+                                      attr.getUlps(), attr.getMode());
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// TanOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TanOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    return ResultAccuracyAttr::verify([&] { return emitError(); },
+                                      attr.getAtol(), attr.getRtol(),
+                                      attr.getUlps(), attr.getMode());
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// TanhOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TanhOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    return ResultAccuracyAttr::verify([&] { return emitError(); },
+                                      attr.getAtol(), attr.getRtol(),
+                                      attr.getUlps(), attr.getMode());
+  }
   return success();
 }
 
@@ -3111,6 +3354,7 @@ LogicalResult DynamicReshapeOp::verify() {
   if (!operandType.hasRank() || !resultType.hasRank() ||
       !outputShapeType.hasStaticShape())
     return success();
+
   return hlo::verifyDynamicReshapeOp(getLoc(), getOperand(), getOutputShape(),
                                      getResult());
 }
@@ -3228,6 +3472,19 @@ void DynamicReshapeOp::getCanonicalizationPatterns(RewritePatternSet& results,
 //===----------------------------------------------------------------------===//
 // DynamicSliceOp
 //===----------------------------------------------------------------------===//
+
+// Pattern: dynamic_slice(splat_cst, start, end) -> resized_splat_cst
+OpFoldResult DynamicSliceOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
+  if (!operands[0]) return nullptr;
+
+  auto cst_attr = mlir::dyn_cast<DenseElementsAttr>(operands[0]);
+  if (cst_attr && cst_attr.isSplat()) {
+    return cst_attr.resizeSplat(getResult().getType());
+  }
+
+  return nullptr;
+}
 
 namespace {
 // Canonicalizes DynamicSlice ops that can be replaced instead with Slice ops.
@@ -3506,12 +3763,6 @@ LogicalResult RecvOp::verify() {
                            isDeviceToDevice, isHostToDevice,
                            getIsHostTransfer(), getResults());
 }
-
-//===----------------------------------------------------------------------===//
-// CopyOp
-//===----------------------------------------------------------------------===//
-
-OpFoldResult CopyOp::fold(FoldAdaptor) { return getOperand(); }
 
 //===----------------------------------------------------------------------===//
 // ReduceWindowOp
@@ -3817,11 +4068,47 @@ static LogicalResult tryFoldOutsideValuesReduction(
   return success();
 }
 
+// Pattern: reduce(args...) ({ return cst1, ..., cstN }) -> cst1, ..., cstN
+static LogicalResult tryFoldEmptyBodyConstantInit(
+    ReduceOp reduceOp, SmallVectorImpl<OpFoldResult>& results) {
+  mlir::Block& bb = reduceOp.getBody().front();
+  if (bb.getOperations().size() > 1) {
+    return failure();
+  }
+
+  auto retOp = mlir::dyn_cast<ReturnOp>(bb.back());
+  if (!retOp) {
+    return failure();
+  }
+
+  for (auto [retOpArg, reduceOpResult] :
+       llvm::zip_equal(retOp.getResults(), reduceOp.getResults())) {
+    auto* cstOp = retOpArg.getDefiningOp();
+    if (!cstOp || !cstOp->hasTrait<mlir::OpTrait::ConstantLike>()) {
+      results.clear();
+      return failure();
+    }
+
+    DenseElementsAttr cstAttr;
+    if (!matchPattern(cstOp, m_Constant(&cstAttr))) {
+      results.clear();
+      return failure();
+    }
+
+    auto resultShapedType =
+        mlir::dyn_cast_or_null<ShapedType>(reduceOpResult.getType());
+    results.push_back(DenseElementsAttr::get(
+        resultShapedType, {cstAttr.getSplatValue<Attribute>()}));
+  }
+  return success();
+}
+
 LogicalResult ReduceOp::fold(FoldAdaptor /*adaptor*/,
                              SmallVectorImpl<OpFoldResult>& results) {
   if (succeeded(tryFoldZeroDimReduction(*this, results))) return success();
   if (succeeded(tryFoldOutsideValuesReduction(*this, results)))
     return success();
+  if (succeeded(tryFoldEmptyBodyConstantInit(*this, results))) return success();
   return failure();
 }
 
@@ -6024,7 +6311,7 @@ LogicalResult ScatterOp::fold(
   // these to be constant: just that we know the type.
   if (updateType == baseType && updateType.hasStaticShape() &&
       baseType.hasStaticShape() && index.isSplat() &&
-      index.getSplatValue<uint32_t>() == 0 &&
+      index.getSplatValue<APInt>().isZero() &&
       llvm::hasSingleElement(getUpdateComputation().front())) {
     foldResults.push_back(getUpdates()[0]);
     return success();
@@ -6277,7 +6564,8 @@ static LogicalResult whileCanonicalization(WhileOp whileOp,
     bodyReturnOp->eraseOperand(idx);
 
   WhileOp newWhileOp = rewriter.create<WhileOp>(
-      whileOp.getLoc(), bodyReturnOp->getOperandTypes(), newOperands);
+      whileOp.getLoc(), bodyReturnOp->getOperandTypes(), newOperands,
+      whileOp->getAttrs());
   newWhileOp.getBodyRegion(0).takeBody(whileOp.getBodyRegion(0));
   newWhileOp.getBodyRegion(1).takeBody(whileOp.getBodyRegion(1));
   for (auto results : llvm::zip(resultsToReplace, newWhileOp->getResults()))
@@ -6705,9 +6993,14 @@ Attribute RaggedDotDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
           {"dot_dimension_numbers", "lhs_ragged_dimensions",
            "rhs_group_dimensions"},
           {[&]() {
-             auto result = DotDimensionNumbersAttr::parse(parser, type);
-             if (!result) return ParseResult(failure());
-             dotDimensionNumbers = llvm::cast<DotDimensionNumbersAttr>(result);
+             Attribute attr;
+             if (failed(parser.parseAttribute(attr)))
+               return ParseResult(failure());
+             dotDimensionNumbers =
+                 llvm::dyn_cast<DotDimensionNumbersAttr>(attr);
+             if (!dotDimensionNumbers)
+               parser.emitError(parser.getCurrentLocation(),
+                                "expected #mhlo.dot attribute");
              return ParseResult(success());
            },
            [&]() { return parseDims(parser, lhsRaggedDimensions); },
@@ -7210,6 +7503,20 @@ static LogicalResult verifyArgResultAliasAttr(StringAttr attrName,
                              << " aliases do not have compatible types, "
                              << argType << " vs. " << resultType;
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Custom unary op
+//===----------------------------------------------------------------------===//
+
+void ResultAccuracyAttr::print(AsmPrinter& odsPrinter) const {
+  hlo::printResultAccuracyAttr(odsPrinter, getAtol(), getRtol(), getUlps(),
+                               getMode());
+}
+
+Attribute ResultAccuracyAttr::parse(AsmParser& parser, Type type) {
+  return hlo::parseResultAccuracyAttr<ResultAccuracyAttr,
+                                      ResultAccuracyModeAttr>(parser, type);
 }
 
 // Each CrossProgramPrefetchAttr specifies a parameter and a ShapeIndex

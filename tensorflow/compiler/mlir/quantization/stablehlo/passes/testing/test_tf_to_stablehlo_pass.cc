@@ -16,6 +16,7 @@ limitations under the License.
 #include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/Dialect/UB/IR/UBOps.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project  // IWYU pragma: keep
@@ -25,7 +26,7 @@ limitations under the License.
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"

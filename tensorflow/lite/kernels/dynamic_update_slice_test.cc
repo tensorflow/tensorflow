@@ -177,6 +177,21 @@ TEST(DynamicUpdateSliceOpTest, SimpleTestI8) {
                                                        7, -2, 9}));
 }
 
+TEST(DynamicUpdateSliceOpTest, SimpleTestI16) {
+  DynamicUpdateSliceOpModel m({TensorType_INT16, {3, 3}},
+                              {TensorType_INT16, {2, 1}},
+                              {TensorType_INT32, {2}});
+  m.SetInput<int16_t>({1, 2, 3,  //
+                       4, 5, 6,  //
+                       7, 8, 9});
+  m.SetUpdate<int16_t>({-1, -2});
+  m.SetStartIndices<int32_t>({1, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int16_t>(), ElementsAreArray({1, 2, 3,   //
+                                                        4, -1, 6,  //
+                                                        7, -2, 9}));
+}
+
 TEST(DynamicUpdateSliceOpTest, SimpleTestI32) {
   DynamicUpdateSliceOpModel m({TensorType_INT32, {3, 3}},
                               {TensorType_INT32, {2, 1}},

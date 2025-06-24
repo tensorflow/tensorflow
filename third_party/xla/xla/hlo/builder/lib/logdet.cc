@@ -52,14 +52,14 @@ SignAndLogDet SLogDet(XlaOp a) {
         Sign(Einsum(qr.q_and_r, "...aa->...a")),
         One(a.builder(), a_shape.element_type()),
         CreateScalarMultiplyComputation(a_shape.element_type(), a.builder()),
-        {a_shape.rank() - 2});
+        {a_shape.dimensions_size() - 2});
     auto sliced_taus = SliceInMinorDims(qr.taus, {0}, {n - 1});
     auto sign_taus = Reduce(
         Select(Ne(sliced_taus, ZerosLike(sliced_taus)),
                FullLike(sliced_taus, -1), FullLike(sliced_taus, 1)),
         One(a.builder(), a_shape.element_type()),
         CreateScalarMultiplyComputation(a_shape.element_type(), a.builder()),
-        {a_shape.rank() - 2});
+        {a_shape.dimensions_size() - 2});
     return SignAndLogDet{sign_diag * sign_taus, log_abs_det};
   }();
   if (!result.ok()) {

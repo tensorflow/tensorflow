@@ -387,6 +387,8 @@ class MlirGraphOptimizationV1PassTest : public Test {
                                    [false]);
     EXPECT_EQ(mlir_function_pass_graph_conversion_count_.Read(kOk), 0);
     EXPECT_EQ(mlir_v1_compat_graph_conversion_count_.Read(kOk), 1);
+    EXPECT_EQ(
+        mlir_v1_compat_graph_conversion_failure_model_name_count_.Read(""), 0);
   }
 
   void TearDown() override {
@@ -424,6 +426,12 @@ class MlirGraphOptimizationV1PassTest : public Test {
           monitoring::testing::CellReader<int64_t>(
               /* metric name */
               "/tensorflow/core/mlir_v1_compat_graph_conversion_count");
+  monitoring::testing::CellReader<int64_t>
+      mlir_v1_compat_graph_conversion_failure_model_name_count_ =
+          monitoring::testing::CellReader<int64_t>(
+              /* metric name */
+              "/tensorflow/core/"
+              "mlir_v1_compat_graph_conversion_failure_model_name_count");
 };
 
 TEST_F(MlirGraphOptimizationV1PassTest, OptimizationPassDoesNotFailFallback) {

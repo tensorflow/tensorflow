@@ -21,9 +21,9 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/status.h"
 
 namespace xla {
 
@@ -93,6 +93,11 @@ const Layout& ShapeLayout::layout() const {
 void ShapeLayout::Clear() { LayoutUtil::ClearLayout(&shape_); }
 void ShapeLayout::Clear(ShapeIndexView shape_index) {
   ShapeUtil::GetMutableSubshape(&shape_, shape_index)->clear_layout();
+}
+
+void ShapeLayout::ClearTiles() { LayoutUtil::ClearTiles(&shape_); }
+void ShapeLayout::ClearTiles(ShapeIndexView shape_index) {
+  LayoutUtil::ClearTiles(ShapeUtil::GetMutableSubshape(&shape_, shape_index));
 }
 
 bool ShapeLayout::LayoutIsSet() const { return LayoutUtil::HasLayout(shape_); }

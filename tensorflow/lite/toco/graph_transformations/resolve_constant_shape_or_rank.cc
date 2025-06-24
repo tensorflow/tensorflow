@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
+
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
@@ -21,9 +24,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status ResolveConstantShapeOrRank::Run(Model* model,
-                                                     std::size_t op_index,
-                                                     bool* modified) {
+absl::Status ResolveConstantShapeOrRank::Run(Model* model, std::size_t op_index,
+                                             bool* modified) {
   *modified = false;
   const auto it = model->operators.begin() + op_index;
   const auto* op = it->get();

@@ -34,6 +34,9 @@ message AutotuneResults {
     string device = 1;
     string hlo = 2;
     AutotuneResult result = 3;
+    // Autotuning results may be versioned separately from the format of the
+    // cache.
+    int32 version = 4;
   }
 
   int32 version = 1;

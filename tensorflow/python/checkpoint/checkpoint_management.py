@@ -537,15 +537,18 @@ class CheckpointManager(object):
   particular directory at a time.
   """
 
-  def __init__(self,
-               checkpoint,
-               directory,
-               max_to_keep,
-               keep_checkpoint_every_n_hours=None,
-               checkpoint_name="ckpt",
-               step_counter=None,
-               checkpoint_interval=None,
-               init_fn=None):
+  def __init__(
+      self,
+      checkpoint,
+      directory,
+      max_to_keep,
+      keep_checkpoint_every_n_hours=None,
+      checkpoint_name="ckpt",
+      step_counter=None,
+      checkpoint_interval=None,
+      init_fn=None,
+      last_checkpoint_step=None,
+  ):
     """Configure a `CheckpointManager` for use in `directory`.
 
     If a `CheckpointManager` was previously used in `directory`, its
@@ -613,6 +616,10 @@ class CheckpointManager(object):
         between two checkpoints.
       init_fn: Callable. A function to do customized initialization if no
         checkpoints are in the directory.
+      last_checkpoint_step: An integer, indicating the step number of the last
+        checkpoint saved. This will be used as the starting point for checking
+        checkpoint_interval against the current step. If None, the last
+        checkpoint step will be set to None.
 
     Raises:
       ValueError: If `max_to_keep` is not a positive integer.
@@ -636,7 +643,7 @@ class CheckpointManager(object):
       if step_counter is None:
         raise ValueError("`step_counter` should be passed if "
                          "`checkpoint_interval` is not None.")
-      self._last_checkpoint_step = None
+      self._last_checkpoint_step = last_checkpoint_step or None
       self._step_counter = step_counter
     self._checkpoint_interval = checkpoint_interval
 

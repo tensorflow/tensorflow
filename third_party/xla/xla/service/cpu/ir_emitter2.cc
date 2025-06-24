@@ -15,22 +15,24 @@ limitations under the License.
 
 #include "xla/service/cpu/ir_emitter2.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
@@ -46,23 +48,26 @@ limitations under the License.
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
+#include "llvm/Linker/Linker.h"
 #include "llvm/Support/CodeGen.h"
+#include "mlir/IR/MLIRContext.h"
+#include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter.h"
+#include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter_config.h"
+#include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
+#include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
+#include "xla/backends/cpu/codegen/symbol_name_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/layout_util.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/elemental_ir_emitter.h"
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/cpu/parallel_loop_emitter.h"
-#include "xla/service/cpu/shape_partition.h"
-#include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/dynamic_update_slice_util.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
@@ -70,23 +75,42 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
+#include "xla/shape_partition.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
 namespace {
 
-KernelApiIrBuilder::Options KernelApiIrBuilderOptionsFromHloModuleConfig(
-    const HloModuleConfig& config) {
-  return KernelApiIrBuilder::Options{
-      config.debug_options().xla_llvm_enable_invariant_load_metadata(),
-      config.debug_options().xla_cpu_prefer_vector_width()};
+// Explicitly in HLO we mostly see "loop" types for fusions.
+// However, internally we pick a fusion kind to pick the appropriate
+// fusion emitter.
+enum class FusionEmitterKind {
+  kLoop,
+  kScatter,
+};
+
+// This is very crude at the moment. Eventually we will need to either have
+// the fusion indicate what emitter it is meant for (e.g. producing this
+// info via a cost model), or heuristics to estimate which emitter is best
+// for the fusion.
+FusionEmitterKind AnalyzeHloFusion(const HloFusionInstruction* fusion) {
+  if (fusion->fused_expression_root()->opcode() == HloOpcode::kScatter) {
+    return FusionEmitterKind::kScatter;
+  }
+  return FusionEmitterKind::kLoop;
+}
+
+std::string SortCsv(absl::string_view csv) {
+  std::vector<absl::string_view> v =
+      absl::StrSplit(csv, ',', absl::SkipEmpty());
+  std::sort(v.begin(), v.end());
+  return absl::StrJoin(v, ",");
 }
 
 }  // namespace
@@ -100,13 +124,28 @@ IrEmitter2::IrEmitter2(const HloModule& hlo_module, llvm::Module* module,
     : hlo_module_(hlo_module),
       module_(module),
       nested_ir_emitter_(nested_ir_emitter),
-      kernel_api_ir_builder_(
-          module_->getContext(),
-          KernelApiIrBuilderOptionsFromHloModuleConfig(hlo_module_.config())) {}
+      kernel_api_ir_builder_(module_->getContext(),
+                             KernelApiIrBuilder::Options::FromHloModuleConfig(
+                                 hlo_module_.config())) {}
 
 bool IrEmitter2::fast_min_max() const {
   return hlo_module_.config().debug_options().xla_cpu_enable_fast_min_max();
 }
+
+bool IrEmitter2::IsSupportedByFusionEmitter(
+    const HloFusionInstruction* fusion) const {
+  if (!hlo_module_.config().debug_options().xla_cpu_use_fusion_emitters()) {
+    return false;
+  }
+  FusionEmitterKind fusion_emitter_kind = AnalyzeHloFusion(fusion);
+  switch (fusion_emitter_kind) {
+    case FusionEmitterKind::kScatter:
+      return kFusionEmitterScatterEnabled;
+    default:
+      return false;
+  }
+}
+
 IrEmitter2::KernelInfo::KernelInfo(KernelPrototype prototype,
                                    const se::BlockDim& block_dims,
                                    const se::ThreadDim& thread_dims)
@@ -114,6 +153,17 @@ IrEmitter2::KernelInfo::KernelInfo(KernelPrototype prototype,
       block_dims(block_dims),
       thread_dims(thread_dims),
       invariant_arguments(std::move(prototype.invariant_arguments)) {}
+
+IrEmitter2::KernelInfo::KernelInfo(
+    const std::string& name, const se::BlockDim& block_dims,
+    const se::ThreadDim& thread_dims,
+    const absl::flat_hash_set<int64_t>& invariant_arguments,
+    absl::string_view backend_extra_options)
+    : name(name),
+      block_dims(block_dims),
+      thread_dims(thread_dims),
+      invariant_arguments(invariant_arguments),
+      backend_extra_options(SortCsv(backend_extra_options)) {}
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitPadHostKernel(
     const HloInstruction* pad) {
@@ -168,8 +218,10 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
   IrEmitter::IRBuilderGuard builder_guard = nested_ir_emitter_->WithBuilder(b);
 
   HloComputation* nested_computation = fusion->fused_instructions_computation();
-  TF_RETURN_IF_ERROR(nested_ir_emitter_->EmitNestedComputation(
-      *nested_computation, llvm_ir::IrName(fusion), false));
+  TF_RETURN_IF_ERROR(nested_ir_emitter_
+                         ->EmitNestedComputation(*nested_computation,
+                                                 llvm_ir::IrName(fusion), false)
+                         .status());
 
   CpuElementalIrEmitter elemental_emitter = ElementalIrEmmiterFactory(&b);
 
@@ -220,58 +272,6 @@ static bool IsDotCodegenStrategy(DotImplementationStrategy strategy) {
          kDotCodegenStrategies.end();
 }
 
-absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotHostKernel(
-    const HloInstruction* instr) {
-  VLOG(2) << "Emit dot host kernel: " << instr->name();
-
-  DotImplementationStrategy strategy = GetDotImplementationStrategy(
-      hlo_module_.config(), *instr,
-      nested_ir_emitter_->target_machine_features());
-
-  if (!IsDotCodegenStrategy(strategy)) {
-    return Internal("Unsupported dot implementation strategy");
-  }
-
-  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
-                      EmitKernelPrototype(instr));
-
-  llvm::IRBuilder<> b(module_->getContext());
-  b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
-
-  llvm_ir::IrArray lhs_array = kernel_prototype.arguments[0];
-  llvm_ir::IrArray rhs_array = kernel_prototype.arguments[1];
-  llvm_ir::IrArray target_array = kernel_prototype.results[0];
-
-  TF_RETURN_IF_ERROR(EmitDotOperation(
-      *instr, target_array, lhs_array, rhs_array,
-      /*addend_array=*/nullptr, /*executable_run_options_value=*/nullptr, &b,
-      hlo_module_.config(), nested_ir_emitter_->target_machine_features(),
-      /*allow_runtime_calls=*/false));
-
-  return kernels_.emplace_back(
-      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
-}
-
-absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitConcatenateHostKernel(
-    const HloInstruction* instr) {
-  VLOG(2) << "Emit concatenate host kernel: " << instr->name();
-
-  DCHECK_OK(CanDoFastConcatenate(instr));
-
-  VLOG(1) << "Emitting fast concatenate for " << instr->ToString();
-  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
-                      EmitKernelPrototype(instr));
-  llvm::IRBuilder<> ir_builder(module_->getContext());
-  ir_builder.SetInsertPoint(
-      kernel_prototype.function->getEntryBlock().getTerminator());
-
-  llvm_ir::IrArray output_array = kernel_prototype.results[0];
-  TF_RETURN_IF_ERROR(::xla::cpu::EmitFastConcatenate(
-      instr, kernel_prototype.arguments, output_array, module_, ir_builder));
-  return kernels_.emplace_back(
-      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
-}
-
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotFusionHostKernel(
     const HloFusionInstruction* fusion) {
   VLOG(2) << "Emit dot fusion host kernel: " << fusion->name();
@@ -296,8 +296,8 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotFusionHostKernel(
 
   // Check that we can emit LLVM IR for this dot operation.
   DotImplementationStrategy strategy = GetDotImplementationStrategy(
-      hlo_module_.config(), *dot,
-      nested_ir_emitter_->target_machine_features());
+      hlo_module_.config(), *dot, nested_ir_emitter_->target_machine_features(),
+      /*allow_runtime_calls=*/false);
 
   if (!IsDotCodegenStrategy(strategy)) {
     return Internal("Unsupported dot implementation strategy");
@@ -369,9 +369,19 @@ IrEmitter2::EmitDynamicUpdateSliceHostKernel(const HloInstruction* instr) {
 
 absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
     HloComputation* comparator) {
+  std::string comparator_name(comparator->name().data(),
+                              comparator->name().size());
+  if (hlo_module_.config()
+          .debug_options()
+          .xla_cpu_generate_unique_c_style_kernel_entry_points()) {
+    TF_ASSIGN_OR_RETURN(comparator_name, ConvertToCName(absl::StrCat(
+                                             comparator->parent()->name(), "_",
+                                             comparator->name())));
+  }
+
   // Find if we already emitted this comparator.
   auto info = absl::c_find_if(comparators_, [&](const ComparatorInfo& info) {
-    return info.name == comparator->name();
+    return info.name == comparator_name;
   });
   if (info != comparators_.end()) return *info;
 
@@ -383,7 +393,7 @@ absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
   // to set external linkage and to get a pointer to compiled function later.
   TF_ASSIGN_OR_RETURN(llvm::Function * comparator_function,
                       nested_ir_emitter_->EmitComputation(
-                          comparator, comparator->name(),
+                          comparator, comparator_name,
                           /*is_top_level_computation=*/true, schedule,
                           /*allow_reassociation=*/false));
 
@@ -402,7 +412,7 @@ absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
 absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
     const HloInstruction* instr) {
   return kernel_api_ir_builder_.EmitKernelPrototype(
-      *module_, instr, &nested_ir_emitter_->assignment());
+      *module_, instr, &nested_ir_emitter_->assignment(), "ir_emitter2");
 }
 
 std::optional<IrEmitter2::ParallelConfig> IrEmitter2::GetParallelConfig(
@@ -421,27 +431,6 @@ std::optional<IrEmitter2::ParallelConfig> IrEmitter2::GetParallelConfig(
 
   return config;
 }
-
-absl::Status IrEmitter2::CanDoFastConcatenate(
-    const HloInstruction* concatenate) const {
-  if (!concatenate->parent()
-           ->root_instruction()
-           ->template backend_config<BackendConfig>()
-           ->outer_dimension_partitions()
-           .empty()) {
-    return absl::Status(
-        absl::StatusCode::kFailedPrecondition,
-        "Cannot generate memcpy-based concat for the parallel CPU backend");
-  }
-  const Shape& output_shape = concatenate->shape();
-  for (auto* op : concatenate->operands()) {
-    if (!LayoutUtil::Equal(op->shape().layout(), output_shape.layout())) {
-      return absl::Status(absl::StatusCode::kFailedPrecondition,
-                          "Operand has mismatching layouts");
-    }
-  }
-  return absl::OkStatus();
-};
 
 bool IrEmitter2::CanUpdateDynamicSliceInPlace(
     const HloInstruction* update) const {
@@ -496,7 +485,7 @@ IrEmitter2::ParallelPartitionBounds IrEmitter2::EmitParallelPartitionBounds(
   // Construct IR to load bounds for all parallel dimensions.
   ParallelPartitionBounds bounds;
   for (size_t i = 0; i < num_parallel_dimensions; ++i) {
-    llvm::Value* partition = kernel_prototype.thread_id.x;
+    llvm::Value* partition = kernel_prototype.workgroup_id.x;
     llvm::Value* parallel_dim = b.getInt32(i);
 
     llvm::Value* lower_gep = b.CreateInBoundsGEP(

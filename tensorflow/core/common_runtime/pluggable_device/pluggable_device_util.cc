@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"

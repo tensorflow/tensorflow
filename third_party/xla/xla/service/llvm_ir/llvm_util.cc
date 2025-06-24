@@ -27,6 +27,8 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -72,10 +74,10 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/byte_order.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/byte_order.h"
-#include "tsl/platform/logging.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
@@ -102,6 +104,48 @@ llvm::Module* ModuleFromIRBuilder(llvm::IRBuilderBase* b) {
   auto fn = CHECK_NOTNULL(block->getParent());
   auto module = CHECK_NOTNULL(fn->getParent());
   return module;
+}
+
+PrimitiveType PrimitiveTypeFromIrIntegerType(
+    llvm::IntegerType* type, bool default_to_signed_for_integers) {
+  // PRED (boolean) is typically a 1-bit integer.
+  if (type->getBitWidth() == 1) {
+    return PRED;
+  }
+
+  // LLVM's llvm::IntegerType (e.g., i8, i32) does not distinguish between
+  // signed and unsigned types by itself. The interpretation (signed/unsigned)
+  // depends on the operations using these types (e.g., sdiv vs. udiv).
+  // The 'default_to_signed_for_integers' flag helps make a choice here.
+  switch (type->getBitWidth()) {
+    case 8:
+      return default_to_signed_for_integers ? S8 : U8;
+    case 16:
+      return default_to_signed_for_integers ? S16 : U16;
+    case 32:
+      return default_to_signed_for_integers ? S32 : U32;
+    case 64:
+      return default_to_signed_for_integers ? S64 : U64;
+    default:
+      return PRIMITIVE_TYPE_INVALID;
+  }
+}
+
+std::optional<PrimitiveType> PrimitiveComplexTypeFromIrStructType(
+    llvm::StructType* struct_type) {
+  // XLA C64 is typically represented as an LLVM struct {float, float}.
+  // XLA C128 is typically represented as an LLVM struct {double, double}.
+  if (struct_type->getNumElements() == 2) {
+    llvm::Type* el_type0 = struct_type->getElementType(0);
+    llvm::Type* el_type1 = struct_type->getElementType(1);
+    if (el_type0->isFloatTy() && el_type1->isFloatTy()) {
+      return C64;  // Complex64
+    }
+    if (el_type0->isDoubleTy() && el_type1->isDoubleTy()) {
+      return C128;  // Complex128
+    }
+  }
+  return std::nullopt;
 }
 
 }  // namespace
@@ -135,7 +179,7 @@ llvm::CallInst* EmitCallToIntrinsic(
   llvm::Module* module = ModuleFromIRBuilder(b);
   llvm::Function* intrinsic = llvm::Intrinsic::getOrInsertDeclaration(
       module, intrinsic_id, AsArrayRef(overloaded_types));
-  return b->CreateCall(intrinsic, AsArrayRef(operands), name.data());
+  return b->CreateCall(intrinsic, AsArrayRef(operands), AsStringRef(name));
 }
 
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
@@ -143,7 +187,7 @@ llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
                           absl::string_view name) {
   if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpUGE(lhs_value, rhs_value);
-    return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
+    return b->CreateSelect(cmp, lhs_value, rhs_value, AsStringRef(name));
   }
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::maximum,
                                       {lhs_value, rhs_value},
@@ -155,7 +199,7 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
                           absl::string_view name) {
   if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpULE(lhs_value, rhs_value);
-    return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
+    return b->CreateSelect(cmp, lhs_value, rhs_value, AsStringRef(name));
   }
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minimum,
                                       {lhs_value, rhs_value},
@@ -199,6 +243,8 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     case S16:
     case U16:
       return llvm::Type::getInt16Ty(context);
+    case F4E2M1FN:
+      return llvm::Type::getIntNTy(context, 4);
     case F8E5M2:
     case F8E5M2FNUZ:
     case F8E4M3:
@@ -206,6 +252,7 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     case F8E4M3B11FNUZ:
     case F8E4M3FNUZ:
     case F8E3M4:
+    case F8E8M0FNU:
       // We represent F8 as an int since there is no LLVM F8 dtype.
       return llvm::Type::getInt8Ty(context);
     case BF16:
@@ -260,6 +307,51 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
   }
 }
 
+PrimitiveType PrimitiveTypeFromIrType(llvm::Type* type,
+                                      bool default_to_signed_for_integers) {
+  if (!type) {
+    return PRIMITIVE_TYPE_INVALID;
+  }
+
+  // If it's a vector type, XLA PrimitiveType refers to the element type.
+  // So, we get the underlying element type for further checks.
+  if (type->isVectorTy()) {
+    type = llvm::cast<llvm::VectorType>(type)->getElementType();
+  }
+
+  // Floating-point types
+  if (type->isHalfTy()) {
+    return F16;
+  }
+  if (type->isBFloatTy()) {
+    return BF16;
+  }
+  if (type->isFloatTy()) {
+    return F32;
+  }
+  if (type->isDoubleTy()) {
+    return F64;
+  }
+
+  if (type->isIntegerTy()) {
+    return PrimitiveTypeFromIrIntegerType(llvm::cast<llvm::IntegerType>(type),
+                                          default_to_signed_for_integers);
+  }
+
+  if (type->isStructTy()) {
+    if (auto result = PrimitiveComplexTypeFromIrStructType(
+            llvm::cast<llvm::StructType>(type))) {
+      return *result;
+    }
+  }
+
+  if (type->isPointerTy()) {
+    return OPAQUE_TYPE;
+  }
+
+  return PRIMITIVE_TYPE_INVALID;
+}
+
 int GetSizeInBits(llvm::Type* type) {
   const llvm::StructType* struct_ty = llvm::dyn_cast<llvm::StructType>(type);
   if (struct_ty) {
@@ -280,7 +372,8 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::LLVMContext& context) {
       PrimitiveTypeToIrType(shape.element_type(), context);
   if (shape.IsTuple()) {
     // A tuple buffer is an array of pointers.
-    result_type = llvm::ArrayType::get(result_type, shape.tuple_shapes_size());
+    result_type =
+        llvm::ArrayType::get(result_type, shape.tuple_shapes().size());
   } else if (shape.IsArray()) {
     for (int64_t dimension : LayoutUtil::MinorToMajor(shape)) {
       result_type =
@@ -292,7 +385,7 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::LLVMContext& context) {
 
 absl::StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
     const Shape& shape, int32_t* shape_size, llvm::IRBuilderBase* b) {
-  std::string encoded_shape = shape.SerializeAsString();
+  const std::string encoded_shape = shape.ToProto().SerializeAsString();
   if (encoded_shape.size() > std::numeric_limits<int32_t>::max()) {
     return Internal("Encoded shape size exceeded int32_t size limit.");
   }
@@ -462,10 +555,10 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
   llvm::Value* comparison_result;
   if (lhs_value->getType()->isIntegerTy()) {
     comparison_result =
-        b->CreateICmp(predicate, lhs_value, rhs_value, name.data());
+        b->CreateICmp(predicate, lhs_value, rhs_value, AsStringRef(name));
   } else {
     comparison_result =
-        b->CreateFCmp(predicate, lhs_value, rhs_value, name.data());
+        b->CreateFCmp(predicate, lhs_value, rhs_value, AsStringRef(name));
   }
   // comparison_result is i1, but the NVPTX codegen incorrectly lowers i1
   // arrays. So we extend it to i8 so that it's addressable.

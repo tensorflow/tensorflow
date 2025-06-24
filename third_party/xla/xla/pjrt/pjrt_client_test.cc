@@ -102,7 +102,7 @@ std::unique_ptr<PjRtLoadedExecutable> MakeIncrementProgram(
   CompileOptions options;
   options.parameter_is_tupled_arguments = tuplize_arg;
   options.executable_build_options.set_device_assignment(assignment);
-  return client->Compile(computation, options).value();
+  return client->CompileAndLoad(computation, options).value();
 }
 
 class PjRtClientTest
@@ -121,7 +121,7 @@ TEST_P(PjRtClientTest, Execute) {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -150,7 +150,7 @@ TEST_P(PjRtClientTest, ExecuteWithImmutableUntilTransferCompletes) {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
-          nullptr, client->addressable_devices()[0]));
+          nullptr, client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -187,7 +187,7 @@ TEST_P(PjRtClientTest, ExecuteWithTupleZeroCopy) {
                          // after `on_done_with_host_buffer` is called.
                          std::fill(data.begin(), data.end(), 1);
                        },
-                       client->addressable_devices()[0]));
+                       client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -216,11 +216,12 @@ TEST_P(PjRtClientTest, ExecuteWithDonation) {
   std::vector<int32_t> data(4, 0);
   Shape shape = ShapeUtil::MakeShape(S32, {4});
   TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer, client->BufferFromHostBuffer(
-                       data.data(), shape.element_type(), shape.dimensions(),
-                       /*byte_strides=*/std::nullopt,
-                       PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
-                       nullptr, client->addressable_devices()[0]));
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -247,13 +248,16 @@ TEST_P(PjRtClientTest, ExecuteWithDonationAbort) {
       MakeIncrementProgram(client.get(), /*alias=*/true, /*device=*/0);
 
   std::vector<int32_t> data(4, 0);
+  auto shared_data = std::make_shared<std::vector<int32_t>>(data);
   Shape shape = ShapeUtil::MakeShape(S32, {4});
   TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer, client->BufferFromHostBuffer(
-                       data.data(), shape.element_type(), shape.dimensions(),
-                       /*byte_strides=*/std::nullopt,
-                       PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
-                       nullptr, client->addressable_devices()[0]));
+      auto buffer,
+      client->BufferFromHostBuffer(
+          shared_data->data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
+          [shared_data]() {}, client->memory_spaces()[0],
+          /*device_layout=*/nullptr));
 
   auto external_reference = buffer->AcquireExternalReference();
 
@@ -280,7 +284,7 @@ TEST_P(PjRtClientTest, ExecuteWithConcurrentUsage) {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -323,11 +327,12 @@ TEST_P(PjRtClientTest, ExecuteWithConcurrentUsageAndDonation) {
   std::vector<int32_t> expected(4, 1);
   Shape shape = ShapeUtil::MakeShape(S32, {4});
   TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer, client->BufferFromHostBuffer(
-                       data.data(), shape.element_type(), shape.dimensions(),
-                       /*byte_strides=*/std::nullopt,
-                       PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
-                       nullptr, client->addressable_devices()[0]));
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -395,11 +400,12 @@ TEST(PjRtClientTest, CopyToDevice) {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   auto* device_1 = client->addressable_devices()[1];
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, buffer->CopyToDevice(device_1));
+  TF_ASSERT_OK_AND_ASSIGN(auto result, buffer->CopyToMemorySpace(
+                                           *device_1->default_memory_space()));
 
   TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
 
@@ -420,7 +426,7 @@ TEST(PjRtClientTest, CopyToDeviceAsync) {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   auto* device_1 = client->addressable_devices()[1];
 
@@ -431,10 +437,11 @@ TEST(PjRtClientTest, CopyToDeviceAsync) {
   constexpr int kConcurrentCopy = 16;
   std::vector<std::unique_ptr<PjRtBuffer>> results(kConcurrentCopy);
   for (int i = 0; i < kConcurrentCopy; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(results[i], buffer->CopyToDevice(device_1));
+    TF_ASSERT_OK_AND_ASSIGN(results[i], buffer->CopyToMemorySpace(
+                                            *device_1->default_memory_space()));
   }
 
-  // The destructor of TfrtCpuBuffer should wait for outstanding copy.
+  // The destructor of PjRtCpuBuffer should wait for outstanding copy.
   buffer.reset();
 
   for (const auto& result : results) {
@@ -463,7 +470,7 @@ TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->CreateViewOfDeviceBuffer(
-          data_ptr, shape, client->addressable_devices()[0],
+          data_ptr, shape, client->memory_spaces()[0],
           /*on_delete_callback=*/[data = std::move(data)]() mutable {
             (void)data;
           }));
@@ -477,10 +484,11 @@ TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
   constexpr int kConcurrentCopy = 16;
   std::vector<std::unique_ptr<PjRtBuffer>> results(kConcurrentCopy);
   for (int i = 0; i < kConcurrentCopy; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(results[i], buffer->CopyToDevice(device_1));
+    TF_ASSERT_OK_AND_ASSIGN(results[i], buffer->CopyToMemorySpace(
+                                            *device_1->default_memory_space()));
   }
 
-  // The destructor of TfrtCpuBuffer should wait for outstanding copy.
+  // The destructor of PjRtCpuBuffer should wait for outstanding copy.
   buffer.reset();
 
   for (const auto& result : results) {
@@ -515,7 +523,7 @@ TEST(PjRtClientTest, CreateViewOfUnalignedBufferReturnsErrorCpuOnly) {
 
   // Attempt to create a view of the unaligned buffer. Expect an error.
   auto result = client->CreateViewOfDeviceBuffer(
-      unaligned_ptr, shape, client->addressable_devices()[0],
+      unaligned_ptr, shape, client->memory_spaces()[0],
       /*on_delete_callback=*/std::function<void()>());
 
   ASSERT_FALSE(result.ok());
@@ -531,7 +539,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> MakeFloatBuffer(
       data.data(), shape.element_type(), shape.dimensions(),
       /*byte_strides=*/std::nullopt,
       PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-      client->addressable_devices()[0]);
+      client->memory_spaces()[0], /*device_layout=*/nullptr);
 }
 
 TEST(PjRtClientTest, DuplicateDonationError) {
@@ -552,7 +560,7 @@ ENTRY DuplicateDonationError() -> (f32[2, 2], f32[2, 2]) {
                           ParseAndReturnUnverifiedModule(kProgram, {}));
   XlaComputation xla_computation(hlo_module->ToProto());
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->Compile(xla_computation, {}));
+                          client->CompileAndLoad(xla_computation, {}));
 
   std::vector<float> data(4, 0);
   TF_ASSERT_OK_AND_ASSIGN(auto buffer0,
@@ -562,6 +570,8 @@ ENTRY DuplicateDonationError() -> (f32[2, 2], f32[2, 2]) {
   TF_ASSERT_OK_AND_ASSIGN(auto buffer2,
                           MakeFloatBuffer(client.get(), data, {2, 2}));
 
+  xla::ExecuteOptions options;
+  options.untuple_result = true;
   {
     auto result = pjrt_executable->Execute(/*argument_handles=*/{{
                                                buffer0.get(),
@@ -569,7 +579,7 @@ ENTRY DuplicateDonationError() -> (f32[2, 2], f32[2, 2]) {
                                                buffer1.get(),
                                                buffer0.get(),
                                            }},
-                                           /*options=*/{});
+                                           /*options=*/options);
     ASSERT_FALSE(result.ok());
     EXPECT_THAT(result.status().message(),
                 ::testing::HasSubstr("f(donate(a), donate(a))"));
@@ -581,7 +591,7 @@ ENTRY DuplicateDonationError() -> (f32[2, 2], f32[2, 2]) {
                                                buffer2.get(),
                                                buffer0.get(),
                                            }},
-                                           /*options=*/{});
+                                           /*options=*/options);
     ASSERT_FALSE(result.ok());
     EXPECT_THAT(result.status().message(),
                 ::testing::HasSubstr("f(a, donate(a))"));
@@ -593,7 +603,7 @@ ENTRY DuplicateDonationError() -> (f32[2, 2], f32[2, 2]) {
                                                buffer2.get(),
                                                buffer2.get(),
                                            }},
-                                           /*options=*/{});
+                                           /*options=*/options);
     ASSERT_FALSE(result.ok());
     EXPECT_THAT(result.status().message(),
                 ::testing::HasSubstr("f(donate(a), a)"));

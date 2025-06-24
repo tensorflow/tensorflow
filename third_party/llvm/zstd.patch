@@ -17,3 +17,15 @@ index eb887a2e04a2..3ca71bc623e3 100644
      ],
  )
  
+diff -u a/utils/bazel/llvm-project-overlay/lld/BUILD.bazel  b/utils/bazel/llvm-project-overlay/lld/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/lld/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/lld/BUILD.bazel
+@@ -111,8 +111,6 @@
+         "//llvm:TargetParser",
+         "//llvm:TransformUtils",
+         "//llvm:config",
+-        "@llvm_zlib//:zlib",
+-        "@llvm_zstd//:zstd",
+     ],
+ )
+

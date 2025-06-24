@@ -10,7 +10,6 @@ package(
 py_strict_library(
     name = "xla_sharding",
     srcs = ["xla_sharding.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -25,8 +24,6 @@ py_strict_library(
 py_strict_test(
     name = "xla_sharding_test",
     srcs = ["xla_sharding_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":xla_sharding",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
@@ -46,8 +43,6 @@ tpu_py_strict_test(
     name = "resource_variable_xla_sharding_test",
     srcs = ["resource_variable_xla_sharding_test.py"],
     disable_v3_4chips = False,
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = ["requires-net:external"],
     deps = [
         ":xla_sharding",

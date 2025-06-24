@@ -23,16 +23,20 @@ limitations under the License.
 
 #include "absl/hash/hash.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/protobuf_util.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
+
+using ::tsl::proto_testing::EqualsProto;
 
 Array<int64_t> MakeArray(absl::Span<const int64_t> dimensions,
                          absl::Span<const int64_t> contents) {
@@ -53,7 +57,7 @@ std::vector<OpMetadata> ListMetadata() {
   return {GetMetadata("b"), GetMetadata("c")};
 }
 
-class HloShardingTest : public HloTestBase {};
+class HloShardingTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(HloShardingTest, Replicate) {
   HloSharding sharding = HloSharding::Replicate();
@@ -109,7 +113,7 @@ TEST_F(HloShardingTest, ProtoRoundTrip) {
   auto* manual = proto.add_tuple_shardings();
   manual->set_type(OpSharding::MANUAL);
   HloSharding sharding = HloSharding::FromProto(proto).value();
-  EXPECT_TRUE(protobuf_util::ProtobufEquals(proto, sharding.ToProto()));
+  EXPECT_THAT(sharding.ToProto(), EqualsProto(proto));
 }
 
 TEST_F(HloShardingTest, IotaProtoRoundTrip) {
@@ -131,7 +135,7 @@ TEST_F(HloShardingTest, IotaProtoRoundTrip) {
   auto* manual = proto.add_tuple_shardings();
   manual->set_type(OpSharding::MANUAL);
   HloSharding sharding = HloSharding::FromProto(proto).value();
-  EXPECT_TRUE(protobuf_util::ProtobufEquals(proto, sharding.ToProto()));
+  EXPECT_THAT(sharding.ToProto(), EqualsProto(proto));
 }
 
 TEST_F(HloShardingTest, Tile) {
@@ -177,7 +181,80 @@ TEST_F(HloShardingTest, Tile) {
     EXPECT_EQ(sharding.TileOffsetForDevice(shape, 1),
               (std::vector<int64_t>{2, 3}));
 
+    EXPECT_EQ(sharding.TileLimitForDevice(shape, 0),
+              (std::vector<int64_t>{2, 3}));
+    EXPECT_EQ(sharding.TileLimitForDevice(shape, 3),
+              (std::vector<int64_t>{2, 5}));
+    EXPECT_EQ(sharding.TileLimitForDevice(shape, 2),
+              (std::vector<int64_t>{4, 3}));
+    EXPECT_EQ(sharding.TileLimitForDevice(shape, 1),
+              (std::vector<int64_t>{4, 5}));
+
     EXPECT_FALSE(sharding.HasUniqueDevice());
+
+    // {device_index, tile_offest, tile_limit}.
+    std::vector<std::tuple<int, std::vector<int64_t>, std::vector<int64_t>>>
+        tiles;
+    TF_ASSERT_OK(sharding.EachTile(
+        shape.dimensions(),
+        [&tiles](int device_index, absl::Span<const int64_t> tile_offset,
+                 absl::Span<const int64_t> tile_limit) {
+          std::vector<int64_t> offset(tile_offset.begin(), tile_offset.end());
+          std::vector<int64_t> limit(tile_limit.begin(), tile_limit.end());
+          tiles.emplace_back(device_index, std::move(offset), std::move(limit));
+        }));
+    EXPECT_THAT(tiles, ::testing::UnorderedElementsAre(
+                           std::make_tuple(0, std::vector<int64_t>{0, 0},
+                                           std::vector<int64_t>{2, 3}),
+                           std::make_tuple(1, std::vector<int64_t>{2, 3},
+                                           std::vector<int64_t>{4, 5}),
+                           std::make_tuple(2, std::vector<int64_t>{2, 0},
+                                           std::vector<int64_t>{4, 3}),
+                           std::make_tuple(3, std::vector<int64_t>{0, 3},
+                                           std::vector<int64_t>{2, 5})));
+  }
+}
+
+TEST_F(HloShardingTest, EachTile) {
+  auto validate = [](const Shape& shape,
+                     const HloSharding& sharding) -> absl::Status {
+    return sharding.EachTile(
+        shape.dimensions(),
+        [&shape, &sharding](int device_index,
+                            absl::Span<const int64_t> tile_offset,
+                            absl::Span<const int64_t> tile_limit) {
+          EXPECT_EQ(tile_offset,
+                    sharding.TileOffsetForDevice(shape, device_index));
+          EXPECT_EQ(tile_limit,
+                    sharding.TileLimitForDevice(shape, device_index));
+        });
+  };
+  {
+    // 6-way sharded along axis 0, 1-way sharded along axis 1.
+    HloSharding sharding = HloSharding::Tile(TileAssignment({6, 1}));
+    Shape shape = ShapeUtil::MakeShape(U32, {12, 20});
+    TF_EXPECT_OK(validate(shape, sharding));
+  }
+  {
+    // 6-way sharded along axis 0, 1-way sharded along axis 1.
+    HloSharding sharding = HloSharding::Tile(TileAssignment({6, 1}));
+    Shape shape = ShapeUtil::MakeShape(U32, {11, 20});
+    TF_EXPECT_OK(validate(shape, sharding));
+  }
+  {
+    // 2-way sharded along axis 0, 1-way sharded along axis 1, each shard
+    // replicated by 3 times.
+    HloSharding sharding = HloSharding::PartialTile(TileAssignment({2, 1, 3}));
+    Shape shape = ShapeUtil::MakeShape(U32, {10, 20});
+    TF_EXPECT_OK(validate(shape, sharding));
+  }
+  {
+    // 2-way sharded along axis 0, 1-way sharded along axis 1, each shard
+    // replicated by 3 times.
+    HloSharding sharding = HloSharding::Subgroup(TileAssignment({2, 1, 3}),
+                                                 {OpSharding::REPLICATED});
+    Shape shape = ShapeUtil::MakeShape(U32, {10, 20});
+    TF_EXPECT_OK(validate(shape, sharding));
   }
 }
 
@@ -577,8 +654,8 @@ TEST_F(HloShardingTest, WithMetadataNoOverwrite) {
     auto sharding_new_metadata =
         sharding.WithMetadata(SingleMetadata(), /*overwrite=*/false);
     ASSERT_EQ(sharding_new_metadata.metadata().size(), 1);
-    EXPECT_TRUE(protobuf_util::ProtobufEquals(
-        sharding_new_metadata.metadata().front(), SingleMetadata().front()));
+    EXPECT_THAT(sharding_new_metadata.metadata().front(),
+                EqualsProto(SingleMetadata().front()));
   }
 
   {
@@ -586,8 +663,8 @@ TEST_F(HloShardingTest, WithMetadataNoOverwrite) {
     auto sharding_new_metadata =
         sharding.WithMetadata(ListMetadata(), /*overwrite=*/false);
     ASSERT_EQ(sharding_new_metadata.metadata().size(), 1);
-    EXPECT_TRUE(protobuf_util::ProtobufEquals(
-        sharding.metadata().front(), sharding_new_metadata.metadata().front()));
+    EXPECT_THAT(sharding_new_metadata.metadata().front(),
+                EqualsProto(sharding.metadata().front()));
   }
 
   {
@@ -605,21 +682,18 @@ TEST_F(HloShardingTest, WithMetadataNoOverwrite) {
     ASSERT_EQ(sharding_new_metadata.tuple_elements().size(), 3);
 
     ASSERT_EQ(sharding_new_metadata.tuple_elements()[0].metadata().size(), 1);
-    EXPECT_TRUE(protobuf_util::ProtobufEquals(
-        sharding_new_metadata.tuple_elements()[0].metadata().front(),
-        SingleMetadata().front()));
+    EXPECT_THAT(sharding_new_metadata.tuple_elements()[0].metadata().front(),
+                EqualsProto(SingleMetadata().front()));
 
     ASSERT_EQ(sharding_new_metadata.tuple_elements()[1].metadata().size(), 2);
     for (int i = 0; i < 2; ++i) {
-      EXPECT_TRUE(protobuf_util::ProtobufEquals(
-          sharding_new_metadata.tuple_elements()[1].metadata()[i],
-          ListMetadata()[i]));
+      EXPECT_THAT(sharding_new_metadata.tuple_elements()[1].metadata()[i],
+                  EqualsProto(ListMetadata()[i]));
     }
 
     ASSERT_EQ(sharding_new_metadata.tuple_elements()[2].metadata().size(), 1);
-    EXPECT_TRUE(protobuf_util::ProtobufEquals(
-        sharding_new_metadata.tuple_elements()[2].metadata().front(),
-        SingleMetadata().front()));
+    EXPECT_THAT(sharding_new_metadata.tuple_elements()[2].metadata().front(),
+                EqualsProto(SingleMetadata().front()));
   }
 }
 
@@ -629,8 +703,8 @@ TEST_F(HloShardingTest, WithMetadataOverwrite) {
     auto sharding_new_metadata =
         sharding.WithMetadata(SingleMetadata(), /*overwrite=*/true);
     ASSERT_EQ(sharding_new_metadata.metadata().size(), 1);
-    EXPECT_TRUE(protobuf_util::ProtobufEquals(
-        sharding_new_metadata.metadata().front(), SingleMetadata().front()));
+    EXPECT_THAT(sharding_new_metadata.metadata().front(),
+                EqualsProto(SingleMetadata().front()));
   }
 
   {
@@ -639,8 +713,8 @@ TEST_F(HloShardingTest, WithMetadataOverwrite) {
         sharding.WithMetadata(ListMetadata(), /*overwrite=*/true);
     ASSERT_EQ(sharding_new_metadata.metadata().size(), 2);
     for (int i = 0; i < 2; ++i) {
-      EXPECT_TRUE(protobuf_util::ProtobufEquals(
-          sharding_new_metadata.metadata()[i], ListMetadata()[i]));
+      EXPECT_THAT(sharding_new_metadata.metadata()[i],
+                  EqualsProto(ListMetadata()[i]));
     }
   }
 
@@ -661,8 +735,7 @@ TEST_F(HloShardingTest, WithMetadataOverwrite) {
     for (const auto& sub_sharding : sharding_new_metadata.tuple_elements()) {
       ASSERT_EQ(sub_sharding.metadata().size(), 2);
       for (int i = 0; i < 2; ++i) {
-        EXPECT_TRUE(protobuf_util::ProtobufEquals(sub_sharding.metadata()[i],
-                                                  ListMetadata()[i]));
+        EXPECT_THAT(sub_sharding.metadata()[i], EqualsProto(ListMetadata()[i]));
       }
     }
   }

@@ -100,7 +100,7 @@ absl::Status SnappyInputStream::Inflate() {
 
   absl::Status s =
       input_stream_->ReadNBytes(compressed_block_length, &compressed_block);
-  if (errors::IsOutOfRange(s)) {
+  if (absl::IsOutOfRange(s)) {
     return errors::DataLoss("Failed to read ", compressed_block_length,
                             " bytes from file. Possible data corruption.");
   }

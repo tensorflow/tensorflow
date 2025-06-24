@@ -45,7 +45,6 @@ py_strict_library(
 pytype_strict_library(
     name = "api",
     srcs = ["api.py"],
-    srcs_version = "PY3",
     deps = [
         ":dtensor_device",
         ":gen_dtensor_ops",
@@ -61,7 +60,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "config",
     srcs = ["config.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
@@ -103,7 +101,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "d_random",
     srcs = ["d_random.py"],
-    srcs_version = "PY3",
     deps = [
         ":api",
         ":layout",
@@ -122,7 +119,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "d_variable",
     srcs = ["d_variable.py"],
-    srcs_version = "PY3",
     deps = [
         ":api",
         ":layout",
@@ -189,7 +185,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "save_restore",
     srcs = ["save_restore.py"],
-    srcs_version = "PY3",
     deps = [
         ":api",
         ":d_variable",

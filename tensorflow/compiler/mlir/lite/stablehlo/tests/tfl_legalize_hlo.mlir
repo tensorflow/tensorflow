@@ -1758,27 +1758,27 @@ func.func @gather_offset(%arg0: tensor<1x20xi32>, %arg1: tensor<1x1xi32>) -> ten
 
 
 // CHECK-LABEL: gather_batching_dims
-func.func @gather_batching_dims(%arg0: tensor<2x3x128xf32>, %arg1: tensor<3x2x128x1xi32>) -> tensor<3x2x128xf32> {
+func.func @gather_batching_dims(%arg0: tensor<2x3x128xf32>, %arg1: tensor<3x128x2x1xi32>) -> tensor<3x128x2xf32> {
   %0 = "mhlo.gather"(%arg0, %arg1) {
     dimension_numbers = #mhlo.gather<
       index_vector_dim = 3,
       start_index_map = [2],
       operand_batching_dims = [0, 1],
-      start_indices_batching_dims = [1, 0],
+      start_indices_batching_dims = [2, 0],
       collapsed_slice_dims = [2],
     >,
     indices_are_sorted = false,
     slice_sizes = dense<1> : tensor<3xi64>
-  } : (tensor<2x3x128xf32>, tensor<3x2x128x1xi32>) -> tensor<3x2x128xf32>
-  func.return %0 : tensor<3x2x128xf32>
+  } : (tensor<2x3x128xf32>, tensor<3x128x2x1xi32>) -> tensor<3x128x2xf32>
+  func.return %0 : tensor<3x128x2xf32>
 }
 
 // CHECK-DAG: %[[CST:.*]] = arith.constant dense<[6, 128]> : tensor<2xi64>
 // CHECK:     %[[VAL_0:.*]] = "tfl.cast"(%[[CST]]) : (tensor<2xi64>) -> tensor<2xi32>
 // CHECK:     %[[VAL_1:.*]] = "tfl.reshape"(%arg0, %[[VAL_0]]) : (tensor<2x3x128xf32>, tensor<2xi32>) -> tensor<6x128xf32>
-// CHECK-DAG: %[[VAL_2:.*]] = "tfl.pseudo_const"() <{value = dense<[1, 0, 2, 3]> : tensor<4xi64>}> : () -> tensor<4xi64>
+// CHECK-DAG: %[[VAL_2:.*]] = "tfl.pseudo_const"() <{value = dense<[2, 0, 1, 3]> : tensor<4xi64>}> : () -> tensor<4xi64>
 // CHECK:     %[[VAL_3:.*]] = "tfl.cast"(%[[VAL_2]]) : (tensor<4xi64>) -> tensor<4xi32>
-// CHECK:     %[[VAL_4:.*]] = "tfl.transpose"(%arg1, %[[VAL_3]]) : (tensor<3x2x128x1xi32>, tensor<4xi32>) -> tensor<2x3x128x1xi32>
+// CHECK:     %[[VAL_4:.*]] = "tfl.transpose"(%arg1, %[[VAL_3]]) : (tensor<3x128x2x1xi32>, tensor<4xi32>) -> tensor<2x3x128x1xi32>
 // CHECK-DAG: %[[CST_0:.*]] = arith.constant dense<[6, 128, 1]> : tensor<3xi64>
 // CHECK:     %[[VAL_5:.*]] = "tfl.cast"(%[[CST_0]]) : (tensor<3xi64>) -> tensor<3xi32>
 // CHECK:     %[[VAL_6:.*]] = "tfl.reshape"(%[[VAL_4]], %[[VAL_5]]) : (tensor<2x3x128x1xi32>, tensor<3xi32>) -> tensor<6x128x1xi32>
@@ -1796,9 +1796,9 @@ func.func @gather_batching_dims(%arg0: tensor<2x3x128xf32>, %arg1: tensor<3x2x12
 // CHECK-DAG: %[[CST_6:.*]] = arith.constant dense<[2, 3, 128]> : tensor<3xi64>
 // CHECK:     %[[VAL_13:.*]] = "tfl.cast"(%[[CST_6]]) : (tensor<3xi64>) -> tensor<3xi32>
 // CHECK:     %[[VAL_14:.*]] = "tfl.reshape"(%[[VAL_12]], %[[VAL_13]]) : (tensor<6x128xf32>, tensor<3xi32>) -> tensor<2x3x128xf32>
-// CHECK:     %[[VAL_15:.*]] = "tfl.pseudo_const"() <{value = dense<[1, 0, 2]> : tensor<3xi64>}> : () -> tensor<3xi64>
+// CHECK:     %[[VAL_15:.*]] = "tfl.pseudo_const"() <{value = dense<[1, 2, 0]> : tensor<3xi64>}> : () -> tensor<3xi64>
 // CHECK:     %[[VAL_16:.*]] = "tfl.cast"(%[[VAL_15]]) : (tensor<3xi64>) -> tensor<3xi32>
-// CHECK:     %[[VAL_17:.*]] = "tfl.transpose"(%[[VAL_14]], %[[VAL_16]]) : (tensor<2x3x128xf32>, tensor<3xi32>) -> tensor<3x2x128xf32>
+// CHECK:     %[[VAL_17:.*]] = "tfl.transpose"(%[[VAL_14]], %[[VAL_16]]) : (tensor<2x3x128xf32>, tensor<3xi32>) -> tensor<3x128x2xf32>
 
 // -----
 
@@ -3756,11 +3756,11 @@ func.func @if(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> (ten
 
 // CHECK-LABEL: legalize_fft_mhlo_fft_type_rfft
 func.func @legalize_fft_mhlo_fft_type_rfft(%arg0 : tensor<1x1x512xf32>) -> tensor<1x1x257xcomplex<f32>> {
-  %270 = "mhlo.fft"(%arg0) <{fft_length = dense<512> : tensor<1xi64>, fft_type = #mhlo<fft_type RFFT>}> : (tensor<1x1x512xf32>) -> tensor<1x1x257xcomplex<f32>>
+  %270 = "mhlo.fft"(%arg0) <{fft_length = dense<[1, 512]> : tensor<2xi64>, fft_type = #mhlo<fft_type RFFT>}> : (tensor<1x1x512xf32>) -> tensor<1x1x257xcomplex<f32>>
   return %270: tensor<1x1x257xcomplex<f32>>
 }
 
-// CHECK:  %cst = arith.constant dense<512> : tensor<2xi32>
+// CHECK:  %cst = arith.constant dense<[1, 512]> : tensor<2xi32>
 // CHECK:  %0 = "tfl.rfft2d"(%arg0, %cst) : (tensor<1x1x512xf32>, tensor<2xi32>) -> tensor<1x1x257xcomplex<f32>>
 // CHECK:  return %0 : tensor<1x1x257xcomplex<f32>>
 
@@ -3776,6 +3776,50 @@ func.func @fft(%arg0: tensor<3x9xcomplex<f32>>) -> tensor<3x9xcomplex<f32>> {
 // CHECK: return %0 : tensor<3x9xcomplex<f32>>
 
 // -----
+
+// CHECK-LABEL: @mhlo_nd_fft
+func.func @mhlo_nd_fft(%arg0: tensor<2x3x345x1x256xf32>) -> tensor<2x3x345x1x129xcomplex<f32>> {
+  %0 = "mhlo.fft"(%arg0) <{fft_length = dense<[1, 256]> : tensor<2xi64>, fft_type = #mhlo<fft_type RFFT>}> : (tensor<2x3x345x1x256xf32>) -> tensor<2x3x345x1x129xcomplex<f32>>
+  func.return %0 : tensor<2x3x345x1x129xcomplex<f32>>
+}
+
+// CHECK: %cst = arith.constant dense<[1, 256]> : tensor<2xi32>
+// CHECK: %0 = "tfl.rfft2d"(%arg0, %cst) : (tensor<2x3x345x1x256xf32>, tensor<2xi32>) -> tensor<2x3x345x1x129xcomplex<f32>>
+// CHECK: return %0 : tensor<2x3x345x1x129xcomplex<f32>>
+
+// -----
+
+// CHECK-LABEL: @mhlo_nd_fft_1
+func.func @mhlo_nd_fft_1(%arg0: tensor<2x3x345x4x256xf32>) -> tensor<2x3x345x4x129xcomplex<f32>> {
+  %43 = "mhlo.fft"(%arg0) <{fft_length = dense<[4, 256]> : tensor<2xi64>, fft_type = #mhlo<fft_type RFFT>}> : (tensor<2x3x345x4x256xf32>) -> tensor<2x3x345x4x129xcomplex<f32>>
+  return %43 : tensor<2x3x345x4x129xcomplex<f32>>
+}
+
+// CHECK: %cst = arith.constant dense<[4, 256]> : tensor<2xi32>
+// CHECK: %0 = "tfl.rfft2d"(%arg0, %cst) : (tensor<2x3x345x4x256xf32>, tensor<2xi32>) -> tensor<2x3x345x4x129xcomplex<f32>>
+// CHECK: return %0 : tensor<2x3x345x4x129xcomplex<f32>>
+
+// -----
+
+// CHECK-LABEL: @mhlo_dynamic_fft_1
+func.func @mhlo_dynamic_fft_1(%arg0: tensor<?x9x1x2560xf32>) -> tensor<?x9x1x1281xcomplex<f32>> {
+  %0 = "mhlo.fft"(%arg0) <{fft_length = dense<[1, 2560]> : tensor<2xi64>, fft_type = #mhlo<fft_type RFFT>}> : (tensor<?x9x1x2560xf32>) -> tensor<?x9x1x1281xcomplex<f32>>
+  return %0 : tensor<?x9x1x1281xcomplex<f32>>
+  // CHECK: %cst = arith.constant dense<[1, 2560]> : tensor<2xi32>
+  // CHECK: %0 = "tfl.rfft2d"(%arg0, %cst) : (tensor<?x9x1x2560xf32>, tensor<2xi32>) -> tensor<?x9x1x1281xcomplex<f32>>
+  // CHECK: return %0 : tensor<?x9x1x1281xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: @mhlo_dynamic_fft_2
+func.func @mhlo_dynamic_fft_2(%arg0: tensor<?x?x1x2560xf32>) -> tensor<?x?x1x1281xcomplex<f32>> {
+  %9 = "mhlo.fft"(%arg0) <{fft_length = dense<[1, 2560]> : tensor<2xi64>, fft_type = #mhlo<fft_type RFFT>}> : (tensor<?x?x1x2560xf32>) -> tensor<?x?x1x1281xcomplex<f32>>
+  return %9 : tensor<?x?x1x1281xcomplex<f32>>
+  // CHECK: %cst = arith.constant dense<[1, 2560]> : tensor<2xi32>
+  // CHECK: %0 = "tfl.rfft2d"(%arg0, %cst) : (tensor<?x?x1x2560xf32>, tensor<2xi32>) -> tensor<?x?x1x1281xcomplex<f32>>
+  // CHECK: return %0 : tensor<?x?x1x1281xcomplex<f32>>
+}
 
 //===----------------------------------------------------------------------===//
 // mhlo.imag

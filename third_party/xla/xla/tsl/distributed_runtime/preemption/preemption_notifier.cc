@@ -20,13 +20,13 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/mutex.h"
 #if defined(PLATFORM_GOOGLE)
 #include "thread/executor.h"
 #include "thread/signal.h"
@@ -107,7 +107,7 @@ absl::StatusOr<absl::Time> PreemptionNotifier::WillBePreemptedAt() {
 }
 
 void PreemptionNotifier::WillBePreemptedAtAsync(PreemptTimeCallback callback) {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   if (death_time_ == kUnsetDeathTime) {
     // Did not receive preemption notice yet.
     callbacks_.push_back(std::move(callback));
@@ -119,7 +119,7 @@ void PreemptionNotifier::WillBePreemptedAtAsync(PreemptTimeCallback callback) {
 
 void PreemptionNotifier::NotifyRegisteredListeners(
     absl::StatusOr<absl::Time> death_time) {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   if (death_time.ok()) {
     death_time_ = death_time.value();
   }

@@ -17,13 +17,15 @@ limitations under the License.
 
 #include <vector>
 
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 
 namespace mlir {
-namespace mhlo {
+namespace hlo {
 mlir::Location GetLocationFromFrameIndex(int frame_id, mlir::Builder& builder,
                                          const xla::HloModule* hlo_module) {
   std::vector<mlir::Location> stack_locations;
@@ -35,9 +37,10 @@ mlir::Location GetLocationFromFrameIndex(int frame_id, mlir::Builder& builder,
     }
 
     stack_locations.push_back(mlir::NameLoc::get(
-        builder.getStringAttr(frame.function_name),
-        mlir::FileLineColLoc::get(builder.getStringAttr(frame.file_name),
-                                  frame.line, frame.column)));
+        builder.getStringAttr(xla::ToStringRef(frame.function_name)),
+        mlir::FileLineColLoc::get(
+            builder.getStringAttr(xla::ToStringRef(frame.file_name)),
+            frame.line, frame.column)));
 
     frame_id = frame.parent_frame_id;
   }
@@ -54,5 +57,5 @@ mlir::Location GetLocationFromFrameIndex(int frame_id, mlir::Builder& builder,
   return mlir::CallSiteLoc::get(stack_locations[0],
                                 stack_locations_ref.drop_front());
 }
-}  // namespace mhlo
+}  // namespace hlo
 }  // namespace mlir

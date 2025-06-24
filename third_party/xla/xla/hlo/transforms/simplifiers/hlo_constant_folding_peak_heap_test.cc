@@ -16,12 +16,12 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include <gtest/gtest.h>
 #include "testing/base/public/malloc_counter.h"
 #include "absl/strings/str_format.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
-#include "xla/test.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {

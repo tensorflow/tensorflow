@@ -16,15 +16,17 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/call_thunk.h"
 
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/profiler/lib/traceme.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
@@ -42,7 +44,6 @@ CallThunk::CallThunk(Info info, ThunkExecutor called_executor)
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> CallThunk::Execute(
     const ExecuteParams& params) {
-  tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
   return called_executor_.Execute(params);
 }
 
@@ -52,6 +53,12 @@ CallThunk::BufferUses CallThunk::buffer_uses() const {
 
 CallThunk::ResourceUses CallThunk::resource_uses() const {
   return called_executor_.resource_uses();
+}
+
+std::vector<std::pair<std::string, const ThunkSequence*>>
+CallThunk::nested_thunks() const {
+  return {{absl::StrCat(info().op_name, "-called_sequence"),
+           &called_executor_.thunk_sequence()}};
 }
 
 }  // namespace xla::cpu

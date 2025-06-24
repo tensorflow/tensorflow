@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -65,7 +66,7 @@ class ReductionDegenerateDimRemoverVisitor : public DfsHloRewriteVisitor {
       auto reduced_dimensions = instr->dimensions();
       int64_t shift = 0;
 
-      for (int dim = 0; dim < input_shape.rank(); dim++) {
+      for (int dim = 0; dim < input_shape.dimensions().size(); dim++) {
         if (input_shape.dimensions(dim) == 1) {
           shift++;
         } else {
@@ -87,8 +88,9 @@ class ReductionDegenerateDimRemoverVisitor : public DfsHloRewriteVisitor {
       canonical_reduce_shapes.push_back(canonical_reduce_shape);
     }
 
-    Shape canonical_reduce_shape =
-        ShapeUtil::MakeMaybeTupleShape(canonical_reduce_shapes);
+    TF_ASSIGN_OR_RETURN(
+        auto canonical_reduce_shape,
+        ShapeUtil::MakeValidatedMaybeTupleShape(canonical_reduce_shapes));
     const Shape &orig_reduce_shape = instr->shape();
     std::unique_ptr<HloInstruction> new_reduce = HloInstruction::CreateReduce(
         canonical_reduce_shape, input_reshapes, instr->init_values(),

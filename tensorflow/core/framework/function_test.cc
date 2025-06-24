@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {
@@ -1530,13 +1530,15 @@ TEST(FunctionLibraryDefinitionTest, ReachableDefinitions) {
   EXPECT_FALSE(reachable_flib.Contains("Func6"));
 }
 
-TEST(FunctionLibraryDefinitionTest, AddAndFindOptimizedFunctionGraph) {
+TEST(FunctionLibraryDefinitionTest, AddHasAndFindOptimizedFunctionGraph) {
   FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   EXPECT_FALSE(lib_def.FindOptimizedFunctionGraph("test").has_value());
+  EXPECT_FALSE(lib_def.HasOptimizedFunctionGraph("test"));
   OptimizedFunctionGraph proto;
   lib_def.AddOptimizedFunctionGraph("test", proto);
   EXPECT_TRUE(lib_def.FindOptimizedFunctionGraph("test").has_value());
   EXPECT_TRUE(lib_def.FindOptimizedFunctionGraph("test").value().ok());
+  EXPECT_TRUE(lib_def.HasOptimizedFunctionGraph("test"));
 }
 
 TEST(FunctionLibraryDefinitionTest, MoveTest) {
@@ -1549,6 +1551,7 @@ TEST(FunctionLibraryDefinitionTest, MoveTest) {
   EXPECT_TRUE(copy_lib_def.Contains("XTimesTwo"));
   EXPECT_TRUE(copy_lib_def.FindOptimizedFunctionGraph("test").has_value());
   EXPECT_TRUE(copy_lib_def.FindOptimizedFunctionGraph("test").value().ok());
+  EXPECT_TRUE(copy_lib_def.HasOptimizedFunctionGraph("test"));
 }
 
 TEST(FunctionLibraryDefinitionTest, ConstructFromGraphDef) {

@@ -125,14 +125,12 @@ tf_python_pybind_extension(
 py_strict_library(
     name = "gradient_registry",
     srcs = ["gradient_registry.py"],
-    srcs_version = "PY3",
     deps = [":_tape"],
 )
 
 py_strict_library(
     name = "math_ops",
     srcs = ["math_ops.py"],
-    srcs_version = "PY3",
     deps = [
         ":_math_ops",
         ":context_stack",
@@ -142,7 +140,6 @@ py_strict_library(
 py_strict_library(
     name = "nn_ops",
     srcs = ["nn_ops.py"],
-    srcs_version = "PY3",
     deps = [
         ":_nn_ops",
         ":context_stack",
@@ -152,7 +149,6 @@ py_strict_library(
 py_strict_library(
     name = "tape",
     srcs = ["tape.py"],
-    srcs_version = "PY3",
     deps = [
         ":_tape",
         ":context_stack",
@@ -164,7 +160,6 @@ py_strict_library(
 py_strict_library(
     name = "def_function",
     srcs = ["def_function.py"],
-    srcs_version = "PY3",
     deps = [
         ":_unified_api",
         ":context_stack",
@@ -175,13 +170,11 @@ py_strict_library(
 py_strict_library(
     name = "thread_local_stack",
     srcs = ["thread_local_stack.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_library(
     name = "context_stack",
     srcs = ["context_stack.py"],
-    srcs_version = "PY3",
     deps = [":thread_local_stack"],
 )
 

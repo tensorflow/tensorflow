@@ -24,15 +24,14 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/rng_expander.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-using RngTest = HloTestBase;
+using RngTest = HloPjRtTestBase;
 
 void DisableHloPass(HloModule& module, absl::string_view pass_name) {
   auto debug_options = module.config().debug_options();
@@ -53,7 +52,7 @@ void DisableRngBitGeneratorExpanderPass(HloModule& module) {
 // NOTE: Tests with RNG expanders disabled are only valid for the CPU backend.
 // Currently this whole test file is executed only for CPU, so it doesn't cause
 // any issues.
-XLA_TEST_F(RngTest, ReturnsErrorWhenExpanderPassDisabled) {
+TEST_F(RngTest, ReturnsErrorWhenExpanderPassDisabled) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -77,9 +76,9 @@ XLA_TEST_F(RngTest, ReturnsErrorWhenExpanderPassDisabled) {
               ::testing::HasSubstr("Rng should be expanded for CPU"));
 }
 
-using RngBitGeneratorTest = HloTestBase;
+using RngBitGeneratorTest = HloPjRtTestBase;
 
-XLA_TEST_F(RngBitGeneratorTest, ReturnsErrorWhenExpanderPassDisabled_Default) {
+TEST_F(RngBitGeneratorTest, ReturnsErrorWhenExpanderPassDisabled_Default) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -102,7 +101,7 @@ XLA_TEST_F(RngBitGeneratorTest, ReturnsErrorWhenExpanderPassDisabled_Default) {
       ::testing::HasSubstr("RngBitGenerator should be expanded for CPU"));
 }
 
-XLA_TEST_F(RngBitGeneratorTest, ReturnsErrorWhenExpanderPassDisabled_ThreeFry) {
+TEST_F(RngBitGeneratorTest, ReturnsErrorWhenExpanderPassDisabled_ThreeFry) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -125,7 +124,7 @@ XLA_TEST_F(RngBitGeneratorTest, ReturnsErrorWhenExpanderPassDisabled_ThreeFry) {
       ::testing::HasSubstr("RngBitGenerator should be expanded for CPU"));
 }
 
-XLA_TEST_F(RngBitGeneratorTest, ReturnsErrorWhenExpanderPassDisabled_Philox) {
+TEST_F(RngBitGeneratorTest, ReturnsErrorWhenExpanderPassDisabled_Philox) {
   const char* const kModuleStr = R"(
     HloModule m
 

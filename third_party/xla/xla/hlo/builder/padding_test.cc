@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/hlo/builder/padding.h"
 
+#include <cstdint>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "tsl/platform/test.h"
 
 namespace xla {

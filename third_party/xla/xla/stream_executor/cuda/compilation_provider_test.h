@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 
 namespace stream_executor::cuda {

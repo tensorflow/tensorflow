@@ -79,54 +79,7 @@ absl::Status GpuTracer::DoStart() {
     return tsl::errors::Unavailable("Another profile session running.");
   }
 
-  options_.cbids_selected = {
-    // KERNEL
-    CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel,
-#if CUDA_VERSION >= 11080  // CUDA 11.8
-    CUPTI_DRIVER_TRACE_CBID_cuLaunchKernelEx,
-#endif  // CUDA_VERSION >= 11080
-    // MEMCPY
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpy,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoH_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoHAsync_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoD_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoA_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoA_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DUnaligned_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DAsync_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpy3D_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync_v2,
-    // MemAlloc
-    CUPTI_DRIVER_TRACE_CBID_cuMemAlloc_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemAllocPitch_v2,
-    // MemFree
-    CUPTI_DRIVER_TRACE_CBID_cuMemFree_v2,
-    // Memset
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD8_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD16_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD32_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32_v2,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD8Async,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD16Async,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD32Async,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8Async,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16Async,
-    CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32Async,
-    // GENERIC
-    CUPTI_DRIVER_TRACE_CBID_cuStreamSynchronize,
-  };
+  options_.cbids_selected = CuptiTracer::CreateDefaultCallbackIds();
 
   bool trace_concurrent_kernels = false;
   ReadBoolFromEnvVar("TF_GPU_CUPTI_FORCE_CONCURRENT_KERNEL", true,
@@ -152,7 +105,7 @@ absl::Status GpuTracer::DoStart() {
   cupti_collector_ = CreateCuptiCollector(collector_options, start_walltime_ns,
                                           start_gputime_ns);
 
-  cupti_tracer_->Enable(options_, cupti_collector_.get());
+  cupti_tracer_->Enable(options_, cupti_collector_.get()).IgnoreError();
   return absl::OkStatus();
 }
 
@@ -211,7 +164,8 @@ absl::Status GpuTracer::CollectData(XSpace* space) {
       return absl::OkStatus();
     }
   }
-  return tsl::errors::Internal("Invalid profiling state: ", profiling_state_);
+  return absl::InternalError(
+      absl::StrCat("Invalid profiling state: ", profiling_state_));
 }
 
 // Not in anonymous namespace for testing purposes.

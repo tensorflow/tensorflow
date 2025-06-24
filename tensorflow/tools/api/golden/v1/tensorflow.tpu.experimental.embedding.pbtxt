@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "CustomCombiner"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CustomOptimizer"
     mtype: "<type \'type\'>"
   }

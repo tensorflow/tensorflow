@@ -13,6 +13,8 @@ tf_custom_op_library(
         "sleep_op.cc",
     ],
     deps = [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
     ],
 )

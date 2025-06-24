@@ -35,9 +35,9 @@ _COMPILER_OPTIONS = ("-Wno-sign-compare",)
 
 # CUDA specific paths and versions
 _CUDA_SPECIFIC_PATHS_AND_VERSIONS = {
-    "cuda_version": '"12.1.1"',
+    "cuda_version": '"12.8.0"',
     "cuda_compute_capabilities": ["7.5"],
-    "cudnn_version": '"8.6"',
+    "cudnn_version": '"9.8.0"',
     "ld_library_path": "/usr/local/nvidia/lib:/usr/local/nvidia/lib64",
 }
 _CUDA_COMPUTE_CAPABILITIES_AND_LD_LIBRARY_PATH = {

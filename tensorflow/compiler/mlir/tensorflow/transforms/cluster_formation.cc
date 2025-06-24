@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"

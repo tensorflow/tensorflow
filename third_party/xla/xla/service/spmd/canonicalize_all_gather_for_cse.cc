@@ -30,9 +30,9 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -76,7 +76,7 @@ absl::StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
         major_elements /= real_data->shape().dimensions(new_ag_dim++);
       }
     }
-    if (new_ag_dim == real_data->shape().rank()) {
+    if (new_ag_dim == real_data->shape().dimensions().size()) {
       continue;
     }
 

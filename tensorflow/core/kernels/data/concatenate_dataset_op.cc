@@ -14,20 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/concatenate_dataset_op.h"
 
-#include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {

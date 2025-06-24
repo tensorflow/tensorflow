@@ -22,6 +22,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
@@ -39,9 +41,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/test.h"
 
 namespace tensorflow {
 namespace data {

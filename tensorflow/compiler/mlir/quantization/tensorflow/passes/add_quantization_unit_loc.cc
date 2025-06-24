@@ -29,7 +29,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/quantization_unit_loc.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
@@ -181,7 +180,7 @@ void AddQuantizationUnitLocPass::runOnOperation() {
   func::FuncOp func = getOperation();
 
   patterns.add<AddQuantizationUnitLoc>(ctx);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     func.emitError() << "quant-add-quantization-unit-loc pattern "
                         "conversion did not converge.";
     signalPassFailure();

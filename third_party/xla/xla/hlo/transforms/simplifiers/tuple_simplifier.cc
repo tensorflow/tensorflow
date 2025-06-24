@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 
 #include <cstdint>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -32,31 +33,35 @@ namespace xla {
 TupleSimplifier::TupleSimplifier(bool exclude_entry_computation)
     : exclude_entry_computation_(exclude_entry_computation) {}
 
-absl::StatusOr<bool> TupleSimplifier::RemoveWholeTuple(HloInstruction* tuple) {
+absl::StatusOr<HloInstruction*> TupleSimplifier::RemoveWholeTuple(
+    HloInstruction* tuple) {
   HloInstruction* top_tuple = nullptr;
   for (int64_t operand_number = 0; operand_number < tuple->operand_count();
        ++operand_number) {
     HloInstruction* operand = tuple->mutable_operand(operand_number);
     if (operand->opcode() != HloOpcode::kGetTupleElement ||
         operand->tuple_index() != operand_number) {
-      return false;
+      return nullptr;
     }
     if (top_tuple == nullptr) {
       top_tuple = operand->mutable_operand(0);
       if (!ShapeUtil::Compatible(top_tuple->shape(), tuple->shape())) {
-        return false;
+        return nullptr;
       }
     } else if (top_tuple != operand->operand(0)) {
-      return false;
+      return nullptr;
     }
   }
   if (top_tuple == nullptr) {
-    return false;
+    return nullptr;
   }
   TF_ASSIGN_OR_RETURN(bool changed,
                       tuple->parent()->ReplaceInstruction(
                           tuple, top_tuple, /*preserve_sharding=*/true));
-  return changed;
+  if (changed) {
+    return top_tuple;
+  }
+  return nullptr;
 }
 
 absl::StatusOr<bool> TupleSimplifier::Run(
@@ -65,14 +70,19 @@ absl::StatusOr<bool> TupleSimplifier::Run(
   // Initially add all GTE and Tuple instructions to the worklist.
   bool changed = false;
   for (auto* computation : module->computations(execution_threads)) {
+    std::vector<HloInstruction*> replaced_instrs;
     if (exclude_entry_computation_ &&
         computation == module->entry_computation()) {
       continue;
     }
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() == HloOpcode::kTuple) {
-        TF_ASSIGN_OR_RETURN(bool c, RemoveWholeTuple(instruction));
-        changed |= c;
+        TF_ASSIGN_OR_RETURN(HloInstruction * instr,
+                            RemoveWholeTuple(instruction));
+        if (instr != nullptr) {
+          replaced_instrs.push_back(instr);
+          changed = true;
+        }
       } else {
         auto [ancestor, index] = instruction->LatestNonGteAncestorAndIndex();
         if (ancestor == instruction) {
@@ -112,8 +122,19 @@ absl::StatusOr<bool> TupleSimplifier::Run(
                                   instruction, replacement,
                                   /*preserve_sharding=*/true,
                                   /*relay_control_dependency=*/true));
-          changed |= replaced;
+          if (replaced) {
+            replaced_instrs.push_back(replacement);
+            changed = true;
+          }
         }
+      }
+    }
+    if (module->has_schedule()) {
+      for (HloInstruction* instr : replaced_instrs) {
+        // Remove the replaced instructions from the schedule since we did not
+        // create new insructions for them, but their properties such as their
+        // control predecessors may have changed, so we want to reschedule them.
+        module->schedule().remove_instruction(computation, instr);
       }
     }
   }

@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/test.h"

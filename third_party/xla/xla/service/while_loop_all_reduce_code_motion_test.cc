@@ -33,9 +33,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
@@ -48,7 +48,7 @@ using ::testing::NotNull;
 using ::testing::Property;
 using ::testing::SizeIs;
 
-class WhileLoopAllReduceCodeMotionTest : public HloTestBase {
+class WhileLoopAllReduceCodeMotionTest : public HloHardwareIndependentTestBase {
  public:
   template <HloOpcode op>
   HloInstruction* find_op(HloComputation* computation) {
@@ -1535,10 +1535,11 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, ReduceScatterConvertAccumulate) {
   EXPECT_THAT(moved_reduce_scatter, op::ReplicaGroups({{0, 1, 2, 3}}));
   EXPECT_FALSE(moved_reduce_scatter->constrain_layout());
   EXPECT_TRUE(moved_reduce_scatter->use_global_device_ids());
-  HloComputation* reduction_computation =
-      module->GetComputationWithName("reduction");
-  ASSERT_THAT(reduction_computation, NotNull());
-  EXPECT_EQ(moved_reduce_scatter->to_apply(), reduction_computation);
+  EXPECT_EQ(moved_reduce_scatter->to_apply()
+                ->root_instruction()
+                ->shape()
+                .element_type(),
+            F32);
 }
 
 // This test checks the add((convert(all-reduce()), buffer) case

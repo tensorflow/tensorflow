@@ -44,7 +44,7 @@ bool IsBF16SupportedInOps(se::Stream* stream) {
   // Performant bfloat16 operations are supported for Ampere+ GPUs. For
   // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
   return stream->GetCudaComputeCapability().IsAtLeast(
-      se::CudaComputeCapability::AMPERE);
+      se::CudaComputeCapability::kAmpere);
 #elif TENSORFLOW_USE_ROCM
   // So far, we return false meaning that the conversion to float is needed.
   return false;

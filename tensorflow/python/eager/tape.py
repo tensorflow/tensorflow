@@ -48,9 +48,9 @@ def watch(tape, tensor):
 def default_get_variables(variable):
   return [variable]
 
-# Gets a list of changed variables. Can be overriden using
+# Gets a list of changed variables. Can be overridden using
 # register_variables_override. An example of overriding is for getting the
-# varibles within a distributed context.
+# variables within a distributed context.
 _variables_override = default_get_variables
 
 

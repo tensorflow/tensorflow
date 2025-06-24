@@ -16,21 +16,23 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_CPU_COMPILER_H_
 #define XLA_SERVICE_CPU_CPU_COMPILER_H_
 
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Triple.h"
+#include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
-#include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
+#include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
@@ -47,101 +49,6 @@ class DialectRegistry;
 
 namespace xla {
 namespace cpu {
-
-class CpuExecutable;
-
-// This class wraps the configurability options that LLVM exposes including: the
-// target triple, the target cpu and the target features.  It also includes the
-// desired linkage name for the computation entry point.
-class CpuAotCompilationOptions : public AotCompilationOptions {
- public:
-  // Relocation models available for compilation.
-  enum class RelocationModel {
-    // Corresponds to the -fno-pic compiler option.
-    Static,
-    // Corresponds to the -fpic compiler option.
-    SmallPic,
-    // Corresponds to the -fPIC compiler option.
-    BigPic,
-    // Corresponds to the -fpie compiler option.
-    SmallPie,
-    // Corresponds to the -fPIE compiler option.
-    BigPie
-  };
-
-  CpuAotCompilationOptions(std::string triple, std::string cpu_name,
-                           std::string features, std::string entry_point_name,
-                           RelocationModel relocation_model);
-
-  ~CpuAotCompilationOptions() override;
-
-  se::Platform::Id PlatformId() const override;
-
-  // The triple used for compilation, similar to clang's -target flag.
-  const std::string& triple() const { return triple_; }
-  // The CPU name used for compilation, similar to clang's -mcpu flag.
-  const std::string& cpu_name() const { return cpu_name_; }
-  // The target features used for compilation ("+avx2", "+neon", etc).
-  const std::string& features() const { return features_; }
-  // The name to be used for the compiled code's entry point.
-  const std::string& entry_point_name() const { return entry_point_name_; }
-  // The relocation model used for compilation.
-  RelocationModel relocation_model() const { return relocation_model_; }
-
-  bool use_mlir_hlo_lowering() const { return use_mlir_hlo_lowering_; }
-  void set_use_mlir_hlo_lowering(bool value) { use_mlir_hlo_lowering_ = value; }
-
- private:
-  const std::string triple_;
-  const std::string cpu_name_;
-  const std::string features_;
-  const std::string entry_point_name_;
-  const RelocationModel relocation_model_;
-  bool use_mlir_hlo_lowering_ = false;
-};
-
-class CpuAotCompilationResult : public AotCompilationResult {
- public:
-  CpuAotCompilationResult(
-      ObjectFileData object_file_data,
-      std::vector<cpu_function_runtime::BufferInfo> buffer_infos,
-      int64_t result_buffer_index, std::unique_ptr<HloModule> module,
-      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
-  ~CpuAotCompilationResult() override = default;
-
-  HloProfilePrinterData* hlo_profile_printer_data() const {
-    return hlo_profile_printer_data_.get();
-  }
-
-  const ObjectFileData& object_file_data() const { return object_file_data_; }
-  const std::vector<cpu_function_runtime::BufferInfo>& buffer_infos() const {
-    return buffer_infos_;
-  }
-  int64_t result_buffer_index() const { return result_buffer_index_; }
-
-  const HloModule* optimized_module() const override;
-  std::unique_ptr<HloModule> consume_optimized_module() override;
-
- private:
-  // Contains the compiled computation: an object file.
-  const ObjectFileData object_file_data_;
-
-  // A list of BufferInfo objects describing the buffers used by the XLA
-  // computation.
-  const std::vector<cpu_function_runtime::BufferInfo> buffer_infos_;
-
-  // Contains which buffer index into |buffer_sizes| was designated to the
-  // result of the computation.  This buffer should be passed into the output
-  // parameter when calling the compiled computation.
-  const int64_t result_buffer_index_;
-
-  // Contains the optimized HLO module.
-  std::unique_ptr<HloModule> module_;
-
-  // Contains an instance of HloProfilePrinterData if HLO profiling is enabled,
-  // otherwise is nullptr.
-  std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data_;
-};
 
 // CPU-targeting implementation of the XLA Compiler interface.
 //
@@ -182,13 +89,6 @@ class CpuCompiler : public LLVMCompiler {
   absl::StatusOr<std::unique_ptr<AotCompilationResult>>
   LoadAotCompilationResult(const std::string& serialized_aot_result) override;
 
-  // The optional `registry` supports MLIR dialects and plugins to be loaded
-  // during optimization. If non-null, it will be used to construct relevant
-  // MLIR contexts.
-  absl::StatusOr<std::unique_ptr<CpuExecutable>> CompileXlaRuntimeCpuExecutable(
-      std::unique_ptr<HloModule> module,
-      mlir::DialectRegistry* registry = nullptr);
-
   absl::StatusOr<HloSchedule> CreateHloSchedule(
       const HloModule& hlo_module) const;
 
@@ -203,23 +103,37 @@ class CpuCompiler : public LLVMCompiler {
   // correctness.
   absl::Status RunHloPasses(HloModule* module, bool is_aot_compile,
                             llvm::TargetMachine* target_machine,
-                            const CompileOptions& compile_options,
-                            bool is_mlir_compile = false);
+                            const CompileOptions& compile_options);
 
   // Runs HLO passes up to and including layout assignment.
   absl::Status RunHloPassesThroughLayoutAssn(
       HloModule* module, bool /*is_aot_compile*/,
-      TargetMachineFeatures* target_machine_features,
-      bool is_mlir_compile = false);
+      TargetMachineFeatures* target_machine_features);
 
   // Runs HLO passes after layout assignment.
   absl::Status RunHloPassesAfterLayoutAssn(
       HloModule* module, bool is_aot_compile,
       TargetMachineFeatures* target_machine_features,
-      const CompileOptions& compile_options, bool is_mlir_compile);
+      const CompileOptions& compile_options);
 
-  absl::StatusOr<std::unique_ptr<CpuExecutable>> CompileLegacyCpuExecutable(
+  absl::StatusOr<std::unique_ptr<CpuExecutable>> CompileCpuExecutable(
       std::unique_ptr<HloModule> module);
+
+  absl::StatusOr<std::unique_ptr<AotCompilationResult>>
+  CompileAheadOfTimeLegacy(
+      std::unique_ptr<HloModule> module,
+      IrCompiler::TargetMachineBuilder target_machine_builder,
+      const CpuAotCompilationOptions& aot_options, const llvm::Triple& triple,
+      const llvm::PICLevel::Level& pic_level,
+      const llvm::PIELevel::Level& pie_level);
+
+  absl::StatusOr<std::unique_ptr<AotCompilationResult>>
+  CompileAheadOfTimeThunks(
+      std::unique_ptr<HloModule> module,
+      IrCompiler::TargetMachineBuilder target_machine_builder,
+      const CpuAotCompilationOptions& aot_options, const llvm::Triple& triple,
+      const llvm::PICLevel::Level& pic_level,
+      const llvm::PIELevel::Level& pie_level);
 
   CpuCompiler(const CpuCompiler&) = delete;
   CpuCompiler& operator=(const CpuCompiler&) = delete;

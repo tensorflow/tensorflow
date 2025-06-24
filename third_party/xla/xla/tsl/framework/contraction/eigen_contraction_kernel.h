@@ -40,7 +40,7 @@ limitations under the License.
 #include "dnnl.h"
 #endif
 
-#include "tsl/platform/dynamic_annotations.h"
+#include "xla/tsl/platform/dynamic_annotations.h"
 
 namespace Eigen {
 namespace internal {

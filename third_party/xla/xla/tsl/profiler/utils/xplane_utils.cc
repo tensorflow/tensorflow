@@ -163,11 +163,9 @@ void CopyEvent(const XEventVisitor& src_event, const XPlaneVisitor& src,
   });
 }
 
-bool IsOpLineName(absl::string_view line_name) {
-  return line_name == kXlaOpLineName || line_name == kTensorFlowOpLineName;
-}
+}  // namespace
 
-Timespan GetEventTimespan(const XEventVisitor& event) {
+Timespan GetDeviceEventTimespan(const XEventVisitor& event) {
   const std::optional<XStatVisitor> device_offset_ps =
       event.GetStat(StatType::kDeviceOffsetPs);
   const std::optional<XStatVisitor> device_duration_ps =
@@ -179,8 +177,6 @@ Timespan GetEventTimespan(const XEventVisitor& event) {
 
   return event.GetTimespan();
 }
-
-}  // namespace
 
 const XPlane* FindPlaneWithName(const XSpace& space, absl::string_view name) {
   int i = Find(space.planes(),
@@ -399,15 +395,14 @@ bool IsEmpty(const XSpace& space) {
 
 bool IsXSpaceGrouped(const XSpace& space) {
   for (const auto& plane : space.planes()) {
-    // If any plane has been grouped, consider space as grouped.
-    // CreateTfXPlaneVisitor is necessary because we need check "group_id" stat
-    // by its type StatType::kGroupId.
+    if (!IsDevicePlane(plane) && !IsHostPlane(plane)) continue;
+    // Ensure all host and device planes have a group id stat.
     XPlaneVisitor xplane = tsl::profiler::CreateTfXPlaneVisitor(&plane);
     const XStatMetadata* group_id_stat =
         xplane.GetStatMetadataByType(StatType::kGroupId);
-    if (group_id_stat) return true;
+    if (!group_id_stat) return false;
   }
-  return false;
+  return true;
 }
 
 void AddFlowsToXplane(int32_t host_id, bool is_host_plane, bool connect_traceme,
@@ -577,7 +572,7 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
     aggregated_line.SetName(line.Name());
     std::vector<XEventVisitor> event_stack;
     line.ForEachEvent([&](XEventVisitor event) {
-      Timespan timespan = GetEventTimespan(event);
+      Timespan timespan = GetDeviceEventTimespan(event);
       first_op_start_ps = first_op_start_ps <= event.TimestampPs()
                               ? first_op_start_ps
                               : timespan.begin_ps();
@@ -592,7 +587,7 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
       line_stats[event.Id()].stat.UpdateStat(timespan.duration_ps());
       DCHECK(event_stack.empty() || !(event < event_stack.back()));
       while (!event_stack.empty() &&
-             !GetEventTimespan(event_stack.back()).Includes(timespan)) {
+             !GetDeviceEventTimespan(event_stack.back()).Includes(timespan)) {
         event_stack.pop_back();
       }
       if (!event_stack.empty()) {

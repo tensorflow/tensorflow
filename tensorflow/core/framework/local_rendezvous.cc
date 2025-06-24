@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_format.h"
+#include "xla/tsl/platform/logging.h"
 #include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/types.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/refcount.h"
 
 namespace tensorflow {

@@ -120,8 +120,10 @@ struct CseKey {
   template <typename H>
   friend H AbslHashValue(H h, const CseKey& key) {
     auto instruction = key.hlo;
-    h = H::combine(std::move(h), instruction->opcode(),
-                   instruction->shape().dimensions());
+    h = instruction->shape().IsArray()
+            ? H::combine(std::move(h), instruction->opcode(),
+                         instruction->shape().dimensions())
+            : H::combine(std::move(h), instruction->opcode());
     auto window_hash = [](H h, const Window& window) {
       const auto& window_dims = window.dimensions();
       for (const auto& window_dim : window_dims) {
@@ -132,6 +134,16 @@ struct CseKey {
       }
       return H::combine(std::move(h), window_dims.size());
     };
+
+    auto result_accuracy_hash = [](H h, const ResultAccuracy& result_accuracy) {
+      if (result_accuracy.has_tolerance()) {
+        return H::combine(std::move(h), result_accuracy.tolerance().atol(),
+                          result_accuracy.tolerance().rtol(),
+                          result_accuracy.tolerance().ulps());
+      }
+      return H::combine(std::move(h), result_accuracy.mode());
+    };
+    h = result_accuracy_hash(std::move(h), instruction->result_accuracy());
 
     // Hash operands, ignoring operand order on commutative ops.
     if (HloOpcodeIsBinaryCommutative(instruction->opcode())) {
@@ -285,6 +297,12 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
     }
     // Skip instructions which have side effects.
     if (instruction->HasSideEffect()) {
+      continue;
+    }
+
+    // Skip instructions that cannot be safely removed.
+    if (!computation->IsSafelyRemovable(instruction,
+                                        ignore_control_dependencies_)) {
       continue;
     }
 

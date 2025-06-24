@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_TSL_PLATFORM_RETRYING_FILE_SYSTEM_H_
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -262,8 +263,8 @@ absl::Status RetryingFileSystem<Underlying>::NewRandomAccessFile(
                                                       &base_file);
       },
       retry_config_));
-  result->reset(new retrying_internals::RetryingRandomAccessFile(
-      std::move(base_file), retry_config_));
+  *result = std::make_unique<retrying_internals::RetryingRandomAccessFile>(
+      std::move(base_file), retry_config_);
   return absl::OkStatus();
 }
 
@@ -277,8 +278,8 @@ absl::Status RetryingFileSystem<Underlying>::NewWritableFile(
         return base_file_system_->NewWritableFile(filename, token, &base_file);
       },
       retry_config_));
-  result->reset(new retrying_internals::RetryingWritableFile(
-      std::move(base_file), retry_config_));
+  *result = std::make_unique<retrying_internals::RetryingWritableFile>(
+      std::move(base_file), retry_config_);
   return absl::OkStatus();
 }
 
@@ -293,8 +294,8 @@ absl::Status RetryingFileSystem<Underlying>::NewAppendableFile(
                                                     &base_file);
       },
       retry_config_));
-  result->reset(new retrying_internals::RetryingWritableFile(
-      std::move(base_file), retry_config_));
+  *result = std::make_unique<retrying_internals::RetryingWritableFile>(
+      std::move(base_file), retry_config_);
   return absl::OkStatus();
 }
 

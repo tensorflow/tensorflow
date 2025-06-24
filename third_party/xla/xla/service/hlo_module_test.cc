@@ -36,6 +36,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/hlo/utils/hlo_matchers.h"
@@ -46,8 +48,6 @@ limitations under the License.
 #include "xla/service/test_compilation_environment.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/statusor.h"
@@ -75,7 +75,7 @@ namespace {
 
 namespace op = ::xla::testing::opcode_matchers;
 
-class HloModuleTest : public HloTestBase {
+class HloModuleTest : public HloHardwareIndependentTestBase {
  protected:
   static void SetUpTestSuite() {
     CompilationEnvironments::RegisterProcessNewEnvFn(
@@ -248,8 +248,8 @@ ENTRY entry () -> s32[] {
   HloInstruction* cloned_custom_call =
       cloned_module->entry_computation()->GetInstructionWithName("custom-call");
 
-  EXPECT_TRUE(cloned_computation->IsCustomCallComputation());
-  EXPECT_EQ(cloned_computation->CustomCallInstruction(), cloned_custom_call);
+  EXPECT_EQ(cloned_computation->GetUniqueCaller(HloOpcode::kCustomCall),
+            cloned_custom_call);
 }
 
 TEST_F(HloModuleTest, CloneCustomCallComputationCalledComputations) {
@@ -288,10 +288,10 @@ ENTRY entry () -> s32[] {
   HloInstruction* cloned_custom_call =
       cloned_module->entry_computation()->GetInstructionWithName("custom-call");
 
-  EXPECT_TRUE(cloned_computation_0->IsCustomCallComputation());
-  EXPECT_EQ(cloned_computation_0->CustomCallInstruction(), cloned_custom_call);
-  EXPECT_TRUE(cloned_computation_1->IsCustomCallComputation());
-  EXPECT_EQ(cloned_computation_1->CustomCallInstruction(), cloned_custom_call);
+  EXPECT_EQ(cloned_computation_0->GetUniqueCaller(HloOpcode::kCustomCall),
+            cloned_custom_call);
+  EXPECT_EQ(cloned_computation_1->GetUniqueCaller(HloOpcode::kCustomCall),
+            cloned_custom_call);
 }
 
 TEST_F(HloModuleTest, CloneFusionComputation) {
@@ -710,13 +710,16 @@ TEST_F(HloModuleTest, TwoComputationsFilterexecution_threads) {
   auto* parallel_thread_computation = async_done->async_wrapped_computation();
 
   EXPECT_THAT(
-      module->MakeComputationPostOrder({HloInstruction::kMainExecutionThread}),
+      module->MakeComputationPostOrder(absl::flat_hash_set<absl::string_view>(
+          {HloInstruction::kMainExecutionThread})),
       ::testing::ElementsAre(main_thread_computation));
   EXPECT_THAT(module->MakeComputationPostOrder(),
               ::testing::ElementsAre(parallel_thread_computation,
                                      main_thread_computation));
-  EXPECT_THAT(module->MakeComputationPostOrder({kParallelThreadName}),
-              ::testing::ElementsAre(parallel_thread_computation));
+  EXPECT_THAT(
+      module->MakeComputationPostOrder(
+          absl::flat_hash_set<absl::string_view>({kParallelThreadName})),
+      ::testing::ElementsAre(parallel_thread_computation));
   // Test that computations(execution_thread) return the expected values.
   int num_all_computations = 0;
   for ([[maybe_unused]] const HloComputation* comp :
@@ -762,8 +765,7 @@ ENTRY ReduceR3ToR2.v3 {
   xla::HloModuleProtoWithConfig proto = module->ToProtoWithConfig();
   std::string serialized_module;
   ASSERT_TRUE(tsl::SerializeToStringDeterministic(proto, &serialized_module));
-  std::string original_debug_str = proto.DebugString();
-  RecordProperty("serialized_module", original_debug_str);
+  RecordProperty("serialized_module", proto.DebugString());
 
   // Verify that we can create a module from our parsed proto copy
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> reconstructed_module,

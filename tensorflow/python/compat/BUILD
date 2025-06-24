@@ -9,7 +9,6 @@ package(
 py_strict_library(
     name = "v2_compat",
     srcs = ["v2_compat.py"],
-    srcs_version = "PY3",
     visibility = [
         "//smartass/brain/ops:__subpackages__",
         "//tensorflow:internal",
@@ -30,7 +29,6 @@ py_strict_library(
 py_strict_library(
     name = "compat",
     srcs = ["compat.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/platform:tf_logging",

@@ -50,4 +50,4 @@ cmake -GNinja \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DLLVM_ENABLE_ASSERTIONS=On
 
-cmake --build "$build_dir" --target all --target mlir-cpu-runner
+cmake --build "$build_dir" --target all --target mlir-runner

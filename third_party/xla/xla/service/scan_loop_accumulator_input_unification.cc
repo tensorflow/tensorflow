@@ -33,11 +33,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/literal_util.h"
-#include "xla/service/call_graph.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/while_loop_simplifier.h"
 #include "xla/service/while_loop_unroller.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -47,10 +47,8 @@ namespace {
 
 // This function checks whether the operand of the loop at the given index is
 // read-only.
-bool LoopIndexIsReadOnly(const HloAliasAnalysis& alias_analysis,
+bool LoopIndexIsReadOnly(const HloDataflowAnalysis& dataflow_analysis,
                          HloInstruction* while_instr, int64_t idx) {
-  const HloDataflowAnalysis& dataflow_analysis =
-      alias_analysis.dataflow_analysis();
   return !(
       dataflow_analysis.GetValueSet(while_instr->while_init(), {idx})
               .values()
@@ -71,7 +69,7 @@ bool LoopIndexIsReadOnly(const HloAliasAnalysis& alias_analysis,
 //  input to the scan loop (next iteration of the outer loop)
 // 4. The input is a shape-covering read-only instruction in the loop body.
 std::vector<std::pair<HloInstruction*, HloInstruction*>>
-FindAccumulatorInputPairs(const HloAliasAnalysis& alias_analysis,
+FindAccumulatorInputPairs(const HloDataflowAnalysis& dataflow_analysis,
                           HloInstruction* while_instr,
                           const WhileLoopConfig& config) {
   HloComputation* computation = while_instr->while_body();
@@ -180,7 +178,7 @@ FindAccumulatorInputPairs(const HloAliasAnalysis& alias_analysis,
     HloInstruction* input_gte_inner =
         find_gte_instr(computation->parameter_instruction(0), input_idx_inner);
 
-    if (!LoopIndexIsReadOnly(alias_analysis, while_instr, input_idx_inner)) {
+    if (!LoopIndexIsReadOnly(dataflow_analysis, while_instr, input_idx_inner)) {
       continue;
     }
     VLOG(3) << "Input parameter scan body = " << input_gte_inner->name()
@@ -208,18 +206,10 @@ FindAccumulatorInputPairs(const HloAliasAnalysis& alias_analysis,
 // accumulator/input pairs of nested scan loops and removes the unnecessary
 // accumulator and replace it with the input.
 absl::StatusOr<bool> UnifyAccumulatorWithInput(
-    const HloAliasAnalysis& alias_analysis,
+    const HloDataflowAnalysis& dataflow_analysis,
     std::vector<std::pair<HloInstruction*, WhileLoopConfig>> unrollable_loops) {
-  // TODO(b/333521102): Helper function to check if a computation is a body of a
-  // while call. Currently, IsWhileBodyComputation api call does not work
-  // properly so we check it ourself. We should switch to IsWhileBodyComputation
-  // when it's fixed.
-  std::unique_ptr<CallGraph> call_graph =
-      CallGraph::Build(&alias_analysis.dataflow_analysis().module());
   auto is_while_body = [&](HloComputation* comp) {
-    std::vector<HloInstruction*> callers =
-        call_graph->GetComputationCallers(comp);
-    return !callers.empty() && callers.at(0)->opcode() == HloOpcode::kWhile;
+    return !comp->caller_instructions(HloOpcode::kWhile).empty();
   };
 
   std::vector<HloInstruction*> changed_loops;
@@ -231,7 +221,7 @@ absl::StatusOr<bool> UnifyAccumulatorWithInput(
       continue;
     }
     auto acc_input_pairs =
-        FindAccumulatorInputPairs(alias_analysis, while_instr, loop_config);
+        FindAccumulatorInputPairs(dataflow_analysis, while_instr, loop_config);
     for (const auto& [acc, input] : acc_input_pairs) {
       // We only consider accumulators that are allocated inside the loop.
       // Therefore, we skip accumulators that are passed as the loop input.
@@ -263,8 +253,8 @@ absl::StatusOr<bool> ScanLoopAccumulatorInputUnification::Run(
   VLOG(2) << "HLO module before ScanLoopAccumulatorInputUnification:";
   XLA_VLOG_LINES(2, module->ToString());
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
+                      HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
 
   // This pass can only be applied to unrollable loops since we need to find the
   // accumulators and inputs that are by definition updated and read fully via
@@ -276,7 +266,7 @@ absl::StatusOr<bool> ScanLoopAccumulatorInputUnification::Run(
   // TODO(b/337883537): We might want to simplify compare instructions before
   // this. It helps us identify more inputs and accumulators.
   TF_ASSIGN_OR_RETURN(bool changed, UnifyAccumulatorWithInput(
-                                        *alias_analysis, unrollable_loops));
+                                        *dataflow_analysis, unrollable_loops));
 
   if (changed) {
     for (auto& [while_instr, loop_config] : unrollable_loops) {

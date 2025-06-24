@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_TENSOR_H_
 #define TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_TENSOR_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/byte_order.h"

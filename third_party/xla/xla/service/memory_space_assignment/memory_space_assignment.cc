@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
+#include "xla/layout.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
@@ -58,6 +60,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -70,37 +73,22 @@ namespace xla {
 namespace memory_space_assignment {
 namespace {
 
-absl::Status InsertInstructionAndEnsureOperandsInserted(
-    HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
-    absl::flat_hash_set<HloInstruction*>* inserted_instructions);
-
 // Insert an instruction to the schedule, and make sure its dependencies
 // (operands) are already in the schedule. If not, insert these operands
 // before the instruction.
-absl::Status EnsureInstructionAndOperandsInserted(
+void InsertInstructionAndEnsureOperandsInserted(
     HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
     absl::flat_hash_set<HloInstruction*>* inserted_instructions) {
-  if (inserted_instructions->contains(new_instruction)) {
-    return absl::OkStatus();
+  if (!inserted_instructions->insert(new_instruction).second) {
+    VLOG(1) << "Already inserted: " << new_instruction->ToString();
+  } else {
+    for (HloInstruction* operand : new_instruction->operands()) {
+      InsertInstructionAndEnsureOperandsInserted(operand, new_sequence,
+                                                 inserted_instructions);
+    }
+    VLOG(1) << "Inserting: " << new_instruction->ToShortString();
+    new_sequence->push_back(new_instruction);
   }
-  return InsertInstructionAndEnsureOperandsInserted(
-      new_instruction, new_sequence, inserted_instructions);
-}
-
-// Same as above, but does not check if instruction is already inserted. This is
-// used when the caller already knows the instruction isn't inserted yet, to
-// speed up compilation.
-absl::Status InsertInstructionAndEnsureOperandsInserted(
-    HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
-    absl::flat_hash_set<HloInstruction*>* inserted_instructions) {
-  for (HloInstruction* operand : new_instruction->operands()) {
-    TF_RETURN_IF_ERROR(EnsureInstructionAndOperandsInserted(
-        operand, new_sequence, inserted_instructions));
-  }
-  VLOG(4) << "inserting: " << new_instruction->ToShortString();
-  new_sequence->push_back(new_instruction);
-  TF_RET_CHECK(inserted_instructions->insert(new_instruction).second);
-  return absl::OkStatus();
 }
 
 std::string InstructionScheduleToString(const HloLiveRange& hlo_live_range) {
@@ -334,6 +322,8 @@ MemorySpaceAssignment::Run(HloModule* module,
                            const Options& options) {
   CHECK(module->has_schedule());
   if (VLOG_IS_ON(3)) {
+    LOG(INFO) << "memory_space_assignment_options::Options:\n";
+    XLA_LOG_LINES(INFO, options.ToString());
     LOG(INFO) << "Module before memory space assignment: ";
     XLA_LOG_LINES(INFO, module->ToString());
     LOG(INFO) << "Schedule: " << module->schedule().ToString();
@@ -380,6 +370,16 @@ absl::StatusOr<std::unique_ptr<PresetAssignments>>
 MemorySpaceAssignment::RunMemorySpaceAssignment(
     const HloLiveRange& hlo_live_range,
     const HloAliasAnalysis& alias_analysis) {
+  bool splitting_enabled = options_.determine_split_dimension_fn != nullptr &&
+                           options_.init_split_tree_fn != nullptr &&
+                           options_.shape_size_fn != nullptr;
+  if (splitting_enabled) {
+    CHECK_EQ(options_.sliced_prefetch_options.max_slices(), 0)
+        << "TODO(b/167392593): Support sliced prefetches for split shapes.";
+    CHECK(!options_.enable_window_prefetch)
+        << "TODO(b/167392593): Support split shapes for window "
+           "prefetches.";
+  }
   TF_RETURN_IF_ERROR(FindAllocationSequence(hlo_live_range, alias_analysis));
 
   std::optional<RuntimeSimulator> runtime_simulator = std::nullopt;
@@ -399,6 +399,7 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   if (options_.verify) {
     TF_RETURN_IF_ERROR(VerifyAllocations());
   }
+
   // DEBUG_LOG_ALLOCATIONS_AT
   //
   // Uncomment the following to log the alternate memory allocations that MSA
@@ -418,7 +419,12 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   TF_RETURN_IF_ERROR(VerifyAndExportHeapSimulatorTrace(
       *alias,
       runtime_simulator.has_value() ? &alt_mem_bytes_occupied : nullptr));
-
+  if (VLOG_IS_ON(2) && runtime_simulator.has_value()) {
+    float estimated_time = runtime_simulator->SimulateElapsedTime(
+        module_, allocations_, &alt_mem_bytes_occupied);
+    LOG(INFO) << "Estimated elapsed time with async copies (sec): "
+              << estimated_time;
+  }
   if (VLOG_IS_ON(3)) {
     LOG(INFO) << "Module after memory space assignment: ";
     XLA_LOG_LINES(INFO, module_->ToString());
@@ -445,7 +451,7 @@ absl::Status MemorySpaceAssignment::FindAllocationSequence(
     const HloLiveRange& hlo_live_range,
     const HloAliasAnalysis& alias_analysis) {
   auto algorithm = std::make_unique<MsaAlgorithm>(
-      &allocations_, options_, alias_analysis, hlo_live_range);
+      module_, &allocations_, options_, alias_analysis, hlo_live_range);
 
   HeapSimulator::Options heap_simulator_options;
   heap_simulator_options.may_reuse_operand_buffers = false;
@@ -456,6 +462,24 @@ absl::Status MemorySpaceAssignment::FindAllocationSequence(
                                         heap_simulator_options)
                          .status());
   return absl::OkStatus();
+}
+
+MemorySpaceAssignment::ScopedMemorySource
+MemorySpaceAssignment::ScopedMemorySource::ForInstruction(
+    HloInstruction* instruction) {
+  return ScopedMemorySource{false, instruction};
+}
+
+MemorySpaceAssignment::ScopedMemorySource
+MemorySpaceAssignment::ScopedMemorySource::ForPostModule() {
+  return ScopedMemorySource{true, nullptr};
+}
+
+std::string MemorySpaceAssignment::ScopedMemorySource::ToString() const {
+  if (is_post_module) {
+    return "<post-module>";
+  }
+  return std::string(instruction->name());
 }
 
 absl::Status MemorySpaceAssignment::Process(
@@ -479,13 +503,22 @@ absl::Status MemorySpaceAssignment::Process(
       VLOG(3) << "Allocation not needed.";
       continue;
     }
-    TF_RETURN_IF_ERROR(allocation->Process());
+    TF_RETURN_IF_ERROR(allocation->Process(options_.bitcast_split_fn));
     // Add the offset and size of the allocation in the alternate memory to
     // the output map.
     if (allocation->is_scoped_allocation()) {
       CHECK(allocation->memory_space() == MemorySpace::kAlternate);
-      scoped_memory_assignments_.emplace_back(
-          allocation->defining_position().instruction, allocation->chunk());
+      ScopedAllocation* scoped_allocation =
+          static_cast<ScopedAllocation*>(allocation.get());
+      if (scoped_allocation->is_post_module()) {
+        scoped_memory_assignments_.emplace_back(
+            ScopedMemorySource::ForPostModule(), allocation->chunk());
+      } else {
+        scoped_memory_assignments_.emplace_back(
+            ScopedMemorySource::ForInstruction(
+                scoped_allocation->defining_position().instruction),
+            allocation->chunk());
+      }
       alternate_memory_size_ =
           std::max(alternate_memory_size_, allocation->chunk().chunk_end());
     } else if (allocation->memory_space() == MemorySpace::kAlternate) {
@@ -503,12 +536,18 @@ absl::Status MemorySpaceAssignment::Process(
         CHECK(
             !sliced_copy_allocation.cross_program_prefetch_index().has_value());
       }
-
       alternate_memory_assignments_.emplace_back(
           allocation->defining_position(), allocation->chunk());
       alternate_memory_size_ =
           std::max(alternate_memory_size_, allocation->chunk().chunk_end());
-
+      if (allocation->split_shape().has_value()) {
+        auto result = split_map_.insert({allocation->defining_position(),
+                                         &allocation->split_shape()->layout()});
+        if (!result.second) {
+          CHECK_EQ(*result.first->second,
+                   allocation->split_shape().value().layout());
+        }
+      }
       if (allocation->cross_program_prefetch_index().has_value()) {
         TF_RETURN_IF_ERROR(module_->SetCrossProgramPrefetchOffset(
             *allocation->cross_program_prefetch_index(),
@@ -564,11 +603,16 @@ absl::Status MemorySpaceAssignment::ExportAndColorBuffers(
 
   VLOG(3) << "Exported scoped allocations in alternate memory:";
   for (const auto& instruction_and_chunk : scoped_memory_assignments_) {
-    HloInstruction* instruction = instruction_and_chunk.first;
+    ScopedMemorySource scoped_memory_source = instruction_and_chunk.first;
     const HeapSimulator::Chunk& chunk = instruction_and_chunk.second;
+    if (scoped_memory_source.is_post_module) {
+      preset_assignments_->set_post_module_scoped_alternate_memory_chunk(chunk);
+    } else {
+      preset_assignments_->add_scoped_allocation_chunk(
+          scoped_memory_source.instruction, chunk);
+    }
     VLOG(3) << " [" << chunk.offset << ", " << chunk.size
-            << "] : " << instruction->name();
-    preset_assignments_->add_scoped_allocation_chunk(instruction, chunk);
+            << "] : " << scoped_memory_source.ToString();
   }
 
   if (!preset_assignments_->chunks().empty() ||
@@ -588,6 +632,7 @@ absl::Status MemorySpaceAssignment::ExportAndColorBuffers(
   for (const auto& defining_position_and_chunk :
        preset_assignments_->chunks()) {
     const HloPosition& defining_position = defining_position_and_chunk.first;
+    auto split_result = split_map_.find(defining_position);
     for (auto& buffer : alias_analysis.ComputeBuffersAt(
              defining_position.instruction, defining_position.index)) {
       for (auto& value : buffer->values()) {
@@ -599,10 +644,16 @@ absl::Status MemorySpaceAssignment::ExportAndColorBuffers(
                                   << position.ToString();
           shape->mutable_layout()->set_memory_space(
               options_.alternate_memory_space);
+          if (split_result != split_map_.end()) {
+            CHECK_EQ(shape->layout().split_configs().size(), 0);
+            shape->mutable_layout()->add_split_configs(
+                split_result->second->split_configs(0));
+          }
         }
       }
     }
   }
+
   return absl::OkStatus();
 }
 
@@ -692,14 +743,14 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
         } else if (instruction->opcode() == HloOpcode::kTuple) {
           // Replace Tuple(GetTupleElement(x), ..., GetTupleElement(x)) pattern
           // with x.
-          bool can_replace =
-              instruction->operand_count() > 0 &&
-              instruction->operand(0)->opcode() ==
-                  HloOpcode::kGetTupleElement &&
-              instruction->operand(0)
-                      ->operand(0)
-                      ->shape()
-                      .tuple_shapes_size() == instruction->operand_count();
+          bool can_replace = instruction->operand_count() > 0 &&
+                             instruction->operand(0)->opcode() ==
+                                 HloOpcode::kGetTupleElement &&
+                             instruction->operand(0)
+                                     ->operand(0)
+                                     ->shape()
+                                     .tuple_shapes()
+                                     .size() == instruction->operand_count();
           for (int operand_number = 0;
                operand_number < instruction->operand_count();
                ++operand_number) {
@@ -985,9 +1036,9 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
         for (HloInstruction* new_instruction : insts_before_iter->second) {
           if (new_instruction->parent() == computation) {
             VLOG(4) << "before " << instruction_index << ": "
-                    << new_instruction->name();
-            TF_RETURN_IF_ERROR(InsertInstructionAndEnsureOperandsInserted(
-                new_instruction, &new_sequence, &inserted_instructions));
+                    << new_instruction->ToString();
+            InsertInstructionAndEnsureOperandsInserted(
+                new_instruction, &new_sequence, &inserted_instructions);
           }
         }
       }
@@ -1011,9 +1062,9 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
             instruction->opcode() != HloOpcode::kTuple &&
             !inserted_instructions.contains(instruction)) {
           VLOG(4) << "inst " << instruction_index << ": "
-                  << instruction->name();
-          TF_RETURN_IF_ERROR(InsertInstructionAndEnsureOperandsInserted(
-              instruction, &new_sequence, &inserted_instructions));
+                  << instruction->ToString();
+          InsertInstructionAndEnsureOperandsInserted(instruction, &new_sequence,
+                                                     &inserted_instructions);
         }
       }
 
@@ -1022,9 +1073,9 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
         for (HloInstruction* new_instruction : insts_after_iter->second) {
           if (new_instruction->parent() == computation) {
             VLOG(4) << "after " << instruction_index << ": "
-                    << new_instruction->name();
-            TF_RETURN_IF_ERROR(InsertInstructionAndEnsureOperandsInserted(
-                new_instruction, &new_sequence, &inserted_instructions));
+                    << new_instruction->ToString();
+            InsertInstructionAndEnsureOperandsInserted(
+                new_instruction, &new_sequence, &inserted_instructions);
           }
         }
       }
@@ -1032,9 +1083,9 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
 
     // For rare cases where the original sequence is empty, ensure the root
     // instruction and its dependencies are scheduled.
-    TF_RETURN_IF_ERROR(EnsureInstructionAndOperandsInserted(
-        computation->root_instruction(), &new_sequence,
-        &inserted_instructions));
+    InsertInstructionAndEnsureOperandsInserted(
+        computation->root_instruction(), &new_sequence, &inserted_instructions);
+
     CHECK_EQ(new_sequence.size(), computation->instruction_count())
         << "New sequence for computation " << computation->name() << " has "
         << new_sequence.size() << " instructions, expects "

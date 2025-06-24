@@ -496,7 +496,7 @@ LogicalResult MergeConsecutivePad(mhlo::PadOp pad_op,
 
   // Check if the padding values are equal (otherwise merging is illegal)
   // Because we are using the greedy pattern rewrite driver
-  // (applyPatternsAndFoldGreedily), all different constant operators with the
+  // (applyPatternsGreedily), all different constant operators with the
   // same value will be replaced by a single constant operator of that value.
   // Due to this, if the padding values in the input are equal, they will become
   // the same constant operator and the following check (which compares memory
@@ -760,8 +760,7 @@ class OptimizePass
     patterns.add(ConvertReshapeDotRhsToBatchedDot);
     patterns.add(MergeConsecutivePad);
     patterns.add<SimplifyBroadcastInDimsReshape>(&getContext());
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       return signalPassFailure();
     }
   }

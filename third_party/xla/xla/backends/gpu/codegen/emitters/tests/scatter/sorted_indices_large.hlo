@@ -1,0 +1,27 @@
+// RUN: fusion_to_mlir %s   | emitters_opt -xla-gpu-test-optimize \
+// RUN:   -xla-gpu-test-transform-loops  | FileCheck %s
+
+mul {
+  %p0 = s32[] parameter(0)
+  %p1 = s32[] parameter(1)
+  ROOT %prod = s32[] multiply(%p0, %p1)
+}
+scatter {
+  %operand = s32[100]  parameter(0)
+  %indices = s32[2008,1] parameter(1)
+  %update = s32[2008,64] parameter(2)
+
+  ROOT %scatter = s32[100] scatter(
+      s32[100] %operand,
+      s32[2008,1] %indices,
+      s32[2008,64] %update
+    ),
+    update_window_dims={1},
+    inserted_window_dims={},
+    scatter_dims_to_operand_dims={0},
+    index_vector_dim=1,
+    indices_are_sorted=true,
+    unique_indices=false,
+    to_apply=mul
+}
+// CHECK: arith.constant dense<0> : vector<2xi32>

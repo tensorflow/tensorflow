@@ -1,4 +1,9 @@
-load("//xla:strict.default.bzl", "py_strict_test")
+load("//xla:py_strict.bzl", "py_strict_test")
+load("//xla/python:package_groups.bzl", "XLA_PYTHON_PROFILER_USERS")
+load(
+    "//xla/tsl:tsl.bzl",
+    "internal_visibility",
+)
 load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -17,6 +22,8 @@ cc_library(
         "//xla/python:__pkg__",
     ],
     deps = [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:protobuf",
@@ -35,7 +42,7 @@ tsl_pybind_extension(
         "-fno-strict-aliasing",
     ],
     pytype_srcs = ["profile_data.pyi"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(XLA_PYTHON_PROFILER_USERS),
     deps = [
         ":profile_data_lib",
         "@local_tsl//tsl/platform:protobuf",
@@ -47,8 +54,6 @@ tsl_pybind_extension(
 py_strict_test(
     name = "profile_data_test",
     srcs = ["profile_data_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "no_oss",  # TODO(phawkins): This test passes, but requires --config=monolithic.
         "optonly",

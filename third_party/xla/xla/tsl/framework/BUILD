@@ -114,10 +114,10 @@ cc_library(
         ":type_traits",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
     ] + if_static(
         extra_deps = [
             ":allocator_registry_impl",
+            "@com_google_absl//absl/synchronization",
             "//xla/tsl/lib/gtl:inlined_vector",
             "@local_tsl//tsl/platform:strcat",
             "@local_tsl//tsl/platform:stringprintf",
@@ -125,7 +125,6 @@ cc_library(
             "//xla/tsl/platform:env_impl",
             "//xla/tsl/platform:logging",
             "//xla/tsl/platform:macros",
-            "@local_tsl//tsl/platform:mutex",
             "@local_tsl//tsl/platform:platform_port",
             "@local_tsl//tsl/platform:thread_annotations",
             "//xla/tsl/platform:types",
@@ -159,6 +158,7 @@ cc_library(
         "//tensorflow/core:__subpackages__",
         "@local_tsl//tsl:__subpackages__",
         "//tensorflow/python/profiler/internal:__pkg__",
+        "//third_party/xprof:__subpackages__",
     ]),
     deps = [
         ":numeric_types",
@@ -169,8 +169,7 @@ cc_library(
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-        "@local_tsl//tsl/platform:mutex",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:strcat",
         "@local_tsl//tsl/platform:stringprintf",
@@ -201,12 +200,12 @@ cc_library(
         "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:trace_filter_utils",
         "//xla/tsl/protobuf:bfc_memory_map_proto_cc",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:stacktrace",
         "@local_tsl//tsl/profiler/lib:scoped_memory_debug_annotation",
@@ -256,7 +255,8 @@ cc_library(
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:mutex",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -371,8 +371,8 @@ cc_library(
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:hash",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:notification",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:thread_annotations",
@@ -418,7 +418,7 @@ tsl_cc_test(
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:notification",
     ],
 )
@@ -468,9 +468,10 @@ tsl_cc_test(
         ":device_id_utils",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:status_matchers",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "//xla/tsl/util:device_name_utils",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -480,6 +481,6 @@ tsl_cc_test(
     deps = [
         ":real_time_in_memory_metric",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )

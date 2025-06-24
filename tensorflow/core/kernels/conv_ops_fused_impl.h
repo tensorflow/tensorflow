@@ -440,7 +440,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
 
     const bool compute_in_nhwc = DataTypeToEnum<T>::value == DT_HALF &&
                                  stream->GetCudaComputeCapability().IsAtLeast(
-                                     se::CudaComputeCapability::VOLTA);
+                                     se::CudaComputeCapability::kVolta);
     if (!compute_in_nhwc && params.data_format == FORMAT_NHWC) {
       // Convert the input tensor from NHWC to NCHW.
       TensorShape nchw_shape;

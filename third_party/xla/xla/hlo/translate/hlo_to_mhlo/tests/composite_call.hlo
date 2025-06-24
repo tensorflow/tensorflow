@@ -1,4 +1,6 @@
-// RUN: xla-translate -split-input-file -hlo-text-to-mlir-hlo %s | FileCheck %s
+// RUN: xla-translate -split-input-file -hlo-text-to-mlir-hlo -hlo-flatten-computation-args-result=false %s | FileCheck %s
+// TODO: Composites with no outputs don't raise properly from HLO to MHLO, cant
+// switch to hlo-translate until this is fixed.
 
 // dictionary-like frontend_attributes
 HloModule composite, entry_computation_layout={()->f32[]}

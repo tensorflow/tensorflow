@@ -11,8 +11,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/cache_dataset_ops.h"
 
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/dataset_utils.h"
@@ -85,12 +87,12 @@ class CacheDatasetOpTest : public DatasetOpsTestBase {
           strings::StrCat(cache_filename_, "*"), &cache_files);
       if (!s.ok()) {
         LOG(WARNING) << "Failed to get matching files on " << cache_filename_
-                     << "* : " << s.ToString();
+                     << "* : " << s;
       }
       for (const string& path : cache_files) {
         s = device_->env()->DeleteFile(path);
         if (!s.ok()) {
-          LOG(WARNING) << "Failed to delete " << path << " : " << s.ToString();
+          LOG(WARNING) << "Failed to delete " << path << " : " << s;
         }
       }
     }

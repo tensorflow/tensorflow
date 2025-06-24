@@ -18,20 +18,22 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device.pb.h"
 #include "xla/python/ifrt/device_test_util.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace ifrt {
@@ -39,18 +41,18 @@ namespace {
 
 using ::testing::ElementsAreArray;
 
-class DeviceListTest : public test_util::DeviceTest {};
+class DeviceListTest
+    : public testing::TestWithParam<test_util::DeviceTestParam> {
+ public:
+  DeviceListTest() : fixture_(GetParam()) {}
 
-TEST_P(DeviceListTest, ToFromProto) {
-  auto device_list = GetDevices({0, 1});
-  DeviceListProto proto = device_list->ToProto();
-  auto lookup_device_func = [&](DeviceId device_id) -> absl::StatusOr<Device*> {
-    return client()->LookupDevice(device_id);
-  };
-  TF_ASSERT_OK_AND_ASSIGN(auto device_list_copy,
-                          DeviceList::FromProto(lookup_device_func, proto));
-  EXPECT_EQ(*device_list_copy, *device_list);
-}
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
+    return fixture_.GetDevices(device_indices);
+  }
+
+ private:
+  test_util::DeviceTestFixture fixture_;
+};
 
 TEST_P(DeviceListTest, AddressableDevices) {
   auto device_list = GetDevices({0, 1});
@@ -146,6 +148,45 @@ INSTANTIATE_TEST_SUITE_P(
                                                /*num_addressable_devices=*/1},
                     test_util::DeviceTestParam{/*num_devices=*/2,
                                                /*num_addressable_devices=*/2}));
+
+using DeviceListSerDesTestParam =
+    std::tuple<SerDesVersion, test_util::DeviceTestParam>;
+
+class DeviceListSerDesTest
+    : public testing::TestWithParam<DeviceListSerDesTestParam> {
+ public:
+  DeviceListSerDesTest()
+      : version_(std::get<0>(GetParam())), fixture_(std::get<1>(GetParam())) {}
+
+  SerDesVersion version() const { return version_; }
+
+  Client* client() { return fixture_.client(); }
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
+    return fixture_.GetDevices(device_indices);
+  }
+
+ private:
+  SerDesVersion version_;
+  test_util::DeviceTestFixture fixture_;
+};
+
+TEST_P(DeviceListSerDesTest, ToFromProto) {
+  auto device_list = GetDevices({0, 1});
+  DeviceListProto proto = device_list->ToProto(version());
+  TF_ASSERT_OK_AND_ASSIGN(auto device_list_copy,
+                          DeviceList::FromProto(client(), proto));
+  EXPECT_EQ(*device_list_copy, *device_list);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion_NumDevices, DeviceListSerDesTest,
+    testing::Combine(testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
+                     testing::Values(test_util::DeviceTestParam{
+                                         /*num_devices=*/2,
+                                         /*num_addressable_devices=*/1},
+                                     test_util::DeviceTestParam{
+                                         /*num_devices=*/2,
+                                         /*num_addressable_devices=*/2})));
 
 }  // namespace
 }  // namespace ifrt

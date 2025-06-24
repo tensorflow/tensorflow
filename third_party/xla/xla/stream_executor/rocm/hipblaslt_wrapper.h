@@ -20,13 +20,14 @@ limitations under the License.
 #include "rocm/rocm_config.h"
 
 #if TF_HIPBLASLT
+#include "rocm/include/hipblas/hipblas.h"
 #if TF_ROCM_VERSION >= 50500
 #include "rocm/include/hipblaslt/hipblaslt.h"
 #else
 #include "rocm/include/hipblaslt.h"
 #endif
+#include "xla/tsl/platform/env.h"
 #include "tsl/platform/dso_loader.h"
-#include "tsl/platform/env.h"
 
 namespace stream_executor {
 namespace wrap {

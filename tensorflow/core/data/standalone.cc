@@ -25,6 +25,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -37,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/data/tf_data_memory_logger.h"
 #include "tensorflow/core/data/tfdataz_metrics.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_metadata.pb.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/function.h"
@@ -52,11 +57,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/refcount.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -179,6 +180,10 @@ absl::Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
                                       {fetch_node}, &outputs));
   data::DatasetBase* dataset;
   TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], &dataset));
+  Metadata metadata;
+  metadata.set_data_service_address(
+      params.metadata_options.data_service_address);
+  dataset->Initialize(metadata);
 
   data::DatasetBase* finalized_dataset;
   std::unique_ptr<thread::ThreadPool> pool(
@@ -221,6 +226,8 @@ absl::Status Dataset::MakeIterator(
     params.model = std::make_shared<model::Model>();
   }
   params.run_mode = RunMode::STANDALONE;
+  params.data_service_address =
+      finalized_dataset_->metadata().data_service_address();
   ctx = std::make_unique<IteratorContext>(std::move(params));
   SerializationContext::Params serialization_params(&op_ctx);
   auto serialization_ctx =

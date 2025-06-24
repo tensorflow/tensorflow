@@ -1,4 +1,5 @@
-load("//xla:xla.bzl", "xla_cc_test")
+load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -47,12 +48,24 @@ xla_cc_test(
         ":computation_partitioner",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
-        "//xla/tests:hlo_test_base",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -67,7 +80,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
-        "//xla/codegen/ir:xla",
+        "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
@@ -110,18 +123,19 @@ xla_cc_test(
         ":computation_partitioner",
         ":elemental_hlo_to_mlir",
         "//xla:status_macros",
-        "//xla/backends/gpu/codegen/ir:xla_gpu",
-        "//xla/codegen/ir:xla",
+        "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
+        "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/mlir_hlo",
         "//xla/service/llvm_ir:llvm_util",
-        "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
@@ -142,6 +156,21 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "fusion_wrapper_base",
+    srcs = ["fusion_wrapper_base.cc"],
+    hdrs = ["fusion_wrapper_base.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "type_util",
     srcs = ["type_util.cc"],
     hdrs = ["type_util.h"],
@@ -151,7 +180,114 @@ cc_library(
         "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
         "//xla/mlir/utils:type_util",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "kernel_arguments",
+    srcs = ["kernel_arguments.cc"],
+    hdrs = ["kernel_arguments.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "kernel_api_builder",
+    srcs = ["kernel_api_builder.cc"],
+    hdrs = ["kernel_api_builder.h"],
+    deps = [
+        ":computation_partitioner",
+        ":elemental_hlo_to_mlir",
+        ":kernel_arguments",
+        ":type_util",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/codegen/emitters/ir:xla",
+        "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/ir:hlo",
+        "//xla/runtime:work_dimensions",
+        "//xla/runtime:work_group",
+        "//xla/runtime:work_item",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:DLTIDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+    ],
+)
+
+cc_library(
+    name = "loop_kernel_emitter",
+    srcs = ["loop_kernel_emitter.cc"],
+    hdrs = ["loop_kernel_emitter.h"],
+    deps = [
+        ":computation_partitioner",
+        ":elemental_hlo_to_mlir",
+        ":kernel_api_builder",
+        ":kernel_arguments",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/codegen:hlo_fusion_spec",
+        "//xla/codegen:kernel_definition",
+        "//xla/codegen:kernel_spec",
+        "//xla/codegen:mlir_kernel_definition",
+        "//xla/codegen:mlir_kernel_emitter",
+        "//xla/codegen:mlir_kernel_source",
+        "//xla/codegen/emitters/ir:xla",
+        "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_traversal",
+        "//xla/runtime:work_dimensions",
+        "//xla/runtime:work_group",
+        "//xla/runtime:work_item",
+        "//xla/service:buffer_assignment",
+        "//xla/service/llvm_ir:llvm_util",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:DialectUtils",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+    ],
+)
+
+cc_library(
+    name = "implicit_arith_op_builder",
+    srcs = ["implicit_arith_op_builder.cc"],
+    hdrs = ["implicit_arith_op_builder.h"],
+    deps = [
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",
     ],
 )

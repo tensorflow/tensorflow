@@ -14,14 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/versioning/op_version.h"
 
-#include <algorithm>
-#include <string>
-#include <utility>
+#include <cstdint>
+#include <cstdlib>
 #include <vector>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/numbers.h"
-#include "absl/strings/str_split.h"
+#include "absl/log/log.h"
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/core/platform/logging.h"
@@ -359,6 +356,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_TRANSPOSE:
+      if (op_sig.inputs.at(0).type == kTfLiteInt4) {
+        return 7;
+      }
       if (op_sig.inputs.at(0).dims.size() > 5) {
         return 6;
       }
@@ -1048,7 +1048,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     case BuiltinOperator_DYNAMIC_UPDATE_SLICE:
-      if (op_sig.inputs.at(0).type == kTfLiteFloat16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
+        return 4;
+      } else if (op_sig.inputs.at(0).type == kTfLiteFloat16) {
         return 3;
       } else if (op_sig.inputs.at(2).type == kTfLiteInt64) {
         return 2;

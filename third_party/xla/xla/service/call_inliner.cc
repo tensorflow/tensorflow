@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,21 +27,25 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_domain_isolator.h"
 #include "xla/service/spmd/shardy/constants.h"
-#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -72,12 +77,37 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
         outer_->AddInstruction(std::move(new_hlo));
     TF_RETURN_IF_ERROR(NoteMapping(hlo, new_hlo_pointer));
 
+    new_hlo_pointer->CopyOriginalValue(hlo, /*clone=*/true);
+    if (std::shared_ptr<OriginalValue> original_value =
+            new_hlo_pointer->original_value()) {
+      for (auto& leaf : original_value->leaves()) {
+        std::optional<OriginalArray>& original_array = leaf.second;
+        if (original_array.has_value()) {
+          std::string call_instruction_name;
+          if (std::shared_ptr<OriginalValue> call_original_value =
+                  call_->original_value()) {
+            call_instruction_name =
+                call_original_value->leaf_begin()->second->instruction_name;
+          }
+          absl::StrAppend(&original_array->instruction_name, "/",
+                          call_instruction_name);
+        }
+      }
+    }
+
     // Account for control edges.
     for (HloInstruction* control_predecessor : hlo->control_predecessors()) {
       TF_ASSIGN_OR_RETURN(HloInstruction * new_control_predecessor,
                           Resolve(control_predecessor));
       TF_RETURN_IF_ERROR(
           new_control_predecessor->AddControlDependencyTo(new_hlo_pointer));
+    }
+
+    // The newly inlined instructions should honor the control predecessors of
+    // the previous call instruction.
+    for (HloInstruction* control_predecessor : call_->control_predecessors()) {
+      TF_RETURN_IF_ERROR(control_predecessor->AddControlDependencyTo(
+          /*instruction=*/new_hlo_pointer));
     }
 
     return absl::OkStatus();
@@ -98,7 +128,21 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(HloInstruction * new_root, Resolve(root));
     VLOG(1) << "Replacing all uses of " << call_->ToString()
             << " with new root " << new_root->ToString();
-    return outer_->ReplaceInstruction(call_, new_root);
+    auto original_value = new_root->original_value();
+    // We must relay the control dependencies from this call instruction to the
+    // successors too after inlining. The will now depend on the newly inlined
+    // root.
+    auto result =
+        outer_
+            ->ReplaceInstruction(
+                /*old_instruction=*/call_, /*new_instruction=*/new_root,
+                /*preserve_sharding=*/false, /*relay_control_dependency=*/true,
+                /*remove_unused_operands=*/true)
+            .status();
+    // Restores the original value of the new root, which gets overwritten when
+    // it's used to replace the call instruction.
+    new_root->set_original_value(original_value);
+    return result;
   }
 
   CallInliner::InlinedInstructionMap ConsumeInstructionMap() {
@@ -161,15 +205,12 @@ bool InlineComposites(
              instruction->frontend_attributes().map().at("composite.name"));
 }
 
-bool InlineStreamAnnotation(HloInstruction* instruction) {
-  if (instruction->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_experimental_stream_annotation()) {
-    if (instruction->frontend_attributes().map().contains(
-            kXlaStreamAnnotationAttr)) {
-      return false;
-    }
+// Introduces a specific attribute so that the frontend has the direct
+// control over inlining specific calls.
+bool InlineInstruction(HloInstruction* instruction) {
+  auto it = instruction->frontend_attributes().map().find("inlineable");
+  if (it != instruction->frontend_attributes().map().end()) {
+    return it->second == "true";
   }
   return true;
 }
@@ -223,12 +264,75 @@ CallInliner::Inline(HloInstruction* call) {
 }
 
 bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
-  return instruction->opcode() == HloOpcode::kCall &&
-         !instruction->has_backend_config() &&
-         !instruction->parent()->IsAsyncComputation() &&
-         InlineUnderShardy(instruction) &&
-         InlineComposites(instruction, composites_to_preserve_) &&
-         InlineStreamAnnotation(instruction);
+  bool prerequisite = instruction->opcode() == HloOpcode::kCall &&
+                      !instruction->has_backend_config() &&
+                      !instruction->parent()->IsAsyncComputation();
+  if (!prerequisite) {
+    return false;
+  }
+  if (!InlineInstruction(instruction)) {
+    // Always prioritize user's explicit requests after fulfilling the
+    // prerequisites.
+    return false;
+  }
+  return InlineUnderShardy(instruction) &&
+         InlineComposites(instruction, composites_to_preserve_);
+}
+
+absl::StatusOr<bool> CallInliner::InlineAndLegalize(
+    const CallGraph& call_graph, HloComputation* computation,
+    absl::Span<HloInstruction* const> instruction_sequence) const {
+  HloModule* module = computation->parent();
+  bool did_node_mutate = false;
+  std::vector<HloInstruction*> inlined_instructions;
+  for (HloInstruction* instruction : instruction_sequence) {
+    // Don't inline async called computation since currently it's only
+    // used for parallel device computation.
+    // TODO(b/229887502): update the inliner to ignore only parallel
+    // device type async call instead of all.
+    if (IsInlineableCallOp(instruction) &&
+        (!single_call_site_ || call_graph.GetNode(instruction->to_apply())
+                                       .caller_callsites()
+                                       .size() == 1)) {
+      // The caller instruction will get removed after inlining. Record the
+      // callee computation beforehand, so we can find its schedule.
+      HloComputation* callee = instruction->to_apply();
+      TF_ASSIGN_OR_RETURN(CallInliner::InlinedInstructionMap inline_map,
+                          Inline(instruction));
+      if (module->has_schedule()) {
+        for (HloInstruction* inlined_instruction :
+             module->schedule().sequence(callee).instructions()) {
+          // Parameters were already added to sequence as operands to the
+          // call.
+          if (inlined_instruction->opcode() != HloOpcode::kParameter) {
+            inlined_instructions.push_back(inline_map[inlined_instruction]);
+          }
+        }
+      }
+      if (update_domain_) {
+        HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
+        for (const auto& [call_inst, inlined_inst] : inline_map) {
+          TF_RETURN_IF_ERROR(isolator.UpdateDomains(inlined_inst).status());
+        }
+      }
+      did_node_mutate = true;
+    } else if (module->has_schedule()) {
+      inlined_instructions.push_back(instruction);
+    }
+  }
+  if (did_node_mutate && module->has_schedule()) {
+    module->schedule().GetOrCreateSequence(computation) =
+        HloInstructionSequence(inlined_instructions);
+  }
+  if (did_node_mutate && uniquify_channel_ids_) {
+    int unique_channel_id = 1;
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (dynamic_cast<HloChannelInstruction*>(instruction)) {
+        instruction->set_channel_id(unique_channel_id++);
+      }
+    }
+  }
+  return did_node_mutate;
 }
 
 absl::StatusOr<bool> CallInliner::Run(
@@ -237,41 +341,25 @@ absl::StatusOr<bool> CallInliner::Run(
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   // Because call graph nodes are visited in post-order (callees before callers)
   // we'll always inline kCalls into their callers in the appropriate order.
-  bool did_mutate = false;
-  TF_RETURN_IF_ERROR(call_graph->VisitNodes([&](const CallGraphNode& node)
-                                                -> absl::Status {
-    if (!HloInstruction::IsThreadIncluded(
-            node.computation()->execution_thread(), execution_threads)) {
-      return absl::OkStatus();
-    }
-    VLOG(1) << "Visiting node: " << node.ToString();
-    for (HloInstruction* instruction :
-         node.computation()->MakeInstructionPostOrder()) {
-      // Don't inline async called computation since currently it's only
-      // used for parallel device computation.
-      // TODO(b/229887502): update the inliner to ignore only parallel
-      // device type async call instead of all.
-      if (IsInlineableCallOp(instruction)) {
-        const auto& callees = instruction->called_computations();
-        TF_RET_CHECK(callees.size() == 1);
-        if (!single_call_site_ || call_graph->GetNode(instruction->to_apply())
-                                          .caller_callsites()
-                                          .size() == 1) {
-          TF_ASSIGN_OR_RETURN(CallInliner::InlinedInstructionMap inline_map,
-                              Inline(instruction));
-          if (update_domain_) {
-            HloDomainIsolator isolator(
-                []() { return ShardingDomainCreator{}; });
-            for (const auto& [call_inst, inlined_inst] : inline_map) {
-              TF_RETURN_IF_ERROR(isolator.UpdateDomains(inlined_inst).status());
-            }
-          }
-          did_mutate = true;
+  TF_ASSIGN_OR_RETURN(
+      bool did_mutate,
+      call_graph->VisitNodesWithReturn([&](const CallGraphNode& node)
+                                           -> absl::StatusOr<bool> {
+        if (!HloInstruction::IsThreadIncluded(
+                node.computation()->execution_thread(), execution_threads)) {
+          return false;
+        };
+        if (module->has_schedule()) {
+          HloInstructionSequence& sequence =
+              module->schedule().GetOrCreateSequence(node.computation());
+          return InlineAndLegalize(*call_graph, node.computation(),
+                                   sequence.instructions());
         }
-      }
-    }
-    return absl::OkStatus();
-  }));
+
+        return InlineAndLegalize(
+            *call_graph, node.computation(),
+            node.computation()->MakeInstructionPostOrder());
+      }));
   if (did_mutate) {
     // Run DCE to remove called computations which are now becoming unused.
     // This can result then in problems if within the called computation, there
@@ -279,6 +367,9 @@ absl::StatusOr<bool> CallInliner::Run(
     // error finding the same channel ID used for multiple send/recv
     // instructions.
     TF_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
+    if (module->has_schedule()) {
+      TF_RETURN_IF_ERROR(module->schedule().Update(execution_threads));
+    }
   }
   return did_mutate;
 }

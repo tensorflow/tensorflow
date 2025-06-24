@@ -38,7 +38,7 @@ absl::Status ReadTensorFromCheckpoint(
 
 class SparsifyGatherTest : public ::testing::Test {
  protected:
-  NodeDef* CreateNode(const StringPiece name, const StringPiece op,
+  NodeDef* CreateNode(const absl::string_view name, const absl::string_view op,
                       const std::vector<NodeDef*>& inputs, GraphDef* graph_def,
                       bool control_dep = false) {
     NodeDef* node_def = graph_def->add_node();
@@ -56,7 +56,7 @@ class SparsifyGatherTest : public ::testing::Test {
     return node_def;
   }
 
-  void MakeGather(StringPiece name, bool gather_v2, NodeDef* params,
+  void MakeGather(absl::string_view name, bool gather_v2, NodeDef* params,
                   NodeDef* indices, GraphDef* graph_def) {
     if (gather_v2) {
       NodeDef* axis_node =

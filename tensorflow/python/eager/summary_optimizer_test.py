@@ -60,7 +60,7 @@ class SummaryOpsTransformationTest(test.TestCase):
           node.attr['body'].func.name = 'while_body'
           node.attr['cond'].func.name = 'while_cond'
 
-          # The summary_writer and `inlcude_summary` args are expected to be
+          # The summary_writer and `include_summary` args are expected to be
           # passed in and out of the transformed function as we do not modify
           # the function signatures.
           # Expect a mismatch in input and output types/shapes.

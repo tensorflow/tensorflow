@@ -22,9 +22,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/platform/macros.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/numa.h"
 
 namespace tensorflow {
@@ -90,7 +90,7 @@ class AllocatorFactoryRegistry {
   static AllocatorFactoryRegistry* singleton();
 
   ProcessStateInterface* process_state() const {
-    mutex_lock ml(mu_);
+    absl::MutexLock ml(&mu_);
     return process_state_;
   }
 
@@ -98,12 +98,12 @@ class AllocatorFactoryRegistry {
   friend class tensorflow::ProcessState;
 
   void SetProcessState(ProcessStateInterface* interface) {
-    mutex_lock ml(mu_);
+    absl::MutexLock ml(&mu_);
     process_state_ = interface;
   }
 
  private:
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
   ProcessStateInterface* process_state_ ABSL_GUARDED_BY(mu_) = nullptr;
   bool first_alloc_made_ = false;
   struct FactoryEntry {

@@ -34,12 +34,13 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
-#include "xla/backends/cpu/codegen/ir/xla_cpu_dialect.h"
-#include "xla/backends/cpu/codegen/transforms/passes.h"
+#include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.h"
+#include "xla/backends/cpu/codegen/emitters/transforms/passes.h"
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"
-#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
-#include "xla/backends/gpu/codegen/transforms/passes.h"
-#include "xla/codegen/ir/xla_ops.h"
+#include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
+#include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 
@@ -58,6 +59,7 @@ int main(int argc, char** argv) {
   mlir::registerCanonicalizerPass();
   mlir::registerCSEPass();
   mlir::registerInliner();
+  xla::emitters::registerTransformsPasses();
   xla::gpu::registerGpuFusionTransformsPasses();
   xla::cpu::registerXlaCpuTransformsPasses();
   mlir::registerPassPipeline(

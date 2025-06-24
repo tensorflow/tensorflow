@@ -14,13 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <memory>
-#include <numeric>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/platform/logging.h"

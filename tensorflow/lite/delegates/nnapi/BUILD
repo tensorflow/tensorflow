@@ -184,6 +184,8 @@ cc_test(
     ],
     tags = [
         "no_windows",
+        # TODO(b/401046768): Re-enable once the test is fixed.
+        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -212,6 +214,8 @@ cc_test(
     ],
     tags = [
         "no_windows",
+        # TODO(b/401046768): Re-enable once the test is fixed.
+        "notap",
         "tflite_not_portable_ios",
     ],
     visibility = ["//visibility:private"],

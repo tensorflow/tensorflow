@@ -11,7 +11,6 @@ package(
 py_strict_library(
     name = "cluster_coordinator",
     srcs = ["cluster_coordinator.py"],
-    srcs_version = "PY3",
     deps = [
         ":coordinator_context",
         ":metric_utils",
@@ -39,7 +38,6 @@ py_strict_library(
     srcs = [
         "coordinator_context.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":remote_value",
         "//tensorflow/core:protos_all_py",
@@ -54,14 +52,12 @@ py_strict_library(
 py_strict_library(
     name = "remote_value",
     srcs = ["remote_value.py"],
-    srcs_version = "PY3",
     deps = ["//tensorflow/python/util:tf_export"],
 )
 
 py_strict_library(
     name = "values",
     srcs = ["values.py"],
-    srcs_version = "PY3",
     deps = [
         ":remote_value",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -86,7 +82,6 @@ py_strict_library(
 distribute_py_strict_test(
     name = "cluster_coordinator_test",
     srcs = ["cluster_coordinator_test.py"],
-    python_version = "PY3",
     shard_count = 50,
     tags = [
         # "multi_gpu", # TODO(b/287692888): re-enable once the 2gpu test passes.
@@ -140,7 +135,6 @@ distribute_py_strict_test(
 py_strict_library(
     name = "fault_tolerance_test_base",
     srcs = ["fault_tolerance_test_base.py"],
-    srcs_version = "PY3",
     deps = [
         ":cluster_coordinator",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -168,7 +162,6 @@ py_strict_library(
 tf_py_strict_test(
     name = "fault_tolerance_test",
     srcs = ["fault_tolerance_test.py"],
-    python_version = "PY3",
     shard_count = 41,  # = number of tests, so one shard = one test
     tags = [
         "no_oss",  # TODO(b/219580021)
@@ -193,7 +186,6 @@ tf_py_strict_test(
 tf_py_strict_test(
     name = "fault_tolerance_coordination_service_test",
     srcs = ["fault_tolerance_coordination_service_test.py"],
-    python_version = "PY3",
     shard_count = 41,
     tags = [
         # Inherit tags from fault_tolerance_test
@@ -216,7 +208,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "metric_utils",
     srcs = ["metric_utils.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/util:tf_contextlib",
@@ -226,7 +217,6 @@ py_strict_library(
 tf_py_strict_test(
     name = "metric_utils_test",
     srcs = ["metric_utils_test.py"],
-    python_version = "PY3",
     shard_count = 3,
     deps = [
         ":cluster_coordinator",
@@ -248,7 +238,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "utils",
     srcs = ["utils.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training:server_lib",
@@ -257,21 +246,18 @@ py_strict_library(
 
 py_strict_library(
     name = "remote_eager_lib",
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )
 
 py_strict_library(
     name = "watchdog",
     srcs = ["watchdog.py"],
-    srcs_version = "PY3",
     deps = ["@absl_py//absl/logging"],
 )
 
 tf_py_strict_test(
     name = "watchdog_test",
     srcs = ["watchdog_test.py"],
-    python_version = "PY3",
     tags = [
         "nomac",  # TODO(b/239433962)
     ],
@@ -285,7 +271,6 @@ tf_py_strict_test(
 tf_py_strict_test(
     name = "get_task_states_test",
     srcs = ["get_task_states_test.py"],
-    python_version = "PY3",
     shard_count = 3,
     tags = [
         "no_oss",  # TODO(b/219580021)

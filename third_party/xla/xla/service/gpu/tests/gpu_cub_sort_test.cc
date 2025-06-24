@@ -26,8 +26,8 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/transforms/sort_rewriter.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -52,13 +52,12 @@ class CubSortKeysTest : public HloTestBase,
  public:
   void SetUp() override {
     HloTestBase::SetUp();
-    SortRewriter::SetSortSizeThresholdForTestingOnly(
-        0);  // Always use CUB sort.
+    SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAlways);
   }
 };
 
 TEST_F(CubSortKeysTest, AlwaysUsesCubSort) {
-  EXPECT_EQ(SortRewriter::SortSizeThreshold(), 0);
+  EXPECT_EQ(SortRewriter::SortMode(), SortRewriter::Mode::kAlways);
 }
 
 TEST_P(CubSortKeysTest, CompareToReference) {
@@ -125,6 +124,36 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{0, 0}));
 }
 
+// Verify that Cub Device Radix sort honors XLA's total order semantics:
+// -NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN
+// https://openxla.org/xla/operation_semantics#element-wise_comparison_operations
+//
+// Starting with release 1.12.0, Cub Device Radix sort treats +0.0 and -0.0
+// equivalently. See https://github.com/NVIDIA/cub/releases/tag/1.12.0
+// This test may break when upgrading to a newer version of Cub.
+TEST_F(CubSortKeysTest, CompareToReferenceTotalOrderLt) {
+  constexpr char kHlo[] = R"(
+compare {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT comp = pred[] compare(lhs, rhs), direction=LT, type=TOTALORDER
+}
+
+ENTRY main {
+  p = f32[8] parameter(0)
+  nans_and_zeros = f32[8] constant({nan, -nan, nan, -nan, 0.0, -0.0, 0.0, -0.0})
+  values = f32[16] concatenate(p, nans_and_zeros), dimensions={0}
+  ROOT sort = f32[16] sort(values), dimensions={0}, is_stable=true, to_apply=compare
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_hlo_module,
+                          GetOptimizedModule(kHlo));
+  EXPECT_TRUE(HloWasRewrittenToUseCubSort(*optimized_hlo_module));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{0, 0}));
+}
+
 // This test verifies an issue where sort was launched on the wrong stream,
 // causing subtle timing bugs: b/347239322.
 TEST_P(CubSortKeysTest, SortWithSlice) {
@@ -178,13 +207,12 @@ class CubSortPairsTest
  public:
   void SetUp() override {
     HloTestBase::SetUp();
-    SortRewriter::SetSortSizeThresholdForTestingOnly(
-        0);  // Always use CUB sort.
+    SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAlways);
   }
 };
 
 TEST_F(CubSortPairsTest, AlwaysUsesCubSort) {
-  EXPECT_EQ(SortRewriter::SortSizeThreshold(), 0);
+  EXPECT_EQ(SortRewriter::SortMode(), SortRewriter::Mode::kAlways);
 }
 
 TEST_P(CubSortPairsTest, CompareToReference) {
@@ -278,7 +306,7 @@ ENTRY m {
 
 INSTANTIATE_TEST_SUITE_P(
     CubSort, CubSortPairsTest,
-    ::testing::Combine(::testing::Values(U8, U16, U32, U64),
+    ::testing::Combine(::testing::Values(U8, U16, U32, U64, F32),
                        ::testing::Values(F16, F32, F64), ::testing::Bool(),
                        ::testing::Values(1, 10)),
     [](const ::testing::TestParamInfo<CubSortPairsTest::ParamType>& info) {

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ELFObjectFile.h"
@@ -46,12 +47,11 @@ limitations under the License.
 #include "xla/stream_executor/cuda/ptx_linking_method.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla::gpu {
 namespace {
@@ -234,7 +234,7 @@ class NVPTXCompilationTests
 
   absl::StatusOr<std::unique_ptr<Executable>> CompileExecutable(
       std::unique_ptr<HloModule> module) {
-    NVPTXCompiler compiler{module->config().debug_options()};
+    NVPTXCompiler compiler;
 
     return compiler.RunBackend(std::move(module),
                                backend().default_stream_executor(),

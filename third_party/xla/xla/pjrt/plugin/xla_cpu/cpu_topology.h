@@ -58,7 +58,7 @@ class CpuTopology {
   const std::vector<std::string> machine_attributes_;
 };
 
-static const int kMaxCpuDevicesPerProcess = 1 << 17;
+static const int kMaxCpuDevicesPerProcess = 1 << 11;
 
 inline PjRtGlobalDeviceId PackCpuDeviceId(int process_index, int device_id) {
   return PjRtGlobalDeviceId(kMaxCpuDevicesPerProcess * process_index +
@@ -67,6 +67,10 @@ inline PjRtGlobalDeviceId PackCpuDeviceId(int process_index, int device_id) {
 
 inline int UnpackCpuProcessIndex(PjRtGlobalDeviceId global_device_id) {
   return global_device_id.value() / kMaxCpuDevicesPerProcess;
+}
+
+inline int UnpackCpuLocalDeviceId(PjRtGlobalDeviceId global_device_id) {
+  return global_device_id.value() % kMaxCpuDevicesPerProcess;
 }
 
 }  // namespace xla

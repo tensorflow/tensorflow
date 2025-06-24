@@ -16,37 +16,31 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_KERNEL_H_
 #define XLA_BACKENDS_CPU_RUNTIME_KERNEL_H_
 
-#include <cstddef>
-#include <cstdint>
-#include <functional>
 #include <memory>
 #include <type_traits>
 #include <utility>
 
 #include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
+#include "xla/runtime/work_group.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
-#include "tsl/platform/threadpool.h"
+
+namespace Eigen {
+struct ThreadPoolDevice;
+}  // namespace Eigen
 
 namespace xla::cpu {
 
 class Kernel {
  public:
-  using Task = std::function<void()>;
-  using TaskRunner = absl::AnyInvocable<void(Task)>;
-
   // A struct to report completion of the kernel execution.
   using LaunchEvent = tsl::Chain;
 
-  using ThreadDim = stream_executor::ThreadDim;
   using DeviceMemoryBase = stream_executor::DeviceMemoryBase;
 
   // Virtual base class that owns the function behind the host kernel. It can be
@@ -73,38 +67,32 @@ class Kernel {
   // TODO(tsilytskyi): make this implementation detail private
   Kernel(unsigned arity, XLA_CPU_Kernel* kernel);
 
-  // Calls the kernel once in the caller thread for a thread dim (0,0,0).
-  // This is a fast path for small host kernels that have just one thread.
+  // Calls the kernel once in the caller thread for a workgroup id (0,0,0).
+  // This is a fast path for small host kernels that have just one workgroup.
   absl::Status CallOnce(absl::Span<const XLA_CPU_KernelArg> args) const;
 
-  // Launches the kernel on the current thread by iterating over all threads in
-  // `thread_dims` and calling the kernel function.
-  absl::Status Launch(const ThreadDim& thread_dims,
+  // Launches the kernel on the current thread by iterating over all workgroups
+  // in `num_workgroups` and calling the kernel function.
+  absl::Status Launch(const NumWorkGroups& num_workgroups,
                       absl::Span<const DeviceMemoryBase> buffers) const;
-  absl::Status Launch(const ThreadDim& thread_dims,
+  absl::Status Launch(const NumWorkGroups& num_workgroups,
                       absl::Span<const XLA_CPU_KernelArg> args) const;
 
-  // Launches the kernel by iterating over all threads in `thread_dims` and
-  // calling `task_runner` to run individual task (implementation might decide
-  // to run some of the tasks in the caller thread to save on scheduling
-  // overheads). It's up to the caller to define where task runner will execute
-  // the task, i.e., a common case is to launch them on a thread pool.
+  // Launches the kernel by iterating over all workgroups in `num_workgroups`
+  // and using `device` to parallelize the execution.
   //
   // The returned async value becomes available after all tasks are completed.
   // Async value returned in constructed state and the caller can access it to
   // get the number of tasks that are expected to be completed.
   tsl::AsyncValueRef<LaunchEvent> Launch(
-      const ThreadDim& thread_dims, absl::Span<const DeviceMemoryBase> buffers,
-      TaskRunner task_runner) const;
-  tsl::AsyncValueRef<LaunchEvent> Launch(
-      const ThreadDim& thread_dims, absl::Span<const XLA_CPU_KernelArg> args,
-      TaskRunner task_runner) const;
+      const NumWorkGroups& num_workgroups,
+      absl::Span<const DeviceMemoryBase> buffers,
+      const Eigen::ThreadPoolDevice* device) const;
 
-  // For host platform, we assume that a core is a thread, and we can run at
-  // most one instance of a kernel on a given thread.
-  absl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(ThreadDim, size_t) const {
-    return 1;
-  };
+  tsl::AsyncValueRef<LaunchEvent> Launch(
+      const NumWorkGroups& num_workgroups,
+      absl::Span<const XLA_CPU_KernelArg> args,
+      const Eigen::ThreadPoolDevice* device) const;
 
   void SetArity(unsigned arity) { arity_ = arity; };
   unsigned Arity() const { return arity_; };
@@ -117,6 +105,10 @@ class Kernel {
   }
 
  private:
+  // A kernel parallel task that is used to parallelize host kernel execution.
+  template <bool num_workgroups_x_only>
+  class ParallelTask;
+
   std::unique_ptr<KernelFunction> function_;
   XLA_CPU_Kernel* kernel_;  // pointer to the kernel owned by `function_`
 
@@ -125,10 +117,10 @@ class Kernel {
 
 inline ABSL_ATTRIBUTE_ALWAYS_INLINE absl::Status Kernel::CallOnce(
     absl::Span<const XLA_CPU_KernelArg> args) const {
-  constexpr XLA_CPU_KernelThreadDim kernel_thread_dims = {1, 1, 1};
-  constexpr XLA_CPU_KernelThread kernel_thread = {1, 1, 1};
+  constexpr XLA_CPU_NumWorkGroups num_workgroups = {1, 1, 1};
+  constexpr XLA_CPU_WorkGroupId workgroup_id = {0, 0, 0};
 
-  XLA_CPU_KernelCallFrame call_frame = {&kernel_thread_dims, &kernel_thread,
+  XLA_CPU_KernelCallFrame call_frame = {&num_workgroups, &workgroup_id,
                                         args.size(), args.data()};
 
   XLA_CPU_KernelError* error = (*kernel_)(&call_frame);

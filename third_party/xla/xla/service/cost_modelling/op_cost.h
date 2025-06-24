@@ -227,9 +227,63 @@ class OpCostManager {
     // The type used to index the children of a delegation node.
     using CalculatorIndex = size_t;
 
-    // A map from the names of leaf calculators to the values they computed for
-    // a given metric.
-    using LeafCalculatorValueMap = absl::flat_hash_map<std::string, CostValue>;
+    // The result returned by GetMetricValue. This structure tracks the final
+    // metric value. If asked to do so, it also tracks details for logging.
+    class Result {
+     public:
+      // Maps calculators to the CostValues they computed.
+      using CalculatorMapTy = absl::flat_hash_map<std::string, CostValue>;
+
+      explicit Result(bool track_calculation_details);
+      Result(bool track_calculation_details, absl::string_view calculator,
+             CostValue value);
+
+      std::string ToString() const;
+      friend std::ostream& operator<<(std::ostream& os, const Result& result) {
+        return os << result.ToString();
+      }
+
+      // Merges other into the result. Returns true if the final value was set.
+      //
+      // If merge_final_value is false, we do not update the final metric value.
+      bool Merge(const Result& other, bool merge_final_value);
+
+      // Determines if the result has a final metric value.
+      bool HasValue() const;
+
+      // Returns the final metric value.
+      //
+      // REQUIRES:
+      // - HasValue() must be true.
+      double Value() const;
+
+      // Returns the final metric source calculator.
+      //
+      // REQUIRES:
+      // - HasValue() must be true.
+      std::string ValueSource() const;
+
+      // Accessors for the values computed by various calculators. Nothing is
+      // is returned if we are not tracking calculation details.
+      std::string GetCalculatorResult(absl::string_view calculator_name) const;
+      const CalculatorMapTy& GetCalculatorValueMap() const;
+
+     private:
+      // If set_final_value is true, we set value_ and value_source_ to
+      // calculator_name and value, respectively. If track_calculation_details_
+      // is true, we add calculator_name and value to the
+      // calculator_to_value_map_.
+      //
+      // REQUIRES:
+      // - value.IsOk() || !set_final_value
+      void AddCalculatorResult(absl::string_view calculator_name,
+                               CostValue value, bool set_final_value);
+
+      bool track_calculation_details_ = false;
+      std::optional<double> value_ = std::nullopt;
+      std::optional<std::string> value_source_ = std::nullopt;
+      CalculatorMapTy calculator_to_value_map_;
+    };
 
     // Delegation nodes delegate calculation to their children. A
     // DelegationOrderFn returns DelegationInfo, describing the order of
@@ -265,9 +319,10 @@ class OpCostManager {
 
     virtual ~CalculationNode() = default;
 
-    virtual std::optional<double> GetMetricValue(
-        const CostMetricId& metric_id,
-        LeafCalculatorValueMap* calculator_value_map) = 0;
+    // track_calculation_details indicates if we want to track the values of all
+    // calculators for logging purposes.
+    virtual Result GetMetricValue(bool track_calculation_details,
+                                  const CostMetricId& metric_id) = 0;
 
     virtual absl::string_view Name() const = 0;
 
@@ -307,9 +362,8 @@ class OpCostManager {
 
   // Returns an analysis logging line for a metric with the specified computed
   // costs.
-  std::string AnalysisLoggingLine(
-      const CostMetricId& metric_id,
-      const CalculationNode::LeafCalculatorValueMap& calculator_costs) const;
+  std::string AnalysisLoggingLine(const CostMetricId& metric_id,
+                                  const CalculationNode::Result& result) const;
 
   Options options_;
   std::unique_ptr<CalculationNode> root_;

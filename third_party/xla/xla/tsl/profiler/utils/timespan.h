@@ -83,8 +83,11 @@ class Timespan {
 
   // Expands the timespan to include other.
   void ExpandToInclude(const Timespan& other) {
-    *this = FromEndPoints(std::min(begin_ps(), other.begin_ps()),
-                          std::max(end_ps(), other.end_ps()));
+    if (other.Empty()) return;
+    *this = this->Empty()
+                ? other
+                : FromEndPoints(std::min(begin_ps(), other.begin_ps()),
+                                std::max(end_ps(), other.end_ps()));
   }
 
   // Compares timespans by their begin time (ascending), duration (descending)

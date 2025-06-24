@@ -23,7 +23,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.client.session import Session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework.ops import control_dependencies
-from tensorflow.python.framework.ops import Tensor
+from tensorflow.python.framework.tensor import Tensor
 from tensorflow.python.ops import gen_tpu_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops

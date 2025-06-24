@@ -292,7 +292,8 @@ class TfLiteSubgraphExecute : public OpKernel {
       // TODO(b/179094265): This is an experimental implementation, subject to
       // change. This can be re-implemented with life cycle management
       // mechanism like reference counting.
-      const size_t required_bytes = sizeof(tensorflow::Tensor**);
+      const size_t required_bytes =
+          tflite::flex::kTensorflowResourceTensorBytes;
       const tensorflow::Tensor** tf_tensor_ptr =
           reinterpret_cast<const tensorflow::Tensor**>(malloc(required_bytes));
       *tf_tensor_ptr = &tf_tensor;
@@ -332,7 +333,7 @@ class TfLiteSubgraphExecute : public OpKernel {
       } else if (subgraph_input->type == kTfLiteVariant) {
         InitializeVariantOrResource(tf_tensor, subgraph_input);
       } else if (!TensorCanBeShared(subgraph_input)) {
-        tensorflow::StringPiece tensor_data = tf_tensor.tensor_data();
+        absl::string_view tensor_data = tf_tensor.tensor_data();
         OP_REQUIRES(ctx, subgraph_input->bytes == tensor_data.size(),
                     errors::Internal("tensor size doesn't match"));
         // TODO(b/181352924): This could incur some overhead in memory copy.

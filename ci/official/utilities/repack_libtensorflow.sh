@@ -66,15 +66,18 @@ if [[ $(uname -s) != MSYS_NT* ]]; then
   cp_normalized_srcjar bazel-bin/tensorflow/java/libtensorflow-src.jar "${DIR}/libtensorflow-src.jar"
   cp bazel-bin/tensorflow/tools/lib_package/libtensorflow_proto.zip "${DIR}"
 else
-  LIB_PKG="$1/lib_package"
+  # Temporary directory for package zipping
+  LIB_PKG="$DIR/lib_package"
   mkdir -p ${LIB_PKG}
 
   # Zip up the .dll and the LICENSE for the JNI library.
   cp bazel-bin/tensorflow/java/tensorflow_jni.dll ${LIB_PKG}/tensorflow_jni.dll
-  zip -j ${LIB_PKG}/libtensorflow_jni-cpu-windows-$(uname -m).zip \
+  libtensorflow_jni_zip="libtensorflow_jni${TARBALL_SUFFIX}.zip"
+  zip -j "$libtensorflow_jni_zip" \
     ${LIB_PKG}/tensorflow_jni.dll \
     bazel-bin/tensorflow/tools/lib_package/include/tensorflow/THIRD_PARTY_TF_JNI_LICENSES \
     LICENSE
+  mv "$libtensorflow_jni_zip" "$DIR"
   rm -f ${LIB_PKG}/tensorflow_jni.dll
 
   # Zip up the .dll, LICENSE and include files for the C library.
@@ -110,9 +113,8 @@ else
   cp third_party/xla/third_party/tsl/tsl/platform/ctstring.h \
      third_party/xla/third_party/tsl/tsl/platform/ctstring_internal.h \
      ${LIB_PKG}/include/tsl/platform
-  cp LICENSE ${LIB_PKG}/LICENSE
-  cp bazel-bin/tensorflow/tools/lib_package/THIRD_PARTY_TF_C_LICENSES ${LIB_PKG}/
   cd ${LIB_PKG}
+  libtensorflow_zip="libtensorflow${TARBALL_SUFFIX}.zip"
   zip libtensorflow-cpu-windows-$(uname -m).zip \
     lib/tensorflow.dll \
     lib/tensorflow.lib \
@@ -138,10 +140,9 @@ else
     include/tsl/platform/ctstring_internal.h \
     LICENSE \
     THIRD_PARTY_TF_C_LICENSES
-  rm -rf lib include
+  mv "$LIB_PKG/$libtensorflow_zip" "$DIR"
 
-  cd ..
-  tar -zcvf windows_cpu_libtensorflow_binaries.tar.gz $LIB_PKG
+  cd "$DIR"
   rm -rf $LIB_PKG
 
 fi

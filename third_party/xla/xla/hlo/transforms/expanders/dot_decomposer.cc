@@ -72,7 +72,7 @@ absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
   };
 
   const auto& lhs_shape = original_dot->operand(0)->shape();
-  const int64_t lhs_rank = lhs_shape.rank();
+  const int64_t lhs_rank = lhs_shape.dimensions().size();
   const int64_t num_lhs_non_contracting_dims =
       lhs_rank - num_batch_dims - num_contracting_dims;
 
@@ -138,7 +138,7 @@ absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
       &transposed_lhs->metadata());
 
   const auto& rhs_shape = original_dot->operand(1)->shape();
-  const int64_t rhs_rank = rhs_shape.rank();
+  const int64_t rhs_rank = rhs_shape.dimensions().size();
   const int64_t num_rhs_non_contracting_dims =
       rhs_rank - num_batch_dims - num_contracting_dims;
   std::vector<int64_t> rhs_non_contracting_dims;
@@ -291,9 +291,9 @@ absl::StatusOr<bool> DotDecomposer::Run(
       // A dot is not canonical if it has more than one non-contracting
       // dimension.
       if (dnums.lhs_batch_dimensions_size() + 2 <
-              instruction->operand(0)->shape().rank() ||
+              instruction->operand(0)->shape().dimensions().size() ||
           dnums.rhs_batch_dimensions_size() + 2 <
-              instruction->operand(1)->shape().rank()) {
+              instruction->operand(1)->shape().dimensions().size()) {
         non_canonical_dots.push_back(instruction);
         continue;
       }

@@ -2854,7 +2854,7 @@ class StrategyExtendedV2(object):
         `tf.distribute.Strategy` takes one in the constructor.
 
     Returns:
-      A tensor or a nested strucutre of tensors with the reduced values. The
+      A tensor or a nested structure of tensors with the reduced values. The
       structure is the same as `value`.
     """
     if options is None:
@@ -2991,7 +2991,7 @@ class StrategyExtendedV2(object):
       where each list has an element per replica, and the caller is responsible
       for ensuring all elements are executed.
     """
-    # TODO(b/178944108): Update the documentation to relfect the fact that
+    # TODO(b/178944108): Update the documentation to reflect the fact that
     # `update` can be called in a replica context.
     if kwargs is None:
       kwargs = {}

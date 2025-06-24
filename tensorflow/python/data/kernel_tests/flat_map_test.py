@@ -437,7 +437,7 @@ class FlatMapCheckpointTest(
     """Test `.flat_map().skip()` checkpointing behavior.
 
     `SkipInternal` and `GetNextInternal` are separate functions
-    but with slighly different implementations.
+    but with slightly different implementations.
     Therefore, we should test this op's behavior when used with `.skip()`.
 
     Args:

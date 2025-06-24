@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
 namespace data {

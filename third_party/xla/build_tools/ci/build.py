@@ -13,27 +13,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""XLA build script for use in CI.
+r"""XLA build script for use in CI.
 
-This script is used for the Kokoro builds of XLA, but aims to be as agnostic to
-the specifics of the VM as possible. The only Kokoro-specific things that are
-assumed are:
-  * that `KOKORO_JOB_NAME` is set, which is used to decide what build to run.
-  * and all code ends up in `$PWD/github/$REPO_NAME`.
-The script also assumes that the working directory never changes modulo `cd`ing
-into the repo that should be built (mostly `github/xla`, but also JAX and TF).
+This build script aims to be completely agnostic to the specifics of the VM, the
+exceptions are uses of `KOKORO_ARTIFACTS_DIR` and `GITHUB_WORKSPACE` to know
+where JAX or TensorFlow lives depending on which build is being executed.
+
+To update the goldens associated with this file, run:
+  ```PYTHONDONTWRITEBYTECODE=1 python3 build.py \
+      --dump_commands > golden_commands.txt```
 """
+import argparse
 import dataclasses
 import enum
 import logging
 import os
 import subprocess
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, ClassVar, Dict, List, Tuple
 
 
 # TODO(ddunleavy): move this to the bazelrc
 _DEFAULT_BAZEL_OPTIONS = dict(
+    color="yes",
     test_output="errors",
     verbose_failures=True,
     keep_going=True,
@@ -50,9 +52,18 @@ _XLA_DEFAULT_TARGET_PATTERNS = (
     "//build_tools/...",
     "@local_tsl//tsl/...",
 )
+_XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
+    "//xla/tools/multihost_hlo_runner:hlo_runner_main",
+    "//xla/tools:compute_xspace_stats_main",
+)
+_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
+    "//xla/tools/multihost_hlo_runner:hlo_runner_main_gpu",
+    "//xla/tools:compute_xspace_stats_main_gpu",
+)
 _KOKORO_ARTIFACTS_DIR = os.environ.get(
     "KOKORO_ARTIFACTS_DIR", "$KOKORO_ARTIFACTS_DIR"
 )
+_GITHUB_WORKSPACE = os.environ.get("GITHUB_WORKSPACE", "$GITHUB_WORKSPACE")
 
 
 def retry(
@@ -86,36 +97,69 @@ def _write_to_sponge_config(key, value) -> None:
 
 
 class BuildType(enum.Enum):
-  """Enum representing all types of builds."""
-  CPU_X86 = enum.auto()
-  CPU_ARM64 = enum.auto()
-  GPU = enum.auto()
-  GPU_CONTINUOUS = enum.auto()
+  """Enum representing all types of builds.
 
-  MACOS_CPU_X86 = enum.auto()
+  Should be named as `REPO,OS,HOST_TYPE,BACKEND,GPU_TYPE,CI_TYPE`.
+  """
 
-  JAX_CPU = enum.auto()
-  JAX_GPU = enum.auto()
+  XLA_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
 
-  TENSORFLOW_CPU = enum.auto()
-  TENSORFLOW_GPU = enum.auto()
+  # Presubmit builds for regression testing.
+  XLA_LINUX_ARM64_CPU_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_CPU_128_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_L4_16_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_L4_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_A4_224_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+
+  XLA_MACOS_X86_CPU_KOKORO = enum.auto()
+  XLA_MACOS_ARM64_CPU_KOKORO = enum.auto()
+
+  JAX_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
+  JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
+
+  TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
+  TENSORFLOW_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
+
+  @classmethod
+  def from_str(cls, s):
+    try:
+      return cls[s.replace(" ", "_").upper()]
+    except KeyError:
+      # Sloppy looking exception handling, but argparse will catch ValueError
+      # and give a pleasant error message. KeyError would not work here.
+      raise ValueError  # pylint: disable=raise-missing-from
 
 
 @dataclasses.dataclass(frozen=True, **_KW_ONLY_IF_PYTHON310)
 class Build:
   """Class representing a build of XLA."""
 
+  _builds: ClassVar[Dict[BuildType, "Build"]] = {}
+
   type_: BuildType
   repo: str
-  image_url: Optional[str]
   target_patterns: Tuple[str, ...]
+  subcommand: str = "test"
   configs: Tuple[str, ...] = ()
   build_tag_filters: Tuple[str, ...] = ()
   test_tag_filters: Tuple[str, ...] = ()
   action_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
   test_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
+  repo_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
+  override_repository: Dict[str, str] = dataclasses.field(default_factory=dict)
   options: Dict[str, Any] = dataclasses.field(default_factory=dict)
   extra_setup_commands: Tuple[List[str], ...] = ()
+
+  def __post_init__(self):
+    # pylint: disable=protected-access
+    assert self.type_ not in self.__class__._builds
+    self.__class__._builds[self.type_] = self
+
+  @classmethod
+  def all_builds(cls):
+    return cls._builds
 
   def bazel_command(
       self, subcommand: str = "test", extra_options: Tuple[str, ...] = ()
@@ -136,6 +180,11 @@ class Build:
     test_tag_filters = f"--test_tag_filters={','.join(self.test_tag_filters)}"
     action_env = [f"--action_env={k}={v}" for k, v in self.action_env.items()]
     test_env = [f"--test_env={k}={v}" for k, v in self.test_env.items()]
+    repo_env = [f"--repo_env={k}={v}" for k, v in self.repo_env.items()]
+    override_repository = [
+        f"--override_repository={k}={v}"
+        for k, v in self.override_repository.items()
+    ]
 
     tag_filters = [build_tag_filters, test_tag_filters]
     all_options = (
@@ -143,89 +192,38 @@ class Build:
         + configs
         + action_env
         + test_env
+        + repo_env
+        + override_repository
         + options
         + list(extra_options)
     )
     return ["bazel", subcommand, *all_options, "--", *self.target_patterns]
 
-  def docker_run_command(self, *, command: str, **kwargs: Any) -> List[str]:
-    assert self.image_url, "`docker run` has no meaning without an image."
-    options = _dict_to_cli_options(kwargs)
-
-    return ["docker", "run", *options, self.image_url, command]
-
   def commands(self) -> List[List[str]]:
     """Returns list of commands for a build."""
     cmds = []
-    cmds.append([
-        f"{_KOKORO_ARTIFACTS_DIR}/github/xla/.kokoro/generate_index_html.sh",
-        "index.html",
-    ])
-    if self.repo != "openxla/xla":
-      _, repo_name = self.repo.split("/")
-
-      # pyformat:disable
-      cmds.append(["git", "clone", "--depth=1",
-                   f"https://github.com/{self.repo}", f"./github/{repo_name}"])
-      # pyformat:enable
 
     cmds.extend(self.extra_setup_commands)
-
-    using_docker = self.image_url is not None
-
-    # pyformat:disable
-
-    if self.type_ == BuildType.CPU_ARM64 and using_docker:
-      # We would need to install parallel, but `apt` hangs regularly on Kokoro
-      # VMs due to yaqs/eng/q/4506961933928235008
-      cmds.append(["docker", "pull", self.image_url])
-    elif using_docker:
-      cmds.append(retry(["docker", "pull", self.image_url]))
-
-    container_name = "xla_ci"
-    _, repo_name = self.repo.split("/")
-
-    if using_docker:
-      cmds.append(
-          self.docker_run_command(command="bash", detach=True,
-                                  name=container_name, rm=True,
-                                  interactive=True, tty=True,
-                                  volume="./github:/github",
-                                  workdir=f"/github/{repo_name}"))
-    # pyformat:enable
-
-    # Prepend `docker exec <container_name>` iff we are using docker.
-    maybe_docker_exec = (
-        ["docker", "exec", container_name] if using_docker else []
-    )
 
     # We really want `bazel fetch` here, but it uses `bazel query` and not
     # `cquery`, which means that it fails due to config issues that aren't
     # problems in practice.
-
     # TODO(ddunleavy): Remove the condition here. Need to get parallel on the
-    # MacOS VM, and slightly change TF config (likely by specifying tag_filters
-    # manually).
-    if self.type_ not in (
-        BuildType.TENSORFLOW_CPU,
-        BuildType.TENSORFLOW_GPU,
-        BuildType.MACOS_CPU_X86,
-    ):
+    # MacOS VM.
+    macos_build = (
+        self.type_ == BuildType.XLA_MACOS_X86_CPU_KOKORO
+        or self.type_ == BuildType.XLA_MACOS_ARM64_CPU_KOKORO
+    )
+    if not macos_build:
       cmds.append(
-          maybe_docker_exec
-          + retry(
+          retry(
               self.bazel_command(
                   subcommand="build", extra_options=("--nobuild",)
               )
           )
       )
-    cmds.append(maybe_docker_exec + self.bazel_command())
-    cmds.append(
-        maybe_docker_exec + ["bazel", "analyze-profile", "profile.json.gz"]
-    )
-
-    if using_docker:
-      cmds.append(["docker", "stop", container_name])
+    cmds.append(self.bazel_command(subcommand=self.subcommand))
+    cmds.append(["bazel", "analyze-profile", "profile.json.gz"])
 
     return cmds
 
@@ -244,34 +242,27 @@ def _tag_filters_for_compute_capability(
   return tag_filters
 
 
-_DEFAULT_IMAGE = "gcr.io/tensorflow-sigs/build:latest-python3.11"
-_ML_BUILD_IMAGE = (
-    "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest"
-)
-
-_ARM64_JAX_MULTI_PYTHON_IMAGE = "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/build-arm64:jax-latest-multi-python"
-_ML_BUILD_ARM64_IMAGE = "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest"
-
-
 def nvidia_gpu_build_with_compute_capability(
-    *, type_: BuildType, configs: Tuple[str, ...], compute_capability: int
+    *,
+    type_: BuildType,
+    configs: Tuple[str, ...],
+    compute_capability: int,
 ) -> Build:
   extra_gpu_tags = _tag_filters_for_compute_capability(compute_capability)
   return Build(
       type_=type_,
       repo="openxla/xla",
-      image_url=_ML_BUILD_IMAGE,
       target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
       configs=configs,
       test_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only")
       + extra_gpu_tags,
       build_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only"),
       options={
-          "run_under": "//tools/ci_build/gpu_build:parallel_gpu_execute",
-          "repo_env": f"TF_CUDA_COMPUTE_CAPABILITIES={compute_capability/10}",
+          "run_under": "//build_tools/ci:parallel_gpu_execute",
           "@cuda_driver//:enable_forward_compatibility": "true",
           **_DEFAULT_BAZEL_OPTIONS,
       },
+      repo_env={"TF_CUDA_COMPUTE_CAPABILITIES": f"{compute_capability/10}"},
       extra_setup_commands=(["nvidia-smi"],),
   )
 
@@ -282,10 +273,9 @@ cpu_x86_tag_filter = (
     "-requires-gpu-nvidia",
     "-requires-gpu-amd",
 )
-_CPU_X86_BUILD = Build(
-    type_=BuildType.CPU_X86,
+Build(
+    type_=BuildType.XLA_LINUX_X86_CPU_GITHUB_ACTIONS,
     repo="openxla/xla",
-    image_url=_ML_BUILD_IMAGE,
     configs=("warnings", "nonccl", "rbe_linux_cpu"),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
     build_tag_filters=cpu_x86_tag_filter,
@@ -300,21 +290,106 @@ cpu_arm_tag_filter = (
     "-requires-gpu-amd",
     "-not_run:arm",
 )
-_CPU_ARM64_BUILD = Build(
-    type_=BuildType.CPU_ARM64,
+Build(
+    type_=BuildType.XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS,
     repo="openxla/xla",
-    image_url=_ML_BUILD_ARM64_IMAGE,
     configs=("warnings", "rbe_cross_compile_linux_arm64", "nonccl"),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
     options={**_DEFAULT_BAZEL_OPTIONS, "build_tests_only": True},
     build_tag_filters=cpu_arm_tag_filter,
     test_tag_filters=cpu_arm_tag_filter,
 )
-# TODO(ddunleavy): Setup additional build for a100 tests once L4 RBE is ready.
-_GPU_BUILD = nvidia_gpu_build_with_compute_capability(
-    type_=BuildType.GPU,
+
+nvidia_gpu_build_with_compute_capability(
+    type_=BuildType.XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
     configs=("warnings", "rbe_linux_cuda_nvcc"),
     compute_capability=75,
+)
+
+
+Build(
+    type_=BuildType.XLA_LINUX_X86_CPU_128_VCPU_PRESUBMIT_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    configs=("warnings", "nonccl", "rbe_linux_cpu"),
+    target_patterns=_XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
+    build_tag_filters=cpu_x86_tag_filter,
+    test_tag_filters=cpu_x86_tag_filter,
+    options=_DEFAULT_BAZEL_OPTIONS,
+    subcommand="build",
+)
+
+Build(
+    type_=BuildType.XLA_LINUX_ARM64_CPU_48_VCPU_PRESUBMIT_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    configs=("warnings", "rbe_cross_compile_linux_arm64", "nonccl"),
+    target_patterns=_XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
+    options={**_DEFAULT_BAZEL_OPTIONS, "build_tests_only": False},
+    build_tag_filters=cpu_arm_tag_filter,
+    test_tag_filters=cpu_arm_tag_filter,
+    subcommand="build",
+)
+
+Build(
+    type_=BuildType.XLA_LINUX_X86_GPU_L4_16_VCPU_PRESUBMIT_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
+    configs=("warnings", "rbe_linux_cuda_nvcc"),
+    test_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only")
+    + _tag_filters_for_compute_capability(compute_capability=75),
+    build_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only"),
+    options={
+        "run_under": "//build_tools/ci:parallel_gpu_execute",
+        "@cuda_driver//:enable_forward_compatibility": "false",
+        **_DEFAULT_BAZEL_OPTIONS,
+    },
+    repo_env={
+        "TF_CUDA_COMPUTE_CAPABILITIES": "7.5",
+    },
+    extra_setup_commands=(["nvidia-smi"],),
+    subcommand="build",
+)
+
+Build(
+    type_=BuildType.XLA_LINUX_X86_GPU_L4_48_VCPU_PRESUBMIT_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    configs=("warnings", "rbe_linux_cuda_nvcc"),
+    target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
+    test_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only")
+    + _tag_filters_for_compute_capability(compute_capability=75),
+    build_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only"),
+    options={
+        "run_under": "//build_tools/ci:parallel_gpu_execute",
+        "@cuda_driver//:enable_forward_compatibility": "false",
+        **_DEFAULT_BAZEL_OPTIONS,
+    },
+    repo_env={
+        "TF_CUDA_COMPUTE_CAPABILITIES": "7.5",
+    },
+    extra_setup_commands=(["nvidia-smi"],),
+    subcommand="build",
+)
+
+Build(
+    type_=BuildType.XLA_LINUX_X86_GPU_A4_224_VCPU_PRESUBMIT_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    configs=(),
+    target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
+    test_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only")
+    + _tag_filters_for_compute_capability(compute_capability=100),
+    build_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only"),
+    options={
+        "run_under": "//build_tools/ci:parallel_gpu_execute",
+        # Use User Mode and Kernel Mode Drivers pre-installed on the system.
+        "@cuda_driver//:enable_forward_compatibility": "true",
+        **_DEFAULT_BAZEL_OPTIONS,
+    },
+    repo_env={
+        "TF_CUDA_COMPUTE_CAPABILITIES": "10",
+        "HERMETIC_CUDA_VERSION": "12.8.0",
+        "HERMETIC_CUDNN_VERSION": "9.8.0",
+    },
+    extra_setup_commands=(["nvidia-smi"],),
+    subcommand="build",
 )
 
 macos_tag_filter = (
@@ -326,10 +401,9 @@ macos_tag_filter = (
     "-requires-gpu-amd",
 )
 
-_MACOS_X86_BUILD = Build(
-    type_=BuildType.MACOS_CPU_X86,
+Build(
+    type_=BuildType.XLA_MACOS_X86_CPU_KOKORO,
     repo="openxla/xla",
-    image_url=None,
     configs=("nonccl",),
     target_patterns=(
         "//xla/...",
@@ -342,6 +416,7 @@ _MACOS_X86_BUILD = Build(
         **_DEFAULT_BAZEL_OPTIONS,
         macos_minimum_os="10.15",
         test_tmpdir="/Volumes/BuildData/bazel_output",
+        define="xnn_enable_avxvnniint8=false",
     ),
     build_tag_filters=macos_tag_filter,
     test_tag_filters=macos_tag_filter,
@@ -360,32 +435,53 @@ _MACOS_X86_BUILD = Build(
     ),
 )
 
-_JAX_CPU_BUILD = Build(
-    type_=BuildType.JAX_CPU,
-    repo="google/jax",
-    image_url=_DEFAULT_IMAGE,
-    configs=(
-        "rbe_linux_x86_64",
+Build(
+    type_=BuildType.XLA_MACOS_ARM64_CPU_KOKORO,
+    repo="openxla/xla",
+    configs=("nonccl",),
+    target_patterns=(
+        "//xla/...",
+        "-//xla/hlo/experimental/...",
+        "-//xla/python_api/...",
+        "-//xla/python/...",
+        "-//xla/service/gpu/...",
     ),
+    options=dict(
+        **_DEFAULT_BAZEL_OPTIONS,
+        macos_minimum_os="10.15",
+        test_tmpdir="/tmpfs/bazel_output",
+        test_size_filters="small,medium",
+        define="xnn_enable_avxvnniint8=false",
+    ),
+    build_tag_filters=macos_tag_filter,
+    test_tag_filters=macos_tag_filter,
+    extra_setup_commands=(
+        ["df", "-h"],  # Debug "No space left on device" error: b/396611909.
+        ["bazel", "--version"],  # Sanity check due to strange failures
+        ["mkdir", "-p", "/tmpfs/bazel_output"],
+    ),
+)
+
+Build(
+    type_=BuildType.JAX_LINUX_X86_CPU_GITHUB_ACTIONS,
+    repo="google/jax",
+    configs=("rbe_linux_x86_64",),
     target_patterns=("//tests:cpu_tests", "//tests:backend_independent_tests"),
     test_env=dict(
         JAX_NUM_GENERATED_CASES=25,
         JAX_SKIP_SLOW_TESTS=1,
     ),
-    options=dict(
-        **_DEFAULT_BAZEL_OPTIONS,
-        override_repository="xla=/github/xla",
-        repo_env="HERMETIC_PYTHON_VERSION=3.12",
+    override_repository=dict(
+        xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
     ),
+    options=_DEFAULT_BAZEL_OPTIONS,
+    repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
 )
 
-_JAX_GPU_BUILD = Build(
-    type_=BuildType.JAX_GPU,
+Build(
+    type_=BuildType.JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
     repo="google/jax",
-    image_url=_DEFAULT_IMAGE,
-    configs=(
-        "rbe_linux_x86_64_cuda",
-    ),
+    configs=("rbe_linux_x86_64_cuda",),
     target_patterns=("//tests:gpu_tests", "//tests:backend_independent_tests"),
     build_tag_filters=("-multiaccelerator",),
     test_tag_filters=("-multiaccelerator",),
@@ -394,103 +490,186 @@ _JAX_GPU_BUILD = Build(
         TF_CPP_MIN_LOG_LEVEL=0,
         JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow",
     ),
-    options=dict(
-        **_DEFAULT_BAZEL_OPTIONS,
-        override_repository="xla=/github/xla",
-        repo_env="HERMETIC_PYTHON_VERSION=3.10",
+    override_repository=dict(
+        xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
     ),
+    options=_DEFAULT_BAZEL_OPTIONS,
+    repo_env={"HERMETIC_PYTHON_VERSION": "3.11"},
+    extra_setup_commands=(["nvidia-smi"],),
 )
 
-_TENSORFLOW_CPU_BUILD = Build(
-    type_=BuildType.TENSORFLOW_CPU,
+tensorflow_tag_filters = (
+    "-no_oss",
+    "-tf_tosa",
+    "-oss_excluded",
+    "-oss_serial",
+    "-tpu",
+    "-benchmark-test",
+    "-v1only",
+)
+
+tensorflow_cpu_tag_filters = tensorflow_tag_filters + ("-gpu",)
+tensorflow_gpu_tag_filters = tensorflow_tag_filters + (
+    "-no_gpu",
+    "-no_gpu_presubmit",
+    "-no_cuda11",
+    "+gpu",
+)
+
+Build(
+    type_=BuildType.TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS,
     repo="tensorflow/tensorflow",
-    image_url=_ML_BUILD_IMAGE,
     configs=(
         "release_cpu_linux",
         "rbe_linux_cpu",
-        "linux_cpu_pycpp_test_filters",
     ),
     target_patterns=(
         "//tensorflow/compiler/...",
         "-//tensorflow/compiler/tf2tensorrt/...",
         "//tensorflow/python/...",
         "-//tensorflow/python/distribute/...",
+        "-//tensorflow/python/kernel_tests/...",
+        "-//tensorflow/python/data/...",
         "-//tensorflow/python/compiler/tensorrt/...",
     ),
+    build_tag_filters=tensorflow_cpu_tag_filters,
+    test_tag_filters=tensorflow_cpu_tag_filters,
     options=dict(
         verbose_failures=True,
         test_output="errors",
-        override_repository="xla=/github/xla",
         profile="profile.json.gz",
+        test_lang_filters="cc,py",
+        color="yes",
+    ),
+    repo_env={"USE_PYWRAP_RULES": "True"},
+    extra_setup_commands=(
+        # This is pretty devious - but we have to do some adhoc extra Copybara
+        # work here to get XLA into the shape TF expects. b/407638223
+        # pyformat:disable
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            "-type", "f",
+            "-exec", "sed", "-i", "s/@local_xla/@local_xla/g", "{}", "+",
+        ],
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            "-type", "f",
+            "-exec", "sed", "-i", "s/@local_tsl/@local_tsl/g", "{}", "+",
+        ],
+        [
+            "cp", "-r",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party",
+        ],
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/openxla/xla/third_party/",
+            "-maxdepth", "1", "-exec", "cp", "-r", "{}",
+            f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party", ";",
+        ],
     ),
 )
 
-_TENSORFLOW_GPU_BUILD = Build(
-    type_=BuildType.TENSORFLOW_GPU,
+Build(
+    type_=BuildType.TENSORFLOW_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
     repo="tensorflow/tensorflow",
-    image_url=_ML_BUILD_IMAGE,
     configs=(
         "release_gpu_linux",
         "rbe_linux_cuda",
-        "linux_cuda_pycpp_test_filters",
     ),
     target_patterns=(
         "//tensorflow/compiler/...",
         "-//tensorflow/compiler/tf2tensorrt/...",
         "//tensorflow/python/...",
         "-//tensorflow/python/distribute/...",
+        "-//tensorflow/python/kernel_tests/...",
+        "-//tensorflow/python/data/...",
         "-//tensorflow/python/compiler/tensorrt/...",
     ),
-    build_tag_filters=("-no_oss", "+gpu"),
-    test_tag_filters=("-no_oss", "+gpu"),
+    build_tag_filters=tensorflow_gpu_tag_filters,
+    test_tag_filters=tensorflow_gpu_tag_filters,
     options=dict(
         verbose_failures=True,
         test_output="errors",
-        override_repository="xla=/github/xla",
         profile="profile.json.gz",
+        test_lang_filters="cc,py",
+        color="yes",
+    ),
+    repo_env={"USE_PYWRAP_RULES": "True"},
+    extra_setup_commands=(
+        # This is pretty devious - but we have to do some adhoc extra Copybara
+        # work here to get XLA into the shape TF expects. b/407638223
+        # pyformat:disable
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            "-type", "f",
+            "-exec", "sed", "-i", "s/@local_xla/@local_xla/g", "{}", "+",
+        ],
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            "-type", "f",
+            "-exec", "sed", "-i", "s/@local_tsl/@local_tsl/g", "{}", "+",
+        ],
+        [
+            "cp", "-r",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party",
+        ],
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/openxla/xla/third_party/",
+            "-maxdepth", "1", "-exec", "cp", "-r", "{}",
+            f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party", ";",
+        ],
+        ["nvidia-smi"],
     ),
 )
-
-_KOKORO_JOB_NAME_TO_BUILD_MAP = {
-    "tensorflow/xla/linux/arm64/build_cpu": _CPU_ARM64_BUILD,
-    "tensorflow/xla/linux/cpu/build_cpu": _CPU_X86_BUILD,
-    "tensorflow/xla/linux/gpu/build_gpu": _GPU_BUILD,
-    "tensorflow/xla/linux/github_continuous/arm64/build_cpu": _CPU_ARM64_BUILD,
-    "tensorflow/xla/linux/github_continuous/build_gpu": _GPU_BUILD,
-    "tensorflow/xla/linux/github_continuous/build_cpu": _CPU_X86_BUILD,
-    "tensorflow/xla/macos/github_continuous/cpu_py39_full": _MACOS_X86_BUILD,
-    "tensorflow/xla/jax/cpu/build_cpu": _JAX_CPU_BUILD,
-    "tensorflow/xla/jax/gpu/build_gpu": _JAX_GPU_BUILD,
-    "tensorflow/xla/tensorflow/cpu/build_cpu": _TENSORFLOW_CPU_BUILD,
-    "tensorflow/xla/tensorflow/gpu/build_gpu": _TENSORFLOW_GPU_BUILD,
-}
 
 
 def dump_all_build_commands():
   """Used to generate what commands are run for each build."""
   # Awkward workaround b/c Build instances are not hashable
-  type_to_build = {b.type_: b for b in _KOKORO_JOB_NAME_TO_BUILD_MAP.values()}
-  for t in sorted(type_to_build.keys(), key=str):
-    build = type_to_build[t]
+  for build in sorted(Build.all_builds().values(), key=lambda b: str(b.type_)):
     sys.stdout.write(f"# BEGIN {build.type_}\n")
     for cmd in build.commands():
       sys.stdout.write(" ".join(cmd) + "\n")
     sys.stdout.write(f"# END {build.type_}\n")
 
 
+def _parse_args():
+  """Defines flags and parses args."""
+  parser = argparse.ArgumentParser(allow_abbrev=False)
+  group = parser.add_mutually_exclusive_group(required=True)
+  group.add_argument(
+      "--build",
+      type=BuildType.from_str,
+      choices=list(BuildType),
+  )
+  group.add_argument(
+      "--dump_commands",
+      action="store_true",
+  )
+
+  return parser.parse_args()
+
+
 def main():
   logging.basicConfig()
   logging.getLogger().setLevel(logging.INFO)
-  kokoro_job_name = os.getenv("KOKORO_JOB_NAME")
 
-  if kokoro_job_name == "GOLDENS":  # HACK!!
+  args = _parse_args()
+
+  if args.dump_commands:
     dump_all_build_commands()
     return
+  else:
+    for cmd in Build.all_builds()[args.build].commands():
+      sh(cmd)
 
-  build = _KOKORO_JOB_NAME_TO_BUILD_MAP[kokoro_job_name]
-
-  for cmd in build.commands():
-    sh(cmd)
 
 if __name__ == "__main__":
   main()

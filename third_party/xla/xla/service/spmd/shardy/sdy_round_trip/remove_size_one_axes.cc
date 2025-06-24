@@ -22,11 +22,9 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectRegistry.h"
@@ -37,7 +35,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
-#include "shardy/dialect/sdy/ir/utils.h"
 #include "shardy/dialect/sdy/transforms/common/sharding_walker.h"
 
 namespace xla {
@@ -48,13 +45,10 @@ namespace {
 using ::mlir::ModuleOp;
 using ::mlir::Operation;
 using ::mlir::SmallVector;
-using ::mlir::StringAttr;
 using ::mlir::StringRef;
 using ::mlir::SymbolTable;
 using ::mlir::sdy::AxisRefAttr;
 using ::mlir::sdy::DimensionShardingAttr;
-using ::mlir::sdy::ManualAxesAttr;
-using ::mlir::sdy::ManualComputationOp;
 using ::mlir::sdy::MeshAttr;
 using ::mlir::sdy::MeshAxisAttr;
 using ::mlir::sdy::MeshOp;
@@ -65,17 +59,10 @@ bool hasSizeOneAxes(MeshOp meshOp) {
                       [](MeshAxisAttr axis) { return axis.getSize() == 1; });
 }
 
-MeshAttr removeSizeOneAxes(MeshAttr mesh) {
-  SmallVector<MeshAxisAttr> axes;
-  llvm::copy_if(mesh.getAxes(), std::back_inserter(axes),
-                [](MeshAxisAttr axis) { return axis.getSize() != 1; });
-  return MeshAttr::get(mesh.getContext(), axes, mesh.getDeviceIds());
-}
-
 TensorShardingAttr removeSizeOneAxes(TensorShardingAttr sharding,
                                      const SymbolTable& symbolTable) {
   MeshAttr mesh = sharding.getMesh(symbolTable);
-  CHECK(mesh) << "unknown mesh: " << absl::string_view(sharding.getMeshName());
+  CHECK(mesh) << "unknown mesh: " << sharding.getMeshName().str();
 
   auto isNotSizeOne = [&](AxisRefAttr axis) { return axis.getSize(mesh) != 1; };
 
@@ -104,29 +91,13 @@ TensorShardingAttr removeSizeOneAxes(TensorShardingAttr sharding,
   llvm::copy_if(sharding.getReplicatedAxes(),
                 std::back_inserter(replicatedAxes), isNotSizeOne);
 
-  // Remove for inlined mesh.
-  mlir::Attribute meshOrRef = sharding.getMeshOrRef();
-  if (auto mesh = mlir::dyn_cast<MeshAttr>(meshOrRef)) {
-    meshOrRef = removeSizeOneAxes(mesh);
-  }
+  // Remove from unreduced axes.
+  SmallVector<AxisRefAttr> unreducedAxes;
+  llvm::copy_if(sharding.getUnreducedAxes(), std::back_inserter(unreducedAxes),
+                isNotSizeOne);
 
-  return TensorShardingAttr::get(sharding.getContext(), meshOrRef, dimShardings,
-                                 replicatedAxes);
-}
-
-void removeSizeOneManualAxes(ManualComputationOp manualComputationOp,
-                             const SymbolTable& symbolTable) {
-  MeshAttr mesh = mlir::sdy::getCommonMesh(
-      manualComputationOp.getInShardings().getShardings(),
-      manualComputationOp.getOutShardings().getShardings(), symbolTable);
-  CHECK(mesh) << "no common mesh found for ManualComputationOp";
-
-  SmallVector<StringAttr> newManualAxes;
-  llvm::copy_if(
-      manualComputationOp.getManualAxes(), std::back_inserter(newManualAxes),
-      [&](StringAttr axisName) { return mesh.getAxisSize(axisName) != 1; });
-  manualComputationOp.setManualAxesAttr(
-      ManualAxesAttr::get(manualComputationOp.getContext(), newManualAxes));
+  return TensorShardingAttr::get(sharding.getContext(), sharding.getMeshOrRef(),
+                                 dimShardings, replicatedAxes, unreducedAxes);
 }
 
 class SdyRoundTripRemoveSizeOneAxesPass
@@ -151,17 +122,9 @@ class SdyRoundTripRemoveSizeOneAxesPass
         moduleOp,
         [&](TensorShardingAttr sharding) {
           return removeSizeOneAxes(sharding, symbolTable);
-        },
-        [&](Operation* op) {
-          if (auto manualComputationOp =
-                  mlir::dyn_cast<ManualComputationOp>(op)) {
-            removeSizeOneManualAxes(manualComputationOp, symbolTable);
-          }
         });
-
-    for (auto meshOp : moduleOp.getOps<MeshOp>()) {
-      meshOp.setMeshAttr(removeSizeOneAxes(meshOp.getMesh()));
-    }
+    // The meshes still have size one axes, but they are not used in the
+    // shardings anymore.
   }
 
   StringRef getArgument() const override {

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <deque>
 #include <functional>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "xla/tsl/platform/logging.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/dataset_utils.h"
@@ -47,7 +49,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace tensorflow {
 namespace data {
@@ -350,19 +351,23 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       if (use_unbounded_threadpool_) {
         max_parallelism_value *= kUnboundedThreadpoolAutotuningFactor;
       }
+
+      int64_t min_parallelism =
+          std::min(static_cast<double>(GetAutotuneMinParallelism(ctx)),
+                   max_parallelism_value);
       if (num_parallel_calls_ &&
           dataset()->num_parallel_calls_ == model::kAutotune) {
         parameter = model::MakeParameter(
-            "parallelism", num_parallel_calls_, /*min=*/1,
+            "parallelism", num_parallel_calls_, /*min=*/min_parallelism,
             /*max=*/max_parallelism_value,
             // This is to ensure before this op has seen its first element,
             // `MaximumBufferedBytes()` can use the correct `parameter->value`
             // to estimate the maximum buffer bytes.
             GetAutotuneDefaultParallelism(ctx));
       } else {
-        parameter =
-            model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
-                                 /*max=*/max_parallelism_value);
+        parameter = model::MakeParameter("parallelism", num_parallel_calls_,
+                                         /*min=*/min_parallelism,
+                                         /*max=*/max_parallelism_value);
       }
       std::optional<int64_t> estimated_element_size =
           dataset()->GetEstimatedElementSize();
@@ -620,7 +625,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         *end_of_sequence = false;
         return absl::OkStatus();
       }
-      if (errors::IsOutOfRange(result->status)) {
+      if (absl::IsOutOfRange(result->status)) {
         if (preserve_cardinality_) {
           // To guarantee that the transformation preserves the cardinality of
           // the dataset, we convert `OutOfRange` to `InvalidArgument` as the

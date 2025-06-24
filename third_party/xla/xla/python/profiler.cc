@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/profiler.h"
-
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -36,9 +35,9 @@ limitations under the License.
 #include "xla/python/profiler/profile_data.h"
 #include "xla/python/profiler_utils.h"
 #include "xla/python/xplane_to_profile_instructions.h"
+#include "xla/tsl/platform/macros.h"
 #include "xla/tsl/profiler/rpc/client/capture_profile.h"
 #include "xla/tsl/profiler/rpc/profiler_server.h"
-#include "tsl/platform/macros.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -109,6 +108,7 @@ class TraceMeWrapper {
 tensorflow::ProfileOptions DefaultPythonProfileOptions() {
   tensorflow::ProfileOptions options = tsl::ProfilerSession::DefaultOptions();
   options.set_python_tracer_level(1);
+  options.set_host_tracer_level(1);
   options.set_enable_hlo_proto(true);
   return options;
 }
@@ -144,12 +144,10 @@ static std::string GetFdoProfile(const std::string& xspace,
   return fdo_profile.SerializeAsString();
 }
 
-void BuildProfilerSubmodule(nb::module_& m) {
-  nb::module_ profiler =
-      m.def_submodule("profiler", "TensorFlow profiler integration");
+NB_MODULE(_profiler, m) {
   nb::class_<tsl::profiler::ProfilerServer> profiler_server_class(
-      profiler, "ProfilerServer");
-  profiler.def(
+      m, "ProfilerServer");
+  m.def(
       "start_server",
       [](int port) -> std::unique_ptr<tsl::profiler::ProfilerServer> {
         auto server = std::make_unique<tsl::profiler::ProfilerServer>();
@@ -157,7 +155,7 @@ void BuildProfilerSubmodule(nb::module_& m) {
         return server;
       },
       nb::arg("port"));
-  profiler.def("register_plugin_profiler", [](nb::capsule c_api) -> void {
+  m.def("register_plugin_profiler", [](nb::capsule c_api) -> void {
     if (absl::string_view(c_api.name()) != "pjrt_c_api") {
       throw xla::XlaRuntimeError(
           "Argument to register_plugin_profiler was not a pjrt_c_api capsule.");
@@ -165,7 +163,7 @@ void BuildProfilerSubmodule(nb::module_& m) {
     RegisterProfiler(static_cast<const PJRT_Api*>(c_api.data()));
   });
 
-  nb::class_<ProfilerSessionWrapper> profiler_session_class(profiler,
+  nb::class_<ProfilerSessionWrapper> profiler_session_class(m,
                                                             "ProfilerSession");
   profiler_session_class
       .def("__init__",
@@ -218,7 +216,7 @@ void BuildProfilerSubmodule(nb::module_& m) {
            });
 
   nb::class_<tensorflow::ProfileOptions> profile_options_class(
-      profiler, "ProfileOptions");
+      m, "ProfileOptions");
   profile_options_class
       .def("__init__",
            [](tensorflow::ProfileOptions* options) {
@@ -243,12 +241,40 @@ void BuildProfilerSubmodule(nb::module_& m) {
       .def_prop_rw("duration_ms", &tensorflow::ProfileOptions::duration_ms,
                    &tensorflow::ProfileOptions::set_duration_ms)
       .def_prop_rw(
+          "raise_error_on_start_failure",
+          &tensorflow::ProfileOptions::raise_error_on_start_failure,
+          &tensorflow::ProfileOptions::set_raise_error_on_start_failure)
+      .def_prop_rw(
+          "advanced_configuration",
+          &tensorflow::ProfileOptions::advanced_configuration,
+          [](tensorflow::ProfileOptions* options, const nb::dict& dict) {
+            if (options->mutable_advanced_configuration() == nullptr) {
+              throw xla::XlaRuntimeError("advanced_configuration is null");
+            }
+            options->mutable_advanced_configuration()->clear();
+            for (const auto& item : dict) {
+              std::string key = nb::cast<std::string>(item.first);
+              nb::handle value = item.second;
+              tensorflow::ProfileOptions::AdvancedConfigValue config_value;
+              if (nb::isinstance<nb::bool_>(value)) {
+                config_value.set_bool_value(nb::cast<bool>(value));
+              } else if (nb::isinstance<nb::int_>(value)) {
+                config_value.set_int64_value(nb::cast<int64_t>(value));
+              } else {
+                config_value.set_string_value(
+                    nb::cast<std::string>(nb::str(value)));
+              }
+              options->mutable_advanced_configuration()->insert(
+                  {key, config_value});
+            }
+          })
+      .def_prop_rw(
           "repository_path", &tensorflow::ProfileOptions::repository_path,
           [](tensorflow::ProfileOptions* options, const std::string& path) {
             options->set_repository_path(path);
           });
 
-  nb::class_<TraceMeWrapper> traceme_class(profiler, "TraceMe");
+  nb::class_<TraceMeWrapper> traceme_class(m, "TraceMe");
   traceme_class.def(nb::init<nb::str, nb::kwargs>())
       .def("__enter__", [](nb::object self) -> nb::object { return self; })
       .def(
@@ -264,7 +290,7 @@ void BuildProfilerSubmodule(nb::module_& m) {
       .def("set_metadata", &TraceMeWrapper::SetMetadata)
       .def_static("is_enabled", &TraceMeWrapper::IsEnabled);
 
-  profiler.def(
+  m.def(
       "get_profiled_instructions_proto",
       [](std::string tensorboard_dir) -> nb::bytes {
         tensorflow::profiler::ProfiledInstructionsProto profile_proto;
@@ -276,7 +302,7 @@ void BuildProfilerSubmodule(nb::module_& m) {
       },
       nb::arg("tensorboard_dir"));
 
-  profiler.def(
+  m.def(
       "get_instructions_profile",
       [](const std::string& tensorboard_dir)
           -> std::vector<std::pair<std::string, double>> {
@@ -293,19 +319,19 @@ void BuildProfilerSubmodule(nb::module_& m) {
       },
       nb::arg("tensorboard_dir"));
 
-  profiler.def("get_fdo_profile",
-               [](nb::bytes xspace, bool as_textproto = false) -> nb::object {
-                 std::string out = GetFdoProfile(
-                     std::string(xspace.c_str(), xspace.size()), as_textproto);
-                 return nb::bytes(out.data(), out.size());
-               });
+  m.def("get_fdo_profile",
+        [](nb::bytes xspace, bool as_textproto = false) -> nb::object {
+          std::string out = GetFdoProfile(
+              std::string(xspace.c_str(), xspace.size()), as_textproto);
+          return nb::bytes(out.data(), out.size());
+        });
 
-  profiler.def("get_fdo_profile", [](nb::bytes xspace) -> nb::object {
+  m.def("get_fdo_profile", [](nb::bytes xspace) -> nb::object {
     std::string out = GetFdoProfile(std::string(xspace.c_str(), xspace.size()));
     return nb::bytes(out.data(), out.size());
   });
 
-  profiler.def(
+  m.def(
       "aggregate_profiled_instructions",
       [](const std::vector<nb::bytes>& profiles, int percentile) -> nb::object {
         std::vector<tensorflow::profiler::ProfiledInstructionsProto>

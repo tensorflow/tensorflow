@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/topology.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/threadpool.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow {

@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/ops/image_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace ops {

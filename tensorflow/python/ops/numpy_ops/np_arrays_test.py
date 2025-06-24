@@ -182,7 +182,7 @@ class ArrayTest(test.TestCase):
         hash(x)
       f(a)
     for f in [eager, graph]:
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           TypeError,
           r'Tensor is unhashable. Instead, use tensor.ref\(\) as the key.'):
         f()

@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -40,9 +41,8 @@ class LoopScheduleLinearizer : public HloModulePass {
  public:
   absl::string_view name() const override { return "loop-schedule-linearizer"; }
 
-  explicit LoopScheduleLinearizer(
-      const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr)
-      : can_share_buffer_(can_share_buffer) {}
+  explicit LoopScheduleLinearizer(const AliasInfo* alias_info)
+      : alias_info_(alias_info) {}
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
@@ -50,9 +50,9 @@ class LoopScheduleLinearizer : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  // Backend specific function that decides whether an instruction can share
-  // buffer with its operand.
-  HloDataflowAnalysis::CanShareBuffer can_share_buffer_;
+  // Backend specific information about whether an instruction can share buffer
+  // with its operand.
+  const AliasInfo* alias_info_;
 };
 
 }  // namespace xla

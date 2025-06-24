@@ -270,7 +270,6 @@ cuda_py_strict_test(
     name = "stateful_random_ops_test",
     size = "medium",
     srcs = ["stateful_random_ops_test.py"],
-    python_version = "PY3",
     xla_enable_strict_auto_jit = False,
     xla_enabled = True,
     deps = [
@@ -316,7 +315,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "util",
     srcs = ["util.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/ops/distributions:special_math",
         "//third_party/py/numpy",

@@ -82,6 +82,7 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:tstring",
         "@local_tsl//tsl/platform:types",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 

@@ -1,5 +1,5 @@
-// RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
-// RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations -hlo-flatten-computation-args-result %s -o - | FileCheck %s -check-prefix=FLATTEN-CHECK
+// RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations -hlo-flatten-computation-args-result=false %s -o - | FileCheck %s
+// RUN: hlo-translate -hlo-to-mlir -emit-mhlo %s | FileCheck %s -check-prefix=FLATTEN-CHECK
 
 // ----------------------
 // Test importing If op with tuple args; element-size of tuple == 1

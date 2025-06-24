@@ -15,30 +15,34 @@ limitations under the License.
 
 #include "xla/python/ifrt/remap_plan.h"
 
+#include <cstdint>
 #include <memory>
+#include <numeric>
+#include <tuple>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/functional/bind_front.h"
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
-#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/remap_plan.pb.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
@@ -49,8 +53,16 @@ using ::testing::HasSubstr;
 using ::testing::SizeIs;
 using ::tsl::testing::StatusIs;
 
-class RemapPlanTest : public test_util::DeviceTest {
+class RemapPlanTest
+    : public testing::TestWithParam<test_util::DeviceTestParam> {
  public:
+  RemapPlanTest() : fixture_(GetParam()) {}
+
+  Client* client() { return fixture_.client(); }
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
+    return fixture_.GetDevices(device_indices);
+  }
+
   ArraySpec GetDummySpec() {
     return ArraySpec{
         /*dtype=*/DType(DType::kS32),
@@ -60,71 +72,10 @@ class RemapPlanTest : public test_util::DeviceTest {
                                      /*shape=*/Shape({4, 3}),
                                      /*shard_shape=*/Shape({2, 3}))};
   }
+
+ private:
+  test_util::DeviceTestFixture fixture_;
 };
-
-TEST_P(RemapPlanTest, ToFromProto) {
-  RemapPlan plan;
-
-  Shape shape({20, 20});
-  Shape shard_shape({5, 20});
-  tsl::RCReference<DeviceList> devices = GetDevices({0, 1, 2, 3});
-  std::shared_ptr<const Sharding> sharding =
-      ConcreteEvenSharding::Create(devices, MemoryKind(), /*shape=*/shape,
-                                   /*shard_shape=*/shard_shape);
-
-  plan.input_specs.reserve(2);
-  plan.input_specs.push_back(ArraySpec{/*dtype=*/DType(DType::kF32),
-                                       /*shape=*/shape, /*sharding=*/sharding});
-  plan.input_specs.push_back(ArraySpec{/*dtype=*/DType(DType::kF32),
-                                       /*shape=*/shape, /*sharding=*/sharding});
-
-  plan.output_specs.reserve(2);
-  plan.output_specs.push_back(ArraySpec{
-      /*dtype=*/DType(DType::kF32), /*shape=*/shape, /*sharding=*/sharding});
-  plan.output_specs.push_back(ArraySpec{
-      /*dtype=*/DType(DType::kF32), /*shape=*/shape, /*sharding=*/sharding});
-
-  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
-  plan.mappings->reserve(2);
-  plan.mappings->push_back(RemapPlan::Mapping{
-      /*in_array=*/0, /*out_array=*/1,
-      /*from=*/{RemapPlan::Interval{0, 2, 1}, RemapPlan::Interval{2, 4, 1}},
-      /*to=*/{RemapPlan::Interval{1, 4, 2}, RemapPlan::Interval{0, 4, 2}}});
-  plan.mappings->push_back(RemapPlan::Mapping{
-      /*in_array=*/1, /*out_array=*/0,
-      /*from=*/{RemapPlan::Interval{0, 4, 2}, RemapPlan::Interval{1, 4, 2}},
-      /*to=*/{RemapPlan::Interval{0, 2, 1}, RemapPlan::Interval{2, 4, 1}}});
-
-  TF_ASSERT_OK_AND_ASSIGN(RemapPlanProto plan_proto, plan.ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(
-      RemapPlan plan_copy,
-      RemapPlan::FromProto(absl::bind_front(&Client::LookupDevice, client()),
-                           plan_proto));
-
-  EXPECT_THAT(*plan_copy.mappings, ElementsAreArray(*plan.mappings));
-
-  EXPECT_THAT(plan_copy.output_specs, SizeIs(2));
-  for (const auto& spec : plan_copy.input_specs) {
-    EXPECT_EQ(spec.dtype, DType(DType::kF32));
-    EXPECT_EQ(spec.shape, shape);
-    const auto* sharding_copy =
-        llvm::dyn_cast<ConcreteEvenSharding>(spec.sharding.get());
-    ASSERT_NE(sharding_copy, nullptr);
-    EXPECT_EQ(*sharding_copy->devices(), *devices);
-    EXPECT_EQ(sharding_copy->shape(), shape);
-    EXPECT_EQ(sharding_copy->shard_shape(), shard_shape);
-  }
-  for (const auto& spec : plan_copy.output_specs) {
-    EXPECT_EQ(spec.dtype, DType(DType::kF32));
-    EXPECT_EQ(spec.shape, shape);
-    const auto* sharding_copy =
-        llvm::dyn_cast<ConcreteEvenSharding>(spec.sharding.get());
-    ASSERT_NE(sharding_copy, nullptr);
-    EXPECT_EQ(*sharding_copy->devices(), *devices);
-    EXPECT_EQ(sharding_copy->shape(), shape);
-    EXPECT_EQ(sharding_copy->shard_shape(), shard_shape);
-  }
-}
 
 TEST_P(RemapPlanTest, EmptyMappings) {
   RemapPlan plan;
@@ -373,22 +324,30 @@ TEST_P(RemapPlanTest, InvalidIntervalCount) {
 }
 
 TEST_P(RemapPlanTest, InvalidShardIndex) {
-  auto run = [&](RemapPlan::Interval from, RemapPlan::Interval to) {
+  auto run = [&](RemapPlan::Interval from, RemapPlan::Interval to,
+                 absl::Span<const int64_t> shape = {2, 3},
+                 absl::Span<const int64_t> shard_shape = {2, 3}) {
+    int num_shards = 1;
+    for (int i = 0; i < shape.size(); ++i) {
+      num_shards *= shape[i] / shard_shape[i];
+    }
+    std::vector<int> devices(num_shards);
+    std::iota(devices.begin(), devices.end(), 0);
     RemapPlan plan;
-    plan.input_specs.push_back(
-        ArraySpec{/*dtype=*/DType(DType::kS32),
-                  /*shape=*/Shape({2, 3}),
-                  /*sharding=*/
-                  ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
-                                               /*shape=*/Shape({2, 3}),
-                                               /*shard_shape=*/Shape({2, 3}))});
-    plan.output_specs.push_back(
-        ArraySpec{/*dtype=*/DType(DType::kS32),
-                  /*shape=*/Shape({2, 3}),
-                  /*sharding=*/
-                  ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
-                                               /*shape=*/Shape({2, 3}),
-                                               /*shard_shape=*/Shape({2, 3}))});
+    plan.input_specs.push_back(ArraySpec{
+        /*dtype=*/DType(DType::kS32),
+        /*shape=*/Shape({2, 3}),
+        /*sharding=*/
+        ConcreteEvenSharding::Create(GetDevices(devices), MemoryKind(),
+                                     /*shape=*/Shape(shape),
+                                     /*shard_shape=*/Shape(shard_shape))});
+    plan.output_specs.push_back(ArraySpec{
+        /*dtype=*/DType(DType::kS32),
+        /*shape=*/Shape({2, 3}),
+        /*sharding=*/
+        ConcreteEvenSharding::Create(GetDevices(devices), MemoryKind(),
+                                     /*shape=*/Shape(shape),
+                                     /*shard_shape=*/Shape(shard_shape))});
     plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
     plan.mappings->push_back(RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
                                                 /*from=*/{from},
@@ -409,18 +368,27 @@ TEST_P(RemapPlanTest, InvalidShardIndex) {
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("start must be in [0, 0], but is 1")));
 
-  EXPECT_THAT(run(RemapPlan::Interval{0, -1, 1}, RemapPlan::Interval{0, 1, 1}),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("end must be in [0, 1], but is -1")));
-  EXPECT_THAT(run(RemapPlan::Interval{0, 2, 1}, RemapPlan::Interval{0, 1, 1}),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("end must be in [0, 1], but is 2")));
-  EXPECT_THAT(run(RemapPlan::Interval{0, 1, 1}, RemapPlan::Interval{0, -1, 1}),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("end must be in [0, 1], but is -1")));
-  EXPECT_THAT(run(RemapPlan::Interval{0, 1, 1}, RemapPlan::Interval{0, 2, 1}),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("end must be in [0, 1], but is 2")));
+  EXPECT_THAT(
+      run(RemapPlan::Interval{0, -1, 1}, RemapPlan::Interval{0, 1, 1}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("end must be in [0, 1] if step is 1, but is -1")));
+  EXPECT_THAT(
+      run(RemapPlan::Interval{0, 2, 1}, RemapPlan::Interval{0, 1, 1}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("end must be in [0, 1] if step is 1, but is 2")));
+  EXPECT_THAT(
+      run(RemapPlan::Interval{0, 1, 1}, RemapPlan::Interval{0, -1, 1}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("end must be in [0, 1] if step is 1, but is -1")));
+  EXPECT_THAT(
+      run(RemapPlan::Interval{0, 1, 1}, RemapPlan::Interval{0, 2, 1}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("end must be in [0, 1] if step is 1, but is 2")));
+  EXPECT_THAT(
+      run(RemapPlan::Interval{0, 6, 2}, RemapPlan::Interval{0, 2, 1},
+          /*shape=*/{4, 6}, /*shard_shape=*/{2, 3}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("end must be in [0, 5] if step is 2, but is 6")));
 
   EXPECT_THAT(run(RemapPlan::Interval{0, 1, 0}, RemapPlan::Interval{0, 1, 1}),
               StatusIs(absl::StatusCode::kInvalidArgument,
@@ -613,6 +581,96 @@ INSTANTIATE_TEST_SUITE_P(NumDevices, RemapPlanTest,
                          testing::Values(test_util::DeviceTestParam{
                              /*num_devices=*/4,
                              /*num_addressable_devices=*/4}));
+
+using RemapPlanSerDesTestParam =
+    std::tuple<SerDesVersion, test_util::DeviceTestParam>;
+
+class RemapPlanSerDesTest
+    : public testing::TestWithParam<RemapPlanSerDesTestParam> {
+ public:
+  RemapPlanSerDesTest()
+      : version_(std::get<0>(GetParam())), fixture_(std::get<1>(GetParam())) {}
+
+  SerDesVersion version() const { return version_; }
+
+  Client* client() { return fixture_.client(); }
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
+    return fixture_.GetDevices(device_indices);
+  }
+
+ private:
+  SerDesVersion version_;
+  test_util::DeviceTestFixture fixture_;
+};
+
+TEST_P(RemapPlanSerDesTest, ToFromProto) {
+  RemapPlan plan;
+
+  Shape shape({20, 20});
+  Shape shard_shape({5, 20});
+  DeviceListRef devices = GetDevices({0, 1, 2, 3});
+  ShardingRef sharding =
+      ConcreteEvenSharding::Create(devices, MemoryKind(), /*shape=*/shape,
+                                   /*shard_shape=*/shard_shape);
+
+  plan.input_specs.reserve(2);
+  plan.input_specs.push_back(ArraySpec{/*dtype=*/DType(DType::kF32),
+                                       /*shape=*/shape, /*sharding=*/sharding});
+  plan.input_specs.push_back(ArraySpec{/*dtype=*/DType(DType::kF32),
+                                       /*shape=*/shape, /*sharding=*/sharding});
+
+  plan.output_specs.reserve(2);
+  plan.output_specs.push_back(ArraySpec{
+      /*dtype=*/DType(DType::kF32), /*shape=*/shape, /*sharding=*/sharding});
+  plan.output_specs.push_back(ArraySpec{
+      /*dtype=*/DType(DType::kF32), /*shape=*/shape, /*sharding=*/sharding});
+
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->reserve(2);
+  plan.mappings->push_back(RemapPlan::Mapping{
+      /*in_array=*/0, /*out_array=*/1,
+      /*from=*/{RemapPlan::Interval{0, 2, 1}, RemapPlan::Interval{2, 4, 1}},
+      /*to=*/{RemapPlan::Interval{1, 4, 2}, RemapPlan::Interval{0, 4, 2}}});
+  plan.mappings->push_back(RemapPlan::Mapping{
+      /*in_array=*/1, /*out_array=*/0,
+      /*from=*/{RemapPlan::Interval{0, 4, 2}, RemapPlan::Interval{1, 4, 2}},
+      /*to=*/{RemapPlan::Interval{0, 2, 1}, RemapPlan::Interval{2, 4, 1}}});
+
+  TF_ASSERT_OK_AND_ASSIGN(RemapPlanProto plan_proto, plan.ToProto(version()));
+  TF_ASSERT_OK_AND_ASSIGN(RemapPlan plan_copy,
+                          RemapPlan::FromProto(client(), plan_proto));
+
+  EXPECT_THAT(*plan_copy.mappings, ElementsAreArray(*plan.mappings));
+
+  EXPECT_THAT(plan_copy.output_specs, SizeIs(2));
+  for (const auto& spec : plan_copy.input_specs) {
+    EXPECT_EQ(spec.dtype, DType(DType::kF32));
+    EXPECT_EQ(spec.shape, shape);
+    const auto* sharding_copy =
+        llvm::dyn_cast<ConcreteEvenSharding>(spec.sharding.get());
+    ASSERT_NE(sharding_copy, nullptr);
+    EXPECT_EQ(*sharding_copy->devices(), *devices);
+    EXPECT_EQ(sharding_copy->shape(), shape);
+    EXPECT_EQ(sharding_copy->shard_shape(), shard_shape);
+  }
+  for (const auto& spec : plan_copy.output_specs) {
+    EXPECT_EQ(spec.dtype, DType(DType::kF32));
+    EXPECT_EQ(spec.shape, shape);
+    const auto* sharding_copy =
+        llvm::dyn_cast<ConcreteEvenSharding>(spec.sharding.get());
+    ASSERT_NE(sharding_copy, nullptr);
+    EXPECT_EQ(*sharding_copy->devices(), *devices);
+    EXPECT_EQ(sharding_copy->shape(), shape);
+    EXPECT_EQ(sharding_copy->shard_shape(), shard_shape);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion_NumDevices, RemapPlanSerDesTest,
+    testing::Combine(testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
+                     testing::Values(test_util::DeviceTestParam{
+                         /*num_devices=*/4,
+                         /*num_addressable_devices=*/4})));
 
 }  // namespace
 }  // namespace ifrt

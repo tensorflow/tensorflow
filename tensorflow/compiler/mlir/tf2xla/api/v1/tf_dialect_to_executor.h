@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V1_TF_DIALECT_TO_EXECUTOR_H_
 
 #include "absl/base/attributes.h"
+#include "absl/status/status.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/core/platform/status.h"

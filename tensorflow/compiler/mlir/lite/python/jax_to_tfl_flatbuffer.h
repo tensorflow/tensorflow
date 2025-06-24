@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/model_flags.pb.h"
 #include "tensorflow/core/lib/core/errors.h"

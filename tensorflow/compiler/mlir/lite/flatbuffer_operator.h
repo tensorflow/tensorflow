@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/AssumeBundleQueries.h"

@@ -45,8 +45,7 @@ namespace flex {
 
 static constexpr char kResourceVariablePrefix[] = "tflite_resource_variable";
 
-TfLiteStatus ConvertStatus(TfLiteContext* context,
-                           const tensorflow::Status& status) {
+TfLiteStatus ConvertStatus(TfLiteContext* context, const absl::Status& status) {
   if (!status.ok()) {
     TF_LITE_KERNEL_LOG(context, "%s", absl::StatusMessageAsCStr(status));
     return kTfLiteError;
@@ -248,8 +247,8 @@ absl::StatusOr<tensorflow::Tensor> CreateTfTensorFromTfLiteTensor(
     const TfLiteTensor* tflite_tensor) {
   if (IsResourceOrVariant(tflite_tensor)) {
     // Returns error if the input tflite tensor has variant or resource type.
-    return tensorflow::Status(absl::StatusCode::kInvalidArgument,
-                              "Input tensor has resource or variant type.");
+    return absl::Status(absl::StatusCode::kInvalidArgument,
+                        "Input tensor has resource or variant type.");
   }
 
   tensorflow::TensorShape shape;
@@ -270,13 +269,13 @@ absl::StatusOr<tensorflow::Tensor> CreateTfTensorFromTfLiteTensor(
     }
   } else {
     if (tf_tensor.tensor_data().size() != tflite_tensor->bytes) {
-      return tensorflow::Status(
+      return absl::Status(
           absl::StatusCode::kInternal,
           "TfLiteTensor's size doesn't match the TF tensor's size.");
     }
     if (!tflite_tensor->data.raw) {
-      return tensorflow::Status(absl::StatusCode::kInternal,
-                                "TfLiteTensor's data field is null.");
+      return absl::Status(absl::StatusCode::kInternal,
+                          "TfLiteTensor's data field is null.");
     }
     std::memcpy(tf_tensor.data(), tflite_tensor->data.raw,
                 tflite_tensor->bytes);

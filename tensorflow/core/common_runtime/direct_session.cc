@@ -21,8 +21,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/constant_folding.h"
@@ -48,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/run_handler.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -901,7 +904,7 @@ absl::Status DirectSession::Run(
     }
   }
   const absl::Status s = call_frame.SetArgs(feed_args);
-  if (errors::IsInternal(s)) {
+  if (absl::IsInternal(s)) {
     return errors::InvalidArgument(s.message());
   } else if (!s.ok()) {
     return s;
@@ -922,7 +925,7 @@ absl::Status DirectSession::Run(
     std::vector<Tensor> sorted_outputs;
     const absl::Status s = call_frame.ConsumeRetvals(
         &sorted_outputs, /* allow_dead_tensors = */ false);
-    if (errors::IsInternal(s)) {
+    if (absl::IsInternal(s)) {
       return errors::InvalidArgument(s.message());
     } else if (!s.ok()) {
       return s;
@@ -1853,9 +1856,8 @@ void DirectSession::WaitForNotification(Notification* n, RunState* run_state,
 absl::Status DirectSession::WaitForNotification(Notification* notification,
                                                 int64_t timeout_in_ms) {
   if (timeout_in_ms > 0) {
-    const int64_t timeout_in_us = timeout_in_ms * 1000;
-    const bool notified =
-        WaitForNotificationWithTimeout(notification, timeout_in_us);
+    const bool notified = notification->WaitForNotificationWithTimeout(
+        absl::Milliseconds(timeout_in_ms));
     if (!notified) {
       return absl::Status(absl::StatusCode::kDeadlineExceeded,
                           "Timed out waiting for notification");
@@ -2050,6 +2052,28 @@ absl::Status DirectSession::Finalize() {
   }
   execution_state_.reset();
   flib_def_.reset();
+
+  if (options_.config.experimental().finalize_function_library_runtime()) {
+    mutex_lock l2(callables_lock_);
+    for (auto& [_, callable] : callables_) {
+      TF_RETURN_IF_ERROR(callable.function_info->proc_flr->Finalize());
+      callable.function_info->flib_def->Clear();
+    }
+  }
+
+  if (options_.config.experimental().finalize_resource_manager()) {
+    for (Device* const device : devices_) {
+      if (device == nullptr) {
+        continue;
+      }
+      if (device->resource_manager() == nullptr) {
+        continue;
+      }
+
+      device->resource_manager()->Finalize();
+    }
+  }
+
   finalized_ = true;
   return absl::OkStatus();
 }

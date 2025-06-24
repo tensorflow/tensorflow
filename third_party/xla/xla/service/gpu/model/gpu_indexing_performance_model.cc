@@ -26,17 +26,18 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/MathExtras.h"
+#include "xla/backends/gpu/codegen/triton/fusion.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/fusions/triton.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -50,9 +51,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -213,12 +214,12 @@ int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerElement(
     // The Cost Model assumes that the reduction computation is applied N-1
     // times to reduce N elements. This is not true, because emitters will
     // generate a loop with N iterations. We don't fix it here to keep this
-    // estimate consistent with GpuHloCostAnalysis. This is like doesn't matter
+    // estimate consistent with `GpuHloCostAnalysis`. This likely doesn't matter
     // much for the application of the Cost Model.
     return (reduction_factor - 1) * flops_per_reduce_computation;
   }
 
-  // Encountered unexpected instruction, call to GpuHloCostAnalysis.
+  // Encountered unexpected instruction, call into `GpuHloCostAnalysis`.
   TF_CHECK_OK(
       cost_analysis_.RevisitInstruction(const_cast<HloInstruction*>(instr)));
 
@@ -302,7 +303,7 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
     for (const auto& indexing_map : indexing_maps) {
       VLOG(10) << indexing_map;
 
-      int64_t num_iters = GetIterationSpaceSize(indexing_map, instr);
+      int64_t num_iters = GetIterationSpaceSize(indexing_map.map(), instr);
 
       if (is_operand) {
         int64_t type_size = ShapeUtil::ByteSizeOfPrimitiveType(element_type);
@@ -334,8 +335,8 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
                   launch_dimensions.num_threads_per_block());
   absl::Duration write_time = WriteTime(*device_info_, bytes_written);
   absl::Duration memory_access_time = read_time + write_time;
-  absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
-      compute_time, memory_access_time, GpuPerformanceModelOptions::Default());
+  absl::Duration exec_time =
+      CombineComputeAndMemoryAccessTime(compute_time, memory_access_time);
 
   EstimateRunTimeData runtime_data = {flops,     bytes_read, bytes_written,
                                       read_time, write_time, compute_time,
@@ -495,22 +496,28 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
         operand_read_info.read_bandwidth_utilization_rate);
   }
 
-  int64_t bytes_written =
-      GetShapeSizeRecursive(tiled_hlo_computation.GetRoot()->hlo()->shape());
+  auto roots = tiled_hlo_computation.GetRoots();
+  int64_t bytes_written = 0;
+  absl::Duration write_time;
+  for (auto* root : roots) {
+    int64_t effective_bandwidth =
+        BandwidthUtilizationRateHeuristicForTiledMemoryAccess(*root,
+                                                              *device_info_) *
+        device_info_->memory_bandwidth();
+    int64_t bytes_written_for_root =
+        GetShapeSizeRecursive(root->hlo()->shape());
+    write_time +=
+        absl::Seconds(1.0 * bytes_written_for_root / effective_bandwidth);
+    bytes_written += bytes_written_for_root;
+  }
 
   absl::Duration compute_time =
-      ComputeTime(*device_info_, flops, launch_dimensions.num_blocks(),
+      ComputeTime(*device_info_, flops, num_blocks,
                   launch_dimensions.num_threads_per_block());
 
-  int64_t effective_bandwidth =
-      BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
-          *tiled_hlo_computation.GetRoot(), *device_info_) *
-      device_info_->memory_bandwidth();
-  absl::Duration write_time =
-      absl::Seconds(1.0 * bytes_written / effective_bandwidth);
   absl::Duration memory_access_time = read_time + write_time;
-  absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
-      compute_time, memory_access_time, GpuPerformanceModelOptions::Default());
+  absl::Duration exec_time =
+      CombineComputeAndMemoryAccessTime(compute_time, memory_access_time);
 
   return EstimateRunTimeData{/*flops=*/flops,
                              /*bytes_read=*/bytes_read,
@@ -525,7 +532,7 @@ absl::StatusOr<EstimateRunTimeData>
 GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
     const HloFusionAdaptor& fusion_adaptor,
     const LaunchDimensions& launch_dimensions,
-    absl::Span<const int64_t> tile_sizes) {
+    const std::vector<std::vector<int64_t>>& tile_sizes) {
   // TODO(b/332714755): Add caching for SymbolicTileAnalysis.
   SymbolicTileAnalysisOrError analysis_or_error =
       SymbolicTileAnalysis::AnalyzeFusion(
@@ -539,8 +546,15 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
   SymbolicTileAnalysis analysis =
       std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
 
+  int64_t real_root_index = analysis.real_root_index();
+  absl::Span<int64_t const> real_root_tile_sizes = tile_sizes[real_root_index];
+  const HloInstruction* real_root =
+      &fusion_adaptor.GetRoots()[real_root_index].instruction();
+  Tiling tiling = Tiling({{real_root, FlatTiling(real_root_tile_sizes.begin(),
+                                                 real_root_tile_sizes.end())}});
+
   TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
-                      analysis.ComputeTiledHloInstructions(tile_sizes));
+                      analysis.ComputeTiledHloInstructions(tiling));
 
   return EstimateRunTimeForTiledHloComputation(
       fusion_adaptor, tiled_hlo_computation, launch_dimensions);
@@ -600,14 +614,29 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindBestTilingForFusion(
   SymbolicTileAnalysis analysis =
       std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
 
-  TF_ASSIGN_OR_RETURN(auto tilings, analysis.GetGoodTilings());
+  TF_ASSIGN_OR_RETURN(auto tilings, analysis.GetValidTilings());
 
   std::optional<TiledRunTimeData> best_tiled_run_time_data;
 
   for (const auto& tiling : tilings) {
-    TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
-                        analysis.ComputeTiledHloInstructions(tiling));
+    // TODO(b/372454662): This needs to be adjusted if we want to support more
+    // than one "real root" (i.e. a root without users).
+    // Currently ComputeTiledHloInstructions() may fail and return an
+    // Unimplemented error for cases of multi-output fusion that we do not
+    // support yet.
+    auto maybe_tiled_hlo_computation =
+        analysis.ComputeTiledHloInstructions(tiling);
+    if (!maybe_tiled_hlo_computation.ok()) {
+      if (maybe_tiled_hlo_computation.status().code() ==
+              absl::StatusCode::kUnimplemented &&
+          absl::StrContains(maybe_tiled_hlo_computation.status().message(),
+                            "multi-output fusion")) {
+        continue;
+      }
+      return maybe_tiled_hlo_computation.status();
+    }
 
+    auto tiled_hlo_computation = std::move(maybe_tiled_hlo_computation.value());
     LaunchDimensions launch_dimensions =
         GetLaunchDimensionsForTiledFusion(tiled_hlo_computation, *device_info_);
 
@@ -620,8 +649,12 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindBestTilingForFusion(
         estimate_run_time_data.exec_time <
             best_tiled_run_time_data->runtime_data.exec_time) {
       BlockLevelParameters block_level_parameters;
-      block_level_parameters.output_tile_sizes =
-          std::vector<int64_t>(tiling.begin(), tiling.end());
+      auto tiled_roots = tiled_hlo_computation.GetRoots();
+      block_level_parameters.output_tile_sizes.reserve(tiled_roots.size());
+      for (auto tiled_root : tiled_roots) {
+        block_level_parameters.output_tile_sizes.emplace_back(
+            tiled_root->tile_sizes().begin(), tiled_root->tile_sizes().end());
+      }
       block_level_parameters.num_warps =
           launch_dimensions.num_threads_per_block() / WarpSize(*device_info_);
 

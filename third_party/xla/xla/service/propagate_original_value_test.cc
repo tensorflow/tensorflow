@@ -15,14 +15,15 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/call_inliner.h"
 #include "xla/service/instruction_fusion.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
-using PropagateOriginalValueTest = HloTestBase;
+using PropagateOriginalValueTest = HloHardwareIndependentTestBase;
 
 TEST_F(PropagateOriginalValueTest, InstructionFusion) {
   constexpr absl::string_view hlo_string = R"(
@@ -64,6 +65,58 @@ CHECK: ENTRY %test
 CHECK:   %Arg_0 = s32[]{:T(256)} parameter(0), origin={{[{]}}{"Arg_0"}
 CHECK:   ROOT %pad_add_fusion = u32[2]{0:T(256)} fusion(%Arg_0), kind=kLoop, calls=%fused_computation, origin={{[{]}}{"concatenate"}
 )");
+}
+
+TEST_F(PropagateOriginalValueTest, CallInlinerMultipleCallSites) {
+  const absl::string_view hlo_string = R"(
+// CHECK-LABEL:test
+// CHECK: %[[LHS:.*]] =
+// CHECK:  %[[RHS1:.*]] = f32[] constant(2), origin={{[{]}}{"rhs/call.1"}
+// CHECK: %[[ADD1:.*]] = f32[] add(%[[LHS]], %[[RHS1]]), origin={{[{]}}{"add/call.1"}
+// CHECK:  %[[RHS2:.*]] = f32[] constant(2), origin={{[{]}}{"rhs/call.2"}
+// CHECK: %[[ADD2:.*]] = f32[] add(%[[LHS]], %[[RHS2]]), origin={{[{]}}{"add/call.2"}
+
+  HloModule test
+
+  incr (lhs: f32[]) -> f32[] {
+    lhs = f32[] parameter(0)
+    rhs = f32[] constant(2), origin={{"rhs"}}
+    ROOT add = f32[] add(f32[] lhs, f32[] rhs), origin={{"add"}}
+  }
+
+  ENTRY main () -> f32[] {
+    lhs = f32[] constant(42)
+    call.1 = f32[] call(f32[] lhs), to_apply=incr, origin={{"call.1"}}
+    call.2 = f32[] call(f32[] lhs), to_apply=incr, origin={{"call.2"}}
+    ROOT add = f32[] add(f32[] call.1, f32[] call.2)
+  })";
+
+  RunAndFilecheckHloRewrite(hlo_string,
+                            CallInliner(/*single_call_site=*/false));
+}
+
+TEST_F(PropagateOriginalValueTest, CallInlinerNoCallInstructionName) {
+  const absl::string_view hlo_string = R"(
+// CHECK-LABEL:test
+// CHECK: %[[LHS:.*]] =
+// CHECK:  %[[RHS:.*]] = f32[] constant(2), origin={{[{]}}{"rhs/"}
+// CHECK: %[[ADD:.*]] = f32[] add(%[[LHS]], %[[RHS]]), origin={{[{]}}{"add/"}
+
+  HloModule test
+
+  incr (lhs: f32[]) -> f32[] {
+    lhs = f32[] parameter(0)
+    rhs = f32[] constant(2), origin={{"rhs"}}
+    ROOT add = f32[] add(f32[] lhs, f32[] rhs), origin={{"add"}}
+  }
+
+  ENTRY main () -> f32[] {
+    lhs = f32[] constant(42)
+    ROOT call = f32[] call(f32[] lhs), to_apply=incr
+  })";
+
+  RunAndFilecheckHloRewrite(hlo_string,
+                            CallInliner(/*single_call_site=*/false));
 }
 
 }  // namespace

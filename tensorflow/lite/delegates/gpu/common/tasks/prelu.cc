@@ -31,7 +31,7 @@ ElementwiseDescriptor CreatePReLU(const PReLUAttributes& attr,
   ElementwiseDescriptor op_desc;
   std::string alpha_read;
   auto alpha_linear =
-      absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(&attr.alpha);
+      std::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(&attr.alpha);
   if (alpha_linear) {
     TensorDescriptor alpha_tensor_desc = CreateConstantLinearTensorDescriptor(
         tensor_desc.GetDataType(), tensor_desc.GetStorageType(), *alpha_linear);
@@ -41,7 +41,7 @@ ElementwiseDescriptor CreatePReLU(const PReLUAttributes& attr,
   }
 
   auto alpha_hwc =
-      absl::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(&attr.alpha);
+      std::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(&attr.alpha);
   if (alpha_hwc) {
     const BHWC shape =
         BHWC(1, alpha_hwc->shape.h, alpha_hwc->shape.w, alpha_hwc->shape.c);

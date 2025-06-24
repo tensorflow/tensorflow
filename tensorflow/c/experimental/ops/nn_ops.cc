@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/tracing_utils.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/platform/errors.h"
 
 using tensorflow::tracing::MaybeSetOpName;
 

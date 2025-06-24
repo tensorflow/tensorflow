@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/cc/training/coordinator.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -57,7 +58,7 @@ class QueueRunner : public RunnerInterface {
   void ClearErrorCallbacks();
 
   /// The destructor would join all the threads.
-  ~QueueRunner();
+  ~QueueRunner() override;
 
   /// Starts the queue runner with the given session.
   absl::Status Start(Session* sess);

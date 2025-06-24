@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -34,9 +35,9 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_loop.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -49,7 +50,7 @@ LoopEmitter::LoopEmitter(const BodyEmitter& body_emitter, const Shape& shape,
                          std::vector<llvm::Value*> dynamic_dims,
                          llvm::IRBuilderBase* b)
     : LoopEmitter::LoopEmitter(body_emitter, shape, b) {
-  CHECK_EQ(dynamic_dims.size(), shape_.dimensions_size());
+  CHECK_EQ(dynamic_dims.size(), shape_.dimensions().size());
   dynamic_dims_ = std::move(dynamic_dims);
 }
 
@@ -71,8 +72,8 @@ LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
   // same dimensions.
   for (const IrArray& array : target_arrays) {
     CHECK(ShapeUtil::SameDimensions(shape_, array.GetShape()))
-        << ": '" << shape_.ShortDebugString() << "' does not match '"
-        << array.GetShape().ShortDebugString() << "'";
+        << ": '" << shape_.ToString() << "' does not match '"
+        << array.GetShape().ToString() << "'";
   }
 }
 
@@ -124,13 +125,18 @@ IrArray::Index LoopEmitter::EmitStaticIndex(ForLoopNest* loop_nest,
   // Loops are added from outermost to innermost order with the ForLoopNest
   // class so emit loops in order from most-major dimension down to most-minor
   // dimension (of the target shape).
-  std::vector<llvm::Value*> array_multi_index(shape_.dimensions_size());
+  std::vector<llvm::Value*> array_multi_index(shape_.dimensions().size());
   for (int i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
     int64_t dimension = LayoutUtil::Major(shape_.layout(), i);
+    // Only unroll the most minor dimension, this seems to give us good runtime
+    // performance with a large improvement in compile time.
+    auto unroll_mode = (i == shape_.dimensions().size() - 1)
+                           ? llvm_ir::UnrollMode::kDefaultUnroll
+                           : llvm_ir::UnrollMode::kNoUnroll;
     std::unique_ptr<ForLoop> loop = loop_nest->AddLoop(
         /*start_index=*/0,
         /*end_index=*/shape_.dimensions(dimension),
-        /*suffix=*/absl::StrFormat("dim.%d", dimension));
+        /*suffix=*/absl::StrFormat("dim.%d", dimension), unroll_mode);
     array_multi_index[dimension] = loop->GetIndVarValue();
   }
   return IrArray::Index(array_multi_index, shape_, index_type);
@@ -143,13 +149,18 @@ IrArray::Index LoopEmitter::EmitDynamicIndex(ForLoopNest* loop_nest,
   // Loops are added from outermost to innermost order with the ForLoopNest
   // class so emit loops in order from most-major dimension down to most-minor
   // dimension (of the target shape).
-  std::vector<llvm::Value*> array_multi_index(shape_.dimensions_size());
+  std::vector<llvm::Value*> array_multi_index(shape_.dimensions().size());
   for (int i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
     int64_t dimension = LayoutUtil::Major(shape_.layout(), i);
+    // Only unroll the most minor dimension, this seems to give us good runtime
+    // performance with a large improvement in compile time.
+    auto unroll_mode = (i == shape_.dimensions().size() - 1)
+                           ? llvm_ir::UnrollMode::kDefaultUnroll
+                           : llvm_ir::UnrollMode::kNoUnroll;
     std::unique_ptr<ForLoop> loop = loop_nest->AddLoop(
         /*suffix=*/absl::StrFormat("dim.%d", dimension),
         /*start_index=*/llvm::ConstantInt::get(index_type, 0),
-        /*end_index=*/dynamic_dims_[dimension]);
+        /*end_index=*/dynamic_dims_[dimension], unroll_mode);
     array_multi_index[dimension] = loop->GetIndVarValue();
   }
   return IrArray::Index(array_multi_index, shape_, index_type);

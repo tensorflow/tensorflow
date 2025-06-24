@@ -1445,7 +1445,7 @@ def stateless_split(seed, num=2):
 
   Returns:
     A tensor with shape [num, 2] representing `num` new seeds. It will have the
-    same dtype as `seed` (if `seed` doesn't have an explict dtype, the dtype
+    same dtype as `seed` (if `seed` doesn't have an explicit dtype, the dtype
     will be determined by `tf.convert_to_tensor`).
   """
   seed = ops.convert_to_tensor(seed)

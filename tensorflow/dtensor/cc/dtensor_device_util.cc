@@ -43,6 +43,8 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -72,8 +74,6 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/cc/tensor_with_layout.h"
 #include "tsl/platform/fingerprint.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace dtensor {

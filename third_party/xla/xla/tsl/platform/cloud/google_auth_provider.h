@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/cloud/auth_provider.h"
 #include "xla/tsl/platform/cloud/compute_engine_metadata_client.h"
 #include "xla/tsl/platform/cloud/oauth_client.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
@@ -58,7 +58,7 @@ class GoogleAuthProvider : public AuthProvider {
   std::unique_ptr<OAuthClient> oauth_client_;
   std::shared_ptr<ComputeEngineMetadataClient> compute_engine_metadata_client_;
   Env* env_;
-  mutex mu_;
+  absl::Mutex mu_;
   string current_token_ TF_GUARDED_BY(mu_);
   uint64 expiration_timestamp_sec_ TF_GUARDED_BY(mu_) = 0;
   GoogleAuthProvider(const GoogleAuthProvider&) = delete;

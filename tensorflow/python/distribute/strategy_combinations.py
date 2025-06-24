@@ -129,7 +129,7 @@ def _get_tpu_strategy_creator(
           resolver, steps_per_run, device_assignment, **kwargs
       )
     if enable_packed_variable and enable_spmd_xla_paritioning:
-      raise ValueError("Packed Variable is not compatiable with SPMD mode")
+      raise ValueError("Packed Variable is not compatible with SPMD mode")
     strategy._enable_packed_variable_in_eager_mode = (  # pylint: disable=protected-access
         enable_packed_variable
     )

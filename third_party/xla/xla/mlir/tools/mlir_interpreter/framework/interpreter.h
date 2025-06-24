@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef XLA_MLIR_TOOLS_MLIR_INTERPRETER_FRAMEWORK_INTERPRETER_H_
 #define XLA_MLIR_TOOLS_MLIR_INTERPRETER_FRAMEWORK_INTERPRETER_H_
 
+#include <cassert>
 #include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "absl/status/statusor.h"
 #include "llvm/ADT/StringRef.h"

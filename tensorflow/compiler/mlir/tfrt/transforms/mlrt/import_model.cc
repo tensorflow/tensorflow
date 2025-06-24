@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/mlrt/mlir_to_bytecode.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/compiler/mlir/tfrt/utils/export.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/attribute/attribute.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace mlrt_compiler {

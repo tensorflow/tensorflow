@@ -18,9 +18,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace data {

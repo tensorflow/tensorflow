@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -147,10 +148,13 @@ class ScatterWithDistributedUpdates : public ScatterFusion {
  %acc = vector<num_iter x vector_size>
 
  // #indices_map
- %updated_accumulator, %updated_out = for %i = 0 to %num_indices_per_warp_ {
-  %new_indices = PadWithZeros(ExtractOffsets(%indices_operand, %i))
+ %updated_accumulator, %updated_out
+    = for %i = 0 to %num_indices_per_warp_  step %indices_vector_size_ {
+        for %j = 0 to %indices_vector_size_  step 1 {
+  %index = %i * %indices_vector_size_ + %j + %index_start(bl_x, th_x)
+  %new_indices = PadWithZeros(ExtractOffsets(%indices_operand, %index))
   %indices_changed = EmitInequalityCheck(%new_indices, %indices)
-  if (%indices_changed && %i != 0) {
+  if (%indices_changed && %index != 0) {
     %output_tensor = WriteAccumulatorToOutput(%current_acc, %current_out);
   }
   if (%indices_changed) {
@@ -158,7 +162,7 @@ class ScatterWithDistributedUpdates : public ScatterFusion {
   }
   if (%inbounds) {
     if (%indices_changed) {
-     // updates_map(%i)
+     // updates_map(%index)
      for %j = 0 to %num_slice_iterations_per_warp step 1 {
        for %k = 0 to %vector_size step 1 {
          %update_elem = GetUpdateElement
@@ -166,7 +170,7 @@ class ScatterWithDistributedUpdates : public ScatterFusion {
        }
      }
     } else {
-     // updates_map(%i)
+     // updates_map(%index)
      for %j = 0 to %num_slice_iterations_per_warp step 1 {
        for %k = 0 to %vector_size step 1 {
          %update_elem = GetUpdateElement
@@ -184,7 +188,8 @@ class ScatterWithDistributedIndices : public ScatterFusion {
                                          const ScatterDescription& description,
                                          int64_t vector_size,
                                          int64_t num_warps_per_slice,
-                                         int64_t num_indices_per_warp);
+                                         int64_t num_indices_per_warp,
+                                         int64_t indices_vector_size);
 
  protected:
   void ComputeIndexing(mlir::MLIRContext* ctx, IndexingMap* updates_map,
@@ -206,6 +211,8 @@ class ScatterWithDistributedIndices : public ScatterFusion {
   // The number of indices that every warp iterates over. This is a useful
   // setting, if we know that the indices tensor is sorted.
   int64_t num_indices_per_warp_;
+  // Vector size for the indices operand.
+  int64_t indices_vector_size_;
 };
 
 std::unique_ptr<ScatterFusion> CreateScatterFusion(

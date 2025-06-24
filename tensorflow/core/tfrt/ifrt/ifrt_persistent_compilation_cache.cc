@@ -20,8 +20,6 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
@@ -38,25 +36,23 @@ limitations under the License.
 namespace tensorflow {
 namespace ifrt_serving {
 
-absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>>
+absl::StatusOr<xla::ifrt::LoadedExecutableRef>
 IfrtPersistentCompilationCache::LookupLoadedExecutableOrCreate(
     std::unique_ptr<xla::ifrt::HloProgram> hlo_program,
-    tsl::RCReference<xla::ifrt::DeviceList> device_list,
+    xla::ifrt::DeviceListRef device_list,
     const xla::CompileOptions& xla_compile_options,
     const std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>&
         loaded_host_callbacks,
     xla::ifrt::Client* client,
-    absl::AnyInvocable<
-        absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>>(
-            std::unique_ptr<xla::ifrt::Program> program,
-            std::unique_ptr<xla::ifrt::CompileOptions> options)>
+    absl::AnyInvocable<absl::StatusOr<xla::ifrt::LoadedExecutableRef>(
+        std::unique_ptr<xla::ifrt::Program> program,
+        std::unique_ptr<xla::ifrt::CompileOptions> options)>
         value_fn) {
   // No persistent cache implemented, compile directly.
   auto ifrt_xla_compile_options =
-      std::make_unique<xla::ifrt::XlaCompileOptions>(xla_compile_options,
-                                                     loaded_host_callbacks);
+      std::make_unique<xla::ifrt::XlaCompileOptions>(
+          xla_compile_options, std::move(device_list), loaded_host_callbacks);
   return value_fn(std::move(hlo_program), std::move(ifrt_xla_compile_options));
-  ;
 }
 
 absl::StatusOr<Tf2HloResult>

@@ -27,6 +27,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -36,9 +39,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -187,10 +187,11 @@ FlatMapRandomAccessHandler::MakeInputDatasets() const {
     }
 
     input_datasets.push_back(nullptr);
+    DatasetBase*& input_dataset = input_datasets.back();
     threads.push_back(ctx_->StartThread(
         "flat_map_random_access_iterator",
-        [this, input_tensors = std::move(input_tensors), &input_datasets,
-         dataset_index = input_datasets.size() - 1, &map_func, &status, &mu]() {
+        [this, input_tensors = std::move(input_tensors), &input_dataset,
+         &map_func, &status, &mu]() {
           absl::StatusOr<DatasetBase*> dataset =
               MakeInputDataset(std::move(input_tensors), *map_func);
           if (!dataset.ok()) {
@@ -198,7 +199,7 @@ FlatMapRandomAccessHandler::MakeInputDatasets() const {
             status.Update(dataset.status());
             return;
           }
-          input_datasets[dataset_index] = *dataset;
+          input_dataset = *dataset;
         }));
   }
   threads.clear();

@@ -19,11 +19,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/testing/compile_mlir.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tf2xla {

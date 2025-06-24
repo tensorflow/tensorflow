@@ -31,21 +31,21 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status_matchers.h"
 
 namespace xla::gpu {
 namespace {
 
 class TritonFusionNumericsVerifierTest
-    : public HloTestBase,
+    : public HloPjRtTestBase,
       public ::testing::WithParamInterface<PrimitiveType> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
-    auto options = HloTestBase::GetDebugOptionsForTest();
+    auto options = HloPjRtTestBase::GetDebugOptionsForTest();
     options.set_xla_gpu_verify_triton_fusion_numerics(true);
     return options;
   }
@@ -73,15 +73,15 @@ class TritonFusionNumericsVerifierTest
     return fusion_result;
   }
 
-  AutotuneConfig CreateAutotuneConfig() {
+  DeviceOrDevicelessConfig CreateDeviceOrDevicelessConfig() {
     se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
     auto executors_or = PlatformUtil::GetStreamExecutors(platform);
     TF_EXPECT_OK(executors_or);
-    return AutotuneConfig{DeviceConfig{executors_or->at(0), nullptr},
-                          GetDebugOptionsForTest()};
+    return DeviceOrDevicelessConfig{DeviceConfig{executors_or->at(0), nullptr}};
   }
 
-  AutotunerCompileUtil CreateAutotunerCompileUtil(AutotuneConfig& config) {
+  AutotunerCompileUtil CreateAutotunerCompileUtil(
+      DeviceOrDevicelessConfig& config) {
     auto compile_util_or =
         AutotunerCompileUtil::Create(config, GetDebugOptionsForTest());
     TF_EXPECT_OK(compile_util_or);
@@ -116,20 +116,109 @@ triton_softmax_computation {
 ENTRY main{
   p = $0[127,125] parameter(0)
   ROOT triton_softmax = $0[127,125] fusion(p), kind=kCustom,
-    calls=triton_softmax_computation,
-    backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],
-    "fusion_backend_config":{"kind":"__triton","block_level_fusion_config":
-    {"output_tile_sizes":["1","125"],"num_warps":"1"}},"force_earliest_schedule":false}
-}
-
-)";
+    calls=triton_softmax_computation, backend_config={
+      "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["1","125"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+})";
 
 TEST_P(TritonFusionNumericsVerifierTest, VerifyExactSoftmaxFusionNumerics) {
   auto module = Module(kSoftmaxHlo,
                        primitive_util::LowercasePrimitiveTypeName(GetParam()));
 
   EXPECT_NE(TritonFusion(*module), nullptr);
-  auto verifier = TritonFusionNumericsVerifier(CreateAutotuneConfig());
+  auto verifier =
+      TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig());
+  TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
+}
+
+TEST_P(TritonFusionNumericsVerifierTest, VerifyNestedGemmNumerics) {
+  constexpr absl::string_view kNestedGemmFusionHloText = R"(
+flhs {
+  ROOT flhs.p0 = $0[16,16] parameter(0)
+}
+
+frhs {
+  frhs.p0 = $0[16,16] parameter(0)
+  ROOT frhs.root = $0[16,16] abs(frhs.p0)
+}
+
+fdot {
+  fdot.p0 = $0[16,16] parameter(0)
+  fdot.p1 = $0[16,16] parameter(1)
+  fdot.lhs = $0[16,16] fusion(fdot.p0), kind=kCustom, calls=flhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["16", "16"]}]
+      }
+    }
+  }
+  fdot.rhs = $0[16,16]{1,0} fusion(fdot.p1), kind=kCustom, calls=frhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["16", "16"]}]
+      }
+    }
+  }
+  ROOT fdot.root = $0[16,16]{1,0} dot(fdot.lhs, fdot.rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    algorithm=dot_$0_$0_$0
+}
+
+ENTRY entry {
+  entry.p0 = $0[16,16] parameter(0)
+  entry.p1 = $0[16,16] parameter(1)
+  ROOT fusion = $0[16,16] fusion(entry.p0, entry.p1),
+    kind=kCustom, calls=fdot, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16","16"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+})";
+  auto module = Module(kNestedGemmFusionHloText,
+                       primitive_util::LowercasePrimitiveTypeName(GetParam()));
+
+  EXPECT_NE(TritonFusion(*module), nullptr);
+  auto verifier =
+      TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig());
+  TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
+}
+
+TEST_P(TritonFusionNumericsVerifierTest, VerifyMultiOutputFusionNumerics) {
+  constexpr absl::string_view kMultiOutputFusionHloText = R"(
+HloModule m
+fusion_computation {
+  param_0 = $0[127,125]{1,0} parameter(0)
+  exponential = $0[127,125]{1,0} exponential(param_0)
+  negate = $0[127,125]{1,0} negate(exponential)
+  ROOT res = ($0[127,125]{1,0}, $0[127,125]{1,0}) tuple(exponential, negate)
+}
+
+ENTRY main{
+  p = $0[127,125] parameter(0)
+  ROOT result = ($0[127,125], $0[127,125]) fusion(p), kind=kCustom,
+    calls=fusion_computation, backend_config={
+      "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["1","125"]}, {"sizes":["1","125"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+})";
+  auto module = Module(kMultiOutputFusionHloText,
+                       primitive_util::LowercasePrimitiveTypeName(GetParam()));
+
+  EXPECT_NE(TritonFusion(*module), nullptr);
+  auto verifier =
+      TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig());
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
@@ -154,19 +243,19 @@ TEST_F(TritonFusionNumericsVerifierTest, CheckMismatch) {
   auto fusion_f32 = TritonFusion(*module_f32);
   EXPECT_NE(fusion_f32, nullptr);
 
-  AutotuneConfig autotune_config = CreateAutotuneConfig();
+  DeviceOrDevicelessConfig autotune_config = CreateDeviceOrDevicelessConfig();
   AutotunerCompileUtil compile_util =
       CreateAutotunerCompileUtil(autotune_config);
   const DebugOptions& debug_options = GetDebugOptionsForTest();
 
   auto f64_result = triton_fusion_numerics_pass_internal::CompileAndRunFusion(
       compile_util, *fusion_f64, autotune_config, debug_options,
-      /*clear_backend_config=*/false);
+      /*disable_triton=*/false);
   TF_EXPECT_OK(f64_result);
 
   auto f32_result = triton_fusion_numerics_pass_internal::CompileAndRunFusion(
       compile_util, *fusion_f32, autotune_config, debug_options,
-      /*clear_backend_config=*/false);
+      /*disable_triton=*/false);
   TF_EXPECT_OK(f32_result);
 
   auto stream = autotune_config.GetStream();
@@ -175,8 +264,7 @@ TEST_F(TritonFusionNumericsVerifierTest, CheckMismatch) {
   // Intentionally compare the fusions from the different modules, triggering a
   // mismatch.
   auto cmp = triton_fusion_numerics_pass_internal::CompareBuffers(
-      *f64_result, *f32_result, fusion_f64->shape(),
-      fusion_f64->GetModule()->config(), *stream);
+      *f64_result, *f32_result, fusion_f64->shape(), debug_options, *stream);
 
   EXPECT_FALSE(cmp.ok());
 }
@@ -205,20 +293,24 @@ triton_softmax_computation {
 ENTRY main {
   param_0 = f32[16,256000] parameter(0)
   ROOT triton_softmax = f32[16,256000]{1,0} fusion(param_0), kind=kCustom,
-    calls=triton_softmax_computation,
-    backend_config={"fusion_backend_config":
-      {"kind":"__triton","block_level_fusion_config":
-        {"output_tile_sizes":["1","256000"],"num_warps":"32"}}}
-}
-  )",
+    calls=triton_softmax_computation, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1","256000"]}],
+          "num_warps":"32",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+})",
                        "");
 
-  auto verifier = TritonFusionNumericsVerifier(CreateAutotuneConfig());
+  auto verifier =
+      TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig());
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
   auto fusion = TritonFusion(*module);
   EXPECT_NE(fusion, nullptr);
 
-  AutotuneConfig autotune_config = CreateAutotuneConfig();
+  DeviceOrDevicelessConfig autotune_config = CreateDeviceOrDevicelessConfig();
   AutotunerCompileUtil compile_util =
       CreateAutotunerCompileUtil(autotune_config);
   auto compilation_result =
@@ -273,16 +365,17 @@ ENTRY main {
   p0 = f32[16,16] parameter(0)
   p1 = f32[16,16] parameter(1)
   p2 = f32[16,16] parameter(2)
-  r0 = f32[16] fusion(p0), kind=kCustom, calls=reduce_0, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["16"],"num_warps":"1"}}}
-  r1 = f32[16] fusion(p1), kind=kCustom, calls=reduce_1, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["16"],"num_warps":"1"}}}
-  r2 = f32[16] fusion(p2), kind=kCustom, calls=reduce_2, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["16"],"num_warps":"1"}}}
+  r0 = f32[16] fusion(p0), kind=kCustom, calls=reduce_0, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["16"]}],"num_warps":"1","num_ctas":"1","num_stages":"1"}}}
+  r1 = f32[16] fusion(p1), kind=kCustom, calls=reduce_1, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["16"]}],"num_warps":"1","num_ctas":"1","num_stages":"1"}}}
+  r2 = f32[16] fusion(p2), kind=kCustom, calls=reduce_2, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["16"]}],"num_warps":"1","num_ctas":"1","num_stages":"1"}}}
   add_0_1 = f32[16] add(r0, r1)
   ROOT add_0_2 = f32[16] add(add_0_1, r2)
 }
   )";
 
   std::unique_ptr<HloModule> module = Module(hlo_text, "");
-  auto verifier = TritonFusionNumericsVerifier(CreateAutotuneConfig());
+  auto verifier =
+      TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig());
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
   EXPECT_EQ(verifier.CacheHitsForTestingOnly(), 1);
 }
@@ -324,16 +417,20 @@ triton_softmax_computation {
 ENTRY main {
   p = f32[16384,16384] parameter(0)
   ROOT triton_softmax = f32[1,1,16384,16384] fusion(p), kind=kCustom,
-    calls=triton_softmax_computation,
-    backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],
-      "fusion_backend_config":{"kind":"__triton","block_level_fusion_config":
-        {"output_tile_sizes":["1","1","1","16384"],"num_warps":"32"}},
-        "force_earliest_schedule":false}
+    calls=triton_softmax_computation, backend_config={
+      "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["1","1","1","16384"]}],
+        "num_warps":"32",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
 }
   )";
   auto module = Module(hlo_text, "");
   EXPECT_NE(TritonFusion(*module), nullptr);
-  auto verifier = TritonFusionNumericsVerifier(CreateAutotuneConfig());
+  auto verifier =
+      TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig());
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 

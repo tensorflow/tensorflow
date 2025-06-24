@@ -37,7 +37,10 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/util/byte_swap_array.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
@@ -58,11 +61,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
@@ -352,6 +354,7 @@ struct ProtoHelper {};
       proto->mutable_##N##_val()->Swap(&copy);                         \
     }                                                                  \
   };
+
 PROTO_TRAITS(float, float, float);
 PROTO_TRAITS(double, double, double);
 PROTO_TRAITS(int32, int32, int);
@@ -368,8 +371,8 @@ PROTO_TRAITS(qint16, int32, int);
 PROTO_TRAITS(quint16, int32, int);
 #undef PROTO_TRAITS
 
-template <>
-struct ProtoHelper<int4> {
+template <typename T>
+struct LowBitIntProtoHelper {
   typedef protobuf::RepeatedField<int> FieldType;
   static FieldType::const_iterator Begin(const TensorProto& proto) {
     return proto.int_val().begin();
@@ -377,7 +380,7 @@ struct ProtoHelper<int4> {
   static size_t NumElements(const TensorProto& proto) {
     return proto.int_val().size();
   }
-  static void Fill(const int4* data, size_t n, TensorProto* proto) {
+  static void Fill(const T* data, size_t n, TensorProto* proto) {
     proto->mutable_int_val()->Reserve(n);
     for (size_t i = 0; i < n; ++i) {
       proto->mutable_int_val()->AddAlreadyReserved(static_cast<int>(data[i]));
@@ -386,21 +389,16 @@ struct ProtoHelper<int4> {
 };
 
 template <>
-struct ProtoHelper<uint4> {
-  typedef protobuf::RepeatedField<int> FieldType;
-  static FieldType::const_iterator Begin(const TensorProto& proto) {
-    return proto.int_val().begin();
-  }
-  static size_t NumElements(const TensorProto& proto) {
-    return proto.int_val().size();
-  }
-  static void Fill(const uint4* data, size_t n, TensorProto* proto) {
-    proto->mutable_int_val()->Reserve(n);
-    for (size_t i = 0; i < n; ++i) {
-      proto->mutable_int_val()->AddAlreadyReserved(static_cast<int>(data[i]));
-    }
-  }
-};
+struct ProtoHelper<int2> : public LowBitIntProtoHelper<int2> {};
+
+template <>
+struct ProtoHelper<uint2> : public LowBitIntProtoHelper<uint2> {};
+
+template <>
+struct ProtoHelper<int4> : public LowBitIntProtoHelper<int4> {};
+
+template <>
+struct ProtoHelper<uint4> : public LowBitIntProtoHelper<uint4> {};
 
 template <>
 struct ProtoHelper<int64_t> {
@@ -640,8 +638,8 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64_t n) {
 }
 
 template <typename T>
-TensorBuffer* Int4FromProtoField(Allocator* a, const TensorProto& in,
-                                 int64_t n) {
+TensorBuffer* Int4OrInt2FromProtoField(Allocator* a, const TensorProto& in,
+                                       int64_t n) {
   n = std::max<int64_t>(n, 0);
   Buffer<T>* buf = new Buffer<T>(a, n);
   int8_t* data = buf->template base<int8_t>();
@@ -664,15 +662,27 @@ TensorBuffer* Int4FromProtoField(Allocator* a, const TensorProto& in,
 }
 
 template <>
+TensorBuffer* FromProtoField<int2>(Allocator* a, const TensorProto& in,
+                                   int64_t n) {
+  return Int4OrInt2FromProtoField<int2>(a, in, n);
+}
+
+template <>
+TensorBuffer* FromProtoField<uint2>(Allocator* a, const TensorProto& in,
+                                    int64_t n) {
+  return Int4OrInt2FromProtoField<uint2>(a, in, n);
+}
+
+template <>
 TensorBuffer* FromProtoField<int4>(Allocator* a, const TensorProto& in,
                                    int64_t n) {
-  return Int4FromProtoField<int4>(a, in, n);
+  return Int4OrInt2FromProtoField<int4>(a, in, n);
 }
 
 template <>
 TensorBuffer* FromProtoField<uint4>(Allocator* a, const TensorProto& in,
                                     int64_t n) {
-  return Int4FromProtoField<uint4>(a, in, n);
+  return Int4OrInt2FromProtoField<uint4>(a, in, n);
 }
 
 // Separate implementation for `ResourceHandle` to handle the case when the
@@ -968,6 +978,8 @@ int Tensor::RefCount() const {
     CASE(float8_e5m2fnuz, SINGLE_ARG(STMTS))                   \
     CASE(int4, SINGLE_ARG(STMTS))                              \
     CASE(uint4, SINGLE_ARG(STMTS))                             \
+    CASE(int2, SINGLE_ARG(STMTS))                              \
+    CASE(uint2, SINGLE_ARG(STMTS))                             \
     case DT_INVALID:                                           \
       INVALID;                                                 \
       break;                                                   \
@@ -1206,6 +1218,13 @@ size_t Tensor::TotalBytes() const {
   return 0;  // Makes compiler happy.
 }
 
+size_t Tensor::GetBufferSize() const {
+  if (buf_) {
+    return buf_->size();
+  }
+  return 0;
+}
+
 size_t Tensor::AllocatedBytes() const {
   if (buf_) {
     size_t ret;
@@ -1226,44 +1245,51 @@ bool Tensor::CanUseDMA() const {
 
 namespace {
 
-// StrCat and StrAppend don't support Eigen::half directly at the moment, and
-// we would like to keep them compatible with their absl counterparts, for ease
-// of migration. We could rely on errors::internal::PrepareForStrCat() but the
-// logic is so simple we can just replicate it here, where it is close to its
-// usage and easy to change later. And there's the extra benefit of not
-// accessing an 'internal' namespace.
-inline const strings::AlphaNum& PrintOneElement(const strings::AlphaNum& a,
-                                                bool print_v2) {
-  return a;
+// absl::StrCat and absl::StrAppend don't support Eigen::half, bfloat16...
+template <typename T>
+const T& PrintOneElement(const T& value, bool print_v2) {
+  return value;
 }
-inline string PrintOneElement(const tstring& a, bool print_v2) {
+string PrintOneElement(const tstring& a, bool print_v2) {
   if (print_v2) {
     return "\"" + absl::Utf8SafeCEscape(a) + "\"";
   } else {
     return absl::Utf8SafeCEscape(a);
   }
 }
-inline float PrintOneElement(const Eigen::half& h, bool print_v2) {
+float PrintOneElement(const Eigen::half& h, bool print_v2) {
   return static_cast<float>(h);
 }
 
-inline float PrintOneElement(bfloat16 f, bool print_v2) {
+float PrintOneElement(bfloat16 f, bool print_v2) {
   return static_cast<float>(f);
 }
 
-inline float PrintOneElement(float8_e5m2 f, bool print_v2) {
+float PrintOneElement(float8_e5m2 f, bool print_v2) {
   return static_cast<float>(f);
 }
 
-inline float PrintOneElement(float8_e4m3fn f, bool print_v2) {
+float PrintOneElement(float8_e4m3fn f, bool print_v2) {
   return static_cast<float>(f);
 }
 
-inline int16_t PrintOneElement(int4 a, bool print_v2) {
+float PrintOneElement(float8_e4m3b11fnuz f, bool print_v2) {
+  return static_cast<float>(f);
+}
+
+int16_t PrintOneElement(int4 a, bool print_v2) {
   return static_cast<int16_t>(a);
 }
 
-inline uint16_t PrintOneElement(uint4 a, bool print_v2) {
+uint16_t PrintOneElement(uint4 a, bool print_v2) {
+  return static_cast<uint16_t>(a);
+}
+
+int16_t PrintOneElement(int2 a, bool print_v2) {
+  return static_cast<int16_t>(a);
+}
+
+uint16_t PrintOneElement(uint2 a, bool print_v2) {
   return static_cast<uint16_t>(a);
 }
 
@@ -1280,12 +1306,13 @@ void PrintOneDim(int dim_index, const absl::InlinedVector<int64, 4UL>& shape,
       if (*data_index >= limit) {
         // If not enough elements has been printed, append "...".
         if (dim_index != 0) {
-          strings::StrAppend(result, "...");
+          absl::StrAppend(result, "...");
         }
         return;
       }
-      if (i > 0) strings::StrAppend(result, " ");
-      strings::StrAppend(result, PrintOneElement(data[(*data_index)++], false));
+      if (i > 0) absl::StrAppend(result, " ");
+      absl::StrAppend(result, strings::LegacyPrecision(PrintOneElement(
+                                  data[(*data_index)++], false)));
     }
     return;
   }
@@ -1293,14 +1320,14 @@ void PrintOneDim(int dim_index, const absl::InlinedVector<int64, 4UL>& shape,
   for (int64_t i = 0; i < element_count; i++) {
     bool flag = false;
     if (*data_index < limit) {
-      strings::StrAppend(result, "[");
+      absl::StrAppend(result, "[");
       flag = true;
     }
     // As for each element, print the sub-dim.
     PrintOneDim(dim_index + 1, shape, limit, shape_size, data, data_index,
                 result);
     if (*data_index < limit || flag) {
-      strings::StrAppend(result, "]");
+      absl::StrAppend(result, "]");
       flag = false;
     }
   }
@@ -1309,14 +1336,14 @@ void PrintOneDim(int dim_index, const absl::InlinedVector<int64, 4UL>& shape,
 // Appends the spacing between elements for a given dim onto a result string
 void PrintDimSpacing(int dim_index, int num_dims, string* result) {
   if (dim_index == num_dims - 1) {
-    strings::StrAppend(result, " ");
+    absl::StrAppend(result, " ");
     return;
   }
   for (int j = 0; j < num_dims - dim_index - 1; j++) {
-    strings::StrAppend(result, "\n");
+    absl::StrAppend(result, "\n");
   }
   for (int j = 0; j <= dim_index; j++) {
-    strings::StrAppend(result, " ");
+    absl::StrAppend(result, " ");
   }
 }
 
@@ -1328,11 +1355,12 @@ void PrintOneDimV2(int dim_index, const absl::InlinedVector<int64, 4UL>& shape,
   // We have recursed beyond all the dimensions into a single element
   // of the tensor.
   if (dim_index == num_dims) {
-    strings::StrAppend(result, PrintOneElement(data[data_index], true));
+    absl::StrAppend(result, strings::LegacyPrecision(
+                                PrintOneElement(data[data_index], true)));
     return;
   }
 
-  strings::StrAppend(result, "[");
+  absl::StrAppend(result, "[");
   int64_t element_count = shape[dim_index];
   int64_t start_of_end =
       std::max(num_elts_at_ends, element_count - num_elts_at_ends);
@@ -1353,7 +1381,7 @@ void PrintOneDimV2(int dim_index, const absl::InlinedVector<int64, 4UL>& shape,
   }
   if (element_count > 2 * num_elts_at_ends) {
     PrintDimSpacing(dim_index, num_dims, result);
-    strings::StrAppend(result, "...");
+    absl::StrAppend(result, "...");
   }
   for (int64_t i = start_of_end; i < element_count; i++) {
     // As for each element, print the sub-dim.
@@ -1362,7 +1390,7 @@ void PrintOneDimV2(int dim_index, const absl::InlinedVector<int64, 4UL>& shape,
                   data_index + elements_per_iter * i, result);
   }
 
-  strings::StrAppend(result, "]");
+  absl::StrAppend(result, "]");
 }
 
 template <typename T>
@@ -1373,10 +1401,11 @@ string SummarizeArrayInternal(int64_t limit, int64_t num_elts,
   const absl::InlinedVector<int64_t, 4UL> shape = tensor_shape.dim_sizes();
   if (shape.empty()) {
     for (int64_t i = 0; i < limit; ++i) {
-      if (i > 0) strings::StrAppend(&ret, " ");
-      strings::StrAppend(&ret, PrintOneElement(array[i], print_v2));
+      if (i > 0) absl::StrAppend(&ret, " ");
+      absl::StrAppend(
+          &ret, strings::LegacyPrecision(PrintOneElement(array[i], print_v2)));
     }
-    if (num_elts > limit) strings::StrAppend(&ret, "...");
+    if (num_elts > limit) absl::StrAppend(&ret, "...");
     return ret;
   }
   if (print_v2) {
@@ -1387,7 +1416,7 @@ string SummarizeArrayInternal(int64_t limit, int64_t num_elts,
     const int shape_size = tensor_shape.dims();
     PrintOneDim(0, shape, limit, shape_size, array, &data_index, &ret);
 
-    if (num_elts > limit) strings::StrAppend(&ret, "...");
+    if (num_elts > limit) absl::StrAppend(&ret, "...");
   }
 
   return ret;
@@ -1407,7 +1436,7 @@ string SummarizeArray<bool>(int64_t limit, int64_t num_elts,
                             const TensorShape& tensor_shape, const char* data,
                             const bool print_v2) {
   if (data == nullptr) {
-    return strings::StrCat("");  // we already print type and shape
+    return "";  // we already print type and shape
   }
   // We first convert all chars to be 0/1 to not get InvalidEnumValue sanitizer
   // error
@@ -1427,10 +1456,10 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
   }
   size_t limit = std::min(max_entries, num_elts);
   if ((limit > 0) && (buf_ == nullptr)) {
-    return strings::StrCat("uninitialized Tensor of ", num_elts,
-                           " elements of type ", dtype());
+    return absl::StrCat("uninitialized Tensor of ", num_elts,
+                        " elements of type ", dtype());
   }
-  const char* data = limit > 0 ? tensor_data().data() : nullptr;
+  const char* data = limit > 0 ? (const char*)this->data() : nullptr;
   switch (dtype()) {
     case DT_BFLOAT16:
       return SummarizeArray<bfloat16>(limit, num_elts, shape_, data, print_v2);
@@ -1445,6 +1474,9 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
     case DT_FLOAT8_E4M3FN:
       return SummarizeArray<float8_e4m3fn>(limit, num_elts, shape_, data,
                                            print_v2);
+    case DT_FLOAT8_E4M3B11FNUZ:
+      return SummarizeArray<float8_e4m3b11fnuz>(limit, num_elts, shape_, data,
+                                                print_v2);
     case DT_FLOAT:
       return SummarizeArray<float>(limit, num_elts, shape_, data, print_v2);
       break;
@@ -1491,44 +1523,52 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
       return SummarizeArray<int4>(limit, num_elts, shape_, data, print_v2);
     case DT_UINT4:
       return SummarizeArray<uint4>(limit, num_elts, shape_, data, print_v2);
+    case DT_INT2:
+      return SummarizeArray<int2>(limit, num_elts, shape_, data, print_v2);
+    case DT_UINT2:
+      return SummarizeArray<uint2>(limit, num_elts, shape_, data, print_v2);
     default: {
       // All irregular cases
       string ret;
       if (print_v2 && (dims() > 0)) {
-        strings::StrAppend(&ret, "[");
+        absl::StrAppend(&ret, "[");
       }
       // TODO(irving): Don't call flat every time around this
       // loop.
       for (size_t i = 0; i < limit; ++i) {
-        if (i > 0) strings::StrAppend(&ret, " ");
+        if (i > 0) absl::StrAppend(&ret, " ");
         switch (dtype()) {
           case DT_VARIANT: {
             const Variant& v = flat<Variant>()(i);
-            strings::StrAppend(&ret, "<", v.SummarizeValue(), ">");
+            absl::StrAppend(&ret, "<", v.SummarizeValue(), ">");
           } break;
           case DT_RESOURCE: {
             const ResourceHandle& r = flat<ResourceHandle>()(i);
-            strings::StrAppend(&ret, "<", r.SummarizeValue(), ">");
+            absl::StrAppend(&ret, "<", r.SummarizeValue(), ">");
           } break;
           default:
             // TODO(zhifengc, josh11b): Pretty-print other types (bool,
             // complex64, quantized).
-            strings::StrAppend(&ret, "?");
+            absl::StrAppend(&ret, "?");
         }
       }
-      if (max_entries < num_elts) strings::StrAppend(&ret, "...");
+      if (max_entries < num_elts) absl::StrAppend(&ret, "...");
       if (print_v2 && (dims() > 0)) {
-        strings::StrAppend(&ret, "]");
+        absl::StrAppend(&ret, "]");
       }
       return ret;
     }
   }
 }
 
+absl::string_view Tensor::tensor_data_internal() const {
+  return absl::string_view(static_cast<char*>(buf_->data()), GetBufferSize());
+}
+
 absl::string_view Tensor::tensor_data() const {
-  if (buf_ == nullptr)
-    return absl::string_view();  // Don't die for empty tensors
-  return absl::string_view(static_cast<char*>(buf_->data()), TotalBytes());
+  if (buf_ == nullptr) return absl::string_view();
+  CHECK(DataTypeCanUseMemcpy(dtype()));  // Crash OK
+  return tensor_data_internal();
 }
 
 void* Tensor::data() const {
@@ -1542,14 +1582,14 @@ bool Tensor::SharesBufferWith(const Tensor& b) const {
 }
 
 string Tensor::DebugString(int num_values) const {
-  return strings::StrCat("Tensor<type: ", DataTypeString(dtype()),
-                         " shape: ", shape().DebugString(),
-                         " values: ", SummarizeValue(num_values), ">");
+  return absl::StrCat("Tensor<type: ", DataTypeString(dtype()),
+                      " shape: ", shape().DebugString(),
+                      " values: ", SummarizeValue(num_values), ">");
 }
 
 string Tensor::DeviceSafeDebugString() const {
-  return strings::StrCat("Tensor<type: ", DataTypeString(dtype()),
-                         " shape: ", shape().DebugString(), ">");
+  return absl::StrCat("Tensor<type: ", DataTypeString(dtype()),
+                      " shape: ", shape().DebugString(), ">");
 }
 
 void Tensor::FillDescription(TensorDescription* description) const {

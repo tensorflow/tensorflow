@@ -24,14 +24,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
-using StreamAttributeAsyncWrapperTest = HloTestBase;
+using StreamAttributeAsyncWrapperTest = HloHardwareIndependentTestBase;
 
 TEST_F(StreamAttributeAsyncWrapperTest, NonDefaultOpIsWrapped) {
   constexpr absl::string_view kHloString = R"(

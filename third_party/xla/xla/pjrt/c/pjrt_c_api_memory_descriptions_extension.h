@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_C_PJRT_C_API_MEMORY_DESCRIPTIONS_EXTENSION_H_
 #define XLA_PJRT_C_PJRT_C_API_MEMORY_DESCRIPTIONS_EXTENSION_H_
 
-#include <cstddef>
+#include <stddef.h>
 
 #include "xla/pjrt/c/pjrt_c_api.h"
 
@@ -69,9 +69,7 @@ typedef PJRT_Error* PJRT_MemoryDescription_Kind(
     PJRT_MemoryDescription_Kind_Args* args);
 
 typedef struct PJRT_MemoryDescriptions_Extension {
-  size_t struct_size;
-  PJRT_Extension_Type type;
-  PJRT_Extension_Base* next;
+  PJRT_Extension_Base base;
   PJRT_DeviceDescription_MemoryDescriptions*
       PJRT_DeviceDescription_MemoryDescriptions;
   PJRT_MemoryDescription_Kind* PJRT_MemoryDescription_Kind;

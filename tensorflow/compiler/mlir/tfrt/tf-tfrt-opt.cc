@@ -19,8 +19,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/init_mlir.h"
-#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/lower_cluster_to_runtime_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -53,7 +53,6 @@ int main(int argc, char **argv) {
   mlir::RegisterAllTensorFlowDialects(registry);
   registry.insert<mlir::shape::ShapeDialect>();
   registry.insert<mlir::mhlo::MhloDialect>();
-  registry.insert<mlir::TFL::TensorFlowLiteDialect>();
   registry.insert<tfrt::fallback::FallbackDialect>();
   registry.insert<tfrt::fallback_async::FallbackAsyncDialect>();
   registry.insert<tfrt::fallback_sync::FallbackSyncDialect>();
@@ -61,6 +60,7 @@ int main(int argc, char **argv) {
                   mlrt::compiler::MlrtDialect>();
   tensorflow::RegisterTPUDialects(&registry);
   tensorflow::RegisterGpuDialects(&registry);
+  mlir::stablehlo::registerAllDialects(registry);
 
   tfrt::RegisterTFRTDialects(registry);
   tensorflow::tfrt_compiler::RegisterTPULowerClusterToRuntimeOpsPassPipeline();

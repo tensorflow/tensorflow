@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -34,10 +35,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
+#include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/source_target_pairs.h"
 #include "xla/stream_executor/device_memory.h"
 
 namespace xla {
@@ -58,6 +62,9 @@ constexpr absl::string_view ReductionKindToString(
   }
 }
 
+absl::StatusOr<ReductionKind> StringToReductionKind(
+    absl::string_view reduction_kind);
+
 // Attempts to match instruction to one of the possible cases for ReductionKind.
 std::optional<ReductionKind> MatchReductionInstruction(
     const HloInstruction* hlo);
@@ -65,6 +72,13 @@ std::optional<ReductionKind> MatchReductionInstruction(
 // Attempts to match computation to one of the possible cases in ReductionKind.
 std::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
+
+// Creates a computation that performs a reduction operation.
+std::unique_ptr<HloComputation> MakeReductionComputation(
+    ReductionKind reduction_kind, PrimitiveType element_type);
+
+// Returns the HloOpcode corresponding to the given ReductionKind.
+std::optional<HloOpcode> ReductionKindToOpcode(ReductionKind reduction_kind);
 
 // Returns the reduction identity value for a certain ReductionKind and
 // PrimitiveType.
@@ -120,12 +134,12 @@ absl::StatusOr<std::vector<int>> GetParticipatingIDs(
     std::optional<int> total_participant_count,
     absl::Span<const ReplicaGroup> groups);
 
+// Returns the replica groups for the given async collective instruction.
+absl::StatusOr<std::vector<std::vector<int64_t>>> GetAsyncReplicaGroups(
+    const HloInstruction* instruction);
+
 absl::string_view CollectiveOpGroupModeToString(
     CollectiveOpGroupMode group_mode);
-
-absl::StatusOr<bool> GetCollectiveUseGlobalDeviceIds(const HloInstruction* hlo);
-
-std::optional<int64_t> GetCollectiveChannelId(const HloInstruction* hlo);
 
 const CollectiveDeviceList& GetCollectiveDeviceList(const HloInstruction* hlo);
 
@@ -133,9 +147,13 @@ const std::vector<ReplicaGroup>& GetCollectiveReplicaGroups(
     const HloInstruction* hlo);
 
 // Returns the group formation mode of instr, assuming that instr is, or is
-// dervied from, an HloAllGatherInstruction, HloAllReduceInstructionBase,
-// HloAllToAllInstruction, HloCollectiveBroadcastInstruction or
-// HloCollectivePermuteInstruction.
+// derived from on the following instructions:
+//   * HloAllGatherInstruction
+//   * HloAllReduceInstructionBase
+//   * HloAllToAllInstruction
+//   * HloCollectiveBroadcastInstruction
+//   * HloCollectivePermuteInstruction
+//   * HloRaggedAllToAllInstruction
 absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
     const HloInstruction* instr);
 
@@ -177,23 +195,23 @@ GetParticipatingDevicesGroups(const HloInstruction* collective);
 
 // Same as above, except that it returns the flattened id in the replica groups
 // instead of device id.
-absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
     const DeviceAssignment& device_assignment,
-    absl::Span<const ReplicaGroup> replica_groups,
+    const CollectiveDeviceList& collective_device_list,
     CollectiveOpGroupMode group_mode);
 
 // Same as above, but take replica/partition count instead of device assignment.
-absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
-    absl::Span<const ReplicaGroup> replica_groups,
+absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
+    const CollectiveDeviceList& collective_device_list,
     CollectiveOpGroupMode group_mode, int replica_count, int partition_count);
 
 // Same as above, with collective group mode determined by the collective
 // instruction.
-absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
     const HloInstruction* hlo, const DeviceAssignment& device_assignment);
 
 // Same as above, used for cases where static_device_assignment is not present.
-absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
     const HloInstruction* hlo, int replica_count, int partition_count);
 
 // Figures out which devices are participating in the collective subgroup.
@@ -224,6 +242,12 @@ bool IsExclusivelyCrossModule(absl::Span<const ReplicaGroup> replica_groups,
                               bool use_global_ids, bool has_channel_id,
                               const DeviceAssignment& device_assignment);
 
+// Returns true if all subgroups in replica_groups are exclusively
+// cross-replica.
+bool IsExclusivelyCrossReplica(absl::Span<const ReplicaGroup> replica_groups,
+                               bool use_global_ids, bool has_channel_id,
+                               const DeviceAssignment& device_assignment);
+
 // A custom call target that can be used to create a nop that can legally
 // replace a collective op.
 inline constexpr absl::string_view kNopCustomCallTarget = "AllocateBuffer";
@@ -239,22 +263,13 @@ bool IsNonFusionCollective(const HloInstruction* instruction);
 // Returns true if instruction is a collective op or a collective fusion.
 bool IsCollective(const HloInstruction* instruction);
 
+// Returns true if instruction is an async collective op.
+absl::StatusOr<bool> IsAsyncCollective(const HloInstruction* instruction);
+
 // Returns the collective instruction if argument is a collective op (or a
 // collective fusion) with channel_id.
 HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction);
 
-// Returns true if instruction is a synchronous collective op.
-bool IsSyncCollective(const HloInstruction* instr);
-
-// Returns true if the (a, b) pairs form a forward cycle with all participants
-// in the cycle, such as {{0,1},{1,2},{2,3},{3,0}}. We assume that the (a, b)
-// pairs are ordered as they are generated by SPMD partitioning.
-bool IsForwardCycle(const std::vector<std::pair<int64_t, int64_t>>& pairs);
-
-// Returns true if the (a, b) pairs form a backward cycle with all participants
-// in the cycle, such as {{0,3},{1,0},{2,1},{3,2}}. We assume that the (a, b)
-// pairs are ordered as they are generated by SPMD partitioning.
-bool IsBackwardCycle(const std::vector<std::pair<int64_t, int64_t>>& pairs);
 
 // Key that identifies a particular Rendezvous object in our global hashtable.
 // This determines which calls to ExecuteOnStream communicate with each other.
@@ -369,6 +384,13 @@ constexpr char kSendRecvPipelineAttr[] = "_xla_send_recv_pipeline";
 // Similarly, the communication between device 1 and 2 will only send or
 // receive data on execution instances 5 and 7.
 constexpr char kSendRecvValidationAttr[] = "_xla_send_recv_validation";
+
+// Attribute to indicate that collective operations should be issued on a
+// dedicated p2p stream. This is a hint and there is no guarantee that this will
+// be honored.
+inline constexpr absl::string_view kCollectiveStreamAttrName =
+    "_xla_gpu_collective_stream";
+inline constexpr absl::string_view kCollectiveStreamP2P = "p2p";
 
 }  // end namespace xla
 

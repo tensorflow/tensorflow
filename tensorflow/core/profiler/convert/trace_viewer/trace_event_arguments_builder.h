@@ -15,50 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_VIEWER_TRACE_EVENT_ARGUMENTS_BUILDER_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_VIEWER_TRACE_EVENT_ARGUMENTS_BUILDER_H_
 
-#include <cstdint>
-#include <string>
-
-#include "absl/strings/string_view.h"
-#include "tensorflow/core/profiler/protobuf/trace_events_raw.pb.h"
-
-namespace tensorflow {
-namespace profiler {
-
-// Helper class for adding arguments to TraceEventsArguments.
-class TraceEventArgumentsBuilder {
- public:
-  explicit TraceEventArgumentsBuilder(TraceEventArguments* args)
-      : args_(args) {}
-
-  void Append(absl::string_view key, absl::string_view value) {
-    auto* arg = args_->add_arg();
-    arg->set_name(key.data(), key.size());
-    arg->set_str_value(value.data(), value.size());
-  }
-
-  void Append(absl::string_view key, int64_t value) {
-    auto* arg = args_->add_arg();
-    arg->set_name(key.data(), key.size());
-    arg->set_int_value(value);
-  }
-
-  void Append(absl::string_view key, uint64_t value) {
-    auto* arg = args_->add_arg();
-    arg->set_name(key.data(), key.size());
-    arg->set_uint_value(value);
-  }
-
-  void Append(absl::string_view key, double value) {
-    auto* arg = args_->add_arg();
-    arg->set_name(key.data(), key.size());
-    arg->set_double_value(value);
-  }
-
- private:
-  TraceEventArguments* args_;
-};
-
-}  // namespace profiler
-}  // namespace tensorflow
+#include "xprof/convert/trace_viewer/trace_event_arguments_builder.h"  // from @org_xprof  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_VIEWER_TRACE_EVENT_ARGUMENTS_BUILDER_H_

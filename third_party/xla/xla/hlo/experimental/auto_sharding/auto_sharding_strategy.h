@@ -19,6 +19,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -387,6 +388,16 @@ using AssociativeDotPairs =
 // The set of all alias pairs
 using AliasSet = StableSet<std::pair<NodeIdx, NodeIdx>>;
 
+// Utilities for creating sharding objects
+using MeshDimSet = StableSet<int>;
+using DimMap = StableMap</*tensor dim*/ int, /*mesh dims*/ MeshDimSet>;
+
+// Map tensor dims from [0, tensor_shape.dimensions_size() - 1] to (atmost one
+// or more, depending on the value of allow_mixed_mesh_shape) mesh dims.
+void Enumerate(std::function<void(const DimMap&)> split_func,
+               int64_t tensor_rank,
+               const std::vector<int>& unassigned_mesh_dims,
+               bool allow_mixed_mesh_shape);
 }  // namespace spmd
 }  // namespace xla
 #endif  // XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_STRATEGY_H_

@@ -33,7 +33,7 @@ absl::StatusOr<std::string> ProtoToHumanReadableJson(
 
   protobuf::util::JsonPrintOptions json_options;
   json_options.preserve_proto_field_names = true;
-  json_options.always_print_primitive_fields = true;
+  json_options.always_print_fields_with_no_presence = true;
   auto status =
       protobuf::util::MessageToJsonString(proto, &result, json_options);
   if (!status.ok()) {

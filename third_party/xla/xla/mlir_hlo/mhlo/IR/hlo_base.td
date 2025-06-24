@@ -52,6 +52,9 @@ defvar MHLO_BroadcastDimAttr = I64ElementsAttr;
 // Token type.
 defvar MHLO_Token = HLO_Token;
 
+def StableHLO_TokenType : Type<CPred<"isa<::mlir::stablehlo::TokenType>($_self)">, "stablehlo token">;
+defvar MHLO_AnyToken = AnyTypeOf<[MHLO_Token, StableHLO_TokenType]>;
+
 // Any integer tensor types
 defvar MHLO_IntTensor = HLO_IntTensor;
 
@@ -80,6 +83,7 @@ defvar MHLO_ComplexTensor = HLO_ComplexTensor;
 defvar MHLO_Tuple = HLO_Tuple;
 
 defvar MHLO_TensorOrToken = HLO_TensorOrPerAxisQuantizedTensorOrToken;
+defvar MHLO_TensorOrAnyToken = AnyTypeOf<[MHLO_TensorOrToken, StableHLO_TokenType]>;
 
 defvar MHLO_TensorOrTokenOrTuple = AnyTypeOf<[MHLO_Tensor, MHLO_Token, MHLO_Tuple]>;
 
@@ -127,6 +131,8 @@ defvar MHLO_PredIntFpOrQuantizedTensor = HLO_PredIntFpOrQuantizedTensor;
 // In general, static shaped tensor constraints should be avoided unless
 // it is for a legacy op which is only correct with static shapes.
 defvar MHLO_StaticShapeTensor = HLO_StaticShapeTensorOrPerAxisQuantizedTensor;
+
+defvar MHLO_StaticShapeOrBoundedDimTensor = HLO_StaticShapeTensorPerAxisQuantizedTensorOrBoundedTensor;
 
 defvar MHLO_StaticShapeTensorOrToken = HLO_StaticShapeTensorOrPerAxisQuantizedTensorOrToken;
 

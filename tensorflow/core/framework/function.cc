@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 
 namespace tensorflow {
@@ -217,7 +217,16 @@ class FunctionInstantiationHelper {
       } else {
         gnode->set_op(FunctionLibraryDefinition::kArgOp);
       }
-      DataType dtype = arg_def.is_ref() ? MakeRefType(dtypes[i]) : dtypes[i];
+      DataType dtype;
+      if (arg_def.is_ref()) {
+        if (IsRefType(dtypes[i])) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Cannot make a ref type for a ref type ", dtypes[i]));
+        }
+        dtype = MakeRefType(dtypes[i]);
+      } else {
+        dtype = dtypes[i];
+      }
       AddAttr("T", dtype, gnode);
       AddAttr("index", arg_index, gnode);
       if (resource_arg_unique_id >= 0) {

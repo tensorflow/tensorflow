@@ -155,7 +155,7 @@ absl::StatusOr<bool> AllReduceSimplifier::Run(
                       multiplier->shape(), all_reduce->shape().element_type()),
                   multiplier));
         }
-        if (all_reduce->shape().rank() > 0) {
+        if (all_reduce->shape().dimensions().size() > 0) {
           multiplier = all_reduce->parent()->AddInstruction(
               HloInstruction::CreateBroadcast(all_reduce->shape(), multiplier,
                                               {}));

@@ -21,19 +21,18 @@ limitations under the License.
 #include <cstdint>
 #include <mutex>  // NOLINT
 
+#include "absl/base/macros.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 
+// TODO: b/330223377 - This macro should eventually be provided by Abseil.
+#ifndef ABSL_DEPRECATE_AND_INLINE
+#define ABSL_DEPRECATE_AND_INLINE()
+#endif
+
 namespace tsl {
 
-using absl::Notification;
-
-// TODO(ddunleavy): remove this method and replace uses of `tsl::Notification`
-// with `absl::Notification`.
-inline bool WaitForNotificationWithTimeout(Notification* n,
-                                           int64_t timeout_in_us) {
-  return n->WaitForNotificationWithTimeout(absl::Microseconds(timeout_in_us));
-}
+using Notification ABSL_DEPRECATE_AND_INLINE() = absl::Notification;
 
 }  // namespace tsl
 

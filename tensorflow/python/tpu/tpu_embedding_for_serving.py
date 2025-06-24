@@ -36,6 +36,7 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.tpu import tpu_embedding_base
 from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.tpu import tpu_embedding_v3_utils
+from tensorflow.python.trackable import base as trackable_base
 from tensorflow.python.types import core
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -210,6 +211,26 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
         tpu_embedding_v3_utils.SPARSECORE_LAYOUTS_CHECKPOINT_KEY,
     )
     return layouts_str.read_value().numpy()
+
+  def _trackable_children(
+      self, save_type=trackable_base.SaveType.CHECKPOINT, **kwargs: Any
+  ):
+    # Remove the trackables added to make sparsecore checkpoint restore work.
+    # These are not required for serializing the model.
+    tc = super()._trackable_children(save_type, **kwargs)
+    if save_type == trackable_base.SaveType.SAVEDMODEL:
+      if tpu_embedding_v3_utils.SPARSECORE_LAYOUTS_CHECKPOINT_KEY in tc:
+        tc.pop(tpu_embedding_v3_utils.SPARSECORE_LAYOUTS_CHECKPOINT_KEY, None)
+      sclt = [
+          k
+          for k, v in tc.items()
+          if isinstance(
+              v, tpu_embedding_v3_utils.SparseCoreStackedTableTrackable
+          )
+      ]
+      for k in sclt:
+        tc.pop(k, None)
+    return tc
 
   def _create_variables_from_stacked_tables(self):
     sc_layouts = sparse_core_layout_pb2.SparseCoreTableLayouts()

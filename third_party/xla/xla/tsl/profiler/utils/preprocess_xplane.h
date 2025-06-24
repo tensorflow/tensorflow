@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "xla/tsl/profiler/utils/tpu_xplane_utils.h"
 #include "xla/tsl/profiler/utils/trace_utils.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"

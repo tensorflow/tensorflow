@@ -5,15 +5,15 @@ apps. This page describes development tools for use in building apps with
 Kotlin, Java, and C++, as well as support for TensorFlow Lite development in
 Android Studio.
 
-Key Point: In general, you should use the [TensorFlow Lite Task
-Library](#task_library) for integrating TensorFlow Lite into your Android app,
-unless your use case is not supported by that library. If it's not supported by
-the Task Library, use the [TensorFlow Lite library](#lite_lib) and [Support
-library](#support_lib).
+Key Point: In general, you should use the
+[TensorFlow Lite Task Library](#tensorflow-lite-task-library-task_library) for
+integrating TensorFlow Lite into your Android app, unless your use case is not
+supported by that library. If it's not supported by the Task Library, use the
+[TensorFlow Lite library](#tensorflow-lite-library-lite_lib) and
+[Support library](#tensorflow-lite-support-library-support_lib).
 
 To get started quickly writing Android code, see the
-[Quickstart for Android](../android/quickstart)
-
+[Quickstart for Android](../android/quickstart.md)
 
 ## Tools for building with Kotlin and Java
 
@@ -49,7 +49,7 @@ dependencies {
 ```
 
 If you use nightly snapshots, make sure you add the
-[Sonatype snapshot repository](./lite_build#use_nightly_snapshots) to your
+[Sonatype snapshot repository](./lite_build.md#use_nightly_snapshots) to your
 project.
 
 See the introduction in the
@@ -71,7 +71,7 @@ dependencies {
 ```
 
 If you use nightly snapshots, make sure you add the
-[Sonatype snapshot repository](./lite_build#use_nightly_snapshots) to your
+[Sonatype snapshot repository](./lite_build.md#use_nightly_snapshots) to your
 project.
 
 This AAR includes binaries for all of the
@@ -121,7 +121,7 @@ dependencies {
 ```
 
 If you use nightly snapshots, make sure you add the
-[Sonatype snapshot repository](./lite_build#use_nightly_snapshots) to your
+[Sonatype snapshot repository](./lite_build.md#use_nightly_snapshots) to your
 project.
 
 For instructions on how to get started, see the
@@ -163,19 +163,18 @@ To import a TensorFlow Lite (TFLite) model:
     **File > New > Other > TensorFlow Lite Model**.
 
 1.  Select the location of your TensorFlow Lite file. Note that the tooling
-    configures the module's dependency with ML Model binding and
-    automatically adds all required dependencies to your Android module's
-    `build.gradle` file.
+    configures the module's dependency with ML Model binding and automatically
+    adds all required dependencies to your Android module's `build.gradle` file.
 
-    Note: Select the second checkbox for importing TensorFlow GPU if you
-    want to use [GPU acceleration](../performance/gpu).
+    Note: Select the second checkbox for importing TensorFlow GPU if you want to
+    use [GPU acceleration](../performance/gpu.md).
 
 1.  Click `Finish` to begin the import process. When the import is finished, the
     tool displays a screen describing the model, including its input and output
     tensors.
 
-1.  To start using the model, select Kotlin or Java, copy and paste the code
-    in the **Sample Code** section.
+1.  To start using the model, select Kotlin or Java, copy and paste the code in
+    the **Sample Code** section.
 
 You can return to the model information screen by double clicking the TensorFlow
 Lite model under the `ml` directory in Android Studio. For more information on

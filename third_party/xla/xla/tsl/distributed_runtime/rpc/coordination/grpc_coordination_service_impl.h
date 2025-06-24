@@ -52,7 +52,7 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
   void SetCoordinationServiceAgentInstance(CoordinationServiceAgent* agent) {
     rpc_handler_.SetAgentInstance(agent);
   }
-  void SetCoordinationServiceInstance(CoordinationServiceInterface* service) {
+  void SetCoordinationServiceInstance(CoordinationService* service) {
     rpc_handler_.SetServiceInstance(service);
   }
   CoordinationServiceRpcHandler* GetRpcHandler() { return &rpc_handler_; }
@@ -91,6 +91,7 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
   HANDLER(ReportErrorToTask);
   HANDLER(ReportErrorToService);
   HANDLER(GetTaskState);
+  HANDLER(GetJobState);
   HANDLER(InsertKeyValue);
   HANDLER(GetKeyValue);
   HANDLER(TryGetKeyValue);

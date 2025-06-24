@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // This module exports ParseFlagsFromEnvAndDieIfUnknown(), which allows other
-// modules to parse flags from an environtment variable, or a file named by the
+// modules to parse flags from an environment variable, or a file named by the
 // environment variable.
 
 #include "xla/parse_flags_from_env.h"
@@ -29,13 +29,15 @@ limitations under the License.
 
 #include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/command_line_flags.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -105,7 +107,7 @@ static void ParseArgvFromString(const std::string& flag_str, EnvArgv* a) {
     // b is the index of the start of a flag.
     // Set e to the index just past the end of the flag.
     size_t e = b;
-    while (e != flag_str.size() && isascii(flag_str[e]) &&
+    while (e != flag_str.size() && absl::ascii_isascii(flag_str[e]) &&
            (strchr("-_", flag_str[e]) != nullptr ||
             absl::ascii_isalnum(flag_str[e]))) {
       e++;
@@ -181,7 +183,8 @@ static void SetArgvFromEnv(absl::string_view envvar, EnvArgv* a) {
 // The simulated argv[] parsed from the environment, one for each different
 // environment variable we've seen.
 static absl::flat_hash_map<std::string, EnvArgv>& EnvArgvs() {
-  static auto* env_argvs = new absl::flat_hash_map<std::string, EnvArgv>();
+  static auto* const env_argvs =
+      new absl::flat_hash_map<std::string, EnvArgv>();
   return *env_argvs;
 }
 
@@ -191,14 +194,19 @@ static absl::Mutex env_argv_mu(absl::kConstInit);
 static void DieIfEnvHasUnknownFlagsLeft(absl::string_view envvar);
 
 void ParseFlagsFromEnvAndDieIfUnknown(absl::string_view envvar,
-                                      const std::vector<tsl::Flag>& flag_list) {
-  ParseFlagsFromEnvAndIgnoreUnknown(envvar, flag_list);
+                                      const std::vector<tsl::Flag>& flag_list,
+                                      const bool reset_envvar) {
+  ParseFlagsFromEnvAndIgnoreUnknown(envvar, flag_list, reset_envvar);
   DieIfEnvHasUnknownFlagsLeft(envvar);
 }
 
-void ParseFlagsFromEnvAndIgnoreUnknown(
-    absl::string_view envvar, const std::vector<tsl::Flag>& flag_list) {
+void ParseFlagsFromEnvAndIgnoreUnknown(absl::string_view envvar,
+                                       const std::vector<tsl::Flag>& flag_list,
+                                       const bool reset_envvar) {
   absl::MutexLock lock(&env_argv_mu);
+  if (reset_envvar) {
+    EnvArgvs().erase(envvar);
+  }
   auto* env_argv = &EnvArgvs()[envvar];
   SetArgvFromEnv(envvar, env_argv);  // a no-op if already initialized
 
@@ -220,8 +228,8 @@ static void DieIfEnvHasUnknownFlagsLeft(absl::string_view envvar) {
   SetArgvFromEnv(envvar, env_argv);
 
   if (env_argv->argc != 1) {
+    auto unknown_flags = absl::MakeSpan(env_argv->argv).first(env_argv->argc);
     // Skip the first argv, which is the fake argv[0].
-    auto unknown_flags = absl::MakeSpan(env_argv->argv);
     unknown_flags.remove_prefix(1);
     LOG(QFATAL) << "Unknown flag" << (unknown_flags.size() > 1 ? "s" : "")
                 << " in " << envvar << ": "

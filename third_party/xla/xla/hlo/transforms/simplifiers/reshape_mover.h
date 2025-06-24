@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
@@ -62,7 +63,8 @@ class ReshapeMover : public HloModulePass {
  private:
   absl::StatusOr<bool> TryReshapeMoveOnCandidates(
       HloInstructionSet* candidates);
-  absl::StatusOr<bool> SinkRearrangeOperands(HloInstruction* instruction);
+  absl::StatusOr<HloInstruction*> SinkRearrangeOperands(
+      HloInstruction* instruction);
   absl::StatusOr<HloInstruction*> ApplyInverseRearrange(
       const HloInstruction* rearrange, HloInstruction* operand);
   bool IsReshapeMoveCandidate(HloInstruction* instruction);

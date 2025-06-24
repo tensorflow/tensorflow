@@ -61,7 +61,7 @@ class AutotunerCompileUtil {
 
   // Generates a compile util for a platform associated with the `stream`.
   static absl::StatusOr<AutotunerCompileUtil> Create(
-      const AutotuneConfig& config, const DebugOptions& opts);
+      const DeviceOrDevicelessConfig& config, const DebugOptions& opts);
 
   struct ProfilingOutput {
     ProfilingOutput(absl::Duration duration, ScopedShapedBuffer&& buffer)
@@ -98,7 +98,7 @@ class AutotunerCompileUtil {
       GenerateModuleFn extractor);
 
  private:
-  AutotunerCompileUtil(const AutotuneConfig& config, Compiler* compiler,
+  AutotunerCompileUtil(std::unique_ptr<Compiler> compiler,
                        se::StreamExecutor& stream_executor, se::Stream& stream,
                        se::DeviceMemoryAllocator& allocator,
                        const DebugOptions& opts);
@@ -107,66 +107,13 @@ class AutotunerCompileUtil {
                                           std::vector<ExecutionInput> arguments,
                                           ExecutionProfile* profile = nullptr);
 
-  AutotuneConfig config_;
-  Compiler* compiler_;
+  std::unique_ptr<Compiler> compiler_;
   se::StreamExecutor& stream_executor_;
   se::Stream& stream_;
   se::DeviceMemoryAllocator& allocator_;
   DebugOptions opts_;
 };
 
-// A RedZone allocator and a collection of buffers that store the inputs and
-// outputs of an HloInstruction. These are used when running the instruction
-// for autotuning.
-class RedzoneBuffers {
- public:
-  enum BuffersToCreate {
-    // Create a buffer for all of the instruction's operands. The result shape
-    // is ignored.
-    kAllInputs = 0,
-    // Create a buffer for all of the instruction's operands and the entire
-    // result shape. If the result shape is a tuple, a separate buffer is
-    // created for each subshape.
-    kAllInputsAllOutputs = 1,
-    // Create a buffer for all of the instruction's operands and all of the
-    // subshapes of the result tuple, except for the last one. The last subshape
-    // is considered a scratch buffer and is assumed to be allocated elsewhere.
-    // If the result shape is not a tuple, this will create a buffer
-    // corresponding to the entire shape - equivalent to `kAllInputsAllOutputs`.
-    kAllInputsOutputsNoScratch = 2,
-  };
-  static absl::StatusOr<RedzoneBuffers> FromInstruction(
-      const HloInstruction& instruction, const AutotuneConfig& config,
-      const DebugOptions& debug_options, BuffersToCreate buffers_to_create);
-
-  const std::vector<se::DeviceMemoryBase>& input_buffers() const {
-    return input_buffers_;
-  }
-  const std::vector<Shape>& input_shapes() const { return input_shapes_; }
-  const std::vector<se::DeviceMemoryBase>& output_buffers() const {
-    return output_buffers_;
-  }
-  const Shape& output_shape() const { return output_shape_; }
-  se::RedzoneAllocator& RedzoneAllocator() const { return *redzone_allocator_; }
-
- private:
-  absl::Status CreateInputs(const HloInstruction& instruction,
-                            const AutotuneConfig& config,
-                            const DebugOptions& debug_options,
-                            int64_t& rng_state);
-
-  absl::Status CreateOutputs(const HloInstruction& instruction,
-                             const AutotuneConfig& config,
-                             const DebugOptions& debug_options,
-                             BuffersToCreate buffers_to_create,
-                             int64_t& rng_state);
-
-  std::unique_ptr<se::RedzoneAllocator> redzone_allocator_;
-  std::vector<se::DeviceMemoryBase> input_buffers_;
-  std::vector<Shape> input_shapes_;
-  std::vector<se::DeviceMemoryBase> output_buffers_;
-  Shape output_shape_;
-};
 
 }  // namespace gpu
 }  // namespace xla

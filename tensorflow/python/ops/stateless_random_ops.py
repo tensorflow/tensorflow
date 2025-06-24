@@ -76,7 +76,7 @@ def split(seed, num=2, alg="auto_select"):
 
   Returns:
     A tensor with shape [num, 2] representing `num` new seeds. It will have the
-    same dtype as `seed` (if `seed` doesn't have an explict dtype, the dtype
+    same dtype as `seed` (if `seed` doesn't have an explicit dtype, the dtype
     will be determined by `tf.convert_to_tensor`).
   """
   seed = ops.convert_to_tensor(seed)
@@ -122,8 +122,8 @@ def fold_in(seed, data, alg="auto_select"):
   Returns:
     A new RNG seed that is a deterministic function of the inputs and is
     statistically safe for producing a stream of new pseudo-random values. It
-    will have the same dtype as `data` (if `data` doesn't have an explict dtype,
-    the dtype will be determined by `tf.convert_to_tensor`).
+    will have the same dtype as `data` (if `data` doesn't have an explicit
+    dtype, the dtype will be determined by `tf.convert_to_tensor`).
   """
   data = ops.convert_to_tensor(data)
   seed1 = stateless_random_uniform(

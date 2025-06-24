@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tflite_serialization_base_generated.h"
 
 namespace tflite {
 namespace gpu {

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/c/checkpoint_reader.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/util/saved_tensor_slice.pb.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/security/fuzzing/cc/checkpoint_reader_fuzz_input.pb.h"
-#include "tsl/platform/status.h"
 
 // This is a fuzzer for tensorflow::checkpoint::CheckpointReader. LevelDB
 // reading and proto parsing are already fuzz-tested, so there's no need to test

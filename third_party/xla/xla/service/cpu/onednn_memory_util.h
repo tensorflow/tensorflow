@@ -15,7 +15,7 @@ limitations under the License.
 
 #ifndef XLA_SERVICE_CPU_ONEDNN_MEMORY_UTIL_H_
 #define XLA_SERVICE_CPU_ONEDNN_MEMORY_UTIL_H_
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 
 #include <memory>
 
@@ -73,7 +73,7 @@ inline dnnl::memory::data_type ToOneDnnDataType(PrimitiveType ptype) {
 
     // TODO(intel-tf): properly handle not supported types:
     // S16, S64, U16, U32, U64, C64, C128, F8E5M2, F8E4M3FN, S4, U4,
-    // F8E4M3B11FNUZ, F8E4M3, F8E3M4
+    // F8E4M3B11FNUZ, F8E4M3, F8E3M4, F4E2M1FN, F8E8M0FNU
     default:
       return dt::undef;
   }
@@ -137,5 +137,5 @@ Shape MemDescToXlaShapeFlattened(const dnnl::memory::desc& md);
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
 #endif  // XLA_SERVICE_CPU_ONEDNN_MEMORY_UTIL_H_

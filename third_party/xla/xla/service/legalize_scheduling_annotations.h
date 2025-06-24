@@ -17,12 +17,17 @@ limitations under the License.
 #define XLA_SERVICE_LEGALIZE_SCHEDULING_ANNOTATIONS_H_
 
 #include <utility>
+#include <vector>
 
+#include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/scheduling_annotations_util.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -33,6 +38,11 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
  public:
   struct Config {
     HloPredicate keep_sync_annotation = HloPredicateTrue;
+    HloPredicate keep_trivial_sync_annotation = HloPredicateTrue;
+    bool propagate_annotation = false;
+    bool check_start_done_annotation_consistency = true;
+    bool remove_loop_iteration_annotation_only = false;
+    bool run_verification = false;
   };
 
   explicit LegalizeSchedulingAnnotations(Config config)
@@ -40,6 +50,14 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
   absl::string_view name() const override {
     return "legalize-scheduling-annotations";
   }
+
+  static absl::StatusOr<bool> PropagateAnnotations(
+      const HloComputation* computation,
+      const absl::btree_map<Annotation, std::vector<HloInstruction*>>&
+          annotation_to_instruction);
+
+  static absl::Status Verify(HloModule* module);
+
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
       HloModule* module,
@@ -47,6 +65,11 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
 
  private:
   bool KeepSchedulingAnnotation(HloInstruction* instr);
+  bool RemoveTrivialGroups(
+      const absl::flat_hash_map<
+          Annotation,
+          absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>&
+          annotation_to_instruction);
   Config config_;
 };
 }  // namespace xla

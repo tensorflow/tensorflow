@@ -436,7 +436,7 @@ class ExtensionTypeSpec(type_spec.TypeSpec):
 
   def __reduce__(self):
     # Use value_type instead of spec_type, as spec_type is a nested class.
-    # Pickle support of nested class requries Pickle protocol version 4, which
+    # Pickle support of nested class requires Pickle protocol version 4, which
     # is not enabled by default until py 3.8.
     #
     # https://www.python.org/dev/peps/pep-3154/#serializing-more-lookupable-objects
@@ -448,7 +448,7 @@ class ExtensionTypeSpec(type_spec.TypeSpec):
       return value._tf_extension_type_packed_variant  # pylint: disable=protected-access
 
     tensor_or_composite = (tensor.Tensor, composite_tensor.CompositeTensor)
-    # Retireve fields by the order of spec dict to preserve field ordering. This
+    # Retrieve fields by the order of spec dict to preserve field ordering. This
     # is needed as nest.flatten would sort dictionary entries by key.
     value_tuple = tuple(value.__dict__[key] for key in self.__dict__)
     return tuple(

@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_LLVM_IR_DYNAMIC_UPDATE_SLICE_UTIL_H_
 #define XLA_SERVICE_LLVM_IR_DYNAMIC_UPDATE_SLICE_UTIL_H_
 #include <functional>
-#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -25,8 +24,6 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/elemental_ir_emitter.h"
-#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 
@@ -81,16 +78,6 @@ absl::Status EmitDynamicUpdateSliceInPlace(
 absl::Status EmitFusedDynamicUpdateSliceInPlace(
     HloInstruction* fusion, const IrArray& fusion_output_array,
     FusedIrEmitter* fused_emitter, llvm::IRBuilderBase* b);
-
-// Same as EmitFusedDynamicUpdateSliceInPlace, except emits a parallel loop with
-// the given launch dimensions for arbitrarily many independent dynamic slice
-// updates.
-absl::Status EmitParallelFusedDynamicUpdateSliceInPlace(
-    const HloComputation* fusion,
-    const std::vector<std::pair<const HloInstruction*, const IrArray>>&
-        dus_and_output_array,
-    FusedIrEmitter* fused_emitter,
-    const gpu::LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* b);
 
 }  // namespace llvm_ir
 }  // namespace xla

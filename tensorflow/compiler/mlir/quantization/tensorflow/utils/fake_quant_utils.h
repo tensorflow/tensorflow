@@ -20,11 +20,14 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_UTILS_FAKE_QUANT_UTILS_H_
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 
@@ -138,9 +141,9 @@ class ConvertFakeQuantOpToQuantOps {
     // Finally, use the quantization parameter to create the quantize and
     // dequantize ops, and insert them between the tf.FakeQuantWithMinMaxVarsOp
     // and its users.
-    auto quantize = rewriter.create<quantfork::QuantizeCastOp>(
+    auto quantize = rewriter.create<mlir::quant::ir::QuantizeCastOp>(
         tf_op.getLoc(), qtype.getValue(), input);
-    auto dequantize = rewriter.create<quantfork::DequantizeCastOp>(
+    auto dequantize = rewriter.create<mlir::quant::ir::DequantizeCastOp>(
         tf_op.getLoc(), res_type, quantize.getResult());
     tf_op.getOutputs().replaceAllUsesWith(dequantize);
 

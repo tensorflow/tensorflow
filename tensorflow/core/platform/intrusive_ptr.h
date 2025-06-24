@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 
-#include "tsl/platform/intrusive_ptr.h"
+#include "xla/tsl/platform/intrusive_ptr.h"
 
 namespace tensorflow {
 namespace core {

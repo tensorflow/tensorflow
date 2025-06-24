@@ -22,6 +22,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
@@ -32,9 +34,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/hash.h"
-#include "tsl/platform/logging.h"
 
 namespace tensorflow {
 

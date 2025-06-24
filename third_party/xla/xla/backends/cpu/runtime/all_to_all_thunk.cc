@@ -20,12 +20,12 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/collective_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/shape.h"
@@ -33,8 +33,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/profiler/lib/traceme.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
@@ -48,13 +47,12 @@ absl::StatusOr<std::unique_ptr<AllToAllThunk>> AllToAllThunk::Create(
 
 AllToAllThunk::AllToAllThunk(Info info, OpParams op_params,
                              OpBuffers op_buffers, OpResources op_resources)
-    : CollectiveThunk(Kind::kAllToAll, std::move(info), std::move(op_params),
-                      std::move(op_buffers), std::move(op_resources)) {}
+    : CollectiveThunk(CollectiveKind::kAllToAll, std::move(info),
+                      std::move(op_params), std::move(op_buffers),
+                      std::move(op_resources)) {}
 
 tsl::AsyncValueRef<AllToAllThunk::ExecuteEvent> AllToAllThunk::Execute(
     const ExecuteParams& params) {
-  tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
-
   TF_ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
 
   VLOG(3) << absl::StreamFormat(
@@ -79,11 +77,9 @@ tsl::AsyncValueRef<AllToAllThunk::ExecuteEvent> AllToAllThunk::Execute(
         CpuCollectives::Executor executor(key, DefaultCollectiveTimeout());
         const Shape& shape = destination_shape(0);
 
-        TF_RETURN_IF_ERROR(
-            comm.AllToAll(data.source, data.destination, shape.element_type(),
-                          ShapeUtil::ElementsIn(shape), executor));
-
-        return absl::OkStatus();
+        return comm.AllToAll(std::move(data.source),
+                             std::move(data.destination), shape.element_type(),
+                             ShapeUtil::ElementsIn(shape), executor);
       });
 }
 

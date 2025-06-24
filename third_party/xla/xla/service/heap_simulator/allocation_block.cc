@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -94,6 +94,10 @@ std::string AllocationBlock::ToString() const {
 }
 
 int AllocationBlock::GetColocationsCount() const {
+  if (next_colocated == nullptr) {
+    return 1;
+  }
+
   int count = 1;
   for (const AllocationBlock* colocated = next_colocated; colocated != this;
        colocated = colocated->next_colocated, ++count) {

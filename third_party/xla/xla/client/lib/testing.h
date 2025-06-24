@@ -20,7 +20,6 @@ limitations under the License.
 #include <vector>
 
 #include "xla/client/client.h"
-#include "xla/client/global_data.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/service/service.h"
 #include "xla/shape.h"

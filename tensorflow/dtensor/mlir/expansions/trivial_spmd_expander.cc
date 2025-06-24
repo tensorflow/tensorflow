@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/trivial_spmd_expander.h"
 
+#include <cassert>
+
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"

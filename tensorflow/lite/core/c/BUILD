@@ -16,6 +16,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/lite:__subpackages__",
+        "//third_party/odml/litert:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -50,6 +51,11 @@ filegroup(
         "common.h",
         "operator.h",
         "//tensorflow/compiler/mlir/lite/core/c:lite_headers_filegroup",
+        "//tensorflow/lite/core/async/c:types.h",
+    ],
+    visibility = [
+        # Temporary workaround to make visible to litert in OSS (default vis is not transformed correctly.)
+        "//visibility:public",
     ],
 )
 
@@ -99,15 +105,21 @@ tflite_cc_library_with_c_headers_test(
         ":c_api_types",
         ":operator",
         "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:mutable_op_resolver",
+        "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core:create_op_resolver_header",
-        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core:signature_runner",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/delegates:interpreter_utils",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/profiling/telemetry:profiler",
+        "//tensorflow/lite/schema:schema_fbs",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
@@ -143,17 +155,22 @@ tflite_cc_library_with_c_headers_test(
         ":c_api_types",
         ":operator_without_alwayslink",
         "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite:mutable_op_resolver",
+        "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core:create_op_resolver_header",
-        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core:signature_runner",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/delegates:interpreter_utils",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/profiling/telemetry:profiler",
+        "//tensorflow/lite/schema:schema_fbs",
     ],
 )
 
@@ -264,7 +281,7 @@ cc_test(
 )
 
 # This is a private target, its visibility is set to public only to be
-# used by "tflite_custom_c_library".
+# used by "tflite_custom_c_library" and LiteRT dependencies.
 # Do not use this target directly and don't consider it as a part of the public API.
 alias(
     name = "private_c_api_types",
@@ -283,6 +300,7 @@ tflite_cc_library_with_c_headers_test(
     visibility = [
         "//tensorflow/compiler/mlir/lite/experimental/lrt:__subpackages__",
         "//tensorflow/lite:__subpackages__",
+        "//third_party/odml/litert/litert:__subpackages__",
     ] + c_api_visibility_allowlist(),
     deps = [
         "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
@@ -297,7 +315,10 @@ cc_test(
     deps = [
         ":c_api_types",
         ":common",
+        "//tensorflow/lite:array",
+        "//tensorflow/lite:test_util",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -535,7 +556,7 @@ tflite_cc_library_with_c_headers_test(
 )
 
 # This is a private target, its visibility is set to public only to be
-# used by "custom_c_library_with_tflite".
+# used by "custom_c_library_with_tflite" and LiteRT dependencies.
 # Do not use this target directly and don't consider it as a part of the public API.
 alias(
     name = "private_c_api_opaque_without_op_resolver",
@@ -601,6 +622,7 @@ cc_test(
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/delegates:delegate_test_util",
         "//tensorflow/lite/testing:util",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -55,8 +55,6 @@ filegroup(
 pytype_strict_binary(
     name = "gen_resource_gather_v1",
     srcs = ["gen_resource_gather_v1.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
         "//tensorflow/python/client:session",
@@ -82,8 +80,6 @@ pytype_strict_binary(
 pytype_strict_binary(
     name = "gen_error_v1",
     srcs = ["gen_error_v1.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
         "//tensorflow/python/client:session",
@@ -103,8 +99,6 @@ pytype_strict_binary(
 pytype_strict_binary(
     name = "gen_pow",
     srcs = ["gen_pow.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/distribute:input_lib",
@@ -124,8 +118,6 @@ pytype_strict_binary(
 pytype_strict_binary(
     name = "gen_sparse_tensor_input",
     srcs = ["gen_sparse_tensor_input.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/distribute:input_lib",
@@ -146,8 +138,6 @@ pytype_strict_binary(
 pytype_strict_binary(
     name = "gen_ref_type_tensor_input",
     srcs = ["gen_ref_type_tensor_input.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/distribute:input_lib",
@@ -169,8 +159,6 @@ pytype_strict_binary(
 pytype_strict_binary(
     name = "gen_pow_v2",
     srcs = ["gen_pow_v2.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:input_lib",
@@ -190,8 +178,6 @@ pytype_strict_binary(
 pytype_strict_binary(
     name = "gen_data",
     srcs = ["gen_data.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -211,23 +197,16 @@ pytype_strict_binary(
 pytype_strict_binary(
     name = "gen_saved_model_v1",
     srcs = ["gen_saved_model_v1.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
         "//tensorflow/python/client:session",
-        "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:test_ops",
         # copybara:uncomment "//tensorflow/python/framework:test_ops_kernels",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/saved_model:builder",
-        "//tensorflow/python/saved_model:save",
-        "//tensorflow/python/saved_model:save_options",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
@@ -240,8 +219,6 @@ pytype_strict_binary(
 pytype_strict_binary(
     name = "gen_dtype_coverage_v1",
     srcs = ["gen_dtype_coverage_v1.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
         "//tensorflow/python/client:session",
@@ -267,8 +244,6 @@ pytype_strict_binary(
 pytype_strict_binary(
     name = "gen_saved_model_v2",
     srcs = ["gen_saved_model_v2.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:input_lib",
@@ -290,8 +265,6 @@ pytype_strict_binary(
 pytype_strict_binary(
     name = "gen_matmul_gpu",
     srcs = ["gen_matmul_gpu.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:tf2",
@@ -316,8 +289,6 @@ pytype_strict_binary(
 pytype_strict_binary(
     name = "gen_variable_on_tpu",
     srcs = ["gen_variable_on_tpu.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
@@ -340,8 +311,6 @@ pytype_strict_binary(
 pytype_strict_binary(
     name = "gen_control_flow_v1",
     srcs = ["gen_control_flow_v1.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
         "//tensorflow/python/client:session",
@@ -368,8 +337,6 @@ pytype_strict_binary(
 pytype_strict_binary(
     name = "gen_hash_table_asset_v1",
     srcs = ["gen_hash_table_asset_v1.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
         "//tensorflow/python/client:session",
@@ -393,8 +360,6 @@ pytype_strict_binary(
 pytype_strict_binary(
     name = "gen_if_v1",
     srcs = ["gen_if_v1.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
         "//tensorflow/python/client:session",
@@ -423,8 +388,6 @@ pytype_strict_binary(
 pytype_strict_binary(
     name = "gen_while_v1",
     srcs = ["gen_while_v1.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
         "//tensorflow/python/client:session",
@@ -598,6 +561,7 @@ cc_library(
     ],
     tags = ["no_oss"],
     deps = [
+        "//tensorflow/cc/saved_model:constants",
         "//tensorflow/compiler/mlir/tfrt:backend_compiler",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
@@ -605,6 +569,7 @@ cc_library(
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/tfrt/graph_executor:config",
         "//tensorflow/core/tfrt/graph_executor:test_config_proto_cc",
         "//tensorflow/core/tfrt/run_handler_thread_pool:run_handler_concurrent_work_queue",
@@ -615,6 +580,7 @@ cc_library(
         "//tensorflow/core/tfrt/saved_model:saved_model_util",
         "//tensorflow/python/framework:test_ops_kernels",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -623,9 +589,13 @@ cc_library(
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:strcat",
         "@local_xla//xla/tsl/lib/monitoring:cell_reader",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:status",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:hostcontext",
     ],

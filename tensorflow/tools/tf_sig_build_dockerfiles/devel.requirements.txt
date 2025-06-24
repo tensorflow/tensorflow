@@ -9,7 +9,7 @@ astunparse ~= 1.6.3
 flatbuffers ~= 24.3.25
 google_pasta ~= 0.2
 h5py ~= 3.11.0 # Earliest version for NumPy 2.0
-ml_dtypes ~= 0.4.0 # Earliest version for NumPy 2.0
+ml_dtypes ~= 0.5.1 # Earliest version with mxfloat types
 # TODO(b/366266944): Support older versions of NumPy to support TFX. Remove when
 # Apache Beam upgrades to newer NumPy.
 numpy ~= 1.26.0

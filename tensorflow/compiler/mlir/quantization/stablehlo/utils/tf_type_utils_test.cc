@@ -97,7 +97,7 @@ TEST(GetDenseAttrFromTensorProtoAttrTest, Qint8ToUQ8Succeeds) {
       {2, 2}, quant::UniformQuantizedType::get(
                   quant::QuantizationFlags::FlagValue::Signed,
                   IntegerType::get(context.get(), 8),
-                  FloatType::getF32(context.get()), 3.0, 2, -128, 127));
+                  Float32Type::get(context.get()), 3.0, 2, -128, 127));
 
   auto dense_attr =
       GetDenseAttrFromTensorProtoAttr(GetQint8Tensor(), result_tensor_type);
@@ -132,7 +132,7 @@ TEST(GetDenseAttrFromTensorProtoAttrTest, Qint32ToUQ32Succeeds) {
       {2, 2},
       quant::UniformQuantizedType::get(
           quant::QuantizationFlags::FlagValue::Signed,
-          IntegerType::get(context.get(), 32), FloatType::getF32(context.get()),
+          IntegerType::get(context.get(), 32), Float32Type::get(context.get()),
           3.0, 2, -2147483648, 2147483647));
 
   auto dense_attr =

@@ -102,7 +102,7 @@ bool TransposesMinorDimension(const HloInstruction* instr);
 // Note that reduction ops are lowered in different ways. Reduce input fusions
 // are lowered by IrEmitterUnnested::EmitReductionToVector and must be rooted at
 // reduction-to-vector ops. Other reduction ops are lowered by
-// GpuElementalIrEmitter and fused like elementwise ops.
+// compiler/xla/backends/gpu/codegen/emitters.
 
 // Whether `instr` is an input fusion rooted at a reduction-to-vector op or a
 // multi-output input fusion with at least one reduction-to-vector op root.
@@ -126,6 +126,15 @@ bool IsNestableVariadicReduceWindow(const HloInstruction& instr);
 // Whether `instr` is fusible as root of a scatter input fusions, i.e. `instr`
 // is either an unfused scatter op or a scatter input fusion.
 bool IsInputFusibleScatter(const HloInstruction& instr);
+
+// Determines whether the combination of `instr1` and `instr2` into a (possibly
+// multi-output) fusion fits within the maximum number of parameters that can be
+// passed to a kernel. If the fusion is a producer/consumer fusion and `instr1`
+// is the consumer and `instr2` is the producer, set consumer_producer_fusion to
+// true to enable more fusion.
+FusionDecision FusionFitsInParameterLimit(
+    const HloInstruction& instr1, const HloInstruction& instr2,
+    bool is_consumer_producer_fusion = false);
 
 // Determines whether the combination of `instr1` and `instr2` into a (possibly
 // multi-output) fusion fits within a "budget" -- i.e., does have more operands

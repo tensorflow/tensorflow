@@ -127,7 +127,7 @@ cc_library(
 
 flatbuffer_cc_library(
     name = "serialization_base_cc_fbs",
-    srcs = ["serialization_base.fbs"],
+    srcs = ["tflite_serialization_base.fbs"],
     flatc_args = [
         "--scoped-enums",
     ],

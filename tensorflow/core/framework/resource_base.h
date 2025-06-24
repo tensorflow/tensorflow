@@ -19,9 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/lib/core/refcount.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
@@ -56,6 +56,9 @@ class ResourceBase : public core::WeakRefCounted {
     return errors::Unimplemented("AsGraphDef not implemented for resource ",
                                  DebugString());
   }
+
+  // Releases temporary resources held by this resource created during warmup.
+  virtual void Finalize() {}
 };
 }  //  end namespace tensorflow
 

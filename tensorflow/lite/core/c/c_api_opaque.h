@@ -266,6 +266,12 @@ TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetQuantization(
 /// 'kTfLiteDynamic'.  The provided 'tensor' must not be null.
 void TfLiteOpaqueTensorSetAllocationTypeToDynamic(TfLiteOpaqueTensor* tensor);
 
+/// Sets the allocation type of the provided 'tensor' to 'kTfLiteNonCpu'.
+/// The provided 'tensor' must not be null.
+///
+/// WARNING: This is an experimental API and subject to change.
+void TfLiteOpaqueTensorSetNonCpuAllocation(TfLiteOpaqueTensor* tensor);
+
 // --------------------------------------------------------------------------
 // Accessors for TfLiteOpaqueNode.
 

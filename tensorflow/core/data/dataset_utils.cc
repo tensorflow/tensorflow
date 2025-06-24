@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -963,6 +964,14 @@ int64 GetAutotuneDefaultParallelism(IteratorContext* ctx) {
   int64_t runner_threadpool_size = ctx->runner_threadpool_size();
   int64_t value = std::min(initial_parallelism, runner_threadpool_size);
   return value;
+}
+
+int64_t GetAutotuneMinParallelism(IteratorContext* ctx) {
+  if (ctx->options() &&
+      ctx->options()->autotune_options().has_min_parallelism()) {
+    return ctx->options()->autotune_options().min_parallelism();
+  }
+  return 1;
 }
 
 IteratorContext MakeNestedIteratorContext(IteratorContext* ctx) {

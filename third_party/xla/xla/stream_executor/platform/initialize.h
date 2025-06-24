@@ -18,7 +18,8 @@ limitations under the License.
 
 #include "tsl/platform/platform.h"
 
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_CHROMIUMOS)
+#if defined(PLATFORM_GOOGLE) || \
+    (defined(PLATFORM_PORTABLE_GOOGLE) && !defined(__EMSCRIPTEN__))
 #include "xla/stream_executor/platform/google/initialize.h"  // IWYU pragma: export
 #else
 #include "xla/stream_executor/platform/default/initialize.h"  // IWYU pragma: export

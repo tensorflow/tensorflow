@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "xla/tsl/platform/cloud/http_request.h"
 #include "xla/tsl/platform/env.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 const int64_t kDefaultRefreshRateSecs = 60;
@@ -42,9 +43,9 @@ class GcsDnsCache {
   GcsDnsCache(Env* env, int64_t refresh_rate_secs);
 
   ~GcsDnsCache() {
-    mutex_lock l(mu_);
+    absl::MutexLock l(&mu_);
     cancelled_ = true;
-    cond_var_.notify_one();
+    cond_var_.Signal();
   }
 
   // Annotate the given HttpRequest with resolve overrides from the cache.
@@ -59,9 +60,9 @@ class GcsDnsCache {
   // Define a friend class for testing.
   friend class GcsDnsCacheTest;
 
-  mutex mu_;
+  absl::Mutex mu_;
   Env* env_;
-  condition_variable cond_var_;
+  absl::CondVar cond_var_;
   std::default_random_engine random_ TF_GUARDED_BY(mu_);
   bool started_ TF_GUARDED_BY(mu_) = false;
   bool cancelled_ TF_GUARDED_BY(mu_) = false;

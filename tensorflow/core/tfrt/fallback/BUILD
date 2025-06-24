@@ -30,7 +30,6 @@ package_group(
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/brain/mobile/lite/delegates/tfmrt/...",
-        # copybara:uncomment "//learning/infra/mira/distributed/...",
         # copybara:uncomment "//learning/infra/mira/experimental/orbax_model/...",
     ],
 )
@@ -56,8 +55,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:refcount",
+        "@local_xla//xla/tsl/platform:errors",
     ],
 )
 

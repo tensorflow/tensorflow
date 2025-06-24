@@ -21,6 +21,7 @@ limitations under the License.
 #include <limits>
 
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/logging.h"
@@ -37,32 +38,33 @@ static bool WaitForReadyWithTimeout(RendezvousStateSynchronization& state,
 
   // Keep checking if the rendezvous is ready inside a loop and update TraceMe
   // annotation to track the rendezvous progress.
-  while (state.ready.load() == false) {
+  while (!state.ready) {
     size_t num_pending = state.num_threads - state.ack.load();
 
     tsl::profiler::TraceMe trace([&] {
       if (num_pending == 0) {
         return absl::StrFormat("Wait for rendezvous callback");
-      } else {
-        return absl::StrFormat("Wait %d of %d", num_pending, state.num_threads);
       }
+      return absl::StrFormat("Wait: pending_threads=%d/%d", num_pending,
+                             state.num_threads);
     });
 
     bool timed_out = state.cv.WaitWithTimeout(&state.mutex, timeout);
-    bool ready = state.ready.load();
 
     // We are done and ready.
-    if (ready) return true;
+    if (state.ready) {
+      return true;
+    }
 
     // We are done with waiting because the timeout is exceeded.
-    if (timed_out && !ready) {
+    if (timed_out && !state.ready) {
       return false;
     }
 
     // Otherwise we keep waiting.
   }
 
-  return state.ready.load();
+  return state.ready;
 }
 
 void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
@@ -88,18 +90,18 @@ void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
 
   if (is_all_participants_arrived) {
     LOG(ERROR) << absl::StreamFormat(
-        "This thread has been waiting for `%s` for %d seconds and may be "
-        "stuck. All %d threads joined the rendezvous, however the leader has "
-        "not marked the rendezvous as completed. Leader can be deadlocked "
-        "inside the rendezvous callback.",
-        name, absl::ToInt64Seconds(warn_stuck_timeout), state.num_threads);
+        "[id=%d] This thread has been waiting for `%s` for %d "
+        "seconds and may be stuck. All %d threads joined the rendezvous, "
+        "however the leader has not marked the rendezvous as completed. Leader "
+        "can be deadlocked inside the rendezvous callback.",
+        id, name, absl::ToInt64Seconds(warn_stuck_timeout), state.num_threads);
 
   } else {
     LOG(ERROR) << absl::StreamFormat(
-        "This thread has been waiting for `%s` for %d seconds and may be "
-        "stuck. Expected %d threads to join the rendezvous, but not all of "
+        "[id=%d] This thread has been waiting for `%s` for %d seconds and may "
+        "be stuck. Expected %d threads to join the rendezvous, but not all of "
         "them arrived on time.",
-        name, absl::ToInt64Seconds(warn_stuck_timeout), state.num_threads);
+        id, name, absl::ToInt64Seconds(warn_stuck_timeout), state.num_threads);
   }
 
   // Wait for `terminate_timeout` for the rendezvous to be ready before killing
@@ -115,18 +117,19 @@ void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
 
   if (is_all_participants_arrived) {
     LOG(FATAL) << absl::StreamFormat(
-        "Termination timeout for `%s` of %d seconds exceeded. Exiting to "
-        "ensure a consistent program state. All %d threads joined the "
+        "[id=%d] Termination timeout for `%s` of %d seconds exceeded. Exiting "
+        "to ensure a consistent program state. All %d threads joined the "
         "rendezvous, however the leader has not marked the rendezvous as "
         "completed. Leader can be deadlocked inside the rendezvous callback.",
-        name, absl::ToInt64Seconds(terminate_timeout), state.num_threads);
+        id, name, absl::ToInt64Seconds(terminate_timeout), state.num_threads);
 
   } else {
     LOG(FATAL) << absl::StreamFormat(
-        "Termination timeout for `%s` of %d seconds exceeded. Exiting to "
-        "ensure a consistent program state. Expected %d threads to join the "
-        "rendezvous, but not all of them arrived on time.",
-        name, absl::ToInt64Seconds(terminate_timeout), state.num_threads);
+        "[id=%d] Termination timeout for `%s` of %d seconds exceeded. Exiting "
+        "to ensure a consistent program state. Expected %d threads to join the "
+        "rendezvous, but only %d of them arrived on time.",
+        id, name, absl::ToInt64Seconds(terminate_timeout), state.num_threads,
+        state.ack.load());
   }
 }
 
@@ -143,7 +146,9 @@ RendezvousFlag::InFlightRendezvous::InFlightRendezvous(RendezvousFlag* flag)
     : flag_(flag) {}
 
 RendezvousFlag::InFlightRendezvous::~InFlightRendezvous() {
-  if (flag_ == nullptr) return;
+  if (flag_ == nullptr) {
+    return;
+  }
 
   // Reload state and use CAS to decide if we are the one who
   // should mark rendezvous flag completed.
@@ -168,7 +173,9 @@ RendezvousFlag::InFlightRendezvous::operator bool() const {
 RendezvousFlag::InFlightRendezvous RendezvousFlag::TryJoin() {
   // If `state_` is `kCompleted` it means that we have at least one completed
   // rendezvous for this flag and can skip it.
-  if (state_.load() == kCompleted) return InFlightRendezvous(nullptr);
+  if (state_.load() == kCompleted) {
+    return InFlightRendezvous(nullptr);
+  }
 
   // Try to increment a state in a CAS loop to signal all other participants
   // that we joined an in-flight rendezvous.
@@ -178,7 +185,9 @@ RendezvousFlag::InFlightRendezvous RendezvousFlag::TryJoin() {
   }
 
   // Someone else completed the rendezvous and we don't need to join.
-  if (state == kCompleted) return InFlightRendezvous(nullptr);
+  if (state == kCompleted) {
+    return InFlightRendezvous(nullptr);
+  }
 
   return InFlightRendezvous(this);
 }

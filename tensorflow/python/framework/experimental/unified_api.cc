@@ -78,7 +78,6 @@ using tensorflow::Safe_TF_StatusPtr;
 using tensorflow::Status;
 using tensorflow::string;
 using tensorflow::TFE_TensorHandleToNumpy;
-using tensorflow::core::RefCountPtr;
 
 using tensorflow::errors::Internal;
 using tensorflow::errors::InvalidArgument;

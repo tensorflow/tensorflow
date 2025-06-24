@@ -25,4 +25,4 @@ set -euox pipefail -o history
 # TODO(ddunleavy) figure out how to best move this into build.py
 cd "${KOKORO_ARTIFACTS_DIR}/github/xla"
 
-"$KOKORO_ARTIFACTS_DIR"/github/xla/build_tools/ci/build.py
+"$KOKORO_ARTIFACTS_DIR"/github/xla/build_tools/ci/build.py --build=XLA_MACOS_X86_CPU_KOKORO

@@ -34,6 +34,8 @@ class ReduceScatterThunk final : public CollectiveThunk {
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
+  ReductionKind reduction_kind() const { return reduction_kind_; }
+
  private:
   ReduceScatterThunk(Info info, ReductionKind reduction_kind,
                      OpParams op_params, OpBuffers op_buffers,

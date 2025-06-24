@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector_base.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector_histogram.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector_min_max.h"
+#include "xla/tsl/platform/file_system.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tsl/platform/file_system.h"
 
 namespace tensorflow {
 namespace {
@@ -74,7 +74,7 @@ proto file.)doc");
 class CalibrationStatisticsSaverOp : public OpKernel {
  public:
   explicit CalibrationStatisticsSaverOp(
-      absl::Nonnull<OpKernelConstruction*> context)
+      OpKernelConstruction* absl_nonnull context)
       : OpKernel(context) {
     std::string output_file_path;
     OP_REQUIRES_OK(context,
@@ -128,7 +128,7 @@ class CalibrationStatisticsSaverOp : public OpKernel {
     }
   }
 
-  void Compute(absl::Nonnull<OpKernelContext*> context) override {
+  void Compute(OpKernelContext* absl_nonnull context) override {
     for (int idx = 0; idx < ids_.size(); ++idx) {
       AssignIfNotExists(
           ids_[idx], static_cast<CalibrationMethod>(calibration_methods_[idx]));

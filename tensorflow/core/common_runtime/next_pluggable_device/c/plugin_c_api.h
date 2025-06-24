@@ -114,7 +114,7 @@ typedef void TFNPD_InitPluginInternalDeviceStates(TF_Status* status);
 // --------------------------- C API access ------------------------------------
 #define TFNPD_API_STRUCT_FN(fn_type) fn_type* fn_type
 
-typedef struct {
+typedef struct TFNPD_Api {
   size_t struct_size;
   void* priv;
 

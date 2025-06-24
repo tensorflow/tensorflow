@@ -28,14 +28,13 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
-#include "xla/backends/cpu/runtime/resource_use.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/runtime/resource_use.h"
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/service/global_device_id.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -49,10 +48,9 @@ struct ThreadPoolDevice;
 
 namespace xla::cpu {
 
-// WARNING: This is under construction. Long term plan for XLA is to unify
-// runtimes between different backends and have a shared Thunk interface,
-// however for now we chose to have separate Thunk implementations in xla::cpu
-// and xla::gpu namespaces with a plan to unify them in the future.
+// Forward declare.
+class ThunkSequence;
+class ThunkExecutor;
 
 // Thunk is the basic unit of execution for the XLA CPU runtime.
 //
@@ -66,11 +64,8 @@ namespace xla::cpu {
 class Thunk {
  public:
   enum class Kind {
-    kAllGather,
-    kAllReduce,
-    kAllToAll,
     kCall,
-    kCollectivePermute,
+    kCollective,
     kCopy,
     kConditional,
     kConvolution,
@@ -81,14 +76,21 @@ class Thunk {
     kKernel,
     kOutfeed,
     kPartitionId,
-    kReduceScatter,
     kReplicaId,
     kRngGetAndUpdateState,
     kSort,
     kTopK,
     kWhile,
     kXnnFusion,
+    kOneDnnFusion,
   };
+
+  static absl::string_view KindToString(Kind kind);
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, Kind kind) {
+    sink.Append(KindToString(kind));
+  }
 
   struct Info {
     std::string op_name;
@@ -132,8 +134,6 @@ class Thunk {
   Kind kind() const { return kind_; }
   const Info& info() const { return info_; }
 
-  static absl::string_view KindToString(Kind kind);
-
   // Returns the list of buffers used by a thunk. Thunk executor relies on this
   // information to execute thunks concurrently and to avoid data races.
   using BufferUses = absl::InlinedVector<BufferUse, 4>;
@@ -147,12 +147,17 @@ class Thunk {
   using ResourceUses = absl::InlinedVector<ResourceUse, 4>;
   virtual ResourceUses resource_uses() const { return {}; }
 
+  virtual std::vector<std::pair<std::string, const ThunkSequence*>>
+  nested_thunks() const {
+    return {};
+  }
+
   //===--------------------------------------------------------------------===//
   // CollectiveExecuteParams
   //===--------------------------------------------------------------------===//
 
-  // Parameters capturing all the details required for collective execution of
-  // XLA executables (multiple partitions and replicas).
+  // Parameters capturing all the details required for collective execution
+  // of XLA executables (multiple partitions and replicas).
   struct CollectiveExecuteParams {
     static absl::StatusOr<CollectiveExecuteParams> Create(
         const ExecutableRunOptions* run_options);
@@ -165,7 +170,6 @@ class Thunk {
     const DeviceAssignment* device_assignment = nullptr;
     CpuCollectives* collectives = nullptr;
 
-   private:
     CollectiveExecuteParams(RunId run_id, int64_t local_device_ordinal,
                             GlobalDeviceId global_device_id,
                             const DeviceAssignment* device_assignment,
@@ -182,12 +186,12 @@ class Thunk {
     static absl::StatusOr<CustomCallExecuteParams> Create(
         const ExecutableRunOptions* run_options);
 
+    RunId run_id;
     int32_t device_ordinal;
     const Eigen::ThreadPoolDevice* intra_op_thread_pool = nullptr;
     const ffi::ExecutionContext* ffi_execution_context = nullptr;
 
-   private:
-    CustomCallExecuteParams(int32_t device_ordinal,
+    CustomCallExecuteParams(RunId run_id, int32_t device_ordinal,
                             const Eigen::ThreadPoolDevice* intra_op_thread_pool,
                             const ffi::ExecutionContext* ffi_execution_context);
   };
@@ -287,9 +291,6 @@ class Thunk {
       const ExecuteParams& params) = 0;
 
  protected:
-  // Encodes thunk info into the TraceMe compatible format.
-  std::string TraceMeEncode() const;
-
   // Returns `true` if thunk should check buffer slices bounds, alignment, etc.
   // In optimized builds, we skip buffer slices checks, and assume that all
   // buffer slices are valid, as overhead of buffer slices checks adds up and
@@ -303,6 +304,12 @@ class Thunk {
   }
 
  private:
+  friend class ThunkExecutor;
+
+  // Encodes thunk info into the TraceMe compatible format. Used by
+  // ThunkExecutor to create TraceMe annotations for profiler.
+  std::string TraceMeEncode() const;
+
   Kind kind_;
   Info info_;
 

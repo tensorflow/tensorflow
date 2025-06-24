@@ -14,12 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfr/integration/tfr_decompose_ctx.h"
 
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb.h"

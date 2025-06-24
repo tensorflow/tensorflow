@@ -1,4 +1,4 @@
-// RUN: stablehlo-quant-opt %s -stablehlo-fold-constant-transpose \
+// RUN: stablehlo-quant-opt %s -tf-stablehlo-fold-constant-transpose \
 // RUN:   -split-input-file | FileCheck %s
 
 // CHECK-LABEL: transpose_simple_1d

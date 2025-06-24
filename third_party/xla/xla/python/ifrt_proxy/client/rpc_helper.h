@@ -100,6 +100,11 @@ class RpcHelper {
 
   ResponseFuture<MakeArrayFromHostBufferResponse> MakeArrayFromHostBuffer(
       std::unique_ptr<MakeArrayFromHostBufferRequest> req);
+  ResponseFuture<MakeArraysFromHostBufferShardsResponse>
+  MakeArraysFromHostBufferShards(
+      std::unique_ptr<MakeArraysFromHostBufferShardsRequest> req);
+  ResponseFuture<MakeErrorArraysResponse> MakeErrorArrays(
+      std::unique_ptr<MakeErrorArraysRequest> req);
   ResponseFuture<AssembleArrayFromSingleDeviceArraysResponse>
   AssembleArrayFromSingleDeviceArrays(
       std::unique_ptr<AssembleArrayFromSingleDeviceArraysRequest> req);
@@ -138,6 +143,9 @@ class RpcHelper {
       std::unique_ptr<LoadedHostCallbackPollRequest> req);
   ResponseFuture<LoadedHostCallbackReturnResponse> LoadedHostCallbackReturn(
       std::unique_ptr<LoadedHostCallbackReturnRequest> req);
+
+  ResponseFuture<GetDefaultLayoutResponse> GetDefaultLayout(
+      std::unique_ptr<GetDefaultLayoutRequest> req);
 
   // Utility functions.
 

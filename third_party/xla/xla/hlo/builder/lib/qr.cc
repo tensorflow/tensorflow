@@ -16,7 +16,7 @@ limitations under the License.
 #include "xla/hlo/builder/lib/qr.h"
 
 #include <algorithm>
-#include <memory>
+#include <cstdint>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -36,7 +36,7 @@ QrDecomposition Qr(XlaOp a) {
   auto result = [&]() -> absl::StatusOr<QrDecomposition> {
     XlaBuilder* builder = a.builder();
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-    const int num_dims = a_shape.rank();
+    const int num_dims = a_shape.dimensions().size();
     if (num_dims < 2) {
       return InvalidArgument(
           "Arguments to QR must have rank >= 2: got shape %s",
@@ -70,12 +70,12 @@ XlaOp ProductOfElementaryHouseholderReflectors(XlaOp a, XlaOp taus) {
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     TF_ASSIGN_OR_RETURN(Shape taus_shape, builder->GetShape(taus));
-    if (a_shape.rank() < 2) {
+    if (a_shape.dimensions().size() < 2) {
       return InvalidArgument(
           "Matrix `a` must have >= 2 dimensions: got shape %s",
           a_shape.ToString());
     }
-    if (taus_shape.rank() + 1 != a_shape.rank()) {
+    if (taus_shape.dimensions().size() + 1 != a_shape.dimensions().size()) {
       return InvalidArgument(
           "Matrix `taus` must have one fewer dimension than `a`: got shapes "
           "%s and %s",
@@ -89,12 +89,12 @@ XlaOp ProductOfElementaryHouseholderReflectors(XlaOp a, XlaOp taus) {
           "reflectors must have m >= n, got shape %s",
           a_shape.ToString());
     }
-    absl::Span<const int64_t> a_batch_dims =
-        absl::MakeConstSpan(a_shape.dimensions().begin(),
-                            a_shape.dimensions().begin() + a_shape.rank() - 2);
+    absl::Span<const int64_t> a_batch_dims = absl::MakeConstSpan(
+        a_shape.dimensions().begin(),
+        a_shape.dimensions().begin() + a_shape.dimensions().size() - 2);
     absl::Span<const int64_t> taus_batch_dims = absl::MakeConstSpan(
         taus_shape.dimensions().begin(),
-        taus_shape.dimensions().begin() + taus_shape.rank() - 1);
+        taus_shape.dimensions().begin() + taus_shape.dimensions().size() - 1);
     const int64_t k = ShapeUtil::GetDimension(taus_shape, -1);
     if (a_shape.element_type() != taus_shape.element_type() ||
         a_batch_dims != taus_batch_dims || k > n) {
@@ -125,7 +125,7 @@ void QrExplicit(XlaOp a, bool full_matrices, XlaOp& q, XlaOp& r) {
       t = SliceInMinorDims(qr.q_and_r, {0, 0}, {m, m});
     } else {
       t = PadInDim(qr.q_and_r, Zero(a.builder(), a_shape.element_type()),
-                   a_shape.dimensions_size() - 1, /*pad_lo=*/0,
+                   a_shape.dimensions().size() - 1, /*pad_lo=*/0,
                    /*pad_hi=*/m - n);
     }
     q = ProductOfElementaryHouseholderReflectors(t, qr.taus);

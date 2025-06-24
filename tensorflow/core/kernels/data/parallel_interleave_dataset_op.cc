@@ -19,9 +19,13 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/common_runtime/function.h"

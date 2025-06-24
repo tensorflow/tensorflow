@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/nnapi/nnapi_util.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 

@@ -48,7 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace mlir {
 namespace TF {
@@ -95,7 +95,7 @@ absl::StatusOr<OwningOpRef<ModuleOp>> DeserializeStablehlo(MLIRContext *context,
           context, static_cast<int>(op.getVersion()), op.getModule(),
           std::move(disabled_checks), std::move(platforms),
           /*num_invocation_args=*/op.getArgs().size(),
-          op.getHasTokenInputOutput()));
+          op.getHasTokenInputOutput(), op.getUseShardyPartitioner()));
   return std::move(*loader).module();
 }
 

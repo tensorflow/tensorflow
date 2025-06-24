@@ -47,7 +47,7 @@ module @entry attributes {
 // CHECK:   %Arg_3.4 = s32[] parameter(3)
 // CHECK:   %Arg_0.1 = f32[2,3,4]{2,1,0} parameter(0)
 // CHECK:   %Arg_1.2 = f32[2,3,4]{2,1,0} parameter(1)
-// CHECK:   ROOT %add.5 = f32[2,3,4]{2,1,0} add(f32[2,3,4]{2,1,0} %Arg_0.1, f32[2,3,4]{2,1,0} %Arg_1.2)
+// CHECK:   ROOT %add.5 = f32[2,3,4]{2,1,0} add(%Arg_0.1, %Arg_1.2)
 // CHECK: }
 
 // -----

@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import contextlib
+import itertools
+import logging
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -23,13 +27,16 @@ from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
 from tensorflow.python.framework import config
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import test
+from tensorflow.python.tpu import embedding_context_utils as ecu
 from tensorflow.python.tpu import tpu_embedding_for_serving
 from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.tpu import tpu_embedding_v3
@@ -845,6 +852,208 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
                 multiply_weight_decay_factor_by_learning_rate=True,
             ),
         )
+
+  @parameterized.parameters(
+      *list(
+          itertools.product(
+              [True, False], [True, False], [True, False], [True, False]
+          )
+      )
+  )
+  def test_pipelining_and_summary_recording(
+      self,
+      record_summaries,
+      is_enqueue_separated,
+      use_predicate_function,
+      use_sequential_embedding_context,
+  ):
+    """Test that pipelining is disabled when summaries are recorded and vice versa."""
+    num_steps = 10
+    feature_config = tpu_embedding_v2_utils.FeatureConfig(
+        table=self.table_video, name='watched', output_shape=[16]
+    )
+
+    resolver = tpu_cluster_resolver.TPUClusterResolver(tpu='')
+    remote.connect_to_cluster(resolver)
+    tpu_cluster_resolver.initialize_tpu_system(resolver)
+    strategy = tpu_strategy.TPUStrategy(resolver)
+
+    sparse_features = sparse_ops.sparse_reorder(
+        sparse_tensor.SparseTensor(
+            indices=[[i % 16, i] for i in range(1024)],
+            values=np.arange(1024),
+            dense_shape=[16, 1024],
+        )
+    )
+
+    dataset = dataset_ops.DatasetV2.from_tensors(sparse_features)
+    dataset = (
+        dataset.unbatch()
+        .repeat()
+        .batch(16 * strategy.num_replicas_in_sync, drop_remainder=True)
+    )
+
+    dist = strategy.experimental_distribute_dataset(
+        dataset,
+        options=distribute_lib.InputOptions(experimental_fetch_to_device=False),
+    )
+    tpu_iter = iter(dist)
+
+    with strategy.scope():
+      mid_level_api = tpu_embedding_v3.TPUEmbeddingV2(
+          feature_config=feature_config,
+          optimizer=tpu_embedding_v2_utils.SGD(learning_rate=1.0),
+          pipeline_execution_with_tensor_core=True,
+      )
+      weight = tf_variables.Variable(initial_value=10)
+
+    if is_enqueue_separated:
+
+      @def_function.function
+      def tpu_test_fn(tpu_iter):
+        def step(data):
+          activations, preserved_results = mid_level_api.dequeue(data)
+          activations = activations * weight
+          mid_level_api.apply_gradients(activations, preserved_results)
+          return activations
+
+        @def_function.function
+        def enqueue(data):
+          return mid_level_api.enqueue(
+              data, device=strategy.extended.worker_devices[0]
+          )
+
+        inner_result = array_ops.zeros(
+            [16, self.embedding_dim], dtype=dtypes.float32
+        )
+        for _ in math_ops.range(num_steps):
+          host_partition_result = enqueue(next(tpu_iter))
+          inner_result = strategy.run(step, args=(host_partition_result,))
+        return inner_result
+
+    else:
+
+      @def_function.function
+      def tpu_test_fn(tpu_iter):
+        def step(data):
+          activations, preserved_results = mid_level_api(data)
+          activations = activations * weight
+          mid_level_api.apply_gradients(activations, preserved_results)
+          return activations
+
+        inner_result = array_ops.zeros(
+            [16, self.embedding_dim], dtype=dtypes.float32
+        )
+        for _ in math_ops.range(num_steps):
+          inner_result = strategy.run(step, args=(next(tpu_iter),))
+        return inner_result
+
+    class MockSummaryWriter(summary_ops_v2.SummaryWriter):
+
+      def init(self):
+        pass
+
+      def flush(self):
+        pass
+
+      def close(self):
+        pass
+
+    if use_predicate_function:
+      should_record_summaries = lambda: record_summaries
+      should_be_pipelined = True
+    else:
+      should_record_summaries = record_summaries
+      should_be_pipelined = not record_summaries
+
+    sequential_embedding_context = contextlib.nullcontext()
+    if use_sequential_embedding_context:
+      should_be_pipelined = False
+      sequential_embedding_context = ecu.SequentialEmbeddingContext()
+
+    with MockSummaryWriter().as_default():
+      with sequential_embedding_context:
+        with summary_ops_v2.record_if(should_record_summaries):
+          is_pipelined = self.is_function_pipelined(tpu_test_fn, tpu_iter)
+          # If we are recording summaries the function should not be pipelined
+          # and vice versa.
+          self.assertEqual(is_pipelined, should_be_pipelined)
+
+  def is_function_pipelined(self, tf_function, *args):
+    """Returns whether the tf_function is flagged for embedding pipelining.
+
+    Args:
+      tf_function: a tf.function.
+      *args: the arguments to the tf_function.
+
+    Returns:
+      Whether the tf_function is (will be) pipelined.
+
+    This helper looks for a while loop in the provided function. It then looks
+    for any op that has the pipelining attribute (e.g.,
+    XlaSparseDenseMatmulWithCsrInput). The presence of the attribute indicates
+    that the function is to be pipelined during compilation.
+
+    Example usge:
+
+      with summary_ops_v2.record_if(False):
+        is_pipelined = self.is_function_pipelined(tpu_test_fn, tpu_iter)
+        self.assertTrue(is_pipelined)
+      with summary_ops_v2.record_if(True):
+        is_pipelined = self.is_function_pipelined(tpu_test_fn, tpu_iter)
+        self.assertFalse(is_pipelined)
+    """
+    # The attribute to look for to see if function is pipelined:
+    attr_name = tpu_embedding_v3._PIPELINE_ATTRIBUTE
+
+    ############################################################################
+    # First, find the while loop op.
+    ############################################################################
+    func_graph = tf_function.get_concrete_function(*args).graph
+    # type(func_graph) is tensorflow.python.framework.func_graph.FuncGraph
+    while_op = None
+    for op in func_graph.get_operations():
+      # type(op) is tensorflow.python.framework.ops.Operation
+      if op.name == 'while':
+        while_op = op
+        break
+    self.assertIsNotNone(while_op, 'while op not found')
+
+    ############################################################################
+    # Second, find the body of the while loop.
+    ############################################################################
+    body_name = while_op.get_attr('body').name
+    while_body_func = None
+    try:
+      while_body_func = func_graph.get_concrete_function(body_name)
+    except AttributeError as exc:
+      for func in while_op.graph._functions.values():
+        if func.name.decode() == body_name:
+          while_body_func = func
+          break
+      if while_body_func is None:
+        raise ValueError('body not found') from exc
+    while_body_graph = while_body_func.graph
+
+    ############################################################################
+    # Finally, find any pipelined SC op by looking for a pipelining attribute.
+    ############################################################################
+    attr_value = None
+    for op in while_body_graph.get_operations():
+      try:
+        attr = op.get_attr(attr_name)
+        logging.info(
+            'Op "%s" has pipelining attr: %s : %s', op.name, attr_name, attr
+        )
+        attr_value = attr.decode('utf-8')
+        break
+      except ValueError:
+        pass
+    has_pipelining_attr = attr_value in [
+        tpu_embedding_v3._PIPELINE_MODE_FORWARD,
+        tpu_embedding_v3._PIPELINE_MODE_BACKWARD,
+    ]
+    return has_pipelining_attr
 
 
 if __name__ == '__main__':

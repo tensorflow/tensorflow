@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_buffer.h"
-#include "xla/service/host_memory_offload_annotations.h"
+#include "xla/service/memory_annotations.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -102,6 +102,10 @@ bool IsHostAsyncStart(const HloInstruction* instruction);
 bool IsSynchronousCopyFromOrToHost(const HloInstruction* instruction);
 
 bool ComputeTypeIsHost(const HloInstruction* hlo_instruction);
+
+// Sets the frontend attribute of the instruction to indicate that the
+// instruction should be lowered as host compute.
+void SetHostComputeFrontendAttribute(HloInstruction& host_instruction);
 
 }  // namespace host_offload_utils
 }  // namespace xla

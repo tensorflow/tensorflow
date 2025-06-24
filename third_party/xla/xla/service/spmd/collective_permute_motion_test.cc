@@ -20,14 +20,14 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
-using CollectivePermuteMotionTest = HloTestBase;
+using CollectivePermuteMotionTest = HloHardwareIndependentTestBase;
 namespace op = xla::testing::opcode_matchers;
 
 TEST_F(CollectivePermuteMotionTest, SimpleMove) {

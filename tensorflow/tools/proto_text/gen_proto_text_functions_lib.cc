@@ -228,7 +228,7 @@ string GetProtoHeaderName(const FileDescriptor& fd) {
 string GetCppClass(const FieldDescriptor& d) {
   string cpp_class = d.cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE
                          ? GetQualifiedName(*d.message_type())
-                         : d.cpp_type_name();
+                         : std::string(d.cpp_type_name());
 
   // In open-source TensorFlow, the definition of int64 varies across
   // platforms. The following line, which is manipulated during internal-
@@ -835,7 +835,6 @@ void Generator::Generate(const FileDescriptor& fd) {
   Print();
   Print("using ::tensorflow::strings::ProtoSpaceAndComments;");
   Print("using ::tensorflow::strings::Scanner;");
-  Print("using ::tensorflow::strings::StrCat;");
   AddNamespaceToCurrentSection(package, true /* is_open */);
 
   // Add declarations and definitions.

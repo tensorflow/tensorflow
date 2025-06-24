@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/fusion_utils.h"
 
+#include <algorithm>
+#include <iterator>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/strip.h"

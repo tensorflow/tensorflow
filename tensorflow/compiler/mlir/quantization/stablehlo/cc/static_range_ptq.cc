@@ -43,10 +43,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace mlir::quant::stablehlo {
 
@@ -56,8 +56,8 @@ using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PyFunctionLibrary;
 
 StaticRangePtqComponent::StaticRangePtqComponent(
-    absl::Nonnull<MLIRContext*> ctx,
-    absl::Nonnull<const PyFunctionLibrary*> py_function_library,
+    MLIRContext* absl_nonnull ctx,
+    const PyFunctionLibrary* absl_nonnull py_function_library,
     const absl::string_view src_saved_model_path,
     std::vector<std::string> signature_keys,
     std::unordered_set<std::string> tags,

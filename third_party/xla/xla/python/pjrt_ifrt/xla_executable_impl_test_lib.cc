@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -42,8 +43,8 @@ limitations under the License.
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
@@ -51,33 +52,37 @@ namespace {
 
 using ::testing::ElementsAreArray;
 using ::testing::SizeIs;
+using ::testing::UnorderedElementsAre;
+using ::tsl::testing::IsOkAndHolds;
 
 // Serialized `ModuleOp` that does add 1.
 static const char* const module_add_one =
     R"(module {
-func.func @main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
-  %0 = "mhlo.copy"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
-  %1 = mhlo.constant dense<1.000000e+00> : tensor<f32>
-  %2 = "mhlo.broadcast"(%1) {broadcast_sizes = dense<[2, 3]> : tensor<2xi64>} : (tensor<f32>) -> tensor<2x3xf32>
-  %3 = mhlo.add %0, %2 : tensor<2x3xf32>
-  return %3 : tensor<2x3xf32>
-}})";
+  func.func @main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+    %0 = stablehlo.constant dense<1.000000e+00> : tensor<f32>
+    %1 = "stablehlo.broadcast_in_dim"(%0) {broadcast_dimensions = array<i64>} : (tensor<f32>) -> tensor<2x3xf32>
+    %2 = stablehlo.add %arg0, %1 : tensor<2x3xf32>
+    return %2 : tensor<2x3xf32>
+  }
+})";
 
 // Compiles an MLIR module on specified devices. If devices is empty, compiles
 // it as a portable executable.
-absl::StatusOr<std::unique_ptr<LoadedExecutable>> CompileOnDevices(
+absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
     Client* client, Compiler* compiler, absl::string_view mlir_module_str,
     absl::Span<Device* const> devices, bool replicated) {
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       xla::ParseMlirModuleString(mlir_module_str, context));
 
-  auto compile_options =
-      std::make_unique<XlaCompileOptions>(xla::CompileOptions());
+  xla::CompileOptions compile_options;
   ExecutableBuildOptions& build_options =
-      compile_options->compile_options.executable_build_options;
+      compile_options.executable_build_options;
+  DeviceListRef device_list;
   if (devices.empty()) {
-    compile_options->compile_options.compile_portable_executable = true;
+    compile_options.compile_portable_executable = true;
+    device_list =
+        client->MakeDeviceList({client->addressable_devices().front()});
   } else {
     build_options.set_device_ordinal(devices.front()->Id().value());
     if (replicated) {
@@ -102,9 +107,47 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> CompileOnDevices(
       }
       build_options.set_device_assignment(device_assignment);
     }
+    device_list = client->MakeDeviceList(devices);
   }
-  return compiler->Compile(std::make_unique<HloProgram>(*module),
-                           std::move(compile_options));
+  auto xla_compile_options = std::make_unique<XlaCompileOptions>(
+      compile_options, std::move(device_list));
+  return compiler->CompileAndLoad(std::make_unique<HloProgram>(*module),
+                                  std::move(xla_compile_options));
+}
+
+TEST(LoadedExecutableImplTest, GetDonatableInputIndices) {
+  static const char* const multi_arg_add_all = R"(module {
+    func.func @main(
+        %arg0: tensor<2x3xf32> {jax.buffer_donor = true},
+        %arg1: tensor<2x3xf32>,
+        %arg2: tensor<2x3xf32> {jax.buffer_donor = true},
+        %arg3: tensor<2x3xf32>
+      ) -> tensor<2x3xf32> {
+      %4 = stablehlo.add %arg0, %arg1 : tensor<2x3xf32>
+      %5 = stablehlo.add %arg2, %arg3 : tensor<2x3xf32>
+      %6 = stablehlo.add %4, %5 : tensor<2x3xf32>
+      return %6 : tensor<2x3xf32>
+    }})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Compiler* compiler = client->GetDefaultCompiler();
+
+  std::vector<Device*> devices = {client->addressable_devices().at(0)};
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto loaded_executable,
+      CompileOnDevices(client.get(), compiler, multi_arg_add_all, devices,
+                       /*replicated=*/false));
+
+  absl::StatusOr<absl::Span<const int>> donatable_input_indices =
+      loaded_executable->GetDonatableInputIndices();
+
+  if (absl::IsUnimplemented(donatable_input_indices.status())) {
+    GTEST_SKIP() << "GetDonatableInputIndices() returned unimplemented error: "
+                 << donatable_input_indices.status();
+  }
+
+  EXPECT_THAT(donatable_input_indices,
+              IsOkAndHolds(UnorderedElementsAre(0, 2)));
 }
 
 TEST(LoadedExecutableImplTest, CompileAndExecute) {
@@ -122,8 +165,7 @@ TEST(LoadedExecutableImplTest, CompileAndExecute) {
   std::vector<float> data(6);
   std::iota(data.begin(), data.end(), 0);
   Device* device = client->addressable_devices().at(0);
-  std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device, MemoryKind());
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto array, client->MakeArrayFromHostBuffer(
@@ -167,8 +209,7 @@ TEST(LoadedExecutableImplTest, CompileAndExecutePortable) {
   std::vector<float> data(6);
   std::iota(data.begin(), data.end(), 0);
   Device* device = client->addressable_devices().at(0);
-  std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device, MemoryKind());
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto array, client->MakeArrayFromHostBuffer(
@@ -179,10 +220,10 @@ TEST(LoadedExecutableImplTest, CompileAndExecutePortable) {
 
   ExecuteOptions execute_options;
   execute_options.fill_status = true;
-  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                          loaded_executable->Execute(
-                              absl::MakeSpan(&array, 1), execute_options,
-                              /*devices=*/BasicDeviceList::Create({device})));
+  TF_ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      loaded_executable->Execute(absl::MakeSpan(&array, 1), execute_options,
+                                 /*devices=*/client->MakeDeviceList({device})));
   TF_ASSERT_OK(result.status.Await());
   EXPECT_THAT(result.outputs, SizeIs(1));
 
@@ -212,8 +253,7 @@ TEST(LoadedExecutableImplTest, DoNotFillStatus) {
   std::vector<float> data(6);
   std::iota(data.begin(), data.end(), 0);
   Device* device = client->addressable_devices().at(0);
-  std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device, MemoryKind());
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto array, client->MakeArrayFromHostBuffer(
@@ -240,33 +280,6 @@ TEST(LoadedExecutableImplTest, DoNotFillStatus) {
   std::vector<float> expected_out_data(6);
   std::iota(expected_out_data.begin(), expected_out_data.end(), 1);
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
-}
-
-TEST(LoadedExecutableImplTest, Delete) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-  Compiler* compiler = client->GetDefaultCompiler();
-
-  std::vector<Device*> devices = {client->addressable_devices().at(0)};
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto loaded_executable,
-      CompileOnDevices(client.get(), compiler, module_add_one, devices,
-                       /*replicated=*/false));
-  TF_EXPECT_OK(loaded_executable->Delete().Await());
-}
-
-TEST(LoadedExecutableImplTest, IsDeleted) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-  Compiler* compiler = client->GetDefaultCompiler();
-
-  std::vector<Device*> devices = {client->addressable_devices().at(0)};
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto loaded_executable,
-      CompileOnDevices(client.get(), compiler, module_add_one, devices,
-                       /*replicated=*/false));
-  EXPECT_FALSE(loaded_executable->IsDeleted());
-  auto future = loaded_executable->Delete();
-  EXPECT_TRUE(loaded_executable->IsDeleted());
-  TF_EXPECT_OK(future.Await());
 }
 
 }  // namespace

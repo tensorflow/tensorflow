@@ -19,6 +19,7 @@ limitations under the License.
 #include <initializer_list>
 #include <memory>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/core/framework/graph_debug_info.pb.h"

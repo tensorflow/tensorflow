@@ -20,6 +20,7 @@
 #include "fuzztest/fuzztest.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/device_factory.h"
@@ -31,7 +32,6 @@
 #include "tensorflow/core/function/runtime_client/runtime_client.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace fuzzing {

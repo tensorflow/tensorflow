@@ -27,7 +27,8 @@ namespace batch_util {
 // to move the `element` argument into this function, and the implementation
 // may be able to optimize the copy to a move. This is particularly important
 // for DT_STRING tensors.
-absl::Status CopyElementToSlice(Tensor element, Tensor* parent, int64_t index);
+absl::Status CopyElementToSlice(const Tensor& element, Tensor* parent,
+                                int64_t index);
 
 // Copies the index^th slice of parent (in the 0th dimension) into element.
 absl::Status CopySliceToElement(const Tensor& parent, Tensor* element,

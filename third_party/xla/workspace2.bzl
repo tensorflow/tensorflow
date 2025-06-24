@@ -4,7 +4,7 @@
 load("@bazel_skylib//lib:versions.bzl", "versions")
 
 # Import TSL Workspaces
-load("@local_tsl//:workspace2.bzl", "tsl_workspace2")
+load("//:tsl_workspace2.bzl", "tsl_workspace2")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 load("//third_party/dlpack:workspace.bzl", dlpack = "repo")
 
@@ -45,17 +45,17 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "3306f4178c8594b689165d385e644f03a3154c3be044f6ae36dd170fbf182cf5",
-        strip_prefix = "XNNPACK-983d013300f19fd3f4e33220b6401408e97a8d12",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/983d013300f19fd3f4e33220b6401408e97a8d12.zip"),
+        sha256 = "8665f9876227fc1f5aaea9ca46bd24dac65d85053a510a6e71857ee32055e126",
+        strip_prefix = "XNNPACK-0a3103ab29306b25a6d1293a746945754a556b9c",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/0a3103ab29306b25a6d1293a746945754a556b9c.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "ad37707084a6d4ff41be10cbe8540c75bea057ba79d0de6c367c1bfac6ba0852",
-        strip_prefix = "kleidiai-40a926833857fb64786e02f97703e42b1537cb57",
-        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/40a926833857fb64786e02f97703e42b1537cb57/kleidiai-40a926833857fb64786e02f97703e42b1537cb57.zip"),
+        sha256 = "ca8b8ee0c3dd2284c1eae3ac07f7064ce92317ac7c3cfcd1d511662e0594cdb8",
+        strip_prefix = "kleidiai-fb4caf0937a45002861cc12788b6018bfb89ae58",
+        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/fb4caf0937a45002861cc12788b6018bfb89ae58.zip"),
     )
 
     tf_http_archive(
@@ -67,23 +67,22 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "cpuinfo",
-        sha256 = "52e0ffd7998d8cb3a927d8a6e1145763744d866d2be09c4eccea27fc157b6bb0",
-        strip_prefix = "cpuinfo-cebb0933058d7f181c979afd50601dc311e1bf8c",
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/cebb0933058d7f181c979afd50601dc311e1bf8c.zip"),
+        sha256 = "ae356c4c0c841e20711b5e111a1ccdec9c2f3c1dd7bde7cfba1bed18d6d02459",
+        strip_prefix = "cpuinfo-de0ce7c7251372892e53ce9bc891750d2c9a4fd8",
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/de0ce7c7251372892e53ce9bc891750d2c9a4fd8.zip"),
     )
 
     tf_http_archive(
         name = "pthreadpool",
-        sha256 = "a4cf06de57bfdf8d7b537c61f1c3071bce74e57524fe053e0bbd2332feca7f95",
-        strip_prefix = "pthreadpool-4fe0e1e183925bf8cfa6aae24237e724a96479b8",
-        urls = tf_mirror_urls("https://github.com/Maratyszcza/pthreadpool/archive/4fe0e1e183925bf8cfa6aae24237e724a96479b8.zip"),
+        sha256 = "b193fcb18abf0d5bdb989968ccd8e274ae0ce8d89b0f1a61763582fb716b259c",
+        strip_prefix = "pthreadpool-dcc9f28589066af0dbd4555579281230abbf74dd",
+        urls = tf_mirror_urls("https://github.com/google/pthreadpool/archive/dcc9f28589066af0dbd4555579281230abbf74dd.zip"),
     )
 
     tf_http_archive(
         name = "jsoncpp_git",
         sha256 = "f409856e5920c18d0c2fb85276e24ee607d2a09b5e7d5f0a371368903c275da2",
         strip_prefix = "jsoncpp-1.9.5",
-        system_build_file = "//third_party/systemlibs:jsoncpp.BUILD",
         urls = tf_mirror_urls("https://github.com/open-source-parsers/jsoncpp/archive/1.9.5.tar.gz"),
     )
 
@@ -91,33 +90,32 @@ def _tf_repositories():
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "7be8afebc693f0ef75bbc673ce5c1cf422673e84ea7d53e488201756c046496e",
-        strip_prefix = "cudnn-frontend-1.9.0",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.9.0.zip"),
+        sha256 = "34dfe01057e43e799af207522aa0c863ad3177f8c1568b6e7a7e4ccf1cbff769",
+        strip_prefix = "cudnn-frontend-1.11.0",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.11.0.zip"),
     )
 
     tf_http_archive(
         name = "cutlass_archive",
         build_file = "//third_party:cutlass.BUILD",
-        sha256 = "84cf3fcc47c440a8dde016eb458f8d6b93b3335d9c3a7a16f388333823f1eae0",
-        strip_prefix = "cutlass-afa7b7241aabe598b725c65480bd9fa71121732c",
-        urls = tf_mirror_urls("https://github.com/chsigg/cutlass/archive/afa7b7241aabe598b725c65480bd9fa71121732c.tar.gz"),
+        sha256 = "a7739ca3dc74e3a5cb57f93fc95224c5e2a3c2dff2c16bb09a5e459463604c08",
+        strip_prefix = "cutlass-3.8.0",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cutlass/archive/refs/tags/v3.8.0.zip"),
     )
 
     tf_http_archive(
         name = "boringssl",
         sha256 = "9dc53f851107eaf87b391136d13b815df97ec8f76dadb487b58b2fc45e624d2c",
         strip_prefix = "boringssl-c00d7ca810e93780bd0c8ee4eea28f4f2ea4bcdc",
-        system_build_file = "//third_party/systemlibs:boringssl.BUILD",
         urls = tf_mirror_urls("https://github.com/google/boringssl/archive/c00d7ca810e93780bd0c8ee4eea28f4f2ea4bcdc.tar.gz"),
     )
 
     tf_http_archive(
         name = "com_google_ortools",
-        sha256 = "bc4b07dc9c23f0cca43b1f5c889f08a59c8f2515836b03d4cc7e0f8f2c879234",
-        strip_prefix = "or-tools-9.6",
+        sha256 = "f6a0bd5b9f3058aa1a814b798db5d393c31ec9cbb6103486728997b49ab127bc",
+        strip_prefix = "or-tools-9.11",
         patch_file = ["//third_party/ortools:ortools.patch"],
-        urls = tf_mirror_urls("https://github.com/google/or-tools/archive/v9.6.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/google/or-tools/archive/v9.11.tar.gz"),
         repo_mapping = {
             "@com_google_protobuf_cc": "@com_google_protobuf",
             "@eigen": "@eigen_archive",
@@ -136,11 +134,11 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "scip",
-        sha256 = "fe7636f8165a8c9298ff55ed3220d084d4ea31ba9b69d2733beec53e0e4335d6",
-        strip_prefix = "scip-803",
-        build_file = "//third_party/ortools:scip.BUILD",
-        patch_file = ["//third_party/ortools:scip.patch"],
-        urls = tf_mirror_urls("https://github.com/scipopt/scip/archive/refs/tags/v803.tar.gz"),
+        sha256 = "ee221bd13a6b24738f2e74321e2efdebd6d7c603574ca6f6cb9d4472ead2c22f",
+        strip_prefix = "scip-900",
+        build_file = "@com_google_ortools//bazel:scip.BUILD.bazel",
+        patch_file = ["@com_google_ortools//bazel:scip-v900.patch"],
+        urls = tf_mirror_urls("https://github.com/scipopt/scip/archive/refs/tags/v900.tar.gz"),
     )
 
     tf_http_archive(
@@ -153,9 +151,16 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "pybind11_protobuf",
-        urls = tf_mirror_urls("https://github.com/pybind/pybind11_protobuf/archive/80f3440cd8fee124e077e2e47a8a17b78b451363.zip"),
-        sha256 = "c7ab64b1ccf9a678694a89035a8c865a693e4e872803778f91f0965c2f281d78",
-        strip_prefix = "pybind11_protobuf-80f3440cd8fee124e077e2e47a8a17b78b451363",
+        urls = tf_mirror_urls("https://github.com/pybind/pybind11_protobuf/archive/f02a2b7653bc50eb5119d125842a3870db95d251.zip"),
+        sha256 = "3cf7bf0f23954c5ce6c37f0a215f506efa3035ca06e3b390d67f4cbe684dce23",
+        strip_prefix = "pybind11_protobuf-f02a2b7653bc50eb5119d125842a3870db95d251",
+    )
+
+    tf_http_archive(
+        name = "com_github_nelhage_rules_boost",
+        urls = tf_mirror_urls("https://github.com/nelhage/rules_boost/archive/5160325dbdc8c9e499f9d9917d913f35f1785d52.zip"),
+        strip_prefix = "rules_boost-5160325dbdc8c9e499f9d9917d913f35f1785d52",
+        sha256 = "feb4b1294684c79df7c1e08f1aec5da0da52021e33db59c88edbe86b4d1a017a",
     )
 
 # buildifier: disable=function-docstring

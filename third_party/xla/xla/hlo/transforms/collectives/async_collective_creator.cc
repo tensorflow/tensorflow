@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -90,28 +91,29 @@ absl::StatusOr<ReplacedAsync> CreateAsyncCollectivePermute(
     HloInstruction* instruction, absl::Span<const Shape> context_shapes) {
   auto* cp = Cast<HloCollectivePermuteInstruction>(instruction);
   HloInstruction* start;
-  HloInstruction* operand = cp->mutable_operand(0);
-  if (cp->operand_count() == 1) {
+  std::vector<const Shape*> operand_shapes;
+  absl::c_transform(
+      cp->operands(), std::back_inserter(operand_shapes),
+      [](const HloInstruction* operand) { return &(operand->shape()); });
+  if (!cp->inplace()) {
     start = instruction->AddInstruction(
         HloInstruction::CreateCollectivePermuteStart(
             ShapeInference::InferCollectivePermuteStartShape(
-                {&operand->shape()}, context_shapes)
+                operand_shapes, context_shapes, false)
                 .value(),
-            operand, cp->source_target_pairs(), cp->channel_id()));
+            cp->operands(), cp->source_target_pairs(), cp->channel_id()));
   } else {
+    // TODO support grouped partial collective permutes
     CHECK_EQ(cp->operand_count(), 4);
-    std::vector<const Shape*> operand_shapes;
-    absl::c_transform(
-        cp->operands(), std::back_inserter(operand_shapes),
-        [](const HloInstruction* operand) { return &(operand->shape()); });
     start = instruction->AddInstruction(
         HloInstruction::CreateCollectivePermuteStart(
-            ShapeInference::InferCollectivePermuteStartShape(operand_shapes,
-                                                             context_shapes)
+            ShapeInference::InferCollectivePermuteStartShape(
+                operand_shapes, context_shapes, true)
                 .value(),
-            operand, cp->mutable_operand(1), cp->mutable_operand(2),
-            cp->mutable_operand(3), cp->source_target_pairs(),
-            cp->dynamic_slice_sizes_list(), cp->channel_id()));
+            cp->mutable_operand(0), cp->mutable_operand(1),
+            cp->mutable_operand(2), cp->mutable_operand(3),
+            cp->source_target_pairs(), cp->dynamic_slice_sizes_list(),
+            cp->channel_id()));
     if (HasDisjointReadWriteRegionsAttr(cp)) {
       SetDisjointReadWriteRegionsAttr(start);
     }
@@ -140,7 +142,7 @@ absl::StatusOr<ReplacedAsync> CreateAsyncStartDone(
 int64_t GetShapeSize(const Shape& shape) {
   int64_t size_in_bytes = 0;
   if (shape.IsTuple()) {
-    for (int64_t i = 0; i < shape.tuple_shapes_size(); ++i) {
+    for (int64_t i = 0; i < shape.tuple_shapes().size(); ++i) {
       size_in_bytes += GetShapeSize(shape.tuple_shapes(i));
     }
     return size_in_bytes;
@@ -217,6 +219,8 @@ absl::StatusOr<bool> AsyncCollectiveCreator::ReplaceCollectives(
     TF_RETURN_IF_ERROR(async_pair.status());
     async_pair->start->set_metadata(instruction->metadata());
     async_pair->start->CopyBackendConfigFrom(instruction);
+    async_pair->done->set_metadata(instruction->metadata());
+    async_pair->done->CopyBackendConfigFrom(instruction);
     if (should_update_schedule) {
       replaced_pairs[instruction] = *async_pair;
     }

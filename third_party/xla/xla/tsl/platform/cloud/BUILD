@@ -35,7 +35,8 @@ cc_library(
     deps = [
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:types",
-        "@local_tsl//tsl/platform:mutex",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
@@ -48,7 +49,6 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:notification",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:thread_annotations",
@@ -67,7 +67,8 @@ cc_library(
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/cleanup",
-        "@local_tsl//tsl/platform:mutex",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:notification",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:thread_annotations",
@@ -86,7 +87,10 @@ cc_library(
         "//xla/tsl/platform:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:retrying_utils",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -97,6 +101,8 @@ cc_library(
     copts = tsl_copts(),
     deps = [
         "//xla/tsl/platform:env",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -126,8 +132,8 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@jsoncpp_git//:jsoncpp",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
@@ -171,8 +177,8 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@jsoncpp_git//:jsoncpp",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
@@ -260,9 +266,9 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@jsoncpp_git//:jsoncpp",
         "@local_tsl//tsl/platform:base64",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:retrying_utils",
         "@local_tsl//tsl/platform:thread_annotations",
@@ -314,7 +320,7 @@ cc_library(
     deps = [
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:types",
-        "@local_tsl//tsl/platform:mutex",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -364,7 +370,7 @@ tsl_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -379,9 +385,9 @@ tsl_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:notification",
     ],
@@ -398,9 +404,9 @@ tsl_cc_test(
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",
         "//xla/tsl/profiler/utils:time_utils_impl",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:str_util",
         "@local_tsl//tsl/platform:strcat",
     ],
@@ -415,7 +421,8 @@ tsl_cc_test(
         ":gcs_dns_cache",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:str_util",
     ],
 )
@@ -430,7 +437,7 @@ tsl_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:str_util",
     ],
 )
@@ -439,14 +446,15 @@ tsl_cc_test(
     name = "curl_http_request_test",
     size = "small",
     srcs = ["curl_http_request_test.cc"],
+    shuffle_tests = False,
     deps = [
         ":curl_http_request",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:platform_port",
@@ -469,8 +477,8 @@ tsl_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "@boringssl//:crypto",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:base64",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:scanner",
@@ -493,7 +501,7 @@ tsl_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:path",
     ],
 )
@@ -508,7 +516,7 @@ tsl_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -521,7 +529,7 @@ tsl_cc_test(
         ":http_request_fake",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -533,6 +541,6 @@ tsl_cc_test(
         ":time_util",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )

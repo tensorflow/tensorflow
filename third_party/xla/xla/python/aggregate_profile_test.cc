@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla {

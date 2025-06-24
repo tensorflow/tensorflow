@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace ifrt {

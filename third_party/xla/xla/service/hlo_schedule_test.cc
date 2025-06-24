@@ -25,14 +25,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test_helpers.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -40,7 +40,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class HloScheduleTest : public HloTestBase {};
+class HloScheduleTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(HloScheduleTest, UpdateScheduleUnchangedModule) {
   // Updating the schedule of an unchanged HLO module should not affect the
@@ -395,7 +395,7 @@ ENTRY %WhileLoop () -> (s32[], f32[10]) {
                            buffer.shape(),
                            /*pointer_size=*/sizeof(void*));
                      },
-                     /*algorithm=*/{}, {HloInstruction::kMainExecutionThread}));
+                     {HloInstruction::kMainExecutionThread}));
 
   HloInstruction* xla_while = module->entry_computation()
                                   ->root_instruction()
@@ -475,7 +475,7 @@ ENTRY %WhileLoop () -> (s32[], f32[10]) {
                            buffer.shape(),
                            /*pointer_size=*/sizeof(void*));
                      },
-                     /*algorithm=*/{}, {HloInstruction::kMainExecutionThread}));
+                     {HloInstruction::kMainExecutionThread}));
 
   HloComputation* entry_computation = module->entry_computation();
   // Insert computation
@@ -522,6 +522,116 @@ ENTRY %WhileLoop () -> (s32[], f32[10]) {
 
   ASSERT_TRUE(schedule.is_computation_scheduled(
       module->GetComputationWithName(added_computation_name)));
+}
+
+TEST_F(HloScheduleTest, UpdateScheduleWithControlDependencyBeforeEverything) {
+  // Add some additional instructions to a module and verify the schedule can be
+  // updated.
+  const std::string module_str = R"(
+HloModule UpdateScheduleWithNewInstructions
+
+ENTRY main {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  c = f32[] constant(42.0)
+  sum = f32[] add(a, b)
+  neg = f32[] negate(c)
+  ROOT root = f32[] multiply(sum, neg)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloSchedule schedule,
+      ScheduleModule(module.get(), [](const BufferValue& buffer) {
+        return ShapeUtil::ByteSizeOf(buffer.shape());
+      }));
+
+  HloComputation* entry = module->entry_computation();
+  const Shape shape = entry->root_instruction()->shape();
+  HloInstruction* constant = entry->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)),
+      "newly_added_constant");
+
+  // Add control dependencies forcing this constant to be scheduled before
+  // everything else.
+  for (HloInstruction* instruction : entry->instructions()) {
+    if (instruction == constant) {
+      // Do not add a control dependency to self.
+      continue;
+    }
+    TF_ASSERT_OK(constant->AddControlDependencyTo(instruction));
+  }
+
+  auto in_schedule = [&](const HloInstruction* hlo) {
+    return absl::c_linear_search(schedule.sequence(entry).instructions(), hlo);
+  };
+
+  EXPECT_EQ(schedule.sequence(entry).size(), 6);
+  EXPECT_FALSE(in_schedule(constant));
+
+  ASSERT_IS_NOT_OK(schedule.Verify());
+  TF_ASSERT_OK(schedule.Update());
+  TF_ASSERT_OK(schedule.Verify());
+
+  EXPECT_EQ(schedule.sequence(entry).instructions().front(), constant);
+  EXPECT_EQ(schedule.sequence(entry).size(), 7);
+  EXPECT_TRUE(in_schedule(constant));
+}
+
+TEST_F(HloScheduleTest, UpdateScheduleWithControlDependencyAfterEverything) {
+  // Add some additional instructions to a module and verify the schedule can be
+  // updated.
+  const std::string module_str = R"(
+HloModule UpdateScheduleWithNewInstructions
+
+ENTRY main {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  c = f32[] constant(42.0)
+  sum = f32[] add(a, b)
+  neg = f32[] negate(c)
+  ROOT root = f32[] multiply(sum, neg)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloSchedule schedule,
+      ScheduleModule(module.get(), [](const BufferValue& buffer) {
+        return ShapeUtil::ByteSizeOf(buffer.shape());
+      }));
+
+  HloComputation* entry = module->entry_computation();
+  const Shape shape = entry->root_instruction()->shape();
+  HloInstruction* constant = entry->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)),
+      "newly_added_constant");
+
+  // Add control dependencies forcing this constant to be scheduled after
+  // everything else.
+  for (HloInstruction* instruction : entry->instructions()) {
+    if (instruction == constant) {
+      // Do not add a control dependency to self.
+      continue;
+    }
+    TF_ASSERT_OK(instruction->AddControlDependencyTo(constant));
+  }
+
+  auto in_schedule = [&](const HloInstruction* hlo) {
+    return absl::c_linear_search(schedule.sequence(entry).instructions(), hlo);
+  };
+
+  EXPECT_EQ(schedule.sequence(entry).size(), 6);
+  EXPECT_FALSE(in_schedule(constant));
+
+  ASSERT_IS_NOT_OK(schedule.Verify());
+  TF_ASSERT_OK(schedule.Update());
+  TF_ASSERT_OK(schedule.Verify());
+
+  EXPECT_EQ(schedule.sequence(entry).instructions().back(), constant);
+  EXPECT_EQ(schedule.sequence(entry).size(), 7);
+  EXPECT_TRUE(in_schedule(constant));
 }
 
 }  // namespace

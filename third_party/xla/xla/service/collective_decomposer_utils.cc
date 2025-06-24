@@ -41,7 +41,8 @@ CreateStartIndicesForCollectiveDecomposition(
   if (update_layout) {
     update_layout(*zero->mutable_shape());
   }
-  std::vector<HloInstruction *> start_indices(shard_shape.rank(), zero);
+  std::vector<HloInstruction *> start_indices(shard_shape.dimensions().size(),
+                                              zero);
   const Shape &scalar_shape = zero->shape();
 
   auto create_flattened_id = [&](HloInstruction *replica_index) {

@@ -27,7 +27,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// NOLINTEND(misc-unused-using-decls)
+// NOLINTBEGIN(misc-unused-using-decls)
 using tsl::AllocRecord;
 using tsl::TrackingAllocator;
 // NOLINTEND(misc-unused-using-decls)

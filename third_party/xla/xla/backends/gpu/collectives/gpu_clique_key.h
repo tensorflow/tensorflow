@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/hash/hash.h"
+#include "absl/types/span.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/service/global_device_id.h"
 #include "xla/tsl/lib/gtl/int_type.h"
@@ -55,10 +56,12 @@ CollectiveStreamId GetCollectiveStreamId(
 class GpuCliqueKey : public CliqueKey {
  public:
   explicit GpuCliqueKey(
-      std::vector<GlobalDeviceId> devices,
+      std::vector<GlobalDeviceId> devices, int64_t num_local_participants,
       CollectiveStreamId stream_id = CollectiveStreamId(0),
       AsyncStreamKind stream_kind = AsyncStreamKind::kCollective,
-      std::vector<std::vector<GlobalDeviceId>> participant_groups = {});
+      std::vector<std::vector<GlobalDeviceId>> participant_groups = {},
+      GlobalDeviceId root_device = GlobalDeviceId(-1),
+      std::vector<IncarnationId> incarnations = {});
 
   GpuCliqueKey(const GpuCliqueKey&) = default;
   GpuCliqueKey& operator=(const GpuCliqueKey&) = default;
@@ -68,13 +71,35 @@ class GpuCliqueKey : public CliqueKey {
 
   CollectiveStreamId stream_id() const;
 
+  // Device generating the unique id for this key
+  GlobalDeviceId root_device() const;
+
   // Returns true if this clique is a subset of `other`: both cliques have the
   // same `stream_id` and all clique devices are part of `other` clique.
   bool IsSubsetOf(const CliqueKey& other) const final;
 
+  // For multi-root initialization, generate `nroots` copies (subkeys) of the
+  // key each with a different root device. Root devices are distributed evenly
+  // across the ranks. The subkeys are used to exchange the CliqueIds during
+  // clique initialization.
+  std::vector<GpuCliqueKey> GetSubKeys(int64_t nroots) const;
+
   // Returns the stream kind for this clique key, stream kind will be used to
   // specify what configuration to pass for each type of operation.
   AsyncStreamKind stream_kind() const { return stream_kind_; }
+
+  // The number of participant devices that are local to the current process (in
+  // multi-host environments this likely to be all devices on the same host).
+  // This number should never be different in two cliques over the same sets of
+  // devices.
+  int64_t num_local_participants() const { return num_local_participants_; }
+
+  // Returns true if this clique is local to the current process (in multi-host
+  // environments this likely to be all devices on the same host).
+  bool is_local() const { return num_local_participants_ == devices().size(); }
+
+  // Returns the incarnation ids of the participating processes.
+  absl::Span<const IncarnationId> incarnations() const { return incarnations_; }
 
   std::string ToString() const final;
 
@@ -86,6 +111,9 @@ class GpuCliqueKey : public CliqueKey {
 
  private:
   void HashValue(absl::HashState state) const final;
+
+  // See comment on `num_local_participants()`.
+  int64_t num_local_participants_;
 
   CollectiveStreamId stream_id_;
   AsyncStreamKind stream_kind_;
@@ -105,10 +133,11 @@ class GpuCliqueKey : public CliqueKey {
   // Having the participating groups as part of the cache key will prevent such
   // situations
   std::vector<std::vector<GlobalDeviceId>> participant_groups_;
-};
 
-bool operator==(const GpuCliqueKey& a, const GpuCliqueKey& b);
-bool operator<(const GpuCliqueKey& a, const GpuCliqueKey& b);
+  GlobalDeviceId root_device_;
+
+  std::vector<IncarnationId> incarnations_;
+};
 
 }  // namespace xla::gpu
 

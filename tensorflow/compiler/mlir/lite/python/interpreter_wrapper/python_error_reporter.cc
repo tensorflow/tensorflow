@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/python/interpreter_wrapper/python_error_reporter.h"
 
+#include <Python.h>
+
 #include <cstdarg>
 #include <cstdio>
 #include <string>

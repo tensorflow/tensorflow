@@ -16,9 +16,10 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/bias_add_spmd_expander.h"
 
 #include <algorithm>
-#include <array>
 #include <cassert>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"

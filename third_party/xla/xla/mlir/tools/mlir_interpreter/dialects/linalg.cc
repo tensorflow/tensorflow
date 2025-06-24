@@ -149,7 +149,7 @@ llvm::SmallVector<InterpreterValue> Map(InterpreterState& state,
       isa<TensorType>(op.getInit().getType()) ? init.Clone() : init;
 
   InterpreterScope scope(state);
-  SmallVector<int64_t> ivs(output.View().Rank());
+  SmallVector<int64_t> ivs(output.View().num_dimensions());
   scope.SetSideChannel(std::make_shared<IterationIndexSideChannel>(ivs));
   for (const auto& indices : output.View().Indices()) {
     std::copy(indices.begin(), indices.end(), ivs.begin());
@@ -276,7 +276,7 @@ SmallVector<InterpreterValue> Dot(InterpreterState&, linalg::DotOp op,
                                   InterpreterValue acc) {
   const auto& lhs = inputs[0];
   const auto& rhs = inputs[1];
-  if (op.getOutputs()[0].getType().isa<TensorType>()) {
+  if (mlir::isa<TensorType>(op.getOutputs()[0].getType())) {
     acc = acc.Clone();
   }
   DispatchScalarType(op.getOutputs()[0].getType(), [&](auto dummy) {
@@ -300,7 +300,7 @@ SmallVector<InterpreterValue> Vecmat(InterpreterState&, linalg::VecmatOp op,
                                      InterpreterValue acc) {
   const auto& lhs = inputs[0];
   const auto& rhs = inputs[1];
-  if (op.getOutputs()[0].getType().isa<TensorType>()) {
+  if (mlir::isa<TensorType>(op.getOutputs()[0].getType())) {
     acc = acc.Clone();
   }
   DispatchScalarType(op.getOutputs()[0].getType(), [&](auto dummy) {

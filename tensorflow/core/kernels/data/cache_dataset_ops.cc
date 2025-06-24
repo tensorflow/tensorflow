@@ -510,7 +510,8 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           absl::string_view contents;
           std::unique_ptr<RandomAccessFile> file;
           if (dataset()->env_->NewRandomAccessFile(lockfile_, &file).ok()) {
-            file->Read(0, 150, &contents, contents_scratch).IgnoreError();
+            file->Read(0, contents, absl::MakeSpan(contents_scratch, 150))
+                .IgnoreError();
           }
           return errors::AlreadyExists(
               "There appears to be a concurrent caching iterator running - "
@@ -1195,7 +1196,7 @@ void CacheDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
       auto handle = HandleFromInput(ctx, 2);
       absl::Status s = ctx->resource_manager()->Lookup<MemoryCacheManager>(
           handle.container(), handle.name(), &manager);
-      if (errors::IsNotFound(s)) {
+      if (absl::IsNotFound(s)) {
         owns_resource = true;
         OP_REQUIRES_OK(
             ctx,

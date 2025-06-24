@@ -22,6 +22,8 @@ import "xla/python/ifrt/array_spec.proto";
 // Wire format for `RemapPlan`. See `RemapPlan` for the semantics of the proto
 // fields.
 message RemapPlanProto {
+  int32 version_number = 4;
+
   message MappingProto {
     int32 in_array = 1;
     int32 out_array = 2;

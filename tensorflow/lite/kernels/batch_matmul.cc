@@ -86,9 +86,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   op_data->rhs_transposed = false;
   // Creates the temp tensors to store the transposed LHS and/or RHS, and
   // extra buffers for the quantized case.
-  context->AddTensors(context,
-                      kNumTempTensorsForAdjoints + kNumTempTensorsForHybrid,
-                      &op_data->scratch_tensor_index);
+  op_data->scratch_tensor_index = -1;
   return op_data;
 }
 
@@ -292,12 +290,17 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  if (op_data->scratch_tensor_index == -1) {
+    context->AddTensors(context,
+                        kNumTempTensorsForAdjoints + kNumTempTensorsForHybrid,
+                        &op_data->scratch_tensor_index);
+  }
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   OpContext op_context(context, node);
   TF_LITE_ENSURE_OK(context, InitializeTemporaries(context, node, &op_context));
-  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
 
   bool adj_x = op_context.params->adj_x;
   bool adj_y = op_context.params->adj_y;
@@ -571,36 +574,12 @@ TfLiteStatus EvalInt8Int32(TfLiteContext* context, const OpData* data,
                            const RuntimeShape& rhs_shape,
                            const TfLiteTensor* rhs,
                            const RuntimeShape& output_shape,
-                           TfLiteTensor* output, bool transpose_lhs) {
-  // Reuse params struct from FullyConnected Op.
-  FullyConnectedParams op_params;
-  int32_t input_offset = -lhs->params.zero_point;
-  int32_t weights_offset = -rhs->params.zero_point;
-  int32_t output_offset = output->params.zero_point;
-  op_params.input_offset = input_offset;
-  op_params.weights_offset = weights_offset;
-  op_params.output_offset = output_offset;
-  op_params.output_multiplier = data->output_multiplier;
-  op_params.output_shift = data->output_shift;
-  op_params.quantized_activation_min = data->output_activation_min;
-  op_params.quantized_activation_max = data->output_activation_max;
-  op_params.lhs_cacheable = IsConstantTensor(lhs);
-  op_params.rhs_cacheable = IsConstantTensor(rhs);
-
+                           TfLiteTensor* output) {
   // Set BatchMatMul lhs param to rhs(filter) and rhs param to lhs(input). For
   // the reason, see comment of Eval() function.
-  if (kernel_type == kReference) {
-    reference_ops::BatchMatMul<int8, int8, int32>(
-        rhs_shape, GetTensorData<int8>(rhs), lhs_shape,
-        GetTensorData<int8>(lhs), GetTensorShape(output),
-        GetTensorData<int32>(output));
-  } else {
-    optimized_ops::BatchMatMul(
-        op_params, rhs_shape, GetTensorData<int8_t>(rhs), lhs_shape,
-        GetTensorData<int8_t>(lhs), GetTensorShape(output),
-        GetTensorData<int32_t>(output),
-        CpuBackendContext::GetFromContext(context), transpose_lhs);
-  }
+  reference_ops::BatchMatMul<int8, int8, int32>(
+      rhs_shape, GetTensorData<int8>(rhs), lhs_shape, GetTensorData<int8>(lhs),
+      GetTensorShape(output), GetTensorData<int32>(output));
   return kTfLiteOk;
 }
 
@@ -665,7 +644,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     } else {
       return EvalInt8Int32<kernel_type>(context, data, lhs_shape, lhs,
                                         rhs_shape, rhs, GetTensorShape(output),
-                                        output, transpose_lhs);
+                                        output);
     }
   } else if (lhs->type == kTfLiteInt16 && rhs->type == kTfLiteInt16) {
     return EvalInt16<kernel_type>(context, data, lhs_shape, lhs, rhs_shape, rhs,
@@ -799,7 +778,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* rhs_tensor = rhs;
   bool implicit_transpose_possible = true;
   if (lhs->type == kTfLiteFloat32 || kernel_type == kReference ||
-      rhs->type == kTfLiteInt16) {
+      rhs->type == kTfLiteInt16 ||
+      (rhs->type == kTfLiteInt8 && output->type == kTfLiteInt32)) {
     implicit_transpose_possible = false;
   }
   bool do_implicit_transpose = !adj_y && implicit_transpose_possible;

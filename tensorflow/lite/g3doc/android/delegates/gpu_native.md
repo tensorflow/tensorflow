@@ -1,20 +1,20 @@
 # GPU acceleration delegate with C/C++ API
 
 Using graphics processing units (GPUs) to run your machine learning (ML) models
-can dramatically improve the performance and the user experience
-of your ML-enabled applications. On Android devices, you can enable
-GPU-accelerated execution of your models using a
-[*delegate*](../../performance/delegates) and one of the following APIs:
+can dramatically improve the performance and the user experience of your
+ML-enabled applications. On Android devices, you can enable GPU-accelerated
+execution of your models using a
+[*delegate*](https://ai.google.dev/edge/litert/performance/delegates) and one of
+the following APIs:
 
-- Interpreter API - [guide](./gpu)
-- Task library API - [guide](./gpu_task)
-- Native (C/C++) API - this guide
+-   Interpreter API - [guide](./gpu)
+-   Task library API - [guide](./gpu_task.md)
+-   Native (C/C++) API - this guide
 
-This guide covers advanced
-uses of the GPU delegate for the C API, C++ API, and use of quantized models.
-For more information about using the GPU delegate for TensorFlow Lite,
-including best practices and advanced techniques, see the
-[GPU delegates](../../performance/gpu) page.
+This guide covers advanced uses of the GPU delegate for the C API, C++ API, and
+use of quantized models. For more information about using the GPU delegate for
+TensorFlow Lite, including best practices and advanced techniques, see the
+[GPU delegates](https://ai.google.dev/edge/litert/performance/gpu) page.
 
 ## Enable GPU acceleration
 
@@ -65,9 +65,10 @@ thread in which `Interpreter::ModifyGraphWithDelegate()` was called.
 
 #### With TensorFlow Lite in Google Play Services:
 
-If you are using TensorFlow Lite in Google Play Services [C API](../native),
-you’ll need to use the Java/Kotlin API to check if a GPU delegate is available
-for your device before initializing the TensorFlow Lite runtime.
+If you are using TensorFlow Lite in Google Play Services
+[C API](https://ai.google.dev/edge/litert/android/native), you’ll need to use
+the Java/Kotlin API to check if a GPU delegate is available for your device
+before initializing the TensorFlow Lite runtime.
 
 Add the GPU delegate gradle dependencies to your application:
 
@@ -170,5 +171,6 @@ if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
   </devsite-selector>
 </div>
 
-For more information about running quantized models with GPU acceleration,
-see [GPU delegate](../../performance/gpu#quantized-models) overview.
+For more information about running quantized models with GPU acceleration, see
+[GPU delegate](https://ai.google.dev/edge/litert/performance/gpu#quantized_models)
+overview.

@@ -26,9 +26,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 
@@ -417,6 +417,11 @@ class DfsHloVisitorBase {
   // Overriding methods should call DfsHloVisitor::Postprocess after doing their
   // own postprocessing.
   virtual absl::Status Postprocess(HloInstructionPtr hlo);
+
+  // This method should be overriden by subclasses that wish to skip some ops
+  // while traversing the HLO graph. If this method returns false, the calls to
+  // Preprocess(op), Handle/OpType/(op) and Postprocess(op) are skipped.
+  virtual bool ShouldProcessNode(HloInstructionPtr hlo) { return true; }
 
  private:
   absl::flat_hash_map<int, VisitState> visit_state_;

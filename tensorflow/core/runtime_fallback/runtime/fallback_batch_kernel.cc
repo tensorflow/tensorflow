@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/batching_util/bounded_executor.h"
@@ -65,7 +66,7 @@ BatchFunctionFallbackKernelBase::GetOrCreateBatchThreadsPool() {
     options.num_threads =
         NumBatchThreadsFromEnvironmentWithDefault(kBatchThreadPoolSize);
 
-    options.thread_name = std::string("adaptive_batch_threads");
+    options.thread_name = "adaptive_batch_threads";
 
     auto status_or_executor = serving::BoundedExecutor::Create(options);
     if (!status_or_executor.ok()) {

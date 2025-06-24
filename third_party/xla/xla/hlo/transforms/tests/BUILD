@@ -2,30 +2,22 @@ load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//xla:internal"],
     licenses = ["notice"],
-)
-
-cc_library(
-    name = "dummy_passes",
-    hdrs = ["dummy_passes.h"],
-    deps = [
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-    ],
 )
 
 lit_test_suite(
     name = "hlo_opt_tests",
     srcs = enforce_glob(
         [
-            "run_single_pass.hlo",
-            "run_multiple_passes.hlo",
+            # go/keep-sorted start
             "algebraic_simplifier.hlo",
+            "cholesky_expander.hlo",
+            "operand_upcaster.hlo",
+            "optimization_barrier_expander.hlo",
+            "rewrite_bf16_conv_to_onednn.hlo",
+            "rng_bit_generator_expander.hlo",
+            "rng_expander.hlo",
+            # go/keep-sorted end
         ],
         include = [
             "*.hlo",
@@ -35,5 +27,6 @@ lit_test_suite(
     tools = [
         "//xla/hlo/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
+        "@llvm-project//llvm:not",
     ],
 )

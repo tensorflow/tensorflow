@@ -68,8 +68,8 @@ struct GlimpseExtractionOp {
   template <typename Input>
   DSizes<Index, 4> dimensions(const Input& input) const {
     typedef typename internal::traits<Input>::Index IndexType;
-    typedef TensorRef<Tensor<typename internal::traits<Input>::Scalar, 4,
-                             internal::traits<Input>::Layout, IndexType> >
+    typedef TensorRef<const Tensor<typename internal::traits<Input>::Scalar, 4,
+                                   internal::traits<Input>::Layout, IndexType> >
         Ref;
     Ref in(input);
 
@@ -86,8 +86,8 @@ struct GlimpseExtractionOp {
   EIGEN_DEVICE_FUNC void eval(const Input& input, Output& output,
                               const Device& device) const {
     typedef typename internal::traits<Input>::Index IndexType;
-    typedef TensorRef<Tensor<typename internal::traits<Input>::Scalar, 4,
-                             internal::traits<Input>::Layout, IndexType> >
+    typedef TensorRef<const Tensor<typename internal::traits<Input>::Scalar, 4,
+                                   internal::traits<Input>::Layout, IndexType> >
         Ref;
     Ref in(input);
     const Index num_channels = in.dimension(0);

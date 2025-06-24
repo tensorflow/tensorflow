@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/clustering_bridge_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/logging_hooks.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/errors.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 #include "tsl/platform/error_logging.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace tf2xla {

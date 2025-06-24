@@ -61,6 +61,10 @@ TEST_F(CpuDynamicShapeTest, DynamicShapeR2) {
       /*entry_point_name=*/"entry",
       /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::Static};
 
+  hlo_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_use_thunk_runtime(false);
+
   CompileAheadOfTimeAndVerifyIr(std::move(hlo_module), options,
                                 filecheck_pattern,
                                 /*match_optimized_ir=*/false);

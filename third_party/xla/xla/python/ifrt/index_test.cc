@@ -15,8 +15,7 @@ limitations under the License.
 
 #include "xla/python/ifrt/index.h"
 
-#include <memory>
-#include <utility>
+#include <cstdint>
 #include <vector>
 
 #include <gmock/gmock.h>

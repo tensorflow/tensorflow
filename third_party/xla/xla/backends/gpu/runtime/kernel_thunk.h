@@ -25,14 +25,17 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -68,15 +71,22 @@ class KernelThunk : public Thunk {
   // output of the computation. Also, the values must correspond to each arg
   // directly, not to their base allocation (e.g. they can be the result of an
   // `mlir::memref::ViewOp`).
-  KernelThunk(const HloInstruction* instr, std::string kernel_name,
-              absl::Span<const KernelArgument> kernel_arguments,
+  KernelThunk(Thunk::ThunkInfo thunk_info, std::string kernel_name,
+              absl::Span<const emitters::KernelArgument> kernel_arguments,
               LaunchDimensions launch_dimensions,
-              std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes);
+              std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
+              std::optional<stream_executor::gpu::TmaMetadata> tma_metadata =
+                  std::nullopt);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
 
   std::string ToString(int indent) const override;
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+  static absl::StatusOr<std::unique_ptr<KernelThunk>> FromProto(
+      ThunkInfo thunk_info, const KernelThunkProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
 
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
@@ -89,6 +99,9 @@ class KernelThunk : public Thunk {
   const std::string& kernel_name() const { return kernel_name_; }
   const LaunchDimensions& launch_dimensions() const {
     return launch_dimensions_;
+  }
+  const std::optional<se::ClusterDim>& cluster_dim() const {
+    return cluster_dim_;
   }
   // The shared memory required by the kernel.
   int64_t shmem_bytes() const { return shmem_bytes_; }
@@ -111,6 +124,10 @@ class KernelThunk : public Thunk {
 
   int64_t shmem_bytes_;
 
+  // Map of argument index to TmaDescriptor used to create arguments to the
+  // kernel.
+  const std::optional<stream_executor::gpu::TmaMetadata> tma_metadata_;
+
   // Loaded kernels for each `StreamExecutor`.
   mutable absl::Mutex mutex_;
   absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Kernel>>
@@ -126,8 +143,9 @@ class KernelThunk : public Thunk {
 // compiled by XLA and loaded from an executable source.
 class CustomKernelThunk : public Thunk {
  public:
-  CustomKernelThunk(const HloInstruction* inst, CustomKernel custom_kernel,
-                    absl::Span<const KernelArgument> kernel_arguments);
+  CustomKernelThunk(
+      const HloInstruction* inst, CustomKernel custom_kernel,
+      absl::Span<const emitters::KernelArgument> kernel_arguments);
 
   std::string ToString(int indent) const override;
 

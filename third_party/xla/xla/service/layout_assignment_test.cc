@@ -30,6 +30,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -38,12 +41,9 @@ limitations under the License.
 #include "xla/service/computation_layout.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
@@ -500,7 +500,8 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
     for (int64_t operand_no = 0; operand_no < instruction->operand_count();
          ++operand_no) {
       const HloInstruction* operand = instruction->operand(operand_no);
-      if (instruction->shape().rank() != operand->shape().rank()) {
+      if (instruction->shape().dimensions().size() !=
+          operand->shape().dimensions().size()) {
         continue;
       }
       TF_RETURN_IF_ERROR(SetArrayOperandLayout(buffer_constraint.layout(),
@@ -1246,6 +1247,42 @@ ENTRY %CustomCallWithLayoutConstraints (p0: f32[4,4], p1: f32[2,3]) -> f32[1,2,3
 
   const HloInstruction* custom_call =
       m->entry_computation()->root_instruction()->operand(0);
+  ExpectLayoutIs(custom_call->shape(), {3, 2, 0, 1});
+  ExpectLayoutIs(custom_call->operand(0)->shape(), {0, 1});
+  ExpectLayoutIs(custom_call->operand(1)->shape(), {1, 0});
+}
+
+TEST_F(LayoutAssignmentTest, CustomCallLayoutConstrainedAndElementwise) {
+  const char* module_str = R"(
+HloModule CustomCallLayoutConstrained
+
+ENTRY %CustomCallWithLayoutConstraints (p0: f32[4,4], p1: f32[2,3]) -> f32[1,2,3,4] {
+  p0 = f32[4,4] parameter(0)
+  p1 = f32[2,3] parameter(1)
+  cc = f32[1,2,3,4]{3,2,0,1} custom-call(f32[4,4] %p0, f32[2,3] %p1), custom_call_target="baz", operand_layout_constraints={f32[4,4]{0,1}, f32[2,3]{1,0}}
+  ROOT e = f32[1,2,3,4] exponential(cc)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> m,
+      ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest()));
+  ComputationLayout computation_layout = m->entry_computation_layout();
+  *computation_layout.mutable_parameter_layout(0) =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {4, 4}, {1, 0}));
+  *computation_layout.mutable_parameter_layout(1) =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3}, {1, 0}));
+  *computation_layout.mutable_result_layout() = ShapeLayout(
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 2, 3, 4}, {2, 1, 0, 3}));
+  AssignLayouts(m.get(), &computation_layout);
+
+  // The custom call should be partially encapsulated in kCopy instructions
+  // because of the layout mismatches.
+  ASSERT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Copy(m::Exp(m::CustomCall(m::Copy(), m::Parameter())))));
+
+  const HloInstruction* custom_call =
+      m->entry_computation()->root_instruction()->operand(0)->operand(0);
   ExpectLayoutIs(custom_call->shape(), {3, 2, 0, 1});
   ExpectLayoutIs(custom_call->operand(0)->shape(), {0, 1});
   ExpectLayoutIs(custom_call->operand(1)->shape(), {1, 0});

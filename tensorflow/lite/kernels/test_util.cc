@@ -101,7 +101,7 @@ uint32_t DistanceBetweenSignAndMagnitudeNumbers(uint32_t sam1, uint32_t sam2) {
 //   - returns true if both numbers are NAN.
 //   - returns false if exact one of numbers is NAN.
 //   - treats really large numbers as almost equal to infinity.
-//   - thinks +0.0 and -0.0 are 0 DLP's apart.
+//   - thinks +0.0 and -0.0 are 0 ULP's apart.
 bool AlmostEquals(float lhs, float rhs, uint32_t max_ulps) {
   if (std::isnan(lhs) || std::isnan(rhs)) {
     return std::isnan(lhs) && std::isnan(rhs);
@@ -192,7 +192,9 @@ std::vector<Matcher<std::complex<float>>> ArrayComplex64Near(
 
 int SingleOpModel::AddInput(const TensorData& t) {
   int id = 0;
-  if (t.per_channel_quantization) {
+  if (t.per_block_quantization != 0) {
+    id = AddTensorPerBlockQuant(t);
+  } else if (t.per_channel_quantization) {
     id = AddTensorPerChannelQuant(t);
   } else {
     id = AddTensor<float>(t, nullptr, 0);

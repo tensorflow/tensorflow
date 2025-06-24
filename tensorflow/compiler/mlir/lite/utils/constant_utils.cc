@@ -45,12 +45,12 @@ namespace TFL {
 absl::StatusOr<TypedAttr> CreateTypedAttr(ShapedType shaped_type, int value) {
   Type element_type = shaped_type.getElementType();
   if (element_type.isF16()) {
-    auto floatType = mlir::FloatType::getF16(element_type.getContext());
+    auto floatType = mlir::Float16Type::get(element_type.getContext());
     auto floatAttr = mlir::FloatAttr::get(floatType, static_cast<float>(value));
     std::vector<Attribute> floatValues({floatAttr});
     return DenseElementsAttr::get(shaped_type, floatValues);
   } else if (element_type.isBF16()) {
-    auto floatType = mlir::FloatType::getBF16(element_type.getContext());
+    auto floatType = mlir::BFloat16Type::get(element_type.getContext());
     auto floatAttr = mlir::FloatAttr::get(floatType, static_cast<float>(value));
     std::vector<Attribute> floatValues({floatAttr});
     return DenseElementsAttr::get(shaped_type, floatValues);

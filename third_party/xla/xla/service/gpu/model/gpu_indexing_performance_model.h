@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_GPU_INDEXING_PERFORMANCE_MODEL_H_
 #define XLA_SERVICE_GPU_MODEL_GPU_INDEXING_PERFORMANCE_MODEL_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <variant>
 #include <vector>
@@ -32,7 +31,6 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
-#include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
@@ -103,7 +101,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledFusion(
       const HloFusionAdaptor& fusion_adaptor,
       const LaunchDimensions& launch_dimensions,
-      absl::Span<const int64_t> output_tile_sizes);
+      const std::vector<std::vector<int64_t>>& output_tile_sizes);
 
   // Estimate the run time of producer and consumer fused together, assuming
   // that they will be emitted with Triton.

@@ -798,10 +798,10 @@ func.func @complex_sin(%arg0: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f3
 // CHECK-PRIMITIVE-SAME: [[ARG:%[a-zA-Z0-9]+]]
 func.func @copy(%input: tensor<2x4x8xf32>) -> tensor<2x4x8xf32> {
   %0 = "mhlo.copy"(%input) : (tensor<2x4x8xf32>) -> (tensor<2x4x8xf32>)
+  // CHECK-PRIMITIVE: linalg.map
+  // CHECK: return [[ARG]] : tensor<2x4x8xf32>
   func.return %0 : tensor<2x4x8xf32>
 }
-// CHECK: return [[ARG]] : tensor<2x4x8xf32>
-// CHECK-PRIMITIVE: return [[ARG]] : tensor<2x4x8xf32>
 
 // -----
 
@@ -1351,9 +1351,9 @@ func.func @reshape_2D_1D_semidynamic(%arg0: tensor<1x?xi32>) -> tensor<1xi32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<1x?xi32>) -> tensor<1xi32>
   func.return %0 : tensor<1xi32>
 }
-// CHECK: %[[CAST:.*]] = tensor.cast %{{.*}} : tensor<1x?xi32> to tensor<1x1xi32>
-// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %[[CAST]] {{\[}}[0, 1]] : tensor<1x1xi32> into tensor<1xi32>
-// CHECK: return %[[COLLAPSE:.*]] : tensor<1xi32>
+// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %arg0 {{\[}}[0, 1]] : tensor<1x?xi32> into tensor<?xi32>
+// CHECK: %[[CAST:.*]] = tensor.cast %[[COLLAPSE]] : tensor<?xi32> to tensor<1xi32>
+// CHECK: return %[[CAST]] : tensor<1xi32>
 
 // -----
 
@@ -1384,9 +1384,9 @@ func.func @reshape_3D_1D_semidynamic(%arg0: tensor<16x1x?xi32>) -> tensor<16xi32
   %0 = "mhlo.reshape"(%arg0) : (tensor<16x1x?xi32>) -> tensor<16xi32>
   func.return %0 : tensor<16xi32>
 }
-// CHECK: %[[CAST:.*]] = tensor.cast %{{.*}} : tensor<16x1x?xi32> to tensor<16x1x1xi32>
-// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %[[CAST]] {{\[}}[0, 1, 2]] : tensor<16x1x1xi32> into tensor<16xi32>
-// CHECK: return %[[COLLAPSE:.*]] : tensor<16xi32>
+// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %arg0 {{\[}}[0, 1, 2]] : tensor<16x1x?xi32> into tensor<?xi32>
+// CHECK: %[[CAST:.*]] = tensor.cast %[[COLLAPSE]] : tensor<?xi32> to tensor<16xi32>
+// CHECK: return %[[CAST]] : tensor<16xi32>
 
 // -----
 
@@ -4702,12 +4702,11 @@ func.func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi3
 // CHECK-SAME:           outs(%[[INIT]] : tensor<1x8x8xi32>)
 // CHECK-SAME:           {someattr}
 // CHECK:           ^bb0
-// CHECK-DAG:         %[[IDX0:.+]] = linalg.index 0
 // CHECK-DAG:         %[[IDX1:.+]] = linalg.index 1
 // CHECK-DAG:         %[[IDX2:.+]] = linalg.index 2
-// CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[IDX1]], %[[C0]]] : tensor<1x8x2xi32>
+// CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[C0]], %[[IDX1]], %[[C0]]] : tensor<1x8x2xi32>
 // CHECK-DAG:         %[[S0:.+]] = arith.index_cast %[[S0_INT]] : i32 to index
-// CHECK-DAG:         %[[S1_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[IDX1]], %[[C1]]] : tensor<1x8x2xi32>
+// CHECK-DAG:         %[[S1_INT:.+]] = tensor.extract %[[START_INDICES]][%[[C0]], %[[IDX1]], %[[C1]]] : tensor<1x8x2xi32>
 // CHECK-DAG:         %[[S1:.+]] = arith.index_cast %[[S1_INT]] : i32 to index
 // CHECK-DAG:         %[[CLAMP0:.+]] = arith.maxsi %[[S0]], %[[C0]]  : index
 // CHECK-DAG:         %[[IN0:.+]] = arith.minsi %[[CLAMP0]], %[[C0]]
@@ -5055,6 +5054,7 @@ func.func @torch_index_select(%arg0: tensor<5x1x5xi32>,
 //      CHECK: func @torch_index_select
 // CHECK-SAME:   %[[INPUT:[a-zA-Z0-9_]*]]
 // CHECK-SAME:   %[[INDEX:[a-zA-Z0-9_]*]]
+//      CHECK: %[[C0:.+]] = arith.constant 0 : index
 //      CHECK: %[[INIT1:.+]] = tensor.empty() :
 //      CHECK: %[[INIT2:.+]] = tensor.empty() :
 //      CHECK: linalg.generic {
@@ -5066,9 +5066,8 @@ func.func @torch_index_select(%arg0: tensor<5x1x5xi32>,
 // CHECK-SAME: {someattr}
 //      CHECK: ^{{.+}}(%[[VAL:.+]]: i32, %{{.+}}: i32, %{{.+}}: i32):
 //      CHECK:   %[[CAST:.+]] = arith.index_cast %[[VAL]] : i32 to index
-//      CHECK:   %[[J:.+]] = linalg.index 1
 //      CHECK:   %[[K:.+]] = linalg.index 2
-//      CHECK:   %[[VAL2:.+]] = tensor.extract %[[INPUT]][%[[CAST]], %[[J]], %[[K]]] : tensor<5x1x5xi32>
+//      CHECK:   %[[VAL2:.+]] = tensor.extract %[[INPUT]][%[[CAST]], %[[C0]], %[[K]]] : tensor<5x1x5xi32>
 //      CHECK:   linalg.yield %[[VAL2]] : i32
 
 // -----
@@ -5205,6 +5204,7 @@ func.func @torch_index_select_unsigned(%arg0: tensor<5x1x5xui32>,
 //      CHECK: func @torch_index_select_unsigned
 // CHECK-SAME:   %[[INPUT:[a-zA-Z0-9_]*]]
 // CHECK-SAME:   %[[INDEX:[a-zA-Z0-9_]*]]
+//      CHECK:   %[[C0:.+]] = arith.constant 0 : index
 //      CHECK:   %[[INPUT_SIGNLESS:.*]] = builtin.unrealized_conversion_cast %[[INPUT]] : tensor<5x1x5xui32> to tensor<5x1x5xi32>
 //      CHECK:   %[[INIT:.*]] = tensor.empty() : tensor<1x5xi32>
 //      CHECK:   %[[RES:.+]] = linalg.generic {
@@ -5214,9 +5214,8 @@ func.func @torch_index_select_unsigned(%arg0: tensor<5x1x5xui32>,
 // CHECK-SAME:   ins(%[[INDEX]], %[[INIT]] : tensor<2xi32>, tensor<1x5xi32>)
 //      CHECK:   ^{{.+}}(%[[VAL:.+]]: i32, %{{.+}}: i32, %{{.+}}: i32):
 //      CHECK:     %[[CAST:.+]] = arith.index_cast %[[VAL]] : i32 to index
-//      CHECK:     %[[J:.+]] = linalg.index 1
 //      CHECK:     %[[K:.+]] = linalg.index 2
-//      CHECK:     %[[VAL2:.+]] = tensor.extract %[[INPUT_SIGNLESS]][%[[CAST]], %[[J]], %[[K]]] : tensor<5x1x5xi32>
+//      CHECK:     %[[VAL2:.+]] = tensor.extract %[[INPUT_SIGNLESS]][%[[CAST]], %[[C0]], %[[K]]] : tensor<5x1x5xi32>
 //      CHECK:     linalg.yield %[[VAL2]] : i32
 //      CHECK:   %[[RES_UNSIGNED:.+]] = builtin.unrealized_conversion_cast %[[RES]] : tensor<2x1x5xi32> to tensor<2x1x5xui32>
 //      CHECK:   return %[[RES_UNSIGNED]]

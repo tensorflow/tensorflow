@@ -36,6 +36,9 @@ limitations under the License.
 #include "xla/stream_executor/tpu/noncopyable_buffer.h"
 #include "xla/stream_executor/tpu/tpu_executor_api.h"
 #include "xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -53,9 +56,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -89,7 +89,7 @@ absl::StatusOr<Tensor> TransposeTensor(OpKernelContext* ctx,
                                        const Tensor& input_tensor,
                                        const xla::Shape& xla_shape) {
   tsl::profiler::TraceMe trace_me("TransposeTensor", /*level=*/2);
-  const int64_t rank = xla_shape.rank();
+  const int64_t rank = xla_shape.dimensions().size();
   std::vector<int32_t> permutation(rank);
   std::vector<int64_t> transposed_shapes(rank);
   for (int64_t i = 0; i < rank; ++i) {

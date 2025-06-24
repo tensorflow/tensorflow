@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "xla/stream_executor/gpu/context.h"
 #include "tsl/platform/logging.h"
 

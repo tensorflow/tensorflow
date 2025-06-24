@@ -35,6 +35,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/backends/gpu/codegen/triton/support_legacy.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -43,8 +45,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
-#include "xla/service/gpu/fusions/triton/triton_support.h"
-#include "xla/service/gpu/fusions/triton/triton_support_legacy.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
@@ -635,6 +635,8 @@ class Decision {
   // Returns true if it's profitable to fuse.
   bool WantToFuse() const { return fusing_decision_.CanFuse(); }
 
+  std::string Explain() const { return fusing_decision_.Explain(); }
+
   static Decision Allow() { return {FusionDecision::Allow(), true}; };
 
   static Decision Deny(absl::string_view value) {
@@ -673,18 +675,9 @@ absl::StatusOr<Decision> CreateDotFusion(
     return Decision::Deny(is_supported.Explain());
   }
 
-  // Verify sparse dot constraints.
+  // Verify not sparse.
   if (dot.sparse_operands()) {
-    const SparsityDescriptor& descriptor = dot.sparsity().front();
-    if (dot.sparse_operands() != 1 || descriptor.index() != 0) {
-      return InvalidArgument("Sparsity is only supported on left operand");
-    }
-    if (descriptor.type() != SparsityType::SPARSITY_STRUCTURED_N_M ||
-        descriptor.n() != 2 || descriptor.m() != 4) {
-      return InvalidArgument("Only 2:4 structured sparsity is supported");
-    }
-    // DotDimensionSorter pass makes sure the sparse dimension is minor.
-    CHECK_EQ(descriptor.dimension(), dot.operand(0)->shape().rank() - 1);
+    return InvalidArgument("Sparsity is not supported");
   }
 
   TF_ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
@@ -738,7 +731,8 @@ absl::StatusOr<Decision> CreateDotFusion(
 
   const PrecisionConfig::Algorithm algorithm =
       dot.precision_config().algorithm();
-  if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
+  if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9 ||
+      algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
       algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3 ||
       algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32 ||
       algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32 ||
@@ -800,19 +794,15 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
         CreateDotFusion(*Cast<HloDotInstruction>(dot), gpu_version_, builder,
                         fusion_inputs, &fusion_output));
     if (!decision.CanFuse()) {
+      VLOG(3) << "Not fusing: " << decision.Explain();
       return absl::OkStatus();
     }
     // If a GEMM requiring padding for cuBLAS is encountered here this
     // happened because earlier ShouldTritonHandleGEMM() accepted it and padding
     // was skipped. Accept it ignoring profitability checks.
-    // TODO(rocm): check ROCM padding requirements.
-    if (std::holds_alternative<se::CudaComputeCapability>(gpu_version_)) {
-      if (!CublasRequiresPadding(
-              *Cast<HloDotInstruction>(dot),
-              std::get<se::CudaComputeCapability>(gpu_version_)) &&
-          !decision.WantToFuse()) {
-        return absl::OkStatus();
-      }
+    if (!CublasRequiresPadding(*Cast<HloDotInstruction>(dot), gpu_version_) &&
+        !decision.WantToFuse()) {
+      return absl::OkStatus();
     }
 
     HloComputation* computation =

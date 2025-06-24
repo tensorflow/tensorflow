@@ -54,6 +54,8 @@ limitations under the License.
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "xla/stream_executor/tpu/tpu_topology.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -92,8 +94,6 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/spmd_expander.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 using tensorflow::EagerExecutor;
 
@@ -135,15 +135,9 @@ class DTensorDevice {
   static StatusOr<DTensorDevice*> Create(absl::string_view name, bool is_async,
                                          int in_flight_nodes_limit) {
     std::string use_parallel_executor;
-    TF_RETURN_IF_ERROR(tsl::ReadStringFromEnvVar(
-        "DTENSOR_USE_PARALLEL_EXECUTOR", "", &use_parallel_executor));
-    std::unique_ptr<ParallelExecutor> parallel_executor;
-    if (!use_parallel_executor.empty()) {
-      TF_ASSIGN_OR_RETURN(parallel_executor, CreateDefaultParallelExecutor());
-    }
     auto eager_executor = std::make_unique<EagerExecutor>(
         is_async, /*enable_streaming_enqueue=*/true, in_flight_nodes_limit);
-    return new DTensorDevice(name, std::move(parallel_executor),
+    return new DTensorDevice(name, /*parallel_executor=*/nullptr,
                              std::move(eager_executor), is_async,
                              in_flight_nodes_limit);
   }

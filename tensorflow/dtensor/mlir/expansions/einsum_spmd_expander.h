@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_EINSUM_SPMD_EXPANDER_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"

@@ -27,6 +27,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
@@ -34,15 +35,12 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/typed_kernel_factory.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -200,13 +198,7 @@ TEST_F(CudaStreamTest, LaunchKernel) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
                           CudaStream::Create(executor_,
                                              /*priority=*/std::nullopt));
-
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
-  using AddI32Kernel =
-      TypedKernelFactory<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
-                         DeviceMemory<int32_t>>;
-  TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor_, spec));
+  TF_ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(executor_));
 
   constexpr int64_t kLength = 4;
   constexpr int64_t kByteLength = sizeof(int32_t) * kLength;
@@ -254,7 +246,6 @@ TEST_F(CudaStreamTest, WaitForEvent) {
       stream->DoHostCallback([&callback_called]() { callback_called = true; }),
       IsOk());
 
-  EXPECT_FALSE(callback_called);
   EXPECT_THAT(stream->RecordEvent(&event), IsOk());
   EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
   EXPECT_TRUE(callback_called);
@@ -277,28 +268,35 @@ TEST_F(CudaStreamTest, WaitForOtherStream) {
     kAfterWaitForStream
   };
 
+  // This mutex is needed to make thread sanitizer happy since it can't
+  // instrument the barrier in CUDA binary libraries.
+  absl::Mutex mutex;
   std::vector<ExecutionStage> execution_order;
 
   // - stream1 waits for the event to be recorded and
   // - stream2 waits for stream1 to be done.
   // - Afterwards stream2 invokes the host callback.
-  EXPECT_THAT(stream1->DoHostCallback([&execution_order]() {
+  EXPECT_THAT(stream1->DoHostCallback([&]() {
+    absl::MutexLock lock(&mutex);
     execution_order.push_back(ExecutionStage::kBeforeWaitForEvent);
   }),
               IsOk());
   EXPECT_THAT(stream1->WaitFor(&event), IsOk());
-  EXPECT_THAT(stream1->DoHostCallback([&execution_order]() {
+  EXPECT_THAT(stream1->DoHostCallback([&]() {
+    absl::MutexLock lock(&mutex);
     execution_order.push_back(ExecutionStage::kAfterWaitForEvent);
   }),
               IsOk());
   EXPECT_THAT(stream2->WaitFor(stream1.get()), IsOk());
-  EXPECT_THAT(stream2->DoHostCallback([&execution_order]() {
+  EXPECT_THAT(stream2->DoHostCallback([&]() {
+    absl::MutexLock lock(&mutex);
     execution_order.push_back(ExecutionStage::kAfterWaitForStream);
   }),
               IsOk());
 
   EXPECT_THAT(stream1->RecordEvent(&event), IsOk());
   EXPECT_THAT(stream2->BlockHostUntilDone(), IsOk());
+  absl::MutexLock lock(&mutex);
   EXPECT_THAT(execution_order,
               ElementsAre(ExecutionStage::kBeforeWaitForEvent,
                           ExecutionStage::kAfterWaitForEvent,

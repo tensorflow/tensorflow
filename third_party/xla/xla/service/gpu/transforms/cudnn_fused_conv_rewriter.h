@@ -96,6 +96,11 @@ namespace gpu {
 // In the `result_s8` case where there's no bias, side-input, or alpha1, you can
 // skip the convert_f32 on conv.
 //
+// In the `result_s8` case, you can skip the clamp as long as the convert_f32
+// is not skipped. The reason is XLA implicitly clamps when converting from
+// float to int (although this is an implementation detail and not guaranteed by
+// the spec.)
+//
 // If you have an integer convolution that doesn't fit one of these idioms, this
 // pass returns an error -- cudnn will not be able to run it.
 class CudnnFusedConvRewriter : public HloModulePass {

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/versions.h"
@@ -53,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -72,6 +74,9 @@ inline bool IsNextIteration(const NodeDef& node_def) {
   return node_def.op() == "NextIteration" ||
          node_def.op() == "RefNextIteration";
 }
+
+inline const std::string_view kSharedNameGenerationCompatibleOps[] = {
+    "VariableV2", "Variable", "BatchFunction"};
 
 bool IsValidNodeName(absl::string_view s, bool allow_internal_ops) {
   using ::tensorflow::strings::Scanner;
@@ -1525,13 +1530,106 @@ absl::Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
       /*missing_unused_input_map_keys=*/nullptr);
 }
 
+bool IsSharedNameGenerationCompatible(const std::string& op_name) {
+  for (const std::string_view& valid_name :
+       kSharedNameGenerationCompatibleOps) {
+    if (valid_name == op_name) return true;
+  }
+  return false;
+}
+
+absl::Status GenerateResourceSharedNameIfEmpty(
+    GraphDef& gdef, const OpRegistryInterface* default_registry) {
+  auto is_resource_op_with_empty_shared_name = [](const NodeDef& node_def,
+                                                  const OpDef& op_def) {
+    if (!IsSharedNameGenerationCompatible(op_def.name())) {
+      // If this op is not in the allowlist, then it is likely a custom op.
+      // Currently for these ops, we are relying on its "use_node_name_sharing"
+      // to decide whether it is valid to generate shared_names. If the OpDef
+      // has "use_node_name_sharing" field, then it is valid to use node names
+      // as shared names.
+      if (!std::any_of(op_def.attr().begin(), op_def.attr().end(),
+                       [](const auto& attr_def) {
+                         return attr_def.name() == "use_node_name_sharing" &&
+                                attr_def.type() == "bool";
+                       }))
+        return false;
+    }
+
+    if (!std::any_of(op_def.attr().begin(), op_def.attr().end(),
+                     [](const auto& attr_def) {
+                       return attr_def.name() == "shared_name" &&
+                              attr_def.type() == "string";
+                     }))
+      return false;
+
+    auto iter = node_def.attr().find("shared_name");
+    if (iter == node_def.attr().end()) return true;
+    return iter->second.s().empty();
+  };
+
+  FunctionDefLibrary* library = gdef.mutable_library();
+  auto flib_def = library ? std::make_unique<FunctionLibraryDefinition>(
+                                default_registry, *library)
+                          : std::make_unique<FunctionLibraryDefinition>(
+                                default_registry, FunctionDefLibrary());
+
+  if (library) {
+    // Upgrade nodes in the functions.
+    for (FunctionDef& fdef : *library->mutable_function()) {
+      auto func_name = fdef.signature().name();
+      for (auto& node_def : *fdef.mutable_node_def()) {
+        const OpDef* op_def = nullptr;
+        // With lazy loading, some functions might not be executed, thus we skip
+        // the node if the op is not registered.
+        if (flib_def->LookUpOpDef(node_def.op(), &op_def).ok() &&
+            is_resource_op_with_empty_shared_name(node_def, *op_def)) {
+          // TODO(b/197144710): improve the shared_name attr, each op may use
+          // the shared_name differently.
+          if (IsSharedNameGenerationCompatible(op_def->name())) {
+            // Use the node name for such ops as the shared_name according to
+            // the document of variable ops.
+            (*node_def.mutable_attr())["shared_name"].set_s(node_def.name());
+          } else {
+            // Use the concat of function name and node name for such ops in a
+            // function as the shared_name. "@" is used as the separator because
+            // it is not allowed in the function name or the node name.
+            (*node_def.mutable_attr())["shared_name"].set_s(
+                absl::StrCat(node_def.name(), "@", func_name));
+          }
+        }
+      }
+    }
+  }
+
+  // Upgrade nodes in the GraphDef.
+  for (auto& node_def : *gdef.mutable_node()) {
+    const OpDef* op_def = nullptr;
+    TF_RETURN_IF_ERROR(flib_def->LookUpOpDef(node_def.op(), &op_def));
+    // TODO(b/197144710): improve the shared_name attr, each op may use the
+    // shared_name differently.
+    if (is_resource_op_with_empty_shared_name(node_def, *op_def)) {
+      (*node_def.mutable_attr())["shared_name"].set_s(node_def.name());
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 absl::Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                                     GraphDef&& gdef, Graph* g) {
-  ShapeRefiner refiner(gdef.versions().producer(), g->op_registry());
-  return GraphConstructor::Construct(opts, std::move(gdef), g, &refiner,
-                                     /*return_tensors=*/nullptr,
-                                     /*return_nodes=*/nullptr,
-                                     /*missing_unused_input_map_keys=*/nullptr);
+  if (opts.upgrade_legacy) {
+    TF_RETURN_IF_ERROR(GenerateResourceSharedNameIfEmpty(
+        gdef, g->flib_def().default_registry()));
+  }
+
+  tensorflow::ShapeRefiner refiner(gdef.versions().producer(),
+                                   g->op_registry());
+  return tensorflow::GraphConstructor::Construct(
+      opts, std::move(gdef), g, &refiner,
+      /*return_tensors=*/nullptr,
+      /*return_nodes=*/nullptr,
+      /*missing_unused_input_map_keys=*/nullptr);
 }
 
 absl::Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,

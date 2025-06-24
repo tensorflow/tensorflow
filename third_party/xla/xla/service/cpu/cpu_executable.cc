@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_executable.h"
 
+#include <cfenv>
+
 #define EIGEN_USE_THREADS
 
 #include <stdint.h>
@@ -26,22 +28,18 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/base/dynamic_annotations.h"
 #include "absl/base/optimization.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
-#include "llvm/IR/Mangler.h"
-#include "llvm/Support/Error.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
@@ -69,34 +67,16 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/host/host_stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
+#include "tsl/platform/denormal.h"
+#include "tsl/platform/setround.h"
 
 namespace xla {
 namespace cpu {
-
-using ConstantAllocation = CpuExecutable::ConstantAllocation;
-
-se::DeviceMemoryBase ConstantAllocation::AsDeviceMemoryBase() const {
-  if (auto* empty = std::get_if<std::monostate>(&data)) {
-    return se::DeviceMemoryBase();
-  }
-
-  if (auto* owned = std::get_if<std::unique_ptr<Literal>>(&data)) {
-    return se::DeviceMemoryBase((*owned)->untyped_data(),
-                                (*owned)->size_bytes());
-  }
-
-  auto* view = std::get_if<absl::Span<const uint8_t>>(&data);
-  return se::DeviceMemoryBase(
-      const_cast<void*>(reinterpret_cast<const void*>(view->data())),
-      view->size());
-}
 
 absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     std::unique_ptr<FunctionLibrary> function_library,
@@ -141,8 +121,11 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
       std::move(hlo_profile_index_map), std::move(assignment)));
   executable->function_library_ = std::move(function_library);
 
-  TF_ASSIGN_OR_RETURN(executable->thunks_,
-                      ThunkExecutor::Create(std::move(thunks)));
+  ThunkExecutor::Options thunk_executor_options;
+  thunk_executor_options.is_nested_executor = false;
+  TF_ASSIGN_OR_RETURN(
+      executable->thunks_,
+      ThunkExecutor::Create(std::move(thunks), thunk_executor_options));
 
   // Re-index constants by their allocation index to allow efficient lookup.
   for (auto& constant : constants) {
@@ -476,8 +459,6 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     }
   }
 
-  auto* host_stream =
-      dynamic_cast<se::host::HostStream*>(run_options->stream());
   se::Stream* stream = run_options->stream();
   se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
   TF_ASSIGN_OR_RETURN(
@@ -490,36 +471,38 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
       CreateResultShapedBuffer(run_options, absl::MakeSpan(buffers),
                                absl::MakeSpan(arguments)));
 
-  // Logically we want this lambda to capture `buffers` by move, ultimately our
-  // functor needs to be wrapped in an std::function, and that requires its
-  // functor to be copyable.  Thus we perpetrate the hack of capturing buffers
-  // "by shared pointer".
+  // IMPORTANT: State of the world as of June 2025 by ezhulenev@.
   //
-  // We also need to change the types of some of the variables we capture:
-  // run_options needs to change from a pointer to a value type, and arguments
-  // needs to change from a Span into a vector.  We use a struct instead
-  // of a lambda to make this explicit.
-  struct AsyncRunTask {
-    CpuExecutable* executable;
-    ServiceExecutableRunOptions run_options;
-    std::shared_ptr<std::vector<MaybeOwningDeviceMemory>> task_buffers;
+  // Although the function is called ExecuteAsyncOnStream, we invoke compiled
+  // executable on the caller thread, because the concept of device stream and
+  // implicit ordering of operations does not make much sense on CPU. We use
+  // stream semantics on GPU because host can run ahead of the device (which is
+  // impossible on CPU because host and device are the same), and because of
+  // stream-ordered memory allocation via BFC allocator (on the host we use
+  // regular host allocator).
+  //
+  // Furthermore, this execution path is deprecated, and nearly all users
+  // (certainly all important ones) go via the PjRtCpuClient route, which is not
+  // affected by this code. This code is used mostly in legacy tests (not yet
+  // migrated to PjRt) and in Tensorflow/XLA integration.
+  //
+  // By using the caller thread to kick off the execution, we avoid the
+  // overhead of thread hopping for small executables, and it allows Tensorflow
+  // to execute multiple XLA executable in parallel.
 
-    absl::Status operator()() {
-      if (executable->has_compute_function()) {
-        return executable->ExecuteComputeFunction(&run_options.run_options(),
-                                                  *task_buffers);
-      } else if (executable->has_thunks()) {
-        return executable->ExecuteThunks(&run_options.run_options(),
-                                         *task_buffers);
-      } else {
-        return Internal("No compute function or thunks found.");
-      }
-    }
-  };
-  host_stream->EnqueueTaskWithStatus(
-      AsyncRunTask{this, *run_options,
-                   std::make_shared<std::vector<MaybeOwningDeviceMemory>>(
-                       std::move(buffers))});
+  // Because we do not control the caller thread, we need to explicitly set
+  // flags to be consistent with compute thread pools used by TF and XLA.
+  tsl::port::ScopedFlushDenormal flush;
+  tsl::port::ScopedSetRound round(FE_TONEAREST);
+
+  if (has_compute_function()) {
+    TF_RETURN_IF_ERROR(
+        ExecuteComputeFunction(&run_options->run_options(), buffers));
+  } else if (has_thunks()) {
+    TF_RETURN_IF_ERROR(ExecuteThunks(&run_options->run_options(), buffers));
+  } else {
+    return Internal("No compute function or thunks found.");
+  }
 
   MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
   return std::move(result);
@@ -534,7 +517,7 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
   }
   // Each dynamic dimension size is represented as a S32.
-  int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();
+  int64_t metadata_size = sizeof(int32_t) * shape.dimensions().size();
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*)) + metadata_size;
 }
 

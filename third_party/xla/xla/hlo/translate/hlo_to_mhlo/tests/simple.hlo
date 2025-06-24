@@ -1,87 +1,143 @@
-# RUN: xla-translate -hlo-to-mlir-hlo %s -o - | FileCheck %s
-# RUN: xla-translate -hlo-to-stablehlo %s -o - | FileCheck %s --check-prefix CHECK-SHLO
+# RUN: hlo-translate -hlo-to-mlir -emit-mhlo %s | FileCheck %s
+# RUN: hlo-translate -hlo-to-mlir %s | FileCheck %s --check-prefix CHECK-SHLO
 
-name: "foo.5"
-entry_computation_name: "foo.5"
-computations {
+hlo_module {
   name: "foo.5"
-  instructions {
-    name: "Arg_0.1"
-    opcode: "parameter"
-    shape {
-      element_type: F32
-      dimensions: 4
-      layout {
-        minor_to_major: 0
-        format: DENSE
+  entry_computation_name: "main.5"
+  computations {
+    name: "main.5"
+    instructions {
+      name: "Arg_0.1"
+      opcode: "parameter"
+      shape {
+        element_type: F32
+        dimensions: 4
+        layout {
+          minor_to_major: 0
+          tail_padding_alignment_in_elements: 1
+        }
+        is_dynamic_dimension: false
       }
-      is_dynamic_dimension: false
-    }
-    metadata {
-    }
-    id: 1
-  }
-  instructions {
-    name: "Arg_1.2"
-    opcode: "parameter"
-    shape {
-      element_type: F32
-      dimensions: 4
-      layout {
-        minor_to_major: 0
-        format: DENSE
+      metadata {
       }
-      is_dynamic_dimension: false
-    }
-    metadata {
-    }
-    parameter_number: 1
-    id: 2
-  }
-  instructions {
-    name: "add.3"
-    opcode: "add"
-    shape {
-      element_type: F32
-      dimensions: 4
-      layout {
-        minor_to_major: 0
-        format: DENSE
+      id: 1
+      frontend_attributes {
       }
-      is_dynamic_dimension: false
-    }
-    metadata {
-    }
-    id: 3
-    operand_ids: 1
-    operand_ids: 2
-  }
-  instructions {
-    name: "dot.4"
-    opcode: "dot"
-    shape {
-      element_type: F32
-      layout {
-        format: DENSE
+      statistics_viz {
       }
     }
-    metadata {
+    instructions {
+      name: "Arg_1.2"
+      opcode: "parameter"
+      shape {
+        element_type: F32
+        dimensions: 4
+        layout {
+          minor_to_major: 0
+          tail_padding_alignment_in_elements: 1
+        }
+        is_dynamic_dimension: false
+      }
+      metadata {
+      }
+      parameter_number: 1
+      id: 2
+      frontend_attributes {
+      }
+      statistics_viz {
+      }
     }
-    dot_dimension_numbers {
-      lhs_contracting_dimensions: 0
-      rhs_contracting_dimensions: 0
+    instructions {
+      name: "add.3"
+      opcode: "add"
+      shape {
+        element_type: F32
+        dimensions: 4
+        layout {
+          minor_to_major: 0
+          tail_padding_alignment_in_elements: 1
+        }
+        is_dynamic_dimension: false
+      }
+      metadata {
+        source_file: "<stdin>"
+        source_line: 3
+      }
+      id: 3
+      operand_ids: 1
+      operand_ids: 2
+      frontend_attributes {
+      }
+      statistics_viz {
+      }
     }
-    id: 4
-    operand_ids: 3
-    operand_ids: 2
+    instructions {
+      name: "dot.4"
+      opcode: "dot"
+      shape {
+        element_type: F32
+        layout {
+          tail_padding_alignment_in_elements: 1
+        }
+      }
+      metadata {
+        source_file: "<stdin>"
+        source_line: 4
+      }
+      dot_dimension_numbers {
+        lhs_contracting_dimensions: 0
+        rhs_contracting_dimensions: 0
+      }
+      id: 4
+      operand_ids: 3
+      operand_ids: 2
+      precision_config {
+        operand_precision: DEFAULT
+        operand_precision: DEFAULT
+      }
+      frontend_attributes {
+      }
+      statistics_viz {
+      }
+    }
+    program_shape {
+      parameters {
+        element_type: F32
+        dimensions: 4
+        layout {
+          minor_to_major: 0
+          tail_padding_alignment_in_elements: 1
+        }
+        is_dynamic_dimension: false
+      }
+      parameters {
+        element_type: F32
+        dimensions: 4
+        layout {
+          minor_to_major: 0
+          tail_padding_alignment_in_elements: 1
+        }
+        is_dynamic_dimension: false
+      }
+      result {
+        element_type: F32
+        layout {
+          tail_padding_alignment_in_elements: 1
+        }
+      }
+      parameter_names: "Arg_0.1"
+      parameter_names: "Arg_1.2"
+    }
+    id: 5
+    root_id: 4
   }
-  program_shape {
+  host_program_shape {
     parameters {
       element_type: F32
       dimensions: 4
       layout {
         minor_to_major: 0
-        format: DENSE
+        tail_padding_alignment_in_elements: 1
       }
       is_dynamic_dimension: false
     }
@@ -90,53 +146,28 @@ computations {
       dimensions: 4
       layout {
         minor_to_major: 0
-        format: DENSE
+        tail_padding_alignment_in_elements: 1
       }
       is_dynamic_dimension: false
     }
     result {
       element_type: F32
       layout {
-        format: DENSE
+        tail_padding_alignment_in_elements: 1
       }
     }
-    parameter_names: "Arg_0"
-    parameter_names: "Arg_1"
+    parameter_names: "p0"
+    parameter_names: "p1"
   }
-  id: 5
-  root_id: 4
-}
-host_program_shape {
-  parameters {
-    element_type: F32
-    dimensions: 4
-    layout {
-      minor_to_major: 0
-      format: DENSE
-    }
-    is_dynamic_dimension: false
+  entry_computation_id: 5
+  input_output_alias {
   }
-  parameters {
-    element_type: F32
-    dimensions: 4
-    layout {
-      minor_to_major: 0
-      format: DENSE
-    }
-    is_dynamic_dimension: false
+  stack_frame_index {
   }
-  result {
-    element_type: F32
-    layout {
-      format: DENSE
-    }
+  buffer_donor {
   }
-  parameter_names: "Arg_0"
-  parameter_names: "Arg_1"
-}
-id: 5
-entry_computation_id: 5
-dynamic_parameter_binding {
+  frontend_attributes {
+  }
 }
 
 # CHECK-LABEL: func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<f32> {

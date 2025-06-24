@@ -109,7 +109,7 @@ int GrpcDataServerBase::BoundPort() { return bound_port(); }
 
 void GrpcDataServerBase::AddProfilerServiceToBuilder(
     ::grpc::ServerBuilder& builder) {
-  profiler_service_ = profiler::CreateProfilerService();
+  profiler_service_ = tsl::profiler::CreateProfilerService();
   builder.RegisterService(profiler_service_.get());
 }
 

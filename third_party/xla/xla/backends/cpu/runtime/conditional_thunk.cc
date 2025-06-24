@@ -15,12 +15,17 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/conditional_thunk.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
@@ -28,9 +33,8 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
@@ -112,6 +116,18 @@ ConditionalThunk::ResourceUses ConditionalThunk::resource_uses() const {
     resource_uses.insert(resource_uses.end(), uses.begin(), uses.end());
   }
   return resource_uses;
+}
+
+std::vector<std::pair<std::string, const ThunkSequence*>>
+ConditionalThunk::nested_thunks() const {
+  std::vector<std::pair<std::string, const ThunkSequence*>> result;
+  result.reserve(branch_executors_.size());
+  size_t branch_idx = 0;
+  for (const auto& branch_executor : branch_executors_) {
+    result.emplace_back(absl::StrCat(info().op_name, "-branch_", branch_idx++),
+                        &branch_executor.thunk_sequence());
+  }
+  return result;
 }
 
 }  // namespace xla::cpu

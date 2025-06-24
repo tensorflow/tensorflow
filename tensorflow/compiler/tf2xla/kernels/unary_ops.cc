@@ -24,9 +24,9 @@ limitations under the License.
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/math.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {

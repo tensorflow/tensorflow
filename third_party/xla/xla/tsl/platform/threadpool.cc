@@ -18,19 +18,16 @@ limitations under the License.
 #include <cfenv>  // NOLINT
 #include <cstdint>
 #include <functional>
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/base/optimization.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/types.h"
-
-#define EIGEN_USE_THREADS
-
-#include "absl/types/optional.h"
-#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/threadpool_interface.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/context.h"
 #include "tsl/platform/denormal.h"
@@ -42,6 +39,9 @@ limitations under the License.
 #include "tsl/platform/cpu_info.h"
 #endif  // DNNL_AARCH64_USE_ACL
 
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
+
 #ifdef TENSORFLOW_THREADSCALING_EXPERIMENTAL
 ABSL_FLAG(float, tensorflow_num_threads_scale_factor, 1.0,
           "Allows to scale all Tensorflow ThreadPools. Total number of threads "
@@ -50,9 +50,7 @@ ABSL_FLAG(float, tensorflow_num_threads_scale_factor, 1.0,
           "no-op.");
 #endif  // TENSORFLOW_THREADSCALING_EXPERIMENTAL
 
-namespace tsl {
-
-namespace thread {
+namespace tsl::thread {
 
 struct EigenEnvironment {
   using EnvThread = Thread;
@@ -139,18 +137,19 @@ ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
   if (num_threads < 1) num_threads = 1;
 #endif  // TENSORFLOW_THREADSCALING_EXPERIMENTAL
 
-  eigen_threadpool_.reset(new Eigen::ThreadPoolTempl<EigenEnvironment>(
-      num_threads, low_latency_hint,
-      EigenEnvironment(env, thread_options, "tf_" + name)));
+  eigen_threadpool_ =
+      std::make_unique<Eigen::ThreadPoolTempl<EigenEnvironment>>(
+          num_threads, low_latency_hint,
+          EigenEnvironment(env, thread_options, "tf_" + name));
   underlying_threadpool_ = eigen_threadpool_.get();
-  threadpool_device_.reset(new Eigen::ThreadPoolDevice(underlying_threadpool_,
-                                                       num_threads, allocator));
+  threadpool_device_ = std::make_unique<Eigen::ThreadPoolDevice>(
+      underlying_threadpool_, num_threads, allocator);
 }
 
 ThreadPool::ThreadPool(thread::ThreadPoolInterface* user_threadpool) {
   underlying_threadpool_ = user_threadpool;
-  threadpool_device_.reset(new Eigen::ThreadPoolDevice(
-      underlying_threadpool_, underlying_threadpool_->NumThreads(), nullptr));
+  threadpool_device_ = std::make_unique<Eigen::ThreadPoolDevice>(
+      underlying_threadpool_, underlying_threadpool_->NumThreads(), nullptr);
 }
 
 ThreadPool::~ThreadPool() {}
@@ -252,25 +251,6 @@ void ThreadPool::ParallelFor(int64_t total, int64_t cost_per_unit,
 }
 
 void ThreadPool::ParallelForWithWorkerId(
-    int64_t total, int64_t cost_per_unit,
-    const std::function<void(int64_t, int64_t, int)>& fn) {
-  CHECK_GE(total, 0);
-  CHECK_EQ(total, (int64_t)(Eigen::Index)total);
-
-  threadpool_device_->parallelFor(total,
-                                  Eigen::TensorOpCost(0, 0, cost_per_unit),
-                                  [this, &fn](int64_t start, int64_t limit) {
-                                    // ParallelFor may use the current thread to
-                                    // do some work synchronously. When calling
-                                    // CurrentThreadId() from outside of the
-                                    // thread pool, we get -1, so we can shift
-                                    // every id up by 1.
-                                    int id = CurrentThreadId() + 1;
-                                    fn(start, limit, id);
-                                  });
-}
-
-void ThreadPool::ParallelForWithWorkerId(
     int64_t total, const SchedulingParams& scheduling_params,
     const std::function<void(int64_t, int64_t, int)>& fn) {
   ParallelFor(total, scheduling_params,
@@ -296,19 +276,9 @@ void ThreadPool::ScheduleWithHint(std::function<void()> fn, int start,
   underlying_threadpool_->ScheduleWithHint(std::move(fn), start, limit);
 }
 
-void ThreadPool::SetStealPartitions(
-    const std::vector<std::pair<unsigned, unsigned>>& partitions) {
-  // ThreadPool::SetStealPartitions is only called in the constructor of
-  // RunHandlerPool::Impl, which currently instantiates ThreadPool using a
-  // constructor that does not take user_threadpool. Thus we assume
-  // eigen_threadpool_ is not null here.
-  DCHECK(eigen_threadpool_ != nullptr);
-  eigen_threadpool_->SetStealPartitions(partitions);
-}
-
 Eigen::ThreadPoolInterface* ThreadPool::AsEigenThreadPool() const {
   DCHECK(underlying_threadpool_ != nullptr);
   return underlying_threadpool_;
 }
-}  // namespace thread
-}  // namespace tsl
+
+}  // namespace tsl::thread

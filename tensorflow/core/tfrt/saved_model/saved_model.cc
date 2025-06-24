@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/cc/saved_model/fingerprinting.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
@@ -59,6 +60,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/protobuf/fingerprint.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
@@ -99,7 +101,6 @@ namespace {
 
 constexpr absl::string_view kSignatureJoiningDelimiter = "+";
 constexpr absl::string_view kXlaCallModuleOpName = "XlaCallModule";
-// TODO(b/374165187): Use enums for model types.
 constexpr absl::string_view kJaxModelLabel = "JAX";
 constexpr absl::string_view kUnknownModelLabel = "UNKNOWN";
 
@@ -120,6 +121,11 @@ auto* inferred_model_type_count = monitoring::Counter<3>::New(
     "Count of SavedModels with their inferred model types (best-effort).",
     "model_name", "model_version", "inferred_model_type");
 
+auto* inferred_model_type_per_request_count = monitoring::Counter<3>::New(
+    "/tensorflow/tfrt/inferred_model_type_per_request",
+    "Count of requests with their inferred model types (best-effort).",
+    "model_name", "model_version", "inferred_model_type");
+
 auto* saved_model_import_time_seconds =
     tensorflow::monitoring::Gauge<int64_t, 1>::New(
         "/tensorflow/tfrt/saved_model/import_time",
@@ -134,6 +140,12 @@ auto* saved_model_init_time_seconds =
     tensorflow::monitoring::Gauge<int64_t, 1>::New(
         "/tensorflow/tfrt/saved_model/init_time",
         "Record the initialization time for the savedmodel.", "model_name");
+
+auto* saved_model_unified_model_id =
+    tensorflow::monitoring::Gauge<std::string, 2>::New(
+        "/tensorflow/tfrt/saved_model/unified_model_id",
+        "Record the unified model id of the saved model.", "model_name",
+        "model_version");
 
 // TODO(b/279197040) clean up this retention after input spec validation is
 // enabled everywhere.
@@ -395,7 +407,7 @@ bool AotPackageExists(absl::string_view saved_model_dir) {
          env->FileExists(aot_bef_path).ok();
 }
 
-std::string GetInferredModelType(const MetaGraphDef& meta_graph_def) {
+InferredModelType GetInferredModelType(const MetaGraphDef& meta_graph_def) {
   bool found_xla_call_module_op = false;
   for (const auto& function : meta_graph_def.graph_def().library().function()) {
     for (const auto& node : function.node_def()) {
@@ -405,8 +417,20 @@ std::string GetInferredModelType(const MetaGraphDef& meta_graph_def) {
       }
     }
   }
-  return std::string(found_xla_call_module_op ? kJaxModelLabel
-                                              : kUnknownModelLabel);
+  return found_xla_call_module_op ? InferredModelType::kJax
+                                  : InferredModelType::kUncategorized;
+}
+
+std::string StringifyInferredModelType(InferredModelType model_type) {
+  switch (model_type) {
+    case InferredModelType::kUncategorized:
+      return std::string(kUnknownModelLabel);
+    case InferredModelType::kJax:
+      return std::string(kJaxModelLabel);
+  }
+  LOG(ERROR) << "Unexpected value for InferredModelType: "
+             << static_cast<int>(model_type);
+  return std::string(kUnknownModelLabel);
 }
 
 }  // namespace
@@ -489,6 +513,27 @@ void UpdateCompileOptions(SavedModel::Options& options) {
       !options.graph_execution_options.enable_mlrt;
 }
 
+// TODO(b/416666698): When possible, call the reference implementation.
+void EmitSavedModelUnifiedModelId(absl::string_view saved_model_dir,
+                                  const SavedModel::Options& options) {
+  string saved_model_uuid = "(empty)";
+  absl::StatusOr<FingerprintDef> fingerprint_or =
+      saved_model::fingerprinting::ReadSavedModelFingerprint(saved_model_dir);
+  if (fingerprint_or.ok()) {
+    if (fingerprint_or.value().uuid().empty()) {
+      saved_model_uuid =
+          saved_model::fingerprinting::Singleprint(fingerprint_or.value());
+    } else {
+      saved_model_uuid = fingerprint_or.value().uuid();
+    }
+  }
+  saved_model_unified_model_id
+      ->GetCell(options.graph_execution_options.model_metadata.name(),
+                absl::StrCat(
+                    options.graph_execution_options.model_metadata.version()))
+      ->Set(saved_model_uuid);
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
@@ -505,6 +550,8 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
     absl::string_view saved_model_dir) {
   LOG(INFO) << "TFRT loading v1 savedmodel: " << saved_model_dir;
 
+  EmitSavedModelUnifiedModelId(saved_model_dir, options);
+
   if (options.graph_execution_options.use_ifrt) {
     if (!options.graph_execution_options.enable_mlrt ||
         !options.enable_lazy_loading ||
@@ -516,14 +563,16 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
 
   tfrt::metrics::AddTFRTVersionMetric();
 
+  InferredModelType inferred_model_type = InferredModelType::kUncategorized;
   if (options.emit_model_type_metric) {
-    inferred_model_type_count
-        ->GetCell(options.graph_execution_options.model_metadata.name(),
-                  absl::StrCat(
-                      options.graph_execution_options.model_metadata.version()),
-                  GetInferredModelType(meta_graph_def))
-        ->IncrementBy(1);
+    inferred_model_type = GetInferredModelType(meta_graph_def);
   }
+  inferred_model_type_count
+      ->GetCell(options.graph_execution_options.model_metadata.name(),
+                absl::StrCat(
+                    options.graph_execution_options.model_metadata.version()),
+                StringifyInferredModelType(inferred_model_type))
+      ->IncrementBy(1);
 
   UpdateTpuTargetByBridgeCompatibility(options.graph_execution_options,
                                        meta_graph_def.graph_def());
@@ -816,7 +865,7 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
       std::move(loaded_executable),
       std::move(initializers_and_signatures.signature_map),
       std::move(runner_table), std::move(resource_array),
-      std::move(graph_executor))};
+      std::move(graph_executor), inferred_model_type)};
 }
 
 SavedModelImpl::SavedModelImpl(
@@ -826,7 +875,8 @@ SavedModelImpl::SavedModelImpl(
     std::optional<mlrt::LoadedExecutable> loaded_executable,
     SignatureMap signatures, std::unique_ptr<OpKernelRunnerTable> runner_table,
     std::unique_ptr<tfd::FallbackResourceArray> resource_array,
-    std::unique_ptr<GraphExecutor> graph_executor)
+    std::unique_ptr<GraphExecutor> graph_executor,
+    InferredModelType inferred_model_type)
     : SavedModel(std::move(options), std::move(graph_executor)),
       symbol_uids_(std::move(symbol_uids)),
       meta_graph_def_(std::move(meta_graph_def)),
@@ -837,7 +887,8 @@ SavedModelImpl::SavedModelImpl(
               ->GetHostContext()),
       signatures_(std::move(signatures)),
       runner_table_(std::move(runner_table)),
-      resource_array_(std::move(resource_array)) {
+      resource_array_(std::move(resource_array)),
+      inferred_model_type_(inferred_model_type) {
   if (!options_.enable_lazy_loading) {
     bytecode_ = std::move(bytecode);
     loaded_executable_ = std::move(loaded_executable);
@@ -861,6 +912,15 @@ std::optional<FunctionMetadata> SavedModelImpl::GetFunctionMetadata(
   auto iter = signatures_.find(func_name);
   if (iter == signatures_.end()) return std::nullopt;
   return FunctionMetadata(&iter->second);
+}
+
+void SavedModelImpl::IncrementInferredModelTypePerRequestCount() {
+  inferred_model_type_per_request_count
+      ->GetCell(options_.graph_execution_options.model_metadata.name(),
+                absl::StrCat(
+                    options_.graph_execution_options.model_metadata.version()),
+                StringifyInferredModelType(inferred_model_type_))
+      ->IncrementBy(1);
 }
 
 absl::Status SavedModelImpl::Run(const RunOptions& run_options,
@@ -899,6 +959,7 @@ absl::Status SavedModelImpl::Run(const RunOptions& run_options,
     auto run_opt = run_options;
     run_opt.name = name;
 
+    IncrementInferredModelTypePerRequestCount();
     return graph_executor_->Run(run_opt, input_tensors, output_tensor_names,
                                 /*target_tensor_names=*/{}, outputs);
   }
@@ -948,6 +1009,7 @@ absl::Status SavedModelImpl::Run(const RunOptions& run_options,
   DCHECK(runner_table);
   DCHECK(resource_array);
 
+  IncrementInferredModelTypePerRequestCount();
   return GraphExecutionRunOnFunction(
       options_.graph_execution_options, run_options, name, *symbol_uids, func,
       loaded_executable, inputs, outputs, resource_context,
@@ -1013,6 +1075,7 @@ absl::Status SavedModelImpl::RunMultipleSignatures(
 
   std::vector<tensorflow::Tensor> flat_outputs;
 
+  IncrementInferredModelTypePerRequestCount();
   TF_RETURN_IF_ERROR(
       graph_executor_->Run(run_options, flat_inputs, flat_output_names,
                            /*target_tensor_names=*/{}, &flat_outputs));
@@ -1067,6 +1130,7 @@ absl::Status SavedModelImpl::RunByTensorNames(
     std::vector<tensorflow::Tensor>* outputs) {
   // TODO(b/192498110): Validate input type.
 
+  IncrementInferredModelTypePerRequestCount();
   return graph_executor_->Run(run_options, inputs, output_tensor_names,
                               target_node_names, outputs);
 }

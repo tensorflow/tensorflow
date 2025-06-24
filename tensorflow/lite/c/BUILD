@@ -299,7 +299,7 @@ cc_test(
     deps = [
         ":c_api",
         "//tensorflow/lite/core/c:c_api",
-        "//tensorflow/lite/core/c:c_api_experimental",
+        "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",
     ],
 )

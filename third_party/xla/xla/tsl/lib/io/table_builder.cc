@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <assert.h>
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/hash/crc32c.h"
 #include "xla/tsl/lib/io/block_builder.h"
 #include "xla/tsl/lib/io/format.h"
 #include "xla/tsl/lib/io/table_options.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/coding.h"
 #include "tsl/platform/snappy.h"
 
@@ -31,7 +33,7 @@ namespace table {
 
 namespace {
 
-void FindShortestSeparator(string* start, const absl::string_view& limit) {
+void FindShortestSeparator(string* start, absl::string_view limit) {
   // Find length of common prefix
   size_t min_length = std::min(start->size(), limit.size());
   size_t diff_index = 0;
@@ -116,8 +118,7 @@ TableBuilder::~TableBuilder() {
   delete rep_;
 }
 
-void TableBuilder::Add(const absl::string_view& key,
-                       const absl::string_view& value) {
+void TableBuilder::Add(absl::string_view key, absl::string_view value) {
   Rep* r = rep_;
   assert(!r->closed);
   if (!ok()) return;
@@ -200,7 +201,7 @@ void TableBuilder::WriteBlock(BlockBuilder* block, BlockHandle* handle) {
   block->Reset();
 }
 
-void TableBuilder::WriteRawBlock(const absl::string_view& block_contents,
+void TableBuilder::WriteRawBlock(absl::string_view block_contents,
                                  CompressionType type, BlockHandle* handle) {
   Rep* r = rep_;
   handle->set_offset(r->offset);

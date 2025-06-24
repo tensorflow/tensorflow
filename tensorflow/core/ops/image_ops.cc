@@ -15,9 +15,11 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -70,21 +72,25 @@ absl::Status ResizeShapeFn(InferenceContext* c) {
                                c->Dim(input, 3));
 }
 
-absl::Status DecodeImageShapeFn(InferenceContext* c) {
-  ShapeHandle unused;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
-  DimensionHandle channels_dim;
+absl::StatusOr<DimensionHandle> GetChannelsDim(InferenceContext* c) {
   int32_t channels;
   TF_RETURN_IF_ERROR(c->GetAttr("channels", &channels));
   if (channels == 0) {
-    channels_dim = c->UnknownDim();
-  } else {
-    if (channels < 0) {
-      return errors::InvalidArgument("channels must be non-negative, got ",
-                                     channels);
-    }
-    channels_dim = c->MakeDim(channels);
+    return c->UnknownDim();
   }
+
+  if (channels < 0) {
+    return errors::InvalidArgument("channels must be non-negative, got ",
+                                   channels);
+  }
+
+  return c->MakeDim(channels);
+}
+
+absl::Status DecodeImageShapeFn(InferenceContext* c) {
+  ShapeHandle unused;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+  TF_ASSIGN_OR_RETURN(DimensionHandle channels_dim, GetChannelsDim(c));
 
   c->set_output(0, c->MakeShape({InferenceContext::kUnknownDim,
                                  InferenceContext::kUnknownDim, channels_dim}));
@@ -93,36 +99,26 @@ absl::Status DecodeImageShapeFn(InferenceContext* c) {
 
 absl::Status DecodeImageV2ShapeFn(InferenceContext* c) {
   ShapeHandle unused;
-  int32_t channels;
   bool expand_animations;
-  DimensionHandle channels_dim;
 
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
-  TF_RETURN_IF_ERROR(c->GetAttr("channels", &channels));
+  TF_ASSIGN_OR_RETURN(DimensionHandle channels_dim, GetChannelsDim(c));
   TF_RETURN_IF_ERROR(c->GetAttr("expand_animations", &expand_animations));
 
-  if (channels == 0) {
-    channels_dim = c->UnknownDim();
-  } else {
-    if (channels < 0) {
-      return errors::InvalidArgument("channels must be non-negative, got ",
-                                     channels);
-    }
-    channels_dim = c->MakeDim(channels);
-  }
-
-  // `expand_animations` set to true will return 4-D shapes for GIF. 3-D shapes
-  // will be returned for jpg, png, and bmp. `expand_animations` set to false
-  // will always return 3-D shapes for all (jpg, png, bmp, gif).
+  // `expand_animations` set to true will return 4-D shapes for GIF and
+  // WebP. 3-D shapes will be returned for jpg, png, and
+  // bmp. `expand_animations` set to false will always return 3-D shapes for all
+  // (jpg, png, bmp, gif, webp). So we *may* have a mix of 3D and 4D
+  // shapes. Just return unknown.
   if (expand_animations) {
     c->set_output(0, c->UnknownShape());
     return absl::OkStatus();
-  } else {
-    c->set_output(0,
-                  c->MakeShape({InferenceContext::kUnknownDim,
-                                InferenceContext::kUnknownDim, channels_dim}));
-    return absl::OkStatus();
   }
+
+  // expand_animations is False. We'll have a 3D tensor.
+  c->set_output(0, c->MakeShape({InferenceContext::kUnknownDim,
+                                 InferenceContext::kUnknownDim, channels_dim}));
+  return absl::OkStatus();
 }
 
 absl::Status EncodeImageShapeFn(InferenceContext* c) {
@@ -640,12 +636,33 @@ REGISTER_OP("DecodeBmp")
 REGISTER_OP("DecodeGif")
     .Input("contents: string")
     .Output("image: uint8")
+    // Always a 4D tensor, and no Alpha support, so channels=3.
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       c->set_output(0, c->MakeShape({InferenceContext::kUnknownDim,
                                      InferenceContext::kUnknownDim,
                                      InferenceContext::kUnknownDim, 3}));
+      return absl::OkStatus();
+    });
+
+// --------------------------------------------------------------------------
+REGISTER_OP("DecodeWebP")
+    .Input("contents: string")
+    .Attr("channels: int = 0")
+    // Add this dtype arg for now, even if we don't yet support conversion.
+    .Attr("dtype: {uint8} = DT_UINT8")
+    .Output("image: dtype")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      TF_ASSIGN_OR_RETURN(DimensionHandle channels_dim, GetChannelsDim(c));
+
+      // Always a 4D tensor, but channels is dynamic.
+      c->set_output(
+          0, c->MakeShape({InferenceContext::kUnknownDim,
+                           InferenceContext::kUnknownDim,
+                           InferenceContext::kUnknownDim, channels_dim}));
       return absl::OkStatus();
     });
 

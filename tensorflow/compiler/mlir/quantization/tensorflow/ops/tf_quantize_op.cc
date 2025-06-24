@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "absl/types/optional.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -43,6 +42,7 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 namespace {
+
 constexpr StringRef kDequantizeFunctionName = "composite_dequantize";
 constexpr StringRef kUniformQuantizationFunctionName = "uniform";
 
@@ -101,7 +101,8 @@ TF::PartitionedCallOp FinalizeFunctionRegister(
   rewriter.restoreInsertionPoint(original_point);
 
   auto quantize_call = rewriter.create<TF::PartitionedCallOp>(
-      quantized_op->getLoc(), quantize_result_type, input, func_name_attr,
+      quantized_op->getLoc(), quantize_result_type, input,
+      /*args_attrs=*/nullptr, /*res_attrs=*/nullptr, func_name_attr,
       /*config=*/"", /*config_proto=*/"", /*executor_type=*/"");
   return quantize_call;
 }
@@ -153,8 +154,8 @@ QuantizedType CalculateUniformQuantParams(
   DenseFPElementsAttr attr;
   if (!matchPattern(op->getResult(0), m_Constant(&attr))) return nullptr;
 
-  QuantizedType quant_type = mlir::dyn_cast<quant::QuantizedType>(
-      quant::GetUniformQuantizedTypeForWeight(
+  QuantizedType quant_type =
+      mlir::dyn_cast<quant::QuantizedType>(GetUniformQuantizedTypeForWeight(
           attr, /*symmetric=*/kIsNarrowRange && kIsSigned, kBitWidth, kIsSigned,
           kIsNarrowRange, /*is_legacy_float*/ false));
 

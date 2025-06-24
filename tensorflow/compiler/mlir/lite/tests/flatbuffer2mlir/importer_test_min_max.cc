@@ -16,6 +16,8 @@ limitations under the License.
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <string>
+#include <system_error>
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"

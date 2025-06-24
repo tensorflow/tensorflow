@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_SERVICE_FLOAT_SUPPORT_H_
 
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -73,6 +72,16 @@ class FloatSupport {
   // specified index, even if the operand is in the high-precision type.
   virtual bool EffectiveOperandPrecisionIsLowPrecision(
       const HloInstruction& hlo, int64_t operand_index) const;
+
+  // Returns whether FloatNormalization should skip analyzing the instruction.
+  virtual bool ShouldSkipInstruction(const HloInstruction& hlo) const {
+    return false;
+  }
+
+  // Returns whether FloatNormalization should skip custom fusion computations.
+  virtual bool ShouldSkipComputationsOf(const HloInstruction& hlo) const {
+    return false;
+  }
 
  private:
   PrimitiveType low_precision_type_;

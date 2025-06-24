@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -47,6 +48,8 @@ namespace {
 
 using ::mlir::IntegerAttr;
 using ::mlir::StringRef;
+using ::mlir::sdy::PropagationBarrierOp;
+using ::mlir::sdy::PropagationDirectionAttr;
 using ::mlir::sdy::ShardingConstraintOp;
 using ::mlir::sdy::ShardingGroupOp;
 using ::mlir::sdy::TensorShardingAttr;
@@ -60,9 +63,10 @@ mlir::LogicalResult rewriteShardingCustomCall(
 
   std::vector<int64_t> unspecDims;
   if (std::optional<mlir::Attribute> backendConfig = op.getBackendConfig()) {
+    StringRef configStr =
+        mlir::dyn_cast<mlir::StringAttr>(*backendConfig).getValue();
     CHECK_OK(xla::sharding_op_util::ParseAttributes(
-        mlir::dyn_cast<mlir::StringAttr>(*backendConfig).getValue(),
-        &unspecDims));
+        absl::string_view(configStr.data(), configStr.size()), &unspecDims));
   }
 
   if (op->getNumResults() != 1) {
@@ -85,6 +89,24 @@ mlir::LogicalResult rewriteShardingCustomCall(
   return mlir::success();
 }
 
+mlir::LogicalResult rewritePropagationBarrierCustomCall(
+    CustomCallOp op, CustomCallOpAdaptor adaptor,
+    mlir::ConversionPatternRewriter& rewriter) {
+  CHECK_EQ(op.getNumOperands(), 1);
+  CHECK_EQ(op.getNumResults(), 1);
+  std::optional<PropagationDirectionAttr> allowedDirection =
+      tryGetFrontendAttr<PropagationDirectionAttr>(op, kAllowedDirectionAttr);
+  if (!allowedDirection.has_value()) {
+    op.emitError() << "expected PropagationBarrier CustomCall Op with a "
+                      "propagation direction.";
+    return mlir::failure();
+  }
+
+  rewriter.replaceOpWithNewOp<PropagationBarrierOp>(
+      op, adaptor.getInputs().front(), allowedDirection->getValue());
+
+  return mlir::success();
+}
 mlir::LogicalResult rewriteShardingGroupCustomCall(
     CustomCallOp op, CustomCallOpAdaptor adaptor,
     mlir::ConversionPatternRewriter& rewriter) {
@@ -120,6 +142,9 @@ class SdyCustomCallPattern : public mlir::OpConversionPattern<CustomCallOp> {
     if (op.getCallTargetName() == kShardingGroupCustomCallTargetName) {
       return rewriteShardingGroupCustomCall(op, adaptor, rewriter);
     }
+    if (op.getCallTargetName() == kPropagationBarrierCustomCallTargetName) {
+      return rewritePropagationBarrierCustomCall(op, adaptor, rewriter);
+    }
 
     return rewriter.notifyMatchFailure(
         op, "expected CustomCallOp with xla.sdy target name.");
@@ -141,7 +166,8 @@ class ImportSdyCustomCallsPass
     target.addLegalDialect<mlir::sdy::SdyDialect>();
     target.addDynamicallyLegalOp<CustomCallOp>([](CustomCallOp op) {
       return op.getCallTargetName() != kShardingCustomCallTargetName &&
-             op.getCallTargetName() != kShardingGroupCustomCallTargetName;
+             op.getCallTargetName() != kShardingGroupCustomCallTargetName &&
+             op.getCallTargetName() != kPropagationBarrierCustomCallTargetName;
     });
     mlir::RewritePatternSet patterns(&context);
     patterns.add<SdyCustomCallPattern>(&context);
@@ -159,6 +185,10 @@ class ImportSdyCustomCallsPass
     return "Converts a CustomCall with target name Sharding into a "
            "ShardingConstraintOp and with target name ShardingGroup into a "
            "ShardingGroupOp.";
+  }
+
+  void getDependentDialects(mlir::DialectRegistry& registry) const final {
+    registry.insert<mlir::sdy::SdyDialect>();
   }
 };
 

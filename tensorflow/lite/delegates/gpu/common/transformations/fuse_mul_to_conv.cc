@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/any.h"
-#include "absl/types/variant.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"

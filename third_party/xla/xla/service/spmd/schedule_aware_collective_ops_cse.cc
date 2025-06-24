@@ -31,8 +31,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -48,7 +48,7 @@ bool IsAddingOnlyDegenerateDimensions(const HloInstruction* inst) {
   const Shape& out_shape = inst->shape();
   return ShapeUtil::ElementsIn(in_shape) == ShapeUtil::ElementsIn(out_shape) &&
          ShapeUtil::DimensionsUnmodifiedByReshape(in_shape, out_shape).size() ==
-             in_shape.rank();
+             in_shape.dimensions().size();
 }
 
 // Passthrough reshapes or bitcasts adding only degenerate hdimensions to some

@@ -40,9 +40,9 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/tsl/lib/math/math_util.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -448,7 +448,7 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
   HloEvaluator evaluator;
   Literal result_literal = evaluator.Evaluate(*computation, {}).value();
 
-  CHECK_EQ(result_literal.shape().rank(), 4);
+  CHECK_EQ(result_literal.shape().dimensions().size(), 4);
   auto result =
       std::make_unique<Array4D<float>>(result_literal.shape().dimensions(0),
                                        result_literal.shape().dimensions(1),

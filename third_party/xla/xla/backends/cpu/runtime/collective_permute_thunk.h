@@ -40,6 +40,10 @@ class CollectivePermuteThunk final : public CollectiveThunk {
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
+  const std::vector<SourceTargetPair>& source_target_pairs() const {
+    return source_target_pairs_;
+  }
+
  private:
   CollectivePermuteThunk(
       Info info, OpParams op_params, OpBuffers op_buffers,

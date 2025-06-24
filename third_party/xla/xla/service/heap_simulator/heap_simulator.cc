@@ -58,9 +58,9 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/time_utils.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -1071,6 +1071,11 @@ int64_t BufferIntervalTree::HeapSizeInInterval(const int64_t start,
   return max_memory_used;
 }
 
+void BufferIntervalTree::Clear() {
+  root_ = nullptr;
+  node_storage_.clear();
+}
+
 template <typename BufferType>
 std::string
 GlobalDecreasingSizeBestFitHeap<BufferType>::BufferInterval::ToString() const {
@@ -1387,7 +1392,7 @@ class SliceTimeAllPermutationIterator : public SliceTimePermutationIterator {
  private:
   SliceTimeAllPermutationIterator() = default;
 
-  int64_t num_slices_;
+  int64_t num_slices_ = 0;  // Initialize to 0
   bool done_ = true;
   std::vector<int64_t> permutation_;
 };
@@ -1610,7 +1615,7 @@ class SliceTimePreferredPermutationIterator
     return permutation_index;
   }
 
-  int64_t num_slices_;
+  int64_t num_slices_ = 0;  // Initialize to 0
   // For each value in permutation, indicates if it has a fixed value tied to
   // a sliced allocation before repacking. If fixed_permutation_values[i] is
   // true, permutation_[i] holds the fixed slice time for the slice with the
@@ -2066,8 +2071,9 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::Find()
   if (preferred_offset_ >= 0) {
     ChunksSortedBySliceTime chunks = FindForOffset(preferred_offset_);
     if (!chunks.empty()) {
-      VLOG(1) << "SlicedAllocationFinder found chunks: " << "{ "
-              << absl::StrJoin(chunks, ", ", absl::StreamFormatter()) << " }";
+      VLOG(1) << "SlicedAllocationFinder found chunks: "
+              << "{ " << absl::StrJoin(chunks, ", ", absl::StreamFormatter())
+              << " }";
       return chunks;
     }
   }
@@ -2099,8 +2105,9 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::Find()
     VLOG(3) << "SlicedAllocationFinder::Find() searching " << root->ToString();
     ChunksSortedBySliceTime chunks = FindInRoot(*root);
     if (!chunks.empty()) {
-      VLOG(1) << "SlicedAllocationFinder found chunks: " << "{ "
-              << absl::StrJoin(chunks, ", ", absl::StreamFormatter()) << " }";
+      VLOG(1) << "SlicedAllocationFinder found chunks: "
+              << "{ " << absl::StrJoin(chunks, ", ", absl::StreamFormatter())
+              << " }";
       return chunks;
     }
   }
@@ -2585,7 +2592,7 @@ ConstrainedGlobalDecreasingSizeBestFitHeap::Finish() {
     multi_heap_result.heap_size += result_.heap_size;
     multi_heap_result.heap_results.push_back(std::move(result_));
     result_ = {};
-    interval_tree_ = {};
+    interval_tree_.Clear();
   } while (!sorted_buffer_intervals.empty());
 
   VLOG(1) << "Number of heaps produced = "
@@ -2610,6 +2617,42 @@ ChooseBestHeapAlgorithm<BufferType>::Finish() {
 
   DCHECK_GE(min_size_index, 0);
   return results[min_size_index];
+}
+
+BreadthFirstMidpointIterator::BreadthFirstMidpointIterator(int start, int end)
+    : initial_work_item_({start, end}) {
+  Begin();
+}
+
+int BreadthFirstMidpointIterator::value() const {
+  CHECK(value_.has_value());
+  return *value_;
+}
+
+void BreadthFirstMidpointIterator::Begin() {
+  work_items_.clear();
+  value_ = std::nullopt;
+
+  work_items_.push_back(initial_work_item_);
+  Next();
+}
+
+void BreadthFirstMidpointIterator::Next() {
+  if (work_items_.empty()) {
+    value_ = std::nullopt;
+    return;
+  }
+
+  WorkItem work_item = work_items_.front();
+  work_items_.pop_front();
+  if (work_item.start > work_item.end) {
+    Next();
+    return;
+  }
+  int midpoint = CeilOfRatio(work_item.start + work_item.end, 2);
+  value_ = midpoint;
+  work_items_.push_back({work_item.start, midpoint - 1});
+  work_items_.push_back({midpoint + 1, work_item.end});
 }
 
 template class GlobalDecreasingSizeBestFitHeap<HloValue>;

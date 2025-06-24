@@ -73,6 +73,10 @@ tf_module {
     argspec: "args=[\'contents\', \'channels\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \"<dtype: \'uint8\'>\", \'None\'], "
   }
   member_method {
+    name: "decode_webp"
+    argspec: "args=[\'contents\', \'channels\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \"<dtype: \'uint8\'>\", \'None\'], "
+  }
+  member_method {
     name: "draw_bounding_boxes"
     argspec: "args=[\'images\', \'boxes\', \'name\', \'colors\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }

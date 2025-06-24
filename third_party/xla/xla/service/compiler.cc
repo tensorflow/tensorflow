@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
@@ -46,13 +47,23 @@ Compiler::TargetConfig::TargetConfig(const se::GpuTargetConfigProto& proto)
     : device_description({proto.gpu_device_info()}),
       platform_name(proto.platform_name()),
       dnn_version_info(proto.dnn_version_info()),
-      device_description_str(proto.device_description_str()) {}
+      device_description_str(proto.device_description_str()) {
+  se::SemanticVersion runtime_version(proto.runtime_version().major(),
+                                      proto.runtime_version().minor(),
+                                      proto.runtime_version().patch());
+  device_description.set_runtime_version(runtime_version);
+}
 
 se::GpuTargetConfigProto Compiler::TargetConfig::ToProto() const {
   stream_executor::GpuTargetConfigProto proto;
   *proto.mutable_gpu_device_info() = device_description.ToGpuProto();
   proto.set_platform_name(platform_name);
   *proto.mutable_dnn_version_info() = dnn_version_info.ToProto();
+  se::RuntimeVersionProto runtime_version_proto;
+  runtime_version_proto.set_major(device_description.runtime_version().major());
+  runtime_version_proto.set_minor(device_description.runtime_version().minor());
+  runtime_version_proto.set_patch(device_description.runtime_version().patch());
+  *proto.mutable_runtime_version() = runtime_version_proto;
   proto.set_device_description_str(device_description_str);
   return proto;
 }
@@ -86,21 +97,21 @@ Compiler::CompileAheadOfTime(
 
 /* static */ absl::flat_hash_map<se::Platform::Id, Compiler::CompilerFactory>*
 Compiler::GetPlatformCompilerFactories() {
-  static auto* r = new absl::flat_hash_map<se::Platform::Id, CompilerFactory>;
+  static auto* const r =
+      new absl::flat_hash_map<se::Platform::Id, CompilerFactory>;
   return r;
 }
 
 /* static */
 absl::flat_hash_map<se::Platform::Id, std::unique_ptr<Compiler>>*
 Compiler::GetPlatformCompilers() {
-  static auto* r =
+  static auto* const r =
       new absl::flat_hash_map<se::Platform::Id, std::unique_ptr<Compiler>>;
   return r;
 }
 
 /* static */ void Compiler::RegisterCompilerFactory(
-    se::Platform::Id platform_id,
-    std::function<std::unique_ptr<Compiler>()> compiler_factory) {
+    se::Platform::Id platform_id, CompilerFactory compiler_factory) {
   absl::MutexLock lock(&platform_compiler_mutex_);
   auto* factories = GetPlatformCompilerFactories();
   CHECK(factories->find(platform_id) == factories->end())
@@ -108,21 +119,9 @@ Compiler::GetPlatformCompilers() {
   (*factories)[platform_id] = std::move(compiler_factory);
 }
 
-/* static */ absl::StatusOr<Compiler*> Compiler::GetForPlatform(
+/* static */ absl::StatusOr<std::unique_ptr<Compiler>> Compiler::GetForPlatform(
     const se::Platform* platform) {
   absl::MutexLock lock(&platform_compiler_mutex_);
-
-  auto* compilers = GetPlatformCompilers();
-  // See if we already instantiated a compiler for this platform.
-  {
-    auto it = compilers->find(platform->id());
-    if (it != compilers->end()) {
-      return it->second.get();
-    }
-
-    // If not, we just fall through to try to create one with a registered
-    // factory.
-  }
 
   auto* factories = GetPlatformCompilerFactories();
   auto it = factories->find(platform->id());
@@ -132,17 +131,15 @@ Compiler::GetPlatformCompilers() {
         "that platform linked in?",
         platform->Name());
   }
-
-  // And then we invoke the factory, placing the result into the mapping.
-  compilers->insert(std::make_pair(platform->id(), it->second()));
-  return compilers->at(platform->id()).get();
+  return it->second();
 }
 
 // Default implementation
 // TODO(b/256849421) Replace with non-null instantiation of MetricsHookInterface
 // with empty implementations.
 std::unique_ptr<MetricsHookInterface> Compiler::CreateMetricsHook(
-    absl::string_view filename_prefix) const {
+    absl::string_view filename_prefix,
+    absl::string_view hlo_module_name) const {
   return nullptr;
 }
 

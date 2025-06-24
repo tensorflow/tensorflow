@@ -30,26 +30,33 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -81,12 +88,24 @@ HloHardwareIndependentTestBase::CreateNewVerifiedModule(
       instruction_can_change_layout_func_);
 }
 
+/* static */ DeviceAssignment
+HloHardwareIndependentTestBase::GetDefaultDeviceAssignment(
+    int64_t replica_count, int64_t num_partitions) {
+  DeviceAssignment device_assignment(replica_count, num_partitions);
+  device_assignment.FillIota(0);
+  return device_assignment;
+}
+
 absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
 HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule(
-    absl::string_view hlo_text, int64_t replica_count,
-    int64_t num_partitions) const {
-  return ParseAndReturnVerifiedModule(
-      hlo_text, GetModuleConfigForTest(replica_count, num_partitions));
+    absl::string_view hlo_text, int64_t replica_count, int64_t num_partitions,
+    std::optional<DeviceAssignment> device_assignment) const {
+  HloModuleConfig config =
+      GetModuleConfigForTest(replica_count, num_partitions);
+  if (device_assignment.has_value()) {
+    config.set_static_device_assignment(device_assignment.value());
+  }
+  return ParseAndReturnVerifiedModule(hlo_text, config);
 }
 
 absl::Status HloHardwareIndependentTestBase::
@@ -114,34 +133,53 @@ absl::Status HloHardwareIndependentTestBase::
 
 absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
 HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule(
-    absl::string_view hlo_text, const HloModuleConfig& config) const {
+    absl::string_view hlo_text, const HloModuleConfig& config,
+    const HloParserOptions& parser_options) const {
+  return ParseAndReturnVerifiedModule(hlo_text, config, parser_options,
+                                      ShapeUtil::ByteSizeOfElements);
+}
+
+absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
+HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule(
+    absl::string_view hlo_text, const HloModuleConfig& config,
+    const HloParserOptions& parser_options,
+    std::function<int64_t(const xla::Shape&)> shape_size_fn) const {
+  HloModuleConfig config_with_device_assignment = config;
+  if (!config.has_static_device_assignment()) {
+    absl::MutexLock ml(&device_assignment_mu_);
+    default_device_assignment_ =
+        std::make_unique<DeviceAssignment>(GetDefaultDeviceAssignment(
+            config.replica_count(), config.num_partitions()));
+    config_with_device_assignment.set_static_device_assignment(
+        *default_device_assignment_);
+  }
   auto module = std::make_unique<VerifiedHloModule>(
-      TestName(), config, verifier_layout_sensitive_,
-      allow_mixed_precision_in_hlo_verifier_, ShapeUtil::ByteSizeOfElements,
+      TestName(), config_with_device_assignment, verifier_layout_sensitive_,
+      allow_mixed_precision_in_hlo_verifier_, shape_size_fn,
       instruction_can_change_layout_func_);
-  TF_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_text));
+  TF_RETURN_IF_ERROR(
+      module->ParseHloStringAndVerifyModule(hlo_text, parser_options));
   return module;
 }
 
 /* static */
 absl::StatusOr<bool> HloHardwareIndependentTestBase::RunHloPass(
     HloPassInterface* hlo_pass, HloModule* module) {
-  const std::string module_str_before_run =
-      module->ToProto().ShortDebugString();
-  const auto status_or = hlo_pass->Run(module);
-  if (status_or.status().ok()) {
-    const std::string module_str_after_run =
-        module->ToProto().ShortDebugString();
-    const bool passChangedHlo = status_or.value();
-    if (passChangedHlo) {
-      // Check that the proto actually changed.
-      EXPECT_NE(module_str_after_run, module_str_before_run);
-    } else {
-      // Check that the proto remains same.
-      EXPECT_EQ(module_str_after_run, module_str_before_run);
-    }
+  const std::string before_run = module->ToProto().ShortDebugString();
+  TF_ASSIGN_OR_RETURN(bool changed, hlo_pass->Run(module));
+  const std::string after_run = module->ToProto().ShortDebugString();
+  if (changed) {
+    EXPECT_NE(after_run, before_run) << absl::StrFormat(
+        "HLO pass %s claims to have changed the module, but the module remains "
+        "the same.",
+        hlo_pass->name());
+  } else {
+    EXPECT_EQ(after_run, before_run) << absl::StrFormat(
+        "HLO pass %s claims to have not changed the module, but the module is "
+        "different after the pass.",
+        hlo_pass->name());
   }
-  return status_or;
+  return changed;
 }
 
 /* static */
@@ -207,13 +245,21 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloRewrite(
     TF_ASSERT_OK_AND_ASSIGN(
         bool filecheck_matches,
         RunFileCheck(
-            module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
+            module->ToString(HloPrintOptions().set_print_large_constants(true)),
             *expected));
     EXPECT_TRUE(filecheck_matches);
     if (after_pass_checks) {
       after_pass_checks(module.get());
     }
   }
+}
+
+void HloHardwareIndependentTestBase::RunAndFilecheckHloRewrite(
+    absl::string_view hlo_with_checks, HloPassInterface&& hlo_pass,
+    std::function<void(HloModule*)> after_pass_checks,
+    const HloModuleConfig* config) const {
+  RunAndFilecheckHloRewrite(hlo_with_checks, std::move(hlo_pass),
+                            hlo_with_checks, after_pass_checks, config);
 }
 
 void HloHardwareIndependentTestBase::RunAndFilecheckHloModuleGroupRewrite(
@@ -243,7 +289,7 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloModuleGroupRewrite(
     TF_ASSERT_OK_AND_ASSIGN(
         bool filecheck_matches,
         RunFileCheck(module_group.module(index).ToString(
-                         HloPrintOptions{}.set_print_operand_shape(false)),
+                         HloPrintOptions().set_print_large_constants(true)),
                      expected_str));
     EXPECT_TRUE(filecheck_matches);
     index++;
@@ -252,14 +298,14 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloModuleGroupRewrite(
 
 absl::StatusOr<std::unique_ptr<HloModule>>
 HloHardwareIndependentTestBase::RunAndCheckHloRewrite(
-    absl::string_view hlo_template, HloPassInterface&& hlo_pass,
+    absl::string_view hlo_template, HloPassInterface* hlo_pass,
     bool expect_change, FixedMapping params) const {
   std::string hlo_string = absl::StrReplaceAll(hlo_template, params);
   SCOPED_TRACE("Input HLO: " + hlo_string);
   VLOG(7) << "Input HLO: " << hlo_string;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       ParseAndReturnVerifiedModule(hlo_string));
-  VLOG(7) << "Input HLO parsed. Running the pass:  + " << hlo_pass.name();
+  VLOG(7) << "Input HLO parsed. Running the pass:  + " << hlo_pass->name();
   TF_ASSIGN_OR_RETURN(bool changed, RunHloPass(hlo_pass, module.get()));
   VLOG(7) << "Output HLO: "
           << module->ToString(HloPrintOptions::ShortParsable()
@@ -318,7 +364,7 @@ HloComputation* HloHardwareIndependentTestBase::FindComputation(
 
 /* static */
 HloInstruction* HloHardwareIndependentTestBase::FindInstruction(
-    HloModule* module, absl::string_view name) {
+    const HloModule* module, absl::string_view name) {
   for (const HloComputation* computation : module->computations()) {
     if (HloInstruction* instruction =
             hlo_query::FindInstruction(computation, name)) {
@@ -330,7 +376,7 @@ HloInstruction* HloHardwareIndependentTestBase::FindInstruction(
 
 /* static */
 HloInstruction* HloHardwareIndependentTestBase::FindInstruction(
-    HloModule* module, HloOpcode opcode) {
+    const HloModule* module, HloOpcode opcode) {
   for (const HloComputation* computation : module->computations()) {
     if (HloInstruction* instruction =
             hlo_query::FindInstruction(computation, opcode)) {
@@ -342,7 +388,7 @@ HloInstruction* HloHardwareIndependentTestBase::FindInstruction(
 
 /* static */
 std::vector<HloInstruction*> HloHardwareIndependentTestBase::FindInstructions(
-    HloModule* module, HloOpcode opcode) {
+    const HloModule* module, HloOpcode opcode) {
   std::vector<HloInstruction*> instructions;
   for (const HloComputation* c : module->computations()) {
     absl::c_copy_if(c->instructions(), std::back_inserter(instructions),

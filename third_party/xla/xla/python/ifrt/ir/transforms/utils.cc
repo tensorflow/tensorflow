@@ -15,18 +15,30 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/transforms/utils.h"
 
+#include <cstdint>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/OperationSupport.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/mlir/utils/type_util.h"
 #include "xla/python/ifrt/dtype.h"
@@ -34,9 +46,109 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla {
 namespace ifrt {
+
+namespace {
+
+// Finds a nested call site location in the given location.
+std::optional<mlir::CallSiteLoc> GetCallSiteLoc(mlir::Location loc) {
+  if (mlir::dyn_cast<mlir::NameLoc>(loc)) {
+    return GetCallSiteLoc(mlir::cast<mlir::NameLoc>(loc).getChildLoc());
+  }
+  if (auto callLoc = mlir::dyn_cast<mlir::CallSiteLoc>(loc)) {
+    return callLoc;
+  }
+  if (mlir::dyn_cast<mlir::FusedLoc>(loc)) {
+    for (auto subLoc : mlir::cast<mlir::FusedLoc>(loc).getLocations()) {
+      // If fused return the first call site location.
+      if (auto callLoc = GetCallSiteLoc(subLoc)) {
+        return callLoc;
+      }
+    }
+    return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+void PrintFileLoc(mlir::FileLineColLoc file_loc,
+                  llvm::raw_string_ostream& loc_stream) {
+  if (file_loc.getFilename().str() != "-") {
+    loc_stream << file_loc.getFilename();
+  } else {
+    // The location printed is from the MLIR module.
+    loc_stream << "mlir";
+  }
+  loc_stream << ":" << file_loc.getLine() << ":" << file_loc.getStartColumn()
+             << " to " << file_loc.getEndColumn() << "\n";
+}
+
+// Recurses into the child locations of some of location types to find a nested
+// file location and prints info if it is found. Returns true if a file location
+// is found.
+bool RecursivelyPrintLoc(mlir::Location loc,
+                         llvm::raw_string_ostream& loc_stream) {
+  return llvm::TypeSwitch<mlir::LocationAttr, bool>(loc)
+      .Case([&](mlir::CallSiteLoc call_loc) -> bool {
+        // We recurse into the callee of a call site, as the caller will be
+        // emitted in a different note on the main diagnostic.
+        return RecursivelyPrintLoc(call_loc.getCallee(), loc_stream);
+      })
+      .Case([&](mlir::FileLineColLoc file_loc) -> bool {
+        PrintFileLoc(file_loc, loc_stream);
+        return true;
+      })
+      .Case([&](mlir::FusedLoc fused_loc) -> bool {
+        // Fused location is unique in that we try to find a sub-location to
+        // show, rather than the top-level location itself.
+        for (mlir::Location childLoc : fused_loc.getLocations()) {
+          if (RecursivelyPrintLoc(childLoc, loc_stream)) {
+            return true;
+          }
+        }
+        return false;
+      })
+      .Case([&](mlir::NameLoc name_loc) -> bool {
+        if (RecursivelyPrintLoc(name_loc.getChildLoc(), loc_stream)) {
+          loc_stream << "\t ^ " << name_loc.getName() << "\n";
+          return true;
+        };
+        return false;
+      })
+      .Case([&](mlir::OpaqueLoc opaque_loc) -> bool {
+        // OpaqueLoc always falls back to a different source location.
+        return RecursivelyPrintLoc(opaque_loc.getFallbackLocation(),
+                                   loc_stream);
+      })
+      .Case([](mlir::UnknownLoc) -> bool {
+        // Prefer not to show unknown locations.
+        return false;
+      });
+}
+
+void GetPrettyLocation(mlir::Location loc,
+                       llvm::raw_string_ostream& loc_stream) {
+  loc_stream << "\t";
+  if (auto call_loc = GetCallSiteLoc(loc)) {
+    // Print the file location from the current loc.
+    RecursivelyPrintLoc(*call_loc, loc_stream);
+    // Print the file locations of the callers.
+    GetPrettyLocation(call_loc->getCaller(), loc_stream);
+  } else if (auto file_loc = mlir::dyn_cast<mlir::FileLineColLoc>(loc)) {
+    PrintFileLoc(file_loc, loc_stream);
+  }
+}
+
+}  // namespace
+
+std::string GetPrettyLocation(mlir::Location loc) {
+  std::string loc_str;
+  llvm::raw_string_ostream loc_stream(loc_str);
+  GetPrettyLocation(loc, loc_stream);
+  return loc_str;
+}
 
 unsigned IfrtCallOpInfo::getHashValue(CallOp call_op) {
   llvm::hash_code hash = {};
@@ -131,6 +243,42 @@ mlir::ModuleOp CloneModuleUsingBuilder(mlir::ModuleOp module,
     cloned_module.getBody()->push_back(op.clone(mapper));
   }
   return cloned_module;
+}
+
+absl::StatusOr<std::vector<std::string>> ExpandPlatformNames(
+    const mlir::Pass::ListOption<std::string>& platform_names) {
+  std::vector<std::string> expanded_platform_names;
+  for (const auto& platform_entry : platform_names) {
+    std::vector<absl::string_view> parts = absl::StrSplit(platform_entry, ':');
+    if (parts.size() == 1) {
+      expanded_platform_names.push_back(platform_entry);
+    } else if (parts.size() == 2) {
+      std::string platform_name(parts[0]);
+      int num_occurences;
+      if (!absl::SimpleAtoi(parts[1], &num_occurences)) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Invalid platform name: `", platform_entry,
+                         "` in platform_names pass option"));
+      }
+      for (int i = 0; i < num_occurences; ++i) {
+        expanded_platform_names.push_back(platform_name);
+      }
+    } else {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Invalid platform name: `", platform_entry,
+                       "` in platform_names pass option"));
+    }
+  }
+  return expanded_platform_names;
+}
+
+uint64_t MlirModuleFingerprint(mlir::ModuleOp module) {
+  std::string s;
+  llvm::raw_string_ostream os(s);
+  mlir::OpPrintingFlags flags;
+  flags.enableDebugInfo(false);
+  module.print(os, flags);
+  return tsl::Fingerprint64(os.str());
 }
 
 }  // namespace ifrt

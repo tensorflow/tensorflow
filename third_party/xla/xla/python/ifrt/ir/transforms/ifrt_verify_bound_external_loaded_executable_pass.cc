@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/support/sharding_conversions.h"
 #include "xla/service/hlo.pb.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {

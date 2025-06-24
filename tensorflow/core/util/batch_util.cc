@@ -181,7 +181,8 @@ void HandleSliceToElement<Eigen::half>(Tensor* parent, Eigen::half* src,
 }  // namespace
 
 // Copies element into the index^th slice of parent (in the 0th dimension).
-absl::Status CopyElementToSlice(Tensor element, Tensor* parent, int64_t index) {
+absl::Status CopyElementToSlice(const Tensor& element, Tensor* parent,
+                                int64_t index) {
   TF_RETURN_IF_ERROR(ValidateInput(*parent, element, index));
   const int64_t num_values = element.NumElements();
 #define HANDLE_TYPE(T)                                              \

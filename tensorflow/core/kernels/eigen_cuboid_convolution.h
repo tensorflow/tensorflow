@@ -1843,13 +1843,13 @@ CuboidConvolution(const Input& input, const Kernel& kernel,
                   const Index strideCols = 1,
                   const PaddingType padding_type = PADDING_SAME) {
   typedef typename internal::traits<Input>::Index TensorIndex;
-  TensorRef<Tensor<typename internal::traits<Input>::Scalar,
-                   internal::traits<Input>::NumDimensions,
-                   internal::traits<Input>::Layout, TensorIndex> >
+  TensorRef<const Tensor<typename internal::traits<Input>::Scalar,
+                         internal::traits<Input>::NumDimensions,
+                         internal::traits<Input>::Layout, TensorIndex> >
       in(input);
-  TensorRef<Tensor<typename internal::traits<Kernel>::Scalar,
-                   internal::traits<Kernel>::NumDimensions,
-                   internal::traits<Kernel>::Layout, TensorIndex> >
+  TensorRef<const Tensor<typename internal::traits<Kernel>::Scalar,
+                         internal::traits<Kernel>::NumDimensions,
+                         internal::traits<Kernel>::Layout, TensorIndex> >
       kern(kernel);
 
   EIGEN_STATIC_ASSERT(

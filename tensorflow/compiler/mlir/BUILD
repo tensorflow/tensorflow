@@ -49,8 +49,6 @@ cc_library(
         ":init_mlir",
         ":passes",
         ":register_common_dialects",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite:tf_tfl_passes",  # buildcleaner:keep
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/tensorflow:mlprogram_util",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
@@ -86,13 +84,6 @@ cc_library(
         # Link jit lib to link JIT devices required to run
         # xla-legalize-tf-with-tf2xla pass.
         "//tensorflow/compiler/jit",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite_legalize_tf",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite_optimize",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite_quantize",
-        "//tensorflow/compiler/mlir/lite:lift_tflite_flex_ops",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_passes",
-        "//tensorflow/compiler/mlir/lite/quantization/tensorflow:tf_quantization_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
@@ -189,8 +180,6 @@ cc_library(
     srcs = ["register_common_dialects.cc"],
     hdrs = ["register_common_dialects.h"],
     deps = [
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mlprogram_util",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
@@ -226,11 +215,11 @@ tf_cc_binary(
     srcs = ["tf_mlir_translate_main.cc"],
     deps = [
         ":init_mlir",
-        "//tensorflow/compiler/mlir/lite/tools:translate_cl_options",
-        "//tensorflow/compiler/mlir/lite/tools:translate_registration",
         "//tensorflow/compiler/mlir/tensorflow:tf_xla_mlir_translate",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/mlir/tf2xla/tests/registration:graph_to_tf_executor_registration",
+        "//tensorflow/compiler/mlir/tools:translate_cl_options",
+        "//tensorflow/compiler/mlir/tools:translate_registration",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow",
         "@com_google_absl//absl/strings",

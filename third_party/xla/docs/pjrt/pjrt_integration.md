@@ -55,7 +55,7 @@ You can call [RegisterPjRtCApiTestFactory](https://github.com/openxla/xla/blob/c
 
 You can either use JAX nightly
 ```
-pip install --pre -U jaxlib -f https://storage.googleapis.com/jax-releases/jaxlib_nightly_releases.html
+pip install --pre -U jaxlib -i https://us-python.pkg.dev/ml-oss-artifacts-published/jax/simple/
 
 pip install git+https://github.com/google/jax
 ```
@@ -63,7 +63,7 @@ or [build JAX from source](https://jax.readthedocs.io/en/latest/developer.html#b
 
 For now, you need to match the jaxlib version with the PJRT C API version. It's usually sufficient to use a jaxlib nightly version from the same day as the TF commit you're building your plugin against, e.g.
 ```
-pip install --pre -U jaxlib==0.4.2.dev20230103 -f https://storage.googleapis.com/jax-releases/jaxlib_nightly_releases.html
+pip install --pre -U jaxlib==0.6.1.dev20250428 -i https://us-python.pkg.dev/ml-oss-artifacts-published/jax/simple/
 ```
 You can also build a jaxlib from source at exactly the XLA commit you're building against ([instructions](https://jax.readthedocs.io/en/latest/developer.html#building-jaxlib-from-source-with-a-modified-xla-repository)).
 

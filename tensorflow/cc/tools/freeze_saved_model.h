@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_set>
 
+#include "absl/status/status.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"

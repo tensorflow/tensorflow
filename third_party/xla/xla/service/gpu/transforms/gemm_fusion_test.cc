@@ -28,13 +28,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status_matchers.h"
@@ -49,21 +51,23 @@ using ::testing::FieldsAre;
 
 namespace m = ::xla::match;
 
-class GemmFusionTest : public HloTestBase {
+class GemmFusionTest : public HloHardwareIndependentTestBase {
  public:
   GemmFusionTest()
-      : HloTestBase(/*verifier_layout_sensitive=*/true,
-                    /*allow_mixed_precision_in_hlo_verifier=*/false) {}
+      : HloHardwareIndependentTestBase(
+            /*verifier_layout_sensitive=*/true,
+            /*allow_mixed_precision_in_hlo_verifier=*/false) {}
 
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_gemm_any(false);
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     return debug_options;
   }
 
   se::GpuComputeCapability gpu_version_{
-      se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0}};
+      se::CudaComputeCapability{se::CudaComputeCapability::kAmpere, 0}};
 
   void MatchHloModule(HloModule& module, absl::string_view pattern) {
     TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
@@ -196,7 +200,7 @@ ENTRY e {
     lhs_contracting_dims={0}, rhs_contracting_dims={0}
 })"));
 
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
   EXPECT_TRUE(CublasRequiresPadding(
       *xla::Cast<HloDotInstruction>(
           module->entry_computation()->root_instruction()),
@@ -217,7 +221,7 @@ ENTRY e {
   ROOT t = tuple(d, sout1)
 })"));
 
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
   EXPECT_TRUE(GemmFusion(cc).Run(module.get()).value());
 }
 
@@ -234,7 +238,7 @@ ENTRY e {
     lhs_contracting_dims={0}, rhs_contracting_dims={0}
 })"));
 
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
   EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
 }
 
@@ -254,7 +258,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
 
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
   EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
 }
 
@@ -274,7 +278,7 @@ ENTRY e {
 })"));
 
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -299,7 +303,7 @@ ENTRY e {
 })"));
 
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   // TODO(b/339810582): Don't duplicate scalar parameters to dot fusions,
@@ -327,7 +331,7 @@ ENTRY e {
   ROOT dot = f32[4,4]{1,0} dot(dot_lhs, reshape),
              lhs_contracting_dims={0}, rhs_contracting_dims={1}
 })"));
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
   // FusionDecision "Unsupported dynamic slice on non-major-most dimension."
   EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
 }
@@ -346,7 +350,7 @@ ENTRY e {
            lhs_contracting_dims={0}, rhs_contracting_dims={0}
 })"));
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -366,7 +370,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 )"));
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
 
   ASSERT_TRUE(GemmFusion(cc).Run(module.get()).value());
 
@@ -394,7 +398,7 @@ ENTRY e {
   ROOT r = f32[6,6] dot(d, cv),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
   EXPECT_TRUE(GemmFusion(cc).Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
@@ -413,7 +417,7 @@ ENTRY e {
   ROOT r = f32[8192,768] dot(a, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
   EXPECT_TRUE(GemmFusion(cc).Run(module.get()).value());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -434,18 +438,9 @@ ENTRY e {
   ROOT r = f32[8192,768] dot(a, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
   EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
 }
-
-class GemmFusionLevel2Test : public GemmFusionTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GemmFusionTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_triton_fusion_level(2);
-    return debug_options;
-  }
-};
 
 TEST_F(GemmFusionTest, ConcatenationDivisibleBy64IsFused) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -459,14 +454,14 @@ ENTRY e {
   ROOT r = f32[1,5504]{1,0} dot(p0, bitcast),
     lhs_contracting_dims={0}, rhs_contracting_dims={0}
 })"));
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
   EXPECT_TRUE(GemmFusion(cc).Run(module.get()).value());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())));
 }
 
-TEST_F(GemmFusionLevel2Test, ReshapeToScalarIsHandled) {
+TEST_F(GemmFusionTest, ReshapeToScalarIsHandled) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -484,7 +479,7 @@ ENTRY e {
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
 }
 
-TEST_F(GemmFusionLevel2Test, DoNotFuseIncompatibleDimensionSplits) {
+TEST_F(GemmFusionTest, DoNotFuseIncompatibleDimensionSplits) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -507,7 +502,7 @@ ENTRY e {
       GmockMatch(m::Fusion(m::Transpose(), m::Parameter(), m::Parameter())));
 }
 
-TEST_F(GemmFusionLevel2Test, DoNotFuseTooManyParameters) {
+TEST_F(GemmFusionTest, DoNotFuseTooManyParameters) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -625,7 +620,7 @@ ENTRY e {
             TritonFusionAnalysis::kMaxParameterPerDotOperand * 2);
 }
 
-TEST_F(GemmFusionLevel2Test,
+TEST_F(GemmFusionTest,
        DoNotFuseTooManyParametersWhenAnInstructionWouldAddMultipleParameters) {
   static_assert(TritonFusionAnalysis::kMaxParameterPerDotOperand == 4,
                 "We have to update this test.");
@@ -655,7 +650,7 @@ ENTRY e {
             TritonFusionAnalysis::kMaxParameterPerDotOperand + 1);
 }
 
-TEST_F(GemmFusionLevel2Test, DoNotFuseTooManyParametersForConcat) {
+TEST_F(GemmFusionTest, DoNotFuseTooManyParametersForConcat) {
   static_assert(TritonFusionAnalysis::kMaxParameterPerDotOperand == 4,
                 "We have to update this test.");
   // The concat shouldn't overgo the allowed parameter limit.
@@ -682,7 +677,7 @@ ENTRY e {
             TritonFusionAnalysis::kMaxParameterPerDotOperand + 1);
 }
 
-TEST_F(GemmFusionLevel2Test,
+TEST_F(GemmFusionTest,
        InstructionsReachableFromMultipleOperandsAreHandledCorrectly) {
   static_assert(TritonFusionAnalysis::kMaxParameterPerDotOperand == 4,
                 "We have to update this test.");
@@ -714,7 +709,7 @@ ENTRY e {
   // ~VerifiedHloModule() will verify the module.
 }
 
-TEST_F(GemmFusionLevel2Test, EachScopeIsFusedToASeparateSubgraph) {
+TEST_F(GemmFusionTest, EachScopeIsFusedToASeparateSubgraph) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -730,16 +725,16 @@ ENTRY e {
   MatchHloModule(*module, R"(
 CHECK-DAG: %[[P0:.*]] = f32[2,4]{1,0} parameter(0)
 CHECK-DAG: %[[P1:.*]] = f32[2,4]{1,0} parameter(1)
-CHECK-DAG: %[[ADD0:.*]] = f32[2,4]{1,0} add(f32[2,4]{1,0} %[[P0]], f32[2,4]{1,0} %[[P1]])
+CHECK-DAG: %[[ADD0:.*]] = f32[2,4]{1,0} add(%[[P0]], %[[P1]])
 CHECK-DAG: %[[P2:.*]] = f32[2,4]{1,0} parameter(2)
 CHECK-DAG: %[[P3:.*]] = f32[2,4]{1,0} parameter(3)
-CHECK-DAG: %[[ADD1:.*]] = f32[2,4]{1,0} add(f32[2,4]{1,0} %[[P2]], f32[2,4]{1,0} %[[P3]])
-CHECK-DAG: ROOT {{.*}} = f32[2,2]{1,0} dot(f32[2,4]{1,0} %[[ADD0]], f32[2,4]{1,0} %[[ADD1]])
+CHECK-DAG: %[[ADD1:.*]] = f32[2,4]{1,0} add(%[[P2]], %[[P3]])
+CHECK-DAG: ROOT {{.*}} = f32[2,2]{1,0} dot(%[[ADD0]], %[[ADD1]])
 CHECK: ENTRY
 CHECK-DAG: %[[P0:.*]] = f32[2,4]{1,0} parameter(0)
 CHECK-DAG: %[[P1:.*]] = f32[2,4]{1,0} parameter(1)
 CHECK-DAG: ROOT {{.*}} = f32[2,2]{1,0}
-CHECK-SAME: fusion(f32[2,4]{1,0} %[[P0]], f32[2,4]{1,0} %[[P1]], f32[2,4]{1,0} %[[P0]], f32[2,4]{1,0} %[[P1]]),
+CHECK-SAME: fusion(%[[P0]], %[[P1]], %[[P0]], %[[P1]]),
 CHECK-SAME: kind=kCustom
 CHECK-SAME: __triton_gemm
 })");
@@ -749,7 +744,7 @@ CHECK-SAME: __triton_gemm
 // way, so the same parameter node is reused for them.
 // The reuse happens per "operand fusion", so the add of the LHS and RHS still
 // use different nodes.
-TEST_F(GemmFusionLevel2Test, ParamNodesAreReusedIfTheyHaveTheSameIterSpec) {
+TEST_F(GemmFusionTest, ParamNodesAreReusedIfTheyHaveTheSameIterSpec) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -763,14 +758,14 @@ ENTRY e {
 
   MatchHloModule(*module, R"(
 CHECK-DAG: %[[P0:.*]] = f32[2,4]{1,0} parameter(0)
-CHECK-DAG: %[[ADD0:.*]] = f32[2,4]{1,0} add(f32[2,4]{1,0} %[[P0]], f32[2,4]{1,0} %[[P0]])
+CHECK-DAG: %[[ADD0:.*]] = f32[2,4]{1,0} add(%[[P0]], %[[P0]])
 CHECK-DAG: %[[P1:.*]] = f32[2,4]{1,0} parameter(1)
-CHECK-DAG: %[[ADD1:.*]] = f32[2,4]{1,0} add(f32[2,4]{1,0} %[[P1]], f32[2,4]{1,0} %[[P1]])
-CHECK-DAG: ROOT {{.*}} = f32[2,2]{1,0} dot(f32[2,4]{1,0} %[[ADD0]], f32[2,4]{1,0} %[[ADD1]])
+CHECK-DAG: %[[ADD1:.*]] = f32[2,4]{1,0} add(%[[P1]], %[[P1]])
+CHECK-DAG: ROOT {{.*}} = f32[2,2]{1,0} dot(%[[ADD0]], %[[ADD1]])
 CHECK: ENTRY
 CHECK-DAG: %[[P0:.*]] = f32[2,4]{1,0} parameter(0)
 CHECK-DAG: ROOT {{.*}} = f32[2,2]{1,0}
-CHECK-SAME: fusion(f32[2,4]{1,0} %[[P0]], f32[2,4]{1,0} %[[P0]])
+CHECK-SAME: fusion(%[[P0]], %[[P0]])
 CHECK-SAME: kind=kCustom
 CHECK-SAME: __triton_gemm
 })");
@@ -778,7 +773,7 @@ CHECK-SAME: __triton_gemm
 
 // NEGATE has the same iteration spec at both usages, so the node is reused
 // (implying that P0 is also reused).
-TEST_F(GemmFusionLevel2Test, NonParamNodesAreReusedIfTheyHaveTheSameIterSpec) {
+TEST_F(GemmFusionTest, NonParamNodesAreReusedIfTheyHaveTheSameIterSpec) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -796,15 +791,15 @@ ENTRY e {
   MatchHloModule(*module, R"(
 CHECK-DAG: %[[P0:.*]] = f32[4,4]{1,0} parameter(0)
 CHECK-DAG: %[[P1:.*]] = f32[4,4]{1,0} parameter(1)
-CHECK-DAG: %[[NEGATE:.*]] = f32[4,4]{1,0} negate(f32[4,4]{1,0} %[[P0]])
-CHECK-DAG: %[[SINE:.*]] = f32[4,4]{1,0} sine(f32[4,4]{1,0} %[[NEGATE]])
-CHECK-DAG: %[[ADD:.*]] = f32[4,4]{1,0} add(f32[4,4]{1,0} %[[NEGATE]], f32[4,4]{1,0} %[[SINE]])
-CHECK-DAG: ROOT {{.*}} = f32[4,4]{1,0} dot(f32[4,4]{1,0} %[[ADD]], f32[4,4]{1,0} %[[P1]])
+CHECK-DAG: %[[NEGATE:.*]] = f32[4,4]{1,0} negate(%[[P0]])
+CHECK-DAG: %[[SINE:.*]] = f32[4,4]{1,0} sine(%[[NEGATE]])
+CHECK-DAG: %[[ADD:.*]] = f32[4,4]{1,0} add(%[[NEGATE]], %[[SINE]])
+CHECK-DAG: ROOT {{.*}} = f32[4,4]{1,0} dot(%[[ADD]], %[[P1]])
 CHECK: ENTRY
 CHECK-DAG: %[[P0:.*]] = f32[4,4]{1,0} parameter(0)
 CHECK-DAG: %[[P1:.*]] = f32[4,4]{1,0} parameter(1)
 CHECK-DAG: ROOT {{.*}} = f32[4,4]{1,0}
-CHECK-SAME: fusion(f32[4,4]{1,0} %[[P0]], f32[4,4]{1,0} %[[P1]])
+CHECK-SAME: fusion(%[[P0]], %[[P1]])
 CHECK-SAME: kind=kCustom
 CHECK-SAME: __triton_gemm
 })");
@@ -812,7 +807,7 @@ CHECK-SAME: __triton_gemm
 
 // The direct read of the input and the transposed read of the input have
 // different iteration specs, so we don't reuse the node.
-TEST_F(GemmFusionLevel2Test, NodesAreNotReusedIfTheyHaveDifferentIterSpecs) {
+TEST_F(GemmFusionTest, NodesAreNotReusedIfTheyHaveDifferentIterSpecs) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -830,20 +825,20 @@ ENTRY e {
 CHECK-DAG: %[[P0:.*]] = f32[4,4]{1,0} parameter(0)
 CHECK-DAG: %[[P1:.*]] = f32[4,4]{1,0} parameter(1)
 CHECK-DAG: %[[P2:.*]] = f32[4,4]{1,0} parameter(2)
-CHECK-DAG: %[[TRANSPOSE:.*]] = f32[4,4]{1,0} transpose(f32[4,4]{1,0} %[[P1]])
-CHECK-DAG: %[[ADD:.*]] = f32[4,4]{1,0} add(f32[4,4]{1,0} %[[P0]], f32[4,4]{1,0} %[[TRANSPOSE]])
-CHECK-DAG: ROOT {{.*}} = f32[4,4]{1,0} dot(f32[4,4]{1,0} %[[ADD]], f32[4,4]{1,0} %[[P2]])
+CHECK-DAG: %[[TRANSPOSE:.*]] = f32[4,4]{1,0} transpose(%[[P1]])
+CHECK-DAG: %[[ADD:.*]] = f32[4,4]{1,0} add(%[[P0]], %[[TRANSPOSE]])
+CHECK-DAG: ROOT {{.*}} = f32[4,4]{1,0} dot(%[[ADD]], %[[P2]])
 CHECK: ENTRY
 CHECK-DAG: %[[P0:.*]] = f32[4,4]{1,0} parameter(0)
 CHECK-DAG: %[[P1:.*]] = f32[4,4]{1,0} parameter(1)
 CHECK-DAG: ROOT {{.*}} = f32[4,4]{1,0}
-CHECK-SAME: fusion(f32[4,4]{1,0} %[[P0]], f32[4,4]{1,0} %[[P0]], f32[4,4]{1,0} %[[P1]])
+CHECK-SAME: fusion(%[[P0]], %[[P0]], %[[P1]])
 CHECK-SAME: kind=kCustom
 CHECK-SAME: __triton_gemm
 })");
 }
 
-TEST_F(GemmFusionLevel2Test, OperationsAddingMoreParametersGetMultipleTries) {
+TEST_F(GemmFusionTest, OperationsAddingMoreParametersGetMultipleTries) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 e {
@@ -876,7 +871,7 @@ e {
                                     m::Parameter(), m::Parameter()))));
 }
 
-TEST_F(GemmFusionLevel2Test, GemmFusionBailsOutPreAmpere) {
+TEST_F(GemmFusionTest, GemmFusionBailsOutPreAmpere) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -888,7 +883,8 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   EXPECT_THAT(
-      GemmFusion(se::CudaComputeCapability{se::CudaComputeCapability::VOLTA, 0})
+      GemmFusion(
+          se::CudaComputeCapability{se::CudaComputeCapability::kVolta, 0})
           .Run(module.get()),
       tsl::testing::StatusIs(
           absl::StatusCode::kFailedPrecondition,
@@ -896,7 +892,7 @@ ENTRY e {
                                "(compute capability 8.0) and up, but got")));
 }
 
-TEST_F(GemmFusionLevel2Test, GemmFusionSucceedsOnNonCudaGpu) {
+TEST_F(GemmFusionTest, GemmFusionSucceedsOnNonCudaGpu) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -910,7 +906,7 @@ ENTRY e {
   EXPECT_TRUE(GemmFusion(se::RocmComputeCapability{}).Run(module.get()).ok());
 }
 
-TEST_F(GemmFusionLevel2Test, ParameterUsedElementwiseTwiceIsFused) {
+TEST_F(GemmFusionTest, ParameterUsedElementwiseTwiceIsFused) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 HloModule t
@@ -926,7 +922,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -942,8 +938,7 @@ ENTRY e {
             1);
 }
 
-TEST_F(GemmFusionLevel2Test,
-       ParameterUsedNonElementwiseTwiceIsFusedOnBothPaths) {
+TEST_F(GemmFusionTest, ParameterUsedNonElementwiseTwiceIsFusedOnBothPaths) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 HloModule t
@@ -958,7 +953,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(
@@ -966,7 +961,7 @@ ENTRY e {
       GmockMatch((m::Fusion(m::Parameter(), m::Parameter(), m::Parameter()))));
 }
 
-TEST_F(GemmFusionLevel2Test,
+TEST_F(GemmFusionTest,
        ComputationParameterWithMultipleUsersIsNotTrivialToFuse) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
@@ -986,12 +981,12 @@ ENTRY e {
   ROOT a = f16[400,400] add(dot0, dot1)
 })"));
   EXPECT_FALSE(GemmFusion(se::CudaComputeCapability{
-                              se::CudaComputeCapability::AMPERE, 0})
+                              se::CudaComputeCapability::kAmpere, 0})
                    .Run(module.get())
                    .value());
 }
 
-TEST_F(GemmFusionLevel2Test, NarrowingConversionIsAlwaysBetterToFuse) {
+TEST_F(GemmFusionTest, NarrowingConversionIsAlwaysBetterToFuse) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -1005,7 +1000,7 @@ ENTRY e {
   ROOT a = f16[512,512] add(dot0, n)
 })"));
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -1013,7 +1008,7 @@ ENTRY e {
                                  m::Negate()))));
 }
 
-TEST_F(GemmFusionLevel2Test, NestedSlicingIsAnalyzedCorrectly) {
+TEST_F(GemmFusionTest, NestedSlicingIsAnalyzedCorrectly) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 triton_gemm_d_computation {
@@ -1040,15 +1035,17 @@ ENTRY e {
                                  computation->parameter_instruction(0), 0),
               ElementsAre(FieldsAre(/*stride=*/24, /*count=*/6,
                                     /*slice_start=*/2, /*sliced_count=*/3,
-                                    /*subfragments=*/ElementsAre(3))));
+                                    /*subfragments=*/ElementsAre(3),
+                                    /*broadcast_multiplier=*/1)));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS,
                                  computation->parameter_instruction(0), 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/24,
                                     /*slice_start=*/16, /*sliced_count=*/7,
-                                    /*subfragments=*/ElementsAre(7))));
+                                    /*subfragments=*/ElementsAre(7),
+                                    /*broadcast_multiplier=*/1)));
 }
 
-TEST_F(GemmFusionLevel2Test, FusedConcatenationIsAnalyzedCorrectly) {
+TEST_F(GemmFusionTest, FusedConcatenationIsAnalyzedCorrectly) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 e {
@@ -1062,7 +1059,7 @@ e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -1077,38 +1074,44 @@ e {
                                  computation->parameter_instruction(1), 0),
               ElementsAre(FieldsAre(/*stride=*/1536, /*count=*/153,
                                     /*slice_start=*/0, /*sliced_count=*/153,
-                                    /*subfragments=*/ElementsAre(153))));
+                                    /*subfragments=*/ElementsAre(153),
+                                    /*broadcast_multiplier=*/1)));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
                                  computation->parameter_instruction(1), 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/1536,
                                     /*slice_start=*/0, /*sliced_count=*/1536,
-                                    /*subfragments=*/ElementsAre(1536))));
+                                    /*subfragments=*/ElementsAre(1536),
+                                    /*broadcast_multiplier=*/1)));
 
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
                                  computation->parameter_instruction(2), 0),
               ElementsAre(FieldsAre(/*stride=*/128, /*count=*/153,
                                     /*slice_start=*/0, /*sliced_count=*/153,
-                                    /*subfragments=*/ElementsAre(153))));
+                                    /*subfragments=*/ElementsAre(153),
+                                    /*broadcast_multiplier=*/1)));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
                                  computation->parameter_instruction(2), 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/128,
                                     /*slice_start=*/-1536, /*sliced_count=*/128,
-                                    /*subfragments=*/ElementsAre(128))));
+                                    /*subfragments=*/ElementsAre(128),
+                                    /*broadcast_multiplier=*/1)));
 
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
                                  computation->parameter_instruction(3), 0),
               ElementsAre(FieldsAre(/*stride=*/256, /*count=*/153,
                                     /*slice_start=*/0, /*sliced_count=*/153,
-                                    /*subfragments=*/ElementsAre(153))));
+                                    /*subfragments=*/ElementsAre(153),
+                                    /*broadcast_multiplier=*/1)));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
                                  computation->parameter_instruction(3), 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/256,
                                     /*slice_start=*/-1536 - 128,
                                     /*sliced_count=*/256,
-                                    /*subfragments=*/ElementsAre(256))));
+                                    /*subfragments=*/ElementsAre(256),
+                                    /*broadcast_multiplier=*/1)));
 }
 
-TEST_F(GemmFusionLevel2Test, IndivisibleConcatenationIsNotFused) {
+TEST_F(GemmFusionTest, IndivisibleConcatenationIsNotFused) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 e {
@@ -1121,14 +1124,14 @@ e {
     lhs_contracting_dims={0}, rhs_contracting_dims={1}
 })"));
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch((m::Fusion(m::Concatenate(), m::Parameter()))));
 }
 
-TEST_F(GemmFusionLevel2Test, ConcatenationOfContractingIsNotFused) {
+TEST_F(GemmFusionTest, ConcatenationOfContractingIsNotFused) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 e {
@@ -1141,14 +1144,14 @@ e {
     lhs_contracting_dims={1}, rhs_contracting_dims={1}
 })"));
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch((m::Fusion(m::Concatenate(), m::Parameter()))));
 }
 
-TEST_F(GemmFusionLevel2Test, ConcatenationOfBatchIsNotFused) {
+TEST_F(GemmFusionTest, ConcatenationOfBatchIsNotFused) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 e {
@@ -1162,14 +1165,14 @@ e {
     lhs_contracting_dims={2}, rhs_contracting_dims={2}
 })"));
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch((m::Fusion(m::Concatenate(), m::Parameter()))));
 }
 
-TEST_F(GemmFusionLevel2Test,
+TEST_F(GemmFusionTest,
        DifferentConcatenationOfSameParametersIsFusedViaNodeDuplication) {
   // It means that the same input is passed to the fusion multiple times and
   // it's read differently for each.
@@ -1190,7 +1193,7 @@ e {
 })"));
 
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(
@@ -1257,6 +1260,22 @@ e {
                                     m::GetTupleElement()))));
 }
 
+TEST_F(GemmFusionTest, DoNotFuseNonProfitableDot) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = bf16[1024] parameter(0)
+  b0 = bf16[16,64] bitcast(p0)
+  p1 = bf16[1024] parameter(1)
+  b1 = bf16[64,16] bitcast(p1)
+  ROOT d = bf16[16,16] dot(b0, b1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})")
+                    .value();
+  EXPECT_FALSE(GemmFusion(gpu_version_).Run(module.get()).value());
+}
+
 // A test fixture class for testing the threshold for small matrices.
 class SmallDotGemmFusionTest : public GemmFusionTest {
  public:
@@ -1285,7 +1304,7 @@ ENTRY e {
 ; CHECK-LABEL: ENTRY %e ({{.*}}: f16[2,10], {{.*}}: f16[10,2]) -> f16[10,10] {
 ; CHECK-NEXT: [[P0:%[^ ]+]] = f16[2,10]{1,0} parameter(0)
 ; CHECK-NEXT: [[P1:%[^ ]+]] = f16[10,2]{1,0} parameter(1)
-; CHECK:      ROOT {{.*}} = f16[10,10]{1,0} dot(f16[2,10]{1,0} [[P0]], f16[10,2]{1,0} [[P1]])
+; CHECK:      ROOT {{.*}} = f16[10,10]{1,0} dot([[P0]], [[P1]])
 })");
 }
 
@@ -1308,67 +1327,10 @@ ENTRY e {
 ; CHECK-NEXT: [[P0:%[^ ]+]] = f16[2,18]{1,0} parameter(0)
 ; CHECK-NEXT: [[P1:%[^ ]+]] = f16[50,2]{1,0} parameter(1)
 ; CHECK:      ROOT {{.*}} = f16[18,50]{1,0}
-; CHECK:        fusion(f16[2,18]{1,0} [[P0]], f16[50,2]{1,0} [[P1]]),
+; CHECK:        fusion([[P0]], [[P1]]),
 ; CHECK:        kind=kCustom
 ; CHECK:        __triton_gemm
 })");
-}
-
-class SparseDotTest : public GemmFusionTest {};
-
-TEST_F(SparseDotTest, DotWithSparseLhsOperandIsRewritten) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-HloModule test
-ENTRY main {
-  lhs = f16[2,16] parameter(0)
-  rhs = f16[32,2] parameter(1)
-  meta = u16[2,2] parameter(2)
-  ROOT dot = f32[2,2] dot(lhs, rhs, meta),
-      lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
-})")
-                    .value();
-  EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
-
-  MatchHloModule(*module, R"(
-; CHECK-LABEL: ENTRY %main ({{.*}}: f16[2,16], {{.*}}: f16[32,2], {{.*}}: u16[2,2]) -> f32[2,2] {
-; CHECK-NEXT: [[P0:%[^ ]+]] = f16[2,16]{1,0} parameter(0)
-; CHECK-NEXT: [[P1:%[^ ]+]] = f16[32,2]{1,0} parameter(1)
-; CHECK-NEXT: [[META:%[^ ]+]] = u16[2,2]{1,0} parameter(2)
-; CHECK:      ROOT {{.*}} = f32[2,2]{1,0}
-; CHECK-SAME:   fusion(f16[2,16]{1,0} [[P0]], f16[32,2]{1,0} [[P1]], u16[2,2]{1,0} [[META]]),
-; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_gemm
-})");
-}
-
-TEST_F(SparseDotTest, DotWithSparseRhsOperandIsNotSupported) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-HloModule test
-ENTRY main {
-  lhs = f16[2,32] parameter(0)
-  rhs = f16[16,2] parameter(1)
-  meta = u16[2,2] parameter(2)
-  ROOT dot = f32[2,2] dot(lhs, rhs, meta),
-      lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=R.0@2:4
-})")
-                    .value();
-  auto result = GemmFusion(gpu_version_).Run(module.get());
-  EXPECT_FALSE(result.ok());
-}
-
-TEST_F(SparseDotTest, UnsupportedSparsityType) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-HloModule test
-ENTRY main {
-  lhs = f16[2,8] parameter(0)
-  rhs = f16[32,2] parameter(1)
-  meta = u16[2,1] parameter(2)
-  ROOT dot = f32[2,2] dot(lhs, rhs, meta),
-      lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@1:4
-})")
-                    .value();
-  auto result = GemmFusion(gpu_version_).Run(module.get());
-  EXPECT_FALSE(result.ok());
 }
 
 TEST_F(SmallDotGemmFusionTest, Int4DotIsRewritten) {
@@ -1407,7 +1369,9 @@ TEST_F(SmallDotGemmFusionTest, Int4ConcatPlusConvertIsRewritten) {
 CHECK: gemm_fusion_dot_computation
 CHECK:  %parameter_0 = s4[8,1024]{1,0} parameter(0)
 CHECK: ENTRY
-CHECK-DAG: ROOT {{.*}} = bf16[8,4]{1,0} fusion(s4[8,1024]{1,0} %lhs_concat, bf16[1024,4]{1,0} %rhs)
+CHECK-DAG: %[[LHS_CONCAT:.*]] = s4[8,1024]{1,0} concatenate(%{{.+}}, %{{.+}}), dimensions={0}
+CHECK-DAG: %[[RHS:.*]] = bf16[1024,4]{1,0} parameter(2)
+CHECK-DAG: ROOT {{.*}} = bf16[8,4]{1,0} fusion(%[[LHS_CONCAT]], %[[RHS]])
 })");
 }
 
@@ -1431,7 +1395,9 @@ TEST_F(SmallDotGemmFusionTest, Int4ConvertPlusNegateIsRewritten) {
 CHECK: gemm_fusion_dot_computation
 CHECK:  %parameter_0 = s4[8,1024]{1,0} parameter(0)
 CHECK: ENTRY
-CHECK-DAG: ROOT {{.*}} = f32[8,4]{1,0} fusion(s4[8,1024]{1,0} %lhs, f32[1024,4]{1,0} %rhs)
+CHECK-DAG: %[[LHS:.+]] = s4[8,1024]{1,0} parameter(0)
+CHECK-DAG: %[[RHS:.+]] = f32[1024,4]{1,0} parameter(1)
+CHECK-DAG: ROOT {{.*}} = f32[8,4]{1,0} fusion(%[[LHS]], %[[RHS]])
 })");
 }
 

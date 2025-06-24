@@ -221,7 +221,10 @@ class SpectralOpsTest(test.TestCase, parameterized.TestCase):
       (256, 64),
       (128, 25),
       (127, 32),
-      (128, 64))
+      (128, 64),
+      (64, 64),
+      (64, 128),
+  )
   def test_inverse_stft_window_fn(self, frame_length, frame_step):
     """Test that inverse_stft_window_fn has unit gain at each window phase."""
     hann_window = window_ops.hann_window(frame_length, dtype=dtypes.float32)
@@ -232,6 +235,11 @@ class SpectralOpsTest(test.TestCase, parameterized.TestCase):
     # Expect unit gain at each phase of the window.
     product_window = hann_window * inverse_window
     for i in range(frame_step):
+      hann_window_i = hann_window[i::frame_step]
+      inverse_window_i = inverse_window[i::frame_step]
+      # Skip if both windows are 0 (can happen for frame_length <= frame_step).
+      if (hann_window_i == 0.0).all() and (inverse_window_i == 0.0).all():
+        continue
       self.assertAllClose(1.0, np.sum(product_window[i::frame_step]))
 
   @parameterized.parameters((256, 64), (128, 32))

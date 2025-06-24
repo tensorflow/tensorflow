@@ -452,6 +452,7 @@ tensorflow::TensorProto ConvertTfliteConstTensor(
 }
 
 int64_t GetSizeInBits(mlir::ShapedType shaped_type) {
+  if (!shaped_type.hasStaticShape()) return 0;
   return GetSizeInBits(shaped_type.getElementType()) *
          shaped_type.getNumElements();
 }

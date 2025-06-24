@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -155,6 +155,49 @@ ENTRY MnistTrainingLoopWithInfeed.140 {
 }
 )";
 
+constexpr const char kSparseDenseMatmulHlo[] = R"(
+  HloModule fuse_two_forward_passes
+
+  ENTRY main {
+    %concatenated_csr_pointers = s32[<=24] parameter(0)
+    %concatenated_embedding_ids = s32[<=1024] parameter(1)
+    %concatenated_sample_ids = s32[<=1024] parameter(2)
+    %concatenated_gain_values = f32[<=1024] parameter(3)
+    %num_minibatches_per_physical_sparse_core = s32[] parameter(4)
+    %embedding_table = f32[16, 8] parameter(5)
+    %activations_init = f32[16, 8] parameter(6)
+
+    %concatenated_csr_pointers_2 = s32[<=24] parameter(7)
+    %concatenated_embedding_ids_2 = s32[<=1024] parameter(8)
+    %concatenated_sample_ids_2 = s32[<=1024] parameter(9)
+    %concatenated_gain_values_2 = f32[<=1024] parameter(10)
+    %embedding_table_2 = f32[16, 8] parameter(11)
+    %activations_init_2 = f32[16, 8] parameter(12)
+
+    %num_minibatches_per_physical_sparse_core_2 = s32[] constant(4)
+
+    %sc_output = f32[16, 8]
+                   custom-call(concatenated_csr_pointers, concatenated_embedding_ids,
+                   concatenated_sample_ids, concatenated_gain_values, num_minibatches_per_physical_sparse_core,
+                   embedding_table, activations_init),
+                   custom_call_target="SparseDenseMatmulWithMinibatchingOp", backend_config="{sparse_dense_matmul_config:{
+                      max_ids_per_partition: 10,
+                      max_unique_ids_per_partition: 5,
+                      sharding_strategy: 0}, device_type: \"DEVICE_TYPE_SPARSECORE\"}"
+
+    %sc_output_2 = f32[16, 8]
+                   custom-call(concatenated_csr_pointers_2, concatenated_embedding_ids_2,
+                   concatenated_sample_ids_2, concatenated_gain_values_2, num_minibatches_per_physical_sparse_core_2,
+                   embedding_table_2, activations_init_2),
+                   custom_call_target="SparseDenseMatmulWithMinibatchingOp", backend_config="{sparse_dense_matmul_config:{
+                      max_ids_per_partition: 10,
+                      max_unique_ids_per_partition: 5,
+                      sharding_strategy: 0}, device_type: \"DEVICE_TYPE_SPARSECORE\"}"
+
+    ROOT %output = tuple(%sc_output, %sc_output_2)
+  }
+  )";
+
 class HloValueSemanticsAnalysisTest : public HloHardwareIndependentTestBase {
  public:
   bool HasLabel(const HloValueSemanticsAnalysis& hlo_value_semantics_analysis,
@@ -250,6 +293,52 @@ ENTRY entry {
   EXPECT_TRUE(IsWeight(*hlo_value_semantics_analysis, module.get(), "dot.2"));
 }
 
+TEST_F(HloValueSemanticsAnalysisTest, OneRaggedDot) {
+  const std::string module_str = R"(
+HloModule OneMatmul
+
+region_0.39 {
+  Arg_0.40 = f32[] parameter(0)
+  Arg_1.41 = f32[] parameter(1)
+  ROOT add.42 = f32[] add(Arg_0.40, Arg_1.41)
+}
+
+ENTRY entry {
+  Arg_1.2 = f32[8,32,128]{2,1,0} parameter(0), sharding={devices=[1,2,1]0,1}
+  Arg_7.8 = f32[4,32]{1,0} parameter(1), sharding={devices=[2,1]0,1}
+  G = s32[8]{0} parameter(2), sharding={replicated}
+  copy = f32[4,32]{1,0} copy(Arg_7.8), sharding={devices=[2,1]0,1}
+  dot.0 = f32[4,128]{1,0} ragged-dot(copy, Arg_1.2, G), lhs_contracting_dims={1}, rhs_contracting_dims={1}, lhs_ragged_dims={0}, rhs_group_dims={0}, sharding={devices=[2,1]0,1}
+  constant.5 = f32[] constant(0), sharding={replicated}
+  broadcast.2 = f32[4,128]{1,0} broadcast(constant.5), dimensions={}, sharding={devices=[2,1]0,1}
+  maximum.33 = f32[4,128]{1,0} maximum(dot.0, broadcast.2), sharding={devices=[2,1]0,1}
+  compare.34 = pred[4,128]{1,0} compare(dot.0, maximum.33), direction=EQ, sharding={devices=[2,1]0,1}
+  constant.4 = f32[] constant(1), sharding={replicated}
+  broadcast.1 = f32[4,128]{1,0} broadcast(constant.4), dimensions={}, sharding={devices=[2,1]0,1}
+  select.35 = f32[4,128]{1,0} select(compare.34, broadcast.1, broadcast.2), sharding={devices=[2,1]0,1}
+  dot.2 = f32[32,128]{0,1} dot(copy, select.35), lhs_contracting_dims={0}, rhs_contracting_dims={0}, sharding={devices=[2,1]0,1}
+  constant.11 = f32[] constant(-0.01), sharding={replicated}
+  broadcast.12 = f32[32,128]{1,0} broadcast(constant.11), dimensions={}, sharding={devices=[2,1]0,1}
+  multiply.52 = f32[32,128]{0,1} multiply(dot.2, broadcast.12), sharding={devices=[2,1]0,1}
+  reduce.43 = f32[] reduce(maximum.33, constant.5), dimensions={0,1}, to_apply=region_0.39, sharding={replicated}
+  ROOT tuple.109 = (f32[32,128]{1,0}, f32[]) tuple(multiply.52, reduce.43), sharding={{devices=[2,1]0,1}, {replicated}}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(module_str, /*replica_count=*/1,
+                                                /*num_partitions=*/2));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloValueSemanticsAnalysis> hlo_value_semantics_analysis,
+      HloValueSemanticsAnalysis::Run(*module));
+  EXPECT_TRUE(IsWeight(*hlo_value_semantics_analysis, module.get(), "copy"));
+  EXPECT_TRUE(IsWeight(*hlo_value_semantics_analysis, module.get(), "Arg_1.2"));
+  EXPECT_TRUE(
+      IsActivation(*hlo_value_semantics_analysis, module.get(), "dot.0"));
+  EXPECT_TRUE(
+      IsStatic(*hlo_value_semantics_analysis, module.get(), "select.35"));
+  EXPECT_TRUE(IsWeight(*hlo_value_semantics_analysis, module.get(), "dot.2"));
+}
 TEST_F(HloValueSemanticsAnalysisTest, HandleConditional) {
   const std::string module_str = R"(
     HloModule Module
@@ -590,6 +679,18 @@ TEST_F(HloValueSemanticsAnalysisTest, MnistTrainingLoop) {
       IsWeightGradient(*hlo_value_semantics_analysis, module.get(), "dot.99"));
 }
 
+TEST_F(HloValueSemanticsAnalysisTest, SparseDenseMatmul) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kSparseDenseMatmulHlo,
+                                                       /*replica_count=*/1,
+                                                       /*num_partitions=*/1));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloValueSemanticsAnalysis> semantics_analysis,
+      HloValueSemanticsAnalysis::Run(*module));
+  EXPECT_TRUE(IsActivation(*semantics_analysis, module.get(), "sc_output"));
+  EXPECT_TRUE(IsActivation(*semantics_analysis, module.get(), "sc_output_2"));
+}
+
 class EinsumDepthAnalysisTest : public HloHardwareIndependentTestBase {
  public:
   int GetInstructionDepth(const EinsumDepthMap& depth_map,
@@ -686,6 +787,54 @@ TEST_F(EinsumDepthAnalysisTest, HandleAfterAll) {
             0);
 }
 
+TEST_F(EinsumDepthAnalysisTest, SendWithRecv) {
+  const std::string module_str = R"(
+    HloModule foobar
+
+    ENTRY entry {
+      arg_0 = s32[] parameter(0)
+      arg_1 = token[] parameter(1)
+
+      send.0 = (s32[], u32[], token[]) send(s32[] arg_0, token[] arg_1), channel_id=3, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="rendezvous1"}
+      send-done.1 = token[] send-done((s32[], u32[], token[]) send.0), channel_id=3, is_host_transfer=true, sharding={maximal device=0}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="rendezvous1"}
+
+      recv.2 = (s32[], u32[], token[]) recv(token[] send-done.1), channel_id=3, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="rendezvous1"}
+      recv-done.3 = (s32[], token[]) recv-done((s32[], u32[], token[]) recv.2), channel_id=3, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="rendezvous1"}
+
+      get-tuple-element.4 = token[] get-tuple-element((s32[], token[]) recv-done.3), index=1, sharding={maximal device=0}
+      ROOT %after-all.2 = token[] after-all(get-tuple-element.4), frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="rendezvous1"}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(module_str));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
+      EinsumDepthAnalysis::Run(*module->entry_computation(),
+                               SendRecvGroupMap(*module)));
+  const EinsumDepthMap& einsum_depth_map =
+      einsum_depth_analysis->GetEinsumDepthMap();
+  HloComputation* computation = module->GetComputationWithName("entry");
+  EXPECT_EQ(GetInstructionDepth(einsum_depth_map, computation, "after-all.2"),
+            0);
+}
+
+TEST_F(EinsumDepthAnalysisTest, SparseDenseMatmulDepth) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kSparseDenseMatmulHlo,
+                                                       /*replica_count=*/1,
+                                                       /*num_partitions=*/1));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
+      EinsumDepthAnalysis::Run(*module->entry_computation(),
+                               SendRecvGroupMap(*module)));
+  const EinsumDepthMap& einsum_depth_map =
+      einsum_depth_analysis->GetEinsumDepthMap();
+  HloComputation* computation = module->GetComputationWithName("main");
+  EXPECT_EQ(GetInstructionDepth(einsum_depth_map, computation, "sc_output"), 0);
+  EXPECT_EQ(GetInstructionDepth(einsum_depth_map, computation, "sc_output_2"),
+            0);
+}
+
 class EinsumHeightAnalysisTest : public HloHardwareIndependentTestBase {
  public:
   int GetInstructionHeight(const EinsumHeightMap& height_map,
@@ -718,6 +867,24 @@ TEST_F(EinsumHeightAnalysisTest, MnistTrainingLoop) {
   EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.92"), 5);
   EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.99"), 6);
   EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.85"), 4);
+}
+
+TEST_F(EinsumHeightAnalysisTest, SparseDenseMatmulDepth) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kSparseDenseMatmulHlo,
+                                                       /*replica_count=*/1,
+                                                       /*num_partitions=*/1));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<EinsumHeightAnalysis> einsum_height_analysis,
+      EinsumHeightAnalysis::Run(*module->entry_computation(),
+                                SendRecvGroupMap(*module)));
+  const EinsumHeightMap& einsum_height_map =
+      einsum_height_analysis->GetEinsumHeightMap();
+  HloComputation* computation = module->GetComputationWithName("main");
+  EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "sc_output"),
+            1);
+  EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "sc_output_2"),
+            1);
 }
 
 TEST_F(HloValueSemanticsAnalysisTest,

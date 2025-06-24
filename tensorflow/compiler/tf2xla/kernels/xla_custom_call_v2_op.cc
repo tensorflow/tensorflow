@@ -25,6 +25,8 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -32,8 +34,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -73,11 +73,14 @@ class XlaCustomCallV2Op : public XlaOpKernel {
       TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dt, shape, &result_shapes[i]));
     }
 
+    TF_ASSIGN_OR_RETURN(
+        auto result_shape,
+        xla::ShapeUtil::MakeValidatedMaybeTupleShape(result_shapes));
     xla::XlaOp results = xla::CustomCallWithLayout(                      //
         ctx.builder(),                                                   //
         call_target_name_,                                               //
         operands,                                                        //
-        xla::ShapeUtil::MakeMaybeTupleShape(result_shapes),              //
+        result_shape,                                                    //
         operand_shapes,                                                  //
         backend_config_,                                                 //
         has_side_effect_,                                                //

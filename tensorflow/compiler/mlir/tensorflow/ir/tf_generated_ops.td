@@ -6124,6 +6124,90 @@ computation for better efficiency.}]>:$reserve_space_3
   }];
 }
 
+def TF_FusedConv2DBiasActivationOp : TF_Op<"FusedConv2DBiasActivation", [Pure]> {
+  let summary = [{
+    Computes a fused kernel which implements: 2-D convolution, adds side input,
+  }];
+
+  let description = [{
+    with separate scaling on convolution and side inputs, then adds bias and
+    applies the RELU activation function to the result. Supports both float and
+    qint8 data formats. In the case of qint8, the output is clipped to [0..127].
+
+    conv_input: A tensor with format as specified by `data_format` (see below).
+    filter: A tensor with format depending on `data_format` as follows:
+        "NHWC", "NCHW":
+             `float [ filter_height, filter_width, in_channels, out_channels ]`
+        "NCHW_VECT_C":
+             `qint8 [ out_channels, in_channels, filter_height, filter_width ]`
+    bias: 1-D float tensor with size matching the `out_channels` dimension of
+        `filter`.
+        Note: this tensor is still float, even if other inputs are qint8.
+    side_input: A tensor with format as specified by `data_format` (see below).
+        This tensor will be ignored and can be [] if side_input_scale == 0.
+        Otherwise, the size of each dimension must match the `output` tensor.
+    conv_input_scale: scalar float value to be multiplied by `conv_input`.
+        (conceptually.. in reality it is applied after convolution).
+        For the CPU version, this can also be a 1-D Tensor of per output-channel
+        scales.
+    side_input_scale: scalar float value to be multiplied by `side_input`.
+    output: A tensor with format as specified by `data_format` (see below).
+        The dimension sizes are determined automatically based on other inputs
+        and attributes.
+    T: The element data type of `conv_input`, `side_input` and `output` tensors.
+        Note: must match with the `data_format`.
+    Tbias: The element data type of `bias`.
+    strides: 1-D tensor of length 4.  The stride of the sliding window for each
+        dimension of `input`. The dimension order is determined by the value of
+        `data_format`, see below for details.
+        Note: the stride for batch and channel dimensions must be 1.
+    padding: The type of padding algorithm to use.
+    data_format: A string specifying the data format of `conv_input`,
+        `side_input` and `output` tensors with the following options:
+        "NHWC": `float [ batch, height, width, channels ]`
+        "NCHW": `float [ batch, channels, height, width ]`
+        "NCHW_VECT_C":
+            `qint8 [ batch, channels / 4, height, width, channels % 4 ]`
+        Note: for "NCHW_VECT_C", `channels` must be a multiple of 4.
+    filter_format: A string specifying the data format of `filter`,
+        "HWIO": `float [ kernel_height, kernel_width, input_channels,
+                         output_channels ]`
+        "OIHW_VECT_I":
+            `qint8 [ output_channels, input_channels / 4,
+                     kernel_height, kernel_width, input_channels % 4 ]`
+    activation_mode: The activation applied to the output.
+        Must be "Relu" or "None".
+    dilations: 1-D tensor of length 4.  The dilation factor for each dimension
+        of `input`. If set to k > 1, there will be k-1 skipped cells between
+        each filter element on that dimension. The dimension order is determined
+        by the value of `data_format`, see above for details. Dilations in the
+        batch and depth dimensions must be 1.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Float16, TF_Float32, TF_Qint8]>:$conv_input,
+    TensorOf<[TF_Float16, TF_Float32, TF_Qint8]>:$filter,
+    TensorOf<[TF_Float16, TF_Float32]>:$bias,
+    TensorOf<[TF_Float16, TF_Float32, TF_Qint8]>:$side_input,
+    TF_Float32Tensor:$conv_input_scale,
+    TF_Float32Tensor:$side_input_scale,
+
+    I64ArrayAttr:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NCHW_VECT_C"]>, "\"NHWC\"">:$data_format,
+    DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["HWIO", "OIHW", "OIHW_VECT_I"]>, "\"HWIO\"">:$filter_format,
+    DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["Relu", "None"]>, "\"Relu\"">:$activation_mode,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float16, TF_Float32, TF_Qint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tbias = TF_DerivedOperandTypeAttr<2>;
+}
+
 def TF_GatherOp : TF_Op<"Gather", [Pure]> {
   let summary = "Gather slices from `params` according to `indices`.";
 
@@ -6790,7 +6874,7 @@ The lower regularized incomplete Gamma function is defined as:
 
 where
 
-\\(gamma(a, x) = \\int_{0}^{x} t^{a-1} exp(-t) dt\\)
+\\(gamma(a, x) = \int_{0}^{x} t^{a-1} exp(-t) dt\\)
 
 is the lower incomplete Gamma function.
 
@@ -11335,52 +11419,6 @@ truncated normal values using the parameters for each row.}]>:$output
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_PartitionedCallOp : TF_Op<"PartitionedCall", [CallOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface>, Pure]> {
-  let summary = [{
-returns `f(inputs)`, where `f`'s body is placed and partitioned.
-  }];
-
-  let description = [{
-Asynchronously executes a function, potentially across multiple devices but
-within a single process. The kernel places and partitions a given function's
-underlying graph, and executes each of the partitioned subgraphs as a function.
-  }];
-
-  let arguments = (ins
-    Arg<Variadic<TF_Tensor>, [{A list of input tensors.}]>:$args,
-
-    SymbolRefAttr:$f,
-    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$config,
-    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$config_proto,
-    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$executor_type
-  );
-
-  let results = (outs
-    Res<Variadic<TF_Tensor>, [{A list of return values.}]>:$output
-  );
-
-  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
-  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
-
-  let extraClassDeclaration = [{
-    // Gets the argument operands to the called function.
-    operand_range getArgOperands() { return getArgs(); }
-    MutableOperandRange getArgOperandsMutable() {
-      return getArgsMutable();
-    }
-
-    // Returns the callee of this operation.
-    CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
-    // Sets the callee from the callable.
-    void setCalleeFromCallable(CallInterfaceCallable callee);
-
-    // returns the callee of this operation.
-    func::FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getF());
-    }
-  }];
-}
-
 def TF_PolygammaOp : TF_Op<"Polygamma", [Pure, ResultsBroadcastableShape]>,
                      WithBroadcastableBinOpBuilder {
   let summary = [{
@@ -12458,13 +12496,13 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   }];
 
   let arguments = (ins
-    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32]>, [{0-D (scalar). First entry in the sequence.}]>:$start,
-    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32]>, [{0-D (scalar). Upper limit of sequence, exclusive.}]>:$limit,
-    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32]>, [{0-D (scalar). Optional. Default is 1. Number that increments `start`.}]>:$delta
+    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64]>, [{0-D (scalar). First entry in the sequence.}]>:$start,
+    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64]>, [{0-D (scalar). Upper limit of sequence, exclusive.}]>:$limit,
+    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64]>, [{0-D (scalar). Optional. Default is 1. Number that increments `start`.}]>:$delta
   );
 
   let results = (outs
-    Res<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32]>, [{1-D.}]>:$output
+    Res<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64]>, [{1-D.}]>:$output
   );
 
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
@@ -12899,6 +12937,12 @@ def TF_RemoteCallOp : TF_Op<"RemoteCall", [CallOpInterface]> {
     void setCalleeFromCallable(CallInterfaceCallable callee) {
       (*this)->setAttr("f", callee.get<SymbolRefAttr>());
     }
+    Attribute removeArgAttrsAttr() { return nullptr; }
+    Attribute removeResAttrsAttr() { return nullptr; }
+    ArrayAttr getArgAttrsAttr() { return nullptr; }
+    ArrayAttr getResAttrsAttr() { return nullptr; }
+    void setArgAttrsAttr(ArrayAttr) { return; }
+    void setResAttrsAttr(ArrayAttr) { return; }
   }];
 }
 
@@ -15422,7 +15466,7 @@ e.g. Max(segment_ids) should be equal to `num_segments` - 1 for a 1-d segment_id
 With inconsistent num_segments, the op still runs. only difference is,
 the output takes the size of num_segments irrespective of size of segment_ids and data.
 for num_segments less than expected output size, the last elements are ignored
-for num_segments more than the expected output size, last elements are assigned 
+for num_segments more than the expected output size, last elements are assigned
 smallest possible value for the specific numeric type.
 
 For example:
@@ -15592,7 +15636,7 @@ e.g. Max(segment_ids) should be equal to `num_segments` - 1 for a 1-d segment_id
 With inconsistent num_segments, the op still runs. only difference is,
 the output takes the size of num_segments irrespective of size of segment_ids and data.
 for num_segments less than expected output size, the last elements are ignored
-for num_segments more than the expected output size, last elements are assigned 
+for num_segments more than the expected output size, last elements are assigned
 the largest possible value for the specific numeric type.
 
 For example:
@@ -15698,7 +15742,7 @@ The only difference with SegmentProd is the additional input  `num_segments`.
 This helps in evaluating the output shape in compile time.
 `num_segments` should be consistent with segment_ids.
 e.g. Max(segment_ids) - 1 should be equal to `num_segments` for a 1-d segment_ids
-With inconsistent num_segments, the op still runs. only difference is, 
+With inconsistent num_segments, the op still runs. only difference is,
 the output takes the size of num_segments irrespective of size of segment_ids and data.
 for num_segments less than expected output size, the last elements are ignored
 for num_segments more than the expected output size, last elements are assigned 1.
@@ -18720,6 +18764,26 @@ For internal use only.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_TPUDummyInputOp : TF_Op<"TPUDummyInput", [Pure, TF_NoConstantFold]> {
+  let summary = [{
+Generates a zero-valued tensor for use as a dummy input to a TPU.
+  }];
+
+  let description = [{
+For the internal use of the TF2XLA bridge in the XLA Broadcast pass. This op
+  }];
+
+  let arguments = (ins
+    TF_ShapeAttr:$shape
+  );
+
+  let results = (outs
+    TensorOf<[TF_Bfloat16, TF_Float32]>:$output
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_TPUEmbeddingActivationsOp : TF_Op<"TPUEmbeddingActivations", [Pure]> {
   let summary = "An op enabling differentiation of TPU Embeddings.";
 
@@ -20367,66 +20431,6 @@ def TF_UncompressElementOp : TF_Op<"UncompressElement", [Pure]> {
   TF_DerivedResultTypeListAttr output_types = TF_DerivedResultTypeListAttr<0>;
 }
 
-def TF_UniformDequantizeOp : TF_Op<"UniformDequantize", [Pure]> {
-  let summary = "Perform dequantization on the quantized Tensor `input`.";
-
-  let description = [{
-Given quantized `input` which was quantized using `scales` and `zero_points`, performs dequantization using the formula:
-dequantized_data = (quantized_data - zero_point) * scale.
-  }];
-
-  let arguments = (ins
-    Arg<TensorOf<[TF_Qint32, TF_Qint8]>, [{Must be a Tensor of Tin.}]>:$input,
-    Arg<TF_Float32Tensor, [{The float value(s) used as scale(s) when quantizing original data that input represents.
-Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).}]>:$scales,
-    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero_point(s) when quantizing original data that input represents.
-Same shape condition as scales.}]>:$zero_points,
-
-    DefaultValuedOptionalAttr<I64Attr, "-1">:$quantization_axis,
-    I64Attr:$quantization_min_val,
-    I64Attr:$quantization_max_val
-  );
-
-  let results = (outs
-    Res<TF_Float32Tensor, [{The output dequantized Tensor of Tout, whose shape is same as input.}]>:$output
-  );
-
-  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
-
-  let hasVerifier = 1;
-}
-
-def TF_UniformQuantizeOp : TF_Op<"UniformQuantize", [Pure]> {
-  let summary = "Perform quantization on Tensor `input`.";
-
-  let description = [{
-Given `input`, `scales` and `zero_points`, performs quantization using the formula:
-quantized_data = floor(input_data * (1.0f / scale) + 0.5f) + zero_point
-  }];
-
-  let arguments = (ins
-    Arg<TF_Float32Tensor, [{Must be a Tensor of Tin.}]>:$input,
-    Arg<TF_Float32Tensor, [{The float value(s) to use as scale(s) to quantize `input`.
-Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).}]>:$scales,
-    Arg<TF_Int32Tensor, [{The int32 value(s) to use as zero_point(s) to quantize `input`.
-Same shape condition as scales.}]>:$zero_points,
-
-    DefaultValuedOptionalAttr<I64Attr, "-1">:$quantization_axis,
-    I64Attr:$quantization_min_val,
-    I64Attr:$quantization_max_val
-  );
-
-  let results = (outs
-    Res<TensorOf<[TF_Qint32, TF_Qint8]>, [{The output quantized Tensor of Tout, whose shape is same as input.}]>:$output
-  );
-
-  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
-
-  let hasVerifier = 1;
-}
-
 def TF_UniformQuantizedAddOp : TF_Op<"UniformQuantizedAdd", [Pure]> {
   let summary = [{
 Perform quantized add of quantized Tensor `lhs` and quantized Tensor `rhs` to make quantized `output`.
@@ -21403,7 +21407,8 @@ values. These keys should be in byte format.}]>:$keys,
 
     StrArrayAttr:$prediction_names,
     BoolAttr:$training,
-    StrAttr:$file_path
+    StrAttr:$file_path,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$write_vector_predictions
   );
 
   let results = (outs);
@@ -21503,7 +21508,8 @@ platform argument (see `platforms`) nor the dimension arguments (see
     DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$platforms,
     DefaultValuedOptionalAttr<TF_SymbolRefArrayAttr, "{}">:$function_list,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$has_token_input_output,
-    DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$disabled_checks
+    DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$disabled_checks,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$use_shardy_partitioner
   );
 
   let results = (outs

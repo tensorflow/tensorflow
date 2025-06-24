@@ -103,7 +103,7 @@ FusionDecision ParameterSlicesAreNonOverlapping(const HloInstruction& instr1,
   auto& limits1 = slice1->slice_limits();
   auto& limits2 = slice2->slice_limits();
 
-  for (int64_t dim = 0; dim < parent->shape().rank(); ++dim) {
+  for (int64_t dim = 0; dim < parent->shape().dimensions().size(); ++dim) {
     bool overlap = starts1[dim] < limits2[dim] && starts2[dim] < limits1[dim];
     if (!overlap) {
       return FusionDecision::Forbid("slices are non-overlapping");
@@ -188,6 +188,7 @@ FusionDecision ProducerCandidateIsFusible(
     const HloInstruction& producer, const HloInstruction& consumer,
     const HloDfsReachability& reachability, FusionInfoCache* fusion_info_cache,
     const se::DeviceDescription& device_info,
+    GpuPerformanceModelOwning& gpu_performance_model,
     GpuHloCostAnalysis* cost_analysis) {
   if (!IsFusibleAsMultiOutputFusionRoot(consumer, device_info)) {
     return FusionDecision::Forbid(
@@ -209,8 +210,8 @@ FusionDecision ProducerCandidateIsFusible(
   }
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimesForMultiOutputFusion(
-          &producer, &consumer, device_info, cost_analysis);
+      gpu_performance_model.EstimateRunTimesForMultiOutputFusion(
+          &producer, &consumer, cost_analysis);
   if (t.time_fused > t.time_unfused) {
     return FusionDecision::Forbid("will execute slower if fused");
   }
@@ -222,6 +223,7 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
     const HloInstruction* producer, const HloDfsReachability& reachability,
     FusionInfoCache* fusion_info_cache,
     const se::DeviceDescription& device_info,
+    GpuPerformanceModelOwning& gpu_performance_model,
     GpuHloCostAnalysis* cost_analysis) {
   std::vector<HloInstruction*> fusion_candidates;
   const HloComputation* computation = producer->parent();
@@ -249,7 +251,7 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
 
     if (auto decision = ProducerCandidateIsFusible(
             *producer, *consumer, reachability, fusion_info_cache, device_info,
-            cost_analysis)) {
+            gpu_performance_model, cost_analysis)) {
       fusion_candidates.push_back(consumer);
     } else if (dump_fusion) {
       RegisterFusionState(
@@ -420,6 +422,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
       computation_->MakeInstructionPostOrder();
 
   FusionInfoCache fusion_info_cache(device_info_);
+  GpuPerformanceModelOwning gpu_performance_model(device_info_);
   // Traverse the HLO in uses-before-defs order.
   for (auto it = defs_before_uses.rbegin(); it != defs_before_uses.rend();
        ++it) {
@@ -443,7 +446,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
     // traversal, and hence, not get into the way of subsequent fusion attempts.
     const auto candidates = GetProducerConsumerMultiOutputFusionCandidates(
         producer, *reachability_, &fusion_info_cache, device_info_,
-        &cost_analysis);
+        gpu_performance_model, &cost_analysis);
     auto* consumer_for_fusion = SelectPreferredFusionCandidate(candidates);
     if (consumer_for_fusion == nullptr) {
       continue;

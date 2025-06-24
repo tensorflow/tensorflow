@@ -129,7 +129,8 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
   // Sink kCopy across elementwise unary.
   absl::Status HandleElementwiseUnary(HloInstruction* hlo) override {
     HloInstruction* operand = hlo->mutable_operand(0);
-    if (HloPredicateIsOp<HloOpcode::kReducePrecision>(hlo)) {
+    if (HloPredicateIsOp<HloOpcode::kReducePrecision>(hlo) ||
+        HloPredicateIsOp<HloOpcode::kCopy>(hlo)) {
       return absl::OkStatus();
     }
     if (HloPredicateIsOp<HloOpcode::kCopy>(operand)) {

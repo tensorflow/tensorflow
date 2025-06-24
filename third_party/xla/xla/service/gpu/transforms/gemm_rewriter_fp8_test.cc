@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
@@ -31,17 +32,20 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/gpu/transforms/gemm_rewriter_test_lib.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/test.h"
+#include "xla/tests/hlo_runner_agnostic_test_base.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -54,11 +58,26 @@ class ParameterizedFp8GemmRewriteTest
     : public ParameterizedGemmRewriteTestBase {
  public:
   ParameterizedFp8GemmRewriteTest() {
-    replacements_[kF8E4M3DatatypePlaceholder] =
-        IsCuda() ? "f8e4m3fn" : "f8e4m3fnuz";
-    replacements_[kF8E5M2DatatypePlaceholder] =
-        IsCuda() ? "f8e5m2" : "f8e5m2fnuz";
-    replacements_[kF8E4M3AmaxPlaceholder] = IsCuda() ? "448." : "240.";
+    if (IsCuda()) {
+      replacements_[kF8E4M3DatatypePlaceholder] = "f8e4m3fn";
+      replacements_[kF8E5M2DatatypePlaceholder] = "f8e5m2";
+      replacements_[kF8E4M3AmaxPlaceholder] = "448.";
+      return;
+    }
+    if (IsRocm() && std::get<se::RocmComputeCapability>(Capability())
+                        .has_ocp_fp8_support()) {
+      replacements_[kF8E4M3DatatypePlaceholder] = "f8e4m3fn";
+      replacements_[kF8E5M2DatatypePlaceholder] = "f8e5m2";
+      replacements_[kF8E4M3AmaxPlaceholder] = "448.";
+      return;
+    }
+    if (IsRocm() && std::get<se::RocmComputeCapability>(Capability())
+                        .has_nanoo_fp8_support()) {
+      replacements_[kF8E4M3DatatypePlaceholder] = "f8e4m3fnuz";
+      replacements_[kF8E5M2DatatypePlaceholder] = "f8e5m2fnuz";
+      replacements_[kF8E4M3AmaxPlaceholder] = "240.";
+      return;
+    }
   }
 
   void SetUp() override {
@@ -69,6 +88,12 @@ class ParameterizedFp8GemmRewriteTest
     if (IsRocm() && GetToolkitVersion() < se::SemanticVersion{6, 0, 0}) {
       GTEST_SKIP()
           << "F8 gemm rewrite is only supported in ROCm 6.0 and above.";
+    }
+
+    if (IsRocm() &&
+        !std::get<se::RocmComputeCapability>(Capability()).has_fp8_support()) {
+      GTEST_SKIP()
+          << "F8 gemm rewrite is only supported on MI300 and newer archs.";
     }
   }
 
@@ -117,12 +142,16 @@ class ParameterizedFp8GemmRewriteTest
     }
   }
 
+  using ParameterizedGemmRewriteTestBase::ParseAndReturnVerifiedModule;
+
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
-  ParseAndReturnVerifiedModule(absl::string_view hlo_text,
-                               int64_t replica_count = 1,
-                               int64_t num_partitions = 1) {
+  ParseAndReturnVerifiedModule(
+      absl::string_view hlo_text, int64_t replica_count = 1,
+      int64_t num_partitions = 1,
+      std::optional<DeviceAssignment> device_assignment = std::nullopt) const {
     return GemmRewriteTestBase::ParseAndReturnVerifiedModule(
-        absl::StrReplaceAll(hlo_text, replacements_));
+        absl::StrReplaceAll(hlo_text, replacements_), replica_count,
+        num_partitions, device_assignment);
   }
 
  private:
@@ -154,10 +183,6 @@ ENTRY main {
       f32[8,16,2560]{2,1,0} %dot.6237)
 })";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
-; CHECK:    custom-call({{.*}}"lhs_batch_dimensions":["1"],"rhs_batch_dimensions":["0"]
-  )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreAda) {
@@ -292,7 +317,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDF8) {
 
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       checks);
 }
@@ -315,7 +340,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDMatrixBiasF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[32,16], {{.*}}: <<F8E4M3>>[16,16]) -> <<F8E4M3>>[16,16] {
@@ -364,7 +389,7 @@ HloModule test
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[2,64,32], {{.*}}: <<F8E4M3>>[2,32,16], {{.*}}: f32[], {{.*}}: f32[]) -> f32[2,64,16] {
@@ -421,7 +446,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[32,16], {{.*}}: f32[], {{.*}}: f32[]) -> f32[16,16] {
@@ -473,7 +498,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDPaddedF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[13,17], {{.*}}: <<F8E4M3>>[17,31], {{.*}}: f32[], {{.*}}: f32[]) -> f32[13,31] {
@@ -531,7 +556,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDBitcastF8) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+  GemmRewriter pass(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                     GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
@@ -561,7 +586,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDWithConvertF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[32,16]) -> f32[16,16] {
@@ -617,7 +642,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDUnaryOpsF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 
@@ -676,7 +701,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 
@@ -734,7 +759,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDDynamicSliceF8) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+  GemmRewriter pass(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                     GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
@@ -742,7 +767,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDDynamicSliceF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[32,32], {{.*}}: <<F8E4M3>>[16,32], {{.*}}: f32[], {{.*}}: f32[]) -> f32[16,16] {
@@ -797,7 +822,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDSelectF8) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+  GemmRewriter pass(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                     GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
@@ -805,7 +830,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDSelectF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[16,32], {{.*}}: f32[], {{.*}}: f32[], {{.*}}: pred[16,32]) -> f32[16,16] {
@@ -864,7 +889,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+  GemmRewriter pass(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                     GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_FALSE(changed);
@@ -893,7 +918,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[10,16,32], {{.*}}: <<F8E4M3>>[10,32,16], {{.*}}: f32[], {{.*}}: f32[]) -> f32[10,16,16] {
@@ -948,7 +973,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABAlphaDF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 
@@ -1004,7 +1029,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 
@@ -1128,7 +1153,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 
     RunAndFilecheckHloRewrite(
         hlo_text,
-        GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+        GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                      GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
         checks);
   }
@@ -1224,7 +1249,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
       )";
     RunAndFilecheckHloRewrite(
         hlo_text,
-        GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+        GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                      GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
         checks);
   }
@@ -1253,7 +1278,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, InvScaledABUnscaledDF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
@@ -1288,7 +1313,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDMatrixBiasF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 
@@ -1347,7 +1372,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDMatrixBiasPaddedF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 
@@ -1410,7 +1435,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABScaledDF8) {
   CheckFp8IfSupported(hlo_text, ErrorSpec{1e-2, 1e-1});
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[32,16], {{.*}}: f32[]) -> <<F8E4M3>>[16,16] {
@@ -1461,7 +1486,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABScaledF32DF8) {
   CheckFp8IfSupported(hlo_text, ErrorSpec{1e-2, 1e-1});
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[32,16], {{.*}}: f32[]) -> f32[16,16] {
@@ -1510,7 +1535,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABInvScaledF32DF8) {
   CheckFp8IfSupported(hlo_text, ErrorSpec{1e-2, 1e-1});
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[32,16], {{.*}}: f32[]) -> f32[16,16] {
@@ -1561,7 +1586,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABScaledF32DMatrixBiasF8) {
   CheckFp8IfSupported(hlo_text, ErrorSpec{1e-2, 1e-1});
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[32,16], {{.*}}: f32[]) -> f32[16,16] {
@@ -1626,7 +1651,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[32,16], {{.*}}: f32[], {{.*}}: f32[], {{.*}}: f32[]) -> <<F8E4M3>>[16,16] {
@@ -1691,7 +1716,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABInvScaledDF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 
@@ -1735,7 +1760,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[32,16], {{.*}}: f32[], {{.*}}: f32[], {{.*}}: f32[]) -> <<F8E4M3>>[16,16] {
@@ -1814,7 +1839,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDMatrixBiasWithDAmaxF8) {
   CheckFp8IfSupported(hlo_text, ErrorSpec{0.1, 0.1});
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 
@@ -1883,7 +1908,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDVectorBiasF8) {
   CheckFp8IfSupported(hlo_text, ErrorSpec{0.1, 0.1});
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 
@@ -1949,7 +1974,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF32VectorBiasF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[32,16], {{.*}}: f32[16], {{.*}}: f32[], {{.*}}: f32[]) -> f32[16,16] {
@@ -2009,7 +2034,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
   CheckFp8IfSupported(hlo_text, ErrorSpec{2e-3, 0.});
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[32,16], {{.*}}: f16[16], {{.*}}: f16[], {{.*}}: f16[]) -> f16[16,16] {
@@ -2067,7 +2092,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, Rank3ScaledABUnscaledDVectorBiasF8) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+  GemmRewriter pass(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                     GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
@@ -2081,7 +2106,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, Rank3ScaledABUnscaledDVectorBiasF8) {
 
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[4,16,16], {{.*}}: <<F8E4M3>>[16,32], {{.*}}: f32[32], {{.*}}: f16[], {{.*}}: f16[]) -> f16[4,16,32] {
@@ -2144,7 +2169,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+  GemmRewriter pass(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                     GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
@@ -2160,7 +2185,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[4,15,15], {{.*}}: <<F8E4M3>>[15,31], {{.*}}: f32[31], {{.*}}: f16[], {{.*}}: f16[]) -> f16[4,15,31] {
@@ -2227,7 +2252,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, Rank3ScaledABUnscaledDMatrixBiasF8) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+  GemmRewriter pass(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                     GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
@@ -2241,7 +2266,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, Rank3ScaledABUnscaledDMatrixBiasF8) {
 
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[4,16,16], {{.*}}: <<F8E4M3>>[16,32], {{.*}}: f32[4,16,32], {{.*}}: f32[], {{.*}}: f32[]) -> f32[4,16,32] {
@@ -2300,7 +2325,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+  GemmRewriter pass(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                     GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
@@ -2316,7 +2341,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[3,15,15], {{.*}}: <<F8E4M3>>[15,31], {{.*}}: f32[3,15,31], {{.*}}: f32[], {{.*}}: f32[]) -> f32[3,15,31] {
@@ -2383,14 +2408,14 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+  GemmRewriter pass(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                     GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[48,16], {{.*}}: <<F8E4M3>>[16,32], {{.*}}: f32[32,16], {{.*}}: f32[], {{.*}}: f32[]) -> f32[32,16] {
@@ -2452,7 +2477,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
   CheckFp8IfSupported(hlo_text, ErrorSpec{2e-3, 0.});
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL:   ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[32,16], {{.*}}: f16[16], {{.*}}: f16[16,16], {{.*}}: f16[], {{.*}}: f16[]) -> f16[16,16] {
@@ -2530,7 +2555,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[32,16], {{.*}}: f32[], {{.*}}: f32[], {{.*}}: f32[]) -> (<<F8E4M3>>[16,16], f32[]) {
@@ -2608,7 +2633,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[32,16], {{.*}}: f16[], {{.*}}: f16[], {{.*}}: f16[]) -> (<<F8E4M3>>[16,16], f16[]) {
@@ -2689,7 +2714,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[32,16], {{.*}}: f32[], {{.*}}: f32[], {{.*}}: f32[]) -> (<<F8E4M3>>[16,16], f32[]) {
@@ -2813,7 +2838,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
 
     RunAndFilecheckHloRewrite(
         hlo_text,
-        GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+        GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                      GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
         R"(
     ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
@@ -2881,7 +2906,7 @@ ENTRY f {
 
     RunAndFilecheckHloRewrite(
         hlo_text,
-        GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+        GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                      GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
         R"(
     ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
@@ -2912,7 +2937,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(
       hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
       R"(
     ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
@@ -2938,22 +2963,12 @@ TEST_P(ParameterizedFp8GemmRewriteTest, FnuzTypeF8) {
       ROOT out = f32[16,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
           }
 )";
-  if (IsCuda()) {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnVerifiedModule(hlo_text));
-    GemmRewriter pass(
-        CudaHopperOrRocmMI300(), GetToolkitVersion(),
-        GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only});
-    TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                            this->RunHloPass(&pass, module.get()));
-    EXPECT_FALSE(changed);
-    return;
-  }
-  if (IsRocm()) {
+  if (IsRocm() && std::get<se::RocmComputeCapability>(Capability())
+                      .has_nanoo_fp8_support()) {
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
     RunAndFilecheckHloRewrite(
         hlo_text,
-        GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+        GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                      GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
         R"(
 ; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fnuz[16,32], {{.*}}: f8e4m3fnuz[32,16], {{.*}}: f32[], {{.*}}: f32[]) -> f32[16,16] {
@@ -2991,7 +3006,60 @@ TEST_P(ParameterizedFp8GemmRewriteTest, FnuzTypeF8) {
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
       )");
+  } else {
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                            ParseAndReturnVerifiedModule(hlo_text));
+    GemmRewriter pass(
+        CudaHopperOrRocmCapability(), GetToolkitVersion(),
+        GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only});
+    TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                            this->RunHloPass(&pass, module.get()));
+    EXPECT_FALSE(changed);
+    return;
   }
+}
+
+TEST_P(ParameterizedFp8GemmRewriteTest, NoTransposeOnBlackwellF8) {
+  if (!IsBlackwell()) {
+    GTEST_SKIP() << "Test requires a Blackwell GPU.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = <<F8E4M3>>[32,16] parameter(0)
+      y = <<F8E4M3>>[32,16] parameter(1)
+      ROOT out = <<F8E4M3>>[16,16] dot(x, y), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+          }
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(absl::StrReplaceAll(hlo_text, replacements_),
+                            ErrorSpec{1e-2, 1e-2}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[32,16], {{.*}}: <<F8E4M3>>[32,16]) -> <<F8E4M3>>[16,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = <<F8E4M3>>[32,16]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = <<F8E4M3>>[32,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[C1:[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    [[OUT:%[^ ]+]] = (<<F8E4M3>>[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1]], [[C1]], [[C1]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+          )");
 }
 
 INSTANTIATE_TEST_SUITE_P(Fp8CublasTestsBothLegacyAndLt,

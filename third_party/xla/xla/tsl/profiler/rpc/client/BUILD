@@ -29,6 +29,7 @@ cc_library(
         "//xla/python:__pkg__",
         "//tensorflow/core/profiler/rpc/client:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
+        "//third_party/xprof/pywrap:__pkg__",
     ]),
     deps = [
         ":profiler_client_for_pybind",
@@ -85,6 +86,7 @@ tf_profiler_pybind_cc_library_wrapper(
     visibility = internal_visibility([
         "//tensorflow/core/profiler/rpc/client:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
+        "//third_party/xprof/pywrap:__pkg__",
     ]),
 )
 
@@ -95,6 +97,7 @@ cc_library(
         "//xla:__subpackages__",
         "//tensorflow/core/profiler/rpc/client:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
+        "//third_party/xprof/pywrap:__pkg__",
     ]),
     deps = [
         ":profiler_client_impl",
@@ -119,6 +122,7 @@ cc_library(
         "//tensorflow/core/profiler/rpc/client:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
+        "//third_party/xprof/pywrap:__pkg__",
     ]),
     deps = [
         "//xla/tsl/platform:errors",
@@ -155,6 +159,7 @@ cc_library(
 tsl_cc_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.cc"],
+    linkstatic = False,  # This test is incompatible with linkstatic in the OSS build.
     deps = [
         ":profiler_client",
         ":profiler_client_impl",  # for oss
@@ -163,12 +168,12 @@ tsl_cc_test(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/platform:types",
         "//xla/tsl/profiler/rpc:profiler_server_impl",
         "//xla/tsl/profiler/rpc:profiler_service_impl",
         "//xla/tsl/profiler/utils:time_utils_impl",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/profiler/lib:profiler_factory_impl",
         "@local_tsl//tsl/profiler/lib:profiler_session_impl",
     ] + tf_protos_profiler_service(),
@@ -190,8 +195,8 @@ cc_library(
         "//xla/tsl/profiler/utils:time_utils",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
@@ -199,6 +204,7 @@ cc_library(
 tsl_cc_test(
     name = "remote_profiler_session_manager_test",
     srcs = ["remote_profiler_session_manager_test.cc"],
+    linkstatic = False,  # This test is incompatible with linkstatic in the OSS build.
     deps = [
         ":profiler_client_impl",  # for oss
         ":profiler_client_test_util",
@@ -207,13 +213,13 @@ tsl_cc_test(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/platform:types",
         "//xla/tsl/profiler/rpc:profiler_server_impl",
         "//xla/tsl/profiler/rpc:profiler_service_impl",
         "//xla/tsl/profiler/utils:time_utils_impl",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/profiler/lib:profiler_factory_impl",
         "@local_tsl//tsl/profiler/lib:profiler_session_impl",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",

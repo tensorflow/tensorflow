@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
 
@@ -36,7 +35,7 @@ namespace {
 
 using CholeskyTest = ClientLibraryTestBase;
 
-XLA_TEST_F(CholeskyTest, NonPSDInput) {
+TEST_F(CholeskyTest, NonPSDInput) {
   XlaBuilder builder(TestName());
 
   Array2D<float> a_vals({
@@ -60,7 +59,7 @@ XLA_TEST_F(CholeskyTest, NonPSDInput) {
                              ErrorSpec(1e-4, 1e-4));
 }
 
-XLA_TEST_F(CholeskyTest, NonPSDBatched) {
+TEST_F(CholeskyTest, NonPSDBatched) {
   XlaBuilder builder(TestName());
 
   Array3D<float> a_vals({
@@ -98,7 +97,7 @@ XLA_TEST_F(CholeskyTest, NonPSDBatched) {
                              ErrorSpec(1e-4, 1e-4));
 }
 
-XLA_TEST_F(CholeskyTest, Lower) {
+TEST_F(CholeskyTest, Lower) {
   XlaBuilder builder(TestName());
 
   float nan = std::numeric_limits<float>::quiet_NaN();
@@ -124,7 +123,7 @@ XLA_TEST_F(CholeskyTest, Lower) {
                              ErrorSpec(1e-4, 1e-4));
 }
 
-XLA_TEST_F(CholeskyTest, Upper) {
+TEST_F(CholeskyTest, Upper) {
   XlaBuilder builder(TestName());
 
   float nan = std::numeric_limits<float>::quiet_NaN();
@@ -150,7 +149,7 @@ XLA_TEST_F(CholeskyTest, Upper) {
                              ErrorSpec(1e-4, 1e-4));
 }
 
-XLA_TEST_F(CholeskyTest, Simple2) {
+TEST_F(CholeskyTest, Simple2) {
   XlaBuilder builder(TestName());
 
   Array2D<float> a_vals({
@@ -173,7 +172,7 @@ XLA_TEST_F(CholeskyTest, Simple2) {
                              ErrorSpec(1e-4, 1e-4));
 }
 
-XLA_TEST_F(CholeskyTest, SimpleBatched) {
+TEST_F(CholeskyTest, SimpleBatched) {
   XlaBuilder builder(TestName());
 
   Array3D<float> a_vals({
@@ -218,7 +217,7 @@ class RandomCholeskyTest
     : public ClientLibraryTestBase,
       public ::testing::WithParamInterface<CholeskyTestCase> {};
 
-XLA_TEST_P(RandomCholeskyTest, Real) {
+TEST_P(RandomCholeskyTest, Real) {
   XlaBuilder builder(TestName());
 
   auto test_params = GetParam();
@@ -255,7 +254,7 @@ XLA_TEST_P(RandomCholeskyTest, Real) {
                              ErrorSpec(1e-4, 1e-4));
 }
 
-XLA_TEST_P(RandomCholeskyTest, Complex) {
+TEST_P(RandomCholeskyTest, Complex) {
   XlaBuilder builder(TestName());
 
   auto test_params = GetParam();

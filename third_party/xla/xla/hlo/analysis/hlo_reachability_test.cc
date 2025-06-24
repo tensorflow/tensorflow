@@ -16,10 +16,10 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_reachability.h"
 
 #include <memory>
-#include <set>
 #include <string>
 
 #include "absl/random/random.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test_benchmark.h"
 

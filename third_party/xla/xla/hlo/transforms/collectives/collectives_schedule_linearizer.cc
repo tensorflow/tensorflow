@@ -15,21 +15,19 @@ limitations under the License.
 
 #include "xla/hlo/transforms/collectives/collectives_schedule_linearizer.h"
 
-#include <algorithm>
-#include <list>
 #include <memory>
-#include <string>
-#include <utility>
-#include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -76,6 +74,9 @@ absl::StatusOr<bool> CollectivesScheduleLinearizer::Run(
       if (prev_done && !reachability->IsConnected(start, prev_done)) {
         // If prev_done and start are independent, enforce ordering.
         TF_RETURN_IF_ERROR(prev_done->AddControlDependencyTo(next));
+        // Adding control dependency does not update the reachability map.
+        reachability->UpdateReachabilityThroughInstruction(start);
+
         VLOG(1) << "Adding control dependency from " << prev_done->ToString()
                 << " to " << start->ToString();
         changed = true;

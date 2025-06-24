@@ -17,11 +17,11 @@ limitations under the License.
 #define XLA_HLO_TRANSLATE_HLO_TO_MHLO_HLO_FUNCTION_IMPORTER_H_
 
 #include <cstdint>
+#include <optional>
 #include <unordered_map>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -134,6 +136,7 @@ class HloFunctionImporter {
     context_->loadDialect<mlir::arith::ArithDialect>();
     context_->loadDialect<mlir::func::FuncDialect>();
     context_->loadDialect<mlir::mhlo::MhloDialect>();
+    context_->loadDialect<mlir::stablehlo::StablehloDialect>();
     context_->loadDialect<mlir::sparse_tensor::SparseTensorDialect>();
   }
 
@@ -207,6 +210,12 @@ class HloFunctionImporter {
   // Converts the dimensions of an HLO instruction into an MLIR attribute.
   mlir::DenseIntElementsAttr ConvertDimensions(
       absl::Span<const int64_t> op_dimensions);
+
+  // Converts Array ref to a DenseI64ArrayAttr.
+  mlir::DenseI64ArrayAttr ConvertArray(llvm::ArrayRef<int64_t> elements);
+
+  // Converts Array ref to a DenseBoolArrayAttr.
+  mlir::DenseBoolArrayAttr ConvertArray(llvm::ArrayRef<bool> elements);
 
   // Converts Array ref to an DenseIntElementsAttr.
   mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<int64_t> elements);

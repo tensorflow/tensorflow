@@ -19,19 +19,28 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/log/check.h"
+#include "absl/strings/match.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/Function.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Target/TargetMachine.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/primitive_util.h"
-#include "tsl/platform/logging.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
 TargetMachineFeatures::TargetMachineFeatures(
     llvm::TargetMachine* target_machine)
-    : target_machine_(target_machine) {}
+    : target_machine_(target_machine) {
+  // Calling virtual methods in the constructor is discouraged, so we don't
+  // call `get_target_feature_string` here.
+  if (target_machine_) {
+    has_avx512bf16_ = absl::StrContains(
+        target_machine_->getTargetFeatureString().str(), "+avx512bf16");
+  }
+}
 
 int32_t TargetMachineFeatures::vectorization_factor_in_bytes() const {
   // Ideally this should be a function of the cache line size (which we can
@@ -88,7 +97,9 @@ int64_t TargetMachineFeatures::minimum_alignment_for_allocation(
 }
 
 std::string TargetMachineFeatures::get_target_feature_string() const {
-  return target_machine_->getTargetFeatureString().str();
+  return target_machine_ == nullptr
+             ? ""
+             : target_machine_->getTargetFeatureString().str();
 }
 
 }  // namespace xla::cpu

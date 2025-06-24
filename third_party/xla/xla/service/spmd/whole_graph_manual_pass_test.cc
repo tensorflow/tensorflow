@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/service/spmd/whole_graph_manual_pass.h"
 
+#include <cstdint>
+#include <memory>
+#include <utility>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
@@ -23,10 +27,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
@@ -36,7 +40,7 @@ using ::testing::_;
 using ::testing::AllOf;
 namespace op = xla::testing::opcode_matchers;
 
-class WholeGraphManualPassTest : public HloTestBase {
+class WholeGraphManualPassTest : public HloHardwareIndependentTestBase {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
       absl::string_view hlo_module) {

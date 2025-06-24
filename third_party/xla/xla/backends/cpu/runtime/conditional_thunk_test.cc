@@ -20,10 +20,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "xla/backends/cpu/runtime/resource_use.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"

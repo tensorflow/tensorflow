@@ -41,9 +41,9 @@ class ImmutableTensorBuffer final : public tensorflow::TensorBuffer {
 
   size_t size() const override {
     // Instead of using tensorflow::Tensor::TotalBytes(),
-    // tensorflow::TensorBuffer::size() should be used, because for cases like
-    // tstring they don't match.
-    return tensorflow::DMAHelper::buffer(&tensor_)->size();
+    // tensorflow::Tensor::GetBufferSize() should be used, because for cases
+    // like tstring they don't match.
+    return tensor_.GetBufferSize();
   }
 
   // Force OwnsMemory() to return false so that it can never be
@@ -72,7 +72,7 @@ ImmutableTensor ImmutableTensor::Create(tensorflow::Tensor tensor) {
   auto shape = tensor.shape();
   auto immutable_buffer = ImmutableTensorBuffer::Create(std::move(tensor));
   return ImmutableTensor(
-      tensorflow::Tensor(dtype, shape, std::move(immutable_buffer)));
+      tensorflow::Tensor(dtype, std::move(shape), std::move(immutable_buffer)));
 }
 
 }  // namespace tfrt_stub

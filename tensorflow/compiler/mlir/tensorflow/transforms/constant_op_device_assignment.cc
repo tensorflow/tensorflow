@@ -18,6 +18,8 @@ limitations under the License.
 // op is read by operations placed on multiple devices, then the pass will
 // replicate the tf.Const op once for each device.
 
+#include <memory>
+
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project

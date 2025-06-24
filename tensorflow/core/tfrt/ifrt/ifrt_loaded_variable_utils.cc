@@ -31,15 +31,15 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -47,7 +47,7 @@ namespace ifrt_serving {
 
 namespace {
 
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> LoadIfrtVariable(
+absl::StatusOr<xla::ifrt::ArrayRef> LoadIfrtVariable(
     std::shared_ptr<xla::ifrt::Client> ifrt_client,
     const tsl::thread::ThreadPool& thread_pool,
     const tensorflow::Tensor& variable,
@@ -109,10 +109,9 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
         "LoadVariableOp: failed to fetch variable tensor: ", runtime_name));
   }
   auto loaded_variable_promise =
-      xla::ifrt::Future<tsl::RCReference<xla::ifrt::Array>>::CreatePromise();
+      xla::ifrt::Future<xla::ifrt::ArrayRef>::CreatePromise();
   auto loaded_variable_future =
-      xla::ifrt::Future<tsl::RCReference<xla::ifrt::Array>>(
-          loaded_variable_promise);
+      xla::ifrt::Future<xla::ifrt::ArrayRef>(loaded_variable_promise);
   TF_ASSIGN_OR_RETURN(
       absl::StatusOr<ifrt_serving::DtypeAndShape> dtype_and_shape,
       ifrt_restore_tensor_registry.GetDtypeAndShape(runtime_name));
@@ -141,10 +140,9 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
              restored_tensor = std::move(*restored_tensor),
              loaded_variable_promise =
                  std::move(loaded_variable_promise)]() mutable {
-              absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
-                  variable_array =
-                      LoadIfrtVariable(ifrt_client, thread_pool,
-                                       restored_tensor, sharding_config);
+              absl::StatusOr<xla::ifrt::ArrayRef> variable_array =
+                  LoadIfrtVariable(ifrt_client, thread_pool, restored_tensor,
+                                   sharding_config);
               loaded_variable_promise.Set(std::move(variable_array));
             });
       });

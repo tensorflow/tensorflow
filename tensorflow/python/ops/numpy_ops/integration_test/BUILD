@@ -8,7 +8,6 @@ licenses(["notice"])
 py_strict_test(
     name = "public_symbol_test",
     srcs = ["public_symbol_test.py"],
-    python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",

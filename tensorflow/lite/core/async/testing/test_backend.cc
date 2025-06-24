@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/core/async/testing/test_backend.h"
 
+#include <cstddef>
 #include <string>
-#include <vector>
 
 #include "tensorflow/lite/array.h"
 #include "tensorflow/lite/builtin_ops.h"

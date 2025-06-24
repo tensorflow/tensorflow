@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -251,6 +252,9 @@ ENTRY main {
                         op::Add(op::ReduceScatter(op::Convert()),
                                 op::GetTupleElement()),
                         op::GetTupleElement()));
+  HloComputation* reduction =
+      while_body->root_instruction()->operand(1)->operand(0)->to_apply();
+  EXPECT_EQ(reduction->root_instruction()->shape().element_type(), S32);
 }
 
 TEST_F(ReorderConvertReduceAddTest, ConvertAllReduceAddNotInWhileBody) {
@@ -404,6 +408,9 @@ ENTRY main {
       op::Tuple(op::GetTupleElement(),
                 op::Add(op::AllReduce(op::Convert()), op::GetTupleElement()),
                 op::GetTupleElement()));
+  HloComputation* reduction =
+      while_body->root_instruction()->operand(1)->operand(0)->to_apply();
+  EXPECT_EQ(reduction->root_instruction()->shape().element_type(), S32);
 }
 
 }  // namespace

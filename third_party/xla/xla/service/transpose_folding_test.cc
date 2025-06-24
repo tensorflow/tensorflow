@@ -25,14 +25,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status_matchers.h"
@@ -43,7 +43,7 @@ namespace {
 namespace op = xla::testing::opcode_matchers;
 using ::tsl::testing::IsOkAndHolds;
 
-using TransposeFoldingTest = HloTestBase;
+using TransposeFoldingTest = HloHardwareIndependentTestBase;
 
 TEST_F(TransposeFoldingTest, FoldDotTranspose) {
   constexpr absl::string_view kHloString = R"(
@@ -557,6 +557,26 @@ ENTRY entry_computation {
                           ParseAndReturnVerifiedModule(kHloString));
 
   EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(TransposeFoldingTest, FoldTransposeWithBackendConfig) {
+  constexpr absl::string_view kHloString = R"(
+HloModule FoldTransposeWithBackendConfig
+
+ENTRY entry_computation {
+  x = f32[7,2,7,3]{3,2,1,0} parameter(0)
+  y = f32[7,2,7,3]{3,2,1,0} parameter(1)
+  transpose = f32[7,3,7,2]{3,2,1,0} transpose(y), dimensions={0,3,2,1}
+  ROOT dot = f32[7,7,2,2]{3,2,1,0} dot(x, transpose), lhs_contracting_dims={3},
+            rhs_contracting_dims={1}, lhs_batch_dims={0,2}, rhs_batch_dims={0,2}, backend_config={"force_earliest_schedule":false}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_TRUE(
+      module->entry_computation()->root_instruction()->has_backend_config());
 }
 
 }  // namespace

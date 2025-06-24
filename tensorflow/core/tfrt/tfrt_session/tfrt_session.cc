@@ -36,6 +36,8 @@ limitations under the License.
 #include "Eigen/ThreadPool"  // from @eigen_archive
 #include "llvm/ADT/STLExtras.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/local_session_selection.h"
@@ -70,8 +72,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
@@ -503,7 +503,7 @@ class TfrtSession : public tensorflow::Session {
     compile_options.device_target = device_target_;
     compile_options.tpu_fuse_ops = tpu_use_tpu_runner_;
     compile_options.hoist_invariant_ops = true;
-    compile_options.sink_in_invariant_ops = false;
+    compile_options.sink_in_invariant_ops = true;
     compile_options.cost_threshold = 1024;
 
     if (use_gpu_) {
@@ -779,18 +779,22 @@ void TfrtSessionFactory::RegisterInitializer(RuntimeInitializer initializer) {
 absl::Status TfrtSessionFactory::InitializeLocked(
     const TfrtSessionOptions& options) {
   mutex_.AssertHeld();
-  if (options.use_tpu) {
-    DCHECK(!options.backend_compiler);
-    DCHECK(!options.use_gpu);
-    device_target_ = TfrtDeviceInfraTarget::kTpurt;
-    tpu_use_tpu_runner_ = true;
-  } else if (options.use_gpu) {
-    DCHECK(!options.backend_compiler);
-    device_target_ = TfrtDeviceInfraTarget::kGpu;
-    use_gpu_ = true;
-  } else if (options.backend_compiler) {
+  if (options.backend_compiler) {
     backend_compiler_ = options.backend_compiler;
   }
+  if (options.use_tpu) {
+    DCHECK(!options.use_gpu);
+    device_target_ = TfrtDeviceInfraTarget::kTpurt;
+    if (!options.backend_compiler) {
+      tpu_use_tpu_runner_ = true;
+    }
+  } else if (options.use_gpu) {
+    device_target_ = TfrtDeviceInfraTarget::kGpu;
+    if (!options.backend_compiler) {
+      use_gpu_ = true;
+    }
+  }
+
   LOG(INFO) << "Start initializing TfrtSession";
   if (options.runtime != nullptr) {
     runtime_ = options.runtime;

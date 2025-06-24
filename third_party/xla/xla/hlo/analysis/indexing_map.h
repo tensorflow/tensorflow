@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
@@ -290,6 +291,9 @@ class IndexingMap {
   const std::vector<Variable>& GetDimVars() const { return dim_vars_; }
   int64_t GetDimVarsCount() const { return dim_vars_.size(); }
 
+  // Rename a dimension variable. Index must valid.
+  void RenameDimVar(int64_t id, absl::string_view new_name);
+
   // Getters for range vars.
   const Variable& GetRangeVar(int64_t id) const { return range_vars_[id]; }
   const std::vector<Variable>& GetRangeVars() const { return range_vars_; }
@@ -350,7 +354,7 @@ class IndexingMap {
 
   // Removes unused symbols from the `affine_map_` and constraints.
   // Returns a bit vector of symbols that were removed. If none of the symbols
-  // were removed, returns {}.
+  // were removed, returns an empty bit vector.
   llvm::SmallBitVector RemoveUnusedSymbols();
 
   // Removes unused dimensions and symbols from the `affine_map_` and
@@ -481,6 +485,17 @@ std::vector<IndexingMap::Variable> DimVarsFromGPUGrid(
 
 std::vector<IndexingMap::Variable> RangeVarsFromTensorSizes(
     absl::Span<const int64_t> tensor_sizes);
+
+// Creates a new indexing map that is the same as `map` but with the range
+// variables at `range_var_indices` converted to dimensions. The new dimensions
+// are appended to the end.
+// `range_var_indices` must be a strictly increasing sequence of valid
+// range variable indices.
+// For example, `(d0)[s0, s1, s2]{rt0} -> (d0, s0, s1, s2, rt0)` with
+// `range_var_indices` = {0, 2}  will be converted to
+// `(d0, d1, d2)[s0]{rt0} -> (d0, d1, s0, d2, rt0)`.
+IndexingMap ConvertRangeVariablesToDimensions(
+    const IndexingMap& map, llvm::ArrayRef<int64_t> range_var_indices);
 
 }  // namespace xla
 

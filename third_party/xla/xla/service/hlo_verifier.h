@@ -67,8 +67,8 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
-  HloVerifierOpts&& VerifyCustomCallNestedComputationThreadName() {
-    verify_custom_call_nested_computation_thread_name = true;
+  HloVerifierOpts&& VerifyCallNestedComputationThreadName() {
+    verify_call_nested_computation_thread_name = true;
     return std::move(*this);
   }
 
@@ -107,6 +107,11 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
+  HloVerifierOpts&& VerifyNoHostMemorySpace() {
+    verify_no_host_memory_space = true;
+    return std::move(*this);
+  }
+
   bool IsLayoutSensitive() const { return layout_sensitive; }
 
   bool AllowMixedPrecision() const { return allow_mixed_precision; }
@@ -137,9 +142,8 @@ struct HloVerifierOpts {
   // Check that reshape is a physical bitcast.
   bool verify_reshape_is_bitcast = false;
 
-  // Check that custom call's called computations have same thread name as
-  // parent computation.
-  bool verify_custom_call_nested_computation_thread_name = true;
+  // Check that called computations have same thread name as parent computation.
+  bool verify_call_nested_computation_thread_name = false;
 
   // Check device numbers in sharding verification.
   bool verify_sharding_device_numbers = true;
@@ -157,6 +161,9 @@ struct HloVerifierOpts {
 
   // Check if channel instructions all have unique channel ids.
   bool verify_unique_channel_ids = true;
+
+  // Check if a shape has a host memory space color
+  bool verify_no_host_memory_space = false;
 
   HloPredicate instruction_can_change_layout;
 

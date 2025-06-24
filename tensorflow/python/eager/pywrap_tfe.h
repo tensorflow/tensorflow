@@ -443,7 +443,7 @@ EagerContextThreadLocalData* GetEagerContextThreadLocalData(
 // wish to destroy thread-local state associated with a single py_eager_context
 // for multiple threads, then you must call this method from each thread.
 //
-// Thread-local state assocaited with eager contexts is also automatically
+// Thread-local state associated with eager contexts is also automatically
 // cleaned up when the thread is destroyed.
 //
 // This function assumes that the Python GIL is held (and does not perform its

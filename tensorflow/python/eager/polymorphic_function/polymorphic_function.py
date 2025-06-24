@@ -966,7 +966,7 @@ class Function(core.PolymorphicFunction, trackable.Trackable):
 
     def _check_inputs(args, kwargs):
       all_inputs = list(args) + list(kwargs.values())
-      # Emtpy input is okay.
+      # Empty input is okay.
       if not all_inputs:
         return
       if any(map(is_tensor_spec, all_inputs)) and any(
@@ -1423,7 +1423,8 @@ def function(
   thought of as compile-time constants), and builds a separate `tf.Graph` for
   each set of Python arguments that it encounters.
   For more information, see the
-  [tf.function guide](https://www.tensorflow.org/guide/function#rules_of_tracing)
+  [tf.function
+  guide](https://www.tensorflow.org/guide/function#rules_of_tracing)
 
   Executing a `PolymorphicFunction` will select and execute the appropriate
   `ConcreteFunction` based on the argument types and values.
@@ -1440,14 +1441,17 @@ def function(
   >>> isinstance(f.get_concrete_function(1).graph, tf.Graph)
   True
 
-  `ConcreteFunction`s can be executed just like `PolymorphicFunction`s, but their
-  input is resticted to the types to which they're specialized.
+  `ConcreteFunction`s can be executed just like `PolymorphicFunction`s, but
+  their
+  input is restricted to the types to which they're specialized.
 
   ## Retracing
 
-  `ConcreteFunctions` are built (traced) on the fly, as the `PolymorphicFunction` is
+  `ConcreteFunctions` are built (traced) on the fly, as the
+  `PolymorphicFunction` is
   called with new TensorFlow types or shapes, or with new Python values as
-  arguments. When `PolymorphicFunction` builds a new trace, it is said that `func`
+  arguments. When `PolymorphicFunction` builds a new trace, it is said that
+  `func`
   is retraced. Retracing is a frequent performance concern for `tf.function` as
   it can be considerably slower than executing a graph that's already been
   traced. It is ideal to minimize the amount of retracing in your code.
@@ -1473,7 +1477,8 @@ def function(
 
   ## Input signatures
 
-  For Tensor arguments, `PolymorphicFunction`creates a new `ConcreteFunction` for
+  For Tensor arguments, `PolymorphicFunction`creates a new `ConcreteFunction`
+  for
   every unique set of input shapes and datatypes. The example below creates two
   separate `ConcreteFunction`s, each specialized to a different shape:
 
@@ -1580,59 +1585,58 @@ def function(
       `func` must be a `Tensor`, and `func` cannot accept `**kwargs`.
     autograph: Whether autograph should be applied on `func` before tracing a
       graph. Data-dependent Python control flow statements require
-      `autograph=True`. For more information, see the
-      [tf.function and AutoGraph guide](
+      `autograph=True`. For more information, see the [tf.function and AutoGraph
+      guide](
       https://www.tensorflow.org/guide/function#autograph_transformations).
     jit_compile: If `True`, compiles the function using
       [XLA](https://tensorflow.org/xla). XLA performs compiler optimizations,
       such as fusion, and attempts to emit more efficient code. This may
-      drastically improve the performance. If set to `True`,
-      the whole function needs to be compilable by XLA, or an
-      `errors.InvalidArgumentError` is thrown.
-      If `None` (default), compiles the function with XLA when running on TPU
-      and goes through the regular function execution path when running on
-      other devices.
-      If `False`, executes the function without XLA compilation.  Set this value
-      to `False` when directly running a multi-device function on TPUs (e.g. two
-      TPU cores, one TPU core and its host CPU).
-      Not all functions are compilable, see a list of
-      [sharp corners](https://tensorflow.org/xla/known_issues).
-    reduce_retracing: When True, `tf.function` attempts to reduce the
-      amount of retracing, for example by using more generic shapes. This
-      can be controlled for user objects by customizing their associated
+      drastically improve the performance. If set to `True`, the whole function
+      needs to be compilable by XLA, or an `errors.InvalidArgumentError` is
+      thrown. If `None` (default), compiles the function with XLA when running
+      on TPU and goes through the regular function execution path when running
+      on other devices. If `False`, executes the function without XLA
+      compilation.  Set this value to `False` when directly running a
+      multi-device function on TPUs (e.g. two TPU cores, one TPU core and its
+      host CPU). Not all functions are compilable, see a list of [sharp
+      corners](https://tensorflow.org/xla/known_issues).
+    reduce_retracing: When True, `tf.function` attempts to reduce the amount of
+      retracing, for example by using more generic shapes. This can be
+      controlled for user objects by customizing their associated
       `tf.types.experimental.TraceType`.
     experimental_implements: If provided, contains a name of a "known" function
-      this implements. For example "mycompany.my_recurrent_cell".
-      This is stored as an attribute in inference function,
-      which can then be detected when processing serialized function.
-      See [standardizing composite ops](https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md)  # pylint: disable=line-too-long
-      for details.  For an example of utilizing this attribute see this
+      this implements. For example "mycompany.my_recurrent_cell". This is stored
+      as an attribute in inference function, which can then be detected when
+      processing serialized function. See [standardizing composite
+      ops](https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md)
+      # pylint: disable=line-too-long for details.  For an example of utilizing
+      this attribute see this
       [example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/transforms/prepare_composite_functions_tf.cc)
       The code above automatically detects and substitutes function that
       implements "embedded_matmul" and allows TFLite to substitute its own
-      implementations. For instance, a tensorflow user can use this
-       attribute to mark that their function also implements
-      `embedded_matmul` (perhaps more efficiently!)
-      by specifying it using this parameter:
-      `@tf.function(experimental_implements="embedded_matmul")`
-      This can either be specified as just the string name of the function or
-      a NameAttrList corresponding to a list of key-value attributes associated
-      with the function name. The name of the function will be in the 'name'
-      field of the NameAttrList. To define a formal TF op for this function
-      implements, try the experimental [composite TF](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/tfr)
+      implementations. For instance, a tensorflow user can use this attribute to
+      mark that their function also implements `embedded_matmul` (perhaps more
+      efficiently!) by specifying it using this parameter:
+      `@tf.function(experimental_implements="embedded_matmul")` This can either
+      be specified as just the string name of the function or a NameAttrList
+      corresponding to a list of key-value attributes associated with the
+      function name. The name of the function will be in the 'name' field of the
+      NameAttrList. To define a formal TF op for this function implements, try
+      the experimental [composite
+      TF](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/tfr)
       project.
     experimental_autograph_options: Optional tuple of
       `tf.autograph.experimental.Feature` values.
     experimental_attributes: Optional dictionary of attributes to include in the
       generated FunctionDefs.
-    experimental_relax_shapes: Deprecated. Use `reduce_retracing`
-      instead.
+    experimental_relax_shapes: Deprecated. Use `reduce_retracing` instead.
     experimental_compile: Deprecated alias to 'jit_compile'.
     experimental_follow_type_hints: Deprecated. Please use input_signature or
       reduce_retracing instead.
 
   Returns:
-     If `func` is not None, returns a `tf.types.experimental.PolymorphicFunction`.
+     If `func` is not None, returns a
+     `tf.types.experimental.PolymorphicFunction`.
      If `func` is None, returns a decorator that, when invoked with a single
      `func` argument, returns a `tf.types.experimental.PolymorphicFunction`.
 

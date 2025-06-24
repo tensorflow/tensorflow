@@ -17,6 +17,7 @@ limitations under the License.
 #include <poll.h>
 
 #include <cerrno>
+#include <cstddef>
 #include <optional>
 #include <variant>
 #include <vector>

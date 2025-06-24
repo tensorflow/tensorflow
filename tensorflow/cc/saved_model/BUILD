@@ -271,8 +271,6 @@ py_strict_binary(
         ":saved_model_asset_data",
         ":saved_model_static_hashtable_asset_data",
     ],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/compat:v2_compat",
@@ -297,8 +295,6 @@ py_strict_binary(
 # py_strict_binary(
 #     name = "testdata/generate_chunked_models",
 #     srcs = ["testdata/generate_chunked_models.py"],
-#     python_version = "PY3",
-#     srcs_version = "PY3",
 #     deps = [
 #         "//tensorflow/python/compat:v2_compat",
 #         "//tensorflow/python/eager:def_function",
@@ -496,6 +492,7 @@ cc_library(
     ],
     deps = [
         ":constants",
+        ":fingerprinting_x_platform_utils",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/graph/regularization:simple_delete",
         "//tensorflow/core/graph/regularization:util",
@@ -527,6 +524,7 @@ cc_library(
         "//learning/brain/contrib/tpu_modeling:__subpackages__",
         "//learning/metadata/artifactoid/cc:__subpackages__",
         "//learning/tfx/pipeline/util:__subpackages__",
+        "//tensorflow/core/tfrt:__subpackages__",
         "//tensorflow/python/saved_model:__subpackages__",
     ],
     deps = if_static([
@@ -548,6 +546,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":constants",
+        ":fingerprinting_x_platform_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/tensor_bundle:naming",
@@ -562,6 +561,17 @@ cc_library(
         "@riegeli//riegeli/records:record_reader",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "fingerprinting_x_platform_utils",
+    srcs = ["fingerprinting_x_platform_utils.cc"],
+    hdrs = ["fingerprinting_x_platform_utils.h"],
+    deps = [
+        "@com_google_absl//absl/numeric:int128",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:random",
+    ],
 )
 
 tf_cc_test(
@@ -637,6 +647,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/numeric:int128",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

@@ -166,9 +166,18 @@ std::string GetQDQQuantModeString(const QDQConversionMode mode) {
       return "Static";
     case QDQConversionMode::kQDQDynamic:
       return "Dynamic";
+    case QDQConversionMode::kQDQStrict:
+      return "Strict";
     default:
       return "NoQDQ";
   }
+}
+
+QDQConversionMode GetQDQQuantModeFromString(const std::string& mode_str) {
+  if (mode_str == "Static") return QDQConversionMode::kQDQStatic;
+  if (mode_str == "Dynamic") return QDQConversionMode::kQDQDynamic;
+  if (mode_str == "Strict") return QDQConversionMode::kQDQStrict;
+  return QDQConversionMode::kQDQNone;
 }
 
 }  // namespace quant

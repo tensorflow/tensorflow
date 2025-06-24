@@ -24,6 +24,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 
 namespace xla {
@@ -45,6 +46,9 @@ struct ClientConnectionOptions {
   // synchronously from a thread that performs various important activities,
   // so the function should not block (or deadlocks may happen).
   std::function<void(absl::string_view)> on_connection_update = nullptr;
+
+  // Runtime specific initialization data.
+  AttributeMap initialization_data = AttributeMap({});
 };
 
 // Registers a new factory for client backend implementation. Crashes if the

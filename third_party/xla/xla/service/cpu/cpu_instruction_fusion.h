@@ -40,6 +40,7 @@ class CpuInstructionFusion : public InstructionFusion {
                            const absl::flat_hash_set<absl::string_view>&
                                execution_threads) override {
     fusion_node_evaluations_.clear();
+    ComputeInstructionsToSkip(module, execution_threads);
     return InstructionFusion::Run(module, execution_threads);
   }
 
@@ -62,10 +63,17 @@ class CpuInstructionFusion : public InstructionFusion {
   // Returns if a constant is large enough to be considered a large constant.
   bool IsLargeConstant(const HloInstruction* constant) const;
 
+  bool ShouldSkip(const HloInstruction* inst) const;
+  void ComputeInstructionsToSkip(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
+
   // Keep track of the number of times each instruction inside a fusion node is
   // indexed with different index vectors.
   absl::flat_hash_map<const HloInstruction*, FusionNodeIndexingEvaluation>
       fusion_node_evaluations_;
+
+  absl::flat_hash_set<const HloInstruction*> instructions_to_skip_;
 };
 
 }  // namespace cpu

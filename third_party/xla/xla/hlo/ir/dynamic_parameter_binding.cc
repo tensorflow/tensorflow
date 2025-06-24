@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -98,7 +98,8 @@ absl::Status DynamicParameterBinding::Verify(
             computation.parameter_instruction(dynamic_dimension.parameter_num)
                 ->shape(),
             dynamic_dimension.parameter_index)
-            .rank());
+            .dimensions()
+            .size());
     return absl::OkStatus();
   });
 }

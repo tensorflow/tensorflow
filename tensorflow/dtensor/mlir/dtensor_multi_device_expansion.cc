@@ -15,16 +15,21 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -48,12 +53,12 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -104,7 +109,7 @@ mlir::BlockArgument InsertArgumentForDevice(mlir::OpBuilder& builder,
 
   llvm::ArrayRef<mlir::NamedAttribute> named_array_ref(named_attrs);
   mlir::DictionaryAttr dic_attr = builder.getDictionaryAttr(named_array_ref);
-  func.insertArgument(arg_index, arg_type, dic_attr, func.getLoc());
+  (void)func.insertArgument(arg_index, arg_type, dic_attr, func.getLoc());
 
   return func.getArgument(arg_index);
 }
@@ -358,7 +363,7 @@ mlir::LogicalResult RewriteTPUFunction(mlir::func::FuncOp func,
 
   // Erase the function's original arguments.
   for (unsigned arg_idx = 0; arg_idx < num_arguments; ++arg_idx) {
-    func.eraseArgument(0);
+    if (failed(func.eraseArgument(0))) return mlir::failure();
   }
 
   // Update the function's type.
@@ -434,7 +439,8 @@ mlir::LogicalResult ExpandTPUOperation(
   }
 
   auto call_op = builder.create<OperationType>(
-      op->getLoc(), func_type.getResults(), operands, op.getFAttr(),
+      op->getLoc(), func_type.getResults(), operands, /*args_attrs=*/nullptr,
+      /*res_attrs=*/nullptr, op.getFAttr(),
       /*config=*/builder.getStringAttr(""),
       /*config_proto=*/builder.getStringAttr(""),
       /*executor_type=*/builder.getStringAttr(""));
@@ -499,7 +505,8 @@ mlir::LogicalResult ExpandOperation(
     }
 
     auto new_op = builder.create<Operation>(
-        op->getLoc(), op->getResultTypes(), operands, op.getFAttr(),
+        op->getLoc(), op->getResultTypes(), operands, /*args_attrs=*/nullptr,
+        /*res_attrs=*/nullptr, op.getFAttr(),
         /*config=*/builder.getStringAttr(""),
         /*config_proto=*/builder.getStringAttr(""),
         /*executor_type=*/builder.getStringAttr(""));
@@ -684,21 +691,24 @@ mlir::LogicalResult BuildOuterMainFunc(
   std::vector<mlir::Value> inputs;
   for (auto [arg_index, arg] :
        llvm::enumerate(translated_func.getArguments())) {
-    main_func.insertArgument(arg_index, arg.getType(),
-                             translated_func.getArgAttrDict(arg_index),
-                             old_main_func.getLoc());
+    if (failed((main_func.insertArgument(
+            arg_index, arg.getType(), translated_func.getArgAttrDict(arg_index),
+            old_main_func.getLoc())))) {
+      return mlir::failure();
+    }
     inputs.emplace_back(main_func.getArgument(arg_index));
   }
 
   // Get the type of the translated function.
   mlir::FunctionType func_type = translated_func.getFunctionType();
   // Then build a call op targeting it (reflecting its result types)
-  auto expanded_call_op =
-      builder.create<CallOp>(call_ops[0].getLoc(), func_type.getResults(),
-                             inputs, translated_func.getSymName(),
-                             /*config=*/builder.getStringAttr(""),
-                             /*config_proto=*/builder.getStringAttr(""),
-                             /*executor_type=*/builder.getStringAttr(""));
+  auto expanded_call_op = builder.create<CallOp>(
+      call_ops[0].getLoc(), func_type.getResults(), inputs,
+      /*args_attrs=*/nullptr, /*res_attrs=*/nullptr,
+      translated_func.getSymName(),
+      /*config=*/builder.getStringAttr(""),
+      /*config_proto=*/builder.getStringAttr(""),
+      /*executor_type=*/builder.getStringAttr(""));
 
   // Set the output layout attribute on the new call op.
   std::vector<std::optional<Layout>> output_layouts;

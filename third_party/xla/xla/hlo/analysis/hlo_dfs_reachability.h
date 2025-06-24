@@ -37,9 +37,9 @@ namespace xla {
 class HloDfsReachability {
  public:
   // Returns true iff the instruction was present in the computation passed to
-  // Build(). The calling code may want to still use the class after the
-  // computation is modified, if it's known that the def-before-use order is
-  // still preserved.
+  // Build() or it was added via OnInstructionReplaced(). The calling code may
+  // want to still use the class after the computation is modified, if it's
+  // known that the def-before-use order is still preserved.
   bool IsPresent(const HloInstruction* instruction) const;
   // Returns true iff there is a path (with edges being users and control
   // successors) from 'from' to 'to'. (i.e. path from definitions to uses; from
@@ -50,6 +50,13 @@ class HloDfsReachability {
   bool IsConnected(const HloInstruction* a, const HloInstruction* b) const;
   static std::unique_ptr<HloDfsReachability> Build(
       const HloComputation* computation);
+  // Updates the internal data structure when instruction `previous` was
+  // replaced with instruction `now` in the computation. Requires
+  // IsPresent(previous) returns true and IsPresent(now) returns false.
+  // Postconditon: IsPresent(previous) returns false and IsPresent(now) returns
+  // true.
+  void OnInstructionReplaced(const HloInstruction* previous,
+                             const HloInstruction* now);
 
  private:
   // LLVM dense map shows ~10-20% speedup compared to absl::flat_hash_map.

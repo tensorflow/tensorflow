@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_ROCM_ROCDL_PATH_H_
 #define TENSORFLOW_CORE_PLATFORM_ROCM_ROCDL_PATH_H_
 
+#include "xla/tsl/platform/rocm_rocdl_path.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/rocm_rocdl_path.h"
 
 namespace tensorflow {
 using tsl::RocdlRoot;  // NOLINT

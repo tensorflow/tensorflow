@@ -18,6 +18,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/stream_executor/cuda/compilation_options.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/test.h"
 
 namespace xla::gpu {

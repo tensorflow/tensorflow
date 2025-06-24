@@ -11,7 +11,6 @@ package(
 py_strict_binary(
     name = "gen_saved_models",
     srcs = ["gen_saved_models.py"],
-    python_version = "PY3",
     deps = [
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",

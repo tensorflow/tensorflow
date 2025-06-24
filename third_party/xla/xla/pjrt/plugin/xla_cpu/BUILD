@@ -1,4 +1,4 @@
-load("//xla:xla.bzl", "xla_cc_test")
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -15,7 +15,6 @@ cc_library(
     ],
     hdrs = ["xla_cpu_pjrt_client.h"],
     deps = [
-        ":cpu_client_options",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/cpu:cpu_client",
         "@com_google_absl//absl/status:statusor",
@@ -56,6 +55,16 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "cpu_execute_options",
+    srcs = [],
+    hdrs = ["cpu_execute_options.h"],
+    deps = [
+        "//xla/backends/cpu/collectives:cpu_collectives",
+        "//xla/pjrt:pjrt_executable",
     ],
 )
 
@@ -101,8 +110,19 @@ xla_cc_test(
     deps = [
         ":cpu_topology",
         ":cpu_topology_proto_cc",
+        "//xla/pjrt:pjrt_common",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:test",
     ],
+)
+
+cc_library(
+    name = "cpu_static_registration",
+    srcs = ["cpu_static_registration.cc"],
+    deps = [
+        "//xla/pjrt/c:pjrt_c_api_cpu_internal",
+        "//xla/pjrt/plugin:plugin_names",
+        "//xla/pjrt/plugin:static_registration",
+    ],
+    alwayslink = True,
 )

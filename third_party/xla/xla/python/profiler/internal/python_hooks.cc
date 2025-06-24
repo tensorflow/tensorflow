@@ -22,11 +22,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -133,7 +133,7 @@ std::string PythonTraceEntry::Name() const {
 }
 
 PythonHooks* PythonHooks::GetSingleton() {
-  static PythonHooks* singleton = new PythonHooks;
+  static PythonHooks* const singleton = new PythonHooks;
   return singleton;
 }
 

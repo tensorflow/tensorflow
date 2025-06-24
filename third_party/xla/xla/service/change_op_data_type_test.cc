@@ -20,21 +20,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
-#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace {
 
 namespace m = ::xla::match;
 
-class ChangeOpDataTypeTest : public HloTestBase {
- public:
-  ChangeOpDataTypeTest()
-      : HloTestBase(/*verifier_layout_sensitive=*/false,
-                    /*allow_mixed_precision_in_hlo_verifier=*/false) {}
-};
+using ChangeOpDataTypeTest = HloHardwareIndependentTestBase;
 
 TEST_F(ChangeOpDataTypeTest, Simple) {
   const char* const kModuleStr = R"(

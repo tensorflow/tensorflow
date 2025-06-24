@@ -15,16 +15,29 @@ limitations under the License.
 
 #include "xla/printer.h"
 
+#include <cstdint>
 #include <cstring>
 #include <string>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/cord_buffer.h"
 #include "absl/strings/str_cat.h"
-#include "tsl/platform/logging.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla {
+
+void Printer::AppendInt64List(absl::Span<const int64_t> list,
+                              bool leading_comma) {
+  if (leading_comma) {
+    Append(",");
+  }
+  Append("{");
+  AppendJoin(this, list, ",");
+  Append("}");
+}
 
 void StringPrinter::Append(const absl::AlphaNum& a) {
   absl::StrAppend(&result_, a);

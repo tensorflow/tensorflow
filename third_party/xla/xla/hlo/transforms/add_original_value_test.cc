@@ -20,8 +20,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -53,6 +51,23 @@ ENTRY test {
   EXPECT_TRUE(changed);
 }
 
+TEST_F(AddOriginalValueTest, ShapeIndex) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule test
+ENTRY test (tuple: ((f32[], f32[]), f32[])) -> f32[] {
+  // CHECK: %[[TUPLE:.*]] =
+  tuple = ((f32[], f32[]), f32[]) parameter(0)
+  // CHECK: %[[TUPLE1:.*]] =
+  tuple.1 = (f32[], f32[]) get-tuple-element(tuple), index=0
+  // CHECK: f32[] get-tuple-element(%[[TUPLE1]]), index=0, origin={{[{]}}{"[[TUPLE]]" {0,0}
+  ROOT v1 = f32[] get-tuple-element(tuple.1), index=0
+}
+
+)";
+
+  RunAndFilecheckHloRewrite(hlo_string, AddOriginalValue());
+}
+
 TEST_F(AddOriginalValueTest, Tuple) {
   constexpr absl::string_view hlo_string = R"(
 HloModule test, entry_computation_layout={(f32[], f32[3]{0}, f32[2,3]{1,0})->((f32[], f32[3]{0}), f32[2,3]{1,0})}
@@ -79,39 +94,20 @@ CHECK:  ((f32[], f32[3]{0}), f32[2,3]{1,0}) tuple(%[[TUPLE]], %[[V3]]), origin={
 TEST_F(AddOriginalValueTest, GetTupleElement) {
   constexpr absl::string_view hlo_string = R"(
 HloModule test, entry_computation_layout={()->s32[2,3]{1,0}}
-
+// CHECK-LABEL: test
 ENTRY test {
+  // CHECK:  %[[CONSTANT1:.*]] = f32[3]{0} constant({1, 2, 3}), origin={{[{]}}{"[[CONSTANT1]]"}
   constant = f32[3]{0} constant({1, 2, 3})
+  // CHECK-NEXT:  %[[CONSTANT2:.*]] = s32[2,3]{1,0} constant({ { 1, 2, 3 }, { 4, 5, 6 } }), origin={{[{]}}{"[[CONSTANT2]]"}
   constant.1 = s32[2,3]{1,0} constant({ { 1, 2, 3 }, { 4, 5, 6 } })
+  // CHECK-NEXT:  %[[TUPLE:.*]] = (f32[3]{0}, s32[2,3]{1,0}) tuple(%[[CONSTANT1]], %[[CONSTANT2]]), origin={({"[[CONSTANT1]]"}, {"[[CONSTANT2]]"})}
   tuple = (f32[3]{0}, s32[2,3]{1,0}) tuple(f32[3]{0} constant, s32[2,3]{1,0} constant.1)
+  // CHECK-NEXT:  s32[2,3]{1,0} get-tuple-element(%[[TUPLE]]), index=1, origin={{[{]}}{"[[CONSTANT2]]"}
   ROOT get-tuple-element = s32[2,3]{1,0} get-tuple-element((f32[3]{0}, s32[2,3]{1,0}) tuple), index=1
 }
-
 )";
 
-  RunAndFilecheckHloRewrite(hlo_string, AddOriginalValue(), R"(
-CHECK:  %[[CONSTANT1:.*]] = f32[3]{0} constant({1, 2, 3}), origin={{[{]}}{"[[CONSTANT1]]"}
-CHECK:  %[[CONSTANT2:.*]] = s32[2,3]{1,0} constant({ { 1, 2, 3 }, { 4, 5, 6 } }), origin={{[{]}}{"[[CONSTANT2]]"}
-CHECK:  %[[TUPLE:.*]] = (f32[3]{0}, s32[2,3]{1,0}) tuple(%[[CONSTANT1]], %[[CONSTANT2]]), origin={({"[[CONSTANT1]]"}, {"[[CONSTANT2]]"})}
-CHECK:  s32[2,3]{1,0} get-tuple-element(%[[TUPLE]]), index=1, origin={{[{]}}{"[[CONSTANT2]]"}
-  )");
-}
-
-TEST_F(AddOriginalValueTest, GetTupleElementNonSymbolic) {
-  constexpr absl::string_view hlo_string = R"(
-HloModule test, entry_computation_layout={((f32[], s32[]))->s32[]}
-
-ENTRY test {
-  p = (f32[], s32[]) parameter(0)
-  ROOT get-tuple-element = s32[] get-tuple-element(p), index=1
-}
-
-)";
-
-  RunAndFilecheckHloRewrite(hlo_string, AddOriginalValue(), R"(
-CHECK:  %[[PARAM:.*]] = (f32[], s32[]) parameter(0), origin={({"p" {0}{{[}]}}, {"p" {1}})}
-CHECK:  s32[] get-tuple-element(%[[PARAM]]), index=1, origin={{[{]}}{"[[PARAM]]" {1}
-  )");
+  RunAndFilecheckHloRewrite(hlo_string, AddOriginalValue());
 }
 
 }  // namespace

@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_executor.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
@@ -45,10 +47,11 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/core/collectives/collectives_registry.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/cuda/cuda_collectives.h"
 #include "xla/stream_executor/cuda/cuda_command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
@@ -58,41 +61,44 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_stream.h"
 #include "xla/stream_executor/cuda/cuda_timer.h"
 #include "xla/stream_executor/cuda/cuda_version_parser.h"
+#include "xla/stream_executor/cuda/tma_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/generic_memory_allocation.h"
+#include "xla/stream_executor/generic_memory_allocator.h"
 #include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/read_numa_node.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
-#include "xla/stream_executor/host_memory_allocation.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/macros.h"
 #include "tsl/platform/numbers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 
 namespace stream_executor {
 namespace gpu {
 
 namespace {
-
 bool ShouldLaunchDelayKernel() {
   // Only launch the delay kernel if CUDA_LAUNCH_BLOCKING is not set to 1.
   static bool value = [] {
@@ -108,8 +114,9 @@ bool ShouldLaunchDelayKernel() {
 // thread::ThreadPool on some platforms), we run certain routines in this pool
 // and wait for completion.
 tsl::thread::ThreadPool* GetDriverExecutor() {
-  static tsl::thread::ThreadPool* thread_pool = new tsl::thread::ThreadPool(
-      tsl::Env::Default(), tsl::ThreadOptions(), "cuda_driver", 1);
+  static tsl::thread::ThreadPool* const thread_pool =
+      new tsl::thread::ThreadPool(tsl::Env::Default(), tsl::ThreadOptions(),
+                                  "cuda_driver", 1);
   return thread_pool;
 }
 
@@ -458,7 +465,32 @@ std::string GetPCIBusID(CUdevice device) {
     LOG(ERROR) << "PCI bus id is not null terminated.";
     return "";
   }
-  return std::string(raw_pci_bus_id.data());
+  // Lower the hex characters to match sysfs.
+  return absl::AsciiStrToLower(absl::string_view(raw_pci_bus_id.data()));
+}
+
+bool HostRegister(Context* context, void* location, uint64_t size) {
+  ScopedActivateContext activation(context);
+  // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
+  auto status = cuda::ToStatus(
+      cuMemHostRegister(location, size, CU_MEMHOSTREGISTER_PORTABLE));
+  if (!status.ok()) {
+    LOG(ERROR) << "error registering host memory at " << location << ": "
+               << status;
+    return false;
+  }
+  return true;
+}
+
+bool HostUnregister(Context* context, void* location) {
+  ScopedActivateContext activation(context);
+  auto status = cuda::ToStatus(cuMemHostUnregister(location));
+  if (!status.ok()) {
+    LOG(ERROR) << "error unregistering host memory at " << location << ": "
+               << status;
+    return false;
+  }
+  return true;
 }
 
 // Allocates memory on the GPU device.
@@ -499,26 +531,72 @@ void DeviceDeallocate(Context* context, void* location) {
 }
 
 // Allocates memory on the host.
-void* HostAllocate(Context* context, uint64_t bytes) {
-  ScopedActivateContext activation(context);
-  void* host_mem = nullptr;
-  // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
-  auto status = cuda::ToStatus(
-      cuMemHostAlloc(&host_mem, bytes, CU_MEMHOSTALLOC_PORTABLE));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to alloc " << bytes << " bytes on host: " << status;
+absl::StatusOr<void*> HostAllocate(Context* context, int numa_node,
+                                   uint64_t size) {
+  if (numa_node != tsl::port::kNUMANoAffinity) {
+    // CUDA programming guide: "Any address of a variable ... returned by one
+    // of the memory allocation routines from the driver ... API is always
+    // aligned to at least 256 bytes."
+    auto* buffer =
+        tsl::port::NUMAMalloc(numa_node, size, /* minimum_alignment=*/256);
+    if (buffer == nullptr && size > 0) {
+      return absl::InternalError(absl::StrFormat(
+          "Failed to allocate host memory of size %d pinned to NUMA node %d",
+          size, numa_node));
+    }
+    if (size > 0 && !HostRegister(context, buffer, size)) {
+      tsl::port::NUMAFree(buffer, size);
+      return absl::InternalError(
+          absl::StrFormat("Failed to register host memory of size %d pinned to "
+                          "NUMA node %d with the GPU driver",
+                          size, numa_node));
+    }
+    return buffer;
+  } else {
+    ScopedActivateContext activation(context);
+    void* buffer = nullptr;
+    // "Portable" memory is visible to all CUDA contexts. Safe for our use
+    // model.
+    TF_RETURN_IF_ERROR(cuda::ToStatus(
+        cuMemHostAlloc(&buffer, size, CU_MEMHOSTALLOC_PORTABLE)));
+    if (!buffer && size > 0) {
+      return absl::InternalError(absl::StrFormat(
+          "Failed to allocate pinned host memory of size %d", size));
+    }
+    return buffer;
   }
-  return host_mem;
 }
 
 // Deallocates memory allocated via HostAllocate.
-void HostDeallocate(Context* context, void* location) {
-  ScopedActivateContext activation(context);
-  auto status = cuda::ToStatus(cuMemFreeHost(location));
-  if (!status.ok()) {
-    LOG(ERROR) << "error deallocating host memory at " << location << ": "
-               << status;
+void HostDeallocate(Context* context, int numa_node, void* location,
+                    uint64_t size) {
+  if (numa_node != tsl::port::kNUMANoAffinity) {
+    if (size > 0) {
+      HostUnregister(context, location);
+    }
+    tsl::port::NUMAFree(location, size);
+  } else {
+    ScopedActivateContext activation(context);
+    auto status = cuda::ToStatus(cuMemFreeHost(location));
+    if (!status.ok()) {
+      LOG(ERROR) << "error deallocating host memory at " << location << ": "
+                 << status;
+    }
   }
+}
+
+// Creates a MemoryAllocation wrapping the given host buffer.
+absl::StatusOr<std::unique_ptr<MemoryAllocation>> AllocateHostMemory(
+    CudaContext* cuda_context, int numa_node, uint64_t size) {
+  TF_ASSIGN_OR_RETURN(void* ptr, HostAllocate(cuda_context, numa_node, size));
+  VLOG(2) << "allocated " << ptr << " for context " << cuda_context << " of "
+          << size << " bytes of host memory";
+  return std::make_unique<GenericMemoryAllocation>(
+      ptr, size, [cuda_context, numa_node](void* location, uint64_t size) {
+        HostDeallocate(cuda_context, numa_node, location, size);
+        VLOG(2) << "deallocated collective memory at " << location
+                << " for context " << cuda_context;
+      });
 }
 
 }  // namespace
@@ -556,34 +634,88 @@ CudaExecutor::~CudaExecutor() {
   CHECK(gpu_binary_to_module_.empty()) << "CudaExecutor has loaded modules.";
 }
 
-void CudaExecutor::UnifiedMemoryDeallocate(void* location) {
-  std::unique_ptr<ActivateContext> activation = Activate();
-  CUdeviceptr pointer = absl::bit_cast<CUdeviceptr>(location);
-  auto status = cuda::ToStatus(cuMemFree(pointer));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to free unified memory at " << location
-               << "; result: " << status;
-  } else {
-    VLOG(2) << "deallocated unified memory at " << location << " for context "
-            << cuda_context_;
-  }
+absl::StatusOr<xla::gpu::GpuCollectives*> GetGpuCollectives(
+    StreamExecutor* executor) {
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
+  TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
+                      xla::CollectivesRegistry::Default("gpu"));
+  return tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
 }
 
-void* CudaExecutor::UnifiedMemoryAllocate(uint64_t size) {
-  std::unique_ptr<ActivateContext> activation = Activate();
-  CUdeviceptr result = 0;
-  // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
-  auto status =
-      cuda::ToStatus(cuMemAllocManaged(&result, size, CU_MEM_ATTACH_GLOBAL));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to alloc " << size
-               << " bytes unified memory; result: " << status;
-    return nullptr;
+absl::StatusOr<void*> CollectiveMemoryAllocate(StreamExecutor* executor,
+                                               uint64_t bytes) {
+  if (bytes == 0) return nullptr;
+
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
+  TF_ASSIGN_OR_RETURN(xla::gpu::GpuCollectives * gpu_collectives,
+                      GetGpuCollectives(executor));
+  return gpu_collectives->Allocate(bytes);
+}
+
+absl::Status CollectiveMemoryDeallocate(StreamExecutor* executor,
+                                        void* location) {
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
+
+  TF_ASSIGN_OR_RETURN(xla::gpu::GpuCollectives * gpu_collectives,
+                      GetGpuCollectives(executor));
+  return gpu_collectives->Deallocate(location);
+}
+
+absl::StatusOr<std::unique_ptr<MemoryAllocator>>
+CudaExecutor::CreateMemoryAllocator(MemoryType type) {
+  if (type == MemoryType::kUnified) {
+    return std::make_unique<GenericMemoryAllocator>(
+        [this](uint64_t size)
+            -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
+          std::unique_ptr<ActivateContext> activation = Activate();
+          CUdeviceptr result = 0;
+          // "Portable" memory is visible to all CUDA contexts. Safe for our use
+          // model.
+          TF_RETURN_IF_ERROR(cuda::ToStatus(
+              cuMemAllocManaged(&result, size, CU_MEM_ATTACH_GLOBAL)));
+          void* ptr = reinterpret_cast<void*>(result);
+          VLOG(2) << "allocated " << ptr << " for context " << cuda_context_
+                  << " of " << size << " bytes in unified memory";
+          return std::make_unique<GenericMemoryAllocation>(
+              ptr, size, [this](void* location, uint64_t size) {
+                std::unique_ptr<ActivateContext> activation = Activate();
+                CUdeviceptr pointer = absl::bit_cast<CUdeviceptr>(location);
+                auto status = cuda::ToStatus(cuMemFree(pointer));
+                if (!status.ok()) {
+                  LOG(ERROR) << "failed to free unified memory at " << location
+                             << "; result: " << status;
+                } else {
+                  VLOG(2) << "deallocated unified memory at " << location
+                          << " for context " << cuda_context_;
+                }
+              });
+        });
+  } else if (type == MemoryType::kCollective) {
+    return std::make_unique<GenericMemoryAllocator>(
+        [this](uint64_t size)
+            -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
+          TF_ASSIGN_OR_RETURN(void* ptr, CollectiveMemoryAllocate(this, size));
+          VLOG(2) << "allocated " << ptr << " for context " << cuda_context_
+                  << " of " << size << " bytes of collective memory";
+          return std::make_unique<GenericMemoryAllocation>(
+              ptr, size, [this](void* location, uint64_t size) {
+                auto status = CollectiveMemoryDeallocate(this, location);
+                if (!status.ok()) {
+                  LOG(ERROR) << "failed to free collective memory at "
+                             << location << "; result: " << status;
+                } else {
+                  VLOG(2) << "deallocated collective memory at " << location
+                          << " for context " << cuda_context_;
+                }
+              });
+        });
+  } else if (type == MemoryType::kHost) {
+    return std::make_unique<GenericMemoryAllocator>([this](uint64_t size) {
+      return AllocateHostMemory(cuda_context_, numa_node_, size);
+    });
   }
-  void* ptr = reinterpret_cast<void*>(result);
-  VLOG(2) << "allocated " << ptr << " for context " << cuda_context_ << " of "
-          << size << " bytes in unified memory";
-  return ptr;
+  return absl::UnimplementedError(
+      absl::StrFormat("Unsupported memory type %d", type));
 }
 
 absl::Status CudaExecutor::Init() {
@@ -593,6 +725,12 @@ absl::Status CudaExecutor::Init() {
   cuda_context_ = context;
   TF_RETURN_IF_ERROR(GetComputeCapability(&cc_major_, &cc_minor_, device_));
   TF_ASSIGN_OR_RETURN(delay_kernels_supported_, DelayKernelIsSupported());
+  numa_node_ = ReadNumaNode(GetPCIBusID(device_), device_ordinal())
+                   .value_or(tsl::port::kNUMANoAffinity);
+  if (numa_node_ == tsl::port::kNUMANoAffinity) {
+    VLOG(2) << "Could not determine NUMA node of device ordinal "
+            << device_ordinal();
+  }
   return absl::OkStatus();
 }
 
@@ -648,38 +786,32 @@ absl::StatusOr<ModuleHandle> CudaExecutor::LoadModuleFromPtx(const char* ptx) {
 }
 
 absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
-    const MultiKernelLoaderSpec& spec) {
+    const KernelLoaderSpec& spec) {
   auto cuda_kernel = std::make_unique<CudaKernel>(this);
-  const std::string* kernel_name;
+  const std::string& kernel_name = spec.kernel_name();
 
   if (spec.has_cuda_cubin_in_memory()) {
     absl::MutexLock lock{&in_memory_modules_mu_};
-    kernel_name = &spec.cuda_cubin_in_memory().kernel_name();
     const char* cubin = reinterpret_cast<const char*>(
-        spec.cuda_cubin_in_memory().cubin_bytes().data());
+        spec.cuda_cubin_in_memory()->cubin_bytes.data());
     TF_ASSIGN_OR_RETURN(ModuleHandle module_handle, LoadModuleFromCuBin(cubin));
     kernel_to_gpu_binary_[cuda_kernel.get()] = module_handle;
 
     CUmodule module = gpu_binary_to_module_.at(module_handle).first;
-    VLOG(2) << "getting function " << *kernel_name << " from module " << module;
+    VLOG(2) << "getting function " << kernel_name << " from module " << module;
     TF_ASSIGN_OR_RETURN(
         CUfunction function,
-        GetModuleFunction(cuda_context_, module, kernel_name->c_str()));
+        GetModuleFunction(cuda_context_, module, kernel_name.c_str()));
     cuda_kernel->set_gpu_function(function);
 
   } else if (spec.has_cuda_ptx_in_memory()) {
-    kernel_name = &spec.cuda_ptx_in_memory().kernel_name();
-
     if (cc_major_ == 0 && cc_minor_ == 0) {
       return absl::InternalError("Compute capability not set");
     }
 
-    const char* ptx = spec.cuda_ptx_in_memory().text(cc_major_, cc_minor_);
+    const char* ptx = spec.cuda_ptx_in_memory()->ptx.data();
     if (ptx == nullptr) {
-      ptx = spec.cuda_ptx_in_memory().default_text();
-    }
-    if (ptx == nullptr) {
-      LOG(FATAL) << "Loader spec has no ptx for kernel " << *kernel_name;
+      LOG(FATAL) << "Loader spec has no ptx for kernel " << kernel_name;
     }
 
     absl::MutexLock lock{&in_memory_modules_mu_};
@@ -687,17 +819,16 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
     kernel_to_gpu_binary_[cuda_kernel.get()] = module_handle;
 
     CUmodule module = gpu_binary_to_module_.at(module_handle).first;
-    VLOG(2) << "getting function " << *kernel_name << " from module " << module;
+    VLOG(2) << "getting function " << kernel_name << " from module " << module;
     TF_ASSIGN_OR_RETURN(
         CUfunction function,
-        GetModuleFunction(cuda_context_, module, kernel_name->c_str()));
+        GetModuleFunction(cuda_context_, module, kernel_name.c_str()));
     cuda_kernel->set_gpu_function(function);
 
   } else if (spec.has_in_process_symbol()) {
-    kernel_name = &spec.in_process_symbol().kernel_name();
-    void* symbol = spec.in_process_symbol().symbol();
+    void* symbol = spec.in_process_symbol()->symbol;
 
-    VLOG(2) << "Resolve CUDA kernel " << *kernel_name
+    VLOG(2) << "Resolve CUDA kernel " << kernel_name
             << " from symbol pointer: " << symbol;
     cudaFunction_t func;
     TF_RETURN_IF_ERROR(cuda::ToStatus(cudaGetFuncBySymbol(&func, symbol),
@@ -707,7 +838,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
   } else {
     return absl::InternalError("No method of loading CUDA kernel provided");
   }
-  VLOG(3) << "LoadKernel on kernel : " << *kernel_name;
+  VLOG(3) << "LoadKernel on kernel : " << kernel_name;
 
   {
     // Keep track of loaded kernels.
@@ -716,7 +847,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
   }
 
   // Update CUDA kernel properties after it was loaded in the CUDA context.
-  cuda_kernel->set_name(*kernel_name);
+  cuda_kernel->set_name(kernel_name);
 
   // We have to trust the kernel loader spec arity because there doesn't appear
   // to be a way to reflect on the number of expected arguments w/the CUDA API.
@@ -725,7 +856,6 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
   TF_ASSIGN_OR_RETURN(KernelMetadata kernel_metadata,
                       cuda_kernel->GetKernelMetadata());
   cuda_kernel->set_metadata(kernel_metadata);
-  cuda_kernel->set_name(*kernel_name);
   cuda_kernel->set_args_packing(spec.kernel_args_packing());
   return std::move(cuda_kernel);
 }
@@ -884,31 +1014,41 @@ CudaExecutor::CreateOrShareConstant(Stream* stream,
 }
 
 DeviceMemoryBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
-  if (memory_space == 1) {
-    auto result = CudaCollectives::CollectiveMemoryAllocate(this, size);
+  VLOG(1) << "CudaExecutor::Allocate size: " << size
+          << " memory_space: " << memory_space;
+
+  if (memory_space == static_cast<int64_t>(MemoryType::kCollective)) {
+    auto result = CollectiveMemoryAllocate(this, size);
     if (!result.ok()) {
-      LOG(ERROR) << result.status();
+      LOG(ERROR) << "Failed to allocate collective memory: " << result.status();
+      return DeviceMemoryBase(nullptr, 0);
     }
-    return DeviceMemoryBase(nullptr, 0);
+    VLOG(1) << "CudaExecutor::Allocate returns " << result.value();
+    return DeviceMemoryBase(result.value(), size);
   } else if (memory_space ==
              static_cast<int64_t>(stream_executor::MemoryType::kHost)) {
-    return DeviceMemoryBase(HostAllocate(cuda_context_, size), size);
+    auto result = HostAllocate(cuda_context_, numa_node_, size);
+    if (!result.ok()) {
+      LOG(ERROR) << "Failed to allocate host memory: " << result.status();
+      return DeviceMemoryBase(nullptr, 0);
+    }
+    VLOG(1) << "CudaExecutor::Allocate returns " << result.value();
+    return DeviceMemoryBase(result.value(), size);
   }
   CHECK_EQ(memory_space, 0);
-  return DeviceMemoryBase(DeviceAllocate(cuda_context_, size), size);
+  auto device_buf_base = DeviceAllocate(cuda_context_, size);
+  VLOG(1) << "CudaExecutor::Allocate returns " << device_buf_base;
+  return DeviceMemoryBase(device_buf_base, size);
 }
 
 absl::StatusOr<std::unique_ptr<MemoryAllocation>>
 CudaExecutor::HostMemoryAllocate(uint64_t size) {
-  auto* buffer = HostAllocate(cuda_context_, size);
-  if (buffer == nullptr && size > 0) {
-    return absl::InternalError(
-        absl::StrFormat("Failed to allocate HostMemory of size %d", size));
-  }
-  return std::make_unique<HostMemoryAllocation>(buffer, size, this);
+  return AllocateHostMemory(cuda_context_, numa_node_, size);
 }
 
 void CudaExecutor::Deallocate(DeviceMemoryBase* mem) {
+  VLOG(1) << "CudaExecutor::Deallocate mem: " << mem->opaque();
+
   auto status_or_memory_space = GetPointerMemorySpace(mem->opaque());
   if (!status_or_memory_space.ok()) {
     LOG(ERROR) << status_or_memory_space.status();
@@ -916,14 +1056,10 @@ void CudaExecutor::Deallocate(DeviceMemoryBase* mem) {
   }
   auto memory_space = status_or_memory_space.value();
   if (memory_space == MemoryType::kHost) {
-    HostDeallocate(cuda_context_, mem->opaque());
+    HostDeallocate(cuda_context_, numa_node_, mem->opaque(), mem->size());
   } else {
     DeviceDeallocate(cuda_context_, mem->opaque());
   }
-}
-
-void CudaExecutor::HostMemoryDeallocate(void* location) {
-  return HostDeallocate(cuda_context_, location);
 }
 
 bool CudaExecutor::SynchronizeAllActivity() {
@@ -933,30 +1069,12 @@ bool CudaExecutor::SynchronizeAllActivity() {
 bool CudaExecutor::HostMemoryRegister(void* location, uint64_t size) {
   VLOG(1) << "Called StreamExecutor::HostMemoryRegister(data=" << location
           << ")";
-
-  std::unique_ptr<ActivateContext> activation = Activate();
-  // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
-  auto status = cuda::ToStatus(
-      cuMemHostRegister(location, size, CU_MEMHOSTREGISTER_PORTABLE));
-  if (!status.ok()) {
-    LOG(ERROR) << "error registering host memory at " << location << ": "
-               << status;
-    return false;
-  }
-  return true;
+  return HostRegister(cuda_context_, location, size);
 }
 
 bool CudaExecutor::HostMemoryUnregister(void* location) {
   VLOG(1) << "Called StreamExecutor::HostUnregister(data=" << location << ")";
-
-  std::unique_ptr<ActivateContext> activation = Activate();
-  auto status = cuda::ToStatus(cuMemHostUnregister(location));
-  if (!status.ok()) {
-    LOG(ERROR) << "error unregistering host memory at " << location << ": "
-               << status;
-    return false;
-  }
-  return true;
+  return HostUnregister(cuda_context_, location);
 }
 
 absl::Status CudaExecutor::SynchronousMemZero(DeviceMemoryBase* location,
@@ -1105,7 +1223,7 @@ absl::StatusOr<DeviceMemoryBase> CudaExecutor::GetSymbol(
   size_t bytes = 0;
   CHECK(static_cast<bool>(module_handle));
 
-  {  // give limited scope to mutex_lock
+  {  // give limited scope to MutexLock
     absl::MutexLock lock{&in_memory_modules_mu_};
     auto it = gpu_binary_to_module_.find(module_handle);
     CHECK(it != gpu_binary_to_module_.end());
@@ -1124,6 +1242,7 @@ absl::StatusOr<DeviceMemoryBase> CudaExecutor::GetSymbol(
                    reinterpret_cast<uintptr_t>(module_handle.id()), ")"));
 }
 
+namespace {
 absl::Status FillBlockDimLimit(CUdevice device, BlockDim* block_dim_limit) {
   // The BlockDim name is a mismatch against these GRID_DIM_* queries because
   // we use BlockDims to express the dimensions of blocks within a grid
@@ -1136,6 +1255,7 @@ absl::Status FillBlockDimLimit(CUdevice device, BlockDim* block_dim_limit) {
   block_dim_limit->z = z;
   return absl::OkStatus();
 }
+}  // namespace
 
 absl::StatusOr<std::unique_ptr<Event>> CudaExecutor::CreateEvent() {
   TF_ASSIGN_OR_RETURN(auto event, CudaEvent::Create(this, false));
@@ -1196,14 +1316,14 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
 
   {
     std::string pci_bus_id = GetPCIBusID(device);
-
-    // Lower the hex characters to match sysfs.
-    pci_bus_id = absl::AsciiStrToLower(pci_bus_id);
     desc.set_pci_bus_id(pci_bus_id);
 
     // Read the NUMA node corresponding to the PCI bus ID out of sysfs.
-    int numa_node = ReadNumaNode(pci_bus_id, device_ordinal);
-    desc.set_numa_node(numa_node);
+    std::optional<int> numa_node = ReadNumaNode(pci_bus_id, device_ordinal);
+    // If the kernel reports -1, adjust to 0; leave as -1 if no value could be
+    // obtained.
+    desc.set_numa_node(numa_node.has_value() ? std::max(0, *numa_node)
+                                             : tsl::port::kNUMANoAffinity);
   }
 
   {
@@ -1333,5 +1453,34 @@ absl::StatusOr<const CudaKernel*> CudaExecutor::GetCudaKernel(
   }
   return static_cast<const CudaKernel*>(*it);
 }
+
+absl::StatusOr<TensorMap> CudaExecutor::CreateTensorMap(TmaDescriptor tma_desc,
+                                                        void* global_address) {
+  TF_ASSIGN_OR_RETURN(CUtensorMapDataType data_type,
+                      GetTensorMapDataType(tma_desc.element_size()));
+  CUtensorMapSwizzle swizzle = GetTensorMapSwizzle(tma_desc.swizzle());
+  CUtensorMapL2promotion l2_promotion =
+      GetTensorMapL2Promotion(tma_desc.l2_promotion());
+  CUtensorMapFloatOOBfill float_oob_fill =
+      GetTensorMapFloatOOBFill(tma_desc.float_oob_fill());
+  CUtensorMapInterleave interleave =
+      GetTensorMapInterleave(tma_desc.interleave());
+
+  CUtensorMap tensor_map;
+  auto result = cuTensorMapEncodeTiled(
+      &tensor_map, data_type, tma_desc.num_dimensions(), global_address,
+      tma_desc.global_dims().data(), tma_desc.global_strides().data(),
+      tma_desc.box_dims().data(), tma_desc.element_strides().data(), interleave,
+      swizzle, l2_promotion, float_oob_fill);
+  if (result != CUDA_SUCCESS) {
+    const char* error_message;
+    cuGetErrorString(result, &error_message);
+    return absl::InternalError(absl::StrFormat(
+        "Failed to create tensormap with cuTensorMapEncodeTiled: %s",
+        error_message));
+  }
+  return absl::bit_cast<TensorMap>(tensor_map);
+}
+
 }  // namespace gpu
 }  // namespace stream_executor

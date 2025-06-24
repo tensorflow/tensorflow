@@ -52,9 +52,9 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace ifrt {

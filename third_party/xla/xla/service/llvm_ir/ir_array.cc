@@ -22,6 +22,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Constants.h"
@@ -41,10 +42,10 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -62,7 +63,7 @@ void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
                                  llvm::IRBuilderBase* b) const {
   int64_t divisor = 1;
   const Layout& layout = shape.layout();
-  for (int64_t i = 0; i < layout.minor_to_major_size(); ++i) {
+  for (int64_t i = 0; i < layout.minor_to_major().size(); ++i) {
     int64_t dimension = layout.minor_to_major(i);
     int64_t size_of_current_dimension = shape.dimensions(dimension);
 
@@ -77,7 +78,7 @@ void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
     // memory lives in one big allocation, so cuda-memcheck can't detect
     // out-of-bounds accesses.
     auto* quot = b->CreateUDiv(linear, GetConstantWithIndexType(divisor));
-    if (i < layout.minor_to_major_size() - 1) {
+    if (i < layout.minor_to_major().size() - 1) {
       (*multidim)[dimension] = b->CreateURem(
           quot, GetConstantWithIndexType(size_of_current_dimension));
     } else {
@@ -91,11 +92,11 @@ void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
                                  llvm::Value* linear, const Shape& shape,
                                  absl::Span<llvm::Value*> dynamic_dims,
                                  llvm::IRBuilderBase* b) const {
-  CHECK_EQ(shape.dimensions_size(), dynamic_dims.size());
-  CHECK_EQ(multidim_.size(), shape.rank());
+  CHECK_EQ(shape.dimensions().size(), dynamic_dims.size());
+  CHECK_EQ(multidim_.size(), shape.dimensions().size());
   llvm::Value* divisor = GetConstantWithIndexType(1);
   const Layout& layout = shape.layout();
-  for (int64_t i = 0; i < layout.minor_to_major_size(); ++i) {
+  for (int64_t i = 0; i < layout.minor_to_major().size(); ++i) {
     int64_t dimension = layout.minor_to_major(i);
 
     // If i is not the last dimension, compute
@@ -103,7 +104,7 @@ void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
     // If i is the last dimension, we can skip the mod, because we assume that
     // linear is in bounds.
     auto* quot = b->CreateUDiv(linear, divisor, "quot");
-    if (i < layout.minor_to_major_size() - 1) {
+    if (i < layout.minor_to_major().size() - 1) {
       llvm::Value* casted_dynamic_dim =
           b->CreateIntCast(dynamic_dims[dimension], quot->getType(),
                            /*isSigned=*/true);
@@ -118,7 +119,7 @@ void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
 
 IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
                       llvm::IRBuilderBase* b)
-    : multidim_(shape.rank()),
+    : multidim_(shape.dimensions().size()),
       linear_(linear),
       layout_(shape.layout()),
       dims_(shape.dimensions().begin(), shape.dimensions().end()) {
@@ -133,13 +134,13 @@ IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
 IrArray::Index::Index(llvm::Value* linear,
                       absl::Span<llvm::Value* const> multidim,
                       const Shape& shape, llvm::IRBuilderBase* b)
-    : multidim_(shape.rank()),
+    : multidim_(shape.dimensions().size()),
       linear_(linear),
       layout_(shape.layout()),
       dims_(shape.dimensions().begin(), shape.dimensions().end()) {
   CHECK_NE(linear, nullptr);
   index_type_ = linear->getType();
-  CHECK_EQ(multidim.size(), shape.rank());
+  CHECK_EQ(multidim.size(), shape.dimensions().size());
   for (auto dim : multidim) {
     if (dim) {
       CHECK_EQ(dim->getType(), index_type_);
@@ -159,7 +160,7 @@ IrArray::Index::Index(llvm::Value* linear,
 IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
                       absl::Span<llvm::Value*> dynamic_dims,
                       llvm::IRBuilderBase* b)
-    : multidim_(shape.rank()),
+    : multidim_(shape.dimensions().size()),
       linear_(linear),
       layout_(shape.layout()),
       dims_(shape.dimensions().begin(), shape.dimensions().end()) {
@@ -185,7 +186,7 @@ IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
       dims_(shape.dimensions().begin(), shape.dimensions().end()),
       index_type_(index_type) {
   CHECK_NE(index_type_, nullptr);
-  CHECK_EQ(shape.dimensions_size(), multidim.size());
+  CHECK_EQ(shape.dimensions().size(), multidim.size());
   for (const auto* dim : multidim) {
     CHECK_NE(dim, nullptr);
   }
@@ -198,7 +199,7 @@ IrArray::IrArray(llvm::Value* base_ptr, llvm::Type* pointee_type, Shape shape)
     : base_ptr_(base_ptr),
       pointee_type_(pointee_type),
       shape_(std::move(shape)) {
-  TF_CHECK_OK(ShapeUtil::ValidateShape(shape));
+  TF_CHECK_OK(ShapeUtil::ValidateShape(shape_));
   CHECK(base_ptr_->getType()->isPointerTy());
   int depth = 0;
   element_type_ = pointee_type;
@@ -211,7 +212,7 @@ IrArray::IrArray(llvm::Value* base_ptr, llvm::Type* pointee_type, Shape shape)
   if (!shape_.IsArray() || ShapeUtil::IsScalar(shape_)) {
     DCHECK(depth == 1 || depth == 0) << depth;
   } else {
-    DCHECK_EQ(depth, shape_.rank()) << shape.ShortDebugString();
+    DCHECK_EQ(depth, shape_.dimensions().size()) << shape_.ToString();
   }
 }
 
@@ -227,9 +228,9 @@ bool IrArray::Index::LinearValidOnShape(const Shape& a) const {
 IrArray::Index IrArray::Index::SourceIndexOfReshape(
     const Shape& output_shape, const Shape& input_shape,
     llvm::IRBuilderBase* builder) const {
-  CHECK_EQ(multidim_.size(), output_shape.rank());
+  CHECK_EQ(multidim_.size(), output_shape.dimensions().size());
   std::vector<llvm::Value*> source_multidim_index(
-      input_shape.rank(), llvm::UndefValue::get(index_type_));
+      input_shape.dimensions().size(), llvm::UndefValue::get(index_type_));
 
   if (std::optional<ShapeUtil::ShapeEqualityDescriptor> trivial_reshape =
           ShapeUtil::InsertedOrDeleted1SizedDimensions(input_shape,
@@ -393,7 +394,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
     const Shape& shape, const Shape& operand_shape,
     absl::Span<const int64_t> dimension_mapping,
     llvm::IRBuilderBase* builder) const {
-  int64_t rank = operand_shape.rank();
+  int64_t rank = operand_shape.dimensions().size();
   std::vector<llvm::Value*> source_index(rank);
   for (int64_t i = 0; i < rank; ++i) {
     source_index[i] = multidim_[dimension_mapping[i]];
@@ -407,7 +408,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
   // The other dimensions can be masked out with a div and a mod operation.
   std::vector<int64_t> logical_to_physical =
       LayoutUtil::MakeLogicalToPhysical(shape.layout());
-  int64_t output_rank = shape.rank();
+  int64_t output_rank = shape.dimensions().size();
   // The minimum physical dimension that is broadcasted.
   int64_t min_broadcasted_dimension = output_rank;
   // The maximum physical dimension that is broadcasted.
@@ -503,15 +504,14 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
   if (ShapeUtil::IsScalar(shape_)) {
     if (primitive_util::IsSubByteNonPredType(shape_.element_type())) {
       CHECK_NE(bit_offset, nullptr);
-      *bit_offset =
-          b->getInt8(8 - primitive_util::BitWidth(shape_.element_type()));
+      *bit_offset = b->getInt8(0);
     }
     // Special handling of scalars: a scalar pretends to have the same value for
     // every index, thus effectively implementing broadcasting of its value
     // over higher-rank arrays.
     return base_ptr_;
   }
-  CHECK_EQ(index.size(), shape_.rank());
+  CHECK_EQ(index.size(), shape_.dimensions().size());
   CHECK(index.ShapeIsCompatible(shape_))
       << "Shape " << index.AsShapeWithType(shape_.element_type()).ToString(true)
       << " is not compatible with " << shape_.ToString(true);
@@ -527,8 +527,8 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
     if (!index.LinearValidOnShape(shape_)) {
       // Create a valid linear index.
       std::vector<int64_t> dimensions;
-      dimensions.reserve(shape_.rank());
-      for (int64_t i = 0; i < shape_.rank(); ++i) {
+      dimensions.reserve(shape_.dimensions().size());
+      for (int64_t i = 0; i < shape_.dimensions().size(); ++i) {
         dimensions.push_back(shape_.dimensions(i));
       }
       llvm::Value* linearized = index.Linearize(dimensions, b);
@@ -555,7 +555,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
   CHECK_GT(index.size(), 0);
   std::vector<llvm::Value*> gep_indices(
       1, llvm::ConstantInt::get(index[0]->getType(), 0));
-  for (int64_t i = 0; i < shape_.rank(); ++i) {
+  for (int64_t i = 0; i < shape_.dimensions().size(); ++i) {
     int64_t dimension = LayoutUtil::Major(shape_.layout(), i);
     gep_indices.push_back(actual_index[dimension]);
   }
@@ -597,9 +597,7 @@ llvm::Value* IrArray::EmitLinearArrayElementAddress(
 
   CHECK_NE(bit_offset, nullptr);
   *bit_offset = b->CreateIntCast(
-      b->CreateSub(llvm::ConstantInt::get(index_type, 8 - bit_width),
-                   b->CreateMul(remainder,
-                                llvm::ConstantInt::get(index_type, bit_width))),
+      b->CreateMul(remainder, llvm::ConstantInt::get(index_type, bit_width)),
       b->getInt8Ty(), /*isSigned=*/false);
   return b->CreateInBoundsGEP(b->getInt8Ty(), base_ptr_, byte_offset,
                               llvm_ir::AsStringRef(name));

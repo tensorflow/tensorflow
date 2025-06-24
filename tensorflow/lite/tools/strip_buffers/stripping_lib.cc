@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include <cmath>
 #include <limits>
 #include <memory>
 #include <random>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers

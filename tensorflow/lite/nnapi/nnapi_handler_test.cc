@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/lite/nnapi/nnapi_handler.h"
 
 #include <cstdint>
-#include <cstdio>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

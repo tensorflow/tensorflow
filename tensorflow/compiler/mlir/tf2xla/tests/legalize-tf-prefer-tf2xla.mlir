@@ -149,9 +149,24 @@ func.func @simple_strided_slice(%input: tensor<4x8xf32>) -> tensor<3x2xf32> {
   // CHECK: return %4 : tensor<3x2xf32>
 }
 
+// -----
+
+// CHECK-LABEL: strided_slice_with_uknown_begin
+func.func @strided_slice_with_uknown_begin(%input: tensor<4x8xf32>, %begin: tensor<1xi32>) -> tensor<4x8xf32> {
+  %end = "tf.Const"() {value = dense<[3]> : tensor<1xi32>} : () -> (tensor<1xi32>)
+  %strides = "tf.Const"() {value = dense<[1]> : tensor<1xi32>} : () -> (tensor<1xi32>)
+
+  // CHECK: %[[DYNAMIC_SLICE:.*]] = "mhlo.dynamic_slice"
+  %output = "tf.StridedSlice"(%input, %begin, %end, %strides)
+      : (tensor<4x8xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4x8xf32>
+  func.return %output : tensor<4x8xf32>
+}
+
 //===----------------------------------------------------------------------===//
 // Fused op legalizations.
 //===----------------------------------------------------------------------===//
+
+// -----
 
 // CHECK-LABEL: fused_conv2d
 func.func @fused_conv2d(%input: tensor<1x300x300x40xi8>,

@@ -23,20 +23,34 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_emitter.h"
+#include "xla/codegen/kernel_source.h"
 #include "xla/codegen/kernel_spec.h"
+#include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/llvm_kernel_definition.h"
+#include "xla/codegen/llvm_kernel_emitter.h"
+#include "xla/codegen/mlir_kernel_definition.h"
+#include "xla/codegen/mlir_kernel_emitter.h"
+#include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/testlib/kernel_runner.h"
 #include "xla/comparison_util.h"
+#include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -44,8 +58,10 @@ limitations under the License.
 #include "xla/python/nb_absl_inlined_vector.h"  // IWYU pragma: keep
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -61,16 +77,35 @@ void KernelRunnerCall(KernelRunner* kernel_runner,
   }
 }
 
-// Need this helper as Literal rquires an explicit clone.
+// Need this helper as Literal requires an explicit clone.
 std::unique_ptr<HloInstruction> CreateConstantHloInstruction(
     const Literal& literal) {
   return HloInstruction::CreateConstant(literal.Clone());
+}
+
+std::unique_ptr<HloInstruction> CreateDot(
+    const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+    const DotDimensionNumbers& dimension_numbers) {
+  return HloInstruction::CreateDot(shape, lhs, rhs, dimension_numbers,
+                                   PrecisionConfig());
 }
 
 std::unique_ptr<HloInstruction> CreateComparisonHloInstruction(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     Comparison::Direction direction) {
   return HloInstruction::CreateCompare(shape, lhs, rhs, direction);
+}
+
+std::unique_ptr<HloInstruction> CreateCallHloInstruction(
+    const Shape& shape, std::vector<HloInstruction*> operands,
+    HloComputation* computation) {
+  return HloInstruction::CreateCall(shape, operands, computation);
+}
+
+HloModuleConfig DefaultHloModuleConfigWithDebugOptions() {
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsFromFlags());
+  return config;
 }
 
 // A dummy kernel runner that implements a simple elementwise add.
@@ -117,6 +152,24 @@ class DummyAddKernelRunner final : public KernelRunner {
   }
 };
 
+std::unique_ptr<HloComputation> BuildComputation(
+    std::unique_ptr<HloInstruction> root, nanobind::args instructions) {
+  HloComputation::Builder builder(absl::StrCat(root->name(), "_computation"));
+  for (nanobind::handle handle : instructions) {
+    builder.AddInstruction(
+        nanobind::cast<std::unique_ptr<HloInstruction>>(handle));
+  }
+  builder.AddInstruction(std::move(root));
+
+  // Annoyingly if we don't clone the computation, nanobind thinks
+  // that the object has been destroyed and will raise an exception
+  // after we call get_root_instruction. See
+  // https://github.com/wjakob/nanobind/issues/879.
+  // TODO(willfroom): Remove the clone once the nanobind bug is
+  // fixed and integrated.
+  return builder.Build()->Clone();
+}
+
 }  // namespace
 
 NB_MODULE(_extension, kernel_runner_module) {
@@ -125,19 +178,48 @@ NB_MODULE(_extension, kernel_runner_module) {
   nb::class_<KernelSource>(kernel_runner_module, "KernelSource")
       .def("__str__", &KernelSource::ToString);
 
-  nb::class_<KernelSpec>(kernel_runner_module, "KernelSpec")
-      .def("kernel_source", &KernelSpec::kernel_source,
+  nb::class_<LlvmIrKernelSource, KernelSource> llvm_kernel_source(
+      kernel_runner_module, "LlvmIrKernelSource");
+
+  nb::class_<MlirKernelSource, KernelSource>(kernel_runner_module,
+                                             "MlirKernelSource")
+      .def_static(
+          "parse_from_string",
+          [](absl::string_view ir, std::unique_ptr<mlir::MLIRContext> context) {
+            absl::StatusOr<MlirKernelSource> source =
+                MlirKernelSource::ParseFromString(ir, std::move(context));
+            if (!source.ok()) {
+              throw std::runtime_error(std::string(source.status().message()));
+            }
+            return std::move(source).value();
+          });
+
+  nb::class_<KernelSpec> kernel_spec(kernel_runner_module, "KernelSpec");
+
+  nb::class_<KernelDefinitionBase>(kernel_runner_module, "KernelDefinitionBase")
+      .def("spec", &KernelDefinitionBase::spec,
+           nb::rv_policy::reference_internal)
+      .def("source", &KernelDefinitionBase::source,
            nb::rv_policy::reference_internal);
 
-  nb::class_<KernelEmitter>(kernel_runner_module, "KernelEmitter")
-      .def("emit_kernel_spec", [](KernelEmitter* self) {
-        absl::StatusOr<std::unique_ptr<KernelSpec>> spec =
-            self->EmitKernelSpec();
-        if (!spec.ok()) {
-          throw std::runtime_error(std::string(spec.status().message()));
+  nb::class_<MlirKernelDefinition, KernelDefinitionBase>(
+      kernel_runner_module, "MlirKernelDefinition");
+  nb::class_<LlvmKernelDefinition, KernelDefinitionBase>(
+      kernel_runner_module, "LlvmKernelDefinition");
+
+  nb::class_<KernelEmitterBase>(kernel_runner_module, "KernelEmitterBase")
+      .def("emit_kernel_definition", [](KernelEmitterBase* self) {
+        absl::StatusOr<std::unique_ptr<KernelDefinitionBase>> definition =
+            self->EmitBaseKernelDefinition();
+        if (!definition.ok()) {
+          throw std::runtime_error(std::string(definition.status().message()));
         }
-        return std::move(spec).value();
+        return std::move(definition).value();
       });
+  nb::class_<MlirKernelEmitter, KernelEmitterBase>(kernel_runner_module,
+                                                   "MlirKernelEmitter");
+  nb::class_<LlvmKernelEmitter, KernelEmitterBase>(kernel_runner_module,
+                                                   "LlvmKernelEmitter");
 
   nb::class_<KernelRunner>(kernel_runner_module, "KernelRunner")
       .def("call", &KernelRunnerCall);
@@ -163,17 +245,99 @@ NB_MODULE(_extension, kernel_runner_module) {
       .value("kLe", Comparison::Direction::kLe)
       .value("kLt", Comparison::Direction::kLt);
 
+  nb::class_<DotDimensionNumbers>(kernel_runner_module, "DotDimensionNumbers")
+      .def(
+          "__init__",
+          [](DotDimensionNumbers* self,
+             std::vector<int64_t> lhs_contracting_dims,
+             std::vector<int64_t> rhs_contracting_dims,
+             std::vector<int64_t> lhs_batch_dims,
+             std::vector<int64_t> rhs_batch_dims) {
+            new (self) DotDimensionNumbers();
+            self->mutable_lhs_contracting_dimensions()->Assign(
+                lhs_contracting_dims.begin(), lhs_contracting_dims.end());
+            self->mutable_rhs_contracting_dimensions()->Assign(
+                rhs_contracting_dims.begin(), rhs_contracting_dims.end());
+
+            self->mutable_lhs_batch_dimensions()->Assign(lhs_batch_dims.begin(),
+                                                         lhs_batch_dims.end());
+            self->mutable_rhs_batch_dimensions()->Assign(rhs_batch_dims.begin(),
+                                                         rhs_batch_dims.end());
+          },
+          nb::arg("lhs_contracting_dims"), nb::arg("rhs_contracting_dims"),
+          nb::arg("lhs_batch_dims") = std::vector<int64_t>{},
+          nb::arg("rhs_batch_dims") = std::vector<int64_t>{});
+
+  nb::class_<ScatterDimensionNumbers>(kernel_runner_module,
+                                      "ScatterDimensionNumbers")
+      .def(
+          "__init__",
+          [](ScatterDimensionNumbers* self,
+             std::vector<int64_t> update_window_dims,
+             std::vector<int64_t> inserted_window_dims,
+             std::vector<int64_t> scatter_dims_to_operand_dims,
+             int64_t index_vector_dim, std::vector<int64_t> input_batching_dims,
+             std::vector<int64_t> scatter_indices_batching_dims) {
+            new (self) ScatterDimensionNumbers();
+            self->mutable_update_window_dims()->Assign(
+                update_window_dims.begin(), update_window_dims.end());
+            self->mutable_inserted_window_dims()->Assign(
+                inserted_window_dims.begin(), inserted_window_dims.end());
+            self->mutable_scatter_dims_to_operand_dims()->Assign(
+                scatter_dims_to_operand_dims.begin(),
+                scatter_dims_to_operand_dims.end());
+            self->set_index_vector_dim(index_vector_dim);
+            self->mutable_input_batching_dims()->Assign(
+                input_batching_dims.begin(), input_batching_dims.end());
+            self->mutable_scatter_indices_batching_dims()->Assign(
+                scatter_indices_batching_dims.begin(),
+                scatter_indices_batching_dims.end());
+          },
+          nb::arg("update_window_dims"), nb::arg("inserted_window_dims"),
+          nb::arg("scatter_dims_to_operand_dims"), nb::arg("index_vector_dim"),
+          nb::arg("input_batching_dims") = std::vector<int64_t>{},
+          nb::arg("scatter_indices_batching_dims") = std::vector<int64_t>{});
+
   nb::class_<HloInstruction> hlo_instruction(kernel_runner_module,
                                              "HloInstruction");
   // Factory methods
   hlo_instruction
       .def_static("create_parameter", &HloInstruction::CreateParameter)
       .def_static("create_constant", &CreateConstantHloInstruction)
-      .def_static("create_unary", &HloInstruction::CreateUnary)
-      .def_static("create_binary", &HloInstruction::CreateBinary)
-      .def_static("create_ternary", &HloInstruction::CreateTernary)
-      .def_static("create_variadic", &HloInstruction::CreateVariadic)
-      .def_static("create_compare", &CreateComparisonHloInstruction);
+      .def_static("create_dot", &CreateDot, nb::keep_alive<0, 2>(),
+                  nb::keep_alive<0, 3>())
+      .def_static("create_unary", &HloInstruction::CreateUnary,
+                  nb::keep_alive<0, 3>())
+      .def_static("create_binary", &HloInstruction::CreateBinary,
+                  nb::keep_alive<0, 3>(), nb::keep_alive<0, 4>())
+      .def_static("create_ternary", &HloInstruction::CreateTernary,
+                  nb::keep_alive<0, 3>(), nb::keep_alive<0, 4>(),
+                  nb::keep_alive<0, 5>())
+      .def_static("create_variadic", &HloInstruction::CreateVariadic,
+                  nb::keep_alive<0, 3>())
+      .def_static("create_compare", &CreateComparisonHloInstruction,
+                  nb::keep_alive<0, 2>(), nb::keep_alive<0, 3>())
+      .def_static("create_concatenate", &HloInstruction::CreateConcatenate,
+                  nb::keep_alive<0, 2>())
+      .def_static("create_call", &CreateCallHloInstruction,
+                  nb::keep_alive<0, 1>(), nb::keep_alive<0, 2>(),
+                  nb::keep_alive<0, 3>())
+      .def_static(
+          "create_scatter",
+          nb::overload_cast<const Shape&, HloInstruction*, HloInstruction*,
+                            HloInstruction*, HloComputation*,
+                            const ScatterDimensionNumbers&, bool, bool>(
+              &HloInstruction::CreateScatter),
+          nb::keep_alive<0, 2>(), nb::keep_alive<0, 3>(),
+          nb::keep_alive<0, 4>(), nb::keep_alive<0, 5>())
+      .def("name", &HloInstruction::name);
+
+  nb::class_<HloFusionInstruction, HloInstruction> fusion_instruction(
+      kernel_runner_module, "HloFusionInstruction");
+
+  nb::class_<HloComputation>(kernel_runner_module, "HloComputation")
+      .def("__str__",
+           nb::overload_cast<>(&HloComputation::ToString, nb::const_));
 
   // Accessors
   hlo_instruction.def("opcode", &HloInstruction::opcode);
@@ -189,11 +353,22 @@ NB_MODULE(_extension, kernel_runner_module) {
   nb::class_<HloSchedule>(kernel_runner_module, "HloSchedule")
       .def("__str__", &HloSchedule::ToString);
 
+  kernel_runner_module.def("build_hlo_computation", &BuildComputation);
+
+  nb::class_<HloModuleConfig>(kernel_runner_module, "HloModuleConfig")
+      .def(nb::new_(&DefaultHloModuleConfigWithDebugOptions));
+
   nb::class_<HloModule>(kernel_runner_module, "HloModule")
+      .def("__init__",
+           [](HloModule* self, absl::string_view name) {
+             new (self) HloModule(std::string(name),
+                                  DefaultHloModuleConfigWithDebugOptions());
+           })
       .def_static("parse_from_string",
                   [](absl::string_view str) {
                     absl::StatusOr<std::unique_ptr<HloModule>> hlo_module =
-                        ParseAndReturnUnverifiedModule(str);
+                        ParseAndReturnUnverifiedModule(
+                            str, DefaultHloModuleConfigWithDebugOptions());
 
                     if (!hlo_module.ok()) {
                       throw std::runtime_error(
@@ -202,6 +377,14 @@ NB_MODULE(_extension, kernel_runner_module) {
 
                     return std::move(hlo_module).value();
                   })
+      .def("add_entry_computation",
+           [](HloModule* self, std::unique_ptr<HloComputation> computation) {
+             self->AddEntryComputation(std::move(computation));
+           })
+      .def("add_computation",
+           [](HloModule* self, std::unique_ptr<HloComputation> computation) {
+             self->AddEmbeddedComputation(std::move(computation));
+           })
       .def("set_schedule",
            [](HloModule& self, HloSchedule schedule) {
              absl::Status status = self.set_schedule(std::move(schedule));
@@ -214,7 +397,9 @@ NB_MODULE(_extension, kernel_runner_module) {
           [](HloModule* self) {
             return self->entry_computation()->root_instruction();
           },
-          nb::rv_policy::reference_internal);
+          nb::rv_policy::reference_internal)
+      .def("get_config", &HloModule::config)
+      .def("__str__", nb::overload_cast<>(&HloModule::ToString, nb::const_));
 }
 
 }  // namespace xla

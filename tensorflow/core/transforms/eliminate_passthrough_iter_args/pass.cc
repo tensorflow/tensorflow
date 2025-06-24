@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/eliminate_passthrough_iter_args/pass.h"
 
+#include <cassert>
+#include <cstddef>
 #include <memory>
 #include <utility>
 

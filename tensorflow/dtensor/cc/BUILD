@@ -1,7 +1,6 @@
 #include "third_party/absl/strings/str_cat.h"
 #DTensor C++ runtime and libraries.
 
-load("//tensorflow:tensorflow.bzl", "if_google", "if_libtpu")
 load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -10,6 +9,7 @@ load(
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 default_visibility = [
+    "//smartass/brain/jax/embeddings:__pkg__",
     "//tensorflow/dtensor:dtensor-internal",
     "//tensorflow:__pkg__",
 ]
@@ -149,10 +149,10 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:refcount",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla:status_macros",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -282,20 +282,14 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla:status_macros",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
 cc_library(
     name = "default_parallel_executor_lib",
-    deps = if_libtpu(
-        if_false = if_google(
-            google_value = ["//tensorflow/dtensor/cc/google:default_parallel_executor"],
-            oss_value = [":default_parallel_executor"],
-        ),
-        if_true = [":default_parallel_executor"],
-    ),
+    deps = [":default_parallel_executor"],
 )
 
 cc_library(
@@ -304,7 +298,7 @@ cc_library(
     deps = [
         ":parallel_executor_interface",
         "//tensorflow/core/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -372,11 +366,11 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla:status_macros",
         "@local_xla//xla/stream_executor/tpu:c_api_decl",
         "@local_xla//xla/stream_executor/tpu:tpu_platform_interface",
         "@local_xla//xla/stream_executor/tpu:tpu_topology_external",
+        "@local_xla//xla/tsl/platform:status",
         "@local_xla//xla/tsl/util:env_var",
     ] + tf_dtensor_tpu_dependencies(),
 )

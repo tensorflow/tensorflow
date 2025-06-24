@@ -22,17 +22,16 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
 namespace op = xla::testing::opcode_matchers;
 using ::testing::_;
-using WhileLoopFusibleSinkingTest = HloTestBase;
+using WhileLoopFusibleSinkingTest = HloHardwareIndependentTestBase;
 
 TEST_F(WhileLoopFusibleSinkingTest, SinkOneFusible) {
   const char* const hlo_string = R"(
@@ -290,66 +289,6 @@ TEST_F(WhileLoopFusibleSinkingTest,
               op::While(op::Tuple(_, op::CustomCall(), _, _)));
 }
 
-TEST_F(WhileLoopFusibleSinkingTest,
-       TestPlumbSingleBroadcastNoneZeroLoopIterationVar) {
-  const std::string hlo_string_before = R"(
-    HloModule cluster_6512412223095190558_f15n_0__.258
-
-    %wide._functionalize_body_1_const_0__.164.clone.clone.clone.clone (wide.arg_tuple.1: (s32[], f32[2])) -> (s32[], f32[2]) {
-      %wide.arg_tuple.1 = (s32[], f32[2]{0}) parameter(0)
-      %get-tuple-element.383 = s32[] get-tuple-element((s32[], f32[2]{0}) %wide.arg_tuple.1), index=0
-      %constant.50..sunk.4 = s32[] constant(-1)
-      %add.48 = s32[] add(s32[] %get-tuple-element.383, s32[] %constant.50..sunk.4)
-      %get-tuple-element.384 = f32[2]{0} get-tuple-element((s32[], f32[2]{0}) %wide.arg_tuple.1), index=1
-      %constant.11..sunk.4 = f32[] constant(1)
-      %broadcast.19 = f32[2]{0} broadcast(f32[] %constant.11..sunk.4), dimensions={}
-      %add.49 = f32[2]{0} add(f32[2]{0} %get-tuple-element.384, f32[2]{0} %broadcast.19)
-      ROOT %tuple.55 = (s32[], f32[2]{0}) tuple(s32[] %add.48, f32[2]{0} %add.49)
-    }
-
-    %wide.cond_wrapper.236.clone.clone.clone.clone (wide.inputs.1: (s32[], f32[2])) -> pred[] {
-      %wide.inputs.1 = (s32[], f32[2]{0}) parameter(0)
-      %get-tuple-element.382 = s32[] get-tuple-element((s32[], f32[2]{0}) %wide.inputs.1), index=0
-      %constant.66 = s32[] constant(1)
-      ROOT %compare.10 = pred[] compare(s32[] %get-tuple-element.382, s32[] %constant.66), direction=GE
-    }
-
-    %_functionalize_body_0_const_0__.40.clone.clone.clone.clone.clone.clone.clone (arg_tuple.9: (s32[])) -> (s32[]) {
-      %arg_tuple.9 = (s32[]) parameter(0)
-      %get-tuple-element.409 = s32[] get-tuple-element((s32[]) %arg_tuple.9), index=0
-      %constant.71 = s32[] constant(1)
-      %add.57 = s32[] add(s32[] %get-tuple-element.409, s32[] %constant.71)
-      ROOT %tuple.61 = (s32[]) tuple(s32[] %add.57)
-    }
-
-    %cond_wrapper.120.clone.clone.clone.clone.clone.clone (inputs.7: (s32[])) -> pred[] {
-      %inputs.7 = (s32[]) parameter(0)
-      %get-tuple-element.408 = s32[] get-tuple-element((s32[]) %inputs.7), index=0
-      %constant.70 = s32[] constant(10)
-      ROOT %compare.12 = pred[] compare(s32[] %get-tuple-element.408, s32[] %constant.70), direction=LT
-    }
-
-    ENTRY %cluster_6512412223095190558_f15n_0__.258{
-      %arg_tuple.1 = () parameter(0)
-      %constant.24 = s32[] constant(0)
-      %tuple.60 = (s32[]) tuple(s32[] %constant.24)
-      %while.10 = (s32[]) while((s32[]) %tuple.60), condition=%cond_wrapper.120.clone.clone.clone.clone.clone.clone, body=%_functionalize_body_0_const_0__.40.clone.clone.clone.clone.clone.clone.clone
-      %get-tuple-element.380 = s32[] get-tuple-element((s32[]) %while.10), index=0
-      %constant.9 = f32[] constant(0)
-      %broadcast.10 = f32[2]{0} broadcast(f32[] %constant.9), dimensions={}
-      %tuple.54 = (s32[], f32[2]{0}) tuple(s32[] %get-tuple-element.380, f32[2]{0} %broadcast.10)
-      ROOT %while.8 = (s32[], f32[2]{0}) while((s32[], f32[2]{0}) %tuple.54), condition=%wide.cond_wrapper.236.clone.clone.clone.clone, body=%wide._functionalize_body_1_const_0__.164.clone.clone.clone.clone
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_before,
-                          ParseAndReturnVerifiedModule(hlo_string_before));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopFusibleSinking{}.Run(module_before.get()));
-  EXPECT_TRUE(changed);
-  EXPECT_THAT(FindInstruction(module_before.get(), "while.8"),
-              op::While(op::Tuple(_, op::CustomCall(), _)));
-}
-
 TEST_F(WhileLoopFusibleSinkingTest, TestPlumbMultipleBroadcast) {
   const std::string hlo_string_before = R"(
   HloModule test
@@ -392,6 +331,102 @@ TEST_F(WhileLoopFusibleSinkingTest, TestPlumbMultipleBroadcast) {
   EXPECT_THAT(
       FindInstruction(module_before.get(), "while"),
       op::While(op::Tuple(_, op::CustomCall(), op::CustomCall(), _, _)));
+}
+
+TEST_F(WhileLoopFusibleSinkingTest, TestNoPlumbWithBadCondition) {
+  const std::string hlo_string_before = R"(
+  HloModule test
+  tmp {
+    x = s32[] parameter(0)
+    y = s32[] parameter(1)
+    ROOT add = s32[] add(x, y)
+  }
+
+  loop.body {
+    loop_var.1 = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) parameter(0)
+    get-tuple-element.1 = s32[]{:T(128)} get-tuple-element(loop_var.1), index=0
+    get-tuple-element.2 = s32[1,1,1,4,3,5]{5,4,3,2,1,0} get-tuple-element(loop_var.1), index=1
+    get-tuple-element.4 = s32[1,1,1,4,3,5]{5,4,3,2,1,0} get-tuple-element(loop_var.1), index=2
+    get-tuple-element.3 = s32[4,3,5]{2,1,0} get-tuple-element(loop_var.1), index=3
+    bitcast.12855 = s32[1,1,1,4,3,5]{5,4,3,2,1,0} bitcast(get-tuple-element.3)
+    add.40974 = s32[1,1,1,4,3,5]{5,4,3,2,1,0} add(get-tuple-element.2, bitcast.12855)
+    add.1 = s32[1,1,1,4,3,5]{5,4,3,2,1,0} add(get-tuple-element.4, add.40974)
+    constant.1 = s32[]{:T(128)} constant(1)
+    idx = s32[]{:T(128)} add(get-tuple-element.1, constant.1)
+    ROOT tuple = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) tuple(idx, add.40974, add.1, get-tuple-element.3)
+  }
+
+  loop.condition {
+    loop_var.2 = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) parameter(0)
+    get-tuple-element.3 = s32[]{:T(128)} get-tuple-element(loop_var.2), index=0
+    get-tuple-element.4 = s32[1,1,1,4,3,5]{5,4,3,2,1,0} get-tuple-element(loop_var.2), index=1
+    z = s32[]{:T(128)} constant(0)
+    r = s32[]{:T(128)} reduce(get-tuple-element.4, z), dimensions={0,1,2,3,4,5}, to_apply=tmp
+    ROOT less-than = pred[] compare(get-tuple-element.3, r), direction=LT
+  }
+
+  ENTRY %main {
+    param.1 = s32[4,3,5]{2,1,0} parameter(0)
+    zero = s32[]{:T(128)} constant(0)
+    zeros32 = s32[]{:T(128)} constant(0)
+    broadcast = s32[1,1,1,4,3,5]{5,4,3,2,1,0} broadcast(zeros32)
+    input = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) tuple(zero, broadcast, broadcast, param.1)
+    ROOT while = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) while(input), condition=loop.condition, body=loop.body
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_before,
+                          ParseAndReturnVerifiedModule(hlo_string_before));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          WhileLoopFusibleSinking{}.Run(module_before.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(WhileLoopFusibleSinkingTest, TestNoPlumbWithUnknonwnTripCount) {
+  const std::string hlo_string_before = R"(
+  HloModule test
+  tmp {
+    x = s32[] parameter(0)
+    y = s32[] parameter(1)
+    ROOT add = s32[] add(x, y)
+  }
+
+  loop.body {
+    loop_var.1 = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) parameter(0)
+    get-tuple-element.1 = s32[]{:T(128)} get-tuple-element(loop_var.1), index=0
+    get-tuple-element.2 = s32[1,1,1,4,3,5]{5,4,3,2,1,0} get-tuple-element(loop_var.1), index=1
+    get-tuple-element.4 = s32[1,1,1,4,3,5]{5,4,3,2,1,0} get-tuple-element(loop_var.1), index=2
+    get-tuple-element.3 = s32[4,3,5]{2,1,0} get-tuple-element(loop_var.1), index=3
+    bitcast.12855 = s32[1,1,1,4,3,5]{5,4,3,2,1,0} bitcast(get-tuple-element.3)
+    add.40974 = s32[1,1,1,4,3,5]{5,4,3,2,1,0} add(get-tuple-element.2, bitcast.12855)
+    add.1 = s32[1,1,1,4,3,5]{5,4,3,2,1,0} add(get-tuple-element.4, add.40974)
+    constant.1 = s32[]{:T(128)} constant(1)
+    idx = s32[]{:T(128)} add(get-tuple-element.1, constant.1)
+    ROOT tuple = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) tuple(idx, add.40974, add.1, get-tuple-element.3)
+  }
+
+  loop.condition {
+    loop_var.2 = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) parameter(0)
+    get-tuple-element.3 = s32[]{:T(128)} get-tuple-element(loop_var.2), index=0
+    m = s32[] constant(0)
+    v = s32[] constant(10000)
+    rng = s32[] rng(m, v), distribution=rng_uniform
+    ROOT less-than = pred[] compare(get-tuple-element.3, rng), direction=LT
+  }
+
+  ENTRY %main {
+    param.1 = s32[4,3,5]{2,1,0} parameter(0)
+    zero = s32[]{:T(128)} constant(0)
+    zeros32 = s32[]{:T(128)} constant(0)
+    broadcast = s32[1,1,1,4,3,5]{5,4,3,2,1,0} broadcast(zeros32)
+    input = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) tuple(zero, broadcast, broadcast, param.1)
+    ROOT while = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) while(input), condition=loop.condition, body=loop.body
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_before,
+                          ParseAndReturnVerifiedModule(hlo_string_before));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          WhileLoopFusibleSinking{}.Run(module_before.get()));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

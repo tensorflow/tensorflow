@@ -16,6 +16,8 @@ limitations under the License.
 #include "tsl/platform/numbers.h"
 
 #include <cmath>
+#include <cstdlib>
+#include <limits>
 #include <string>
 
 #include "absl/strings/str_cat.h"
@@ -379,6 +381,150 @@ TEST(safe_strtod, Double) {
 
   EXPECT_TRUE(absl::SimpleAtod("+NAN", &result));
   EXPECT_TRUE(std::isnan(result));
+}
+
+std::string DoubleToString(double d) {
+  return absl::StrCat(strings::LegacyPrecision(d));
+}
+
+TEST(LegacyPrecision, SimpleDoubleToString) {
+  // Make sure that nice, round decimal numbers are printed using few digits,
+  // even if they can't be represented exactly in binary.
+  EXPECT_EQ("0", DoubleToString(0.0));
+  EXPECT_EQ("1", DoubleToString(1.0));
+  EXPECT_EQ("-1", DoubleToString(-1.0));
+  EXPECT_EQ("0.2", DoubleToString(0.2));
+  EXPECT_EQ("1.1", DoubleToString(1.1));
+  EXPECT_EQ("1e+23", DoubleToString(1e23));
+  EXPECT_EQ("47.8", DoubleToString(47.8));
+  EXPECT_EQ("1000.2", DoubleToString(1000.2));
+}
+
+void TestDoubleRoundTrip(double value) {
+  std::string str = DoubleToString(value);
+  double rt = std::strtod(str.c_str(), nullptr);
+  if (std::isnan(value)) {
+    EXPECT_TRUE(std::isnan(rt));
+  } else {
+    EXPECT_EQ(value, rt);
+  }
+}
+
+TEST(LegacyPrecision, DoubleRoundTrip) {
+  // Make sure round-trips with strtod() work.  Note that even though we're
+  // dealing with floating points, we expect the results to be *exactly*
+  // equal, not approximately.
+  TestDoubleRoundTrip(1.2345678901234567);
+  TestDoubleRoundTrip(1.2345678901234565);
+  TestDoubleRoundTrip(1.2345678901234569);
+  TestDoubleRoundTrip(47.800000000000001);
+  TestDoubleRoundTrip(0.10000000000000005);
+  TestDoubleRoundTrip(0.010000000000000005);
+  TestDoubleRoundTrip(0.000000010000000000000005);
+  TestDoubleRoundTrip(1.0000000000000005);
+  TestDoubleRoundTrip(10.000000000000005);
+  TestDoubleRoundTrip(100.00000000000005);
+  TestDoubleRoundTrip(1000.0000000000005);
+  TestDoubleRoundTrip(100000000000000.05);
+
+  // IEEE-754 double finite values furthest from zero.
+  TestDoubleRoundTrip(1.7976931348623157e308);
+  TestDoubleRoundTrip(-1.7976931348623157e308);
+
+  // IEEE-754 double normalized values closest to zero.
+  TestDoubleRoundTrip(2.225073858507202e-308);
+  TestDoubleRoundTrip(-2.225073858507202e-308);
+
+  // IEEE-754 double denormalized values closest to zero.
+  TestDoubleRoundTrip(5e-324);
+  TestDoubleRoundTrip(-5e-324);
+
+  // Biggest and lowest valid numbers.
+  TestDoubleRoundTrip(std::numeric_limits<double>::max());
+  TestDoubleRoundTrip(std::numeric_limits<double>::lowest());
+
+  // Infinity and NaN.
+  TestDoubleRoundTrip(std::numeric_limits<double>::infinity());
+  TestDoubleRoundTrip(-std::numeric_limits<double>::infinity());
+  TestDoubleRoundTrip(std::numeric_limits<double>::quiet_NaN());
+}
+
+std::string FloatToString(float f) {
+  return absl::StrCat(strings::LegacyPrecision(f));
+}
+
+TEST(LegacyPrecision, SimpleFloatToString) {
+  // Make sure that nice, round decimal numbers are printed using few digits,
+  // even if they can't be represented exactly in binary.
+  EXPECT_EQ("0", FloatToString(0.0f));
+  EXPECT_EQ("-0", FloatToString(-0.0f));
+  EXPECT_EQ("1", FloatToString(1.0f));
+  EXPECT_EQ("-1", FloatToString(-1.0f));
+  EXPECT_EQ("0.2", FloatToString(0.2f));
+  EXPECT_EQ("1.1", FloatToString(1.1f));
+  EXPECT_EQ("1e+23", FloatToString(1e23f));
+  EXPECT_EQ("47.8", FloatToString(47.8f));
+  EXPECT_EQ("1000.2", FloatToString(1000.2f));
+  EXPECT_EQ("1.17549435e-38", FloatToString(1.17549435e-38f));
+}
+
+void TestFloatRoundTrip(float value) {
+  std::string str = FloatToString(value);
+  float rt = std::strtof(str.c_str(), nullptr);
+  if (std::isnan(value)) {
+    EXPECT_TRUE(std::isnan(rt));
+  } else {
+    EXPECT_EQ(value, rt);
+  }
+}
+
+TEST(LegacyPrecision, FloatRoundTrip) {
+  // Make sure round-trips with strtod() work.  Note that even though we're
+  // dealing with floating points, we expect the results to be *exactly*
+  // equal, not approximately.
+  FloatToString(1.2345678901234567);
+  FloatToString(1.2345678901234565);
+  FloatToString(1.2345678901234569);
+  FloatToString(47.800005);
+  FloatToString(0.10000005);
+  FloatToString(0.010000005);
+  FloatToString(0.000000010000005);
+  FloatToString(1.0000005);
+  FloatToString(10.000005);
+  FloatToString(100.00005);
+  FloatToString(1000.0005);
+  FloatToString(100000.05);
+  FloatToString(10.0000095);
+  FloatToString(10.0000100);
+  FloatToString(10.0000105);
+  FloatToString(10.0000110);
+  FloatToString(10.0000115);
+
+  // IEEE-754 float finite values furthest from zero.
+  FloatToString(+3.4028234e38f);
+  FloatToString(-3.4028234e38f);
+
+  // IEEE-754 float normalized values closest to zero.
+  FloatToString(+1.175494351e-38);
+  FloatToString(-1.175494351e-38);
+
+  // IEEE-754 double denormalized values closest to zero.
+  FloatToString(+1.4e-45);
+  FloatToString(-1.4e-45);
+
+  // Biggest and lowest valid numbers.
+  FloatToString(std::numeric_limits<float>::max());
+  FloatToString(std::numeric_limits<float>::lowest());
+
+  // Infinity and NaN.
+  FloatToString(std::numeric_limits<float>::infinity());
+  FloatToString(-std::numeric_limits<float>::infinity());
+  FloatToString(std::numeric_limits<float>::quiet_NaN());
+}
+
+TEST(LegacyPrecision, NoOpTypes) {
+  EXPECT_EQ(absl::StrCat(strings::LegacyPrecision(1)), "1");
+  EXPECT_EQ(absl::StrCat(strings::LegacyPrecision("foo")), "foo");
 }
 
 }  // namespace strings

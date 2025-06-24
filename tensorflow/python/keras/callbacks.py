@@ -616,7 +616,7 @@ class Callback:
 
   1. You should pack all your callbacks into a single `callbacks.CallbackList`
      so they can all be called together.
-  2. You will need to manually call all the `on_*` methods at the apropriate
+  2. You will need to manually call all the `on_*` methods at the appropriate
      locations in your loop. Like this:
 
      ```
@@ -637,10 +637,10 @@ class Callback:
      ```
 
   Attributes:
-      params: Dict. Training parameters
-          (eg. verbosity, batch size, number of epochs...).
-      model: Instance of `keras.models.Model`.
-          Reference of the model being trained.
+      params: Dict. Training parameters (eg. verbosity, batch size, number of
+        epochs...).
+      model: Instance of `keras.models.Model`. Reference of the model being
+        trained.
 
   The `logs` dictionary that callback methods
   take as argument will contain keys for quantities relevant to
@@ -1627,19 +1627,18 @@ class BackupAndRestore(Callback):
   ...   pass
   >>> history = model.fit(np.arange(100).reshape(5, 20), np.zeros(5), epochs=10,
   ...             batch_size=1, callbacks=[callback], verbose=0)
-  >>> # Only 6 more epochs are run, since first trainning got interrupted at
+  >>> # Only 6 more epochs are run, since first training got interrupted at
   >>> # zero-indexed epoch 4, second training will continue from 4 to 9.
   >>> len(history.history['loss'])
   6
 
   Args:
-      backup_dir: String, path to store the checkpoint.
-        e.g. backup_dir = os.path.join(working_dir, 'backup')
-        This is the directory in which the system stores temporary files to
-        recover the model from jobs terminated unexpectedly. The directory
-        cannot be reused elsewhere to store other files, e.g. by
-        BackupAndRestore callback of another training, or by another callback
-        (ModelCheckpoint) of the same training.
+      backup_dir: String, path to store the checkpoint. e.g. backup_dir =
+        os.path.join(working_dir, 'backup') This is the directory in which the
+        system stores temporary files to recover the model from jobs terminated
+        unexpectedly. The directory cannot be reused elsewhere to store other
+        files, e.g. by BackupAndRestore callback of another training, or by
+        another callback (ModelCheckpoint) of the same training.
   """
 
   def __init__(self, backup_dir):

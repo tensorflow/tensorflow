@@ -18,7 +18,10 @@ limitations under the License.
 #include <cfloat>
 #include <cmath>
 #include <cstdint>
+#include <string>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/tsl/platform/test.h"
 
 namespace tsl {
@@ -138,6 +141,29 @@ TEST(StatsCalculatorTest, StatWithPercentiles) {
   EXPECT_EQ(1, stat.percentile(50));
   EXPECT_EQ(150, stat.percentile(90));
   EXPECT_EQ(150, stat.percentile(100));
+}
+
+TEST(StatsCalculatorTest,
+     VerifyOrderStatsByRunOrderForMaxRunOrderLargerThanDetailsSize) {
+  auto options = StatSummarizerOptions();
+  StatsCalculator calc(options);
+  EXPECT_TRUE(calc.GetDetails().empty());
+
+  calc.AddNodeStats("node1", "type_1", 1, 10, 20);
+  ASSERT_EQ(calc.GetDetails().size(), 1);
+
+  calc.AddNodeStats("node1", "type_1", 2, 11, 21);
+  ASSERT_EQ(calc.GetDetails().size(), 1);
+  calc.AddNodeStats("node2", "type_2", 3, 10, 100);
+  ASSERT_EQ(calc.GetDetails().size(), 2);
+  calc.UpdateRunTotalUs(100);
+  std::string stats = calc.GetStatsByMetric(
+      "test", StatsCalculator::SortingMetric::BY_RUN_ORDER, 0);
+  ASSERT_GT(stats.size(), 0);
+  ASSERT_THAT(stats, ::testing::HasSubstr("node1"));
+  ASSERT_THAT(stats, ::testing::HasSubstr("node2"));
+  // Ensure that node1 has a lower run order than node2 in the stats.
+  ASSERT_LT(stats.find("node1"), stats.find("node2"));
 }
 
 }  // namespace

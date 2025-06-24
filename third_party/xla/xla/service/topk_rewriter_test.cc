@@ -15,27 +15,33 @@ limitations under the License.
 
 #include "xla/service/topk_rewriter.h"
 
-#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace m = ::xla::match;
 
@@ -392,7 +398,7 @@ HloModule module
 )" + getComparatorNoIota() + R"(
 ENTRY cluster {
   %arg_tuple.1 = f32[8,1234567] parameter(0)
-  %sort.27 = f32[8,1234567] sort(%arg_tuple.1), dimensions={1}, is_stable=true, to_apply=%compare
+  %sort.27 = f32[8,1234567] sort(%arg_tuple.1), dimensions={1}, is_stable=true, to_apply=%compare, metadata={op_type="x" op_name="y"}
   ROOT %slice.29 = f32[8,5] slice(%sort.27), slice={[0:8], [0:5]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -403,9 +409,11 @@ ENTRY cluster {
     TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
     TF_ASSERT_OK(HloDCE().Run(module.get()).status());
     ASSERT_TRUE(changed);
-    ASSERT_THAT(
-        module->entry_computation()->root_instruction(),
-        GmockMatch(m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0)));
+    auto root = module->entry_computation()->root_instruction();
+    ASSERT_THAT(root, GmockMatch(m::GetTupleElement(
+                          m::CustomCall(m::Parameter(0)), 0)));
+    CHECK_EQ(root->metadata().op_type(), "x");
+    CHECK_EQ(root->metadata().op_name(), "y");
     const HloInstruction* cc =
         module->entry_computation()->root_instruction()->operand(0);
     ASSERT_THAT(cc->custom_call_target(), "TopK");
@@ -417,9 +425,15 @@ ENTRY cluster {
                           TopkDecomposer().Run(module.get()));
   EXPECT_TRUE(decomposer_changed);
   TF_ASSERT_OK(HloDCE().Run(module.get()).status());
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Slice(
-                  m::Sort(m::Parameter(0)).WithPredicate(IsStableSort))));
+  auto root = module->entry_computation()->root_instruction();
+  HloInstruction* sort;
+  EXPECT_THAT(
+      root, GmockMatch(m::Slice(
+                m::Sort(&sort, m::Parameter(0)).WithPredicate(IsStableSort))));
+  CHECK_EQ(root->metadata().op_type(), "x");
+  CHECK_EQ(root->metadata().op_name(), "y");
+  CHECK_EQ(sort->metadata().op_type(), "x");
+  CHECK_EQ(sort->metadata().op_name(), "y");
   // ... and that it can become a topk again.
   run_topk_pass();
 }

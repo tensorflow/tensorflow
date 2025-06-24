@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/python/ifrt/array.h"
 
-#include <memory>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -26,8 +25,7 @@ namespace ifrt {
 
 char Array::ID = 0;
 
-std::vector<Array*> MakeArrayPointerList(
-    absl::Span<const tsl::RCReference<Array>> arrays) {
+std::vector<Array*> MakeArrayPointerList(absl::Span<const ArrayRef> arrays) {
   std::vector<Array*> result;
   result.reserve(arrays.size());
   for (const auto& array : arrays) {

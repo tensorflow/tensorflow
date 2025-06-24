@@ -18,14 +18,14 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/cpu/target_machine_features_stub.h"
-#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace {
 
-using IrEmitterTest = HloTestBase;
+using IrEmitterTest = HloHardwareIndependentTestBase;
 
 TEST_F(IrEmitterTest, ConvWithZeroSizedKernelNotImplementedAsEigen) {
   const char* const hlo_string = R"(

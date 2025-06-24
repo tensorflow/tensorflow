@@ -13,9 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
+#include <tuple>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/constant.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_utils.h"

@@ -30,7 +30,7 @@ def CreateTFReadVariableOp : NativeCodeCall<
     "$_builder.create<TF::ReadVariableOp>("
     "  $0.getLoc(),"
     "  GetResourceSubtypeOrDefault("
-    "    $2, $1.getType().cast<TensorType>().getElementType()),"
+    "    $2, llvm::cast<TensorType>($1.getType()).getElementType()),"
     "  $2)"
     >;
 

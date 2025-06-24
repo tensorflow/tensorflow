@@ -22,7 +22,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <new>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -33,6 +32,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/async_value.h"
@@ -53,7 +53,7 @@ class AsyncValuePtr;
 RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(absl::Status status);
 
 ABSL_DEPRECATED("Use the error async value constructor that takes absl::Status")
-RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(std::string_view message);
+RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(absl::string_view message);
 
 // Constructs an IndirectAsyncValue without forwarding it to anything.
 RCReference<IndirectAsyncValue> MakeIndirectAsyncValue();
@@ -347,8 +347,11 @@ class AsyncValueRef {
   }
 
   ABSL_DEPRECATED("Use SetError with absl::Status argument")
-  void SetError(std::string_view message) const {
-    SetError(absl::InternalError(message));
+  void SetError(absl::string_view message) const {
+    // Converting to `absl::string_view` because implicit conversion is not
+    // supported in android builds.
+    absl::string_view message_view(message.data(), message.size());
+    SetError(absl::InternalError(message_view));
   }
 
   explicit operator bool() const { return value_.get() != nullptr; }
@@ -547,9 +550,8 @@ class AsyncValuePtr {
     AndThen([waiter = std::forward<Waiter>(waiter), ptr = *this]() mutable {
       if (ABSL_PREDICT_FALSE(ptr.IsError())) {
         return waiter(ptr.GetError());
-      } else {
-        return waiter(&ptr.get());
       }
+      return waiter(&ptr.get());
     });
   }
 
@@ -562,9 +564,8 @@ class AsyncValuePtr {
             [waiter = std::forward<Waiter>(waiter), ref = CopyRef()]() mutable {
               if (ABSL_PREDICT_FALSE(ref.IsError())) {
                 return waiter(ref.GetError());
-              } else {
-                return waiter(&ref.get());
               }
+              return waiter(&ref.get());
             });
   }
 
@@ -590,9 +591,8 @@ class AsyncValuePtr {
     AndThen([waiter = std::forward<Waiter>(waiter), ptr = *this]() mutable {
       if (ABSL_PREDICT_FALSE(ptr.IsError())) {
         return waiter(ptr.GetError());
-      } else {
-        return waiter(absl::OkStatus());
       }
+      return waiter(absl::OkStatus());
     });
   }
 
@@ -605,9 +605,8 @@ class AsyncValuePtr {
             [waiter = std::forward<Waiter>(waiter), ref = CopyRef()]() mutable {
               if (ABSL_PREDICT_FALSE(ref.IsError())) {
                 return waiter(ref.GetError());
-              } else {
-                return waiter(absl::OkStatus());
               }
+              return waiter(absl::OkStatus());
             });
   }
 
@@ -850,19 +849,28 @@ class CountDownAsyncValueRef {
       : state_(std::make_shared<State>(std::move(ref), cnt)) {
     DCHECK(state_->ref.IsConstructed()) << "AsyncValue must be constructed";
     DCHECK(state_->ref.IsUnavailable()) << "AsyncValue must be unavailable";
-    DCHECK_GT(cnt, 0) << "Count must be positive";
+    DCHECK_GE(cnt, 0) << "Count must be positive";
+    if (ABSL_PREDICT_FALSE(cnt == 0)) {
+      state_->ref.SetStateConcrete();
+    }
   }
 
   template <typename... Args>
-  explicit CountDownAsyncValueRef(Args&&... args, int64_t cnt)
+  explicit CountDownAsyncValueRef(int64_t cnt, Args&&... args)
       : CountDownAsyncValueRef(
             MakeConstructedAsyncValueRef<T>(std::forward<Args>(args)...), cnt) {
   }
 
-  // Drops the count by one and returns true if async value became available.
-  bool CountDown(const absl::Status& status = absl::OkStatus()) {
+  // Drops the count by `count` and returns true if async value became
+  // available.
+  bool CountDown(size_t count, const absl::Status& status = absl::OkStatus()) {
+    // If `count` is zero, return the current state of the count down.
+    if (ABSL_PREDICT_FALSE(count == 0)) {
+      return state_->cnt.load(std::memory_order_relaxed) == 0;
+    }
+
     DCHECK(state_->ref.IsUnavailable()) << "AsyncValue must be unavailable";
-    DCHECK_GT(state_->cnt.load(), 0) << "Count must be positive";
+    DCHECK_GE(state_->cnt.load(), count) << "Invalid count down value";
 
     if (ABSL_PREDICT_FALSE(!status.ok())) {
       absl::MutexLock lock(&state_->mutex);
@@ -884,7 +892,8 @@ class CountDownAsyncValueRef {
     // 2. It is also a release barrier because all prior writes in the thread
     //    should be visible to other threads after the fetch_sub -- otherwise
     //    other threads might not see updated values.
-    bool is_complete = state_->cnt.fetch_sub(1, std::memory_order_acq_rel) == 1;
+    bool is_complete =
+        state_->cnt.fetch_sub(count, std::memory_order_acq_rel) == count;
 
     // If this was the last count down, we have to decide if we set async value
     // to concrete or error state.
@@ -900,17 +909,23 @@ class CountDownAsyncValueRef {
           return state_->status;
         };
         state_->ref.SetError(take_error());
-        return true;
       } else {
         state_->ref.SetStateConcrete();
-        return true;
       }
+      return true;
     }
 
     return false;
   }
 
-  AsyncValueRef<T> AsRef() const { return state_->ref; }
+  // Drops the count by `1` and returns true if async value became available.
+  bool CountDown(absl::Status status = absl::OkStatus()) {
+    return CountDown(1, status);
+  }
+
+  AsyncValueRef<T> AsRef() && { return std::move(state_->ref); }
+  AsyncValueRef<T> AsRef() const& { return state_->ref; }
+
   AsyncValuePtr<T> AsPtr() const { return state_->ref.AsPtr(); }
 
   // Returns true if count down was called with an error.
@@ -920,6 +935,8 @@ class CountDownAsyncValueRef {
 
   // Returns the number of count down operations left.
   int64_t count() const { return state_->cnt.load(std::memory_order_acquire); }
+
+  explicit operator bool() const { return state_ != nullptr; }
 
  private:
   static constexpr size_t kAtomicAlignment =

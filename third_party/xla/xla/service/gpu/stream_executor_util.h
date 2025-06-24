@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <tuple>
 
 #include "absl/status/status.h"
@@ -33,8 +34,9 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/xla_data.pb.h"
@@ -94,27 +96,26 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec);
 
 // Creates a kernel with a provided name, based from provided PTX in ptx.
 // The kernel should be executed using the provided executor.
-// The argument cubin_data represents compiled PTX and may be left empty.
 //
-// The canonical storage for both ptx and cubin_data should outlive
-// the lifetime of the kernel.
+// The canonical storage for ptx should outlive the lifetime of the kernel.
 absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
-    absl::string_view kernel_name, uint64_t num_args, absl::string_view ptx,
+    std::string kernel_name, uint64_t num_args, absl::string_view ptx,
+    se::StreamExecutor* stream_exec, uint32_t shared_mem_bytes = 0);
+
+// Creates a kernel with a provided name, based from provided CUBIN in
+// cubin_data. The kernel should be executed using the provided executor.
+//
+// The canonical storage cubin_data should outlive the lifetime of the kernel.
+absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
+    std::string kernel_name, uint64_t num_args,
     absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec,
     uint32_t shared_mem_bytes = 0);
 
 // Runs loaded kernel on the stream with the provided arguments.
-absl::Status ExecuteKernelOnStream(se::Kernel& kernel,
-                                   absl::Span<const se::DeviceMemoryBase> args,
-                                   const LaunchDimensions& dims,
-                                   se::Stream* stream);
-
-// Runs loaded kernel on the stream with the provided arguments.
-absl::Status ExecuteKernelOnStream(se::Kernel& kernel,
-                                   absl::Span<const se::DeviceMemoryBase> args,
-                                   const LaunchDimensions& dims,
-                                   const se::ClusterDim& cluster_dim,
-                                   se::Stream* stream);
+absl::Status ExecuteKernelOnStream(
+    se::Kernel& kernel, absl::Span<const se::KernelArgument> args,
+    const LaunchDimensions& dims,
+    const std::optional<se::ClusterDim>& cluster_dim, se::Stream* stream);
 
 // Initializes `buffer` with random data on `stream`.
 // `rng_state` is an inout parameter for the pseudorandom generator state.

@@ -25,11 +25,12 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/shape.h"
 
 namespace xla {
 
-// This is a legalization pass that propagates the memory space in the layout to
-// the fusion computations.
+// This is a legalization pass that propagates the memory space (and associated
+// split config) in the layout to the fusion computations.
 class MemorySpacePropagation : public HloModulePass {
  public:
   ~MemorySpacePropagation() override = default;
@@ -42,9 +43,10 @@ class MemorySpacePropagation : public HloModulePass {
  private:
   // Given the shape index (operand or output) and its corresponding instruction
   // in the fused computation (parameter or root), propagates the memory space
-  // in the callee side. Returns true if the module is modified.
+  // (and associated split config) in the callee side. Returns true if the
+  // module is modified.
   bool Propagate(ShapeIndexView index, const HloInstruction* callee_instruction,
-                 int64_t memory_space) const;
+                 const Shape& src_shape) const;
 
   std::unique_ptr<HloDataflowAnalysis> dataflow_analysis_;
 };

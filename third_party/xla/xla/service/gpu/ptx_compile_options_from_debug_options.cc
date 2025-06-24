@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/ptx_compile_options_from_debug_options.h"
 
 #include "xla/stream_executor/cuda/compilation_options.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 

@@ -47,7 +47,7 @@ absl::StatusOr<OpSharding> ToOpSharding(const Sharding& sharding);
 // `sharding_param`.
 absl::StatusOr<OpSharding> ToOpSharding(
     const ShardingParam& sharding_param,
-    const tsl::RCReference<xla::ifrt::DeviceList>& device_mapping);
+    const xla::ifrt::DeviceListRef& device_mapping);
 
 // Converts ShardingParam to HloSharding.
 //

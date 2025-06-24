@@ -26,6 +26,7 @@ limitations under the License.
 
 namespace xla {
 
+
 // CollectivePermuteDecomposer is a pass that (1) converts CollectivePermute
 // operations without any cycle in their (source, target) relationship to
 // Send/Recv, and (2) annotates the Send/Recv for pipelining with a frontend
@@ -59,8 +60,11 @@ namespace xla {
 //
 class CollectivePermuteDecomposer : public HloModulePass {
  public:
-  explicit CollectivePermuteDecomposer(int64_t threshold_in_bytes)
-      : threshold_in_bytes_(threshold_in_bytes) {}
+  explicit CollectivePermuteDecomposer(
+      int64_t threshold_in_bytes,
+      DebugOptions::PipelineParallelismOptLevel pipeline_parallelism_opt_level)
+      : threshold_in_bytes_(threshold_in_bytes),
+        pipeline_parallelism_opt_level_(pipeline_parallelism_opt_level) {}
   absl::string_view name() const override {
     return "collective-permute-decomposer";
   }
@@ -74,6 +78,8 @@ class CollectivePermuteDecomposer : public HloModulePass {
  private:
   // Transform only if the size of the collective permute is >= threshold.
   int64_t threshold_in_bytes_;
+
+  DebugOptions::PipelineParallelismOptLevel pipeline_parallelism_opt_level_;
 };
 
 }  // namespace xla

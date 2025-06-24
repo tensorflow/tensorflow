@@ -66,88 +66,20 @@ cc_library(
 )
 
 config_setting(
-    name = "haswell",
-    values = {
-        "cpu": "haswell",
-    },
-)
-
-config_setting(
-    name = "ios_x86_64",
-    values = {
-        "cpu": "ios_x86_64",
-    },
-)
-
-config_setting(
-    name = "tvos_x86_64",
-    values = {
-        "cpu": "tvos_x86_64",
-    },
-)
-
-config_setting(
-    name = "k8",
-    values = {
-        "cpu": "k8",
-    },
-)
-
-config_setting(
-    name = "x86",
-    values = {
-        "cpu": "x86",
-    },
+    name = "x86_32",
+    constraint_values = ["@platforms//cpu:x86_32"],
 )
 
 config_setting(
     name = "x86_64",
-    values = {
-        "cpu": "x86_64",
-    },
-)
-
-config_setting(
-    name = "darwin",
-    values = {
-        "cpu": "darwin",
-    },
-)
-
-config_setting(
-    name = "darwin_x86_64",
-    values = {
-        "cpu": "darwin_x86_64",
-    },
-)
-
-config_setting(
-    name = "freebsd",
-    values = {
-        "cpu": "freebsd",
-    },
-)
-
-config_setting(
-    name = "windows",
-    values = {
-        "cpu": "x64_windows",
-    },
+    constraint_values = ["@platforms//cpu:x86_64"],
 )
 
 selects.config_setting_group(
     name = "x86_any",
     match_any = [
-        ":haswell",
-        ":ios_x86_64",
-        ":k8",
-        ":x86",
+        ":x86_32",
         ":x86_64",
-        ":darwin",
-        ":darwin_x86_64",
-        ":freebsd",
-        ":windows",
-        ":tvos_x86_64",
     ],
 )
 

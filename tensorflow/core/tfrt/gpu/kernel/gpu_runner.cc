@@ -41,6 +41,8 @@ limitations under the License.
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/framework/device_id_manager.h"
 #include "xla/tsl/framework/serving_device_selector.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/device.h"
@@ -58,10 +60,8 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/global_state.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/gpu_variables_table.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime

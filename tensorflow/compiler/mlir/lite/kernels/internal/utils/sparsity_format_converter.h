@@ -60,7 +60,7 @@ class FormatConverter {
   void DenseToSparse(const T* src_data);
 
   // Check if val is equal to zero.
-  bool IsZero(const T val);
+  bool IsZero(T val);
 
   // Shape of the conceptual dense tensor.
   std::vector<int> dense_shape_;

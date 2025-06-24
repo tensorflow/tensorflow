@@ -20,6 +20,7 @@ limitations under the License.
 #include <string.h>
 #include <sys/types.h>
 
+#include <cstdint>
 #include <utility>
 
 #include "tensorflow/core/framework/types.pb.h"

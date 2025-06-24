@@ -16,7 +16,6 @@ py_strict_library(
                    "will not receive new features, and will be removed by " +
                    "early 2019. You should update all usage of " +
                    "`tf.distributions` to `tfp.distributions`."),
-    srcs_version = "PY3",
     deps = [
         ":distributions_py",
     ],
@@ -25,7 +24,6 @@ py_strict_library(
 py_strict_library(
     name = "distributions_py",
     srcs = ["distributions.py"],
-    srcs_version = "PY3",
     deps = [
         ":bernoulli",
         ":beta",
@@ -48,7 +46,6 @@ py_strict_library(
 py_strict_library(
     name = "util",
     srcs = ["util.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",

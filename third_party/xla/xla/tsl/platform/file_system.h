@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <string>
@@ -25,6 +26,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/base/macros.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_statistics.h"
 #include "xla/tsl/platform/macros.h"
@@ -781,8 +786,30 @@ class RandomAccessFile {
   /// because of EOF.
   ///
   /// Safe for concurrent use by multiple threads.
+  ABSL_DEPRECATE_AND_INLINE()
   virtual absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
-                            char* scratch) const = 0;
+                            char* scratch) const {
+    // Subclasses should implement the safe version of Read() below instead of
+    // this. This implementation is provided to enable the migration: without
+    // this, when a subclass switches from implementing this (deprecated) Read()
+    // to the safe version, the compiler will complain that the subclass
+    // doesn't implement the old one.
+    return Read(offset, *result, absl::MakeSpan(scratch, n));
+  }
+
+  // Like the above, but takes an absl::Span<char> instead of a size_t and a
+  // char*.
+  // TODO(b/393630847):
+  // - Make subclasses implement this method instead of the above,
+  // - Remove the above.
+  // - Mark this method as `= 0` to force subclasses to implement it.
+  virtual absl::Status Read(uint64 offset, absl::string_view& result,
+                            absl::Span<char> scratch) const {
+    // This implementation is provided only for backward compatibility.
+    // If a subclass implements the deprecated Read() above instead of this, it
+    // will still work.
+    return Read(offset, scratch.size(), &result, scratch.data());
+  }
 
 #if defined(TF_CORD_SUPPORT)
   /// \brief Read up to `n` bytes from the file starting at `offset`.
@@ -927,7 +954,7 @@ class FileSystemRegistry {
 /// \brief An abstraction for enforcing ACL checks in FileSystem.
 class FileAcl {
  public:
-  virtual absl::Status CheckAccess(std::string_view path) = 0;
+  virtual absl::Status CheckAccess(absl::string_view path) = 0;
   virtual ~FileAcl() = default;
 };
 

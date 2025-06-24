@@ -23,20 +23,23 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/pjrt/compile_options.pb.h"
-#include "xla/protobuf_util.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/test_compilation_environment.pb.h"
 #include "xla/shape.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace {
+
+using ::tsl::proto_testing::EqualsProto;
 
 // In order to use TestCompilationEnvironment* with CompilationEnvironments, we
 // must define ProcessNewEnv for them.
@@ -50,8 +53,12 @@ std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv(
 TEST(ExecutableBuildOptionsTest, ProtoRoundTripWorks) {
   ExecutableBuildOptionsProto p;
   p.set_device_ordinal(1);
+
+  // Set result_layout to an array shape.
+  p.mutable_result_layout()->set_element_type(PrimitiveType::F32);
   p.mutable_result_layout()->add_dimensions(2);
   p.mutable_result_layout()->add_is_dynamic_dimension(true);
+
   {
     CompilationEnvironments::RegisterProcessNewEnvFn(
         test::TestCompilationEnvironment1::descriptor(), ProcessNewEnv);
@@ -87,7 +94,7 @@ TEST(ExecutableBuildOptionsTest, ProtoRoundTripWorks) {
                           ExecutableBuildOptionsFromProto(p));
   TF_ASSERT_OK_AND_ASSIGN(const ExecutableBuildOptionsProto p2,
                           options.ToProto());
-  EXPECT_TRUE(protobuf_util::ProtobufEquals(p, p2));
+  EXPECT_THAT(p2, EqualsProto(p));
 }
 
 TEST(ExecutableBuildOptionsTest, SerializationFailsOnNonSerializableFields) {

@@ -21,22 +21,38 @@ include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/IR/CommonTypeConstraints.td"
-include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization.td"
+include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 
 // Quantize attribute $0 by using quantization parameter from %1.
-def QuantizeByQuantizedType : NativeCodeCall<"quant::Quantize($0, $1.getValue())">;
+def QuantizeByQuantizedType : NativeCodeCall<"TFL::Quantize($0, $1.getValue())">;
 def F32ElementsAttr : ElementsAttrBase<
-  CPred<"$_self.cast<ElementsAttr>().getShapedType().getElementType().isF32()">, "float constant tensor">;
+  CPred<"llvm::cast<ElementsAttr>($_self).getShapedType().getElementType().isF32()">, "float constant tensor">;
+
+def HasSameType : Constraint<CPred<[{$0.getType() == $1.getType()}]>>;
+
+def HasDifferentTypes : Constraint<CPred<[{$0.getType() != $1.getType()}]>>;
+
+def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
 
 // Squash tfl.dequantize and tfl.quantize pairs.
-// TODO(fengliuai): Compare the scale of input and output. This can also be
-// squashed to a requantize op if the scales are different.
-def : Pat<(TFL_QuantizeOp (TFL_DequantizeOp $in), $qt), (replaceWithValue $in)>;
+def SquashDqQ : Pat<(TFL_QuantizeOp:$out (TFL_DequantizeOp $in), $qt),
+          (replaceWithValue $in),
+          [(HasSameType $in, $out)]>;
+
+// Change DQ->Q with different types to a requant.
+def FuseDqQToRequant: Pat<(TFL_QuantizeOp:$out (TFL_DequantizeOp:$mid $in), $qt),
+          (TFL_QuantizeOp $in, $qt),
+          [(HasDifferentTypes $in, $out), (HasOneUse $mid)]>;
+
+// Squash repeating quantize ops.
+def FuseQQToRequant: Pat<(TFL_QuantizeOp (TFL_QuantizeOp:$mid $in, $_), $qt2),
+          (TFL_QuantizeOp $in, $qt2),
+          [(HasOneUse $mid)]>;
 
 // If the tfl.dequantize op wasn't fused, we shouldn't quantize the floating
 // point constant.
-def : Pat<(TFL_DequantizeOp
+def EliminateRemnantConstQDQ: Pat<(TFL_DequantizeOp
              (TFL_QuantizeOp (Arith_ConstantOp F32ElementsAttr:$cst), $qt)),
           (TFL_ConstOp $cst)>;
 

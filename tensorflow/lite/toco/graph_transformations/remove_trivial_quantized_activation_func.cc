@@ -12,11 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <limits>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
@@ -95,8 +97,9 @@ bool IsTrivialFusedActivationFunc(
 // Attempts to remove both fused and unfused activation functions if the
 // quantization params indicate that the representable values fall inside the
 // activation range.
-::tensorflow::Status RemoveTrivialQuantizedActivationFunc::Run(
-    Model* model, std::size_t op_index, bool* modified) {
+absl::Status RemoveTrivialQuantizedActivationFunc::Run(Model* model,
+                                                       std::size_t op_index,
+                                                       bool* modified) {
   *modified = false;
   const auto it = model->operators.begin() + op_index;
   auto* op = it->get();

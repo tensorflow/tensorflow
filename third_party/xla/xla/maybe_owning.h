@@ -19,6 +19,8 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "xla/tsl/util/safe_reinterpret_cast.h"
+
 // A unique_ptr like class which may or may not have ownership of its pointer.
 // Uses least significant bit of the pointer to indicate ownership.
 template <typename T>
@@ -81,18 +83,21 @@ class MaybeOwning final {
   };
 
   T* RemoveMask() const {
-    return reinterpret_cast<T*>(ptr_and_owning_bit_ & kPointerMask);
+    return tsl::safe_reinterpret_cast<T*>(
+        static_cast<intptr_t>(ptr_and_owning_bit_ & kPointerMask));
   }
 
   static intptr_t TakeUnique(std::unique_ptr<T> unique) {
     T* released = unique.release();
-    DCHECK_EQ(reinterpret_cast<intptr_t>(released) & kOwningBitMask, 0);
-    return reinterpret_cast<intptr_t>(released) | kOwningBitMask;
+    DCHECK_EQ(tsl::safe_reinterpret_cast<intptr_t>(released) & kOwningBitMask,
+              0);
+    return tsl::safe_reinterpret_cast<intptr_t>(released) | kOwningBitMask;
   }
 
   static intptr_t Borrow(const T* borrowed) {
-    DCHECK_EQ(reinterpret_cast<intptr_t>(borrowed) & kOwningBitMask, 0);
-    return reinterpret_cast<intptr_t>(borrowed);
+    DCHECK_EQ(tsl::safe_reinterpret_cast<intptr_t>(borrowed) & kOwningBitMask,
+              0);
+    return tsl::safe_reinterpret_cast<intptr_t>(borrowed);
   }
 
   void MaybeDeleteOwned() {

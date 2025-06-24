@@ -28,10 +28,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/utils/hlo_query.h"
-#include "xla/test.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status_matchers.h"
@@ -57,7 +58,7 @@ int64_t CountInstructions(HloModule& module, HloOpcode opcode) {
   return count;
 }
 
-using GpuLoopDoubleBufferTransformerTest = HloTestBase;
+using GpuLoopDoubleBufferTransformerTest = HloHardwareIndependentTestBase;
 
 TEST_F(GpuLoopDoubleBufferTransformerTest,
        AutoUnrollLoopWhenCollectivesArePresent) {
@@ -80,7 +81,7 @@ body {
   input_tuple = (f32[], s32[]) parameter(0)
   param_0 = f32[] get-tuple-element(input_tuple), index=0
   cond = s32[] get-tuple-element(input_tuple), index=1
-  all-reduce-start = f32[] all-reduce-start(param_0), channel_id=8, replica_groups={{0}}, to_apply=ar_add, backend_config="{\"is_sync\":false}"
+  all-reduce-start = f32[] all-reduce-start(param_0), channel_id=8, replica_groups={{0}}, to_apply=ar_add, backend_config={"collective_backend_config": {"is_sync": false}}
   one = s32[] constant(1)
   all-reduce-done = f32[] all-reduce-done(all-reduce-start)
   cond_plus_1 = s32[] add(cond, one)
@@ -91,7 +92,9 @@ ENTRY main {
   param_0 = f32[] parameter(0)
   param_2 = s32[] constant(0)
   tuple = (f32[], s32[]) tuple(param_0, param_2)
-  ROOT while = (f32[], s32[]) while(tuple), condition=condition, body=body, backend_config={"known_trip_count":{"n":"10"}}
+  ROOT while = (f32[], s32[]) while(tuple), condition=condition, body=body,
+      backend_config={"known_trip_count":{"n":"10"},
+                      "known_induction_variable":{"tuple_index":"1"}}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
@@ -109,6 +112,7 @@ ENTRY main {
       WhileLoopBackendConfig config,
       while_instruction->backend_config<WhileLoopBackendConfig>());
   EXPECT_EQ(config.known_trip_count().n(), 5);
+  EXPECT_EQ(config.known_induction_variable().tuple_index(), 1);
   EXPECT_EQ(CountInstructions((*while_instruction->while_body()),
                               HloOpcode::kAllReduceStart),
             2);
@@ -503,7 +507,7 @@ body {
  input_tuple = (f32[], s32[]) parameter(0)
  param_0 = f32[] get-tuple-element(input_tuple), index=0
  cond = s32[] get-tuple-element(input_tuple), index=1
- all-reduce-start = f32[] all-reduce-start(param_0), channel_id=8, replica_groups={{0}}, to_apply=ar_add, backend_config="{\"is_sync\":false}"
+ all-reduce-start = f32[] all-reduce-start(param_0), channel_id=8, replica_groups={{0}}, to_apply=ar_add, backend_config={"collective_backend_config": {"is_sync": false}}
  one = s32[] constant(1)
  all-reduce-done = f32[] all-reduce-done(all-reduce-start)
  cond_plus_1 = s32[] add(cond, one)
@@ -572,7 +576,7 @@ body {
  input_tuple = (f32[], s32[]) parameter(0)
  param_0 = f32[] get-tuple-element(input_tuple), index=0
  cond = s32[] get-tuple-element(input_tuple), index=1
- all-reduce-start = f32[] all-reduce-start(param_0), channel_id=8, replica_groups={{0}}, to_apply=ar_add, backend_config="{\"is_sync\":false}"
+ all-reduce-start = f32[] all-reduce-start(param_0), channel_id=8, replica_groups={{0}}, to_apply=ar_add, backend_config={"collective_backend_config": {"is_sync": false}}
  one = s32[] constant(1)
  all-reduce-done = f32[] all-reduce-done(all-reduce-start)
  cond_plus_1 = s32[] add(cond, one)
@@ -617,6 +621,76 @@ ENTRY main {
       });
   // we expect that all 10 all-reduces will have different channel ids.
   EXPECT_EQ(channel_ids.size(), 10);
+}
+
+TEST_F(GpuLoopDoubleBufferTransformerTest, ControlDepsCopiedWhenUnrolled) {
+  // Test control dependencies are correctly copied when unrolling.
+  const char* const kModuleString = R"(
+HloModule loop_unrolling_no_deps
+condition {
+  input_tuple = (f32[], s32[]) parameter(0)
+  cond = s32[] get-tuple-element(input_tuple), index=1
+  trip_count = s32[] constant(10)
+  ROOT done = pred[] compare(cond, trip_count), direction=LT
+}
+
+body {
+ input_tuple = (f32[], s32[]) parameter(0)
+ param_0 = f32[] get-tuple-element(input_tuple), index=0
+ cond = s32[] get-tuple-element(input_tuple), index=1
+ c2 = f32[] constant(2)
+ multiply = f32[] multiply(c2, param_0), control-predecessors={cond}
+ one = s32[] constant(1)
+ cond_plus_1 = s32[] add(cond, one)
+ ROOT output_tuple = (f32[], s32[]) tuple(multiply, cond_plus_1)
+}
+
+ENTRY main {
+ param_0 = f32[] parameter(0)
+ param_2 = s32[] constant(0)
+ tuple = (f32[], s32[]) tuple(param_0, param_2)
+ ROOT while = (f32[], s32[]) while(tuple), condition=condition, body=body, backend_config={"known_trip_count":{"n":"11"}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  DoubleBufferLoopUnrolling double_buffer;
+  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
+
+  HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
+      *module->entry_computation(), HloOpcode::kWhile);
+  TF_ASSERT_OK_AND_ASSIGN(
+      WhileLoopBackendConfig config,
+      while_instruction->backend_config<WhileLoopBackendConfig>());
+
+  // After unrolling, there should be 2 multiplies, each with a GTE control
+  // predecessor.
+  EXPECT_EQ(CountInstructions((*while_instruction->while_body()),
+                              HloOpcode::kMultiply),
+            2);
+  for (HloInstruction* instr :
+       while_instruction->while_body()->MakeInstructionPostOrder()) {
+    if (instr->opcode() != HloOpcode::kMultiply) {
+      continue;
+    }
+    EXPECT_EQ(instr->control_predecessors().size(), 1);
+    EXPECT_EQ(instr->control_predecessors()[0]->opcode(),
+              HloOpcode::kGetTupleElement);
+    EXPECT_EQ(instr->control_predecessors()[0]->parent(), instr->parent());
+  }
+
+  // After unrolling, there should be 1 multiply in the parent computation.
+  EXPECT_EQ(
+      CountInstructions((*module->entry_computation()), HloOpcode::kMultiply),
+      1);
+  HloInstruction* multiply_instruction =
+      hlo_query::GetFirstInstructionWithOpcode(*module->entry_computation(),
+                                               HloOpcode::kMultiply);
+  EXPECT_EQ(multiply_instruction->control_predecessors().size(), 1);
+  EXPECT_EQ(multiply_instruction->control_predecessors()[0]->opcode(),
+            HloOpcode::kGetTupleElement);
+  EXPECT_EQ(multiply_instruction->control_predecessors()[0]->parent(),
+            multiply_instruction->parent());
 }
 
 // The following 2 tests also address the regression described here:
@@ -943,10 +1017,10 @@ ENTRY main {
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body {{.+}} {
     // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,3},{1,3},{1,4},{2,4}{{[}]}}}
-    // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.+}} %[[cp1]], {{.+}})
-    // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.+}} %[[out1]]), index=0
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.+}} %[[param2]]), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,2},{0,3},{1,3},{1,4}{{[}]}}}
-    // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.+}} %[[cp2]], {{.+}})
+    // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.*}}%[[cp1]], {{.*}})
+    // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.*}}%[[out1]]), index=0
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[param2]]), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,2},{0,3},{1,3},{1,4}{{[}]}}}
+    // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.*}}%[[cp2]], {{.*}})
     // CHECK: }
     // CHECK: ENTRY %main {{.+}} {
     // CHECK-NOT: collective-permute
@@ -995,15 +1069,15 @@ ENTRY main {
   VLOG(1) << module->ToString();
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
-    // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,3},{0,3},{1,4},{1,4},{2,5},{2,5},{3,6},{3,6}{{[}]}}}
-    // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.+}} %[[cp1]], {{.+}})
-    // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.+}} %[[out1]])
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,2},{0,3},{0,3},{1,4},{1,4},{2,5},{2,5},{3,6}{{[}]}}}
-    // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.+}} %[[cp2]], {{.+}})
+    // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.*}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,3},{0,3},{1,4},{1,4},{2,5},{2,5},{3,6},{3,6}{{[}]}}}
+    // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.*}}%[[cp1]], {{.*}})
+    // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.*}}%[[out1]])
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,2},{0,3},{0,3},{1,4},{1,4},{2,5},{2,5},{3,6}{{[}]}}}
+    // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.*}}%[[cp2]], {{.*}})
     // CHECK: ENTRY %main {{.+}} {
-    // CHECK:   %[[cp_peeled:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0}{{[}]}}}
-    // CHECK:   %[[out_peeled:.+]] = {{.+}} tuple({{.+}} %[[cp_peeled]], {{.+}})
-    // CHECK:   %[[while:.+]] = {{.+}} while({{.+}} %[[out_peeled]])
+    // CHECK:   %[[cp_peeled:.+]] = {{.+}} collective-permute({{.*}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0}{{[}]}}}
+    // CHECK:   %[[out_peeled:.+]] = {{.+}} tuple({{.*}}%[[cp_peeled]], {{.*}})
+    // CHECK:   %[[while:.+]] = {{.+}} while({{.*}}%[[out_peeled]])
     // CHECK: }
     )"));
 }
@@ -1049,11 +1123,11 @@ ENTRY main {
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
-    // CHECK:   %[[cp1:.+]] = f32[] collective-permute(f32[] %param_0), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{4,6},{3,6},{3,5},{2,5},{2,4},{1,4},{1,3},{0,3}{{[}]}}}
-    // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.+}} %[[cp1]], {{.+}})
-    // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.+}} %[[out1]]), index=0
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.+}} %[[param2]]), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{3,6},{3,5},{2,5},{2,4},{1,4},{1,3},{0,3},{0,2}{{[}]}}}
-    // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.+}} %[[cp2]], {{.+}})
+    // CHECK:   %[[cp1:.+]] = f32[] collective-permute(%param_0), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{4,6},{3,6},{3,5},{2,5},{2,4},{1,4},{1,3},{0,3}{{[}]}}}
+    // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.*}}%[[cp1]], {{.*}})
+    // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.*}}%[[out1]]), index=0
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[param2]]), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{3,6},{3,5},{2,5},{2,4},{1,4},{1,3},{0,3},{0,2}{{[}]}}}
+    // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.*}}%[[cp2]], {{.*}})
     // CHECK: ENTRY %main
     // CHECK-NOT: collective-permute
     // CHECK: }
@@ -1102,15 +1176,15 @@ ENTRY main {
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
     // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{3,6},{3,6},{2,5},{2,5},{1,4},{1,4},{0,3},{0,3}{{[}]}}}
-    // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.+}} %[[cp1]], {{.+}})
-    // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.+}} %[[out1]]), index=0
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.+}} %[[param2]]), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{3,6},{2,5},{2,5},{1,4},{1,4},{0,3},{0,3},{0,2}{{[}]}}}
-    // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.+}} %[[cp2]], {{.+}})
+    // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.*}}%[[cp1]], {{.*}})
+    // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.*}}%[[out1]]), index=0
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[param2]]), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{3,6},{2,5},{2,5},{1,4},{1,4},{0,3},{0,3},{0,2}{{[}]}}}
+    // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.*}}%[[cp2]], {{.*}})
     // CHECK: }
     // CHECK: ENTRY %main
     // CHECK:   %[[cp_peeled:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{0,0}{{[}]}}}
-    // CHECK:   %[[out_peeled:.+]] = {{.+}} tuple({{.+}} %[[cp_peeled]], {{.+}})
-    // CHECK:   ROOT {{.+}} = {{.+}} while({{.+}} %[[out_peeled]])
+    // CHECK:   %[[out_peeled:.+]] = {{.+}} tuple({{.*}}%[[cp_peeled]], {{.*}})
+    // CHECK:   ROOT {{.+}} = {{.+}} while({{.*}}%[[out_peeled]])
     // CHECK: }
   )"));
 }
@@ -1158,12 +1232,12 @@ ENTRY main {
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
     // CHECK:   %[[cp_start1:.+]] = {{.+}} collective-permute-start({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,3},{1,3},{1,4},{2,4}{{[}]}}}
-    // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute-done({{.+}} %[[cp_start1]])
-    // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.+}} %[[cp1]], {{.+}})
-    // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.+}} %[[out1]]), index=0
-    // CHECK:   %[[cp_start2:.+]] = {{.+}} collective-permute-start({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,2},{0,3},{1,3},{1,4}{{[}]}}}
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute-done({{.+}} %[[cp_start2]])
-    // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.+}} %[[cp2]], {{.+}})
+    // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute-done({{.*}}%[[cp_start1]])
+    // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.*}}%[[cp1]], {{.*}})
+    // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.*}}%[[out1]]), index=0
+    // CHECK:   %[[cp_start2:.+]] = {{.+}} collective-permute-start({{.*}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,2},{0,3},{1,3},{1,4}{{[}]}}}
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute-done({{.*}}%[[cp_start2]])
+    // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.*}}%[[cp2]], {{.*}})
     // CHECK: }
     // CHECK: ENTRY %main
     // CHECK-NOT: collective-permute
@@ -1324,6 +1398,94 @@ ENTRY main {
       DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll);
   // The processing of the loop should be completely skipped.
   EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(GpuLoopDoubleBufferTransformerTest, UpdateInitStepOddTripCount) {
+  absl::string_view kModuleString = R"(
+    HloModule m
+      condition {
+      input_tuple = (s32[]) parameter(0)
+      iter = s32[] get-tuple-element(input_tuple), index=0
+      c12 = s32[] constant(12)
+      ROOT continue = pred[] compare(iter, c12), direction=LT
+    }
+
+    body {
+      input_tuple = (s32[]) parameter(0)
+      iter = s32[] get-tuple-element(input_tuple), index=0
+      c2 = s32[] constant(2)
+      next_iter = s32[] add(iter, c2)
+      ROOT output_tuple = (s32[]) tuple(next_iter)
+    }
+
+    ENTRY main {
+      c3 = s32[] constant(3)
+      tuple = (s32[]) tuple(c3)
+      // Values: 3, 5, 7, 9, 11
+      ROOT while = (s32[]) while(tuple), condition=condition, body=body,
+        backend_config={"known_trip_count":{"n":"5"},
+                        "known_init_step":{"init":"3","step":"2"}}
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  DoubleBufferLoopUnrolling unroller(
+      DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
+      *module->entry_computation(), HloOpcode::kWhile);
+  TF_ASSERT_OK_AND_ASSIGN(
+      WhileLoopBackendConfig config,
+      while_instruction->backend_config<WhileLoopBackendConfig>());
+  EXPECT_EQ(config.known_trip_count().n(), 2);
+  EXPECT_EQ(config.known_init_step().init(), 5);
+  EXPECT_EQ(config.known_init_step().step(), 4);
+}
+
+TEST_F(GpuLoopDoubleBufferTransformerTest, UpdateInitStepEvenTripCount) {
+  absl::string_view kModuleString = R"(
+    HloModule m
+      condition {
+      input_tuple = (s32[]) parameter(0)
+      iter = s32[] get-tuple-element(input_tuple), index=0
+      c14 = s32[] constant(14)
+      ROOT continue = pred[] compare(iter, c14), direction=LT
+    }
+
+    body {
+      input_tuple = (s32[]) parameter(0)
+      iter = s32[] get-tuple-element(input_tuple), index=0
+      c2 = s32[] constant(2)
+      next_iter = s32[] add(iter, c2)
+      ROOT output_tuple = (s32[]) tuple(next_iter)
+    }
+
+    ENTRY main {
+      c3 = s32[] constant(3)
+      tuple = (s32[]) tuple(c3)
+      // Values: 3, 5, 7, 9, 11, 13
+      ROOT while = (s32[]) while(tuple), condition=condition, body=body,
+        backend_config={"known_trip_count":{"n":"6"},
+                        "known_init_step":{"init":"3","step":"2"}}
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  DoubleBufferLoopUnrolling unroller(
+      DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
+      *module->entry_computation(), HloOpcode::kWhile);
+  TF_ASSERT_OK_AND_ASSIGN(
+      WhileLoopBackendConfig config,
+      while_instruction->backend_config<WhileLoopBackendConfig>());
+  EXPECT_EQ(config.known_trip_count().n(), 3);
+  EXPECT_EQ(config.known_init_step().init(), 3);
+  EXPECT_EQ(config.known_init_step().step(), 4);
 }
 
 }  // namespace

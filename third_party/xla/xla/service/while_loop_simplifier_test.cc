@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/while_loop_simplifier.h"
 
+#include <cstdint>
 #include <string>
 
 #include <gmock/gmock.h>
@@ -22,17 +23,18 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -48,7 +50,7 @@ HloInstruction* FindFirstWhile(HloModule* m) {
   return *absl::c_find_if(instrs, HloPredicateIsOp<HloOpcode::kWhile>);
 }
 
-class WhileLoopSimplifierTest : public HloTestBase {
+class WhileLoopSimplifierTest : public HloHardwareIndependentTestBase {
  protected:
   // Makes an HloModule that contains a loop with `num_iters` iteration.
   [[nodiscard]] std::unique_ptr<VerifiedHloModule> MakeModuleWithSimpleLoop(
@@ -164,6 +166,13 @@ TEST_F(WhileLoopSimplifierTest,
 
 TEST_F(WhileLoopSimplifierTest, LoopWithTwoIterationsNotSimplified) {
   auto m = MakeModuleWithSimpleLoop(/*num_iters=*/2);
+  EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
+}
+
+TEST_F(WhileLoopSimplifierTest, LoopWithTwoIterationsAndDeadCodeNotSimplified) {
+  auto m = MakeModuleWithSimpleLoop(/*num_iters=*/2);
+  m->entry_computation()->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(50)));
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
 }
 
@@ -487,6 +496,9 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
   EXPECT_THAT(new_while_op->while_condition()->root_instruction(),
               op::Eq(op::Constant(),
                      op::GetTupleElement(op::Parameter(0), /*tuple_index=*/1)));
+
+  EXPECT_THAT(new_while_op->while_init(),
+              op::Tuple(op::Constant(), op::Parameter(1)));
 }
 
 // This while loop has three tuple elements.  Element 0 is unused and should be
@@ -930,6 +942,43 @@ TEST_F(WhileLoopSimplifierTest, RemoveRepeatedParams) {
   EXPECT_TRUE(ShapeUtil::Equal(
       new_while->while_condition()->parameter_instruction(0)->shape(),
       new_while_shape));
+}
+
+TEST_F(WhileLoopSimplifierTest, RepeatedParamsWithDomain) {
+  const std::string hlo_string = R"(
+  HloModule SwappingTupleElements
+
+  SwappingTupleElements.body {
+    loop_var = (s32[], s32[], s32[]) parameter(0)
+    get-tuple-element = s32[] get-tuple-element(loop_var), index=0
+    get-tuple-element.1 = s32[] get-tuple-element(loop_var), index=1
+    get-tuple-element.2 = s32[] get-tuple-element(loop_var), index=2
+    y = s32[] add(get-tuple-element.1, get-tuple-element.2)
+    ROOT tuple = (s32[], s32[], s32[]) tuple(s32[] get-tuple-element, y,
+      s32[] get-tuple-element.2)
+  }
+
+  SwappingTupleElements.always_true {
+   param = (s32[], s32[], s32[]) parameter(0)
+   dom0 = (s32[], s32[], s32[]) domain((s32[], s32[], s32[]) param), domain={kind="sharding", entry={maximal device=0}, exit={maximal device=1}}
+   get-tuple-element = s32[] get-tuple-element(dom0), index=0
+   get-tuple-element.1 = s32[] get-tuple-element(dom0), index=1
+   less-than = pred[] compare(get-tuple-element, get-tuple-element.1), direction=LT
+   ROOT dom1 = pred[] domain(pred[] less-than), domain={kind="sharding", entry={maximal device=1}, exit={maximal device=0}}
+  }
+
+  ENTRY SwappingTupleElements {
+   x = s32[] parameter(0)
+   y = s32[] parameter(1)
+   tuple.1 = (s32[], s32[], s32[]) tuple(s32[] x, s32[] y, s32[] x)
+   ROOT while = (s32[], s32[], s32[]) while(tuple.1),
+     condition=SwappingTupleElements.always_true,
+     body=SwappingTupleElements.body
+  }
+  )";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
 }
 
 // A group of elements are inter-dependent, but unused as by the output.

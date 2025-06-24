@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
+#include <memory>
 #include <string>
-#include <vector>
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -106,7 +105,10 @@ void FreezeAssetsPass::runOnOperation() {
         init_op.erase();
       }
     }
-    func.eraseArguments(args_to_erase);
+
+    if (failed(func.eraseArguments(args_to_erase))) {
+      return signalPassFailure();
+    }
   }
 }
 

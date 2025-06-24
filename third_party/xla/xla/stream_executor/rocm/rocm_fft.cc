@@ -33,11 +33,11 @@ limitations under the License.
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 #ifndef PLATFORM_GOOGLE
+#include "xla/tsl/platform/env.h"
 #include "tsl/platform/dso_loader.h"
-#include "tsl/platform/env.h"
 #endif
 
 namespace stream_executor {

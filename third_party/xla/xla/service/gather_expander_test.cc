@@ -21,15 +21,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_query.h"
-#include "xla/test.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 
 namespace xla {
 namespace {
 
-class GatherExpanderTest : public HloTestBase {
+class GatherExpanderTest : public HloHardwareIndependentTestBase {
  protected:
   void CheckWhileBody(HloModule* module, absl::string_view expected) {
     std::vector<HloInstruction*> while_instructions =
@@ -297,44 +296,44 @@ ENTRY main {
   const std::string expected = R"(
   //CHECK: (s32[], s32[5,2], s32[5,1], s32[5,1])) -> (s32[], s32[5,2], s32[5,1], s32[5,1]) {
   //CHECK: %[[PARAM:.*]] = (s32[], s32[5,2], s32[5,1], s32[5,1]) parameter(0)
-  //CHECK: %[[I:.*]] = s32[] get-tuple-element((s32[], s32[5,2], s32[5,1], s32[5,1]) %[[PARAM]]), index=
+  //CHECK: %[[I:.*]] = s32[] get-tuple-element(%[[PARAM]]), index=
   //CHECK: %[[CONSTANT1:.*]] = s32[] constant(1)
-  //CHECK: %[[I_PLUS_1:.*]] = s32[] add(s32[] %[[I]], s32[] %[[CONSTANT1]])
-  //CHECK: %[[OPERAND:.*]] = s32[5,2] get-tuple-element((s32[], s32[5,2], s32[5,1], s32[5,1]) %[[PARAM]]), index=1
-  //CHECK: %[[START_INDICES:.*]] = s32[5,1] get-tuple-element((s32[], s32[5,2], s32[5,1], s32[5,1]) %[[PARAM]]), index=2
-  //CHECK: %[[RESULT:.*]] = s32[5,1] get-tuple-element((s32[], s32[5,2], s32[5,1], s32[5,1]) %[[PARAM]]), index=3
+  //CHECK: %[[I_PLUS_1:.*]] = s32[] add(%[[I]], %[[CONSTANT1]])
+  //CHECK: %[[OPERAND:.*]] = s32[5,2] get-tuple-element(%[[PARAM]]), index=1
+  //CHECK: %[[START_INDICES:.*]] = s32[5,1] get-tuple-element(%[[PARAM]]), index=2
+  //CHECK: %[[RESULT:.*]] = s32[5,1] get-tuple-element(%[[PARAM]]), index=3
 
-  //CHECK: %[[I_1D_1:.*]] = s32[1] broadcast(s32[] %[[I]])
-  //CHECK: %[[I_1D_2:.*]] = s32[1] broadcast(s32[] %[[I]])
+  //CHECK: %[[I_1D_1:.*]] = s32[1] broadcast(%[[I]])
+  //CHECK: %[[I_1D_2:.*]] = s32[1] broadcast(%[[I]])
 
   //CHECK: %[[START_INDICES_INDEX_D1_PAD:.*]] = s32[] constant(0)
-  //CHECK: %[[START_INDICES_INDEX_VECTOR:.*]] = s32[2] pad(s32[1] %[[I_1D_2]], s32[] %[[START_INDICES_INDEX_D1_PAD]]), padding=0_1
-  //CHECK: %[[START_INDICES_INDEX_D0_SLICE:.*]] = s32[1] slice(s32[2] %[[START_INDICES_INDEX_VECTOR]]), slice={[0:1]}
-  //CHECK: %[[START_INDICES_INDEX_D0:.*]] = s32[] reshape(s32[1] %[[START_INDICES_INDEX_D0_SLICE]])
-  //CHECK: %[[START_INDICES_INDEX_D1_SLICE:.*]] = s32[1] slice(s32[2] %[[START_INDICES_INDEX_VECTOR]]), slice={[1:2]}
-  //CHECK: %[[START_INDICES_INDEX_D1:.*]] = s32[] reshape(s32[1] %[[START_INDICES_INDEX_D1_SLICE]])
-  //CHECK: %[[INDEX_VECTOR:.*]] = s32[1,1] dynamic-slice(s32[5,1] %[[START_INDICES]], s32[] %[[START_INDICES_INDEX_D0]], s32[] %[[START_INDICES_INDEX_D1]])
+  //CHECK: %[[START_INDICES_INDEX_VECTOR:.*]] = s32[2] pad(%[[I_1D_2]], %[[START_INDICES_INDEX_D1_PAD]]), padding=0_1
+  //CHECK: %[[START_INDICES_INDEX_D0_SLICE:.*]] = s32[1] slice(%[[START_INDICES_INDEX_VECTOR]]), slice={[0:1]}
+  //CHECK: %[[START_INDICES_INDEX_D0:.*]] = s32[] reshape(%[[START_INDICES_INDEX_D0_SLICE]])
+  //CHECK: %[[START_INDICES_INDEX_D1_SLICE:.*]] = s32[1] slice(%[[START_INDICES_INDEX_VECTOR]]), slice={[1:2]}
+  //CHECK: %[[START_INDICES_INDEX_D1:.*]] = s32[] reshape(%[[START_INDICES_INDEX_D1_SLICE]])
+  //CHECK: %[[INDEX_VECTOR:.*]] = s32[1,1] dynamic-slice(%[[START_INDICES]], %[[START_INDICES_INDEX_D0]], %[[START_INDICES_INDEX_D1]])
 
-  //CHECK: %[[OFFSET_RAW:.*]] = s32[1] reshape(s32[1,1] %[[INDEX_VECTOR]])
-  //CHECK: %[[OFFSET:.*]] = s32[1] slice(s32[1] %[[OFFSET_RAW]])
-  //CHECK: %[[OPERAND_INDEX:.*]] = s32[2] concatenate(s32[1] %[[I_1D_1]], s32[1] %[[OFFSET]])
-  //CHECK: %[[OPERAND_INDEX_D0_RAW:.*]] = s32[1] slice(s32[2] %[[OPERAND_INDEX]]), slice={[0:1]}
-  //CHECK: %[[OPERAND_INDEX_D0:.*]] = s32[] reshape(s32[1] %[[OPERAND_INDEX_D0_RAW]])
-  //CHECK: %[[OPERAND_INDEX_D1_RAW:.*]] = s32[1] slice(s32[2] %[[OPERAND_INDEX]]), slice={[1:2]}
-  //CHECK: %[[OPERAND_INDEX_D1:.*]] = s32[] reshape(s32[1] %[[OPERAND_INDEX_D1_RAW]])
-  //CHECK: %[[RESULT_SLICE_RAW0:.*]] = s32[1,1] dynamic-slice(s32[5,2] %[[OPERAND]], s32[] %[[OPERAND_INDEX_D0]], s32[] %[[OPERAND_INDEX_D1]])
+  //CHECK: %[[OFFSET_RAW:.*]] = s32[1] reshape(%[[INDEX_VECTOR]])
+  //CHECK: %[[OFFSET:.*]] = s32[1] slice(%[[OFFSET_RAW]])
+  //CHECK: %[[OPERAND_INDEX:.*]] = s32[2] concatenate(%[[I_1D_1]], %[[OFFSET]])
+  //CHECK: %[[OPERAND_INDEX_D0_RAW:.*]] = s32[1] slice(%[[OPERAND_INDEX]]), slice={[0:1]}
+  //CHECK: %[[OPERAND_INDEX_D0:.*]] = s32[] reshape(%[[OPERAND_INDEX_D0_RAW]])
+  //CHECK: %[[OPERAND_INDEX_D1_RAW:.*]] = s32[1] slice(%[[OPERAND_INDEX]]), slice={[1:2]}
+  //CHECK: %[[OPERAND_INDEX_D1:.*]] = s32[] reshape(%[[OPERAND_INDEX_D1_RAW]])
+  //CHECK: %[[RESULT_SLICE_RAW0:.*]] = s32[1,1] dynamic-slice(%[[OPERAND]], %[[OPERAND_INDEX_D0]], %[[OPERAND_INDEX_D1]])
 
-  //CHECK: %[[RESULT_SLICE_RAW1:.*]] = s32[1] reshape(s32[1,1] %[[RESULT_SLICE_RAW0]])
-  //CHECK: %[[RESULT_SLICE:.*]] = s32[1,1] reshape(s32[1] %[[RESULT_SLICE_RAW1]])
+  //CHECK: %[[RESULT_SLICE_RAW1:.*]] = s32[1] reshape(%[[RESULT_SLICE_RAW0]])
+  //CHECK: %[[RESULT_SLICE:.*]] = s32[1,1] reshape(%[[RESULT_SLICE_RAW1]])
   //CHECK: %[[RESULT_INDEX_D1_PAD:.*]] = s32[] constant(0)
-  //CHECK: %[[RESULT_INDEX_VECTOR:.*]] = s32[2] pad(s32[1] %[[I_1D_2]], s32[] %[[RESULT_INDEX_D1_PAD]]), padding=0_1
-  //CHECK: %[[RESULT_INDEX_D0_SLICE:.*]] = s32[1] slice(s32[2] %[[RESULT_INDEX_VECTOR]]), slice={[0:1]}
-  //CHECK: %[[RESULT_INDEX_D0:.*]] = s32[] reshape(s32[1] %[[RESULT_INDEX_D0_SLICE]])
-  //CHECK: %[[RESULT_INDEX_D1_SLICE:.*]] = s32[1] slice(s32[2] %[[RESULT_INDEX_VECTOR]]), slice={[1:2]}
-  //CHECK: %[[RESULT_INDEX_D1:.*]] = s32[] reshape(s32[1] %[[RESULT_INDEX_D1_SLICE]])
-  //CHECK: %[[UPDATED_RESULT:.*]] = s32[5,1] dynamic-update-slice(s32[5,1] %[[RESULT]], s32[1,1] %[[RESULT_SLICE]], s32[] %[[RESULT_INDEX_D0]], s32[] %[[RESULT_INDEX_D1]])
+  //CHECK: %[[RESULT_INDEX_VECTOR:.*]] = s32[2] pad(%[[I_1D_2]], %[[RESULT_INDEX_D1_PAD]]), padding=0_1
+  //CHECK: %[[RESULT_INDEX_D0_SLICE:.*]] = s32[1] slice(%[[RESULT_INDEX_VECTOR]]), slice={[0:1]}
+  //CHECK: %[[RESULT_INDEX_D0:.*]] = s32[] reshape(%[[RESULT_INDEX_D0_SLICE]])
+  //CHECK: %[[RESULT_INDEX_D1_SLICE:.*]] = s32[1] slice(%[[RESULT_INDEX_VECTOR]]), slice={[1:2]}
+  //CHECK: %[[RESULT_INDEX_D1:.*]] = s32[] reshape(%[[RESULT_INDEX_D1_SLICE]])
+  //CHECK: %[[UPDATED_RESULT:.*]] = s32[5,1] dynamic-update-slice(%[[RESULT]], %[[RESULT_SLICE]], %[[RESULT_INDEX_D0]], %[[RESULT_INDEX_D1]])
 
-  //CHECK: ROOT %{{.*}} = (s32[], s32[5,2], s32[5,1], s32[5,1]) tuple(s32[] %[[I_PLUS_1]], s32[5,2] %[[OPERAND]], s32[5,1] %[[START_INDICES]], s32[5,1] %[[UPDATED_RESULT]])
+  //CHECK: ROOT %{{.*}} = (s32[], s32[5,2], s32[5,1], s32[5,1]) tuple(%[[I_PLUS_1]], %[[OPERAND]], %[[START_INDICES]], %[[UPDATED_RESULT]])
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -369,38 +368,38 @@ ENTRY main {
   const std::string expected = R"(
   //CHECK: (s32[], s32[7,3,4,5], s32[70], s32[70,3])) -> (s32[], s32[7,3,4,5], s32[70], s32[70,3]) {
   //CHECK: %[[PARAM:.*]] = (s32[], s32[7,3,4,5], s32[70], s32[70,3]) parameter(0)
-  //CHECK: %[[I:.*]] = s32[] get-tuple-element((s32[], s32[7,3,4,5], s32[70], s32[70,3]) %[[PARAM]]), index=0
+  //CHECK: %[[I:.*]] = s32[] get-tuple-element(%[[PARAM]]), index=0
 
   //CHECK: %[[CONSTANT1:.*]] = s32[] constant(1)
-  //CHECK: %[[I_PLUS_1:.*]] = s32[] add(s32[] %[[I]], s32[] %[[CONSTANT1]])
-  //CHECK: %[[OPERAND:.*]] = s32[7,3,4,5] get-tuple-element((s32[], s32[7,3,4,5], s32[70], s32[70,3]) %[[PARAM]]), index=1
-  //CHECK: %[[START_INDICES:.*]] = s32[70] get-tuple-element((s32[], s32[7,3,4,5], s32[70], s32[70,3]) %[[PARAM]]), index=2
+  //CHECK: %[[I_PLUS_1:.*]] = s32[] add(%[[I]], %[[CONSTANT1]])
+  //CHECK: %[[OPERAND:.*]] = s32[7,3,4,5] get-tuple-element(%[[PARAM]]), index=1
+  //CHECK: %[[START_INDICES:.*]] = s32[70] get-tuple-element(%[[PARAM]]), index=2
 
   //CHECK: %[[CONSTANT7:.*]] = s32[] constant(7)
-  //CHECK: %[[BD0_RAW:.*]] = s32[] remainder(s32[] %[[I]], s32[] %[[CONSTANT7]])
-  //CHECK: %[[BD0:.*]] = s32[1] broadcast(s32[] %[[BD0_RAW]])
+  //CHECK: %[[BD0_RAW:.*]] = s32[] remainder(%[[I]], %[[CONSTANT7]])
+  //CHECK: %[[BD0:.*]] = s32[1] broadcast(%[[BD0_RAW]])
   //CHECK: %[[CONSTANT0:.*]] = s32[1] constant({0})
-  //CHECK: %[[I_1D_1:.*]] = s32[1] broadcast(s32[] %[[I]])
-  //CHECK: %[[START_INDICES_INDEX_RAW:.*]] = s32[1] slice(s32[1] %[[I_1D_1]])
-  //CHECK: %[[START_INDICES_INDEX:.*]] = s32[] reshape(s32[1] %[[START_INDICES_INDEX_RAW]])
-  //CHECK: %[[INDEX_VECTOR:.*]] = s32[1] dynamic-slice(s32[70] %[[START_INDICES]], s32[] %[[START_INDICES_INDEX]])
+  //CHECK: %[[I_1D_1:.*]] = s32[1] broadcast(%[[I]])
+  //CHECK: %[[START_INDICES_INDEX_RAW:.*]] = s32[1] slice(%[[I_1D_1]])
+  //CHECK: %[[START_INDICES_INDEX:.*]] = s32[] reshape(%[[START_INDICES_INDEX_RAW]])
+  //CHECK: %[[INDEX_VECTOR:.*]] = s32[1] dynamic-slice(%[[START_INDICES]], %[[START_INDICES_INDEX]])
 
-  //CHECK: %[[OFFSET:.*]] = s32[1] slice(s32[1] %[[INDEX_VECTOR]])
-  //CHECK: %[[BD1:.*]] = s32[] divide(s32[] %[[I]], s32[] %[[CONSTANT7]])
+  //CHECK: %[[OFFSET:.*]] = s32[1] slice(%[[INDEX_VECTOR]])
+  //CHECK: %[[BD1:.*]] = s32[] divide(%[[I]], %[[CONSTANT7]])
   //CHECK: %[[CONSTANT2:.*]] = s32[] constant(2)
-  //CHECK: %[[BD2_RAW:.*]] = s32[] divide(s32[] %[[BD1]], s32[] %[[CONSTANT2]])
-  //CHECK: %[[BD2:.*]] = s32[1] broadcast(s32[] %[[BD2_RAW]])
-  //CHECK: %[[OPERAND_INDEX:.*]] = s32[4] concatenate(s32[1] %[[BD0]], s32[1] %[[CONSTANT0]], s32[1] %[[OFFSET]], s32[1] %[[BD2]])
+  //CHECK: %[[BD2_RAW:.*]] = s32[] divide(%[[BD1]], %[[CONSTANT2]])
+  //CHECK: %[[BD2:.*]] = s32[1] broadcast(%[[BD2_RAW]])
+  //CHECK: %[[OPERAND_INDEX:.*]] = s32[4] concatenate(%[[BD0]], %[[CONSTANT0]], %[[OFFSET]], %[[BD2]])
 
-  //CHECK: %[[OPERAND_INDEX_D0_RAW:.*]] = s32[1] slice(s32[4] %[[OPERAND_INDEX]]), slice={[0:1]}
-  //CHECK: %[[OPERAND_INDEX_D0:.*]] = s32[] reshape(s32[1] %[[OPERAND_INDEX_D0_RAW]])
-  //CHECK: %[[OPERAND_INDEX_D1_RAW:.*]] = s32[1] slice(s32[4] %[[OPERAND_INDEX]]), slice={[1:2]}
-  //CHECK: %[[OPERAND_INDEX_D1:.*]] = s32[] reshape(s32[1] %[[OPERAND_INDEX_D1_RAW]])
-  //CHECK: %[[OPERAND_INDEX_D2_RAW:.*]] = s32[1] slice(s32[4] %[[OPERAND_INDEX]]), slice={[2:3]}
-  //CHECK: %[[OPERAND_INDEX_D2:.*]] = s32[] reshape(s32[1] %[[OPERAND_INDEX_D2_RAW]])
-  //CHECK: %[[OPERAND_INDEX_D3_RAW:.*]] = s32[1] slice(s32[4] %[[OPERAND_INDEX]]), slice={[3:4]}
-  //CHECK: %[[OPERAND_INDEX_D3:.*]] = s32[] reshape(s32[1] %[[OPERAND_INDEX_D3_RAW]])
-  //CHECK: %{{.*}} = s32[1,3,1,1] dynamic-slice(s32[7,3,4,5] %[[OPERAND]], s32[] %[[OPERAND_INDEX_D0]], s32[] %[[OPERAND_INDEX_D1]], s32[] %[[OPERAND_INDEX_D2]], s32[] %[[OPERAND_INDEX_D3]])
+  //CHECK: %[[OPERAND_INDEX_D0_RAW:.*]] = s32[1] slice(%[[OPERAND_INDEX]]), slice={[0:1]}
+  //CHECK: %[[OPERAND_INDEX_D0:.*]] = s32[] reshape(%[[OPERAND_INDEX_D0_RAW]])
+  //CHECK: %[[OPERAND_INDEX_D1_RAW:.*]] = s32[1] slice(%[[OPERAND_INDEX]]), slice={[1:2]}
+  //CHECK: %[[OPERAND_INDEX_D1:.*]] = s32[] reshape(%[[OPERAND_INDEX_D1_RAW]])
+  //CHECK: %[[OPERAND_INDEX_D2_RAW:.*]] = s32[1] slice(%[[OPERAND_INDEX]]), slice={[2:3]}
+  //CHECK: %[[OPERAND_INDEX_D2:.*]] = s32[] reshape(%[[OPERAND_INDEX_D2_RAW]])
+  //CHECK: %[[OPERAND_INDEX_D3_RAW:.*]] = s32[1] slice(%[[OPERAND_INDEX]]), slice={[3:4]}
+  //CHECK: %[[OPERAND_INDEX_D3:.*]] = s32[] reshape(%[[OPERAND_INDEX_D3_RAW]])
+  //CHECK: %{{.*}} = s32[1,3,1,1] dynamic-slice(%[[OPERAND]], %[[OPERAND_INDEX_D0]], %[[OPERAND_INDEX_D1]], %[[OPERAND_INDEX_D2]], %[[OPERAND_INDEX_D3]])
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

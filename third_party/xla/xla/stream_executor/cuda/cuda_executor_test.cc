@@ -15,29 +15,38 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_executor.h"
 
+#include <cstdint>
 #include <memory>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 namespace {
+using ::testing::_;
+using ::testing::AnyOf;
 using testing::Ge;
+using ::testing::HasSubstr;
 using testing::IsEmpty;
 using testing::Not;
 using testing::VariantWith;
+using ::tsl::testing::IsOk;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
@@ -72,7 +81,7 @@ TEST(CudaExecutorTest, GetCudaKernel) {
   auto cuda_executor = dynamic_cast<CudaExecutor*>(executor);
   ASSERT_NE(cuda_executor, nullptr);
 
-  auto verify_kernel = [&](const MultiKernelLoaderSpec& spec) {
+  auto verify_kernel = [&](const KernelLoaderSpec& spec) {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> kernel,
                             executor->LoadKernel(spec));
     EXPECT_THAT(cuda_executor->GetCudaKernel(kernel.get()),
@@ -86,9 +95,79 @@ TEST(CudaExecutorTest, GetCudaKernel) {
                 StatusIs(absl::StatusCode::kNotFound));
   };
 
-  verify_kernel(GetAddI32KernelSpec());
+  TF_ASSERT_OK_AND_ASSIGN(KernelLoaderSpec add,
+                          GetAddI32TestKernelSpec(cuda::kCudaPlatformId));
+  verify_kernel(add);
   verify_kernel(GetAddI32PtxKernelSpec());
 }
 
+TEST(CudaExecutorTest, CreateUnifiedMemoryAllocatorWorks) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<MemoryAllocator> allocator,
+      executor->CreateMemoryAllocator(MemoryType::kUnified));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                          allocator->Allocate(1024));
+  EXPECT_NE(allocation->opaque(), nullptr);
+  EXPECT_EQ(allocation->size(), 1024);
+}
+
+TEST(CudaExecutorTest, CreateHostMemoryAllocatorWorks) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocator> allocator,
+                          executor->CreateMemoryAllocator(MemoryType::kHost));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                          allocator->Allocate(1024));
+  EXPECT_NE(allocation->opaque(), nullptr);
+  EXPECT_EQ(allocation->size(), 1024);
+}
+
+TEST(CudaExecutorTest, CreateCollectiveMemoryAllocatorWorks) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<MemoryAllocator> allocator,
+      executor->CreateMemoryAllocator(MemoryType::kCollective));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                          allocator->Allocate(1024));
+  EXPECT_NE(allocation->opaque(), nullptr);
+  EXPECT_EQ(allocation->size(), 1024);
+}
+
+// TODO: b/420735471 - Enable test once fixed.
+TEST(CudaExecutorTest,
+     DISABLED_CreateCollectiveMemoryAllocatorFailsForExcessiveSize) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<MemoryAllocator> allocator,
+      executor->CreateMemoryAllocator(MemoryType::kCollective));
+  constexpr uint64_t kTooBig = 1125899906842624;  // 1 PiB
+  EXPECT_THAT(
+      allocator->Allocate(kTooBig),
+      StatusIs(_,
+               AnyOf(HasSubstr("failed to allocate 1.00PiB (1125899906842624 "
+                               "bytes) from device collective memory:"),
+                     HasSubstr("out of memory"))));
+}
+
+TEST(CudaExecutorTest, CreateUnsupportedMemoryAllocatorsFail) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+  EXPECT_THAT(executor->CreateMemoryAllocator(MemoryType::kDevice),
+              Not(IsOk()));
+}
 }  // namespace
 }  // namespace stream_executor::gpu

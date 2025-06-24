@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "xla/literal.h"
 #include "xla/shape.h"

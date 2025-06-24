@@ -12,10 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <iterator>
+#include <cstddef>
 #include <memory>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -66,9 +65,8 @@ bool IsMoveOperator(OperatorType optype) {
 
 // Swap elementwise operators such that all value operators occur before all
 // element move operators, e.g. negation then transpose.
-::tensorflow::Status ReorderElementwiseUnary::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status ReorderElementwiseUnary::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   const auto element_op_it = model->operators.begin() + op_index;
   std::unique_ptr<Operator>& element_op = *element_op_it;

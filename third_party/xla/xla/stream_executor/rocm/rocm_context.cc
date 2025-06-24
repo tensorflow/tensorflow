@@ -30,8 +30,8 @@ limitations under the License.
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 
 namespace stream_executor::gpu {
 
@@ -92,7 +92,7 @@ bool GetReservedMemory(uint64_t* reserve) {
   } else if (compute_capability.gfx10_rx68xx() ||
              compute_capability.gfx10_rx69xx()) {
     *reserve = RESERVED_GFX10_X;
-  } else if (compute_capability.gfx11_rx7900()) {
+  } else if (compute_capability.gfx11()) {
     *reserve = RESERVED_GFX11_X;
   }
 

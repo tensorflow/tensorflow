@@ -35,11 +35,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/logging_hooks.h"
 #include "xla/tsl/lib/monitoring/counter.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 #include "tsl/platform/error_logging.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tf2xla {

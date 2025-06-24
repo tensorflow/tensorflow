@@ -56,10 +56,11 @@ NameUniquer::NameUniquer(const std::string& separator) {
     }
   }
 
-  // HLO primitive type names (with the exception of 'tuple') are keywords in
-  // the HLO text representation and cannot be names, so append an underscore if
-  // the name is a primitive type.
-  if (primitive_util::IsPrimitiveTypeName(result) && result != "tuple") {
+  // HLO primitive type names (with the exception of 'tuple' and 'buffer') are
+  // keywords in the HLO text representation and cannot be names, so append an
+  // underscore if the name is a primitive type.
+  if (primitive_util::IsPrimitiveTypeName(result) && result != "tuple" &&
+      result != "buffer") {
     result += "_";
   }
 

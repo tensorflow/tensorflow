@@ -1184,6 +1184,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
       /*allow_control_flow_sync_execution=*/false,
       /*shape_inference_on_tfe_dialect_import=*/true,
       /*int_args_and_retvals_on_device=*/false,
+      /*function_runs_at_most_once=*/false,
       /*xla_compile_device_type=*/std::nullopt,
       /*allow_soft_placement=*/false, ctx->RendezvousFactory(),
       [=]() { return op_id; }));
@@ -1240,6 +1241,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
       /*allow_control_flow_sync_execution=*/false,
       /*shape_inference_on_tfe_dialect_import=*/true,
       /*int_args_and_retvals_on_device=*/false,
+      /*function_runs_at_most_once=*/false,
       /*xla_compile_device_type=*/std::nullopt,
       /*allow_soft_placement=*/false, ctx->RendezvousFactory(),
       [=]() { return op_id; }));

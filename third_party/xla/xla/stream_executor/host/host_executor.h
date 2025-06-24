@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_HOST_HOST_EXECUTOR_H_
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <variant>
@@ -27,15 +26,16 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/host/host_kernel.h"
-#include "xla/stream_executor/host_memory_allocation.h"
+#include "xla/stream_executor/generic_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_common.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace stream_executor {
 namespace host {
@@ -48,32 +48,23 @@ namespace host {
 // routines executed under the context of a GPU executor.
 class HostExecutor : public StreamExecutorCommon {
  public:
-  // A function that loads a kernel function from a given spec. If spec is not
-  // supported it returns an empty optional.
-  using KernelFunctionLoader = std::function<std::optional<
-      absl::StatusOr<std::unique_ptr<HostKernel::KernelFunction>>>(
-      const MultiKernelLoaderSpec& spec)>;
-
-  // Registers a kernel function loader in a static registry.
-  static void RegisterKernelFunctionLoader(KernelFunctionLoader loader);
-
   HostExecutor(Platform* platform, int device_ordinal)
       : StreamExecutorCommon(platform), device_ordinal_(device_ordinal) {}
 
   absl::Status Init() override;
 
   absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
-      const MultiKernelLoaderSpec& spec) override;
+      const KernelLoaderSpec& spec) override;
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
   void Deallocate(DeviceMemoryBase* mem) override;
 
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override {
-    return std::make_unique<HostMemoryAllocation>(new char[size], size, this);
-  }
-  void HostMemoryDeallocate(void* mem) override {
-    delete[] static_cast<char*>(mem);
+    void* ptr = new char[size];
+    return std::make_unique<GenericMemoryAllocation>(
+        ptr, size,
+        [](void* ptr, uint64_t size) { delete[] static_cast<char*>(ptr); });
   }
 
   bool SynchronizeAllActivity() override { return true; }
@@ -109,6 +100,8 @@ class HostExecutor : public StreamExecutorCommon {
 
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority) override;
+  absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
+      MemoryType type) override;
 
  private:
   int device_ordinal_;

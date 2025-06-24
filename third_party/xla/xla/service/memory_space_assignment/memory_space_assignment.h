@@ -71,7 +71,7 @@ Classes
     1 HloBuffer; however, many exceptions exist. For example, tensors that are
     modified by a while loop have their HloValues share an HloBuffer, for the
     HloValues that come immediately before, during, and immediately after the
-    loop. HloBuffers are shared between HloValues wherever their is aliasing,
+    loop. HloBuffers are shared between HloValues wherever there is aliasing,
     whether implicit by the nature of the instruction (e.g.,
     dynamic-update-slice) or explicit (e.g., fusion input-output aliasing).
 
@@ -80,8 +80,9 @@ Classes
     corresponds to an HloValue.
 
   - AllocationValue: An AllocationValue is defined by an HloValue, and *one* of
-    its HloPositions.
-    * We do not create AllocationValues for non-trivial HloPositions, e.g., ones
+    its HloPositions. Note that a given HloValue may be associated with multiple
+    AllocationValues in this way.
+    * We do not create AllocationValues for trivial HloPositions, e.g., ones
       defined by Tuple, GetTupleElement, and Bitcast instructions.
     * The HloPosition used to define the AllocationValue is referred to as the
       AllocationValue's defining position.
@@ -144,14 +145,14 @@ Classes
 
 Useful logging and error messages
 
-  - Live range too long: The live range of a use segement is too long to for an
-    alternate memory no copy, i.e., its longer than we want to keep a buffer in
-    alternate memory wihtout being used.
+  - Live range too long: The live range of a use segment is too long for a
+    no-copy allocation in alternate memory; i.e., it is longer than we want to
+    keep a buffer in alternate memory without being used.
     * If the CostAnalysisPrefetchIntervalPicker is used, which is the default,
       live range too long is governed by the picker's
       max_overlap_to_mem_size_async_copy_ratio argument.
 
-  - Live range too short: The live range of a use segement is too short to
+  - Live range too short: The live range of a use segment is too short to
     prefetch a buffer to alternate memory, according to some heuristic and not
     based on limited copy resource.
     * If the CostAnalysisPrefetchIntervalPicker is used, which is the default,
@@ -160,7 +161,7 @@ Useful logging and error messages
 
   - "Finding allocation for": Magical logging phrase indicating the point in
     time where we are are trying to determine how to update an AllocationValue's
-    AllocationSequenece, for a particular use segment.
+    AllocationSequence, for a particular use segment.
 
   - To log the alternate memory allocations that MSA made at a given schedule
     time:
@@ -171,7 +172,7 @@ Useful logging and error messages
         Initial resource[100] = 1.0 (fusion.1)
       - That tells us that the fusion.1 has schedule time 100.
     * Uncomment the line in memory_space_assignment.cc labeled
-      DEBUG_ALLOCATIONS_AT, and use time 100.
+      DEBUG_LOG_ALLOCATIONS_AT, and use time 100.
 */
 
 #ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_H_
@@ -179,8 +180,8 @@ Useful logging and error messages
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -188,19 +189,19 @@ Useful logging and error messages
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
-#include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/allocation.h"
-#include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/options.h"
+#include "xla/shape.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -259,6 +260,18 @@ class PresetAssignments {
     return assignment_info_;
   }
 
+  // A chunk of alternate memory that has been allocated for post-module
+  // scoped operations.
+  std::optional<HeapSimulator::Chunk>
+  post_module_scoped_alternate_memory_chunk() const {
+    return post_module_scoped_alternate_memory_chunk_;
+  }
+
+  void set_post_module_scoped_alternate_memory_chunk(
+      const HeapSimulator::Chunk& chunk) {
+    post_module_scoped_alternate_memory_chunk_ = chunk;
+  }
+
   // Get debugging information.
   std::string buffer_info_str() const { return buffer_info_str_; }
   std::string allocation_info_str() const { return allocation_info_str_; }
@@ -270,6 +283,8 @@ class PresetAssignments {
   std::vector<std::pair<HloPosition, HeapSimulator::Chunk>> chunks_;
   std::vector<std::pair<HloInstruction*, HeapSimulator::Chunk>>
       scoped_allocation_chunks_;
+  std::optional<HeapSimulator::Chunk>
+      post_module_scoped_alternate_memory_chunk_ = std::nullopt;
   std::vector<std::pair<int64_t, AssignmentInformation>> assignment_info_;
   std::string buffer_info_str_;
   std::string allocation_info_str_;
@@ -323,6 +338,8 @@ class MemorySpaceAssignment {
       const HloAliasAnalysis& alias_analysis,
       std::vector<int64_t>* alt_mem_bytes_occupied = nullptr);
 
+  static constexpr absl::string_view kName = "memory-space-assignment";
+
  protected:
   // Main driver of the memory space assignment pass.
   virtual absl::StatusOr<std::unique_ptr<PresetAssignments>>
@@ -360,6 +377,18 @@ class MemorySpaceAssignment {
   HloModule* module() { return module_; }
 
  private:
+  // A struct that represents the source of scoped alternate memory. It can be
+  // either for an instruction or for post-module operations.
+  struct ScopedMemorySource {
+    static ScopedMemorySource ForInstruction(HloInstruction* instruction);
+    static ScopedMemorySource ForPostModule();
+
+    std::string ToString() const;
+
+    bool is_post_module = false;
+    HloInstruction* instruction = nullptr;
+  };
+
   // Process calls Process methods of the allocations after the allocations have
   // been finalized.
   absl::Status Process(const HloLiveRange& hlo_live_range);
@@ -392,7 +421,9 @@ class MemorySpaceAssignment {
   std::unique_ptr<PresetAssignments> preset_assignments_;
   std::vector<std::pair<HloPosition, HeapSimulator::Chunk>>
       alternate_memory_assignments_;
-  std::vector<std::pair<HloInstruction*, HeapSimulator::Chunk>>
+  // Maps from a defining position to a shape if the tensor is split.
+  absl::flat_hash_map<HloPosition, const Layout*> split_map_;
+  std::vector<std::pair<ScopedMemorySource, HeapSimulator::Chunk>>
       scoped_memory_assignments_;
   int64_t alternate_memory_size_ = 0;
 

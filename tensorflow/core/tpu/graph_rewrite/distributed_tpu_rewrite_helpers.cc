@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

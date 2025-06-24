@@ -62,6 +62,8 @@ struct XNNPackCacheHeader {
   uint64_t buffer_list_size;
 };
 
+bool IsCompatibleCacheFile(const char* path);
+
 struct PackIdentifier {
   enum { kNoId = SIZE_MAX };
   uint64_t pack_algorithm_id = kNoId;
@@ -119,7 +121,7 @@ class MMapHandle {
   //
   // The debug_path is printed along the error messages.
   [[nodiscard /*Mapping a file can fail.*/]]
-  bool Map(const FileDescriptor& fd, size_t offset = 0,
+  bool Map(const FileDescriptorView& fd, size_t offset = 0,
            const char* debug_path = "unspecified");
 
   // Tries to resize the current mapping.
@@ -182,7 +184,7 @@ class WeightCacheBuilder {
   WeightCacheBuilder& operator=(WeightCacheBuilder&&);
 
   [[nodiscard /*Starting the builder may fail.*/]]
-  bool Start(const char* path);
+  bool Start(const char* path, const FileDescriptor& fd);
 
   [[nodiscard]]
   bool IsStarted() const {
@@ -236,7 +238,7 @@ class WeightCacheBuilder {
   }
 
   // Returns the file descriptor.
-  const FileDescriptor& GetFileDescriptor() const { return fd_; }
+  FileDescriptorView GetFileDescriptor() const { return fd_; }
 
   // Returns the capacity of the underlying reserved buffer.
   //
@@ -264,8 +266,8 @@ class WeightCacheBuilder {
   // cache. To ensure a smooth reloading, we need to ensure that the file header
   // is correct. This flag lets us know if that has happened.
   bool first_write_done_ = false;
-  // Temporary file descriptor to write the weights to disk immediately.
-  FileDescriptor fd_;
+  // File descriptor view.
+  FileDescriptorView fd_;
   std::string file_path_;
 
   bool is_build_step_ = false;
@@ -301,15 +303,19 @@ class MMapWeightCacheProvider {
 
   // Tries to load the given file. If the file doesn't exist starts building the
   // cache for it.
+  //
+  // If `fd` is provided, use that instead of reopening the file at the given
+  // path.
   [[nodiscard /*Loading a cache file may fail.*/]]
-  bool LoadOrStartBuild(const char* file_path);
+  bool LoadOrStartBuild(const char* file_path,
+                        FileDescriptor fd = FileDescriptor());
 
   [[nodiscard /*Starting to build a cache file may fail.*/]]
-  bool StartBuild(const char* file_path);
+  bool StartBuild(const char* file_path, FileDescriptor fd = FileDescriptor());
 
-  // Set the weight file path and loads it.
+  // Sets the weight file path and loads it.
   [[nodiscard /*Loading a cache file may fail.*/]]
-  bool Load(const std::string& path);
+  bool Load(const std::string& path, FileDescriptor fd = FileDescriptor());
 
   // Loads the weight cache previously set with `SetFilePath`.
   [[nodiscard /*Loading cache data may fail.*/]]
@@ -444,9 +450,8 @@ class MMapWeightCacheProvider {
   // The offset to the first buffer data in the MMap allocation.
   size_t mmap_buffer_base_offset_;
 
-  // Can hold a file descriptor when building a temporary cache to prevent it
-  // from being deleted.
-  FileDescriptor temporary_file_descriptor_;
+  // Holds a file descriptor to the cache file.
+  FileDescriptor file_descriptor_;
 
   // Used to build the cache.
   WeightCacheBuilder builder_;

@@ -15,9 +15,8 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/strided_slice_spmd_expander.h"
 
-#include <algorithm>
-#include <string>
-#include <utility>
+#include <cassert>
+#include <cstdint>
 #include <vector>
 
 #include "absl/numeric/bits.h"

@@ -19,8 +19,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -28,7 +28,7 @@ namespace xla {
 namespace host_offload_utils {
 namespace {
 
-class HostOffloadUtilsTest : public HloTestBase {};
+class HostOffloadUtilsTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(HostOffloadUtilsTest, SimpleGetSuccessorsGetPredecessorsTest) {
   const std::string& hlo_string = R"(

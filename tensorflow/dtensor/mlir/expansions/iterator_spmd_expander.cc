@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/iterator_spmd_expander.h"
 
-#include <algorithm>
+#include <cstdint>
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"

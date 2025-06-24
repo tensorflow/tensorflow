@@ -15,27 +15,35 @@ limitations under the License.
 
 // Tests that slice operations can be performed.
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <numeric>
-#include <vector>
+#include <string>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
-#include "xla/client/local_client.h"
+#include "xla/array3d.h"
+#include "xla/array4d.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/layout_util.h"
+#include "xla/literal_util.h"
 #include "xla/reference_util.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
-#include "tsl/platform/test.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class SliceTest : public ClientLibraryTestBase {};
+using SliceTest = ClientLibraryTestRunnerMixin<HloTestBase>;
 
 TEST_F(SliceTest, Slice3x3x3_To_3x3x1_F32) {
   Array3D<float> values(3, 3, 3);
@@ -76,7 +84,7 @@ TEST_F(SliceTest, Slice3x3x3_To_1x3x3_F32) {
   ComputeAndCompareR3<float>(&builder, expected, {}, ErrorSpec(0.000001));
 }
 
-XLA_TEST_F(SliceTest, Slice0x0to0x0F32) {
+TEST_F(SliceTest, Slice0x0to0x0F32) {
   XlaBuilder builder(TestName());
   auto original = ConstantR2FromArray2D<float>(&builder, Array2D<float>(0, 0));
   Slice(original, {0, 0}, {0, 0}, {1, 1});
@@ -84,7 +92,7 @@ XLA_TEST_F(SliceTest, Slice0x0to0x0F32) {
   ComputeAndCompareR2<float>(&builder, Array2D<float>(0, 0), {});
 }
 
-XLA_TEST_F(SliceTest, Slice0x20to0x5F32) {
+TEST_F(SliceTest, Slice0x20to0x5F32) {
   XlaBuilder builder(TestName());
   auto original = ConstantR2FromArray2D<float>(&builder, Array2D<float>(0, 20));
   Slice(original, {0, 15}, {0, 20}, {1, 1});
@@ -92,7 +100,7 @@ XLA_TEST_F(SliceTest, Slice0x20to0x5F32) {
   ComputeAndCompareR2<float>(&builder, Array2D<float>(0, 5), {});
 }
 
-XLA_TEST_F(SliceTest, Slice3x0to2x0F32) {
+TEST_F(SliceTest, Slice3x0to2x0F32) {
   XlaBuilder builder(TestName());
   auto original = ConstantR2FromArray2D<float>(&builder, Array2D<float>(3, 0));
   Slice(original, {1, 0}, {3, 0}, {1, 1});
@@ -100,7 +108,7 @@ XLA_TEST_F(SliceTest, Slice3x0to2x0F32) {
   ComputeAndCompareR2<float>(&builder, Array2D<float>(2, 0), {});
 }
 
-XLA_TEST_F(SliceTest, SliceQuadrantOf256x256) {
+TEST_F(SliceTest, SliceQuadrantOf256x256) {
   Array2D<float> values(256, 256);
   for (int row = 0; row < 256; ++row) {
     for (int col = 0; col < 256; ++col) {
@@ -185,7 +193,7 @@ TEST_F(SliceTest, SliceOfCollapsingReshape) {
   ComputeAndCompare(&builder, {});
 }
 
-XLA_TEST_F(SliceTest, StridedSliceR4WithOutputLayout) {
+TEST_F(SliceTest, StridedSliceR4WithOutputLayout) {
   Array4D<float> values(2, 4, 6, 8);
   values.FillRandom(3.14f);
   auto expected = ReferenceUtil::Slice4D(values, {{0, 0, 0, 0}}, {{2, 4, 6, 8}},
@@ -208,7 +216,7 @@ struct R1Spec {
 
 // Parameterized test that generates R1 values, slices them according
 // to the R1Spec, and compares the result with a computed version.
-class SliceR1Test : public ClientLibraryTestBase,
+class SliceR1Test : public ClientLibraryTestRunnerMixin<HloTestBase>,
                     public ::testing::WithParamInterface<R1Spec> {
  protected:
   template <typename NativeT>
@@ -233,9 +241,7 @@ class SliceR1Test : public ClientLibraryTestBase,
       expected.push_back(i);
     }
 
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> arg,
-                            client_->TransferToServer(literal));
-    ComputeAndCompareR1<NativeT>(&builder, expected, {arg.get()});
+    ComputeAndCompareR1<NativeT>(&builder, expected, {&literal});
   }
 };
 
@@ -249,45 +255,63 @@ std::string SliceR1TestDataToString(
                          spec.slice_limit, spec.slice_stride);
 }
 
-XLA_TEST_P(SliceR1Test, DoIt_F32) { Run<float>(GetParam()); }
+TEST_P(SliceR1Test, DoIt_F32) { Run<float>(GetParam()); }
 
-XLA_TEST_P(SliceR1Test, DoIt_F64) { Run<double>(GetParam()); }
+TEST_P(SliceR1Test, DoIt_F64) { Run<double>(GetParam()); }
 
-XLA_TEST_P(SliceR1Test, DoIt_U32) { Run<uint32_t>(GetParam()); }
+TEST_P(SliceR1Test, DoIt_U32) { Run<uint32_t>(GetParam()); }
 
-XLA_TEST_P(SliceR1Test, DoIt_S32) { Run<int32_t>(GetParam()); }
+TEST_P(SliceR1Test, DoIt_S32) { Run<int32_t>(GetParam()); }
 
-XLA_TEST_P(SliceR1Test, DoIt_U64) { Run<uint64_t>(GetParam()); }
+TEST_P(SliceR1Test, DoIt_U64) { Run<uint64_t>(GetParam()); }
 
-XLA_TEST_P(SliceR1Test, DoIt_S64) { Run<int64_t>(GetParam()); }
+TEST_P(SliceR1Test, DoIt_S64) { Run<int64_t>(GetParam()); }
 
 // TODO(b/69425338): The following tests are disable on GPU because they use
 // too much GPU memory.
-XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_F32)) {
+TEST_P(SliceR1LargeTest, DoIt_F32) {
+  if (test::DeviceIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   Run<float>(GetParam());
 }
 
-XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_F64)) {
+TEST_P(SliceR1LargeTest, DoIt_F64) {
+  if (test::DeviceIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   Run<double>(GetParam());
 }
 
-XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_U32)) {
+TEST_P(SliceR1LargeTest, DoIt_U32) {
+  if (test::DeviceIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   Run<uint32_t>(GetParam());
 }
 
-XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_S32)) {
+TEST_P(SliceR1LargeTest, DoIt_S32) {
+  if (test::DeviceIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   Run<int32_t>(GetParam());
 }
 
-XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_U64)) {
+TEST_P(SliceR1LargeTest, DoIt_U64) {
+  if (test::DeviceIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   Run<uint64_t>(GetParam());
 }
 
-XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_S64)) {
+TEST_P(SliceR1LargeTest, DoIt_S64) {
+  if (test::DeviceIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   Run<int64_t>(GetParam());
 }
 
-XLA_TEST_P(SliceR1Test, DoIt_PRED) { Run<bool>(GetParam()); }
+TEST_P(SliceR1Test, DoIt_PRED) { Run<bool>(GetParam()); }
 
 // Tests for R1 slice ops.
 // The format for each testcase is {input size, start, limit, stride}.
@@ -361,7 +385,9 @@ INSTANTIATE_TEST_CASE_P(
         R1Spec{2047, 1, 2046, 3 * 128},
         R1Spec{4096, 1024 + 3, 4095, 500},
         R1Spec{8192, 0, 8192, 1024 * 3 + 400},
+        #ifndef XLA_TEST_BACKEND_GRM
         R1Spec{1024 * 1024, 0, 1024 * 1024, 2},
+        #endif
         R1Spec{1024 * 1024, 0, 1024 * 1024, 8},
         R1Spec{1024 * 1024, 0, 1024 * 1024, 7},
         R1Spec{1024 * 1024, 0, 1024 * 1024, 125},
@@ -397,10 +423,10 @@ struct R2Spec {
 
 // Parameterized test that generates patterned R2 values, slices them according
 // to the R2Spec, and compares the results with the ReferenceUtil version.
-class SliceR2Test : public ClientLibraryTestBase,
+class SliceR2Test : public ClientLibraryTestRunnerMixin<HloTestBase>,
                     public ::testing::WithParamInterface<R2Spec> {};
 
-XLA_TEST_P(SliceR2Test, DoIt) {
+TEST_P(SliceR2Test, DoIt) {
   const R2Spec& spec = GetParam();
   Array2D<int32_t> input(spec.input_dim0, spec.input_dim1);
   input.FillUnique();
@@ -411,11 +437,9 @@ XLA_TEST_P(SliceR2Test, DoIt) {
   auto a = Parameter(&builder, 0, literal.shape(), "p0");
   Slice(a, spec.slice_starts, spec.slice_limits, spec.slice_strides);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> arg,
-                          client_->TransferToServer(literal));
   std::unique_ptr<Array2D<int32_t>> expected = ReferenceUtil::Slice2D(
       input, spec.slice_starts, spec.slice_limits, spec.slice_strides);
-  ComputeAndCompareR2<int32_t>(&builder, *expected, {arg.get()});
+  ComputeAndCompareR2<int32_t>(&builder, *expected, {&literal});
 }
 
 INSTANTIATE_TEST_CASE_P(
@@ -488,7 +512,7 @@ std::string R4SpecToString(const ::testing::TestParamInfo<R4Spec>& data) {
                       "__strides_", absl::StrJoin(spec.slice_strides, "x"));
 }
 
-class SliceR4Test : public ClientLibraryTestBase,
+class SliceR4Test : public ClientLibraryTestRunnerMixin<HloTestBase>,
                     public ::testing::WithParamInterface<R4Spec> {
  protected:
   void Run(const R4Spec& spec) {
@@ -501,14 +525,12 @@ class SliceR4Test : public ClientLibraryTestBase,
     auto literal = LiteralUtil::CreateR4FromArray4DWithLayout(
         values, LayoutUtil::MakeLayout(spec.input_layout));
     auto parameter = Parameter(&builder, 0, literal.shape(), "p0");
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> arg,
-                            client_->TransferToServer(literal));
     Slice(parameter, spec.slice_starts, spec.slice_limits, spec.slice_strides);
-    ComputeAndCompareR4(&builder, *expected, {arg.get()}, ErrorSpec(0.000001));
+    ComputeAndCompareR4(&builder, *expected, {&literal}, ErrorSpec(0.000001));
   }
 };
 
-XLA_TEST_P(SliceR4Test, DoIt) { Run(GetParam()); }
+TEST_P(SliceR4Test, DoIt) { Run(GetParam()); }
 
 const R4Spec kR4SpecValues[] = {
     R4Spec{{{2, 2, 2, 2}},

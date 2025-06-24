@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/transforms/fusion_wrapper.h"
 
-#include <cstdint>
 #include <optional>
 
 #include <gtest/gtest.h>
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/stream_executor/device_description.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -31,10 +31,8 @@ auto MakeDeviceDescription() {
   return device_description;
 }
 
-class FusionWrapperTest : public HloTestBase {
+class FusionWrapperTest : public HloHardwareIndependentTestBase {
  public:
-  using HloTestBase::HloTestBase;
-
   const stream_executor::DeviceDescription& device_description() const {
     return device_description_;
   }
@@ -234,6 +232,35 @@ TEST_F(FusionWrapperTest, WhileInFusion) {
                             FusionWrapper(device_description()),
                             // No change
                             std::nullopt);
+}
+
+TEST_F(FusionWrapperTest, AsyncComputationFusion) {
+  RunAndFilecheckHloRewrite(R"(
+      HloModule AsyncComputation
+
+      mul {
+        a = f32[5] parameter(0)
+        ROOT b = f32[5] multiply(a, a)
+      }
+
+      ENTRY %main {
+        parameter = f32[5] parameter(0)
+        start = ((f32[5]), f32[5]) call-start(parameter), to_apply=mul
+        ROOT done = f32[5] call-done(start)
+      })",
+                            FusionWrapper(device_description()), R"(
+//CHECK:      %wrapped_multiply_computation {{.*}} {
+//CHECK-NEXT:   %[[P0:.*]] = {{.*}} parameter(0)
+//CHECK-NEXT:   ROOT {{.*}} multiply(%[[P0]], %[[P0]])
+//CHECK-NEXT: }
+//CHECK:      %mul {{.*}} {
+//CHECK-NEXT:   %[[P0:.*]] = {{.*}} parameter(0)
+//CHECK-NEXT:   ROOT {{.*}} fusion(%[[P0]]), kind=kLoop, calls=%wrapped_multiply_computation
+//CHECK-NEXT: }
+//CHECK:     ENTRY %main {{.*}} {
+//CHECK-NEXT:        %[[P0:.*]] = {{.*}} parameter(0)
+//CHECK-NEXT:        {{.*}} call-start(%[[P0]]), to_apply=%mul
+)");
 }
 
 }  // namespace

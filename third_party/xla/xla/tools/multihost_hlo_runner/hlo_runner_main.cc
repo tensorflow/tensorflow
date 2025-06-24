@@ -26,19 +26,20 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/debug_options_flags.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/service/hlo_module_util.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
-#include "tsl/platform/errors.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace {
 const char* const kUsage = R"(
@@ -97,10 +98,15 @@ struct HloRunnerConfig {
   std::string hlo_argument_mode = "use_random_inputs";
   int32_t while_execution_count = -1;
   bool remove_infeed_outfeed = true;
+  bool compile_as_stablehlo = false;
+  bool use_layouts_from_hlo_module = false;
+  bool force_auto_layout = false;
   int32_t num_repeats = 1;
   std::string execution_options_path = "";
   int64_t gpu_client_initialization_timeout_sec = 300;
   float gpu_client_mem_fraction = xla::GpuAllocatorConfig{}.memory_fraction;
+  bool profile_execution = false;
+  std::string xla_gpu_dump_xspace_to = "";
 };
 
 }  // namespace
@@ -130,10 +136,10 @@ ArgumentModeFromString(absl::string_view text) {
     return FunctionalHloRunner::ModuleArgumentMode::kUninitialized;
   }
   return absl::InvalidArgumentError(
-      absl::StrCat("Unrecognized module argument mode specified. Expect "
-                   "\"use_device_id_as_input\", \"use_random_inputs\", or "
-                   "\"use_shared_random_inputs\"., got: ",
-                   text));
+      absl::StrCat(R"(Invalid --hlo_argument_mode specified. Expected one of: )"
+                   R"("use_device_id_as_input", "use_random_inputs", )"
+                   R"("use_shared_random_inputs", "use_zeros_as_input", or )",
+                   R"("uninitialized". Got: )", text));
 }
 
 static absl::StatusOr<FunctionalHloRunner::PreprocessingOptions>
@@ -199,6 +205,7 @@ RawCompileOptionsFromFlags(const HloRunnerConfig& opts) {
       opts.xla_dump_as_proto
           ? FunctionalHloRunner::XlaProtoDumpMode::kDumpAsProto
           : FunctionalHloRunner::XlaProtoDumpMode::kNotDumpAsProto;
+  out.xla_gpu_dump_xspace_to = opts.xla_gpu_dump_xspace_to;
   return out;
 }
 
@@ -214,6 +221,7 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   TF_ASSIGN_OR_RETURN(
       xla::FunctionalHloRunner::PreprocessingOptions preproc_options,
       PreprocessingOptionsFromFlags(opts));
+  preproc_options.annotate_while_loop_trip_count = true;
   TF_ASSIGN_OR_RETURN(
       xla::FunctionalHloRunner::RawCompileOptions raw_compile_options,
       RawCompileOptionsFromFlags(opts));
@@ -230,6 +238,7 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   QCHECK_LT(opts.gpu_client_mem_fraction, 1.0);
 
   PjRtEnvironment env;
+  std::unique_ptr<HLORunnerProfiler> hlo_runner_profiler;
   if (opts.device_type_str == "gpu") {
     xla::GpuClientOptions gpu_options;
     gpu_options.node_id = opts.task_id;
@@ -240,8 +249,22 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
         env, xla::GetPjRtEnvironmentForGpu(
                  opts.address_str, gpu_options,
                  absl::Seconds(opts.gpu_client_initialization_timeout_sec)));
+    // Create a GPURunnerProfiler to profile GPU executions to save xspace data
+    // to disk.
+    if (env.client != nullptr && !opts.xla_gpu_dump_xspace_to.empty()) {
+      TF_ASSIGN_OR_RETURN(hlo_runner_profiler,
+                          HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
+                                                    /*keep_xspace=*/false));
+      running_options.profiler = hlo_runner_profiler.get();
+    }
   } else if (opts.device_type_str == "host") {
     TF_ASSIGN_OR_RETURN(env, xla::GetPjRtEnvironmentForHostCpu());
+    if (env.client != nullptr && !opts.xla_gpu_dump_xspace_to.empty()) {
+      TF_ASSIGN_OR_RETURN(hlo_runner_profiler,
+                          HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
+                                                    /*keep_xspace=*/false));
+      running_options.profiler = hlo_runner_profiler.get();
+    }
   } else {
     return absl::InvalidArgumentError(
         absl::StrCat("Unrecognized device type ", opts.device_type_str,
@@ -249,18 +272,30 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   }
   CHECK(env.client != nullptr);
 
+  std::vector<ExecutionProfile> execution_profiles;
+  if (opts.profile_execution) {
+    running_options.execution_profiles = &execution_profiles;
+  }
+
   for (int c = 1; c < argc; c++) {
-    const char* filename = argv[c];
-    std::cout << "\n** Running " << filename << " **\n";
+    const char* hlo_file = argv[c];
+    execution_profiles.clear();
     if (opts.should_run) {
+      std::cout << "\n** Running " << hlo_file << " **\n";
       TF_RETURN_IF_ERROR(xla::FunctionalHloRunner::LoadAndRunAndDump(
           *env.client, GetDebugOptionsFromFlags(), preproc_options,
-          raw_compile_options, running_options, filename, opts.input_format,
+          raw_compile_options, running_options, hlo_file, opts.input_format,
           opts.dump_output_literal_to, opts.task_id));
     } else {
+      std::cout << "\n** Compiling " << hlo_file << " **\n";
       TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
           *env.client, GetDebugOptionsFromFlags(), preproc_options,
           raw_compile_options, argv[c], opts.input_format, opts.task_id));
+    }
+    for (int i = 0; i < execution_profiles.size(); ++i) {
+      std::cout << "## Execution time, file=" << hlo_file << " repeat=" << i
+                << " duration=" << execution_profiles[i].compute_time_ns()
+                << "ns" << std::endl;
     }
   }
   return absl::OkStatus();
@@ -268,12 +303,38 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
 
 }  // namespace xla
 
+namespace {
+
+// This function is parsing only the debug options file, because we cannot wait
+// till all the flags are parsed. If the debug_options file exists, then we have
+// to first consider the debug_options from that file, then XLA_FLAGS, and then
+// the command line flags. Hence, we parse the debug_options file first.
+std::optional<absl::string_view> GetDebugOptionsFileName(int argc,
+                                                         char* argv[]) {
+  for (int i = 1; i < argc; ++i) {
+    absl::string_view arg = argv[i];
+    if (absl::StrContains(arg, "--debug_options_file")) {
+      auto eq_idx = arg.find('=');
+      if (eq_idx != absl::string_view::npos) {
+        return arg.substr(eq_idx + 1);
+      } else {
+        LOG(QFATAL) << "No value provided for --debug_options_file. Expected "
+                    << "--debug_options_file=<filename>";
+      }
+    }
+  }
+  return std::nullopt;
+}
+}  // namespace
+
 int main(int argc, char** argv) {
   HloRunnerConfig opts;
+  std::string unused_debug_options_filename;
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("input_format", &opts.input_format_str,
-                "HLO input mode: text, proto_text, proto_binary, or "
-                "snapshot_proto_binary"),
+                "HLO input mode: text, proto_text, proto_binary, "
+                "snapshot_proto_binary, unoptimized_snapshot_proto_binary, or "
+                "unoptimized_snapshot_proto_text"),
       tsl::Flag("run", &opts.should_run, "Should we run the compiled HLO?"),
       tsl::Flag("dump_output_literal_to", &opts.dump_output_literal_to,
                 "A path to which the HLO output will be dumped. "
@@ -325,6 +386,15 @@ int main(int argc, char** argv) {
                 "a certain number of iterations."),
       tsl::Flag("remove_infeed_outfeed", &opts.remove_infeed_outfeed,
                 "If set, we will remove all infeed and outfeed operations."),
+      tsl::Flag("compile_as_stablehlo", &opts.compile_as_stablehlo,
+                "If set, convert the module to StableHLO before passing to "
+                "PjRt for compilation."),
+      tsl::Flag("use_layouts_from_hlo_module",
+                &opts.use_layouts_from_hlo_module,
+                "If set, use layouts from the HLO module's "
+                "entry_computation_layout."),
+      tsl::Flag("force_auto_layout", &opts.force_auto_layout,
+                "If set, force auto layout."),
       tsl::Flag("num_repeats", &opts.num_repeats,
                 "Repeatedly execute the HLO for this many times."),
       tsl::Flag("execution_options_path", &opts.execution_options_path,
@@ -337,9 +407,27 @@ int main(int argc, char** argv) {
       tsl::Flag("gpu_client_mem_fraction", &opts.gpu_client_mem_fraction,
                 "The maximum fraction of available memory to allocate in range "
                 "of (0.0, 1.0). Same as XLA_CLIENT_MEM_FRACTION in the Python "
-                "client. Only used with the BFC allocator.")};
+                "client. Only used with the BFC allocator."),
+      tsl::Flag("profile_execution", &opts.profile_execution,
+                "If set, we will profile the execution and print the results."),
+      tsl::Flag("xla_gpu_dump_xspace_to", &opts.xla_gpu_dump_xspace_to,
+                "A directory to dump xspace data for GPU profiling."),
+      // This option is not used during parsing, but it is added here for
+      // documentation, and for ensuring that the parser knows this should be
+      // ignored if present.
+      tsl::Flag("debug_options_file", &unused_debug_options_filename,
+                "A file containing debug options to be passed to the HLO "
+                "module. The file should contain a serialized DebugOptions "
+                "proto message. The order of precedence: command line flags > "
+                "XLA_FLAGS > debug_options_file > default flags.")};
 
   xla::AppendDebugOptionsFlags(&flag_list);
+
+  auto debugOptionsFilename = GetDebugOptionsFileName(argc, argv);
+  if (debugOptionsFilename.has_value()) {
+    xla::ParseFlagsFromDebugOptionsFile(debugOptionsFilename.value());
+  }
+  xla::ParseDebugOptionFlagsFromEnv(true);
 
   // The usage string includes the message at the top of the file, the
   // DebugOptions flags and the flags defined above.

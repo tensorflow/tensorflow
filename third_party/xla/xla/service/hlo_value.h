@@ -271,7 +271,7 @@ std::ostream& operator<<(std::ostream& out, const HloValueSet& value_set);
 // hold multiple HloValueSets.
 class InstructionValueSet : public ShapeTree<HloValueSet> {
  public:
-  explicit InstructionValueSet(const Shape& shape)
+  explicit InstructionValueSet(const Shape* shape)
       : ShapeTree<HloValueSet>(shape) {}
 
   // Sets this value set to the union of the given value sets. Returns whether

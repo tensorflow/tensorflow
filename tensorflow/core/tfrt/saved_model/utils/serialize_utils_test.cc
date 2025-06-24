@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
@@ -125,8 +126,8 @@ TEST(SerializeMLRTTest, HandlesSerializeAndDeserializeProcess) {
                         model_context, &module_with_op_keys));
 
   // Create Filepath for .mlir.mlrt.
-  const std::string aot_package_path =
-      GetAotPackagePath(getenv("TEST_UNDECLARED_OUTPUTS_DIR"));
+  const std::string aot_package_path = GetAotPackagePath(
+      absl::NullSafeStringView(getenv("TEST_UNDECLARED_OUTPUTS_DIR")));
   tsl::Env* env = tsl::Env::Default();
   TF_ASSERT_OK(env->RecursivelyCreateDir(aot_package_path));
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/tile_test_util.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"

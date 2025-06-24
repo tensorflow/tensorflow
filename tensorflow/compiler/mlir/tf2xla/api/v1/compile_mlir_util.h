@@ -17,8 +17,12 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V1_COMPILE_MLIR_UTIL_H_
 
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project

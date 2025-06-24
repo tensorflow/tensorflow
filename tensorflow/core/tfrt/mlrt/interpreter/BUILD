@@ -190,10 +190,11 @@ tf_cc_test(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@com_google_benchmark//:benchmark",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test_benchmark",
+        "@com_google_googletest//:gtest",
         "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/platform:test_benchmark",
+        "@local_xla//xla/tsl/platform:test_main",
         "@tf_runtime//:hostcontext",
     ],
 )
@@ -228,7 +229,7 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
         "@local_xla//xla/tsl/concurrency:async_value",
+        "@local_xla//xla/tsl/platform:status_matchers",
     ],
 )

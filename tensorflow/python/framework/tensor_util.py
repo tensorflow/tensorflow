@@ -185,6 +185,24 @@ def SlowAppendUInt4ArrayToTensorProto(tensor_proto, proto_values):
   tensor_proto.int_val.extend(x.tolist())
 
 
+def SlowAppendInt2ArrayToTensorProto(tensor_proto, proto_values):
+  # The actual bit representation of int2 as a bit-field is
+  # implementation-defined, so we need to explicitly cast each
+  # value to an int for packing.
+  x = numpy_compat.np_asarray(
+      proto_values, dtype=dtypes.int2.as_numpy_dtype).astype(np.int8)
+  tensor_proto.int_val.extend(x.tolist())
+
+
+def SlowAppendUInt2ArrayToTensorProto(tensor_proto, proto_values):
+  # The actual bit representation of int2 as a bit-field is
+  # implementation-defined, so we need to explicitly cast each
+  # value to an int for packing.
+  x = numpy_compat.np_asarray(
+      proto_values, dtype=dtypes.uint2.as_numpy_dtype).astype(np.int8)
+  tensor_proto.int_val.extend(x.tolist())
+
+
 if _FAST_TENSOR_UTIL_AVAILABLE:
   _NP_TO_APPEND_FN = {
       np.float16: _MediumAppendFloat16ArrayToTensorProto,
@@ -233,6 +251,8 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       ),
       dtypes.int4.as_numpy_dtype: SlowAppendInt4ArrayToTensorProto,
       dtypes.uint4.as_numpy_dtype: SlowAppendUInt4ArrayToTensorProto,
+      dtypes.int2.as_numpy_dtype: SlowAppendInt2ArrayToTensorProto,
+      dtypes.uint2.as_numpy_dtype: SlowAppendUInt2ArrayToTensorProto,
   }
 else:
 
@@ -299,6 +319,8 @@ else:
       dtypes.qint32.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
       dtypes.int4.as_numpy_dtype: SlowAppendInt4ArrayToTensorProto,
       dtypes.uint4.as_numpy_dtype: SlowAppendUInt4ArrayToTensorProto,
+      dtypes.int2.as_numpy_dtype: SlowAppendInt2ArrayToTensorProto,
+      dtypes.uint2.as_numpy_dtype: SlowAppendUInt2ArrayToTensorProto,
   }
 
 
@@ -376,8 +398,8 @@ _TENSOR_CONTENT_TYPES = frozenset([
     dtypes.float8_e4m3b11fnuz,
     dtypes.float8_e5m2fnuz,
     dtypes.bfloat16,
-    # int4/uint4 intentionally not listed, since their binary representation
-    # is implementation-dependent.
+    # int4 / uint4 / int2 / uint2 intentionally not listed, since their binary
+    # representation is implementation-dependent.
 ])
 
 
@@ -777,6 +799,8 @@ def MakeNdarray(tensor):
       dtypes.quint16,
       dtypes.int4,
       dtypes.uint4,
+      dtypes.int2,
+      dtypes.uint2,
   ]:
     values = np.fromiter(tensor.int_val, dtype=dtype)
   elif tensor_dtype == dtypes.int64:

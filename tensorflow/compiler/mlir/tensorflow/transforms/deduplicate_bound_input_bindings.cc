@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <vector>
+#include <memory>
+#include <utility>
 
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -51,7 +52,9 @@ void DedupBoundInputBindingPass::runOnOperation() {
     duplicate_arg.replaceAllUsesWith(original_arg);
     arg_indices_to_erase.set(i);
   }
-  func.eraseArguments(arg_indices_to_erase);
+  if (failed(func.eraseArguments(arg_indices_to_erase))) {
+    return signalPassFailure();
+  }
 }
 
 }  // namespace

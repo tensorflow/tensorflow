@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <vector>
 
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/kernels/batch_kernels.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace test_util {

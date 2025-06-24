@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"

@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
-namespace mhlo {
+namespace hlo {
 namespace {
 
 mlir::DialectRegistry GetDefaultDialectRegistry() {
@@ -91,5 +91,5 @@ TEST_F(XlaLegalizeTargetsTest, DontAllowCHLODialect) {
 }
 
 }  // namespace
-}  // namespace mhlo
+}  // namespace hlo
 }  // namespace mlir

@@ -21,13 +21,14 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
-#include "tsl/platform/statusor.h"
 
 namespace {
 using ::tensorflow::monitoring::testing::CellReader;

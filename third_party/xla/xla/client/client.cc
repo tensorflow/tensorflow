@@ -34,12 +34,12 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -82,8 +82,9 @@ absl::StatusOr<Literal> Client::ExecuteAndTransfer(
 
   std::optional<Shape> shape_with_output_layout;
   if (execution_options && execution_options->has_shape_with_output_layout()) {
-    shape_with_output_layout =
-        Shape(execution_options->shape_with_output_layout());
+    TF_ASSIGN_OR_RETURN(
+        shape_with_output_layout,
+        Shape::FromProto(execution_options->shape_with_output_layout()));
   }
   return Transfer(*data, shape_with_output_layout.has_value()
                              ? &(*shape_with_output_layout)

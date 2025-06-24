@@ -16,12 +16,14 @@ limitations under the License.
 #include "xla/ffi/type_id_registry.h"
 
 #include <cstdint>
+#include <limits>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla::ffi {
 namespace {
@@ -30,12 +32,25 @@ using ::testing::HasSubstr;
 
 TEST(TypeIdRegistryTest, RegisterExternalTypeId) {
   TF_ASSERT_OK_AND_ASSIGN(auto type_id,
-                          TypeIdRegistry::RegisterExternalTypeId("foo"));
+                          TypeIdRegistry::AssignExternalTypeId("foo"));
   EXPECT_GE(type_id.value(), 0);
 
-  auto duplicate_type_id = TypeIdRegistry::RegisterExternalTypeId("foo");
+  auto duplicate_type_id = TypeIdRegistry::AssignExternalTypeId("foo");
   EXPECT_THAT(duplicate_type_id.status().message(),
-              HasSubstr("already registered for type name foo"));
+              HasSubstr("Type name foo already registered with type id"));
+
+  // It's ok to register the same type with same type id.
+  TF_ASSERT_OK(TypeIdRegistry::RegisterExternalTypeId("foo", type_id));
+
+  // It's an error to register the same type with a different type id.
+  auto wrong_type_id = TypeIdRegistry::RegisterExternalTypeId(
+      "foo", TypeIdRegistry::TypeId(std::numeric_limits<int64_t>::max()));
+  EXPECT_THAT(wrong_type_id.message(),
+              HasSubstr("Type name foo already registered with type id"));
+
+  // It's ok to register a new type with a user-provided type id.
+  TF_ASSERT_OK(TypeIdRegistry::RegisterExternalTypeId(
+      "bar", TypeIdRegistry::TypeId(std::numeric_limits<int64_t>::max())));
 }
 
 TEST(TypeIdRegistryTest, RegisterInternalTypeId) {

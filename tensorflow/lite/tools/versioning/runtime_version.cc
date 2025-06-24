@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023-2025 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/versioning/runtime_version.h"
 
+#include <cstdint>
 #include <cstring>
 #include <map>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
@@ -201,6 +203,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_TRANSPOSE, 4}, "2.3.0"},
               {{BuiltinOperator_TRANSPOSE, 5}, "2.4.0"},
               {{BuiltinOperator_TRANSPOSE, 6}, "2.12.0"},
+              {{BuiltinOperator_TRANSPOSE, 7}, "2.14.4"},
               {{BuiltinOperator_LSTM, 1}, "1.7.0"},
               {{BuiltinOperator_LSTM, 2}, "1.10.0"},
               {{BuiltinOperator_LSTM, 3}, "1.14.0"},
@@ -429,6 +432,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_DYNAMIC_UPDATE_SLICE, 1}, "2.9.0"},
               {{BuiltinOperator_DYNAMIC_UPDATE_SLICE, 2}, "2.17.0"},
               {{BuiltinOperator_DYNAMIC_UPDATE_SLICE, 3}, "2.19.0"},
+              {{BuiltinOperator_DYNAMIC_UPDATE_SLICE, 4}, "2.20.0"},
               {{BuiltinOperator_UNSORTED_SEGMENT_PROD, 1}, "2.10.0"},
               {{BuiltinOperator_UNSORTED_SEGMENT_MAX, 1}, "2.10.0"},
               {{BuiltinOperator_UNSORTED_SEGMENT_MIN, 1}, "2.11.0"},

@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_ordering.h"
 
 #include <memory>
-#include <string>
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"

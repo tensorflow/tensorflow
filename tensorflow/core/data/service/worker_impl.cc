@@ -29,6 +29,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status_to_from_proto.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/status.pb.h"
 #include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/service/common.h"
@@ -65,9 +68,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status_to_from_proto.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -430,8 +430,9 @@ DataServiceWorkerImpl::MakeDataset(const DatasetDef& dataset_def,
   // `ApplyAutoShardRewrite` does nothing if auto-sharding is disabled.
   TF_ASSIGN_OR_RETURN(graph, auto_shard_rewriter.ApplyAutoShardRewrite(graph));
   std::unique_ptr<standalone::Dataset> dataset;
-  TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
-      standalone::Dataset::Params(), graph, &dataset));
+  standalone::Dataset::Params params;
+  params.metadata_options.data_service_address = config_.dispatcher_address();
+  TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(params, graph, &dataset));
   return dataset;
 }
 
@@ -700,7 +701,7 @@ void DataServiceWorkerImpl::UpdateTasks(const WorkerHeartbeatResponse& response)
         continue;
       }
       absl::Status s = ProcessTaskInternal(task);
-      if (!s.ok() && !errors::IsAlreadyExists(s)) {
+      if (!s.ok() && !absl::IsAlreadyExists(s)) {
         LOG(WARNING) << "Failed to start processing task " << task.task_id()
                      << ": " << s;
       }

@@ -24,9 +24,9 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/platform/stacktrace.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace status_macros {
@@ -77,7 +77,7 @@ static absl::Status MakeError(const char* filename, int line,
     LOG(ERROR) << "Cannot create error with status OK";
     code = absl::StatusCode::kUnknown;
   }
-  const absl::Status status = absl::Status(code, message);
+  absl::Status status = absl::Status(code, message);
   if (ABSL_PREDICT_TRUE(should_log)) {
     LogError(status, filename, line, log_severity, should_log_stack_trace);
   }
@@ -118,8 +118,6 @@ MakeErrorStream::Impl::Impl(const absl::Status& status,
       prior_message_handling_(prior_message_handling),
       prior_message_(status.message()),
       is_done_(false),
-      // Error code type is not visible here, so we can't call
-      // IsLoggedByDefault.
       should_log_(true),
       log_severity_(absl::LogSeverity::kError),
       should_log_stack_trace_(false),

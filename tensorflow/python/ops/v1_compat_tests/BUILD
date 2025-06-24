@@ -9,7 +9,6 @@ cuda_py_strict_test(
     name = "gradient_checker_test",
     size = "medium",
     srcs = ["gradient_checker_test.py"],
-    python_version = "PY3",
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",

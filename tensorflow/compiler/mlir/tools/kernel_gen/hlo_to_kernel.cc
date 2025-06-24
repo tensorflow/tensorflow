@@ -40,6 +40,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/Dialect/MemRef/Transforms/AllocationOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -52,11 +53,11 @@
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace kernel_gen {
@@ -73,7 +74,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
     } else {
       triple = llvm::Triple(llvm::sys::getDefaultTargetTriple());
     }
-    module->setTargetTriple(triple.getTriple());
+    module->setTargetTriple(llvm::Triple(triple.getTriple()));
   }
 
   std::string error;

@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
-#include "xla/service/call_inliner.h"
 #include "xla/service/while_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -143,10 +142,6 @@ absl::StatusOr<bool> WhileLoopPipelineUnroller::Run(
           absl::StrFormat("unrolled_%dx_step_%d", unroll_factor, step)));
       input_tuple = unrolled_body->AddInstruction(HloInstruction::CreateCall(
           while_instruction->shape(), {input_tuple}, loop_step));
-      TF_ASSIGN_OR_RETURN(auto inline_map, CallInliner::Inline(input_tuple));
-      // Find the original bodies root after inlining. This is the inputs for
-      // the next (unrolled) loop iteration.
-      input_tuple = inline_map[loop_step->root_instruction()];
       original_roots.push_back(input_tuple);
     }
     // The final original root is now the root of the unrolled loop.
@@ -181,22 +176,6 @@ absl::StatusOr<bool> WhileLoopPipelineUnroller::Run(
 
   const bool changed = !while_instructions.empty();
   if (changed) {
-    // We're unrolling the loop to remove aliasing copies, not to find better
-    // scheduling opportunities.
-    // Create a global barrier at the boundary of steps, so sideffecting ops
-    // don't get moved to neighbouring steps during scheduling.
-    // This creates a soft guarantee that the unrolled loop steps will have
-    // an identical schedule to their original counterpart.
-    for (HloInstruction* original_root : original_roots) {
-      HloInstruction* sideeffect_barrier = original_root->AddInstruction(
-          HloInstruction::CreateAfterAll(original_root->operands()));
-      for (HloInstruction* user : original_root->users()) {
-        if (user->shape().IsToken()) {
-          TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(sideeffect_barrier));
-        }
-      }
-    }
-
     // When we cloned the loop body for each unrolled step, we didn't
     // recursively clone all the nested computations. FCG will take care of this
     // for us.

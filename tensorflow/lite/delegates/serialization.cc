@@ -238,14 +238,14 @@ TfLiteStatus SerializationEntry::GetData(TfLiteContext* context,
   }
 }
 
-SerializationEntry Serialization::GetEntryImpl(
-    const std::string& custom_key, TfLiteContext* context,
-    const TfLiteDelegateParams* delegate_params) {
+uint64_t Serialization::GetFingerprint(
+    const std::string& model_token, const std::string& custom_key,
+    TfLiteContext* context, const TfLiteDelegateParams* delegate_params) {
   // First incorporate model_token.
   // We use Fingerprint64 instead of std::hash, since the latter isn't
   // guaranteed to be stable across runs. See b/172237993.
   uint64_t fingerprint =
-      ::util::Fingerprint64(model_token_.c_str(), model_token_.size());
+      ::util::Fingerprint64(model_token.c_str(), model_token.size());
 
   // Incorporate custom_key.
   const uint64_t custom_str_fingerprint =
@@ -297,6 +297,14 @@ SerializationEntry Serialization::GetEntryImpl(
                                 partition_data.size() * sizeof(int32_t));
     fingerprint = CombineFingerprints(fingerprint, partition_fingerprint);
   }
+  return fingerprint;
+}
+
+SerializationEntry Serialization::GetEntryImpl(
+    const std::string& custom_key, TfLiteContext* context,
+    const TfLiteDelegateParams* delegate_params) {
+  uint64_t fingerprint =
+      GetFingerprint(model_token_, custom_key, context, delegate_params);
 
   // Get a fingerprint-specific lock that is passed to the SerializationKey, to
   // ensure noone else gets access to an equivalent SerializationKey.

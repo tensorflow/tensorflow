@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/conv_spmd_expander.h"
 
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "llvm/ADT/SmallVector.h"

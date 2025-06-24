@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {
@@ -46,6 +45,16 @@ class FftThunk final : public Thunk {
       const ExecuteParams& params) final;
 
   BufferUses buffer_uses() const final;
+
+  bool is_multi_thread_eigen() const { return is_multi_thread_eigen_; }
+  int32_t fft_type() const { return fft_type_; }
+  const std::vector<int64_t>& fft_length() const { return fft_length_; }
+  const BufferAllocation::Slice& input_buffer() const { return input_buffer_; }
+  const Shape& input_shape() const { return input_shape_; }
+  const BufferAllocation::Slice& output_buffer() const {
+    return output_buffer_;
+  }
+  const Shape& output_shape() const { return output_shape_; }
 
  private:
   // Constructs a thunk for launching an FFT on a host.

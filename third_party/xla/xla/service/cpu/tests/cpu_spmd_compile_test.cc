@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace cpu {
@@ -73,6 +73,10 @@ ENTRY main {
   config.set_num_partitions(4);
   config.set_debug_options(GetDebugOptionsFromFlags());
   auto module = ParseAndReturnVerifiedModule(hlo_string, config).value();
+
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_use_thunk_runtime(false);
 
   CpuAotCompilationOptions options{
       /*triple=*/kTargetTripleForHost, /*cpu_name=*/kTargetCpuForHost,

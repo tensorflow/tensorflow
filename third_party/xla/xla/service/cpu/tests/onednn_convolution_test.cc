@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-
 #include <utility>
 
 #include "absl/strings/str_replace.h"
@@ -27,11 +25,12 @@ limitations under the License.
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "tsl/platform/cpu_info.h"
 
 namespace xla {
 namespace cpu {
+
+#if defined(INTEL_MKL)
 
 class ConvolutionTest : public HloTestBase,
                         public ::testing::WithParamInterface<PrimitiveType> {
@@ -72,9 +71,7 @@ class ConvolutionTest : public HloTestBase,
   ConvolutionTest() {
     dtype_ = GetParam();
     atol_ = rtol_ = (dtype_ == F32) ? 1e-4 : 1e-2;
-    // TODO(intel-tf): Set default value of user_scratchpad to true after
-    // enabling feature
-    user_scratchpad_ = false;
+    user_scratchpad_ = true;
     weights_prepacked_ = false;
     dtypeString_ = primitive_util::LowercasePrimitiveTypeName(dtype_);
   }
@@ -104,7 +101,7 @@ class ConvolutionTest : public HloTestBase,
     std::ostringstream stream;
     std::for_each(
         fused_ops.begin(), fused_ops.end(),
-        [&](const absl::string_view& arg) { stream << "\"" << arg << "\","; });
+        [&](absl::string_view arg) { stream << "\"" << arg << "\","; });
     std::string fusions = stream.str();
     if (fused_ops.size() > 0) {
       fusions.pop_back();
@@ -137,6 +134,14 @@ class ConvolutionTest : public HloTestBase,
 
   std::string PromotedDtypeToString() {
     return primitive_util::LowercasePrimitiveTypeName(PromotedDtype());
+  }
+
+  void RunAndExpectExit(const absl::string_view outline, int signal) {
+    const std::string convolution_module_str = absl::StrReplaceAll(
+        outline,
+        {{"$dtype", dtypeString_}, {"$pdtype", PromotedDtypeToString()}});
+    EXPECT_EXIT((void)Run(convolution_module_str, true),
+                ::testing::KilledBySignal(signal), "");
   }
 
   void RunCompareAndMatchOptimizedHlo(
@@ -273,6 +278,53 @@ TEST_P(ConvolutionTest, Conv2DWithBiasAndReluTest) {
   RunCompareAndMatchOptimizedHlo(outline, {"BIAS", "RELU"});
 }
 
+TEST_P(ConvolutionTest, ConvInsufficientScratchTest) {
+  // Running death tests in a single-threaded environment
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+  if (dtype_ == BF16 && !HasAMXTile()) {
+    GTEST_SKIP() << "Skipping test for " << dtypeString_
+                 << " because oneDNN may not request scratch allocations "
+                    "on platforms that emulate "
+                 << dtypeString_;
+  }
+  const absl::string_view outline = R"(
+  HloModule convolution.test.insufficient.scratch
+
+  ENTRY convolution.test.insufficient.scratch {
+    p0 = $dtype[1,1024,1] parameter(0)
+    p1 = $dtype[3,1,3] parameter(1)
+    ROOT conv = ($dtype[1,1022,3], u8[128]) custom-call(p0, p1),
+      custom_call_target="__onednn$convolution",
+        backend_config={
+          "outer_dimension_partitions":[],
+          "onednn_conv_config":{
+            "dims":"3",
+            "input":{
+              "dims":"3",
+              "data":{"batch_dim":"0","feature_dim":"2","spatial_dims":["2"]}
+            },
+            "kernel":{
+              "dims":"3",
+              "filter":{"input_feature_dim":"1","output_feature_dim":"2",
+                "spatial_dims":["1"],"shape":[]}
+            },
+            "output":{
+              "dims":"3",
+              "data":{"batch_dim":"0","feature_dim":"2","spatial_dims":["2"]}
+            },
+            "window":{
+              "size":[],"pad_left":["1"],"pad_right":["1"],
+              "strides":["2"],"window_dilations":["2"]
+            },
+            "feature_groups":"1",
+            "optimization_config":{"user_scratchpad":true}
+          }
+        }
+  })";
+
+  RunAndExpectExit(outline, SIGABRT);
+}
+
 TEST_P(ConvolutionTest, Conv2DWithBinaryAddTest) {
   const absl::string_view outline = R"(
   HloModule convolution.test.with.binaryadd
@@ -292,8 +344,6 @@ TEST_P(ConvolutionTest, Conv2DWithBinaryAddTest) {
   RunCompareAndMatchOptimizedHlo(outline, {"BINARY_ADD"});
 }
 
-// This test should match BIAS + RESIDUAL ADD when the residual add fusion is
-// re-enabled.
 TEST_P(ConvolutionTest, Conv2DWithBiasAndBinaryAddTest) {
   const absl::string_view outline = R"(
   HloModule convolution.add.test
@@ -310,7 +360,13 @@ TEST_P(ConvolutionTest, Conv2DWithBiasAndBinaryAddTest) {
     ROOT add.1 = $dtype[1,11,11,10] add(add.0, const.1)
   })";
 
-  RunCompareAndMatchOptimizedHlo(outline, {"BIAS"});
+  // Optimized HLO must match "SUM" only for precisions that support Elementwise
+  // Add operations
+  if (dtype_ == BF16) {
+    RunCompareAndMatchOptimizedHlo(outline, {"BIAS", "BINARY_ADD"});
+  } else {
+    RunCompareAndMatchOptimizedHlo(outline, {"BIAS", "SUM"});
+  }
 }
 
 TEST_P(ConvolutionTest, ToeplitzConstrcutionTest) {
@@ -345,6 +401,25 @@ TEST_P(ConvolutionTest, ToeplitzConstrcutionTest) {
   })";
 
   RunCompareAndMatchOptimizedHlo(outline, {"BINARY_ADD"});
+}
+
+TEST_P(ConvolutionTest, Conv2DWithSumTest) {
+  const absl::string_view outline = R"(
+  HloModule convolution.test.with.sum
+  ENTRY convolution.test.with.sum {
+    arg0.1 = $dtype[1,22,22,1] parameter(0)
+    arg0.2 = $dtype[1,11,11,1] parameter(1)
+    constant.3 = $dtype[] constant(1)
+    broadcast.4 = $dtype[8,8,1,1] broadcast(constant.3), dimensions={}
+    convolution.0 = $dtype[1,11,11,1] convolution(arg0.1, broadcast.4),
+          window={size=8x8 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f
+    ROOT add.10 = $dtype[1,11,11,1] add(convolution.0, arg0.2)
+  })";
+
+  // Optimized HLO must match "SUM" only for precisions that support Elementwise
+  // Add operations
+  RunCompareAndMatchOptimizedHlo(outline,
+                                 {(dtype_ == BF16) ? "BINARY_ADD" : "SUM"});
 }
 
 TEST_P(ConvolutionTest, Conv2DWithBiasAndTanhTest) {
@@ -636,7 +711,10 @@ INSTANTIATE_TEST_SUITE_P(
       return test_name;
     });
 
+#endif  // INTEL_MKL
+
+// Ensure at least one test case is linked to avoid test failures.
+TEST(Dummy, Test) {}
+
 }  // namespace cpu
 }  // namespace xla
-
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3

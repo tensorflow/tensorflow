@@ -24,13 +24,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/macros.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
-#include "tsl/platform/str_util.h"
 #include "tsl/platform/strcat.h"
 
 namespace tsl {
@@ -88,7 +90,7 @@ inline const strings::AlphaNum& PrepareForStrCat(const strings::AlphaNum& a) {
 }  // namespace internal
 
 // Maps UNIX errors into a Status.
-absl::Status IOError(const string& context, int err_number);
+absl::Status IOError(absl::string_view context, int err_number);
 
 // Returns all payloads from a Status as a key-value map.
 inline std::unordered_map<std::string, std::string> GetPayloads(
@@ -146,16 +148,16 @@ inline absl::Status CreateWithUpdatedMessage(const absl::Status& status,
 }
 
 #else
-inline ::absl::Status Create(
-    absl::StatusCode code, ::tsl::StringPiece message,
+inline absl::Status Create(
+    absl::StatusCode code, absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   Status status(code, message);
   InsertPayloads(status, payloads);
   return status;
 }
 // Returns a new Status, replacing its message with the given.
-inline ::tsl::Status CreateWithUpdatedMessage(const ::tsl::Status& status,
-                                              ::tsl::StringPiece message) {
+inline absl::Status CreateWithUpdatedMessage(const absl::Status& status,
+                                             absl::string_view message) {
   return Create(static_cast<absl::StatusCode>(status.code()), message,
                 GetPayloads(status));
 }
@@ -173,18 +175,18 @@ void AppendToMessage(absl::Status* status, Args... args) {
 }
 
 // For propagating errors when calling a function.
-#define TF_RETURN_IF_ERROR(...)             \
-  do {                                      \
-    ::absl::Status _status = (__VA_ARGS__); \
-    if (TF_PREDICT_FALSE(!_status.ok())) {  \
-      MAYBE_ADD_SOURCE_LOCATION(_status)    \
-      return _status;                       \
-    }                                       \
+#define TF_RETURN_IF_ERROR(...)            \
+  do {                                     \
+    absl::Status _status = (__VA_ARGS__);  \
+    if (TF_PREDICT_FALSE(!_status.ok())) { \
+      MAYBE_ADD_SOURCE_LOCATION(_status)   \
+      return _status;                      \
+    }                                      \
   } while (0)
 
 #define TF_RETURN_WITH_CONTEXT_IF_ERROR(expr, ...)           \
   do {                                                       \
-    ::tsl::Status _status = (expr);                          \
+    absl::Status _status = (expr);                           \
     if (TF_PREDICT_FALSE(!_status.ok())) {                   \
       ::tsl::errors::AppendToMessage(&_status, __VA_ARGS__); \
       return _status;                                        \
@@ -199,34 +201,33 @@ void AppendToMessage(absl::Status* status, Args... args) {
 
 // CANCELLED
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::CancelledError() instead.")
 absl::Status Cancelled(Args... args) {
-  return absl::Status(absl::StatusCode::kCancelled,
-                      ::tsl::strings::StrCat(
-                          ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::CancelledError(::tsl::strings::StrCat(
+      ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
 template <typename... Args>
 absl::Status CancelledWithPayloads(
-    const absl::string_view& message,
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kCancelled, message, payloads);
 }
 
 // InvalidArgument
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::InvalidArgumentError() instead.")
 absl::Status InvalidArgument(Args... args) {
-  return absl::Status(absl::StatusCode::kInvalidArgument,
-                      ::tsl::strings::StrCat(
-                          ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::InvalidArgumentError(::tsl::strings::StrCat(
+      ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
-
+// Specialized overloads to capture source location for up to four arguments.
 #if defined(PLATFORM_GOOGLE)
-// Specialized overloads to capture source location for up to three arguments.
 template <typename Arg1, typename Arg2, typename Arg3, typename Arg4>
-::absl::Status InvalidArgument(
+ABSL_DEPRECATED("Use absl::InvalidArgumentError() instead.")
+absl::Status InvalidArgument(
     Arg1 arg1, Arg2 arg2, Arg3 arg3, Arg4 arg4,
     absl::SourceLocation loc = absl::SourceLocation::current()) {
-  return absl::Status(
-      absl::StatusCode::kInvalidArgument,
+  return absl::InvalidArgumentError(
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
                              ::tsl::errors::internal::PrepareForStrCat(arg2),
                              ::tsl::errors::internal::PrepareForStrCat(arg3),
@@ -234,67 +235,44 @@ template <typename Arg1, typename Arg2, typename Arg3, typename Arg4>
       loc);
 }
 template <typename Arg1, typename Arg2, typename Arg3>
-::absl::Status InvalidArgument(
+ABSL_DEPRECATED("Use absl::InvalidArgumentError() instead.")
+absl::Status InvalidArgument(
     Arg1 arg1, Arg2 arg2, Arg3 arg3,
     absl::SourceLocation loc = absl::SourceLocation::current()) {
-  return absl::Status(
-      absl::StatusCode::kInvalidArgument,
+  return absl::InvalidArgumentError(
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
                              ::tsl::errors::internal::PrepareForStrCat(arg2),
                              ::tsl::errors::internal::PrepareForStrCat(arg3)),
       loc);
 }
 template <typename Arg1, typename Arg2>
-::absl::Status InvalidArgument(
+ABSL_DEPRECATED("Use absl::InvalidArgumentError() instead.")
+absl::Status InvalidArgument(
     Arg1 arg1, Arg2 arg2,
     absl::SourceLocation loc = absl::SourceLocation::current()) {
-  return absl::Status(
-      absl::StatusCode::kInvalidArgument,
+  return absl::InvalidArgumentError(
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
                              ::tsl::errors::internal::PrepareForStrCat(arg2)),
       loc);
 }
 template <typename Arg1>
-::absl::Status InvalidArgument(
+ABSL_DEPRECATED("Use absl::InvalidArgumentError() instead.")
+absl::Status InvalidArgument(
     Arg1 arg1, absl::SourceLocation loc = absl::SourceLocation::current()) {
-  return absl::Status(
-      absl::StatusCode::kInvalidArgument,
+  return absl::InvalidArgumentError(
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1)),
       loc);
 }
-template <typename... Args>
-::absl::Status InvalidArgumentWithPayloads(
-    const absl::string_view& message,
+inline absl::Status InvalidArgumentWithPayloads(
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads,
     absl::SourceLocation loc = absl::SourceLocation::current()) {
   return errors::Create(absl::StatusCode::kInvalidArgument, message, payloads,
                         loc);
 }
 #else
-template <typename Arg1, typename Arg2, typename Arg3>
-::absl::Status InvalidArgument(Arg1 arg1, Arg2 arg2, Arg3 arg3) {
-  return ::absl::Status(
-      absl::StatusCode::kInvalidArgument,
-      ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
-                             ::tsl::errors::internal::PrepareForStrCat(arg2),
-                             ::tsl::errors::internal::PrepareForStrCat(arg3)));
-}
-template <typename Arg1, typename Arg2>
-::absl::Status InvalidArgument(Arg1 arg1, Arg2 arg2) {
-  return ::absl::Status(
-      absl::StatusCode::kInvalidArgument,
-      ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
-                             ::tsl::errors::internal::PrepareForStrCat(arg2)));
-}
-template <typename Arg1>
-::absl::Status InvalidArgument(Arg1 arg1) {
-  return ::absl::Status(
-      absl::StatusCode::kInvalidArgument,
-      ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1)));
-}
-template <typename... Args>
-::absl::Status InvalidArgumentWithPayloads(
-    const ::tsl::StringPiece& message,
+inline absl::Status InvalidArgumentWithPayloads(
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kInvalidArgument, message, payloads);
 }
@@ -302,74 +280,52 @@ template <typename... Args>
 
 // NotFound
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::NotFoundError() instead.")
 absl::Status NotFound(Args... args) {
-  return absl::Status(absl::StatusCode::kNotFound,
-                      ::tsl::strings::StrCat(
-                          ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::NotFoundError(::tsl::strings::StrCat(
+      ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
-#if defined(PLATFORM_GOOGLE)
 // Specialized overloads to capture source location for up to three arguments.
+#if defined(PLATFORM_GOOGLE)
 template <typename Arg1, typename Arg2, typename Arg3>
-::absl::Status NotFound(
-    Arg1 arg1, Arg2 arg2, Arg3 arg3,
-    absl::SourceLocation loc = absl::SourceLocation::current()) {
-  return absl::Status(
-      absl::StatusCode::kNotFound,
+ABSL_DEPRECATED("Use absl::NotFoundError() instead.")
+absl::Status
+    NotFound(Arg1 arg1, Arg2 arg2, Arg3 arg3,
+             absl::SourceLocation loc = absl::SourceLocation::current()) {
+  return absl::NotFoundError(
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
                              ::tsl::errors::internal::PrepareForStrCat(arg2),
                              ::tsl::errors::internal::PrepareForStrCat(arg3)),
       loc);
 }
 template <typename Arg1, typename Arg2>
-::absl::Status NotFound(
-    Arg1 arg1, Arg2 arg2,
-    absl::SourceLocation loc = absl::SourceLocation::current()) {
-  return absl::Status(
-      absl::StatusCode::kNotFound,
+ABSL_DEPRECATED("Use absl::NotFoundError() instead.")
+absl::Status
+    NotFound(Arg1 arg1, Arg2 arg2,
+             absl::SourceLocation loc = absl::SourceLocation::current()) {
+  return absl::NotFoundError(
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
                              ::tsl::errors::internal::PrepareForStrCat(arg2)),
       loc);
 }
 template <typename Arg1>
-::absl::Status NotFound(
-    Arg1 arg1, absl::SourceLocation loc = absl::SourceLocation::current()) {
-  return absl::Status(
-      absl::StatusCode::kNotFound,
+ABSL_DEPRECATED("Use absl::NotFoundError() instead.")
+absl::Status
+    NotFound(Arg1 arg1,
+             absl::SourceLocation loc = absl::SourceLocation::current()) {
+  return absl::NotFoundError(
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1)),
       loc);
 }
-template <typename... Args>
-::absl::Status NotFoundWithPayloads(
-    const absl::string_view& message,
+inline absl::Status NotFoundWithPayloads(
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads,
     absl::SourceLocation loc = absl::SourceLocation::current()) {
   return errors::Create(absl::StatusCode::kNotFound, message, payloads, loc);
 }
 #else
-template <typename Arg1, typename Arg2, typename Arg3>
-::absl::Status NotFound(Arg1 arg1, Arg2 arg2, Arg3 arg3) {
-  return ::absl::Status(
-      absl::StatusCode::kNotFound,
-      ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
-                             ::tsl::errors::internal::PrepareForStrCat(arg2),
-                             ::tsl::errors::internal::PrepareForStrCat(arg3)));
-}
-template <typename Arg1, typename Arg2>
-::absl::Status NotFound(Arg1 arg1, Arg2 arg2) {
-  return ::absl::Status(
-      absl::StatusCode::kNotFound,
-      ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
-                             ::tsl::errors::internal::PrepareForStrCat(arg2)));
-}
-template <typename Arg1>
-::absl::Status NotFound(Arg1 arg1) {
-  return ::absl::Status(
-      absl::StatusCode::kNotFound,
-      ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1)));
-}
-template <typename... Args>
-::absl::Status NotFoundWithPayloads(
-    const ::tsl::StringPiece& message,
+inline absl::Status NotFoundWithPayloads(
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kNotFound, message, payloads);
 }
@@ -377,28 +333,26 @@ template <typename... Args>
 
 // AlreadyExists
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::AlreadyExistsError() instead.")
 absl::Status AlreadyExists(Args... args) {
-  return absl::Status(absl::StatusCode::kAlreadyExists,
-                      ::tsl::strings::StrCat(
-                          ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::AlreadyExistsError(::tsl::strings::StrCat(
+      ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
-template <typename... Args>
-absl::Status AlreadyExistsWithPayloads(
-    const absl::string_view& message,
+inline absl::Status AlreadyExistsWithPayloads(
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kAlreadyExists, message, payloads);
 }
 
 // ResourceExhausted
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::ResourceExhaustedError() instead.")
 absl::Status ResourceExhausted(Args... args) {
-  return absl::Status(absl::StatusCode::kResourceExhausted,
-                      ::tsl::strings::StrCat(
-                          ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::ResourceExhaustedError(::tsl::strings::StrCat(
+      ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
-template <typename... Args>
-absl::Status ResourceExhaustedWithPayloads(
-    const absl::string_view& message,
+inline absl::Status ResourceExhaustedWithPayloads(
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kResourceExhausted, message,
                         payloads);
@@ -406,28 +360,26 @@ absl::Status ResourceExhaustedWithPayloads(
 
 // Unavailable
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::UnavailableError() instead.")
 absl::Status Unavailable(Args... args) {
-  return absl::Status(absl::StatusCode::kUnavailable,
-                      ::tsl::strings::StrCat(
-                          ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::UnavailableError(::tsl::strings::StrCat(
+      ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
-template <typename... Args>
-absl::Status UnavailableWithPayloads(
-    const absl::string_view& message,
+inline absl::Status UnavailableWithPayloads(
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kUnavailable, message, payloads);
 }
 
 // FailedPrecondition
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::FailedPreconditionError() instead.")
 absl::Status FailedPrecondition(Args... args) {
-  return absl::Status(absl::StatusCode::kFailedPrecondition,
-                      ::tsl::strings::StrCat(
-                          ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::FailedPreconditionError(::tsl::strings::StrCat(
+      ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
-template <typename... Args>
-absl::Status FailedPreconditionWithPayloads(
-    const absl::string_view& message,
+inline absl::Status FailedPreconditionWithPayloads(
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kFailedPrecondition, message,
                         payloads);
@@ -435,145 +387,184 @@ absl::Status FailedPreconditionWithPayloads(
 
 // OutOfRange
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::OutOfRangeError() instead.")
 absl::Status OutOfRange(Args... args) {
-  return absl::Status(absl::StatusCode::kOutOfRange,
-                      ::tsl::strings::StrCat(
-                          ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::OutOfRangeError(::tsl::strings::StrCat(
+      ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
-template <typename... Args>
-absl::Status OutOfRangeWithPayloads(
-    const absl::string_view& message,
+inline absl::Status OutOfRangeWithPayloads(
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kOutOfRange, message, payloads);
 }
 
 // Unimplemented
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::UnimplementedError() instead.")
 absl::Status Unimplemented(Args... args) {
-  return absl::Status(absl::StatusCode::kUnimplemented,
-                      ::tsl::strings::StrCat(
-                          ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::UnimplementedError(::tsl::strings::StrCat(
+      ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
-template <typename... Args>
-absl::Status UnimplementedWithPayloads(
-    const absl::string_view& message,
+inline absl::Status UnimplementedWithPayloads(
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kUnimplemented, message, payloads);
 }
 
 // Internal
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::InternalError() instead.")
 absl::Status Internal(Args... args) {
-  return absl::Status(absl::StatusCode::kInternal,
-                      ::tsl::strings::StrCat(
-                          ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::InternalError(::tsl::strings::StrCat(
+      ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
-template <typename... Args>
-absl::Status InternalWithPayloads(
-    const absl::string_view& message,
+inline absl::Status InternalWithPayloads(
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kInternal, message, payloads);
 }
 
 // Aborted
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::AbortedError() instead.")
 absl::Status Aborted(Args... args) {
-  return absl::Status(absl::StatusCode::kAborted,
-                      ::tsl::strings::StrCat(
-                          ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::AbortedError(::tsl::strings::StrCat(
+      ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
-template <typename... Args>
-absl::Status AbortedWithPayloads(
-    const absl::string_view& message,
+inline absl::Status AbortedWithPayloads(
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kAborted, message, payloads);
 }
 
 // DeadlineExceeded
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::DeadlineExceededError() instead.")
 absl::Status DeadlineExceeded(Args... args) {
-  return absl::Status(absl::StatusCode::kDeadlineExceeded,
-                      ::tsl::strings::StrCat(
-                          ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::DeadlineExceededError(::tsl::strings::StrCat(
+      ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
-template <typename... Args>
-absl::Status DeadlineExceededWithPayloads(
-    const absl::string_view& message,
+inline absl::Status DeadlineExceededWithPayloads(
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kDeadlineExceeded, message, payloads);
 }
 
 // DataLoss
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::DataLossError() instead.")
 absl::Status DataLoss(Args... args) {
-  return absl::Status(absl::StatusCode::kDataLoss,
-                      ::tsl::strings::StrCat(
-                          ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::DataLossError(::tsl::strings::StrCat(
+      ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
-template <typename... Args>
-absl::Status DataLossWithPayloads(
-    const absl::string_view& message,
+inline absl::Status DataLossWithPayloads(
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kDataLoss, message, payloads);
 }
 
 // Unknown
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::UnknownError() instead.")
 absl::Status Unknown(Args... args) {
-  return absl::Status(absl::StatusCode::kUnknown,
-                      ::tsl::strings::StrCat(
-                          ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::UnknownError(::tsl::strings::StrCat(
+      ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
-template <typename... Args>
-absl::Status UnknownPayloads(
-    const absl::string_view& message,
+inline absl::Status UnknownPayloads(
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kUnknown, message, payloads);
 }
 // PermissionDenied
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::PermissionDeniedError() instead.")
 absl::Status PermissionDenied(Args... args) {
-  return absl::Status(absl::StatusCode::kPermissionDenied,
-                      ::tsl::strings::StrCat(
-                          ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::PermissionDeniedError(::tsl::strings::StrCat(
+      ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
-template <typename... Args>
-absl::Status PermissionDeniedWithPayloads(
-    const absl::string_view& message,
+inline absl::Status PermissionDeniedWithPayloads(
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kPermissionDenied, message, payloads);
 }
 
 // Unauthenticated
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::UnauthenticatedError() instead.")
 absl::Status Unauthenticated(Args... args) {
-  return absl::Status(absl::StatusCode::kUnauthenticated,
-                      ::tsl::strings::StrCat(
-                          ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::UnauthenticatedError(::tsl::strings::StrCat(
+      ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
-template <typename... Args>
-absl::Status UnauthenticatedWithPayloads(
-    const absl::string_view& message,
+inline absl::Status UnauthenticatedWithPayloads(
+    absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   return errors::Create(absl::StatusCode::kUnauthenticated, message, payloads);
 }
 
-bool IsAborted(const absl::Status& status);
-bool IsAlreadyExists(const absl::Status& status);
-bool IsCancelled(const absl::Status& status);
-bool IsDataLoss(const absl::Status& status);
-bool IsDeadlineExceeded(const absl::Status& status);
-bool IsFailedPrecondition(const absl::Status& status);
-bool IsInternal(const absl::Status& status);
-bool IsInvalidArgument(const absl::Status& status);
-bool IsNotFound(const absl::Status& status);
-bool IsOutOfRange(const absl::Status& status);
-bool IsPermissionDenied(const absl::Status& status);
-bool IsResourceExhausted(const absl::Status& status);
-bool IsUnauthenticated(const absl::Status& status);
-bool IsUnavailable(const absl::Status& status);
-bool IsUnimplemented(const absl::Status& status);
-bool IsUnknown(const absl::Status& status);
+ABSL_DEPRECATE_AND_INLINE()
+inline bool IsAborted(const absl::Status& status) {
+  return absl::IsAborted(status);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline bool IsAlreadyExists(const absl::Status& status) {
+  return absl::IsAlreadyExists(status);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline bool IsCancelled(const absl::Status& status) {
+  return absl::IsCancelled(status);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline bool IsDataLoss(const absl::Status& status) {
+  return absl::IsDataLoss(status);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline bool IsDeadlineExceeded(const absl::Status& status) {
+  return absl::IsDeadlineExceeded(status);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline bool IsFailedPrecondition(const absl::Status& status) {
+  return absl::IsFailedPrecondition(status);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline bool IsInternal(const absl::Status& status) {
+  return absl::IsInternal(status);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline bool IsInvalidArgument(const absl::Status& status) {
+  return absl::IsInvalidArgument(status);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline bool IsNotFound(const absl::Status& status) {
+  return absl::IsNotFound(status);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline bool IsOutOfRange(const absl::Status& status) {
+  return absl::IsOutOfRange(status);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline bool IsPermissionDenied(const absl::Status& status) {
+  return absl::IsPermissionDenied(status);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline bool IsResourceExhausted(const absl::Status& status) {
+  return absl::IsResourceExhausted(status);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline bool IsUnauthenticated(const absl::Status& status) {
+  return absl::IsUnauthenticated(status);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline bool IsUnavailable(const absl::Status& status) {
+  return absl::IsUnavailable(status);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline bool IsUnimplemented(const absl::Status& status) {
+  return absl::IsUnimplemented(status);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline bool IsUnknown(const absl::Status& status) {
+  return absl::IsUnknown(status);
+}
 
 // Produces a formatted string pattern from the name which can uniquely identify
 // this node upstream to produce an informative error message. The pattern
@@ -582,19 +573,19 @@ bool IsUnknown(const absl::Status& status);
 // tensorflow/python/client/session.py
 // LINT.IfChange
 inline std::string FormatNodeNameForError(absl::string_view name) {
-  return strings::StrCat("{{node ", name, "}}");
+  return absl::StrCat("{{node ", name, "}}");
 }
 // LINT.ThenChange(//tensorflow/python/client/session.py)
 template <typename T>
 std::string FormatNodeNamesForError(const T& names) {
-  return absl::StrJoin(
-      names, ", ", [](std::string* output, absl::string_view s) {
-        ::tsl::strings::StrAppend(output, FormatNodeNameForError(s));
-      });
+  return absl::StrJoin(names, ", ",
+                       [](std::string* output, absl::string_view s) {
+                         absl::StrAppend(output, FormatNodeNameForError(s));
+                       });
 }
 // LINT.IfChange
 inline std::string FormatColocationNodeForError(absl::string_view name) {
-  return strings::StrCat("{{colocation_node ", name, "}}");
+  return absl::StrCat("{{colocation_node ", name, "}}");
 }
 // LINT.ThenChange(//tensorflow/python/framework/error_interpolation.py)
 template <typename T, typename = std::enable_if_t<
@@ -602,23 +593,21 @@ template <typename T, typename = std::enable_if_t<
 std::string FormatColocationNodeForError(const T& names) {
   return absl::StrJoin(
       names, ", ", [](std::string* output, absl::string_view s) {
-        ::tsl::strings::StrAppend(output, FormatColocationNodeForError(s));
+        absl::StrAppend(output, FormatColocationNodeForError(s));
       });
 }
 
 inline std::string FormatFunctionForError(absl::string_view name) {
-  return strings::StrCat("{{function_node ", name, "}}");
+  return absl::StrCat("{{function_node ", name, "}}");
 }
 
 inline absl::Status ReplaceErrorFromNonCommunicationOps(
     const absl::Status s, absl::string_view op_name) {
-  assert(::tsl::errors::IsUnavailable(s));
-  return absl::Status(
-      absl::StatusCode::kInternal,
-      strings::StrCat(
-          s.message(), "\nExecuting non-communication op <", op_name,
-          "> originally returned UnavailableError, and was replaced by "
-          "InternalError to avoid invoking TF network error handling logic."));
+  assert(absl::IsUnavailable(s));
+  return absl::InternalError(absl::StrCat(
+      s.message(), "\nExecuting non-communication op <", op_name,
+      "> originally returned UnavailableError, and was replaced by "
+      "InternalError to avoid invoking TF network error handling logic."));
 }
 
 template <typename T>

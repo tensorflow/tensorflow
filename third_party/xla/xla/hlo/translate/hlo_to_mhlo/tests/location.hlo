@@ -1,4 +1,5 @@
 // RUN: xla-translate -mlir-print-debuginfo -hlo-text-to-mlir-hlo %s -o - | FileCheck %s
+// TODO: hlo-translate does not set the metadata for arguments properly.
 
 HloModule Test
 

@@ -150,7 +150,9 @@ void init_ops(py::module& m) {
              return opb
                  .create<mlir::TF::LegacyCallOp>(
                      loc, mlir::ArrayRef<mlir::Type>(output),
-                     mlir::ArrayRef<mlir::Value>(args), mlir::StringRef(f))
+                     mlir::ArrayRef<mlir::Value>(args),
+                     /*args_attrs=*/nullptr,
+                     /*res_attrs=*/nullptr, mlir::StringRef(f))
                  .getOperation();
            });
 

@@ -35,12 +35,12 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -225,7 +225,7 @@ class ParameterizedTruncatedNormalOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, shape, &xla_shape));
-    OP_REQUIRES(ctx, xla_shape.rank() >= 1,
+    OP_REQUIRES(ctx, xla_shape.dimensions().size() >= 1,
                 errors::InvalidArgument(
                     "shape parameter must have rank >= 1, received (",
                     xla::ShapeUtil::HumanString(xla_shape), ")"));

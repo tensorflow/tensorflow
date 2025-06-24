@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/bind_front.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/platform/env.h"
@@ -380,6 +381,12 @@ void EventForest::ConnectIntraThread(XPlane* plane, XPlaneVisitor* visitor,
                                      ContextGroupMap* context_groups) {
   bool is_host_plane = (visitor->Name() == kHostThreadsPlaneName);
   for (auto& line : *plane->mutable_lines()) {
+    if (line.name() == kTensorCoreSyncFlagLineName ||
+        line.name() == kSparseCoreSyncsLineName) {
+      VLOG(1) << "Skipping Xline with name: " << line.name()
+              << " in plane: " << visitor->Name();
+      continue;
+    }
     std::vector<EventNode*> parent_nodes;
     for (auto& event : *line.mutable_events()) {
       XEventVisitor event_visitor(visitor, &line, &event);

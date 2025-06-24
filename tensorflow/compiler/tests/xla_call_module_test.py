@@ -743,7 +743,7 @@ module @jit_fun.1 attributes {jax.uses_shape_polymorphism = true} {
     )
 
     one_subtest(
-        'expects has_side_effect=true',
+        '`shape_assertion` custom calls must set `has_side_effect = true`.',
         """
 module @jit_fun.1 attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg_i1: tensor<i1>, %arg_i32: tensor<i32>) -> tensor<i32> {
@@ -1460,7 +1460,7 @@ module @jit_fun_flat_jax {
     res1 = x - y
 
     # Verify that multiple inner TF function calls with the same private
-    # functions are properly renamed during MHLO import. This test case is
+    # functions are properly renamed during StableHLO import. This test case is
     # carefully constructed such that one outer XlaCallModule op has two custom
     # calls, each of which has the same private "@call" function with different
     # body. This is to catch bugs in the func renaming logic.
@@ -1567,6 +1567,30 @@ module @jit_f.0 {
       )
 
     self._assertOpOutputMatchesExpected(f, (x,), (np.sin(np.cos(x)),))
+
+  def test_op_backward_incompatibility(self):
+    """Test for ensuring XlaCallModuleOp with invalid bytecode."""
+    x = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+
+    def f(x):
+      # Use an invalid MLIR string that will fail to parse when loading the
+      # call module op, emulating a backward incompatibility.
+      corrupted_module = 'stablehlo.invalid_op'
+      return gen_xla_ops.xla_call_module(
+          [x],
+          version=xla.call_module_maximum_supported_version(),
+          module=corrupted_module,
+          Tout=[x.dtype],
+          Sout=[x.shape],
+          platforms=[self.testing_platform()],
+      )
+
+    # Expect any error message to be included after `:`
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Cannot deserialize computation: .+',
+    ):
+      f(x)
 
 
 if __name__ == '__main__':

@@ -24,7 +24,6 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -67,7 +66,8 @@ int64_t FindMostFrequentGatherDim(
     frequency.resize(std::max(dim + 1, static_cast<int64_t>(frequency.size())),
                      0);
     frequency[dim]++;
-    min_rank = std::min(min_rank, it->shape().rank());
+    min_rank = std::min(min_rank,
+                        static_cast<int64_t>(it->shape().dimensions().size()));
   }
 
   int64_t most_frequent_dim = std::distance(
@@ -118,7 +118,7 @@ absl::Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine,
 
       // Build permutation to align gather dimension.
       auto& perm = operand_permutations.back();
-      perm = std::vector<int64_t>(operand_shape.rank());
+      perm = std::vector<int64_t>(operand_shape.dimensions().size());
       std::iota(perm->begin(), perm->end(), 0);
       std::swap((*perm)[most_frequent_dim],
                 (*perm)[ag->all_gather_dimension()]);
@@ -132,13 +132,14 @@ absl::Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine,
   }
 
   // Create combined all-gather op with a tuple result.
-  HloInstruction* combined;
-  combined = computation.AddInstruction(HloInstruction::CreateAllGather(
-      ShapeUtil::MakeTupleShape(output_shapes), operands, most_frequent_dim,
-      to_combine.front()->device_list(),
-      /*constrain_layout=*/false, to_combine.front()->channel_id(),
-      Cast<HloAllGatherInstruction>(to_combine.front())
-          ->use_global_device_ids()));
+  HloInstruction* combined =
+      computation.AddInstruction(HloInstruction::CreateAllGather(
+          ShapeUtil::MakeTupleShape(output_shapes), operands, most_frequent_dim,
+          to_combine.front()->device_list(),
+          /*constrain_layout=*/false, to_combine.front()->channel_id(),
+          Cast<HloAllGatherInstruction>(to_combine.front())
+              ->use_global_device_ids()));
+  combined->set_metadata(to_combine.front()->metadata());
 
   // We have to propagate the sharding manually because Domain instructions are
   // not guaranteed to preserve it for side effecting instructions.
@@ -239,7 +240,8 @@ absl::StatusOr<bool> AllGatherCombiner::RunWithKeyCombiner(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    if (!combine_while_loops_ && computation->IsWhileBodyComputation()) {
+    if (!combine_while_loops_ &&
+        computation->GetUniqueCaller(HloOpcode::kWhile)) {
       VLOG(2) << "Skipping this computation because the computation is a while "
                  "loop body: "
               << computation->ToString();

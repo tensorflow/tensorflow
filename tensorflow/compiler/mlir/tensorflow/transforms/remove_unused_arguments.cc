@@ -204,8 +204,8 @@ void RemoveUnusedArgumentsPass::runOnOperation() {
     }
 
     EraseReturnOperands(region, unused_results);
-    func.eraseResults(unused_results);
-    func.eraseArguments(unused_args);
+    if (failed(func.eraseResults(unused_results))) return;
+    if (failed(func.eraseArguments(unused_args))) return;
 
     args_to_erase.insert(std::make_pair(op, unused_args));
     results_to_erase.insert(std::make_pair(op, unused_results));

@@ -27,8 +27,7 @@ limitations under the License.
 
 namespace xla::gpu {
 
-CustomKernel::CustomKernel(std::string name,
-                           se::MultiKernelLoaderSpec kernel_spec,
+CustomKernel::CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,
                            se::BlockDim block_dims, se::ThreadDim thread_dims,
                            size_t shared_memory_bytes)
     : name_(std::move(name)),
@@ -38,8 +37,7 @@ CustomKernel::CustomKernel(std::string name,
       cluster_dims_(std::nullopt),
       shared_memory_bytes_(shared_memory_bytes) {}
 
-CustomKernel::CustomKernel(std::string name,
-                           se::MultiKernelLoaderSpec kernel_spec,
+CustomKernel::CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,
                            se::BlockDim block_dims, se::ThreadDim thread_dims,
                            se::ClusterDim cluster_dims,
                            size_t shared_memory_bytes)
@@ -52,7 +50,7 @@ CustomKernel::CustomKernel(std::string name,
 
 absl::string_view CustomKernel::name() const { return name_; }
 
-const se::MultiKernelLoaderSpec& CustomKernel::kernel_spec() const {
+const se::KernelLoaderSpec& CustomKernel::kernel_spec() const {
   return kernel_spec_;
 }
 

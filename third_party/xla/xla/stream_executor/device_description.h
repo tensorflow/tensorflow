@@ -29,128 +29,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor {
-
-// CUDA compute capability, as reported by the device description.
-struct CudaComputeCapability {
-  int major = 0;
-  int minor = 0;
-
-  // MSVC does not like "PASCAL" symbol.
-  enum CudaComputeCapabilities {
-    PASCAL_ = 6,
-    VOLTA = 7,
-    AMPERE = 8,
-    HOPPER = 9,
-    BLACKWELL = 10
-  };
-
-  constexpr CudaComputeCapability() = default;
-  constexpr CudaComputeCapability(int major, int minor) {
-    this->major = major;
-    this->minor = minor;
-  }
-  // cuda arch format "major.minor", example: "8.6".
-  explicit CudaComputeCapability(std::string cuda_arch_name) {
-    std::vector<std::string> split = absl::StrSplit(cuda_arch_name, '.');
-    assert(split.size() == 2);
-    this->major = std::stoi(split[0]);
-    this->minor = std::stoi(split[1]);
-  }
-
-  explicit CudaComputeCapability(const CudaComputeCapabilityProto &proto) {
-    this->major = proto.major();
-    this->minor = proto.minor();
-  }
-
-  static CudaComputeCapability Volta() {
-    return CudaComputeCapability{VOLTA, 0};
-  }
-
-  static CudaComputeCapability Ampere() {
-    return CudaComputeCapability{AMPERE, 0};
-  }
-
-  static CudaComputeCapability Hopper() {
-    return CudaComputeCapability{HOPPER, 0};
-  }
-
-  static CudaComputeCapability Blackwell() {
-    return CudaComputeCapability{BLACKWELL, 0};
-  }
-
-  bool IsAtLeast(int other_major, int other_minor = 0) const {
-    return IsAtLeast(CudaComputeCapability{other_major, other_minor});
-  }
-
-  bool IsAtLeast(const CudaComputeCapability &cc) const {
-    return !(*this < cc);
-  }
-
-  bool IsAtLeastVolta() const {
-    return major >= CudaComputeCapabilities::VOLTA;
-  }
-
-  bool IsAtLeastAmpere() const {
-    return major >= CudaComputeCapabilities::AMPERE;
-  }
-
-  bool IsAtLeastHopper() const {
-    return major >= CudaComputeCapabilities::HOPPER;
-  }
-
-  bool IsAtLeastBlackwell() const {
-    return major >= CudaComputeCapabilities::BLACKWELL;
-  }
-
-  bool operator<(const CudaComputeCapability &other) const {
-    return ToPair() < other.ToPair();
-  }
-
-  bool operator==(const CudaComputeCapability &other) const {
-    return ToPair() == other.ToPair();
-  }
-
-  bool operator!=(const CudaComputeCapability &other) const {
-    return !(*this == other);
-  }
-
-  bool operator>(const CudaComputeCapability &other) const {
-    return ToPair() > other.ToPair();
-  }
-
-  bool operator>=(const CudaComputeCapability &other) const {
-    return ToPair() >= other.ToPair();
-  }
-
-  bool operator<=(const CudaComputeCapability &other) const {
-    return ToPair() <= other.ToPair();
-  }
-
-  std::string ToString() const { return absl::StrCat(major, ".", minor); }
-
-  std::pair<int, int> ToPair() const { return std::make_pair(major, minor); }
-
-  CudaComputeCapabilityProto ToProto() const {
-    CudaComputeCapabilityProto proto;
-    proto.set_major(major);
-    proto.set_minor(minor);
-    return proto;
-  }
-
-  template <typename H>
-  friend H AbslHashValue(H state, const CudaComputeCapability &cc) {
-    return H::combine(std::move(state), cc.major, cc.minor);
-  }
-};
 
 // ROCm compute capability, as reported by the device description.
 class RocmComputeCapability {
@@ -184,20 +71,18 @@ class RocmComputeCapability {
 
   bool gfx9_mi200() const { return gfx_version() == "gfx90a"; }
 
-  bool gfx9_mi300() const {
-    static constexpr absl::string_view kList[] = {"gfx940", "gfx941", "gfx942"};
-    return absl::c_count(kList, gfx_version()) != 0;
+  bool gfx9_mi300_series() const {
+    return gfx_version() == "gfx942" || gfx_version() == "gfx950";
   }
 
   bool gfx9_mi100_or_later() const {
-    static constexpr absl::string_view kList[] = {"gfx908", "gfx90a", "gfx940",
-                                                  "gfx941", "gfx942"};
+    static constexpr absl::string_view kList[] = {"gfx908", "gfx90a", "gfx942",
+                                                  "gfx950"};
     return absl::c_count(kList, gfx_version()) != 0;
   }
 
   bool gfx9_mi200_or_later() const {
-    static constexpr absl::string_view kList[] = {"gfx90a", "gfx940", "gfx941",
-                                                  "gfx942"};
+    static constexpr absl::string_view kList[] = {"gfx90a", "gfx942", "gfx950"};
     return absl::c_count(kList, gfx_version()) != 0;
   }
 
@@ -205,15 +90,18 @@ class RocmComputeCapability {
 
   bool gfx10_rx69xx() const { return gfx_version() == "gfx1030"; }
 
-  bool gfx11_rx7900() const { return gfx_version() == "gfx1100"; }
+  bool gfx11() const { return gfx_version().find("gfx11"); }
+
+  bool gfx1200() const { return gfx_version() == "gfx1200"; }
+
+  bool gfx1201() const { return gfx_version() == "gfx1201"; }
 
   bool has_nhwc_layout_support() const { return gfx9_mi100_or_later(); }
 
   bool has_bf16_dtype_support() const { return gfx9_mi100_or_later(); }
 
   bool has_fast_fp16_support() const {
-    return gfx9_mi100_or_later() || gfx10_rx68xx() || gfx10_rx69xx() ||
-           gfx11_rx7900();
+    return gfx9_mi100_or_later() || gfx10_rx68xx() || gfx10_rx69xx() || gfx11();
   }
 
   bool has_mfma_instr_support() const { return gfx9_mi100_or_later(); }
@@ -223,18 +111,27 @@ class RocmComputeCapability {
             gfx_version().find("gfx12"));
   }
 
-  bool has_fp16_atomics_support() const {
-    // TODO(rocm): Check. This should be the same as has_fast_fp16_support().
-    return gfx9_mi200_or_later();
-  }
+  bool has_packed_fp16_atomics_support() const { return gfx9_mi100_or_later(); }
+
+  bool has_packed_bf16_atomics_support() const { return gfx9_mi300_series(); }
 
   bool fence_before_barrier() const {
     return gfx_version() != "gfx900" && gfx_version() != "gfx906";
   }
 
-  bool has_hipblaslt() const { return gfx9_mi200_or_later(); }
+  bool has_hipblaslt() const {
+    return gfx9_mi200_or_later() || gfx1200() || gfx1201();
+  }
 
-  bool has_fp8_support() const { return gfx9_mi300(); }
+  bool has_fp8_support() const {
+    return has_ocp_fp8_support() || has_nanoo_fp8_support();
+  }
+
+  bool has_ocp_fp8_support() const {
+    return gfx1200() || gfx1201() || gfx_version() == "gfx950";
+  }
+
+  bool has_nanoo_fp8_support() const { return gfx_version() == "gfx942"; }
 
   std::string ToString() const { return gcn_arch_name(); }
 
@@ -252,13 +149,15 @@ class RocmComputeCapability {
   std::string gcn_arch_name_ = "gfx000";  // default to invalid arch.
 
   static constexpr absl::string_view kSupportedGfxVersions[]{
-      "gfx900",                       // MI25
-      "gfx906",                       // MI50 / MI60
-      "gfx908",                       // MI100
-      "gfx90a",                       // MI200
-      "gfx940",  "gfx941", "gfx942",  // MI300
-      "gfx1030",                      // RX68xx / RX69xx
-      "gfx1100"                       // RX7900
+      "gfx900",   // MI25
+      "gfx906",   // MI50 / MI60
+      "gfx908",   // MI100
+      "gfx90a",   // MI200
+      "gfx942",   // MI300
+      "gfx950",   // MI355
+      "gfx1030",  // RX68xx / RX69xx
+      "gfx1100",  // RX7900
+      "gfx1101", "gfx1200", "gfx1201",
   };
 };
 
@@ -385,7 +284,7 @@ class DeviceDescription {
 
   // Returns the CUDA compute capability if we're running on the CUDA platform.
   // If a CUDA compute capability is not available, the major version will be
-  // zero.
+  // negative.
   CudaComputeCapability cuda_compute_capability() const;
 
   // Returns the ROCm compute capability if we're running on the ROCm platform.
@@ -425,7 +324,7 @@ class DeviceDescription {
               return 16 * 1024;
             }
             // MI300 has 32KB L1 cache per CU.
-            if (capability.gfx9_mi300()) {
+            if (capability.gfx9_mi300_series()) {
               return 32 * 1024;
             }
           }
@@ -441,7 +340,7 @@ class DeviceDescription {
           if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
                                        RocmComputeCapability>) {
             // DRAM->L2 bus is 128 Byte width for MI300.
-            if (capability.gfx9_mi300()) {
+            if (capability.gfx9_mi300_series()) {
               return 128;
             }
           }
@@ -462,7 +361,7 @@ class DeviceDescription {
           if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
                                        RocmComputeCapability>) {
             // 16 works well on MI300.
-            if (capability.gfx9_mi300()) {
+            if (capability.gfx9_mi300_series()) {
               return 16;
             }
           }

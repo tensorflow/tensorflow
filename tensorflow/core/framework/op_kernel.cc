@@ -825,7 +825,7 @@ absl::Status OpKernelContext::allocate_output(int index,
     }
   }
   tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
-      op_kernel().name_view().data(), step_id(), "output", type,
+      op_kernel().name_view(), step_id(), "output", type,
       [&shape]() { return shape.DebugString(); });
   auto output_tensor = std::make_unique<Tensor>();
   absl::Status s = allocate_tensor(type, shape, output_tensor.get(), attr);
@@ -856,14 +856,14 @@ absl::Status OpKernelContext::allocate_temp(
     allocator_attr.scope_id = -1;
   }
   tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
-      op_kernel().name_view().data(), step_id(), "temp", type,
+      op_kernel().name_view(), step_id(), "temp", type,
       [&shape]() { return shape.DebugString(); });
   absl::Status s =
       allocate_tensor(type, shape, out_temp, allocator_attr, allocation_attr);
   if (track_allocations() && s.ok() && out_temp->TotalBytes() > 0) {
     Allocator* a = get_allocator(allocator_attr);
     if (a->TracksAllocationSizes()) {
-      int64_t alloc_size = a->AllocatedSize(out_temp->tensor_data().data());
+      int64_t alloc_size = a->AllocatedSize(out_temp->data());
       record_temp_memory_allocation(alloc_size, *out_temp);
     }
   } else if (record_memory_consumption_) {
@@ -964,7 +964,7 @@ bool OpKernelContext::maybe_set_output_by_allocate_and_copy(
             << params_->forward_from_array[index] << " alloc_attr.scope_id "
             << output_alloc_attr(index).scope_id;
     tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
-        op_kernel().name_view().data(), step_id(), "output", tensor.dtype(),
+        op_kernel().name_view(), step_id(), "output", tensor.dtype(),
         [&tensor]() { return tensor.shape().DebugString(); });
     auto new_tensor = std::make_unique<Tensor>();
     absl::Status s =
@@ -988,8 +988,7 @@ void OpKernelContext::maybe_track_allocations_for_set_output(
         tracking_state_->temp_tensor_buffer_and_size.begin(),
         tracking_state_->temp_tensor_buffer_and_size.end(),
         [&tensor](const std::pair<const void*, int64>& e) {
-          return e.first ==
-                 static_cast<const void*>(tensor.tensor_data().data());
+          return e.first == static_cast<const void*>(tensor.data());
         });
     if (it != tracking_state_->temp_tensor_buffer_and_size.end()) {
       tracking_state_->temp_memory_allocated -= it->second;
@@ -1081,7 +1080,7 @@ void OpKernelContext::record_temp_memory_allocation(int64_t size,
     mutex_lock l(tracking_state_->stats_mu);
     tracking_state_->temp_memory_allocated += size;
     tracking_state_->temp_tensor_buffer_and_size.emplace_back(
-        static_cast<const void*>(t.tensor_data().data()), size);
+        static_cast<const void*>(t.data()), size);
   }
 }
 
@@ -1179,8 +1178,7 @@ static const char kKernelLibPattern[] = "libtfkernel*.dylib";
 static const char kKernelLibPattern[] = "libtfkernel*.so";
 #endif
 
-#define FEATURE(x) \
-  { x, #x }
+#define FEATURE(x) {x, #x}
 
 // Returns Status::OK if the dynamic library at the given path is safe to
 // load with some level of confidence.

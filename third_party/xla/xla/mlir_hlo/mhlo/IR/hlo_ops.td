@@ -233,6 +233,11 @@ def MHLO_CbrtOp: MHLO_UnaryElementwiseOp<"cbrt",
     %result = mhlo.cbrt %operand : tensor<4xf32>
     ```
   }];
+  let arguments = (ins MHLO_FpComplexOrQuantizedIntTensor:$operand,
+                       DefaultValuedOptionalAttr<MHLO_ResultAccuracyAttr,
+                       "::mlir::mhlo::ResultAccuracyMode::DEFAULT">:$result_accuracy);
+  let results = (outs MHLO_FpComplexOrQuantizedIntTensor:$result);
+  let hasVerifier = 1;
 }
 def MHLO_CeilOp: MHLO_UnaryElementwiseOp<"ceil",
     [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrQuantizedIntTensor> {
@@ -306,7 +311,11 @@ def MHLO_CosineOp: MHLO_UnaryElementwiseOp<"cosine",
     %result = mhlo.cosine %operand : tensor<2xf32>
     ```
   }];
-
+  let arguments = (ins MHLO_FpComplexOrQuantizedIntTensor:$operand,
+                       DefaultValuedOptionalAttr<MHLO_ResultAccuracyAttr,
+                       "::mlir::mhlo::ResultAccuracyMode::DEFAULT">:$result_accuracy);
+  let results = (outs MHLO_FpComplexOrQuantizedIntTensor:$result);
+  let hasVerifier = 1;
   let hasFolder = 1;
   let hasCustomHLOConverter = 1;
 }
@@ -343,6 +352,11 @@ def MHLO_ExpOp: MHLO_UnaryElementwiseOp<"exponential",
     %result = mhlo.exponential %operand : tensor<2x2xf64>
     ```
   }];
+  let arguments = (ins MHLO_FpComplexOrQuantizedIntTensor:$operand,
+                       DefaultValuedOptionalAttr<MHLO_ResultAccuracyAttr,
+                       "::mlir::mhlo::ResultAccuracyMode::DEFAULT">:$result_accuracy);
+  let results = (outs MHLO_FpComplexOrQuantizedIntTensor:$result);
+  let hasVerifier = 1;
   let hasFolder = 1;
 }
 def MHLO_Expm1Op: MHLO_UnaryElementwiseOp<"exponential_minus_one",
@@ -360,6 +374,11 @@ def MHLO_Expm1Op: MHLO_UnaryElementwiseOp<"exponential_minus_one",
     %result = mhlo.exponential_minus_one %operand : tensor<2xf32>
     ```
   }];
+  let arguments = (ins MHLO_FpComplexOrQuantizedIntTensor:$operand,
+                       DefaultValuedOptionalAttr<MHLO_ResultAccuracyAttr,
+                       "::mlir::mhlo::ResultAccuracyMode::DEFAULT">:$result_accuracy);
+  let results = (outs MHLO_FpComplexOrQuantizedIntTensor:$result);
+  let hasVerifier = 1;
 }
 def MHLO_FloorOp: MHLO_UnaryElementwiseOp<"floor",
     [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrQuantizedIntTensor> {
@@ -436,6 +455,11 @@ def MHLO_LogOp: MHLO_UnaryElementwiseOp<"log",
     %result = mhlo.log %operand : tensor<2x2xf64>
     ```
   }];
+  let arguments = (ins MHLO_FpComplexOrQuantizedIntTensor:$operand,
+                       DefaultValuedOptionalAttr<MHLO_ResultAccuracyAttr,
+                       "::mlir::mhlo::ResultAccuracyMode::DEFAULT">:$result_accuracy);
+  let results = (outs MHLO_FpComplexOrQuantizedIntTensor:$result);
+  let hasVerifier = 1;
   let hasFolder = 1;
 }
 def MHLO_Log1pOp: MHLO_UnaryElementwiseOp<"log_plus_one",
@@ -453,6 +477,11 @@ def MHLO_Log1pOp: MHLO_UnaryElementwiseOp<"log_plus_one",
     %result = mhlo.log_plus_one %operand : tensor<6xf32>
     ```
   }];
+  let arguments = (ins MHLO_FpComplexOrQuantizedIntTensor:$operand,
+                       DefaultValuedOptionalAttr<MHLO_ResultAccuracyAttr,
+                       "::mlir::mhlo::ResultAccuracyMode::DEFAULT">:$result_accuracy);
+  let results = (outs MHLO_FpComplexOrQuantizedIntTensor:$result);
+  let hasVerifier = 1;
 }
 def MHLO_LogisticOp: MHLO_UnaryElementwiseOp<"logistic",
     [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
@@ -469,6 +498,11 @@ def MHLO_LogisticOp: MHLO_UnaryElementwiseOp<"logistic",
     %result = mhlo.logistic %operand : tensor<2x2xf32>
     ```
   }];
+  let arguments = (ins MHLO_FpComplexOrQuantizedIntTensor:$operand,
+                       DefaultValuedOptionalAttr<MHLO_ResultAccuracyAttr,
+                       "::mlir::mhlo::ResultAccuracyMode::DEFAULT">:$result_accuracy);
+  let results = (outs MHLO_FpComplexOrQuantizedIntTensor:$result);
+  let hasVerifier = 1;
   let hasFolder = 1;
 }
 def MHLO_NotOp: MHLO_UnaryElementwiseOp<"not",
@@ -595,6 +629,11 @@ def MHLO_RsqrtOp: MHLO_UnaryElementwiseOp<"rsqrt",
     %result = mhlo.rsqrt %operand : tensor<2x2xf32>
     ```
   }];
+  let arguments = (ins MHLO_FpComplexOrQuantizedIntTensor:$operand,
+                       DefaultValuedOptionalAttr<MHLO_ResultAccuracyAttr,
+                       "::mlir::mhlo::ResultAccuracyMode::DEFAULT">:$result_accuracy);
+  let results = (outs MHLO_FpComplexOrQuantizedIntTensor:$result);
+  let hasVerifier = 1;
   let hasFolder = 1;
 }
 
@@ -632,6 +671,11 @@ def MHLO_SineOp: MHLO_UnaryElementwiseOp<"sine",
     %result = mhlo.sine %operand : tensor<2xf32>
     ```
   }];
+  let arguments = (ins MHLO_FpComplexOrQuantizedIntTensor:$operand,
+                       DefaultValuedOptionalAttr<MHLO_ResultAccuracyAttr,
+                       "::mlir::mhlo::ResultAccuracyMode::DEFAULT">:$result_accuracy);
+  let results = (outs MHLO_FpComplexOrQuantizedIntTensor:$result);
+  let hasVerifier = 1;
   let hasFolder = 1;
   let hasCustomHLOConverter = 1;
 }
@@ -650,6 +694,11 @@ def MHLO_TanOp: MHLO_UnaryElementwiseOp<"tan",
     %0 = mhlo.tan %arg0 : tensor<2xf32>
     ```
   }];
+  let arguments = (ins MHLO_FpComplexOrQuantizedIntTensor:$operand,
+                       DefaultValuedOptionalAttr<MHLO_ResultAccuracyAttr,
+                       "::mlir::mhlo::ResultAccuracyMode::DEFAULT">:$result_accuracy);
+  let results = (outs MHLO_FpComplexOrQuantizedIntTensor:$result);
+  let hasVerifier = 1;
   let hasFolder = 1;
   let hasCustomHLOConverter = 1;
 }
@@ -669,6 +718,11 @@ def MHLO_SqrtOp: MHLO_UnaryElementwiseOp<"sqrt",
     %result = mhlo.sqrt %operand : tensor<2x2xf32>
     ```
   }];
+  let arguments = (ins MHLO_FpComplexOrQuantizedIntTensor:$operand,
+                       DefaultValuedOptionalAttr<MHLO_ResultAccuracyAttr,
+                       "::mlir::mhlo::ResultAccuracyMode::DEFAULT">:$result_accuracy);
+  let results = (outs MHLO_FpComplexOrQuantizedIntTensor:$result);
+  let hasVerifier = 1;
   let hasFolder = 1;
 }
 
@@ -688,6 +742,11 @@ def MHLO_TanhOp: MHLO_UnaryElementwiseOp<"tanh",
     %result = mhlo.tanh %operand : tensor<2xf32>
     ```
   }];
+  let arguments = (ins MHLO_FpComplexOrQuantizedIntTensor:$operand,
+                       DefaultValuedOptionalAttr<MHLO_ResultAccuracyAttr,
+                       "::mlir::mhlo::ResultAccuracyMode::DEFAULT">:$result_accuracy);
+  let results = (outs MHLO_FpComplexOrQuantizedIntTensor:$result);
+  let hasVerifier = 1;
   let hasFolder = 1;
 }
 //===----------------------------------------------------------------------===//
@@ -1212,8 +1271,8 @@ def MHLO_AddDependencyOp : MHLO_Op<"add_dependency", [Pure,
     ```
   }];
 
-  let arguments = (ins MHLO_TensorOrToken:$operand, MHLO_Token:$token);
-  let results = (outs MHLO_TensorOrToken:$output);
+  let arguments = (ins MHLO_TensorOrAnyToken:$operand, MHLO_AnyToken:$token);
+  let results = (outs MHLO_TensorOrAnyToken:$output);
   let hasCustomHLOConverter = 1;
 
   let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
@@ -1874,6 +1933,7 @@ def MHLO_DynamicSliceOp: MHLO_Op<"dynamic_slice",
 
   let results = (outs MHLO_Tensor:$result);
   let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def MHLO_DynamicUpdateSliceOp: MHLO_Op<"dynamic_update_slice",
@@ -2118,7 +2178,7 @@ def MHLO_BroadcastInDimOp : MHLO_Op<"broadcast_in_dim",
     MHLO_BroadcastDimAttr:$broadcast_dimensions
   );
 
-  let results = (outs MHLO_StaticShapeTensor);
+  let results = (outs MHLO_StaticShapeOrBoundedDimTensor);
 
   let hasFolder = 1;
   let hasCanonicalizer = 1;
@@ -2465,7 +2525,6 @@ def MHLO_CopyOp: MHLO_Op<"copy",
   );
   let results = (outs MHLO_TensorOrTokenOrTuple:$result);
   let hasCustomHLOConverter = 1;
-  let hasFolder = 1;
 
   let assemblyFormat = [{
     operands attr-dict
@@ -2664,12 +2723,12 @@ def MHLO_RaggedDotOp: MHLO_Op<"ragged_dot", [Pure]> {
     most one group dimension. The op has three modes, depending on the kind of
     the lhs ragged dimension.
 
-    In mode 1, the shape-signature is `[b,m,k], [g,b,k,n], [g] -> [b,m,n]`.
+    In mode 1, the shape-signature is `[b,m,k], [g,b,k,n], [b,g] -> [b,m,n]`.
     Here the ragged dimension is an lhs non-contracting dimension (`m`). The
     dimensions `b` and `k` represent batch and contracting dimensions
     respectively. The rhs is required to have a group dimension (`g`).
 
-    In mode 2, the shape-signature is `[b,m,k], [b,k,n], [g] -> [g,b,m,n]`.
+    In mode 2, the shape-signature is `[b,m,k], [b,k,n], [b,g] -> [g,b,m,n]`.
     Here the ragged dimension is an lhs/rhs contracting dimension (`k`).
 
     In mode 3, the shape-signature is `[b,m,k], [b,k,n], [g] -> [b,m,n]`. Here
@@ -2877,7 +2936,7 @@ def MHLO_ReshapeOp: MHLO_Op<"reshape",
 
   let arguments = (ins MHLO_AnyTensor:$operand);
 
-  let results = (outs MHLO_AnyTensor);
+  let results = (outs MHLO_StaticShapeOrBoundedDimTensor);
   let hasFolder = 1;
   let hasCanonicalizer = 1;
   let hasVerifier = 1;

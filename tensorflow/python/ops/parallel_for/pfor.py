@@ -2809,7 +2809,9 @@ def _convert_matmul(pfor_input: _PforInput):
   tr_a = pfor_input.get_attr("transpose_a")
   tr_b = pfor_input.get_attr("transpose_b")
   if a_stacked and b_stacked:
-    output = wrap(math_ops.matmul(a, b, adjoint_a=tr_a, adjoint_b=tr_b), True)
+    output = wrap(
+        math_ops.matmul(a, b, transpose_a=tr_a, transpose_b=tr_b), True
+    )
     return output
   elif a_stacked:
     if tr_a:

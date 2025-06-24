@@ -17,13 +17,13 @@ limitations under the License.
 #include <cstddef>
 #include <optional>
 
-#include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
+#include "xla/tsl/framework/allocator.h"
 #include "tensorflow/core/framework/allocator.h"
 
 namespace tensorflow {
 
 PluggableDeviceSimpleAllocator::PluggableDeviceSimpleAllocator(
-    DeviceMemAllocator* sub_allocator)
+    tsl::SubAllocator* sub_allocator)
     : sub_allocator_(sub_allocator) {}
 
 void* PluggableDeviceSimpleAllocator::AllocateRaw(size_t alignment,

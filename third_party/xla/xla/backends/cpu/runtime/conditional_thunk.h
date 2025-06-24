@@ -17,6 +17,8 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_RUNTIME_CONDITIONAL_THUNK_H_
 
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -37,6 +39,17 @@ class ConditionalThunk final : public Thunk {
 
   BufferUses buffer_uses() const final;
   ResourceUses resource_uses() const final;
+
+  const std::vector<ThunkExecutor>& branch_executors() const {
+    return branch_executors_;
+  }
+
+  const BufferAllocation::Slice& branch_index_buffer() const {
+    return branch_index_buffer_;
+  }
+
+  std::vector<std::pair<std::string, const ThunkSequence*>> nested_thunks()
+      const final;
 
  private:
   ConditionalThunk(Info info, BufferAllocation::Slice branch_index_buffer,

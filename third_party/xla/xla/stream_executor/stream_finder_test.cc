@@ -16,10 +16,10 @@ limitations under the License.
 #include "xla/stream_executor/stream_finder.h"
 
 #include "absl/status/status.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/stream_executor/mock_platform.h"
 #include "xla/stream_executor/mock_stream.h"
 #include "xla/stream_executor/mock_stream_executor.h"
-#include "xla/test.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 

@@ -12,8 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
@@ -51,9 +54,8 @@ void Pack(Model* model, PackOperator const& op) {
 
 }  // namespace
 
-::tensorflow::Status ResolveConstantPack::Run(Model* model,
-                                              std::size_t op_index,
-                                              bool* modified) {
+absl::Status ResolveConstantPack::Run(Model* model, std::size_t op_index,
+                                      bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();

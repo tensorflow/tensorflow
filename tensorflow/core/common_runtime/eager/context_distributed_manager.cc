@@ -29,6 +29,9 @@ limitations under the License.
 
 #include "google/protobuf/any.pb.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -52,9 +55,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/device_filters.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/statusor.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "absl/base/thread_annotations.h"
@@ -83,7 +83,6 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_compiler.h"
-#include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -321,6 +320,8 @@ absl::Status CreateClientOnce(
             /*host_memory_allocator=*/std::move(info->host_memory_allocator),
             /*should_stage_host_to_device_transfers=*/true,
             /*gpu_run_options=*/std::move(gpu_run_options), kv_store,
+            /*distributed_client=*/nullptr,
+            /*abort_collectives_on_failure=*/false,
             xla::GpuTopology::FromProto(device_topology_pair->second));
     VLOG(2) << "PJRT GPU client with remote devices created.";
     auto status = SetPjRtClientInTFGlobalResourceManager(

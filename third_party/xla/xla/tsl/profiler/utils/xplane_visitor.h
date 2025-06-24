@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -263,6 +262,11 @@ class XLineVisitor {
     for (const XEvent& event : line_->events()) {
       for_each_event(XEventVisitor(plane_, line_, &event));
     }
+  }
+
+  // Returns the first event in the line, used to get name for counter line.
+  XEventVisitor GetFirstEvent() const {
+    return XEventVisitor(plane_, line_, &line_->events(0));
   }
 
  private:

@@ -39,12 +39,12 @@ td_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantizationOpsTdFiles",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
         "@llvm-project//mlir:CallInterfacesTdFiles",
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
         "@llvm-project//mlir:FunctionInterfacesTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:QuantizationOpsTdFiles",
         "@llvm-project//mlir:ShapeOpsTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
     ],
@@ -53,16 +53,10 @@ td_library(
 gentbl_cc_library(
     name = "tfr_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "ir/tfr_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "ir/tfr_ops.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "ir/tfr_ops.h.inc": ["-gen-op-decls"],
+        "ir/tfr_ops.cc.inc": ["-gen-op-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tfr_ops.td",
     deps = [
@@ -73,12 +67,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tfr_decompose_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "passes/generated_decompose.inc",
-        ),
-    ],
+    tbl_outs = {"passes/generated_decompose.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/decompose_patterns.td",
     deps = [
@@ -101,7 +90,6 @@ cc_library(
     ],
     deps = [
         ":tfr_ops_inc_gen",
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
@@ -154,7 +142,6 @@ cc_library(
     deps = [
         ":tfr",
         ":utils",
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
@@ -183,7 +170,7 @@ tf_cc_binary(
         ":tfr",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir:passes",
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "@llvm-project//mlir:AllPassesAndDialects",
@@ -261,7 +248,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
-        "@local_xla//xla:test",
+        "@local_xla//xla/hlo/testlib:test",
     ],
 )
 
@@ -294,13 +281,11 @@ tf_python_pybind_extension(
 py_strict_library(
     name = "composite",
     srcs = ["python/composite.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_library(
     name = "tfr_gen",
     srcs = ["python/tfr_gen.py"],
-    srcs_version = "PY3",
     deps = [
         ":tfr_wrapper",
         "//tensorflow:tensorflow_py",  # buildcleaner: keep
@@ -330,8 +315,6 @@ tf_py_strict_test(
     name = "tfr_gen_test",
     size = "medium",
     srcs = ["python/tfr_gen_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":composite",
         ":tfr_gen",
@@ -349,7 +332,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "op_reg_gen",
     srcs = ["python/op_reg_gen.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/autograph/pyct:transformer",
@@ -364,8 +346,6 @@ tf_py_strict_test(
     name = "op_reg_gen_test",
     size = "small",
     srcs = ["python/op_reg_gen_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":composite",
         ":op_reg_gen",
@@ -377,7 +357,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "test_utils",
     srcs = ["python/test_utils.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/eager:backprop",

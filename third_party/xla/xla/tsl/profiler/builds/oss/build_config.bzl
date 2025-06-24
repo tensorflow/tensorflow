@@ -3,7 +3,10 @@
 TF profiler build macros for use in OSS.
 """
 
+load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl:tsl.bzl", "cc_header_only_library")
+
+visibility(DEFAULT_LOAD_VISIBILITY)
 
 def tf_profiler_alias(target_dir, name):
     return target_dir + "oss:" + name

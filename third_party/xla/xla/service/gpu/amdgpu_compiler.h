@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_AMDGPU_COMPILER_H_
 #define XLA_SERVICE_GPU_AMDGPU_COMPILER_H_
 
+#include <string>
+#include <vector>
+
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
@@ -61,7 +64,8 @@ class AMDGPUCompiler : public GpuCompiler {
   absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
       const se::DeviceDescription& device_description, bool relocatable,
-      const HloModule* debug_module, const CompileOptions& options) override;
+      const HloModule* debug_module, const CompileOptions& options,
+      std::optional<int> shard_number) override;
 
   absl::Status AddGemmFusionAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
@@ -72,6 +76,9 @@ class AMDGPUCompiler : public GpuCompiler {
  private:
   AMDGPUCompiler(const AMDGPUCompiler&) = delete;
   AMDGPUCompiler& operator=(const AMDGPUCompiler&) = delete;
+
+  std::vector<std::string> GetLLVMCommandLineOptions(
+      const DebugOptions& debug_options) const override;
 };
 
 }  // namespace gpu

@@ -57,6 +57,7 @@ tf_cc_shared_test(
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "//tensorflow/core/tfrt/saved_model:saved_model_util",
         "//tensorflow/core/tfrt/utils",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",

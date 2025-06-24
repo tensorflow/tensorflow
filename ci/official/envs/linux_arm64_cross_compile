@@ -13,5 +13,5 @@
 # limitations under the License.
 # ==============================================================================
 source ci/official/envs/linux_arm64
-TFCI_BAZEL_COMMON_ARGS="--repo_env=HERMETIC_PYTHON_VERSION=$TFCI_PYTHON_VERSION --config  cross_compile_linux_arm64"
+TFCI_BAZEL_COMMON_ARGS="--repo_env=HERMETIC_PYTHON_VERSION=$TFCI_PYTHON_VERSION --config cross_compile_linux_arm64 --repo_env=USE_PYWRAP_RULES=True"
 TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=cross_compile_linux_arm64

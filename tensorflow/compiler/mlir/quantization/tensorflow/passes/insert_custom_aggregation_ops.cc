@@ -86,7 +86,7 @@ std::optional<StringRef> GetCompsiteFunctionName(Operation *op) {
     return entry_function_attr.getValue();
   } else {
     TF::PartitionedCallOp call_op = dyn_cast_or_null<TF::PartitionedCallOp>(op);
-    const auto f_attr = call_op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
+    const auto f_attr = mlir::dyn_cast<FlatSymbolRefAttr>(call_op.getFAttr());
     if (!f_attr) return std::nullopt;
     return f_attr.getValue();
   }
@@ -353,7 +353,7 @@ void InsertCustomAggregationOpsPass::runOnOperation() {
   func::FuncOp func = getOperation();
 
   patterns.add<AddCustomAggregationOp>(ctx, calib_opts_);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     func.emitError() << "quant-insert-custom-aggregation-ops failed.";
     signalPassFailure();
   }

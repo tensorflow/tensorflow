@@ -16,40 +16,42 @@ limitations under the License.
 #ifndef XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
 #define XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
 
-#include "absl/log/check.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "Eigen/Core"
-#include "xla/comparison_util.h"
-#include "xla/hlo/ir/dfs_hlo_visitor.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/shape.h"
-#include "xla/status_macros.h"
-#include "tsl/platform/errors.h"
+#include "absl/log/log.h"
 #define _USE_MATH_DEFINES
 
+#include <complex>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <random>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "Eigen/Core"
 #include "xla/array2d.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/analysis/tuple_points_to_analysis.h"
+#include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
-#include "xla/literal_util.h"
-#include "xla/service/call_graph.h"
 #include "xla/service/dynamic_dimension_inference.h"
-#include "xla/service/shape_inference.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -65,12 +67,14 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // recomputation during evaluation.
   struct PrecomputedAnalyses {
     TuplePointsToAnalysis* tuple_points_to;
-    CallGraph* call_graph;
   };
 
   // Only evaluate up to max_loop_iterations per while-loop execution if
   // specified.
   explicit HloEvaluator(int64_t max_loop_iterations = -1);
+
+  // Returns true if the opcode is implemented by HloEvaluator. False otherwise.
+  static bool IsOpcodeImplemented(HloOpcode opcode);
 
   // Called by the evaluator to create an embedded evaluator to execute a
   // sub-region of control flow. Subclasses should override this to return an
@@ -89,25 +93,24 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // Evaluates an HLO module and an array of pointers to literals.  Returns the
   // evaluated result as a literal if successful.
   //
-  // Precondition: The indices of arg_literals correspond to the parameter
-  // numbers of the HLO parameters in the computation. See comment below for an
-  // example.
+  // Precondition: The indices of args correspond to the parameter numbers of
+  // the HLO parameters in the computation. See comment below for an example.
   //
   // (Dummy template arg is to reduce the overloading priority of one overload
   // so that Evaluate(module, {}) resolves unambiguously.)
-  absl::StatusOr<Literal> Evaluate(
-      const HloModule& module, absl::Span<const Literal* const> arg_literals) {
-    return Evaluate(*module.entry_computation(), arg_literals);
+  absl::StatusOr<Literal> Evaluate(const HloModule& module,
+                                   absl::Span<const Literal* const> args) {
+    return Evaluate(*module.entry_computation(), args);
   }
   template <typename Dummy = void>
   absl::StatusOr<Literal> Evaluate(const HloModule& module,
-                                   absl::Span<const Literal> arg_literals) {
-    return Evaluate(*module.entry_computation(), arg_literals);
+                                   absl::Span<const Literal> args) {
+    return Evaluate(*module.entry_computation(), args);
   }
 
   // Evaluates an HLO computation and an array of pointers to literals.
   // Returns the evaluated result as a literal if successful.
-  // Precondition: The indices of arg_literals correspond to the parameter
+  // Precondition: The indices of args correspond to the parameter
   // numbers of the HLO parameters in the computation. For e.g., consider the
   // following graph:
   //
@@ -124,17 +127,18 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   //
   // (Dummy template arg is to reduce the overloading priority of one overload
   // so that Evaluate(module, {}) resolves unambiguously.)
-  absl::StatusOr<Literal> Evaluate(
-      const HloComputation& computation,
-      absl::Span<const Literal* const> arg_literals);
+  absl::StatusOr<Literal> Evaluate(const HloComputation& computation,
+                                   absl::Span<const Literal* const> args);
+
   template <typename Dummy = void>
   absl::StatusOr<Literal> Evaluate(const HloComputation& computation,
-                                   absl::Span<const Literal> arg_literals) {
-    std::vector<const Literal*> arg_literal_ptrs;
-    for (const auto& l : arg_literals) {
-      arg_literal_ptrs.push_back(&l);
+                                   absl::Span<const Literal> args) {
+    absl::InlinedVector<const Literal*, 8> args_ptrs;
+    args_ptrs.reserve(args.size());
+    for (const Literal& arg : args) {
+      args_ptrs.push_back(&arg);
     }
-    return Evaluate(computation, arg_literal_ptrs);
+    return Evaluate(computation, args_ptrs);
   }
 
   // Gets the value of running a single HLO instruction.
@@ -146,26 +150,23 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // The caller may pass in non-null `precomputed_analyses` to avoid
   // recomputation during evaluation; the caller must ensure that any
   // precomputed analyses were performed on the module containing `instruction`.
+  // The optional `substitutions` map can be used to substitute the given
+  // literals for any instruction in the evaluation graph, usually some of the
+  // instruction's operands.
+  //
+  // For example, given instruction = op(A, B, C) and the map
+  // {A = x, C = y}, this evaluates op(x, B, y).
   absl::StatusOr<Literal> Evaluate(
       const HloInstruction* instruction,
       PrecomputedAnalyses precomputed_analyses = {},
-      bool recursively_evaluate_nonconstant_operands = false);
+      bool recursively_evaluate_nonconstant_operands = false,
+      const absl::flat_hash_map<const HloInstruction*, const LiteralBase*>&
+          substitutions = {});
 
   // Same as Evaluate, except returning false on error and accepts an output
   // pointer.
   bool TryEvaluate(const HloInstruction* instruction, Literal* result,
                    bool recursively_evaluate_nonconstant_operands = false);
-
-  // Evaluates a single HLO instruction, substituting the given literals for
-  // some of the instruction's operands.
-  //
-  // For example, given instruction = op(A, B, C) and the map
-  // {A = x, C = y}, this evaluates op(x, B, y).
-  absl::StatusOr<Literal> EvaluateWithSubstitutions(
-      const HloInstruction* instruction,
-      const absl::flat_hash_map<const HloInstruction*, const LiteralBase*>&
-          substitutions,
-      bool recursively_evaluate_nonconstant_operands = false);
 
   absl::StatusOr<Literal> EvaluateElementwiseBinaryOp(HloOpcode opcode,
                                                       const Literal& lhs,
@@ -251,7 +252,8 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
 
  protected:
   // Evaluates the given instruction, and stores the evaluation result in the
-  // evaluated_ map.
+  // evaluation state.
+  //
   // When a non-empty shape_index is given, the instruction may be partially
   // evaluated at the given shape_index and the rest of the result could be
   // marked as undetermined unless it has been previously evaluated using
@@ -352,7 +354,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   absl::Status HandleReverse(const HloInstruction* reverse) override;
   absl::Status HandleSelectAndScatter(
       const HloInstruction* select_and_scatter) override;
-  absl::Status HandleSlice(const HloInstruction* slice) override;
+  absl::Status HandleSlice(const HloInstruction* hlo) override;
   absl::Status HandleSort(const HloInstruction* sort) override;
   absl::Status HandleStochasticConvert(
       const HloInstruction* stochastic_convert) override;
@@ -392,21 +394,37 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // returned directly without looking up the cache.
   //
   // Similarly, a Parameter instruction is considered evaluated and its literal
-  // is looked up in arg_literals.
+  // is looked up in args.
   //
   // Crash with log if the given instruction has not been evaluated previously.
   const Literal& GetEvaluatedLiteralFor(const HloInstruction* hlo) {
     if (hlo->IsConstant()) {
       return hlo->literal();
     }
-    if (hlo->opcode() == HloOpcode::kParameter && !arg_literals_.empty()) {
-      return *arg_literals_.at(hlo->parameter_number());
+    if (hlo->opcode() == HloOpcode::kParameter && state_.has_args()) {
+      return *state_.arg(hlo->parameter_number());
     }
 
-    auto it = evaluated_.find(hlo);
-    CHECK(it != evaluated_.end())
+    const Literal* literal = state_.find_evaluated(hlo);
+    CHECK(literal != nullptr)
         << "could not find evaluated value for: " << hlo->ToString();
-    return it->second;
+    return *literal;
+  }
+
+  // Returns the already-evaluated literal result for the instruction and
+  // removes it from internal evaluate state.
+  Literal ExtractEvaluatedLiteralFor(const HloInstruction* hlo) {
+    if (state_.has_evaluated(hlo)) {
+      return state_.extract_evaluated(hlo);
+    }
+    if (hlo->IsConstant()) {
+      return hlo->literal().Clone();
+    }
+    if (hlo->opcode() == HloOpcode::kParameter && state_.has_args()) {
+      return state_.arg(hlo->parameter_number())->Clone();
+    }
+
+    LOG(FATAL) << "could not find evaluated value for: " << hlo->ToString();
   }
 
   // Returns true if the given hlo has been evaluated and cached.
@@ -415,85 +433,154 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
     if (hlo->IsConstant()) {
       return true;
     }
-    if (hlo->opcode() == HloOpcode::kParameter && !arg_literals_.empty()) {
+    if (hlo->opcode() == HloOpcode::kParameter && state_.has_args()) {
       return true;
     }
-    auto it = evaluated_.find(hlo);
-    if (it == evaluated_.end()) {
+
+    const Literal* literal = state_.find_evaluated(hlo);
+    if (literal == nullptr) {
       return false;
     }
+
     // We may evaluate some elements of a tuple-shaped instruction and mark
     // the other elements as undetermined. This way we avoid the computation
     // and memory overhead of evaluating a large tuple when only some elements
     // are needed. By marking the other elements undetermined, we allow the
     // evaluator to update the cached tuple literal when more elements are
     // evaluated.
-    return it->second.IsDetermined(shape_index);
+    return literal->IsDetermined(shape_index);
   }
 
-  // Tracks the HLO instruction and its evaluated literal result.
-  //
-  // Parameters and constants aren't stored here, see implementation of
-  // GetEvaluatedLiteralFor.
-  //
-  // TODO(b/35950897): have better memory management here to free instructions
-  // that are no longer a parent for any other subsequent instruction in
-  // post-ordering.
-  //
-  // Must be cleared for each evaluation.
-  //
-  // Storing Literal in place requires the container to have pointer stability
-  // so we cannot use flat_hash_map any more.
-  absl::node_hash_map<const HloInstruction*, Literal> evaluated_;
-  // Set by EvaluateInternal and opportunitiscally used by the HandleXXX
-  // functions. When non-empty, the HandleXXX function may evaluate the
-  // instruction at only the given shape index.
-  ShapeIndex visitor_shape_index_;
-  bool enable_partial_evaluation_ = false;
+  // Sets the evaluated literal for the given instruction.
+  void SetEvaluatedLiteralFor(const HloInstruction* hlo, Literal literal) {
+    state_.set_evaluated(hlo, std::move(literal));
+  }
 
-  std::unique_ptr<CallGraph> call_graph_cache_;
-  std::unique_ptr<TuplePointsToAnalysis> tuple_points_to_analysis_cache_;
+  // EvaluationState encapsulates the state of an in-progress evaluation. Once
+  // evaluation is complete the state is cleaned up.
+  //
+  // State must be reset before each evaluation. See `ScopedEvaluateState`
+  // below for an RAII helper to automatically reset the state.
+  class EvaluationState {
+   public:
+    EvaluationState() = default;
+
+    // Resets the state of the evaluation and sets the argument literals.
+    void Reset(absl::Span<const Literal* const> args) {
+      args_.clear();
+      args_.insert(args_.end(), args.begin(), args.end());
+      evaluated_.erase(evaluated_.begin(), evaluated_.end());
+    }
+
+    // Resets the state of the evaluation.
+    void Reset() {
+      args_.clear();
+      evaluated_.erase(evaluated_.begin(), evaluated_.end());
+    }
+
+    // Returns the argument literals set for the evaluation.
+    absl::Span<const Literal* const> args() const { return args_; }
+    const Literal* arg(int64_t index) const { return args_.at(index); }
+    bool has_args() const { return !args_.empty(); }
+
+    // Sets the evaluated literal for the given instruction.
+    void set_evaluated(const HloInstruction* hlo, Literal literal) {
+      evaluated_[hlo] = std::move(literal);
+    }
+
+    // Returns the evaluated literal for the given instruction, or nullptr if
+    // the instruction has not been evaluated.
+    Literal* find_evaluated(const HloInstruction* hlo) {
+      if (auto it = evaluated_.find(hlo); it != evaluated_.end()) {
+        return &it->second;
+      }
+      return nullptr;
+    }
+
+    // Returns true if the given instruction has been evaluated.
+    bool has_evaluated(const HloInstruction* hlo) const {
+      return evaluated_.contains(hlo);
+    }
+
+    // Extracts the evaluated literal for the given instruction and returns it.
+    Literal extract_evaluated(const HloInstruction* hlo) {
+      return std::move(evaluated_.extract(hlo).mapped());
+    }
+
+   private:
+    // Caches pointers to input literals, assuming they are in post-order.
+    // Literals are not owned by this class, and they must outlive the
+    // lifetime of each invocation to the Evaluate* method.
+    std::vector<const Literal*> args_;
+
+    // Tracks the HLO instruction and its evaluated literal result.
+    //
+    // Parameters and constants aren't stored here, for parameters we use
+    // literals from `args_` array and for constants we use the literal from the
+    // instruction itself.
+    //
+    // TODO(b/35950897): have better memory management here to free instructions
+    // that are no longer a parent for any other subsequent instruction in
+    // post-ordering.
+    absl::node_hash_map<const HloInstruction*, Literal> evaluated_;
+  };
+
+  EvaluationState& state() { return state_; }
+
+ private:
+  // An RAII helper for Evaluate* methods that resets the evaluator state with
+  // the given argument literals for evaluation, and resets the state when it
+  // evaluation is complete.
+  class ScopedEvaluateState {
+   public:
+    explicit ScopedEvaluateState(EvaluationState* state,
+                                 absl::Span<const Literal* const> args = {})
+        : state_(state) {
+      state_->Reset(args);
+    }
+
+    ~ScopedEvaluateState() { state_->Reset(); }
+
+   private:
+    EvaluationState* state_;
+  };
+
+  template <typename ReturnT, typename NativeT, typename UnaryOp>
+  static absl::StatusOr<Literal> ElementWiseUnaryOpImpl(
+      const HloInstruction* instruction, UnaryOp&& unary_op,
+      const Literal& operand_literal) {
+    static_assert(std::is_invocable_r_v<ReturnT, UnaryOp, NativeT>,
+                  "Invalid UnaryOp signature");
+
+    const Shape& shape = instruction->shape();
+    const auto* operand = instruction->operand(0);
+    TF_RET_CHECK(ShapeUtil::SameDimensions(shape, operand->shape()));
+
+    Literal result(shape);
+    TF_RETURN_IF_ERROR(
+        result.PopulateLinearParallel<ReturnT>([&](int64_t linear_index, int) {
+          return unary_op(operand_literal.GetLinear<NativeT>(linear_index));
+        }));
+    return result;
+  }
+
+  // Module-level seed handle.
+  uint64_t seed_ = 0;
+
+  // RNG engine.
+  std::minstd_rand0 engine_;
+
+  // Map from a primitive type to its associated (templated) DfsHloVisitor.
+  std::unique_ptr<ConstDfsHloVisitor> typed_visitors_[PrimitiveType_ARRAYSIZE];
+
+  // Max loop iterations to execute with no maximum if negative.
+  int64_t max_loop_iterations_ = 0;
 
   // Use fast path that uses eigen in the evaluator.
   bool use_fast_path_ = false;
 
   // Use fast path that doesn't use embedded evaluators in reduce.
   bool use_fast_path_reduce_ = true;
-
- private:
-  template <typename ReturnT, typename NativeT>
-  static absl::StatusOr<Literal> ElementWiseUnaryOpImpl(
-      const HloInstruction* instruction,
-      const std::function<ReturnT(NativeT)>& unary_op,
-      const Literal& operand_literal) {
-    const Shape& shape = instruction->shape();
-    const auto* operand = instruction->operand(0);
-    TF_RET_CHECK(ShapeUtil::SameDimensions(shape, operand->shape()));
-
-    Literal result(shape);
-    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
-        [&](absl::Span<const int64_t> multi_index, int) {
-          return unary_op(operand_literal.Get<NativeT>(multi_index));
-        }));
-    return std::move(result);
-  }
-
-  // Map from a primitive type to its associated (templated) DfsHloVisitor.
-  std::unique_ptr<ConstDfsHloVisitor> typed_visitors_[PrimitiveType_ARRAYSIZE];
-
-  // Caches pointers to input literals, assuming they are in post-order.
-  // Literals are not owned by this class, and they must outlive the lifetime of
-  // each invocation to the Evaluate* method.
-  // Must be cleared for each evaluation.
-  std::vector<const Literal*> arg_literals_;
-
-  // Max loop iterations to execute with no maximum if negative.
-  int64_t max_loop_iterations_ = 0;
-
-  // Module-level seed handle.
-  uint64_t seed_ = 0;
-  // RNG engine.
-  std::minstd_rand0 engine_;
 
   // DynamicDimensionInference is used to evaluate GetDimensionSize, which
   // returns the dynamic dimension size of its operand.
@@ -504,6 +591,20 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
 
   // Optional handler for tracing MAC operations (eg in dot and convolution).
   TraceMACHandler trace_mac_handler_;
+
+  // TODO(ezhulenev): Move cache members to EvaluationState.
+  std::unique_ptr<TuplePointsToAnalysis> tuple_points_to_analysis_cache_;
+
+  // Set by EvaluateInternal and opportunitiscally used by the HandleXXX
+  // functions. When non-empty, the HandleXXX function may evaluate the
+  // instruction at only the given shape index.
+  //
+  // TODO(ezhulenev): Move partial evaluation members to EvaluationState.
+  ShapeIndex visitor_shape_index_;
+  bool enable_partial_evaluation_ = false;
+
+  // Mutable evaluation state that holds the state of an in-progress evaluation.
+  EvaluationState state_;
 
   HloEvaluator(const HloEvaluator&) = delete;
   HloEvaluator& operator=(const HloEvaluator&) = delete;
@@ -531,7 +632,7 @@ struct ParsedStaticWhileLoop {
 // Indicates whether a parsed while loop is static or dynamic. If the loop is
 // static, it contains a value for StaticLoopInfo; otherwise the loop is
 // dynamic. We consider a loop dynamic if its induction variable's initial
-// value or the loop bound's value depends on the while's parent computation's
+// value or the loop bounds value depends on the while's parent computation's
 // parameter.
 struct ParsedWhileLoop {
   std::optional<ParsedStaticWhileLoop> static_while_loop;

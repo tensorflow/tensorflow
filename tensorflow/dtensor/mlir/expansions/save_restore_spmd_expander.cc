@@ -15,8 +15,7 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/save_restore_spmd_expander.h"
 
-#include <algorithm>
-#include <memory>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>

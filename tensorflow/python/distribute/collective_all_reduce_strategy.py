@@ -969,7 +969,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       options = collective_util.Options()
 
     if context.executing_eagerly():
-      # In eager mode, falls back to the default implemenation that uses
+      # In eager mode, falls back to the default implementation that uses
       # `merge_call`. Replica functions are running sequentially in eager mode,
       # and due to the blocking nature of collective ops, execution will hang if
       # collective ops are to be launched sequentially.
@@ -1035,7 +1035,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
             except Exception as e:  # pylint: disable=broad-except
               logging.error("Unexpected exception in check alive: %s", e)
               context.context().abort_collective_ops(
-                  errors.INTERNAL, "unexecpted exception in check alive: %s" % e
+                  errors.INTERNAL, "unexpected exception in check alive: %s" % e
               )
               return
       time.sleep(self._check_health_interval)

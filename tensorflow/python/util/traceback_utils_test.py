@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for traceback_utils."""
 
+import sys
 import traceback
 
 from tensorflow.python.eager import def_function
@@ -46,7 +47,10 @@ class TracebackUtilsTest(test.TestCase):
     self.assertGreater(trace_line_count, 0)
 
     if filtering_enabled:
-      self.assertLess(trace_line_count, count)
+      if sys.version_info >= (3, 13):
+        self.assertLessEqual(trace_line_count, count)
+      else:
+        self.assertLess(trace_line_count, count)
     else:
       self.assertGreater(trace_line_count, count)
 
@@ -96,7 +100,10 @@ class TracebackUtilsTest(test.TestCase):
     def fn():
       wrapped_fn([0, 1])
 
-    self.assert_trace_line_count(fn, count=15, filtering_enabled=True)
+    if sys.version_info >= (3, 13):
+      self.assert_trace_line_count(fn, count=16, filtering_enabled=True)
+    else:
+      self.assert_trace_line_count(fn, count=15, filtering_enabled=True)
     self.assert_trace_line_count(fn, count=25, filtering_enabled=False)
 
   def test_variable_constructor(self):

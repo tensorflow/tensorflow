@@ -59,6 +59,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -81,7 +82,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tsl/platform/fingerprint.h"
-#include "tsl/platform/statusor.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_copy_node.h"
@@ -418,6 +418,16 @@ absl::Status HasTPUReplication(const EagerOperation& op,
   return absl::OkStatus();
 }
 
+bool FunctionRunsAtMostOnce(const EagerOperation* op, const EagerContext& ctx) {
+  if (!op->is_function()) return false;
+  bool function_runs_at_most_once;
+  absl::Status status =
+      GetFuncAttr(op, ctx, FunctionLibraryDefinition::kFunctionRunsAtMostOnce,
+                  &function_runs_at_most_once);
+  if (!status.ok()) return false;
+  return function_runs_at_most_once;
+}
+
 absl::Status MustCompileWithXLA(const EagerOperation* op,
                                 const EagerContext& ctx,
                                 bool* compile_with_xla) {
@@ -535,10 +545,12 @@ absl::Status UpdateCompileCounter(const EagerOperation* op,
   string device_type = CanonicalizeDeviceType(op->GetDeviceParsedName().type);
   string compilation_option = kDisabled;
   if (!compile_with_xla) {
-    bool nested_jit_compile;
+    bool nested_jit_compile = false;
     string device;
-    TF_RETURN_IF_ERROR(
-        HasNestedJitCompile(*op, ctx, &nested_jit_compile, &device));
+    if (!ctx.FuncLibDef()->HasOptimizedFunctionGraph(op->Name())) {
+      TF_RETURN_IF_ERROR(
+          HasNestedJitCompile(*op, ctx, &nested_jit_compile, &device));
+    }
     if (nested_jit_compile) {
       if (!device.empty()) {
         tsl::DeviceNameUtils::ParsedName device_parsed_name;
@@ -1366,6 +1378,8 @@ absl::Status GetOrCreateKernelAndDevice(
     }
 
     bool run_function_with_flr = false;
+    bool function_runs_at_most_once = FunctionRunsAtMostOnce(op, ctx);
+
     std::optional<string> xla_compile_device_type;
     if (op->is_function()) {
       bool compile_with_xla;
@@ -1519,8 +1533,8 @@ absl::Status GetOrCreateKernelAndDevice(
           function_outputs_on_op_device, allow_small_function_optimizations,
           allow_control_flow_sync_execution,
           shape_inference_on_tfe_dialect_import, int_args_and_retvals_on_device,
-          xla_compile_device_type, ctx.AllowSoftPlacement(),
-          std::move(rendezvous_creator), get_op_id));
+          function_runs_at_most_once, xla_compile_device_type,
+          ctx.AllowSoftPlacement(), std::move(rendezvous_creator), get_op_id));
     } else {
       VLOG(2) << "Running " << ndef.op() << " using op kernel. "
               << ". Full node_def=" << ndef.DebugString();
@@ -1881,11 +1895,21 @@ absl::Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
                                               ctx.GetContextViewId()));
         }
       }
-      int64_t num_elements;
-      TF_RETURN_IF_ERROR(input->NumElements(&num_elements));
-      if ((input->Type() == TensorHandle::HandleType::LOCAL) &&
-          (num_elements == 1) && (input->DataType() != DT_VARIANT) &&
-          SendAsProtosWhenPossible()) {
+
+      bool send_as_protos =
+          SendAsProtosWhenPossible() &&
+          (input->Type() == TensorHandle::HandleType::LOCAL) &&
+          (input->DataType() != DT_VARIANT);
+      // Make the final determination on whether to take the send_as_protos
+      // path. We do this only if the other conditions are met, since the
+      // blocking call to NumElements can hurt performance.
+      if (send_as_protos) {
+        int64_t num_elements;
+        TF_RETURN_IF_ERROR(input->NumElements(&num_elements));
+        send_as_protos = (num_elements == 1);
+      }
+
+      if (send_as_protos) {
         auto* input_tensor_proto = remote_op->add_op_inputs()->mutable_tensor();
         const tensorflow::Tensor* input_tensor = nullptr;
         TensorHandle* local_cpu_input_handle = nullptr;

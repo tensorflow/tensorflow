@@ -100,9 +100,9 @@ class StringTfLiteTensorBuffer : public BaseTfLiteTensorBuffer {
 // Sets the `tensorflow::Tensor` content from `TfLiteTensor` object. If
 // `allow_reusing=false`, then we explicitly disallow reusing the TF Lite
 // tensor buffer when constructing the new tensorflow Tensor.
-tensorflow::Status SetTfTensorFromTfLite(const TfLiteTensor* tensor,
-                                         tensorflow::Tensor* tf_tensor,
-                                         bool allow_reusing = true);
+absl::Status SetTfTensorFromTfLite(const TfLiteTensor* tensor,
+                                   tensorflow::Tensor* tf_tensor,
+                                   bool allow_reusing = true);
 
 }  // namespace flex
 }  // namespace tflite

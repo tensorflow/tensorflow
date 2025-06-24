@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_XLA_CALL_MODULE_LOADER_H_
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_XLA_CALL_MODULE_LOADER_H_
 
+#include <stdbool.h>
+
 #include <memory>
 #include <string>
 #include <utility>
@@ -32,11 +34,9 @@ limitations under the License.
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "xla/hlo/builder/xla_computation.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/shape.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -48,7 +48,7 @@ class XlaCallModuleLoader {
       mlir::MLIRContext* context, int version, mlir::StringRef module_str,
       std::vector<std::string> disabled_checks,
       std::vector<std::string> platforms, int num_invocation_args,
-      bool main_has_token_input_output);
+      bool main_has_token_input_output, bool use_shardy_partitioner);
 
   int NrInputs() { return main_.getNumArguments(); }
   mlir::TypeRange InputTypes() { return main_.getArgumentTypes(); }
@@ -79,20 +79,23 @@ class XlaCallModuleLoader {
   // arguments.
   absl::Status RefineDynamicShapes(llvm::ArrayRef<xla::Shape> input_shapes);
 
-  // Validates that the module only contains ops from valid dialects.
-  absl::Status ValidateDialect();
+  // Returns true iff the output types are refined by RefineDynamicShapes.
+  bool IsOutputTypeRefined() { return output_types_refined_; };
+
+  // Validates that the module only contains ops from valid dialects and that
+  // any `shape_assertion` custom calls have side effects as expected.
+  absl::Status ValidateXlaCallModuleInvariants();
 
   // Validates that the module represents a statically-shaped StableHLO program,
   // otherwise all sorts of weirdness might happen in the HLO exporter which is
   // much easier to detect here.
   absl::Status ValidateStaticShapes();
 
-  // Lowers the StableHLO module to MHLO in place.
-  absl::Status LowerModuleToMhlo();
+  // Runs some passes on the StableHLO module to prepare it for lowering to
+  // HLO and TF call lowering.
+  absl::Status PrepareStablehloForLowering();
 
-  // Lowers the MHLO module to XlaComputation and returns it.
-  //
-  // REQUIRES: `LowerModuleToMhlo()` is called beforehand.
+  // Lowers the StableHLO module to XlaComputation and returns it.
   absl::StatusOr<xla::XlaComputation> ToXlaComputation();
 
   // Returns the deserialized stablehlo module.
@@ -108,7 +111,8 @@ class XlaCallModuleLoader {
                           std::vector<std::string> disabled_checks,
                           std::vector<std::string> platforms,
                           int num_invocation_args,
-                          bool main_has_token_input_output);
+                          bool main_has_token_input_output,
+                          bool use_shardy_partitioner);
 
   // Adds a wrapper for the "main" function to compute the platform index and
   // the dimension arguments.
@@ -123,6 +127,13 @@ class XlaCallModuleLoader {
   // disabled_checks attribute and the TF_XLA_FLAGS environment variable.
   std::vector<std::string> loading_disabled_checks_;
   mlir::func::FuncOp main_;
+  // Keeps track of whether the output types are refined by RefineDynamicShapes.
+  bool output_types_refined_ = false;
+  // Whether the module is using the shardy partitioner. When Shardy partitioner
+  // is used, we need to inline meshes represented as module attributes to each
+  // individual sharding representation to preserve mesh information. See
+  // https://openxla.org/shardy/overview for more details.
+  bool use_shardy_partitioner_ = false;
 };
 
 }  // namespace tensorflow

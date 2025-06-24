@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/tsl/lib/io/cache.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "tsl/platform/coding.h"
 #include "tsl/platform/raw_coding.h"
 
@@ -31,16 +33,18 @@ static std::string EncodeKey(int k) {
   core::PutFixed32(&result, k);
   return result;
 }
-static int DecodeKey(const Slice& k) {
+static int DecodeKey(Slice k) {
   assert(k.size() == 4);
   return core::DecodeFixed32(k.data());
 }
 static void* EncodeValue(uintptr_t v) { return reinterpret_cast<void*>(v); }
-static int DecodeValue(void* v) { return reinterpret_cast<uintptr_t>(v); }
+static int DecodeValue(void* v) {
+  return safe_reinterpret_cast<std::uintptr_t>(v);
+}
 
 class CacheTest : public ::testing::Test {
  public:
-  static void Deleter(const Slice& key, void* v) {
+  static void Deleter(Slice key, void* v) {
     current_->deleted_keys_.push_back(DecodeKey(key));
     current_->deleted_values_.push_back(DecodeValue(v));
   }

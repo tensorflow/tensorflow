@@ -42,6 +42,6 @@ tf_cc_test(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/platform:status_matchers",
     ],
 )

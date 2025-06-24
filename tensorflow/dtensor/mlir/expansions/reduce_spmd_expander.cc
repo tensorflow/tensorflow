@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/reduce_spmd_expander.h"
 
+#include <cstdint>
 #include <string>
-#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"

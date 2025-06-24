@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -59,6 +60,9 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_op_executable.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/outside_compilation_params.h"
@@ -68,9 +72,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -117,7 +118,7 @@ absl::Status FixTupleTableAsync(se::Stream* stream,
         std::vector<se::DeviceMemoryBase> elements;
         xla::ShapeIndex element_index = index;
         element_index.push_back(0);
-        for (int i = 0; i < element_shape.tuple_shapes_size(); ++i) {
+        for (int i = 0; i < element_shape.tuple_shapes().size(); ++i) {
           // Gather all children of the tuple element.
           element_index.back() = i;
           elements.push_back(mem->Buffer(element_index).AsDeviceMemoryBase());
@@ -133,10 +134,10 @@ absl::Status FixTupleTableAsync(se::Stream* stream,
 // "bounded_shape".
 bool DynamicShapeIsCompatible(const xla::Shape& dynamic_shape,
                               const xla::Shape& bounded_shape) {
-  if (dynamic_shape.rank() != bounded_shape.rank()) {
+  if (dynamic_shape.dimensions().size() != bounded_shape.dimensions().size()) {
     return false;
   }
-  for (int64_t i = 0; i < dynamic_shape.rank(); ++i) {
+  for (int64_t i = 0; i < dynamic_shape.dimensions().size(); ++i) {
     if (dynamic_shape.dimensions(i) > bounded_shape.dimensions(i)) {
       return false;
     }
@@ -434,10 +435,11 @@ absl::StatusOr<xla::ExecutionOutput> TPUExecute(
   std::unique_ptr<xla::HloModule> module;
   std::vector<xla::Shape> input_shapes;
   {
-    xla::ComputationLayout computation_layout(
-        xla::ShapeLayout(xla::Shape(executable.output_shape())));
+    TF_ASSIGN_OR_RETURN(xla::Shape output_shape,
+                        xla::Shape::FromProto(executable.output_shape()));
+    xla::ComputationLayout computation_layout(xla::ShapeLayout{output_shape});
     for (const xla::ShapeProto& shape_proto : executable.input_shapes()) {
-      xla::Shape shape(shape_proto);
+      TF_ASSIGN_OR_RETURN(xla::Shape shape, xla::Shape::FromProto(shape_proto));
       computation_layout.add_parameter_layout(xla::ShapeLayout(shape));
       input_shapes.push_back(std::move(shape));
     }

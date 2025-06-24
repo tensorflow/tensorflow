@@ -193,6 +193,14 @@ class Serialization {
   Serialization(const Serialization&) = delete;
   Serialization& operator=(const Serialization&) = delete;
 
+  // Generate a unique fingerprint for the given model_token and custom_key.
+  // If context and delegate_params are provided, the fingerprint will be
+  // unique to the given context and delegate_params.
+  static uint64_t GetFingerprint(
+      const std::string& model_token, const std::string& custom_key,
+      TfLiteContext* context = nullptr,
+      const TfLiteDelegateParams* delegate_params = nullptr);
+
  protected:
   SerializationEntry GetEntryImpl(
       const std::string& custom_key, TfLiteContext* context = nullptr,

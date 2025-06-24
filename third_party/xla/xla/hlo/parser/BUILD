@@ -2,7 +2,7 @@
 #   HLO parser implementation.
 
 load(
-    "//xla:xla.bzl",
+    "//xla:xla.default.bzl",
     "xla_cc_test",
 )
 load("//xla/tsl:tsl.bzl", "internal_visibility")
@@ -44,6 +44,10 @@ cc_library(
         "//xla/service:name_uniquer",
         "//xla/service:shape_inference",
         "//xla/tsl/lib/gtl:map_util",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -56,9 +60,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -70,28 +72,28 @@ xla_cc_test(
         ":hlo_lexer",
         ":hlo_parser",
         "//xla:array",
-        "//xla:protobuf_util",
         "//xla:shape_util",
         "//xla:window_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:hlo_module_config",
         "//xla/service:pattern_matcher",
-        "//xla/service:pattern_matcher_gmock",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -105,13 +107,25 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:regexp",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_lexer_test",
+    srcs = ["hlo_lexer_test.cc"],
+    deps = [
+        ":hlo_lexer",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )

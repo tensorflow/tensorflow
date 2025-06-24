@@ -31,8 +31,7 @@ namespace gpu {
 // Shared resources required for thunk initialization and execution.
 class ResourceRequests : public Thunk::ResourceRequestsInterface {
  public:
-  absl::Status AddClique(const GpuCliqueKey& clique_key,
-                         int32_t num_local_participants) final;
+  absl::Status AddClique(const GpuCliqueKey& clique_key) final;
 
   absl::StatusOr<Thunk::CollectiveCliques> AcquireCollectiveCliques(
       const Thunk::CollectiveExecuteParams& params,
@@ -41,7 +40,6 @@ class ResourceRequests : public Thunk::ResourceRequestsInterface {
  private:
   struct CliqueRequest {
     GpuCliqueKey key;
-    int64_t num_local_participants;
     int64_t id;
   };
 

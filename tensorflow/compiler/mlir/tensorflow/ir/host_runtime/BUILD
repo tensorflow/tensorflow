@@ -31,16 +31,10 @@ td_library(
 gentbl_cc_library(
     name = "tensorflow_tfrt_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "tfrt_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "tfrt_ops.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "tfrt_ops.h.inc": ["-gen-op-decls"],
+        "tfrt_ops.cc.inc": ["-gen-op-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "tfrt_ops.td",
     deps = [

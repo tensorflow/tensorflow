@@ -41,6 +41,20 @@ class TopKThunk final : public Thunk {
             BufferUse::Write(indices_buffer_)};
   }
 
+  int64_t batch_size() const { return batch_size_; }
+  int64_t input_size() const { return input_size_; }
+  int64_t k() const { return k_; }
+
+  const BufferAllocation::Slice& values_buffer() const {
+    return values_buffer_;
+  }
+  const BufferAllocation::Slice& output_buffer() const {
+    return output_buffer_;
+  }
+  const BufferAllocation::Slice& indices_buffer() const {
+    return indices_buffer_;
+  }
+
  private:
   TopKThunk(Info info, BufferAllocation::Slice values,
             BufferAllocation::Slice output, BufferAllocation::Slice indices,

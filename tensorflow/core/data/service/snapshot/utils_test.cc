@@ -18,6 +18,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/test.h"
 #include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -25,10 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/test.h"
 
 namespace tensorflow {
 namespace data {

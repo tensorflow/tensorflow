@@ -18,14 +18,15 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "xla/tests/hlo_test_base.h"
+#include <gtest/gtest.h>
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class HloModuleLoaderTest : public HloTestBase {};
+class HloModuleLoaderTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(HloModuleLoaderTest, StripsLogHeaders) {
   const std::string& hlo_string = R"(

@@ -53,7 +53,7 @@ void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
       // Find out mismatched dimensions that are non-broadcastable.
       // Reconcile the
       // difference by slicing the bigger dimension.
-      for (int64_t i = 0; i < lhs_xla_shape.rank(); ++i) {
+      for (int64_t i = 0; i < lhs_xla_shape.dimensions().size(); ++i) {
         if (lhs_xla_shape.is_dynamic_dimension(i)) {
           if (!rhs_xla_shape.is_dynamic_dimension(i) &&
               lhs_xla_shape.dimensions(i) > rhs_xla_shape.dimensions(i) &&
@@ -116,7 +116,8 @@ void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
             std::vector<int64_t> dimensions(lhs_xla_shape.dimensions().begin(),
                                             lhs_xla_shape.dimensions().end());
             dimensions[i] = rhs_xla_shape.dimensions(i);
-            std::vector<int64_t> broadcast_dimensions(lhs_xla_shape.rank());
+            std::vector<int64_t> broadcast_dimensions(
+                lhs_xla_shape.dimensions().size());
             absl::c_iota(broadcast_dimensions, 0);
             lhs = xla::BroadcastInDim(lhs, dimensions, broadcast_dimensions);
 

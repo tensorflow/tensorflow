@@ -18,10 +18,11 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -37,6 +38,22 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
 void AppendDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                              DebugOptions* debug_options = nullptr);
 
+// Parses the debug option flags from XLA_FLAGS environment variable. The
+// global variable containing the debug options returned from
+// 'GetDebugOptionsFromFlags' is mutated by setting fields explicitly specified
+// in the environment variable. If `reset_envvar` is true, then the environment
+// variable is read again, otherwise the previously read value is used.
+void ParseDebugOptionFlagsFromEnv(bool reset_envvar);
+
+// Parse the debug options from debug_options file. Given a string containing
+// the textual form of a DebugOptions protobuf, parses it. The global variable
+// containing the debug options returned from 'GetDebugOptionsFromFlags' is
+// mutated by setting fields explicitly specified in the file.
+bool ParseFlagsFromDebugOptionsFile(absl::string_view filename);
+
+// Reset the flag values to default debug options ignoring flags.
+void ResetFlagValues();
+
 // Fetches a DebugOptions proto message from flags provided to the program.
 // Flags must be registered with the flags parser using AppendDebugOptionsFlags
 // first.
@@ -44,6 +61,9 @@ DebugOptions GetDebugOptionsFromFlags();
 
 // Gets a DebugOptions proto that reflects the defaults as if no flags were set.
 DebugOptions DefaultDebugOptionsIgnoringFlags();
+
+// Checks whether the pass fuel was explicitly set.
+bool PassFuelIsSet(absl::string_view pass);
 
 // Consumes a unit of "compiler fuel" for the given pass, and returns false if
 // we're out of fuel for that pass.

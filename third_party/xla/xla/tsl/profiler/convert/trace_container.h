@@ -16,9 +16,9 @@ limitations under the License.
 #define XLA_TSL_PROFILER_CONVERT_TRACE_CONTAINER_H_
 
 #include <string>
-#include <string_view>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tsl/profiler/protobuf/trace_events.pb.h"
 
 namespace tsl {

@@ -16,9 +16,9 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

@@ -46,7 +46,6 @@ pytype_strict_library(
     srcs = [
         "test_pass.py",
     ],
-    srcs_version = "PY3",
     visibility = visibility,
     deps = [
         ":test_pass_pybind",

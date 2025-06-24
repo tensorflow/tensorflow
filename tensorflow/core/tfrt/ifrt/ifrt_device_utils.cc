@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/service/computation_placer.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tfrt/ifrt/grid.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace ifrt_serving {

@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/generator_dataset_op.h"
 
-#include <iterator>
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
@@ -143,7 +144,7 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
           ctx, state_, out_tensors, model_node());
       if (s.ok()) {
         *end_of_sequence = false;
-      } else if (errors::IsOutOfRange(s)) {
+      } else if (absl::IsOutOfRange(s)) {
         // `next_func` may deliberately raise `errors::OutOfRange`
         // to indicate that we should terminate the iteration.
         s = absl::OkStatus();

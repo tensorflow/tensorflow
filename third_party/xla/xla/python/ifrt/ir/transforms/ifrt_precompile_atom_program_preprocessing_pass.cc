@@ -17,6 +17,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -26,6 +27,8 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Visitors.h"
@@ -54,12 +57,17 @@ class IfrtPrecompileAtomProgramPreprocessingPass
       IfrtPrecompileAtomProgramPreprocessingPass>::
       IfrtPrecompileAtomProgramPreprocessingPassBase;
 
+  mlir::LogicalResult initialize(mlir::MLIRContext* context) override;
+
   void runOnOperation() override;
+
+ private:
+  std::vector<std::string> platform_names_;
 };
 
 // Determines the module type based on platform name.
 mlir::FailureOr<llvm::StringRef> GetModuleType(
-    CallOp call_op, const mlir::Pass::ListOption<std::string>& platform_names) {
+    CallOp call_op, const std::vector<std::string>& platform_names) {
   llvm::ArrayRef<int> device_ids = call_op.getDevices();
   // All devices should have the same type. Use the first platform name to
   // determine module type.
@@ -73,12 +81,24 @@ mlir::FailureOr<llvm::StringRef> GetModuleType(
   auto platform_name = platform_names[first_logical_device_id];
 
   // Get module type based on platform name.
-  if (platform_name == xla::TpuName() || platform_name == xla::CudaName()) {
+  if (platform_name == xla::TpuName() || platform_name == xla::CudaName() ||
+      platform_name == xla::CpuName()) {
     return kIfrtModuleTypeXla;
   } else {
     return call_op->emitOpError()
            << "Unsupported platform for call op: " << platform_name;
   }
+}
+
+mlir::LogicalResult IfrtPrecompileAtomProgramPreprocessingPass::initialize(
+    mlir::MLIRContext* context) {
+  auto platform_names_or = ExpandPlatformNames(platform_names);
+  if (!platform_names_or.ok()) {
+    return mlir::emitError(mlir::UnknownLoc(),
+                           platform_names_or.status().message());
+  }
+  platform_names_ = std::move(*platform_names_or);
+  return mlir::success();
 }
 
 void IfrtPrecompileAtomProgramPreprocessingPass::runOnOperation() {
@@ -100,7 +120,7 @@ void IfrtPrecompileAtomProgramPreprocessingPass::runOnOperation() {
     if (module_type_attr == nullptr) {
       // Set the module type if the CallOp does not have it set.
       if (mlir::FailureOr<llvm::StringRef> module_type =
-              GetModuleType(call_op, platform_names);
+              GetModuleType(call_op, platform_names_);
           mlir::succeeded(module_type)) {
         module_type_attr = builder.getStringAttr(*module_type);
         call_op->setAttr(kIfrtModuleTypeAttrName, module_type_attr);

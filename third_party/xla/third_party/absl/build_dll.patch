@@ -1,0 +1,59 @@
+diff --git a/absl/container/internal/btree.h b/absl/container/internal/btree.h
+--- a/absl/container/internal/btree.h	(revision 54fac219c4ef0bc379dfffb0b8098725d77ac81b)
++++ b/absl/container/internal/btree.h	(date 1746583783829)
+@@ -1123,10 +1123,8 @@
+   using slot_type = typename params_type::slot_type;
+ 
+   // In sets, all iterators are const.
+-  using iterator = absl::conditional_t<
+-      is_map_container::value,
+-      btree_iterator<normal_node, normal_reference, normal_pointer>,
+-      btree_iterator<normal_node, const_reference, const_pointer>>;
++  using iterator =
++     btree_iterator<normal_node, normal_reference, normal_pointer>;
+   using const_iterator =
+       btree_iterator<const_node, const_reference, const_pointer>;
+ 
+diff --git a/absl/BUILD.bazel b/absl/BUILD.bazel
+--- a/absl/BUILD.bazel	(revision 54fac219c4ef0bc379dfffb0b8098725d77ac81b)
++++ b/absl/BUILD.bazel	(date 1745478588431)
+@@ -15,11 +15,26 @@
+ #
+
+ load("@bazel_skylib//lib:selects.bzl", "selects")
++load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+
+ package(default_visibility = ["//visibility:public"])
+
+ licenses(["notice"])
+
++bool_flag(
++    name = "use_dlls",
++    build_setting_default = False,
++    visibility = ["//visibility:public"],
++)
++
++config_setting(
++    name = "config_use_dlls",
++    flag_values = {
++        ":use_dlls": "True",
++    },
++    visibility = [":__subpackages__"],
++)
++
+ config_setting(
+     name = "clang_compiler",
+     flag_values = {
+diff --git a/absl/copts/configure_copts.bzl b/absl/copts/configure_copts.bzl
+--- a/absl/copts/configure_copts.bzl	(revision 54fac219c4ef0bc379dfffb0b8098725d77ac81b)
++++ b/absl/copts/configure_copts.bzl	(date 1745478685734)
+@@ -27,6 +27,9 @@
+     "//absl:clang_compiler": ABSL_LLVM_FLAGS,
+     "//absl:gcc_compiler": ABSL_GCC_FLAGS,
+     "//conditions:default": ABSL_GCC_FLAGS,
++}) + select({
++    "//absl:config_use_dlls": ["/DABSL_BUILD_DLL"],
++    "//conditions:default": []
+ })
+
+ ABSL_TEST_COPTS = select({

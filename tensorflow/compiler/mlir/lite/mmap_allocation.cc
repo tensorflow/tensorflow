@@ -58,6 +58,14 @@ MMAPAllocation::MMAPAllocation(int fd, ErrorReporter* error_reporter)
   }
 }
 
+MMAPAllocation::MMAPAllocation(const char* filename, size_t offset,
+                               size_t length, ErrorReporter* error_reporter)
+    : MMAPAllocation(error_reporter, open(filename, O_RDONLY), offset, length) {
+  if (mmap_fd_ == -1) {
+    TF_LITE_REPORT_ERROR(error_reporter, "Could not open '%s'.", filename);
+  }
+}
+
 MMAPAllocation::MMAPAllocation(int fd, size_t offset, size_t length,
                                ErrorReporter* error_reporter)
     : MMAPAllocation(error_reporter, dup(fd), offset, length) {
@@ -81,11 +89,7 @@ MMAPAllocation::MMAPAllocation(ErrorReporter* error_reporter, int owned_fd,
     return;
   }
 
-#ifdef __ANDROID__
-  static int pagesize = getpagesize();
-#else
   static int pagesize = sysconf(_SC_PAGE_SIZE);
-#endif
 
   offset_in_buffer_ = offset % pagesize;
   offset_of_buffer_in_file_ = offset - offset_in_buffer_;

@@ -22,10 +22,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/allocation.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -129,13 +131,15 @@ class AllocationValue {
       : value_(value),
         defining_position_(position),
         size_(size),
-        requires_contiguous_allocation_(false) {}
+        requires_contiguous_allocation_(false),
+        split_shape_(std::nullopt) {}
 
   const HloPosition& defining_position() const { return defining_position_; }
   const HloInstruction* defining_instruction() const {
     return defining_position().instruction;
   }
   int64_t size() const { return size_; }
+  void set_size(int64_t size) { size_ = size; }
   const std::vector<Use>& uses() const { return uses_; }
   std::vector<Use>& uses() { return uses_; }
   const HloValue* value() const { return value_; }
@@ -162,6 +166,9 @@ class AllocationValue {
     uses_.push_back({use, use_time, {}});
   }
 
+  void set_split_shape(const Shape& split_shape) { split_shape_ = split_shape; }
+  std::optional<Shape> mutable_split_shape() { return split_shape_; }
+
   std::string ToString() const;
   std::string ToShortString() const;
 
@@ -174,6 +181,9 @@ class AllocationValue {
   bool requires_contiguous_allocation_;
   std::vector<Use> uses_;
   AllocationSequence allocation_sequence_;
+
+  // If present, indicates the newly split shape.
+  std::optional<Shape> split_shape_;
 };
 
 // A data structure we use to associate Allocation objects that are aliased
@@ -209,7 +219,7 @@ struct AliasedOffset {
 // between Def, Use1, Use2.1, Use2.2, Use3:
 //        +------+----------+-------------------+
 //       /        \          \                   \
-  //      /          v          v                   v
+//      /          v          v                   v
 //    Def         Use1       Use2(Sync Copy)     Use3
 //    |            |           \         \        |
 //    |            |            v         v       |
@@ -255,6 +265,31 @@ struct AllocationRequest {
   // Data structure that contains the options for making window prefetched
   // allocations.
   const WindowPrefetchedAllocation::Options* window_prefetch_options = nullptr;
+  // Previously processed AllocationValues, with the same parent HloValue as the
+  // request.
+  absl::Span<AllocationValue> processed_allocation_values;
+  // An optional override starting time for the placement of  a chunk on the MSA
+  // heap, for a no-copy allocation (see
+  // MsaAlgorithm::AllocateInAlternateMemoryNoCopy() for more details).
+  //
+  // Note, this override is used when an aliased AllocationValue has already
+  // done some of the heap allocation for us. So this request picks up where it
+  // left off.
+  std::optional<int64_t> no_copy_chunk_inclusive_start_time;
+  // Indicates if the AllocationRequest start time (definition time) has an
+  // alternate memory color requirement.
+  bool require_start_colored_in_alternate_memory = false;
+  // Indicates if the AllocationRequest end time (use time) has an alternate
+  // memory color requirement.
+  bool require_end_colored_in_alternate_memory = false;
+  // Indicates if the AllocationRequest start time (definition time) has a
+  // default memory color requirement.
+  bool require_start_colored_in_default_memory = false;
+  // Indicates if the AllocationRequest end time (use time) has a default
+  // memory color requirement.
+  bool require_end_colored_in_default_memory = false;
+
+  std::string ToString() const;
 };
 
 // Result of an allocation, prefetch, eviction etc. request.  The result is

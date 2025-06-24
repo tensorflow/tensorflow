@@ -15,15 +15,20 @@ limitations under the License.
 
 #include "xla/literal_util.h"
 
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <optional>
+#include <random>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "absl/random/uniform_int_distribution.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -37,12 +42,12 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/bitmap.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/status.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/ml_dtypes.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -115,6 +120,16 @@ struct ZeroProvider {
   NativeT<kType> operator()() const { return static_cast<NativeT<kType>>(0); }
 };
 
+// Use template specialization for the E8M0 type, as it has no zero
+// representation, so static_cast<> returns NaN. The actual zero-like value
+// is 2^-127.
+template <>
+struct ZeroProvider<F8E8M0FNU> {
+  NativeT<F8E8M0FNU> operator()() const {
+    return Eigen::numext::bit_cast<NativeT<F8E8M0FNU>>('\0');
+  }
+};
+
 template <PrimitiveType kType>
 struct OneProvider {
   NativeT<kType> operator()() const { return static_cast<NativeT<kType>>(1); }
@@ -142,6 +157,14 @@ NativeT GetMaxImpl() {
 }
 
 template <typename NativeT>
+NativeT GetMaxFiniteImpl() {
+  if constexpr (IsReal<NativeT>::value) {
+    return std::numeric_limits<NativeT>::max();
+  }
+  LOG(FATAL) << "No finite max value for given type.";
+}
+
+template <typename NativeT>
 NativeT GetMinImpl() {
   if constexpr (IsReal<NativeT>::value) {
     if constexpr (std::numeric_limits<NativeT>::has_infinity) {
@@ -155,6 +178,13 @@ NativeT GetMinImpl() {
 template <PrimitiveType kType>
 struct MaxProvider {
   NativeT<kType> operator()() const { return GetMaxImpl<NativeT<kType>>(); }
+};
+
+template <PrimitiveType kType>
+struct MaxFiniteProvider {
+  NativeT<kType> operator()() const {
+    return GetMaxFiniteImpl<NativeT<kType>>();
+  }
 };
 
 template <PrimitiveType kType>
@@ -315,7 +345,7 @@ void PopulateWithFloatingPointData(
     bool use_large_range, std::optional<int64_t> max_bits_of_precision) {
   using ComputeT =
       std::conditional_t<sizeof(FloatT) < sizeof(float), float, FloatT>;
-  CHECK(engine != nullptr);
+  CHECK_NOTNULL(engine);
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<FloatT>());
   if (max_bits_of_precision.has_value()) {
@@ -323,7 +353,7 @@ void PopulateWithFloatingPointData(
                                "max_bits_of_precision for floating points.";
     CHECK(!no_duplicates) << "Cannot set both no_duplicates and "
                              "max_bits_of_precision for floating points.";
-    std::uniform_int_distribution<int64_t> generator(
+    absl::uniform_int_distribution<int64_t> generator(
         -(1 << *max_bits_of_precision), 1 << *max_bits_of_precision);
     for (FloatT& value : literal->data<FloatT>()) {
       int64_t temp = generator(*engine);
@@ -345,7 +375,7 @@ template <typename ComplexT>
 void PopulateWithComplexData(Literal* result, std::minstd_rand0* engine,
                              bool no_duplicates, bool use_large_range) {
   using InnerFloatT = typename ComplexT::value_type;
-  CHECK(engine != nullptr);
+  CHECK_NOTNULL(engine);
   CHECK_EQ(result->shape().element_type(),
            primitive_util::NativeToPrimitiveType<ComplexT>());
   Shape floating_point_shape = ShapeUtil::ChangeElementType(
@@ -381,7 +411,7 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
                                               std::minstd_rand0* engine,
                                               bool no_duplicates, IntT min,
                                               IntT max) {
-  CHECK(engine != nullptr);
+  CHECK_NOTNULL(engine);
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<IntT>());
   if (no_duplicates &&
@@ -391,7 +421,7 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
     std::shuffle(literal->data<IntT>().begin(), literal->data<IntT>().end(),
                  *engine);
   } else {
-    std::uniform_int_distribution<RngT<IntT>> generator(
+    absl::uniform_int_distribution<RngT<IntT>> generator(
         static_cast<RngT<IntT>>(min), static_cast<RngT<IntT>>(max));
     for (IntT& value : literal->data<IntT>()) {
       value = static_cast<IntT>(generator(*engine));
@@ -495,6 +525,10 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
 
 /* static */ Literal LiteralUtil::MaxValue(PrimitiveType primitive_type) {
   return CreateScalar<MaxProvider>(primitive_type);
+}
+
+/* static */ Literal LiteralUtil::MaxFiniteValue(PrimitiveType primitive_type) {
+  return CreateScalar<MaxFiniteProvider>(primitive_type);
 }
 
 /* static */ absl::StatusOr<Literal> LiteralUtil::NanValue(
@@ -732,7 +766,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
             return absl::OkStatus();
           }
           if constexpr (primitive_type_constant == PRED) {
-            std::uniform_int_distribution<int> generator(0, 1);
+            absl::uniform_int_distribution<int> generator(0, 1);
             TF_CHECK_OK(literal.Populate<bool>(
                 [&](absl::Span<const int64_t> /*indices*/) {
                   return generator(*engine);
@@ -778,6 +812,15 @@ absl::StatusOr<Literal> MakeFakeLiteral(
       },
       shape.element_type()));
   return std::move(literal);
+}
+
+/*static*/ std::vector<const Literal*> LiteralUtil::MakePointers(
+    absl::Span<const Literal> literals) {
+  std::vector<const Literal*> pointers(literals.size());
+  for (int i = 0; i < literals.size(); i++) {
+    pointers[i] = &literals[i];
+  }
+  return pointers;
 }
 
 }  // namespace xla

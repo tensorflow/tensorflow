@@ -47,6 +47,12 @@ TEST(FileDescriptorTest, ConstructAndRelease) {
   EXPECT_FALSE(std::is_copy_constructible_v<FileDescriptor>);
 }
 
+TEST(FileDescriptorTest, OpenNullFileFails) {
+  FileDescriptor fd =
+      FileDescriptor::Open(nullptr, O_CREAT | O_TRUNC | O_RDWR, 0644);
+  EXPECT_FALSE(fd.IsValid());
+}
+
 TEST(FileDescriptorTest, OpenWriteRewindAndReadWorks) {
   const std::string tmp_file = testing::TempDir() + __FUNCTION__;
   FileDescriptor fd =

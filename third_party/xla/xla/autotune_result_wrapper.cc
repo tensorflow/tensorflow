@@ -42,6 +42,7 @@ AutotuneResultWrapper::FromKeyAndValue(OpaqueKey key, OpaqueValue value) {
   AutotuneResults::Entry full_entry;
   full_entry.set_device(key_proto.results(0).device());
   full_entry.set_hlo(key_proto.results(0).hlo());
+  full_entry.set_version(key_proto.results(0).version());
   *full_entry.mutable_result() = value_entry.result();
   return AutotuneResultWrapper(full_entry, key_proto.version());
 }
@@ -52,6 +53,7 @@ AutotuneResultWrapper::OpaqueKey AutotuneResultWrapper::Key() const {
   auto entry = key_proto.add_results();
   entry->set_device(autotune_result_.device());
   entry->set_hlo(autotune_result_.hlo());
+  entry->set_version(autotune_result_.version());
   OpaqueKey serialized;
   CHECK(tsl::SerializeToStringDeterministic(key_proto, &serialized));
   return serialized;

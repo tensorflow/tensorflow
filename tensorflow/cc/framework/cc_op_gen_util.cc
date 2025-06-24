@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/escaping.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace cc_op {

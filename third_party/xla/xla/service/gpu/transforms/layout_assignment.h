@@ -57,13 +57,21 @@ class GpuLayoutAssignment : public LayoutAssignment {
   // dim_groups are ordered from major to minor dimensions.
   absl::Status SetOperandMajorToMinorLayout(
       const HloInstruction* instruction, int64_t operand,
-      std::initializer_list<absl::Span<const int64_t>> dim_groups);
+      std::initializer_list<absl::Span<const int64_t>> dim_groups,
+      bool mandatory = true);
 
   absl::Status SetDotOperandLayout(const HloInstruction* instruction,
                                    int64_t operand,
                                    absl::Span<const int64_t> batch_dims,
                                    absl::Span<const int64_t> row_dims,
-                                   absl::Span<const int64_t> col_dims);
+                                   absl::Span<const int64_t> col_dims,
+                                   bool mandatory = true);
+
+  absl::Status SetDotOperandLayoutToMinorContracting(
+      const HloInstruction* instruction, int64_t operand,
+      absl::Span<const int64_t> batch_dims,
+      absl::Span<const int64_t> contracting_dims,
+      absl::Span<const int64_t> noncontracting_dims);
 
   absl::Status SetDotLayout(const HloInstruction* instruction,
                             LayoutConstraints* constraints);

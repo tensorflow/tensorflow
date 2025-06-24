@@ -55,7 +55,7 @@ class EncodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
     else:
       expected_error = (ValueError,
                         r'Shape must be at least rank 2 but is rank 0')
-    with self.assertRaisesRegexp(*expected_error):
+    with self.assertRaisesRegex(*expected_error):
       self.evaluate(
           self._encode_module.encode_proto(
               sizes=1,

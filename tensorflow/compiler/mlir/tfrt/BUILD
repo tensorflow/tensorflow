@@ -60,16 +60,10 @@ td_library(
 
 gentbl_cc_library(
     name = "runtime_fallback_ops_inc_gen",
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "runtime_fallback_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "runtime_fallback_ops.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "runtime_fallback_ops.h.inc": ["-gen-op-decls"],
+        "runtime_fallback_ops.cc.inc": ["-gen-op-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "runtime_fallback/runtime_fallback_ops.td",
     deps = [":runtime_fallback_ops_td_files"],
@@ -285,6 +279,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
         "@tf_runtime//:hostcontext",
     ],
 )
@@ -537,7 +532,6 @@ cc_library(
         ":transforms/gpu_passes",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir:passes",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:lower_cluster_to_runtime_ops",
@@ -555,6 +549,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
+        "@stablehlo//:register",
         "@tf_runtime//:init_tfrt_dialects",
         "@tf_runtime//:print_stream_pass",
     ],

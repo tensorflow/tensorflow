@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
@@ -75,6 +76,9 @@ struct DotCanonicalDims {
 
   // True if the RHS contraction dimension is 0.
   bool rhs_canonical;
+
+  // True if the output matrix is column major.
+  bool output_column_major;
 };
 
 // Returns buffer uses of the dot operation.

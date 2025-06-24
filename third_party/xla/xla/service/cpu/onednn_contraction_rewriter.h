@@ -15,7 +15,7 @@ limitations under the License.
 
 #ifndef XLA_SERVICE_CPU_ONEDNN_CONTRACTION_REWRITER_H_
 #define XLA_SERVICE_CPU_ONEDNN_CONTRACTION_REWRITER_H_
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 
 #include <optional>
 
@@ -86,5 +86,5 @@ struct PrimitiveTrait<config, OneDnnOptimizationConfig*> {
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
 #endif  // XLA_SERVICE_CPU_ONEDNN_CONTRACTION_REWRITER_H_

@@ -39,9 +39,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_import.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/public/session.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace mlir {
 namespace {

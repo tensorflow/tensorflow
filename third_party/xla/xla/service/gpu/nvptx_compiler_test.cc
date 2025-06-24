@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/service/backend.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
@@ -35,10 +36,10 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -74,7 +75,7 @@ class NVPTXCompilerTest : public HloTestBase {
 
     auto buffer_size_bytes_function =
         [](const BufferValue& buffer_value) -> int64_t {
-      return GetSizeOfShape(buffer_value.shape(), pointer_size);
+      return ShapeSizeBytesFunction(pointer_size)(buffer_value.shape());
     };
 
     return BufferAssigner::Run(
@@ -235,10 +236,13 @@ ENTRY main {
   EXPECT_EQ(while_op->while_body()->root_instruction()->operand(1)->opcode(),
             HloOpcode::kCopy);
 
-  NVPTXCompiler compiler{module->config().debug_options()};
+  NVPTXCompiler compiler;
+  const se::DeviceDescription& device_description =
+      backend().default_stream_executor()->GetDeviceDescription();
+  std::unique_ptr<GpuAliasInfo> alias_info =
+      compiler.GetAliasInfo(device_description);
   TF_EXPECT_OK(compiler.RunPostSchedulingPipelines(
-      module.get(), 100000,
-      backend().default_stream_executor()->GetDeviceDescription()));
+      module.get(), 100000, device_description, alias_info.get()));
   EXPECT_EQ(CountCopies(*module), 3);
   while_op = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);

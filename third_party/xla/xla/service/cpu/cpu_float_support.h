@@ -1,4 +1,4 @@
-/* Copyright 2023 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,14 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_CPU_FLOAT_SUPPORT_H_
 #define XLA_SERVICE_CPU_CPU_FLOAT_SUPPORT_H_
 
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#include <functional>
 
+#include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/backends/cpu/xnn_fusion.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/float_support.h"
 
 namespace xla {
@@ -25,28 +31,38 @@ namespace cpu {
 
 class CpuFloatSupport : public FloatSupport {
  public:
-  explicit CpuFloatSupport(PrimitiveType low_precision_type)
-      : FloatSupport(low_precision_type) {}
+  using DotStrategyChecker = std::function<bool(const HloInstruction& hlo)>;
 
-  bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
-                                   int64_t operand_index) const override {
-    return FloatSupport::SupportsLowPrecisionOperand(hlo, operand_index) ||
-           IsSupported(hlo);
+  explicit CpuFloatSupport(PrimitiveType low_precision_type,
+                           DotStrategyChecker call_library_for_dot,
+                           TargetMachineFeatures* cpu_features)
+      : FloatSupport(low_precision_type),
+        call_library_for_dot_(call_library_for_dot),
+        cpu_features_(cpu_features) {}
+
+  // Skip trying to upcast the dot if XNNPACK is enabled and the dot is
+  // supported by XNNPACK.
+  bool ShouldSkipInstruction(const HloInstruction& hlo) const override {
+    return hlo.opcode() == HloOpcode::kDot && call_library_for_dot_(hlo) &&
+           IsDotSupportedByXnn(hlo.dot_dimension_numbers(),
+                               hlo.operand(0)->shape(), hlo.operand(1)->shape(),
+                               hlo.shape(), cpu_features_)
+               .value_or(false);
   }
 
-  bool SupportsLowPrecisionOutput(const HloInstruction& hlo) const override {
-    return FloatSupport::SupportsLowPrecisionOutput(hlo) || IsSupported(hlo);
+  // Makes FloatNormalization skip custom fusion computations for CPU backend.
+  bool ShouldSkipComputationsOf(const HloInstruction& hlo) const override {
+    return hlo.opcode() == HloOpcode::kFusion &&
+           Cast<HloFusionInstruction>(&hlo)->fusion_kind() ==
+               HloInstruction::FusionKind::kCustom;
   }
 
  private:
-  bool IsSupported(const HloInstruction& hlo) const;
-  // Performs early check for things that cannot be delayed becuase some later
-  // passes may change the shape of dot inputs.
-  bool DotSupported(const HloInstruction& hlo) const;
+  DotStrategyChecker call_library_for_dot_;
+  TargetMachineFeatures* cpu_features_;
 };
 
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 #endif  // XLA_SERVICE_CPU_CPU_FLOAT_SUPPORT_H_

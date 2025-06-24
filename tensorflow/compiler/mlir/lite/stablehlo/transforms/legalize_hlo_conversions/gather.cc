@@ -614,7 +614,7 @@ LogicalResult LegalizeGatherToGatherND::matchAndRewrite(
   }
   for (int i = 0; i < slice_sizes_vector.size(); ++i) {
     int s = slice_sizes_vector[i];
-    if (llvm::count(start_indices_batching_dims, i)) {
+    if (llvm::count(operand_batching_dims, i)) {
       if (s != 1) {
         return rewriter.notifyMatchFailure(gather_op,
                                            "unsupported slice sizes");

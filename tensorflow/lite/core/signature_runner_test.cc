@@ -96,6 +96,44 @@ TEST(SignatureRunnerTest, TestMultiSignatures) {
   ASSERT_EQ(sub_output->data.f[2], 3);
 }
 
+TEST(SignatureRunnerTest, ReverseSignatureModel) {
+  auto model = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/reverse_signature_model.bin");
+  ASSERT_TRUE(model);
+
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(InterpreterBuilder(*model,
+                               ops::builtin::BuiltinOpResolver{})(&interpreter),
+            kTfLiteOk);
+  ASSERT_TRUE(interpreter);
+
+  auto signature_runner = interpreter->GetSignatureRunner("serving_default");
+  ASSERT_NE(signature_runner, nullptr);
+
+  // Check the legacy the input and output names order.
+  auto& input_names = signature_runner->input_names();
+  ASSERT_EQ(input_names.size(), 2);
+  EXPECT_STREQ(input_names[0], "x");
+  EXPECT_STREQ(input_names[1], "y");
+
+  auto& output_names = signature_runner->output_names();
+  ASSERT_EQ(output_names.size(), 2);
+  EXPECT_STREQ(output_names[0], "prod");
+  EXPECT_STREQ(output_names[1], "sum");
+
+  // Check if the input and output names are in the order of the subgraph
+  // inputs and outputs instead of the signature appearance order.
+  auto& subgraph_input_names = signature_runner->subgraph_input_names();
+  ASSERT_EQ(subgraph_input_names.size(), 2);
+  EXPECT_STREQ(subgraph_input_names[0], "y");
+  EXPECT_STREQ(subgraph_input_names[1], "x");
+
+  auto& subgraph_output_names = signature_runner->subgraph_output_names();
+  ASSERT_EQ(subgraph_output_names.size(), 2);
+  EXPECT_STREQ(subgraph_output_names[0], "sum");
+  EXPECT_STREQ(subgraph_output_names[1], "prod");
+}
+
 }  // namespace
 }  // namespace impl
 }  // namespace tflite

@@ -52,7 +52,7 @@ class DelegateKernel : public SimpleDelegateKernelInterface {
 
   // Executes the Tensorflow op based on the inputs/outputs/attributes
   // information represented in the `node_data`.
-  tensorflow::Status ExecuteOpKernelRunner(
+  absl::Status ExecuteOpKernelRunner(
       tensorflow::tfrt_stub::OpKernelRunState* run_state,
       TfLiteContext* context, OpNode* node_data);
 

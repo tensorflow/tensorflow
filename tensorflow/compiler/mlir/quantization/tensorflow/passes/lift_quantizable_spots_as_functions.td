@@ -25,8 +25,8 @@ include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.td"
 //===----------------------------------------------------------------------===//
 
 class IsFusedOpEndsWith<string OpName> : AttrConstraint<
-  CPred<"!$_self.cast<ArrayAttr>().empty() && "
-        "$_self.cast<ArrayAttr>()[$_self.cast<ArrayAttr>().size() - 1]."
+  CPred<"!llvm::cast<ArrayAttr>($_self).empty() && "
+        "llvm::cast<ArrayAttr>($_self)[llvm::cast<ArrayAttr>($_self).size() - 1]."
         "cast<::mlir::StringAttr>().str() == \"" # OpName # "\"">,
   "Matching fused '" # OpName # "' op at the end">;
 

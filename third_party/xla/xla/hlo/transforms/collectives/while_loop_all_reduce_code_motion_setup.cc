@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/hlo/transforms/collectives/while_loop_all_reduce_code_motion_setup.h"
 
 #include <cstdint>
+#include <optional>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -23,9 +24,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -33,7 +36,7 @@ namespace xla {
 bool ReorderReduceTranspose::InstructionMatchesPattern(
     HloInstruction* instruction) {
   // Instruction must be in while loop body.
-  if (!instruction->parent()->IsWhileBodyComputation()) {
+  if (!instruction->parent()->GetUniqueCaller(HloOpcode::kWhile)) {
     return false;
   }
   // Search for Reduce Scatter Transpose pairs with optional convert in between
@@ -139,7 +142,7 @@ absl::StatusOr<HloInstruction*> ReorderReduceTranspose::ExpandInstruction(
   // now changed based on the transpose, so find it through the transpose
   // permutation.
   int64_t new_scatter_dim = -1;
-  for (int i = 0; i < transpose->shape().rank(); i++) {
+  for (int i = 0; i < transpose->shape().dimensions().size(); i++) {
     if (transpose->dimensions()[i] == reduce_scatter->scatter_dimension()) {
       new_scatter_dim = i;
       break;
@@ -158,7 +161,7 @@ absl::StatusOr<HloInstruction*> ReorderReduceTranspose::ExpandInstruction(
 bool ReorderConvertReduceAdd::InstructionMatchesPattern(
     HloInstruction* instruction) {
   // Instruction must be in while loop body.
-  if (!instruction->parent()->IsWhileBodyComputation()) {
+  if (!instruction->parent()->GetUniqueCaller(HloOpcode::kWhile)) {
     return false;
   }
   // Check if the instruction is an add operation
@@ -185,6 +188,9 @@ bool ReorderConvertReduceAdd::InstructionMatchesPattern(
   HloInstruction* reduce_op_operand = convert_operand->mutable_operand(0);
   if (reduce_op_operand->opcode() != HloOpcode::kReduceScatter &&
       reduce_op_operand->opcode() != HloOpcode::kAllReduce) {
+    return false;
+  }
+  if (!MatchReductionComputation(reduce_op_operand->to_apply())) {
     return false;
   }
   // Check if the reduce_op_operand is a reduce-scatter and
@@ -242,6 +248,12 @@ absl::StatusOr<HloInstruction*> ReorderConvertReduceAdd::ExpandInstruction(
 
   // Create a new reduce-scatter/all-reduce instruction with the converted data
   // type
+  std::optional<ReductionKind> reduction_kind =
+      MatchReductionComputation(reduce_op->to_apply());
+  CHECK(reduction_kind);
+  HloComputation* new_reduction =
+      instruction->GetModule()->AddEmbeddedComputation(
+          MakeReductionComputation(*reduction_kind, new_data_type));
   HloInstruction* new_reduce_op;
   if (reduce_op->opcode() == HloOpcode::kReduceScatter) {
     auto* reduce_scatter = Cast<HloReduceScatterInstruction>(reduce_op);
@@ -250,8 +262,7 @@ absl::StatusOr<HloInstruction*> ReorderConvertReduceAdd::ExpandInstruction(
 
     new_reduce_op = instruction->parent()->AddInstruction(
         HloInstruction::CreateReduceScatter(
-            new_reduce_scatter_shape, {new_convert},
-            reduce_scatter->called_computations()[0],
+            new_reduce_scatter_shape, {new_convert}, new_reduction,
             reduce_scatter->replica_groups(),
             reduce_scatter->constrain_layout(), reduce_scatter->channel_id(),
             reduce_scatter->use_global_device_ids(),
@@ -265,10 +276,9 @@ absl::StatusOr<HloInstruction*> ReorderConvertReduceAdd::ExpandInstruction(
 
     new_reduce_op =
         instruction->parent()->AddInstruction(HloInstruction::CreateAllReduce(
-            new_all_reduce_shape, {new_convert},
-            all_reduce->called_computations()[0], all_reduce->replica_groups(),
-            all_reduce->constrain_layout(), all_reduce->channel_id(),
-            all_reduce->use_global_device_ids()));
+            new_all_reduce_shape, {new_convert}, new_reduction,
+            all_reduce->replica_groups(), all_reduce->constrain_layout(),
+            all_reduce->channel_id(), all_reduce->use_global_device_ids()));
     VLOG(2) << "Created new_reduce_op (AllReduce): "
             << new_reduce_op->ToString();
   }

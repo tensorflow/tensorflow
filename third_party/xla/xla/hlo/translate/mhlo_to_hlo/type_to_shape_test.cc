@@ -15,20 +15,24 @@ limitations under the License.
 
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 
+#include <cstdint>
 #include <iostream>
+#include <string>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
+#include "stablehlo/dialect/StablehloOps.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
 
@@ -116,6 +120,7 @@ TEST(TypeToShapeTest, ConvertMemRefTypeToTypes) {
 TEST(TypeToShapeTest, ConvertTensorTypeToTypes) {
   mlir::MLIRContext context;
   context.loadDialect<mlir::mhlo::MhloDialect>();
+  context.loadDialect<mlir::stablehlo::StablehloDialect>();
   Builder b(&context);
 
   EXPECT_THAT(
@@ -128,6 +133,16 @@ TEST(TypeToShapeTest, ConvertTensorTypeToTypes) {
   EXPECT_THAT(
       TypeToShape(RankedTensorType::get({mlir::ShapedType::kDynamic, 128},
                                         b.getF32Type(), extensions))
+          .ToProto(),
+      EqualsProto(
+          ShapeUtil::MakeShape(PrimitiveType::F32, {8, 128}, {true, false})
+              .ToProto()));
+
+  auto extensions_stablehlo =
+      mlir::stablehlo::TypeExtensionsAttr::get(&context, bounds);
+  EXPECT_THAT(
+      TypeToShape(RankedTensorType::get({mlir::ShapedType::kDynamic, 128},
+                                        b.getF32Type(), extensions_stablehlo))
           .ToProto(),
       EqualsProto(
           ShapeUtil::MakeShape(PrimitiveType::F32, {8, 128}, {true, false})

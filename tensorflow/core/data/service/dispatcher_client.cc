@@ -27,6 +27,7 @@ limitations under the License.
 #include "grpcpp/support/channel_arguments.h"
 #include "grpcpp/support/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace data {

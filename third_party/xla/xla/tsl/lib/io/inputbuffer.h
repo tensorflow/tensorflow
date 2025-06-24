@@ -16,9 +16,15 @@ limitations under the License.
 #ifndef XLA_TSL_LIB_IO_INPUTBUFFER_H_
 #define XLA_TSL_LIB_IO_INPUTBUFFER_H_
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <string>
 
+#include "absl/status/status.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/types.h"
@@ -80,7 +86,7 @@ class InputBuffer {
   absl::Status Hint(int64_t bytes_to_read);
 
   // Returns the position in the file.
-  int64_t Tell() const { return file_pos_ - (limit_ - pos_); }
+  int64_t Tell() const { return file_pos_ - num_remaining_bytes(); }
 
   // Returns the underlying RandomAccessFile.
   RandomAccessFile* file() const { return file_; }
@@ -100,13 +106,22 @@ class InputBuffer {
   template <typename T>
   absl::Status ReadVarintFallback(T* result, int max_bytes);
 
-  RandomAccessFile* file_;  // Not owned
-  int64_t file_pos_;        // Next position to read from in "file_"
-  size_t size_;             // Size of "buf_"
-  char* buf_;               // The buffer itself
-  // [pos_,limit_) hold the "limit_ - pos_" bytes just before "file_pos_"
-  char* pos_;    // Current position in "buf"
-  char* limit_;  // Just past end of valid data in "buf"
+  // The buffer itself.
+  char* buf() { return buf_.get(); }
+  const char* buf() const { return buf_.get(); }
+
+  // Number of bytes remaining in the buffer.
+  int num_remaining_bytes() const { return limit_ - pos_; }
+
+  RandomAccessFile* const file_ = nullptr;  // Not owned
+  int64_t file_pos_ = 0;               // Next position to read from in "file_"
+  const int size_ = 0;                 // Size of "buf_"
+  const std::unique_ptr<char[]> buf_;  // The buffer itself. Must not be null.
+  // [pos_,limit_) hold the "limit_ - pos_" bytes just before "file_pos_".
+  char* pos_ =
+      nullptr;  // Current position in "buf". Must be in [buf(), buf() + size_].
+  char* limit_ = nullptr;  // Just past end of valid data in "buf". Must be in
+                           // [buf(), buf() + size_].
 
   InputBuffer(const InputBuffer&) = delete;
   void operator=(const InputBuffer&) = delete;
@@ -123,9 +138,10 @@ inline absl::Status InputBuffer::ReadVarint32(uint32* result) {
   if (pos_ + core::kMaxVarint32Bytes <= limit_) {
     // Fast path: directly parse from buffered data.
     // Reads strictly from the range [pos_, limit_).
-    const char* offset = core::GetVarint32Ptr(pos_, limit_, result);
-    if (offset == nullptr) return errors::OutOfRange("Parsed past limit.");
-    pos_ = const_cast<char*>(offset);
+    const char* const new_pos = core::GetVarint32Ptr(pos_, limit_, result);
+    if (new_pos == nullptr) return errors::OutOfRange("Parsed past limit.");
+    const int offset = new_pos - buf();
+    pos_ = buf() + offset;
     return absl::OkStatus();
   } else {
     return ReadVarint32Fallback(result);
@@ -137,9 +153,10 @@ inline absl::Status InputBuffer::ReadVarint64(uint64* result) {
   if (pos_ + core::kMaxVarint64Bytes <= limit_) {
     // Fast path: directly parse from buffered data.
     // Reads strictly from the range [pos_, limit_).
-    const char* offset = core::GetVarint64Ptr(pos_, limit_, result);
-    if (offset == nullptr) return errors::OutOfRange("Parsed past limit.");
-    pos_ = const_cast<char*>(offset);
+    const char* const new_pos = core::GetVarint64Ptr(pos_, limit_, result);
+    if (new_pos == nullptr) return errors::OutOfRange("Parsed past limit.");
+    const int offset = new_pos - buf();
+    pos_ = buf() + offset;
     return absl::OkStatus();
   } else {
     return ReadVarint64Fallback(result);

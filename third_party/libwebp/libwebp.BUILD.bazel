@@ -1,0 +1,94 @@
+licenses(["notice"])
+
+package(default_visibility = ["//visibility:public"])
+
+C89_FLAGS = select({
+    "@platforms//cpu:x86_32": [
+        "-msse4.1",
+        "-DWEBP_HAVE_SSE41",
+    ],
+    "@platforms//cpu:x86_64": [
+        "-msse4.1",
+        "-DWEBP_HAVE_SSE41",
+    ],
+    "@platforms//cpu:armv7": [
+        "-marm",
+        "-mfpu=neon",
+    ],
+    "//conditions:default": [],
+})
+
+cc_library(
+    name = "webp",
+    srcs = glob(
+        [
+            "src/enc/*.c",
+            "src/enc/*.h",
+            "src/dec/*.c",
+            "src/dec/*.h",
+            "src/mux/*.c",
+            "src/mux/*.h",
+            "src/demux/*.c",
+            "src/demux/*.h",
+            "src/dsp/*.c",
+            "src/dsp/*.h",
+        ],
+    ),
+    hdrs = [
+        "src/webp/decode.h",
+        "src/webp/demux.h",
+        "src/webp/encode.h",
+        "src/webp/format_constants.h",
+        "src/webp/mux.h",
+        "src/webp/mux_types.h",
+        "src/webp/types.h",
+    ],
+    copts = C89_FLAGS,
+    include_prefix = "third_party/libwebp",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":sharpyuv",
+        ":webp_utils",
+    ],
+)
+
+cc_library(
+    name = "webp_utils",
+    srcs = glob(["src/utils/*.c"]) + [
+        "src/dsp/cpu.h",
+        "src/dsp/dsp.h",
+        "src/dsp/lossless_common.h",
+        "src/webp/decode.h",
+        "src/webp/encode.h",
+        "src/webp/format_constants.h",
+        "src/webp/types.h",
+    ],
+    hdrs = glob(["src/utils/*.h"]),
+    copts = C89_FLAGS,
+)
+
+cc_library(
+    name = "sharpyuv",
+    srcs = [
+        "sharpyuv/sharpyuv.c",
+        "sharpyuv/sharpyuv_cpu.c",
+        "sharpyuv/sharpyuv_csp.c",
+        "sharpyuv/sharpyuv_dsp.c",
+        "sharpyuv/sharpyuv_dsp.h",
+        "sharpyuv/sharpyuv_gamma.c",
+        "sharpyuv/sharpyuv_neon.c",
+        "sharpyuv/sharpyuv_sse2.c",
+        "src/dsp/cpu.h",
+        "src/webp/types.h",
+    ],
+    hdrs = [
+        "sharpyuv/sharpyuv.h",
+        "sharpyuv/sharpyuv_cpu.h",
+        "sharpyuv/sharpyuv_csp.h",
+        "sharpyuv/sharpyuv_gamma.h",
+    ],
+    copts = C89_FLAGS,
+    textual_hdrs = [
+        "src/dsp/cpu.c",
+    ],
+)

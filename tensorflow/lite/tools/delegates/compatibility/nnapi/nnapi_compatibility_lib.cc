@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/delegates/compatibility/nnapi/nnapi_compatibility_lib.h"
 
+#include <cstdint>
 #include <map>
 #include <utility>
 #include <vector>

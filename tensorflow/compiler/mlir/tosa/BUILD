@@ -4,6 +4,7 @@
 #   https://github.com/llvm/llvm-project/blob/main/mlir/docs/Dialects/TOSA.md
 
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 # TODO: Tighten visibility once targets are at the right granularity.
@@ -83,7 +84,9 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
+        "//tensorflow/lite/kernels/internal:reference_base",
         "@com_google_absl//absl/status",
+        "@gemmlowp",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ArithUtils",
@@ -126,7 +129,6 @@ cc_library(
     name = "tf_passes",
     srcs = [
         "tf_passes.cc",
-        "transforms/dequantize_tfl_softmax.cc",
         "transforms/fuse_bias_tf.cc",
         "transforms/legalize_tf.cc",
         "transforms/tf_legalize_patterns.inc",
@@ -184,6 +186,7 @@ cc_library(
         "tfl_passes.cc",
         "transforms/convert_metadata.cc",
         "transforms/convert_tfl_uint8.cc",
+        "transforms/dequantize_tfl_softmax.cc",
         "transforms/legalize_tfl.cc",
         "transforms/legalize_tfl_stateful.cc",
         "transforms/lower_complex_types.cc",
@@ -250,4 +253,48 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
+)
+
+tf_cc_binary(
+    name = "tf-tosa-opt",
+    testonly = True,
+    srcs = ["tf_tosa_opt.cc"],
+    tags = ["tf_tosa"],
+    deps = [
+        "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/compiler/mlir:passes",
+        "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite:tf_tfl_passes",  # buildcleaner:keep
+        "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
+        "//tensorflow/compiler/mlir/tensorflow:mlprogram_util",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_test_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_graph_optimization_pass",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",  # buildcleaner:keep
+        "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:lower_cluster_to_runtime_ops",
+        "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:runtime_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms/sparsecore:sparsecore_passes",
+        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
+        "//tensorflow/compiler/mlir/tf2xla/internal/passes:clustering_passes",
+        "//tensorflow/compiler/mlir/tf2xla/internal/passes:mlir_to_graph_passes",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:tf_xla_passes",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf",
+        "//tensorflow/compiler/mlir/tosa:tf_passes",
+        "//tensorflow/compiler/mlir/tosa:tf_tfl_passes",
+        "//tensorflow/compiler/mlir/tosa:tfl_passes",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@local_xla//xla/mlir/framework/ir:xla_framework",
+        "@local_xla//xla/mlir/framework/transforms:passes",
+        "@local_xla//xla/mlir_hlo:all_passes",
+    ],
+)
+
+filegroup(
+    name = "litfiles",
+    srcs = glob(["runlit*py"]),
+    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -1,3 +1,8 @@
+""
+
+load("@rules_python//python:py_library.bzl", "py_library")
+load("@rules_python//python:py_test.bzl", "py_test")
+
 def _GetPath(ctx, path):
     if ctx.label.workspace_root:
         return ctx.label.workspace_root + "/" + path
@@ -387,7 +392,7 @@ def py_proto_library(
     if default_runtime and not default_runtime in py_libs + deps:
         py_libs = py_libs + [default_runtime]
 
-    native.py_library(
+    py_library(
         name = name,
         srcs = outs + py_extra_srcs,
         deps = py_libs + deps,
@@ -410,7 +415,7 @@ def internal_protobuf_py_tests(
     """
     for m in modules:
         s = "python/google/protobuf/internal/%s.py" % m
-        native.py_test(
+        py_test(
             name = "py_%s" % m,
             srcs = [s],
             main = s,

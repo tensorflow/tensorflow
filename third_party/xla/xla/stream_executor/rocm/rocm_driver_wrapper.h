@@ -22,8 +22,8 @@ limitations under the License.
 
 #include "rocm/include/hip/hip_runtime.h"
 #include "rocm/rocm_config.h"
+#include "xla/tsl/platform/env.h"
 #include "tsl/platform/dso_loader.h"
-#include "tsl/platform/env.h"
 
 namespace stream_executor {
 namespace wrap {

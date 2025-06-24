@@ -25,8 +25,8 @@ limitations under the License.
 #include <random>
 
 #include "xla/array.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/types.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 

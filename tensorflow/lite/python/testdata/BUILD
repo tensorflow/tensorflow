@@ -146,7 +146,6 @@ tf_custom_op_py_strict_library(
     srcs = ["double_op.py"],
     dso = [":_double_op.so"],
     kernels = [":double_op_and_kernels"],
-    srcs_version = "PY3",
     deps = [
         ":gen_double_op_wrapper",
         "//tensorflow/python/framework:dtypes",
@@ -185,7 +184,7 @@ pybind_extension(
         ":test_registerer",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )

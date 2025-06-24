@@ -19,17 +19,17 @@ limitations under the License.
 #include <string>
 
 #include "absl/hash/hash.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace protobuf_util {
 
-bool ProtobufEquals(const tsl::protobuf::Message& m1,
-                    const tsl::protobuf::Message& m2) {
+bool HaveSameSerialization(const tsl::protobuf::Message& m1,
+                           const tsl::protobuf::Message& m2) {
   // This is a bit fast and loose, but avoids introducing a dependency on
   // the much more complex protobuf::util::MessageDifferencer class.  For
   // our purposes we just say that two protobufs are equal if their serialized
@@ -40,7 +40,7 @@ bool ProtobufEquals(const tsl::protobuf::Message& m1,
   return (serialized1 == serialized2);
 }
 
-size_t ProtobufHash(const tsl::protobuf::Message& m) {
+size_t ProtobufHashBySerialization(const tsl::protobuf::Message& m) {
   // This is a bit fast and loose, but avoids introducing a dependency on
   // the much more complex protobuf::util::MessageDifferencer class.
   // We perform the hash on their serialized representation.

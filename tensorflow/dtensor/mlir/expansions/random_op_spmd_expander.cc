@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/random_op_spmd_expander.h"
 
 #include <algorithm>
+#include <cstdint>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"

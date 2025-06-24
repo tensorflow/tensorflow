@@ -107,7 +107,7 @@ class QuantizedConcatOp : public OpKernel {
     }
     // Make sure min is no more than zero.
     overall_min = std::min(0.0f, overall_min);
-    if (std::is_signed<T>::value) {
+    if (std::numeric_limits<T>::is_signed) {
       // For signed, we want a symmetrical distribution including zero for the
       // output, so pick a range that meets that need.
       const float largest_value =

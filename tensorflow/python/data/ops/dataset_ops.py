@@ -2652,7 +2652,7 @@ name=None))
 
     #### Nested elements
 
-    When the `window` transformation is applied to a dataset whos elements are
+    When the `window` transformation is applied to a dataset whose elements are
     nested structures, it produces a dataset where the elements have the same
     nested structure but each leaf is replaced by a window. In other words,
     the nesting is applied outside of the windows as opposed inside of them.
@@ -3793,7 +3793,7 @@ class DatasetV1(DatasetV2, data_types.DatasetV1):
         return iterator_ops.OwnedIterator(self)
 
     _ensure_same_dataset_graph(self)
-    # Some ops (e.g. dataset ops) are marked as stateful but are stil safe to
+    # Some ops (e.g. dataset ops) are marked as stateful but are still safe to
     # to capture by value. We must allowlist these ops so that the capturing
     # logic captures the ops instead of raising an exception.
     allowlisted_stateful_ops = traverse.obtain_capture_by_value_ops(self)

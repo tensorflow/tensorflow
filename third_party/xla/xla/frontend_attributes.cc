@@ -20,9 +20,8 @@ limitations under the License.
 namespace xla {
 
 void SetDisjointReadWriteRegionsAttr(HloInstruction* instruction) {
-  FrontendAttributes attrs;
-  (*attrs.mutable_map())[xla::kXlaDisjointReadWriteRegions] = "true";
-  instruction->add_frontend_attributes(attrs);
+  instruction->set_frontend_attribute(xla::kXlaDisjointReadWriteRegions,
+                                      "true");
 }
 
 bool HasDisjointReadWriteRegionsAttr(HloInstruction* instruction) {

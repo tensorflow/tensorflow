@@ -17,15 +17,14 @@ limitations under the License.
 
 #include <algorithm>
 #include <cctype>
-#include <climits>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"

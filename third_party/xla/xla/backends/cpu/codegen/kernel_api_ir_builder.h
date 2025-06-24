@@ -17,6 +17,8 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_CODEGEN_KERNEL_API_IR_BUILDER_H_
 
 #include <cstdint>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -29,29 +31,50 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
 
 namespace xla::cpu {
+
+inline constexpr absl::string_view kMemoryRegionNameMetadataName =
+    "xla_cpu_memory_region_name";
+
+// Builds the memory region name for the given module by using the
+// generating emitter name and the opcode of the HLO instruction.
+std::string BuildModuleMemoryRegionName(
+    absl::string_view generating_emitter_name, const HloInstruction* instr);
+
+// Sets the memory region name metadata for the given module.
+void SetModuleMemoryRegionName(llvm::Module& llvm_module,
+                               absl::string_view name);
 
 class KernelApiIrBuilder {
  public:
   struct Options {
     bool enable_invariant_load_metadata;
     int32_t prefer_vector_width;
+    bool generate_unique_c_style_kernel_entry_points;
+
+    static Options FromHloModuleConfig(const HloModuleConfig& config);
   };
 
-  // Thread dimensions of the kernel invocation.
-  struct ThreadDims {
+  enum class BufferValidation {
+    kNone,      // No validation is performed.
+    kDisjoint,  // Check that all buffers are disjoint (and any overlap between
+                // arguments and results is the same buffer)
+  };
+
+  // Number of the kernel invocation work groups.
+  struct NumWorkGroups {
     llvm::Value* x;
     llvm::Value* y;
     llvm::Value* z;
   };
 
-  // Thread coordinates of the kernel invocation.
-  struct ThreadId {
+  // Work group id of the kernel invocation.
+  struct WorkGroupId {
     llvm::Value* x;
     llvm::Value* y;
     llvm::Value* z;
@@ -71,9 +94,9 @@ class KernelApiIrBuilder {
     llvm::Function* function;
     llvm::BasicBlock* return_block;
 
-    // LLVM values identifying kernel invocation thread coordinates.
-    ThreadDims thread_dims;
-    ThreadId thread_id;
+    // LLVM values identifying kernel invocation workgroup parameters.
+    NumWorkGroups num_workgroups;
+    WorkGroupId workgroup_id;
 
     // LLVM values corresponding to the kernel arguments and results arrays. All
     // tuples are flattened as we do not have any tuples at run time and only
@@ -85,34 +108,63 @@ class KernelApiIrBuilder {
     // read-only if it is not aliased with any result.
     absl::flat_hash_set<int64_t> invariant_arguments;
 
-    // the set of buffer uses for this kernel, can be empty if buffer
+    // The set of buffers used by this kernel, can be empty if buffer assignment
     // was not provided.
-    absl::InlinedVector<BufferUse, 8> buffer_uses;
+    absl::InlinedVector<BufferAllocation::Slice, 8> argument_buffers;
+    absl::InlinedVector<BufferAllocation::Slice, 8> result_buffers;
   };
 
-  KernelApiIrBuilder(llvm::LLVMContext& context_, Options options);
+  KernelApiIrBuilder(
+      llvm::LLVMContext& context, Options options,
+      BufferValidation buffer_validation = BufferValidation::kDisjoint);
 
   // Emits a kernel prototype for the given HLO instruction.
   // buffer_assignment may be null, in which case we will not compute alias
   // metadata.
   absl::StatusOr<KernelPrototype> EmitKernelPrototype(
       llvm::Module& module, const HloInstruction* instr,
-      const BufferAssignment* buffer_assignment, absl::string_view suffix = "");
+      const BufferAssignment* buffer_assignment,
+      const std::string& generating_emitter_name,
+      absl::string_view suffix = "");
 
   absl::StatusOr<KernelPrototype> EmitKernelPrototype(
       llvm::Module& module, absl::string_view name,
       absl::Span<const KernelParameter> arguments,
       absl::Span<const KernelParameter> results,
-      bool compute_alias_metadata = true);
+      const std::string& module_memory_region_name);
+
+  // Get the kernel name for the given HLO instruction.
+  // If generate_unique_c_style_kernel_entry_points is enabled, the name will
+  // be converted to a valid C name and prefixed with the HLO module name.
+  absl::StatusOr<std::string> GetKernelName(
+      const HloInstruction* instr, absl::string_view suffix = "") const;
+
+  // Create a module with the given name, the name is given a prefix that is
+  // specific to XLA and relied on further down the pipeline.
+  static std::unique_ptr<llvm::Module> CreateModule(absl::string_view name,
+                                                    llvm::LLVMContext& context);
+
+  static absl::StatusOr<std::vector<KernelParameter>>
+  GetKernelArgumentsParameters(const HloInstruction* instruction,
+                               const BufferAssignment* buffer_assignment);
+
+  static absl::StatusOr<std::vector<KernelParameter>>
+  GetKernelResultsParameters(const HloInstruction* instruction,
+                             const BufferAssignment* buffer_assignment);
+
+  void SetKernelFunctionAttributes(llvm::Function* function);
 
  private:
-  ThreadDims EmitKernelThreadDims(llvm::IRBuilderBase& builder,
-                                  llvm::Value* call_frame);
-  ThreadId EmitKernelThread(llvm::IRBuilderBase& builder,
-                            llvm::Value* call_frame);
+  NumWorkGroups EmitKernelNumWorkGroups(llvm::IRBuilderBase& builder,
+                                        llvm::Value* call_frame);
+
+  WorkGroupId EmitKernelWorkGroupId(llvm::IRBuilderBase& builder,
+                                    llvm::Value* call_frame);
+
   llvm_ir::IrArray EmitKernelArgument(llvm::IRBuilderBase& builder,
                                       llvm::Value* call_frame, int64_t index,
                                       const Shape& shape);
+
   llvm::Function* EmitKernelFunction(llvm::Module& module,
                                      absl::string_view name);
 
@@ -121,12 +173,25 @@ class KernelApiIrBuilder {
 
   Options options_;
 
-  llvm::StructType* thread_dim_ty_;
-  llvm::StructType* thread_ty_;
+  BufferValidation buffer_validation_;
+
+  llvm::StructType* num_workgroups_ty_;
+  llvm::StructType* workgroup_id_ty_;
   llvm::StructType* arg_ty_;
   llvm::StructType* call_frame_ty_;
   llvm::FunctionType* kernel_function_ty_;
 };
+
+inline bool operator==(const KernelApiIrBuilder::KernelParameter& lhs,
+                       const KernelApiIrBuilder::KernelParameter& rhs) {
+  return lhs.shape == rhs.shape && lhs.slice == rhs.slice;
+}
+
+template <typename Hash>
+Hash AbslHashValue(Hash hash,
+                   const KernelApiIrBuilder::KernelParameter& param) {
+  return Hash::combine(std::move(hash), param.shape, param.slice);
+}
 
 }  // namespace xla::cpu
 

@@ -18,27 +18,48 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
-#include <string>
 #include <tuple>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/service/hlo_module_config.h"
 
 // Helper functions for querying options that are specific to the CPU backend.
 
-namespace xla {
-namespace cpu {
-namespace options {
+namespace xla::cpu::options {
+
+inline constexpr absl::string_view kXlaOptimizeForSizeCpuOption =
+    "xla_cpu_optimize_for_size";
+inline constexpr absl::string_view kLlvmIrDotTilingFactor =
+    "xla_llvm_dot_tiling_factor";
+inline constexpr absl::string_view kXlaForceEnableExperimentalLlvmIrGemm =
+    "xla_force_enable_experimental_llvm_ir_gemm";
+inline constexpr absl::string_view kLlvmIrGemmTileSize =
+    "xla_llvm_ir_gemm_tile_size";
+inline constexpr absl::string_view kDisableSlpVectorizer =
+    "xla_cpu_disable_slp_vectorizer";
+inline constexpr absl::string_view kDisableLoopUnrolling =
+    "xla_cpu_disable_loop_unrolling";
+inline constexpr absl::string_view kFoldAllConstants =
+    "xla_cpu_fold_all_constants";
+inline constexpr absl::string_view kSmallWhileLoopByteThreshold =
+    "xla_cpu_small_while_loop_byte_threshold";
+inline constexpr absl::string_view kUseExperimentalLoopFusion =
+    "xla_cpu_use_experimental_loop_fusion";
 
 bool OptimizeForSizeRequested(const HloModuleConfig& config);
 bool VectorizedReduceDisabled(const HloModuleConfig& config);
 bool SlpVectorizerDisabled(const HloModuleConfig& config);
+bool DisableLoopUnrolling(const HloModuleConfig& config);
+bool FoldAllConstants(const HloModuleConfig& config);
 bool ForceEnableExperimentalLlvmIrGemm(const HloModuleConfig& config);
 std::optional<int64_t> LlvmIrGemvTilingFactor(const HloModuleConfig& config);
 std::optional<std::tuple<int64_t, int64_t, int64_t>> LlvmIrGemmTileSize(
     const HloModuleConfig& config);
+absl::StatusOr<int64_t> SmallWhileLoopByteThreshold(
+    const HloModuleConfig& config);
+bool UseExperimentalLoopFusion(const HloModuleConfig& config);
 
-}  // namespace options
-}  // namespace cpu
-}  // namespace xla
+}  // namespace xla::cpu::options
 
 #endif  // XLA_SERVICE_CPU_CPU_OPTIONS_H_

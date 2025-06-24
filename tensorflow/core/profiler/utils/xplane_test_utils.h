@@ -15,14 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_TEST_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_TEST_UTILS_H_
 
-#include <initializer_list>
-
-#include "absl/strings/string_view.h"
-#include "absl/types/variant.h"
 #include "xla/tsl/profiler/utils/xplane_test_utils.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/utils/xplane_builder.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {

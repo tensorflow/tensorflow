@@ -17,24 +17,21 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_THREADPOOL_H_
 
 #include "pthreadpool.h"
-#include "xla/backends/cpu/runtime/xnnpack/parallel_loop_runner.h"
+#include "xla/backends/cpu/runtime/parallel_loop_runner.h"
 
 namespace xla::cpu {
 
-// Returns true if the custom pthreadpool is enabled.
-bool IsCustomPthreadpoolEnabled();
-
-// Returns the default per-process pthreadpool. If custom `pthreadpool` is
-// enabled, it will return nullptr.
-pthreadpool_t DefaultPthreadpool();
-
-// Creates a `pthreadpool` that uses the given `runner` to execute work. If
-// custom `pthreadpool` is disabled, it will kill the process.
+// Creates a `pthreadpool` that uses the given `runner` to execute work.
 pthreadpool_t CreateCustomPthreadpool(xla::cpu::ParallelLoopRunner* runner);
 
-// Returns the parallel loop runner associated with the given `pthreadpool`. If
-// the `pthreadpool` is not associated with a parallel loop runner, returns
-// nullptr.
+// Destroys the given `pthreadpool`.
+//
+// IMPORTANT: Thread pool must be created with `CreateCustomPthreadpool`.
+void DestroyCustomPthreadpool(pthreadpool_t threadpool);
+
+// Returns the parallel loop runner associated with the given `pthreadpool`.
+//
+// IMPORTANT: Thread pool must be created with `CreateCustomPthreadpool`.
 xla::cpu::ParallelLoopRunner* GetParallelLoopRunner(pthreadpool_t threadpool);
 
 }  // namespace xla::cpu

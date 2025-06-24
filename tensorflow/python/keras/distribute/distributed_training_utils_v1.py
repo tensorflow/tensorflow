@@ -626,7 +626,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
     inputs = flatten_per_replica_values(strategy, inputs)
     targets = flatten_per_replica_values(strategy, targets)
     # Expand 1-dimensional inputs.
-    # TODO(b/124535720): Remove once this standarize data logic is shared with
+    # TODO(b/124535720): Remove once this standardize data logic is shared with
     # main flow.
     inputs, targets = nest.map_structure(
         training_utils_v1.standardize_single_array, (inputs, targets))

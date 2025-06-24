@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -90,7 +92,7 @@ TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
 /* static */
 TpuPlatformInterface* TpuPlatformInterface::GetRegisteredPlatform(
     bool initialize_platform, int num_tries) {
-  static auto* mu = new absl::Mutex;
+  static auto* const mu = new absl::Mutex;
   static bool requested_initialize_platform = initialize_platform;
   static TpuPlatformInterface* tpu_registered_platform =
       GetRegisteredPlatformStatic(initialize_platform, num_tries);

@@ -46,11 +46,11 @@ func.func @main(%arg0: !mhlo.token) -> tuple<tuple<tensor<3x3xi32>, tensor<i1>>,
 
 // CHECK:  ENTRY
 // CHECK:  [[ARG:%.*]] = token[] parameter(0)
-// CHECK:  [[INFEED:%.*]] = ((s32[3,3]{0,1}, pred[]), token[]) infeed(token[] [[ARG]]), infeed_config="foobar"
-// CHECK:  [[GTE1:%.*]] = (s32[3,3]{0,1}, pred[]) get-tuple-element(((s32[3,3]{0,1}, pred[]), token[]) [[INFEED]]), index=0
-// CHECK:  [[GTE2:%.*]] = s32[3,3]{0,1} get-tuple-element((s32[3,3]{0,1}, pred[]) [[GTE1]]), index=0
-// CHECK:  [[GTE3:%.*]] = pred[] get-tuple-element((s32[3,3]{0,1}, pred[]) [[GTE1]]), index=1
-// CHECK:  [[GTE4:%.*]] = token[] get-tuple-element(((s32[3,3]{0,1}, pred[]), token[]) [[INFEED]]), index=1
+// CHECK:  [[INFEED:%.*]] = ((s32[3,3]{0,1}, pred[]), token[]) infeed([[ARG]]), infeed_config="foobar"
+// CHECK:  [[GTE1:%.*]] = (s32[3,3]{0,1}, pred[]) get-tuple-element([[INFEED]]), index=0
+// CHECK:  [[GTE2:%.*]] = s32[3,3]{0,1} get-tuple-element([[GTE1]]), index=0
+// CHECK:  [[GTE3:%.*]] = pred[] get-tuple-element([[GTE1]]), index=1
+// CHECK:  [[GTE4:%.*]] = token[] get-tuple-element([[INFEED]]), index=1
 
 // -----
 
@@ -64,11 +64,11 @@ func.func @main(%arg0: !mhlo.token) -> tuple<tensor<3x3xi32>, !mhlo.token> {
 
 // CHECK:  ENTRY
 // CHECK:  [[ARG:%.*]] = token[] parameter(0)
-// CHECK:  [[INFEED:%.*]] = ((s32[3,3]{0,1}), token[]) infeed(token[] [[ARG]]), infeed_config="foobar"
-// CHECK:  [[GTE0:%.*]] = (s32[3,3]{0,1}) get-tuple-element(((s32[3,3]{0,1}), token[]) [[INFEED]]), index=0
-// CHECK:  [[GTE1:%.*]] = s32[3,3]{0,1} get-tuple-element((s32[3,3]{0,1}) [[GTE0]]), index=0
-// CHECK:  [[GTE2:%.*]] = token[] get-tuple-element(((s32[3,3]{0,1}), token[]) [[INFEED]]), index=1
-// CHECK:  ROOT [[RES:%.*]] = (s32[3,3]{1,0}, token[]) tuple(s32[3,3]{0,1} [[GTE1]], token[] [[GTE2]]
+// CHECK:  [[INFEED:%.*]] = ((s32[3,3]{0,1}), token[]) infeed([[ARG]]), infeed_config="foobar"
+// CHECK:  [[GTE0:%.*]] = (s32[3,3]{0,1}) get-tuple-element([[INFEED]]), index=0
+// CHECK:  [[GTE1:%.*]] = s32[3,3]{0,1} get-tuple-element([[GTE0]]), index=0
+// CHECK:  [[GTE2:%.*]] = token[] get-tuple-element([[INFEED]]), index=1
+// CHECK:  ROOT [[RES:%.*]] = (s32[3,3]{1,0}, token[]) tuple([[GTE1]], [[GTE2]]
 
 // -----
 
@@ -81,5 +81,5 @@ func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
 
 // CHECK:  ENTRY
 // CHECK:  [[ARG:%.*]] = token[] parameter(0)
-// CHECK:  [[INFEED:%.*]] = ((), token[]) infeed(token[] [[ARG]]), infeed_config="foobar"
-// CHECK: ROOT [[GTE1:%.*]] = ((), token[]) get-tuple-element(((), token[]) [[INFEED]]), index=1
+// CHECK:  [[INFEED:%.*]] = ((), token[]) infeed([[ARG]]), infeed_config="foobar"
+// CHECK: ROOT [[GTE1:%.*]] = ((), token[]) get-tuple-element([[INFEED]]), index=1

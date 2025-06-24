@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_loop.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 
 namespace xla {
 // A thin wrapper around llvm_loop.h to make code generating structured control

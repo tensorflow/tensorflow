@@ -36,7 +36,6 @@ distribute_module = [
 py_strict_library(
     name = "tf_doctest_lib",
     srcs = ["tf_doctest_lib.py"],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow_text/google:__pkg__",
@@ -50,7 +49,6 @@ py_strict_test(
     name = "tf_doctest",
     srcs = ["tf_doctest.py"],
     args = ["--module_prefix_skip=" + ",".join(tpu_module + distribute_module + keras_module)],
-    python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_oss",  # b/275546007
@@ -78,7 +76,6 @@ tpu_py_strict_test(
     disable_tfrt = True,
     disable_v3 = True,
     main = "tf_doctest.py",
-    python_version = "PY3",
     tags = ["no_oss"],
     deps = [
         ":tf_doctest_lib",
@@ -100,7 +97,6 @@ py_strict_test(
         "--required_gpus=2",
     ],
     main = "tf_doctest.py",
-    python_version = "PY3",
     tags = [
         "no_pip",
         "no_rocm",
@@ -123,7 +119,6 @@ py_strict_test(
 py_strict_test(
     name = "tf_doctest_test",
     srcs = ["tf_doctest_test.py"],
-    python_version = "PY3",
     tags = ["no_pip"],
     deps = [
         ":tf_doctest_lib",
@@ -159,7 +154,6 @@ py_strict_library(
     name = "doc_controls",
     srcs = ["doc_controls.py"],
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )
 
@@ -167,8 +161,6 @@ py_strict_test(
     name = "generate2_test",
     size = "medium",
     srcs = ["generate2_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "manual",
         "optonly",
@@ -184,8 +176,6 @@ py_strict_test(
 py_strict_binary(
     name = "generate2",
     srcs = ["generate2.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":generate2_lib",
     ],
@@ -195,14 +185,12 @@ py_library(
     # Opensource only
     name = "base_dir_oss",
     srcs = ["base_dir.py"],
-    srcs_version = "PY3",
     deps = [],
 )
 
 py_strict_library(
     name = "generate2_lib",
     srcs = ["generate2.py"],
-    srcs_version = "PY3",
     deps = [
         ":base_dir_oss",
         "//tensorflow:tensorflow_py_no_contrib",
@@ -228,8 +216,6 @@ py_strict_binary(
 py_strict_binary(
     name = "build_java_api_docs",
     srcs = ["build_java_api_docs.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "@absl_py//absl:app",
         "@absl_py//absl/flags",

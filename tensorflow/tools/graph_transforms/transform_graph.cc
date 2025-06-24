@@ -42,11 +42,11 @@ absl::Status ParseTransformParameters(const string& transforms_string,
     TRANSFORM_PARAM_NAME,
     TRANSFORM_PARAM_VALUE,
   } state = TRANSFORM_NAME;
-  StringPiece remaining(transforms_string);
-  StringPiece match;
-  StringPiece transform_name;
-  StringPiece parameter_name;
-  StringPiece parameter_value;
+  absl::string_view remaining(transforms_string);
+  absl::string_view match;
+  absl::string_view transform_name;
+  absl::string_view parameter_name;
+  absl::string_view parameter_value;
   TransformFuncParameters func_parameters;
   while (!remaining.empty()) {
     if (state == TRANSFORM_NAME) {

@@ -14,6 +14,6 @@ those to this list.
 """
 
 temporary_patch_list = [
-    "//third_party/triton:temporary/numpy_type_promotion.patch",
+    "//third_party/triton:temporary/pipeline_f16.patch",
     # Add new patches just above this line
 ]

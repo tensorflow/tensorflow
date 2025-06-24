@@ -437,7 +437,8 @@ class MultiDeviceSaver:
     callback_duration = math.ceil(callback_end_time - callback_start_time)
     metrics.AddShardingCallbackDuration(
         callback_duration=max(1, callback_duration))  # in microseconds
-    logging.info("Sharding callback duration: %s", callback_duration)
+    logging.info("Sharding callback duration: %s microseconds",
+                 callback_duration)
 
     return shards_by_task
 

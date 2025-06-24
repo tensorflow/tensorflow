@@ -23,10 +23,14 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
@@ -34,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -183,7 +188,7 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_Callable) {
     }
 
     absl::Status s = session->RunCallable(handle, {}, nullptr, nullptr);
-    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::IsInvalidArgument(s));
     EXPECT_TRUE(
         absl::StrContains(s.message(), "`fetch_tensors` must be provided"));
 
@@ -191,12 +196,12 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_Callable) {
 
     std::vector<Tensor> outputs;
     s = session->RunCallable(handle, {}, &outputs, nullptr);
-    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::IsInvalidArgument(s));
     EXPECT_TRUE(absl::StrContains(
         s.message(), "Attempted to run callable after handle was released"));
 
     s = session->RunCallable(handle + 1, {}, &outputs, nullptr);
-    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::IsInvalidArgument(s));
     EXPECT_TRUE(absl::StrContains(s.message(), "No such callable handle"));
   }
 }
@@ -226,7 +231,7 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_OptimizeForStaticGraph) {
   EXPECT_FLOAT_EQ(5.0, mat(0, 0));
 
   s = session->Extend({});
-  EXPECT_TRUE(errors::IsFailedPrecondition(s));
+  EXPECT_TRUE(absl::IsFailedPrecondition(s));
   EXPECT_TRUE(absl::StrContains(s.message(), "optimize_for_static_graph"));
 }
 
@@ -263,7 +268,7 @@ TEST_F(DirectSessionMinusAXTest,
   s = session->Run(run_options, inputs, output_names, target_nodes, &outputs,
                    &run_metadata);
 
-  EXPECT_TRUE(errors::IsInvalidArgument(s));
+  EXPECT_TRUE(absl::IsInvalidArgument(s));
   EXPECT_TRUE(
       absl::StrContains(s.message(), "disable_output_partition_graphs"));
 }
@@ -300,7 +305,7 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_FinalizeWithCallables) {
   // Making a new callable fails because the session has been finalized.
   absl::Status s =
       session->MakeCallable(MakeCallableOptions({}, {y_ + ":0"}, {}), &handle);
-  EXPECT_TRUE(errors::IsFailedPrecondition(s));
+  EXPECT_TRUE(absl::IsFailedPrecondition(s));
   EXPECT_TRUE(absl::StrContains(s.message(), "Session has been finalized."));
 }
 
@@ -332,8 +337,139 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_FinalizeWithRun) {
 
   // Running a different subgraph fails because the session has been finalized.
   absl::Status s = session->Run({}, {y_ + ":0"}, {}, &outputs);
-  EXPECT_TRUE(errors::IsFailedPrecondition(s));
+  EXPECT_TRUE(absl::IsFailedPrecondition(s));
   EXPECT_TRUE(absl::StrContains(s.message(), "Session has been finalized."));
+}
+
+TEST_F(DirectSessionMinusAXTest,
+       RunSimpleNetwork_CallablesReusableAfterFlrFinalization) {
+  Initialize({3, 2, -1, 0});
+
+  SessionOptions options(DefaultSessionOptions());
+  options.config.mutable_experimental()->set_finalize_function_library_runtime(
+      true);
+  auto session = std::unique_ptr<Session>(NewSession(options));
+
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+
+  // Request two targets: one fetch output and one non-fetched output.
+  Session::CallableHandle handle;
+  TF_ASSERT_OK(session->MakeCallable(
+      MakeCallableOptions({}, {y_ + ":0"}, {y_neg_}), &handle));
+
+  // Finalize the session.
+  TF_ASSERT_OK(session->Finalize());
+
+  // The callable is usable after finalization.
+  for (int i = 0; i < 2; ++i) {
+    std::vector<Tensor> outputs;
+    TF_ASSERT_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+
+    ASSERT_EQ(1, outputs.size());
+    // The first output should be initialized and have the correct
+    // output.
+    auto mat = outputs[0].matrix<float>();
+    ASSERT_TRUE(outputs[0].IsInitialized());
+    EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+  }
+  TF_ASSERT_OK(session->ReleaseCallable(handle));
+}
+
+TEST_F(DirectSessionMinusAXTest,
+       RunSimpleNetwork_MakeCallableFailsAfterFinalize) {
+  Initialize({3, 2, -1, 0});
+
+  SessionOptions options(DefaultSessionOptions());
+  options.config.mutable_experimental()->set_finalize_function_library_runtime(
+      true);
+  auto session = std::unique_ptr<Session>(NewSession(options));
+
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+
+  // Finalize the session.
+  TF_ASSERT_OK(session->Finalize());
+
+  // Making a new callable fails because the session has been finalized.
+  Session::CallableHandle handle;
+  EXPECT_THAT(
+      session->MakeCallable(MakeCallableOptions({}, {y_ + ":0"}, {}), &handle),
+      ::tsl::testing::StatusIs(
+          absl::StatusCode::kFailedPrecondition,
+          ::testing::HasSubstr("Session has been finalized.")));
+}
+
+class TestResource : public ResourceBase {
+ public:
+  std::string DebugString() const override { return "test resource"; }
+};
+
+TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_ResourceMgrFinalized) {
+  Initialize({3, 2, -1, 0});
+
+  SessionOptions options(DefaultSessionOptions());
+  options.config.mutable_experimental()->set_finalize_resource_manager(true);
+  auto session = std::unique_ptr<Session>(NewSession(options));
+
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+
+  // Request two targets: one fetch output and one non-fetched output.
+  Session::CallableHandle handle;
+  TF_ASSERT_OK(session->MakeCallable(
+      MakeCallableOptions({}, {y_ + ":0"}, {y_neg_}), &handle));
+
+  // Finalize the session.
+  TF_ASSERT_OK(session->Finalize());
+
+  // Try to create another resource in the resource manager, which should fail
+  // because the resource manager is already finalized.
+  const DeviceMgr* mgr = nullptr;
+  TF_ASSERT_OK(session->LocalDeviceManager(&mgr));
+  ASSERT_TRUE(mgr != nullptr);
+  EXPECT_GT(mgr->ListDevices().size(), 0);
+  ResourceMgr* rm = mgr->ListDevices()[0]->resource_manager();
+  TestResource* test_resource = new TestResource();
+  EXPECT_THAT(
+      rm->Create("", "", test_resource),
+      tsl::testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                             ::testing::HasSubstr("ResourceMgr is finalized")));
+  test_resource->Unref();
+}
+
+TEST_F(DirectSessionMinusAXTest,
+       RunSimpleNetwork_CallablesUsableAfterResourceMgrFinalization) {
+  Initialize({3, 2, -1, 0});
+
+  SessionOptions options(DefaultSessionOptions());
+  options.config.mutable_experimental()->set_finalize_resource_manager(true);
+  auto session = std::unique_ptr<Session>(NewSession(options));
+
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+
+  // Request two targets: one fetch output and one non-fetched output.
+  Session::CallableHandle handle;
+  TF_ASSERT_OK(session->MakeCallable(
+      MakeCallableOptions({}, {y_ + ":0"}, {y_neg_}), &handle));
+
+  // Finalize the session.
+  TF_ASSERT_OK(session->Finalize());
+
+  // The callable is usable after finalization.
+  for (int i = 0; i < 2; ++i) {
+    std::vector<Tensor> outputs;
+    TF_ASSERT_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+
+    ASSERT_EQ(1, outputs.size());
+    // The first output should be initialized and have the correct
+    // output.
+    auto mat = outputs[0].matrix<float>();
+    ASSERT_TRUE(outputs[0].IsInitialized());
+    EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+  }
+  TF_ASSERT_OK(session->ReleaseCallable(handle));
 }
 
 TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
@@ -407,7 +543,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
 
     Session::CallableHandle handle;
     absl::Status s = session->MakeCallable(callable_options, &handle);
-    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::IsInvalidArgument(s));
     EXPECT_TRUE(absl::StrContains(s.message(), "would create a cycle"));
   }
 
@@ -421,7 +557,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
 
     Session::CallableHandle handle;
     absl::Status s = session->MakeCallable(callable_options, &handle);
-    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::IsInvalidArgument(s));
     EXPECT_TRUE(absl::StrContains(s.message(), "unknown node"));
   }
 
@@ -436,7 +572,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
 
     Session::CallableHandle handle;
     absl::Status s = session->MakeCallable(callable_options, &handle);
-    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::IsInvalidArgument(s));
     EXPECT_TRUE(absl::StrContains(s.message(), "unknown edge"));
   }
 
@@ -450,7 +586,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
 
     Session::CallableHandle handle;
     absl::Status s = session->MakeCallable(callable_options, &handle);
-    EXPECT_TRUE(errors::IsNotFound(s));
+    EXPECT_TRUE(absl::IsNotFound(s));
     EXPECT_TRUE(absl::StrContains(s.message(), "unable to find feed output"));
   }
 
@@ -467,7 +603,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
 
     Session::CallableHandle handle;
     absl::Status s = session->MakeCallable(callable_options, &handle);
-    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::IsInvalidArgument(s));
     EXPECT_TRUE(absl::StrContains(s.message(), "fed more than once"));
   }
 
@@ -482,7 +618,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
 
     Session::CallableHandle handle;
     absl::Status s = session->MakeCallable(callable_options, &handle);
-    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::IsInvalidArgument(s));
     EXPECT_TRUE(absl::StrContains(s.message(), "fed more than once"));
   }
 }
@@ -907,7 +1043,7 @@ TEST(DirectSessionTest, MultipleFeedTest) {
       {{first_const->name(), value_11}, {first_const->name(), value_22}},
       {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
       &outputs);
-  EXPECT_TRUE(errors::IsInvalidArgument(s));
+  EXPECT_TRUE(absl::IsInvalidArgument(s));
   EXPECT_TRUE(absl::StrContains(s.message(), "fed more than once"));
 }
 
@@ -990,7 +1126,7 @@ TEST(DirectSessionTest, MultipleFeedTest_Callable) {
           {first_const->name(), first_const->name()},
           {first_identity->name() + ":0", second_identity->name() + ":0"}, {}),
       &handle);
-  EXPECT_TRUE(errors::IsInvalidArgument(s));
+  EXPECT_TRUE(absl::IsInvalidArgument(s));
   EXPECT_TRUE(absl::StrContains(s.message(), "fed more than once"));
 }
 
@@ -1144,7 +1280,7 @@ TEST(DirectSessionTest, MultipleFeedTestSomeSyncRun) {
       {{first_const->name(), value_11}, {first_const->name(), value_22}},
       {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
       &outputs, nullptr);
-  EXPECT_TRUE(errors::IsInvalidArgument(s));
+  EXPECT_TRUE(absl::IsInvalidArgument(s));
   EXPECT_TRUE(absl::StrContains(s.message(), "fed more than once"));
 }
 
@@ -1327,8 +1463,7 @@ TEST(DirectSessionTest, SessionMetadataKey) {
 
   // Trying to use the same metadata (name, version) will cause an error.
   Session* dup_ptr;
-  EXPECT_TRUE(
-      errors::IsInvalidArgument(NewSession(session_options0, &dup_ptr)));
+  EXPECT_TRUE(absl::IsInvalidArgument(NewSession(session_options0, &dup_ptr)));
 
   // A new (name, version) is fine.
   auto session_options1 = DefaultSessionOptions();
@@ -1367,7 +1502,7 @@ TEST(DirectSessionTest, SessionMetadataInvalid) {
   // Version should be >= 0.
   invalid_metadata->set_version(-1);
   Session* error_sess_ptr;
-  EXPECT_TRUE(errors::IsInvalidArgument(
+  EXPECT_TRUE(absl::IsInvalidArgument(
       NewSession(invalid_session_options, &error_sess_ptr)));
 }
 
@@ -1521,7 +1656,7 @@ TEST(DirectSessionTest, DarthKernel) {
   TF_ASSERT_OK(sess->Create(def));
   std::vector<Tensor> outputs;
   auto s = sess->Run({}, {y->name() + ":0"}, {}, &outputs);
-  EXPECT_TRUE(errors::IsInternal(s));
+  EXPECT_TRUE(absl::IsInternal(s));
 }
 
 // Have the Darth op in the graph placed on GPU, but don't run it.
@@ -1541,7 +1676,7 @@ TEST(DirectSessionTest, PlacePrunedGraph) {
     SessionOptions options;
     std::unique_ptr<Session> sess(NewSession(options));
     auto s = sess->Create(def);
-    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::IsInvalidArgument(s));
   }
 
   {
@@ -1658,7 +1793,7 @@ TEST(DirectSessionTest, PartialRunMissingFeed) {
   value_11.scalar<float>()() = 11.0;
   s = session->PRun(handle, {{first_const->name(), value_11}},
                     {third_identity->name() + ":0"}, &outputs);
-  ASSERT_TRUE(errors::IsInvalidArgument(s));
+  ASSERT_TRUE(absl::IsInvalidArgument(s));
   EXPECT_TRUE(
       absl::StrContains(s.message(), "can't be computed from the feeds"));
 }
@@ -1689,7 +1824,7 @@ TEST(DirectSessionTest, PartialRunMultiOutputFeed) {
 
   // Fetch fourth_identity without feeds.
   s = session->PRun(handle, {}, {fourth_identity->name() + ":0"}, &outputs);
-  ASSERT_TRUE(errors::IsInvalidArgument(s));
+  ASSERT_TRUE(absl::IsInvalidArgument(s));
   EXPECT_TRUE(
       absl::StrContains(s.message(), "can't be computed from the feeds"));
 
@@ -1827,7 +1962,7 @@ TEST(DirectSessionTest, CreateGraphFailsWhenAssigningAFedVar) {
   std::vector<Tensor> outputs;
   absl::Status s =
       session->Run({{a->name(), zero}}, {assign->name()}, {}, &outputs);
-  ASSERT_TRUE(errors::IsInvalidArgument(s));
+  ASSERT_TRUE(absl::IsInvalidArgument(s));
 }
 
 TEST(DirectSessionTest, TimeoutSession) {
@@ -2424,8 +2559,7 @@ versions {
 bool IsCUDATensor(const Tensor& t) {
 #ifdef GOOGLE_CUDA
   cudaPointerAttributes attributes;
-  cudaError_t err =
-      cudaPointerGetAttributes(&attributes, t.tensor_data().data());
+  cudaError_t err = cudaPointerGetAttributes(&attributes, t.data());
   if (err == cudaErrorInvalidValue) return false;
   CHECK_EQ(cudaSuccess, err) << cudaGetErrorString(err);
   return (attributes.type == cudaMemoryTypeDevice);

@@ -13,8 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <sstream>
 
+#include "absl/log/check.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/ops.h"
 #include "tensorflow/c/tf_tensor.h"

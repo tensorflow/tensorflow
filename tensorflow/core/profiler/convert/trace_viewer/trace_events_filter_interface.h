@@ -12,29 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_VIEWER_TRACE_EVENTS_FILTER_INTERFACE_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_VIEWER_TRACE_EVENTS_FILTER_INTERFACE_H_
 
-#include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
-
-namespace tensorflow {
-namespace profiler {
-
-// Trace event filter interface.
-class TraceEventsFilterInterface {
- public:
-  virtual ~TraceEventsFilterInterface() = default;
-
-  // Allow sub-classes to set up filtering by processing the trace, e.g., by
-  // capturing the names of devices and resources that need to be filtered.
-  virtual void SetUp(const Trace& trace) = 0;
-
-  // Returns true if event should not be added to a TraceEventsContainer.
-  virtual bool Filter(const TraceEvent& event) = 0;
-};
-
-}  // namespace profiler
-}  // namespace tensorflow
+#include "xprof/convert/trace_viewer/trace_events_filter_interface.h"  // from @org_xprof  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_VIEWER_TRACE_EVENTS_FILTER_INTERFACE_H_

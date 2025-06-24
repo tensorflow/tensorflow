@@ -898,7 +898,7 @@ class ShapePatternIsDenseArrayImpl {
   explicit constexpr ShapePatternIsDenseArrayImpl() = default;
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    if (!LayoutUtil::IsDenseArray(*shape)) {
+    if (!shape->IsArray()) {
       EXPLAIN << "Shape is not a dense array";
       return false;
     }
@@ -954,7 +954,7 @@ class ShapePatternRankImpl {
   explicit constexpr ShapePatternRankImpl(int64_t rank) : rank_(rank) {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    if (shape->rank() != rank_) {
+    if (shape->dimensions().size() != rank_) {
       if (rank_ == 0) {
         EXPLAIN << "Shape is not a scalar";
       } else {

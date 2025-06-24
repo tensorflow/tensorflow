@@ -30,11 +30,6 @@ namespace ifrt {
 //
 // * Awaiting on a `Future` should possibly be cancellable to lower overhead
 // when the `Future` value woudld be no longer useful or relevant.
-//
-// * Ideally, there should be a move-only version of `Future`, which will enable
-// (1) no reference counting of `Future`s sharing the same `Promise` and (2)
-// safe mutable access to the value when the `Future` becomes ready, including
-// moving the value out of the `Future`/`Promise`.
 template <typename T = void>
 using Future = ::xla::PjRtFuture<T>;
 

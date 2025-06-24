@@ -60,10 +60,10 @@ limitations under the License.
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/framework/device_id_utils.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api_internal.h"
 #include "tensorflow/core/framework/device.h"
-#include "tsl/platform/statusor.h"
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
 // This file forms the basis of a stable ABI for third-party kernel
@@ -875,8 +875,8 @@ TF_Tensor* TF_ForwardInputOrAllocateOutput(
   TF_SetStatus(status, TF_OK, "");
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
 
-  tensorflow::gtl::ArraySlice<int> input_indices_array(
-      candidate_input_indices, num_candidate_input_indices);
+  absl::Span<const int> input_indices_array(candidate_input_indices,
+                                            num_candidate_input_indices);
   tensorflow::gtl::ArraySlice<const int64_t> output_dimarray(
       reinterpret_cast<const int64_t*>(output_dims), output_num_dims);
   tensorflow::Tensor* output_tensor_pointer;

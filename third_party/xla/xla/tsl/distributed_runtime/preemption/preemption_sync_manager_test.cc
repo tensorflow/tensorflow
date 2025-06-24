@@ -143,14 +143,14 @@ class PreemptionSyncManagerTest : public ::testing::Test {
         /*thread_options=*/{}, /*name=*/"CoordinationServiceHandleRPCsLoop",
         [service = coord_rpc_service_.get()]() { service->HandleRPCsLoop(); }));
   }
-  std::unique_ptr<CoordinationServiceInterface> EnableCoordinationService() {
+  std::unique_ptr<CoordinationService> EnableCoordinationService() {
     CoordinationServiceConfig config;
     config.set_service_type("standalone");
     CoordinatedJob* job = config.mutable_coordinated_job_list()->Add();
     job->set_name(kJobName);
     job->set_num_tasks(2);
-    return CoordinationServiceInterface::EnableCoordinationService(
-        Env::Default(), config, /*cache=*/nullptr);
+    return CoordinationService::Create(Env::Default(), config,
+                                       /*cache=*/nullptr);
   }
   void InitializeAndConnectCoordinationAgents() {
     std::unique_ptr<CoordinationClient> coord_client =
@@ -175,7 +175,7 @@ class PreemptionSyncManagerTest : public ::testing::Test {
   }
 
   // Coordination service.
-  std::unique_ptr<CoordinationServiceInterface> coord_service_;
+  std::unique_ptr<CoordinationService> coord_service_;
   std::unique_ptr<::grpc::Server> grpc_server_;
   std::unique_ptr<thread::ThreadPool> coord_compute_pool_;
   std::unique_ptr<AsyncServiceInterface> coord_rpc_service_;
@@ -247,6 +247,23 @@ TEST_F(PreemptionSyncManagerTest, ShutdownTasksWithoutPreemption) {
   CHECK_OK(coord_agent2_->Shutdown());
   // Protocol is not triggered, so there should be no sync point.
   EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
+}
+
+// Explicitly shut down without preemption.
+TEST_F(PreemptionSyncManagerTest, ShutdownWithoutPreemption) {
+  preempt_sync_mgr_->Shutdown();
+}
+
+// Explicitly shut down without initialization.
+TEST_F(PreemptionSyncManagerTest, ShutdownWithoutInitialization) {
+  std::unique_ptr<PreemptionSyncManager> m = CreatePreemptionSyncManager();
+  m->Shutdown();
+}
+
+// Explicitly shut down with preemption.
+TEST_F(PreemptionSyncManagerTest, ShutdownWithPreemption) {
+  SendPreemptionNotice(absl::Now());
+  preempt_sync_mgr_->Shutdown();
 }
 
 /* Two task tests */

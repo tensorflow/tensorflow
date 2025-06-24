@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/meta_spmd_expander.h"
 
+#include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"

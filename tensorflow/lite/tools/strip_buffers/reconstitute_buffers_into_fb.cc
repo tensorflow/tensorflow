@@ -15,10 +15,10 @@ limitations under the License.
 
 // Binary to test strip_buffers/reconstitution.h.
 #include <fstream>  // NOLINT
-#include <iostream>
-#include <sstream>
 #include <string>
+#include <vector>
 
+#include "absl/log/log.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/core/c/common.h"

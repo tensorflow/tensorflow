@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tsl/platform/thread_annotations.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/framework/rng_alg.h"
@@ -34,7 +35,8 @@ struct UpdateVariableAndFill_Philox<CPUDevice, Distribution> {
   void operator()(OpKernelContext* ctx, const CPUDevice& device,
                   Distribution dist, UpdateVariableAndFill_Philox_Arg* arg,
                   typename Distribution::ResultElementType* output_data)
-      TF_UNLOCK_FUNCTION() {
+      TF_NO_THREAD_SAFETY_ANALYSIS {  // arg->state_var_guard acquired using
+                                      // RAII and released via pointer aliasing.
     int64_t output_size = arg->output_size;
     int64_t alg_tag_skip = arg->alg_tag_skip;
     ScopedUnlockUnrefVar* state_var_guard = arg->state_var_guard;

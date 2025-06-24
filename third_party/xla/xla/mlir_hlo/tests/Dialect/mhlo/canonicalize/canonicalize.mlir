@@ -212,17 +212,6 @@ func.func @concatenate_const_2D_horizontal() -> tensor<2x2xi32> {
 }
 
 ////////
-// CopyOp
-
-// CHECK-LABEL: func @fold_copy
-// CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
-func.func @fold_copy(%arg : tensor<1x4xf32>) -> tensor<1x4xf32> {
-  // CHECK: return [[ARG]]
-  %0 = "mhlo.copy"(%arg) : (tensor<1x4xf32>) -> tensor<1x4xf32>
-  func.return %0 : tensor<1x4xf32>
-}
-
-////////
 // DynamicBroadcastInDimOp
 
 // CHECK-LABEL: func @dynamic_broadcast_in_dim_op_not_actually_dynamic
@@ -606,6 +595,19 @@ func.func @pad_zero_length(%arg0: tensor<5x0xf32>, %arg1: tensor<f32>) -> tensor
 }
 
 ////////
+// DynamicSliceOp
+
+// CHECK-LABEL: @fold_dynamic_slice
+func.func @fold_dynamic_slice(%767: tensor<i32>, %203: tensor<i32>) -> tensor<1x1xi32> {
+  %28 = mhlo.constant dense<256> : tensor<6x1xi32>
+  %769 = "mhlo.dynamic_slice"(%28, %767, %203) <{slice_sizes = dense<1> : tensor<2xi64>}> : (tensor<6x1xi32>, tensor<i32>, tensor<i32>) -> tensor<1x1xi32>
+
+  // CHECK: %[[RESULT:.*]] = mhlo.constant dense<256>
+  // CHECK: return %[[RESULT]]
+  return %769 : tensor<1x1xi32>
+}
+
+////////
 // RealDynamicSliceOp
 
 // CHECK-LABEL: @simplify_real_dynamic_slice_to_slice
@@ -914,6 +916,30 @@ func.func @dce_while_without_side_effect(%arg0: tensor<i64>) -> tensor<i64> {
   }) : (tensor<i64>) -> tensor<i64>
 
   func.return %arg0 : tensor<i64>
+}
+
+// CHECK-LABEL: while_op_dce_no_side_effect
+func.func @while_op_dce_no_side_effect(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+  %0 = mhlo.constant dense<1> : tensor<i32>
+  %1 = mhlo.constant dense<10> : tensor<i32>
+  %2 = mhlo.constant dense<0> : tensor<i32>
+  %3 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %4 = "mhlo.broadcast_in_dim"(%3) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<10xf32>
+  // CHECK: mhlo.while(%iterArg = %2, %iterArg_0 = %3) : tensor<i32>, tensor<10xf32> attributes {mhlo.frontend_attributes = {test_attr = "true"}}
+  %5:3 = mhlo.while(%iterArg = %arg0, %iterArg_0 = %2, %iterArg_1 = %4) : tensor<10xf32>, tensor<i32>, tensor<10xf32> attributes {mhlo.frontend_attributes = {test_attr = "true"}}
+    cond {
+    %6 = mhlo.compare  LT, %iterArg_0, %1,  SIGNED : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    mhlo.return %6 : tensor<i1>
+  } do {
+    %6 = "mhlo.dynamic_slice"(%iterArg, %iterArg_0) <{slice_sizes = dense<1> : tensor<1xi64>}> : (tensor<10xf32>, tensor<i32>) -> tensor<1xf32>
+    %7 = mhlo.reshape %6 : (tensor<1xf32>) -> tensor<f32>
+    %8 = mhlo.sine %7 : tensor<f32>
+    %9 = "mhlo.broadcast_in_dim"(%8) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<1xf32>
+    %10 = mhlo.dynamic_update_slice %iterArg_1, %9, %iterArg_0 : (tensor<10xf32>, tensor<1xf32>, tensor<i32>) -> tensor<10xf32>
+    %11 = mhlo.add %iterArg_0, %0 : tensor<i32>
+    mhlo.return %iterArg, %11, %10 : tensor<10xf32>, tensor<i32>, tensor<10xf32>
+  }
+  return %5#2 : tensor<10xf32>
 }
 
 ////////

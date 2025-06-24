@@ -1,5 +1,5 @@
-# RUN: xla-translate -hlo-to-mlir-hlo %s -o - | FileCheck %s
-# RUN: xla-translate -hlo-to-mlir-hlo -hlo-flatten-computation-args-result %s -o - | FileCheck %s -check-prefix=FLATTEN-CHECK
+# RUN: xla-translate -hlo-to-mlir-hlo -hlo-flatten-computation-args-result=false %s -o - | FileCheck %s
+# RUN: hlo-translate -hlo-to-mlir -emit-mhlo -mlir-print-debuginfo %s | FileCheck %s -check-prefix=FLATTEN-CHECK
 
 # CHECK-LABEL: module @main attributes {
 # FLATTEN-CHECK-LABEL: module @main attributes {

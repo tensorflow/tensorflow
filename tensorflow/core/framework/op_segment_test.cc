@@ -116,7 +116,7 @@ TEST_F(OpSegmentTest, SessionNotFound) {
   OpKernel* op;
   NodeDef def = float_nodedefs_[0];
   absl::Status s = opseg.FindOrCreate("A", def.name(), &op, GetFn(&def));
-  EXPECT_TRUE(errors::IsNotFound(s)) << s;
+  EXPECT_TRUE(absl::IsNotFound(s)) << s;
 }
 
 TEST_F(OpSegmentTest, CreateFailure) {
@@ -126,7 +126,7 @@ TEST_F(OpSegmentTest, CreateFailure) {
   def.set_op("nonexistop");
   opseg.AddHold("A");
   absl::Status s = opseg.FindOrCreate("A", def.name(), &op, GetFn(&def));
-  EXPECT_TRUE(errors::IsNotFound(s)) << s;
+  EXPECT_TRUE(absl::IsNotFound(s)) << s;
   opseg.RemoveHold("A");
 }
 

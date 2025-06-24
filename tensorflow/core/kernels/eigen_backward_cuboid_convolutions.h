@@ -394,13 +394,13 @@ CuboidConvolutionBackwardKernel(
     const DenseIndex stridePlanes = 1, const DenseIndex strideRows = 1,
     const DenseIndex strideCols = 1) {
   typedef typename internal::traits<Input>::Index TensorIndex;
-  TensorRef<Tensor<typename internal::traits<Input>::Scalar,
-                   internal::traits<Input>::NumDimensions,
-                   internal::traits<Input>::Layout, TensorIndex>>
+  TensorRef<const Tensor<typename internal::traits<Input>::Scalar,
+                         internal::traits<Input>::NumDimensions,
+                         internal::traits<Input>::Layout, TensorIndex>>
       in(input);
-  TensorRef<Tensor<typename internal::traits<OutputBackward>::Scalar,
-                   internal::traits<OutputBackward>::NumDimensions,
-                   internal::traits<OutputBackward>::Layout, TensorIndex>>
+  TensorRef<const Tensor<typename internal::traits<OutputBackward>::Scalar,
+                         internal::traits<OutputBackward>::NumDimensions,
+                         internal::traits<OutputBackward>::Layout, TensorIndex>>
       out(output_backward);
 
   EIGEN_STATIC_ASSERT(internal::traits<Input>::Layout ==

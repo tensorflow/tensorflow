@@ -37,8 +37,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/quantization_unit_loc.h"
@@ -82,6 +82,7 @@ Operation *DuplicateOp(TF::PartitionedCallOp call_op, PatternRewriter &rewriter,
   // get quantized.
   auto new_call_op = rewriter.create<TF::PartitionedCallOp>(
       call_op.getLoc(), call_op.getResultTypes(), call_op.getOperands(),
+      call_op.getArgAttrsAttr(), call_op.getResAttrsAttr(),
       FlatSymbolRefAttr::get(new_ref_func_name));
   return new_call_op;
 }
@@ -142,7 +143,7 @@ class AddDumpTensorOpPass
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<TF::TensorFlowDialect>();
     registry.insert<quant::QuantDialect>();
-    registry.insert<quantfork::QuantizationForkDialect>();
+    registry.insert<mlir::quant::ir::TFQuantDialect>();
   }
 
  private:
@@ -173,6 +174,15 @@ class AddDumpTensorOp : public OpRewritePattern<LiftedOpT> {
         debugger_type_(debugger_type),
         log_dir_path_(std::move(log_dir_path)) {}
 
+  LogicalResult matchAndRewrite(LiftedOpT op,
+                                PatternRewriter &rewriter) const override {
+    if (match(op).failed()) {
+      return failure();
+    }
+    rewrite(op, rewriter);
+    return success();
+  }
+
  private:
   SmallVector<NamedAttribute> CreateDumpAttributes(
       PatternRewriter &rewriter, const StringRef folder_name,
@@ -202,7 +212,7 @@ class AddDumpTensorOp : public OpRewritePattern<LiftedOpT> {
     return symbol_table.insert(new_ref_func);
   }
 
-  LogicalResult match(LiftedOpT op) const override {
+  LogicalResult match(LiftedOpT op) const {
     if (!op->hasAttr(kQuantTraitAttrName) || op->getNumResults() != 1) {
       return failure();
     }
@@ -217,7 +227,7 @@ class AddDumpTensorOp : public OpRewritePattern<LiftedOpT> {
     return success();
   }
 
-  void rewrite(LiftedOpT op, PatternRewriter &rewriter) const override {
+  void rewrite(LiftedOpT op, PatternRewriter &rewriter) const {
     // Only support ops with 1 results
     Value result = op->getResult(0);
     rewriter.setInsertionPointAfterValue(result);
@@ -293,7 +303,7 @@ void AddDumpTensorOpPass::runOnOperation() {
                AddDumpTensorOp<TF::XlaCallModuleOp>>(ctx, debugger_type_,
                                                      log_dir_path_);
 
-  if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
     module.emitError() << "quant-add-dump-tensor-op failed.";
     signalPassFailure();
   }

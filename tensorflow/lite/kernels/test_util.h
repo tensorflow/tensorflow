@@ -39,6 +39,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "fp16/fp16.h"  // from @FP16
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"  // from @eigen_archive
@@ -46,6 +47,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -158,6 +160,14 @@ constexpr TfLiteType typeToTfLiteType<Eigen::bfloat16>() {
 // quantized tensor which must have their scale and zero_point defined before
 // the actual data is known. This mimics what happens in practice: quantization
 // parameters are calculated during training or post training..
+
+// The block_size and block_map are used for sparse tensor. Hence for per-block
+// quantization, we instead pass in per_channel_quantization_scales and
+// per_channel_quantization_offsets, where the multi-dimensional scale and
+// zero_point are expected to be flattened, and will be reshaped when creating
+// the tensor. The assumption is that the scale and zero_points are innermost
+// continuous. In addition, we set per_block_quantization as a integer such that
+// when it's not zero, the field contains the block size for the tensor.
 struct TensorData {
   // NOLINTNEXTLINE
   TensorData(TensorType type = TensorType_FLOAT32, std::vector<int> shape = {},
@@ -168,7 +178,8 @@ struct TensorData {
              int32_t channel_index = 0, std::vector<int> traversal_order = {},
              std::vector<TfLiteDimensionType> format = {},
              std::vector<int> block_size = {}, std::vector<int> block_map = {},
-             std::vector<int> shape_signature = {})
+             std::vector<int> shape_signature = {},
+             int per_block_quantization = 0)
       : type(type),
         shape(shape),
         min(min),
@@ -185,7 +196,8 @@ struct TensorData {
         format(format),
         block_size(block_size),
         block_map(block_map),
-        shape_signature(shape_signature) {}
+        shape_signature(shape_signature),
+        per_block_quantization(per_block_quantization) {}
   TensorType type;
   std::vector<int> shape;
   float min;
@@ -201,6 +213,7 @@ struct TensorData {
   std::vector<int> block_size;
   std::vector<int> block_map;
   std::vector<int> shape_signature;
+  int per_block_quantization;
 };
 
 class SingleOpResolver : public OpResolver {
@@ -577,6 +590,50 @@ class SingleOpModel {
     }
   }
 
+  void PerBlockSymmetricQuantizeAndPopulate(
+      int index, const std::vector<float>& input_data) {
+    TfLiteTensor* t = interpreter_->tensor(index);
+    auto* params =
+        reinterpret_cast<TfLiteBlockwiseQuantization*>(t->quantization.params);
+    const int channel_index = params->quantized_dimension;
+    int32_t blocksize = params->blocksize;
+    int num_blocks = input_data.size() / blocksize;
+    TfLiteTensor* scale_tensor = interpreter_->tensor(params->scale);
+    uint16_t* scale_data = GetTensorData<uint16_t>(scale_tensor);
+    if (blocksize * num_blocks == input_data.size()) {
+      std::vector<int32_t> shape(t->dims->size);
+      for (size_t i = 0; i < shape.size(); ++i) {
+        shape[i] = t->dims->data[i];
+      }
+      std::vector<int> scales_shape(t->dims->size);
+      for (size_t i = 0; i < scales_shape.size(); ++i) {
+        scales_shape[i] = t->dims->data[i];
+      }
+      scales_shape[scales_shape.size() - 1] =
+          scales_shape[scales_shape.size() - 1] / blocksize;
+      // int scale_size = 1;
+      // for (size_t i = 0; i < scales_shape.size() - 1; ++i) {
+      //   scale_size *= scales_shape[i];
+      // }
+      std::vector<float> inverse_scales(num_blocks);
+      std::vector<uint16_t> scales(num_blocks);
+      std::vector<int8_t> quantized_output(input_data.size());
+      for (int i = 0; i < scales.size(); ++i) {
+        float scale = fp16_ieee_to_fp32_value(scale_data[i]);
+        inverse_scales[i] = 1.0f / scale;
+      }
+
+      optimize::utils::SymmetricPerBlockQuantizeValues(
+          input_data.data(), inverse_scales.data(), shape, scales_shape,
+          channel_index, &quantized_output, t->type);
+
+      if (t->type == kTfLiteInt4) {
+        PopulateTensor4bit(index, /*offset=*/0, quantized_output.data(),
+                           quantized_output.data() + quantized_output.size());
+      }
+    }
+  }
+
   // Quantize and populate data for filter with per channel quantization.
   void PerChannelSymmetricQuantizeAndPopulate(
       int index, const std::vector<float>& input_data) {
@@ -760,8 +817,8 @@ class SingleOpModel {
   void SetNumThreads(int num_threads, bool reset_interpreter = false) {
     CHECK(interpreter_ != nullptr);
     if (reset_interpreter) {
-      // Reconstruct interpreter as number of threads may affect internal state,
-      // e.g. stratch buffer allocation.
+      // Reconstruct interpreter as number of threads may affect internal
+      // state, e.g. stratch buffer allocation.
       BuildInterpreter(input_shapes_, num_threads, allow_fp32_relax_to_fp16_,
                        apply_delegate_, allocate_and_delegate_);
     }
@@ -930,8 +987,9 @@ class SingleOpModel {
 
     // Now we need to nudge the zero point to be an integer
     // (our zero points are integer, and this is motivated by the requirement
-    // to be able to represent the real value "0" exactly as a quantized value,
-    // which is required in multiple places, for example in Im2col with SAME
+    // to be able to represent the real value "0" exactly as a quantized
+    // value, which is required in multiple places, for example in Im2col with
+    // SAME
     //  padding).
 
     T nudged_zero_point = 0;
@@ -1018,6 +1076,66 @@ class SingleOpModel {
     return result;
   }
 
+  int AddTensorPerBlockQuant(const TensorData& t) {
+    // type does not matter when adding empty data.
+    return AddTensorPerBlockQuant<uint8_t>(t, nullptr, 0);
+  }
+
+  template <typename T>
+  int AddTensorPerBlockQuant(const TensorData& t, const T* data, size_t size) {
+    const int id = tensors_.size();
+    std::vector<uint16_t> fp16_scales(t.per_channel_quantization_scales.size());
+    for (int i = 0; i < t.per_channel_quantization_scales.size(); ++i) {
+      fp16_scales[i] =
+          fp16_ieee_from_fp32_value(t.per_channel_quantization_scales[i]);
+    }
+    std::vector<int> scale_shape(t.shape.size());
+    for (int i = 0; i < t.shape.size(); ++i) {
+      scale_shape[i] = t.shape[i];
+    }
+    scale_shape[t.shape.size() - 1] =
+        t.shape[t.shape.size() - 1] / t.per_block_quantization;
+    TensorData scale_tensor_data(TensorType_FLOAT16, scale_shape);
+    int scale_tensor_id = id + 1;
+    // TODO(zichuanwei): support blockwise zero point.
+    flatbuffers::Offset<BlockwiseQuantization> blockwise_quant_params = 0;
+    blockwise_quant_params = CreateBlockwiseQuantization(
+        builder_, scale_tensor_id, /*zero_points=*/0,
+        /*block_size=*/t.per_block_quantization);
+    flatbuffers::Offset<QuantizationParameters> q_params = 0;
+    q_params = CreateQuantizationParameters(
+        builder_, /*min=*/0, /*max=*/0,
+        /*scale=*/
+        0,
+        /*zero point=*/
+        0, QuantizationDetails_BlockwiseQuantization,
+        *reinterpret_cast<flatbuffers::Offset<void>*>(&blockwise_quant_params),
+        t.shape.size() - 1);
+    int buffer_id = 0;
+    if (size) {
+      // Initialize buffers list with empty buffer to allow for non-const
+      // tensors.
+      if (buffers_.empty()) {
+        buffers_.push_back(CreateBuffer(builder_, builder_.CreateVector({})));
+      }
+
+      // Add data as a Buffer to buffers list.
+      buffer_id = buffers_.size();
+      auto data_buffer = builder_.CreateVector(
+          reinterpret_cast<const uint8_t*>(data), sizeof(T) * size);
+      buffers_.push_back(CreateBuffer(builder_, data_buffer));
+    }
+
+    tensors_.push_back(
+        CreateTensor(builder_, builder_.CreateVector<int>(t.shape), t.type,
+                     /*buffer=*/buffer_id,
+                     /*name=*/0, q_params, /*is_variable=*/false));
+    scale_tensor_id = AddTensor<uint16_t>(scale_tensor_data, fp16_scales.data(),
+                                          fp16_scales.size());
+    tensor_data_[id] = t;
+    return id;
+  }
+
   int AddTensorPerChannelQuant(const TensorData& t) {
     // type does not matter when adding empty data.
     return AddTensorPerChannelQuant<uint8_t>(t, nullptr, 0);
@@ -1093,10 +1211,9 @@ class SingleOpModel {
   // - the test is running on a device (NNAPI has been loaded)
   //
   // The list of nnapi-accelerated test cases is a file containing regex to
-  // include or exclude specific test cases plus the minimum android SDK version
-  // the acceleration should be enabled for. For example:
-  // To enable the test BorderFloat in TopKV2OpTest only from
-  // android_sdk_version 29:
+  // include or exclude specific test cases plus the minimum android SDK
+  // version the acceleration should be enabled for. For example: To enable
+  // the test BorderFloat in TopKV2OpTest only from android_sdk_version 29:
   //
   // TopKV2OpTest/BorderFloat,29
   //

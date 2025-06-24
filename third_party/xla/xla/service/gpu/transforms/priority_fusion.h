@@ -60,7 +60,8 @@ class PriorityFusion : public HloModulePass {
   HloInstruction::FusionKind ChooseKind(const HloInstruction* producer,
                                         const HloInstruction* consumer);
 
-  HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer);
+  HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer,
+                       bool use_multi_output_fusion = false);
 
  private:
   // Consumes a unit of compiler fuel and returns true if we should

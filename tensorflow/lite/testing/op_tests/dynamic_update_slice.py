@@ -16,6 +16,7 @@
 import functools
 
 import tensorflow as tf
+from tensorflow.lite.python import lite
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -29,7 +30,7 @@ def _tflite_convert_verify_op(tflite_convert_function, *args, **kwargs):
   if not result[0]:
     tf.compat.v1.logging.error(result[1])  # stderr from running tflite_convert.
     raise RuntimeError("Failed to build model: \n\n" + result[1])
-  interpreter = tf.lite.Interpreter(model_content=tflite_model_binary)
+  interpreter = lite.Interpreter(model_content=tflite_model_binary)
   interpreter.allocate_tensors()
   for op in interpreter._get_ops_details():  # pylint: disable=protected-access
     if op["op_name"] == "DYNAMIC_UPDATE_SLICE":

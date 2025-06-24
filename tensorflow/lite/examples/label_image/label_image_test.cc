@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/examples/label_image/label_image.h"
 
+#include <cstdint>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_types.h"

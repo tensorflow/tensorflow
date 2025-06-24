@@ -822,7 +822,9 @@ cc_library(
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -837,6 +839,7 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "@com_google_absl//absl/status",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -853,6 +856,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/grappler:grappler_item",
     ],
 )

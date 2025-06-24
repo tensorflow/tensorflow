@@ -36,6 +36,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:gif",
         "@com_google_absl//absl/strings",
+        "@gif",
     ],
 )
 

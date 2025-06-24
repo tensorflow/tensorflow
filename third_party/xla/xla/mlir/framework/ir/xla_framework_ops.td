@@ -81,7 +81,7 @@ def XLAFramework_XLABufferToMemOp : XLAFramework_Op<"buffer_to_mem",
     }]>];
 
   let extraClassDeclaration = [{
-    MemRefType getType() { return getResult().getType().cast<MemRefType>(); }
+    MemRefType getType() { return llvm::cast<MemRefType>(getResult().getType()); }
   }];
   let assemblyFormat = [{
     $buffer attr-dict `:` type($result)

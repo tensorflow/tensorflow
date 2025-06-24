@@ -19,13 +19,15 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/primitive_util.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace {
@@ -165,7 +167,7 @@ absl::string_view ComparisonOrderToString(Comparison::Order order) {
 
 absl::StatusOr<Comparison::Direction> StringToComparisonDirection(
     absl::string_view direction) {
-  static auto* map =
+  static auto* const map =
       new absl::flat_hash_map<std::string, Comparison::Direction>({
           {"EQ", Comparison::Direction::kEq},
           {"NE", Comparison::Direction::kNe},
@@ -183,12 +185,13 @@ absl::StatusOr<Comparison::Direction> StringToComparisonDirection(
 
 absl::StatusOr<Comparison::Type> StringToComparisonType(
     absl::string_view comparison) {
-  static auto* map = new absl::flat_hash_map<std::string, Comparison::Type>({
-      {"FLOAT", Comparison::Type::kFloat},
-      {"TOTALORDER", Comparison::Type::kFloatTotalOrder},
-      {"SIGNED", Comparison::Type::kSigned},
-      {"UNSIGNED", Comparison::Type::kUnsigned},
-  });
+  static auto* const map =
+      new absl::flat_hash_map<std::string, Comparison::Type>({
+          {"FLOAT", Comparison::Type::kFloat},
+          {"TOTALORDER", Comparison::Type::kFloatTotalOrder},
+          {"SIGNED", Comparison::Type::kSigned},
+          {"UNSIGNED", Comparison::Type::kUnsigned},
+      });
   auto it = map->find(comparison);
   if (it == map->end()) {
     return InvalidArgument("Unknown comparison type: %s", comparison);

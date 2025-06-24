@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -33,7 +34,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/platform/status.h"
@@ -82,8 +83,7 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
     tflite::ConverterFlags& converter_flags,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
-    llvm::StringRef saved_model_dir, std::string* result,
-    bool serialize_stablehlo_ops, bool export_to_mlir,
+    llvm::StringRef saved_model_dir, std::string* result, bool export_to_mlir,
     const quantization::PyFunctionLibrary* quantization_py_function_lib =
         nullptr);
 }  // namespace tensorflow

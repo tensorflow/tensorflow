@@ -29,6 +29,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/lib/io/snappy/snappy_inputbuffer.h"
 #include "xla/tsl/lib/io/snappy/snappy_outputbuffer.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -49,9 +52,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -1060,8 +1060,7 @@ absl::Status ReadMetadataFile(
 
 absl::Status DumpDatasetGraph(Env* env, const std::string& path, uint64 hash,
                               const GraphDef* graph) {
-  std::string hash_hex =
-      strings::StrCat(strings::Hex(hash, strings::kZeroPad16));
+  std::string hash_hex = absl::StrCat(absl::Hex(hash, absl::kZeroPad16));
   std::string graph_file =
       io::JoinPath(path, absl::StrCat(hash_hex, "-graph.pbtxt"));
 

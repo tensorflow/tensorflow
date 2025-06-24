@@ -33,12 +33,13 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/test_benchmark.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace {
@@ -242,8 +243,9 @@ TEST(ShapeUtilTest, CompatibleTuples) {
 }
 
 TEST(ShapeUtilTest, MakeMaybeTupleShape) {
-  Shape s1 =
-      ShapeUtil::MakeMaybeTupleShape({ShapeUtil::MakeShape(F32, {3, 2})});
+  Shape s1 = ShapeUtil::MakeValidatedMaybeTupleShape(
+                 {ShapeUtil::MakeValidatedShape(F32, {3, 2}).value()})
+                 .value();
   EXPECT_TRUE(ShapeUtil::Compatible(s1, ShapeUtil::MakeShape(F32, {3, 2})));
 }
 
@@ -793,6 +795,44 @@ TEST(ShapeUtilTest, ForEachIndexParallel_WithSkips) {
   }
 }
 
+TEST(ShapeUtilTest, ForEachIndexParallel_WithOddIncr) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+  int64_t output[10][10] = {};
+  int init = 5;
+  auto set_func = [&](absl::Span<const int64_t> indexes,
+                      int /*thread_id*/) -> absl::StatusOr<bool> {
+    output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
+    return true;
+  };
+
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{0, 0}, /*count=*/{10, 10},
+                                  /*incr=*/{3, 3}, set_func);
+
+  for (int i = 0; i < 10; ++i) {
+    for (int j = 0; j < 10; ++j) {
+      if (i % 3 == 0 && j % 3 == 0) {
+        EXPECT_EQ(output[i][j], init + i + j);
+      } else {
+        EXPECT_EQ(output[i][j], 0);
+      }
+    }
+  }
+}
+
+TEST(ShapeUtilTest, ForEachIndexParallel_Scalar) {
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  int64_t output = 0;
+  auto set_func = [&](absl::Span<const int64_t> indexes,
+                      int /*thread_id*/) -> absl::StatusOr<bool> {
+    output = 5;
+    return true;
+  };
+
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{}, /*count=*/{},
+                                  /*incr=*/{}, set_func);
+  EXPECT_EQ(output, 5);
+}
+
 TEST(ShapeUtilTest, ForEachIndexParallel_CalledTwice) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
   int64_t output[10][10];
@@ -1004,8 +1044,7 @@ TEST(ShapeUtilTest, InvalidDynamicDimension) {
 
   EXPECT_FALSE(error_status.ok());
   EXPECT_THAT(error_status.status().message(),
-              ::testing::HasSubstr(
-                  "Cannot mark a dynamic dimension at dim=1 as static"));
+              ::testing::HasSubstr("Invalid dimension size"));
 }
 
 TEST(ShapeUtilTest, PermuteDynamicDimensions) {
@@ -1020,7 +1059,7 @@ TEST(ShapeUtilTest, PermuteDynamicDimensions) {
     SCOPED_TRACE(absl::StrCat("permutation=", absl::StrJoin(permutation, ",")));
 
     auto permuted = ShapeUtil::PermuteDimensions(permutation, shape);
-    for (int i = 0; i < shape.rank(); i++) {
+    for (int i = 0; i < shape.dimensions().size(); i++) {
       EXPECT_EQ(permuted.dimensions(i), shape.dimensions(permutation[i]));
       EXPECT_EQ(permuted.is_dynamic_dimension(i),
                 shape.is_dynamic_dimension(permutation[i]));
@@ -1176,7 +1215,6 @@ TEST(ShapeUtilTest, B_250640044) {
              dimensions: 137438953472
              layout {
                minor_to_major: 0
-               dim_level_types: DIM_COMPRESSED
                physical_shape {
                  element_type: TUPLE
                  tuple_shapes {}
@@ -1185,7 +1223,7 @@ TEST(ShapeUtilTest, B_250640044) {
              is_dynamic_dimension: false
            })pb",
       &proto));
-  Shape shape(proto);
+  TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
   EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
 }
 
@@ -1219,7 +1257,7 @@ TEST(ShapeUtilTest, B_251055887) {
           physical_shape { element_type: -562 }
         })pb",
       &proto));
-  Shape shape(proto);
+  TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
   EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
 }
 
@@ -1230,14 +1268,14 @@ TEST(ShapeUtilTest, B_385192799) {
   {
     EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
         R"pb(element_type: 2000)pb", &proto));
-    Shape shape(proto);
+    TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
     EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
   }
 
   {
     EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
         R"pb(element_type: -1)pb", &proto));
-    Shape shape(proto);
+    TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
     EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
   }
 }
@@ -1508,6 +1546,33 @@ TEST(AlignmentTest,
   auto aligned_shape = ShapeUtil::AlignLayouts(
       input, ShapeUtil::MakeShape(xla::F32, {4, 3, 2, 5, 77}));
   EXPECT_FALSE(aligned_shape);
+}
+
+TEST(ShapeUtilTest, FlattenTupleShape) {
+  Shape shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {2, 3}),
+       ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4, 5}),
+                                  ShapeUtil::MakeTupleShape({}),
+                                  ShapeUtil::MakeShape(F32, {6, 7})}),
+       ShapeUtil::MakeShape(F32, {8, 9})});
+  std::vector<const Shape*> flattened_shapes =
+      ShapeUtil::FlattenTupleShape(shape);
+  EXPECT_EQ(flattened_shapes.size(), 4);
+  EXPECT_EQ(flattened_shapes[0]->ToString(), "f32[2,3]");
+  EXPECT_EQ(flattened_shapes[1]->ToString(), "f32[4,5]");
+  EXPECT_EQ(flattened_shapes[2]->ToString(), "f32[6,7]");
+  EXPECT_EQ(flattened_shapes[3]->ToString(), "f32[8,9]");
+}
+
+TEST(ShapeUtilTest, ShapeIndexProtoSerialization) {
+  ShapeIndex empty{};
+  EXPECT_EQ(empty, ShapeIndex::FromProto(empty.ToProto()));
+
+  ShapeIndex single_index{1};
+  EXPECT_EQ(single_index, ShapeIndex::FromProto(single_index.ToProto()));
+
+  ShapeIndex multi_index{1, 2, 42};
+  EXPECT_EQ(multi_index, ShapeIndex::FromProto(multi_index.ToProto()));
 }
 
 void BM_MakeShape(::testing::benchmark::State& state) {

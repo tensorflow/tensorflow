@@ -17,12 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_PLUGIN_OP_KERNEL_HELPER_H_
 
 #include "absl/flags/flag.h"
+#include "xla/tsl/platform/macros.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c_plugin_op_kernel.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/direct_plugin_op_kernel.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/flags.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_op_kernel.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 

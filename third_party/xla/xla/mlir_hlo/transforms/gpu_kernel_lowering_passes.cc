@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
+#include "mlir/Dialect/AMDGPU/Utils/Chipset.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
@@ -61,7 +62,13 @@ class GpuKernelToNVVMPass
 /// that are currently required, currently mixing std, linalg and gpu.
 class GpuKernelToROCDLPass
     : public impl::GpuKernelToROCDLPassBase<GpuKernelToROCDLPass> {
+ public:
+  GpuKernelToROCDLPass(const std::string& chipset) : chipset_(chipset) {}
+
+ private:
   void runOnOperation() override;
+
+  std::string chipset_;
 };
 
 }  // namespace
@@ -71,11 +78,11 @@ static void populateAllCommonVectorProgressiveLoweringPatterns(
   vector::populateVectorToVectorCanonicalizationPatterns(patterns);
   vector::populateVectorBroadcastLoweringPatterns(patterns);
   vector::populateVectorContractLoweringPatterns(
-      patterns, vector::VectorTransformsOptions());
+      patterns, vector::VectorContractLowering());
   vector::populateVectorMaskOpLoweringPatterns(patterns);
   vector::populateVectorShapeCastLoweringPatterns(patterns);
   vector::populateVectorTransposeLoweringPatterns(
-      patterns, vector::VectorTransformsOptions());
+      patterns, vector::VectorTransposeLowering());
   // Vector transfer ops with rank > 1 should be lowered with VectorToSCF.
   vector::populateVectorTransferLoweringPatterns(patterns,
                                                  /*maxTransferRank=*/1);
@@ -130,11 +137,19 @@ void GpuKernelToNVVMPass::runOnOperation() {
 }
 
 void GpuKernelToROCDLPass::runOnOperation() {
+  llvm::FailureOr<mlir::amdgpu::Chipset> maybeChipset =
+      mlir::amdgpu::Chipset::parse(chipset_);
+  if (failed(maybeChipset)) {
+    mlir::emitError(mlir::UnknownLoc::get(&getContext()),
+                    "Invalid chipset name: " + chipset_);
+    return signalPassFailure();
+  }
+
   RewritePatternSet patterns(&getContext());
   LLVMTypeConverter converter(&getContext());
   populateCommonPatterns(converter, patterns);
-  populateGpuToROCDLConversionPatterns(converter, patterns,
-                                       gpu::amd::Runtime::Unknown);
+  populateGpuToROCDLConversionPatterns(
+      converter, patterns, gpu::amd::Runtime::Unknown, *maybeChipset);
   ConversionTarget target(getContext());
   configureGpuToROCDLConversionLegality(target);
   if (failed(
@@ -148,8 +163,9 @@ std::unique_ptr<OperationPass<gpu::GPUModuleOp>> createGpuKernelToNvvmPass(
   return std::make_unique<GpuKernelToNVVMPass>(useBarePtrCallConv);
 }
 
-std::unique_ptr<OperationPass<gpu::GPUModuleOp>> createGpuKernelToRocdlPass() {
-  return std::make_unique<GpuKernelToROCDLPass>();
+std::unique_ptr<OperationPass<gpu::GPUModuleOp>> createGpuKernelToRocdlPass(
+    const std::string& chipset) {
+  return std::make_unique<GpuKernelToROCDLPass>(chipset);
 }
 
 }  // namespace mlir

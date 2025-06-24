@@ -11,5 +11,4 @@ package(
 py_strict_library(
     name = "compiler",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
 )

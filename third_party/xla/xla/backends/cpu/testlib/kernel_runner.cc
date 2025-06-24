@@ -23,46 +23,46 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
-#include "llvm/Target/TargetMachine.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Target/TargetOptions.h"
+#include "xla/backends/cpu/codegen/cpu_features.h"
+#include "xla/backends/cpu/codegen/execution_engine.h"
+#include "xla/backends/cpu/codegen/fusion_compiler.h"
+#include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
-#include "xla/backends/cpu/codegen/llvm_ir_kernel_spec.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/kernel.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
+#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/llvm_kernel_definition.h"
+#include "xla/codegen/mlir_kernel_definition.h"
+#include "xla/codegen/mlir_kernel_source.h"
+#include "xla/runtime/work_group.h"
+#include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/runtime_symbol_generator.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 
 namespace xla::cpu {
 
 absl::StatusOr<KernelRunner> KernelRunner::Create(
-    std::unique_ptr<KernelSpec> kernel_spec) {
-  // Use dynamic_cast rather than tsl::down_cast to allow for future
-  // creation of KernelRunner from different kernel spec types.
-  if (auto* llvm_kernel_spec =
-          dynamic_cast<LlvmIrKernelSpec*>(kernel_spec.get())) {
-    TF_ASSIGN_OR_RETURN(JitCompiler compiler, CreateJitCompiler());
-    return Create(std::move(*llvm_kernel_spec), std::move(compiler));
-  }
+    LlvmKernelDefinition kernel_definition, JitCompiler compiler) {
+  auto [spec, source] = std::move(kernel_definition).ReleaseStorage();
 
-  return absl::InvalidArgumentError("Unrecognised kernel spec type");
-}
+  auto thread_safe_module = std::move(source).thread_safe_module();
+  SetModuleMemoryRegionName(*thread_safe_module.getModuleUnlocked(),
+                            "kernel_runner_test");
 
-absl::StatusOr<KernelRunner> KernelRunner::Create(LlvmIrKernelSpec kernel_spec,
-                                                  JitCompiler compiler) {
-  LlvmIrKernelSource& kernel_source = kernel_spec.kernel_source();
+  TF_RETURN_IF_ERROR(compiler.AddModule(std::move(thread_safe_module)));
 
-  // Intentional copy as we need to use the kernel name after consuming
-  // (std::move) the kernel source.
-  std::string kernel_name = kernel_source.kernel_name();
-
-  TF_RETURN_IF_ERROR(
-      compiler.AddModule(std::move(kernel_source).thread_safe_module()));
-
+  const std::string& kernel_name = spec.name();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<FunctionLibrary> library,
                       std::move(compiler).Compile(
                           {FunctionLibrary::Sym<XLA_CPU_Kernel>(kernel_name)}));
@@ -70,15 +70,26 @@ absl::StatusOr<KernelRunner> KernelRunner::Create(LlvmIrKernelSpec kernel_spec,
   TF_ASSIGN_OR_RETURN(XLA_CPU_Kernel * kernel_fn,
                       library->ResolveFunction<XLA_CPU_Kernel>(kernel_name));
 
-  Kernel::ThreadDim thread_dim = kernel_spec.thread_dim();
-  return KernelRunner(std::move(library), Kernel(1, kernel_fn), thread_dim);
+  return KernelRunner(std::move(library), Kernel(1, kernel_fn),
+                      spec.num_workgroups());
+}
+
+absl::StatusOr<KernelRunner> KernelRunner::Create(
+    MlirKernelDefinition kernel_definition, JitCompiler compiler) {
+  auto [spec, source] = std::move(kernel_definition).ReleaseStorage();
+
+  TF_ASSIGN_OR_RETURN(LlvmIrKernelSource llvm_kernel_source,
+                      LowerToLlvm(source));
+
+  return Create(LlvmKernelDefinition(spec, std::move(llvm_kernel_source)),
+                std::move(compiler));
 }
 
 KernelRunner::KernelRunner(std::unique_ptr<FunctionLibrary> library,
-                           Kernel kernel, Kernel::ThreadDim thread_dim)
+                           Kernel kernel, NumWorkGroups num_workgroups)
     : library_(std::move(library)),
       kernel_(std::move(kernel)),
-      thread_dim_(thread_dim) {}
+      num_workgroups_(num_workgroups) {}
 
 absl::Status KernelRunner::Call(absl::Span<const Argument> arguments) {
   std::vector<XLA_CPU_KernelArg> kernel_args;
@@ -86,22 +97,58 @@ absl::Status KernelRunner::Call(absl::Span<const Argument> arguments) {
     kernel_args.push_back({arg.data(), arg.size()});
   }
 
-  return kernel_.Launch(thread_dim_, kernel_args);
+  return kernel_.Launch(num_workgroups_, kernel_args);
 }
 
-absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler() {
+absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler(
+    const HloModuleConfig& config) {
+  const DebugOptions& debug_options = config.debug_options();
+
+  IrCompiler::Options ir_compiler_options{
+      /*optimization_level=*/IrCompiler::GetCodeGenOptLevel(config),
+      /*optimize_for_size=*/options::OptimizeForSizeRequested(config),
+      /*max_cpu_isa=*/CpuFeatureFromString(debug_options.xla_cpu_max_isa()),
+      /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(config),
+      /*disable_expensive_passes=*/
+      debug_options.xla_llvm_disable_expensive_passes(),
+      /*slp_vectorizer_disabled=*/options::SlpVectorizerDisabled(config),
+      /*disable_loop_unrolling=*/options::DisableLoopUnrolling(config),
+  };
+
+  IrCompiler::CompilationHooks ir_compiler_hooks;
+
+  // Needed to resolve symbols such as built in intrinsics (sin, cos etc).
+  ExecutionEngine::DefinitionGenerator definition_generator =
+      [](const llvm::DataLayout& data_layout) {
+        return std::make_unique<RuntimeSymbolGenerator>(data_layout);
+      };
+
+  JitCompiler::Options jit_compiler_options{
+      /*num_dylibs=*/1,
+      /*definition_generator=*/std::move(definition_generator),
+  };
+
   llvm::TargetOptions target_options;
   target_options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
 
-  // Needed to resolve symbols such as built in intrinsics (sin, cos etc).
-  JitCompiler::Options jit_compiler_options;
-  jit_compiler_options.definition_generator =
-      [](llvm::TargetMachine* target_machine) {
-        return std::make_unique<RuntimeSymbolGenerator>(
-            target_machine->createDataLayout());
-      };
+  std::unique_ptr<IrCompiler> ir_compiler =
+      IrCompiler::Create(target_options, std::move(ir_compiler_options),
+                         std::move(ir_compiler_hooks));
 
-  return JitCompiler::Create(target_options, jit_compiler_options);
+  return JitCompiler::Create(std::move(jit_compiler_options),
+                             std::move(ir_compiler));
+}
+
+absl::StatusOr<LlvmIrKernelSource> LowerToLlvm(
+    MlirKernelSource& mlir_kernel_source) {
+  auto llvm_context = std::make_unique<llvm::LLVMContext>();
+
+  FusionCompiler fusion_compiler(FusionCompiler::Options{});
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<llvm::Module> llvm_module,
+      fusion_compiler.Compile(*llvm_context, mlir_kernel_source.module()));
+
+  return LlvmIrKernelSource(std::move(llvm_context), std::move(llvm_module));
 }
 
 }  // namespace xla::cpu

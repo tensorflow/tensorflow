@@ -43,9 +43,9 @@ limitations under the License.
 #include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -340,7 +340,7 @@ absl::Status EmitSortInPlace(
   // comparisons).
 
   const Shape& keys_shape = values_arrays[0].GetShape();
-  int64_t rank = keys_shape.rank();
+  int64_t rank = keys_shape.dimensions().size();
   int64_t dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
   std::vector<int64_t> dimensions_in_iteration_order(rank);
   std::vector<int64_t> iteration_order_to_logical_order(rank);

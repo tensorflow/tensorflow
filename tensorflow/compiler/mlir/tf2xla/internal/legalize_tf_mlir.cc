@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_mlir.h"
 
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/log/log.h"
@@ -36,6 +35,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
@@ -44,8 +45,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/tpu_compile.h"
 #include "tsl/platform/error_logging.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tf2xla {

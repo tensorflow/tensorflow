@@ -345,7 +345,8 @@ class CropAndResizeOpDeterministicTest(test_base.CropAndResizeOpTestBase):
     input pixel location.
 
     Note that the number of boxes can be less than, equal to, or greater than
-    the batch size. Wth non-reproducible ordering of reduction operations, three
+    the batch size. With non-reproducible ordering of reduction operations,
+    three
     or more crops overlapping on the same input image pixel can independently
     contribute to nondeterminism in the image gradient associated with that
     input pixel location. This is independent of contributions caused by the

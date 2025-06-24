@@ -20,10 +20,10 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/histogram.pb.h"
-#include "tsl/platform/mutex.h"
 
 namespace tsl {
 namespace histogram {
@@ -233,48 +233,48 @@ void Histogram::EncodeToProto(HistogramProto* proto,
 
 // ThreadSafeHistogram implementation.
 bool ThreadSafeHistogram::DecodeFromProto(const HistogramProto& proto) {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   return histogram_.DecodeFromProto(proto);
 }
 
 void ThreadSafeHistogram::Clear() {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   histogram_.Clear();
 }
 
 void ThreadSafeHistogram::Add(double value) {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   histogram_.Add(value);
 }
 
 void ThreadSafeHistogram::EncodeToProto(HistogramProto* proto,
                                         bool preserve_zero_buckets) const {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   histogram_.EncodeToProto(proto, preserve_zero_buckets);
 }
 
 double ThreadSafeHistogram::Median() const {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   return histogram_.Median();
 }
 
 double ThreadSafeHistogram::Percentile(double p) const {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   return histogram_.Percentile(p);
 }
 
 double ThreadSafeHistogram::Average() const {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   return histogram_.Average();
 }
 
 double ThreadSafeHistogram::StandardDeviation() const {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   return histogram_.StandardDeviation();
 }
 
 std::string ThreadSafeHistogram::ToString() const {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   return histogram_.ToString();
 }
 

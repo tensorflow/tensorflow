@@ -19,6 +19,7 @@ limitations under the License.
 #include <deque>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/graph_analyzer/map_tools.h"
 #include "tensorflow/core/grappler/graph_analyzer/sig_node.h"

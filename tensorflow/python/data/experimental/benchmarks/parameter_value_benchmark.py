@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Benchmarks to compare effect of different paramemter values on the performance."""
+"""Benchmarks to compare effect of different parameter values on the performance."""
 import time
 import numpy as np
 
@@ -38,7 +38,7 @@ def map_function(x):
 
 
 class ParameterValueBenchmark(benchmark_base.DatasetBenchmarkBase):
-  """Benchmarks to compare effect of different paramemter values on the performance."""
+  """Benchmarks to compare effect of different parameter values on the performance."""
 
   def _benchmark_map(self, num_parallel_calls, buffer_size):
     k = 1024 * 1024

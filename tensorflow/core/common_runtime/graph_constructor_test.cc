@@ -19,11 +19,13 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/release_version.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/version.h"
 
@@ -985,7 +988,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef) {
 
   // Importing again should fail because of node name collisions.
   s = ImportGraphDef(opts, def, &graph_, nullptr);
-  EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
+  EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
 
   // But succeed if a unique prefix is provided.
   opts.prefix = "import";
@@ -1043,17 +1046,17 @@ TEST_F(GraphConstructorTest, ImportGraphDef_Versioning) {
 
   def.mutable_versions()->set_producer(TF_GRAPH_DEF_VERSION_MIN_PRODUCER - 1);
   absl::Status s = ImportGraphDef(opts, def, &graph_, nullptr);
-  EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
+  EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
 
   def.mutable_versions()->Clear();
   def.mutable_versions()->set_min_consumer(TF_GRAPH_DEF_VERSION + 1);
   s = ImportGraphDef(opts, def, &graph_, nullptr);
-  EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
+  EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
 
   def.mutable_versions()->Clear();
   def.mutable_versions()->add_bad_consumers(TF_GRAPH_DEF_VERSION);
   s = ImportGraphDef(opts, def, &graph_, nullptr);
-  EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
+  EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
 
   def.mutable_versions()->Clear();
   graph_.ToGraphDef(&def);
@@ -3217,7 +3220,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ValidateColocationConstraints) {
   // TODO(yaozhang): Extend ExpectError to check error type and use ExpectError
   // and ExpectOK to replace the code below.
   absl::Status s = ImportGraphDef(options, def, &graph_, nullptr);
-  EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
+  EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
   options.validate_colocation_constraints = false;
   TF_EXPECT_OK(ImportGraphDef(options, def, &graph_, nullptr));
 }
@@ -3512,6 +3515,90 @@ TEST_F(GraphConstructorTest,
   EXPECT_EQ(b2_stack_trace->ToString({}),
             "File \"beta.cc\", line 24, in quip\n"
             "File \"delta.cc\", line 34, in jape");
+}
+
+TEST_F(GraphConstructorTest, ConvertGraphDefToGraphUpgradesLegacy) {
+  GraphDef graph_def;
+  std::string graph_def_ascii = R"(
+  node {
+    name: "VariableV2"
+    op: "VariableV2"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@ScalarW"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+  }
+  )";
+  Graph graph(OpRegistry::Global());
+  protobuf::TextFormat::ParseFromString(graph_def_ascii, &graph_def);
+  GraphImportConfig::InputArrays inputs;
+  tensorflow::ArrayInfo array_info;
+  inputs.insert(std::pair<std::string, tensorflow::ArrayInfo>(
+      "conv_net_input", std::move(array_info)));
+  GraphConstructorOptions opts;
+  opts.upgrade_legacy = true;
+
+  TF_ASSERT_OK(ConvertGraphDefToGraph(opts, std::move(graph_def), &graph));
+
+  EXPECT_EQ(graph.op_nodes().begin()->attrs().Find("shared_name")->s(),
+            "VariableV2");
+}
+
+TEST_F(GraphConstructorTest, ConvertGraphDefToGraphAddsDefaultAttributes) {
+  GraphDef graph_def;
+  std::string graph_def_ascii = R"(
+node{ name:'A' op:'TestDefaultAttr'}
+  )";
+  Graph graph(OpRegistry::Global());
+  protobuf::TextFormat::ParseFromString(graph_def_ascii, &graph_def);
+  GraphImportConfig::InputArrays inputs;
+  tensorflow::ArrayInfo array_info;
+  inputs.insert(std::pair<std::string, tensorflow::ArrayInfo>(
+      "conv_net_input", std::move(array_info)));
+  GraphConstructorOptions opts;
+  opts.add_default_attributes = true;
+
+  TF_ASSERT_OK(ConvertGraphDefToGraph(opts, std::move(graph_def), &graph));
+
+  EXPECT_EQ(graph.op_nodes().begin()->attrs().Find("default_int")->i(), 31415);
 }
 
 }  // namespace

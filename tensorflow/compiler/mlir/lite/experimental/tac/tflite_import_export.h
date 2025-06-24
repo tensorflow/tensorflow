@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "llvm/Support/SourceMgr.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/tac_importer_exporter.h"
 

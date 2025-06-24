@@ -1,4 +1,4 @@
-// RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations -split-input-file %s -o - | FileCheck %s
+// RUN: hlo-translate -hlo-to-mlir -emit-mhlo -split-input-file %s | FileCheck %s
 
 // These tests are created from MHLO->HLO of export_async.mlir.
 
@@ -42,7 +42,7 @@ ENTRY %async_all_gather_test (Arg_0.1: f32[128,32]) -> f32[128,128] {
 
 // -----
 
-HloModule main, entry_computation_layout={(f32[10]{0})->f32[10]{0}}
+HloModule main, entry_computation_layout={(f32[10])->f32[10]}
 
 %region_1.2 (Arg_0.3: f32[], Arg_1.4: f32[]) -> f32[] {
   %Arg_0.3 = f32[] parameter(0)

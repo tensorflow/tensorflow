@@ -27,6 +27,7 @@ package_group(
         # copybara:uncomment "//quality/webanswers/servo2/...",
         "//tensorflow/core/tfrt/saved_model/python",  #python wrapping
         "//tensorflow/core/tfrt/saved_model/utils/...",
+        "//smartass/brain/inference/...",
     ],
 )
 
@@ -102,13 +103,13 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":saved_model_util",
+        "//tensorflow/cc/saved_model:fingerprinting",
         "//tensorflow/cc/saved_model:reader",
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
-        "//tensorflow/compiler/mlir/tensorflow:upgrade_graph",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:graph_to_tf_executor",
         "//tensorflow/compiler/mlir/tfrt:import_model",
@@ -241,7 +242,6 @@ cc_library(
         ":saved_model",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/tfrt/runtime",
@@ -255,7 +255,6 @@ cc_library(
     hdrs = ["saved_model_import_input.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow:import_model",
-        "//tensorflow/compiler/mlir/tensorflow:upgrade_graph",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core/tfrt/fallback:fallback_state",

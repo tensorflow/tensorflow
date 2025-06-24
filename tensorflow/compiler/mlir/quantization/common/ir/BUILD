@@ -25,56 +25,66 @@ td_library(
 gentbl_cc_library(
     name = "QuantOpsIncGen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "QuantOps.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "QuantOps.cc.inc",
-        ),
-        (
-            [
-                "-gen-dialect-decls",
-                "-dialect=quantization",
-            ],
-            "QuantOpsDialect.h.inc",
-        ),
-        (
-            [
-                "-gen-dialect-defs",
-                "-dialect=quantization",
-            ],
-            "QuantOpsDialect.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "QuantOps.h.inc": ["-gen-op-decls"],
+        "QuantOps.cc.inc": ["-gen-op-defs"],
+        "QuantOpsDialect.h.inc": [
+            "-gen-dialect-decls",
+            "-dialect=quantization",
+        ],
+        "QuantOpsDialect.cc.inc": [
+            "-gen-dialect-defs",
+            "-dialect=quantization",
+        ],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "QuantOps.td",
     deps = [":QuantizationOpsTdFiles"],
 )
 
+gentbl_cc_library(
+    name = "QuantPassIncGen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = {"Passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=tfquant",
+    ]},
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "Passes.td",
+    deps = ["@llvm-project//mlir:PassBaseTdFiles"],
+)
+
 cc_library(
     name = "QuantOps",
     srcs = [
+        "ConvertConst.cc",
+        "ConvertSimQuant.cc",
         "FakeQuantSupport.cc",
         "QuantOps.cc",
+        "QuantizeUtils.cc",
         "UniformSupport.cc",
     ],
     hdrs = [
         "FakeQuantSupport.h",
+        "Passes.h",
         "QuantOps.h",
+        "QuantizeUtils.h",
         "UniformSupport.h",
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":QuantOpsIncGen",
+        ":QuantPassIncGen",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:BytecodeOpInterface",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )

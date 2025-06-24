@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -26,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/overload.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -34,29 +34,30 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/gpu/runtime/buffer_comparator.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
+#include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/buffer_comparator.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/gpu/variant_visitor.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
@@ -128,9 +129,16 @@ class GemmAutotuner {
     // Don't run autotuning concurrently on the same GPU.
     absl::MutexLock gpu_lock(&GetGpuMutex(stream_->parent()));
 
-    TF_ASSIGN_OR_RETURN(rz_buffers_, RedzoneBuffers::FromInstruction(
-                                         *gemm, autotune_config_, debug_options,
-                                         RedzoneBuffers::kAllInputsAllOutputs));
+    bool should_init_buffers = autotune_config_.should_init_buffers();
+    bool should_check_correctness = autotune_config_.should_check_correctness();
+    int redzone_padding_bytes = debug_options.xla_gpu_redzone_padding_bytes();
+    TF_ASSIGN_OR_RETURN(se::Stream * stream, autotune_config_.GetStream());
+    TF_ASSIGN_OR_RETURN(
+        rz_buffers_,
+        RedzoneBuffers::FromInstruction(
+            *gemm, autotune_config_.GetAllocator(), stream,
+            RedzoneBuffers::kAllInputsAllOutputs, should_init_buffers,
+            should_check_correctness, redzone_padding_bytes));
 
     return IsCublasLtMatmul(*gemm) || IsCublasLtMatmulF8(*gemm)
                ? TuneGpuBlasLt(gemm, gemm_config)
@@ -151,8 +159,8 @@ class GemmAutotuner {
 
   absl::StatusOr<AutotuneResult> TuneGpuBlasLt(const HloInstruction* gemm,
                                                const GemmConfig& gemm_config) {
-    auto workspace_buffer =
-        rz_buffers_.output_buffers().at(gemm->shape().tuple_shapes_size() - 1);
+    auto workspace_buffer = rz_buffers_.output_buffers().at(
+        gemm->shape().tuple_shapes().size() - 1);
 
     GpuBackendConfig gpu_config =
         gemm->backend_config<GpuBackendConfig>().value();
@@ -174,9 +182,24 @@ class GemmAutotuner {
     se::DeviceMemoryBase a_scale_buffer, b_scale_buffer, c_scale_buffer,
         d_scale_buffer, d_amax_buffer, bias_buffer, aux_buffer;
 
+    int64_t input_buffer_idx = 2;  // lhs is at 0, rhs is at 1
     if (has_vector_bias) {
-      bias_buffer = rz_buffers_.input_buffers().at(has_matrix_bias ? 3 : 2);
+      if (has_matrix_bias) {
+        input_buffer_idx++;
+      }
+      bias_buffer = rz_buffers_.input_buffers().at(input_buffer_idx++);
     }
+    // In the current GemmRewriter design for FP8, the a/b scales remain active
+    // even when they are not used. Consequently, we must inform the autotuner
+    // so it can choose algorithms that properly support a/b scales.
+    if (xla::primitive_util::IsF8Type(
+            gemm->operand(0)->shape().element_type()) &&
+        xla::primitive_util::IsF8Type(
+            gemm->operand(1)->shape().element_type())) {
+      a_scale_buffer = rz_buffers_.input_buffers().at(input_buffer_idx++);
+      b_scale_buffer = rz_buffers_.input_buffers().at(input_buffer_idx++);
+    }
+
     if (has_aux_output) {
       aux_buffer = rz_buffers_.output_buffers().at(1);
     }
@@ -186,24 +209,24 @@ class GemmAutotuner {
 
     TF_ASSIGN_OR_RETURN(
         auto algorithms,
-        plan->GetAlgorithms(/*max_algorithm_count*/ 128,
+        plan->GetAlgorithms(stream_, GemmConfig::kNumAlgorithms,
                             /*max_workspace_size*/ workspace_buffer.size()));
 
     auto tuned_func = [&](const BlasLt::MatmulAlgorithm& algorithm)
         -> absl::StatusOr<se::blas::ProfileResult> {
       // Run a warmup iteration without the profiler active.
+      TF_RETURN_IF_ERROR(plan->SetAlgorithm(algorithm));
       TF_RETURN_IF_ERROR(plan->ExecuteOnStream(
           stream_, LhsBuffer(), RhsBuffer(), OutputBuffer(), OutputBuffer(),
           bias_buffer, aux_buffer, a_scale_buffer, b_scale_buffer,
-          c_scale_buffer, d_scale_buffer, d_amax_buffer, algorithm,
-          workspace_buffer));
+          c_scale_buffer, d_scale_buffer, d_amax_buffer, workspace_buffer));
       se::blas::ProfileResult profile_result;
       profile_result.set_warmup_run_executed(true);
       TF_RETURN_IF_ERROR(plan->ExecuteOnStream(
           stream_, LhsBuffer(), RhsBuffer(), OutputBuffer(), OutputBuffer(),
           bias_buffer, aux_buffer, a_scale_buffer, b_scale_buffer,
-          c_scale_buffer, d_scale_buffer, d_amax_buffer, algorithm,
-          workspace_buffer, &profile_result));
+          c_scale_buffer, d_scale_buffer, d_amax_buffer, workspace_buffer,
+          &profile_result));
       return std::move(profile_result);
     };
 
@@ -422,16 +445,16 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
   auto old_algorithm = backend_config.selected_algorithm();
   bool update_algorithm =
       IsCublasLtMatmulF8(*gemm) ||
-      std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
-                                  // We only set the 'algorithm' field on
-                                  // non-Ampere architectures, as for Ampere
-                                  // it's ignored in any case.
-                                  return !cc.IsAtLeast(
-                                      se::CudaComputeCapability::AMPERE);
-                                },
-                                [](const se::RocmComputeCapability&) {
-                                  return true;  // TODO: not decided yet
-                                }},
+      std::visit(absl::Overload(
+                     [](const se::CudaComputeCapability& cc) {
+                       // We only set the 'algorithm' field on
+                       // non-Ampere architectures, as for Ampere
+                       // it's ignored in any case.
+                       return !cc.IsAtLeast(se::CudaComputeCapability::kAmpere);
+                     },
+                     [](const se::RocmComputeCapability&) {
+                       return true;  // TODO: not decided yet
+                     }),
                  config.GetGpuComputeCapability());
 
   if (update_algorithm) {

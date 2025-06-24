@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/backends/interpreter/executor.h"
 
+#include <cstdint>
 #include <cstring>
+#include <ctime>
 #include <memory>
 #include <utility>
 

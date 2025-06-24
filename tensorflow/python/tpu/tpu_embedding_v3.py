@@ -45,10 +45,12 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.tpu import _pywrap_sparse_core_layout
+from tensorflow.python.tpu import embedding_context_utils as ecu
 from tensorflow.python.tpu import tpu_embedding_base
 from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.tpu import tpu_embedding_v3_checkpoint_adapter
@@ -66,6 +68,7 @@ from tensorflow.python.util.tf_export import tf_export
 _PIPELINE_ATTRIBUTE = "_embedding_pipelining"
 _PIPELINE_MODE_FORWARD = "forward"
 _PIPELINE_MODE_BACKWARD = "backward"
+_PIPELINE_MODEL_SEQUENTIAL = "_sequential"
 
 
 TableConfig = tpu_embedding_v2_utils.TableConfig
@@ -95,6 +98,28 @@ class EmbeddingPipeliningContext(control_flow_ops.ControlFlowContext):
     self._name = "EmbeddingPipelinigContext"
     self._mode = attr_value_pb2.AttrValue(s=compat.as_bytes(mode))
     self._enable = enable
+    recording_summaries = summary_ops_v2.is_recording_summaries()
+    if not isinstance(recording_summaries, bool):
+      # We can't handle predicate functions at this point. So, we'll ignore the
+      # special casing of summary recording because, presumably, this is not
+      # a single step loop so pipelining is still valid.
+      recording_summaries = False
+
+    if enable and (
+        recording_summaries or not ecu.embedding_pipelining_state.enabled
+    ):
+      # We'll still flag these ops for the SC forward/backward pass, but we'll
+      # run them sequentially. This has to be handled in the MLIR passes
+      # embedding_pipelining.cc and embedding_sequencing.cc.
+      disable_reason = (
+          "Summary recording"
+          if recording_summaries
+          else "_embedding_pipelining_state.enabled = False"
+      )
+      logging.info("%s detected, disabling pipelining.", disable_reason)
+      self._mode = attr_value_pb2.AttrValue(
+          s=compat.as_bytes(mode + _PIPELINE_MODEL_SEQUENTIAL)
+      )
 
   def to_control_flow_context_def(
       self, context_def: Any, export_scope: Any = None
@@ -743,8 +768,8 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
   @property
   def embedding_tables(
       self,
-  ) -> Dict[tpu_embedding_v2_utils.TableConfig, tf_variables.Variable]:
-    """Returns a dict of embedding tables, keyed by `TableConfig`."""
+  ) -> Dict[str, tf_variables.Variable]:
+    """Returns a dict of embedding tables, keyed by stacked table name."""
     self._maybe_build()
     # Only return the tables and not the slot variables.
     return {
@@ -1628,7 +1653,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       row_offset: int,
       col_offset: int,
       col_shift: int,
-      vocab_size: int,
+      unused_vocab_size: int,
       num_sc_per_chip: int,
       num_sc_shards: int,
       stacked_table_sample_count: int,
@@ -1687,7 +1712,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           )
       )
     elif isinstance(input_feature, ragged_tensor.RaggedTensor):
-      if not weight:
+      if weight is None:
         weight = array_ops.ones_like(input_feature.values, dtype=dtypes.float32)
       elif isinstance(weight, ragged_tensor.RaggedTensor):
         weight = weight.values

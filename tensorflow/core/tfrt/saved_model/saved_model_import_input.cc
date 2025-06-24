@@ -18,7 +18,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/tfrt/graph_executor/config.h"
 #include "tensorflow/core/util/dump_graph.h"

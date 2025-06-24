@@ -13,7 +13,6 @@ py_strict_library(
         "__init__.py",
         "jit.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":xla",
         "//tensorflow/core:protos_all_py",
@@ -53,7 +52,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "xla",
     srcs = ["xla.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/compiler/jit:xla_ops_py",
         "//tensorflow/compiler/jit/ops:xla_ops_grad",
@@ -107,7 +105,6 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "jit_compile_test",
     srcs = ["tests/jit_compile_test.py"],
-    python_version = "PY3",
     tags = [
         "no_mac",
         "no_windows",
@@ -132,7 +129,6 @@ tf_py_strict_test(
     env = {
         "TF_XLA_FLAGS": "--tf_xla_use_device_api --tf_xla_enable_xla_devices --tf_xla_enable_device_api_for_gpu",
     },
-    python_version = "PY3",
     tags = [
         "config-cuda-only",
         "gpu",
@@ -158,7 +154,6 @@ tf_py_strict_test(
     env = {
         "TF_XLA_FLAGS": "--tf_xla_use_device_api --tf_xla_enable_xla_devices --tf_xla_enable_device_api_for_gpu --tf_xla_auto_jit=2 --tf_xla_enable_lazy_compilation=false --tf_xla_min_cluster_size=0",
     },
-    python_version = "PY3",
     tags = [
         "config-cuda-only",
         "gpu",
@@ -185,7 +180,6 @@ tf_py_strict_test(
     env = {
         "TF_XLA_FLAGS": "--tf_xla_use_device_api --tf_xla_enable_xla_devices --tf_xla_enable_device_api_for_gpu",
     },
-    python_version = "PY3",
     tags = [
         "config-cuda-only",
         "gpu",

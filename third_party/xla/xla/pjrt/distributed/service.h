@@ -45,12 +45,20 @@ class CoordinationServiceImpl {
 
     tsl::Env* env = tsl::Env::Default();
 
+    // The duration after which the service concludes a client has vanished if
+    // it hasn't received any heartbeats from the client.
+    absl::Duration heartbeat_timeout = absl::Seconds(100);
+
     // Interval at which the service should check for missed heartbeat RPCs
     // from the clients.
+    //
+    // TODO(mwhittaker): Deprecate this; use heartbeat_timeout instead.
     absl::Duration heartbeat_interval = absl::Seconds(10);
 
     // Number of heartbeats that a client may miss in a row before the
     // coordinator concludes that a client has vanished.
+    //
+    // TODO(mwhittaker): Deprecate this; use heartbeat_timeout instead.
     int max_missing_heartbeats = 10;
 
     // How long should we wait for all clients to call Connect() before
@@ -76,7 +84,7 @@ class CoordinationServiceImpl {
 
  private:
   tsl::Env* env_ = nullptr;  // Not owned.
-  std::unique_ptr<tsl::CoordinationServiceInterface> coord_service_;
+  std::unique_ptr<tsl::CoordinationService> coord_service_;
   std::unique_ptr<tsl::thread::ThreadPool> coord_compute_pool_;
   std::unique_ptr<tsl::AsyncServiceInterface> coord_rpc_service_;
   std::unique_ptr<tsl::Thread> coord_rpc_thread_;

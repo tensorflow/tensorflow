@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef XLA_TSL_FRAMEWORK_TRACKING_ALLOCATOR_H_
 #define XLA_TSL_FRAMEWORK_TRACKING_ALLOCATOR_H_
 
+#include <optional>
 #include <unordered_map>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/lib/gtl/inlined_vector.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
@@ -66,7 +67,7 @@ class TrackingAllocator : public Allocator {
   size_t RequestedSize(const void* ptr) const override;
   size_t AllocatedSize(const void* ptr) const override;
   int64_t AllocationId(const void* ptr) const override;
-  absl::optional<AllocatorStats> GetStats() override;
+  std::optional<AllocatorStats> GetStats() override;
   bool ClearStats() override;
 
   AllocatorMemoryType GetMemoryType() const override {
@@ -99,7 +100,7 @@ class TrackingAllocator : public Allocator {
   bool UnRef() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   Allocator* allocator_;  // not owned.
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
   // the number of calls to AllocateRaw that have not yet been matched
   // by a corresponding call to DeAllocateRaw, plus 1 if the Executor
   // has not yet read out the high watermark.

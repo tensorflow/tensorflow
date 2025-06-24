@@ -16,16 +16,20 @@ limitations under the License.
 #ifndef XLA_PYTHON_PJRT_IFRT_PJRT_CLIENT_H_
 #define XLA_PYTHON_PJRT_IFRT_PJRT_CLIENT_H_
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -38,6 +42,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
@@ -51,11 +56,13 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_compiler.h"
+#include "xla/shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace ifrt {
@@ -97,10 +104,16 @@ class PjRtClient final
   struct CreateOptions {
     std::shared_ptr<xla::PjRtClient> pjrt_client;
 
-    // KV store for sharing topology information. If present, PJRT-IFRT will do
-    // its own topology exchange. If omitted, we will trust whatever topology
-    // information the PJRT client reports.
+    // KV store for coordinating cross-host device transfers and sharing
+    // topology information. If present and `use_kv_store_for_topology_exchange`
+    // is true, PJRT-IFRT will do its own topology exchange. If omitted or
+    // `use_kv_store_for_topology_exchange` is false, we will trust whatever
+    // topology information the PJRT client reports.
     std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr;
+
+    // If true, use the KV store for topology exchange. Ignored if kv_store is
+    // not provided.
+    bool use_kv_store_for_topology_exchange = true;
 
     // Number of distributed processes. Ignored if kv_store is omitted.
     int num_processes = 1;
@@ -110,6 +123,7 @@ class PjRtClient final
 
     absl::Duration get_local_topology_timeout = absl::Minutes(2);
     absl::Duration get_global_topology_timeout = absl::Minutes(5);
+    absl::Duration cross_host_transfer_timeout = absl::Minutes(1);
 
     // Device mapping to construct a global view consisting of both addressable
     // and non-addressable devices.
@@ -166,39 +180,40 @@ class PjRtClient final
   //   function to fail.
   //   (3) only the `kImmutableDuringCall` semantics is supported currently.
   //   Fails for other values of `HostBufferSemantics`.
-  absl::StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
+  absl::StatusOr<ArrayRef> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
-      std::shared_ptr<const Sharding> sharding,
-      Client::HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer) override;
+      ShardingRef sharding, HostBufferSemantics semantics,
+      std::function<void()> on_done_with_host_buffer,
+      tsl::RCReference<UserContext> user_context) override;
 
-  absl::StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
-      Shape shape, std::shared_ptr<const Sharding> sharding,
-      absl::Span<tsl::RCReference<Array>> arrays,
-      ArrayCopySemantics semantics) override;
-  absl::StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
-      Shape shape, std::shared_ptr<const Sharding> sharding,
-      absl::Span<tsl::RCReference<Array>> arrays,
-      ArrayCopySemantics array_copy_semantics,
+  absl::StatusOr<std::vector<ArrayRef>> MakeArraysFromHostBufferShards(
+      absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
+      HostBufferSemantics semantics,
+      tsl::RCReference<UserContext> user_context) override;
+
+  absl::StatusOr<std::vector<ArrayRef>> MakeErrorArrays(
+      const absl::Status& error, absl::Span<const ArraySpec> array_specs,
+      tsl::RCReference<UserContext> user_context) override;
+
+  absl::StatusOr<ArrayRef> AssembleArrayFromSingleDeviceArrays(
+      DType dtype, Shape shape, ShardingRef sharding,
+      absl::Span<ArrayRef> arrays, ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics) override;
 
-  absl::StatusOr<std::vector<tsl::RCReference<Array>>> CopyArrays(
-      absl::Span<tsl::RCReference<Array>> arrays,
-      std::optional<tsl::RCReference<DeviceList>> devices,
+  absl::StatusOr<std::vector<ArrayRef>> CopyArrays(
+      absl::Span<ArrayRef> arrays, std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind,
       ArrayCopySemantics semantics) override;
 
-  absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>> RemapArrays(
-      const RemapPlan& plan,
-      absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> RemapArrays(
+      const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics semantics) override;
 
-  Future<> GetReadyFuture(
-      absl::Span<const tsl::RCReference<Value>> values) override;
+  Future<> GetReadyFuture(absl::Span<const ValueRef> values) override;
 
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
-      absl::Span<tsl::RCReference<Value>> values) override;
+      absl::Span<ValueRef> values) override;
 
   absl::string_view runtime_type() const override { return "pjrt_ifrt"; }
 
@@ -251,13 +266,16 @@ class PjRtClient final
   absl::StatusOr<Device*> LookupAddressableDevice(
       int local_hardware_id) const override;
 
+  DeviceListRef MakeDeviceList(
+      absl::Span<Device* const> devices) const override;
+
   Compiler* GetDefaultCompiler() override {
     DCHECK(this);
     return &default_compiler_;
   }
 
   absl::StatusOr<std::shared_ptr<Topology>> GetTopologyForDevices(
-      const tsl::RCReference<DeviceList>& devices) const override;
+      const DeviceListRef& devices) const override;
 
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetDefaultLayout(
       DType dtype, absl::Span<const int64_t> dims, Device* device,
@@ -289,6 +307,10 @@ class PjRtClient final
   absl::Status TransferFromOutfeed(PjRtDevice* device,
                                    MutableBorrowingLiteral literal);
 
+  tsl::RCReference<UserContext> CreateUserContext() override {
+    return tsl::RCReference<UserContext>();
+  }
+
   static char ID;  // NOLINT
 
  private:
@@ -314,6 +336,34 @@ class PjRtClient final
   absl::flat_hash_map<xla::PjRtDevice*, PjRtDevice*> device_map_;
   absl::flat_hash_map<xla::PjRtMemorySpace*, PjRtMemory*> memory_map_;
   absl::flat_hash_map<DeviceId, PjRtDevice*> device_id_map_;
+
+  // Copies arrays from source to destination devices when at least one of the
+  // (source, destination) pairs is cross-host.
+  absl::StatusOr<std::vector<ArrayRef>> CopyArraysForCrossHost(
+      absl::Span<ArrayRef> arrays, DeviceListRef src_devices,
+      DeviceListRef dst_devices, std::optional<MemoryKind> memory_kind);
+
+  // Extracts receive descriptors from a key-value store and sends buffers to a
+  // remote device.
+  absl::Status CrossHostSendBuffers(PjRtBuffers buffers,
+                                    const std::vector<int64_t>& keys);
+
+  // Populates a key-value store with receive descriptors and places buffers
+  // from a cross-host send onto device.
+  absl::StatusOr<PjRtBuffers> CrossHostReceiveBuffers(
+      absl::Span<const xla::Shape> shapes, xla::PjRtDevice* device,
+      const std::vector<int64_t>& keys);
+
+  // Creates a unique identifier for each cross-host transfer. Every process
+  // must call it, regardless of whether it participates in the cross-host
+  // transfer, so that the returned value must be the same in all processes.
+  int64_t CreateNewTransferKey();
+
+  std::atomic<int64_t> next_transfer_key_ = 0;
+  std::shared_ptr<xla::KeyValueStoreInterface> kv_store_;
+  absl::Duration cross_host_transfer_timeout_;
+
+  friend class PjRtClientPeer;
 };
 
 }  // namespace ifrt

@@ -59,25 +59,6 @@ TEST(HloCastingUtilsTest, CastDiesForNullptr) {
   ASSERT_DEATH(Cast<DummyInstruction>(null), "");
 }
 
-TEST(HloCastingUtilsTest, CastOrNullSucceeds) {
-  DummyInstruction instruction;
-  DummyInstruction* casted =
-      Cast<DummyInstruction>(static_cast<HloInstruction*>(&instruction));
-  ASSERT_EQ(casted, &instruction);
-}
-
-TEST(HloCastingUtilsTest, CastOrNullDiesForWrongType) {
-  AnotherDummyInstruction instruction;
-  ASSERT_DEATH(
-      Cast<DummyInstruction>(static_cast<HloInstruction*>(&instruction)), "");
-}
-
-TEST(HloCastingUtilsTest, CastOrNullReturnsNullptrForNullptr) {
-  HloInstruction* null = nullptr;
-  DummyInstruction* casted = CastOrNull<DummyInstruction>(null);
-  ASSERT_EQ(casted, nullptr);
-}
-
 TEST(HloCastingUtilsTest, DynCastSucceeds) {
   DummyInstruction instruction;
   DummyInstruction* casted =
@@ -95,26 +76,6 @@ TEST(HloCastingUtilsTest, DynCastReturnsNullptrForWrongType) {
 TEST(HloCastingUtilsTest, DynCastDiesForNullptr) {
   HloInstruction* null = nullptr;
   ASSERT_DEATH(DynCast<DummyInstruction>(null), "");
-}
-
-TEST(HloCastingUtilsTest, DynCastOrNullSucceeds) {
-  DummyInstruction instruction;
-  DummyInstruction* casted = DynCastOrNull<DummyInstruction>(
-      static_cast<HloInstruction*>(&instruction));
-  ASSERT_EQ(casted, &instruction);
-}
-
-TEST(HloCastingUtilsTest, DynCastOrNullReturnsNullptrForWrongType) {
-  AnotherDummyInstruction instruction;
-  DummyInstruction* casted = DynCastOrNull<DummyInstruction>(
-      static_cast<HloInstruction*>(&instruction));
-  ASSERT_EQ(casted, nullptr);
-}
-
-TEST(HloCastingUtilsTest, DynCastOrNullReturnsNullptrForNullptr) {
-  HloInstruction* null = nullptr;
-  DummyInstruction* casted = DynCastOrNull<DummyInstruction>(null);
-  ASSERT_EQ(casted, nullptr);
 }
 
 }  // namespace

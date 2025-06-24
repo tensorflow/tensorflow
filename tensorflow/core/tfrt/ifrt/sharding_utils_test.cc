@@ -35,6 +35,11 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_matcher.h"
@@ -42,12 +47,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_tensor_utils.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/ml_dtypes.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -109,7 +109,7 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
                           xla::ifrt::test_util::GetDevices(
                               client.get(), GetParam().device_indices));
 
-  std::vector<tsl::RCReference<xla::ifrt::Array>> split_arrays;
+  std::vector<xla::ifrt::ArrayRef> split_arrays;
   for (int i = 0; i < GetParam().split_tensors.size(); ++i) {
     const auto& split_tensor = GetParam().split_tensors[i];
     auto single_device_sharding = xla::ifrt::SingleDeviceSharding::Create(
@@ -128,7 +128,7 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
 
   auto ifrt_sharding = xla::ifrt::HloSharding::Create(
       device_list, xla::ifrt::MemoryKind(), GetParam().sharding);
-  tsl::RCReference<xla::ifrt::Array> assembled_array;
+  xla::ifrt::ArrayRef assembled_array;
 
   TF_ASSERT_OK_AND_ASSIGN(
       assembled_array,
@@ -395,9 +395,11 @@ TEST_P(TensorToArrayTest, MakeArrayFromTensor) {
                           absl::MakeSpan(GetParam().device_ids),
                           GetParam().sharding, thread_pool));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto disassembled_arrays,
-                          assembled_array->DisassembleIntoSingleDeviceArrays(
-                              xla::ifrt::ArrayCopySemantics::kAlwaysCopy));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto disassembled_arrays,
+      assembled_array->DisassembleIntoSingleDeviceArrays(
+          xla::ifrt::ArrayCopySemantics::kAlwaysCopy,
+          xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
 
   ASSERT_EQ(disassembled_arrays.size(), GetParam().expected_out_tensors.size());
 

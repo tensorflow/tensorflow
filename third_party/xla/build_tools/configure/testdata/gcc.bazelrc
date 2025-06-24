@@ -1,4 +1,6 @@
 build --action_env GCC_HOST_COMPILER_PATH=/usr/bin/gcc
+build --define=xnn_enable_avxvnniint8=false
+build --define=xnn_enable_avx512fp16=false
 build --action_env PYTHON_BIN_PATH=/usr/bin/python3
 build --python_path /usr/bin/python3
 test --test_env LD_LIBRARY_PATH

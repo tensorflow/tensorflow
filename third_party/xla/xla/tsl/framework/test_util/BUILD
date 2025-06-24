@@ -22,7 +22,7 @@ cc_library(
     deps = [
         "//xla/tsl/framework:serving_device_selector",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )

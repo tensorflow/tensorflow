@@ -15,15 +15,19 @@ limitations under the License.
 
 #include "xla/hlo/translate/mhlo_to_hlo/layout_util.h"
 
+#include <cstdint>
+#include <optional>
+#include <vector>
+
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace mlir {
 
@@ -50,8 +54,8 @@ absl::Status RewriteLayoutWithShardedShape(
         sharding->TileOffsetForDevice(*xla_shape, device);
     std::vector<int64_t> limit =
         sharding->TileLimitForDevice(*xla_shape, device);
-    std::vector<int64_t> dimensions(xla_shape->rank());
-    for (int64_t i = 0; i < xla_shape->rank(); ++i) {
+    std::vector<int64_t> dimensions(xla_shape->dimensions().size());
+    for (int64_t i = 0; i < xla_shape->dimensions().size(); ++i) {
       dimensions[i] = limit[i] - offset[i];
     }
     xla::Shape per_device_xla_shape =
@@ -80,7 +84,7 @@ absl::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
     std::optional<xla::OpSharding> sharding, bool fast_mem) {
   if (original_shape.IsTuple()) {
     std::vector<xla::XlaOp> elements;
-    for (int i = 0; i < original_shape.tuple_shapes_size(); ++i) {
+    for (int i = 0; i < original_shape.tuple_shapes().size(); ++i) {
       auto subsharding = sharding ? sharding->tuple_shardings(i) : sharding;
       TF_ASSIGN_OR_RETURN(
           auto element,
@@ -111,7 +115,7 @@ absl::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
         &to_shape));
   }
   if (xla::ShapeUtil::Compatible(original_shape, to_shape)) {
-    for (int64_t i = 0; i < original_shape.rank(); ++i) {
+    for (int64_t i = 0; i < original_shape.dimensions().size(); ++i) {
       to_shape.set_dynamic_dimension(i, original_shape.is_dynamic_dimension(i));
     }
   }

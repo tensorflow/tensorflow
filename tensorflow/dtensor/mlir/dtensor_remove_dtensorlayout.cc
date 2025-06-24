@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <optional>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project

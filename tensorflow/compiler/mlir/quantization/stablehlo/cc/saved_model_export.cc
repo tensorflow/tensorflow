@@ -50,14 +50,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace mlir::quant::stablehlo {
 namespace {
@@ -175,7 +175,7 @@ ExportedModel CreateExportedModelFromGraphDef(
 
 void AddExportPasses(mlir::PassManager& pm,
                      const bool duplicate_shape_determining_constants) {
-  AddCallModuleSerializationPasses(pm);
+  quant::stablehlo::AddCallModuleSerializationPasses(pm);
   if (duplicate_shape_determining_constants) {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::quant::CreateDuplicateShapeDeterminingConstantsPass());

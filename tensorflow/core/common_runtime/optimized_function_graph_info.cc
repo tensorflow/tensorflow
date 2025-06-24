@@ -17,10 +17,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/op.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 

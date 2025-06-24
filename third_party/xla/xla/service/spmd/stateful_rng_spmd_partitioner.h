@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_SPMD_STATEFUL_RNG_SPMD_PARTITIONER_H_
 #define XLA_SERVICE_SPMD_STATEFUL_RNG_SPMD_PARTITIONER_H_
 
+#include <cstdint>
+#include <memory>
+#include <optional>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
@@ -55,6 +58,7 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
       bool windowed_einsum_use_multiple_streams = false,
       bool skip_checking_windowed_einsum_users = false,
       bool disable_ag_rewrite_for_multiple_consumers = false,
+      bool enable_partial_windowed_einsums = false,
       std::optional<int64_t> total_bytes_windowed_einsum_threshold =
           std::nullopt)
       : spmd::SpmdPartitioner(
@@ -63,6 +67,7 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
                                       windowed_einsum_use_multiple_streams,
                                       skip_checking_windowed_einsum_users,
                                       disable_ag_rewrite_for_multiple_consumers,
+                                      enable_partial_windowed_einsums,
                                       total_bytes_windowed_einsum_threshold)) {}
 
  protected:
@@ -77,11 +82,6 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
-  // This adds an unsafe attribute labelling the while loop as a pipelined
-  // while loop. This attribute lets the rest of the passes ignore the
-  // computations in the pipeline bubble.
-  absl::Status HandleRotateRightWhilePreprocessing(
-      HloComputation* computation) override;
   bool CanSideEffectingHaveReplicatedSharding(
       const HloInstruction* hlo) override;
 
@@ -91,6 +91,7 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
       bool windowed_einsum_use_multiple_streams = false,
       bool skip_checking_windowed_einsum_users = false,
       bool disable_ag_rewrite_for_multiple_consumers = false,
+      bool enable_partial_windowed_einsums = false,
       std::optional<int64_t> total_bytes_windowed_einsum_threshold =
           std::nullopt) {
     spmd::SpmdPartitionerOptions options;
@@ -104,6 +105,7 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
         disable_ag_rewrite_for_multiple_consumers;
     options.total_bytes_windowed_einsum_threshold =
         total_bytes_windowed_einsum_threshold;
+    options.partial_windowed_einsum = enable_partial_windowed_einsums;
     return options;
   }
 };

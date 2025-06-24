@@ -50,8 +50,8 @@ limitations under the License.
 #include "xla/service/hlo_proto_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 constexpr char kParameterReplicationAttr[] = "mhlo.parameter_replication";
 
@@ -149,7 +149,8 @@ absl::Status ConvertMlirHloToHloViaBuilder(
 mlir::LogicalResult MlirHloToHloTextTranslateFunction(
     mlir::ModuleOp module, llvm::raw_ostream& output, bool emit_return_tuple,
     bool emit_use_tuple_arg, bool print_layouts, bool print_large_constants,
-    bool print_sugar, bool via_builder, bool with_layouts) {
+    bool print_sugar, bool via_builder, bool with_layouts,
+    bool direct_stablehlo_to_hlo) {
   if (!module) return mlir::failure();
 
   HloProto hloProto;
@@ -157,6 +158,7 @@ mlir::LogicalResult MlirHloToHloTextTranslateFunction(
   options.propagate_layouts = with_layouts;
   options.use_tuple_args = emit_use_tuple_arg;
   options.return_tuple = emit_return_tuple;
+  options.direct_stablehlo_to_hlo = direct_stablehlo_to_hlo;
   absl::StatusOr<std::unique_ptr<HloModule>> statusOrHloModule;
   if (via_builder) {
     auto status = ConvertMlirHloToHloViaBuilder(module, &hloProto, options);

@@ -19,13 +19,19 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/executable_run_options.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/service/global_device_id.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -72,6 +78,21 @@ class GpuCollectives : public Collectives {
   struct Config : public Collectives::Config {
     bool split_share = false;
     int64_t max_nchannels = 0;
+
+    // There are two types of NCCL communicators: blocking and non-blocking.
+    // When a collective operation is called on a blocking communicator, the
+    // communicator blocks until the operation has been scheduled on the GPU. A
+    // non-blocking communicator, on the other hand, returns immediately.
+    //
+    // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/types.html#c.blocking
+    bool blocking_communicators = true;
+
+    // If true, Communicator methods (e.g., AllReduce) return AsyncValueRefs
+    // that are filled in asynchronously. If false, Communicator methods return
+    // AsyncValueRefs that are already filled in.
+    //
+    // If blocking_communicators is false, then async_execution must be true.
+    bool async_execution = false;
   };
 
   // Returns true if GPU collectives are implemented.
@@ -91,18 +112,26 @@ class GpuCollectives : public Collectives {
       stream_executor::DeviceMemoryBase buff, PrimitiveType dtype,
       size_t offset, size_t count);
 
-  // Starts a group call.
-  virtual absl::Status GroupStart() = 0;
+  // TODO(b/410686553): Use smart wrapper instead of void*.
+  virtual absl::StatusOr<void*> Allocate(uint64_t bytes) = 0;
 
-  // Ends a group call.
-  virtual absl::Status GroupEnd() = 0;
+  virtual absl::Status Deallocate(void* buffer) = 0;
 
-  // Tries to cast a Collectives::Device to a GpuCollectives::Device.
-  static absl::StatusOr<Device*> TryCast(Collectives::Device* device);
+  struct Topology {
+    int32_t node_id;
+    int32_t num_nodes;
+    size_t device_count_per_process;
+    std::shared_ptr<KeyValueStoreInterface> kv_store;
+    absl::flat_hash_map<GlobalDeviceId, int32_t> device_id_to_node_id;
+    gpu::GpuExecutableRunOptions* gpu_executable_run_options;
+  };
 
-  // Tries to cast a Collectives::Config to a GpuCollectives::Config.
-  static absl::StatusOr<const Config*> TryCast(
-      const Collectives::Config* config);
+  // Initializes the topology information for the collectives backend.
+  virtual absl::Status InitializeTopology(Topology topology) = 0;
+
+  // Creates a single communicator.
+  virtual absl::StatusOr<std::unique_ptr<Communicator>>
+  CreateCommunicator() = 0;
 };
 
 }  // namespace xla::gpu

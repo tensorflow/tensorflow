@@ -56,7 +56,7 @@ std::optional<int64_t> GetCollapsedStrideNaive(llvm::ArrayRef<int64_t> dims,
   // Find all physical indices for the dimensions.
   llvm::SmallBitVector v(view.GetNumElements());
   for (const auto& indices : f.Indices()) {
-    SmallVector<int64_t> view_indices(view.Rank());
+    SmallVector<int64_t> view_indices(view.num_dimensions());
     for (auto [dim, index] : llvm::zip(dims, indices)) {
       view_indices[dim] = index;
     }
@@ -83,9 +83,9 @@ TEST(TensorOrMemrefTest, CollapsedStride) {
                   .strides = BufferView::GetDefaultStrides({1, 2, 3, 1, 5})};
 
   auto check_all = [&]() {
-    for (int64_t i = 0; i < (1 << view.Rank()); ++i) {
+    for (int64_t i = 0; i < (1 << view.num_dimensions()); ++i) {
       SmallVector<int64_t> dims;
-      for (int64_t dim = 0; dim < view.Rank(); ++dim) {
+      for (int64_t dim = 0; dim < view.num_dimensions(); ++dim) {
         if (i & (1 << dim)) dims.push_back(dim);
       }
 

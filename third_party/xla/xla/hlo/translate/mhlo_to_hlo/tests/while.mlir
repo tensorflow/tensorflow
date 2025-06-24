@@ -6,10 +6,10 @@ module {
     %0 = "mhlo.while"(%arg0) ({
     // CHECK: [[R0:%.+]] ([[A0:.+]]: s64[]) -> s64[] {
     // CHECK:   %[[A0]] = s64[] parameter(0)
-    // CHECK:   ROOT %add.{{.*}} = s64[] add(s64[] %[[A0]], s64[] %[[A0]])
+    // CHECK:   ROOT %add.{{.*}} = s64[] add(%[[A0]], %[[A0]])
     // CHECK: [[R1:%.+]] ([[A0:.+]]: s64[]) -> pred[] {
     // CHECK:   %[[A0]] = s64[] parameter(0)
-    // CHECK:   ROOT %compare.{{.*}} = pred[] compare(s64[] %[[A0]], s64[] %[[A0]]), direction=LT
+    // CHECK:   ROOT %compare.{{.*}} = pred[] compare(%[[A0]], %[[A0]]), direction=LT
     ^bb0(%arg1: tensor<i64>):
       %1 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i64>, tensor<i64>) -> tensor<i1>
       "mhlo.return"(%1) : (tensor<i1>) -> ()
@@ -21,7 +21,7 @@ module {
 
     // CHECK: ENTRY %main.{{.*}} ([[A0:.+]]: s64[]) -> s64[] {
     // CHECK:   %[[A0]] = s64[] parameter(0)
-    // CHECK:   ROOT %while.{{.*}} = s64[] while(s64[] %[[A0]]), condition=[[R1]], body=[[R0]]
+    // CHECK:   ROOT %while.{{.*}} = s64[] while(%[[A0]]), condition=[[R1]], body=[[R0]]
     func.return %0 : tensor<i64>
   }
 }
@@ -32,22 +32,22 @@ module {
 
 // CHECK: [[BODY:%.+]] ([[TUPLE:.+]]: (s32[], s32[], f32[], f32[])) -> (s32[], s32[], f32[], f32[]) {
 // CHECK-NEXT:  %[[TUPLE]] = (s32[], s32[], f32[], f32[]) parameter(0)
-// CHECK-NEXT:  %[[GTE_0:.*]] = s32[] get-tuple-element((s32[], s32[], f32[], f32[]) %[[TUPLE]]), index=0
-// CHECK-NEXT:  %[[GTE_1:.*]] = s32[] get-tuple-element((s32[], s32[], f32[], f32[]) %[[TUPLE]]), index=1
-// CHECK-NEXT:  %[[GTE_2:.*]] = f32[] get-tuple-element((s32[], s32[], f32[], f32[]) %[[TUPLE]]), index=2
-// CHECK-NEXT:  %[[GTE_3:.*]] = f32[] get-tuple-element((s32[], s32[], f32[], f32[]) %[[TUPLE]]), index=3
-// CHECK-NEXT:  %[[ADD:.*]] = f32[] add(f32[] %[[GTE_2]], f32[] %[[GTE_3]])
-// CHECK-NEXT:  ROOT %[[TUPLE_RES:.*]] = (s32[], s32[], f32[], f32[]) tuple(s32[] %[[GTE_0]], s32[] %[[GTE_1]], f32[] %[[GTE_2]], f32[] %[[ADD]])
+// CHECK-NEXT:  %[[GTE_0:.*]] = s32[] get-tuple-element(%[[TUPLE]]), index=0
+// CHECK-NEXT:  %[[GTE_1:.*]] = s32[] get-tuple-element(%[[TUPLE]]), index=1
+// CHECK-NEXT:  %[[GTE_2:.*]] = f32[] get-tuple-element(%[[TUPLE]]), index=2
+// CHECK-NEXT:  %[[GTE_3:.*]] = f32[] get-tuple-element(%[[TUPLE]]), index=3
+// CHECK-NEXT:  %[[ADD:.*]] = f32[] add(%[[GTE_2]], %[[GTE_3]])
+// CHECK-NEXT:  ROOT %[[TUPLE_RES:.*]] = (s32[], s32[], f32[], f32[]) tuple(%[[GTE_0]], %[[GTE_1]], %[[GTE_2]], %[[ADD]])
 // CHECK: }
 
 // CHECK: [[COND:%.+]] ([[TUPLE:.+]]: (s32[], s32[], f32[], f32[])) -> pred[] {
 // CHECK-NEXT:  %[[TUPLE]] = (s32[], s32[], f32[], f32[]) parameter(0)
-// CHECK-NEXT:  %[[GTE_0:.*]] = f32[] get-tuple-element((s32[], s32[], f32[], f32[]) %[[TUPLE]]), index=2
-// CHECK-NEXT:  %[[GTE_1:.*]] = f32[] get-tuple-element((s32[], s32[], f32[], f32[]) %[[TUPLE]]), index=3
+// CHECK-NEXT:  %[[GTE_0:.*]] = f32[] get-tuple-element(%[[TUPLE]]), index=2
+// CHECK-NEXT:  %[[GTE_1:.*]] = f32[] get-tuple-element(%[[TUPLE]]), index=3
 // CHECK-NEXT:  %[[CST_0:.*]] = s32[] constant(0)
-// CHECK-NEXT:  %[[GTE_2:.*]] = s32[] get-tuple-element((s32[], s32[], f32[], f32[]) %[[TUPLE]]), index=0
-// CHECK-NEXT:  %[[GTE_3:.*]] = s32[] get-tuple-element((s32[], s32[], f32[], f32[]) %[[TUPLE]]), index=1
-// CHECK-NEXT:  ROOT %[[CMP:.*]] = pred[] compare(s32[] %[[GTE_2]], s32[] %[[GTE_3]]), direction=LT
+// CHECK-NEXT:  %[[GTE_2:.*]] = s32[] get-tuple-element(%[[TUPLE]]), index=0
+// CHECK-NEXT:  %[[GTE_3:.*]] = s32[] get-tuple-element(%[[TUPLE]]), index=1
+// CHECK-NEXT:  ROOT %[[CMP:.*]] = pred[] compare(%[[GTE_2]], %[[GTE_3]]), direction=LT
 // CHECK: }
 
 
@@ -56,12 +56,12 @@ module {
 // CHECK-NEXT:  %[[CST_1:.*]] = s32[] constant(100)
 // CHECK-NEXT:  %[[CST_2:.*]] = f32[] constant(1)
 // CHECK-NEXT:  %[[ARG_0:.*]] = f32[] parameter(0)
-// CHECK-NEXT:  %[[TUPLE:.*]] = (s32[], s32[], f32[], f32[]) tuple(s32[] %[[CST_0]], s32[] %[[CST_1]], f32[] %[[CST_2]], f32[] %[[ARG_0]])
-// CHECK-NEXT:  %[[WHILE:.*]] = (s32[], s32[], f32[], f32[]) while((s32[], s32[], f32[], f32[]) %[[TUPLE]]), condition=[[COND]], body=[[BODY]]
-// CHECK-NEXT:  %[[GTE_0:.*]] = s32[] get-tuple-element((s32[], s32[], f32[], f32[]) %[[WHILE]]), index=0
-// CHECK-NEXT:  %[[GTE_1:.*]] = s32[] get-tuple-element((s32[], s32[], f32[], f32[]) %[[WHILE]]), index=1
-// CHECK-NEXT:  %[[GTE_2:.*]] = f32[] get-tuple-element((s32[], s32[], f32[], f32[]) %[[WHILE]]), index=2
-// CHECK-NEXT:  ROOT %[[GTE_3:.*]] = f32[] get-tuple-element((s32[], s32[], f32[], f32[]) %[[WHILE]]), index=3
+// CHECK-NEXT:  %[[TUPLE:.*]] = (s32[], s32[], f32[], f32[]) tuple(%[[CST_0]], %[[CST_1]], %[[CST_2]], %[[ARG_0]])
+// CHECK-NEXT:  %[[WHILE:.*]] = (s32[], s32[], f32[], f32[]) while(%[[TUPLE]]), condition=[[COND]], body=[[BODY]]
+// CHECK-NEXT:  %[[GTE_0:.*]] = s32[] get-tuple-element(%[[WHILE]]), index=0
+// CHECK-NEXT:  %[[GTE_1:.*]] = s32[] get-tuple-element(%[[WHILE]]), index=1
+// CHECK-NEXT:  %[[GTE_2:.*]] = f32[] get-tuple-element(%[[WHILE]]), index=2
+// CHECK-NEXT:  ROOT %[[GTE_3:.*]] = f32[] get-tuple-element(%[[WHILE]]), index=3
 
 func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
   %0 = mhlo.constant dense<0> : tensor<i32>
@@ -86,41 +86,41 @@ func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
 
 // CHECK: [[BODY:%.+]] ([[TUPLE_0:.+]]: (s32[1], s32[2], f32[1], f32[3])) -> (s32[1], s32[2], f32[1], f32[3]) {
 // CHECK-NEXT:   %[[TUPLE_0:.*]] = (s32[1], s32[2], f32[1], f32[3]) parameter(0)
-// CHECK-NEXT:   %[[GTE_0:.*]] = s32[1]  get-tuple-element((s32[1], s32[2], f32[1], f32[3]) %[[TUPLE_0]]), index=0
-// CHECK-NEXT:   %[[GTE_1:.*]] = s32[2] get-tuple-element((s32[1], s32[2], f32[1], f32[3]) %[[TUPLE_0]]), index=1
-// CHECK-NEXT:   %[[GTE_2:.*]] = f32[1] get-tuple-element((s32[1], s32[2], f32[1], f32[3]) %[[TUPLE_0]]), index=2
-// CHECK-NEXT:   %[[GTE_3:.*]] = f32[3] get-tuple-element((s32[1], s32[2], f32[1], f32[3]) %[[TUPLE_0]]), index=3
-// CHECK-NEXT:   %[[BDCAST_0:.*]] = f32[1] broadcast(f32[1] %[[GTE_2]]), dimensions={0}
-// CHECK-NEXT:   %[[RESHAPE_0:.*]] = f32[] reshape(f32[1] %[[BDCAST_0]])
-// CHECK-NEXT:   %[[BDCAST_1:.*]] = f32[3] broadcast(f32[] %[[RESHAPE_0]]), dimensions={}
-// CHECK-NEXT:   %[[ADD:.*]] = f32[3] add(f32[3] %[[GTE_3]], f32[3] %[[BDCAST_1]])
-// CHECK-NEXT:   ROOT %[[TUPLE_0:.*]] = (s32[1], s32[2], f32[1], f32[3]) tuple(s32[1] %[[GTE_0]], s32[2] %[[GTE_1]], f32[1] %[[GTE_2]], f32[3] %[[ADD]])
+// CHECK-NEXT:   %[[GTE_0:.*]] = s32[1]  get-tuple-element(%[[TUPLE_0]]), index=0
+// CHECK-NEXT:   %[[GTE_1:.*]] = s32[2] get-tuple-element(%[[TUPLE_0]]), index=1
+// CHECK-NEXT:   %[[GTE_2:.*]] = f32[1] get-tuple-element(%[[TUPLE_0]]), index=2
+// CHECK-NEXT:   %[[GTE_3:.*]] = f32[3] get-tuple-element(%[[TUPLE_0]]), index=3
+// CHECK-NEXT:   %[[BDCAST_0:.*]] = f32[1] broadcast(%[[GTE_2]]), dimensions={0}
+// CHECK-NEXT:   %[[RESHAPE_0:.*]] = f32[] reshape(%[[BDCAST_0]])
+// CHECK-NEXT:   %[[BDCAST_1:.*]] = f32[3] broadcast(%[[RESHAPE_0]]), dimensions={}
+// CHECK-NEXT:   %[[ADD:.*]] = f32[3] add(%[[GTE_3]], %[[BDCAST_1]])
+// CHECK-NEXT:   ROOT %[[TUPLE_0:.*]] = (s32[1], s32[2], f32[1], f32[3]) tuple(%[[GTE_0]], %[[GTE_1]], %[[GTE_2]], %[[ADD]])
 // CHECK: }
 
 // CHECK: [[COND:%.+]] ([[TUPLE_0:.+]]: (s32[1], s32[2], f32[1], f32[3])) -> pred[] {
 // CHECK-NEXT:   %[[TUPLE_0:.*]] = (s32[1], s32[2], f32[1], f32[3]) parameter(0)
-// CHECK-NEXT:   %[[GTE_0:.*]] = f32[1] get-tuple-element((s32[1], s32[2], f32[1], f32[3]) %[[TUPLE_0]]), index=2
-// CHECK-NEXT:   %[[GTE_1:.*]] = f32[3] get-tuple-element((s32[1], s32[2], f32[1], f32[3]) %[[TUPLE_0]]), index=3
-// CHECK-NEXT:   %[[GTE_2:.*]] = s32[1] get-tuple-element((s32[1], s32[2], f32[1], f32[3]) %[[TUPLE_0]]), index=0
+// CHECK-NEXT:   %[[GTE_0:.*]] = f32[1] get-tuple-element(%[[TUPLE_0]]), index=2
+// CHECK-NEXT:   %[[GTE_1:.*]] = f32[3] get-tuple-element(%[[TUPLE_0]]), index=3
+// CHECK-NEXT:   %[[GTE_2:.*]] = s32[1] get-tuple-element(%[[TUPLE_0]]), index=0
 // CHECK-NEXT:   %[[CST_0:.*]] = s32[] constant(0)
-// CHECK-NEXT:   %[[RED_0:.*]] = s32[] reduce(s32[1] %[[GTE_2]], s32[] %[[CST_0]]), dimensions={0}, to_apply=
-// CHECK-NEXT:   %[[GTE_3:.*]] = s32[2] get-tuple-element((s32[1], s32[2], f32[1], f32[3]) %[[TUPLE_0]]), index=1
-// CHECK-NEXT:   %[[RED_1:.*]] = s32[] reduce(s32[2] %[[GTE_3]], s32[] %[[CST_0]]), dimensions={0}, to_apply=
-// CHECK-NEXT:   ROOT %[[CMP:.*]] = pred[] compare(s32[] %[[RED_0]], s32[] %[[RED_1]]), direction=LT
+// CHECK-NEXT:   %[[RED_0:.*]] = s32[] reduce(%[[GTE_2]], %[[CST_0]]), dimensions={0}, to_apply=
+// CHECK-NEXT:   %[[GTE_3:.*]] = s32[2] get-tuple-element(%[[TUPLE_0]]), index=1
+// CHECK-NEXT:   %[[RED_1:.*]] = s32[] reduce(%[[GTE_3]], %[[CST_0]]), dimensions={0}, to_apply=
+// CHECK-NEXT:   ROOT %[[CMP:.*]] = pred[] compare(%[[RED_0]], %[[RED_1]]), direction=LT
 // CHECK: }
 
 // CHECK: ENTRY
 // CHECK-NEXT:  %[[CST_0:.*]] = s32[1] constant({0})
 // CHECK-NEXT:  %[[CST_1:.*]] = s32[] constant(100)
-// CHECK-NEXT:  %[[BDCAST_0:.*]] = s32[2] broadcast(s32[] %[[CST_1]]), dimensions={}
+// CHECK-NEXT:  %[[BDCAST_0:.*]] = s32[2] broadcast(%[[CST_1]]), dimensions={}
 // CHECK-NEXT:  %[[CST_2:.*]] = f32[1] constant({1})
 // CHECK-NEXT:  %[[ARG_0:.*]] = f32[3] parameter(0)
-// CHECK-NEXT:  %[[TUPLE:.*]] = (s32[1], s32[2], f32[1], f32[3]) tuple(s32[1] %[[CST_0]], s32[2] %[[BDCAST_0]], f32[1] %[[CST_2]], f32[3] %[[ARG_0]])
-// CHECK-NEXT:  %[[WHILE:.*]] = (s32[1], s32[2], f32[1], f32[3]) while((s32[1], s32[2], f32[1], f32[3]) %[[TUPLE]]), condition=[[COND]], body=[[BODY]]
-// CHECK-NEXT:  %[[GTE_0:.*]] = s32[1] get-tuple-element((s32[1], s32[2], f32[1], f32[3]) %[[WHILE]]), index=0
-// CHECK-NEXT:  %[[GTE_1:.*]] = s32[2] get-tuple-element((s32[1], s32[2], f32[1], f32[3]) %[[WHILE]]), index=1
-// CHECK-NEXT:  %[[GTE_2:.*]] = f32[1] get-tuple-element((s32[1], s32[2], f32[1], f32[3]) %[[WHILE]]), index=2
-// CHECK-NEXT:  ROOT %[[GTE_3:.*]] = f32[3] get-tuple-element((s32[1], s32[2], f32[1], f32[3]) %[[WHILE]]), index=3
+// CHECK-NEXT:  %[[TUPLE:.*]] = (s32[1], s32[2], f32[1], f32[3]) tuple(%[[CST_0]], %[[BDCAST_0]], %[[CST_2]], %[[ARG_0]])
+// CHECK-NEXT:  %[[WHILE:.*]] = (s32[1], s32[2], f32[1], f32[3]) while(%[[TUPLE]]), condition=[[COND]], body=[[BODY]]
+// CHECK-NEXT:  %[[GTE_0:.*]] = s32[1] get-tuple-element(%[[WHILE]]), index=0
+// CHECK-NEXT:  %[[GTE_1:.*]] = s32[2] get-tuple-element(%[[WHILE]]), index=1
+// CHECK-NEXT:  %[[GTE_2:.*]] = f32[1] get-tuple-element(%[[WHILE]]), index=2
+// CHECK-NEXT:  ROOT %[[GTE_3:.*]] = f32[3] get-tuple-element(%[[WHILE]]), index=3
 
 func.func @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %0 = mhlo.constant dense<0> : tensor<1xi32>
@@ -156,36 +156,36 @@ func.func @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 
 // CHECK: [[BODY:%.+]] ([[TUPLE:.+]]: (s32[], s32[], s32[])) -> (s32[], s32[], s32[]) {
 // CHECK-NEXT: %[[TUPLE:.*]] = (s32[], s32[], s32[]) parameter(0)
-// CHECK-NEXT: %[[GTE_0:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[TUPLE]]), index=0
-// CHECK-NEXT: %[[GTE_1:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[TUPLE]]), index=1
-// CHECK-NEXT: %[[ADD:.*]] = s32[] add(s32[] %[[GTE_0]], s32[] %[[GTE_1]])
-// CHECK-NEXT: %[[GTE_2:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[TUPLE]]), index=2
-// CHECK-NEXT: ROOT %[[TUPLE_RES:.*]] = (s32[], s32[], s32[]) tuple(s32[] %[[ADD]], s32[] %[[GTE_1]], s32[] %[[GTE_2]])
+// CHECK-NEXT: %[[GTE_0:.*]] = s32[] get-tuple-element(%[[TUPLE]]), index=0
+// CHECK-NEXT: %[[GTE_1:.*]] = s32[] get-tuple-element(%[[TUPLE]]), index=1
+// CHECK-NEXT: %[[ADD:.*]] = s32[] add(%[[GTE_0]], %[[GTE_1]])
+// CHECK-NEXT: %[[GTE_2:.*]] = s32[] get-tuple-element(%[[TUPLE]]), index=2
+// CHECK-NEXT: ROOT %[[TUPLE_RES:.*]] = (s32[], s32[], s32[]) tuple(%[[ADD]], %[[GTE_1]], %[[GTE_2]])
 // CHECK: }
 
 // CHECK: [[COND:%.+]] ([[TUPLE:.+]]: (s32[], s32[], s32[])) -> pred[] {
 // CHECK-NEXT:  %[[TUPLE:.*]] = (s32[], s32[], s32[]) parameter(0)
-// CHECK-NEXT:  %[[GTE_0:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[TUPLE]]), index=1
-// CHECK-NEXT:  %[[GTE_1:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[TUPLE]]), index=0
-// CHECK-NEXT:  %[[GTE_2:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[TUPLE]]), index=2
-// CHECK-NEXT:  ROOT %[[CMP:.*]] = pred[] compare(s32[] %[[GTE_1]], s32[] %[[GTE_2]]), direction=LT
+// CHECK-NEXT:  %[[GTE_0:.*]] = s32[] get-tuple-element(%[[TUPLE]]), index=1
+// CHECK-NEXT:  %[[GTE_1:.*]] = s32[] get-tuple-element(%[[TUPLE]]), index=0
+// CHECK-NEXT:  %[[GTE_2:.*]] = s32[] get-tuple-element(%[[TUPLE]]), index=2
+// CHECK-NEXT:  ROOT %[[CMP:.*]] = pred[] compare(%[[GTE_1]], %[[GTE_2]]), direction=LT
 // CHECK: }
 
 // CHECK: ENTRY
 // CHECK-NEXT:  %[[ARG_0:.*]] = (s32[], (s32[], (s32[]))) parameter(0)
-// CHECK-NEXT:  %[[GTE_0:.*]] = s32[] get-tuple-element((s32[], (s32[], (s32[]))) %[[ARG_0]]), index=0
-// CHECK-NEXT:  %[[GTE_1:.*]] = (s32[], (s32[])) get-tuple-element((s32[], (s32[], (s32[]))) %[[ARG_0]]), index=1
-// CHECK-NEXT:  %[[GTE_2:.*]] = s32[] get-tuple-element((s32[], (s32[])) %[[GTE_1]]), index=0
-// CHECK-NEXT:  %[[GTE_3:.*]] = (s32[]) get-tuple-element((s32[], (s32[])) %[[GTE_1]]), index=1
-// CHECK-NEXT:  %[[GTE_4:.*]] = s32[] get-tuple-element((s32[]) %[[GTE_3]]), index=0
-// CHECK-NEXT:  %[[TUPLE_0:.*]] = (s32[], s32[], s32[]) tuple(s32[] %[[GTE_0]], s32[] %[[GTE_2]], s32[] %[[GTE_4]])
-// CHECK-NEXT:  %[[WHILE:.*]] = (s32[], s32[], s32[]) while((s32[], s32[], s32[]) %[[TUPLE_0]]), condition=[[COND]], body=[[BODY]]
-// CHECK-NEXT:  %[[GTE_5:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[WHILE]]), index=0
-// CHECK-NEXT:  %[[GTE_6:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[WHILE]]), index=1
-// CHECK-NEXT:  %[[GTE_7:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[WHILE]]), index=2
-// CHECK-NEXT:  %[[TUPLE_1:.*]] = (s32[]) tuple(s32[] %[[GTE_7]])
-// CHECK-NEXT:  %[[TUPLE_2:.*]] = (s32[], (s32[])) tuple(s32[] %[[GTE_6]], (s32[]) %[[TUPLE_1]])
-// CHECK-NEXT:  ROOT %[[TUPLE_3:.*]] = (s32[], (s32[], (s32[]))) tuple(s32[] %[[GTE_5]], (s32[], (s32[])) %[[TUPLE_2]])
+// CHECK-NEXT:  %[[GTE_0:.*]] = s32[] get-tuple-element(%[[ARG_0]]), index=0
+// CHECK-NEXT:  %[[GTE_1:.*]] = (s32[], (s32[])) get-tuple-element(%[[ARG_0]]), index=1
+// CHECK-NEXT:  %[[GTE_2:.*]] = s32[] get-tuple-element(%[[GTE_1]]), index=0
+// CHECK-NEXT:  %[[GTE_3:.*]] = (s32[]) get-tuple-element(%[[GTE_1]]), index=1
+// CHECK-NEXT:  %[[GTE_4:.*]] = s32[] get-tuple-element(%[[GTE_3]]), index=0
+// CHECK-NEXT:  %[[TUPLE_0:.*]] = (s32[], s32[], s32[]) tuple(%[[GTE_0]], %[[GTE_2]], %[[GTE_4]])
+// CHECK-NEXT:  %[[WHILE:.*]] = (s32[], s32[], s32[]) while(%[[TUPLE_0]]), condition=[[COND]], body=[[BODY]]
+// CHECK-NEXT:  %[[GTE_5:.*]] = s32[] get-tuple-element(%[[WHILE]]), index=0
+// CHECK-NEXT:  %[[GTE_6:.*]] = s32[] get-tuple-element(%[[WHILE]]), index=1
+// CHECK-NEXT:  %[[GTE_7:.*]] = s32[] get-tuple-element(%[[WHILE]]), index=2
+// CHECK-NEXT:  %[[TUPLE_1:.*]] = (s32[]) tuple(%[[GTE_7]])
+// CHECK-NEXT:  %[[TUPLE_2:.*]] = (s32[], (s32[])) tuple(%[[GTE_6]], %[[TUPLE_1]])
+// CHECK-NEXT:  ROOT %[[TUPLE_3:.*]] = (s32[], (s32[], (s32[]))) tuple(%[[GTE_5]], %[[TUPLE_2]])
 
  func.func  @main(%arg0: tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>) -> tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>> {
     %0 = "mhlo.get_tuple_element"(%arg0) {index = 0 : i32} : (tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>) -> tensor<i32>
@@ -216,29 +216,29 @@ func.func @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 // CHECK-NEXT:  pred[] constant(false)
 // CHECK-NEXT:  %[[ARG_0:.*]] = f32[3,3] parameter(0)
 // CHECK-NEXT:  %[[CST_1:.*]] = f32[] constant(2)
-// CHECK-NEXT:  %[[BDCAST:.*]] = f32[3,3] broadcast(f32[] %[[CST_1]]), dimensions={}
-// CHECK-NEXT:  ROOT %[[ADD:.*]] = f32[3,3] add(f32[3,3] %[[ARG_0]], f32[3,3] %[[BDCAST]])
+// CHECK-NEXT:  %[[BDCAST:.*]] = f32[3,3] broadcast(%[[CST_1]]), dimensions={}
+// CHECK-NEXT:  ROOT %[[ADD:.*]] = f32[3,3] add(%[[ARG_0]], %[[BDCAST]])
 // CHECK: }
 
 // CHECK: [[REDUCER:%.+]] ([[ARG_0:.+]]: f32[], [[ARG_1:.+]]: f32[]) -> f32[] {
 // CHECK-NEXT:   constant(false)
 // CHECK-NEXT:   %[[ARG_0:.*]] = f32[] parameter(0)
 // CHECK-NEXT:   %[[ARG_1:.*]] = f32[] parameter(1)
-// CHECK-NEXT:   ROOT %[[ADD:.*]] = f32[] add(f32[] %[[ARG_0]], f32[] %[[ARG_1]])
+// CHECK-NEXT:   ROOT %[[ADD:.*]] = f32[] add(%[[ARG_0]], %[[ARG_1]])
 // CHECK: }
 
 // CHECK: [[COND:%.+]] ([[ARG_0:.+]]: f32[3,3]) -> pred[] {
 // CHECK-NEXT:   pred[] constant(false)
 // CHECK-NEXT:   %[[ARG_0:.*]] = f32[3,3] parameter(0)
 // CHECK-NEXT:   %[[CST_0:.*]] = f32[] constant(0)
-// CHECK-NEXT:   %[[REDUCE:.*]] = f32[] reduce(f32[3,3] %[[ARG_0]], f32[] %[[CST_0]]), dimensions={0,1}, to_apply=[[REDUCER]]
+// CHECK-NEXT:   %[[REDUCE:.*]] = f32[] reduce(%[[ARG_0]], %[[CST_0]]), dimensions={0,1}, to_apply=[[REDUCER]]
 // CHECK-NEXT:   %[[CST_1:.*]] = f32[] constant(100)
-// CHECK-NEXT:   ROOT %[[CMP:.*]] = pred[] compare(f32[] %[[REDUCE]], f32[] %[[CST_1]]), direction=LT
+// CHECK-NEXT:   ROOT %[[CMP:.*]] = pred[] compare(%[[REDUCE]], %[[CST_1]]), direction=LT
 
 // CHECK: ENTRY
 // CHECK-NEXT:  %[[CST_0:.*]] = pred[] constant(false)
 // CHECK-NEXT:  %[[ARG_0:.*]] = f32[3,3] parameter(0)
-// CHECK-NEXT:  ROOT %[[WHILE:.*]] = f32[3,3] while(f32[3,3] %[[ARG_0]]), condition=[[COND]], body=[[BODY]]
+// CHECK-NEXT:  ROOT %[[WHILE:.*]] = f32[3,3] while(%[[ARG_0]]), condition=[[COND]], body=[[BODY]]
 
 func.func @main(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
   %0 = mhlo.constant dense<false> : tensor<i1>
@@ -272,29 +272,29 @@ func.func @main(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
 
 // CHECK: [[BODY:%.+]] ([[ARG_TUPLE:.+]]: (s32[], s32[])) -> (s32[], s32[]) {
 // CHECK-NEXT:  %[[ARG_TUPLE:.*]] = (s32[], s32[]) parameter(0)
-// CHECK-NEXT:  %[[GTE_0:.*]] = s32[] get-tuple-element((s32[], s32[]) %[[ARG_TUPLE]]), index=0
-// CHECK-NEXT:  %[[GTE_1:.*]] = s32[] get-tuple-element((s32[], s32[]) %[[ARG_TUPLE]]), index=1
-// CHECK-NEXT:  %[[TUPLE_0:.*]] = (s32[], s32[]) tuple(s32[] %[[GTE_0]], s32[] %[[GTE_1]])
-// CHECK-NEXT:  %[[CC:.*]] = (s32[], s32[]) custom-call(s32[] %[[GTE_0]], (s32[], s32[]) %[[TUPLE_0]])
-// CHECK-NEXT:  %[[GTE_2:.*]] = s32[] get-tuple-element((s32[], s32[]) %[[CC]]), index=0
-// CHECK-NEXT:  %[[GTE_3:.*]] = s32[] get-tuple-element((s32[], s32[]) %[[CC]]), index=1
-// CHECK-NEXT:  ROOT %[[TUPLE_1:.*]] = (s32[], s32[]) tuple(s32[] %[[GTE_2]], s32[] %[[GTE_3]])
+// CHECK-NEXT:  %[[GTE_0:.*]] = s32[] get-tuple-element(%[[ARG_TUPLE]]), index=0
+// CHECK-NEXT:  %[[GTE_1:.*]] = s32[] get-tuple-element(%[[ARG_TUPLE]]), index=1
+// CHECK-NEXT:  %[[TUPLE_0:.*]] = (s32[], s32[]) tuple(%[[GTE_0]], %[[GTE_1]])
+// CHECK-NEXT:  %[[CC:.*]] = (s32[], s32[]) custom-call(%[[GTE_0]], %[[TUPLE_0]])
+// CHECK-NEXT:  %[[GTE_2:.*]] = s32[] get-tuple-element(%[[CC]]), index=0
+// CHECK-NEXT:  %[[GTE_3:.*]] = s32[] get-tuple-element(%[[CC]]), index=1
+// CHECK-NEXT:  ROOT %[[TUPLE_1:.*]] = (s32[], s32[]) tuple(%[[GTE_2]], %[[GTE_3]])
 // CHECK: }
 
 // CHECK: [[COND:%.+]] ([[ARG_TUPLE:.+]]: (s32[], s32[])) -> pred[] {
 // CHECK-NEXT:  %[[ARG_TUPLE:.*]] = (s32[], s32[]) parameter(0)
-// CHECK-NEXT:  %[[GTE_0:.*]] = s32[] get-tuple-element((s32[], s32[]) %[[ARG_TUPLE]]), index=0
-// CHECK-NEXT:  %[[GTE_1:.*]] = s32[] get-tuple-element((s32[], s32[]) %[[ARG_TUPLE]]), index=1
-// CHECK-NEXT:  ROOT %compare.{{.*}} = pred[] compare(s32[] %[[GTE_0]], s32[] %[[GTE_1]]), direction=LT
+// CHECK-NEXT:  %[[GTE_0:.*]] = s32[] get-tuple-element(%[[ARG_TUPLE]]), index=0
+// CHECK-NEXT:  %[[GTE_1:.*]] = s32[] get-tuple-element(%[[ARG_TUPLE]]), index=1
+// CHECK-NEXT:  ROOT %compare.{{.*}} = pred[] compare(%[[GTE_0]], %[[GTE_1]]), direction=LT
 // CHECK: }
 
 // CHECK: ENTRY
 // CHECK-NEXT:  %[[CST_0:.*]] = s32[] constant(0)
 // CHECK-NEXT:  %[[ARG_0:.*]] = s32[] parameter(0)
-// CHECK-NEXT:  %[[TUPLE:.*]] = (s32[], s32[]) tuple(s32[] %[[CST_0]], s32[] %[[ARG_0]])
-// CHECK-NEXT:  %[[WHILE:.*]] = (s32[], s32[]) while((s32[], s32[]) %[[TUPLE]]), condition=[[COND]], body=[[BODY]]
-// CHECK-NEXT:  ROOT %[[GTE_0:.*]] = s32[] get-tuple-element((s32[], s32[]) %[[WHILE]]), index=0
-// CHECK-NEXT:  %[[GTE_1:.*]] = s32[] get-tuple-element((s32[], s32[]) %[[WHILE]]), index=1
+// CHECK-NEXT:  %[[TUPLE:.*]] = (s32[], s32[]) tuple(%[[CST_0]], %[[ARG_0]])
+// CHECK-NEXT:  %[[WHILE:.*]] = (s32[], s32[]) while(%[[TUPLE]]), condition=[[COND]], body=[[BODY]]
+// CHECK-NEXT:  ROOT %[[GTE_0:.*]] = s32[] get-tuple-element(%[[WHILE]]), index=0
+// CHECK-NEXT:  %[[GTE_1:.*]] = s32[] get-tuple-element(%[[WHILE]]), index=1
 
 func.func @main(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = mhlo.constant dense<0> : tensor<i32>

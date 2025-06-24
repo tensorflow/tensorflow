@@ -115,11 +115,13 @@ class ClusterEnvironment {
     int64_t n_dim = NumTileDimensions(spec);
     std::vector<int64_t> tensor_dim_to_mesh_dim;
     if (crash_at_error) {
-      tensor_dim_to_mesh_dim = GetTensorDimToMeshDim(
-          shape.rank(), spec, device_mesh_, consider_reverse_device_meshes);
+      tensor_dim_to_mesh_dim =
+          GetTensorDimToMeshDim(shape.dimensions().size(), spec, device_mesh_,
+                                consider_reverse_device_meshes);
     } else {
       auto tensor_dim_to_mesh_dim_status = GetTensorDimToMeshDimNoCrash(
-          shape.rank(), spec, device_mesh_, consider_reverse_device_meshes);
+          shape.dimensions().size(), spec, device_mesh_,
+          consider_reverse_device_meshes);
       if (tensor_dim_to_mesh_dim_status.ok()) {
         tensor_dim_to_mesh_dim = tensor_dim_to_mesh_dim_status.value();
       }

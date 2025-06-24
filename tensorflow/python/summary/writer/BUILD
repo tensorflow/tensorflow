@@ -10,7 +10,6 @@ py_strict_library(
     name = "fake_summary_writer",
     testonly = 1,
     srcs = ["fake_summary_writer.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":writer",
@@ -81,7 +80,6 @@ tf_py_strict_test(
     srcs = [
         "writer_test.py",
     ],
-    python_version = "PY3",
     deps = [
         ":writer",
         ":writer_cache",

@@ -13,14 +13,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/tools/command_line_flags.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <functional>
-#include <iomanip>
 #include <numeric>
 #include <sstream>
 #include <string>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 #include "absl/log/log.h"

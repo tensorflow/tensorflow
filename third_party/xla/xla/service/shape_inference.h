@@ -188,12 +188,12 @@ class ShapeInference {
 
   // Infers the shape of a collective permute operation.
   static absl::StatusOr<Shape> InferCollectivePermuteShape(
-      absl::Span<const Shape* const> operand_shapes);
+      absl::Span<const Shape* const> operand_shapes, bool inplace);
 
   // Infers the shape of a collective permute start operation.
   static absl::StatusOr<Shape> InferCollectivePermuteStartShape(
       absl::Span<const Shape* const> operand_shapes,
-      absl::Span<const Shape> context_shapes);
+      absl::Span<const Shape> context_shapes, bool inplace);
 
   // Infers the shape of a collective permute operation.
   static absl::StatusOr<Shape> InferCollectivePermuteDoneShape(
@@ -295,7 +295,7 @@ class ShapeInference {
   // its operand and the new dimension sizes specified.
   static absl::StatusOr<Shape> InferReshapeShape(
       const Shape& operand, absl::Span<const int64_t> dimensions,
-      absl::Span<const int64_t> new_sizes, int64_t inferred_dimension);
+      int64_t inferred_dimension);
 
   // Infers the shape produced by a dynamic reshape operation from the element
   // type of its operand and the new dimension sizes specified. The result shape

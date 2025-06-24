@@ -45,6 +45,8 @@ tf_cc_test(
         "//tensorflow/c:c_api",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@tf_runtime//:hostcontext_alwayslink",
     ],
@@ -54,6 +56,16 @@ tf_cc_shared_object(
     name = "test_next_pluggable_device_plugin.so",
     srcs = ["test_next_pluggable_device_plugin.cc"],
     visibility = ["//tensorflow/c:__subpackages__"],
+    deps = [
+        ":plugin_c_api_hdrs",
+        "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
+    name = "test_next_pluggable_device_plugin",
+    srcs = ["test_next_pluggable_device_plugin.cc"],
+    visibility = ["//tensorflow/core:__subpackages__"],
     deps = [
         ":plugin_c_api_hdrs",
         "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
@@ -170,6 +182,7 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status",
         "@local_xla//xla/tsl/lib/core:status_test_util",

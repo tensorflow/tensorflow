@@ -123,8 +123,10 @@ class StridedSliceOp : public XlaOpKernel {
       dims->set_edge_padding_low(0);
 
       dims->set_interior_padding(0);
-      if ((begins_are_dynamic[sparse_index] ||
-           ends_are_dynamic[sparse_index]) &&
+      if (((begins_are_dynamic.size() > sparse_index &&
+            begins_are_dynamic[sparse_index]) ||
+           (ends_are_dynamic.size() > sparse_index &&
+            ends_are_dynamic[sparse_index])) &&
           !shrink_axis_set) {
         // Need to slice this dimension so pad first.
         dims->set_edge_padding_high(input_shape.dim_size(i));
@@ -468,7 +470,7 @@ class StridedSliceGradOp : public XlaOpKernel {
         need_padding = true;
       }
     }
-    for (int64_t i = 0; i < grad_shape.rank(); ++i) {
+    for (int64_t i = 0; i < grad_shape.dimensions().size(); ++i) {
       // Use grad shape, which is known, to update unknown processing shape.
       // Grad shape is the output of the ValidateStridedSliceOp function in
       // forward pass, thus we use output_to_processing_mapping.
@@ -611,7 +613,7 @@ class StridedSliceGradOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->ResolveInputDynamismIntoPredVector(0, &dynamic_input));
     // Input of strided_slice_op has to have the same shape as output.
-    DCHECK_EQ(grad_shape.rank(), input_shape.dims());
+    DCHECK_EQ(grad_shape.dimensions().size(), input_shape.dims());
     for (int64_t dim = 0; dim < input_shape.dims(); ++dim) {
       DCHECK_EQ(grad_shape.dimensions(dim), input_shape.dim_size(dim));
       if (dynamic_input[dim]) {

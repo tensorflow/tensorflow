@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "tensorflow/cc/framework/cc_op_gen_util.h"
 #include "tensorflow/cc/framework/fuzzing/cc_op_fuzz_gen.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace cc_op {

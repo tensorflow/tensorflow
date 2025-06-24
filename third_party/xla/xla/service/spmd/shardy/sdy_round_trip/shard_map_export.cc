@@ -87,30 +87,39 @@ class SdyRoundTripShardMapExportPass
       mlir::StringAttr funcName = symbolTable.insert(funcOp);
 
       rewriter.setInsertionPoint(manualComputation);
-      stablehlo::CustomCallOp fullToShard;
+      stablehlo::CustomCallOp globalToLocalShape;
       mlir::ValueRange operands = manualComputation->getOperands();
       if (!operands.empty()) {
-        fullToShard = rewriter.create<stablehlo::CustomCallOp>(
+        globalToLocalShape = rewriter.create<stablehlo::CustomCallOp>(
             loc, manualCompBodyArgTypes, operands);
-        fullToShard.setCallTargetName(kGlobalToLocalShapeCallTargetName);
-        operands = fullToShard->getResults();
+        globalToLocalShape.setCallTargetName(kGlobalToLocalShapeCallTargetName);
+        // We mark `xla.sdy.GlobalToLocalShape` as side-effecting to avoid
+        // CSE deduping it with another taking the same operands, as it would
+        // ignore the frontend attributes that could be different.
+        globalToLocalShape.setHasSideEffect(true);
+        setFrontendAttribute(globalToLocalShape, kInShardings,
+                             manualComputation.getInShardings());
+        setFrontendAttribute(globalToLocalShape, kManualAxes,
+                             manualComputation.getManualAxesAttr());
+        operands = globalToLocalShape->getResults();
       }
 
       auto callOp =
           rewriter.create<CallOp>(loc, localResultTypes, funcName, operands);
-      setFrontendAttribute(callOp, kInShardings,
-                           manualComputation.getInShardings());
-      setFrontendAttribute(callOp, kOutShardings,
-                           manualComputation.getOutShardings());
-      setFrontendAttribute(callOp, kManualAxes,
-                           manualComputation.getManualAxesAttr());
 
       mlir::ResultRange results = manualComputation->getResults();
       if (!results.empty()) {
-        auto shardToFull = rewriter.create<stablehlo::CustomCallOp>(
+        auto localToGlobalShape = rewriter.create<stablehlo::CustomCallOp>(
             loc, manualComputation.getResultTypes(), callOp->getResults());
-        shardToFull.setCallTargetName(kLocalToGlobalShapeCallTargetName);
-        results = shardToFull->getResults();
+        // We don't mark `xla.sdy.LocalToGlobalShape` as side-effecting, so if
+        // any of its results has a dimension of size 0 (i.e. 0 num-elements),
+        // it will be replaced with a constant of the same shape.
+        localToGlobalShape.setCallTargetName(kLocalToGlobalShapeCallTargetName);
+        setFrontendAttribute(localToGlobalShape, kOutShardings,
+                             manualComputation.getOutShardings());
+        setFrontendAttribute(localToGlobalShape, kManualAxes,
+                             manualComputation.getManualAxesAttr());
+        results = localToGlobalShape->getResults();
       }
       sdy::inlineRegionAndConvertTerminatorOp<mlir::func::ReturnOp>(
           manualCompBody, funcOp.getBody());

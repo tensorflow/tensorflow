@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"
@@ -33,7 +34,7 @@ namespace xla {
 namespace gpu {
 
 // Generic loop fusion. Lowers to LLVM via MLIR.
-class LoopFusion : public EmitterBase {
+class LoopFusion final : public EmitterBase {
  public:
   explicit LoopFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis), config_(ComputeLoopFusionConfig(analysis)) {}
@@ -46,7 +47,12 @@ class LoopFusion : public EmitterBase {
       int64_t root_index, int64_t hero_operand_index,
       mlir::MLIRContext* ctx) const override;
 
- protected:
+ private:
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(
+      mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+      const std::string& entry_function_name,
+      const BufferAssignment* buffer_assignment) const override;
+
   absl::Status EmitEntryFunction(
       const emitters::PartitionedComputations& computations,
       const emitters::CallTargetProvider& call_targets,

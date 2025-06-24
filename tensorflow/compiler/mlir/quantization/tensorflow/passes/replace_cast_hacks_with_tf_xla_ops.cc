@@ -16,29 +16,39 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/tf_to_xla_attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "xla/xla_data.pb.h"
@@ -628,8 +638,7 @@ Value CreateXlaConvOp(OpBuilder &builder, Location loc, Value input,
                       Value filter, Value input_zp, Value conv_output,
                       ArrayAttr strides, ArrayAttr dilations,
                       StringAttr conv_padding, ArrayAttr explicit_paddings,
-                      int feature_group_cnt, bool four_bit = false,
-                      int num_dims = 4) {
+                      int feature_group_cnt, int num_dims = 4) {
   int32_t input_zp_value;
   if (!GetSplatValue(input_zp, input_zp_value)) {
     emitError(loc,
@@ -675,14 +684,6 @@ Value CreateXlaConvOp(OpBuilder &builder, Location loc, Value input,
       conv_padding, explicit_paddings, padding, num_dims);
 
   std::string precision_config_str;
-  if (four_bit) {
-    input = PackOperand(builder, loc, input, /*pack_dim=*/num_dims - 1);
-    filter = PackOperand(builder, loc, filter, /*pack_dim=*/num_dims - 2);
-    xla::PrecisionConfig precision_config;
-    precision_config.add_operand_precision(xla::PrecisionConfig::PACKED_NIBBLE);
-    precision_config.add_operand_precision(xla::PrecisionConfig::PACKED_NIBBLE);
-    precision_config_str = precision_config.SerializeAsString();
-  }
   Value xla_conv_output =
       builder
           .create<TF::XlaConvV2Op>(
@@ -774,14 +775,13 @@ Value CreateXlaConvOpFromTfConv3dOp(OpBuilder &builder, Location loc,
   return CreateXlaConvOp(builder, loc, input, filter, input_zp, conv_output,
                          strides, dilations, conv_padding,
                          /*explicit_paddings=*/nullptr, feature_group_cnt,
-                         /*four_bit=*/false, /*num_dims=*/5);
+                         /*num_dims=*/5);
 }
 
 // Helper function to create an XlaDotV2Op.
 Value CreateXlaDotV2Op(OpBuilder &builder, Location loc, Value input,
                        Value weight, Value input_zp, Value weight_zp,
-                       Value output, const xla::DotDimensionNumbers &dnums,
-                       bool four_bit = false) {
+                       Value output, const xla::DotDimensionNumbers &dnums) {
   int32_t input_zp_value = 0;
   int32_t weight_zp_value = 0;
   if (input_zp != nullptr && !GetSplatValue(input_zp, input_zp_value)) {
@@ -797,14 +797,6 @@ Value CreateXlaDotV2Op(OpBuilder &builder, Location loc, Value input,
   }
 
   std::string precision_config_str;
-  if (four_bit) {
-    input = PackOperand(builder, loc, input, /*pack_dim=*/1);
-    weight = PackOperand(builder, loc, weight, /*pack_dim=*/0);
-    xla::PrecisionConfig precision_config;
-    precision_config.add_operand_precision(xla::PrecisionConfig::PACKED_NIBBLE);
-    precision_config.add_operand_precision(xla::PrecisionConfig::PACKED_NIBBLE);
-    precision_config_str = precision_config.SerializeAsString();
-  }
 
   Value dot_result =
       builder
@@ -1165,7 +1157,7 @@ void ReplaceCastHacksWithTFXLAOpsPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
   RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     func.emitError() << "quant-replace-cast-hacks-with-tf-xla-ops failed.";
     signalPassFailure();
   }

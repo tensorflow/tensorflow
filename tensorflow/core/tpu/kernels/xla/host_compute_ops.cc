@@ -32,6 +32,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
@@ -55,8 +57,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 
@@ -75,7 +75,7 @@ absl::Status MakeXlaShapes(absl::Span<const TensorShape> shapes,
     xla::Shape single_xla_shape;
     TF_RETURN_IF_ERROR(
         TensorShapeToXLAShape(dtypes[i], shapes[i], &single_xla_shape));
-    VLOG(2) << "Shape " << single_xla_shape.DebugString();
+    VLOG(2) << "Shape " << single_xla_shape.ToString();
     xla_shapes->push_back(single_xla_shape);
   }
   // Temporarily add a dummy output to the shape array before making the tuple:
@@ -130,7 +130,7 @@ class HostComputeOp : public XlaOpKernel {
       OP_REQUIRES_OK(ctx, MakeXlaShapes(static_output_shapes_, output_dtypes_,
                                         &static_xla_output_shapes_,
                                         &static_xla_output_shape_));
-      VLOG(2) << "Output Shape: " << static_xla_output_shape_.DebugString();
+      VLOG(2) << "Output Shape: " << static_xla_output_shape_.ToString();
     } else {
       FunctionLibraryRuntime* flib_runtime = ctx->function_library();
       OP_REQUIRES(ctx, flib_runtime != nullptr,

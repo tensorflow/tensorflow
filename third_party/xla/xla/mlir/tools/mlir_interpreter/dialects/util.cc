@@ -121,7 +121,7 @@ InterpreterValue TransposeImpl(const InterpreterValue& in,
 
 int64_t DimImpl(const InterpreterValue& in, int64_t index,
                 InterpreterState& state) {
-  if (index < 0 || index >= in.View().Rank()) {
+  if (index < 0 || index >= in.View().num_dimensions()) {
     state.AddFailure("dimension index out of bounds");
     return 0;
   }
@@ -137,7 +137,7 @@ llvm::SmallVector<InterpreterValue> NoOpTerminator(
 int64_t EvalAffineExpr(AffineExpr expr, ArrayRef<int64_t> dims,
                        ArrayRef<int64_t> symbols) {
   int64_t lhs = 0, rhs = 0;
-  if (auto bin = expr.dyn_cast<AffineBinaryOpExpr>()) {
+  if (auto bin = mlir::dyn_cast<AffineBinaryOpExpr>(expr)) {
     lhs = EvalAffineExpr(bin.getLHS(), dims, symbols);
     rhs = EvalAffineExpr(bin.getRHS(), dims, symbols);
   }
@@ -153,11 +153,11 @@ int64_t EvalAffineExpr(AffineExpr expr, ArrayRef<int64_t> dims,
     case AffineExprKind::CeilDiv:
       return llvm::divideCeilSigned(lhs, rhs);
     case AffineExprKind::Constant:
-      return expr.cast<AffineConstantExpr>().getValue();
+      return mlir::cast<AffineConstantExpr>(expr).getValue();
     case AffineExprKind::DimId:
-      return dims[expr.cast<AffineDimExpr>().getPosition()];
+      return dims[mlir::cast<AffineDimExpr>(expr).getPosition()];
     case AffineExprKind::SymbolId:
-      return symbols[expr.cast<AffineSymbolExpr>().getPosition()];
+      return symbols[mlir::cast<AffineSymbolExpr>(expr).getPosition()];
   }
 }
 

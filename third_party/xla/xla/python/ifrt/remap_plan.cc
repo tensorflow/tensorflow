@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -33,11 +34,11 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/remap_plan.pb.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -109,12 +110,13 @@ absl::Status CheckRange(int64_t num_shards,
     return InvalidArgument("start must be in [0, %d], but is %d",
                            num_shards - 1, interval.start);
   }
-  if (interval.end < 0 || interval.end > num_shards) {
-    return InvalidArgument("end must be in [0, %d], but is %d", num_shards,
-                           interval.end);
-  }
   if (interval.step <= 0) {
     return InvalidArgument("step must be positive, but is %d", interval.step);
+  }
+  if (interval.end < 0 || interval.end > num_shards + interval.step - 1) {
+    return InvalidArgument("end must be in [0, %d] if step is %d, but is %d",
+                           num_shards + interval.step - 1, interval.step,
+                           interval.end);
   }
   return absl::OkStatus();
 }
@@ -178,7 +180,8 @@ absl::Status RemapPlan::Validate() const {
   }
 
   const int num_outputs = output_specs.size();
-  std::vector<BasicDeviceList::Devices> out_assigned_devices_list(num_outputs);
+  std::vector<absl::InlinedVector<Device*, 1>> out_assigned_devices_list(
+      num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
     out_assigned_devices_list[i].resize(
         /*n=*/output_specs[i].sharding->devices()->size(),
@@ -234,7 +237,7 @@ absl::Status RemapPlan::Validate() const {
     std::vector<bool>& in_used_buffers = in_used_buffers_list[mapping.in_array];
     absl::Span<Device* const> in_devices =
         input_specs[mapping.in_array].sharding->devices()->devices();
-    BasicDeviceList::Devices& out_assigned_devices =
+    absl::InlinedVector<Device*, 1>& out_assigned_devices =
         out_assigned_devices_list[mapping.out_array];
     const int64_t in_shards_count = in_used_buffers.size();
     const int64_t out_shards_count = out_assigned_devices.size();
@@ -286,29 +289,38 @@ absl::Status RemapPlan::Validate() const {
         output_specs[i].sharding->devices()->devices()) {
       return InvalidArgument(
           "Output array %d devices and sharding devices do not match: "
-          "Expected %v, but got %v",
+          "Expected %v, but got [%s]",
           i, *output_specs[i].sharding->devices(),
-          *BasicDeviceList::Create(std::move(out_assigned_devices_list[i])));
+          absl::StrJoin(out_assigned_devices_list[i], ", ",
+                        [](std::string* s, Device* d) {
+                          absl::StrAppend(s, d->ToString());
+                        }));
     }
   }
   return absl::OkStatus();
 }
 
-absl::StatusOr<RemapPlan> RemapPlan::FromProto(
-    DeviceList::LookupDeviceFunc lookup_device, const RemapPlanProto& proto) {
+absl::StatusOr<RemapPlan> RemapPlan::FromProto(Client* client,
+                                               const RemapPlanProto& proto) {
+  const SerDesVersionNumber version_number(proto.version_number());
+  if (version_number != SerDesVersionNumber(0)) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "Unsupported ", version_number, " for RemapPlan deserialization"));
+  }
+
   RemapPlan plan;
 
   plan.input_specs.reserve(proto.input_specs_size());
   for (const auto& input_spec_proto : proto.input_specs()) {
     TF_ASSIGN_OR_RETURN(ArraySpec input_spec,
-                        ArraySpec::FromProto(lookup_device, input_spec_proto));
+                        ArraySpec::FromProto(client, input_spec_proto));
     plan.input_specs.push_back(std::move(input_spec));
   }
 
   plan.output_specs.reserve(proto.output_specs_size());
   for (const auto& output_spec_proto : proto.output_specs()) {
     TF_ASSIGN_OR_RETURN(ArraySpec output_spec,
-                        ArraySpec::FromProto(lookup_device, output_spec_proto));
+                        ArraySpec::FromProto(client, output_spec_proto));
     plan.output_specs.push_back(std::move(output_spec));
   }
 
@@ -322,16 +334,24 @@ absl::StatusOr<RemapPlan> RemapPlan::FromProto(
   return plan;
 }
 
-absl::StatusOr<RemapPlanProto> RemapPlan::ToProto() const {
+absl::StatusOr<RemapPlanProto> RemapPlan::ToProto(SerDesVersion version) const {
+  if (version.version_number() < SerDesVersionNumber(0)) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Unsupported ", version.version_number(),
+                     " for RemapPlan serialization"));
+  }
+
   RemapPlanProto proto;
+  proto.set_version_number(SerDesVersionNumber(0).value());
 
   proto.mutable_input_specs()->Reserve(input_specs.size());
   for (const auto& input_spec : input_specs) {
-    TF_ASSIGN_OR_RETURN(*proto.add_input_specs(), input_spec.ToProto());
+    TF_ASSIGN_OR_RETURN(*proto.add_input_specs(), input_spec.ToProto(version));
   }
   proto.mutable_output_specs()->Reserve(output_specs.size());
   for (const auto& output_spec : output_specs) {
-    TF_ASSIGN_OR_RETURN(*proto.add_output_specs(), output_spec.ToProto());
+    TF_ASSIGN_OR_RETURN(*proto.add_output_specs(),
+                        output_spec.ToProto(version));
   }
 
   proto.mutable_mappings()->Reserve(mappings->size());

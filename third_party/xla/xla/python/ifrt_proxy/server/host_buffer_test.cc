@@ -25,8 +25,8 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/python/ifrt/future.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace ifrt {

@@ -17,19 +17,25 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/status/status.h"
+#include "absl/log/log.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
 namespace quant {
@@ -114,8 +120,8 @@ BlockArgument InsertFilePrefixArgument(func::FuncOp func_op,
 
   const int insert_idx = func_op.getNumArguments();
 
-  func_op.insertArgument(insert_idx, /*argType=*/filename_op_type, arg_attrs,
-                         NameLoc::get(file_prefix_attr));
+  (void)func_op.insertArgument(insert_idx, /*argType=*/filename_op_type,
+                               arg_attrs, NameLoc::get(file_prefix_attr));
 
   return func_op.getArgument(insert_idx);
 }

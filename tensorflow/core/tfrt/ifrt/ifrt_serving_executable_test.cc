@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -34,6 +33,7 @@ limitations under the License.
 #include "xla/tsl/framework/serving_device_selector.h"
 #include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_matcher.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -42,7 +42,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable_test_util.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/tstring.h"
 
 namespace tensorflow {
@@ -225,6 +224,54 @@ TEST_F(IfrtServingExecutableTest, SpmdTwoReturns) {
                                                tensorflow::TensorShape({4, 2}));
 
   std::vector<tensorflow::Tensor> inputs{x, y, z};
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          executable->Execute(absl::MakeSpan(inputs), {}));
+
+  EXPECT_THAT(result,
+              ElementsAre(TensorEq(expected_out0), TensorEq(expected_out1)));
+}
+
+TEST_F(IfrtServingExecutableTest, SpmdXlaCallModuleInconsistentShardy) {
+  int64_t program_id = 111111;
+  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id))).Times(0);
+  auto executable = helper_->MakeExecutable(
+      program_id,
+      GetMlirModulePath(
+          "spmd_executable_xla_call_module_inconsistent_shardy.mlir"));
+
+  auto x = AsTensor<int32_t>({11, 12, 13, 14, 15, 16, 17, 18},
+                             tensorflow::TensorShape({4, 2}));
+  auto y = AsTensor<int32_t>({8, 7, 6, 5, 4, 3, 2, 1},
+                             tensorflow::TensorShape({4, 2}));
+
+  std::vector<tensorflow::Tensor> inputs{x, y};
+  auto result = executable->Execute(absl::MakeSpan(inputs), {});
+
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kFailedPrecondition,
+                               ::testing::HasSubstr(
+                                   "use_shardy_partitioner is not consistent "
+                                   "across XlaCallModuleOps")));
+}
+
+TEST_F(IfrtServingExecutableTest, SpmdXlaCallModuleNoShardy) {
+  int64_t program_id = 111111;
+  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id))).Times(0);
+  auto executable = helper_->MakeExecutable(
+      program_id,
+      GetMlirModulePath("spmd_executable_xla_call_module_no_shardy.mlir"));
+
+  auto x = AsTensor<int32_t>({11, 12, 13, 14, 15, 16, 17, 18},
+                             tensorflow::TensorShape({4, 2}));
+  auto y = AsTensor<int32_t>({8, 7, 6, 5, 4, 3, 2, 1},
+                             tensorflow::TensorShape({4, 2}));
+
+  const auto expected_out0 = AsTensor<int32_t>({3, 5, 7, 9, 11, 13, 15, 17},
+                                               tensorflow::TensorShape({4, 2}));
+  const auto expected_out1 = AsTensor<int32_t>({19, 19, 19, 19, 19, 19, 19, 19},
+                                               tensorflow::TensorShape({4, 2}));
+
+  std::vector<tensorflow::Tensor> inputs{x, y};
 
   TF_ASSERT_OK_AND_ASSIGN(auto result,
                           executable->Execute(absl::MakeSpan(inputs), {}));

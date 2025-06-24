@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
+#include "xla/stream_executor/cuda/compilation_provider_options.h"
 #include "xla/xla.pb.h"
 
 namespace stream_executor::cuda {
@@ -42,7 +43,7 @@ namespace stream_executor::cuda {
 // requested features like compilation parallelism are not supported.
 // Also returns an error if contradicting flags are set.
 absl::StatusOr<std::unique_ptr<CompilationProvider>>
-AssembleCompilationProvider(const xla::DebugOptions& debug_options);
+AssembleCompilationProvider(const CompilationProviderOptions& options);
 
 }  // namespace stream_executor::cuda
 

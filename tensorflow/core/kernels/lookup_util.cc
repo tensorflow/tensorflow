@@ -266,7 +266,7 @@ class TextFileLineIterator
   void operator=(const TextFileLineIterator&) = delete;
 };
 
-absl::Status GetTableHandle(StringPiece input_name, OpKernelContext* ctx,
+absl::Status GetTableHandle(absl::string_view input_name, OpKernelContext* ctx,
                             string* container, string* table_handle) {
   {
     mutex* mu;
@@ -288,7 +288,7 @@ absl::Status GetTableHandle(StringPiece input_name, OpKernelContext* ctx,
 
 }  // namespace
 
-absl::Status GetResourceLookupTable(StringPiece input_name,
+absl::Status GetResourceLookupTable(absl::string_view input_name,
                                     OpKernelContext* ctx,
                                     LookupInterface** table) {
   const Tensor* handle_tensor;
@@ -297,7 +297,7 @@ absl::Status GetResourceLookupTable(StringPiece input_name,
   return LookupResource(ctx, handle, table);
 }
 
-absl::Status GetReferenceLookupTable(StringPiece input_name,
+absl::Status GetReferenceLookupTable(absl::string_view input_name,
                                      OpKernelContext* ctx,
                                      LookupInterface** table) {
   string container;
@@ -307,7 +307,7 @@ absl::Status GetReferenceLookupTable(StringPiece input_name,
   return ctx->resource_manager()->Lookup(container, table_handle, table);
 }
 
-absl::Status GetLookupTable(StringPiece input_name, OpKernelContext* ctx,
+absl::Status GetLookupTable(absl::string_view input_name, OpKernelContext* ctx,
                             LookupInterface** table) {
   DataType handle_dtype;
   TF_RETURN_IF_ERROR(ctx->input_dtype(input_name, &handle_dtype));
@@ -318,7 +318,7 @@ absl::Status GetLookupTable(StringPiece input_name, OpKernelContext* ctx,
   }
 }
 
-absl::Status GetInitializableLookupTable(StringPiece input_name,
+absl::Status GetInitializableLookupTable(absl::string_view input_name,
                                          OpKernelContext* ctx,
                                          InitializableLookupTable** table) {
   LookupInterface* lookup_table;

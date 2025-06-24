@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -38,9 +39,9 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
@@ -68,7 +69,7 @@ absl::StatusOr<ArraySpec> CreateArraySpec(Client* client,
                                           absl::Span<const int> device_indices,
                                           Shape shard_shape = Shape({2, 3}),
                                           DType dtype = DType(DType::kS32)) {
-  TF_ASSIGN_OR_RETURN(tsl::RCReference<DeviceList> device_list,
+  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
                       test_util::GetAddressableDevices(client, device_indices));
   TF_ASSIGN_OR_RETURN(Shape shape,
                       GetShape(device_indices.size(), shard_shape));
@@ -100,17 +101,18 @@ struct CppTypeToDType<float> {
 };
 
 template <typename ValueType>
-absl::StatusOr<tsl::RCReference<Array>> CreateArray(
-    Client* client, absl::Span<const ValueType> base_values,
-    absl::Span<const int> device_indices, Shape shard_shape = Shape({2, 3})) {
+absl::StatusOr<ArrayRef> CreateArray(Client* client,
+                                     absl::Span<const ValueType> base_values,
+                                     absl::Span<const int> device_indices,
+                                     Shape shard_shape = Shape({2, 3})) {
   TF_RET_CHECK(base_values.size() == device_indices.size());
 
   DType dtype(CppTypeToDType<ValueType>::kDType);
   TF_ASSIGN_OR_RETURN(Shape shape, GetShape(base_values.size(), shard_shape));
 
-  std::vector<tsl::RCReference<Array>> shards;
+  std::vector<ArrayRef> shards;
   shards.reserve(base_values.size());
-  BasicDeviceList::Devices devices;
+  absl::InlinedVector<xla::ifrt::Device*, 1> devices;
   devices.reserve(device_indices.size());
 
   for (int i = 0; i < base_values.size(); ++i) {
@@ -119,8 +121,7 @@ absl::StatusOr<tsl::RCReference<Array>> CreateArray(
 
     Device* device = client->addressable_devices().at(device_indices[i]);
     devices.push_back(device);
-    std::shared_ptr<const Sharding> sharding =
-        SingleDeviceSharding::Create(device, MemoryKind());
+    ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
     TF_ASSIGN_OR_RETURN(
         shards.emplace_back(),
@@ -131,14 +132,15 @@ absl::StatusOr<tsl::RCReference<Array>> CreateArray(
             /*on_done_with_host_buffer=*/{}));
   }
 
-  std::shared_ptr<const Sharding> assembled_sharding =
-      ConcreteEvenSharding::Create(BasicDeviceList::Create(std::move(devices)),
-                                   MemoryKind(),
-                                   /*shape=*/shape,
-                                   /*shard_shape=*/std::move(shard_shape));
+  ShardingRef assembled_sharding = ConcreteEvenSharding::Create(
+      client->MakeDeviceList(devices), MemoryKind(),
+      /*shape=*/shape,
+      /*shard_shape=*/std::move(shard_shape));
+  absl::Span<ArrayRef> arrays = absl::MakeSpan(shards);
   return client->AssembleArrayFromSingleDeviceArrays(
-      std::move(shape), std::move(assembled_sharding), absl::MakeSpan(shards),
-      ArrayCopySemantics::kDonateInput);
+      arrays.at(0)->dtype(), std::move(shape), std::move(assembled_sharding),
+      arrays, ArrayCopySemantics::kDonateInput,
+      SingleDeviceShardSemantics::kAddressableShards);
 }
 
 // Checks the shards and contents of an array, same as what CreateArray would
@@ -159,8 +161,10 @@ void AssertArrayContent(Client* client, Array* array,
   EXPECT_EQ(actual_sharding->shape(), expected_shape);
   EXPECT_EQ(actual_sharding->shard_shape(), expected_shard_shape);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto shards, array->DisassembleIntoSingleDeviceArrays(
-                                           ArrayCopySemantics::kReuseInput));
+  TF_ASSERT_OK_AND_ASSIGN(auto shards,
+                          array->DisassembleIntoSingleDeviceArrays(
+                              ArrayCopySemantics::kReuseInput,
+                              SingleDeviceShardSemantics::kAddressableShards));
   ASSERT_THAT(shards, SizeIs(base_values.size()));
   for (int i = 0; i < shards.size(); ++i) {
     EXPECT_EQ(shards[i]->dtype(), expected_dtype);
@@ -202,7 +206,7 @@ TEST(RemapImplTest, ExtractSingleShard) {
                          /*to=*/{RemapPlan::Interval{0, 1, 1}}});
   TF_ASSERT_OK(plan.Validate());
 
-  std::vector<tsl::RCReference<Array>> arrays;
+  std::vector<ArrayRef> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
       arrays.emplace_back(),
       CreateArray<int32_t>(client.get(), /*base_values=*/{0, 6},
@@ -254,7 +258,7 @@ TEST(RemapImplTest, InterleaveArraysDonate) {
                          /*to=*/{RemapPlan::Interval{1, 4, 2}}});
   TF_ASSERT_OK(plan.Validate());
 
-  std::vector<tsl::RCReference<Array>> arrays;
+  std::vector<ArrayRef> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
       arrays.emplace_back(),
       CreateArray<int32_t>(client.get(), /*base_values=*/{0, 6},
@@ -302,7 +306,7 @@ TEST(RemapImplTest, InterleaveArraysReuse) {
                          /*to=*/{RemapPlan::Interval{1, 4, 2}}});
   TF_ASSERT_OK(plan.Validate());
 
-  std::vector<tsl::RCReference<Array>> arrays;
+  std::vector<ArrayRef> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
       arrays.emplace_back(),
       CreateArray<int32_t>(client.get(), /*base_values=*/{0, 6},
@@ -343,7 +347,7 @@ TEST(RemapImplTest, DeinterleaveArrays) {
                          /*to=*/{RemapPlan::Interval{0, 2, 1}}});
   TF_ASSERT_OK(plan.Validate());
 
-  std::vector<tsl::RCReference<Array>> arrays;
+  std::vector<ArrayRef> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
       arrays.emplace_back(),
       CreateArray<int32_t>(client.get(), /*base_values=*/{0, 100, 6, 106},
@@ -417,7 +421,7 @@ TEST(RemapImplTest, BatchMappingIdentity) {
                          /*to=*/{RemapPlan::Interval{0, 2, 1}}});
   TF_ASSERT_OK(plan.Validate());
 
-  std::vector<tsl::RCReference<Array>> inputs;
+  std::vector<ArrayRef> inputs;
   TF_ASSERT_OK_AND_ASSIGN(
       inputs.emplace_back(),
       CreateArray<int32_t>(client.get(), /*base_values=*/{10, 20, 30, 40},
@@ -429,7 +433,7 @@ TEST(RemapImplTest, BatchMappingIdentity) {
   for (ArrayCopySemantics copy_semantics : std::vector<ArrayCopySemantics>{
            ArrayCopySemantics::kReuseInput, ArrayCopySemantics::kDonateInput}) {
     TF_ASSERT_OK_AND_ASSIGN(
-        std::vector<tsl::RCReference<Array>> outputs,
+        std::vector<ArrayRef> outputs,
         client->RemapArrays(plan, absl::MakeSpan(inputs), copy_semantics));
     ASSERT_THAT(outputs, SizeIs(2));
     AssertArrayContent<int32_t>(client.get(), outputs[0].get(),
@@ -502,7 +506,7 @@ TEST(RemapImplTest, BatchMappingDeinterleave) {
                          /*to=*/{RemapPlan::Interval{0, 1, 1}}});
   TF_ASSERT_OK(plan.Validate());
 
-  std::vector<tsl::RCReference<Array>> inputs;
+  std::vector<ArrayRef> inputs;
   TF_ASSERT_OK_AND_ASSIGN(
       inputs.emplace_back(),
       CreateArray<float>(client.get(), /*base_values=*/{10, 20, 30, 40},
@@ -514,7 +518,7 @@ TEST(RemapImplTest, BatchMappingDeinterleave) {
   for (ArrayCopySemantics copy_semantics : std::vector<ArrayCopySemantics>{
            ArrayCopySemantics::kReuseInput, ArrayCopySemantics::kDonateInput}) {
     TF_ASSERT_OK_AND_ASSIGN(
-        std::vector<tsl::RCReference<Array>> outputs,
+        std::vector<ArrayRef> outputs,
         client->RemapArrays(plan, absl::MakeSpan(inputs), copy_semantics));
     ASSERT_THAT(outputs, SizeIs(4));
     AssertArrayContent<float>(client.get(), outputs[0].get(),
@@ -549,7 +553,7 @@ TEST(RemapImplTest, DetectBadInput) {
   TF_ASSERT_OK(plan.Validate());
 
   {
-    std::vector<tsl::RCReference<Array>> arrays;
+    std::vector<ArrayRef> arrays;
     TF_ASSERT_OK_AND_ASSIGN(
         arrays.emplace_back(),
         CreateArray<int32_t>(client.get(), /*base_values=*/{0},
@@ -566,7 +570,7 @@ TEST(RemapImplTest, DetectBadInput) {
   }
 
   {
-    std::vector<tsl::RCReference<Array>> arrays;
+    std::vector<ArrayRef> arrays;
     TF_ASSERT_OK_AND_ASSIGN(
         arrays.emplace_back(),
         CreateArray<float>(client.get(), /*base_values=*/{0},
@@ -579,7 +583,7 @@ TEST(RemapImplTest, DetectBadInput) {
   }
 
   {
-    std::vector<tsl::RCReference<Array>> arrays;
+    std::vector<ArrayRef> arrays;
     TF_ASSERT_OK_AND_ASSIGN(
         arrays.emplace_back(),
         CreateArray<int32_t>(client.get(), /*base_values=*/{0},
@@ -593,7 +597,7 @@ TEST(RemapImplTest, DetectBadInput) {
   }
 
   {
-    std::vector<tsl::RCReference<Array>> arrays;
+    std::vector<ArrayRef> arrays;
     TF_ASSERT_OK_AND_ASSIGN(
         arrays.emplace_back(),
         CreateArray<int32_t>(client.get(), /*base_values=*/{0},

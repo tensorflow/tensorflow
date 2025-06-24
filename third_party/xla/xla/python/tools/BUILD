@@ -1,8 +1,9 @@
+load("//xla:py_strict.bzl", "py_strict_test")
+
 # NOTE: We can't use `pytype_pybind_extension` nor `pytype_strict_contrib_test`
 # because the OSS versions of these files do not include ports of those rules.
 # We must instead use `tsl_pybind_extension` and `py_strict_test`.
-load("//xla:pytype.default.bzl", "pytype_strict_library")
-load("//xla:strict.default.bzl", "py_strict_test")
+load("//xla:pytype.bzl", "pytype_strict_library")
 load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 
 package(
@@ -34,16 +35,16 @@ pytype_strict_library(
     name = "types",
     srcs = ["types.py"],
     # copybara:uncomment pytype_srcs = ["_types.pyi"],
-    srcs_version = "PY3",
     # Cannot build this on OSS because the ":xla_data_proto_py_pb2"
     # dependency isn't part of the public API.
     tags = ["no_oss"],
+    # TODO(dsuo): Should this be public given note above?
     visibility = ["//visibility:public"],
     deps = [
         ":_types",  # buildcleaner: keep
         "//third_party/py/numpy",
         "//xla:xla_data_proto_py",
-        "@ml_dtypes",
+        "@ml_dtypes_py//ml_dtypes",
     ],
 )
 
@@ -77,8 +78,6 @@ py_strict_test(
     name = "types_test",
     size = "small",
     srcs = ["types_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     # Cannot build this on OSS because the ":xla_data_proto_py_pb2"
     # dependency isn't part of the public API.
     tags = ["no_oss"],

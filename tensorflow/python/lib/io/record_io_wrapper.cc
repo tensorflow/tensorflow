@@ -15,8 +15,9 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
-#include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -179,7 +180,7 @@ class PyRecordWriter {
   PyRecordWriter() = delete;
   ~PyRecordWriter() { (void)Close(); }
 
-  absl::Status WriteRecord(tensorflow::StringPiece record) {
+  absl::Status WriteRecord(absl::string_view record) {
     if (IsClosed()) {
       return tensorflow::errors::FailedPrecondition("Writer is closed.");
     }
@@ -254,7 +255,7 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
                py::gil_scoped_release release;
                status = self->ReadNextRecord(&record);
              }
-             if (tensorflow::errors::IsOutOfRange(status)) {
+             if (absl::IsOutOfRange(status)) {
                // Don't close because the file being read could be updated
                // in-between
                // __next__ calls.
@@ -293,7 +294,7 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
                py::gil_scoped_release release;
                status = self->ReadRecord(&temp_offset, &record);
              }
-             if (tensorflow::errors::IsOutOfRange(status)) {
+             if (absl::IsOutOfRange(status)) {
                throw py::index_error(tensorflow::strings::StrCat(
                    "Out of range at reading offset ", offset));
              }
@@ -345,7 +346,7 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
            })
       .def(
           "write",
-          [](PyRecordWriter* self, tensorflow::StringPiece record) {
+          [](PyRecordWriter* self, absl::string_view record) {
             absl::Status status;
             {
               py::gil_scoped_release release;

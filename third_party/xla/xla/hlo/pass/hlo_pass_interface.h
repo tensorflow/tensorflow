@@ -30,9 +30,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -59,7 +59,7 @@ class HloPassInterface {
 
     // Transition to the next iteration.
     //
-    // Depending on the pass implmentation, one iteration includes all the work
+    // Depending on the pass implementation, one iteration includes all the work
     // done between two IncrementIteration calls, there can be arbitrary number
     // of passes that ran arbitrary times with this state.
     void IncrementIteration() {

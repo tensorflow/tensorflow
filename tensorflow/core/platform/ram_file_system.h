@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_RAM_FILE_SYSTEM_H_
 #define TENSORFLOW_CORE_PLATFORM_RAM_FILE_SYSTEM_H_
 
+#include "xla/tsl/platform/ram_file_system.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/ram_file_system.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

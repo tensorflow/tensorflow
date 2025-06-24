@@ -17,8 +17,7 @@ limitations under the License.
 #define XLA_PJRT_C_PJRT_C_API_FFI_EXTENSION_H_
 
 #include <stddef.h>
-
-#include <cstdint>
+#include <stdint.h>
 
 #include "xla/pjrt/c/pjrt_c_api.h"
 
@@ -39,21 +38,24 @@ struct PJRT_FFI_TypeID_Register_Args {
 
   const char* type_name;
   size_t type_name_size;
-  int64_t type_id;  // out
+  int64_t type_id;  // in-out
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_FFI_TypeID_Register_Args, type_id);
 
-// Registers external type in a static type registry.
+// Registers external type in a static type registry. If `type_id` is set to `0`
+// XLA will assign a unique type id to it and return via out argument, otherwise
+// it will verify that user-provided type id matches previously registered type
+// id for the given type name.
 typedef PJRT_Error* PJRT_FFI_TypeID_Register(
     PJRT_FFI_TypeID_Register_Args* args);
 
 // User-data that will be forwarded to the FFI handlers. Deleter is optional,
 // and can be nullptr. Deleter will be called when the context is destroyed.
-struct PJRT_FFI_UserData {
+typedef struct PJRT_FFI_UserData {
   int64_t type_id;
   void* data;
   void (*deleter)(void* data);
-};
+} PJRT_FFI_UserData;
 
 struct PJRT_FFI_UserData_Add_Args {
   size_t struct_size;
@@ -68,9 +70,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_FFI_UserData_Add_Args, user_data);
 typedef PJRT_Error* PJRT_FFI_UserData_Add(PJRT_FFI_UserData_Add_Args* args);
 
 typedef struct PJRT_FFI_Extension {
-  size_t struct_size;
-  PJRT_Extension_Type type;
-  PJRT_Extension_Base* next;
+  PJRT_Extension_Base base;
   PJRT_FFI_TypeID_Register* type_id_register;
   PJRT_FFI_UserData_Add* user_data_add;
 } PJRT_FFI;

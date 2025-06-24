@@ -173,7 +173,8 @@ absl::Status ProfileGuidedLatencyEstimator::CheckAccuracy(
     // to avoid fine-grained exclusion of fusion computations, wrapped async
     // computations, trivial to_apply computations (present in e.g. reductions)
     // etc.
-    if (!comp->IsEntryComputation() && !comp->IsWhileBodyComputation()) {
+    if (!comp->IsEntryComputation() &&
+        !comp->GetUniqueCaller(HloOpcode::kWhile)) {
       continue;
     }
     for (const HloInstruction* instr : comp->MakeInstructionPostOrder()) {

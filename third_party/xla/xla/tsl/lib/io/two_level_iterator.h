@@ -32,8 +32,7 @@ namespace table {
 // an iterator over the contents of the corresponding block.
 extern Iterator* NewTwoLevelIterator(
     Iterator* index_iter,
-    Iterator* (*block_function)(void* arg,
-                                const absl::string_view& index_value),
+    Iterator* (*block_function)(void* arg, absl::string_view index_value),
     void* arg);
 
 }  // namespace table

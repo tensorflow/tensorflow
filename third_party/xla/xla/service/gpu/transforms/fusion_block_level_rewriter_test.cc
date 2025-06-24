@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/fusion_block_level_rewriter.h"
 
-#include <cstdint>
 #include <memory>
 #include <variant>
 
@@ -25,18 +24,18 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/fusions/triton/triton_support.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
@@ -58,7 +57,7 @@ bool HasTritonBlockLevelFusionConfig(const HloInstruction* fusion) {
                  .kind() == kTritonFusionKind;
 }
 
-class FusionBlockLevelRewriterTest : public HloTestBase {
+class FusionBlockLevelRewriterTest : public HloHardwareIndependentTestBase {
  protected:
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo(
       se::CudaComputeCapability::Ampere())};

@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -33,6 +32,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
@@ -205,6 +205,23 @@ TEST(FfiTest, WrongNumAttrs) {
       status,
       StatusIs(absl::StatusCode::kInvalidArgument,
                HasSubstr("Wrong number of attributes: expected 1 but got 2")));
+}
+
+TEST(FfiTest, RunId) {
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind().Ctx<RunId>().To([&](RunId run_id) {
+    EXPECT_EQ(run_id.ToInt(), 42);
+    return absl::OkStatus();
+  });
+
+  CallOptions options;
+  options.run_id = RunId{42};
+
+  auto status = Call(*handler, call_frame, options);
+
+  TF_ASSERT_OK(status);
 }
 
 TEST(FfiTest, BuiltinAttributes) {
@@ -1093,6 +1110,13 @@ struct CtxBinding<TestStream> {
 TEST(FfiTest, PlatformStream) {
   // We only check that it compiles.
   (void)Ffi::BindTo(+[](TestStream stream) { return absl::OkStatus(); });
+}
+
+TEST(FfiTest, BindFfiInternals) {
+  (void)Ffi::Bind().Ctx<FfiApi>().Ctx<FfiExecutionContext>().To(
+      +[](const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx) {
+        return absl::OkStatus();
+      });
 }
 
 //===----------------------------------------------------------------------===//

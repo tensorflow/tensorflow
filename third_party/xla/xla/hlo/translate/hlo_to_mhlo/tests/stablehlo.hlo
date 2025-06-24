@@ -1,4 +1,4 @@
-// RUN: xla-translate -hlo-text-to-stablehlo %s -o - | FileCheck %s
+// RUN: hlo-translate -hlo-to-mlir %s | FileCheck %s
 
 // CHECK: module @foobar
 HloModule foobar

@@ -27,8 +27,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringMap.h"  // IWYU pragma: keep
 #include "llvm/TargetParser/Host.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/logging.h"
 
 namespace xla::cpu {
 
@@ -37,6 +37,9 @@ using tsl::port::CPUFeature;
 // Returns the earliest CPU generation that supports the instruction set.
 absl::string_view CpuTargetFromMaxFeature(CPUFeature max_feature) {
   switch (max_feature) {
+    //===------------------------------------------------------------------===//
+    // x86
+    //===------------------------------------------------------------------===//
     case CPUFeature::SSE4_2:
       return "nehalem";
     case CPUFeature::AVX:
@@ -54,6 +57,17 @@ absl::string_view CpuTargetFromMaxFeature(CPUFeature max_feature) {
       return "sapphirerapids";
     case CPUFeature::AMX_FP16:
       return "graniterapids";
+
+    //===------------------------------------------------------------------===//
+    // AArch64
+    //===------------------------------------------------------------------===//
+    case CPUFeature::AARCH64_NEON:
+      return "neoverse-n1";
+    case CPUFeature::AARCH64_SVE:
+      return "neoverse-v1";
+    case CPUFeature::AARCH64_SVE2:
+      return "neoverse-v2";
+
     default:
       LOG(FATAL) << "Unsupported max feature: " << max_feature;
   }
@@ -63,9 +77,11 @@ std::optional<CPUFeature> CpuFeatureFromString(absl::string_view cpu_feature) {
   if (cpu_feature.empty()) return std::nullopt;
 
   // Non-exhaustive list of CPU features. (Only the ones we care about.)
-  // TODO(penporn): Handle ARM
   static auto* x86 = [] {
     return new absl::flat_hash_map<std::string, CPUFeature>(
+        //===--------------------------------------------------------------===//
+        // x86
+        //===--------------------------------------------------------------===//
         {{"SSE4_2", CPUFeature::SSE4_2},
          {"AVX", CPUFeature::AVX},
          {"AVX2", CPUFeature::AVX2},
@@ -73,7 +89,13 @@ std::optional<CPUFeature> CpuFeatureFromString(absl::string_view cpu_feature) {
          {"AVX512_VNNI", CPUFeature::AVX512_VNNI},
          {"AVX512_BF16", CPUFeature::AVX512_BF16},
          {"AMX", CPUFeature::AMX_BF16},  // Includes AMX_INT8.
-         {"AMX_FP16", CPUFeature::AMX_FP16}});
+         {"AMX_FP16", CPUFeature::AMX_FP16},
+         //===-------------------------------------------------------------===//
+         // AArch64
+         //===-------------------------------------------------------------===//
+         {"NEON", CPUFeature::AARCH64_NEON},
+         {"SVE", CPUFeature::AARCH64_SVE},
+         {"SVE2", CPUFeature::AARCH64_SVE2}});
   }();
 
   if (auto it = x86->find(absl::AsciiStrToUpper(cpu_feature));
@@ -89,7 +111,8 @@ std::optional<CPUFeature> CpuFeatureFromString(absl::string_view cpu_feature) {
 // switch statement is the most readable way to express the logic.
 //
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-bool ShouldEnableCpuFeature(absl::string_view feature, CPUFeature max_feature) {
+static bool ShouldEnableX86CpuFeature(absl::string_view feature,
+                                      CPUFeature max_feature) {
   // x86 CPUs have backward compatibility so newer CPUs have all features of
   // older CPUs. We go through switch cases from oldest features to newest.
   //   - Each case looks for features that are introduced in the next
@@ -102,9 +125,6 @@ bool ShouldEnableCpuFeature(absl::string_view feature, CPUFeature max_feature) {
   // AVX512-generation features in the AVX2 case, then fall through to the
   // AVX512 case to disable next-gen features (AVX512_VNNI), etc, all the way
   // down to the newest one.
-  //
-  // TODO(https://github.com/openxla/xla/issues/17758): Figure out if we need to
-  // support AVX10 and where to put it.
   switch (max_feature) {
     case CPUFeature::SSE4_2:
       if (absl::StartsWith(feature, "avx") || feature == "f16c" ||
@@ -148,12 +168,46 @@ bool ShouldEnableCpuFeature(absl::string_view feature, CPUFeature max_feature) {
   }
 }
 
+static bool ShouldEnableAArch64CpuFeature(absl::string_view feature,
+                                          CPUFeature max_feature) {
+  // AArch64 CPUs have backward compatibility so newer CPUs have all features
+  // of older CPUs. We go through switch cases from oldest features to newest.
+  //   - Each case looks for features that are introduced in the next
+  //     generation, i.e., features that should be disabled if `max_feature` is
+  //     older or equal to the case's ISA.
+  //   - We combine all features that needs to be disabled from all ISAs newer
+  //     than `max_feature` by falling through cases.
+  switch (max_feature) {
+    case CPUFeature::AARCH64_NEON:
+      if (feature == "sve") return false;
+      [[fallthrough]];
+
+    case CPUFeature::AARCH64_SVE:
+      if (feature == "sve2") return false;
+      [[fallthrough]];
+
+    default:
+      // Leave all other features enabled.
+      return true;
+  }
+}
+
+bool ShouldEnableCpuFeature(absl::string_view feature, CPUFeature max_feature) {
+  if constexpr (tsl::port::IsX86CPU()) {
+    return ShouldEnableX86CpuFeature(feature, max_feature);
+  } else if constexpr (tsl::port::IsAarch64CPU()) {
+    return ShouldEnableAArch64CpuFeature(feature, max_feature);
+  }
+  return true;
+}
+
 DetectedMachineAttributes DetectMachineAttributes(
     std::optional<CPUFeature> max_feature) {
   DetectedMachineAttributes result;
   // We only have x86 constraints. Skip the check if we are on non-x86 CPUs.
   bool no_feature_constraint =
-      !max_feature.has_value() || !tsl::port::IsX86CPU();
+      !max_feature.has_value() ||
+      !(tsl::port::IsX86CPU() || tsl::port::IsAarch64CPU());
   for (const auto& [feature, enabled] : llvm::sys::getHostCPUFeatures()) {
     bool should_enable =
         enabled && (no_feature_constraint ||

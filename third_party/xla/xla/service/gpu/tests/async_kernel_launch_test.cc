@@ -17,16 +17,19 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/debug_options_flags.h"
+#include "xla/error_spec.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 namespace {
 
-class AsyncKernelLaunchTest : public HloTestBase {};
+using AsyncKernelLaunchTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 
 HloModuleConfig GetModuleConfig() {
   // Allow even small graphs to be launched on the GPU.
@@ -74,6 +77,59 @@ TEST_F(AsyncKernelLaunchTest, BasicFusion) {
 
   Literal result = ExecuteNoHloPasses(std::move(module), {&argument});
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(AsyncKernelLaunchTest, BasicAsyncComputation) {
+  const char* hlo_text = R"(
+    HloModule Test1
+
+    add_F32 {
+      lhs = f32[2]{0} parameter(0)
+      rhs = f32[2]{0} parameter(1)
+      ROOT add = f32[2]{0} add(lhs, rhs)
+    }
+
+    ENTRY Test1 {
+      a = f32[2]{0} parameter(0)
+      b = f32[2]{0} parameter(1)
+      start = ((f32[2]{0}, f32[2]{0}), f32[2]{0}) call-start(a, b), to_apply=add_F32
+      ROOT done = f32[2]{0} call-done(start)
+    }
+  )";
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(AsyncKernelLaunchTest, ScheduledOverlappingAsyncComputations) {
+  const char* hlo_text = R"(
+    HloModule Test1
+
+    add {
+      lhs = f32[2]{0} parameter(0)
+      rhs = f32[2]{0} parameter(1)
+      ROOT add = f32[2]{0} add(lhs, rhs)
+    }
+    
+    mul {
+      lhs = f32[2]{0} parameter(0)
+      rhs = f32[2]{0} parameter(1)
+      ROOT mul = f32[2] multiply(lhs, rhs)
+    }
+
+    ENTRY Test1 {
+      a = f32[2]{0} parameter(0)
+      b = f32[2]{0} parameter(1)
+      start = ((f32[2]{0}, f32[2]{0}), f32[2]{0}) call-start(a, b), to_apply=add,
+        frontend_attributes={_xla_stream_annotation="1", _scheduling_group_id="0"}
+      start.1 = ((f32[2]{0}, f32[2]{0}), f32[2]{0}) call-start(a, b), to_apply=mul,
+        frontend_attributes={_xla_stream_annotation="2", _scheduling_group_id="0"}
+      done = f32[2]{0} call-done(start)
+      done.1 = f32[2]{0} call-done(start.1)
+      ROOT result = f32[2]{0} add(done, done.1)
+    }
+  )";
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
 }  // namespace

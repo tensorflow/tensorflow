@@ -56,6 +56,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   OpContext op_context(context, node);
 
+  TF_LITE_ENSURE(context, op_context.input != nullptr);
   TF_LITE_ENSURE(context, op_context.input->type != kTfLiteString);
   TF_LITE_ENSURE(context, IsConstantTensor(op_context.input));
   TF_LITE_ENSURE(context, op_context.input->sparsity != nullptr);

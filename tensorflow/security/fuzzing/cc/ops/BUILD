@@ -126,6 +126,7 @@ tf_cc_fuzz_test(
 tf_cc_fuzz_test(
     name = "general_ops_fuzz",
     srcs = ["general_ops_fuzz.cc"],
+    shard_count = 5,
     deps = [
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/framework:tensor",

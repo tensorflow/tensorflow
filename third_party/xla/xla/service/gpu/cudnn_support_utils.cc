@@ -129,7 +129,7 @@ CudnnInferTransposeForFilterReordering(
     const Shape& shape, const ConvolutionDimensionNumbers& dimension_numbers) {
   // A normal filter should have four dimensions: [O, I, H, W]
   // An already vectorized filter will have five: [O, I/k, H, W, k]; k=4|32
-  if (shape.rank() != 4 && shape.rank() != 5) {
+  if (shape.dimensions().size() != 4 && shape.dimensions().size() != 5) {
     return Internal("Filter shape has unexpected rank.");
   }
 
@@ -140,7 +140,7 @@ CudnnInferTransposeForFilterReordering(
   const int64_t dW = dimension_numbers.kernel_spatial_dimensions().at(1);
   // In case of re-vectorization (rank=5), the missing dimension can be
   // calculated as Σi(i=0..4)-(dO+dI+dH+dW)
-  bool revectorize = shape.rank() == 5;
+  bool revectorize = shape.dimensions().size() == 5;
   const int64_t dZ = revectorize ? 10 - dO - dI - dH - dW : -1;
   const int64_t vsize = revectorize ? shape.dimensions(dZ) : 1;
 
@@ -196,7 +196,7 @@ CudnnInferTransposeForFilterReordering(
 absl::StatusOr<CudnnReorderTransposeConfig>
 CudnnInferTransposeForBiasReordering(const Shape& shape) {
   // Expected bias has one dimension: [O]
-  if (shape.rank() != 1) {
+  if (shape.dimensions().size() != 1) {
     return Internal("Bias shape has unexpected rank.");
   }
   if (shape.dimensions(0) % 32 != 0) {

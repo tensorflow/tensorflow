@@ -16,16 +16,19 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_ROCM_TRACER_H_
 #define XLA_BACKENDS_PROFILER_GPU_ROCM_TRACER_H_
 
+#include <optional>
+
 #include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_set.h"
-#include "absl/types/optional.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/backends/profiler/gpu/rocm_collector.h"
 #include "xla/stream_executor/rocm/roctracer_wrapper.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/thread_annotations.h"
 #include "tsl/platform/types.h"
 
 namespace xla {
@@ -84,7 +87,7 @@ class RocmApiCallbackImpl {
   RocmTracerOptions options_;
   RocmTracer* tracer_ = nullptr;
   RocmTraceCollector* collector_ = nullptr;
-  tsl::mutex api_call_start_mutex_;
+  absl::Mutex api_call_start_mutex_;
   // TODO(rocm-profiler): replace this with absl hashmap
   // keep a map from the corr. id to enter time for API callbacks.
   std::map<uint32_t, uint64_t> api_call_start_time_

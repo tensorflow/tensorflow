@@ -14,12 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/experimental/tac/hardwares/target_hardware.h"
 
-#include <algorithm>
-#include <cctype>
 #include <functional>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"

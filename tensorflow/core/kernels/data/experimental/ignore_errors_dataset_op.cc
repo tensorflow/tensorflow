@@ -12,7 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/logging.h"
@@ -114,7 +120,7 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
             return absl::OkStatus();
           }
           s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
-          while (!s.ok() && !errors::IsCancelled(s)) {
+          while (!s.ok() && !absl::IsCancelled(s)) {
             if (dataset()->log_warning_) {
               LOG(WARNING) << "Error raised with error message " << s.message();
             }
@@ -132,8 +138,7 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
      protected:
       std::shared_ptr<model::Node> CreateNode(
           IteratorContext* ctx, model::Node::Args args) const override {
-        return model::MakeKnownRatioNode(std::move(args),
-                                         /*ratio=*/1);
+        return model::MakeKnownRatioNode(std::move(args), /*ratio=*/1);
       }
 
       absl::Status SaveInternal(SerializationContext* ctx,

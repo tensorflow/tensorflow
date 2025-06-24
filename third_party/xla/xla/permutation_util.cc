@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/permutation_util.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -53,15 +55,6 @@ std::vector<int64_t> ComposePermutations(absl::Span<const int64_t> p1,
     output.push_back(p1.at(p2.at(i)));
   }
   return output;
-}
-
-bool IsIdentityPermutation(absl::Span<const int64_t> permutation) {
-  for (int64_t i = 0; i < permutation.size(); ++i) {
-    if (permutation[i] != i) {
-      return false;
-    }
-  }
-  return true;
 }
 
 }  // namespace xla

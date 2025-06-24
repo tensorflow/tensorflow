@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstddef>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/eager/execute.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"

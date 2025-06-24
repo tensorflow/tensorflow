@@ -1,0 +1,14 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN:   FileCheck %s
+// RUN: test_correctness %s
+
+fusion {
+   p0 = f16[1,2,128,4,32] parameter(0)
+   bitcast1 = f16[2,128,128] bitcast(p0)
+   transpose1 = f16[2,128,128] transpose(bitcast1), dimensions={0,2,1}
+   bitcast2 = f16[2,128,4,32] bitcast(p0)
+   transpose2 = f16[2,4,128,32] transpose(bitcast2), dimensions={0,2,1,3}
+   ROOT tuple = (f16[2,128,128], f16[2,4,128,32]) tuple(transpose1, transpose2)
+ }
+// CHECK:        xla_gpu.allocate_shared
+// CHECK-NOT:    xla_gpu.allocate_shared

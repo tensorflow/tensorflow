@@ -10,7 +10,6 @@ package(
 pytype_strict_library(
     name = "debugger",
     srcs = ["debugger.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/python:convert",
@@ -26,7 +25,6 @@ py_strict_test(
     srcs = [
         "debugger_test.py",
     ],
-    python_version = "PY3",
     deps = [
         ":debugger",
         "@absl_py//absl/testing:parameterized",

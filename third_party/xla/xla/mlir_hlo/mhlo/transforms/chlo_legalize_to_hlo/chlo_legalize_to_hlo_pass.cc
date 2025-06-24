@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/rewriters.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -143,15 +145,20 @@ struct RaggedDotChloToMhlo : public OpRewritePattern<chlo::RaggedDotOp> {
       precisionConfig = rewriter.getArrayAttr(vector);
     }
 
-    rewriter.replaceOp(
-        raggedDotOp,
-        rewriter
-            .create<mhlo::RaggedDotOp>(
-                raggedDotOp.getLoc(), raggedDotOp.getResult().getType(),
-                raggedDotOp.getLhs(), raggedDotOp.getRhs(),
-                raggedDotOp.getGroupSizes(), raggedDotDimNums, precisionConfig)
-            .getOperation());
+    mhlo::RaggedDotOp mhloOp = rewriter.create<mhlo::RaggedDotOp>(
+        raggedDotOp.getLoc(), raggedDotOp.getResult().getType(),
+        raggedDotOp.getLhs(), raggedDotOp.getRhs(), raggedDotOp.getGroupSizes(),
+        raggedDotDimNums, precisionConfig);
+    std::optional<NamedAttribute> frontendAttributes =
+        raggedDotOp->getAttrDictionary().getNamed("mhlo.frontend_attributes");
+    if (frontendAttributes.has_value()) {
+      std::vector<NamedAttribute> attributes =
+          mhloOp->getDiscardableAttrDictionary().getValue().vec();
+      attributes.push_back(frontendAttributes.value());
+      mhloOp->setDiscardableAttrs(rewriter.getDictionaryAttr(attributes));
+    }
 
+    rewriter.replaceOp(raggedDotOp, mhloOp.getOperation());
     return success();
   }
 };
@@ -168,7 +175,8 @@ namespace {
 
 void populateChloToHighLevelMhloOpPatterns(MLIRContext *,
                                            RewritePatternSet *patterns) {
-  patterns->add<mhlo::RaggedDotChloToMhlo>(patterns->getContext());
+  patterns->add<mhlo::RaggedDotChloToMhlo>(patterns->getContext(),
+                                           /*benefit=*/10);
   populateWithGenerated(*patterns);
 }
 

@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/utils/hlo_container_util.h"
+#include "xla/layout.h"
 #include "xla/literal_util.h"
 #include "xla/map_util.h"
 #include "xla/protobuf_util.h"
@@ -85,7 +86,7 @@ HloInstruction* FormatShape(HloInstruction* data,
       }
       case HloOpcode::kPad: {
         PaddingConfig padding_config;
-        for (int64_t i = 0; i < step.output_shape.rank(); ++i) {
+        for (int64_t i = 0; i < step.output_shape.dimensions().size(); ++i) {
           auto padding_config_dim = padding_config.add_dimensions();
           padding_config_dim->set_edge_padding_low(0);
           padding_config_dim->set_interior_padding(0);
@@ -99,6 +100,12 @@ HloInstruction* FormatShape(HloInstruction* data,
                       LiteralUtil::Zero(step.output_shape.element_type())));
         data = computation->AddInstruction(HloInstruction::CreatePad(
             step.output_shape, data, padding, padding_config));
+        break;
+      }
+      case HloOpcode::kTranspose: {
+        CHECK(step.xpose_permutation.has_value());
+        data = computation->AddInstruction(HloInstruction::CreateTranspose(
+            step.output_shape, data, *step.xpose_permutation));
         break;
       }
       default:
@@ -128,11 +135,25 @@ HloInstruction* ReverseFormatShape(
         break;
       }
       case HloOpcode::kPad: {
-        std::vector<int64_t> start_indices(previous_shape.rank(), 0);
-        std::vector<int64_t> strides(previous_shape.rank(), 1);
+        std::vector<int64_t> start_indices(previous_shape.dimensions().size(),
+                                           0);
+        std::vector<int64_t> strides(previous_shape.dimensions().size(), 1);
         data = computation->AddInstruction(
             HloInstruction::CreateSlice(previous_shape, data, start_indices,
                                         previous_shape.dimensions(), strides));
+        break;
+      }
+      case HloOpcode::kTranspose: {
+        CHECK(step.xpose_permutation.has_value());
+        std::vector<int64_t> reverse_permutation;
+        reverse_permutation.reserve(step.xpose_permutation->size());
+        for (int64_t i = 0; i < step.xpose_permutation->size(); ++i) {
+          reverse_permutation.push_back(
+              absl::c_find(*step.xpose_permutation, i) -
+              step.xpose_permutation->begin());
+        }
+        data = computation->AddInstruction(HloInstruction::CreateTranspose(
+            previous_shape, data, reverse_permutation));
         break;
       }
       default:
@@ -197,7 +218,7 @@ bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
   // Different tiled ranks can't be compared (something is wrong, are the
   // shardings for different shapes?)
   if (tiled_data_rank != sharding.TiledDataRank() ||
-      tiled_data_rank != potential_sharded_shape.dimensions_size()) {
+      tiled_data_rank != potential_sharded_shape.dimensions().size()) {
     return false;
   }
 
@@ -673,8 +694,9 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
 
   std::vector<OpMetadata> merged_metadata(std::move(dst->metadata()));
   merged_metadata.reserve(merged_metadata.size() + to_merge.metadata().size());
-  const absl::flat_hash_set<OpMetadata, protobuf_util::ProtobufHashWrapper,
-                            protobuf_util::ProtobufEqualsWrapper>
+  const absl::flat_hash_set<OpMetadata,
+                            protobuf_util::ProtobufHashBySerializationFunctor,
+                            protobuf_util::HaveSameSerializationFunctor>
       metadata_set(merged_metadata.begin(), merged_metadata.end());
   absl::c_copy_if(to_merge.metadata(), std::back_inserter(merged_metadata),
                   [&metadata_set](const OpMetadata& data) {
@@ -897,7 +919,7 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
   DimensionVector sharding_tile_dims_stack(
       source_sharding.tile_assignment().dimensions().begin(),
       source_sharding.tile_assignment().dimensions().begin() +
-          source_shape.rank());
+          source_shape.dimensions().size());
   std::reverse(sharding_tile_dims_stack.begin(),
                sharding_tile_dims_stack.end());
   int64_t source_dims_index = -1;
@@ -915,7 +937,7 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
   };
 
   bool inplace_add_sharding_dim = false;
-  auto append_sharding_dim = [&](int64_t size) {
+  auto append_target_sharding_dim = [&](int64_t size) {
     if (inplace_add_sharding_dim) {
       target_tile_assignment_dimensions.back() *= size;
     } else {
@@ -924,12 +946,8 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
     inplace_add_sharding_dim = false;
   };
 
-  while (!source_dims_stack.empty() || !target_dims_stack.empty()) {
-    if (Product(sharding_tile_dims_stack) == 1) {
-      // No more partitions left.
-      break;
-    }
-
+  while (!source_dims_stack.empty() && !target_dims_stack.empty() &&
+         Product(sharding_tile_dims_stack) != 1) {
     int64_t source_dims_product = 1;
     while (!sharding_tile_dims_stack.empty() &&
            sharding_tile_dims_stack.back() == 1) {
@@ -940,40 +958,28 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
            source_dims_product % target_dims_stack.back() == 0) {
       source_dims_product /= target_dims_stack.back();
       target_dims_stack.pop_back();
-      append_sharding_dim(1);
+      append_target_sharding_dim(1);
     }
     if (source_dims_product != 1) {
       source_dims_push(source_dims_product, 1);
     }
 
-    if (target_dims_stack.empty()) {
+    if (source_dims_stack.empty() || target_dims_stack.empty()) {
       break;
     }
+    int64_t s_size = source_dims_stack.back();
+    int64_t s_partitions = sharding_tile_dims_stack.back();
+    source_dims_pop();
+
     int64_t t_size = target_dims_stack.back();
     target_dims_stack.pop_back();
 
-    int64_t s_size = 1;
-    int64_t s_partitions = 1;
-    if (!source_dims_stack.empty()) {
-      s_size = source_dims_stack.back();
-      s_partitions = sharding_tile_dims_stack.back();
-      source_dims_pop();
-    }
-
     if (s_size == t_size) {
-      // Same dimension.
-      append_sharding_dim(s_partitions);
-    } else if (s_partitions > 1 && s_size % s_partitions == 0 &&
-               t_size % s_partitions == 0) {
-      // If s_partitions evenly divides both s_size and t_size, we can add this
-      // sharding dim and work on shard sized shapes in the next iteration.
-      source_dims_push(s_size / s_partitions, 1);
-      target_dims_stack.push_back(t_size / s_partitions);
-      append_sharding_dim(s_partitions);
-      inplace_add_sharding_dim = true;
+      // Same dimension size.
+      append_target_sharding_dim(s_partitions);
     } else if (t_size == 1) {
       // Trivial dimension added.
-      append_sharding_dim(1);
+      append_target_sharding_dim(1);
       source_dims_push(s_size, s_partitions);
     } else if (s_size == 1) {
       // Trivial dimension removed.
@@ -981,56 +987,35 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
       if (s_partitions > 1) {
         dims_to_replicate.push_back(source_dims_index);
       }
-    } else if (s_size > t_size) {
-      // Dimension split.
-      if (s_size % s_partitions != 0) {
-        return std::nullopt;
-      }
-      if (s_size % t_size != 0) {
-        // Transpose is needed between source and target shapes.
-        append_sharding_dim(std::gcd(t_size, s_partitions));
-        break;
-      }
-      if (t_size % s_partitions == 0) {
-        append_sharding_dim(s_partitions);
-        // We have part of the s_size unprocessed, so put it back to stack.
-        source_dims_push(s_size / t_size, 1);
-      } else if (s_partitions % t_size == 0) {
-        append_sharding_dim(t_size);
-        // We have part of the s_size unprocessed, so put it back to stack.
-        source_dims_push(s_size / t_size, s_partitions / t_size);
+    } else if (s_partitions == 1) {
+      if (!source_dims_stack.empty() && sharding_tile_dims_stack.back() == 1) {
+        source_dims_stack.back() *= s_size;
       } else {
-        append_sharding_dim(std::gcd(t_size, s_partitions));
         break;
       }
+    } else if (s_size % s_partitions != 0) {
+      // TODO(zixuanjiang): Although we can propagate thd gcd(s_size,
+      // s_partitions), we return std::nullopt since the current partitioner
+      // reply on that to create halo exchange. Revisit it later.
+      return std::nullopt;
     } else {
-      // Dimension merge. Also merge the source dimension with the next, and
-      // process it next time.
-      if (s_size % s_partitions != 0) {
-        return std::nullopt;
-      }
-      CHECK(!source_dims_stack.empty());
-      if (t_size % s_size != 0) {
-        // Transpose is needed between source and target shapes.
-        append_sharding_dim(std::gcd(t_size, s_partitions));
+      int64_t gcd = std::gcd(s_partitions, t_size);
+      if (gcd == 1) {
         break;
       }
-      if (sharding_tile_dims_stack.back() != 1 && s_size != s_partitions) {
-        // If the next dimension to combine is sharded, we require that the
-        // current dimension's shard size to be 1. Otherwise, the new shard
-        // would be non-contiguous.
-        break;
-      }
-      source_dims_stack.back() *= s_size;
-      sharding_tile_dims_stack.back() *= s_partitions;
-      target_dims_stack.push_back(t_size);
+
+      source_dims_push(s_size / gcd, s_partitions / gcd);
+      target_dims_stack.push_back(t_size / gcd);
+      append_target_sharding_dim(gcd);
+      inplace_add_sharding_dim = true;
     }
   }
 
   if (Product(target_tile_assignment_dimensions) == 1) {
     return std::nullopt;
   }
-  while (target_tile_assignment_dimensions.size() < target_shape.rank()) {
+  while (target_tile_assignment_dimensions.size() <
+         target_shape.dimensions().size()) {
     target_tile_assignment_dimensions.push_back(1);
   }
 
@@ -1062,7 +1047,7 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
     } else if (absl::c_linear_search(subgroup_types, OpSharding::REPLICATED)) {
       target_tile_assignment_dimensions[sharding.SubgroupReplicationDim() -
                                         sharding.TiledDataRank() +
-                                        target_shape.rank()] =
+                                        target_shape.dimensions().size()] =
           partially_replicated.quot;
     } else {
       target_tile_assignment_dimensions.push_back(partially_replicated.quot);
@@ -1088,8 +1073,9 @@ HloSharding PropagateShardingThroughReshape(const Shape& source_shape,
     HloSharding inner_reshaped = PropagateShardingThroughReshape(
         source_shape, target_shape, group.sharding);
     group.sharding = std::move(inner_reshaped);
-    group.data_rank = target_shape.rank();
-    group.group_dims[0] += target_shape.rank() - source_shape.rank();
+    group.data_rank = target_shape.dimensions().size();
+    group.group_dims[0] +=
+        target_shape.dimensions().size() - source_shape.dimensions().size();
     return UngroupSharding(group);
   }
   // Find intervals of consecutive dimensions that could use ReshapeSharding().
@@ -1097,13 +1083,13 @@ HloSharding PropagateShardingThroughReshape(const Shape& source_shape,
   // and if it fails, we find a sub-interval of it or a disjoint interval.
   HloSharding result = HloSharding::Replicate();
   int64_t start_dim = 0;
-  while (start_dim < source_shape.rank()) {
+  while (start_dim < source_shape.dimensions().size()) {
     bool found_compatible = false;
     // For each start_dim, try to use all dims after it. If that fails, reduce
     // the range.
-    for (int64_t end_dim = source_shape.rank(); end_dim > start_dim;
-         --end_dim) {
-      DimensionVector grouped_tiling_dims(source_shape.rank(), 1);
+    for (int64_t end_dim = source_shape.dimensions().size();
+         end_dim > start_dim; --end_dim) {
+      DimensionVector grouped_tiling_dims(source_shape.dimensions().size(), 1);
       for (int64_t i = start_dim; i < end_dim; ++i) {
         grouped_tiling_dims[i] = sharding.tile_assignment().dim(i);
       }
@@ -1132,7 +1118,8 @@ HloSharding PropagateShardingThroughReshape(const Shape& source_shape,
             0);
         int64_t num_replicated_dims =
             sharding.tile_assignment().num_elements() / Product(reshape_dims);
-        const int64_t diff = reshape_dims.size() - target_shape.rank();
+        const int64_t diff =
+            reshape_dims.size() - target_shape.dimensions().size();
         CHECK(diff == 0 || diff == 1);
         if (diff == 0) {
           reshape_dims.push_back(num_replicated_dims);
@@ -1304,11 +1291,12 @@ HloSharding GatherOutputShardingFromIndex(const HloSharding& index_sharding,
   const GatherDimensionNumbers& dnums = hlo->gather_dimension_numbers();
   const GatherScatterDims indices_output_dims =
       GetGatherConnectedDimsAcrossIndicesAndOutput(
-          hlo->operand(1)->shape().rank(), dnums.index_vector_dim(),
-          hlo->shape().rank(), dnums.offset_dims());
+          hlo->operand(1)->shape().dimensions().size(),
+          dnums.index_vector_dim(), hlo->shape().dimensions().size(),
+          dnums.offset_dims());
   return PropagateShardingAlongDimsAndReplicateOthers(
       index_sharding, indices_output_dims.indices_dims,
-      indices_output_dims.output_dims, hlo->shape().rank());
+      indices_output_dims.output_dims, hlo->shape().dimensions().size());
 }
 
 HloSharding GatherIndexShardingFromOutput(const HloSharding& output_sharding,
@@ -1321,11 +1309,13 @@ HloSharding GatherIndexShardingFromOutput(const HloSharding& output_sharding,
   const GatherDimensionNumbers& dnums = hlo->gather_dimension_numbers();
   const GatherScatterDims indices_output_dims =
       GetGatherConnectedDimsAcrossIndicesAndOutput(
-          hlo->operand(1)->shape().rank(), dnums.index_vector_dim(),
-          hlo->shape().rank(), dnums.offset_dims());
+          hlo->operand(1)->shape().dimensions().size(),
+          dnums.index_vector_dim(), hlo->shape().dimensions().size(),
+          dnums.offset_dims());
   return PropagateShardingAlongDimsAndReplicateOthers(
       output_sharding, indices_output_dims.output_dims,
-      indices_output_dims.indices_dims, hlo->operand(1)->shape().rank());
+      indices_output_dims.indices_dims,
+      hlo->operand(1)->shape().dimensions().size());
 }
 
 HloSharding GatherEffectiveOutputSharding(const HloInstruction& hlo) {
@@ -1334,9 +1324,9 @@ HloSharding GatherEffectiveOutputSharding(const HloInstruction& hlo) {
   }
 
   const GatherDimensionNumbers& dnums = hlo.gather_dimension_numbers();
-  DimensionVector tile_assignment_dims(hlo.shape().rank());
+  DimensionVector tile_assignment_dims(hlo.shape().dimensions().size());
   int64_t num_elements = 1;
-  for (int64_t i = 0; i < hlo.shape().rank(); ++i) {
+  for (int64_t i = 0; i < hlo.shape().dimensions().size(); ++i) {
     if (!absl::c_binary_search(dnums.offset_dims(), i)) {
       tile_assignment_dims[i] = hlo.sharding().tile_assignment().dim(i);
       num_elements *= hlo.sharding().tile_assignment().dim(i);
@@ -1365,9 +1355,9 @@ HloSharding GatherEffectiveOutputSharding(const HloInstruction& hlo) {
   // - first dimension is non offset dimension,
   // - second dimension is offset dimension,
   // Then the result sharding will be [2,1]{0,2}.
-  DimensionVector slice_starts(hlo.shape().rank(), 0LL),
-      slice_limits(hlo.shape().rank());
-  for (int64_t i = 0; i < hlo.shape().rank(); ++i) {
+  DimensionVector slice_starts(hlo.shape().dimensions().size(), 0LL),
+      slice_limits(hlo.shape().dimensions().size());
+  for (int64_t i = 0; i < hlo.shape().dimensions().size(); ++i) {
     if (!absl::c_binary_search(dnums.offset_dims(), i)) {
       slice_limits[i] = hlo.sharding().tile_assignment().dim(i);
     } else {
@@ -1389,13 +1379,14 @@ HloSharding ScatterIndexShardingFromUpdate(
   const ScatterDimensionNumbers& dnums = scatter->scatter_dimension_numbers();
   const GatherScatterDims indices_update_dims =
       GetGatherConnectedDimsAcrossIndicesAndOutput(
-          scatter->scatter_indices()->shape().rank(), dnums.index_vector_dim(),
-          scatter->scatter_updates()[0]->shape().rank(),
+          scatter->scatter_indices()->shape().dimensions().size(),
+          dnums.index_vector_dim(),
+          scatter->scatter_updates()[0]->shape().dimensions().size(),
           dnums.update_window_dims());
   return PropagateShardingAlongDimsAndReplicateOthers(
       update_sharding, indices_update_dims.output_dims,
       indices_update_dims.indices_dims,
-      scatter->scatter_indices()->shape().rank());
+      scatter->scatter_indices()->shape().dimensions().size());
 }
 
 HloSharding ScatterUpdateShardingFromIndex(
@@ -1407,13 +1398,14 @@ HloSharding ScatterUpdateShardingFromIndex(
   const ScatterDimensionNumbers& dnums = scatter->scatter_dimension_numbers();
   const GatherScatterDims indices_update_dims =
       GetGatherConnectedDimsAcrossIndicesAndOutput(
-          scatter->scatter_indices()->shape().rank(), dnums.index_vector_dim(),
-          scatter->scatter_updates()[0]->shape().rank(),
+          scatter->scatter_indices()->shape().dimensions().size(),
+          dnums.index_vector_dim(),
+          scatter->scatter_updates()[0]->shape().dimensions().size(),
           dnums.update_window_dims());
   return PropagateShardingAlongDimsAndReplicateOthers(
       index_sharding, indices_update_dims.indices_dims,
       indices_update_dims.output_dims,
-      scatter->scatter_updates()[0]->shape().rank());
+      scatter->scatter_updates()[0]->shape().dimensions().size());
 }
 
 HloSharding ScatterEffectiveIndexSharding(
@@ -1426,7 +1418,7 @@ HloSharding ScatterEffectiveIndexSharding(
   const ScatterDimensionNumbers& dnums = scatter.scatter_dimension_numbers();
   int64_t num_elements = 1;
   int64_t index_dim = 0;
-  for (int64_t i = 0; i < scatter.shape().rank(); ++i) {
+  for (int64_t i = 0; i < scatter.shape().dimensions().size(); ++i) {
     if (absl::c_binary_search(dnums.inserted_window_dims(), i)) {
       num_elements *= index_sharding.tile_assignment().dim(index_dim);
       index_dim++;
@@ -1446,7 +1438,8 @@ HloSharding ScatterEffectiveIndexSharding(
                                      index_sharding.metadata());
   }
 
-  const int64_t index_rank = scatter.scatter_indices()->shape().rank();
+  const int64_t index_rank =
+      scatter.scatter_indices()->shape().dimensions().size();
   DimensionVector slice_starts(index_rank, 0LL), slice_limits(index_rank);
   for (int64_t i = 0; i < index_rank; ++i) {
     if (i < index_dim) {
@@ -1468,10 +1461,11 @@ HloSharding ScatterEffectiveDataSharding(const HloSharding& data_sharding,
   }
 
   const ScatterDimensionNumbers& dnums = scatter.scatter_dimension_numbers();
-  const int64_t data_rank = scatter.scatter_updates()[0]->shape().rank();
+  const int64_t data_rank =
+      scatter.scatter_updates()[0]->shape().dimensions().size();
   DimensionVector tile_assignment_dims(data_rank, 1LL);
   int64_t num_elements = 1;
-  for (int64_t i = 0; i < scatter.shape().rank(); ++i) {
+  for (int64_t i = 0; i < scatter.shape().dimensions().size(); ++i) {
     if (absl::c_binary_search(dnums.inserted_window_dims(), i)) {
       CHECK_LT(i, data_rank);
       tile_assignment_dims[i] = data_sharding.tile_assignment().dim(i);
@@ -1517,7 +1511,7 @@ GatherScatterDims GetGatherScatterOperandPassthroughDims(
   CHECK(absl::c_is_sorted(offset_or_window_dims));
 
   int64_t collapsed_or_batching = 0;
-  for (int64_t i = 0; i < operand_shape.rank(); ++i) {
+  for (int64_t i = 0; i < operand_shape.dimensions().size(); ++i) {
     if (IsCollapsedOrBatchingDim(collapsed_or_inserted_dims,
                                  operand_batching_dims, i)) {
       collapsed_or_batching++;
@@ -1580,7 +1574,7 @@ std::optional<HloSharding> PassthroughGatherOutputOrScatterUpdateToOperand(
           offset_or_window_dims, slice_size);
   HloSharding result = PropagateShardingAlongDimsAndReplicateOthers(
       output_or_update_sharding, operand_passthrough_dims.output_dims,
-      operand_passthrough_dims.operand_dims, operand_shape.rank());
+      operand_passthrough_dims.operand_dims, operand_shape.dimensions().size());
   if (result.IsTileMaximal()) {
     return std::nullopt;
   }
@@ -1617,7 +1611,7 @@ std::optional<HloSharding> GatherOperandShardingFromOutputParallelDimensions(
 
   return PropagateShardingAlongDimsAndReplicateOthers(
       output_sharding, parallel_dims.output_dims, parallel_dims.operand_dims,
-      gather.operand(0)->shape().rank());
+      gather.operand(0)->shape().dimensions().size());
 }
 
 }  // namespace
@@ -1635,7 +1629,7 @@ GatherOutputShardingFromOperandOperandPassthroughDimensions(
     const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes) {
   const auto& dnums = hlo.gather_dimension_numbers();
   return PassthroughOperandToGatherOutputOrScatterUpdate(
-      operand_shape, operand_sharding, hlo.shape().rank(),
+      operand_shape, operand_sharding, hlo.shape().dimensions().size(),
       dnums.collapsed_slice_dims(), dnums.operand_batching_dims(),
       dnums.offset_dims(), slice_sizes);
 }
@@ -1676,9 +1670,9 @@ std::optional<HloSharding> GatherOperandShardingFromOutput(
 std::vector<int64_t> GetScatterSliceSize(const Shape& operand_shape,
                                          const Shape& update_shape,
                                          const ScatterDimensionNumbers& dnums) {
-  std::vector<int64_t> slice_size(operand_shape.rank(), 1);
+  std::vector<int64_t> slice_size(operand_shape.dimensions().size(), 1);
   int64_t num_update_window_dims = 0;
-  for (int64_t i = 0; i < operand_shape.rank(); ++i) {
+  for (int64_t i = 0; i < operand_shape.dimensions().size(); ++i) {
     if (IsCollapsedOrBatchingDim(dnums.inserted_window_dims(),
                                  dnums.input_batching_dims(), i)) {
       continue;
@@ -1755,7 +1749,7 @@ ScatterUpdateShardingFromOutputOperandPassthroughDimensions(
   const auto& dnums = scatter->scatter_dimension_numbers();
   return PassthroughOperandToGatherOutputOrScatterUpdate(
       output_shape, output_sharding,
-      scatter->scatter_updates()[0]->shape().rank(),
+      scatter->scatter_updates()[0]->shape().dimensions().size(),
       dnums.inserted_window_dims(), dnums.input_batching_dims(),
       dnums.update_window_dims(), slice_sizes);
 }
@@ -1790,7 +1784,7 @@ std::optional<HloSharding> ScatterUpdateShardingFromOutputParallelDimensions(
 
   return PropagateShardingAlongDimsAndReplicateOthers(
       output_sharding, parallel_dims.operand_dims, parallel_dims.output_dims,
-      scatter.scatter_updates()[0]->shape().rank());
+      scatter.scatter_updates()[0]->shape().dimensions().size());
 }
 
 absl::StatusOr<std::pair<std::unique_ptr<HloInstruction>, HloOpcode>>
@@ -2075,7 +2069,8 @@ std::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota,
     return std::nullopt;
   }
   if (maybe_iota->IsConstant()) {
-    std::vector<bool> is_iota_dim(maybe_iota->shape().rank(), true);
+    std::vector<bool> is_iota_dim(maybe_iota->shape().dimensions().size(),
+                                  true);
     maybe_iota->literal().EachCell<int32_t>(
         [&](absl::Span<const int64_t> indices, int32_t val) {
           for (int64_t i = 0; i < indices.size(); ++i) {
@@ -2200,7 +2195,7 @@ std::optional<GatherScatterDims> GetGatherScatterBatchParallelDims(
     int concatenated_dims = 0;
     for (const HloInstruction* op : indices->operands()) {
       const int64_t num_indices_from_element =
-          op->shape().dimensions_size() > index_vector_dim
+          op->shape().dimensions().size() > index_vector_dim
               ? op->shape().dimensions(index_vector_dim)
               : 1;
       if (std::optional<int64_t> maybe_iota_dim =
@@ -2218,7 +2213,7 @@ std::optional<GatherScatterDims> GetGatherScatterBatchParallelDims(
     if (*maybe_iota_dim != index_vector_dim) {
       // This is a case of a single iota with index_dim being out of bounds.
       const int64_t num_indices_from_element =
-          indices->shape().dimensions_size() > index_vector_dim
+          indices->shape().dimensions().size() > index_vector_dim
               ? indices->shape().dimensions(index_vector_dim)
               : 1;
       index_parallel_in_dim.assign(num_indices_from_element, *maybe_iota_dim);
@@ -2343,8 +2338,9 @@ GatherScatterDims GetGatherScatterIndexPassThroughDims(
                    std::back_inserter(excluded_indices_dims));
     }
     return GetGatherConnectedDimsAcrossIndicesAndOutput(
-        gather->operand(1)->shape().rank(), dnums.index_vector_dim(),
-        hlo.shape().rank(), dnums.offset_dims(), excluded_indices_dims);
+        gather->operand(1)->shape().dimensions().size(),
+        dnums.index_vector_dim(), hlo.shape().dimensions().size(),
+        dnums.offset_dims(), excluded_indices_dims);
   }
 
   if (const auto* scatter = DynCast<HloScatterInstruction>(&hlo)) {
@@ -2358,8 +2354,9 @@ GatherScatterDims GetGatherScatterIndexPassThroughDims(
                    std::back_inserter(excluded_indices_dims));
     }
     return GetGatherConnectedDimsAcrossIndicesAndOutput(
-        scatter->scatter_indices()->shape().rank(), dnums.index_vector_dim(),
-        scatter->scatter_updates()[0]->shape().rank(),
+        scatter->scatter_indices()->shape().dimensions().size(),
+        dnums.index_vector_dim(),
+        scatter->scatter_updates()[0]->shape().dimensions().size(),
         dnums.update_window_dims(), excluded_indices_dims);
   }
 
@@ -2372,7 +2369,7 @@ HloSharding InferGatherScatterParallelShardingFromOperandSharding(
     absl::Span<const int64_t> output_parallel_dims) {
   return PropagateShardingAlongDimsAndReplicateOthers(
       operand_sharding, output_aligned_operand_parallel_dims,
-      output_parallel_dims, shape.rank());
+      output_parallel_dims, shape.dimensions().size());
 }
 
 std::string GroupedSharding::ToString() const {
@@ -2383,10 +2380,8 @@ std::string GroupedSharding::ToString() const {
   absl::StrAppend(&result, "data rank: ", data_rank, "\n");
   absl::StrAppend(&result, "subgroup manual: ", subgroup_manual, "\n");
   absl::StrAppend(&result, "inner sharding: ", sharding.ToString(), "\n");
-  absl::StrAppend(&result, "device groups:", "\n");
-  for (auto& device_group : device_groups) {
-    absl::StrAppend(&result, "\t", absl::StrJoin(device_group, ","), "\n");
-  }
+  absl::StrAppend(&result, "device groups:", "\n", device_groups.ToString(),
+                  "\n");
   return result;
 }
 
@@ -2468,22 +2463,16 @@ GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
     perm.insert(perm.begin() + i, index);
   }
 
-  auto grouped_array = sharding.tile_assignment()
-                           .Reshape(reshape_dimensions)
-                           .Transpose(perm)
-                           .array();
+  auto grouped_tile_assignment =
+      sharding.tile_assignment().Reshape(reshape_dimensions).Transpose(perm);
 
   const int64_t num_device_groups = Product(group_dim_sizes);
   const int64_t num_devices = sharding.tile_assignment().num_elements();
   CHECK_EQ(num_devices % num_device_groups, 0);
   const int64_t device_group_size = num_devices / num_device_groups;
-  std::vector<std::vector<int64_t>> device_groups(
-      num_device_groups, std::vector<int64_t>(device_group_size));
-  for (int64_t i = 0; i < num_device_groups; ++i) {
-    device_groups[i].assign(
-        grouped_array.begin() + i * device_group_size,
-        grouped_array.begin() + (i + 1) * device_group_size);
-  }
+
+  DeviceGroupTileAssignment device_groups = DeviceGroupTileAssignment(
+      grouped_tile_assignment.Reshape({num_device_groups, device_group_size}));
 
   auto grouped = GroupedSharding(
       std::move(device_groups),
@@ -2618,13 +2607,7 @@ GroupedSharding GetGroupedReplicatedSharding(const int64_t num_groups,
                                              const int64_t data_rank) {
   CHECK_EQ(num_tiles % num_groups, 0);
   const int64_t group_size = num_tiles / num_groups;
-  std::vector<std::vector<int64_t>> device_groups(
-      num_groups, std::vector<int64_t>(group_size));
-  int64_t device_id = 0;
-  for (auto& device_group : device_groups) {
-    absl::c_iota(device_group, device_id);
-    device_id = device_group.back() + 1;
-  }
+  DeviceGroupTileAssignment device_groups(num_groups, group_size);
   return GroupedSharding(std::move(device_groups), {data_rank}, {num_groups},
                          data_rank, HloSharding::Replicate(),
                          /*subgroup_manual=*/false);
@@ -2660,9 +2643,10 @@ GroupedSharding GetManualSubgroupSharding(const HloSharding& sharding) {
 std::optional<GroupedSharding>
 PartialReplicatedGroupShardingWithAssignedDeviceGroups(
     const HloSharding& sharding, int64_t num_shards,
-    const std::vector<std::vector<int64_t>>& device_groups) {
+    const DeviceGroupTileAssignment& device_groups) {
   if (!sharding.ReplicateOnLastTileDim() ||
-      sharding.tile_assignment().dimensions().back() % device_groups.size() !=
+      sharding.tile_assignment().dimensions().back() %
+              device_groups.num_groups() !=
           0) {
     VLOG(5) << "Failed because not partial replicated or not divisible";
     return std::nullopt;
@@ -2677,31 +2661,32 @@ PartialReplicatedGroupShardingWithAssignedDeviceGroups(
   DimensionVector grouped_tiling_dims(
       sharding.tile_assignment().dimensions().begin(),
       sharding.tile_assignment().dimensions().end());
-  grouped_tiling_dims.back() /= device_groups.size();
+  grouped_tiling_dims.back() /= device_groups.num_groups();
   std::optional<HloSharding> final_sharding;
   const int64_t shard_size_on_replicated_dim =
       sharding.tile_assignment().dimensions().back() / num_shards;
-  for (int64_t group_idx = 0; group_idx < device_groups.size(); ++group_idx) {
+
+  for (int64_t group_idx = 0; group_idx < device_groups.num_groups();
+       ++group_idx) {
     HloSharding group_sharding = HloSharding::Replicate();
     Array<int64_t> grouped_tiling(grouped_tiling_dims);
     Array<int64_t> stacked_pos(
         absl::MakeConstSpan(grouped_tiling_dims.data(),
                             grouped_tiling_dims.size() - 1),
         0);
-    for (int64_t device_idx = 0; device_idx < device_groups[group_idx].size();
-         ++device_idx) {
+    for (int64_t device_idx = 0;
+         device_idx < device_groups.num_devices_per_group(); ++device_idx) {
       VLOG(5) << "Device idx: " << device_idx;
-      const int64_t device = device_groups[group_idx][device_idx];
+      const int64_t device = device_groups(group_idx, device_idx);
       const auto& indices = device_to_index[device];
       absl::Span<const int64_t> stacked_pos_idx =
           absl::MakeConstSpan(indices.data(), indices.size() - 1);
       int64_t& position = stacked_pos(stacked_pos_idx);
       if (position == num_shards) {
         VLOG(5) << "Fail because stacked position overflow " << position
-                << " device_groups " << device_groups.size() << " ["
+                << " device_groups " << device_groups.num_groups() << " ["
                 << absl::StrJoin(indices, ",") << "]";
-        VLOG(5) << "Device: " << device << " "
-                << device_groups[group_idx][device_idx];
+        VLOG(5) << "Device: " << device;
         VLOG(5) << "Indices: " << absl::StrJoin(indices, ",");
         VLOG(5) << "Grouped tiling: " << grouped_tiling.ToString();
         return std::nullopt;
@@ -2737,11 +2722,12 @@ HloSharding UngroupSharding(const GroupedSharding& grouped_sharding) {
   auto grouped_tiling = grouped_sharding.sharding.tile_assignment();
   if (grouped_sharding.sharding.IsTileMaximal()) {
     tiling_dims = DimensionVector(grouped_sharding.data_rank, 1);
-    if (grouped_sharding.device_groups[0].size() != 1 ||
+    if (grouped_sharding.device_groups.num_devices_per_group() != 1 ||
         absl::c_linear_search(grouped_sharding.group_dims,
                               tiling_dims.size())) {
       // This is partial sharding.
-      tiling_dims.push_back(grouped_sharding.device_groups[0].size());
+      tiling_dims.push_back(
+          grouped_sharding.device_groups.num_devices_per_group());
       partial_sharding = true;
     }
     grouped_tiling = TileAssignment(tiling_dims);
@@ -2787,8 +2773,6 @@ HloSharding UngroupSharding(const GroupedSharding& grouped_sharding) {
   group_dim_sizes_and_tiling_dims.insert(group_dim_sizes_and_tiling_dims.end(),
                                          tiling_dims.begin(),
                                          tiling_dims.end());
-  Array<int64_t> tiling(group_dim_sizes_and_tiling_dims);
-
   DimensionVector sorted_group_dims(grouped_sharding.group_dims.size());
   std::partial_sort_copy(grouped_sharding.group_dims.begin(),
                          grouped_sharding.group_dims.end(),
@@ -2811,59 +2795,92 @@ HloSharding UngroupSharding(const GroupedSharding& grouped_sharding) {
     }
   }
 
-  std::vector<int64_t> flattened_device_groups;
-  flattened_device_groups.reserve(grouped_sharding.device_groups.size() *
-                                  grouped_sharding.device_groups[0].size());
-  bool same_length =
-      grouped_tiling.num_elements() == grouped_sharding.device_groups[0].size();
-  for (auto const& v : grouped_sharding.device_groups) {
-    if (same_length) {
-      // Reorder the device_groups based on the grouped_tiling.array()
-      for (int64_t i = 0; i < v.size(); ++i) {
-        flattened_device_groups.push_back(
-            v[*(grouped_tiling.array().begin() + i)]);
-      }
-    } else {
-      flattened_device_groups.insert(flattened_device_groups.end(), v.begin(),
-                                     v.end());
+  CHECK_EQ(grouped_tiling.num_elements(),
+           grouped_sharding.device_groups.num_devices_per_group());
+  TileAssignment flattened_tile_assignment;
+  // If the inner sharding (grouped_tiling) is iota tile, we can just apply the
+  // inner sharding's reshape and transpose on the device groups to flatten the
+  // device groups. Here is an example.
+  // Inner tiling: [2,2]<=T(1,0)
+  // Device groups: [2,4]<=[8] = [[0,1,2,3], [4,5,6,7]]
+  // 1. Reshape device groups from [2,4] to [2,2,2] -> [[[0,1], [2,3]], [[4,5],
+  // [6,7]]]
+  // 2. Apply transpose specified by inner sharding: T(0,1,2) -> T(0,2,1) =
+  // [[[0,2],[1,3], [[4,6], [5,7]]]
+  if (grouped_tiling.iota().has_value()) {
+    std::vector<int64_t> reshape_dims(
+        grouped_tiling.iota()->reshape_dims().begin(),
+        grouped_tiling.iota()->reshape_dims().end());
+    std::vector<int> perm(grouped_tiling.iota()->transpose_perm().begin(),
+                          grouped_tiling.iota()->transpose_perm().end());
+    reshape_dims.insert(reshape_dims.begin(),
+                        grouped_sharding.device_groups.num_groups());
+    for (int i = 0; i < perm.size(); i++) {
+      perm[i] = perm[i] + 1;
     }
+    perm.insert(perm.begin(), 0);
+    flattened_tile_assignment =
+        grouped_sharding.device_groups.Reshape(reshape_dims)
+            .Transpose(perm)
+            .Reshape(group_dim_sizes_and_tiling_dims);
+  } else {
+    Array<int64_t> tiling(group_dim_sizes_and_tiling_dims);
+    std::vector<int64_t> flattened_device_groups;
+    auto device_groups = grouped_sharding.device_groups;
+    flattened_device_groups.reserve(device_groups.num_total_devices());
+
+    for (int64_t i = 0; i < device_groups.num_groups(); ++i) {
+      // Reorder the device_groups based on the grouped_tiling.array()
+      for (int64_t j = 0; j < device_groups.num_devices_per_group(); ++j) {
+        flattened_device_groups.push_back(
+            device_groups(i, *(grouped_tiling.array().begin() + j)));
+      }
+    }
+    tiling.SetValues(flattened_device_groups);
+    flattened_tile_assignment = TileAssignment(
+        std::make_shared<const Array<int64_t>>(std::move(tiling)));
   }
-  tiling.SetValues(flattened_device_groups);
-  TileAssignment tile_assignment(
-      std::make_shared<const Array<int64_t>>(std::move(tiling)));
 
   for (int64_t i = 0; i < grouped_sharding.group_dims.size(); ++i) {
     int64_t dim = grouped_sharding.group_dims[i];
     tiling_dims[dim] *= grouped_sharding.group_dim_sizes[i];
   }
-  tile_assignment = tile_assignment.Transpose(perm).Reshape(tiling_dims);
-
+  flattened_tile_assignment =
+      flattened_tile_assignment.Transpose(perm).Reshape(tiling_dims);
   if (grouped_sharding.subgroup_manual) {
-    return HloSharding::Subgroup(tile_assignment, subgroup_types,
+    return HloSharding::Subgroup(flattened_tile_assignment, subgroup_types,
                                  grouped_sharding.sharding.metadata());
   }
-  return partial_sharding ? HloSharding::PartialTile(tile_assignment)
-                          : HloSharding::Tile(tile_assignment);
+  return partial_sharding ? HloSharding::PartialTile(flattened_tile_assignment)
+                          : HloSharding::Tile(flattened_tile_assignment);
 }
 
 bool DeviceGroupsAreMatch(GroupedSharding& lhs, GroupedSharding& rhs,
                           bool ignore_group_order) {
-  if (lhs.device_groups.size() != rhs.device_groups.size()) {
+  if (lhs.device_groups.num_groups() != rhs.device_groups.num_groups()) {
     return false;
   }
 
+  // If both the device groups are in iota format, we can compare the iota
+  // representation directly as this is quite fast.
+  if (lhs.device_groups.has_iota() && rhs.device_groups.has_iota() &&
+      lhs.device_groups == rhs.device_groups) {
+    return true;
+  }
+
   bool matching_groups = true;
-  std::vector<int64_t> device_to_ref_group(lhs.device_groups.size() *
-                                           lhs.device_groups[0].size());
-  for (int64_t g = 0; g < lhs.device_groups.size(); ++g) {
-    for (int64_t device : lhs.device_groups[g]) {
-      device_to_ref_group[device] = g;
+  std::vector<int64_t> device_to_ref_group(
+      lhs.device_groups.num_total_devices());
+  for (int64_t g = 0; g < lhs.device_groups.num_groups(); ++g) {
+    for (int64_t d = 0; d < lhs.device_groups.num_devices_per_group(); ++d) {
+      device_to_ref_group[lhs.device_groups(g, d)] = g;
     }
   }
-  auto unique_ref_dev_group =
-      [&](absl::Span<const int64_t> devices) -> int64_t {
+  auto unique_ref_dev_group = [&](int64_t group) -> int64_t {
     int64_t ref_g = -1;
-    for (int64_t device : devices) {
+    for (int64_t device_idx = 0;
+         device_idx < rhs.device_groups.num_devices_per_group(); ++device_idx) {
+      const int64_t device = rhs.device_groups(group, device_idx);
       if (ref_g == -1) {
         ref_g = device_to_ref_group[device];
       } else if (ref_g != device_to_ref_group[device]) {
@@ -2872,8 +2889,8 @@ bool DeviceGroupsAreMatch(GroupedSharding& lhs, GroupedSharding& rhs,
     }
     return ref_g;
   };
-  for (int64_t g = 0; g < rhs.device_groups.size(); ++g) {
-    int64_t ref_g = unique_ref_dev_group(rhs.device_groups[g]);
+  for (int64_t g = 0; g < rhs.device_groups.num_groups(); ++g) {
+    int64_t ref_g = unique_ref_dev_group(g);
     if (ref_g < 0 || (!ignore_group_order && g != ref_g)) {
       matching_groups = false;
       break;
@@ -2941,14 +2958,14 @@ std::shared_ptr<const HloSharding> CreateTupleSharding(
 std::optional<int64_t> GetFirstTargetDimToMoveShardingTiles(
     const Shape& shape, const HloSharding& sharding, int64_t source_dim,
     std::function<bool(int64_t)> can_be_target_dim) {
-  if (shape.rank() < 2 || shape.dimensions(source_dim) == 1) {
+  if (shape.dimensions().size() < 2 || shape.dimensions(source_dim) == 1) {
     return std::nullopt;
   }
   if (!sharding.IsTiled() || sharding.tile_assignment().dim(source_dim) == 1) {
     return std::nullopt;
   }
 
-  for (int64_t dim = 0; dim < shape.rank(); ++dim) {
+  for (int64_t dim = 0; dim < shape.dimensions().size(); ++dim) {
     if (dim == source_dim) {
       continue;
     }
@@ -3010,8 +3027,9 @@ Shape UntileLeafShape(const HloSharding& sharding, const Shape& shape) {
     return shape;
   }
   Shape result_shape = shape;
-  // sharding.TiledDataRank() == i < shape.rank() is not always true?
-  for (int64_t i = 0; i < sharding.TiledDataRank() && i < shape.rank(); ++i) {
+  // sharding.TiledDataRank() == i < shape.dimensions_size() is not always true?
+  for (int64_t i = 0;
+       i < sharding.TiledDataRank() && i < shape.dimensions().size(); ++i) {
     result_shape.set_dimensions(
         i, shape.dimensions(i) * sharding.tile_assignment().dim(i));
   }
@@ -3045,7 +3063,8 @@ Shape TileLeafShape(const HloSharding& sharding, const Shape& shape) {
     return shape;
   }
   Shape result_shape = shape;
-  for (int64_t i = 0; i < sharding.TiledDataRank() && i < shape.rank(); ++i) {
+  for (int64_t i = 0;
+       i < sharding.TiledDataRank() && i < shape.dimensions().size(); ++i) {
     CHECK_EQ(shape.dimensions(i) % sharding.tile_assignment().dim(i), 0);
     result_shape.set_dimensions(
         i, shape.dimensions(i) / sharding.tile_assignment().dim(i));
@@ -3054,11 +3073,8 @@ Shape TileLeafShape(const HloSharding& sharding, const Shape& shape) {
 }
 
 absl::Status CanonicalizeLayoutAfterShardingPropagation(
-    HloModule* module, bool update_output_layout,
-    bool update_parameters_layout) {
-  if (!update_output_layout && !update_parameters_layout) {
-    return absl::OkStatus();
-  }
+    HloModule* module, const std::vector<bool>& update_output_layout,
+    const std::vector<bool>& update_parameters_layout) {
   if (!module->layout_canonicalization_callback()) {
     LOG(INFO) << "There is no registered layout_canonicalization_callback.";
     return absl::OkStatus();
@@ -3066,19 +3082,39 @@ absl::Status CanonicalizeLayoutAfterShardingPropagation(
   TF_ASSIGN_OR_RETURN(auto shapes_with_layout,
                       module->layout_canonicalization_callback()(*module));
 
-  if (update_output_layout &&
-      module->entry_computation_layout().result_layout().LayoutIsSet()) {
-    TF_RETURN_IF_ERROR(module->mutable_entry_computation_layout()
-                           ->mutable_result_layout()
-                           ->CopyLayoutFromShape(shapes_with_layout.second));
+  if (module->entry_computation_layout().result_layout().LayoutIsSet() &&
+      absl::c_any_of(update_output_layout, [](bool v) { return v; })) {
+    if (absl::c_all_of(update_output_layout, [](bool v) { return v; })) {
+      TF_RETURN_IF_ERROR(module->mutable_entry_computation_layout()
+                             ->mutable_result_layout()
+                             ->CopyLayoutFromShape(shapes_with_layout.second));
+    } else {
+      Shape result_shape = module->mutable_entry_computation_layout()
+                               ->mutable_result_layout()
+                               ->shape();
+      CHECK_EQ(result_shape.tuple_shapes().size(),
+               shapes_with_layout.second.tuple_shapes().size());
+      for (int64_t i = 0; i < result_shape.tuple_shapes().size(); ++i) {
+        if (update_output_layout[i]) {
+          *result_shape.mutable_tuple_shapes(i) =
+              shapes_with_layout.second.tuple_shapes(i);
+        }
+      }
+      TF_RETURN_IF_ERROR(module->mutable_entry_computation_layout()
+                             ->mutable_result_layout()
+                             ->CopyLayoutFromShape(result_shape));
+    }
   }
 
-  if (update_parameters_layout) {
+  if (absl::c_any_of(update_parameters_layout, [](bool v) { return v; })) {
     for (int64_t i = 0; i < module->entry_computation()->num_parameters();
          ++i) {
-      if (module->entry_computation_layout()
-              .parameter_layout(i)
-              .LayoutIsSet()) {
+      bool update_parameter_layout = update_parameters_layout.size() == 1
+                                         ? update_parameters_layout[0]
+                                         : update_parameters_layout[i];
+      bool parameter_layout_is_set =
+          module->entry_computation_layout().parameter_layout(i).LayoutIsSet();
+      if (update_parameter_layout && parameter_layout_is_set) {
         TF_RETURN_IF_ERROR(
             module->mutable_entry_computation_layout()
                 ->mutable_parameter_layout(i)
@@ -3152,7 +3188,7 @@ std::optional<HloSharding> ReturnImprovedShardingImpl(
     bool allow_aggressive_resharding) {
   // Always allow improve the sharding if it's straightly better.
   if (to_improved != nullptr && IsShardingStrictlyBetter(from, *to_improved)) {
-    return std::move(from);
+    return from;
   }
   // We don't want to propagate tile maximal shardings.
   if (!IsSpatiallyPartitioned(from)) {
@@ -3160,7 +3196,7 @@ std::optional<HloSharding> ReturnImprovedShardingImpl(
   }
   // Any sharding is better than no sharding.
   if (to_improved == nullptr) {
-    return std::move(from);
+    return from;
   }
   // We don't want to propagate manual shardings.
   if (from.IsManual()) {
@@ -3180,7 +3216,7 @@ std::optional<HloSharding> ReturnImprovedShardingImpl(
         return std::nullopt;
       }
     }
-    return std::move(from);
+    return from;
   }
   return std::nullopt;
 }
@@ -3295,6 +3331,17 @@ HloSharding InferDotOperandSharding(
       other_operand->has_sharding() ? &other_operand->sharding() : nullptr,
       operand_index, dnums, consider_other_operand,
       may_combine_partial_sharding);
+}
+
+std::vector<std::vector<int64_t>>
+DeviceGroupTileAssignment::flattened_device_groups() const {
+  std::vector<std::vector<int64_t>> result;
+  result.reserve(num_groups());
+  for (auto it = array().begin(); it != array().end();
+       it += num_devices_per_group()) {
+    result.emplace_back(it, it + num_devices_per_group());
+  }
+  return result;
 }
 
 }  // namespace hlo_sharding_util

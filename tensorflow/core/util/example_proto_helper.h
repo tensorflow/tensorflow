@@ -16,20 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_HELPER_H_
 #define TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_HELPER_H_
 
-#include <string>
+#include <cstddef>
+#include <cstdint>
 #include <unordered_set>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 // This is a set of helper methods that will make it possible to share
 // tensorflow::Example proto Tensor conversion code inside the ExampleParserOp
@@ -185,6 +187,8 @@ struct ParseExampleAttrs {
     }
     return FinishInit(op_version);
   }
+
+  absl::Status UpdateDenseShapes(const std::vector<size_t>& got_dims);
 
   int64_t num_sparse;
   int64_t num_dense;

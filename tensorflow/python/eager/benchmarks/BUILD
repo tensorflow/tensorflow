@@ -13,7 +13,6 @@ cuda_py_benchmark_test(
     name = "kpi_benchmark_test",
     size = "medium",
     srcs = ["kpi_benchmark_test.py"],
-    python_version = "PY3",
     tags = [
         "no_windows",  #  b/141617449
         "optonly",

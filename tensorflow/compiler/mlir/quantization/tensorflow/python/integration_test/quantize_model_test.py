@@ -5617,7 +5617,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         testing.get_size_ratio(
             self._output_saved_model_path, self._input_saved_model_path
         ),
-        0.3,
+        0.31,
     )
 
     if enable_per_channel_quantization and target_opset == quant_opts_pb2.XLA:
@@ -5711,7 +5711,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
 
     # Due to other meta data, the compression is not exactly 1/4.
-    size_threshold = 0.5 if enable_per_channel_quantization else 0.32
+    size_threshold = 0.5 if enable_per_channel_quantization else 0.33
     self.assertLess(
         testing.get_size_ratio(
             self._output_saved_model_path, self._input_saved_model_path

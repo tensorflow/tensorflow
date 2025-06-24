@@ -66,9 +66,9 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -82,10 +82,10 @@ tf_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:types",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:status",
+        "@local_xla//xla/tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 
@@ -180,8 +180,8 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -203,8 +203,8 @@ tf_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -233,8 +233,8 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -294,7 +294,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -314,7 +314,7 @@ tf_cc_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/platform:status_matchers",
     ],
 )
 
@@ -354,7 +354,7 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/platform:status_matchers",
     ],
 )
 
@@ -388,8 +388,8 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:errors",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
+        "@local_xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -401,44 +401,29 @@ cc_library(
     deps = [
         ":component",
         ":context",
-        ":io",
         ":post_calibration",
         ":pre_calibration",
         ":saved_model_export",
         ":saved_model_import",
         ":types",
-        "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:component",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:convert_asset_args",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/python:unfreeze_constants",
-        "//tensorflow/compiler/mlir/tensorflow:mlir_import_options",
-        "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -472,8 +457,8 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )

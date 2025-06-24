@@ -15,7 +15,6 @@ pytype_strict_library(
     srcs = [
         "transform.py",
     ],
-    srcs_version = "PY3",
     visibility = ["//smartass/brain/configure:__subpackages__"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -39,7 +38,6 @@ pytype_strict_library(
 py_strict_test(
     name = "transform_test",
     srcs = ["transform_test.py"],
-    python_version = "PY3",
     tags = ["no_oss"],  # TODO(b/219089812)
     deps = [
         ":transform",

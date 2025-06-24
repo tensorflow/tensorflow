@@ -279,6 +279,11 @@ bool IsValidStrideCompactRowMajorData(int64_t* shape_arr, int64_t* stride_arr,
 }
 }  // namespace
 
+void* TFE_GetDLDevice(TFE_TensorHandle* h, TF_Status* status) {
+  auto dl_device = GetDlContext(h, status);
+  return new DLDevice{dl_device.device_type, dl_device.device_id};
+}
+
 void TFE_CallDLManagedTensorDeleter(void* dlm_ptr) {
   DLManagedTensor* dlMTensor = static_cast<DLManagedTensor*>(dlm_ptr);
   if (dlMTensor->deleter != nullptr) {

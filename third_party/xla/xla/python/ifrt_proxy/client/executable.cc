@@ -26,7 +26,7 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/functional/bind_front.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -63,15 +63,15 @@
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status_to_from_proto.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/status_to_from_proto.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -196,7 +196,7 @@ absl::StatusOr<uint64_t> PrepareAndExecuteLoadedHostCallback(
 // executions.
 class LoadedExecutable::OutputSpecCache {
  public:
-  explicit OutputSpecCache(absl::Nonnull<LoadedExecutable*> parent)
+  explicit OutputSpecCache(LoadedExecutable* absl_nonnull parent)
       : parent_(parent) {}
 
   // Returns the cached output spec if already cached, and std::nullopt if not.
@@ -220,13 +220,12 @@ class LoadedExecutable::OutputSpecCache {
       }
     }
     std::vector<ArraySpec> data;
-    const auto lookup_device =
-        absl::bind_front(&Client::LookupDevice, parent_->client());
     for (const auto& output : outputs) {
       TF_ASSIGN_OR_RETURN(auto dtype, DType::FromProto(output.dtype()));
       TF_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(output.shape()));
       TF_ASSIGN_OR_RETURN(
-          auto sharding, Sharding::FromProto(lookup_device, output.sharding()));
+          auto sharding,
+          Sharding::FromProto(parent_->client(), output.sharding()));
       data.push_back(ArraySpec{/*dtype=*/dtype, /*shape=*/std::move(shape),
                                /*sharding=*/std::move(sharding)});
     }
@@ -309,15 +308,19 @@ LoadedExecutable::LoadedExecutable(
         }
 
         auto parse_layouts =
-            [](const LoadedExecutableMetadataResponse::LayoutList& list) {
-              std::vector<std::shared_ptr<const xla::PjRtLayout>> layouts;
-              layouts.reserve(list.layouts_size());
-              for (const auto& layout : list.layouts()) {
-                layouts.push_back(std::make_shared<xla::PjRtLayout>(
-                    xla::Layout::CreateFromProto(layout)));
-              }
-              return layouts;
-            };
+            [](const LoadedExecutableMetadataResponse::LayoutList& list)
+            -> absl::StatusOr<
+                std::vector<std::shared_ptr<const xla::PjRtLayout>>> {
+          std::vector<std::shared_ptr<const xla::PjRtLayout>> layouts;
+          layouts.reserve(list.layouts_size());
+          for (const auto& layout_proto : list.layouts()) {
+            TF_ASSIGN_OR_RETURN(xla::Layout layout,
+                                xla::Layout::FromProto(layout_proto));
+            layouts.push_back(
+                std::make_shared<xla::PjRtLayout>(std::move(layout)));
+          }
+          return layouts;
+        };
 
         if (response.value()->has_parameter_layouts_list()) {
           info->parameter_layouts =
@@ -358,6 +361,27 @@ LoadedExecutable::LoadedExecutable(
             output_memory_kinds.push_back(std::move(kinds));
           }
           info->output_memory_kinds = std::move(output_memory_kinds);
+        }
+
+        if (response.value()->has_donated_input_indices()) {
+          info->donatable_input_indices =
+              std::vector<int>(response.value()
+                                   ->donated_input_indices()
+                                   .donated_input_indices()
+                                   .begin(),
+                               response.value()
+                                   ->donated_input_indices()
+                                   .donated_input_indices()
+                                   .end());
+          info->donatable_input_indices_set =
+              absl::flat_hash_set<int>(info->donatable_input_indices->begin(),
+                                       info->donatable_input_indices->end());
+        } else if (response.value()->has_donated_input_indices_error()) {
+          info->donatable_input_indices = tsl::StatusFromProto(
+              response.value()->donated_input_indices_error());
+        } else {
+          info->donatable_input_indices = absl::UnimplementedError(
+              "IFRT Proxy server did not return donated input indices");
         }
 
         promise.Set(std::move(info));
@@ -423,6 +447,14 @@ std::optional<std::vector<OpSharding>> LoadedExecutable::GetParameterShardings()
   return (*info)->parameter_shardings;
 }
 
+absl::StatusOr<absl::Span<const int>>
+LoadedExecutable::GetDonatableInputIndices() const {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointLoadedExecutableDonatableInputIndices");
+  TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
+  return info->donatable_input_indices;
+}
+
 std::optional<std::vector<OpSharding>> LoadedExecutable::GetOutputShardings()
     const {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
@@ -471,21 +503,39 @@ absl::StatusOr<xla::ifrt::AttributeMap> LoadedExecutable::GetCostAnalysis()
 }
 
 absl::StatusOr<xla::ifrt::LoadedExecutable::ExecuteResult>
-LoadedExecutable::Execute(
-    absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
-    const ExecuteOptions& options,
-    std::optional<tsl::RCReference<xla::ifrt::DeviceList>> devices) {
+LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
+                          const ExecuteOptions& options,
+                          std::optional<xla::ifrt::DeviceListRef> devices) {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointLoadedExecutableExecute");
   auto req = std::make_unique<LoadedExecutableExecuteRequest>();
   req->set_loaded_executable_handle(handle_);
-  for (const auto& arg : args) {
+
+  TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
+  for (int i = 0; i < args.size(); ++i) {
+    xla::ifrt::ArrayRef& arg = args[i];
     auto* array = llvm::dyn_cast_or_null<Array>(arg.get());
     if (array == nullptr) {
       return absl::InvalidArgumentError(
           "Invalid IFRT array type provided to `LoadedExecutable::Execute`");
     }
-    req->add_args_handles(array->handle().handle);
+    if (options.non_donatable_input_indices.contains(i)) {
+      TF_ASSIGN_OR_RETURN(ArrayHandle handle,
+                          array->GetHandle(ArrayCopySemantics::kAlwaysCopy));
+      req->add_args_handles(handle.handle);
+    } else if (!info->donatable_input_indices_set.has_value()) {
+      TF_ASSIGN_OR_RETURN(ArrayHandle handle,
+                          array->GetHandleUnknownIfBeingDonated());
+      req->add_args_handles(handle.handle);
+    } else if (info->donatable_input_indices_set->contains(i)) {
+      TF_ASSIGN_OR_RETURN(ArrayHandle handle,
+                          array->GetHandle(ArrayCopySemantics::kDonateInput));
+      req->add_args_handles(handle.handle);
+    } else {
+      TF_ASSIGN_OR_RETURN(ArrayHandle handle,
+                          array->GetHandle(ArrayCopySemantics::kAlwaysCopy));
+      req->add_args_handles(handle.handle);
+    }
   }
   TF_ASSIGN_OR_RETURN(*req->mutable_execute_options(), options.ToProto());
   if (devices.has_value()) {
@@ -508,14 +558,29 @@ LoadedExecutable::Execute(
       output_spec_cache_->Retrieve().has_value();
 
   xla::ifrt::LoadedExecutable::ExecuteResult result;
+  absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>> layouts =
+      GetOutputLayouts();
 
   if (client_generated_handles) {
     auto output_specs = *output_spec_cache_->Retrieve();
-    for (const auto& output_spec : output_specs) {
+    if (layouts.ok() && layouts->size() != output_specs.size()) {
+      return absl::InternalError(absl::StrCat(
+          "Mismatch between output specs and layouts: ", output_specs.size(),
+          " vs ", layouts->size()));
+    }
+    for (int i = 0; i < output_specs.size(); ++i) {
+      const auto& output_spec = output_specs[i];
       uint64_t handle = rpc_helper_->NextHandle();
-      result.outputs.push_back(tsl::MakeRef<Array>(
-          client(), rpc_helper_, output_spec.dtype, output_spec.shape,
-          output_spec.sharding, ArrayHandle{handle}));
+      if (layouts.ok()) {
+        result.outputs.push_back(tsl::MakeRef<Array>(
+            client(), rpc_helper_, output_spec.dtype, output_spec.shape,
+            output_spec.sharding, ArrayHandle{handle},
+            /*layout=*/std::move((*layouts)[i])));
+      } else {
+        result.outputs.push_back(tsl::MakeRef<Array>(
+            client(), rpc_helper_, output_spec.dtype, output_spec.shape,
+            output_spec.sharding, ArrayHandle{handle}, /*layout=*/nullptr));
+      }
       req->add_result_array_handle(handle);
     }
     uint64_t status_handle = rpc_helper_->NextHandle();
@@ -529,78 +594,54 @@ LoadedExecutable::Execute(
       // handle being sent.
       result.status = rpc_helper_->CheckFuture(status_handle);
     }
-  } else {
-    TF_ASSIGN_OR_RETURN(
-        std::shared_ptr<LoadedExecutableExecuteResponse> response,
-        rpc_helper_->LoadedExecutableExecute(std::move(req)).Await());
-    auto status = output_spec_cache_->Cache(response->outputs());
-    if (!status.ok()) {
-      // Handles in `response` need to be destructed remotely.
-      for (const auto& output : response->outputs()) {
-        Array::Destruct(rpc_helper_.get(), ArrayHandle{output.array_handle()});
-      }
-      if (result_needs_exec_status) {
-        // `CheckFuture` deletes the server-side future handle.
-        rpc_helper_->CheckFuture(response->status_handle());
-      }
-      return status;
-    }
-    auto output_specs = *output_spec_cache_->Retrieve();
-    for (int i = 0; i < output_specs.size(); ++i) {
-      result.outputs.push_back(tsl::MakeRef<Array>(
-          client(), rpc_helper_, output_specs[i].dtype, output_specs[i].shape,
-          output_specs[i].sharding,
-          ArrayHandle{response->outputs()[i].array_handle()}));
+
+    return result;
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<LoadedExecutableExecuteResponse> response,
+      rpc_helper_->LoadedExecutableExecute(std::move(req)).Await());
+  auto status = output_spec_cache_->Cache(response->outputs());
+  if (!status.ok()) {
+    // Handles in `response` need to be destructed remotely.
+    for (const auto& output : response->outputs()) {
+      Array::Destruct(rpc_helper_.get(), ArrayHandle{output.array_handle()});
     }
     if (result_needs_exec_status) {
-      result.status = rpc_helper_->CheckFuture(response->status_handle());
+      // `CheckFuture` deletes the server-side future handle.
+      rpc_helper_->CheckFuture(response->status_handle());
+    }
+    return status;
+  }
+  absl::Span<const ArraySpec> output_specs = *output_spec_cache_->Retrieve();
+  if (layouts.ok() && layouts->size() != output_specs.size()) {
+    return absl::InternalError(absl::StrCat(
+        "Mismatch between output specs and layouts: ", output_specs.size(),
+        " vs ", layouts->size()));
+  }
+  for (int i = 0; i < output_specs.size(); ++i) {
+    const auto& output_spec = output_specs[i];
+    if (layouts.ok()) {
+      result.outputs.push_back(tsl::MakeRef<Array>(
+          client(), rpc_helper_, output_spec.dtype, output_spec.shape,
+          output_spec.sharding,
+          ArrayHandle{response->outputs()[i].array_handle()},
+          /*layout=*/std::move((*layouts)[i])));
     } else {
-      CHECK_EQ(response->status_handle(), 0);
+      result.outputs.push_back(tsl::MakeRef<Array>(
+          client(), rpc_helper_, output_spec.dtype, output_spec.shape,
+          output_spec.sharding,
+          ArrayHandle{response->outputs()[i].array_handle()},
+          /*layout=*/nullptr));
     }
   }
-
-  return result;
-}
-
-Future<> LoadedExecutable::Delete() {
-  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
-      "IfrtProxyEntrypointLoadedExecutableDelete");
-  auto req = std::make_unique<LoadedExecutableDeleteRequest>();
-  req->set_loaded_executable_handle(handle_);
-
-  auto promise = Future<>::CreatePromise();
-  Future<> result(promise);
-
-  rpc_helper_->LoadedExecutableDelete(std::move(req))
-      .OnReady(
-          [promise = std::move(promise), rpc_helper = rpc_helper_](
-              absl::StatusOr<std::shared_ptr<LoadedExecutableDeleteResponse>>
-                  response) mutable {
-            if (!response.ok()) {
-              promise.Set(response.status());
-              return;
-            }
-            rpc_helper->CheckFuture((*response)->future_handle())
-                .OnReady([promise = std::move(promise)](
-                             absl::Status s) mutable { promise.Set(s); });
-          });
-  return result;
-}
-
-bool LoadedExecutable::IsDeleted() const {
-  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
-      "IfrtProxyEntrypointLoadedExecutableIsDeleted");
-  auto req = std::make_unique<LoadedExecutableIsDeletedRequest>();
-  req->set_loaded_executable_handle(handle_);
-
-  absl::StatusOr<std::shared_ptr<LoadedExecutableIsDeletedResponse>> response =
-      rpc_helper_->LoadedExecutableIsDeleted(std::move(req)).Await();
-  if (!response.ok()) {
-    LOG(ERROR) << "Failed to query the deletion status of `LoadedExecutable`: "
-               << response.status();
-    return false;
+  if (result_needs_exec_status) {
+    result.status = rpc_helper_->CheckFuture(response->status_handle());
+  } else {
+    CHECK_EQ(response->status_handle(), 0);
   }
-  return (*response)->is_deleted();
+
+  return result;
 }
 
 absl::Span<xla::ifrt::Device* const> LoadedExecutable::addressable_devices()
@@ -673,7 +714,7 @@ void LoadedExecutable::PollLoadedHostCallback(
     }
   };
 
-  static auto* global_pool = new tsl::thread::ThreadPool(
+  static auto* const global_pool = new tsl::thread::ThreadPool(
       tsl::Env::Default(), GetThreadOptions(), "XLAIFRTProxy",
       std::min(16, tsl::port::MaxParallelism()));
   global_pool->Schedule(std::move(f));

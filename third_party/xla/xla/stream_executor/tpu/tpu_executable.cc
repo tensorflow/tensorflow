@@ -24,6 +24,8 @@ limitations under the License.
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/executable.h"

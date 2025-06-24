@@ -124,8 +124,8 @@ TEST_F(GenericTransferManagerTest, TransferLiteralToDeviceInt4) {
     ASSERT_EQ(device_mem.size(), pack ? 2 : 4);
     int8_t* device_ptr = static_cast<int8_t*>(device_mem.opaque());
     std::vector<int8_t> expected =
-        pack ? std::vector<int8_t>{static_cast<int8_t>(0x1e),
-                                   static_cast<int8_t>(0xd4)}
+        pack ? std::vector<int8_t>{static_cast<int8_t>(0xe1),
+                                   static_cast<int8_t>(0x4d)}
              : std::vector<int8_t>{1, -2, -3, 4};
     // Ignore high bits in equality comparisons.
     EXPECT_THAT(absl::Span<int8_t>(device_ptr, expected.size()),
@@ -161,8 +161,8 @@ TEST_F(GenericTransferManagerTest, TransferLiteralFromDeviceInt4) {
     uint8_t* device_ptr = static_cast<uint8_t*>(device_mem.opaque());
     if (pack) {
       ASSERT_EQ(device_mem.size(), 2);
-      device_ptr[0] = 0x1e;  // Packed S4 values {1, -2}
-      device_ptr[1] = 0xd4;  // Packed S4 values {-3, 4}
+      device_ptr[0] = 0xe1;  // Packed S4 values {1, -2}
+      device_ptr[1] = 0x4d;  // Packed S4 values {-3, 4}
     } else {
       ASSERT_EQ(device_mem.size(), 4);
       device_ptr[0] = 1;

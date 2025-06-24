@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/cc_op_gen.h"
 #include "tensorflow/cc/framework/cc_op_gen_util.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace cc_op {

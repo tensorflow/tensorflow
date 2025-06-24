@@ -20,25 +20,20 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
-#include <string>
-#include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
-#include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/TaskDispatch.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
-#include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "tsl/platform/cpu_info.h"
@@ -60,40 +55,12 @@ class JitCompiler {
   using Task = std::function<void()>;  // NOLINT (must be copyable)
   using TaskRunner = absl::AnyInvocable<void(Task)>;
 
-  // A callback that returns a definition generator that will be added to all
-  // dynamic libraries created by the jit compiler. Definition generator enables
-  // linking host runtime symbols into the jit-compiled function library.
-  using DefinitionGenerator =
-      std::function<std::unique_ptr<llvm::orc::DefinitionGenerator>(
-          llvm::TargetMachine*)>;
-
   JitCompiler(JitCompiler&&) = default;
   JitCompiler& operator=(JitCompiler&&) = default;
 
   ~JitCompiler();
 
-  // Infers the `llvm::TargetMachine` for the current host. If `max_cpu_feature`
-  // is provided, it will be used to constrain the set of features that LLVM
-  // codegen (instruction selection) is allowed to use, e.g. it can be used to
-  // explicitly disable certain AVX512 extensions, in case the compiled
-  // executable will be serialized and later loaded on a different machine.
-  static absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
-  InferTargetMachine(const llvm::TargetOptions& target_options,
-                     llvm::CodeGenOptLevel opt_level,
-                     std::optional<tsl::port::CPUFeature> max_cpu_feature);
-
-  // Returns a target machine builder that uses `InferTargetMachine` defined
-  // above to infer the target machine for the given options.
-  static IrCompiler::TargetMachineBuilder InferTargetMachineBuilder(
-      const llvm::TargetOptions& target_options,
-      llvm::CodeGenOptLevel opt_level,
-      std::optional<tsl::port::CPUFeature> max_cpu_feature);
-
   struct Options {
-    // Options for the underlying IR compiler instance.
-    IrCompiler::Options ir_compiler_options;
-    IrCompiler::CompilationHooks ir_compiler_hooks;
-
     // The number of dynamic libraries to create for the jit compiler instance.
     // We compile XLA:CPU program into multiple LLVM modules, and by using
     // multiple dynamic libraries we enable parallel compilation.
@@ -101,18 +68,13 @@ class JitCompiler {
 
     // Optional definition generator to inject host runtime symbols into the
     // jit-compiled function library.
-    DefinitionGenerator definition_generator;
-
-    // Maximum CPU instruction set for wich the compiler should generate code.
-    // If instruction set is empty, compiler will generate code for all ISA
-    // extensions detected on the current machine.
-    std::optional<tsl::port::CPUFeature> max_cpu_feature;
+    ExecutionEngine::DefinitionGenerator definition_generator;
   };
 
   // Creates a new instance of the JitCompiler.
-  static absl::StatusOr<JitCompiler> Create(llvm::TargetOptions target_options,
-                                            Options options,
-                                            TaskRunner task_runner = nullptr);
+  static absl::StatusOr<JitCompiler> Create(
+      Options options, std::unique_ptr<IrCompiler> ir_compiler,
+      TaskRunner task_runner = nullptr);
 
   // Adds a LLVM module to the dynamic library at `dylib_index`.
   absl::Status AddModule(llvm::orc::ThreadSafeModule module,
@@ -159,30 +121,20 @@ class JitCompiler {
     size_t num_dispatched_tasks_ ABSL_GUARDED_BY(mu_) = 0;
   };
 
-  JitCompiler(IrCompiler::TargetMachineBuilder target_machine_builder,
-              std::shared_ptr<llvm::TargetMachine> target_machine,
+  JitCompiler(std::unique_ptr<llvm::TargetMachine> target_machine,
               TaskDispatcher* task_dispatcher,
               std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
               std::unique_ptr<IrCompiler> ir_compiler, size_t num_dylibs,
-              DefinitionGenerator definition_generator);
+              ExecutionEngine::DefinitionGenerator definition_generator);
 
   // Target machine builder that is used to construct target machines for this
   // instance of `JitCompiler` (when compiling LLVM modules in parallel).
-  IrCompiler::TargetMachineBuilder target_machine_builder_;
-  std::shared_ptr<llvm::TargetMachine> target_machine_;
+  std::unique_ptr<llvm::TargetMachine> target_machine_;
 
   TaskDispatcher* task_dispatcher_;  // owned by `execution_session_`
 
-  std::unique_ptr<llvm::orc::ExecutionSession> execution_session_;
-  std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer> object_layer_;
+  std::unique_ptr<ExecutionEngine> execution_engine_;
   std::unique_ptr<llvm::orc::IRCompileLayer> compile_layer_;
-
-  // Non-owning pointers to dynamic libraries created for the execution session.
-  std::vector<llvm::orc::JITDylib*> dylibs_;
-
-  // Non owning pointer to JIT event listeners for gdb and perf.
-  llvm::JITEventListener* gdb_;   // not owned
-  llvm::JITEventListener* perf_;  // not owned
 };
 
 }  // namespace xla::cpu

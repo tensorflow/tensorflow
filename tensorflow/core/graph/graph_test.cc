@@ -40,8 +40,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-using ::testing::UnorderedElementsAre;
-
 REGISTER_OP("OneInput").Input("x: float");
 
 REGISTER_OP("OneOutput").Output("y: float");

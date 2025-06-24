@@ -17,12 +17,13 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_RUNTIME_OUTFEED_THUNK_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/backends/cpu/runtime/resource_use.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -49,6 +50,14 @@ class OutfeedThunk final : public Thunk {
 
   BufferUses buffer_uses() const final;
   ResourceUses resource_uses() const final;
+
+  const std::vector<OutfeedBuffer>& outfeed_buffers() const {
+    return outfeed_buffers_;
+  }
+
+  const OutfeedResources& outfeed_resources() const {
+    return outfeed_resources_;
+  }
 
  private:
   OutfeedThunk(Info info, absl::Span<const OutfeedBuffer> outfeed_buffers,

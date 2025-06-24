@@ -80,8 +80,8 @@ limitations under the License.
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/public/release_version.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/public/version.h"
 
 // The implementation below is at the top level instead of the
 // brain namespace because we are defining 'extern "C"' functions.
@@ -923,8 +923,8 @@ void TF_SetAttrShape(TF_OperationDescription* desc, const char* attr_name,
                      const int64_t* dims, int num_dims) {
   PartialTensorShape shape;
   if (num_dims >= 0) {
-    shape = PartialTensorShape(
-        ArraySlice<int64_t>(reinterpret_cast<const int64_t*>(dims), num_dims));
+    shape = PartialTensorShape(absl::Span<const int64_t>(
+        reinterpret_cast<const int64_t*>(dims), num_dims));
   }
   desc->node_builder.Attr(attr_name, shape);
 }
@@ -938,7 +938,7 @@ void TF_SetAttrShapeList(TF_OperationDescription* desc, const char* attr_name,
     if (num_dims[i] < 0) {
       shapes.emplace_back();
     } else {
-      shapes.emplace_back(ArraySlice<int64_t>(
+      shapes.emplace_back(absl::Span<const int64_t>(
           reinterpret_cast<const int64_t*>(dims[i]), num_dims[i]));
     }
   }

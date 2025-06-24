@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "xla/tsl/framework/device_type.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/error_payloads.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 #include "tsl/platform/error_logging.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace tfrt_compiler {

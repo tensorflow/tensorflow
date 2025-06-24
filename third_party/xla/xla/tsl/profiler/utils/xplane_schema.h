@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/types.h"
@@ -51,6 +50,8 @@ TF_CONST_INIT extern const absl::string_view kTpuNonCorePlaneNamePrefix;
 TF_CONST_INIT extern const absl::string_view kTpuRuntimePlaneName;
 // Name of XPlane that contains CUPTI driver API generated events.
 TF_CONST_INIT extern const absl::string_view kCuptiDriverApiPlaneName;
+// Name of XPlane that contains CUPTI activity NVTX events.
+TF_CONST_INIT extern const absl::string_view kCuptiActivityNvtxPlaneName;
 // Name of XPlane that contains Roctracer API generated events.
 TF_CONST_INIT extern const absl::string_view kRoctracerApiPlaneName;
 // Name of XPlane that contains profile metadata such as XLA debug info.
@@ -73,11 +74,15 @@ TF_CONST_INIT extern const absl::string_view kTensorFlowOpLineName;
 TF_CONST_INIT extern const absl::string_view kXlaModuleLineName;
 TF_CONST_INIT extern const absl::string_view kXlaOpLineName;
 TF_CONST_INIT extern const absl::string_view kSparseCoreStepLineName;
+TF_CONST_INIT extern const absl::string_view kSparseCoreOpLineName;
+TF_CONST_INIT extern const absl::string_view kSparseCoreModuleLineName;
 TF_CONST_INIT extern const absl::string_view kXlaAsyncOpLineName;
 TF_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
 TF_CONST_INIT extern const absl::string_view kSourceLineName;
 TF_CONST_INIT extern const absl::string_view kCounterEventsLineName;
 TF_CONST_INIT extern const absl::string_view kHostOffloadOpLineName;
+TF_CONST_INIT extern const absl::string_view kTensorCoreSyncFlagLineName;
+TF_CONST_INIT extern const absl::string_view kSparseCoreSyncsLineName;
 
 // GPU device vendors.
 TF_CONST_INIT extern const absl::string_view kDeviceVendorNvidia;
@@ -312,7 +317,7 @@ enum StatType {
   kMinDurationPs,
   kTotalProfileDurationPs,
   kMaxIterationNum,
-  kDeviceType,
+  kDeviceType,  // Do not use. Use kDeviceTypeString instead.
   kUsesMegaCore,
   kSymbolId,
   kTfOpName,
@@ -347,7 +352,17 @@ enum StatType {
   kDeviceDurationPs,
   kScopeRangeId,
   kCoreDetails,
-  kLastStatType = kCoreDetails,
+  kAllReduceId,
+  kAllReduceUniqueId,
+  kMlIRProgram,
+  kCudaGraphNodeId,
+  kCudaOrigGraphId,
+  kCudaGraphOrigNodeId,
+  kCudaGraphMapId,
+  kCudaGraphMapValueId,
+  kCudaGraphNodeMapId,
+  kGraphMetadataLineId,
+  kLastStatType = kGraphMetadataLineId,
 };
 
 enum MegaScaleStatType : uint8_t {
@@ -357,6 +372,8 @@ enum MegaScaleStatType : uint8_t {
   kMegaScaleNumActions,
   kMegaScaleCollectiveType,
   kMegaScaleInputSize,
+  kMegaScaleSendChannelId,
+  kMegaScaleRecvChannelId,
   kMegaScaleSlackUs,
   kMegaScaleActionType,
   kMegaScaleStartEndType,

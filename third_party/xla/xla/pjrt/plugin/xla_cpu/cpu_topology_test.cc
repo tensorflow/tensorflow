@@ -17,9 +17,10 @@ limitations under the License.
 
 #include <memory>
 
+#include <gtest/gtest.h>
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.pb.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -52,6 +53,12 @@ TEST(CpuTopology, ToProto) {
   EXPECT_EQ(msg.machine_attributes_size(), 2);
   EXPECT_EQ(msg.machine_attributes(0), "ab");
   EXPECT_EQ(msg.machine_attributes(1), "cd");
+}
+
+TEST(PackCpuDeviceId, PackAndUnpack) {
+  PjRtGlobalDeviceId device_id = PackCpuDeviceId(2, 3);
+  EXPECT_EQ(UnpackCpuProcessIndex(device_id), 2);
+  EXPECT_EQ(UnpackCpuLocalDeviceId(device_id), 3);
 }
 
 }  // namespace

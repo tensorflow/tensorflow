@@ -16,8 +16,9 @@ limitations under the License.
 #include "tensorflow/core/transforms/graph_transform_wrapper.h"
 
 #include <initializer_list>
+#include <memory>
 
-#include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"

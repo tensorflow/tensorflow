@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/Support/LLVM.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace mlir {
 BaseScopedDiagnosticHandler::BaseScopedDiagnosticHandler(MLIRContext* context,

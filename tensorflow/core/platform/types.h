@@ -16,9 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_TYPES_H_
 #define TENSORFLOW_CORE_PLATFORM_TYPES_H_
 
+#include <cstdint>
+#include <string>
+
+#include "xla/tsl/platform/types.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/tstring.h"
+#include "tsl/platform/bfloat16.h"
+#include "tsl/platform/tstring.h"
 #include "tsl/platform/types.h"
 
 namespace tensorflow {
@@ -27,12 +33,14 @@ namespace tensorflow {
 using tsl::string;
 
 using tsl::uint16;
+using tsl::uint2;
 using tsl::uint32;
 using tsl::uint4;
 using tsl::uint64;
 using tsl::uint8;
 
 using tsl::int16;
+using tsl::int2;
 using tsl::int32;
 using tsl::int4;
 using tsl::int64;

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/base/casts.h"
 #include "absl/status/statusor.h"
 #include "xla/literal.h"
 #include "xla/util.h"

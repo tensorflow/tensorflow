@@ -20,7 +20,6 @@ limitations under the License.
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/tsl/c/tsl_status.h"
 #include "xla/tsl/c/tsl_status_helper.h"
-#include "tsl/platform/status.h"
 
 class TslStatusHelper {
  public:
@@ -32,9 +31,9 @@ class TslStatusHelper {
       TF_Status* const c_status) {  // TENSORFLOW_STATUS_OK
     absl::StatusCode code = tsl::StatusCodeFromTSLCode(TSL_GetCode(c_status));
     if (code == absl::StatusCode::kOk) {
-      return tsl::OkStatus();
+      return absl::OkStatus();
     }
-    return tsl::Status(code, TSL_Message(c_status));  // TENSORFLOW_STATUS_OK
+    return absl::Status(code, TSL_Message(c_status));  // TENSORFLOW_STATUS_OK
   }
 
   bool ok() const {

@@ -14,6 +14,8 @@
 # ==============================================================================
 """Boilerplate utilities for kernel testing."""
 
+from typing import Optional
+
 import numpy as np
 
 from xla.codegen.testlib import _extension
@@ -27,11 +29,13 @@ def create_scalar_literal(value, dtype: np.dtype) -> xla_extension.Literal:
   return literal
 
 
-def create_literal_from_np(array: np.ndarray) -> xla_extension.Literal:
+def create_literal_from_np(
+    array: np.ndarray, layout: Optional[list[int]] = None
+) -> xla_extension.Literal:
   if np.ndim(array) == 0:
     return create_scalar_literal(array.item(), array.dtype)
 
-  shape = xla_extension.Shape.array_shape(array.dtype, array.shape)
+  shape = xla_extension.Shape.array_shape(array.dtype, array.shape, layout)
   literal = xla_extension.Literal(shape)
   np.copyto(np.asarray(literal), array)
   return literal

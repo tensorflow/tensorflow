@@ -47,7 +47,7 @@ limitations under the License.
 #endif
 
 #if TENSORFLOW_USE_NUMA
-#include "hwloc.h/"
+#include "hwloc.h"
 #endif
 
 #if defined(__ANDROID__) && (defined(__i386__) || defined(__x86_64__))

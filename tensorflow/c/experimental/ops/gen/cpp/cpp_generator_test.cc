@@ -15,14 +15,15 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/gen/cpp/cpp_generator.h"
 
 #include <algorithm>
+#include <vector>
 
 #include "tensorflow/c/experimental/ops/gen/common/path_config.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/cpp_config.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace generator {

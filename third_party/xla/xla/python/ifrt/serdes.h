@@ -26,15 +26,23 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/serdes.pb.h"
-#include "tsl/platform/statusor.h"
+#include "xla/python/ifrt/serdes_version.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 
 // Base class for serialization options to be passed to `Serialize`.
 struct SerializeOptions : llvm::RTTIExtends<SerializeOptions, llvm::RTTIRoot> {
+  SerDesVersion version = SerDesVersion::current();
+
   static char ID;  // NOLINT
 };
+
+// Returns the requested SerDes version for serialization. `options` can be
+// `nullptr`, which would choose the current SerDes version. Serializers should
+// use the latest version that is no later than the requested version.
+SerDesVersion GetRequestedSerDesVersion(const SerializeOptions* options);
 
 // Base class for deserialization options to be passed to `Deserialize`.
 struct DeserializeOptions
@@ -63,7 +71,7 @@ class SerDes : public llvm::RTTIExtends<SerDes, llvm::RTTIRoot> {
   virtual absl::string_view type_name() const = 0;
 
   virtual absl::StatusOr<std::string> Serialize(
-      Serializable& serializable,
+      const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) = 0;
 
   virtual absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
@@ -102,9 +110,12 @@ absl::StatusOr<std::unique_ptr<Serializable>> DeserializeUnchecked(
 // Serializes the given `Serializable` object. The returned proto message can be
 // deserialized by `Deserialize`.
 //
+// `options` is passed as-is to `SerDes::Serialize()`, so it can be nullptr as
+// long as the `SerDes` implementation can handle nullptr options.
+//
 // Returns an error if the `Serializable` type does not have a corresponding
 // `SerDes` registered or the `SerDes` returns an error.
-absl::StatusOr<Serialized> Serialize(Serializable& serializable,
+absl::StatusOr<Serialized> Serialize(const Serializable& serializable,
                                      std::unique_ptr<SerializeOptions> options);
 
 // Deserializes the given proto message produced by `Serialize()` back to an

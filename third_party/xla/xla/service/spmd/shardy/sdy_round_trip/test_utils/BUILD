@@ -1,29 +1,26 @@
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [":friends"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
 package_group(
     name = "friends",
-    packages = [
-        "//learning/deepmind/partir/compiler/shardonnay/...",
-        "//third_party/openxla/shardy/tools/...",
-        "//xla/service/spmd/shardy/...",
+    includes = [
+        "//xla:friends",
     ],
 )
 
 cc_library(
-    name = "mhlo_to_hlo_to_mhlo",
-    srcs = ["mhlo_to_hlo_to_mhlo.cc"],
-    hdrs = ["mhlo_to_hlo_to_mhlo.h"],
+    name = "stablehlo_to_hlo_to_stablehlo",
+    srcs = ["stablehlo_to_hlo_to_stablehlo.cc"],
+    hdrs = ["stablehlo_to_hlo_to_stablehlo.h"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate:stablehlo",
-        "//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
-        "//xla/mlir_hlo:mhlo_passes",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "@com_google_absl//absl/log",
@@ -34,6 +31,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:UBDialect",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -43,7 +41,7 @@ cc_library(
     srcs = ["testing_pipeline.cc"],
     hdrs = ["testing_pipeline.h"],
     deps = [
-        ":mhlo_to_hlo_to_mhlo",
+        ":stablehlo_to_hlo_to_stablehlo",
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
         "@llvm-project//mlir:Pass",
     ],

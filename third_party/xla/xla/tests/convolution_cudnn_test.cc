@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "absl/strings/substitute.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/test.h"
 
@@ -28,7 +27,7 @@ namespace {
 
 using ConvolutionHloTest = HloTestBase;
 
-XLA_TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32) {
+TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32) {
   // This convolution should be transformed to "cudnn-conv" and vectorized as
   // INT8x32_CONFIG on GPUs.
   constexpr char kHlo[] = R"(
@@ -42,7 +41,7 @@ ENTRY TestComputation {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32Bias) {
+TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32Bias) {
   // cudnnConvolutionBiasActivationForward() for int8 is only supported on GPUs
   // with compute capability 6.1 or later.
   if (!backend()
@@ -77,7 +76,7 @@ ENTRY TestComputation {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32BiasNonConst) {
+TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32BiasNonConst) {
   // Test two GPU compiled HLOs, first version with vectorization disabled,
   // second with vectorization enabled. The reference implementation
   // (Interpreter) does not support the fused conv-add-relu-clamp operation,
@@ -101,7 +100,7 @@ ENTRY TestComputation {
       window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convBiasActivationForward",
       backend_config="{\"cudnn_conv_backend_config\":{\"activation_mode\":\"2\",\"conv_result_scale\":1,\"side_input_scale\":0,\"algorithm\":{
         \"algo_id\":\"38\",\"math_type\":\"DEFAULT_MATH\",\"tuning_knobs\":{\"14\":\"5\",\"13\":\"1\",\"23\":\"0\",\"2\":\"1\"},
-        \"is_cudnn_frontend\":true,\"workspace_size\":\"0\"}}}"
+        \"workspace_size\":\"0\"}}}"
   ROOT get-tuple-element.1 = s8[4,48,48,64]{3,2,1,0} get-tuple-element(cudnn-conv-bias-activation.3), index=0
 })";
   constexpr char kHloVectorized[] = R"(
@@ -124,7 +123,7 @@ ENTRY TestComputation {
       window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target="__cudnn$convBiasActivationForward",
       backend_config="{\"cudnn_conv_backend_config\":{\"activation_mode\":\"2\",\"conv_result_scale\":1,\"side_input_scale\":0,\"algorithm\":{
         \"algo_id\":\"7\",\"math_type\":\"DEFAULT_MATH\",\"tuning_knobs\":{\"7\":\"3\",\"2\":\"0\",\"5\":\"4\",\"6\":\"4\",\"4\":\"2\",\"21\":\"0\"},
-        \"is_cudnn_frontend\":true,\"workspace_size\":\"51328\"},\"reordered_int8_nchw_vect\":true}}"
+        \"workspace_size\":\"51328\"},\"reordered_int8_nchw_vect\":true}}"
   get-tuple-element.6 = s8[4,2,48,48,32]{4,3,2,1,0} get-tuple-element(cudnn-conv-bias-activation.4), index=0
   transpose.1 = s8[4,48,48,2,32]{4,3,2,1,0} transpose(get-tuple-element.6), dimensions={0,2,3,1,4}
   ROOT bitcast.1 = s8[4,48,48,64]{3,2,1,0} bitcast(transpose.1)
@@ -151,7 +150,7 @@ class HloCompareModulesTest : public HloTestBase {
   bool run_hlo_passes_;
 };
 
-XLA_TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32Revectorize) {
+TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32Revectorize) {
   // Compare re-vectorized custom call vs the default version.
   constexpr char kHlo[] = R"(
 HloModule TestModule
@@ -189,7 +188,7 @@ class ReorderFilterHloTest : public ::testing::TestWithParam<std::tuple<
                                  /*output_features=*/int64_t,
                                  /*spatial_size=*/int64_t>> {};
 
-XLA_TEST_P(ReorderFilterHloTest, TestCudnnReorderFilter) {
+TEST_P(ReorderFilterHloTest, TestCudnnReorderFilter) {
   // Test that the bitcast-transpose-bitcast with reverse-engineered reordering
   // works the same way as cudnnReorderFilterAndBias custom call. If at any
   // point in the future the black-box CUDA implementation changes, this test
@@ -234,7 +233,7 @@ INSTANTIATE_TEST_SUITE_P(CudnnReorderSuite, ReorderFilterHloTest,
 
 class ReorderFilterAndBiasHloTest : public ::testing::TestWithParam<int64_t> {};
 
-XLA_TEST_P(ReorderFilterAndBiasHloTest, TestCudnnReorderFilterAndBias) {
+TEST_P(ReorderFilterAndBiasHloTest, TestCudnnReorderFilterAndBias) {
   // This test verifies that the bias reordering works correctly; the filter
   // reordering is verified by the previous test.
   const int64_t bias_size = GetParam();
@@ -275,7 +274,7 @@ INSTANTIATE_TEST_SUITE_P(CudnnReorderSuite, ReorderFilterAndBiasHloTest,
                          /*bias_size=*/::testing::Values(32, 64, 96));
 
 // Regression test for algorithm 14.
-XLA_TEST_F(ConvolutionHloTest, TestCudnnConvBiasActivationForward) {
+TEST_F(ConvolutionHloTest, TestCudnnConvBiasActivationForward) {
   const std::string& filename = tsl::io::JoinPath(
       tsl::testing::XlaSrcRoot(), "tests", "data", "cudnn_reproducer.hlo");
   EXPECT_TRUE(RunAndCompareFromFile(filename, ErrorSpec{1e-3, 1e-3}));

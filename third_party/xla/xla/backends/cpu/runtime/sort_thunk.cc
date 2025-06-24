@@ -56,7 +56,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/profiler/lib/traceme.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
@@ -79,8 +79,8 @@ static absl::Status VerifySortInputs(absl::Span<const SortThunk::Input> inputs,
 
   // Check that sort dimension is valid.
   int64_t sort_dimension =
-      dimension >= 0 ? dimension : shape.rank() + dimension;
-  if (shape.rank() <= sort_dimension) {
+      dimension >= 0 ? dimension : shape.dimensions().size() + dimension;
+  if (shape.dimensions().size() <= sort_dimension) {
     return Internal(
         "Shape of dimensions [%s] can't be sorted along dimension %d",
         absl::StrJoin(shape.dimensions(), ","), dimension);
@@ -604,7 +604,7 @@ struct SortDims {
 // (or `std::stable_sort`) on each (strided) slice of the buffer.
 static SortDims GetSortDims(const Shape& shape, int64_t dimension) {
   int64_t sort_dimension =
-      dimension >= 0 ? dimension : shape.rank() + dimension;
+      dimension >= 0 ? dimension : shape.dimensions().size() + dimension;
 
   // We need to normalize shape + layout into a descending layout, so that we
   // can compute access strides according to the physical layout.
@@ -766,7 +766,7 @@ static absl::Status SortInplace(
     // Sorts array using builtin comparator functor
     auto builtin_sort = [&](PrimitiveType type,
                             SortThunk::SortDirection direction) {
-      primitive_util::ArrayTypeSwitch<void>(
+      primitive_util::ArrayTypeSwitch(
           [&](auto cst_type) {
             if constexpr ((primitive_util::IsFloatingPointType(cst_type) ||
                            primitive_util::IsIntegralType(cst_type)) &&
@@ -847,7 +847,6 @@ static absl::Status SortInplace(
 
 tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
     const ExecuteParams& params) {
-  tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
 
   VLOG(3) << absl::StreamFormat(
       "Sort %d inputs along dimension %d (is_stable=%v)", inputs_.size(),

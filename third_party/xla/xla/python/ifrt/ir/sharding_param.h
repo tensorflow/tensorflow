@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/python/ifrt/ir/sharding_param.pb.h"
+#include "xla/python/ifrt/serdes_version.h"
 
 namespace xla {
 namespace ifrt {
@@ -146,10 +147,22 @@ class ShardingParam {
                               llvm::ArrayRef<int>(minor_to_major_.axis_sizes));
   }
 
+  template <typename H>
+  friend H AbslHashValue(H h, const ShardingParam& value) {
+    h = H::combine(std::move(h), value.dim_shards_);
+    h = H::combine_contiguous(std::move(h),
+                              value.minor_to_major_.permutation.data(),
+                              value.minor_to_major_.permutation.size());
+    return H::combine_contiguous(std::move(h),
+                                 value.minor_to_major_.axis_sizes.data(),
+                                 value.minor_to_major_.axis_sizes.size());
+  }
+
   std::string DebugString() const;
 
   // Returns a `ShardingParamProto` representation.
-  absl::StatusOr<ShardingParamProto> ToProto() const;
+  absl::StatusOr<ShardingParamProto> ToProto(
+      SerDesVersion version = SerDesVersion::current()) const;
 
   // Constructs `ShardingParam` from `ShardingParamProto`.
   static absl::StatusOr<ShardingParam> FromProto(

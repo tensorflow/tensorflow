@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <map>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/kernels/callback.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"

@@ -41,6 +41,10 @@ else:
 
 # pylint: enable=g-import-not-at-top
 
+# This file is part of the ai_edge_litert package.
+_IS_LITERT_PACKAGE = os.path.splitext(__file__)[0].endswith(
+    os.path.join('ai_edge_litert', 'interpreter')
+)
 _INTERPRETER_DELETION_WARNING = """\
     Warning: tf.lite.Interpreter is deprecated and is scheduled for deletion in
     TF 2.20. Please use the LiteRT interpreter from the ai_edge_litert package.
@@ -212,7 +216,7 @@ class SignatureRunner:
     self._signature_key = signature_key
     signature_defs = interpreter._get_full_signature_list()
     if signature_key not in signature_defs:
-      raise ValueError('Invalid signature_key provided.')
+      raise ValueError(f'Invalid signature_key provided: "{signature_key}".')
     self._signature_def = signature_defs[signature_key]
     self._outputs = self._signature_def['outputs'].items()
     self._inputs = self._signature_def['inputs']
@@ -449,7 +453,8 @@ class Interpreter:
     Raises:
       ValueError: If the interpreter was unable to create.
     """
-    warnings.warn(_INTERPRETER_DELETION_WARNING)
+    if not _IS_LITERT_PACKAGE:
+      warnings.warn(_INTERPRETER_DELETION_WARNING)
     if not hasattr(self, '_custom_op_registerers'):
       self._custom_op_registerers = []
 
@@ -483,7 +488,7 @@ class Interpreter:
           x for x in self._custom_op_registerers if not isinstance(x, str)
       ]
       self._interpreter = _interpreter_wrapper.CreateWrapperFromFile(
-          model_path,
+          os.fspath(model_path),
           op_resolver_id,
           custom_op_registerers_by_name,
           custom_op_registerers_by_func,

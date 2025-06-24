@@ -25,25 +25,26 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 
-absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-PjRtCompatibleClientRemapArrays(
-    PjRtCompatibleClient* client, const RemapPlan& plan,
-    absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-    ArrayCopySemantics semantics) {
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
+PjRtCompatibleClientRemapArrays(PjRtCompatibleClient* client,
+                                const RemapPlan& plan,
+                                absl::Span<xla::ifrt::ArrayRef> arrays,
+                                ArrayCopySemantics semantics) {
   TF_RETURN_IF_ERROR(plan.CheckArrayCopySemantics(semantics));
   const int num_inputs = plan.input_specs.size();
   const int num_actual_inputs = arrays.size();
@@ -89,8 +90,10 @@ PjRtCompatibleClientRemapArrays(
 
   std::vector<PjRtArray::PjRtBuffers> out_buffers_list(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
-    out_buffers_list[i].resize(
-        plan.output_specs[i].sharding->devices()->size());
+    out_buffers_list[i].resize(plan.output_specs[i]
+                                   .sharding->devices()
+                                   ->AddressableDeviceList()
+                                   ->size());
   }
 
   for (const RemapPlan::Mapping& mapping : *plan.mappings) {
@@ -125,14 +128,18 @@ PjRtCompatibleClientRemapArrays(
     }
   }
 
-  std::vector<tsl::RCReference<xla::ifrt::Array>> output_arrays;
+  std::vector<xla::ifrt::ArrayRef> output_arrays;
   output_arrays.reserve(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
-    TF_ASSIGN_OR_RETURN(auto output_array,
-                        PjRtArray::Create(client, plan.output_specs[i].dtype,
-                                          plan.output_specs[i].shape,
-                                          plan.output_specs[i].sharding,
-                                          std::move(out_buffers_list[i])));
+    CHECK_GE(out_buffers_list[i].size(), 1);
+    std::shared_ptr<const xla::PjRtLayout> layout =
+        out_buffers_list[i].front()->layout();
+    TF_ASSIGN_OR_RETURN(
+        auto output_array,
+        PjRtArray::Create(client, plan.output_specs[i].dtype,
+                          plan.output_specs[i].shape,
+                          plan.output_specs[i].sharding,
+                          std::move(out_buffers_list[i]), std::move(layout)));
     output_arrays.push_back(std::move(output_array));
   }
   return output_arrays;

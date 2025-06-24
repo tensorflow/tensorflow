@@ -13,16 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -31,6 +35,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
+#include "stablehlo/transforms/Passes.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -77,7 +82,8 @@ llvm::cl::opt<bool> print_sugar(
 // Error collector that simply ignores errors reported.
 class NoOpErrorCollector : public tsl::protobuf::io::ErrorCollector {
  public:
-  void AddError(int line, int column, const std::string& message) override {}
+  void RecordError(int line, tsl::protobuf::io::ColumnNumber column,
+                   absl::string_view message) override {}
 };
 
 bool LoadHloProto(const std::string& contents, xla::HloProto* hlo_proto) {
@@ -90,77 +96,121 @@ bool LoadHloProto(const std::string& contents, xla::HloProto* hlo_proto) {
          parser.ParseFromString(contents, hlo_proto->mutable_hlo_module());
 }
 
-mlir::OwningOpRef<mlir::ModuleOp> GetModuleFromHLOText(
-    std::string content, mlir::MLIRContext* context) {
-  auto hlo_text = xla::ParseAndReturnUnverifiedModule(content);
+constexpr char kLoadHloError[] = "Failed to parse HLO.";
+
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetModuleFromHLOText(
+    absl::string_view content, mlir::MLIRContext* context, bool emit_mhlo) {
+  auto hlo_text = xla::ParseAndReturnUnverifiedModule(
+      content, {}, xla::HloParserOptions().set_keep_module_auto_layouts(true));
   if (!hlo_text.ok()) {
-    return nullptr;
+    return absl::InvalidArgumentError(
+        absl::StrCat(kLoadHloError, hlo_text.status().message()));
   }
 
+  auto hlo_module = std::move(hlo_text.value());
+
+  // For emitting StableHLO, use new APIs by defualt.
+  if (!emit_mhlo) {
+    return xla::ConvertHloToStablehlo(*context, hlo_module.get());
+  }
+
+  // For MHLO require legacy API for now.
   mlir::OwningOpRef<mlir::ModuleOp> module =
       xla::llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(context));
-  auto hlo_module = std::move(hlo_text.value());
   auto status = ConvertHloToMlirHlo(*module, hlo_module.get(),
                                     /*import_all_computations=*/true,
                                     /*flatten_computation_args_result*/ true);
-  if (!status.ok()) {
-    LOG(INFO) << "Failed to parse input as HLO text" << status;
-    return nullptr;
-  }
+  if (!status.ok()) return status;
   return module;
 }
 
-mlir::OwningOpRef<mlir::ModuleOp> GetModuleFromHLOProto(
-    std::string content, mlir::MLIRContext* context) {
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetModuleFromHLOProto(
+    const std::string& content, mlir::MLIRContext* context, bool emit_mhlo) {
   xla::HloProto hlo_proto;
-  if (!LoadHloProto(content, &hlo_proto)) {
-    return nullptr;
+  if (!LoadHloProto(content, &hlo_proto))
+    return absl::InvalidArgumentError(kLoadHloError);
+
+  // For emitting StableHLO, use new APIs by defualt.
+  if (!emit_mhlo) {
+    return xla::ConvertHloToStablehlo(*context, hlo_proto.mutable_hlo_module());
   }
 
+  // For MHLO require legacy API for now.
   mlir::OwningOpRef<mlir::ModuleOp> module =
       xla::llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(context));
   auto status =
       ConvertHloToMlirHlo(module.get(), hlo_proto.mutable_hlo_module(),
                           /*import_all_computations=*/true,
                           /*flatten_computation_args_result=*/true);
-  if (!status.ok()) {
-    LOG(INFO) << "Failed to parse input as HLO proto" << status;
+  if (!status.ok()) return status;
+  return module;
+}
+
+mlir::OwningOpRef<mlir::ModuleOp> GetModuleFromHloInput(
+    const std::shared_ptr<llvm::SourceMgr>& source_mgr,
+    mlir::MLIRContext* context, bool emit_mhlo) {
+  const llvm::MemoryBuffer* input =
+      source_mgr->getMemoryBuffer(source_mgr->getMainFileID());
+  absl::string_view content =
+      absl::string_view(input->getBufferStart(), input->getBufferSize());
+
+  // Emit error using file location 0.
+  auto emitError = [&]() {
+    auto loc =
+        mlir::FileLineColLoc::get(context, input->getBufferIdentifier(), 0, 0);
+    return mlir::emitError(loc);
+  };
+
+  // Try HLO Text
+  auto module_from_text = GetModuleFromHLOText(content, context, emit_mhlo);
+  if (module_from_text.ok()) return std::move(module_from_text).value();
+  if (module_from_text.status().message().rfind(kLoadHloError, 0) != 0) {
+    emitError() << "Failed to convert HLO to MLIR: "
+                << module_from_text.status().message();
     return nullptr;
   }
-  return module;
+
+  // Try HLO Proto
+  auto module_from_proto =
+      GetModuleFromHLOProto(std::string(content), context, emit_mhlo);
+  if (module_from_proto.ok()) return std::move(module_from_proto).value();
+  if (module_from_text.status().message().rfind(kLoadHloError, 0) != 0) {
+    emitError() << "Failed to convert HLO to MLIR: "
+                << module_from_proto.status().message();
+    return nullptr;
+  }
+
+  // Failed to parse
+  emitError() << "Failed to parse input as HLO text or proto.\n"
+              << module_from_text.status().message();
+  return nullptr;
 }
 
 }  // namespace
 
 static mlir::OwningOpRef<mlir::ModuleOp> HloToMlirTranslate(
-    llvm::StringRef input, mlir::MLIRContext* context) {
-  std::string content(input.data(), input.size());
+    const std::shared_ptr<llvm::SourceMgr>& sourceMgr,
+    mlir::MLIRContext* context) {
   mlir::OwningOpRef<mlir::ModuleOp> module =
-      GetModuleFromHLOText(content, context);
+      GetModuleFromHloInput(sourceMgr, context, emit_mhlo);
 
-  if (!module) {
-    module = GetModuleFromHLOProto(content, context);
-  }
-
-  if (!module) {
-    LOG(ERROR) << "Failed to parse input as HLO text or proto";
-    return nullptr;
-  }
-
-  if (emit_mhlo) return module;
-
-  mlir::PassManager pm(context);
-  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
-  if (failed(pm.run(*module))) {
-    module->emitError("Failed to legalize to StableHLO");
-    return nullptr;
-  }
+  if (!module) return nullptr;
 
   return module;
 }
 
 static mlir::LogicalResult MlirToHloTranslate(mlir::ModuleOp mlir_module,
                                               llvm::raw_ostream& output) {
+  // Also support portable artifacts in tooling, no-op if module is already
+  // StableHLO.
+  mlir::PassManager pm(mlir_module.getContext());
+  mlir::stablehlo::createStablehloDeserializePipeline(pm);
+  if (failed(pm.run(mlir_module))) {
+    mlir_module->emitError("Failed to deserialize StableHLO");
+    return mlir::failure();
+  }
+
+  // Convert to HLO
   auto hlo_module_or_status = xla::ConvertStablehloToHlo(mlir_module);
   if (!hlo_module_or_status.ok()) {
     mlir_module->emitError(hlo_module_or_status.status().message());

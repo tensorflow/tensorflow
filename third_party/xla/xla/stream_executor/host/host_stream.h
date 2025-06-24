@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <queue>
+#include <utility>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
@@ -26,12 +27,11 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
+#include "tsl/platform/context.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace stream_executor {
@@ -48,7 +48,8 @@ class HostStream : public StreamCommon {
   // stop the stream or block any other tasks from executing; rather, the stream
   // will remember the first error encountered and return it from
   // 'BlockUntilDone'.
-  bool EnqueueTaskWithStatus(absl::AnyInvocable<absl::Status() &&> task);
+  virtual bool EnqueueTaskWithStatus(
+      absl::AnyInvocable<absl::Status() &&> task);
   // Enqueue a task that doesn't report any status.
   bool EnqueueTask(absl::AnyInvocable<void() &&> task);
 
@@ -73,13 +74,20 @@ class HostStream : public StreamCommon {
   absl::Status DoHostCallbackWithStatus(
       absl::AnyInvocable<absl::Status() &&> callback) override;
 
- private:
+ protected:
   bool WorkAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void WorkLoop();
 
+  struct WorkItem {
+    explicit WorkItem(absl::AnyInvocable<absl::Status() &&> task)
+        : context(tsl::ContextKind::kThread), task(std::move(task)) {}
+
+    tsl::Context context;
+    absl::AnyInvocable<absl::Status() &&> task;
+  };
+
   absl::Mutex mu_;
-  std::queue<absl::AnyInvocable<absl::Status() &&>> work_queue_
-      ABSL_GUARDED_BY(mu_);
+  std::queue<WorkItem> work_queue_ ABSL_GUARDED_BY(mu_);
   std::unique_ptr<tsl::Thread> thread_;
   absl::Status status_;
 };

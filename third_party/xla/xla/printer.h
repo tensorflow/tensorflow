@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PRINTER_H_
 #define XLA_PRINTER_H_
 
+#include <cstdint>
 #include <iterator>
 #include <string>
 
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/strings/cord_buffer.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 
 namespace xla {
 
@@ -39,6 +41,13 @@ class Printer {
 
   // Appends the given string to the printer.
   virtual void Append(const absl::AlphaNum& a) = 0;
+
+  // Prints a list of numbers in the format:
+  //   {<num>(,<num>)*}
+  // , pre-pending a comma if `leading_comma` is true.
+  // May be overridden in some Printer implementations.
+  virtual void AppendInt64List(absl::Span<const int64_t> list,
+                               bool leading_comma);
 };
 
 // A printer implementation that accumulates printed strings into `std::string`.

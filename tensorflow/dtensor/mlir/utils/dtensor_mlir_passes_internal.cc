@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal.h"
 
 #include <cstdlib>
+#include <cstring>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project

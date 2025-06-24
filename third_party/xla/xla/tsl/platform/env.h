@@ -25,13 +25,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/strings/ascii.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env_time.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/numa.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"
@@ -642,7 +643,7 @@ absl::Status ReadFileToString(Env* env, const std::string& fname,
 /// A utility routine: write contents of `data` to file named `fname`
 /// (overwriting existing contents, if any).
 absl::Status WriteStringToFile(Env* env, const std::string& fname,
-                               const absl::string_view& data);
+                               absl::string_view data);
 
 /// Write binary representation of "proto" to the named file.
 absl::Status WriteBinaryProto(Env* env, const std::string& fname,

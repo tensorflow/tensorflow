@@ -16,8 +16,7 @@ limitations under the License.
 
 #include <sys/types.h>
 
-#include <fstream>
-#include <memory>
+#include <cstdint>
 #include <string>
 #include <vector>
 

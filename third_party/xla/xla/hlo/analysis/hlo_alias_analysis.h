@@ -20,10 +20,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -39,9 +42,14 @@ class HloAliasAnalysis {
  public:
   // The callgraph of the given HloModule must be flattened
   // (xla::FlattenCallGraph) prior to running the analysis.
+  // TODO(b/424109294): Replace users of this function with the one below.
   static absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> Run(
       const HloModule* module,
       const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr);
+
+  // Same as above, but with AliasInfo instead of CanShareBuffer hook.
+  static absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> Run(
+      const HloModule* module, const AliasInfo* alias_info);
 
   std::string ToString() const;
 

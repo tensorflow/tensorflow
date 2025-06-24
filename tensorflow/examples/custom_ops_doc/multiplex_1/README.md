@@ -329,7 +329,6 @@ load("//third_party/tensorflow:tensorflow.default.bzl", "tf_py_test")
 py_strict_library(
     name = "multiplex_1_op",
     srcs = ["multiplex_1_op.py"],
-    srcs_version = "PY3",
     visibility = ["//third_party/tensorflow/google/g3doc:__subpackages__"],
     deps = [
         ":gen_multiplex_1_op",
@@ -342,8 +341,6 @@ tf_py_strict_test(
     name = "multiplex_1_test",
     size = "medium",
     srcs = ["multiplex_1_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":multiplex_1_op",
         "//third_party/py/numpy",

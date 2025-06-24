@@ -19,6 +19,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -29,8 +31,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {

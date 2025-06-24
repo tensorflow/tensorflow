@@ -17,9 +17,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/operation_parser.h"
 #include "tensorflow/lite/delegates/gpu/common/unimplemented_operation_parser.h"
 

@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/c/tsl_status_internal.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 
-using ::tsl::Status;
-using ::tsl::error::Code;
 using ::tsl::errors::IOError;
 
 TSL_Status* TSL_NewStatus() { return new TSL_Status; }
@@ -35,7 +35,7 @@ void TSL_SetStatus(TSL_Status* s, TSL_Code code, const char* msg) {
     return;
   }
   s->status =
-      Status(static_cast<absl::StatusCode>(code), absl::string_view(msg));
+      absl::Status(static_cast<absl::StatusCode>(code), absl::string_view(msg));
 }
 
 void TSL_SetPayload(TSL_Status* s, const char* key, const char* value) {

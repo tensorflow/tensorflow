@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index.h"
@@ -42,10 +44,11 @@ limitations under the License.
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
-#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/python/ifrt/sharding.pb.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -54,9 +57,8 @@ namespace {
 
 // Returns a canonicalized memory kind for the given devices.
 // REQUIRES: !devices->devices().empty()
-MemoryKind CanonicalizeMemoryKindWithDevices(
-    const MemoryKind& memory_kind,
-    const tsl::RCReference<DeviceList>& devices) {
+MemoryKind CanonicalizeMemoryKindWithDevices(const MemoryKind& memory_kind,
+                                             const DeviceListRef& devices) {
   CHECK(devices != nullptr);
   CHECK(!devices->devices().empty());
   return CanonicalizeMemoryKind(memory_kind, devices->devices().front());
@@ -167,7 +169,7 @@ char ShardingParamSharding::ID = 0;
 
 char DeserializeShardingOptions::ID = 0;
 
-Sharding::Sharding(tsl::RCReference<DeviceList> devices, MemoryKind memory_kind,
+Sharding::Sharding(DeviceListRef devices, MemoryKind memory_kind,
                    bool is_fully_replicated)
     : devices_(std::move(devices)),
       memory_kind_(memory_kind),
@@ -181,19 +183,24 @@ bool Sharding::operator==(const Sharding& other) const {
          *devices() == *other.devices();
 }
 
-absl::StatusOr<std::unique_ptr<Sharding>> Sharding::FromProto(
-    DeviceList::LookupDeviceFunc lookup_device,
-    const ShardingProto& sharding_proto) {
+absl::StatusOr<ShardingRef> Sharding::FromProto(
+    Client* client, const ShardingProto& sharding_proto) {
   return Deserialize<Sharding>(
       sharding_proto.serialized_sharding(),
-      std::make_unique<DeserializeShardingOptions>(std::move(lookup_device)));
+      std::make_unique<DeserializeShardingOptions>(client));
 }
 
-absl::StatusOr<ShardingProto> Sharding::ToProto() const {
+absl::StatusOr<ShardingProto> Sharding::ToProto(SerDesVersion version) const {
   ShardingProto sharding_proto;
-  TF_ASSIGN_OR_RETURN(
-      *sharding_proto.mutable_serialized_sharding(),
-      Serialize(const_cast<Sharding&>(*this), /*options=*/nullptr));
+  // `ShardingProto` does not store its own version. It delegates the details to
+  // SerDes of the `Sharding` subclasses.
+  std::unique_ptr<SerializeOptions> options;
+  if (version != SerDesVersion::current()) {
+    options = std::make_unique<SerializeOptions>();
+    options->version = version;
+  }
+  TF_ASSIGN_OR_RETURN(*sharding_proto.mutable_serialized_sharding(),
+                      Serialize(*this, std::move(options)));
   return sharding_proto;
 }
 
@@ -209,6 +216,12 @@ std::unique_ptr<SingleDeviceSharding> SingleDeviceSharding::Create(
       new SingleDeviceSharding(device, memory_kind));
 }
 
+SingleDeviceSharding::SingleDeviceSharding(Device* device,
+                                           MemoryKind memory_kind)
+    : llvm::RTTIExtends<SingleDeviceSharding, Sharding>(
+          device->client()->MakeDeviceList({device}), memory_kind,
+          /*is_fully_replicated=*/true) {}
+
 absl::StatusOr<Shape> SingleDeviceSharding::GetShardShape(
     const Shape& shape) const {
   return shape;
@@ -223,7 +236,7 @@ bool SingleDeviceSharding::HasSamePartitioning(const Sharding& other) const {
 
 absl::StatusOr<std::unique_ptr<Sharding>>
 SingleDeviceSharding::WithDeviceAssignment(
-    std::optional<tsl::RCReference<DeviceList>> devices,
+    std::optional<DeviceListRef> devices,
     std::optional<MemoryKind> memory_kind) const {
   if (devices.has_value() && (*devices)->size() != 1) {
     return InvalidArgument(
@@ -235,18 +248,18 @@ SingleDeviceSharding::WithDeviceAssignment(
                 memory_kind.value_or(memory_kind_));
 }
 
-absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
 SingleDeviceSharding::Disassemble(const Shape& shape) const {
   DCHECK(this);
   return Disassemble(shape, SingleDeviceShardSemantics::kAllShards);
 }
 
-absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
 SingleDeviceSharding::Disassemble(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
   DCHECK(this);
-  std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
+  std::vector<std::pair<Shape, ShardingRef>> result;
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards ||
       devices_->devices().front()->IsAddressable()) {
     result.reserve(1);
@@ -256,19 +269,17 @@ SingleDeviceSharding::Disassemble(
   return result;
 }
 
-absl::StatusOr<
-    std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
 SingleDeviceSharding::Disassemble(const DynamicShape& dynamic_shape) const {
   DCHECK(this);
   return Disassemble(dynamic_shape, SingleDeviceShardSemantics::kAllShards);
 }
-absl::StatusOr<
-    std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
 SingleDeviceSharding::Disassemble(
     const DynamicShape& dynamic_shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
   DCHECK(this);
-  std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>> result;
+  std::vector<std::pair<DynamicShape, ShardingRef>> result;
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards ||
       devices_->devices().front()->IsAddressable()) {
     result.reserve(1);
@@ -305,15 +316,18 @@ std::string SingleDeviceSharding::DebugString() const {
                          memory_kind_);
 }
 
-std::unique_ptr<OpaqueSharding> OpaqueSharding::Create(
-    tsl::RCReference<DeviceList> devices, MemoryKind memory_kind) {
+void SingleDeviceSharding::Hash(absl::HashState state) const {
+  absl::HashState::combine(std::move(state), devices_, memory_kind_);
+}
+
+std::unique_ptr<OpaqueSharding> OpaqueSharding::Create(DeviceListRef devices,
+                                                       MemoryKind memory_kind) {
   memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   return std::unique_ptr<OpaqueSharding>(
       new OpaqueSharding(std::move(devices), memory_kind));
 }
 
-OpaqueSharding::OpaqueSharding(tsl::RCReference<DeviceList> devices,
-                               MemoryKind memory_kind)
+OpaqueSharding::OpaqueSharding(DeviceListRef devices, MemoryKind memory_kind)
     : llvm::RTTIExtends<OpaqueSharding, Sharding>(
           std::move(devices), memory_kind, /*is_fully_replicated=*/false) {}
 
@@ -332,7 +346,7 @@ bool OpaqueSharding::HasSamePartitioning(const Sharding& other) const {
 }
 
 absl::StatusOr<std::unique_ptr<Sharding>> OpaqueSharding::WithDeviceAssignment(
-    std::optional<tsl::RCReference<DeviceList>> devices,
+    std::optional<DeviceListRef> devices,
     std::optional<MemoryKind> memory_kind) const {
   if (devices.has_value() && (*devices)->size() != devices_->size()) {
     return InvalidArgument(
@@ -343,13 +357,13 @@ absl::StatusOr<std::unique_ptr<Sharding>> OpaqueSharding::WithDeviceAssignment(
   return Create(devices.value_or(devices_), memory_kind.value_or(memory_kind_));
 }
 
-absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
 OpaqueSharding::Disassemble(const Shape& shape) const {
   DCHECK(this);
   return Disassemble(shape, SingleDeviceShardSemantics::kAllShards);
 }
 
-absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
 OpaqueSharding::Disassemble(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
@@ -358,15 +372,13 @@ OpaqueSharding::Disassemble(
       "OpaqueSharding does not have shard shape information");
 }
 
-absl::StatusOr<
-    std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
 OpaqueSharding::Disassemble(const DynamicShape& dynamic_shape) const {
   DCHECK(this);
   return Disassemble(dynamic_shape, SingleDeviceShardSemantics::kAllShards);
 }
 
-absl::StatusOr<
-    std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
 OpaqueSharding::Disassemble(
     const DynamicShape& dynamic_shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
@@ -395,34 +407,38 @@ std::string OpaqueSharding::DebugString() const {
                          *devices_, memory_kind_);
 }
 
-std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
-    tsl::RCReference<DeviceList> devices, MemoryKind memory_kind, Shape shape,
-    std::vector<Shape> shard_shapes) {
-  CHECK_EQ(devices->size(), shard_shapes.size());
-  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
-  return std::unique_ptr<ConcreteSharding>(
-      new ConcreteSharding(std::move(devices), memory_kind, std::move(shape),
-                           std::move(shard_shapes)));
+void OpaqueSharding::Hash(absl::HashState state) const {
+  absl::HashState::combine(std::move(state), devices_, memory_kind_);
 }
 
 std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
-    tsl::RCReference<DeviceList> devices, MemoryKind memory_kind,
-    DynamicShape dynamic_shape,
+    DeviceListRef devices, MemoryKind memory_kind, Shape shape,
+    std::vector<Shape> shard_shapes,
+    std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains) {
+  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
+  return std::unique_ptr<ConcreteSharding>(
+      new ConcreteSharding(std::move(devices), memory_kind, std::move(shape),
+                           std::move(shard_shapes), std::move(index_domains)));
+}
+
+std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
+    DeviceListRef devices, MemoryKind memory_kind, DynamicShape dynamic_shape,
     std::vector<DynamicShape> shard_dynamic_shapes) {
-  CHECK_EQ(devices->size(), shard_dynamic_shapes.size());
   memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   return std::unique_ptr<ConcreteSharding>(new ConcreteSharding(
       std::move(devices), memory_kind, std::move(dynamic_shape),
       std::move(shard_dynamic_shapes)));
 }
 
-ConcreteSharding::ConcreteSharding(tsl::RCReference<DeviceList> devices,
-                                   MemoryKind memory_kind, Shape shape,
-                                   std::vector<Shape> shard_shapes)
+ConcreteSharding::ConcreteSharding(
+    DeviceListRef devices, MemoryKind memory_kind, Shape shape,
+    std::vector<Shape> shard_shapes,
+    std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains)
     : llvm::RTTIExtends<ConcreteSharding, Sharding>(
           std::move(devices), memory_kind, /*is_fully_replicated=*/false),
       shape_(std::move(shape)),
-      shard_shapes_(std::move(shard_shapes)) {
+      shard_shapes_(std::move(shard_shapes)),
+      index_domains_(std::move(index_domains)) {
   // If all per-shard shapes are the same, cache this shape for
   // `GetShardShape()`. Ideally, users should have used `ConcreteEvenSharding`
   // for such a case, but there are existing use cases that instantiate
@@ -436,14 +452,14 @@ ConcreteSharding::ConcreteSharding(tsl::RCReference<DeviceList> devices,
       break;
     }
   }
-  if (identical) {
+  if (identical && !static_shard_shapes.empty()) {
     shard_shape_ = static_shard_shapes[0];
   }
 }
 
 ConcreteSharding::ConcreteSharding(
-    tsl::RCReference<DeviceList> devices, MemoryKind memory_kind,
-    DynamicShape dynamic_shape, std::vector<DynamicShape> shard_dynamic_shapes)
+    DeviceListRef devices, MemoryKind memory_kind, DynamicShape dynamic_shape,
+    std::vector<DynamicShape> shard_dynamic_shapes)
     : llvm::RTTIExtends<ConcreteSharding, Sharding>(
           std::move(devices), memory_kind, /*is_fully_replicated=*/false),
       shape_(std::move(dynamic_shape)),
@@ -472,7 +488,7 @@ bool ConcreteSharding::HasSamePartitioning(const Sharding& other) const {
 
 absl::StatusOr<std::unique_ptr<Sharding>>
 ConcreteSharding::WithDeviceAssignment(
-    std::optional<tsl::RCReference<DeviceList>> devices,
+    std::optional<DeviceListRef> devices,
     std::optional<MemoryKind> memory_kind) const {
   if (devices.has_value() && (*devices)->size() != devices_->size()) {
     return InvalidArgument(
@@ -484,21 +500,19 @@ ConcreteSharding::WithDeviceAssignment(
     return Create(devices.value_or(devices_),
                   memory_kind.value_or(memory_kind_), std::get<Shape>(shape_),
                   std::get<std::vector<Shape>>(shard_shapes_));
-  } else {
-    return Create(devices.value_or(devices_),
-                  memory_kind.value_or(memory_kind_),
-                  std::get<DynamicShape>(shape_),
-                  std::get<std::vector<DynamicShape>>(shard_shapes_));
   }
+  return Create(devices.value_or(devices_), memory_kind.value_or(memory_kind_),
+                std::get<DynamicShape>(shape_),
+                std::get<std::vector<DynamicShape>>(shard_shapes_));
 }
 
-absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
 ConcreteSharding::Disassemble(const Shape& shape) const {
   DCHECK(this);
   return Disassemble(shape, SingleDeviceShardSemantics::kAllShards);
 }
 
-absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
 ConcreteSharding::Disassemble(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
@@ -515,35 +529,45 @@ ConcreteSharding::Disassemble(
         "to disassemble shape %s",
         std::get<Shape>(shape_).DebugString(), shape.DebugString());
   }
-  std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
+  std::vector<std::pair<Shape, ShardingRef>> result;
   const std::vector<Shape>& shard_shapes =
       std::get<std::vector<Shape>>(shard_shapes_);
-  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
-    result.reserve(devices_->size());
-  } else {
-    result.reserve(devices_->AddressableDeviceList()->size());
+
+  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
+      devices_->size() != shard_shapes.size()) {
+    return InvalidArgument(
+        "SingleDeviceShardSemantics::kAllShards was requested, but the "
+        "ConcreteSharding contains non-addressable devices. Saw %d devices, "
+        "with %d addressable devices.",
+        devices_->size(), shard_shapes.size());
   }
-  const absl::Span<Device* const> devices = devices_->devices();
-  for (int i = 0; i < devices.size(); ++i) {
-    if (single_device_shard_semantics ==
-            SingleDeviceShardSemantics::kAllShards ||
-        devices[i]->IsAddressable()) {
-      result.push_back({shard_shapes[i], SingleDeviceSharding::Create(
-                                             devices[i], memory_kind_)});
-    }
+
+  const absl::Span<Device* const> addressable_devices =
+      devices_->AddressableDeviceList()->devices();
+  if (shard_shapes.size() != addressable_devices.size()) {
+    return InvalidArgument(
+        "ConcreteSharding must have the same number of "
+        "shard shapes and addressable devices. Saw %d shard shapes, with %d "
+        "addressable devices.",
+        shard_shapes.size(), addressable_devices.size());
+  }
+
+  result.reserve(addressable_devices.size());
+  for (int i = 0; i < addressable_devices.size(); ++i) {
+    result.push_back(
+        {shard_shapes[i],
+         SingleDeviceSharding::Create(addressable_devices[i], memory_kind_)});
   }
   return result;
 }
 
-absl::StatusOr<
-    std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
 ConcreteSharding::Disassemble(const DynamicShape& dynamic_shape) const {
   DCHECK(this);
   return Disassemble(dynamic_shape, SingleDeviceShardSemantics::kAllShards);
 }
 
-absl::StatusOr<
-    std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
 ConcreteSharding::Disassemble(
     const DynamicShape& dynamic_shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
@@ -561,23 +585,34 @@ ConcreteSharding::Disassemble(
         std::get<DynamicShape>(shape_).DebugString(),
         dynamic_shape.DebugString());
   }
-  std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>> result;
+  std::vector<std::pair<DynamicShape, ShardingRef>> result;
   const std::vector<DynamicShape>& shard_dynamic_shapes =
       std::get<std::vector<DynamicShape>>(shard_shapes_);
-  const absl::Span<Device* const> devices = devices_->devices();
-  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
-    result.reserve(devices_->size());
-  } else {
-    result.reserve(devices_->AddressableDeviceList()->size());
+
+  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
+      devices_->size() != shard_dynamic_shapes.size()) {
+    return InvalidArgument(
+        "SingleDeviceShardSemantics::kAllShards was requested, but the "
+        "ConcreteSharding contains non-addressable devices. Saw %d devices, "
+        "with %d addressable devices.",
+        devices_->size(), shard_dynamic_shapes.size());
   }
-  for (int i = 0; i < devices.size(); ++i) {
-    if (single_device_shard_semantics ==
-            SingleDeviceShardSemantics::kAllShards ||
-        devices[i]->IsAddressable()) {
-      result.push_back(
-          {shard_dynamic_shapes[i],
-           SingleDeviceSharding::Create(devices[i], memory_kind_)});
-    }
+
+  const absl::Span<Device* const> addressable_devices =
+      devices_->AddressableDeviceList()->devices();
+  if (shard_dynamic_shapes.size() != addressable_devices.size()) {
+    return InvalidArgument(
+        "ConcreteSharding must have the same number of "
+        "shard shapes and addressable devices. Saw %d shard shapes, with %d "
+        "addressable devices.",
+        shard_dynamic_shapes.size(), addressable_devices.size());
+  }
+
+  result.reserve(addressable_devices.size());
+  for (int i = 0; i < addressable_devices.size(); ++i) {
+    result.push_back(
+        {shard_dynamic_shapes[i],
+         SingleDeviceSharding::Create(addressable_devices[i], memory_kind_)});
   }
   return result;
 }
@@ -592,8 +627,31 @@ absl::StatusOr<std::vector<IndexDomain>> ConcreteSharding::IndexDomains(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
   DCHECK(this);
-  return InvalidArgument(
-      "ConcreteSharding does not have index domain information");
+  if (!index_domains_.has_value()) {
+    return InvalidArgument(
+        "ConcreteSharding does not have index domain information");
+  }
+
+  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
+      devices_->size() != index_domains_->size()) {
+    return InvalidArgument(
+        "SingleDeviceShardSemantics::kAllShards was requested, but the "
+        "ConcreteSharding contains index domains from non-addressable devices. "
+        "Saw %d devices, with %d addressable devices.",
+        devices_->size(), index_domains_->size());
+  }
+
+  const absl::Span<Device* const> addressable_devices =
+      devices_->AddressableDeviceList()->devices();
+  if (index_domains_->size() != addressable_devices.size()) {
+    return InvalidArgument(
+        "ConcreteSharding must have the same number of "
+        "index domains and addressable devices. Saw %d index domains, with %d "
+        "addressable devices.",
+        index_domains_->size(), addressable_devices.size());
+  }
+
+  return *index_domains_;
 }
 
 std::string ConcreteSharding::DebugString() const {
@@ -601,20 +659,28 @@ std::string ConcreteSharding::DebugString() const {
   return std::visit(
       [this](const auto& shape, const auto& shard_shapes) {
         return absl::StrFormat(
-            "ConcreteSharding(devices: %v, shape: %s, shard_shapes: %s, "
-            "memory_kind: %v)",
+            "ConcreteSharding(devices: %v, shape: %s, shard_shapes: [%s], "
+            "index_domains: %s, memory_kind: %v)",
             *devices_, shape.DebugString(),
             absl::StrJoin(shard_shapes, ",",
                           [](std::string* out, const auto& shard_shape) {
                             absl::StrAppend(out, shard_shape.DebugString());
                           }),
+            index_domains_.has_value()
+                ? absl::StrCat("[", absl::StrJoin(*index_domains_, ","), "]")
+                : "<nullopt>",
             memory_kind_);
       },
       shape_, shard_shapes_);
 }
 
+void ConcreteSharding::Hash(absl::HashState state) const {
+  absl::HashState::combine(std::move(state), devices_, memory_kind_, shape_,
+                           shard_shapes_);
+}
+
 std::unique_ptr<ConcreteEvenSharding> ConcreteEvenSharding::Create(
-    tsl::RCReference<DeviceList> devices, MemoryKind memory_kind, Shape shape,
+    DeviceListRef devices, MemoryKind memory_kind, Shape shape,
     Shape shard_shape, bool is_fully_replicated) {
   memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   return std::unique_ptr<ConcreteEvenSharding>(new ConcreteEvenSharding(
@@ -622,7 +688,7 @@ std::unique_ptr<ConcreteEvenSharding> ConcreteEvenSharding::Create(
       is_fully_replicated));
 }
 
-ConcreteEvenSharding::ConcreteEvenSharding(tsl::RCReference<DeviceList> devices,
+ConcreteEvenSharding::ConcreteEvenSharding(DeviceListRef devices,
                                            MemoryKind memory_kind, Shape shape,
                                            Shape shard_shape,
                                            bool is_fully_replicated)
@@ -660,7 +726,7 @@ bool ConcreteEvenSharding::HasSamePartitioning(const Sharding& other) const {
 
 absl::StatusOr<std::unique_ptr<Sharding>>
 ConcreteEvenSharding::WithDeviceAssignment(
-    std::optional<tsl::RCReference<DeviceList>> devices,
+    std::optional<DeviceListRef> devices,
     std::optional<MemoryKind> memory_kind) const {
   if (devices.has_value() && (*devices)->size() != devices_->size()) {
     return InvalidArgument(
@@ -672,13 +738,13 @@ ConcreteEvenSharding::WithDeviceAssignment(
                 shape_, shard_shape_, is_fully_replicated_);
 }
 
-absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
 ConcreteEvenSharding::Disassemble(const Shape& shape) const {
   DCHECK(this);
   return Disassemble(shape, SingleDeviceShardSemantics::kAllShards);
 }
 
-absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
 ConcreteEvenSharding::Disassemble(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
@@ -689,7 +755,7 @@ ConcreteEvenSharding::Disassemble(
         "to disassemble shape %s",
         shape_.DebugString(), shape.DebugString());
   }
-  std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
+  std::vector<std::pair<Shape, ShardingRef>> result;
   const absl::Span<Device* const> devices = devices_->devices();
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
     result.reserve(devices_->size());
@@ -707,15 +773,13 @@ ConcreteEvenSharding::Disassemble(
   return result;
 }
 
-absl::StatusOr<
-    std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
 ConcreteEvenSharding::Disassemble(const DynamicShape& dynamic_shape) const {
   DCHECK(this);
   return Disassemble(dynamic_shape, SingleDeviceShardSemantics::kAllShards);
 }
 
-absl::StatusOr<
-    std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
 ConcreteEvenSharding::Disassemble(
     const DynamicShape& dynamic_shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
@@ -743,15 +807,19 @@ std::string ConcreteEvenSharding::DebugString() const {
   DCHECK(this);
   return absl::StrFormat(
       "ConcreteEvenSharding(devices: %v, shape: %s, shard_shape: %s, "
-      "memory_kind: %v)",
-      *devices_, shape_.DebugString(), shard_shape_.DebugString(),
-      memory_kind_);
+      "memory_kind: %v, is_fully_replicated: %s)",
+      *devices_, shape_.DebugString(), shard_shape_.DebugString(), memory_kind_,
+      is_fully_replicated_ ? "true" : "false");
+}
+
+void ConcreteEvenSharding::Hash(absl::HashState state) const {
+  absl::HashState::combine(std::move(state), devices_, memory_kind_,
+                           is_fully_replicated_, shape_, shard_shape_);
 }
 
 absl::StatusOr<std::unique_ptr<ShardingParamSharding>>
 ShardingParamSharding::Create(ShardingParam sharding_param,
-                              tsl::RCReference<DeviceList> devices,
-                              MemoryKind memory_kind) {
+                              DeviceListRef devices, MemoryKind memory_kind) {
   memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   int64_t device_count =
       absl::c_accumulate(sharding_param.minor_to_major().axis_sizes, 1,
@@ -766,28 +834,28 @@ ShardingParamSharding::Create(ShardingParam sharding_param,
       std::move(sharding_param), std::move(devices), memory_kind));
 }
 
-ShardingParamSharding::ShardingParamSharding(
-    ShardingParam sharding_param, tsl::RCReference<DeviceList> devices,
-    MemoryKind memory_kind)
+ShardingParamSharding::ShardingParamSharding(ShardingParam sharding_param,
+                                             DeviceListRef devices,
+                                             MemoryKind memory_kind)
     : llvm::RTTIExtends<ShardingParamSharding, Sharding>(
           std::move(devices), memory_kind,
           ComputeIsFullyReplicated(sharding_param)),
       sharding_param_(sharding_param) {}
 
-absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
 ShardingParamSharding::Disassemble(const Shape& shape) const {
   DCHECK(this);
   return Disassemble(shape, SingleDeviceShardSemantics::kAllShards);
 }
 
-absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
 ShardingParamSharding::Disassemble(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
   DCHECK(this);
   TF_ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
 
-  std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
+  std::vector<std::pair<Shape, ShardingRef>> result;
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
     result.reserve(devices_->size());
   } else {
@@ -841,7 +909,7 @@ bool ShardingParamSharding::HasSamePartitioning(const Sharding& other) const {
 
 absl::StatusOr<std::unique_ptr<Sharding>>
 ShardingParamSharding::WithDeviceAssignment(
-    std::optional<tsl::RCReference<DeviceList>> devices,
+    std::optional<DeviceListRef> devices,
     std::optional<MemoryKind> memory_kind) const {
   if (devices.has_value() && (*devices)->size() != devices_->size()) {
     return InvalidArgument(
@@ -853,15 +921,13 @@ ShardingParamSharding::WithDeviceAssignment(
                 memory_kind.value_or(memory_kind_));
 }
 
-absl::StatusOr<
-    std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
 ShardingParamSharding::Disassemble(const DynamicShape& dynamic_shape) const {
   DCHECK(this);
   return Disassemble(dynamic_shape, SingleDeviceShardSemantics::kAllShards);
 }
 
-absl::StatusOr<
-    std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
 ShardingParamSharding::Disassemble(
     const DynamicShape& dynamic_shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
@@ -932,6 +998,11 @@ std::string ShardingParamSharding::DebugString() const {
   return absl::StrFormat(
       "ShardingParamSharding(%s, devices: %v, memory_kind: %v)",
       sharding_param_.DebugString(), *devices_, memory_kind_);
+}
+
+void ShardingParamSharding::Hash(absl::HashState state) const {
+  absl::HashState::combine(std::move(state), devices_, memory_kind_,
+                           is_fully_replicated_, sharding_param_);
 }
 
 }  // namespace ifrt

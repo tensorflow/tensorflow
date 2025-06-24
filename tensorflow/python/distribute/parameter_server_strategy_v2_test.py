@@ -658,7 +658,7 @@ class ClusterTypeNameTest(test.TestCase):
     ]
     cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
         server_lib.ClusterSpec(cluster_def), rpc_layer="grpc")
-    with self.assertRaisesRegexp(ValueError, "Disallowed task type found in"):
+    with self.assertRaisesRegex(ValueError, "Disallowed task type found in"):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
   def testArbitraryCurrentTaskType(self):
@@ -668,7 +668,7 @@ class ClusterTypeNameTest(test.TestCase):
         server_lib.ClusterSpec(cluster_def),
         rpc_layer="grpc", task_type="foobar",
     )
-    with self.assertRaisesRegexp(ValueError, "Unrecognized task_type: foobar"):
+    with self.assertRaisesRegex(ValueError, "Unrecognized task_type: foobar"):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
   def testMoreThanOneChief(self):
@@ -681,7 +681,7 @@ class ClusterTypeNameTest(test.TestCase):
         rpc_layer="grpc",
         task_type="chief",
         task_id=1)
-    with self.assertRaisesRegexp(ValueError,
+    with self.assertRaisesRegex(ValueError,
                                  "There must be at most one 'chief' job."):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
@@ -692,7 +692,7 @@ class ClusterTypeNameTest(test.TestCase):
         server_lib.ClusterSpec(cluster_def),
         rpc_layer="grpc", task_type="ps", task_id=0,
     )
-    with self.assertRaisesRegexp(ValueError,
+    with self.assertRaisesRegex(ValueError,
                                  "There must be at least one worker."):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
@@ -704,7 +704,7 @@ class ClusterTypeNameTest(test.TestCase):
         rpc_layer="grpc",
         task_type="worker",
         task_id=0)
-    with self.assertRaisesRegexp(ValueError, "There must be at least one ps."):
+    with self.assertRaisesRegex(ValueError, "There must be at least one ps."):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -26,10 +27,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/host_memory_pool.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
@@ -52,7 +55,7 @@ namespace gpu {
 class WhileThunk : public Thunk {
  public:
   // Constructs a WhileThunk to compute while instruction 'hlo'.
-  WhileThunk(ThunkInfo thunk_info,
+  WhileThunk(ThunkInfo thunk_info, const HloInstruction* loop,
              const BufferAllocation::Slice& condition_result_buffer_index,
              std::unique_ptr<SequentialThunk> condition_thunk_sequence,
              std::unique_ptr<SequentialThunk> body_thunk_sequence,
@@ -77,25 +80,47 @@ class WhileThunk : public Thunk {
     return condition_result_buffer_index_;
   }
 
+  std::optional<int64_t> trip_count() const { return trip_count_; }
+
   // Returns the current loop iteration if the caller is inside a while loop(s).
   //
   // Implementation relies on thread local storage, be careful when call it from
   // code running on multiple threads.
   static absl::StatusOr<int64_t> CurrentLoopIteration(int64_t depth = 0);
+  static absl::StatusOr<int64_t> CurrentLoopIteration(
+      const HloInstruction* while_instr);
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
 
+  std::string ToString(int indent) const override;
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
+  // Deserializes a WhileThunk from its proto representation.
+  // Parameters:
+  // - thunk_info: Metadata about the thunk
+  // - thunk_proto: Serialized WhileThunk proto message.
+  // - buffer_allocations: Buffer allocations available for use by the thunk.
+  // - deserializer: Callable (e.g., lambda) for deserializing nested thunks.
+  //
+  // Returns a unique_ptr to a WhileThunk on success, or an error status on
+  // failure.
+  static absl::StatusOr<std::unique_ptr<WhileThunk>> FromProto(
+      ThunkInfo thunk_info, const WhileThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations,
+      const Deserializer& deserializer);
+
  private:
+  const HloInstruction* loop_;
   const BufferAllocation::Slice condition_result_buffer_index_;
   std::unique_ptr<SequentialThunk> condition_thunk_sequence_;
   std::unique_ptr<SequentialThunk> body_thunk_sequence_;
   std::optional<int64_t> trip_count_;
 
-  // Pinned host memory for transfering predicate value from device to host.
+  // Host memory pool for transfering predicate value from device to host.
   absl::Mutex mutex_;
-  absl::flat_hash_map<se::StreamExecutor*,
-                      std::unique_ptr<se::MemoryAllocation>>
-      predicates_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<HostMemoryPool>>
+      host_memory_pools_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

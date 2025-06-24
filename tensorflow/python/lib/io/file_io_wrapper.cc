@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/core/lib/core/error_codes.pb.h"
@@ -89,7 +92,7 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
       py::arg("filename"), py::arg("token") = (PyTransactionToken*)nullptr);
   m.def(
       "WriteStringToFile",
-      [](const std::string& filename, tensorflow::StringPiece data,
+      [](const std::string& filename, absl::string_view data,
          PyTransactionToken* token) {
         py::gil_scoped_release release;
         const auto status =
@@ -127,7 +130,7 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
       [](const std::string& dirname, PyTransactionToken* token) {
         py::gil_scoped_release release;
         const auto status = tensorflow::Env::Default()->CreateDir(dirname);
-        if (tensorflow::errors::IsAlreadyExists(status)) {
+        if (absl::IsAlreadyExists(status)) {
           return;
         }
         tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
@@ -195,7 +198,7 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
         py::gil_scoped_release release;
         const auto status = tensorflow::Env::Default()->IsDirectory(dirname);
         // FAILED_PRECONDITION response means path exists but isn't a dir.
-        if (tensorflow::errors::IsFailedPrecondition(status)) {
+        if (absl::IsFailedPrecondition(status)) {
           return false;
         }
 
@@ -258,7 +261,7 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
            py::arg("filename"), py::arg("mode"),
            py::arg("token") = (PyTransactionToken*)nullptr)
       .def("append",
-           [](WritableFile* self, tensorflow::StringPiece data) {
+           [](WritableFile* self, absl::string_view data) {
              const auto status = self->Append(data);
              tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
            })
@@ -307,7 +310,7 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
              py::gil_scoped_release release;
              tensorflow::tstring result;
              const auto status = self->ReadNBytes(bytes_to_read, &result);
-             if (!status.ok() && !tensorflow::errors::IsOutOfRange(status)) {
+             if (!status.ok() && !absl::IsOutOfRange(status)) {
                result.clear();
                tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
              }

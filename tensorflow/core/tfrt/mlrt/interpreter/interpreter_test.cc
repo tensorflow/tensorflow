@@ -29,6 +29,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/async_handle.h"
@@ -39,8 +41,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/interpreter/interpreter_testutil.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/register_span.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/value.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/test_benchmark.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace mlrt {
@@ -2825,6 +2825,43 @@ TEST(KernelTest, Case) {
   }
 }
 
+TEST(KernelTest, CaseInvalidBranchIndexShallChooseLastBranch) {
+  auto buffer = CreateCaseExecutable();
+
+  bc::Executable executable(buffer.data());
+
+  KernelRegistry registry;
+  RegisterBuiltinKernels(registry);
+  LoadedExecutable loaded_executable(executable, registry);
+
+  ExecutionContext execution_context(&loaded_executable);
+
+  auto function = loaded_executable.GetFunction("main");
+  ASSERT_TRUE(function);
+
+  Value inputs[3];
+
+  constexpr int32_t kBranch0In = 123;
+  constexpr int32_t kBranch1In = 456;
+
+  // Test Invalid Branch 10
+  {
+    inputs[0].Set<uint32_t>(10);
+    inputs[1].Set(kBranch0In);
+    inputs[2].Set(kBranch1In);
+    Value output;
+
+    std::vector<uint8_t> last_uses = {true, true, true};
+    execution_context.Call(function, last_uses, absl::MakeSpan(inputs),
+                           absl::Span<Value>(&output, 1));
+
+    Execute(execution_context);
+
+    ASSERT_TRUE(output.HasValue());
+    EXPECT_EQ(kBranch1In, output.Get<int32_t>());
+  }
+}
+
 struct TestPromiseReturnOp : PromiseReturnOpBase<TestPromiseReturnOp> {
   using PromiseReturnOpBase::PromiseReturnOpBase;
 
@@ -2915,8 +2952,10 @@ TEST(KernelTest, PromiseReturn) {
   registry.Register("await.i32", &AwaitI32);
 
   LoadedExecutable loaded_executable(executable, registry);
-
+  auto work_queue = tfrt::CreateMultiThreadedWorkQueue(
+      /*num_threads=*/1, /*num_blocking_threads=*/1);
   ExecutionContext consumer_context(&loaded_executable);
+  consumer_context.set_work_queue(work_queue.get());
 
   absl::Notification notification;
   consumer_context.set_exit_handler(
@@ -2947,7 +2986,7 @@ TEST(KernelTest, PromiseReturn) {
     Execute(producer_context);
   }
 
-  ASSERT_TRUE(notification.HasBeenNotified());
+  notification.WaitForNotification();
   EXPECT_EQ(output.Get<int32_t>(), 100);
 }
 

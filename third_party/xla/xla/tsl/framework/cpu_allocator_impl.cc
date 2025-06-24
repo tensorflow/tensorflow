@@ -15,13 +15,14 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <optional>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/allocator_registry.h"
 #include "xla/tsl/framework/tracking_allocator.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/mem.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/strcat.h"
 #include "tsl/platform/stringprintf.h"
 #include "tsl/profiler/lib/scoped_memory_debug_annotation.h"
@@ -88,7 +89,7 @@ class CPUAllocator : public Allocator {
     void* p = port::AlignedMalloc(num_bytes, alignment);
     if (cpu_allocator_collect_stats) {
       const std::size_t alloc_size = port::MallocExtension_GetAllocatedSize(p);
-      mutex_lock l(mu_);
+      absl::MutexLock l(&mu_);
       ++stats_.num_allocs;
       stats_.bytes_in_use += alloc_size;
       stats_.peak_bytes_in_use =
@@ -114,7 +115,7 @@ class CPUAllocator : public Allocator {
     if (cpu_allocator_collect_stats) {
       const std::size_t alloc_size =
           port::MallocExtension_GetAllocatedSize(ptr);
-      mutex_lock l(mu_);
+      absl::MutexLock l(&mu_);
       stats_.bytes_in_use -= alloc_size;
       AddTraceMe("MemoryDeallocation", ptr, 0, alloc_size);
     }
@@ -125,7 +126,7 @@ class CPUAllocator : public Allocator {
     if (cpu_allocator_collect_stats) {
       const std::size_t alloc_size =
           port::MallocExtension_GetAllocatedSize(ptr);
-      mutex_lock l(mu_);
+      absl::MutexLock l(&mu_);
       stats_.bytes_in_use -= alloc_size;
       AddTraceMe("MemoryDeallocation", ptr, 0, alloc_size);
     }
@@ -156,15 +157,17 @@ class CPUAllocator : public Allocator {
         /*level=*/tsl::profiler::TraceMeLevel::kInfo);
   }
 
-  absl::optional<AllocatorStats> GetStats() override {
-    if (!cpu_allocator_collect_stats) return absl::nullopt;
-    mutex_lock l(mu_);
+  std::optional<AllocatorStats> GetStats() override {
+    if (!cpu_allocator_collect_stats) {
+      return std::nullopt;
+    }
+    absl::MutexLock l(&mu_);
     return stats_;
   }
 
   bool ClearStats() override {
     if (!cpu_allocator_collect_stats) return false;
-    mutex_lock l(mu_);
+    absl::MutexLock l(&mu_);
     stats_.num_allocs = 0;
     stats_.peak_bytes_in_use = stats_.bytes_in_use;
     stats_.largest_alloc_size = 0;
@@ -180,10 +183,10 @@ class CPUAllocator : public Allocator {
   }
 
  private:
-  mutex mu_;
+  absl::Mutex mu_;
   AllocatorStats stats_ TF_GUARDED_BY(mu_);
 
-  // Use <atomic> for single allocations to avoid mutex contention when
+  // Use <atomic> for single allocations to avoid absl::Mutex contention when
   // statistics are disabled.
   std::atomic<int> single_allocation_warning_count_;
   int total_allocation_warning_count_ TF_GUARDED_BY(mu_);

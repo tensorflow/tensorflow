@@ -20,20 +20,22 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -42,6 +44,8 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 namespace m = xla::match;
+
+using ::tsl::testing::IsOkAndHolds;
 
 class HloCseTest : public HloTestBase {
  protected:
@@ -599,6 +603,53 @@ TEST_F(HloCseTest, DoNotCombineCallsToImpureFunctions) {
   EXPECT_THAT(root, op::Add(op::Map(op::Constant()), op::Map(op::Constant())));
 }
 
+TEST_F(HloCseTest, CopyOpCSE) {
+  // cp1 can be replaced with cp0
+  const char* const kModuleStr = R"(
+  HloModule m
+  ENTRY main {
+    c = f32[] constant(0)
+    b = f32[4,4] broadcast(c), dimensions={}
+    cp0 = f32[4,4] copy(b)
+    cp1 = f32[4,4] copy(b)
+    ROOT t = (f32[4,4], f32[4,4]) tuple(cp0, cp1)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&cse, module.get()));
+  EXPECT_TRUE(result);
+  HloInstruction* cp0;
+  HloInstruction* cp1;
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Copy(&cp0), m::Copy(&cp1))));
+  // compare Op pointers to make sure it the same single copyOp
+  EXPECT_TRUE(cp0 == cp1);
+}
+
+TEST_F(HloCseTest, DontCSE_NonSafelyRemovableOp) {
+  // cp1 is not SafelyRemovable (has control-predecessors)
+  // Skip CSE
+  const char* const kModuleStr = R"(
+  HloModule m
+  ENTRY main {
+    p0 = f32[4,4] parameter(0)
+    p1 = f32[4,4] parameter(1)
+    c = f32[] constant(0)
+    b = f32[4,4] broadcast(c), dimensions={}
+    cp0 = f32[4,4] copy(b), control-predecessors={p0}
+    cp1 = f32[4,4] copy(b), control-predecessors={p1}
+    ROOT t = (f32[4,4], f32[4,4]) tuple(cp0, cp1)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  // ignore_control_dependencies = false by default
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&cse, module.get()));
+  EXPECT_FALSE(result);
+}
+
 TEST_F(HloCseTest, CompareComputations) {
   const char* const hlo_string = R"(
     HloModule m
@@ -947,6 +998,32 @@ TEST_F(HloCseTest, MultiOutputFusion) {
       GmockMatch(m::Tuple(m::Add(&add0, m::Parameter(0), m::Parameter(1)),
                           m::Add(&add1, m::Parameter(0), m::Parameter(1)))));
   EXPECT_EQ(add0, add1);
+}
+
+TEST_F(HloCseTest, ResultAccuracyCseKey) {
+  const char* const hlo_string = R"(
+    HloModule m
+    ENTRY main.6 {
+  Arg_0.1 = f32[4]{0} parameter(0), metadata={op_name="x"}
+  Arg_0.2 = f32[4]{0} parameter(1), metadata={op_name="x"}
+  exponential.2 = f32[4]{0} exponential(Arg_0.1), result_accuracy={tolerance={atol=0.03125,rtol=0.03125,ulps=2}}
+  exponential.3 = f32[4]{0} exponential(Arg_0.2), result_accuracy={tolerance={atol=0.03125,rtol=0.03125,ulps=2}}
+  exponential.4 = f32[4]{0} exponential(Arg_0.1), result_accuracy={mode=highest}
+  exponential.5 = f32[4]{0} exponential(Arg_0.1), result_accuracy={mode=highest}
+  ROOT t = tuple(exponential.2, exponential.3, exponential.4, exponential.5)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  // same result accuracy, so one of the exponentials should be dropped
+  EXPECT_THAT(cse.Run(m.get()), IsOkAndHolds(true));
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  ASSERT_EQ(root->operand_count(), 4);
+  EXPECT_NE(root->operand(0), root->operand(1));
+  EXPECT_NE(root->operand(1), root->operand(2));
+  // after CSE, should be tuple(exponential.2, exponential.3, exponential.4,
+  // exponential.4)
+  EXPECT_EQ(root->operand(2), root->operand(3));
 }
 
 class HloCseCommutativeOpTest

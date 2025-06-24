@@ -10,7 +10,6 @@ py_strict_library(
     srcs = [
         "converter_testing.py",
     ],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":config",
@@ -86,8 +85,6 @@ py_strict_library(
 py_strict_test(
     name = "converter_test",
     srcs = ["converter_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":converter",
         ":test_lib",
@@ -103,8 +100,6 @@ py_strict_test(
 py_strict_test(
     name = "function_wrappers_test",
     srcs = ["function_wrappers_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":converter",
         ":function_wrappers",

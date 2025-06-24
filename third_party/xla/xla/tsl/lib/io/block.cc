@@ -151,7 +151,7 @@ class Block::Iter : public Iterator {
     ParseNextKey();
   }
 
-  void Seek(const absl::string_view& target) override {
+  void Seek(absl::string_view target) override {
     // Binary search in restart array to find the last restart point
     // with a key < target
     uint32 left = 0;

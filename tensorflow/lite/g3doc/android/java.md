@@ -22,7 +22,7 @@ The TensorFlow Lite Task API wraps the Interpreter API and provides a high-level
 programming interface for common machine learning tasks that use visual, audio,
 and text data. You should use the Task API if your application requires one of
 the
-[supported tasks](../inference_with_metadata/task_library/overview#supported_tasks).
+[supported tasks](../inference_with_metadata/task_library/overview.md#supported-tasks).
 
 #### 1. Add project dependencies
 

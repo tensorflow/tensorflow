@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <utility>
 #include <vector>
 
 #include "Eigen/Core"  // from @eigen_archive

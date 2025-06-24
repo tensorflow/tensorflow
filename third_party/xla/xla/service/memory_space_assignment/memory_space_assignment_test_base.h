@@ -17,14 +17,19 @@ limitations under the License.
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_TEST_BASE_H_
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -34,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/instruction_hoister.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/cost_modelling/op_cost.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
@@ -42,6 +48,7 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/memory_space_assignment.h"
 #include "xla/service/memory_space_assignment/options.h"
 #include "xla/service/memory_space_assignment/prefetch_interval_picker.h"
+#include "xla/service/memory_space_assignment/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
@@ -108,6 +115,7 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     options.alternate_memory_space = kAlternateMemorySpace;
     options.max_outstanding_prefetches = -1;
     options.max_outstanding_evictions = -1;
+    options.shape_size_fn = HloCostAnalysis::DefaultShapeSize;
 
     return options;
   }
@@ -115,7 +123,10 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
   static CostAnalysisOptions DefaultCostAnalysisOptions() {
     CostAnalysisOptions options;
     options.default_mem_bandwidth_bytes_per_second = kDefaultMemBandwidth;
-    options.alternate_mem_bandwidth_bytes_per_second = kAlternateMemBandwidth;
+    options.alternate_mem_read_bandwidth_bytes_per_second =
+        kAlternateMemBandwidth;
+    options.alternate_mem_write_bandwidth_bytes_per_second =
+        kAlternateMemBandwidth;
     return options;
   }
 
@@ -125,6 +136,39 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     options.max_outstanding_evictions = max_async_copies;
 
     return options;
+  }
+
+  // Creates an MsaBufferIntervalCompare function that prioritizes the
+  // instructions named in prioritized_instruction_names, in the order
+  // specified. We default to alphabetical instruction name order for the
+  // remaining instructions.
+  static MsaBufferIntervalCompare
+  CreateBufferIntervalCompareFnFromInstructionNames(
+      std::vector<std::string> prioritized_instruction_names) {
+    absl::flat_hash_map<std::string, size_t> instruction_name_to_priority;
+    // A lower priority value means its higher on the Msa sort list.
+    for (size_t i = 0; i < prioritized_instruction_names.size(); ++i) {
+      instruction_name_to_priority[prioritized_instruction_names[i]] = i;
+    }
+    return [instruction_name_to_priority =
+                std::move(instruction_name_to_priority)](
+               const MsaBufferInterval& a, const MsaBufferInterval& b) {
+      auto get_sort_tuple = [&instruction_name_to_priority](
+                                const MsaBufferInterval& buffer_interval) {
+        auto it = instruction_name_to_priority.find(
+            buffer_interval.buffer->defining_instruction()->name());
+        if (it != instruction_name_to_priority.end()) {
+          return std::make_tuple(
+              it->second,
+              buffer_interval.buffer->defining_instruction()->name());
+        }
+        return std::make_tuple(
+            instruction_name_to_priority.size(),
+            buffer_interval.buffer->defining_instruction()->name());
+      };
+
+      return get_sort_tuple(a) < get_sort_tuple(b);
+    };
   }
 
   std::unique_ptr<PresetAssignments> AssignMemorySpaceUsingCostAnalysis(
@@ -142,6 +186,7 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     }
 
     HloCostAnalysis hlo_cost_analysis(hlo_cost_options);
+    HloCostAnalysisWithAcceptState hlo_cost_analysis_wrapper(hlo_cost_analysis);
     for (HloComputation* computation : module->MakeNonfusionComputations()) {
       TF_CHECK_OK(computation->Accept(&hlo_cost_analysis));
     }
@@ -155,10 +200,18 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     if (cost_analysis_options_override) {
       cost_analysis_options = *cost_analysis_options_override;
     }
-    HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
+    OpCostManager op_cost_manager(
+        OpCostManager::Options{
+            /*enable_cache=*/false,
+            /*enable_analysis_logging=*/false,
+        },
+        OpCostManager::CalculationNode::CreateLeaf(
+            "HloCostAnalysis",
+            CreateHloCostAnalysisCalculator(hlo_cost_analysis_wrapper),
+            /*enable_cache=*/false));
 
-    auto status_or_cost_analysis = CostAnalysis::Create(
-        hlo_cost_analysis_costs, cost_analysis_options, *module);
+    auto status_or_cost_analysis =
+        CostAnalysis::Create(op_cost_manager, cost_analysis_options, *module);
     TF_CHECK_OK(status_or_cost_analysis.status());
     auto cost_analysis = std::move(status_or_cost_analysis.value());
 

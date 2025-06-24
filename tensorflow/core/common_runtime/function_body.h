@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_BODY_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_BODY_H_
 
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -43,10 +45,22 @@ struct FunctionBody {
   absl::InlinedVector<Node*, 4UL> ret_nodes;
   absl::InlinedVector<Node*, 4UL> control_ret_nodes;
 
+  // Allocator attributes arg/ret nodes of the function body.
+  absl::InlinedVector<AllocatorAttributes, 4UL> args_alloc_attrs;
+  absl::InlinedVector<AllocatorAttributes, 4UL> rets_alloc_attrs;
+
   FunctionBody() {}
   FunctionBody(core::RefCountPtr<FunctionRecord>&& record,
                DataTypeSlice arg_types, DataTypeSlice ret_types, Graph* g);
   ~FunctionBody();
+
+  // Finalizes the function body by unreferencing the function record,
+  // destructing the graph it own, and resetting the node pointers. It populates
+  // the alloc attrs for the function body, so that
+  // FunctionLibraryRuntime::RunRemote can use it to allocate tensors.
+  //
+  // Returns an error if the allocator attributes cannot be populated.
+  absl::Status Finalize();
 };
 
 }  // end namespace tensorflow

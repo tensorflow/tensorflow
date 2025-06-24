@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/ir/types/dialect.h"
 
+#include <cassert>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -163,15 +164,15 @@ Type TFTypeDialect::parseType(DialectAsmParser& parser) const {
 // Entry point for Type parsing, TableGen generated code will handle the
 // dispatch to the individual classes.
 void TFTypeDialect::printType(Type type, DialectAsmPrinter& printer) const {
-#define HANDLE_TF_TYPE(tftype, enumerant, name)          \
-  if (auto derived_ty = type.dyn_cast<tftype##Type>()) { \
-    printer << name;                                     \
-    return;                                              \
+#define HANDLE_TF_TYPE(tftype, enumerant, name)               \
+  if (auto derived_ty = mlir::dyn_cast<tftype##Type>(type)) { \
+    printer << name;                                          \
+    return;                                                   \
   }
-#define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name)   \
-  if (auto derived_ty = type.dyn_cast<tftype##Type>()) { \
-    Print##tftype##Type(derived_ty, printer);            \
-    return;                                              \
+#define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name)        \
+  if (auto derived_ty = mlir::dyn_cast<tftype##Type>(type)) { \
+    Print##tftype##Type(derived_ty, printer);                 \
+    return;                                                   \
   }
 // NOLINTNEXTLINE: intended redundant include.
 #include "tensorflow/core/ir/types/types.def"
@@ -542,15 +543,15 @@ TensorFlowType TensorFlowRefType::get(Type type) {
     return DoubleRefType::get(ctx);
   } else if (type.isBF16()) {
     return Bfloat16RefType::get(ctx);
-  } else if (type.isFloat8E4M3FN()) {
+  } else if (llvm::isa<mlir::Float8E4M3FNType>(type)) {
     return Float8E4M3FNRefType::get(ctx);
-  } else if (type.isFloat8E5M2()) {
+  } else if (llvm::isa<mlir::Float8E5M2Type>(type)) {
     return Float8E5M2RefType::get(ctx);
-  } else if (type.isFloat8E4M3FNUZ()) {
+  } else if (llvm::isa<mlir::Float8E4M3FNUZType>(type)) {
     return Float8E4M3FNUZRefType::get(ctx);
-  } else if (type.isFloat8E4M3B11FNUZ()) {
+  } else if (llvm::isa<mlir::Float8E4M3B11FNUZType>(type)) {
     return Float8E4M3B11FNUZRefType::get(ctx);
-  } else if (type.isFloat8E5M2FNUZ()) {
+  } else if (llvm::isa<mlir::Float8E5M2FNUZType>(type)) {
     return Float8E5M2FNUZRefType::get(ctx);
   } else if (auto complex_type = mlir::dyn_cast<ComplexType>(type)) {
     Type etype = complex_type.getElementType();
@@ -583,8 +584,8 @@ TensorFlowType TensorFlowRefType::get(Type type) {
         llvm_unreachable("unexpected integer type");
     }
   }
-#define HANDLE_TF_TYPE(tftype, enumerant, name)        \
-  if (auto derived_ty = type.dyn_cast<tftype##Type>()) \
+#define HANDLE_TF_TYPE(tftype, enumerant, name)             \
+  if (auto derived_ty = mlir::dyn_cast<tftype##Type>(type)) \
     return tftype##RefType::get(ctx);
 
 #define HANDLE_TF_REF_TYPE(tftype, enumerant, name)
@@ -595,19 +596,19 @@ TensorFlowType TensorFlowRefType::get(Type type) {
 
 Type TensorFlowRefType::RemoveRef() {
   MLIRContext* ctx = getContext();
-  if (mlir::isa<HalfRefType>(*this)) return FloatType::getF16(ctx);
-  if (mlir::isa<FloatRefType>(*this)) return FloatType::getF32(ctx);
-  if (mlir::isa<DoubleRefType>(*this)) return FloatType::getF64(ctx);
-  if (mlir::isa<Bfloat16RefType>(*this)) return FloatType::getBF16(ctx);
+  if (mlir::isa<HalfRefType>(*this)) return Float16Type::get(ctx);
+  if (mlir::isa<FloatRefType>(*this)) return Float32Type::get(ctx);
+  if (mlir::isa<DoubleRefType>(*this)) return Float64Type::get(ctx);
+  if (mlir::isa<Bfloat16RefType>(*this)) return BFloat16Type::get(ctx);
   if (mlir::isa<Float8E4M3FNType>(*this))
-    return FloatType::getFloat8E4M3FN(ctx);
-  if (mlir::isa<Float8E5M2Type>(*this)) return FloatType::getFloat8E5M2(ctx);
+    return Float8E4M3FNType::get(ctx);
+  if (mlir::isa<Float8E5M2Type>(*this)) return Float8E5M2Type::get(ctx);
   if (mlir::isa<Float8E4M3FNUZType>(*this))
-    return FloatType::getFloat8E4M3FNUZ(ctx);
+    return Float8E4M3FNUZType::get(ctx);
   if (mlir::isa<Float8E4M3B11FNUZType>(*this))
-    return FloatType::getFloat8E4M3B11FNUZ(ctx);
+    return Float8E4M3B11FNUZType::get(ctx);
   if (mlir::isa<Float8E5M2FNUZType>(*this))
-    return FloatType::getFloat8E5M2FNUZ(ctx);
+    return Float8E5M2FNUZType::get(ctx);
   if (mlir::isa<BoolRefType>(*this)) return IntegerType::get(ctx, 1);
   if (mlir::isa<Int4RefType>(*this))
     return IntegerType::get(ctx, 4, IntegerType::Signed);
@@ -626,11 +627,11 @@ Type TensorFlowRefType::RemoveRef() {
   if (mlir::isa<Uint64RefType>(*this))
     return IntegerType::get(ctx, 64, IntegerType::Unsigned);
   if (mlir::isa<Complex64RefType>(*this))
-    return ComplexType::get(FloatType::getF32(ctx));
+    return ComplexType::get(Float32Type::get(ctx));
   if (mlir::isa<Complex128RefType>(*this))
-    return ComplexType::get(FloatType::getF64(ctx));
+    return ComplexType::get(Float64Type::get(ctx));
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
-  if (isa<tftype##RefType>()) return tftype##Type::get(ctx);
+  if (mlir::isa<tftype##RefType>(*this)) return tftype##Type::get(ctx);
 
 #define HANDLE_TF_REF_TYPE(tftype, enumerant, name)
 // NOLINTNEXTLINE

@@ -39,10 +39,8 @@ limitations under the License.
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/runtime_conv2d.h"
 #include "xla/service/cpu/runtime_conv2d_acl.h"
-#include "xla/service/cpu/runtime_conv2d_mkl.h"
 #include "xla/service/cpu/runtime_conv3d.h"
 #include "xla/service/cpu/runtime_custom_call_status.h"
-#include "xla/service/cpu/runtime_fft.h"
 #include "xla/service/cpu/runtime_fork_join.h"
 #include "xla/service/cpu/runtime_fp16.h"
 #include "xla/service/cpu/runtime_handle_ffi_call.h"
@@ -52,14 +50,13 @@ limitations under the License.
 #include "xla/service/cpu/runtime_pow.h"
 #include "xla/service/cpu/runtime_single_threaded_conv2d.h"
 #include "xla/service/cpu/runtime_single_threaded_conv3d.h"
-#include "xla/service/cpu/runtime_single_threaded_fft.h"
 #include "xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "xla/service/cpu/runtime_topk.h"
 #include "xla/service/cpu/windows_compatibility.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "tsl/platform/logging.h"
 
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 #include "xla/service/cpu/onednn_convolution.h"
 #include "xla/service/cpu/onednn_layer_norm.h"
 #include "xla/service/cpu/onednn_matmul.h"
@@ -115,11 +112,21 @@ RuntimeSymbolGenerator::ResolveRuntimeSymbol(llvm::StringRef name) {
 extern "C" void __chkstk(size_t);
 #endif
 
+extern "C" {
 // Provided by compiler-rt and MLIR.
 // Converts an F32 value to a BF16.
-extern "C" uint16_t __truncsfbf2(float);
+uint16_t __truncsfbf2(float);
 // Converts an F64 value to a BF16.
-extern "C" uint16_t __truncdfbf2(double);
+uint16_t __truncdfbf2(double);
+
+#ifdef __APPLE__
+// Converts an F32 value to a F16.
+uint16_t __truncsfhf2(float);
+
+float __extendhfsf2(uint16_t a);
+#endif  // __APPLE__
+
+}  // extern "C"
 
 #define REGISTER_CPU_RUNTIME_SYMBOL(base_name)                               \
   do {                                                                       \
@@ -158,12 +165,10 @@ static bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(ReduceScatter);
   REGISTER_CPU_RUNTIME_SYMBOL(PartitionId);
   REGISTER_CPU_RUNTIME_SYMBOL(ReplicaId);
-  REGISTER_CPU_RUNTIME_SYMBOL(MKLConv2DF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConv2DF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConv2DF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConv3DF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConv3DF32);
-  REGISTER_CPU_RUNTIME_SYMBOL(DuccFft);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF64);
@@ -178,7 +183,6 @@ static bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv2DF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv3DF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv3DF32);
-  REGISTER_CPU_RUNTIME_SYMBOL(DuccSingleThreadedFft);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF8E4M3FN);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF8E5M2);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF16);
@@ -198,13 +202,13 @@ static bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(TracingStart);
   REGISTER_CPU_RUNTIME_SYMBOL(TracingEnd);
   REGISTER_CPU_RUNTIME_SYMBOL(HandleFfiCall);
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnMatMul);
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnSoftmax);
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnLayerNorm);
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnConvolution);
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnMatMulReorder);
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
 
   registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee),
                      "Host");
@@ -216,6 +220,13 @@ static bool RegisterKnownJITSymbols() {
                      "Host");
   registry->Register("__truncsfbf2", reinterpret_cast<void*>(__truncsfbf2),
                      "Host");
+
+#ifdef __APPLE__
+  registry->Register("__truncsfhf2", reinterpret_cast<void*>(__truncsfhf2),
+                     "Host");
+  registry->Register("__extendhfsf2", reinterpret_cast<void*>(__extendhfsf2),
+                     "Host");
+#endif  // __APPLE__
   registry->Register("__powisf2", reinterpret_cast<void*>(__powisf2), "Host");
   registry->Register("__powidf2", reinterpret_cast<void*>(__powidf2), "Host");
 

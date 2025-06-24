@@ -69,6 +69,8 @@ SavedModel::Options DefaultSavedModelOptions(
 
   if (user_options) {
     options.graph_execution_options.enable_mlrt = user_options->enable_mlrt;
+    options.graph_execution_options.model_metadata =
+        user_options->session_metadata;
     compile_options.enable_optimizer = user_options->enable_optimizer;
     compile_options.enable_grappler = user_options->enable_grappler;
     compile_options.force_data_format = user_options->force_data_format;

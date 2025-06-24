@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace pjrt {
 namespace {

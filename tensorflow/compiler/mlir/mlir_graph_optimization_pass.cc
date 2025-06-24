@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function_optimization_registry.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
@@ -58,7 +59,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -91,6 +91,16 @@ auto* mlir_v1_compat_graph_conversion_count = monitoring::Counter<1>::New(
     "Track success/failure of Graph to MLIR conversions in MLIR V1 compat "
     "optimization pass",
     /* metric field */ "status");
+
+auto* mlir_v1_compat_graph_conversion_failure_model_name_count =
+    monitoring::Counter<1>::New(
+        /* metric name */
+        "/tensorflow/core/"
+        "mlir_v1_compat_graph_conversion_failure_model_name_count",
+        /* metric description */
+        "Track failure model name of Graph to MLIR conversions in MLIR V1 "
+        "compat optimization pass",
+        /* metric field */ "model_name");
 
 // The status metric field is used to record success/failure of mlir
 // function/graph optimization passes.
@@ -338,9 +348,11 @@ absl::Status MlirFunctionOptimizationPass::Run(
       //     error to the caller.
       //   Enabled - return error back to the caller.
       if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
-        LOG(WARNING) << StringRefToView(name)
-                     << " pass failed, continuing without the pass because the "
-                        "pass has fallback enabled";
+        LOG(WARNING)
+            << StringRefToView(name)
+            << " pass failed, continuing without the pass because the "
+            << "pass has fallback enabled. This was the pass failure:\n"
+            << pass_status;
         mlir_function_pass_fallback_count->GetCell(kFailure)->IncrementBy(1);
       } else if (pass_state == MlirOptimizationPassState::Enabled) {
         return pass_status;
@@ -438,6 +450,9 @@ absl::Status MlirV1CompatGraphOptimizationPass::Run(
   // session runtime.
   import_config.restrict_functionalization_to_compiled_nodes = true;
 
+  std::string model_name =
+      options.session_options->config.experimental().session_metadata().name();
+
   auto module_ref_status = tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
       **options.graph, debug_info, *options.flib_def, import_config, &context,
       /*tf_name_to_mlir_name*/ nullptr, options.session_options->config,
@@ -445,6 +460,13 @@ absl::Status MlirV1CompatGraphOptimizationPass::Run(
   mlir_v1_compat_graph_conversion_count
       ->GetCell(absl::StatusCodeToString(module_ref_status.status().code()))
       ->IncrementBy(1);
+
+  if (!module_ref_status.ok()) {
+    mlir_v1_compat_graph_conversion_failure_model_name_count
+        ->GetCell(model_name)
+        ->IncrementBy(1);
+  }
+
   if (!module_ref_status.ok()) {
     if (pass_state == MlirOptimizationPassState::Enabled) {
       return module_ref_status.status();

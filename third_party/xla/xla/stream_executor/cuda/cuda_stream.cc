@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stdalign.h>
 
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -32,21 +33,20 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
-#include "xla/stream_executor/cuda/cuda_kernel.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/profiler/lib/nvtx_utils.h"
 
 namespace stream_executor {
@@ -259,7 +259,10 @@ CudaStream::~CudaStream() {
 }
 
 absl::Status CudaStream::BlockHostUntilDone() {
-  return SynchronizeStream(executor_, stream_handle_);
+  TF_RETURN_IF_ERROR(SynchronizeStream(executor_, stream_handle_));
+  absl::MutexLock lock(&mutex_);
+  mutex_.Await(absl::Condition(&no_pending_host_callbacks_));
+  return absl::OkStatus();
 }
 
 absl::Status CudaStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
@@ -323,15 +326,34 @@ void InternalHostCallback(void* data) {
 
 absl::Status CudaStream::DoHostCallbackWithStatus(
     absl::AnyInvocable<absl::Status() &&> callback) {
-  auto callback_ptr =
-      new absl::AnyInvocable<void() &&>([cb = std::move(callback)]() mutable {
+  auto callback_ptr = new absl::AnyInvocable<void() &&>(
+      [cb = std::move(callback), this]() mutable {
         absl::Status s = (std::move(cb))();
         if (!s.ok()) {
-          LOG(WARNING) << "Host callback failed: " << s;
+          LOG(ERROR) << "Host callback failed: " << s;
+        }
+        int num_pending_host_callbacks = num_pending_host_callbacks_.fetch_sub(
+                                             1, std::memory_order_acq_rel) -
+                                         1;
+        // num_pending_host_callbacks_ can theoretically reach -1 if this
+        // callback gets executed before we increase the counter on the main
+        // thread.
+        if (num_pending_host_callbacks == 0) {
+          absl::MutexLock lock(&mutex_);
+          no_pending_host_callbacks_ = num_pending_host_callbacks_ <= 0;
         }
       });
-  return cuda::ToStatus(
-      cuLaunchHostFunc(stream_handle_, InternalHostCallback, callback_ptr));
+  TF_RETURN_IF_ERROR(cuda::ToStatus(
+      cuLaunchHostFunc(stream_handle_, InternalHostCallback, callback_ptr)));
+  int num_pending_host_callbacks =
+      num_pending_host_callbacks_.fetch_add(1, std::memory_order_acq_rel) + 1;
+  if (num_pending_host_callbacks == 1) {
+    // num_pending_host_callbacks == 1 means we had no pending host callbacks
+    // before this one.
+    absl::MutexLock lock(&mutex_);
+    no_pending_host_callbacks_ = num_pending_host_callbacks_ <= 0;
+  }
+  return absl::OkStatus();
 }
 
 namespace {

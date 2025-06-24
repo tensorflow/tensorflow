@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -41,10 +42,11 @@ limitations under the License.
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/distributed/topology_util.h"
-#include "xla/protobuf_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -53,11 +55,15 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
 using ::testing::IsEmpty;
+using ::testing::Matches;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
+using ::tsl::proto_testing::EqualsProto;
 using tsl::testing::StatusIs;
 
+constexpr absl::Duration kHeartbeatTimeout = absl::Milliseconds(2500);
 constexpr absl::Duration kHeartbeatInterval = absl::Milliseconds(500);
 constexpr int kMaxMissingHeartbeats = 5;
 constexpr absl::Duration kBarrierTimeout = absl::Milliseconds(200);
@@ -69,6 +75,7 @@ class ClientServerTest : public testing::Test {
       std::shared_ptr<::grpc::Channel> channel = nullptr) {
     client_options.node_id = node_id;
     // Set a small heartbeat interval for quicker tests.
+    client_options.heartbeat_timeout = kHeartbeatTimeout;
     client_options.heartbeat_interval = kHeartbeatInterval;
     client_options.max_missing_heartbeats = kMaxMissingHeartbeats;
     if (channel == nullptr) {
@@ -85,6 +92,7 @@ class ClientServerTest : public testing::Test {
 
     service_options.num_nodes = num_nodes;
     // Set a small heartbeat interval for quicker tests.
+    service_options.heartbeat_timeout = kHeartbeatTimeout;
     service_options.heartbeat_interval = kHeartbeatInterval;
     service_options.max_missing_heartbeats = kMaxMissingHeartbeats;
 
@@ -224,8 +232,7 @@ TEST_F(ClientServerTest, ConnectAndEnumerateDevices) {
                            /*get_global_topology_timeout=*/absl::Minutes(1),
                            kv_store.get(), locals[0], &topology,
                            /*assign_global_device_ids=*/true));
-    TF_RET_CHECK(
-        xla::protobuf_util::ProtobufEquals(topology, expected_topology))
+    TF_RET_CHECK(Matches(EqualsProto(expected_topology))(topology))
         << topology.DebugString();
     TF_RETURN_IF_ERROR(client->KeyValueSet("key1", "value1"));
     TF_ASSIGN_OR_RETURN(
@@ -250,8 +257,7 @@ TEST_F(ClientServerTest, ConnectAndEnumerateDevices) {
         /*get_local_topology_timeout=*/absl::Minutes(1),
         /*get_global_topology_timeout=*/absl::Minutes(1), kv_store.get(),
         locals[1], &topology, /*assign_global_device_ids=*/true));
-    TF_RET_CHECK(
-        xla::protobuf_util::ProtobufEquals(topology, expected_topology))
+    TF_RET_CHECK(Matches(EqualsProto(expected_topology))(topology))
         << topology.DebugString();
     TF_ASSIGN_OR_RETURN(
         std::string value,
@@ -309,8 +315,7 @@ TEST_F(ClientServerTest, EnumerateElevenDevices) {
         /*get_local_topology_timeout=*/absl::Minutes(1),
         /*get_global_topology_timeout=*/absl::Minutes(1), kv_store.get(),
         locals[node_id], &topology, /*assign_global_device_ids=*/true));
-    TF_RET_CHECK(
-        xla::protobuf_util::ProtobufEquals(topology, expected_topology))
+    TF_RET_CHECK(Matches(EqualsProto(expected_topology))(topology))
         << topology.DebugString();
     return absl::OkStatus();
   };
@@ -981,6 +986,46 @@ TEST_F(ClientServerTest,
       EXPECT_EQ(statuses[i].code(), tsl::error::INVALID_ARGUMENT)
           << " node id: " << i << " status: " << statuses[i].message();
     }
+  }
+}
+
+TEST_F(ClientServerTest, GetLiveTasksSucceeds) {
+  const int num_nodes = 3;
+  StartService(num_nodes);
+
+  tsl::thread::ThreadPool tp(tsl::Env::Default(), "test_threads", num_nodes);
+  for (int i = 0; i < num_nodes; ++i) {
+    tp.Schedule([&, i]() {
+      // Connect the client, which acts as a barrier.
+      std::shared_ptr<DistributedRuntimeClient> client = GetClient(i);
+      TF_ASSERT_OK(client->Connect());
+
+      // Get the set of live nodes. All three nodes should be live.
+      absl::StatusOr<std::vector<int32_t>> live_nodes =
+          client->GetLiveNodes(std::vector<int>{0, 1, 2});
+      TF_ASSERT_OK(live_nodes.status());
+      EXPECT_THAT(*live_nodes, UnorderedElementsAre(0, 1, 2));
+    });
+  }
+}
+
+TEST_F(ClientServerTest, GetLiveTasksWithoutBeingAMember) {
+  const int num_nodes = 3;
+  StartService(num_nodes);
+
+  tsl::thread::ThreadPool tp(tsl::Env::Default(), "test_threads", num_nodes);
+  for (int i = 0; i < num_nodes; ++i) {
+    tp.Schedule([&, i]() {
+      // Connect the client, which acts as a barrier.
+      std::shared_ptr<DistributedRuntimeClient> client = GetClient(i);
+      TF_ASSERT_OK(client->Connect());
+
+      // Get the set of live nodes but don't include ourselves.
+      std::vector<int> nodes{0, 1, 2};
+      nodes.erase(nodes.begin() + i);
+      EXPECT_THAT(client->GetLiveNodes(nodes),
+                  StatusIs(absl::StatusCode::kInvalidArgument));
+    });
   }
 }
 

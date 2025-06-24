@@ -24,6 +24,7 @@ limitations under the License.
 #endif  // _WIN32
 
 #include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tensor_bundle.pb.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 using ::testing::ElementsAre;
@@ -518,7 +518,7 @@ void TestNonStandardShapes() {
 }
 
 // Writes a bundle to disk with a bad "version"; checks for "expected_error".
-void VersionTest(const VersionDef& version, StringPiece expected_error) {
+void VersionTest(const VersionDef& version, absl::string_view expected_error) {
   const string path = Prefix("version_test");
   {
     // Prepare an empty bundle with the given version information.
@@ -534,7 +534,7 @@ void VersionTest(const VersionDef& version, StringPiece expected_error) {
   }
   // Read it back in and verify that we get the expected error.
   BundleReader reader(Env::Default(), path);
-  EXPECT_TRUE(errors::IsInvalidArgument(reader.status()));
+  EXPECT_TRUE(absl::IsInvalidArgument(reader.status()));
   EXPECT_TRUE(absl::StartsWith(reader.status().message(), expected_error));
 }
 
@@ -886,7 +886,7 @@ TEST(TensorBundleTest, DirectoryStructure) {
   // Ensures we have the expected files.
   auto CheckDirFiles = [env](const string& bundle_prefix,
                              absl::Span<const string> expected_files) {
-    StringPiece dir = io::Dirname(bundle_prefix);
+    absl::string_view dir = io::Dirname(bundle_prefix);
     for (const string& expected_file : expected_files) {
       TF_EXPECT_OK(env->FileExists(io::JoinPath(dir, expected_file)));
     }
@@ -999,7 +999,7 @@ TEST(TensorBundleTest, Checksum) {
                               const string& expected_msg, Tensor& val) {
     BundleReader reader(Env::Default(), Prefix(prefix));
     absl::Status status = reader.Lookup(key, &val);
-    EXPECT_TRUE(errors::IsDataLoss(status));
+    EXPECT_TRUE(absl::IsDataLoss(status));
     EXPECT_TRUE(absl::StrContains(status.ToString(), expected_msg));
   };
 
@@ -1052,13 +1052,13 @@ TEST(TensorBundleTest, TruncatedTensorContents) {
   string data;
   TF_ASSERT_OK(ReadFileToString(env, datafile, &data));
   ASSERT_TRUE(!data.empty());
-  TF_ASSERT_OK(WriteStringToFile(env, datafile,
-                                 StringPiece(data.data(), data.size() - 1)));
+  TF_ASSERT_OK(WriteStringToFile(
+      env, datafile, absl::string_view(data.data(), data.size() - 1)));
 
   BundleReader reader(env, Prefix("end"));
   TF_ASSERT_OK(reader.status());
   Tensor val(DT_FLOAT, TensorShape({2, 3}));
-  EXPECT_TRUE(errors::IsOutOfRange(reader.Lookup("key", &val)));
+  EXPECT_TRUE(absl::IsOutOfRange(reader.Lookup("key", &val)));
 }
 
 TEST(TensorBundleTest, HeaderEntry) {

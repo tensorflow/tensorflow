@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -34,13 +35,15 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/tools/hlo_opt/opt_lib.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_proto_util.h"
 #include "xla/tools/hlo_module_loader.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/statusor.h"
 
 namespace {
 const char* const kUsage = R"(
@@ -69,6 +72,7 @@ struct HloOptConfig {
   bool list_stages{false};
   std::string passes{""};
   bool list_passes{false};
+  bool emit_proto{false};
 };
 
 }  // namespace
@@ -171,6 +175,15 @@ absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
 
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<HloModule>> modules,
                       GetModules(opts, argc, argv));
+  if (opts.emit_proto) {
+    std::string proto_str_combined;
+    for (const auto& module : modules) {
+      absl::StrAppend(&proto_str_combined,
+                      xla::MakeHloProto(*module).DebugString(), "\n");
+    }
+    return proto_str_combined;
+  }
+
   // Registration can be done using HloModuleConfig, but some
   // GPU pipelines APIs expects HloModule.
   // Assumption: All input modules have same HloModuleConfig.
@@ -207,13 +220,35 @@ absl::Status RunOpt(int argc, char** argv, const HloOptConfig& opts) {
   return absl::OkStatus();
 }
 
+// This function is parsing only the debug options file, because we cannot wait
+// till all the flags are parsed. If the debug_options file exists, then we have
+// to first consider the debug_options from that file, then XLA_FLAGS, and then
+// the command line flags. Hence, we parse the debug_options file first.
+std::optional<absl::string_view> GetDebugOptionsFileName(int argc,
+                                                         char* argv[]) {
+  for (int i = 1; i < argc; ++i) {
+    absl::string_view arg = argv[i];
+    if (absl::StrContains(arg, "--debug_options_file")) {
+      auto eq_idx = arg.find('=');
+      if (eq_idx != absl::string_view::npos) {
+        return arg.substr(eq_idx + 1);
+      } else {
+        LOG(QFATAL) << "No value provided for --debug_options_file. Expected "
+                    << "--debug_options_file=<filename>";
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 }  // namespace xla
 
-// gpu_device_config_filename: Probably deserves it's own flag? Since in here it
-// will affect more top-level logic?
+// All XLA compiler flags are supported.
+// Use `--xla_gpu_target_config_filename` to specify the target config.
 int main(int argc, char** argv) {
   HloOptConfig opts;
+  std::string unused_debug_options_filename;
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("o", &opts.output_file,
                 "Output filename, or '-' for stdout (default)."),
@@ -242,20 +277,40 @@ int main(int argc, char** argv) {
       tsl::Flag("passes", &opts.passes,
                 "Comma-separated list of passes to run."),
       tsl::Flag("list-passes", &opts.list_passes,
-                "Print all supported passes for a given platform and exit")};
+                "Print all supported passes for a given platform and exit"),
+      tsl::Flag("emit-proto", &opts.emit_proto,
+                "Emit HLO in `textproto` format, "
+                "no optimization passes are applied."),
+      // This flag is parsed separately, not as part of the HloOptConfig
+      // options. `unused_debug_options_filename` is introduced for a
+      // documentation, not used by the tool.
+      tsl::Flag("debug_options_file", &unused_debug_options_filename,
+                "A file containing debug options to be passed to the HLO "
+                "module. The file should contain a serialized DebugOptions "
+                "proto message. The order of precedence: command line flags > "
+                "XLA_FLAGS > debug_options_file > default flags.")};
+
   // Modifies global DebugOptions, populates flags with every flag available
   // from xla.proto.
   xla::AppendDebugOptionsFlags(&flag_list);
+
   // The usage string includes the message at the top of the file, the
   // DebugOptions flags and the flags defined above.
   const std::string kUsageString =
       absl::StrCat(kUsage, "\n\n", tsl::Flags::Usage(argv[0], flag_list));
-  bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
-  tsl::port::InitMain(kUsageString.c_str(), &argc, &argv);
 
+  std::optional<absl::string_view> debugOptionsFilename =
+      xla::GetDebugOptionsFileName(argc, argv);
+  if (debugOptionsFilename.has_value()) {
+    xla::ParseFlagsFromDebugOptionsFile(debugOptionsFilename.value());
+  }
+  xla::ParseDebugOptionFlagsFromEnv(true);
+
+  bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   if (!parse_ok) {
     LOG(QFATAL) << kUsageString;
   }
+  tsl::port::InitMain(kUsageString.c_str(), &argc, &argv);
 
   absl::Status s = xla::RunOpt(argc, argv, opts);
   if (!s.ok()) {

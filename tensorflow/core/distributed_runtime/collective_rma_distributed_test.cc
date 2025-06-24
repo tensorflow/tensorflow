@@ -568,7 +568,7 @@ TEST_P(CollRMADistTest, WorkerRestart) {
         post_restart_note.Notify();
       });
   post_restart_note.WaitForNotification();
-  EXPECT_TRUE(errors::IsFailedPrecondition(consumer_status));
+  EXPECT_TRUE(absl::IsFailedPrecondition(consumer_status));
 }
 
 TEST_P(CollRMADistTest, CheckHealthOKWithCachedAttr) {
@@ -611,7 +611,7 @@ TEST_P(CollRMADistTest, CheckHealthRestarted) {
         check_health_done.Notify();
       });
   check_health_done.WaitForNotification();
-  EXPECT_TRUE(errors::IsFailedPrecondition(check_health_status));
+  EXPECT_TRUE(absl::IsFailedPrecondition(check_health_status));
 }
 
 TEST_P(CollRMADistTest, CheckHealthFailedPeer) {
@@ -628,7 +628,7 @@ TEST_P(CollRMADistTest, CheckHealthFailedPeer) {
         check_health_done.Notify();
       });
   check_health_done.WaitForNotification();
-  EXPECT_TRUE(errors::IsUnavailable(check_health_status));
+  EXPECT_TRUE(absl::IsUnavailable(check_health_status));
 }
 
 TEST_P(CollRMADistTest, CheckHealthRestartedWithDifferentDevices) {
@@ -643,7 +643,7 @@ TEST_P(CollRMADistTest, CheckHealthRestartedWithDifferentDevices) {
         check_health_done.Notify();
       });
   check_health_done.WaitForNotification();
-  EXPECT_TRUE(errors::IsFailedPrecondition(check_health_status));
+  EXPECT_TRUE(absl::IsFailedPrecondition(check_health_status));
 }
 
 INSTANTIATE_TEST_SUITE_P(

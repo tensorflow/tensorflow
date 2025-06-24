@@ -20,7 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
-#include "absl/strings/match.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -77,35 +77,55 @@ class ManualComputationPattern : public OpConversionPattern<CallOp> {
   mlir::LogicalResult matchAndRewrite(
       CallOp callOp, OpAdaptor adaptor,
       mlir::ConversionPatternRewriter& rewriter) const override {
-    if (!absl::StrContains(callOp.getCallee(),
-                           kManualComputationBodyFuncName)) {
+    if (!callOp.getCallee().contains(kManualComputationBodyFuncName)) {
       return mlir::failure();
     }
 
     // NOTE: if the original `ManualComputationOp` had no operands (results),
-    // then a @FullToShard (@ShardToFull) custom call won't be present. So
-    // we have to take the operands/results of the newly created
+    // then a @GlobalToLocalShape (@LocalToGlobalShape) custom call won't be
+    // present. So we have to take the operands/results of the newly created
     // `ManualComputationOp` differently depending on whether the original had
     // operands/results.
-    CustomCallOp fullToShard;
-    mlir::ValueRange operands = callOp->getOperands();
+    CustomCallOp globalToLocalShape;
+    mlir::ValueRange operands = adaptor.getOperands();
     if (!operands.empty()) {
-      fullToShard = callOp->getOperand(0).getDefiningOp<CustomCallOp>();
-      CHECK(fullToShard);
-      CHECK(fullToShard.getCallTargetName() ==
+      // An input to `sdy.manual_computation` can have a dimension of size 0
+      // (i.e. 0 num-elements), in which case, the corresponding result of
+      // `GlobalToLocalShape` custom call would be replaced with a constant of
+      // the same shape. Therefore, we skip such operands until we find the
+      // first one that is produced by the custom call.
+      auto customCallResIt = llvm::find_if(operands, [](mlir::Value operand) {
+        return operand.getDefiningOp<CustomCallOp>();
+      });
+      if (customCallResIt == operands.end()) {
+        return callOp->emitOpError("expected at least one operand of ")
+               << callOp.getCalleeAttr() << " to be produced by a "
+               << kGlobalToLocalShapeCallTargetName << " CustomCallOp";
+      }
+      globalToLocalShape = (*customCallResIt).getDefiningOp<CustomCallOp>();
+      CHECK(globalToLocalShape.getCallTargetName() ==
             kGlobalToLocalShapeCallTargetName);
-      operands = fullToShard->getOperands();
+      operands = globalToLocalShape->getOperands();
     }
     mlir::TypeRange resultTypes = callOp->getResultTypes();
-    CustomCallOp shardToFull;
+    CustomCallOp localToGlobalShape;
     if (!resultTypes.empty()) {
-      CHECK(callOp->getResult(0).hasOneUse())
-          << "all CallOp results should be used by a single ShardToFull";
-      shardToFull =
-          mlir::cast<CustomCallOp>(*callOp->getResult(0).getUsers().begin());
-      CHECK(shardToFull.getCallTargetName() ==
+      // Same as above, a result of `sdy.manual_computation` can have a
+      // dimension of size 0, in which case, the corresponding result of
+      // `@local_xla.sdy.manual_computation_body` call would be replaced with a
+      // constant. Therefore, we check the first use rather than first result.
+      if (!callOp->use_empty()) {
+        localToGlobalShape =
+            mlir::dyn_cast<CustomCallOp>(*callOp->user_begin());
+      }
+      if (!localToGlobalShape) {
+        return callOp->emitOpError("expected the first use of ")
+               << callOp.getCalleeAttr() << " to be by a "
+               << kLocalToGlobalShapeCallTargetName << " CustomCallOp";
+      }
+      CHECK(localToGlobalShape.getCallTargetName() ==
             kLocalToGlobalShapeCallTargetName);
-      resultTypes = shardToFull->getResultTypes();
+      resultTypes = localToGlobalShape->getResultTypes();
     }
 
     auto shmapBodyFunc = symbolTable.lookup<FuncOp>(callOp.getCallee());
@@ -117,26 +137,57 @@ class ManualComputationPattern : public OpConversionPattern<CallOp> {
           "two ManualComputations?");
     }
 
-    mlir::DictionaryAttr frontendAttrs = getFrontendAttrs(callOp);
-    CHECK(frontendAttrs)
-        << "Expected in/out shardings and manual axes as frontend attrs on the "
-           "CallOp during round tripping.";
+    MLIRContext* context = rewriter.getContext();
+    sdy::TensorShardingPerValueAttr inShardings =
+        sdy::TensorShardingPerValueAttr::get(context, {});
+    sdy::TensorShardingPerValueAttr outShardings =
+        sdy::TensorShardingPerValueAttr::get(context, {});
+    sdy::ManualAxesAttr manualAxes = sdy::ManualAxesAttr::get(context, {});
+    bool newCodePath = false;
+
+    auto setShardingAttrs = [&newCodePath, &manualAxes](
+                                CustomCallOp customCallOp,
+                                sdy::TensorShardingPerValueAttr& shardings,
+                                llvm::StringRef shardingAttrName) {
+      if (!customCallOp) {
+        return;
+      }
+      if (mlir::DictionaryAttr frontendAttrs = getFrontendAttrs(customCallOp)) {
+        newCodePath = true;
+        shardings = parseStringAttr<sdy::TensorShardingPerValueAttr>(
+            frontendAttrs, shardingAttrName);
+        if (manualAxes.empty()) {
+          manualAxes =
+              parseStringAttr<sdy::ManualAxesAttr>(frontendAttrs, kManualAxes);
+        }
+      }
+    };
+
+    setShardingAttrs(globalToLocalShape, inShardings, kInShardings);
+    setShardingAttrs(localToGlobalShape, outShardings, kOutShardings);
+    // TODO(b/410499196): Code to handle loading an old checkpoint. Remove after
+    // 6 months of cl/745735176 being submitted.
+    mlir::DictionaryAttr callOpFrontendAttrs = getFrontendAttrs(callOp);
+    if (!newCodePath && callOpFrontendAttrs) {
+      inShardings = parseStringAttr<sdy::TensorShardingPerValueAttr>(
+          callOpFrontendAttrs, kInShardings);
+      outShardings = parseStringAttr<sdy::TensorShardingPerValueAttr>(
+          callOpFrontendAttrs, kOutShardings);
+      manualAxes = parseStringAttr<sdy::ManualAxesAttr>(callOpFrontendAttrs,
+                                                        kManualAxes);
+    }
     auto manualComputationOp =
         rewriter.replaceOpWithNewOp<sdy::ManualComputationOp>(
-            callOp, resultTypes, operands,
-            parseStringAttr<sdy::TensorShardingPerValueAttr>(frontendAttrs,
-                                                             kInShardings),
-            parseStringAttr<sdy::TensorShardingPerValueAttr>(frontendAttrs,
-                                                             kOutShardings),
-            parseStringAttr<sdy::ManualAxesAttr>(frontendAttrs, kManualAxes));
+            callOp, resultTypes, operands, inShardings, outShardings,
+            manualAxes);
     sdy::inlineRegionAndConvertTerminatorOp<sdy::ReturnOp>(
         shmapBodyFunc.getBody(), manualComputationOp.getRegion(), rewriter);
     rewriter.eraseOp(shmapBodyFunc);
-    if (fullToShard) {
-      rewriter.eraseOp(fullToShard);
+    if (globalToLocalShape) {
+      rewriter.eraseOp(globalToLocalShape);
     }
-    if (shardToFull) {
-      rewriter.replaceOp(shardToFull, manualComputationOp->getResults());
+    if (localToGlobalShape) {
+      rewriter.replaceOp(localToGlobalShape, manualComputationOp->getResults());
     }
     return mlir::success();
   }
@@ -159,15 +210,27 @@ class SdyRoundTripShardMapImportPass
     MLIRContext& context = getContext();
     mlir::ConversionTarget target(context);
     target.addDynamicallyLegalOp<CallOp>([](CallOp op) {
-      return !absl::StrContains(op.getCallee(), kManualComputationBodyFuncName);
+      return !op.getCallee().contains(kManualComputationBodyFuncName);
     });
     target.addLegalOp<sdy::ManualComputationOp, sdy::ReturnOp, CustomCallOp>();
     mlir::RewritePatternSet patterns(&context);
     patterns.add<ManualComputationPattern>(&context, symbolTable);
     if (mlir::failed(mlir::applyPartialConversion(module, target,
                                                   std::move(patterns)))) {
-      signalPassFailure();
+      return signalPassFailure();
     }
+
+    // At this point, there may be stray `xla.sdy.GlobalToLocalShape` and
+    // `xla.sdy.LocalToGlobalShape`, if the `@local_xla.sdy.manual_computation_body`
+    // call was eliminated through DCE and the custom call uses were replaced
+    // with constants as they had 0 elements, then it's safe to erase.
+    module->walk([](CustomCallOp op) {
+      if (op.getCallTargetName() == kGlobalToLocalShapeCallTargetName ||
+          op.getCallTargetName() == kLocalToGlobalShapeCallTargetName) {
+        CHECK(op.use_empty());
+        op.erase();
+      }
+    });
   }
 
   StringRef getArgument() const override {

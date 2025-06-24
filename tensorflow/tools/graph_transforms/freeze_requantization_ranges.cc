@@ -74,7 +74,7 @@ absl::Status ExtractMinMaxRecords(const string& log_file_name,
     }
     string min_number_string = min_string_parts[0];
     float min;
-    if (!strings::safe_strtof(min_number_string.c_str(), &min)) {
+    if (!absl::SimpleAtof(min_number_string.c_str(), &min)) {
       continue;
     }
     string max_string = min_max_parts[2];
@@ -84,10 +84,10 @@ absl::Status ExtractMinMaxRecords(const string& log_file_name,
     }
     string max_number_string = max_string_parts[0];
     float max;
-    if (!strings::safe_strtof(max_number_string.c_str(), &max)) {
+    if (!absl::SimpleAtof(max_number_string.c_str(), &max)) {
       continue;
     }
-    StringPiece name_string = line_parts[min_max_index - 1];
+    absl::string_view name_string = line_parts[min_max_index - 1];
     if (!absl::EndsWith(name_string, print_suffix)) {
       continue;
     }

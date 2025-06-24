@@ -572,7 +572,7 @@ class CrossDeviceOps(object):
       options: A `tf.distribute.experimental.CommunicationOptions`.
 
     Returns:
-      A tensor/IndexedSlices or a nested strucutre of tensors/IndexedSlices with
+      A tensor/IndexedSlices or a nested structure of tensors/IndexedSlices with
       the reduced values. The structure is the same as `value`.
     """
     raise NotImplementedError("_all_reduce must be implemented in descendants.")

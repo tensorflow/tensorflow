@@ -916,17 +916,15 @@ class Lambda(Layer):
     ]
     if untracked_new_vars:
       variable_str = '\n'.join('  {}'.format(i) for i in untracked_new_vars)
-      error_str = textwrap.dedent(
-          '''
+      error_str = textwrap.dedent("""
           The following Variables were created within a Lambda layer ({name})
           but are not tracked by said layer:
           {variable_str}
           The layer cannot safely ensure proper Variable reuse across multiple
-          calls, and consquently this behavior is disallowed for safety. Lambda
+          calls, and consequently this behavior is disallowed for safety. Lambda
           layers are not well suited to stateful computation; instead, writing a
           subclassed Layer is the recommend way to define layers with
-          Variables.'''
-      ).format(name=self.name, variable_str=variable_str)
+          Variables.""").format(name=self.name, variable_str=variable_str)
       raise ValueError(error_str)
 
     untracked_used_vars = [
@@ -1393,17 +1391,15 @@ class TFOpLambda(Layer):
     ]
     if untracked_new_vars:
       variable_str = '\n'.join('  {}'.format(i) for i in untracked_new_vars)
-      error_str = textwrap.dedent(
-          '''
+      error_str = textwrap.dedent("""
           The following Variables were created within a Lambda layer ({name})
           but are not tracked by said layer:
           {variable_str}
           The layer cannot safely ensure proper Variable reuse across multiple
-          calls, and consquently this behavior is disallowed for safety. Lambda
+          calls, and consequently this behavior is disallowed for safety. Lambda
           layers are not well suited to stateful computation; instead, writing a
           subclassed Layer is the recommend way to define layers with
-          Variables.'''
-      ).format(name=self.name, variable_str=variable_str)
+          Variables.""").format(name=self.name, variable_str=variable_str)
       raise ValueError(error_str)
 
     untracked_used_vars = [

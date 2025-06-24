@@ -40,40 +40,82 @@ the repository, and create a pull request.
     is unavailable, you can [install Bazel](https://bazel.build/install)
     manually.
 
-2.  Create and run a
-    [TensorFlow Docker container](https://www.tensorflow.org/install/docker).
+2.  Create and run the
+    [ml-build](https://us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build)
+    Docker container.
 
-    To get the TensorFlow Docker image for both CPU and GPU building, run the
-    following command:
+    To set up a Docker container for building XLA with support for both CPU and
+    GPU, run the following command:
 
     ```sh
-    docker run --name xla -w /xla -it -d --rm -v $PWD:/xla tensorflow/build:latest-python3.9 bash
+    docker run -itd --rm \
+      --name xla \
+      -w /xla \
+      -v $PWD:/xla \
+      us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest \
+      bash
     ```
+
+    If building with GPU/CUDA support, add `--gpus all` to grant the container
+    access to all available GPUs. This enables automatic detection of CUDA
+    compute capabilities.
 
 ## Build
 
-Build for CPU:
+Configure for CPU:
 
 ```sh
 docker exec xla ./configure.py --backend=CPU
-docker exec xla bazel build --test_output=all --spawn_strategy=sandboxed //xla/...
 ```
 
-Build for GPU:
+Configure for GPU:
 
 ```sh
 docker exec xla ./configure.py --backend=CUDA
-docker exec xla bazel build --test_output=all --spawn_strategy=sandboxed //xla/...
 ```
 
-**NB:** please note that with hermetic CUDA rules, you don't have to build XLA
-in Docker. You can build XLA for GPU on your machine without GPUs and without
-NVIDIA driver installed:
+CUDA compute capabilities will be detected automatically by running
+`nvidia-smi`. If GPUs are not available during the build, you must specify
+the compute capabilities manually. For example:
 
 ```sh
+# Automatically detects compute capabilities (requires GPUs)
 ./configure.py --backend=CUDA
 
-bazel build --test_output=all --spawn_strategy=sandboxed //xla/...
+# Manually specify compute capabilities (for builds without GPUs)
+./configure.py --backend=CUDA --cuda_compute_capabilities="9.0"
+```
+
+Build:
+
+```sh
+docker exec xla bazel build \
+  --spawn_strategy=sandboxed \
+  --test_output=all \
+  //xla/...
+```
+
+**Note:** You can build XLA on a machine without GPUs. In that case:
+
+- Do **not** use `--gpus all` flag when starting the Docker container.
+- During `./configure.py`, manually specify the CUDA compute capabilities
+using the `--cuda_compute_capabilities` flag.
+
+**Note:** Thanks to hermetic CUDA rules, you don't need to build XLA inside a
+Docker container. You can build XLA for GPU directly on your machine - even if
+it doesn't have a GPU or the NVIDIA driver installed.
+
+```sh
+# Automatically detects compute capabilities (requires GPUs)
+./configure.py --backend=CUDA
+
+# Manually specify compute capabilities (for builds without GPUs)
+./configure.py --backend=CUDA --cuda_compute_capabilities="9.0"
+
+bazel build \
+  --spawn_strategy=sandboxed \
+  --test_output=all \
+  //xla/...
 ```
 
 Your first build will take quite a while because it has to build the entire

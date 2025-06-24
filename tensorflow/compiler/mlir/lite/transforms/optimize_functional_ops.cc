@@ -160,7 +160,7 @@ void OptimizeFunctionalOpsPass::runOnOperation() {
   patterns.add<FoldIfOp>(&getContext());
 
   ModuleOp module = getOperation();
-  (void)applyPatternsAndFoldGreedily(module, std::move(patterns));
+  (void)applyPatternsGreedily(module, std::move(patterns));
 }
 }  // namespace
 

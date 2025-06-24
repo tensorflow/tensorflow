@@ -20,7 +20,7 @@ PYTHON="${CI_BUILD_PYTHON:-python3}"
 VERSION_SUFFIX=${VERSION_SUFFIX:-}
 export TENSORFLOW_DIR="${SCRIPT_DIR}/../../../.."
 TENSORFLOW_LITE_DIR="${TENSORFLOW_DIR}/tensorflow/lite"
-TENSORFLOW_VERSION=$(grep "_VERSION = " "${TENSORFLOW_DIR}/tensorflow/tools/pip_package/setup.py" | cut -d= -f2 | sed "s/[ '-]//g")
+TENSORFLOW_VERSION=$(grep "TF_VERSION = " "${TENSORFLOW_DIR}/tensorflow/tf_version.bzl" | cut -d= -f2 | sed 's/[ "-]//g')
 export PACKAGE_VERSION="${TENSORFLOW_VERSION}${VERSION_SUFFIX}"
 export PROJECT_NAME=${WHEEL_PROJECT_NAME:-tflite_runtime}
 BUILD_DIR="${SCRIPT_DIR}/gen/tflite_pip/${PYTHON}"

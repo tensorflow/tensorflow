@@ -31,6 +31,7 @@
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
 #include "grpcpp/support/sync_stream.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
@@ -47,8 +48,8 @@ class GrpcServiceImpl : public grpc::GrpcIfrtService::Service {
   using BackendFactory =
       absl::AnyInvocable<absl::StatusOr<std::unique_ptr<BackendInterface>>(
           IfrtProxyVersion version, uint64_t session_id,
-          std::shared_ptr<xla::ifrt::proxy::HostBufferStore>
-              host_buffer_store)>;
+          std::shared_ptr<xla::ifrt::proxy::HostBufferStore> host_buffer_store,
+          AttributeMap initialization_data)>;
 
   explicit GrpcServiceImpl(BackendFactory backend_factory)
       : backend_factory_(ABSL_DIE_IF_NULL(std::move(backend_factory))) {}

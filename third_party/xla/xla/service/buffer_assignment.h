@@ -180,7 +180,7 @@ class BufferAllocation {
   // to identify the memory range that a LogicalBuffer corresponds to.
   class Slice {
    public:
-    Slice() {}
+    Slice() = default;
     Slice(const BufferAllocation* allocation, int64_t offset, int64_t size)
         : allocation_(allocation), offset_(offset), size_(size) {}
 
@@ -216,6 +216,13 @@ class BufferAllocation {
 
     std::string ToString() const;
 
+    absl::StatusOr<xla::buffer_assignment::BufferAllocationSliceProto> ToProto()
+        const;
+
+    static absl::StatusOr<BufferAllocation::Slice> FromProto(
+        const xla::buffer_assignment::BufferAllocationSliceProto& proto,
+        absl::Span<const BufferAllocation> buffer_allocations);
+
    private:
     const BufferAllocation* allocation_ = nullptr;
     int64_t offset_ = 0;
@@ -241,6 +248,7 @@ class BufferAllocation {
                                 int64_t more_than_k = 50) const;
 
   BufferAllocationProto ToProto() const;
+  static BufferAllocation FromProto(const BufferAllocationProto&);
 
   // Whether the buffer is a parameter to or live out of the entry computation.
   bool IsInputOrOutput() const {
@@ -373,7 +381,7 @@ class BufferAllocation {
 };
 
 // Add stream operators for nicer output of CHECK/RET_CHECK failures.
-std::ostream& operator<<(std::ostream& out, const BufferAllocation& s);
+std::ostream& operator<<(std::ostream& out, const BufferAllocation& buffer);
 std::ostream& operator<<(std::ostream& out, const BufferAllocation::Slice& s);
 
 // This class encapsulates an assignment of the LogicalBuffers in an XLA
@@ -820,6 +828,9 @@ class BufferAssigner {
   BufferAssigner(const BufferAssigner&) = delete;
   BufferAssigner& operator=(const BufferAssigner&) = delete;
 };
+
+// Computes the peak memory usage through the proto's heap simulator traces.
+absl::StatusOr<int> ComputePeakMemory(const BufferAssignmentProto& proto);
 
 }  // namespace xla
 

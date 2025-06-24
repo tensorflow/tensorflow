@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <iterator>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -25,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
@@ -48,7 +48,7 @@ void CoordinationServiceRpcHandler::SetAgentInstance(
 }
 
 void CoordinationServiceRpcHandler::SetServiceInstance(
-    CoordinationServiceInterface* service) {
+    CoordinationService* service) {
   absl::MutexLock l(&mu_);
   service_ = service;
 }
@@ -63,9 +63,9 @@ void CoordinationServiceRpcHandler::RegisterTaskAsync(
     return;
   }
   const CoordinatedTask& task = request->source_task();
-  const uint64_t incarnation = request->incarnation();
-  const uint64_t leader_incarnation = service_->GetServiceIncarnation();
-  response->set_leader_incarnation(leader_incarnation);
+  const IncarnationId incarnation(request->incarnation());
+  const IncarnationId leader_incarnation = service_->GetServiceIncarnation();
+  response->set_leader_incarnation(leader_incarnation.value());
   service_->RegisterTaskAsync(task, incarnation, done);
 }
 
@@ -79,14 +79,14 @@ void CoordinationServiceRpcHandler::HeartbeatAsync(
     return;
   }
   const CoordinatedTask& task = request->source_task();
-  const uint64_t incarnation = request->incarnation();
-  const uint64_t leader_incarnation = service_->GetServiceIncarnation();
+  const IncarnationId incarnation(request->incarnation());
+  const IncarnationId leader_incarnation = service_->GetServiceIncarnation();
   absl::Status s = service_->RecordHeartbeat(task, incarnation);
   if (!s.ok()) {
     done(s);
     return;
   }
-  response->set_leader_incarnation(leader_incarnation);
+  response->set_leader_incarnation(leader_incarnation.value());
   done(absl::OkStatus());
 }
 
@@ -103,6 +103,7 @@ void CoordinationServiceRpcHandler::WaitForAllTasksAsync(
       request->source_task(), request->device_info(),
       [response, service = service_, done = std::move(done)](absl::Status s) {
         if (s.ok()) {
+          service->state_mu_.AssertHeld();
           *response->mutable_device_info() = service->ListClusterDevices();
         }
         done(s);
@@ -189,6 +190,22 @@ void CoordinationServiceRpcHandler::GetTaskStateAsync(
   done(absl::OkStatus());
 }
 
+void CoordinationServiceRpcHandler::GetJobStateAsync(
+    const tensorflow::GetJobStateRequest* request,
+    tensorflow::GetJobStateResponse* response, StatusCallback done) {
+  absl::ReaderMutexLock l(&mu_);
+  if (service_ == nullptr) {
+    done(MakeCoordinationError(
+        absl::InternalError("Coordination service is not enabled.")));
+    return;
+  }
+  std::vector<tensorflow::CoordinatedTaskStateInfo> result =
+      service_->GetJobState(request->job_name());
+  absl::c_move(result, tsl::protobuf::RepeatedFieldBackInserter(
+                           response->mutable_task_state()));
+  done(absl::OkStatus());
+}
+
 void CoordinationServiceRpcHandler::InsertKeyValueAsync(
     const tensorflow::InsertKeyValueRequest* request,
     tensorflow::InsertKeyValueResponse* response, StatusCallback done) {
@@ -215,7 +232,7 @@ void CoordinationServiceRpcHandler::GetKeyValueAsync(
   service_->GetKeyValueAsync(
       request->key(),
       [response, done = std::move(done)](
-          const absl::StatusOr<std::string_view>& status_or_value) {
+          const absl::StatusOr<absl::string_view>& status_or_value) {
         if (status_or_value.ok()) {
           auto value = status_or_value.value();
           response->mutable_kv()->set_value(value.data(), value.size());
@@ -321,9 +338,13 @@ void CoordinationServiceRpcHandler::GetAliveTasksAsync(
       request->requesting_task(), tasks,
       [done = std::move(done), response](
           const absl::Status& status,
-          const std::vector<tensorflow::CoordinatedTask>& alive_tasks) {
+          const std::vector<tensorflow::CoordinatedTask>& alive_tasks,
+          const std::vector<IncarnationId>& incarnations) {
         *response->mutable_alive_tasks() = {alive_tasks.begin(),
                                             alive_tasks.end()};
+        for (IncarnationId id : incarnations) {
+          response->add_incarnations(id.value());
+        }
         done(status);
       });
 }

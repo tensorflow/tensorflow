@@ -23,18 +23,18 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-class ParallelTaskAssignmentTest : public HloTestBase {
+class ParallelTaskAssignmentTest : public HloHardwareIndependentTestBase {
  protected:
   // Use any value larger than 2 since we only test whether a module is
   // parallelized or not
@@ -43,7 +43,7 @@ class ParallelTaskAssignmentTest : public HloTestBase {
   cpu::TargetMachineFeaturesStub target_machine_features_;
 
   ParallelTaskAssignmentTest()
-      : HloTestBase(), target_machine_features_([](int64_t shape_size) {
+      : target_machine_features_([](int64_t shape_size) {
           return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
         }) {}
 
@@ -238,6 +238,31 @@ TEST_F(ParallelTaskAssignmentTest, ConstantNotParallelized) {
       ROOT constant = f32[1234567] constant({...})
     }
   )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(m.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(ParallelTaskAssignmentTest, CustomFusionUnchanged) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule jit_xnn_bin_ops
+
+fused_computation (matrix_a: f32[1000,1000], matrix_b: f32[1000,1000]) -> f32[1000,1000] {
+  matrix_a = f32[1000,1000] parameter(0)
+  matrix_b = f32[1000,1000] parameter(1)
+  add_result = f32[1000,1000] add(matrix_a, matrix_b)
+  subtract_result = f32[1000,1000] subtract(matrix_a, matrix_b)
+  ROOT multiply_result = f32[1000,1000] multiply(add_result, subtract_result)
+}
+
+ENTRY main (input_x: f32[1000,1000], input_y: f32[1000,1000]) -> f32[1000,1000] {
+  input_x = f32[1000,1000] parameter(0)
+  input_y = f32[1000,1000] parameter(1)
+  ROOT fused_result = f32[1000,1000] fusion(input_x, input_y), kind=kCustom, calls=fused_computation, backend_config={"outer_dimension_partitions":[],"fusion_config":{"kind":"__xnn_fusion"}}
+}
+)";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(hlo_string));

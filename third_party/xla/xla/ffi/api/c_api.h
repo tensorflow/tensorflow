@@ -179,10 +179,16 @@ typedef void XLA_FFI_Error_Destroy(XLA_FFI_Error_Destroy_Args* args);
 typedef enum {
   XLA_FFI_DataType_INVALID = 0,
   XLA_FFI_DataType_PRED = 1,
+  XLA_FFI_DataType_S1 = 30,
+  XLA_FFI_DataType_S2 = 26,
+  XLA_FFI_DataType_S4 = 21,
   XLA_FFI_DataType_S8 = 2,
   XLA_FFI_DataType_S16 = 3,
   XLA_FFI_DataType_S32 = 4,
   XLA_FFI_DataType_S64 = 5,
+  XLA_FFI_DataType_U1 = 31,
+  XLA_FFI_DataType_U2 = 27,
+  XLA_FFI_DataType_U4 = 22,
   XLA_FFI_DataType_U8 = 6,
   XLA_FFI_DataType_U16 = 7,
   XLA_FFI_DataType_U32 = 8,
@@ -201,6 +207,8 @@ typedef enum {
   XLA_FFI_DataType_F8E4M3B11FNUZ = 23,
   XLA_FFI_DataType_F8E5M2FNUZ = 24,
   XLA_FFI_DataType_F8E4M3FNUZ = 25,
+  XLA_FFI_DataType_F4E2M1FN = 32,
+  XLA_FFI_DataType_F8E8M0FNU = 33,
 } XLA_FFI_DataType;
 // LINT.ThenChange(ffi_test.cc)
 
@@ -466,17 +474,22 @@ typedef XLA_FFI_Error* XLA_FFI_Handler_Register(
 // TypeId
 //===----------------------------------------------------------------------===//
 
+#define XLA_FFI_UNKNOWN_TYPE_ID XLA_FFI_TypeId{0}
+
 struct XLA_FFI_TypeId_Register_Args {
   size_t struct_size;
   XLA_FFI_Extension_Base* extension_start;
 
   XLA_FFI_ByteSpan name;
-  XLA_FFI_TypeId* type_id;  // out
+  XLA_FFI_TypeId* type_id;  // in-out
 };
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_TypeId_Register_Args, type_id);
 
-// Registers user type `name` and returns a unique `type_id`.
+// Registers user type `name` with XLA. If type id is `XLA_FFI_UNKNOWN_TYPE_ID`,
+// XLA will assign a unique type id and return it in `type_id` out argument,
+// otherwise XLA will verify that type id is unique and matches the type id of
+// the type registered with the same `name` earlier.
 typedef XLA_FFI_Error* XLA_FFI_TypeId_Register(
     XLA_FFI_TypeId_Register_Args* args);
 
@@ -633,6 +646,51 @@ typedef XLA_FFI_Error* XLA_FFI_ThreadPool_NumThreads(
     XLA_FFI_ThreadPool_NumThreads_Args* args);
 
 //===----------------------------------------------------------------------===//
+// RunId
+//===----------------------------------------------------------------------===//
+
+// RunId is a unique identifier for a particular "logical execution" of an XLA
+// model.
+//
+// A logical execution might encompass multiple executions of one or more
+// HloModules. Runs that are part of the same logical execution can communicate
+// via collective ops, whereas runs that are part of different logical
+// executions are isolated.
+//
+// Corresponds to `::xla::RunId` (see `xla/executable_run_options.h`).
+
+struct XLA_FFI_RunId_Get_Args {
+  size_t struct_size;
+  XLA_FFI_Extension_Base* extension_start;
+
+  XLA_FFI_ExecutionContext* ctx;
+  int64_t run_id;  // out
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_RunId_Get_Args, run_id);
+
+// Returns a unique identifier for the current logical execution.
+typedef XLA_FFI_Error* XLA_FFI_RunId_Get(XLA_FFI_RunId_Get_Args* args);
+
+//===----------------------------------------------------------------------===//
+// DeviceOrdinal
+//===----------------------------------------------------------------------===//
+
+struct XLA_FFI_DeviceOrdinal_Get_Args {
+  size_t struct_size;
+  XLA_FFI_Extension_Base* extension_start;
+
+  XLA_FFI_ExecutionContext* ctx;
+  int32_t device_ordinal;  // out
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_DeviceOrdinal_Get_Args, device_ordinal);
+
+// Returns a unique identifier for the current logical execution.
+typedef XLA_FFI_Error* XLA_FFI_DeviceOrdinal_Get(
+    XLA_FFI_DeviceOrdinal_Get_Args* args);
+
+//===----------------------------------------------------------------------===//
 // Metadata extension
 //===----------------------------------------------------------------------===//
 
@@ -680,11 +738,13 @@ struct XLA_FFI_Api {
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Future_Create);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Future_SetAvailable);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Future_SetError);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_RunId_Get);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_DeviceOrdinal_Get);
 };
 
 #undef _XLA_FFI_API_STRUCT_FIELD
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Api, XLA_FFI_Stream_Get);
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Api, XLA_FFI_DeviceOrdinal_Get);
 
 const XLA_FFI_Api* XLA_FFI_GetApi();
 

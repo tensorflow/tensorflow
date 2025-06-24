@@ -1,4 +1,4 @@
-# Release 2.19.0
+# Release 2.20.0
 
 ## TensorFlow
 
@@ -8,16 +8,9 @@
 
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
-* `LiteRT`, a.k.a. `tf.lite`:
-  * C++ API:
-    * The public constants `tflite::Interpreter:kTensorsReservedCapacity`
-      and `tflite::Interpreter:kTensorsCapacityHeadroom` are now const
-      references, rather than `constexpr` compile-time constants.
-      (This is to enable better API compatibility for TFLite in Play services
-      while preserving the implementation flexibility to change the values of
-      these constants in the future.)
-    * Interpreter:
-      * `tf.lite.Interpreter` gives deprecation warning redirecting to its new location at `ai_edge_litert.interpreter`, as the API `tf.lite.Interpreter` will be deleted in TF 2.20. See the [migration guide](https://ai.google.dev/edge/litert/migration) for details.
+
+* The `tensorflow-io-gcs-filesystem` package is now optional, due its uncertain, and limited support.
+  To install it alongside `tensorflow`, run `pip install "tensorflow[gcs-filesystem]"`.
 
 ### Known Caveats
 
@@ -27,8 +20,6 @@
 
 ### Major Features and Improvements
 
-*  `tf.lite`
-    * `tfl.Cast` op is now supporting `bfloat16` in runtime kernel.
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
 ### Bug Fixes and Other Changes
@@ -54,8 +45,9 @@
 
 ### Major Features and Improvements
 
-*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+* `tf.data`
+    * Adds `autotune.min_parallelism` to `tf.data.Options` to enable faster
+      input pipeline warm up.
 
 ### Bug Fixes and Other Changes
 
@@ -68,6 +60,44 @@
 This release contains contributions from many people at Google, as well as:
 
 <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
+# Release 2.19.0
+
+## TensorFlow
+
+### Breaking Changes
+
+* `LiteRT`, a.k.a. `tf.lite`:
+    * C++ API:
+      * The public constants `tflite::Interpreter:kTensorsReservedCapacity`
+        and `tflite::Interpreter:kTensorsCapacityHeadroom` are now const
+        references, rather than `constexpr` compile-time constants.
+        (This is to enable better API compatibility for TFLite in Play services
+        while preserving the implementation flexibility to change the values of
+        these constants in the future.)
+    * Python API:
+      * `tf.lite.Interpreter` gives deprecation warning redirecting to its new
+        location at `ai_edge_litert.interpreter`, as the API
+        `tf.lite.Interpreter` will be deleted in TF 2.20. See the
+        [migration guide](https://ai.google.dev/edge/litert/migration) for
+        details.
+
+### Known Caveats
+
+### Major Features and Improvements
+
+*  `tf.lite`
+    * `tfl.Cast` op is now supporting `bfloat16` in runtime kernel.
+
+### Bug Fixes and Other Changes
+
+* We have stopped publishing `libtensorflow` packages but it can still be unpacked from the PyPI package.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+Akhil Goel, akhilgoe, Alain Flaischer, Alex, Alexander Pivovarov, Alexander Shadchin, Alexis Praga, Amrinfathima-Mcw, Andrey Pikas, Andrey Portnoy, Ankur Singh, Ashiq Imran, Assoap, c8ef, charleshofer, Chase Riley Roberts, Chenhao Jiang, Chongyun Lee, Claudio Desouza, Corentin Godeau, Crefeda Rodrigues, Danny Burrow, dependabot[bot], Dimitris Vardoulakis, Dragan Mladjenovic, Elfie Guo, Emmanuel Ferdman, fiberflow, flyingcat, Gary Yi-Hung Chen, Georg Stefan Schmid, Gerwout Van Der Veen, Harsha H S, Harshit Monish, Hugo Mano, i.Pear, Ilia Sergachev, Jane Liu, Jaroslav Sevcik, Jc (Jonathan Chen), Jerry Ge, Jian Li, johndoknjas, Johnny, Jonathan Albrecht, Kaixi Hou, Kanvi Khanna, keerthanakadiri, Kevin Ji, Kiran Sai Ramineni, kwoncy2020, LakshmiKalaKadali, Lee, Jun Seok, Mahmoud Abuzaina, Matt Bahr, mayuyuace, Melissa Weber Mendonça, misterBart, Mkarpushin-Enhancelab, Mmakevic-Amd, mraunak, nallave, Nayana Thorat, Nayana-Ibm, nick.camarena, Nicolas Castet, Om Thakkar, oyzh, Parsa Homayouni, Patrick Toulme, Pavel Emeliyanenko, Pavithra Eswaramoorthy, Pearu Peterson, pemeliya, Philipp Hack, Ravi Kumar Soni, redwrasse, Ruturaj Vaidya, Sallenkey-Wei, Sandeep Gupta, Sergey Kozub, Sevin Fide Varoglu, Shanbin Ke, Shaogang Wang, Shixin Zhang, Shraiysh, Shu Wang, Silvio Traversaro, snadampal, Sunita Nadampalli, Tai Ly, Tatwai Chong, tchatow, tdanyluk, Terry Sun, Tilak, Tj Xu, Trevor Morris, Twice, vfdev, Vladimir Silyaev, Weisser, Pascal, wokron, Won Jeon, Xuefei Jiang, Zentrik, Zoranjovanovic-Ns
 
 # Release 2.18.0
 
@@ -3204,7 +3234,7 @@ This release introduces several vulnerability fixes:
 
     *   Keras been split into a separate PIP package (`keras`), and its code has
         been moved to the GitHub
-        repository[keras-team/keras](http://github.com/keras-team/keras). The
+        repository[keras-team/keras](https://github.com/keras-team/keras). The
         API endpoints for `tf.keras` stay unchanged, but are now backed by the
         `keras` PIP package. The existing code in tensorflow/python/keras is a
         staled copy and will be removed in future release (2.7). Please remove
@@ -10230,7 +10260,7 @@ answered questions, and were part of inspiring discussions.
 ## Major Features And Improvements
 
 *   `tf.keras` is now part of the core TensorFlow API.
-*   [`tf.data`](http://tensorflow.org/guide/data) is now part of the core
+*   [`tf.data`](https://tensorflow.org/guide/data) is now part of the core
     TensorFlow API.
     *   The API is now subject to backwards compatibility guarantees.
     *   For a guide to migrating from the `tf.contrib.data` API, see the

@@ -13,7 +13,6 @@ package(
 py_strict_library(
     name = "benchmark_base",
     srcs = ["benchmark_base.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/data/ops:dataset_ops",

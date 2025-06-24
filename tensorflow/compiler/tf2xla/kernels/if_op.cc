@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

@@ -62,8 +62,10 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
@@ -177,7 +179,8 @@ inline DeviceAssignment MakeInterpreterDeviceAssignment() {
 }  // namespace
 
 const InterpreterDescription& InterpreterDescription::Singleton() {
-  static const InterpreterDescription* singleton = new InterpreterDescription;
+  static const InterpreterDescription* const singleton =
+      new InterpreterDescription;
   return *singleton;
 }
 
@@ -274,12 +277,15 @@ InterpreterLoadedExecutable::ExecuteSharded(
     returned_future = PjRtFuture<>(absl::OkStatus());
   }
 
+  TF_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
+                      device->default_memory_space());
+
   // Transform the result literal back into a one or more
   // InterpreterLiteralWrapperBuffer.
   std::vector<std::unique_ptr<PjRtBuffer>> result;
   // Untuple result if requested.
   if (options.untuple_result && result_literal.shape().IsTuple()) {
-    const int tuple_count = result_literal.shape().tuple_shapes_size();
+    const int tuple_count = result_literal.shape().tuple_shapes().size();
     result.reserve(tuple_count);
     // DecomposeTuple invalidates result_literal. move(...) to make it obvious.
     std::vector<Literal> tuple_elements =
@@ -288,11 +294,11 @@ InterpreterLoadedExecutable::ExecuteSharded(
         << "DecomposedTuple returned the wrong number of elements.";
     for (int i = 0; i < tuple_count; ++i) {
       result.push_back(std::make_unique<InterpreterLiteralWrapperBuffer>(
-          client_, device, std::move(tuple_elements[i])));
+          client_, memory_space, std::move(tuple_elements[i])));
     }
   } else {
     result.push_back(std::make_unique<InterpreterLiteralWrapperBuffer>(
-        client_, device, std::move(result_literal)));
+        client_, memory_space, std::move(result_literal)));
   }
   return result;
 }
@@ -309,6 +315,7 @@ absl::StatusOr<Literal> InterpreterLoadedExecutable::Evaluate(
     const HloComputation& computation,
     absl::Span<const Literal* const> arg_literals) {
   absl::MutexLock lock(&hlo_evaluator_lock_);
+  hlo_evaluator_->ResetVisitStates();
   return hlo_evaluator_->Evaluate(computation, arg_literals);
 }
 
@@ -330,8 +337,8 @@ absl::StatusOr<Layout> InterpreterClient::GetDefaultLayout(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-InterpreterClient::Compile(const XlaComputation& computation,
-                           CompileOptions options) {
+InterpreterClient::CompileAndLoad(const XlaComputation& computation,
+                                  CompileOptions options) {
   std::vector<const Shape*> argument_layout_pointers;
   const ExecutableBuildOptions& build_options =
       options.executable_build_options;
@@ -353,7 +360,8 @@ InterpreterClient::Compile(const XlaComputation& computation,
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-InterpreterClient::Compile(mlir::ModuleOp module, CompileOptions options) {
+InterpreterClient::CompileAndLoad(mlir::ModuleOp module,
+                                  CompileOptions options) {
   XlaComputation xla_computation;
   const ExecutableBuildOptions& exec_build_options =
       options.executable_build_options;
@@ -365,7 +373,7 @@ InterpreterClient::Compile(mlir::ModuleOp module, CompileOptions options) {
   // If the compile options specify argument layout, then let's
   // fall back to using the options to determine layouts.
   if (options.argument_layouts) {
-    return Compile(xla_computation, options);
+    return CompileAndLoad(xla_computation, options);
   }
 
   TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
@@ -403,21 +411,15 @@ InterpreterClient::Compile(mlir::ModuleOp module, CompileOptions options) {
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 InterpreterClient::BufferFromHostLiteral(const LiteralSlice& literal,
-                                         PjRtDevice* device) {
-  return std::make_unique<InterpreterLiteralWrapperBuffer>(device->client(),
-                                                           device, literal);
-}
-
-absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-InterpreterClient::BufferFromHostLiteral(const LiteralSlice& literal,
-                                         PjRtDevice* device,
+                                         PjRtMemorySpace* memory_space,
                                          const Layout* device_layout) {
   if (device_layout == nullptr) {
-    return BufferFromHostLiteral(literal, device);
+    return std::make_unique<InterpreterLiteralWrapperBuffer>(
+        memory_space->client(), memory_space, literal);
   }
   Literal device_literal = literal.Relayout(*device_layout);
   return std::make_unique<InterpreterLiteralWrapperBuffer>(
-      device->client(), device, std::move(device_literal));
+      memory_space->client(), memory_space, std::move(device_literal));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
@@ -498,7 +500,7 @@ InterpreterClient::RunBackend(std::unique_ptr<HloModule> hlo_module,
           /*op_supports_dynamism_handler=*/[&](HloInstruction* hlo) {
             return OpDynamismSupport::kOptional;
           }));
-  auto evaluator = std::make_unique<HloEvaluator>();
+  auto evaluator = hlo_evaluator_factory_();
   evaluator->set_use_fast_path(
       hlo_module->config().debug_options().xla_hlo_evaluator_use_fast_path());
   evaluator->set_custom_call_handler(HandleEvaluatorCustomCall);

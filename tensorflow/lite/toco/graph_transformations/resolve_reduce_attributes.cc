@@ -12,9 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <memory>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -45,9 +44,8 @@ bool ResolveAttributes(Model* model, T* op) {
   return true;
 }
 
-::tensorflow::Status ResolveReduceAttributes::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status ResolveReduceAttributes::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   Operator* op = model->operators[op_index].get();
   switch (op->type) {

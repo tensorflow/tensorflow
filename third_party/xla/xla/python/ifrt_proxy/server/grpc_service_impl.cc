@@ -31,6 +31,7 @@
 #include "grpcpp/support/status.h"
 #include "grpcpp/support/sync_stream.h"
 #include "xla/pjrt/distributed/util.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/proto_util.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
@@ -76,8 +77,9 @@ namespace proxy {
   const uint64_t session_id =
       next_session_id_.fetch_add(1, std::memory_order_relaxed);
 
-  VLOG(0) << "Starting a new IFRT session with session_id=" << session_id
-          << ", version=" << metadata.version().ShortDebugString();
+  LOG(INFO) << "Starting new IFRT session " << session_id << " for peer '"
+            << context->peer()
+            << "' with metadata=" << metadata.ShortDebugString();
 
   // Create a host buffer store for the session.
   auto host_buffer_store =
@@ -91,8 +93,17 @@ namespace proxy {
     CHECK_GT(host_buffer_stores_.erase(session_id), 0);
   };
 
+  absl::StatusOr<AttributeMap> initialization_data =
+      AttributeMap::FromProto(metadata.initialization_data());
+  if (!initialization_data.ok()) {
+    LOG(INFO) << "Failed to parse initialization data for session "
+              << session_id << ": " << initialization_data.status();
+    return xla::ToGrpcStatus(initialization_data.status());
+  }
+
   auto backend = backend_factory_(metadata.version(), session_id,
-                                  std::move(host_buffer_store));
+                                  std::move(host_buffer_store),
+                                  *std::move(initialization_data));
   if (!backend.ok()) {
     LOG(INFO) << "Creating IFRT backend " << session_id
               << " failed: " << backend.status();
@@ -107,7 +118,7 @@ namespace proxy {
       break;
     }
     if (!first_request_read) {
-      VLOG(0) << "First request read for session " << session_id;
+      LOG(INFO) << "First request read for session " << session_id;
       first_request_read = true;
     }
     const uint64_t op_id = request->request_metadata().op_id();
@@ -124,8 +135,12 @@ namespace proxy {
         });
   }
 
+  LOG(INFO) << "stream->Read() returned false for session " << session_id
+            << "; waiting until all response callbacks are called.";
   backend->reset();  // Blocks until all response callbacks are called.
-  VLOG(0) << "Finishing IFRT session " << session_id;
+  LOG(INFO) << "Cleaning up host buffer store for session " << session_id;
+  std::move(cleanup).Invoke();
+  LOG(INFO) << "Done with IFRT session " << session_id;
   return ::grpc::Status::OK;
 }
 
@@ -137,6 +152,7 @@ namespace proxy {
   const auto it = context->client_metadata().find(
       "ifrt-proxy-grpc-host-buffer-store-metadata-bin");
   if (it == context->client_metadata().end()) {
+    LOG(WARNING) << "Missing gRPC metadata for GrpcHostBufferService.Store";
     return ::grpc::Status(
         ::grpc::StatusCode::INTERNAL,
         "Missing gRPC metadata for GrpcHostBufferService.Store");
@@ -145,8 +161,15 @@ namespace proxy {
   GrpcHostBufferStoreMetadata metadata;
   if (!metadata.ParseFromString(AsProtoStringData(
           absl::string_view(it->second.data(), it->second.size())))) {
+    LOG(WARNING) << "Unable to parse GrpcHostBufferStoreMetadata";
     return ::grpc::Status(::grpc::StatusCode::DATA_LOSS,
                           "Unable to parse GrpcHostBufferStoreMetadata");
+  }
+  auto store = GetHostBufferStore(metadata.session_id());
+  if (!store.ok()) {
+    LOG(INFO) << "HostBufferStore failed to get host buffer store for session "
+              << metadata.session_id() << ": " << store.status();
+    return xla::ToGrpcStatus(store.status());
   }
 
   VLOG(3) << "HostBufferStore starting to receive data "
@@ -161,18 +184,19 @@ namespace proxy {
   VLOG(3) << "HostBufferStore received all data "
           << metadata.ShortDebugString();
   if (data.size() != metadata.buffer_size()) {
-    return ::grpc::Status(
-        ::grpc::StatusCode::DATA_LOSS,
-        absl::StrCat("Potential data loss for host buffers: expected ",
-                     metadata.buffer_size(), " bytes but got ", data.size(),
-                     " bytes"));
+    std::string error = absl::StrCat(
+        "Potential data loss for host buffers: expected ",
+        metadata.buffer_size(), " bytes but got ", data.size(), " bytes");
+    LOG(WARNING) << "Bad request by proxy client: " << error;
+    return ::grpc::Status(::grpc::StatusCode::DATA_LOSS, error);
   }
 
-  auto store = GetHostBufferStore(metadata.session_id());
-  if (!store.ok()) {
-    return xla::ToGrpcStatus(store.status());
+  absl::Status s = (*store)->Store(metadata.handle(), std::move(data));
+  if (!s.ok()) {
+    LOG(INFO) << "HostBufferStore for session " << metadata.session_id()
+              << " failed to store buffer " << metadata.handle() << ": " << s;
   }
-  return xla::ToGrpcStatus((*store)->Store(metadata.handle(), std::move(data)));
+  return xla::ToGrpcStatus(std::move(s));
 }
 
 ::grpc::Status GrpcServiceImpl::HostBufferLookup(
@@ -183,10 +207,16 @@ namespace proxy {
 
   auto store = GetHostBufferStore(request->session_id());
   if (!store.ok()) {
+    LOG(WARNING) << "Returning '" << store.status()
+                 << "' while attempting to retrieve proxy buffer store for "
+                 << request->ShortDebugString();
     return xla::ToGrpcStatus(store.status());
   }
   auto data = (*store)->Lookup(request->handle());
   if (!data.ok()) {
+    LOG(WARNING) << "Returning '" << data.status()
+                 << "' while attempting to retrieve data for "
+                 << request->ShortDebugString();
     return xla::ToGrpcStatus(data.status());
   }
 

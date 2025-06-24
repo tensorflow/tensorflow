@@ -1,0 +1,128 @@
+// RUN: hlo-opt %s --emit-proto | FileCheck %s --check-prefix=CHECK
+// RUN: hlo-opt %s --emit-proto | hlo-opt %s | FileCheck %s --check-prefix=CHECK-ROUNDTRIP
+
+// CHECK: hlo_module {
+// CHECK-NEXT:   name: "test_module"
+// CHECK-NEXT:   entry_computation_name: "main"
+// CHECK-NEXT:   computations {
+// CHECK-NEXT:     name: "main"
+// CHECK-NEXT:     instructions {
+// CHECK-NEXT:       name: "a"
+// CHECK-NEXT:       opcode: "parameter"
+// CHECK-NEXT:       shape {
+// CHECK-NEXT:         element_type: F32
+// CHECK-NEXT:         layout {
+// CHECK-NEXT:           tail_padding_alignment_in_elements: 1
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:       metadata {
+// CHECK-NEXT:       }
+// CHECK-NEXT:       frontend_attributes {
+// CHECK-NEXT:       }
+// CHECK-NEXT:       statistics_viz {
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:     instructions {
+// CHECK-NEXT:       name: "b"
+// CHECK-NEXT:       opcode: "parameter"
+// CHECK-NEXT:       shape {
+// CHECK-NEXT:         element_type: F32
+// CHECK-NEXT:         layout {
+// CHECK-NEXT:           tail_padding_alignment_in_elements: 1
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:       metadata {
+// CHECK-NEXT:       }
+// CHECK-NEXT:       parameter_number: 1
+// CHECK-NEXT:       id: 1
+// CHECK-NEXT:       frontend_attributes {
+// CHECK-NEXT:       }
+// CHECK-NEXT:       statistics_viz {
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:     instructions {
+// CHECK-NEXT:       name: "res"
+// CHECK-NEXT:       opcode: "multiply"
+// CHECK-NEXT:       shape {
+// CHECK-NEXT:         element_type: F32
+// CHECK-NEXT:         layout {
+// CHECK-NEXT:           tail_padding_alignment_in_elements: 1
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:       metadata {
+// CHECK-NEXT:       }
+// CHECK-NEXT:       id: 2
+// CHECK-NEXT:       operand_ids: 0
+// CHECK-NEXT:       operand_ids: 1
+// CHECK-NEXT:       frontend_attributes {
+// CHECK-NEXT:       }
+// CHECK-NEXT:       statistics_viz {
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:     program_shape {
+// CHECK-NEXT:       parameters {
+// CHECK-NEXT:         element_type: F32
+// CHECK-NEXT:         layout {
+// CHECK-NEXT:           tail_padding_alignment_in_elements: 1
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:       parameters {
+// CHECK-NEXT:         element_type: F32
+// CHECK-NEXT:         layout {
+// CHECK-NEXT:           tail_padding_alignment_in_elements: 1
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:       result {
+// CHECK-NEXT:         element_type: F32
+// CHECK-NEXT:         layout {
+// CHECK-NEXT:           tail_padding_alignment_in_elements: 1
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:       parameter_names: "a"
+// CHECK-NEXT:       parameter_names: "b"
+// CHECK-NEXT:     }
+// CHECK-NEXT:     id: 2
+// CHECK-NEXT:     root_id: 2
+// CHECK-NEXT:   }
+// CHECK-NEXT:   host_program_shape {
+// CHECK-NEXT:     parameters {
+// CHECK-NEXT:       element_type: F32
+// CHECK-NEXT:       layout {
+// CHECK-NEXT:         tail_padding_alignment_in_elements: 1
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:     parameters {
+// CHECK-NEXT:       element_type: F32
+// CHECK-NEXT:       layout {
+// CHECK-NEXT:         tail_padding_alignment_in_elements: 1
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:     result {
+// CHECK-NEXT:       element_type: F32
+// CHECK-NEXT:       layout {
+// CHECK-NEXT:         tail_padding_alignment_in_elements: 1
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:     parameter_names: "p0"
+// CHECK-NEXT:     parameter_names: "p1"
+// CHECK-NEXT:   }
+// CHECK-NEXT:   entry_computation_id: 2
+// CHECK-NEXT:   input_output_alias {
+// CHECK-NEXT:   }
+// CHECK-NEXT:   buffer_donor {
+// CHECK-NEXT:   }
+// CHECK-NEXT:   frontend_attributes {
+// CHECK-NEXT:   }
+// CHECK-NEXT: }
+
+// CHECK-ROUNDTRIP-LABEL: HloModule test_module, entry_computation_layout={(f32[], f32[])->f32[]}
+HloModule test_module, entry_computation_layout={(f32[], f32[])->f32[]}
+  // CHECK-ROUNDTRIP: ENTRY %main (a: f32[], b: f32[]) -> f32[] {
+  ENTRY %main (a: f32[], b: f32[]) -> f32[] {
+    // CHECK-ROUNDTRIP-NEXT:   a = f32[] parameter(0)
+    a = f32[] parameter(0)
+    // CHECK-ROUNDTRIP-NEXT:   b = f32[] parameter(1)
+    b = f32[] parameter(1)
+  // CHECK-ROUNDTRIP-NEXT:   ROOT %res = f32[] multiply(%a, %b)
+  ROOT %res = f32[] multiply(f32[] %a, f32[] %b)
+}

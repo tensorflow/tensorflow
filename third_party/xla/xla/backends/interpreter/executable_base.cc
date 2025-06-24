@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "xla/backends/interpreter/executable_base.h"
 
-#include <type_traits>
+#include <algorithm>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/log/log.h"
@@ -40,11 +44,11 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace interpreter {
@@ -91,7 +95,7 @@ absl::StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
 
   const HloComputation* computation = module().entry_computation();
   if (computation->num_parameters() != arguments.size()) {
-    return tsl::errors::Internal(
+    return absl::InternalError(
         "Mismatch between argument count and graph parameter count.");
   }
 

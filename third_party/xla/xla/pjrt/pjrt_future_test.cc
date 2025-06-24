@@ -22,7 +22,8 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 
 namespace xla {
 
@@ -230,5 +231,18 @@ TEST(PjRtFutureTest, JoinErrors) {
   EXPECT_TRUE(join_two.IsReady());
   EXPECT_EQ(join_two.Await(), absl::InternalError("error #0"));
 }
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks.
+//===----------------------------------------------------------------------===//
+
+static void BM_CreateOkFuture(benchmark::State& state) {
+  for (auto _ : state) {
+    PjRtFuture<> future(absl::OkStatus());
+    benchmark::DoNotOptimize(future);
+  }
+}
+
+BENCHMARK(BM_CreateOkFuture);
 
 }  // namespace xla

@@ -50,13 +50,12 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
 
@@ -74,7 +73,6 @@ PJRT_ClientDeleter MakeClientDeleter(const PJRT_Api* api) {
     destroy_args.client = client;
 
     PJRT_Error* error = api->PJRT_Client_Destroy(&destroy_args);
-    // TODO(b/236710439): handle the error and remove this CHECK() call
     CHECK(error == nullptr);
   };
 }
@@ -313,6 +311,8 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_BF16;
     case xla::PrimitiveType::F64:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F64;
+    case xla::PrimitiveType::F4E2M1FN:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_F4E2M1FN;
     case xla::PrimitiveType::F8E5M2:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E5M2;
     case xla::PrimitiveType::F8E4M3:
@@ -327,6 +327,8 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3FNUZ;
     case xla::PrimitiveType::F8E3M4:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E3M4;
+    case xla::PrimitiveType::F8E8M0FNU:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E8M0FNU;
     case xla::PrimitiveType::C64:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_C64;
     case xla::PrimitiveType::C128:
@@ -380,6 +382,8 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::C64;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_C128:
       return xla::PrimitiveType::C128;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_F4E2M1FN:
+      return xla::PrimitiveType::F4E2M1FN;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E5M2:
       return xla::PrimitiveType::F8E5M2;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3:
@@ -394,6 +398,8 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::F8E4M3FNUZ;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E3M4:
       return xla::PrimitiveType::F8E3M4;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E8M0FNU:
+      return xla::PrimitiveType::F8E8M0FNU;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_INVALID:
       CHECK(false) << "Buffer type is not supported in C API layer.";
   }
@@ -1067,7 +1073,7 @@ absl::string_view PlatformName(const PJRT_Api* api,
   PJRT_TopologyDescription_PlatformName_Args args;
   args.struct_size = PJRT_TopologyDescription_PlatformName_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
-  args.topology = const_cast<PJRT_TopologyDescription*>(topo_desc);
+  args.topology = topo_desc;
   LogFatalIfPjrtError(api->PJRT_TopologyDescription_PlatformName(&args), api);
   return {args.platform_name, args.platform_name_size};
 }
@@ -1078,7 +1084,7 @@ absl::Span<PJRT_DeviceDescription* const> DeviceDescriptions(
   args.struct_size =
       PJRT_TopologyDescription_GetDeviceDescriptions_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
-  args.topology = const_cast<PJRT_TopologyDescription*>(topo_desc);
+  args.topology = topo_desc;
   LogFatalIfPjrtError(
       api->PJRT_TopologyDescription_GetDeviceDescriptions(&args), api);
   return {args.descriptions, args.num_descriptions};
@@ -1113,9 +1119,11 @@ PJRT_Profiler_Extension CreatePjrtProfilerExtension(
       traceme_name, tsl::profiler::ContextType::kPjrtLibraryCall);
   int64_t traceme_context_id = producer.GetContextId();
   PJRT_Profiler_Extension profiler_extension{
-      /*struct_size=*/PJRT_Profiler_Extension_STRUCT_SIZE,
-      /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Profiler,
-      /*next=*/nullptr,
+      PJRT_Extension_Base{
+          /*struct_size=*/PJRT_Profiler_Extension_STRUCT_SIZE,
+          /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Profiler,
+          /*next=*/nullptr,
+      },
       /*profiler_api=*/nullptr,
       /*traceme_context_id=*/traceme_context_id,
   };

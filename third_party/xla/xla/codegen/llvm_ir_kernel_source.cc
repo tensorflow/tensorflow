@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <string>
 
+#include "llvm/IR/Module.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 
 namespace xla {
 
 std::string LlvmIrKernelSource::ToString() const {
-  return llvm_ir::DumpToString(module_.get());
+  return module_.withModuleDo(
+      [&](llvm::Module& m) { return llvm_ir::DumpToString(&m); });
 }
 
 }  // namespace xla

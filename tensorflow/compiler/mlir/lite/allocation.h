@@ -66,6 +66,11 @@ class MMAPAllocation : public Allocation {
   /// Loads and maps the provided file to a memory region.
   MMAPAllocation(const char* filename, ErrorReporter* error_reporter);
 
+  /// Loads and maps the provided file to a memory region at the given
+  // offset and length (both in bytes).
+  MMAPAllocation(const char* filename, size_t offset, size_t length,
+                 ErrorReporter* error_reporter);
+
   /// Maps the provided file descriptor to a memory region.
   /// Note: The provided file descriptor will be dup'ed for usage; the caller
   /// retains ownership of the provided descriptor and should close accordingly.

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/service.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <numeric>
@@ -595,10 +596,13 @@ Service::ExecuteGraphParallel(
     // shapes of the arguments, so, it is sufficient to use the arguments of
     // replica 0.
     TF_ASSIGN_OR_RETURN(
+        ProgramShape program_shape,
+        ProgramShape::FromProto(
+            computation.computation.proto().host_program_shape()));
+    TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
-        CreateModuleConfig(
-            ProgramShape{computation.computation.proto().host_program_shape()},
-            replicated_arguments.front(), computation.execution_options));
+        CreateModuleConfig(program_shape, replicated_arguments.front(),
+                           computation.execution_options));
     VLOG(3)
         << "ExecuteGraphParallel created HloModuleConfig computation layout: "
         << module_config->entry_computation_layout().ToString();
@@ -823,9 +827,11 @@ absl::StatusOr<ExecutionHandle> Service::Compile(
   }
 
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(ProgramShape{computation.proto().host_program_shape()},
-                         argument_shape_ptrs, &execution_options));
+      ProgramShape program_shape,
+      ProgramShape::FromProto(computation.proto().host_program_shape()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
+                      CreateModuleConfig(program_shape, argument_shape_ptrs,
+                                         &execution_options));
   VLOG(3) << "Compile created HloModuleConfig computation layout: "
           << module_config->entry_computation_layout().ToString();
 
@@ -1059,7 +1065,9 @@ absl::StatusOr<Literal> Service::ComputeConstantGraph(
         "constant computation may not depend on any parameters.");
   }
 
-  ProgramShape program_shape(computation.proto().host_program_shape());
+  TF_ASSIGN_OR_RETURN(
+      ProgramShape program_shape,
+      ProgramShape::FromProto(computation.proto().host_program_shape()));
   TF_DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
 
   if (output_layout) {
@@ -1084,7 +1092,7 @@ absl::StatusOr<Literal> Service::ComputeConstantGraph(
          absl::Span<const Literal*> operands) -> absl::StatusOr<Literal> {
         if (custom_call->custom_call_target() == "SliceToDynamic") {
           auto result = operands[0]->Clone();
-          for (int64_t i = 0; i < result.shape().rank(); ++i) {
+          for (int64_t i = 0; i < result.shape().dimensions().size(); ++i) {
             result.SetDynamicSize(i, operands[1 + i]->Get<int32_t>({}));
           }
           return result.ToStatic();

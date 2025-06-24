@@ -37,14 +37,16 @@ std::optional<std::string> OptionalStringViewToOptionalString(
   return std::make_optional<std::string>(*view);
 }
 
+using quant::stablehlo::QuantizationReport;
+
 // Whether the pass is `QuantizeCompositeFunctionPass`.
-bool IsQuantizeCompositeFunctionPass(absl::Nullable<Pass*> pass,
-                                     absl::Nullable<Operation*> op) {
+bool IsQuantizeCompositeFunctionPass(Pass* absl_nullable pass,
+                                     Operation* absl_nullable op) {
   // It is known that `op` is `ModuleOp` when `pass` is
   // `QuantizeCompositeFunctionPass`, but the check is still performed to be
   // defensive.
   return pass != nullptr &&
-         pass->getArgument() == "stablehlo-quantize-composite-functions" &&
+         pass->getArgument() == "tf-stablehlo-quantize-composite-functions" &&
          isa_and_nonnull<ModuleOp>(op);
 }
 
@@ -52,7 +54,7 @@ bool IsQuantizeCompositeFunctionPass(absl::Nullable<Pass*> pass,
 // * After running `QuantizeCompositeFunctionPass`.
 // * The pass is run on `ModuleOp`.
 // * `file_path` is not `nullopt`.
-bool ShouldSaveReport(absl::Nullable<Pass*> pass, absl::Nullable<Operation*> op,
+bool ShouldSaveReport(Pass* absl_nullable pass, Operation* absl_nullable op,
                       const std::optional<std::string>& file_path) {
   return file_path != std::nullopt && IsQuantizeCompositeFunctionPass(pass, op);
 }

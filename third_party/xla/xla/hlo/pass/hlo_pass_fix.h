@@ -16,15 +16,21 @@ limitations under the License.
 #ifndef XLA_HLO_PASS_HLO_PASS_FIX_H_
 #define XLA_HLO_PASS_HLO_PASS_FIX_H_
 
-#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <type_traits>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -76,6 +82,14 @@ class HloPassFix : public Pass {
       VLOG(3) << "changed_this_iteration: " << changed_this_iteration;
       ++iteration_count;
       if (iteration_count == kIterationLimit) {
+        if (module_group->module(0)
+                .config()
+                .debug_options()
+                .xla_unsupported_crash_on_hlo_pass_fix_max_iterations()) {
+          LOG(FATAL) << "Unexpectedly high number of iterations "
+                     << iteration_count << " in HLO pass '" << Pass::name()
+                     << "' for module group '" << module_group->name() << "'";
+        }
         VLOG(1) << "Unexpectedly high number of iterations in HLO passes, "
                    "exiting fixed point loop.";
         // Return false in case this is fixed point is nested.
@@ -90,14 +104,35 @@ class HloPassFix : public Pass {
       HloModule* module, RunState* run_state,
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
     VLOG(3) << "Running HloPassFix on " << Pass::name();
+
+    absl::flat_hash_set<size_t> hashes;
     while (!run_state->changed_last_iteration.empty()) {
+      if (module->config().debug_options().xla_hlo_pass_fix_detect_cycles()) {
+        size_t hash = absl::HashOf(*module);
+        VLOG(3) << "Module hash for " << Pass::name() << " at iteration "
+                << run_state->iteration << ": " << hash;
+        if (hashes.contains(hash)) {
+          LOG(WARNING) << "Cycle detected when running " << Pass::name()
+                       << " on iteration " << run_state->iteration
+                       << "; hash: " << hash;
+        } else {
+          hashes.insert(hash);
+        }
+      }
       TF_RETURN_IF_ERROR(
           RunOnChangedComputationsOnce(module, run_state, execution_threads));
       VLOG(3) << Pass::name() << " iteration " << run_state->iteration
               << " changed_this_iteration: "
-              << !run_state->changed_last_iteration.empty();
+              << !run_state->changed_this_iteration.empty();
       run_state->IncrementIteration();
       if (run_state->iteration == kIterationLimit) {
+        if (module->config()
+                .debug_options()
+                .xla_unsupported_crash_on_hlo_pass_fix_max_iterations()) {
+          LOG(FATAL) << "Unexpectedly high number of iterations "
+                     << kIterationLimit << " in HLO pass '" << Pass::name()
+                     << "' for module '" << module->name() << "'";
+        }
         VLOG(1) << "Unexpectedly high number of iterations in HLO passes '"
                 << Pass::name() << "' for module '" << module->name()
                 << "'. Exiting fixed point loop.";
@@ -106,6 +141,7 @@ class HloPassFix : public Pass {
         break;
       }
     }
+    VLOG(3) << "Finished running HloPassFix on " << Pass::name();
     return absl::OkStatus();
   }
 

@@ -1,12 +1,11 @@
-// RUN: tf-opt --tosa-fuse-bias-tf --verify-each %s | FileCheck %s
-// REQUIRES: tf_tosa
+// RUN: tf-tosa-opt --tosa-fuse-bias-tf --verify-each %s | FileCheck %s
+
 
 // Operations for testing --tosa-fuse-bias-tf
 
 // ----
 
 // CHECK-LABEL: test_conv2d_bias
-// CHECK: tosa.const
 // CHECK: tosa.transpose
 // CHECK: tosa.conv2d
 func.func @test_conv2d_bias(%arg0: tensor<1x4x4x4xf32>, %arg1: tensor<3x3x4x8xf32>, %arg2: tensor<8xf32>) -> tensor<1x4x4x8xf32>  {

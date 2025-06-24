@@ -15,23 +15,64 @@ limitations under the License.
 
 #include "xla/python/ifrt/array_spec.h"
 
+#include <memory>
+#include <tuple>
+
 #include <gtest/gtest.h>
-#include "absl/status/statusor.h"
+#include "absl/hash/hash_testing.h"
+#include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
+#include "xla/layout_util.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array_spec.pb.h"
-#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 namespace {
 
-class ArraySpecTest : public test_util::DeviceTest {};
+using ArraySpecTestParam =
+    std::tuple<SerDesVersion, test_util::DeviceTestParam>;
+
+class ArraySpecTest : public testing::TestWithParam<ArraySpecTestParam> {
+ public:
+  ArraySpecTest()
+      : version_(std::get<0>(GetParam())), fixture_(std::get<1>(GetParam())) {}
+
+  SerDesVersion version() const { return version_; }
+
+  Client* client() { return fixture_.client(); }
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
+    return fixture_.GetDevices(device_indices);
+  }
+
+ private:
+  SerDesVersion version_;
+  test_util::DeviceTestFixture fixture_;
+};
+
+TEST_P(ArraySpecTest, SupportsAbslHash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      ArraySpec{DType(DType::kS32), Shape({4, 2}),
+                ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
+                                             /*shape=*/Shape({4, 2}),
+                                             /*shard_shape=*/Shape({2, 2}))},
+      ArraySpec{DType(DType::kS32), Shape({4, 2}),
+                ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
+                                             /*shape=*/Shape({4, 2}),
+                                             /*shard_shape=*/Shape({2, 2})),
+                std::make_shared<xla::PjRtLayout>(
+                    xla::LayoutUtil::MakeDescendingLayout(2))},
+  }));
+}
 
 TEST_P(ArraySpecTest, ToFromProto) {
   auto device_list = GetDevices({0, 1});
@@ -44,12 +85,9 @@ TEST_P(ArraySpecTest, ToFromProto) {
                                               /*shape=*/shape,
                                               /*shard_shape=*/shard_shape)};
 
-  auto lookup_device_func = [&](DeviceId device_id) -> absl::StatusOr<Device*> {
-    return client()->LookupDevice(device_id);
-  };
-  TF_ASSERT_OK_AND_ASSIGN(const ArraySpecProto proto, spec.ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(const ArraySpecProto proto, spec.ToProto(version()));
   TF_ASSERT_OK_AND_ASSIGN(const ArraySpec array_spec_copy,
-                          ArraySpec::FromProto(lookup_device_func, proto));
+                          ArraySpec::FromProto(client(), proto));
 
   EXPECT_EQ(array_spec_copy.dtype, dtype);
   EXPECT_EQ(array_spec_copy.shape, shape);
@@ -63,10 +101,12 @@ TEST_P(ArraySpecTest, ToFromProto) {
   EXPECT_EQ(sharding->shard_shape(), shard_shape);
 }
 
-INSTANTIATE_TEST_SUITE_P(NumDevices, ArraySpecTest,
-                         testing::Values(test_util::DeviceTestParam{
-                             /*num_devices=*/2,
-                             /*num_addressable_devices=*/2}));
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion_NumDevices, ArraySpecTest,
+    testing::Combine(testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
+                     testing::Values(test_util::DeviceTestParam{
+                         /*num_devices=*/2,
+                         /*num_addressable_devices=*/2})));
 
 }  // namespace
 }  // namespace ifrt

@@ -2530,3 +2530,22 @@ func.func @sigmoid_complex(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f3
   %0 = "tf.Sigmoid"(%arg0) : (tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
   func.return %0 : tensor<2xcomplex<f32>>
 }
+
+// -----
+
+// CHECK-LABEL: @xla_scatter
+func.func @xla_scatter(%arg0: tensor<2x10xi1>, %arg1: tensor<1xi32>, %arg2: tensor<2x3xi1>) -> tensor<2x10xi1> {
+  // CHECK:       %[[RESULT:.*]] = "stablehlo.scatter"(%arg0, %arg1, %arg2)
+  // CHECK-SAME:  <{indices_are_sorted = true, scatter_dimension_numbers = #stablehlo.scatter<update_window_dims = [0, 1], scatter_dims_to_operand_dims = [1]>, unique_indices = false}>
+  // CHECK-NEXT:  ^bb0(%[[VALUE_A:.*]]: tensor<i1>, %[[VALUE_B:.*]]: tensor<i1>):
+  // CHECK-NEXT:    %[[IDENTITY:.*]] = func.call @scatter_update(%[[VALUE_A]], %[[VALUE_B]]) : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  // CHECK-NEXT:    stablehlo.return %[[IDENTITY]] : tensor<i1>
+  // CHECK-NEXT:  }) : (tensor<2x10xi1>, tensor<1xi32>, tensor<2x3xi1>) -> tensor<2x10xi1>
+  // CHECK-NEXT:  return %[[RESULT]] : tensor<2x10xi1>
+  %0 = "tf.XlaScatter"(%arg0, %arg1, %arg2) <{dimension_numbers = "\0A\02\00\01\1A\01\01", indices_are_sorted = true, update_computation = @scatter_update}> : (tensor<2x10xi1>, tensor<1xi32>, tensor<2x3xi1>) -> tensor<2x10xi1>
+  return %0 : tensor<2x10xi1>
+}
+
+func.func private @scatter_update(%arg0: tensor<i1>, %arg1: tensor<i1>) -> tensor<i1> {
+  return %arg1 : tensor<i1>
+}

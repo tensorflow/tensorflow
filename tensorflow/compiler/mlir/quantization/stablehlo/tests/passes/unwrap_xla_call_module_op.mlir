@@ -1,4 +1,4 @@
-// RUN: stablehlo-quant-opt %s -split-input-file -stablehlo-unwrap-xla-call-module-op | FileCheck %s
+// RUN: stablehlo-quant-opt %s -split-input-file -tf-stablehlo-unwrap-xla-call-module-op | FileCheck %s
 
 // Tests if XlaCallModule op without quantizable trait that calls function with
 // '_from_xla_call_module' trait is unwrapped.

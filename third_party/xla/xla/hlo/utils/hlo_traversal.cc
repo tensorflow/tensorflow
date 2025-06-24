@@ -39,32 +39,38 @@ namespace xla {
 namespace {
 
 template <typename F>
-void ResolveUsers(const HloInstruction* value, const HloInstruction* user,
+void ResolveUsers(int64_t user_operand_index, const HloInstruction* user,
                   const HloFusionAdaptor& fusion_adaptor, F&& add_user) {
   if (user->opcode() == HloOpcode::kTuple && user->IsRoot()) {
     if (auto* fusion = user->parent()->FusionInstruction()) {
       // Skip through the tuple -> get-tuple-element ops and directly go to the
       // "real" users.
-      for (const auto* gte : fusion->users()) {
-        if (gte->opcode() != HloOpcode::kGetTupleElement) {
-          if (fusion_adaptor.ContainsInstruction(value)) {
-            add_user(gte);
+      for (const auto* fusion_user : fusion->users()) {
+        if (fusion_user->opcode() == HloOpcode::kGetTupleElement) {
+          for (const auto* gte_user : fusion_user->users()) {
+            ResolveUsers(gte_user->operand_index(fusion_user), gte_user,
+                         fusion_adaptor, add_user);
           }
-          continue;
-        }
-        for (const auto* gte_user : gte->users()) {
-          ResolveUsers(gte, gte_user, fusion_adaptor, add_user);
+        } else if (fusion_adaptor.ContainsInstruction(fusion_user)) {
+          add_user(fusion_user);
         }
       }
     }
-  } else if (fusion_adaptor.ContainsInstruction(user) &&
-             user->opcode() == HloOpcode::kFusion) {
-    auto* param = user->fused_parameter(user->operand_index(value));
+    return;
+  }
+
+  if (fusion_adaptor.ContainsInstruction(user)) {
+    add_user(user);
+    return;
+  }
+
+  if (user->opcode() == HloOpcode::kFusion &&  // Not a nested fusion.
+      fusion_adaptor.ContainsInstruction(user->fused_expression_root())) {
+    // Add users of the computation's parameter.
+    auto* param = user->fused_parameter(user_operand_index);
     for (const auto* param_user : param->users()) {
       add_user(param_user);
     }
-  } else if (fusion_adaptor.ContainsInstruction(user)) {
-    add_user(user);
   }
 }
 
@@ -73,20 +79,20 @@ const HloInstruction* ResolveOperand(const HloInstruction* operand,
   // Deal with multi-output fusion operands, which are reached via a
   // get-tuple-element op.
   if (operand->opcode() == HloOpcode::kGetTupleElement &&
-      operand->operand(0)->opcode() == HloOpcode::kFusion &&
-      operand->operand(0)->fused_expression_root()->opcode() ==
-          HloOpcode::kTuple &&
-      fusion_adaptor.ContainsInstruction(operand->operand(0))) {
-    return operand->operand(0)->fused_expression_root()->operand(
-        operand->tuple_index());
+      operand->operand(0)->opcode() == HloOpcode::kFusion) {
+    HloInstruction* root = operand->operand(0)->fused_expression_root();
+    if (root->opcode() == HloOpcode::kTuple &&
+        fusion_adaptor.ContainsInstruction(root)) {
+      return root->operand(operand->tuple_index());
+    }
   }
 
   if (!fusion_adaptor.ContainsInstruction(operand)) {
+    if (operand->opcode() == HloOpcode::kFusion &&  // Not a nested fusion.
+        fusion_adaptor.ContainsInstruction(operand->fused_expression_root())) {
+      return operand->fused_expression_root();
+    }
     return operand;
-  }
-
-  if (operand->opcode() == HloOpcode::kFusion) {
-    return operand->fused_expression_root();
   }
 
   if (operand->opcode() == HloOpcode::kParameter) {
@@ -99,7 +105,37 @@ const HloInstruction* ResolveOperand(const HloInstruction* operand,
 }
 }  // namespace
 
-class SingleInstructionFusion : public internal::HloFusionInstructionAdaptor {
+// An interface to abstract away the difference between a single instruction
+// and a fusion instruction with all it's computations.
+class HloFusionInstructionAdaptor {
+ public:
+  virtual ~HloFusionInstructionAdaptor() = default;
+  // Returns true if the given 'instruction' is either the adapted instruction
+  // or contained in its computation.
+  virtual bool ContainsInstruction(const HloInstruction* instruction) const = 0;
+  // If it is a regular multi-output fusion, the order of the returned roots
+  // matches the order of the tuple elements of the tuple root of the fusion
+  // computation. We do not deduplicate fusion roots.
+  virtual absl::InlinedVector<HloInstructionAdaptor, 2> GetRoots() const = 0;
+  // Returns the operands of the adapted instruction.
+  virtual absl::InlinedVector<const HloInstruction*, 2> GetParameters()
+      const = 0;
+  // Returns the adapted instruction.
+  virtual const HloInstruction& FusionInstruction() const = 0;
+  // Returns the single instruction or the instructions of the computations, in
+  // post order.
+  virtual absl::InlinedVector<HloInstructionAdaptor, 2>
+  MakeInstructionPostOrder() const = 0;
+  // Calls 'fn' the single instruction or all instructions in the (potentially
+  // nested) computations, in some order.
+  virtual void ForEach(
+      const std::function<void(HloInstructionAdaptor)>& fn) const = 0;
+  virtual std::string ToString() const = 0;
+};
+
+namespace {
+
+class SingleInstructionFusion : public HloFusionInstructionAdaptor {
  public:
   explicit SingleInstructionFusion(const HloInstruction* instruction,
                                    const HloFusionAdaptor* parent)
@@ -143,7 +179,7 @@ class SingleInstructionFusion : public internal::HloFusionInstructionAdaptor {
   const HloFusionAdaptor* parent_;
 };
 
-class HloComputationFusion : public internal::HloFusionInstructionAdaptor {
+class HloComputationFusion : public HloFusionInstructionAdaptor {
  public:
   explicit HloComputationFusion(const HloComputation* computation,
                                 const HloFusionAdaptor* parent)
@@ -177,21 +213,7 @@ class HloComputationFusion : public internal::HloFusionInstructionAdaptor {
   }
 
   bool ContainsInstruction(const HloInstruction* instruction) const override {
-    // For convenience, we consider that the adaptor also contains the parent
-    // fusion instruction. This is useful in ResolveUsers/ResolveOperand to
-    // check if the given fusion instruction is part of the fusion adaptor.
-    if (instruction == computation_->FusionInstruction()) {
-      return true;
-    }
-    // Check whether the recursive parent computation of the given 'instruction'
-    // is equal to this fusion computation.
-    do {
-      if (instruction->parent() == computation_) {
-        return true;
-      }
-      instruction = instruction->parent()->FusionInstruction();
-    } while (instruction != nullptr);
-    return false;
+    return instruction->parent() == computation_;
   }
 
   absl::InlinedVector<HloInstructionAdaptor, 2> GetRoots() const override {
@@ -230,14 +252,6 @@ class HloComputationFusion : public internal::HloFusionInstructionAdaptor {
           (instr->opcode() == HloOpcode::kTuple && instr->IsRoot())) {
         continue;
       }
-      if (instr->opcode() == HloOpcode::kFusion) {
-        // Recurse into nested fusions.
-        HloComputationFusion nested_fusion(
-            instr->fused_instructions_computation(), parent_);
-        absl::c_move(nested_fusion.MakeInstructionPostOrder(),
-                     std::back_inserter(result));
-        continue;
-      }
       result.emplace_back(*instr, parent_);
     }
     return result;
@@ -253,13 +267,6 @@ class HloComputationFusion : public internal::HloFusionInstructionAdaptor {
           instr->opcode() == HloOpcode::kGetTupleElement) {
         continue;
       }
-      if (instr->opcode() == HloOpcode::kFusion) {
-        // Recurse into nested fusions.
-        HloComputationFusion nested_fusion(
-            instr->fused_instructions_computation(), parent_);
-        nested_fusion.ForEach(fn);
-        continue;
-      }
       fn(HloInstructionAdaptor{*instr, parent_});
     }
   }
@@ -271,6 +278,13 @@ class HloComputationFusion : public internal::HloFusionInstructionAdaptor {
   absl::InlinedVector<HloInstructionAdaptor, 2> roots_;
   const HloFusionAdaptor* parent_;
 };
+
+}  // namespace
+
+HloFusionAdaptor::~HloFusionAdaptor() = default;
+
+HloFusionAdaptor::HloFusionAdaptor(bool with_extra_outputs)
+    : with_extra_outputs_(with_extra_outputs) {}
 
 /*static*/
 std::unique_ptr<HloFusionAdaptor> HloFusionAdaptor::ForInstruction(
@@ -286,8 +300,10 @@ std::unique_ptr<HloFusionAdaptor> HloFusionAdaptor::ForInstruction(
 
 /*static*/
 std::unique_ptr<HloFusionAdaptor> HloFusionAdaptor::ForProducerConsumer(
-    const HloInstruction* producer, const HloInstruction* consumer) {
-  auto fusion_adaptor = absl::WrapUnique(new HloFusionAdaptor);
+    const HloInstruction* producer, const HloInstruction* consumer,
+    bool with_extra_outputs) {
+  auto fusion_adaptor =
+      absl::WrapUnique(new HloFusionAdaptor(with_extra_outputs));
   fusion_adaptor->AddInstruction(producer);
   fusion_adaptor->AddInstruction(consumer);
   return fusion_adaptor;
@@ -344,7 +360,7 @@ absl::InlinedVector<HloInstructionAdaptor, 2> HloFusionAdaptor::GetRoots()
     }
   }
 
-  if (!producer_fusion.IsMultiOutputFusion()) {
+  if (!with_extra_outputs_) {
     return roots;
   }
 
@@ -450,8 +466,8 @@ void HloFusionAdaptor::ForEach(
 
 std::string HloFusionAdaptor::ToString() const {
   std::ostringstream ss;
-  for (const auto& fusion_instruction : MakeInstructionPostOrder()) {
-    ss << fusion_instruction.ToString() << "\n";
+  for (const auto& fusion_instruction : fusion_instructions_) {
+    ss << fusion_instruction->ToString() << "\n";
   }
   return ss.str();
 }
@@ -468,6 +484,11 @@ void HloFusionAdaptor::AddInstruction(const HloInstruction* instruction) {
 void HloFusionAdaptor::AddComputation(const HloComputation* computation) {
   fusion_instructions_.push_back(
       std::make_unique<HloComputationFusion>(computation, this));
+}
+
+HloInstructionAdaptor HloFusionAdaptor::GetInstruction(
+    const HloInstruction* instruction) const {
+  return HloInstructionAdaptor{*ResolveOperand(instruction, *this), this};
 }
 
 absl::InlinedVector<HloInstructionAdaptor, 2>
@@ -511,13 +532,13 @@ absl::InlinedVector<HloInstructionAdaptor, 2> HloInstructionAdaptor::GetUsers()
   if (instruction_->IsRoot()) {
     if (auto* fusion = instruction_->parent()->FusionInstruction()) {
       for (auto* user : fusion->users()) {
-        ResolveUsers(fusion, user, *parent_, add_user);
+        ResolveUsers(user->operand_index(fusion), user, *parent_, add_user);
       }
     }
   }
 
   for (auto* user : instruction_->users()) {
-    ResolveUsers(instruction_, user, *parent_, add_user);
+    ResolveUsers(user->operand_index(instruction_), user, *parent_, add_user);
   }
 
   return users;

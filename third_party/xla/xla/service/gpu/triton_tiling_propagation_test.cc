@@ -18,12 +18,12 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
 namespace xla::gpu {
 namespace {
 
-using TritonTilingPropagationTest = HloTestBase;
+using TritonTilingPropagationTest = HloHardwareIndependentTestBase;
 using triton_fusion::DimensionOrder;
 
 DimensionOrder FromFragments(DimensionOrder::Fragments fragments) {

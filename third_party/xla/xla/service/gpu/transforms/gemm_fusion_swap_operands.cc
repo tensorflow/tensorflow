@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -34,14 +35,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
-#include "xla/service/gpu/fusions/triton/triton_support.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -58,14 +58,14 @@ HloDotInstruction* MakeDotWithSwappedOperands(HloInstruction* dot) {
   const DotDimensionNumbers& dot_dims = dot->dot_dimension_numbers();
   const size_t num_batch_dims = dot_dims.lhs_batch_dimensions_size();
   const size_t num_lhs_noncontracting_dims =
-      dot->operand(0)->shape().rank() - num_batch_dims -
+      dot->operand(0)->shape().dimensions().size() - num_batch_dims -
       dot_dims.lhs_contracting_dimensions_size();
   const size_t num_rhs_noncontracting_dims =
-      dot->operand(1)->shape().rank() - num_batch_dims -
+      dot->operand(1)->shape().dimensions().size() - num_batch_dims -
       dot_dims.rhs_contracting_dimensions_size();
 
   std::vector<int64_t> out_shape_permutation;
-  out_shape_permutation.reserve(dot->shape().rank());
+  out_shape_permutation.reserve(dot->shape().dimensions().size());
   auto fill_permutation = [&](int64_t count, int64_t start) {
     while (count--) out_shape_permutation.push_back(start++);
   };
@@ -139,7 +139,7 @@ absl::StatusOr<int64_t> GetNonContractingDimsNumElements(
       operand_index == 0 ? dot_dims.lhs_contracting_dimensions()
                          : dot_dims.rhs_contracting_dimensions();
   const DimensionVector noncontracting_dim_indices = GetNonContractingDims(
-      shape.rank(), batch_dim_indices, contracting_dim_indices);
+      shape.dimensions().size(), batch_dim_indices, contracting_dim_indices);
   return absl::c_accumulate(
       noncontracting_dim_indices, int64_t{1},
       [&](int64_t acc, int64_t dim) { return acc * shape.dimensions(dim); });
@@ -176,9 +176,9 @@ absl::StatusOr<bool> EmitterCanHandleSwappedOperands(
     const HloInstruction* dot) {
   auto tmp_module = HloModule("tmp", dot->parent()->parent()->config());
   HloCloneContext clone_context(&tmp_module);
-  std::unique_ptr<HloComputation> cloned_computation =
-      dot->parent()->CloneInContext(clone_context);
-  TF_RETURN_IF_ERROR(SwapDotOperandsInFusion(cloned_computation.get()));
+  HloComputation* cloned_computation = tmp_module.AddEntryComputation(
+      dot->parent()->CloneInContext(clone_context));
+  TF_RETURN_IF_ERROR(SwapDotOperandsInFusion(cloned_computation));
   return TritonFusionAnalysis::Execute(*cloned_computation).ok();
 }
 

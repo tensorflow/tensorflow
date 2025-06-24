@@ -20,6 +20,9 @@ tf_cuda_library(
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:cord",
         "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
         "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_error_util",
     ],

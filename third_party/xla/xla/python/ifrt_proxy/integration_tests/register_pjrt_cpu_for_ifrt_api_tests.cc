@@ -26,14 +26,15 @@
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/registry.h"
 #include "xla/python/ifrt_proxy/server/grpc_server.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
@@ -41,7 +42,8 @@ namespace proxy {
 namespace test_util {
 namespace {
 
-absl::StatusOr<std::unique_ptr<xla::ifrt::Client>> CreateIfrtBackendClient() {
+absl::StatusOr<std::unique_ptr<xla::ifrt::Client>> CreateIfrtBackendClient(
+    AttributeMap initialization_data) {
   xla::CpuClientOptions options;
   options.asynchronous = true;
   options.cpu_device_count = 4;

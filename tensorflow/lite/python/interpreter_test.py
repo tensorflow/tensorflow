@@ -15,6 +15,7 @@
 """TensorFlow Lite Python Interface: Sanity check."""
 import ctypes
 import io
+import pathlib
 import sys
 from unittest import mock
 
@@ -29,6 +30,7 @@ if hasattr(sys, 'setdlopenflags') and hasattr(sys, 'getdlopenflags'):
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.lite.python import interpreter as interpreter_wrapper
+from tensorflow.lite.python import lite
 from tensorflow.lite.python.metrics import metrics
 from tensorflow.lite.python.testdata import _pywrap_test_registerer as test_registerer
 from tensorflow.python.framework import test_util
@@ -64,6 +66,22 @@ class InterpreterCustomOpsTest(test_util.TensorFlowTestCase):
               'testdata/permute_float.tflite'),
           custom_op_registerers=[bogus_name])
 
+  # Register GenAI Ops is only supported when using LiteRT wheel.
+  def testRegisterGenAIOpsFailure(self):
+    genai_ops_name = 'pywrap_genai_ops.GenAIOpsRegisterer'
+    with self.assertRaisesRegex(
+        ValueError,
+        "Loading library 'pywrap_genai_ops.so' failed with error"
+        " 'pywrap_genai_ops.so: cannot open shared object file: No such file or"
+        " directory'",
+    ):
+      interpreter_wrapper.InterpreterWithCustomOps(
+          model_path=resource_loader.get_path_to_datafile(
+              'testdata/permute_float.tflite'
+          ),
+          custom_op_registerers=[genai_ops_name],
+      )
+
   def testNoCustomOps(self):
     interpreter = interpreter_wrapper.InterpreterWithCustomOps(
         model_path=resource_loader.get_path_to_datafile(
@@ -78,6 +96,16 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(scales, params['scales'])
     self.assertAllEqual(zero_points, params['zero_points'])
     self.assertEqual(quantized_dimension, params['quantized_dimension'])
+
+  def testPathLikeModel(self):
+    interpreter = interpreter_wrapper.Interpreter(
+        model_path=pathlib.Path(
+            resource_loader.get_path_to_datafile(
+                'testdata/permute_float.tflite'
+            )
+        ),
+    )
+    interpreter.allocate_tensors()
 
   def testThreads_NegativeValue(self):
     with self.assertRaisesRegex(ValueError, 'num_threads should >= 1'):
@@ -343,7 +371,9 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
             'testdata/permute_float.tflite'))
     interpreter.allocate_tensors()
     # Invalid tensor index passed.
-    with self.assertRaisesRegex(ValueError, 'Tensor with no shape found.'):
+    with self.assertRaisesRegex(
+        ValueError, 'Invalid tensor index 4 exceeds max tensor index 3'
+    ):
       interpreter._get_tensor_details(4, 0)
     with self.assertRaisesRegex(ValueError, 'Invalid node index'):
       interpreter._get_op_details(4)
@@ -358,12 +388,12 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
         return tf.raw_ops.Sum(input=x, axis=[0])
 
     test_model = TestModel()
-    converter = tf.lite.TFLiteConverter.from_concrete_functions([
+    converter = lite.TFLiteConverterV2.from_concrete_functions([
         test_model.TestSum.get_concrete_function(
             tf.TensorSpec([None], tf.float32))
     ], test_model)
     model = converter.convert()
-    interpreter = tf.lite.Interpreter(model_content=model)
+    interpreter = lite.Interpreter(model_content=model)
     # Make sure that passing empty tensor doesn't cause any errors.
     interpreter.get_signature_runner()(x=tf.zeros([0], tf.float32))
 

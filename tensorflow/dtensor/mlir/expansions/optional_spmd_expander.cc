@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/optional_spmd_expander.h"
 
+#include <vector>
+
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project

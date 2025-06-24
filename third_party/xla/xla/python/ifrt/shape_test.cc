@@ -25,9 +25,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
 #include "absl/status/status.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.pb.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -86,19 +88,46 @@ TEST(ShapeTest, NonZeroDimsNumElements) {
   }
 }
 
-TEST(ShapeTest, ToFromProto) {
+class ShapeSerDesTest : public testing::TestWithParam<SerDesVersion> {
+ public:
+  ShapeSerDesTest() : version_(GetParam()) {}
+
+  SerDesVersion version() const { return version_; }
+
+ private:
+  SerDesVersion version_;
+};
+
+TEST_P(ShapeSerDesTest, ToFromProto) {
   {
     Shape shape({});
-    ShapeProto proto = shape.ToProto();
+    ShapeProto proto = shape.ToProto(version());
     TF_ASSERT_OK_AND_ASSIGN(Shape shape_copy, shape.FromProto(proto));
     EXPECT_EQ(shape_copy, shape);
   }
   {
     Shape shape({1, 2});
-    ShapeProto proto = shape.ToProto();
+    ShapeProto proto = shape.ToProto(version());
     TF_ASSERT_OK_AND_ASSIGN(Shape shape_copy, shape.FromProto(proto));
     EXPECT_EQ(shape_copy, shape);
   }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion, ShapeSerDesTest,
+    testing::ValuesIn(test_util::AllSupportedSerDesVersions()));
+
+TEST(ShapeTest, Hash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      Shape({}),
+      Shape({1}),
+      Shape({2}),
+      Shape({1, 2}),
+      Shape({1, 3}),
+      Shape({2, 1}),
+      Shape({1, 2, 3}),
+      Shape({1, 2, 4}),
+  }));
 }
 
 TEST(BoundedDynamicShapeTagDeathTest, NoDynamicDim) {
@@ -106,13 +135,19 @@ TEST(BoundedDynamicShapeTagDeathTest, NoDynamicDim) {
                "At least one dimension needs to be dynamically sized");
 }
 
-TEST(BoundedDynamicShapeTagTest, ToFromProto) {
+class BoundedDynamicShapeTagSerDesTest : public ShapeSerDesTest {};
+
+TEST_P(BoundedDynamicShapeTagSerDesTest, ToFromProto) {
   BoundedDynamicShapeTag tag({true, false});
-  BoundedDynamicShapeTagProto proto = tag.ToProto();
+  BoundedDynamicShapeTagProto proto = tag.ToProto(version());
   TF_ASSERT_OK_AND_ASSIGN(BoundedDynamicShapeTag tag_copy,
                           tag.FromProto(proto));
   EXPECT_EQ(tag_copy, tag);
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion, BoundedDynamicShapeTagSerDesTest,
+    testing::ValuesIn(test_util::AllSupportedSerDesVersions()));
 
 TEST(DynamicShapeTest, SizeMismatch) {
   Shape shape({1, 2, 3});
@@ -164,15 +199,21 @@ TEST(DynamicShapeTest, GetPaddedShape) {
   EXPECT_EQ(padded_shape, shape);
 }
 
-TEST(DynamicShapeTest, ToFromProto) {
+class DynamicShapeSerDesTest : public ShapeSerDesTest {};
+
+TEST_P(DynamicShapeSerDesTest, ToFromProto) {
   TF_ASSERT_OK_AND_ASSIGN(
       DynamicShape shape,
       DynamicShape::Create(Shape({2, 4}),
                            BoundedDynamicShapeTag({true, false})));
-  DynamicShapeProto proto = shape.ToProto();
+  DynamicShapeProto proto = shape.ToProto(version());
   TF_ASSERT_OK_AND_ASSIGN(DynamicShape shape_copy, shape.FromProto(proto));
   EXPECT_EQ(shape_copy, shape);
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion, DynamicShapeSerDesTest,
+    testing::ValuesIn(test_util::AllSupportedSerDesVersions()));
 
 TEST(DynamicShapeTest, ToString) {
   {
@@ -195,16 +236,11 @@ TEST(DynamicShapeTest, ToString) {
   }
 }
 
-TEST(ShapeTest, Hash) {
+TEST(DynamicShapeTest, Hash) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
-      Shape({}),
-      Shape({1}),
-      Shape({2}),
-      Shape({1, 2}),
-      Shape({1, 3}),
-      Shape({2, 1}),
-      Shape({1, 2, 3}),
-      Shape({1, 2, 4}),
+      DynamicShape::Create(Shape({1}), BoundedDynamicShapeTag({true})).value(),
+      DynamicShape::Create(Shape({1, 2}), BoundedDynamicShapeTag({true, false}))
+          .value(),
   }));
 }
 

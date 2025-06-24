@@ -1,4 +1,4 @@
-load("@local_xla//xla/tsl:tsl.bzl", "if_not_android", "if_oss", "internal_visibility", "nvtx_headers")
+load("@local_xla//xla/tsl:tsl.bzl", "if_not_android", "internal_visibility", "nvtx_headers")
 load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load("@local_xla//xla/tsl/platform:build_config.bzl", "tsl_cc_test")
 load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
@@ -99,10 +99,11 @@ cc_library(
         "//learning/brain/tfrc/executor/stream_executor:__pkg__",
     ]),
     deps = [
+        ":profiler_controller",
         ":profiler_interface",
-        "//tsl/platform:mutex",
-        "//tsl/profiler/lib:profiler_controller",
         "//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
     ],
     alwayslink = True,
 )
@@ -118,9 +119,9 @@ tsl_cc_test(
         "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:macros",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -164,22 +165,25 @@ tsl_cc_test(
     deps = [
         ":profiler_lock",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
 cc_library(
     name = "profiler_session",
     hdrs = ["profiler_session.h"],
-    visibility = internal_visibility(["@local_xla//xla/tsl:internal"]),
+    visibility = internal_visibility([
+        "@local_xla//xla/tsl:internal",
+        "//third_party/py/jax:__subpackages__",
+    ]),
     deps = [
         "//tsl/platform",
-        "//tsl/platform:mutex",
         "//tsl/platform:thread_annotations",
         "//tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
         "@local_xla//xla/tsl/platform:errors",
         "@local_xla//xla/tsl/platform:status",
         "@local_xla//xla/tsl/platform:types",
@@ -203,12 +207,12 @@ cc_library(
         "@local_xla//xla/tsl/profiler:internal",
     ]),
     deps = [
-        "//tsl/platform:mutex",
         "//tsl/platform:thread_annotations",
         "//tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
         "@local_xla//xla/tsl/platform:errors",
         "@local_xla//xla/tsl/platform:logging",
         "@local_xla//xla/tsl/platform:types",
@@ -246,9 +250,9 @@ tsl_cc_test(
         "//tsl/platform",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
         "@local_xla//xla/tsl/platform:test_benchmark",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -283,7 +287,6 @@ cc_library(
         ["nvtx_utils_stub.cc"],
     ),
     hdrs = ["nvtx_utils.h"],
-    local_defines = if_oss(["NVTX_VERSION_3_1=1"]),
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured(nvtx_headers()),
 )
@@ -336,9 +339,9 @@ tsl_cc_test(
     deps = [
         ":scoped_annotation",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
         "@local_xla//xla/tsl/platform:test_benchmark",
-        "@local_xla//xla/tsl/platform:test_main",
         "@local_xla//xla/tsl/profiler/backends/cpu:annotation_stack",
         "@local_xla//xla/tsl/profiler/backends/cpu:annotation_stack_impl",
     ],
@@ -381,5 +384,6 @@ cc_library(
     hdrs = ["scoped_memory_debug_annotation.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@com_google_absl//absl/strings:string_view",
     ],
 )

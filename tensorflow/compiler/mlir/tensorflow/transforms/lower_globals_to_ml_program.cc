@@ -189,7 +189,9 @@ static LogicalResult convertTFGlobals(ModuleOp module) {
         argsToErase.set(i);
       }
     }
-    func.eraseArguments(argsToErase);
+    if (failed(func.eraseArguments(argsToErase))) {
+      return failure();
+    }
   }
 
   // Erase all the global tensors.

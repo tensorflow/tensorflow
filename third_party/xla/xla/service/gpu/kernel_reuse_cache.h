@@ -27,10 +27,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/gpu/executable.pb.h"
-#include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 
 namespace xla {
@@ -46,6 +47,7 @@ class KernelReuseCache {
     std::optional<se::ClusterDim> cluster_dim;
     int64_t shmem_bytes = 0;
     std::string binary;
+    std::optional<stream_executor::gpu::TmaMetadata> tma_metadata;
   };
   struct NamedBinary {
     std::string name;
@@ -71,7 +73,7 @@ class KernelReuseCache {
   // failed.
   std::pair<absl::StatusOr<const Entry*>, bool /*was_cached*/> GetWithStatus(
       const HloComputation* fused_computation,
-      absl::Span<const KernelArgument> kernel_arguments,
+      absl::Span<const emitters::KernelArgument> kernel_arguments,
       absl::string_view discriminator,
       const std::function<absl::StatusOr<Entry>()>& generator);
 
@@ -112,7 +114,7 @@ absl::Status UpdateDiskKernelCache(
 // generated for the first computation.
 std::string GetComputationFingerprint(
     const HloComputation* fused_computation,
-    absl::Span<const KernelArgument> kernel_arguments,
+    absl::Span<const emitters::KernelArgument> kernel_arguments,
     absl::string_view discriminator = "");
 
 }  // namespace gpu

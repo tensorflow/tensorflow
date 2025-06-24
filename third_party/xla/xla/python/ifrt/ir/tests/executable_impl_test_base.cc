@@ -49,7 +49,7 @@ limitations under the License.
 #include "xla/python/ifrt/test_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -126,24 +126,23 @@ IfrtIrExecutableImplTestBase::SerDeRoundTrip(
   return program;
 }
 
-absl::StatusOr<tsl::RCReference<Array>>
-IfrtIrExecutableImplTestBase::CreateArray(
+absl::StatusOr<ArrayRef> IfrtIrExecutableImplTestBase::CreateArray(
     absl::Span<void* const> per_shard_data, Shape shape, DType dtype,
-    ShardingParam sharding_param, tsl::RCReference<DeviceList> device_list) {
+    ShardingParam sharding_param, DeviceListRef device_list) {
   TF_RET_CHECK(per_shard_data.size() == device_list->devices().size())
       << "Inconsistent sizes. per_shard_data " << per_shard_data.size()
       << " vs device_list " << device_list->devices().size();
   TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<const Sharding> sharding,
+      ShardingRef sharding,
       ShardingParamSharding::Create(sharding_param, device_list, MemoryKind()));
   TF_ASSIGN_OR_RETURN(auto per_shard, sharding->Disassemble(shape));
   // All shards have the same shape. Just pick 0.
   Shape per_shard_shape = per_shard[0].first;
-  std::vector<tsl::RCReference<Array>> per_shard_arrays;
+  std::vector<ArrayRef> per_shard_arrays;
   per_shard_arrays.reserve(per_shard_data.size());
   for (int i = 0; i < per_shard_data.size(); ++i) {
     TF_ASSIGN_OR_RETURN(
-        tsl::RCReference<Array> per_shard_array,
+        ArrayRef per_shard_array,
         client_->MakeArrayFromHostBuffer(
             per_shard_data[i], dtype, per_shard_shape,
             /*byte_strides=*/std::nullopt,
@@ -158,12 +157,12 @@ IfrtIrExecutableImplTestBase::CreateArray(
       ArrayCopySemantics::kAlwaysCopy);
 }
 
-absl::StatusOr<tsl::RCReference<DeviceList>>
-IfrtIrExecutableImplTestBase::PickDevices(int count) {
+absl::StatusOr<DeviceListRef> IfrtIrExecutableImplTestBase::PickDevices(
+    int count) {
   absl::Span<Device* const> devices = client_->devices();
   TF_RET_CHECK(count <= devices.size())
       << "Requested " << count << " devices. Only have " << devices.size();
-  return BasicDeviceList::Create(devices.first(count));
+  return client_->MakeDeviceList(devices.first(count));
 }
 
 }  // namespace test_util

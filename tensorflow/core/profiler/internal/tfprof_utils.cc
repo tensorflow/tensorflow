@@ -94,12 +94,12 @@ absl::Status ReturnError(const std::vector<string>& pieces, int idx) {
       absl::StrCat("Invalid option '", pieces[idx], "' value: '", val, "'"));
 }
 
-bool CaseEqual(StringPiece s1, StringPiece s2) {
+bool CaseEqual(absl::string_view s1, absl::string_view s2) {
   if (s1.size() != s2.size()) return false;
   return absl::AsciiStrToLower(s1) == absl::AsciiStrToLower(s2);
 }
 
-bool StringToBool(StringPiece str, bool* value) {
+bool StringToBool(absl::string_view str, bool* value) {
   CHECK(value != nullptr) << "NULL output boolean given.";
   if (CaseEqual(str, "true") || CaseEqual(str, "t") || CaseEqual(str, "yes") ||
       CaseEqual(str, "y") || CaseEqual(str, "1")) {

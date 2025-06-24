@@ -80,7 +80,6 @@ tf_cc_test(
 pytype_strict_library(
     name = "flags_py",
     srcs = ["flags.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:flags_pybind",
@@ -93,7 +92,6 @@ py_strict_test(
     size = "small",
     srcs = ["flags_test.py"],
     main = "flags_test.py",
-    python_version = "PY3",
     deps = [
         ":flags_py",
         #internal proto upb dep

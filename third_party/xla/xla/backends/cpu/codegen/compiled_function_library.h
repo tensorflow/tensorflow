@@ -22,8 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "llvm/ExecutionEngine/Orc/Core.h"
-#include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 
 namespace xla::cpu {
@@ -39,25 +38,29 @@ class CompiledFunctionLibrary : public FunctionLibrary {
 
   // Constructs a new CompiledFunctionLibrary.
   //
-  // `execution_session` is the LLVM ORC execution session to use.
-  // `object_layer` is the LLVM ORC object linking layer with preloaded object
-  // files.
+  // `execution_engine` is a wrapper around the LLVM ORC execution session and
+  // the corresponding object linking layer.
   // `symbols_map` is a map from symbol names to resolved symbols.
   CompiledFunctionLibrary(
-      std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
-      std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer> object_layer,
+      std::unique_ptr<ExecutionEngine> execution_engine,
       absl::flat_hash_map<std::string, ResolvedSymbol> symbols_map);
-
-  ~CompiledFunctionLibrary() final;
 
   // Resolves the function with the given name and type ID.
   absl::StatusOr<void*> ResolveFunction(TypeId type_id,
                                         absl::string_view name) final;
 
+  // Returns a map from symbol names to compiled function pointers without the
+  // type information. Can be used to construct an AotCompiledFunctionLibrary.
+  absl::flat_hash_map<std::string, void*> GetTypelessSymbolsMap() const {
+    absl::flat_hash_map<std::string, void*> ret;
+    for (const auto& [name, symbol] : symbols_map_) {
+      ret[name] = symbol.ptr;
+    }
+    return ret;
+  }
+
  private:
-  std::unique_ptr<llvm::orc::ExecutionSession> execution_session_;
-  // Owns resources required for the execution session.
-  std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer> object_layer_;
+  std::unique_ptr<ExecutionEngine> execution_engine_;
   // Caches the resolved symbols so we don't have to look them up every time a
   // function is resolved.
   absl::flat_hash_map<std::string, ResolvedSymbol> symbols_map_;

@@ -17,6 +17,7 @@ syntax = "proto3";
 package xla.ifrt.proxy;
 
 import "google/protobuf/any.proto";
+import "xla/python/ifrt/array_spec.proto";
 import "xla/python/ifrt/attribute_map.proto";
 import "xla/python/ifrt/dtype.proto";
 import "xla/python/ifrt/execute_options.proto";
@@ -48,6 +49,9 @@ message IfrtRequest {
 
     // ===== Array =====
     MakeArrayFromHostBufferRequest make_array_from_host_buffer_request = 4;
+    MakeArraysFromHostBufferShardsRequest
+        make_arrays_from_host_buffer_shards_request = 25;
+    MakeErrorArraysRequest make_error_arrays_request = 26;
     AssembleArrayFromSingleDeviceArraysRequest
         assemble_array_from_single_device_arrays_request = 5;
     RemapArraysRequest remap_arrays_request = 23;
@@ -66,8 +70,10 @@ message IfrtRequest {
     // ===== LoadedExecutable =====
     LoadedExecutableMetadataRequest loaded_executable_metadata_request = 14;
     LoadedExecutableExecuteRequest loaded_executable_execute_request = 15;
-    LoadedExecutableDeleteRequest loaded_executable_delete_request = 16;
-    LoadedExecutableIsDeletedRequest loaded_executable_is_deleted_request = 17;
+    LoadedExecutableDeleteRequest loaded_executable_delete_request = 16
+        [deprecated = true];
+    LoadedExecutableIsDeletedRequest loaded_executable_is_deleted_request = 17
+        [deprecated = true];
     LoadedExecutableDestructRequest loaded_executable_destruct_request = 18;
 
     // ===== LoadedHostCallback =====
@@ -77,6 +83,7 @@ message IfrtRequest {
     // ===== Client =====
     GetDefaultDeviceAssignmentRequest get_default_device_assignment_request =
         19;
+    GetDefaultLayoutRequest get_default_layout_request = 27;
   }
 
   reserved 10;
@@ -96,6 +103,9 @@ message IfrtResponse {
 
     // ===== Array =====
     MakeArrayFromHostBufferResponse make_array_from_host_buffer_response = 4;
+    MakeArraysFromHostBufferShardsResponse
+        make_arrays_from_host_buffer_shards_response = 25;
+    MakeErrorArraysResponse make_error_arrays_response = 26;
     AssembleArrayFromSingleDeviceArraysResponse
         assemble_array_from_single_device_arrays_response = 5;
     RemapArraysResponse remap_arrays_response = 23;
@@ -126,6 +136,7 @@ message IfrtResponse {
     // ===== Client =====
     GetDefaultDeviceAssignmentResponse get_default_device_assignment_response =
         19;
+    GetDefaultLayoutResponse get_default_layout_response = 27;
   }
 
   reserved 10;
@@ -226,6 +237,8 @@ message InitResponse {
   }
 
   repeated Memory memories = 9;
+
+  AttributeMapProto client_attributes = 11;
 }
 
 // ================ Future-related operations ================
@@ -267,6 +280,49 @@ message MakeArrayFromHostBufferResponse {
   fixed64 array_handle = 1;
 }
 
+// Makes IFRT Arrays, where a subset of shards of each Array is mapped to a
+// HostBuffer.
+// Equivalent to `ifrt::Client::MakeArraysFromHostBufferShards`.
+message MakeArraysFromHostBufferShardsRequest {
+  message HostBuffer {
+    DTypeProto dtype = 1;
+    ShapeProto shape = 2;
+    fixed64 host_buffer_handle = 3;
+    optional proto.ByteStrides byte_strides = 4;
+  }
+  message ShardIndices {
+    repeated int64 indices = 1;
+  }
+  message MakeArraysFromHostBufferShardsSpec {
+    // `addressable_shard_indices` and `host_buffers` are parallel. Transposed
+    // from `xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec::Buffers` to
+    // reduce nesting.
+    repeated ShardIndices addressable_shard_indices = 1;
+    repeated HostBuffer host_buffers = 2;
+
+    xla.ifrt.ArraySpecProto array_spec = 3;
+  }
+
+  repeated MakeArraysFromHostBufferShardsSpec specs = 1;
+  // If array_handles is provided, the server will either respond with the same
+  // handles in `MakeArraysFromHostBufferShardsResponse` or return an error.
+  repeated fixed64 array_handles = 2;
+}
+message MakeArraysFromHostBufferShardsResponse {
+  repeated fixed64 array_handles = 1;
+}
+
+message MakeErrorArraysRequest {
+  tensorflow.StatusProto error = 1;
+  repeated xla.ifrt.ArraySpecProto array_specs = 2;
+  // If array_handles is provided, the server will either respond with the same
+  // handles in `MakeErrorArraysResponse` or return an error.
+  repeated fixed64 array_handles = 3;
+}
+message MakeErrorArraysResponse {
+  repeated fixed64 array_handles = 1;
+}
+
 // Makes an IFRT Array from a set of single-device Arrays.
 // Equivalent to ifrt::Client::AssembleArrayFromSingleDeviceArrays.
 message AssembleArrayFromSingleDeviceArraysRequest {
@@ -276,6 +332,7 @@ message AssembleArrayFromSingleDeviceArraysRequest {
   proto.ArrayCopySemantics copy_semantics = 4;
   optional proto.SingleDeviceShardSemantics single_device_shard_semantics = 5;
   fixed64 result_handle = 6;
+  optional DTypeProto dtype = 7;
 }
 message AssembleArrayFromSingleDeviceArraysResponse {
   fixed64 array_handle = 1;
@@ -399,13 +456,22 @@ message LoadedExecutableMetadataResponse {
   message ShardingList {
     repeated xla.OpSharding shardings = 1;
   }
-
-  optional ShardingList parameter_shardings = 1;
-  optional ShardingList output_shardings = 2;
-
   message LayoutList {
     repeated xla.LayoutProto layouts = 1;
   }
+  message MemoryKindList {
+    repeated string memory_kinds = 1;
+  }
+  message OutputMemoryKind {
+    tensorflow.StatusProto status = 1;
+    repeated MemoryKindList memory_kind_lists = 2;
+  }
+  message DonatedInputIndices {
+    repeated fixed32 donated_input_indices = 1;
+  }
+
+  optional ShardingList parameter_shardings = 1;
+  optional ShardingList output_shardings = 2;
 
   oneof parameter_layouts {
     LayoutList parameter_layouts_list = 4;
@@ -416,16 +482,12 @@ message LoadedExecutableMetadataResponse {
     tensorflow.StatusProto output_layouts_error = 7;
   }
 
-  message MemoryKindList {
-    repeated string memory_kinds = 1;
-  }
-
-  message OutputMemoryKind {
-    tensorflow.StatusProto status = 1;
-    repeated MemoryKindList memory_kind_lists = 2;
-  }
-
   OutputMemoryKind output_memory_kinds = 3;
+
+  oneof donated_input_indices_oneof {
+    DonatedInputIndices donated_input_indices = 8;
+    tensorflow.StatusProto donated_input_indices_error = 9;
+  }
 }
 
 // Mirrors `LoadedExecutable::Execute`. Returns output array handles and a
@@ -514,4 +576,13 @@ message GetDefaultDeviceAssignmentRequest {
 }
 message GetDefaultDeviceAssignmentResponse {
   xla.DeviceAssignmentProto device_assignment = 1;
+}
+message GetDefaultLayoutRequest {
+  DTypeProto dtype = 1;
+  repeated int64 dims = 2;
+  int32 device_id = 3;
+  string memory_kind = 4;
+}
+message GetDefaultLayoutResponse {
+  bytes serialized_pjrt_layout = 1;
 }

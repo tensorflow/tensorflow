@@ -428,15 +428,15 @@ bool CanPropagateGteShapeChangesInComputation(
 std::unique_ptr<HloInstruction> DynamicSliceToSlice(
     HloInstruction* dynamic_slice, HloInstruction* input, int64_t i) {
   std::vector<int64_t> new_start_indices;
-  new_start_indices.reserve(dynamic_slice->shape().rank());
+  new_start_indices.reserve(dynamic_slice->shape().dimensions().size());
   std::vector<int64_t> new_limit_indices;
-  new_limit_indices.reserve(dynamic_slice->shape().rank());
+  new_limit_indices.reserve(dynamic_slice->shape().dimensions().size());
   std::vector<int64_t> new_strides;
-  new_strides.reserve(dynamic_slice->shape().rank());
+  new_strides.reserve(dynamic_slice->shape().dimensions().size());
   new_start_indices.push_back(i);
   new_limit_indices.push_back(i + 1);
   new_strides.push_back(1);
-  for (int64_t j = 1; j < dynamic_slice->shape().rank(); ++j) {
+  for (int64_t j = 1; j < dynamic_slice->shape().dimensions().size(); ++j) {
     new_start_indices.push_back(0);
     new_limit_indices.push_back(
         dynamic_slice->mutable_operand(0)->shape().dimensions(j));
@@ -1089,9 +1089,13 @@ std::optional<PatternInfo> GetDSFusionWithAddPattern(
       HloInstruction* zero =
           builder.AddInstruction(MakeScalarConstantWithShape(p1->shape(), 0));
       std::vector<HloInstruction*> slice_starts;
-      slice_starts.reserve(shape_covering_instr->shape().rank());
+      slice_starts.reserve(shape_covering_instr->shape().dimensions().size());
       slice_starts.push_back(p1);
-      for (int64_t i = 0; i < shape_covering_instr->shape().rank() - 1; i++) {
+      for (int64_t i = 0;
+           i < static_cast<int64_t>(
+                   shape_covering_instr->shape().dimensions().size()) -
+                   1;
+           i++) {
         slice_starts.push_back(zero);
       }
       HloInstruction* slice =

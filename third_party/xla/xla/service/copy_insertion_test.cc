@@ -22,15 +22,21 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout.h"
@@ -39,9 +45,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -89,16 +92,17 @@ int64_t CountControlEdges(const HloModule& module) {
   return count;
 }
 
-class CopyInsertionTest : public HloTestBase {
+class CopyInsertionTest : public HloHardwareIndependentTestBase {
  protected:
   void InsertCopies(HloModule* module) {
-    CopyInsertion copy_insertion;
+    CopyInsertion copy_insertion(&alias_info_);
     VLOG(3) << "Before copy inser: " << module->ToString();
     ASSERT_IS_OK(copy_insertion.Run(module).status());
     VLOG(2) << "After copy inser: " << module->ToString();
   }
 
   const Shape scalar_shape_ = ShapeUtil::MakeShape(F32, {});
+  const AliasInfo alias_info_;
 };
 
 TEST_F(CopyInsertionTest, SingleParameter) {
@@ -788,7 +792,7 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]) {
           while_hlo->mutable_operand(0)));
   HloInstruction* outer_param = outer_while_body->parameter_instruction(0);
   std::vector<HloInstruction*> materialized_gtes;
-  for (int i = 0; i < outer_param->shape().tuple_shapes_size(); ++i) {
+  for (int i = 0; i < outer_param->shape().tuple_shapes().size(); ++i) {
     materialized_gtes.push_back(
         outer_while_body->AddInstruction(HloInstruction::CreateGetTupleElement(
             outer_param->shape().tuple_shapes(i), outer_param, i)));
@@ -914,7 +918,7 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]{0}, s32[], f32[8]{0}, s
           while_hlo->mutable_operand(0)));
   HloInstruction* outer_param = outer_while_body->parameter_instruction(0);
   std::vector<HloInstruction*> materialized_gtes;
-  for (int i = 0; i < outer_param->shape().tuple_shapes_size(); ++i) {
+  for (int i = 0; i < outer_param->shape().tuple_shapes().size(); ++i) {
     materialized_gtes.push_back(
         outer_while_body->AddInstruction(HloInstruction::CreateGetTupleElement(
             outer_param->shape().tuple_shapes(i), outer_param, i)));
@@ -1995,7 +1999,8 @@ void BM_SequentialWhiles(::testing::benchmark::State& state) {
     }
     module.AddEntryComputation(builder.Build());
 
-    CopyInsertion copy_insertion;
+    AliasInfo alias_info;
+    CopyInsertion copy_insertion(&alias_info);
 
     state.ResumeTiming();
     ASSERT_IS_OK(copy_insertion.Run(&module).status());
@@ -2049,7 +2054,8 @@ void BM_ParallelWhiles(::testing::benchmark::State& state) {
     }
     module.AddEntryComputation(builder.Build());
 
-    CopyInsertion copy_insertion;
+    AliasInfo alias_info;
+    CopyInsertion copy_insertion(&alias_info);
 
     state.ResumeTiming();
     ASSERT_IS_OK(copy_insertion.Run(&module).status());
@@ -2082,7 +2088,8 @@ void BM_ManyElementTuple(::testing::benchmark::State& state) {
   const int num_tuple_inputs = state.range(0);
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsFromFlags());
-  CopyInsertion copy_insertion;
+  AliasInfo alias_info;
+  CopyInsertion copy_insertion(&alias_info);
   const Shape element_shape = ShapeUtil::MakeShape(F32, {});
   std::vector<HloInstruction*> tuple_params(num_tuple_inputs);
   for (auto s : state) {
@@ -3020,7 +3027,7 @@ ENTRY TestComputation {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   InsertCopies(module.get());
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
@@ -3069,7 +3076,7 @@ ENTRY TestComputation {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   // The copy.1 must be kept due to modification in the other branch.
@@ -3114,7 +3121,7 @@ ENTRY %primitive_computation_cond.19 (parameter.1: s32[], parameter.2: s32[2], p
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   InsertCopies(module.get());
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
@@ -3159,7 +3166,7 @@ ENTRY TestComputation {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString() << "\n";
@@ -3202,7 +3209,7 @@ ENTRY main {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
@@ -3262,7 +3269,7 @@ ENTRY main {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
@@ -3319,7 +3326,7 @@ ENTRY entry {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.RemoveUnnecessaryCopies(module.get()));
   auto while_1 = FindInstruction(module.get(), "while.1");
@@ -3380,7 +3387,7 @@ ENTRY main {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   EXPECT_EQ(CountCopies(*module), 2);
@@ -3480,7 +3487,7 @@ ENTRY %main.13 (Arg_0.1: pred[], Arg_1.2: u8[300,451,3]) -> u8[300,451,3] {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
@@ -3500,7 +3507,7 @@ ROOT %arg_tuple.1 = (f32[]{:T(256)}, f32[]{:T(256)}) parameter(0), parameter_rep
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
@@ -3521,7 +3528,7 @@ TEST_F(CopyInsertionTest, AddControlDependencyForInputOutputAlias) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   EXPECT_EQ(CountCopies(*module), 1);
@@ -3567,7 +3574,7 @@ ENTRY %main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get(), {"foobar"}).status());
   VLOG(2) << module->ToString();
@@ -3606,7 +3613,7 @@ ENTRY %main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get(), {"foobar"}).status());
   VLOG(2) << module->ToString();
@@ -3652,7 +3659,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
@@ -3712,7 +3719,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
@@ -3755,7 +3762,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
@@ -3810,7 +3817,7 @@ ENTRY %main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion;
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   LOG(INFO) << module->ToString();
 
@@ -3863,7 +3870,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
@@ -3906,7 +3913,7 @@ TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncRecv) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
@@ -3967,7 +3974,7 @@ TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncRecvMultipleUses) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
@@ -4019,36 +4026,37 @@ TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncSendMultipleUses) {
     }
 
     ENTRY main_spmd {
-      data = f32[16]{0} parameter(0)
+      data0 = f32[16]{0} parameter(0)
+      data1 = f32[16] add(data0, data0)
       after_all = token[] after-all()
-      send = (f32[16]{0}, u32[], token[]) send(data, after_all), channel_id=1,
+      send = (f32[16]{0}, u32[], token[]) send(data1, after_all), channel_id=1,
           frontend_attributes={
             _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
-      init = ((f32[16]{0}, u32[], token[]), f32[16]{0}) tuple(send, data)
+      init = ((f32[16]{0}, u32[], token[]), f32[16]{0}) tuple(send, data1)
       while = ((f32[16]{0}, u32[], token[]), f32[16]{0}) while(init),
           condition=while_condition, body=while_body
       send_ctx = (f32[16]{0}, u32[], token[]) get-tuple-element(while), index=0
       send_done = (f32[16]{0}, token[]) send-done(send_ctx), channel_id=1
-      ROOT data_ = f32[16]{0} get-tuple-element(while), index=1
+      ROOT data2 = f32[16]{0} get-tuple-element(while), index=1
     }
     )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
 
   // All async start/end will be ordered so that all copies, except for an extra
-  // use of the send operand, are removable. Additionally, there will be 2
-  // copies leading into the loop and returning copying the result.
+  // use of the send operand, are removable. Additionally, there will be one
+  // copy leading into the loop.
+  EXPECT_EQ(CountCopies(*module), 2);
+
+  // For While-body, check for a copy of the send operand and a control
+  // dependency from send-done to the copy.
   HloComputation* while_body =
       hlo_query::FindComputation(module.get(), "while_body");
-  EXPECT_EQ(CountCopies(*module), 3);
-  EXPECT_EQ(CountCopies(*while_body), 1);
-
-  // Expect control dependency from send-done to send.
   HloInstruction* send_done =
       hlo_query::FindInstruction(while_body, HloOpcode::kSendDone);
   HloInstruction* send =
@@ -4058,6 +4066,16 @@ TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncSendMultipleUses) {
   EXPECT_THAT(send, op::Send(send_operand_copy, op::AfterAll()));
   EXPECT_THAT(send_operand_copy->control_predecessors(),
               UnorderedElementsAre(send_done));
+
+  // For main, check for a copy of the send operand feeding into the loop and
+  // no control dependency from send-done to the copy.
+  HloComputation* main = hlo_query::FindComputation(module.get(), "main_spmd");
+  HloInstruction* send_main =
+      hlo_query::FindInstruction(main, HloOpcode::kSend);
+  HloInstruction* send_main_operand_copy =
+      hlo_query::FindInstruction(main, HloOpcode::kCopy);
+  EXPECT_THAT(send_main, op::Send(send_main_operand_copy, op::AfterAll()));
+  EXPECT_TRUE(send_main_operand_copy->control_predecessors().empty());
 }
 
 TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncSendRecvPipelineParallelism) {
@@ -4123,7 +4141,7 @@ TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncSendRecvPipelineParallelism) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
@@ -4161,6 +4179,471 @@ TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncSendRecvPipelineParallelism) {
   EXPECT_THAT(recv_done_copy, op::Copy(op::GetTupleElement(recv_done)));
   EXPECT_THAT(recv->control_predecessors(),
               UnorderedElementsAre(recv_done, recv_done_copy));
+}
+
+TEST_F(CopyInsertionTest,
+       PartiallyPipelinedAsyncSendRecvPipelineParallelismDirectFwd) {
+  constexpr absl::string_view kModuleString = R"(
+    HloModule test, num_partitions=4
+
+    while_body {
+      param = ((f32[16]{0}, u32[], token[]), (f32[16]{0}, u32[], token[]))
+          parameter(0)
+
+      send_ctx = (f32[16]{0}, u32[], token[]) get-tuple-element(param), index=0
+      recv_ctx = (f32[16]{0}, u32[], token[]) get-tuple-element(param), index=1
+      send_done = (f32[16]{0}, token[]) send-done(send_ctx), channel_id=1
+      recv_done = (f32[16]{0}, token[]) recv-done(recv_ctx), channel_id=2
+
+      data = f32[16]{0} get-tuple-element(recv_done), index=0
+
+      after_all = token[] after-all()
+      send_ctx_ = (f32[16]{0}, u32[], token[]) send(data, after_all),
+          channel_id=1,
+          frontend_attributes={
+            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+      recv_ctx_ = (f32[16]{0}, u32[], token[]) recv(after_all), channel_id=2,
+          frontend_attributes={
+            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+
+      ROOT tuple = ((f32[16]{0}, u32[], token[]), (f32[16]{0}, u32[], token[]))
+          tuple(send_ctx_, recv_ctx_)
+    }
+
+    // Infinite loop to keep IR small.
+    while_condition {
+      param = ((f32[16]{0}, u32[], token[]), (f32[16]{0}, u32[], token[]))
+          parameter(0)
+      ROOT infinite_loop = pred[] constant(true)
+    }
+
+    ENTRY main_spmd {
+      data = f32[16]{0} parameter(0)
+      after_all = token[] after-all()
+      send_ctx = (f32[16]{0}, u32[], token[]) send(data, after_all),
+          channel_id=2,
+          frontend_attributes={
+            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+      recv_ctx = (f32[16]{0}, u32[], token[]) recv(after_all), channel_id=1,
+          frontend_attributes={
+            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+      init = ((f32[16]{0}, u32[], token[]), (f32[16]{0}, u32[], token[]))
+          tuple(send_ctx, recv_ctx)
+      while = ((f32[16]{0}, u32[], token[]), (f32[16]{0}, u32[], token[]))
+          while(init), condition=while_condition, body=while_body
+      recv_ctx_ = (f32[16]{0}, u32[], token[]) get-tuple-element(while), index=0
+      recv_done = (f32[16]{0}, token[]) recv-done(recv_ctx_), channel_id=1
+      send_ctx_ = (f32[16]{0}, u32[], token[]) get-tuple-element(while), index=1
+      send_done = (f32[16]{0}, token[]) send-done(send_ctx_), channel_id=2
+      ROOT data_ = f32[16]{0} get-tuple-element(recv_done), index=0
+    }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(2) << module->ToString();
+
+  // Expect that send and recv do not share the same buffer. Expect this to be
+  // enforced by a copy before starting to send.
+  HloComputation* while_body =
+      hlo_query::FindComputation(module.get(), "while_body");
+  EXPECT_EQ(CountCopies(*module), 2);
+  EXPECT_EQ(CountCopies(*while_body), 1);
+  HloInstruction* send =
+      hlo_query::FindInstruction(while_body, HloOpcode::kSend);
+  HloInstruction* recv_done =
+      hlo_query::FindInstruction(while_body, HloOpcode::kRecvDone);
+  EXPECT_THAT(
+      send, op::Send(op::Copy(op::GetTupleElement(recv_done)), op::AfterAll()));
+}
+
+// Staightline non-copyable chain, with input to the start op. A copy is needed
+// for transitioning from copyable to non-copyable.
+TEST_F(CopyInsertionTest, NonCopyableOneChainOutsideWhileLoop) {
+  constexpr absl::string_view kModuleString = R"(
+    HloModule test
+
+    ENTRY main {
+      p0 = f32[16] parameter(0)
+      p1 = f32[16] parameter(1)
+      // Avoid directly using parameters to distinguish special copies from
+      // non-copyable transitioning copies.
+      d0 = f32[16] add(p0, p1)
+      d1 = f32[16] add(p1, p1)
+      pin-d0 = b(f32[16]) custom-call(d0), custom_call_target="Pin",
+        output_to_operand_aliasing={{}:(0, {})}
+      call = (b(f32[16]), u32[], token[])
+        custom-call(pin-d0, d1), custom_call_target="update",
+        output_to_operand_aliasing={{0}:(0, {})}
+      noncopyable = b(f32[16]) get-tuple-element(call), index=0
+      d2 = f32[16] custom-call(noncopyable), custom_call_target="Unpin",
+        output_to_operand_aliasing={{}:(0, {})}
+      // The control-predecessor prevents copy insertion from making r0 the
+      // control predecessor of pin_d0 and remove the added copy.
+      d3 = f32[16] add(d0, d1), control-predecessors={pin-d0}
+      ROOT d4 = f32[16] add(d3, d2)
+    }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(2) << module->ToString();
+  EXPECT_EQ(CountCopies(*module), 1);
+  HloInstruction* copy = FindInstruction(module.get(), HloOpcode::kCopy);
+  HloInstruction* pin_d0 = FindInstruction(module.get(), "pin-d0");
+  EXPECT_EQ(copy, pin_d0->operand(0));
+}
+
+// Similar to the previous test, but the non-copyable chain is completely
+// inside a while-body.
+TEST_F(CopyInsertionTest, NonCopyableOneChainInsideWhileLoop) {
+  constexpr absl::string_view kModuleString = R"(
+    HloModule test
+
+    while_body {
+      param = (f32[16], f32[16]) parameter(0)
+      pw0 = f32[16] get-tuple-element(param), index=0
+      pin-pw0 = b(f32[16]) custom-call(pw0), custom_call_target="Pin",
+        output_to_operand_aliasing={{}:(0, {})}
+      call = b(f32[16]) custom-call(pin-pw0), custom_call_target="update",
+        output_to_operand_aliasing={{}: (0, {})}
+      unpin-call = f32[16] custom-call(call), custom_call_target="Unpin",
+        output_to_operand_aliasing={{}:(0, {})}
+      pw1 = f32[16] get-tuple-element(param), index=1
+      dw = f32[16] add(pw1, pw0), control-predecessors={pin-pw0}
+      ROOT tuple = (f32[16], f32[16]) tuple(unpin-call, dw)
+    }
+
+    while_condition {
+      pc = (f32[16], f32[16]) parameter(0)
+      ROOT infinite_loop = pred[] constant(true)
+    }
+
+    ENTRY main {
+      p0 = f32[16] parameter(0)
+      // Avoid directly using p0 in the while-body to avoid copies.
+      d0 = f32[16] add(p0, p0)
+      d1 = f32[16] add(p0, p0)
+      init = (f32[16], f32[16]) tuple(d0, d1)
+      while = (f32[16], f32[16]) while(init), condition=while_condition, body=while_body
+      d2 = f32[16] get-tuple-element(while), index=0
+      d3 = f32[16] get-tuple-element(while), index=1
+      ROOT d4 = f32[16] add(d2, d3)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(2) << module->ToString();
+  EXPECT_EQ(CountCopies(*module), 2);
+  // A copy of the pinned operand.
+  HloInstruction* pin_pw0 = FindInstruction(module.get(), "pin-pw0");
+  EXPECT_THAT(pin_pw0,
+              op::CustomCall(op::Copy(op::GetTupleElement(op::Parameter(0)))));
+  // A copy of the call1 result.
+  HloInstruction* root = hlo_query::FindComputation(module.get(), "while_body")
+                             ->root_instruction();
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kCopy);
+}
+
+// Similar to the previous test, but there are two non-copyable chains.
+TEST_F(CopyInsertionTest, NonCopyableTwoChainsInsideWhileLoop) {
+  constexpr absl::string_view kModuleString = R"(
+    HloModule test
+
+    while_body {
+      param = (f32[16], f32[16]) parameter(0)
+      pw0 = f32[16] get-tuple-element(param), index=0
+      pin0-pw0 = b(f32[16]) custom-call(pw0), custom_call_target="Pin",
+        output_to_operand_aliasing={{}:(0, {})}
+      call0 = b(f32[16]) custom-call(pin0-pw0), custom_call_target="update0",
+        output_to_operand_aliasing={{}: (0, {})}
+      pin1-pw0 = b(f32[16]) custom-call(pw0), custom_call_target="Pin",
+        output_to_operand_aliasing={{}:(0, {})}
+      call1 = (b(f32[16]), b(f32[16])) custom-call(pin1-pw0, call0),
+        custom_call_target="update1",
+        output_to_operand_aliasing={{0}: (1, {}), {1}: (0, {})}
+      call1-0 = b(f32[16]) get-tuple-element(call1), index=0
+      unpin-call1-0 = f32[16] custom-call(call1-0), custom_call_target="Unpin",
+        output_to_operand_aliasing={{}:(0, {})}
+      call1-1 = b(f32[16]) get-tuple-element(call1), index=1
+      call2 = b(f32[16]) custom-call(call1-1), custom_call_target="update2",
+        output_to_operand_aliasing={{}: (0, {})}
+      unpin-call2 = f32[16] custom-call(call2), custom_call_target="Unpin",
+        output_to_operand_aliasing={{}:(0, {})}
+      pw1 = f32[16] get-tuple-element(param), index=1
+      dw0 = f32[16] add(pw1, pw0), control-predecessors={pin0-pw0, pin1-pw0}
+      dw1 = f32[16] add(dw0, unpin-call1-0)
+      ROOT tuple = (f32[16], f32[16]) tuple(unpin-call2, dw1)
+    }
+
+    while_condition {
+      pc = (f32[16], f32[16]) parameter(0)
+      ROOT infinite_loop = pred[] constant(true)
+    }
+
+    ENTRY main {
+      p0 = f32[16] parameter(0)
+      // Avoid directly using p0 in the while-body to avoid copies.
+      d0 = f32[16] add(p0, p0)
+      d1 = f32[16] add(p0, p0)
+      init = (f32[16], f32[16]) tuple(d0, d1)
+      while = (f32[16], f32[16]) while(init), condition=while_condition, body=while_body
+      d2 = f32[16] get-tuple-element(while), index=0
+      d3 = f32[16] get-tuple-element(while), index=1
+      ROOT d4 = f32[16] add(d2, d3)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(2) << module->ToString();
+  EXPECT_EQ(CountCopies(*module), 3);
+  // A copy of the pin0-pw0 operand, for transitioning the non-copyable chain
+  // containing pin0-pw0 -> call0(operand 0) -> call1(operand 1).
+  HloInstruction* pin0_pw0 = FindInstruction(module.get(), "pin0-pw0");
+  EXPECT_THAT(pin0_pw0,
+              op::CustomCall(op::Copy(op::GetTupleElement(op::Parameter(0)))));
+  // A copy of pin1-pw0 operand 0, for transitioning to the non-copyable chain
+  // containing pin1-pw0 -> call1(operand 0) -> call2(operand 0).
+  HloInstruction* pin1_pw0 = FindInstruction(module.get(), "pin1-pw0");
+  EXPECT_EQ(pin1_pw0->operand(0)->opcode(), HloOpcode::kCopy);
+  // A copy of the unpin-call2 result, for transitioning from non-copyable to
+  // copyable at the end of the second chain. The copy for unpin-call1-1, for
+  // transitioning from non-copyable to copyable at the end of the first chain
+  // is removed.
+  HloInstruction* root = hlo_query::FindComputation(module.get(), "while_body")
+                             ->root_instruction();
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kCopy);
+}
+
+// This test is very similar to NonCopyableOneChainInsideWhileLoop, but the
+// while-init and while-root both contain non-copyable values. This is a case
+// where the non-copyable chain is partially inside the while-loop and partially
+// outside the while-loop, but the part that is inside the while-loop is fully
+// connected (from loop parameter all the way to the while-root). As such,
+// no copy is needed inside the while-loop.
+TEST_F(CopyInsertionTest, NonCopyableOneChainPartiallyInsideWhileLoop) {
+  constexpr absl::string_view kModuleString = R"(
+    HloModule test
+
+    while_body {
+      param = (b(f32[16]), f32[16]) parameter(0)
+      pw0 = b(f32[16]) get-tuple-element(param), index=0
+      call0 = b(f32[16]) custom-call(pw0), custom_call_target="update0",
+        output_to_operand_aliasing={{}: (0, {})}
+      call1 = b(f32[16]) custom-call(call0), custom_call_target="update1",
+        output_to_operand_aliasing={{}: (0, {})}
+      pw1 = f32[16] get-tuple-element(param), index=1
+      dw = f32[16] add(pw1, pw1)
+      ROOT tuple = (b(f32[16]), f32[16]) tuple(call1, dw)
+    }
+
+    while_condition {
+      pc = (b(f32[16]), f32[16]) parameter(0)
+      ROOT infinite_loop = pred[] constant(true)
+    }
+
+    ENTRY main {
+      p0 = f32[16] parameter(0)
+      // Avoid directly using p0 in the while-body to avoid copies.
+      d0 = f32[16] add(p0, p0)
+      d1 = f32[16] add(p0, p0)
+      pin-d0 = b(f32[16]) custom-call(d0), custom_call_target="Pin",
+        output_to_operand_aliasing={{}:(0, {})}
+      init = (b(f32[16]), f32[16]) tuple(pin-d0, d1)
+      while = (b(f32[16]), f32[16]) while(init), condition=while_condition, body=while_body
+      noncopyable0 = b(f32[16]) get-tuple-element(while), index=0
+      d2 = f32[16] custom-call(noncopyable0), custom_call_target="Unpin",
+        output_to_operand_aliasing={{}:(0, {})}
+      d3 = f32[16] get-tuple-element(while), index=1
+      d4 = f32[16] add(d2, d3)
+      ROOT d5 = f32[16] add(d4, d0)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(2) << module->ToString();
+  EXPECT_EQ(CountCopies(*module), 1);
+  // A copy for the pin-d0 operand.
+  HloInstruction* pin_d0 = FindInstruction(module.get(), "pin-d0");
+  const HloInstruction* copy = FindInstruction(module.get(), "copy");
+  EXPECT_EQ(copy, pin_d0->operand(0));
+}
+
+// The pipelined non-copyable chain inside the while-loop are separated
+// into two parts. This is similar to the pipelined Send/Recv cases.
+TEST_F(CopyInsertionTest, NonCopyableChainPipelinedSeparatedParts) {
+  constexpr absl::string_view kModuleString = R"(
+    HloModule test
+
+    while_body {
+      param = (b(f32[16]), f32[16]) parameter(0)
+      noncopyable0-w = b(f32[16]) get-tuple-element(param), index=0
+      pw1 = f32[16] get-tuple-element(param), index=1
+      dw0 = f32[16] add(pw1, pw1)
+      call0-w = (b(f32[16]), f32[16], token[])
+        custom-call(noncopyable0-w, dw0), custom_call_target="update0",
+        output_to_operand_aliasing={{0}:(0, {})}
+      noncopyable1-w = b(f32[16]) get-tuple-element(call0-w), index=0
+      dw1 = f32[16] get-tuple-element(call0-w), index=1
+      dw2 = f32[16] add(pw1, dw1)
+      dw3 = f32[16] add(dw2, dw2)
+      pin-dw3 = b(f32[16]) custom-call(dw3), custom_call_target="Pin",
+        output_to_operand_aliasing={{}:(0, {})}
+      call1-w = (b(f32[16]), f32[16], token[])
+        custom-call(dw2, pin-dw3), custom_call_target="update1",
+        output_to_operand_aliasing={{0}:(1, {})}
+      noncopyable2-w = b(f32[16]) get-tuple-element(call1-w), index=0
+      dw4 = f32[16] get-tuple-element(call1-w), index=1
+      unpin-noncopyable1-w = f32[16] custom-call(noncopyable1-w),
+        custom_call_target="Unpin", output_to_operand_aliasing={{}:(0, {})}
+      add = f32[16] add(dw4, unpin-noncopyable1-w) // keep noncopyable1-w alive.
+      dw5 = f32[16] add(add, dw3) // Keep dw3 alive.
+      ROOT tuple = (b(f32[16]), f32[16]) tuple(noncopyable2-w, dw5)
+    }
+
+    // Infinite loop to keep IR small.
+    while_condition {
+      pc = (b(f32[16]), f32[16]) parameter(0)
+      ROOT infinite_loop = pred[] constant(true)
+    }
+
+    ENTRY main {
+      p0 = f32[16] parameter(0)
+      p1 = f32[16] parameter(1)
+      d0 = f32[16] add(p0, p1)
+      d1 = f32[16] add(p1, p1)
+      pin-d0 = b(f32[16]) custom-call(d0), custom_call_target="Pin",
+        output_to_operand_aliasing={{}:(0, {})}
+      call0 = (b(f32[16]), f32[16], token[])
+        custom-call(pin-d0, d1), custom_call_target="update0",
+        output_to_operand_aliasing={{0}:(0, {})}
+      noncopyable0 = b(f32[16]) get-tuple-element(call0), index=0
+      d2 = f32[16] get-tuple-element(call0), index=1
+      init = (b(f32[16]), f32[16]) tuple(noncopyable0, d2)
+      while = (b(f32[16]), f32[16]) while(init), condition=while_condition,
+        body=while_body
+      noncopyable1 = b(f32[16]) get-tuple-element(while), index=0
+      d3 = f32[16] get-tuple-element(while), index=1
+      call1 = (b(f32[16]), f32[16], token[])
+        custom-call(noncopyable1), custom_call_target="update1",
+        output_to_operand_aliasing={{0}:(0, {})}
+      noncopyable2 = b(f32[16]) get-tuple-element(call1), index=0
+      unpin = f32[16] custom-call(noncopyable2), custom_call_target="Unpin",
+        output_to_operand_aliasing={{}:(0, {})}
+      d4 = f32[16] add(d0, d3)
+      d5 = f32[16] add(d1, unpin)
+      ROOT result = (f32[16], f32[16]) tuple(d4, d5)
+    }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(2) << module->ToString();
+  EXPECT_EQ(CountCopies(*module), 3);
+  // In while-body, a copy of call0-w result used as operand 1 in add
+  // and a copy of the pin-dw3 operand.
+  HloInstruction* add = FindInstruction(module.get(), "add");
+  EXPECT_EQ(add->operand(1)->opcode(), HloOpcode::kCopy);
+  HloInstruction* pin_dw3 = FindInstruction(module.get(), "pin-dw3");
+  EXPECT_EQ(pin_dw3->operand(0)->opcode(), HloOpcode::kCopy);
+  // A copy of the pin-d0 operand 0 in main.
+  HloInstruction* pin_d0 = FindInstruction(module.get(), "pin-d0");
+  EXPECT_EQ(pin_d0->operand(0)->opcode(), HloOpcode::kCopy);
+}
+
+// The pipelined non-copyable chain inside the while-loop is fully connected.
+// There is no need to add copies for transitioning in/out of non-copyable
+// inside the while-loop. There is one copy for transitioning in/out of
+// non-copyable at the while-init.
+TEST_F(CopyInsertionTest, NonCopyableChainPipelinedConnectedParts) {
+  constexpr absl::string_view kModuleString = R"(
+    HloModule test
+
+    while_body {
+      param = (b(f32[16]), f32[16]) parameter(0)
+      noncopyable0-w = b(f32[16]) get-tuple-element(param), index=0
+      pw1 = f32[16] get-tuple-element(param), index=1
+      dw0 = f32[16] add(pw1, pw1)
+      call0-w = (b(f32[16]), f32[16], token[])
+        custom-call(noncopyable0-w, dw0), custom_call_target="update0",
+        output_to_operand_aliasing={{0}:(0, {})}
+      noncopyable1-w = b(f32[16]) get-tuple-element(call0-w), index=0
+      dw1 = f32[16] get-tuple-element(call0-w), index=1
+      dw2 = f32[16] add(pw1, dw1)
+      call1-w = (b(f32[16]), f32[16], token[])
+        custom-call(noncopyable1-w, dw2), custom_call_target="update1",
+        output_to_operand_aliasing={{0}:(0, {})}
+      noncopyable2-w = b(f32[16]) get-tuple-element(call1-w), index=0
+      dw3 = f32[16] get-tuple-element(call1-w), index=1
+      dw4 = f32[16] add(dw3, pw1)
+      ROOT tuple = (b(f32[16]), f32[16]) tuple(noncopyable2-w, dw4)
+    }
+
+    // Infinite loop to keep IR small.
+    while_condition {
+      param = (b(f32[16]), f32[16]) parameter(0)
+      ROOT infinite_loop = pred[] constant(true)
+    }
+
+    ENTRY main {
+      p0 = f32[16] parameter(0)
+      p1 = f32[16] parameter(1)
+      d0 = f32[16] add(p0, p1)
+      d1 = f32[16] add(p1, p1)
+      pin-d0 = b(f32[16]) custom-call(d0), custom_call_target="Pin",
+        output_to_operand_aliasing={{}:(0, {})}
+      call0 = (b(f32[16]), f32[16], token[])
+        custom-call(pin-d0, d1), custom_call_target="update0",
+        output_to_operand_aliasing={{0}:(0, {})}
+      noncopyable0 = b(f32[16]) get-tuple-element(call0), index=0
+      d2 = f32[16] get-tuple-element(call0), index=1
+      init = (b(f32[16]), f32[16]) tuple(noncopyable0, d2)
+      while = (b(f32[16]), f32[16]) while(init), condition=while_condition, body=while_body
+      noncopyable1 = b(f32[16]) get-tuple-element(while), index=0
+      d3 = f32[16] get-tuple-element(while), index=1
+      call1 = (b(f32[16]), f32[16], token[])
+        custom-call(noncopyable1), custom_call_target="update1",
+        output_to_operand_aliasing={{0}:(0, {})}
+      noncopyable2 = b(f32[16]) get-tuple-element(call1), index=0
+      unpin = f32[16] custom-call(noncopyable2), custom_call_target="Unpin",
+        output_to_operand_aliasing={{}:(0, {})}
+      d4 = f32[16] add(d0, d3)
+      d5 = f32[16] add(d1, unpin)
+      ROOT result = (f32[16], f32[16]) tuple(d4, d5)
+    }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(2) << module->ToString();
+  EXPECT_EQ(CountCopies(*module), 1);
+  // A copy of the pin-d0 operand.
+  HloInstruction* pin_d0 = FindInstruction(module.get(), "pin-d0");
+  EXPECT_EQ(pin_d0->operand(0)->opcode(), HloOpcode::kCopy);
 }
 
 }  // namespace

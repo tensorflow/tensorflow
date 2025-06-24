@@ -203,6 +203,7 @@ void DefineMetricsModule(py::module main_module) {
         }
         metrics::SavedModelReadPathAndSingleprint().Set(
             path_and_singleprint.value());
+        // Placeholder for lineage logging input call.
       },
       py::kw_only(), py::arg("path"), py::arg("singleprint"),
       py::doc(
@@ -238,7 +239,7 @@ void DefineMetricsModule(py::module main_module) {
         }
         metrics::SavedModelWritePathAndSingleprint().Set(
             path_and_singleprint.value());
-        // Placeholder for lineage logging call.
+        // Placeholder for lineage logging output call.
       },
       py::kw_only(), py::arg("path"), py::arg("singleprint"),
       py::doc("Set the "

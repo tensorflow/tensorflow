@@ -22,8 +22,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/test.h"
 #include "xla/types.h"
 
 namespace xla {
@@ -92,7 +92,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,4], filter: f32[1,2,2]) -> f32[1,2
   EXPECT_EQ(root->opcode(), HloOpcode::kReshape);
   EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConvolution);
   EXPECT_EQ(root->operand(0)->feature_group_count(), 1);
-  EXPECT_EQ(root->operand(0)->shape().rank(), 4);
+  EXPECT_EQ(root->operand(0)->shape().dimensions().size(), 4);
 }
 
 TEST_F(ConvolutionGroupConverterTest,

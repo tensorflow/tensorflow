@@ -15,7 +15,6 @@ licenses(["notice"])
 py_strict_library(
     name = "compat_checker",
     srcs = ["compat_checker.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_inspect",
@@ -28,7 +27,6 @@ py_strict_test(
     data = [
         ":test_config",
     ],
-    python_version = "PY3",
     tags = ["no_pip"],
     deps = [
         ":compat_checker",

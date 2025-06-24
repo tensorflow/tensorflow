@@ -7,6 +7,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility([
         "//xla/tsl:internal",
+        "//third_party/py/jax:__subpackages__",
     ]),
     licenses = ["notice"],
 )
@@ -23,7 +24,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:mutex",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -39,10 +40,9 @@ tsl_cc_test(
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:mutex",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -60,6 +60,7 @@ cc_library(
         "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -79,14 +80,12 @@ tsl_cc_test(
         "//xla/tsl/distributed_runtime/coordination:coordination_client",
         "//xla/tsl/distributed_runtime/coordination:coordination_service",
         "//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
-        "//xla/tsl/distributed_runtime/coordination:coordination_service_impl",
         "//xla/tsl/distributed_runtime/rpc:async_service_interface",
         "//xla/tsl/distributed_runtime/rpc/coordination:grpc_coordination_client",
         "//xla/tsl/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/protobuf:coordination_config_proto_cc_impl",
         "//xla/tsl/protobuf:coordination_service_proto_cc_impl",
         "//xla/tsl/protobuf:distributed_runtime_payloads_proto_cc_impl",
@@ -95,5 +94,6 @@ tsl_cc_test(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
     ] + tsl_grpc_cc_dependencies(),
 )

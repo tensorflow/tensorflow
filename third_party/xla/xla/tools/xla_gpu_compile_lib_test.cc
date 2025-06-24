@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/protobuf/status.pb.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/status_matchers.h"
@@ -73,7 +74,7 @@ TEST_F(XlaCompileLibTest, CompilesForGpuWithDevice) {
 TEST_F(XlaCompileLibTest, CompilesForGpuWithoutDevice) {
   const std::string target_config_path =
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service",
-                        "xla_aot_compile_test_gpu_target_config.prototxt");
+                        "xla_aot_compile_test_gpu_target_config.txtpb");
   stream_executor::GpuTargetConfigProto target_config;
   TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
                                   &target_config));
@@ -90,14 +91,14 @@ TEST_F(XlaCompileLibTest, MainForGpu) {
   TF_ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file,
                                       module_->ToString()));
 
-  const std::string output_path =
+  const std::string output_file =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "gpu_output");
   const std::string result_file =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "gpu_result.pb");
 
   XlaCompileOptions options;
   options.module_path = module_file;
-  options.output_path = output_path;
+  options.output_file = output_file;
   options.platform = "gpu";
   options.result_output_file = result_file;
   options.gpu_options.use_attached_device = true;

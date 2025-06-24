@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/thunk.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
@@ -62,6 +61,15 @@ class SortThunk final : public Thunk {
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
   BufferUses buffer_uses() const final;
+
+  std::optional<SortDirection> direction() const { return direction_; }
+  int64_t dimension() const { return dimension_; }
+  bool is_stable() const { return is_stable_; }
+  const std::vector<Input>& inputs() const { return inputs_; }
+
+  const std::string& comparator_name() const { return comparator_name_; }
+
+  bool has_less_than() const { return less_than_.ok(); }
 
  private:
   SortThunk(Info info, absl::Span<const Input> inputs, int64_t dimension,

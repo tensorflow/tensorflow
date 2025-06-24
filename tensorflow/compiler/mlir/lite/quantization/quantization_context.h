@@ -28,19 +28,21 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/quantization/device_target.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 
 namespace mlir {
 namespace quant {
 
-static bool EmptyParams(QuantParams p) { return p == quant::QuantizedType(); }
+static bool EmptyParams(TFL::QuantParams p) {
+  return p == quant::QuantizedType();
+}
 
 // The state for each op result during the quantization parameters propagation.
 struct QuantState {
   // Quantization parameters propagated to an op result.
-  QuantParams params;
+  TFL::QuantParams params;
   // A flag indicates this state (the params) shouldn't be changed after it is
   // initialized. This flag will be set to true if the quantization parameters
   // are from the quantization-aware training.
@@ -63,7 +65,7 @@ struct RequantizeState {
   } pos = NO_REQUANTIZE;
 
   // Quantization parameters will be used to add the requantize ops.
-  QuantParams params;
+  TFL::QuantParams params;
 };
 
 // This class manages all the intermediate quantization states.
@@ -91,24 +93,24 @@ class QuantizeContext {
   // Update the quantization parameter for certain result of the op. By this
   // method, the quantization parameter is propagated to all the users of the
   // result as well.
-  bool SetResultParams(Operation *op, int index, QuantParams params) {
+  bool SetResultParams(Operation *op, int index, TFL::QuantParams params) {
     return states_manager_.SetResultParams(op, index, params);
   }
 
   // Update the quantization parameter for certain operand of the op. By this
   // method, the quantization parameter is propagated to the defining op of
   // operand as well.
-  bool SetOperandParams(Operation *op, int index, QuantParams params) {
+  bool SetOperandParams(Operation *op, int index, TFL::QuantParams params) {
     return states_manager_.SetOperandParams(op, index, params);
   }
 
   // Return the quantization parameter of certain result of the op.
-  QuantParams GetResultParams(Operation *op, int index) {
+  TFL::QuantParams GetResultParams(Operation *op, int index) {
     return states_manager_.GetResultParams(op, index);
   }
 
   // Return the quantization parameter of certain operand of the op.
-  QuantParams GetOperandParams(Operation *op, int index) {
+  TFL::QuantParams GetOperandParams(Operation *op, int index) {
     return states_manager_.GetOperandParams(op, index);
   }
 
@@ -124,13 +126,13 @@ class QuantizeContext {
   // - use the single input if it is ready, or,
   // - use the single output if it is ready, or,
   // - use the first ready one in the collection.
-  QuantParams GetQuantParamsForSameScaleConstraint(Operation *op);
+  TFL::QuantParams GetQuantParamsForSameScaleConstraint(Operation *op);
 
   // Propagate `params` to all the quantizable port of the `op`. The adjacent
   // ops, which have the parameters propagated to, are collected by `new_items`,
   // so they can be added to the working queue. `changed` is set to true if
   // there are any new elements being added to `new_items`.
-  LogicalResult PropagateQuantParams(Operation *op, QuantParams params,
+  LogicalResult PropagateQuantParams(Operation *op, TFL::QuantParams params,
                                      AdjacentOperations *new_items,
                                      bool *changed);
 
@@ -149,7 +151,7 @@ class QuantizeContext {
     //
     // Returns true, if the users of the result needs to be added to the
     // worklist.
-    bool SetResultParams(Operation *op, int index, QuantParams params);
+    bool SetResultParams(Operation *op, int index, TFL::QuantParams params);
 
     // Sets the quantization parameters of the operand to a fixed value. If any
     // quantization parameters have been propagated, a `requantize` will happen
@@ -157,15 +159,15 @@ class QuantizeContext {
     //
     // Returns true, if the defining op of the operand needs to be added to the
     // worklist.
-    bool SetOperandParams(Operation *op, int index, QuantParams params);
+    bool SetOperandParams(Operation *op, int index, TFL::QuantParams params);
 
     // Returns the quantization parameters of the index-th result of the op.
-    QuantParams GetResultParams(Operation *op, int index) {
+    TFL::QuantParams GetResultParams(Operation *op, int index) {
       return states_[result_states_[{op, index}]].params;
     }
 
     // Returns the quantization parameters of the index-th operand of the op.
-    QuantParams GetOperandParams(Operation *op, int index) {
+    TFL::QuantParams GetOperandParams(Operation *op, int index) {
       return states_[operand_states_[{op, index}]].params;
     }
 

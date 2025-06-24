@@ -31,6 +31,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
@@ -133,7 +134,7 @@ absl::StatusOr<int64_t> FindLibtpuProcess() {
 }  // namespace
 
 absl::Status TryAcquireTpuLock() {
-  static absl::Mutex* mu = new absl::Mutex();
+  static absl::Mutex* const mu = new absl::Mutex();
   absl::MutexLock l(mu);
 
   std::string load_library_override = absl::StrCat(getenv("TPU_LOAD_LIBRARY"));

@@ -21,11 +21,11 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/platform/types.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/platform/types.h"
 
 namespace tensorflow {
 

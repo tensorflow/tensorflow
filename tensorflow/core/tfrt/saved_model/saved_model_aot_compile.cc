@@ -336,9 +336,9 @@ absl::StatusOr<std::string> AotCompileToGpuPjRtLoadedExecutableWithDevice(
 
   const xla::CompileOptions pjrt_options =
       GetPjRtCompileOptions(options, **compilation_result);
-  TF_ASSIGN_OR_RETURN(
-      auto executable,
-      se_client->Compile(*((*compilation_result)->computation), pjrt_options));
+  TF_ASSIGN_OR_RETURN(auto executable,
+                      se_client->CompileAndLoad(
+                          *((*compilation_result)->computation), pjrt_options));
   return se_client->SerializeExecutable(*executable);
 }
 

@@ -39,10 +39,7 @@ OpTypeConstructor NoOp() {
 }
 
 OpTypeConstructor NoOutputs() {
-  return [](OpDef* op_def) {
-    op_def->mutable_output_arg();
-    return absl::OkStatus();
-  };
+  return [](OpDef* op_def) { return absl::OkStatus(); };
 }
 
 OpTypeConstructor Nullary(FullTypeId t) {

@@ -34,7 +34,7 @@ limitations under the License.
 
 namespace {
 
-std::unique_ptr<tsl::CoordinationServiceInterface> EnableCoordinationService(
+std::unique_ptr<tsl::CoordinationService> EnableCoordinationService(
     const xla::CoordinationServiceImpl::Options& options) {
   const std::string job_name = "jax_worker";
   tensorflow::CoordinationServiceConfig config;
@@ -43,16 +43,16 @@ std::unique_ptr<tsl::CoordinationServiceInterface> EnableCoordinationService(
   config.set_cluster_register_timeout_in_ms(
       absl::ToInt64Milliseconds(options.cluster_register_timeout));
   config.set_cluster_register_with_barrier(true);
-  config.set_heartbeat_timeout_in_ms(absl::ToInt64Milliseconds(
-      options.heartbeat_interval * options.max_missing_heartbeats));
+  config.set_heartbeat_timeout_in_ms(
+      absl::ToInt64Milliseconds(options.heartbeat_timeout));
   config.set_shutdown_barrier_timeout_in_ms(
       absl::ToInt64Milliseconds(options.shutdown_timeout));
   tensorflow::CoordinatedJob* job =
       config.mutable_coordinated_job_list()->Add();
   job->set_name(job_name);
   job->set_num_tasks(options.num_nodes);
-  auto service = tsl::CoordinationServiceInterface::EnableCoordinationService(
-      options.env, config, /*cache=*/nullptr);
+  auto service =
+      tsl::CoordinationService::Create(options.env, config, /*cache=*/nullptr);
   return service;
 }
 }  // namespace
@@ -97,6 +97,8 @@ DistributedRuntimeService::Get(
     const CoordinationServiceImpl::Options& options) {
   ::grpc::ServerBuilder builder;
   builder.AddListeningPort(address, credentials);
+  builder.SetMaxReceiveMessageSize(-1);
+  builder.SetMaxSendMessageSize(-1);
   VLOG(1) << "Distributed runtime service address " << address;
   auto service = std::make_unique<DistributedRuntimeService>(options, &builder);
   if (!service->server_) {

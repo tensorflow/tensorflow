@@ -145,7 +145,7 @@ class SparseDenseBinaryOpShared : public OpKernel {
     switch (ndims) {
 #define CASE(NDIM)                                                             \
   case NDIM: {                                                                 \
-    TensorRef<Eigen::Tensor<const T, NDIM, Eigen::RowMajor>> rhs_ref =         \
+    TensorRef<const Eigen::Tensor<const T, NDIM, Eigen::RowMajor>> rhs_ref =   \
         dense_t->shaped<T, NDIM>(b.y_reshape())                                \
             .broadcast(BCast::ToIndexArray<NDIM>(b.y_bcast()));                \
     Eigen::array<Eigen::DenseIndex, NDIM> idx;                                 \

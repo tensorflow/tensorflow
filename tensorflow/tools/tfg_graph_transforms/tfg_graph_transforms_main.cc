@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdlib>
 #include <string>
 #include <utility>
 
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/ir/dialect.h"
@@ -48,7 +50,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/transforms/pass_registration.h"
 #include "tensorflow/tools/tfg_graph_transforms/utils.h"
-#include "tsl/platform/errors.h"
 
 namespace {
 

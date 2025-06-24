@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_MEM_H_
 #define TENSORFLOW_TSL_PLATFORM_MEM_H_
 
+#include <cstddef>
+#include <cstdint>
+
 // TODO(cwhipkey): remove this when callers use annotations directly.
+#include "xla/tsl/platform/dynamic_annotations.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/dynamic_annotations.h"
 #include "tsl/platform/platform.h"
 
 namespace tsl {
@@ -29,6 +32,21 @@ namespace port {
 void* AlignedMalloc(size_t size, int minimum_alignment);
 void AlignedFree(void* aligned_memory);
 void AlignedSizedFree(void* aligned_memory, size_t alignment, size_t size);
+
+// An allocator that allocates memory with the given minimum alignment.
+template <class T, size_t minimum_alignment>
+struct AlignedAllocator {
+  using value_type = T;
+
+  value_type* allocate(size_t n) {
+    return static_cast<value_type*>(
+        AlignedMalloc(n * sizeof(value_type), minimum_alignment));
+  }
+
+  void deallocate(value_type* p, size_t n) {
+    return AlignedSizedFree(p, minimum_alignment, n);
+  }
+};
 
 void* Malloc(size_t size);
 void* Realloc(void* ptr, size_t size);

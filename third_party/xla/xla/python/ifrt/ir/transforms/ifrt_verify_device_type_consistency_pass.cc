@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -23,6 +26,8 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/SymbolTable.h"
@@ -36,6 +41,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
+#include "xla/python/ifrt/ir/transforms/utils.h"
 
 namespace xla {
 namespace ifrt {
@@ -108,13 +114,21 @@ class IfrtVerifyDeviceTypeConsistencyPass
   void runOnOperation() override;
 
  private:
+  std::vector<std::string> platform_names_;
+
   bool IsConsistentWithModuleType(ModuleType module_type,
                                   absl::string_view platform_name) const;
 };
 
 mlir::LogicalResult IfrtVerifyDeviceTypeConsistencyPass::initialize(
     mlir::MLIRContext* context) {
-  for (const auto& platform_name : platform_names) {
+  auto platform_names_or = ExpandPlatformNames(platform_names);
+  if (!platform_names_or.ok()) {
+    return mlir::emitError(mlir::UnknownLoc(),
+                           platform_names_or.status().message());
+  }
+  platform_names_ = std::move(*platform_names_or);
+  for (const auto& platform_name : platform_names_) {
     if (platform_name != "host" && platform_name != xla::TpuName() &&
         platform_name != xla::CudaName() && platform_name != xla::CpuName()) {
       LOG(ERROR) << "Unsupported platform: " << platform_name;
@@ -131,7 +145,8 @@ bool IfrtVerifyDeviceTypeConsistencyPass::IsConsistentWithModuleType(
       return true;
     case ModuleType::kXLA:
       return platform_name == xla::TpuName() ||
-             platform_name == xla::CudaName();
+             platform_name == xla::CudaName() ||
+             platform_name == xla::CpuName();
     default:
       LOG(ERROR) << "Unexpected value for InferredDeviceType.";
       return false;
@@ -155,32 +170,32 @@ void IfrtVerifyDeviceTypeConsistencyPass::runOnOperation() {
 
     // Use the first device ID to find platform name.
     int first_device_id = devices.front();
-    if (first_device_id >= platform_names.size()) {
+    if (first_device_id >= platform_names_.size()) {
       return call_op->emitOpError()
              << "cannot find mapping for logical device id " << first_device_id
-             << ". Mapping size: " << platform_names.size();
+             << ". Mapping size: " << platform_names_.size();
     }
 
     if (!IsConsistentWithModuleType(*callee_module_type,
-                                    platform_names[first_device_id])) {
+                                    platform_names_[first_device_id])) {
       return call_op->emitOpError()
-             << "has platform: " << platform_names[first_device_id]
+             << "has platform: " << platform_names_[first_device_id]
              << ", which is incompatible with the module type inferred from "
                 "callee.";
     }
 
     for (int device_id : devices) {
-      if (device_id >= platform_names.size()) {
+      if (device_id >= platform_names_.size()) {
         return call_op->emitOpError()
                << "cannot find mapping for logical device id " << device_id
-               << ". Mapping size: " << platform_names.size();
+               << ". Mapping size: " << platform_names_.size();
       }
-      if (platform_names[device_id] != platform_names[first_device_id]) {
+      if (platform_names_[device_id] != platform_names_[first_device_id]) {
         return call_op->emitOpError()
                << "requires a single platform type. Expected platform: "
-               << platform_names[first_device_id]
+               << platform_names_[first_device_id]
                << ". Actual platform of logical device " << device_id << ": "
-               << platform_names[device_id];
+               << platform_names_[device_id];
       }
     }
     return mlir::WalkResult::advance();

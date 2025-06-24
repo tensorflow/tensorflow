@@ -13,8 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <initializer_list>
+#include <iterator>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/gradients/grad_helper.h"
@@ -23,6 +29,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/math_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace ops {

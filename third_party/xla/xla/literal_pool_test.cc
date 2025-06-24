@@ -16,7 +16,7 @@ limitations under the License.
 #include "xla/literal_pool.h"
 
 #include "xla/literal_util.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {

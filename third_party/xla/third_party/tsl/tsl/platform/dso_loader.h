@@ -19,7 +19,8 @@ limitations under the License.
 #include "tsl/platform/platform.h"
 
 // Include appropriate platform-dependent implementations
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_CHROMIUMOS)
+#if defined(PLATFORM_GOOGLE) || \
+    (defined(PLATFORM_PORTABLE_GOOGLE) && !defined(__EMSCRIPTEN__))
 #include "xla/tsl/platform/google/dso_loader.h"
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
     defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_WINDOWS)

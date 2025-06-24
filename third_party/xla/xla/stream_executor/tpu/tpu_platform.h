@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -61,7 +62,7 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
 
   bool ShouldRegisterTpuDeviceToDeviceCopy() override;
 
-  const tensorflow::tpu::TpuTopologyPtr GetTopologyPtr() override;
+  const SE_TpuTopology* GetTopologyPtr() override;
 
   const tensorflow::tpu::TpuHostLocationExternal GetTpuHostLocation()
       const override;

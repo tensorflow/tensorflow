@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -65,14 +65,14 @@ absl::StatusOr<std::vector<std::vector<xla::XlaOp>>> GetTensorListDynamicDims(
   std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
   // Set dynamic dimension size to 0 for initialization value.
   std::vector<xla::XlaOp> dynamic_dims;
-  dynamic_dims.reserve(1 + element_shape.dimensions_size());
+  dynamic_dims.reserve(1 + element_shape.dimensions().size());
   if (leading_dim_is_dynamic) {
     dynamic_dims.push_back(ctx->Input(1));
   } else {
     dynamic_dims.push_back(
         xla::ConstantR0<int32>(ctx->builder(), num_elements));
   }
-  for (int64_t dim = 0; dim < element_shape.dimensions_size(); ++dim) {
+  for (int64_t dim = 0; dim < element_shape.dimensions().size(); ++dim) {
     if (dims_are_dynamic[dim]) {
       auto dynamic_dim_size = xla::Slice(ctx->Input(0), {dim}, {dim + 1}, {1});
       dynamic_dim_size = xla::Reshape(dynamic_dim_size, {});

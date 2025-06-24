@@ -24,6 +24,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/array4d.h"
@@ -33,10 +34,11 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/reference_util.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/test_macros.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -50,7 +52,8 @@ struct SelectAndScatterTestParam {
 };
 
 class SelectAndScatterTest
-    : public ClientLibraryTestBase,
+    : public ClientLibraryTestRunnerMixin<
+          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
       public ::testing::WithParamInterface<SelectAndScatterTestParam> {
  public:
   SelectAndScatterTest() : builder_(TestName()) {
@@ -90,11 +93,20 @@ class SelectAndScatterTest
   XlaComputation min_f32_;
 };
 
-XLA_TEST_P(SelectAndScatterTest, OVERSIZE_ON_GRM(ParamTest)) { DoIt(); }
+TEST_P(SelectAndScatterTest, ParamTest) {
+  if (test::HasModifiers({test::kGrm})) {
+    GTEST_SKIP();
+  }
+  DoIt();
+}
 
 class SelectAndScatterLarge : public SelectAndScatterTest {};
 
-XLA_TEST_P(SelectAndScatterLarge, DISABLED_ON_ISS(OVERSIZE_ON_GRM(ParamTest))) {
+TEST_P(SelectAndScatterLarge, ParamTest) {
+  if (test::HasModifiers({test::kIss}) || test::HasModifiers({test::kGrm})) {
+    // Oversize on GRM.
+    GTEST_SKIP();
+  }
   DoIt();
 }
 
@@ -229,7 +241,7 @@ INSTANTIATE_TEST_CASE_P(
             {3000}, {1701}, Padding::kValid, {1300}, {1}}));
 
 // Test for F32 1D array, with a zero-element input.
-XLA_TEST_F(SelectAndScatterTest, R1S0F32) {
+TEST_F(SelectAndScatterTest, R1S0F32) {
   const auto operand = ConstantR1<float>(&builder_, {});
   const auto source = ConstantR1<float>(&builder_, {});
   SelectAndScatter(operand, ge_f32_, /*window_dimensions=*/{3},
@@ -239,7 +251,7 @@ XLA_TEST_F(SelectAndScatterTest, R1S0F32) {
 }
 
 // Test for F32 1D array, when windows do not overlap.
-XLA_TEST_F(SelectAndScatterTest, R1F32) {
+TEST_F(SelectAndScatterTest, R1F32) {
   const auto operand =
       ConstantR1<float>(&builder_, {1.f, 9.f, 3.f, 7.f, 5.f, 6.f});
   const auto source = ConstantR1<float>(&builder_, {34.f, 42.f});
@@ -251,7 +263,7 @@ XLA_TEST_F(SelectAndScatterTest, R1F32) {
 }
 
 // Test for S32 1D array, when windows do not overlap and the init value is 1.
-XLA_TEST_F(SelectAndScatterTest, R1S32) {
+TEST_F(SelectAndScatterTest, R1S32) {
   const auto operand = ConstantR1<int32_t>(&builder_, {-1, 0, 6, 4, -4, 10});
   const auto source = ConstantR1<int32_t>(&builder_, {-10, 20});
   const std::vector<int32_t> expected = {1, 1, -9, 1, 1, 21};
@@ -262,7 +274,7 @@ XLA_TEST_F(SelectAndScatterTest, R1S32) {
 }
 
 // Test for S32 1D array, when windows overlap with each other.
-XLA_TEST_F(SelectAndScatterTest, R1S32OverlappingWindow) {
+TEST_F(SelectAndScatterTest, R1S32OverlappingWindow) {
   const auto operand = ConstantR1<int32_t>(&builder_, {1, 9, 3, 7, 5, 6});
   const auto source = ConstantR1<int32_t>(&builder_, {34, 42, 53, 19});
   const std::vector<int32_t> expected = {0, 76, 0, 72, 0, 0};
@@ -273,7 +285,10 @@ XLA_TEST_F(SelectAndScatterTest, R1S32OverlappingWindow) {
 }
 
 // Test for S32 2D array, when windows do not overlap.
-XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2S32)) {
+TEST_F(SelectAndScatterTest, R2S32) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   const auto operand =
       ConstantR2<int32_t>(&builder_, {{7, 2, 5, 3, 10, 2}, {3, 8, 9, 3, 4, 2}});
   const auto source = ConstantR2<int32_t>(&builder_, {{2, 6}});
@@ -286,7 +301,10 @@ XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2S32)) {
 
 // Test for tie breaking rule in ge_f32_. When a tie is present, the operand
 // that has the lower lexicographical order (smaller index) should be chosen.
-XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2F32Tie)) {
+TEST_F(SelectAndScatterTest, R2F32Tie) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   const auto operand = ConstantR2<float>(
       &builder_, {{0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}});
   const auto source = ConstantR2<float>(
@@ -300,11 +318,14 @@ XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2F32Tie)) {
 }
 
 // Similar to SelectAndScatterTest.R2S32 but the input is transposed.
-XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(ReshapeR2S32)) {
+TEST_F(SelectAndScatterTest, ReshapeR2S32) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   const auto operand = ConstantR2<int32_t>(
       &builder_, {{7, 3}, {2, 8}, {5, 9}, {3, 3}, {10, 4}, {2, 2}});
-  const auto reshape =
-      Reshape(operand, /*dimensions=*/{1, 0}, /*new_sizes=*/{2, 6});
+  const auto reshape = Reshape(Transpose(operand, /*permutation=*/{1, 0}),
+                               /*dimensions=*/{2, 6});
   const auto source = ConstantR2<int32_t>(&builder_, {{2, 6}});
   Array2D<int32_t> expected({{0, 0, 0, 0, 6, 0}, {0, 0, 2, 0, 0, 0}});
   SelectAndScatter(reshape, ge_s32_, /*window_dimensions=*/{2, 3},
@@ -314,7 +335,10 @@ XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(ReshapeR2S32)) {
 }
 
 // Test for S32 2D array, when windows overlap with each other.
-XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2S32OverlappingWindow)) {
+TEST_F(SelectAndScatterTest, R2S32OverlappingWindow) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   const auto operand =
       ConstantR2<int32_t>(&builder_, {{7, 2, 5, 3, 8}, {3, 8, 9, 3, 4}});
   const auto source = ConstantR2<int32_t>(&builder_, {{2, 6, 4}});
@@ -326,7 +350,10 @@ XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2S32OverlappingWindow)) {
 }
 
 // Test for S32 2D array, when the padding is Padding::kSAME.
-XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2S32SamePadding)) {
+TEST_F(SelectAndScatterTest, R2S32SamePadding) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   const auto operand =
       ConstantR2<int32_t>(&builder_, {{7, 2, 5, 3, 8}, {3, 8, 9, 3, 4}});
   const auto source = ConstantR2<int32_t>(&builder_, {{2, 6, 4}});
@@ -339,8 +366,10 @@ XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2S32SamePadding)) {
 
 // Test for S32 2D array, when the padding is Padding::kSAME and windows overlap
 // with each other.
-XLA_TEST_F(SelectAndScatterTest,
-           DISABLED_ON_TPU(R2S32SamePaddingOverlappingWindow)) {
+TEST_F(SelectAndScatterTest, R2S32SamePaddingOverlappingWindow) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   const auto operand =
       ConstantR2<int32_t>(&builder_, {{7, 2, 5, 3, 8}, {3, 8, 9, 3, 4}});
   const auto source =
@@ -352,7 +381,10 @@ XLA_TEST_F(SelectAndScatterTest,
   ComputeAndCompareR2<int32_t>(&builder_, expected, {});
 }
 
-XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2F32OverlappingR2Source)) {
+TEST_F(SelectAndScatterTest, R2F32OverlappingR2Source) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   const auto operand = ConstantR2<float>(
       &builder_, {{1.5f, 2.5f, 1.5f}, {3.5f, 1.5f, 3.5f}, {4.5f, 2.5f, 4.5f}});
   const auto source =
@@ -464,7 +496,7 @@ TEST_F(SelectAndScatterTest, R4F32RefValidFixedSmall) {
 }
 
 // Test for F32 4D array with negative padding on both ends.
-XLA_TEST_F(SelectAndScatterTest, R4NegativePaddingOnBothEnds) {
+TEST_F(SelectAndScatterTest, R4NegativePaddingOnBothEnds) {
   Array2D<float> pzo = {{7.0f, 2.0f, 5.0f, 3.0f, 10.0f, 3.0f},
                         {3.0f, 8.0f, 9.0f, 3.0f, 4.00f, 2.0f},
                         {1.0f, 5.0f, 7.0f, 5.0f, 6.00f, 1.0f},
@@ -491,7 +523,7 @@ XLA_TEST_F(SelectAndScatterTest, R4NegativePaddingOnBothEnds) {
 }
 
 // Test for F32 4D array with positive low padding and negative high padding.
-XLA_TEST_F(SelectAndScatterTest, R4PositivePaddingLowAndNegativePaddingHigh) {
+TEST_F(SelectAndScatterTest, R4PositivePaddingLowAndNegativePaddingHigh) {
   Array2D<float> pzo = {{7.0f, 2.0f, 5.0f, 3.0f, 10.0f, 3.0f},
                         {3.0f, 8.0f, 9.0f, 3.0f, 4.00f, 2.0f},
                         {1.0f, 5.0f, 7.0f, 5.0f, 6.00f, 1.0f},
@@ -518,7 +550,7 @@ XLA_TEST_F(SelectAndScatterTest, R4PositivePaddingLowAndNegativePaddingHigh) {
 }
 
 // Test for F32 4D array with negative low padding and positive high padding.
-XLA_TEST_F(SelectAndScatterTest, R4NegativePaddingLowAndPositivePaddingHigh) {
+TEST_F(SelectAndScatterTest, R4NegativePaddingLowAndPositivePaddingHigh) {
   Array2D<float> pzo = {{7.0f, 2.0f, 5.0f, 3.0f, 10.0f, 3.0f},
                         {3.0f, 8.0f, 9.0f, 3.0f, 4.00f, 2.0f},
                         {1.0f, 5.0f, 7.0f, 5.0f, 6.00f, 1.0f},
@@ -544,7 +576,7 @@ XLA_TEST_F(SelectAndScatterTest, R4NegativePaddingLowAndPositivePaddingHigh) {
   ComputeAndCompareR4<float>(&builder_, e, {}, ErrorSpec(1e-7));
 }
 
-XLA_TEST_F(SelectAndScatterTest, R1F32OverlappingWindowMaxScatter) {
+TEST_F(SelectAndScatterTest, R1F32OverlappingWindowMaxScatter) {
   const auto operand = ConstantR1<float>(&builder_, {1, 2, 3, 100, 3, 2, 1});
   const auto source = ConstantR1<float>(&builder_, {34, 42, 53, 19});
   const std::vector<float> expected = {0, 0, 0, 53, 0, 0, 0};
@@ -554,7 +586,7 @@ XLA_TEST_F(SelectAndScatterTest, R1F32OverlappingWindowMaxScatter) {
   ComputeAndCompareR1<float>(&builder_, expected, {}, ErrorSpec(1e-7));
 }
 
-XLA_TEST_F(SelectAndScatterTest, R1F32OverlappingWindowMinScatter) {
+TEST_F(SelectAndScatterTest, R1F32OverlappingWindowMinScatter) {
   const auto operand = ConstantR1<float>(&builder_, {1, 2, 3, 100, 3, 2, 1});
   const auto source = ConstantR1<float>(&builder_, {34, 42, 53, 19});
   const float max_float = std::numeric_limits<float>::max();

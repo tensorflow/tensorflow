@@ -31,7 +31,7 @@ namespace tf2xla {
 namespace internal {
 namespace {
 
-using mlir::mhlo::test::GetMlirModuleFromString;
+using mlir::hlo::test::GetMlirModuleFromString;
 
 TEST(IsPotentialUnsupportedOp, ClusterOpReturnsFalse) {
   mlir::MLIRContext context;

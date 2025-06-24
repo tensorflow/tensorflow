@@ -72,7 +72,9 @@ cc_library(
     deps = [
         ":tsl_status_internal",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -85,7 +87,7 @@ tsl_cc_test(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -100,8 +100,8 @@ for more information.""") + "\n")
 #ifndef {header_file_define}
 #define {header_file_define}
 
-#include "xla/client/lib/constants.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/xla_builder.h"
 
 namespace xla {{
 namespace math_impl {{

@@ -14,8 +14,6 @@ py_strict_binary(
     name = "autotune_benchmark_binary",
     srcs = ["autotune_benchmark.py"],
     main = "autotune_benchmark.py",
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/ops:dataset_ops",

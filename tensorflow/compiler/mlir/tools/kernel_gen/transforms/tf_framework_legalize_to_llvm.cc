@@ -191,7 +191,7 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
                                           MemRefType memref_type,
                                           Value allocated_byte_ptr,
                                           ArrayRef<Value> sizes) const {
-    auto memref_desc = MemRefDescriptor::undef(
+    auto memref_desc = MemRefDescriptor::poison(
         rewriter, loc, typeConverter->convertType(memref_type));
 
     // TF AllocateRaw returns aligned pointer => AllocatedPtr == AlignedPtr.
@@ -504,7 +504,7 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
     Type llvm_result_type = type_converter.convertType(result_type);
 
     auto desc =
-        UnrankedMemRefDescriptor::undef(rewriter, loc, llvm_result_type);
+        UnrankedMemRefDescriptor::poison(rewriter, loc, llvm_result_type);
     desc.setRank(rewriter, loc, zero);
 
     // Extract address space and element type.

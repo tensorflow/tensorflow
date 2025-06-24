@@ -11,7 +11,6 @@ package_group(
         "//learning/brain/experimental/tfrt/...",
         "//learning/brain/tfrt/...",
         "//learning/brain/mobile/lite/...",
-        "//learning/infra/mira/distributed/...",
     ]),
 )
 

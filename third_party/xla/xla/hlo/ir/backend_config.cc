@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/human_readable_json.h"
 #include "tsl/platform/protobuf.h"
 
@@ -53,7 +53,7 @@ const std::string& BackendConfigWrapper::GetRawStringWithoutMutex() const {
     // Cache the raw string.
     raw_string_ = BackendConfigToRawString(*proto_).value();
   }
-  static const std::string* kEmptyString = new std::string();
+  static const std::string* const kEmptyString = new std::string();
   return raw_string_.empty() ? *kEmptyString : raw_string_;
 }
 

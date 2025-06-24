@@ -64,7 +64,6 @@ using ops::Const;
 using ops::Identity;
 using ops::LoopCond;
 using ops::NextIteration;
-using ::testing::Eq;
 using ::testing::Ne;
 
 const char gpu_device[] = "/job:a/replica:0/task:0/device:GPU:0";
@@ -173,7 +172,7 @@ REGISTER_OP("Combine")
     .SetShapeFn(shape_inference::UnknownShape);
 
 Output ConstructOp(const Scope& scope, const string& op_type,
-                   const absl::Span<const Input>& inputs) {
+                   const absl::Span<const Input> inputs) {
   if (!scope.ok()) return Output();
   const string unique_name = scope.GetUniqueNameForOp(op_type);
   auto builder =

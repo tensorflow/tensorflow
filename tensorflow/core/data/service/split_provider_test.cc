@@ -22,11 +22,11 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/framework/dataset.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace tensorflow {
 namespace data {

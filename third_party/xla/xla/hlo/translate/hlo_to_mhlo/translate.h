@@ -40,7 +40,7 @@ namespace xla {
 mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
     bool import_all_computations = false,
-    bool flatten_computation_args_result = false);
+    bool flatten_computation_args_result = false, bool emit_stablehlo = false);
 
 // Converts a HloModule stored in text form for a file with the given
 // `input_filename` into a MHLO module. Creates MLIR entities into the given
@@ -54,7 +54,7 @@ mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
 mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
     bool import_all_computations = false,
-    bool flatten_computation_args_result = false);
+    bool flatten_computation_args_result = false, bool emit_stablehlo = false);
 
 // Converts a HloModuleProto stored in the file with the given `input_filename`
 // into a StableHLO module. Creates MLIR entities into the given MLIR `context`.

@@ -19,10 +19,12 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 
 namespace xla {
 
@@ -42,8 +44,15 @@ std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
 // with parameter instructions even if the result of one instruction is used
 // as a parameter to another. Combines results of all operations into the
 // tuple and adds this tuple as a root instruction of the new module.
-std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
-    const std::vector<HloInstruction*>& instructions);
+// Parameters:
+//   instructions: HLO instructions to be extracted.
+//   done_ops: Set of HLO opcodes that are done operations (e.g. AllReduceDone).
+//   non_optimized_ops: Set of HLO opcodes that are not optimized (e.g.
+//   AllReduce).
+std::unique_ptr<HloModule> ExtractCollectiveOperationsIntoNewModule(
+    const std::vector<HloInstruction*>& instructions,
+    const absl::flat_hash_set<HloOpcode>& done_ops,
+    const absl::flat_hash_set<HloOpcode>& non_optimized_ops);
 
 // Extracts producer and consumer HLO instruction into a new HLO module
 // replacing its operands with parameter instructions.

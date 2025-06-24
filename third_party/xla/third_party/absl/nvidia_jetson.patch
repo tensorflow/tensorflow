@@ -1,0 +1,22 @@
+Imported from GitHub PR https://github.com/abseil/abseil-cpp/pull/1732
+
+Fix build on NVIDIA Jetson board. Fix #1665
+
+This patch is already used by the spark project.
+I'm fixing this as this break the build of Tensorflow and JAX on Jetson board.
+Merge 7db2d2ab9fbed1f0fabad10a6ec73533ba71bfff into 6b8ebb35c0414ef5a2b6fd4a0f59057e41beaff9
+
+Merging this change closes #1732
+
+diff --git a/absl/base/config.h b/absl/base/config.h
+--- a/absl/base/config.h	(revision 54fac219c4ef0bc379dfffb0b8098725d77ac81b)
++++ b/absl/base/config.h	(date 1744736470656)
+@@ -966,7 +966,7 @@
+ // https://llvm.org/docs/CompileCudaWithLLVM.html#detecting-clang-vs-nvcc-from-code
+ #ifdef ABSL_INTERNAL_HAVE_ARM_NEON
+ #error ABSL_INTERNAL_HAVE_ARM_NEON cannot be directly set
+-#elif defined(__ARM_NEON) && !defined(__CUDA_ARCH__)
++#elif defined(__ARM_NEON) && !(defined(__NVCC__) && defined(__CUDACC__))
+ #define ABSL_INTERNAL_HAVE_ARM_NEON 1
+ #endif
+ 

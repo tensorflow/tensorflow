@@ -1,5 +1,5 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("//xla:xla.bzl", "xla_cc_binary")
+load("//xla:xla.default.bzl", "xla_cc_binary")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])

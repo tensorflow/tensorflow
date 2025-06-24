@@ -21,7 +21,7 @@ limitations under the License.
 /// named computations in a single model, each with its own inputs/outputs.
 ///
 /// Do NOT include this file directly,
-/// instead include third_party/tensorflow/lite/signature_riunner.h
+/// instead include third_party/tensorflow/lite/signature_runner.h
 /// See third_party/tensorflow/lite/c/common.h for the API for defining
 /// operations (TfLiteRegistration).
 
@@ -113,12 +113,30 @@ class SignatureRunner {
   /// Read-only access to list of signature output names.
   const std::vector<const char*>& output_names() { return output_names_; }
 
+  /// Read-only access to list of signature input names in the order of
+  /// subgraph.
+  const std::vector<const char*>& subgraph_input_names() {
+    return subgraph_input_names_;
+  }
+
+  /// Read-only access to list of signature output names in the order of
+  /// subgraph.
+  const std::vector<const char*>& subgraph_output_names() {
+    return subgraph_output_names_;
+  }
+
   /// Returns the input tensor identified by 'input_name' in the
   /// given signature. Returns nullptr if the given name is not valid.
+  ///
+  /// \warning The returned pointer is not necessarily valid after calls to
+  /// AllocateTensors or Invoke.
   TfLiteTensor* input_tensor(const char* input_name);
 
   /// Returns the output tensor identified by 'output_name' in the
   /// given signature. Returns nullptr if the given name is not valid.
+  ///
+  /// \warning The returned pointer is not necessarily valid after calls to
+  /// AllocateTensors or Invoke.
   const TfLiteTensor* output_tensor(const char* output_name) const;
 
   /// Change a dimensionality of a given tensor. Note, this is only acceptable
@@ -258,6 +276,10 @@ class SignatureRunner {
   std::vector<const char*> input_names_;
   // The list of output tensor names.
   std::vector<const char*> output_names_;
+  // The list of input tensor names in the order of subgraph.
+  std::vector<const char*> subgraph_input_names_;
+  // The list of output tensor names in the order of subgraph.
+  std::vector<const char*> subgraph_output_names_;
 
   bool allow_buffer_handle_output_ = false;
 };

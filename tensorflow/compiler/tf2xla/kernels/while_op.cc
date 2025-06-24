@@ -41,6 +41,8 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
@@ -51,8 +53,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -264,7 +264,7 @@ absl::StatusOr<xla::XlaComputation> BuildWrappedBody(
               if (output_subshape.IsArray()) {
                 const xla::Shape& input_subshape =
                     xla::ShapeUtil::GetSubshape(input_shape, index);
-                for (int d = 0; d < output_subshape.rank(); ++d) {
+                for (int d = 0; d < output_subshape.dimensions().size(); ++d) {
                   if (input_subshape.is_dynamic_dimension(d) &&
                       !output_subshape.is_dynamic_dimension(d)) {
                     *element = xla::SetDimensionSize(
@@ -576,7 +576,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
       if (input_shape != list_shape) {
         // Prepare dynamic dimensions for element shapes.
         std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
-        for (int i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
+        for (int i = 0; i < list_shape.tuple_shapes().size() - 1; ++i) {
           std::vector<xla::XlaOp> dynamic_dims;
 
           const xla::Shape& shape = list_shape.tuple_shapes(i);
@@ -596,7 +596,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
           // Set dynamic dimension size to 0 for element value. Inside the while
           // loop, TensorlistSetItem will properly set the element shape's
           // dynamic dimension.
-          for (int64_t dim = 1; dim < shape.dimensions_size(); ++dim) {
+          for (int64_t dim = 1; dim < shape.dimensions().size(); ++dim) {
             int32_t dim_size = shape.dimensions(dim);
             if (shape.is_dynamic_dimension(dim)) {
               dim_size = 0;

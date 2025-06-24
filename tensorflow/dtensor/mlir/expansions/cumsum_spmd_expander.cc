@@ -15,10 +15,9 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/cumsum_spmd_expander.h"
 
-#include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <string>
-#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/DenseMap.h"

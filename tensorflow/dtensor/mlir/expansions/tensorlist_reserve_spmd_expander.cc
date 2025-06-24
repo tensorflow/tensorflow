@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/tensorlist_reserve_spmd_expander.h"
 
+#include <cstdint>
+#include <vector>
+
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project

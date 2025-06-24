@@ -15,6 +15,9 @@ limitations under the License.
 
 // This pass removes the device attribute from every corert.executeop.
 
+#include <memory>
+#include <utility>
+
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project

@@ -19,9 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -32,9 +35,9 @@ limitations under the License.
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -72,14 +75,16 @@ absl::StatusOr<bool> RunScheduler(
     return ShapeUtil::ByteSizeOfElements(shape);
   };
   auto async_tracker = std::make_unique<AsyncTracker>(sched_config);
-  auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
-      shape_size_bytes, async_tracker.get(), latency_estimator.get(),
-      sched_config);
+  std::shared_ptr<const SchedulingContext> scheduling_context =
+      std::make_shared<const SchedulingContext>(
+          module, std::move(latency_estimator), std::move(async_tracker),
+          shape_size_bytes);
+  auto scheduler_core =
+      std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
   TF_ASSIGN_OR_RETURN(
-      bool value, LatencyHidingScheduler(
-                      std::move(latency_estimator), std::move(async_tracker),
-                      std::move(scheduler_core), shape_size_bytes)
-                      .Run(module));
+      bool value,
+      LatencyHidingScheduler(scheduling_context, std::move(scheduler_core))
+          .Run(module));
 
   return value;
 }
@@ -90,19 +95,28 @@ class AnalyticalLatencyHidingSchedulerTest : public GpuCodegenTest {
       absl::string_view hlo_string) {
     return ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest());
   }
-  se::CudaComputeCapability GetCudaComputeCapability() {
+  se::GpuComputeCapability GetGpuComputeCapability() {
     return backend()
         .default_stream_executor()
         ->GetDeviceDescription()
-        .cuda_compute_capability();
+        .gpu_compute_capability();
   }
 };
 
 TEST_F(AnalyticalLatencyHidingSchedulerTest, TestAnalyticalLatencyEstimator) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::PASCAL_)) {
-    GTEST_SKIP() << "This test is for Pascal+ GPUs.";
-  }
+  auto gpu_compute_capability = GetGpuComputeCapability();
+  auto visitor = [](const auto& c) {
+    using cc = std::remove_const_t<std::remove_reference_t<decltype(c)>>;
+    if constexpr (std::is_same_v<stream_executor::CudaComputeCapability, cc>) {
+      if (!c.IsAtLeast(se::CudaComputeCapability::kPascal)) {
+        GTEST_SKIP() << "This test is for Pascal+ GPUs.";
+      }
+    } else if (!std::is_same_v<stream_executor::RocmComputeCapability, cc>) {
+      GTEST_SKIP() << "This test is for Pascal+ GPUs.";
+    }
+  };
+
+  std::visit(visitor, gpu_compute_capability);
   const se::DeviceDescription dev_info =
       backend().default_stream_executor()->GetDeviceDescription();
 
@@ -122,8 +136,8 @@ ENTRY entry {
   p1 = f32[16,64,256]{2,1,0} parameter(1)
   p2 = f32[1024,2048,2048]{2,1,0} parameter(2)
   p3 = f32[2048,2048,2048]{2,1,0} parameter(3)
-  all-reduce-start.1 = f32[1024,2048,2048]{2,1,0} all-reduce-start(p2), channel_id=8, replica_groups={{0}}, to_apply=region_20.995, backend_config="{\"is_sync\":false}"
-  all-reduce-start.2 = f32[2048,2048,2048]{2,1,0} all-reduce-start(p3), channel_id=10, replica_groups={{0}}, to_apply=region_20.995, backend_config="{\"is_sync\":false}"
+  all-reduce-start.1 = f32[1024,2048,2048]{2,1,0} all-reduce-start(p2), channel_id=8, replica_groups={{0}}, to_apply=region_20.995, backend_config={"collective_backend_config": {"is_sync": false}}
+  all-reduce-start.2 = f32[2048,2048,2048]{2,1,0} all-reduce-start(p3), channel_id=10, replica_groups={{0}}, to_apply=region_20.995, backend_config={"collective_backend_config": {"is_sync": false}}
 
   all-reduce-done.1 = f32[1024,2048,2048]{2,1,0} all-reduce-done(all-reduce-start.1)
   all-reduce-done.2 = f32[2048,2048,2048]{2,1,0} all-reduce-done(all-reduce-start.2)

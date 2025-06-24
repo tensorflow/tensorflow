@@ -35,7 +35,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
-#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
+#include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
@@ -62,9 +62,10 @@ std::optional<IndexingMap> InputSlicesFusion::ComputeThreadIdToOutputIndexing(
   const auto& shape = slice->operand(0)->shape();
   return GetDefaultThreadIdIndexingMap(launch_dims, unroll_factor_, shape,
                                        ctx) *
-         *ComputeInputToOutputIndexing(slice, 0, ctx)
-              .indexing_maps.front()
-              .begin();
+         ComputeInputToOutputIndexing(slice, 0, ctx)
+             .indexing_maps.front()
+             .begin()
+             ->map();
 }
 
 std::vector<emitters::EpilogueSpecification> InputSlicesFusion::GetEpilogues(

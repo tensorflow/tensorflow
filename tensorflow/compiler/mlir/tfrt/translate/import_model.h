@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project

@@ -18,15 +18,19 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/service/test_compilation_environment.pb.h"
-#include "xla/test.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
+
+using ::tsl::testing::StatusIs;
 
 // In order to use TestCompilationEnvironment* with CompilationEnvironments, we
 // must define ProcessNewEnv for them.
@@ -65,6 +69,33 @@ std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv3(
     env->set_a_third_flag(300);
   }
   return env;
+}
+
+std::unique_ptr<tsl::protobuf::Message> ProcessCustomDescInFallbackTest(
+    std::unique_ptr<tsl::protobuf::Message> msg_dynamic) {
+  auto new_generated_env =
+      std::make_unique<xla::test::TestCompilationEnvironment1>();
+  // This value is used to identify that the environment was processed via this
+  // specific path for the custom descriptor. It should match the
+  // kExpectedFallbackValue in the test that uses this function.
+  auto kTestSpecificValue = 555;
+  auto kDefaultValueIfInputIsUnexpected = 558;
+
+  new_generated_env->set_some_flag(kDefaultValueIfInputIsUnexpected);
+
+  if (msg_dynamic) {
+    const tsl::protobuf::Reflection* refl = msg_dynamic->GetReflection();
+    const tsl::protobuf::Descriptor* d = msg_dynamic->GetDescriptor();
+    const tsl::protobuf::FieldDescriptor* f = d->FindFieldByName("some_flag");
+    // Check if the incoming dynamic message has the flag set to
+    // kTestSpecificValue
+    if (refl && f && refl->HasField(*msg_dynamic, f) &&
+        refl->GetUInt32(*msg_dynamic, f) == kTestSpecificValue) {
+      new_generated_env->set_some_flag(kTestSpecificValue);
+    }
+  }
+
+  return new_generated_env;
 }
 
 namespace test {
@@ -129,6 +160,27 @@ TEST_F(CompilationEnvironmentsTest, MultipleMutableEnvs) {
   EXPECT_EQ(envs.GetMutableEnv<TestCompilationEnvironment1>().some_flag(), 101);
   EXPECT_EQ(envs.GetMutableEnv<TestCompilationEnvironment2>().some_other_flag(),
             201);
+}
+
+TEST_F(CompilationEnvironmentsTest, ReplaceExistingEnv) {
+  CompilationEnvironments envs;
+  auto env1 = std::make_unique<TestCompilationEnvironment1>();
+  env1->set_some_flag(5);
+  TF_ASSERT_OK(envs.AddEnv(std::move(env1)));
+  EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 5);
+  {
+    auto env2 = std::make_unique<TestCompilationEnvironment1>();
+    env2->set_some_flag(6);
+    ASSERT_THAT(envs.AddEnv(std::move(env2)),
+                StatusIs(absl::StatusCode::kAlreadyExists));
+  }
+  envs.DeleteEnv<TestCompilationEnvironment1>();
+  {
+    auto env2 = std::make_unique<TestCompilationEnvironment1>();
+    env2->set_some_flag(6);
+    TF_ASSERT_OK(envs.AddEnv(std::move(env2)));
+    EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 6);
+  }
 }
 
 TEST_F(CompilationEnvironmentsTest, CopyConstructor) {
@@ -215,6 +267,59 @@ TEST_F(CompilationEnvironmentsTest, EnvTypePresenceCheck) {
   EXPECT_FALSE(envs.HasEnv<TestCompilationEnvironment1>());
   envs.GetEnv<TestCompilationEnvironment1>();
   EXPECT_TRUE(envs.HasEnv<TestCompilationEnvironment1>());
+}
+
+TEST_F(CompilationEnvironmentsTest, InitializeAllKnownEnvs) {
+  CompilationEnvironments envs;
+  auto env1 = std::make_unique<TestCompilationEnvironment1>();
+  env1->set_some_flag(400);
+  TF_ASSERT_OK(envs.AddEnv(std::move(env1)));
+  EXPECT_TRUE(envs.HasEnv<TestCompilationEnvironment1>());
+  EXPECT_EQ(envs.GetMutableEnv<TestCompilationEnvironment1>().some_flag(), 400);
+  TF_ASSERT_OK(envs.InitializeAllKnownEnvs());
+  EXPECT_TRUE(envs.HasEnv<TestCompilationEnvironment1>());
+  EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 400);
+  EXPECT_TRUE(envs.HasEnv<TestCompilationEnvironment2>());
+  EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment2>().some_other_flag(), 200);
+  EXPECT_TRUE(envs.HasEnv<TestCompilationEnvironment3>());
+  EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment3>().a_third_flag(), 300);
+}
+
+TEST_F(CompilationEnvironmentsTest, GetEnvTriggersFullNameFallback) {
+  // Create a custom descriptor pool and load the proto into it.
+  const tsl::protobuf::Descriptor* desc_generated =
+      test::TestCompilationEnvironment1::descriptor();
+  auto* custom_pool = new tsl::protobuf::DescriptorPool(
+      tsl::protobuf::DescriptorPool::generated_pool());
+  tsl::protobuf::FileDescriptorProto file_proto;
+  desc_generated->file()->CopyTo(&file_proto);
+  custom_pool->BuildFile(file_proto);
+
+  // Register a custom handler for the descriptor from the custom_pool.
+  const tsl::protobuf::Descriptor* desc_custom =
+      custom_pool->FindMessageTypeByName(desc_generated->full_name());
+  CompilationEnvironments::RegisterProcessNewEnvFn(
+      desc_custom, ProcessCustomDescInFallbackTest);
+
+  // Create and populate a dynamic message instance using the custom descriptor.
+  tsl::protobuf::DynamicMessageFactory factory(custom_pool);
+  std::unique_ptr<tsl::protobuf::Message> dynamic_env_instance(
+      factory.GetPrototype(desc_custom)->New());
+  const tsl::protobuf::FieldDescriptor* flag_field =
+      desc_custom->FindFieldByName("some_flag");
+  auto kExpectedFallbackValue = 555;
+  dynamic_env_instance->GetReflection()->SetUInt32(
+      dynamic_env_instance.get(), flag_field, kExpectedFallbackValue);
+
+  // Add this dynamic instance to CompilationEnvironments.
+  CompilationEnvironments envs;
+  TF_ASSERT_OK(envs.AddEnv(std::move(dynamic_env_instance)));
+
+  // Trigger lookup by full_name.
+  const auto& retrieved_env = envs.GetEnv<test::TestCompilationEnvironment1>();
+
+  // Verify that the fallback value was used.
+  EXPECT_EQ(retrieved_env.some_flag(), kExpectedFallbackValue);
 }
 
 }  // namespace

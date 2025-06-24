@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/collective_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
@@ -37,9 +39,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
 
@@ -60,15 +61,14 @@ absl::StatusOr<std::unique_ptr<AllReduceThunk>> AllReduceThunk::Create(
 AllReduceThunk::AllReduceThunk(Info info, ReductionKind reduction_kind,
                                OpParams op_params, OpBuffers op_buffers,
                                OpResources op_resources, bool single_replica)
-    : CollectiveThunk(Kind::kAllReduce, std::move(info), std::move(op_params),
-                      std::move(op_buffers), std::move(op_resources)),
+    : CollectiveThunk(CollectiveKind::kAllReduce, std::move(info),
+                      std::move(op_params), std::move(op_buffers),
+                      std::move(op_resources)),
       reduction_kind_(reduction_kind),
       single_replica_(single_replica) {}
 
 tsl::AsyncValueRef<AllReduceThunk::ExecuteEvent> AllReduceThunk::Execute(
     const ExecuteParams& params) {
-  tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
-
   TF_ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
 
   VLOG(3) << absl::StreamFormat(
@@ -101,18 +101,29 @@ tsl::AsyncValueRef<AllReduceThunk::ExecuteEvent> AllReduceThunk::Execute(
 
   return ExecuteWithCommunicator(
       params.collective_params,
-      [&](const RendezvousKey& key, Communicator& comm) {
+      [&, data = std::move(data)](const RendezvousKey& key, Communicator& comm)
+          -> tsl::AsyncValueRef<Communicator::Event> {
+        tsl::CountDownAsyncValueRef<Communicator::Event> state(
+            data.source.size());
+
         CpuCollectives::Executor executor(key, DefaultCollectiveTimeout());
         for (int32_t i = 0; i < data.source.size(); ++i) {
           const Shape& shape = destination_shape(i);
-          TF_RETURN_IF_ERROR(comm.AllReduce(
-              data.source[i], data.destination[i], shape.element_type(),
-              ShapeUtil::ElementsIn(shape), reduction_kind_, executor));
-        }
-        return absl::OkStatus();
-      });
 
-  return OkExecuteEvent();
+          auto communicator_event = comm.AllReduce(
+              data.source[i], data.destination[i], shape.element_type(),
+              ShapeUtil::ElementsIn(shape), reduction_kind_, executor);
+
+          communicator_event.AndThen([state, communicator_event]() mutable {
+            if (ABSL_PREDICT_FALSE(communicator_event.IsError())) {
+              state.CountDown(communicator_event.GetError());
+            } else {
+              state.CountDown();
+            }
+          });
+        }
+        return state.AsRef();
+      });
 }
 
 }  // namespace xla::cpu

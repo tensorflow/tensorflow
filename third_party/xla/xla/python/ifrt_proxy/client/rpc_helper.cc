@@ -39,9 +39,9 @@
 #include "xla/python/ifrt_proxy/common/prof_util.h"
 #include "xla/python/ifrt_proxy/common/test_utils.h"
 #include "xla/python/ifrt_proxy/common/types.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/status_to_from_proto.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status_to_from_proto.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -132,6 +132,7 @@ class RpcHelper::Batcher {
 
   // Asks the underlying transport to terminate.
   void Finish(absl::Status s) {
+    LOG(INFO) << "RpcHelper::Batcher::Finish() starting: " << s;
     {
       absl::MutexLock l(&mu_);
       finished_ = true;
@@ -145,8 +146,11 @@ class RpcHelper::Batcher {
                         "still batched destruct operations";
       }
     }
+    LOG(INFO) << "RpcHelper::Batcher::Finish(): resetting thread_pool_.";
     thread_pool_.reset();
+    LOG(INFO) << "RpcHelper::Batcher::Finish(): calling session_->Finish().";
     session_->Finish(s);
+    LOG(INFO) << "RpcHelper::Batcher::Finish(): done.";
   }
 
  private:
@@ -322,6 +326,8 @@ RPC(GetDefaultDeviceAssignment, get_default_device_assignment);
 RPC(CheckFuture, check_future);
 RPC(CheckValueReady, check_value_ready);
 RPC(MakeArrayFromHostBuffer, make_array_from_host_buffer);
+RPC(MakeArraysFromHostBufferShards, make_arrays_from_host_buffer_shards);
+RPC(MakeErrorArrays, make_error_arrays);
 RPC(AssembleArrayFromSingleDeviceArrays,
     assemble_array_from_single_device_arrays);
 RPC(RemapArrays, remap_arrays);
@@ -340,6 +346,7 @@ RPC(LoadedExecutableIsDeleted, loaded_executable_is_deleted);
 RPC(LoadedExecutableDestruct, loaded_executable_destruct);
 RPC(LoadedHostCallbackPoll, loaded_host_callback_poll);
 RPC(LoadedHostCallbackReturn, loaded_host_callback_return);
+RPC(GetDefaultLayout, get_default_layout);
 
 Future<> RpcHelper::CheckFuture(uint64_t handle) {
   auto req = std::make_unique<CheckFutureRequest>();
@@ -359,14 +366,19 @@ RpcHelper::RpcHelper(IfrtProxyVersion version,
     : batcher_(std::make_unique<Batcher>(std::move(session))),
       version_(std::move(version)) {}
 
-RpcHelper::~RpcHelper() { Disconnect(); }
+RpcHelper::~RpcHelper() {
+  LOG(INFO) << "RpcHelper::~RpcHelper() starting.";
+  Disconnect();
+  LOG(INFO) << "RpcHelper::~RpcHelper() done.";
+}
 
 void RpcHelper::Batch(BatchOperation op, ArrayHandle handle) {
   return batcher_->Batch(op, handle);
 }
 
 void RpcHelper::Disconnect() {
-  batcher_->Finish(absl::CancelledError("Disconnected by client"));
+  batcher_->Finish(absl::CancelledError(
+      "Disconnected by client [via RpcHelper::Disconnect()]"));
 }
 
 uint64_t RpcHelper::NextHandle() {

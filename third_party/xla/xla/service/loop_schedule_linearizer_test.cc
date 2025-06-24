@@ -20,14 +20,15 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/copy_insertion.h"
-#include "xla/test_helpers.h"
-#include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -42,14 +43,6 @@ int64_t CountCopies(const HloComputation& computation) {
   return count;
 }
 
-int64_t CountCopies(const HloModule& module) {
-  int64_t count = 0;
-  for (const auto& computation : module.computations()) {
-    count += CountCopies(*computation);
-  }
-  return count;
-}
-
 int64_t CountControlEdges(const HloComputation& computation) {
   int64_t count = 0;
   for (const auto& instruction : computation.instructions()) {
@@ -58,22 +51,15 @@ int64_t CountControlEdges(const HloComputation& computation) {
   return count;
 }
 
-int64_t CountControlEdges(const HloModule& module) {
-  int64_t count = 0;
-  for (const auto& computation : module.computations()) {
-    count += CountControlEdges(*computation);
-  }
-  return count;
-}
-
-class LoopScheduleLinearizerTest : public HloTestBase {
+class LoopScheduleLinearizerTest : public HloHardwareIndependentTestBase {
  protected:
   void InsertCopies(HloModule* module, bool expect_change) {
-    LoopScheduleLinearizer loop_schedule_linearizer;
+    AliasInfo alias_info;
+    LoopScheduleLinearizer loop_schedule_linearizer(&alias_info);
     TF_ASSERT_OK_AND_ASSIGN(bool changed, loop_schedule_linearizer.Run(module));
     ASSERT_EQ(changed, expect_change);
 
-    CopyInsertion copy_insertion;
+    CopyInsertion copy_insertion(&alias_info);
     ASSERT_IS_OK(copy_insertion.Run(module).status());
   }
 };

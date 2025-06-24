@@ -1,0 +1,42 @@
+# Copyright 2025 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+gpu_device_info {
+  threads_per_block_limit: 1024
+  threads_per_warp: 32
+  shared_memory_per_block: 49152
+  shared_memory_per_core: 233472
+  threads_per_core_limit: 2048
+  core_count: 148
+  fpus_per_core: 128
+  block_dim_limit_x: 2147483647
+  block_dim_limit_y: 65535
+  block_dim_limit_z: 65535
+  memory_bandwidth: 7672320000000
+  l2_cache_size: 132644864
+  clock_rate_ghz: 1.965
+  device_memory_size: 191514673152
+  shared_memory_per_block_optin: 232448
+  cuda_compute_capability {
+    major: 10
+  }
+  registers_per_core_limit: 65536
+  registers_per_block_limit: 65536
+}
+platform_name: "CUDA"
+dnn_version_info {
+  major: 9
+  minor: 7
+}
+device_description_str: "NVIDIA B200"

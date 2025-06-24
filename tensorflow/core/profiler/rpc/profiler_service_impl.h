@@ -17,13 +17,23 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/base/macros.h"
 #include "xla/tsl/profiler/rpc/profiler_service_impl.h"
 #include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
+
+// TODO: b/323943471 - This macro should eventually be provided by Abseil.
+#ifndef ABSL_DEPRECATE_AND_INLINE
+#define ABSL_DEPRECATE_AND_INLINE()
+#endif
 
 namespace tensorflow {
 namespace profiler {
 
-using tsl::profiler::CreateProfilerService;  // NOLINT
+ABSL_DEPRECATE_AND_INLINE()
+inline std::unique_ptr<tensorflow::grpc::ProfilerService::Service>
+CreateProfilerService() {
+  return tsl::profiler::CreateProfilerService();
+}
 
 }  // namespace profiler
 }  // namespace tensorflow

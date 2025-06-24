@@ -1,4 +1,4 @@
-// RUN: tf-opt --tfl-legalize-tf-while %s -o - | flatbuffer_translate -mlir-to-tflite-flatbuffer - -o -  | flatbuffer_translate --tflite-flatbuffer-to-mlir - -o - | FileCheck %s
+// RUN: litert-opt --tfl-legalize-tf-while %s -o - | flatbuffer_translate -mlir-to-tflite-flatbuffer - -o -  | flatbuffer_translate --tflite-flatbuffer-to-mlir - -o - | FileCheck %s
 
 // CHECK-LABEL: main
 func.func @main(%arg0: tensor<*xf32>) -> tensor<*xf32> {

@@ -3,7 +3,9 @@
 // CHECK-LABEL: HloModule dot_algorithm_f8_f8_f32
 module @dot_algorithm_f8_f8_f32 {
   func.func @main(%arg0: tensor<2x2x2xf32>, %arg1: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
-    // CHECK: f32[2,2,2] dot(f32[2,2,2] {{.*}}, f32[2,2,2] {{.*}}), {{.*}}, algorithm=dot_any_f8_any_f8_f32
+    // CHECK: %[[ARG0:.+]] = f32[2,2,2] parameter(0)
+    // CHECK: %[[ARG1:.+]] = f32[2,2,2] parameter(1)
+    // CHECK: f32[2,2,2] dot(%[[ARG0]], %[[ARG1]]), {{.*}}, algorithm=dot_any_f8_any_f8_f32
     %0 = "mhlo.dot_general"(%arg0, %arg1) <{
       dot_dimension_numbers = #mhlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
       precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
@@ -25,7 +27,9 @@ module @dot_algorithm_f8_f8_f32 {
 // CHECK-LABEL: HloModule dot_algorithm_f8_f8_f32_fast_accum
 module @dot_algorithm_f8_f8_f32_fast_accum {
   func.func @main(%arg0: tensor<2x2x2xf32>, %arg1: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
-    // CHECK: f32[2,2,2] dot(f32[2,2,2] {{.*}}, f32[2,2,2] {{.*}}), {{.*}}, algorithm=dot_any_f8_any_f8_f32_fast_accum
+    // CHECK: %[[ARG0:.+]] = f32[2,2,2] parameter(0)
+    // CHECK: %[[ARG1:.+]] = f32[2,2,2] parameter(1)
+    // CHECK: f32[2,2,2] dot(%[[ARG0]], %[[ARG1]]), {{.*}}, algorithm=dot_any_f8_any_f8_f32_fast_accum
     %0 = "mhlo.dot_general"(%arg0, %arg1) <{
       dot_dimension_numbers = #mhlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
       precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
@@ -47,7 +51,9 @@ module @dot_algorithm_f8_f8_f32_fast_accum {
 // CHECK-LABEL: HloModule dot_algorithm_f16_f16_f16
 module @dot_algorithm_f16_f16_f16 {
   func.func @main(%arg0: tensor<2x2x2xf32>, %arg1: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
-    // CHECK: f32[2,2,2] dot(f32[2,2,2] {{.*}}, f32[2,2,2] {{.*}}), {{.*}}, algorithm=dot_f16_f16_f16
+    // CHECK: %[[ARG0:.+]] = f32[2,2,2] parameter(0)
+    // CHECK: %[[ARG1:.+]] = f32[2,2,2] parameter(1)
+    // CHECK: f32[2,2,2] dot(%[[ARG0]], %[[ARG1]]), {{.*}}, algorithm=dot_f16_f16_f16
     %0 = "mhlo.dot_general"(%arg0, %arg1) <{
       dot_dimension_numbers = #mhlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
       precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
@@ -69,7 +75,9 @@ module @dot_algorithm_f16_f16_f16 {
 // CHECK-LABEL: HloModule dot_algorithm_f16_f16_f32
 module @dot_algorithm_f16_f16_f32 {
   func.func @main(%arg0: tensor<2x2x2xf32>, %arg1: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
-    // CHECK: f32[2,2,2] dot(f32[2,2,2] {{.*}}, f32[2,2,2] {{.*}}), {{.*}}, algorithm=dot_f16_f16_f32
+    // CHECK: %[[ARG0:.+]] = f32[2,2,2] parameter(0)
+    // CHECK: %[[ARG1:.+]] = f32[2,2,2] parameter(1)
+    // CHECK: f32[2,2,2] dot(%[[ARG0]], %[[ARG1]]), {{.*}}, algorithm=dot_f16_f16_f32
     %0 = "mhlo.dot_general"(%arg0, %arg1) <{
       dot_dimension_numbers = #mhlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
       precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
@@ -91,7 +99,9 @@ module @dot_algorithm_f16_f16_f32 {
 // CHECK-LABEL: HloModule dot_algorithm_bf16_bf16_bf16
 module @dot_algorithm_bf16_bf16_bf16 {
   func.func @main(%arg0: tensor<2x2x2xbf16>, %arg1: tensor<2x2x2xbf16>) -> tensor<2x2x2xbf16> {
-    // CHECK: bf16[2,2,2] dot(bf16[2,2,2] {{.*}}, bf16[2,2,2] {{.*}}), {{.*}}, algorithm=dot_bf16_bf16_bf16
+    // CHECK: %[[ARG0:.+]] = bf16[2,2,2] parameter(0)
+    // CHECK: %[[ARG1:.+]] = bf16[2,2,2] parameter(1)
+    // CHECK: bf16[2,2,2] dot(%[[ARG0]], %[[ARG1]]), {{.*}}, algorithm=dot_bf16_bf16_bf16
     %0 = "mhlo.dot_general"(%arg0, %arg1) <{
       dot_dimension_numbers = #mhlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
       precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
@@ -113,7 +123,9 @@ module @dot_algorithm_bf16_bf16_bf16 {
 // CHECK-LABEL: HloModule dot_algorithm_bf16_bf16_f32
 module @dot_algorithm_bf16_bf16_f32 {
   func.func @main(%arg0: tensor<2x2x2xbf16>, %arg1: tensor<2x2x2xbf16>) -> tensor<2x2x2xbf16> {
-    // CHECK: bf16[2,2,2] dot(bf16[2,2,2] {{.*}}, bf16[2,2,2] {{.*}}), {{.*}}, algorithm=dot_bf16_bf16_f32
+    // CHECK: %[[ARG0:.+]] = bf16[2,2,2] parameter(0)
+    // CHECK: %[[ARG1:.+]] = bf16[2,2,2] parameter(1)
+    // CHECK: bf16[2,2,2] dot(%[[ARG0]], %[[ARG1]]), {{.*}}, algorithm=dot_bf16_bf16_f32
     %0 = "mhlo.dot_general"(%arg0, %arg1) <{
       dot_dimension_numbers = #mhlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
       precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
@@ -135,7 +147,9 @@ module @dot_algorithm_bf16_bf16_f32 {
 // CHECK-LABEL: HloModule dot_algorithm_bf16_bf16_f32_x3
 module @dot_algorithm_bf16_bf16_f32_x3 {
   func.func @main(%arg0: tensor<2x2x2xbf16>, %arg1: tensor<2x2x2xbf16>) -> tensor<2x2x2xbf16> {
-    // CHECK: bf16[2,2,2] dot(bf16[2,2,2] {{.*}}, bf16[2,2,2] {{.*}}), {{.*}}, algorithm=dot_bf16_bf16_f32_x3
+    // CHECK: %[[ARG0:.+]] = bf16[2,2,2] parameter(0)
+    // CHECK: %[[ARG1:.+]] = bf16[2,2,2] parameter(1)
+    // CHECK: bf16[2,2,2] dot(%[[ARG0]], %[[ARG1]]), {{.*}}, algorithm=dot_bf16_bf16_f32_x3
     %0 = "mhlo.dot_general"(%arg0, %arg1) <{
       dot_dimension_numbers = #mhlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
       precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
@@ -157,7 +171,9 @@ module @dot_algorithm_bf16_bf16_f32_x3 {
 // CHECK-LABEL: HloModule dot_algorithm_bf16_bf16_f32_x6
 module @dot_algorithm_bf16_bf16_f32_x6 {
   func.func @main(%arg0: tensor<2x2x2xbf16>, %arg1: tensor<2x2x2xbf16>) -> tensor<2x2x2xbf16> {
-    // CHECK: bf16[2,2,2] dot(bf16[2,2,2] {{.*}}, bf16[2,2,2] {{.*}}), {{.*}}, algorithm=dot_bf16_bf16_f32_x6
+    // CHECK: %[[ARG0:.+]] = bf16[2,2,2] parameter(0)
+    // CHECK: %[[ARG1:.+]] = bf16[2,2,2] parameter(1)
+    // CHECK: bf16[2,2,2] dot(%[[ARG0]], %[[ARG1]]), {{.*}}, algorithm=dot_bf16_bf16_f32_x6
     %0 = "mhlo.dot_general"(%arg0, %arg1) <{
       dot_dimension_numbers = #mhlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
       precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
@@ -179,7 +195,9 @@ module @dot_algorithm_bf16_bf16_f32_x6 {
 // CHECK-LABEL: HloModule dot_algorithm_tf32_tf32_f32
 module @dot_algorithm_tf32_tf32_f32 {
   func.func @main(%arg0: tensor<2x2x2xf32>, %arg1: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
-    // CHECK: f32[2,2,2] dot(f32[2,2,2] {{.*}}, f32[2,2,2] {{.*}}), {{.*}}, algorithm=dot_tf32_tf32_f32
+    // CHECK: %[[ARG0:.+]] = f32[2,2,2] parameter(0)
+    // CHECK: %[[ARG1:.+]] = f32[2,2,2] parameter(1)
+    // CHECK: f32[2,2,2] dot(%[[ARG0]], %[[ARG1]]), {{.*}}, algorithm=dot_tf32_tf32_f32
     %0 = "mhlo.dot_general"(%arg0, %arg1) <{
       dot_dimension_numbers = #mhlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
       precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
@@ -201,7 +219,9 @@ module @dot_algorithm_tf32_tf32_f32 {
 // CHECK-LABEL: HloModule dot_algorithm_tf32_tf32_f32_x3
 module @dot_algorithm_tf32_tf32_f32_x3 {
   func.func @main(%arg0: tensor<2x2x2xf32>, %arg1: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
-    // CHECK: f32[2,2,2] dot(f32[2,2,2] {{.*}}, f32[2,2,2] {{.*}}), {{.*}}, algorithm=dot_tf32_tf32_f32_x3
+    // CHECK: %[[ARG0:.+]] = f32[2,2,2] parameter(0)
+    // CHECK: %[[ARG1:.+]] = f32[2,2,2] parameter(1)
+    // CHECK: f32[2,2,2] dot(%[[ARG0]], %[[ARG1]]), {{.*}}, algorithm=dot_tf32_tf32_f32_x3
     %0 = "mhlo.dot_general"(%arg0, %arg1) <{
       dot_dimension_numbers = #mhlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
       precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
@@ -223,7 +243,9 @@ module @dot_algorithm_tf32_tf32_f32_x3 {
 // CHECK-LABEL: HloModule dot_algorithm_f32_f32_f32
 module @dot_algorithm_f32_f32_f32 {
   func.func @main(%arg0: tensor<2x2x2xf32>, %arg1: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
-    // CHECK: f32[2,2,2] dot(f32[2,2,2] {{.*}}, f32[2,2,2] {{.*}}), {{.*}}, algorithm=dot_f32_f32_f32
+    // CHECK: %[[ARG0:.+]] = f32[2,2,2] parameter(0)
+    // CHECK: %[[ARG1:.+]] = f32[2,2,2] parameter(1)
+    // CHECK: f32[2,2,2] dot(%[[ARG0]], %[[ARG1]]), {{.*}}, algorithm=dot_f32_f32_f32
     %0 = "mhlo.dot_general"(%arg0, %arg1) <{
       dot_dimension_numbers = #mhlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
       precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
@@ -245,7 +267,9 @@ module @dot_algorithm_f32_f32_f32 {
 // CHECK-LABEL: HloModule dot_algorithm_f64_f64_f64
 module @dot_algorithm_f64_f64_f64 {
   func.func @main(%arg0: tensor<2x2x2xf64>, %arg1: tensor<2x2x2xf64>) -> tensor<2x2x2xf64> {
-    // CHECK: f64[2,2,2] dot(f64[2,2,2] {{.*}}, f64[2,2,2] {{.*}}), {{.*}}, algorithm=dot_f64_f64_f64
+    // CHECK: %[[ARG0:.+]] = f64[2,2,2] parameter(0)
+    // CHECK: %[[ARG1:.+]] = f64[2,2,2] parameter(1)
+    // CHECK: f64[2,2,2] dot(%[[ARG0]], %[[ARG1]]), {{.*}}, algorithm=dot_f64_f64_f64
     %0 = "mhlo.dot_general"(%arg0, %arg1) <{
       dot_dimension_numbers = #mhlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
       precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],

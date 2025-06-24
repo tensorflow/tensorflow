@@ -78,9 +78,9 @@ class CustomCallTargetRegistry {
   //
   // Different platforms have different ABIs.  TODO(jlebar): Describe them!
   //
-  // (We use std::unordered_map and std::mutex rather than absl::flat_hash_map
-  // and absl::mutex because we want to avoid an absl dependency, because this
-  // library is pulled in by all XLA:CPU AoT binaries.)
+  // (We use std::unordered_map and std::mutex rather than
+  // absl::flat_hash_map and absl::Mutex because we want to avoid an absl
+  // dependency, because this library is pulled in by all XLA:CPU AoT binaries.)
   std::unordered_map<std::pair<std::string, std::string>, void*,
                      HashPairOfStrings>
       registered_symbols_;

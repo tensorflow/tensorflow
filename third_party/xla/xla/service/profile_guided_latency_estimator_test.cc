@@ -29,8 +29,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/latency_hiding_scheduler.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
@@ -72,21 +72,23 @@ absl::StatusOr<bool> RunScheduler(
     return ShapeUtil::ByteSizeOfElements(shape);
   };
   auto async_tracker = std::make_unique<AsyncTracker>(sched_config);
-  auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
-      shape_size_bytes, async_tracker.get(), latency_estimator.get(),
-      sched_config);
+  std::shared_ptr<const SchedulingContext> scheduling_context =
+      std::make_shared<const SchedulingContext>(
+          module, std::move(latency_estimator), std::move(async_tracker),
+          shape_size_bytes);
+  auto scheduler_core =
+      std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
   TF_ASSIGN_OR_RETURN(
-      bool value, LatencyHidingScheduler(
-                      std::move(latency_estimator), std::move(async_tracker),
-                      std::move(scheduler_core), shape_size_bytes)
-                      .Run(module));
+      bool value,
+      LatencyHidingScheduler(scheduling_context, std::move(scheduler_core))
+          .Run(module));
 
   return value;
 }
 
 }  // namespace
 
-class LatencyHidingSchedulerTest : public HloTestBase,
+class LatencyHidingSchedulerTest : public HloHardwareIndependentTestBase,
                                    public ::testing::WithParamInterface<bool> {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> ParseHloText(
@@ -165,7 +167,7 @@ ENTRY entry {
 INSTANTIATE_TEST_SUITE_P(LatencyHidingSchedulerTest, LatencyHidingSchedulerTest,
                          ::testing::Bool());
 
-using ProfileGuidedLatencyEstimatorTest = HloTestBase;
+using ProfileGuidedLatencyEstimatorTest = HloHardwareIndependentTestBase;
 
 TEST_F(ProfileGuidedLatencyEstimatorTest,
        TestProfileGuidedLatencyEstimatorWithAsyncInstruction) {

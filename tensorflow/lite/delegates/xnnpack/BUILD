@@ -240,24 +240,26 @@ cc_library(
         ":file_util",
         ":flexbuffers_util",
         ":quantization_util",
-        ":tflite_with_xnnpack_dynamic_fully_connected",
-        ":tflite_with_xnnpack_logging",
-        ":tflite_with_xnnpack_qs8",
-        ":tflite_with_xnnpack_qu8",
-        ":tflite_with_xnnpack_transient_indirection_buffer",
+        ":tflite_with_xnnpack_dynamic_fully_connected",  # buildcleaner: keep
+        ":tflite_with_xnnpack_logging",  # buildcleaner: keep
+        ":tflite_with_xnnpack_qs8",  # buildcleaner: keep
+        ":tflite_with_xnnpack_qu8",  # buildcleaner: keep
+        ":tflite_with_xnnpack_transient_indirection_buffer",  # buildcleaner: keep
         ":weight_cache",
         "//tensorflow/compiler/mlir/lite/kernels/internal:compatibility_macros",
         "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:padding",
-        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//tensorflow/lite/schema:schema_fbs",
@@ -292,16 +294,18 @@ cc_library(
         ":weight_cache",
         "//tensorflow/compiler/mlir/lite/kernels/internal:compatibility_macros",
         "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:padding",
-        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//tensorflow/lite/schema:schema_fbs",
@@ -2642,6 +2646,19 @@ cc_test(
         "@XNNPACK",
         "@com_google_googletest//:gtest",
         "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_test(
+    name = "delegate_weight_cache_test",
+    srcs = ["delegate_weight_cache_test.cc"],
+    deps = [
+        ":weight_cache",
+        ":xnnpack_delegate_hdrs_only",
+        "//tensorflow/lite:framework_experimental",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core:model_building",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

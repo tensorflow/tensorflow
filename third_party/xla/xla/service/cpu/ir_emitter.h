@@ -60,7 +60,7 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/xla_data.pb.h"
 
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 #include "xla/service/cpu/onednn_memory_util.h"
 #endif
 
@@ -112,7 +112,10 @@ class IrEmitter : public DfsHloVisitorWithDefault,
             absl::flat_hash_map<const HloComputation*, bool>
                 computation_transitively_contains_custom_call,
             const TargetMachineFeatures* target_machine,
-            bool emit_code_for_msan);
+            bool emit_code_for_msan,
+            absl::flat_hash_map<BufferAllocation::Slice, int64_t>
+                slice_to_buffer_table_index = {},
+            bool allow_runtime_calls = true);
   ~IrEmitter() override;
 
   // Emit and return the given HLO computation as an LLVM IR
@@ -136,7 +139,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // If 'allow_reassociation' is true, the fast-math reassociation flag will
   // be enabled in the function's body. This is used when emitting reducers.
   absl::StatusOr<llvm::Function*> EmitComputation(
-      HloComputation* computation, absl::string_view function_name_prefix,
+      const HloComputation* computation, absl::string_view function_name_prefix,
       bool is_top_level_computation,
       absl::Span<HloInstruction* const> instruction_order,
       bool allow_reassociation,
@@ -245,8 +248,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     return IRBuilderGuard(this, &builder);
   }
 
-  absl::Status EmitNestedComputation(const HloComputation& callee,
-                                     absl::string_view name, bool is_reducer);
+  absl::StatusOr<llvm::Function*> EmitNestedComputation(
+      const HloComputation& callee, absl::string_view name, bool is_reducer);
 
  protected:
   friend class IrEmitter2;
@@ -333,16 +336,18 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::Status HandleTopK(HloInstruction* hlo) override;
   absl::Status HandleAllReduceSingleReplica(HloInstruction* crs);
   absl::Status HandleAllReduceMultipleReplica(HloInstruction* crs);
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
   std::vector<StackAlloca> EmitOneDnnOperandsAlloca(HloInstruction* custom_call,
                                                     llvm::Value*& args_val,
                                                     int& arg_indx);
+  std::pair<llvm::Value*, StackAlloca> GetPtrAndAllocaFromBufferSlice(
+      const BufferAllocation::Slice& slice, const Shape& shape);
   absl::Status HandleOneDnnMatMulCalls(HloInstruction* hlo,
                                        std::string runtime_symbol_name);
   absl::Status HandleOneDnnSoftmax(HloInstruction* hlo);
   absl::Status HandleOneDnnLayerNorm(HloInstruction* hlo);
   absl::Status HandleOneDnnConvolution(HloInstruction* hlo);
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
   // Private helper to initialize an IR function for the computation.
   void InitializeIrFunction(const std::string& function_name);
 
@@ -352,7 +357,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Note that since the call graph is flattened, if the same function is
   // called in both thread-local and non-thread-local it would be codegen'd
   // twice, and we would know whether it's thread-local at codegen time.
-  void EmitThreadLocalFunctionEpilogue(HloComputation* computation);
+  void EmitThreadLocalFunctionEpilogue(const HloComputation* computation);
 
   // Convenience functions to generate a GEP into the profile counter parameter
   // which would correspond to the index for a given HLO instruction or
@@ -843,6 +848,11 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   bool emit_code_for_msan_;
 
+  absl::flat_hash_map<BufferAllocation::Slice, int64_t>
+      slice_to_buffer_table_index_;
+
+  bool allow_runtime_calls_;
+
   IrEmitter(const IrEmitter&) = delete;
   IrEmitter& operator=(const IrEmitter&) = delete;
 };
@@ -860,6 +870,11 @@ absl::Status EmitFastConcatenate(
     absl::Span<const llvm_ir::IrArray> source_arrays,
     const llvm_ir::IrArray& target_array, llvm::Module* module,
     llvm::IRBuilderBase& b);
+
+// For each called computation called by the instruction, determines if that
+// computation calls a custom-call function, either directly or transitively.
+absl::flat_hash_map<const HloComputation*, bool>
+ComputationsTransitivelyContainCustomCall(const HloInstruction* instr);
 
 }  // namespace cpu
 }  // namespace xla

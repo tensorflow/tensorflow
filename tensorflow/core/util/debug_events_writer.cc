@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/host_info.h"
-#include "tensorflow/core/public/version.h"
+#include "tensorflow/core/public/release_version.h"
 
 namespace tensorflow {
 namespace tfdbg {

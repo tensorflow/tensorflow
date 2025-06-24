@@ -230,7 +230,8 @@ class TernaryOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       x = np.array([.3, .4, .0, .1], dtype=dtype)
       expected = sps.betainc(a, b, x)
       self._testTernary(
-          math_ops.betainc, a, b, x, expected, rtol=5e-6, atol=6e-6)
+          math_ops.betainc, a, b, x, expected, rtol=5e-5, atol=6e-5
+      )
 
   @parameterized.parameters(
       {

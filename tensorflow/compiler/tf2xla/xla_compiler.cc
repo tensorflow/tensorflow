@@ -525,7 +525,7 @@ string XlaCompiler::Argument::ShapeHumanString() const {
   if (absl::holds_alternative<TensorShape>(shape)) {
     return std::get<TensorShape>(shape).DebugString();
   } else {
-    return std::get<xla::Shape>(shape).DebugString();
+    return std::get<xla::Shape>(shape).ToProto().DebugString();
   }
 }
 
@@ -935,7 +935,7 @@ absl::Status XlaCompiler::XLAShapeForArgument(
         if (std::holds_alternative<xla::Shape>(arg.shape) &&
             std::get<xla::Shape>(arg.shape).is_dynamic()) {
           xla::Shape dynamic_shape = std::get<xla::Shape>(arg.shape);
-          for (int i = 0; i < xla_shape->dimensions_size(); ++i) {
+          for (int i = 0; i < xla_shape->dimensions().size(); ++i) {
             xla_shape->set_dynamic_dimension(
                 i, dynamic_shape.is_dynamic_dimension(i));
           }
@@ -1678,7 +1678,8 @@ absl::Status XlaCompiler::SetDeviceToHostMetadata(
     tf2xla::HostTransferMetadata& existing_transfer = host_compute_sends_[key];
     tf2xla::HostTransferMetadata new_transfer;
     SetTransfer(key, types, shapes, &new_transfer);
-    if (xla::protobuf_util::ProtobufEquals(existing_transfer, new_transfer)) {
+    if (xla::protobuf_util::HaveSameSerialization(existing_transfer,
+                                                  new_transfer)) {
       return absl::OkStatus();
     } else {
       return errors::InvalidArgument(
@@ -1712,7 +1713,8 @@ absl::Status XlaCompiler::SetHostToDeviceMetadata(
     tf2xla::HostTransferMetadata& existing_transfer = host_compute_recvs_[key];
     tf2xla::HostTransferMetadata new_transfer;
     SetTransfer(key, types, shapes, &new_transfer);
-    if (xla::protobuf_util::ProtobufEquals(existing_transfer, new_transfer)) {
+    if (xla::protobuf_util::HaveSameSerialization(existing_transfer,
+                                                  new_transfer)) {
       return absl::OkStatus();
     } else {
       return errors::InvalidArgument(

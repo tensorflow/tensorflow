@@ -31,12 +31,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/protobuf/status.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/snapshot/prefetched_split_provider.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 

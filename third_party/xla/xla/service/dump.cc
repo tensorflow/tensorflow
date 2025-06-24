@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/dump.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <iostream>
@@ -27,6 +28,8 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/const_init.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
@@ -38,30 +41,36 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/OperationSupport.h"
-#include "mlir/Support/FileUtilities.h"
 #include "mlir/Transforms/LocationSnapshot.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_proto_util.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/file_system_helper.h"
 #include "xla/util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/file_system.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/regexp.h"
-#include "tsl/platform/status.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
+
+// BuildData isn't available in OSS.
+#if !TSL_IS_IN_OSS
+#include "absl/base/builddata.h"
+#endif  // TSL_IS_IN_OSS
 
 namespace xla {
 
@@ -75,7 +84,8 @@ absl::Status CreateDirIfNeeded(const std::string& dir, tsl::Env* env) {
     if (!status.ok()) {
       status = env->IsDirectory(dir);
       if (!status.ok()) {
-        LOG(ERROR) << "Could not create directory " << dir;
+        LOG(ERROR) << "Could not create directory: " << dir
+                   << ". Error: " << status;
         return status;
       }
     }
@@ -118,14 +128,9 @@ struct CanonicalDebugOptions {
             opts.xla_gpu_dump_hlo_unoptimized_snapshots()),
         dump_include_timestamp(opts.xla_dump_include_timestamp()),
         dump_max_hlo_modules(opts.xla_dump_max_hlo_modules()),
-        dump_module_metadata(opts.xla_dump_module_metadata()),
         dump_compress_protos(opts.xla_dump_compress_protos()),
-        dump_hlo_metadata(!opts.xla_dump_disable_metadata()),
         dump_fdo_profiles(opts.xla_gpu_experimental_dump_fdo_profiles()),
-        dump_as_long_text(opts.xla_dump_hlo_as_long_text()),
-        dump_mlir_pretty_form(opts.xla_dump_enable_mlir_pretty_form()),
-        dump_large_constants(opts.xla_dump_large_constants()),
-        syntax_sugar_async_ops(opts.xla_syntax_sugar_async_ops()) {
+        dump_mlir_pretty_form(opts.xla_dump_enable_mlir_pretty_form()) {
     // This constructor examines the values in `opts` and turns on other flags
     // based on what we think is the user's intent.  To reduce confusion about
     // what was a user-specified value versus an extrapolated value, within this
@@ -218,6 +223,14 @@ struct CanonicalDebugOptions {
         should_dump_pipeline = [](string_view) { return false; };
       }
     }
+
+    // Dumping unoptimized HLO snapshots should not trigger dumping of all
+    // available information for the HLO module and pipelines.
+
+    if (dump_unoptimized_snapshots) {
+      should_dump_module = [](string_view) { return false; };
+      should_dump_pipeline = [](string_view) { return false; };
+    }
   }
 
   bool dumping_to_stdout() const { return dump_to == "-"; }
@@ -239,14 +252,9 @@ struct CanonicalDebugOptions {
   bool dump_unoptimized_snapshots;
   bool dump_include_timestamp;
   int64_t dump_max_hlo_modules;
-  bool dump_module_metadata;
   bool dump_compress_protos;
-  bool dump_hlo_metadata;
   bool dump_fdo_profiles;
-  bool dump_as_long_text;
   bool dump_mlir_pretty_form;
-  bool dump_large_constants;
-  bool syntax_sugar_async_ops;
 };
 
 // Helper class to hold a list of functions that produces data to be written to
@@ -285,12 +293,11 @@ static absl::Status WriteStringToFile(tsl::Env* env, const std::string& fname,
       TF_RETURN_IF_ERROR(gz_file.Append(next_producer()));
     }
     return gz_file.Close();
-  } else {
-    while (auto next_producer = data_producer.Next()) {
-      TF_RETURN_IF_ERROR(file->Append(next_producer()));
-    }
-    return file->Close();
   }
+  while (auto next_producer = data_producer.Next()) {
+    TF_RETURN_IF_ERROR(file->Append(next_producer()));
+  }
+  return file->Close();
 }
 
 static absl::Status WriteStringToFile(tsl::Env* env, const std::string& fname,
@@ -364,7 +371,9 @@ static std::optional<std::string> DumpToFileInDirImpl(
     string_view filename, string_view contents,
     const CanonicalDebugOptions& opts, bool compress = false) {
   auto file_path = GetDumpFilePath(filename, opts);
-  if (!file_path) return std::nullopt;
+  if (!file_path) {
+    return std::nullopt;
+  }
 
   auto status =
       WriteStringToFile(tsl::Env::Default(), *file_path, contents, compress);
@@ -381,7 +390,9 @@ static std::optional<std::string> DumpToFileInDirImpl(
     string_view filename, DataProducer& data_producer,
     const CanonicalDebugOptions& opts, bool compress = false) {
   auto file_path = GetDumpFilePath(filename, opts);
-  if (!file_path) return std::nullopt;
+  if (!file_path) {
+    return std::nullopt;
+  }
 
   auto status = WriteStringToFile(tsl::Env::Default(), *file_path,
                                   data_producer, compress);
@@ -454,18 +465,8 @@ static std::vector<std::string> DumpHloModuleImpl(
   std::vector<std::optional<std::string>> file_paths;
 
   if (opts.dump_as_text) {
-    auto print_options = opts.dump_as_long_text
-                             ? HloPrintOptions::Default()
-                             : HloPrintOptions::ShortParsable();
-    print_options.set_print_large_constants(opts.dump_large_constants);
-    print_options.set_print_control_dependencies(true);
-    print_options.set_print_operand_index_annotation_interval(5);
-    print_options.set_print_backend_config(true);
-    print_options.set_print_metadata(opts.dump_hlo_metadata);
-    print_options.set_print_name_after_closing_brace(true);
-    print_options.set_syntax_sugar_async_ops(opts.syntax_sugar_async_ops);
-    file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-        StrCat(filename, ".txt"), module.ToString(print_options), opts));
+    file_paths.push_back(DumpToFileInDirOrStdoutImpl(StrCat(filename, ".txt"),
+                                                     module.ToString(), opts));
     if (buffer_assn) {
       DataProducer buffer_assignment;
       buffer_assignment.Append([&] { return buffer_assn->ToString(); });
@@ -610,6 +611,23 @@ int64_t StepNumberForModule(const HloModule& module) {
   return module_id_to_step_number[module.unique_id()]++;
 }
 
+std::vector<std::string> DumpHloModuleIfEnabledImpl(
+    const HloModule& module, const BufferAssignment* buffer_assn,
+    string_view name) {
+  CanonicalDebugOptions opts(module.config().debug_options());
+  if (opts.should_dump_module(module.name())) {
+    std::vector<std::string> filepaths = DumpHloModuleImpl(
+        module, /*buffer_assn=*/buffer_assn, TimestampFor(module), name, opts);
+    std::optional<std::string> maybe_debug_options_filepath =
+        DumpNonDefaultDebugOptions(module, kNonDefaultDebugOptionsDumpSuffix);
+    if (maybe_debug_options_filepath.has_value()) {
+      filepaths.push_back(*maybe_debug_options_filepath);
+    }
+    return filepaths;
+  }
+  return {};
+}
+
 }  // namespace
 
 // Get a timestamp which we can use as a filename prefix specific to this
@@ -634,11 +652,20 @@ std::string FilenameFor(int unique_id, string_view module_name,
   if (!module_name.empty()) {
     absl::StrAppend(&filename, ".", module_name);
   }
+
+#if !TSL_IS_IN_OSS
+  absl::string_view cl_number = BuildData::Changelist();
+  if (!cl_number.empty()) {
+    absl::StrAppend(&filename, ".cl_", cl_number);
+  }
+#endif  // !TSL_IS_IN_OSS
+
   absl::StrAppend(&filename, ".", suffix);
   // Skip the module name if the resulting length is too long.
   if (!module_name.empty() && filename.size() > 255) {
     return FilenameFor(unique_id, "", prefix, suffix);
   }
+
   return filename;
 }
 
@@ -676,7 +703,9 @@ void DumpToFileInDirOrStdout(const DebugOptions& debug_options, int unique_id,
 void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
                              mlir::Operation* op) {
   CanonicalDebugOptions opts(module.config().debug_options());
-  if (opts.dumping_to_stdout()) return op->dump();
+  if (opts.dumping_to_stdout()) {
+    return op->dump();
+  }
 
   mlir::OpPrintingFlags print_flags = mlir::OpPrintingFlags();
   // Enable debug info so that it is easier to see the corresponding HLO node.
@@ -741,24 +770,204 @@ void DumpPerModuleProtobufToFile(const HloModule& module,
   DumpProtobufToFile(proto, debug_options, filename, std::move(text_formatter));
 }
 
+std::string GetRepeatedValueAsString(
+    const tsl::protobuf::Reflection* reflection,
+    const DebugOptions& debug_options,
+    const tsl::protobuf::FieldDescriptor* field, int index) {
+  switch (field->type()) {
+    case tsl::protobuf::FieldDescriptor::TYPE_INT32:
+      return std::to_string(
+          reflection->GetRepeatedInt32(debug_options, field, index));
+    case tsl::protobuf::FieldDescriptor::TYPE_INT64:
+      return std::to_string(
+          reflection->GetRepeatedInt64(debug_options, field, index));
+    case tsl::protobuf::FieldDescriptor::TYPE_UINT32:
+      return std::to_string(
+          reflection->GetRepeatedUInt32(debug_options, field, index));
+    case tsl::protobuf::FieldDescriptor::TYPE_UINT64:
+      return std::to_string(
+          reflection->GetRepeatedUInt64(debug_options, field, index));
+    case tsl::protobuf::FieldDescriptor::TYPE_DOUBLE:
+      return std::to_string(
+          reflection->GetRepeatedDouble(debug_options, field, index));
+    case tsl::protobuf::FieldDescriptor::TYPE_FLOAT:
+      return std::to_string(
+          reflection->GetRepeatedFloat(debug_options, field, index));
+    case tsl::protobuf::FieldDescriptor::TYPE_BOOL:
+      return reflection->GetRepeatedBool(debug_options, field, index) ? "true"
+                                                                      : "false";
+    case tsl::protobuf::FieldDescriptor::TYPE_ENUM:
+      return std::string(
+          reflection->GetRepeatedEnum(debug_options, field, index)->name());
+    case tsl::protobuf::FieldDescriptor::TYPE_STRING:
+      return "\"" + reflection->GetRepeatedString(debug_options, field, index) +
+             "\"";
+    case tsl::protobuf::FieldDescriptor::TYPE_MESSAGE: {
+      tsl::protobuf::TextFormat::Printer tsl_printer;
+      tsl_printer.SetInitialIndentLevel(1);
+      std::string result;
+      tsl_printer.PrintToString(
+          reflection->GetRepeatedMessage(debug_options, field, index), &result);
+      return "{\n" + result + "}";
+    }
+    default:
+      return "Unsupported field type";
+  }
+}
+
+std::string GetValueAsString(const tsl::protobuf::Reflection* reflection,
+                             const DebugOptions& debug_options,
+                             const tsl::protobuf::FieldDescriptor* field) {
+  // Based on the field type, get the value and convert it to a string
+  switch (field->type()) {
+    case tsl::protobuf::FieldDescriptor::TYPE_INT32:
+      return std::to_string(reflection->GetInt32(debug_options, field));
+    case tsl::protobuf::FieldDescriptor::TYPE_INT64:
+      return std::to_string(reflection->GetInt64(debug_options, field));
+    case tsl::protobuf::FieldDescriptor::TYPE_UINT32:
+      return std::to_string(reflection->GetUInt32(debug_options, field));
+    case tsl::protobuf::FieldDescriptor::TYPE_UINT64:
+      return std::to_string(reflection->GetUInt64(debug_options, field));
+    case tsl::protobuf::FieldDescriptor::TYPE_DOUBLE:
+      return std::to_string(reflection->GetDouble(debug_options, field));
+    case tsl::protobuf::FieldDescriptor::TYPE_FLOAT:
+      return std::to_string(reflection->GetFloat(debug_options, field));
+    case tsl::protobuf::FieldDescriptor::TYPE_BOOL:
+      return reflection->GetBool(debug_options, field) ? "true" : "false";
+    case tsl::protobuf::FieldDescriptor::TYPE_ENUM:
+      return std::string(reflection->GetEnum(debug_options, field)->name());
+    case tsl::protobuf::FieldDescriptor::TYPE_STRING:
+      return "\"" + reflection->GetString(debug_options, field) + "\"";
+    case tsl::protobuf::FieldDescriptor::TYPE_MESSAGE: {
+      tsl::protobuf::TextFormat::Printer tsl_printer;
+      tsl_printer.SetSingleLineMode(false);
+      std::string result;
+      tsl_printer.PrintToString(reflection->GetMessage(debug_options, field),
+                                &result);
+      return "{\n" + result + "}";
+    }
+    default:
+      return "Unsupported field type";
+  }
+}
+
+std::string GetNonDefaultDebugOptions(const DebugOptions& debug_options) {
+  // Create a default DebugOptions to compare against
+  DebugOptions default_options = DefaultDebugOptionsIgnoringFlags();
+  std::string non_default_options;
+
+  // Use protobuf reflection to compare fields
+  const tsl::protobuf::Descriptor* descriptor = debug_options.GetDescriptor();
+  const tsl::protobuf::Reflection* reflection = debug_options.GetReflection();
+
+  // Iterate through all fields
+  for (int i = 0; i < descriptor->field_count(); i++) {
+    const tsl::protobuf::FieldDescriptor* field = descriptor->field(i);
+
+    if (field->is_repeated()) {
+      // Handle repeated fields by comparing the values
+      int repeated_count = reflection->FieldSize(debug_options, field);
+      int default_count = reflection->FieldSize(default_options, field);
+
+      // Only process if the repeated field has values
+      if (repeated_count > 0) {
+        std::vector<std::string> debug_values(repeated_count);
+        std::vector<std::string> default_values(default_count);
+
+        // Collect all values from debug_options
+        for (int j = 0; j < repeated_count; j++) {
+          debug_values[j] =
+              GetRepeatedValueAsString(reflection, debug_options, field, j);
+        }
+
+        // Collect all values from default_options
+        for (int j = 0; j < default_count; j++) {
+          default_values[j] =
+              GetRepeatedValueAsString(reflection, default_options, field, j);
+        }
+
+        // Sort both vectors for comparison
+        std::sort(debug_values.begin(), debug_values.end());
+        std::sort(default_values.begin(), default_values.end());
+
+        // Compare the sorted vectors
+        if (debug_values != default_values) {
+          // Values differ, append all debug values to output
+          for (const auto& value : debug_values) {
+            absl::StrAppend(&non_default_options, field->name(), ": ", value,
+                            "\n");
+          }
+        }
+      }
+      continue;
+    }
+
+    if (GetValueAsString(reflection, debug_options, field) !=
+        GetValueAsString(reflection, default_options, field)) {
+      absl::StrAppend(&non_default_options, field->name(), ": ",
+                      GetValueAsString(reflection, debug_options, field), "\n");
+    }
+  }
+
+  return non_default_options;
+}
+
+std::optional<std::string> DumpNonDefaultDebugOptions(
+    const HloModule& module, absl::string_view suffix) {
+  const DebugOptions& debug_options = module.config().debug_options();
+  std::string filename = FilenameFor(module, "", suffix);
+  std::string nonDefaultDebugOptions = GetNonDefaultDebugOptions(debug_options);
+  return DumpToFileInDirImpl(filename, nonDefaultDebugOptions,
+                             CanonicalDebugOptions(debug_options));
+}
+
 std::vector<std::string> DumpHloModuleIfEnabled(const HloModule& module,
                                                 string_view name) {
-  CanonicalDebugOptions opts(module.config().debug_options());
-  if (opts.should_dump_module(module.name())) {
-    return DumpHloModuleImpl(module, /*buffer_assn=*/nullptr,
-                             TimestampFor(module), name, opts);
-  }
-  return {};
+  return DumpHloModuleIfEnabledImpl(module, /*buffer_assn=*/nullptr, name);
 }
 
 std::vector<std::string> DumpHloModuleIfEnabled(
     const HloModule& module, const BufferAssignment& buffer_assn,
     string_view name) {
-  CanonicalDebugOptions opts(module.config().debug_options());
-  if (opts.should_dump_module(module.name())) {
-    DumpHloModuleImpl(module, &buffer_assn, TimestampFor(module), name, opts);
+  return DumpHloModuleIfEnabledImpl(module, &buffer_assn, name);
+}
+
+std::vector<std::string> DumpHloModuleProtoIfEnabled(
+    const HloModuleProto& module_proto, absl::string_view name) {
+  auto config = xla::HloModule::CreateModuleConfigFromProto(
+      module_proto, xla::GetDebugOptionsFromFlags());
+
+  auto module =
+      xla::HloModule::CreateFromProto(module_proto, config.value()).value();
+
+  CanonicalDebugOptions opts(module->config().debug_options());
+  if (opts.should_dump_module(module->name())) {
+    return DumpHloModuleImpl(*module, /*buffer_assn=*/nullptr,
+                             TimestampFor(*module), name, opts);
   }
   return {};
+}
+
+void DumpHloConfigIfEnabled(const HloModule& module) {
+  if (!module.config().debug_options().xla_dump_full_hlo_config()) {
+    return;
+  }
+
+  CanonicalDebugOptions opts(module.config().debug_options());
+  if (opts.dumping_to_stdout()) {
+    VLOG(2) << "Refusing to write HLO config proto for " << module.name()
+            << " to stdout. Pass --xla_dump_to=<path> to write to a file.";
+    return;
+  }
+  std::string config_str;
+  if (tsl::protobuf::TextFormat::PrintToString(module.config().ToProto(),
+                                               &config_str)) {
+    std::string filename = FilenameFor(module, "", "config.pbtxt");
+    DumpToFileInDirImpl(filename, config_str, opts);
+  } else {
+    VLOG(1) << "Failed to convert HloModuleConfig to text. Module: "
+            << module.name();
+  }
 }
 
 bool DumpingEnabledForHloModule(string_view hlo_module_name,
@@ -889,8 +1098,7 @@ void DumpHloUnoptimizedSnapshotIfEnabled(
     const HloUnoptimizedSnapshot& hlo_snapshot, const DebugOptions& opts) {
   CanonicalDebugOptions canonical_opts(opts);
   std::string name = hlo_snapshot.hlo_module().name();
-  if (!canonical_opts.should_dump_module(name) ||
-      !canonical_opts.dump_unoptimized_snapshots) {
+  if (!canonical_opts.dump_unoptimized_snapshots) {
     return;
   }
 
@@ -912,14 +1120,44 @@ void DumpHloUnoptimizedSnapshotIfEnabled(
       hlo_snapshot.hlo_module().id(), hlo_snapshot.hlo_module().name(), "",
       absl::StrFormat("execution_%04d.hlo_unoptimized_snapshot",
                       execution_count));
-  DumpProtobufToFile(hlo_snapshot, opts, filename, nullptr);
+  // We use a custom proto binary serialization for HloUnoptimizedSnapshot to
+  // bypass the 2GiB proto size limitation.
+  if (canonical_opts.dump_as_proto && !canonical_opts.dump_as_text) {
+    tsl::Env* env = tsl::Env::Default();
+    const std::string& dir = canonical_opts.dump_to;
+    if (dir.empty()) {
+      return;
+    }
+    if (!CreateDirIfNeeded(dir, env).ok()) {
+      return;
+    }
+    const std::string path = tsl::io::JoinPath(dir, filename);
+
+    std::unique_ptr<tsl::WritableFile> file;
+    absl::Status s = env->NewWritableFile(absl::StrCat(path, ".pb"), &file);
+    if (!s.ok()) {
+      LOG(ERROR) << "Could not create file " << filename << ": " << s;
+      return;
+    }
+    tsl::WritableFileCopyingOutputStream output_stream(file.get());
+    tsl::protobuf::io::CopyingOutputStreamAdaptor adaptor(&output_stream);
+    if (!SerializeHloUnoptimizedSnapshot(hlo_snapshot, &adaptor).ok()) {
+      LOG(ERROR) << "Failed to serialize HLO unoptimized snapshot proto";
+    }
+    adaptor.Flush();
+    if (!file->Close().ok()) {
+      LOG(ERROR) << "Failed to close HLO unoptimized snapshot proto file";
+    }
+  } else {
+    DumpProtobufToFile(hlo_snapshot, opts, filename, nullptr);
+  }
 }
 
 void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules) {
   absl::flat_hash_set<int64_t> dumped_module_ids;
   for (const HloModule* module : modules) {
     CanonicalDebugOptions opts(module->config().debug_options());
-    if (!opts.dump_module_metadata) {
+    if (!module->config().debug_options().xla_dump_module_metadata()) {
       continue;
     }
     DumpHloModuleMetadata(module->metadata().proto(), opts, &dumped_module_ids);

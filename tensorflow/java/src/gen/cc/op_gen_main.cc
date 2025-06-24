@@ -13,10 +13,10 @@
  limitations under the License.
 ==============================================================================*/
 
-#include <string>
 #include <vector>
 
 #include "absl/log/check.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -24,7 +24,6 @@
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/java/src/gen/cc/op_generator.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace java {

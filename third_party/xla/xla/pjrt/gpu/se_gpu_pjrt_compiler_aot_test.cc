@@ -40,8 +40,8 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/service/compiler.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -99,8 +99,9 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileMlirAndLoad) {
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           compiler.Compile(opts, mlir_module.get(), *topology,
                                            /*client=*/nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
-                          se_client->Load(std::move(executable)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto loaded_executable,
+      se_client->Load(std::move(executable), LoadOptions()));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
@@ -129,7 +130,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
       compiler.Compile(opts, computation, *topology, /*client=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
-      se_client->Load(std::move(executable)));
+      se_client->Load(std::move(executable), LoadOptions()));
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
       loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
@@ -192,16 +193,63 @@ TEST(StreamExecutorGpuCompilerTest, SuccessSerializeDeserialize) {
       compiler.Compile(opts, computation, *topology, /*client=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
-      se_client->Load(std::move(executable)));
+      se_client->Load(std::move(executable), LoadOptions()));
 
   // Serialize the executable and deserialize it without failure.
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
                           se_client->SerializeExecutable(*loaded_executable));
   TF_ASSERT_OK_AND_ASSIGN(
       auto deserialized_executable,
-      se_client->DeserializeExecutable(serialized_executable, std::nullopt));
+      se_client->LoadSerializedExecutable(serialized_executable, std::nullopt,
+                                          LoadOptions()));
 
-  EXPECT_EQ(deserialized_executable->name(), "Identity");
+  EXPECT_EQ(deserialized_executable->GetExecutable()->name(), "Identity");
+}
+
+constexpr char const* kD2HProgramTupleOutput = R"(
+  HloModule f
+
+  ENTRY main.5 {
+    p = s32[4]{0} parameter(0)
+    cc = s32[4] custom-call(p),
+        custom_call_target="annotate_device_placement",
+        frontend_attributes={_xla_buffer_placement="pinned_host"}
+    ROOT tuple = (s32[4]{0}, s32[4]{0}) tuple(s32[4]{0} p, s32[4]{0} cc)
+  }
+)";
+TEST(StreamExecutorGpuCompilerTest, UnloadedExecutableMemoryStats) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  auto se_client = absl::WrapUnique(
+      tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
+  StreamExecutorGpuCompiler compiler(se_client->client()->platform()->id());
+  xla::CompileOptions options;
+  options.target_config = Compiler::TargetConfig(
+      se_client->client()->backend().default_stream_executor());
+
+  // Build the output shape with the correct memory space set.
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {4}, {0});
+  Shape host_shape = shape;
+  host_shape.mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
+  Shape out_shape = ShapeUtil::MakeTupleShape({shape, host_shape});
+  options.executable_build_options.set_result_layout(out_shape);
+
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation,
+                          GetXlaComputation(kD2HProgramTupleOutput));
+  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                          se_client->GetTopologyDescription());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtExecutable> executable,
+      compiler.Compile(options, computation, *topology, /*client=*/nullptr));
+
+  TF_ASSERT_OK_AND_ASSIGN(CompiledMemoryStats compiled_memory_stats,
+                          executable->GetCompiledMemoryStats());
+
+  EXPECT_EQ(compiled_memory_stats.argument_size_in_bytes, 16);
+  EXPECT_EQ(compiled_memory_stats.output_size_in_bytes, 32);
+  EXPECT_GT(compiled_memory_stats.temp_size_in_bytes, 0);
+  EXPECT_EQ(compiled_memory_stats.host_temp_size_in_bytes, 0);
+  EXPECT_EQ(compiled_memory_stats.host_output_size_in_bytes, 16);
 }
 
 }  // namespace

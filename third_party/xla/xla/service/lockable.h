@@ -19,9 +19,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
-#include "tsl/platform/logging.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -56,7 +57,9 @@ class Lockable {
     }
 
     ~Lock() {
-      if (lockable_) lockable_->Release();
+      if (lockable_) {
+        lockable_->Release();
+      }
     }
 
     T& operator*() const { return lockable_->value_; }
@@ -125,6 +128,7 @@ class Lockable {
 
  protected:
   const T& value() const { return value_; }
+  T& mutable_value() { return value_; }
 
  private:
   friend class Lock;

@@ -15,12 +15,14 @@ limitations under the License.
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -32,22 +34,23 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
-#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
+#include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
-#include "xla/codegen/ir/xla_ops.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/status_macros.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -58,7 +61,7 @@ namespace {
 
 using ::testing::HasSubstr;
 
-class ElementalHloToMlirTest : public HloTestBase {
+class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
  public:
   ElementalHloToMlirTest() {
     context_.loadDialect<mlir::tensor::TensorDialect, mlir::func::FuncDialect,
@@ -71,9 +74,12 @@ class ElementalHloToMlirTest : public HloTestBase {
 
   // Converts the root subgraph of the entry function of the given hlo module to
   // MLIR.
-  absl::Status Run(const std::string& hlo, const std::string& filecheck_str,
+  absl::Status Run(const absl::string_view hlo,
+                   const absl::string_view filecheck_str,
                    std::function<EpilogueSpecification(HloComputation* entry)>
-                       epilogue_spec_fn = nullptr) {
+                       epilogue_spec_fn = nullptr,
+                   bool set_xla_entry = false,
+                   std::optional<xla::BackendKind> xla_backend = std::nullopt) {
     auto hlo_module = ParseAndReturnVerifiedModule(hlo).value();
 
     mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&context_),
@@ -95,6 +101,12 @@ class ElementalHloToMlirTest : public HloTestBase {
     auto entry_func = fns[&partitioned_computations
                                .FindPartitionedComputation(entry_computation)
                                .GetRootSubgraph()];
+    if (set_xla_entry) {
+      entry_func->setAttr("xla.entry", mlir::UnitAttr::get(&context_));
+    }
+    if (xla_backend) {
+      SetBackendKind(&context_, entry_func, *xla_backend);
+    }
     auto& entry_pc =
         partitioned_computations.FindPartitionedComputation(entry_computation);
     auto call_targets = partitioned_computations.CreateCallTargetProvider(fns);
@@ -456,33 +468,6 @@ TEST_F(ElementalHloToMlirTest, Gather) {
     // CHECK-DAG:    %[[C0:.*]] = arith.constant 0
     // CHECK-DAG:    %[[C26:.*]] = arith.constant 26
     // CHECK:        %[[IDX_I32:.*]] = tensor.extract %[[ARG1]][%[[X]], %[[C0]]]
-    // CHECK:        %[[IDX:.*]] = arith.index_cast %[[IDX_I32]] : i32 to index
-    // CHECK:        %[[CLAMP_HIGH:.*]] = arith.minsi %[[IDX]], %[[C26]]
-    // CHECK:        %[[CLAMPED:.*]] = arith.maxsi %[[CLAMP_HIGH]], %[[C0]]
-    // CHECK:        %[[X_IN:.*]] = arith.addi %[[CLAMPED]], %[[Y]]
-    // CHECK:        %[[RET:.*]] = tensor.extract %[[ARG0]][%[[X_IN]], %[[Z]]]
-    // CHECK:        return %[[RET]]
-  )"));
-}
-
-TEST_F(ElementalHloToMlirTest, GatherWithImplicitVectorDim) {
-  TF_EXPECT_OK(Run(R"(
-    ENTRY main {
-      operand = f32[33,34] parameter(0)
-      indices = s32[1806] parameter(1)
-      ROOT r = f32[1806,7,8] gather(operand, indices), offset_dims={1,2},
-                                 collapsed_slice_dims={}, start_index_map={0},
-                                 index_vector_dim=1, slice_sizes={7,8}
-    })",
-                   R"(
-    // CHECK:      @main_r(
-    // CHECK-SAME:     %[[ARG0:.*]]: tensor<33x34xf32>,
-    // CHECK-SAME:     %[[ARG1:.*]]: tensor<1806xi32>,
-    // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}},
-    // CHECK-SAME:     %[[Z:.*]]: index {{{.*}}}
-    // CHECK-DAG:    %[[C0:.*]] = arith.constant 0
-    // CHECK-DAG:    %[[C26:.*]] = arith.constant 26
-    // CHECK:        %[[IDX_I32:.*]] = tensor.extract %[[ARG1]][%[[X]]]
     // CHECK:        %[[IDX:.*]] = arith.index_cast %[[IDX_I32]] : i32 to index
     // CHECK:        %[[CLAMP_HIGH:.*]] = arith.minsi %[[IDX]], %[[C26]]
     // CHECK:        %[[CLAMPED:.*]] = arith.maxsi %[[CLAMP_HIGH]], %[[C0]]
@@ -1390,41 +1375,66 @@ TEST_F(ElementalHloToMlirTest, PopulationCountUnsigned) {
   )"));
 }
 
-TEST_F(ElementalHloToMlirTest, Epilogue) {
-  TF_EXPECT_OK(Run(
+class ElementalHloToMlirEpilogueTest : public ElementalHloToMlirTest {
+ protected:
+  std::function<EpilogueSpecification(HloComputation* entry)> EpilogueSpec() {
+    return [this](HloComputation* entry) {
+      EpilogueSpecification epilogue;
+      epilogue.heroes.push_back(entry->GetInstructionWithName("transpose"));
+      epilogue.roots.push_back(entry->GetInstructionWithName("add"));
+      epilogue.index_ranges = {2, 16, 17};
+      epilogue.root_indexing.push_back(
+          IndexingMap{mlir::AffineMap::getMultiDimIdentityMap(3, &context_)
+                          .getSubMap({0, 2, 1}),
+                      DimVarsFromTensorSizes({2, 17, 17}),
+                      {},
+                      {}});
+      return epilogue;
+    };
+  }
+  static constexpr absl::string_view kHlo =
       R"(
       ENTRY main {
-        %p0 = f32[2,16,17] parameter(0)
-        %log = f32[2,16,17] log(%p0)
+        // Note: %p0 is only used in some of the tests.
+        %p0 = f32[7] parameter(0)
+        %p1 = f32[2,16,17] parameter(1)
+        %log = f32[2,16,17] log(%p1)
         %transpose = f32[2,17,16] transpose(%log), dimensions={0,2,1}
-        %p1 = f32[] parameter(1)
-        %bc = f32[2,17,16] broadcast(%p1), dimensions={}
+        %p2 = f32[] parameter(2)
+        %bc = f32[2,17,16] broadcast(%p2), dimensions={}
         ROOT %add = f32[2,17,16] add(%transpose, %bc)
-      })",
+      })";
+  static constexpr absl::string_view kCheck =
       R"(
+      // CHECK:      @main_add(
+      // CHECK-SAME:     %[[A0:.*]]: tensor<7xf32>
+      // CHECK:        %[[PURE:.*]] = xla.pure_call @main_transpose(%[[A0]],
+      // CHECK:      @main_transpose(tensor<7xf32>,
       // CHECK:      @main__epilogue__add(
-      // CHECK-SAME:     %[[ARG0:.*]]: tensor<2x16x17xf32>
-      // CHECK-SAME:     %[[ARG1:.*]]: tensor<f32>
+      // CHECK-SAME:     %[[ARG0:.*]]: tensor<7xf32>
+      // CHECK-SAME:     %[[ARG1:.*]]: tensor<2x16x17xf32>
+      // CHECK-SAME:     %[[ARG2:.*]]: tensor<f32>
       // CHECK-SAME:     %[[X:.*]]: index {xla.range = [0 : index, 1 :
       // CHECK-SAME:     %[[Y:.*]]: index {xla.range = [0 : index, 15 :
       // CHECK-SAME:     %[[Z:.*]]: index {xla.range = [0 : index, 16 :
       // CHECK-SAME:     %[[TRANSPOSE:.*]]: f32) -> f32
-      // CHECK:        %[[B:.*]] = tensor.extract %[[ARG1]][]
+      // CHECK:        %[[B:.*]] = tensor.extract %[[ARG2]][]
       // CHECK:        %[[RET:.*]] = arith.addf %[[TRANSPOSE]], %[[B]]
-      // CHECK:        return %[[RET]])",
-      [this](HloComputation* entry) {
-        EpilogueSpecification epilogue;
-        epilogue.heroes.push_back(entry->GetInstructionWithName("transpose"));
-        epilogue.roots.push_back(entry->GetInstructionWithName("add"));
-        epilogue.index_ranges = {2, 16, 17};
-        epilogue.root_indexing.push_back(
-            IndexingMap{mlir::AffineMap::getMultiDimIdentityMap(3, &context_)
-                            .getSubMap({0, 2, 1}),
-                        DimVarsFromTensorSizes({2, 17, 17}),
-                        {},
-                        {}});
-        return epilogue;
-      }));
+      // CHECK:        return %[[RET]]
+      )";
+};
+
+TEST_F(ElementalHloToMlirEpilogueTest, Epilogue) {
+  TF_EXPECT_OK(Run(kHlo, kCheck, EpilogueSpec()));
+}
+
+TEST_F(ElementalHloToMlirEpilogueTest, XlaEntry) {
+  TF_EXPECT_OK(Run(kHlo, kCheck, EpilogueSpec(), /*set_xla_entry=*/true));
+}
+
+TEST_F(ElementalHloToMlirEpilogueTest, XlaGpuEntry) {
+  TF_EXPECT_OK(Run(kHlo, kCheck, EpilogueSpec(), /*set_xla_entry=*/true,
+                   /*xla_backend=*/xla::BackendKind::kGpu));
 }
 
 TEST_F(ElementalHloToMlirTest, ScalarConstant) {
@@ -1568,21 +1578,6 @@ TEST_F(ElementalHloToMlirTest, DynamicSliceUnsignedIndices) {
   )"));
 }
 
-TEST_F(ElementalHloToMlirTest, DynamicSliceIndexIsNotCanonical_NotSupported) {
-  auto status = Run(R"(
-    ENTRY main {
-      in = f32[20,30] parameter(0)
-      idx = s32[2] parameter(1)
-      ROOT slice = f32[4,5] dynamic-slice(in, idx), dynamic_slice_sizes={4,5}
-    })",
-                    "");
-
-  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
-  EXPECT_THAT(status.message(),
-              HasSubstr("Dynamic indexing instruction with non-scalar index is "
-                        "not supported."));
-}
-
 TEST_F(ElementalHloToMlirTest, DynamicUpdateSlice) {
   TF_EXPECT_OK(Run(R"(
     ENTRY main {
@@ -1657,23 +1652,6 @@ TEST_F(ElementalHloToMlirTest, DynamicUpdateSliceUnsigned) {
   )"));
 }
 
-TEST_F(ElementalHloToMlirTest,
-       DynamicUpdateSliceIndexIsNotCanonical_NotSupported) {
-  auto status = Run(R"(
-    ENTRY main {
-      in = f32[20,30] parameter(0)
-      updates = f32[5,6] parameter(1)
-      idx = s32[2] parameter(2)
-      ROOT updated = f32[20,30] dynamic-update-slice(in, updates, idx)
-    })",
-                    "");
-
-  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
-  EXPECT_THAT(status.message(),
-              HasSubstr("Dynamic indexing instruction with non-scalar index is "
-                        "not supported."));
-}
-
 TEST_F(ElementalHloToMlirTest, IotaUnsigned) {
   TF_EXPECT_OK(Run(R"(
     ENTRY main {
@@ -1721,31 +1699,6 @@ TEST_F(ElementalHloToMlirTest, MixedIndexingTuple) {
     // CHECK-SAME:       d0 in [0, 9], d1 in [0, 9]">(%[[X]], %[[Y]])
     // CHECK:        %[[B:.*]] = tensor.extract %[[P1]][%[[IDX]]]
     // CHECK:        return %[[A]], %[[B]]
-  )"));
-}
-
-TEST_F(ElementalHloToMlirTest, NestedTuple) {
-  TF_EXPECT_OK(Run(R"(
-    ENTRY main {
-      %p0 = f32[10,10] parameter(0)
-      %p1 = f32[100] parameter(1)
-      %t0 = (f32[10,10], f32[100]) tuple(%p0, %p1)
-      %t1 = (f32[100], f32[10,10]) tuple(%p1, %p0)
-      ROOT tuple = ((f32[10,10], f32[100]), f32[100], (f32[100], f32[10,10]))
-        tuple(%t0, %p1, %t1)
-    })",
-                   R"(
-    // CHECK:      @main_tuple(
-    // CHECK-SAME:     %[[P0:.*]]: tensor<10x10xf32>,
-    // CHECK-SAME:     %[[P1:.*]]: tensor<100xf32>,
-    // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}}
-    // CHECK:          %[[P0_V:.*]] = xla.pure_call @main_p0
-    // CHECK:          %[[IDX:.*]] =
-    // CHECK-SAME:       #xla.indexing_map<"(d0, d1) -> (d0 * 10 + d1),
-    // CHECK-SAME:       d0 in [0, 9], d1 in [0, 9]">(%[[X]], %[[Y]])
-    // CHECK:          %[[P1_V:.*]] = xla.pure_call @main_p1
-    // CHECK-SAME:       (%[[P0]], %[[P1]], %[[IDX]])
-    // CHECK:          return %[[P0_V]], %[[P1_V]], %[[P1_V]], %[[P1_V]], %[[P0_V]]
   )"));
 }
 
@@ -1798,6 +1751,64 @@ TEST_F(ElementalHloToMlirTest, BroadcastSelect) {
     // CHECK-DAG: tensor.extract %[[P1]][%[[X]], %[[Y]]]
     // CHECK-DAG: tensor.extract %[[P2]][%[[X]], %[[Y]]]
   )"));
+}
+
+TEST_F(ElementalHloToMlirTest, DotC64) {
+  TF_EXPECT_OK(Run(
+      R"(
+HloModule c64_dot_test
+
+ENTRY main {
+  p0 = c64[4] parameter(0)
+  p1 = c64[4] parameter(1)
+  dot = c64[] dot(p0, p1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  ROOT out = c64[] add(dot, dot)
+}
+      )",
+      R"(
+      // CHECK: func.func private @main_out(
+      // CHECK-SAME: %[[ARG0:.*]]: tensor<4xcomplex<f32>>,
+      // CHECK-SAME: %[[ARG1:.*]]: tensor<4xcomplex<f32>>
+      // CHECK:   %[[CST0:.*]] = arith.constant 0.000000e+00 : f32
+      // CHECK:   %[[INIT:.*]] = complex.create %[[CST0]], %[[CST0]] : complex<f32>
+      // CHECK:   %[[DOTRESULT:.*]] = scf.for {{.*}} = {{.*}} to {{.*}} step {{.*}} iter_args({{.*}} = %[[INIT]]) -> (complex<f32>) {
+      // CHECK:     %[[EXTRACTED:.*]] = tensor.extract %[[ARG0]][{{.*}}]
+      // CHECK:     %[[EXTRACTED0:.*]] = tensor.extract %[[ARG1]][{{.*}}]
+      // CHECK:     %[[MUL:.*]] = complex.mul %[[EXTRACTED]], %[[EXTRACTED0]]
+      // CHECK:     %[[NEXTACC:.*]] = complex.add {{.*}}, %[[MUL]]
+      // CHECK:     scf.yield %[[NEXTACC]]
+      // CHECK:   %[[OUT:.*]] = complex.add %[[DOTRESULT]], %[[DOTRESULT]]
+      // CHECK:   return %[[OUT]]
+      )"));
+}
+
+TEST_F(ElementalHloToMlirTest, DotC128) {
+  TF_EXPECT_OK(Run(
+      R"(
+HloModule c128_dot_test
+
+ENTRY main {
+  p0 = c128[3] parameter(0)
+  p1 = c128[3] parameter(1)
+  dot = c128[] dot(p0, p1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  ROOT out = c128[] add(dot, dot)
+}
+      )",
+      R"(
+      // CHECK: func.func private @main_out(
+      // CHECK-SAME: %[[ARG0:.*]]: tensor<3xcomplex<f64>>,
+      // CHECK-SAME: %[[ARG1:.*]]: tensor<3xcomplex<f64>>
+      // CHECK:   %[[CST0:.*]] = arith.constant 0.000000e+00 : f64
+      // CHECK:   %[[INIT:.*]] = complex.create %[[CST0]], %[[CST0]] : complex<f64>
+      // CHECK:   %[[DOTRESULT:.*]] = scf.for {{.*}} = {{.*}} to {{.*}} step {{.*}} iter_args({{.*}} = %[[INIT]]) -> (complex<f64>) {
+      // CHECK:     %[[EXTRACTED:.*]] = tensor.extract %[[ARG0]][{{.*}}]
+      // CHECK:     %[[EXTRACTED0:.*]] = tensor.extract %[[ARG1]][{{.*}}]
+      // CHECK:     %[[MUL:.*]] = complex.mul %[[EXTRACTED]], %[[EXTRACTED0]]
+      // CHECK:     %[[NEXTACC:.*]] = complex.add {{.*}}, %[[MUL]]
+      // CHECK:     scf.yield %[[NEXTACC]]
+      // CHECK:   %[[OUT:.*]] = complex.add %[[DOTRESULT]], %[[DOTRESULT]]
+      // CHECK:   return %[[OUT]]
+      )"));
 }
 
 }  // namespace

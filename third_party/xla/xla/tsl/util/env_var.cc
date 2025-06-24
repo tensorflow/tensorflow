@@ -36,7 +36,8 @@ absl::Status ReadBoolFromEnvVar(absl::string_view env_var_name,
   if (str_value == "0" || str_value == "false") {
     *value = false;
     return absl::OkStatus();
-  } else if (str_value == "1" || str_value == "true") {
+  }
+  if (str_value == "1" || str_value == "true") {
     *value = true;
     return absl::OkStatus();
   }

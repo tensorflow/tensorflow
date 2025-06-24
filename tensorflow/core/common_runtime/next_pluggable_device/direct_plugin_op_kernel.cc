@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/direct_plugin_variable.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_resource.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_variable.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 

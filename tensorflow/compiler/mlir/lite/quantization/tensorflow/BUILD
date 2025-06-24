@@ -36,12 +36,7 @@ td_library(
 gentbl_cc_library(
     name = "ptq_fallback_to_flex_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "fallback_to_flex_patterns.inc",
-        ),
-    ],
+    tbl_outs = {"fallback_to_flex_patterns.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "fallback_to_flex_patterns.td",
     deps = [":ptq_td_files"],
@@ -60,10 +55,10 @@ cc_library(
     deps = [
         ":ptq_fallback_to_flex_inc_gen",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
-        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",
+        "//tensorflow/compiler/mlir/tensorflow:translate_utils",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/base:core_headers",

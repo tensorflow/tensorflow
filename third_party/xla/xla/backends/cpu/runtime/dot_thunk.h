@@ -50,6 +50,9 @@ class DotThunk final : public Thunk {
 
   BufferUses buffer_uses() const final { return DotBufferUses(dot_slices_); }
 
+  DotDimensionNumbers dot_dimensions() const { return dot_dimensions_; }
+  DotSlices dot_slices() const { return dot_slices_; }
+
  private:
   DotThunk(Info info, DotDimensionNumbers dot_dimensions, DotSlices dot_slices,
            DotShape dot_shape, DotCanonicalDims dot_canonical_dims);

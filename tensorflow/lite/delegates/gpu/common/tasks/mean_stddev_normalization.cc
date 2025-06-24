@@ -44,7 +44,7 @@ absl::Status CheckIfValidNodeOfType(const Node* node,
 
 absl::Status GetElementwiseScalarValue(const Node* node, float* result) {
   auto attr = absl::any_cast<ElementwiseAttributes>(node->operation.attributes);
-  const float* value = absl::get_if<float>(&attr.param);
+  const float* value = std::get_if<float>(&attr.param);
   if (!value) {
     return absl::NotFoundError("Not a scalar value inside attributes.");
   }

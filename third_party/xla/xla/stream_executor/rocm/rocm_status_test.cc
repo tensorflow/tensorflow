@@ -20,8 +20,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "rocm/include/hip/hip_runtime.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/test.h"
 
 namespace stream_executor::gpu {
 namespace {

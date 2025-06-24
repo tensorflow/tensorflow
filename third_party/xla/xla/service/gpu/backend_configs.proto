@@ -105,6 +105,8 @@ message GemmBackendConfig {
   optional bool grad_x = 16;
   optional bool grad_y = 17;
   bool damax_output = 18;
+
+  reserved 19;
 }
 
 // Backend config for bitcast operation generated from MLIR MHLO dialect.
@@ -116,19 +118,20 @@ message BitcastBackendConfig {
 // Backend config for async collective operations. Note that for is_sync will
 // be false by default, so even if a backend config is not explicitly attached
 // to the HLOInstruction, getting the backend_config will yield a default valued
-// proto which will have is_sync = false. Attribute no_parallel_custom_call
-// asserts that an asynchronous collective operation does not execute in
-// parallel with custom-calls, which can trigger device synchronization . This
-// attribute will also be false by default and should lead to conversative
-// runtime behavior.
+// proto which will have is_sync = false.
 message CollectiveBackendConfig {
   bool is_sync = 1;
-  bool no_parallel_custom_call = 2;
   // Determines whether the collective op of interested has been pipelined
   // within a loop.
   bool is_pipelined = 3;
-  // Cost model prediction.
-  ReificationCost reification_cost = 4;
+
+  enum CollectiveBackend {
+    // Default backend is NCCL.
+    DEFAULT = 0;
+    NVSHMEM = 1;
+  }
+  CollectiveBackend backend = 5;
+  reserved 2, 4;
 }
 
 // Backend config for cost model estimates.
@@ -147,6 +150,9 @@ message ReificationCost {
 
   // Estimate for memory access (read+write) time in microseconds.
   double memory_access_time_us = 4;
+
+  // Name of the internal cost modeling approach.
+  string name = 5;
 }
 
 // Backend config for a custom fusion (pre-compiled device kernel implementing a
@@ -164,16 +170,46 @@ message CuDnnFusionConfig {
   int64 plan_id = 1;
 }
 
+// Output tile sizes for a fusion root.
+message Tile {
+  // The output tile sizes of the associated fusion root. The length of this
+  // field is expected to be the rank of the root shape.
+  repeated int64 sizes = 1;
+}
+
 // Block-level parameters for a fusion.
 message BlockLevelFusionConfig {
-  // The output tile sizes of the associated instruction. The length of this
-  // field is expected to be the rank of the output shape.
-  repeated int64 output_tile_sizes = 1;
+  reserved 1;  // Was output_tile_sizes
+
+  // The output tile sizes for each fusion root.
+  repeated Tile output_tiles = 3;
 
   // The number of warps to use for the kernel.
   int64 num_warps = 2;
+
+  // The number of CTAs to use for the kernel.
+  int32 num_ctas = 4;
+
+  // The number of stages to use for loop pipelining.
+  int32 num_stages = 5;
 }
 
+message DynamicMemcpyConfig {
+  // If true, the offsets depend on the innermost while loop's induction
+  // variable. `src_offset_bytes` and `dst_offset_bytes` contain one entry
+  // for each iteration.
+  // Otherwise, `src_offset_bytes` and `dst_offset_bytes` contain one entry
+  // each, and the offset is static.
+  bool depends_on_loop = 1;
+
+  // Source offsets for each invocation of the fusion.
+  repeated int64 src_offset_bytes = 2;
+
+  // Destination offsets for invocation of the fusion.
+  repeated int64 dst_offset_bytes = 3;
+}
+
+// Next id: 8
 message FusionBackendConfig {
   // kLoop, kInput, or kOutput (from HloInstruction::FusionKind), or your own
   // custom string.
@@ -190,17 +226,20 @@ message FusionBackendConfig {
   // present, we use the default Triton config.
   AutotuneResult.TritonGemmKey triton_gemm_config = 2;
 
-  // Only valid when kind == "__triton" for now. Code generation of such
-  // fusions will fail if this field is not set.
+  // Only valid when kind is "__triton" or "__triton_nested_gemm_fusion". Code
+  // generation of such fusions will fail if this field is not set.
   BlockLevelFusionConfig block_level_fusion_config = 6;
 
   // Only valid when kind == "__custom_fusion".
   CustomFusionConfig custom_fusion_config = 4;
 
   // Cost model prediction.
-  ReificationCost reification_cost = 3;
 
   CuDnnFusionConfig cudnn_fusion_config = 5;
+
+  DynamicMemcpyConfig dynamic_memcpy_config = 7;
+
+  reserved 3;
 }
 
 // Backed config for norm executed by cuDNN.
@@ -275,6 +314,9 @@ message CudnnfMHABackendConfig {
   // Only used with packed layout
   // ignored if the valued <= 1
   int32 max_seg_per_batch = 25;
+
+  // Is Paged Attention
+  bool is_paged_attention = 26;
 }
 
 // Backend config for a general custom call instruction, e.g. XLA FFI.
@@ -289,7 +331,7 @@ message CustomCallBackendConfig {
 }
 
 // Generic backend config for XLA:GPU
-// Next-Id: 12
+// Next-Id: 13
 message GpuBackendConfig {
   // Specifies which operation queue the current instruction will run on.
   // A backend may have multiple operation queues to run instructions
@@ -332,4 +374,8 @@ message GpuBackendConfig {
   // is always scheduled first as it's not SM-heavy.
   // In this case we can use this flag to enforce the ordering.
   bool force_earliest_schedule = 10;
+
+  // Reification cost for the instruction which attaches this
+  // `GpuBackendConfig`.
+  repeated ReificationCost reification_cost = 12;
 }

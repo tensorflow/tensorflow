@@ -1,6 +1,11 @@
 """Provides a redirection point for platform specific implementations of starlark utilities."""
 
 load(
+    "//xla/tsl:package_groups.bzl",
+    "DEFAULT_LOAD_VISIBILITY",
+    "LEGACY_TSL_PLATFORM_BUILD_CONFIG_USERS",
+)
+load(
     "//xla/tsl/platform/default:build_config.bzl",
     _pyx_library = "pyx_library",
     _tf_additional_all_protos = "tf_additional_all_protos",
@@ -24,7 +29,6 @@ load(
     _tf_portable_deps_no_runtime = "tf_portable_deps_no_runtime",
     _tf_portable_proto_lib = "tf_portable_proto_lib",
     _tf_proto_library = "tf_proto_library",
-    _tf_proto_library_cc = "tf_proto_library_cc",
     _tf_protobuf_compiler_deps = "tf_protobuf_compiler_deps",
     _tf_protobuf_deps = "tf_protobuf_deps",
     _tf_protos_grappler = "tf_protos_grappler",
@@ -39,6 +43,8 @@ load(
     _tsl_grpc_credentials_deps = "tsl_grpc_credentials_deps",
     _tsl_protobuf_deps = "tsl_protobuf_deps",
 )
+
+visibility(DEFAULT_LOAD_VISIBILITY + LEGACY_TSL_PLATFORM_BUILD_CONFIG_USERS)
 
 pyx_library = _pyx_library
 tf_additional_all_protos = _tf_additional_all_protos
@@ -62,7 +68,6 @@ tf_platform_deps = _tf_platform_deps
 tf_portable_proto_lib = _tf_portable_proto_lib
 tf_portable_deps_no_runtime = _tf_portable_deps_no_runtime
 tf_proto_library = _tf_proto_library
-tf_proto_library_cc = _tf_proto_library_cc
 tf_protobuf_compiler_deps = _tf_protobuf_compiler_deps
 tf_protobuf_deps = _tf_protobuf_deps
 tf_protos_grappler = _tf_protos_grappler

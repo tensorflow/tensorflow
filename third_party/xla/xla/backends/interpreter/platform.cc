@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/interpreter/platform.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/status/status.h"

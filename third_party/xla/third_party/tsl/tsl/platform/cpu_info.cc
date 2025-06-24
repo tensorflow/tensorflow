@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tsl/platform/cpu_info.h"
 
+#include <string>
+
 #include "absl/base/call_once.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/types.h"
@@ -23,6 +25,7 @@ limitations under the License.
 #include <mutex>  // NOLINT
 #endif
 #if defined(PLATFORM_IS_ARM64) && !defined(__APPLE__) && !defined(__OpenBSD__)
+#include <asm/hwcap.h> /* Get HWCAP bits from asm/hwcap.h */
 #include <sys/auxv.h>
 #ifndef HWCAP_CPUID
 #define HWCAP_CPUID (1 << 11)
@@ -375,6 +378,7 @@ void InitCPUIDInfo() {
 
 class CPUIDInfo;
 void InitCPUIDInfo();
+void InitCPUIDFeatureInfo();
 
 CPUIDInfo *cpuid = nullptr;
 
@@ -386,7 +390,8 @@ class CPUIDInfo {
         variant_(0),
         cpunum_(0),
         is_arm_neoverse_v1_(0),
-        is_arm_neoverse_n1_(0) {}
+        is_arm_neoverse_n1_(0),
+        has_bf16_(0) {}
 
   static void Initialize() {
     // Initialize CPUIDInfo pointer.
@@ -458,32 +463,64 @@ class CPUIDInfo {
     }
 #endif  // !PLATFORM_WINDOWS
   }
+  static void InitializeCPUFeature() {
+    // Initialize CPUIDInfo pointer.
+    if (cpuid != nullptr) return;
+
+    cpuid = new CPUIDInfo;
+
+    const uint32_t hwcaps2 = getauxval(AT_HWCAP2);
+    cpuid->has_bf16_ = IsFeatureSupported(hwcaps2, kHwcap2Bf16);
+  }
 
   int implementer() const { return implementer_; }
   int cpunum() const { return cpunum_; }
 
   static bool TestAarch64CPU(Aarch64CPU cpu) {
     InitCPUIDInfo();
+    // clang-format off
     switch (cpu) {
       case ARM_NEOVERSE_V1:
         return cpuid->is_arm_neoverse_v1_;
       default:
-        return 0;
+        return false;
     }
+    // clang-format on
+    return false;
+  }
+
+  static bool IsFeatureSupported(uint64_t features, uint64_t feature_mask) {
+    return (features & feature_mask);
+  }
+  static bool TestAarch64Feature(CPUFeature feature) {
+    InitCPUIDFeatureInfo();
+    switch (feature) {
+      case AARCH64_BF16:
+        return cpuid->has_bf16_;
+      default:
+        break;
+    }
+    return false;
   }
 
  private:
+  static constexpr uint64_t kHwcap2Bf16 = 1ull << 14;
   int implementer_;
   int variant_;
   int cpunum_;
   int is_arm_neoverse_v1_;  // ARM NEOVERSE V1
   int is_arm_neoverse_n1_;  // ARM NEOVERSE N1
+  int has_bf16_;
 };
 
 absl::once_flag cpuid_once_flag;
 
 void InitCPUIDInfo() {
   absl::call_once(cpuid_once_flag, CPUIDInfo::Initialize);
+}
+
+void InitCPUIDFeatureInfo() {
+  absl::call_once(cpuid_once_flag, CPUIDInfo::InitializeCPUFeature);
 }
 
 #endif  // PLATFORM_IS_ARM64 && !__APPLE__ && !__OpenBSD__
@@ -493,6 +530,8 @@ void InitCPUIDInfo() {
 bool TestCPUFeature(CPUFeature feature) {
 #ifdef PLATFORM_IS_X86
   return CPUIDInfo::TestFeature(feature);
+#elif defined(PLATFORM_IS_ARM64) && !defined(__APPLE__) && !defined(__OpenBSD__)
+  return CPUIDInfo::TestAarch64Feature(feature);
 #else
   return false;
 #endif

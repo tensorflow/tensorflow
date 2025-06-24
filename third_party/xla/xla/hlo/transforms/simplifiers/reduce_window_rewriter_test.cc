@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/test.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

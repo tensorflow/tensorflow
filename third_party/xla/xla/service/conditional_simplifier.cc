@@ -209,7 +209,8 @@ bool RemoveUnusedTupleElements(HloInstruction* conditional_op) {
     return false;
   }
 
-  const int old_tuple_shapes_size = conditional_op->shape().tuple_shapes_size();
+  const int old_tuple_shapes_size =
+      conditional_op->shape().tuple_shapes().size();
 
   // Select indices that are actually used by some GTE instructions.
   std::vector<bool> used_indices(old_tuple_shapes_size, false);
@@ -419,7 +420,7 @@ bool MergeDuplicateTupleElements(HloInstruction* conditional) {
   bool changed = false;
   absl::flat_hash_map<std::vector<const HloInstruction*>, int64_t>
       index_collision_table;
-  for (int i = 0; i < conditional->shape().tuple_shapes_size(); ++i) {
+  for (int i = 0; i < conditional->shape().tuple_shapes().size(); ++i) {
     const std::vector<const HloInstruction*> ith_operands_vector =
         vectorize_branches_root_tuple_ith_operand(i);
     const auto emplace_res =

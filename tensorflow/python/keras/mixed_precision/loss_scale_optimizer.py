@@ -612,7 +612,7 @@ class LossScaleOptimizer(base_delegate.DelegatingTrackableMixin,
     if experimental_aggregate_gradients:
       # We must aggregate the gradients here instead of in
       # self.optimizer.apply_gradients, so that any NaN or Inf gradients are
-      # propogated to each replica. If any replica has a NaN or Inf gradient,
+      # propagated to each replica. If any replica has a NaN or Inf gradient,
       # they must all have a NaN or Inf gradient so that they all skip the step.
       # pylint: disable=protected-access
       grads_and_vars = self._optimizer._transform_unaggregated_gradients(

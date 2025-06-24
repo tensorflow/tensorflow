@@ -36,8 +36,8 @@ limitations under the License.
 #include "xla/hlo/transforms/host_offload_legalize.h"
 #include "xla/layout.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/host_offload_utils.h"
+#include "xla/service/memory_annotations.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -52,15 +52,13 @@ namespace {
 
 class HostOffloaderTest : public HloHardwareIndependentTestBase {
  protected:
-  absl::StatusOr<bool> RunHostOffloader(HloModule* module,
-                                        bool after_layout = false) {
+  absl::StatusOr<bool> RunHostOffloader(HloModule* module) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (module->has_schedule()) {
       return absl::InternalError("Expected a non-scheduled module");
     }
     bool changed = false;
-    HostOffloadLegalize host_offload_legalize(Layout::kHostMemorySpace,
-                                              after_layout);
+    HostOffloadLegalize host_offload_legalize;
     TF_ASSIGN_OR_RETURN(bool legal_changed, host_offload_legalize.Run(module));
     changed |= legal_changed;
     HostOffloader host_offloader;
@@ -78,9 +76,8 @@ class HostOffloaderTest : public HloHardwareIndependentTestBase {
     for (const HloComputation* computation : module->computations()) {
       for (const HloInstruction* instruction : computation->instructions()) {
         if (instruction->IsCustomCall(
-                {host_memory_offload_annotations::kMoveToHostCustomCallTarget,
-                 host_memory_offload_annotations::
-                     kMoveToDeviceCustomCallTarget})) {
+                {memory_annotations::kMoveToHostCustomCallTarget,
+                 memory_annotations::kMoveToDeviceCustomCallTarget})) {
           return true;
         }
       }
@@ -436,8 +433,7 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, RunHostOffloader(module.get(), /*after_layout=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
   HloVerifier verifier(/*layout_sensitive=*/true,
@@ -484,8 +480,7 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, RunHostOffloader(module.get(), /*after_layout=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
   HloVerifier verifier(/*layout_sensitive=*/true,
@@ -548,8 +543,7 @@ ENTRY e {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, RunHostOffloader(module.get(), /*after_layout=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
   HloVerifier verifier(/*layout_sensitive=*/true,
@@ -617,8 +611,7 @@ ENTRY e {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, RunHostOffloader(module.get(), /*after_layout=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
   HloVerifier verifier(/*layout_sensitive=*/true,
@@ -4338,6 +4331,43 @@ TEST_F(HostOffloaderTest, DynamicSliceOnHostMemoryIndexCopied) {
   EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(dynamic_slice));
   HloInstruction* tanh = FindInstruction(module.get(), "tanh");
   EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(tanh));
+}
+
+TEST_F(HostOffloaderTest, DynamicUpdateSliceAllGatherDecomposer) {
+  const absl::string_view hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(s32[4]{0:T(256)S(5)})->s32[32]{0:T(256)S(5)}}, num_partitions=8
+
+add {
+  x = s32[]{:T(256)} parameter(0)
+  y = s32[]{:T(256)} parameter(1)
+  ROOT add.1 = s32[]{:T(256)} add(x, y)
+}
+
+ENTRY main.5_spmd {
+  constant.3 = s32[]{:T(256)} constant(0)
+  broadcast = s32[32]{0:T(256)} broadcast(constant.3), dimensions={}
+  param = s32[4]{0:T(256)} parameter(0), sharding={devices=[8]<=[8]}, metadata={op_name="x"}
+  replica-id = u32[]{:T(256)} replica-id()
+  constant.1 = u32[]{:T(256)} constant(8)
+  multiply = u32[]{:T(256)} multiply(replica-id, constant.1)
+  partition-id.1 = u32[]{:T(256)} partition-id()
+  add = u32[]{:T(256)} add(multiply, partition-id.1)
+  constant.2 = u32[]{:T(256)} constant(4)
+  multiply.1 = u32[]{:T(256)} multiply(add, constant.2)
+  dynamic-update-slice = s32[32]{0:T(256)} dynamic-update-slice(broadcast, param, multiply.1), backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"3","ones":"0","bitwidth":"32"}],"is_index_aligned":[false]},"used_scoped_memory_configs":[]}
+  all-reduce = s32[32]{0:T(256)} all-reduce(dynamic-update-slice), channel_id=1, replica_groups=[1,8]<=[8], use_global_device_ids=true, to_apply=add
+  ROOT custom-call.1 = s32[32]{0:T(256)} custom-call(all-reduce), custom_call_target="MoveToHost"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+  HloInstruction* dynamic_update_slice =
+      FindInstruction(module.get(), "dynamic-update-slice");
+  EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(dynamic_update_slice));
 }
 
 }  // namespace

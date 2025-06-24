@@ -19,7 +19,6 @@ limitations under the License.
 #include <optional>
 
 #include <gtest/gtest.h>
-#include "absl/types/optional.h"
 
 namespace mlir {
 namespace quant {

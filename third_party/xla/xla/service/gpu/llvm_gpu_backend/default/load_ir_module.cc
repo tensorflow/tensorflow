@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/log/log.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IRReader/IRReader.h"

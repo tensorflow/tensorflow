@@ -23,6 +23,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "grpcpp/client_context.h"
 #include "grpcpp/support/client_callback.h"
@@ -105,9 +106,10 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
       }
 
       if (!writer->WritesDone()) {
-        writer->Finish().IgnoreError();
-        promise.Set(
-            absl::InternalError("Failed to write all host buffer chunks"));
+        absl::Status s = xla::FromGrpcStatus(writer->Finish());
+        promise.Set(absl::InternalError(absl::StrCat(
+            "Failed to write all host buffer chunks, Finish() returned: ",
+            s.ToString())));
         return;
       }
     }
@@ -152,9 +154,10 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
       }
     }
     if (!writer->WritesDone()) {
-      writer->Finish().IgnoreError();
-      return Future<>(
-          absl::InternalError("Failed to write all host buffer chunks"));
+      absl::Status s = xla::FromGrpcStatus(writer->Finish());
+      return Future<>(absl::InternalError(absl::StrCat(
+          "Failed to write all host buffer chunks, Finish() returned: ",
+          s.ToString())));
     }
   }
   VLOG(3) << "GrpcClientHostBufferStore::Store done "

@@ -17,7 +17,6 @@ package(
 py_strict_library(
     name = "public_api",
     srcs = ["public_api.py"],
-    srcs_version = "PY3",
     deps = ["//tensorflow/python/util:tf_inspect"],
 )
 
@@ -31,8 +30,6 @@ py_strict_test(
             "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION_MAJOR],
         }),
     ),
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":public_api",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
@@ -43,7 +40,6 @@ py_strict_test(
 py_strict_library(
     name = "traverse",
     srcs = ["traverse.py"],
-    srcs_version = "PY3",
     deps = ["//tensorflow/python/util:tf_inspect"],
 )
 
@@ -57,8 +53,6 @@ py_strict_test(
             "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION_MAJOR],
         }),
     ),
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":test_module1",
         ":test_module2",
@@ -71,7 +65,6 @@ py_strict_test(
 py_strict_library(
     name = "test_module1",
     srcs = ["test_module1.py"],
-    srcs_version = "PY3",
     deps = [
         ":test_module2",
     ],
@@ -80,5 +73,4 @@ py_strict_library(
 py_strict_library(
     name = "test_module2",
     srcs = ["test_module2.py"],
-    srcs_version = "PY3",
 )

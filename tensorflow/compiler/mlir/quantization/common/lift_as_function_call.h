@@ -17,15 +17,11 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
-#include "llvm/ADT/SmallVector.h"
-#include "mlir/Bytecode/BytecodeOpInterface.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -70,14 +66,14 @@ bool IsEinsumSupportedByXlaDotV2(StringAttr equation_attr);
 // `absl::InternalError` when parsing the attribute to `Method` failed.
 // `op` must be non-null.
 absl::StatusOr<::stablehlo::quantization::Method> GetQuantizationMethod(
-    absl::Nonnull<Operation*> op);
+    Operation* absl_nonnull op);
 
 // Gets the quantization method from `op`. It is retrieved from the
 // `kQuantizationMethodAttr` string attribute. Returns a default instance of
 // `Method` iff the attribute doesn't exist or the attribute contains an invalid
 // textproto for `Method`. `op` must be non-null.
 ::stablehlo::quantization::Method GetQuantizationMethodOrDefault(
-    absl::Nonnull<Operation*> op);
+    Operation* absl_nonnull op);
 
 // Creates a function to wrap the section between arguments and results.
 // The generated function call op type will be decided by the given call_op_type

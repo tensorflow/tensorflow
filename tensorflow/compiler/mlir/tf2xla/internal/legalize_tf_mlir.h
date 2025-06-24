@@ -19,11 +19,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tf2xla {

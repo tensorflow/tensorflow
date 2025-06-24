@@ -149,6 +149,15 @@ def _legacy_contrib_should_record_summaries():
   return _should_record_summaries_internal(default_state=False)
 
 
+def is_recording_summaries():
+  """Returns non-Tensor boolean indicating if summaries are being recorded."""
+  if _summary_state.writer is None:
+    return False
+  if _summary_state.is_recording is None:
+    return False
+  return _summary_state.is_recording
+
+
 @tf_export("summary.record_if", v1=[])
 @tf_contextlib.contextmanager
 def record_if(condition):

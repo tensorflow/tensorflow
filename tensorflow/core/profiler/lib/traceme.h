@@ -19,15 +19,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme_encode.h"  // IWYU pragma: export
 #include "tsl/profiler/lib/traceme.h"
 
-#if !defined(IS_MOBILE_PLATFORM)
-#include "xla/tsl/profiler/utils/time_utils.h"
-#endif
-
-// TODO: b/323943471 - This macro should eventually be provided by Abseil.
-#ifndef ABSL_DEPRECATE_AND_INLINE
-#define ABSL_DEPRECATE_AND_INLINE()
-#endif
-
 namespace tensorflow {
 namespace profiler {
 

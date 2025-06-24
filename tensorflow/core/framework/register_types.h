@@ -95,6 +95,8 @@ limitations under the License.
 
 #define TF_CALL_int4(m) m(::tensorflow::int4)
 #define TF_CALL_uint4(m) m(::tensorflow::uint4)
+#define TF_CALL_int2(m) m(::tensorflow::int2)
+#define TF_CALL_uint2(m) m(::tensorflow::uint2)
 
 #elif defined(__ANDROID_TYPES_FULL__)
 
@@ -136,6 +138,8 @@ limitations under the License.
 
 #define TF_CALL_int4(m)
 #define TF_CALL_uint4(m)
+#define TF_CALL_int2(m)
+#define TF_CALL_uint2(m)
 
 #else  // defined(IS_MOBILE_PLATFORM) && !defined(__ANDROID_TYPES_FULL__)
 
@@ -176,6 +180,8 @@ limitations under the License.
 
 #define TF_CALL_int4(m)
 #define TF_CALL_uint4(m)
+#define TF_CALL_int2(m)
+#define TF_CALL_uint2(m)
 
 #endif  // defined(IS_MOBILE_PLATFORM)  - end of TF_CALL_type defines
 

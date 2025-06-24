@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/lower_while_op.h"
 
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/inline_function_utils.h"
 #include "tensorflow/core/config/flag_defs.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

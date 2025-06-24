@@ -57,7 +57,7 @@ class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [Pure]> {
     // Returns data type of the result handle. Returned type contains type of
     // the TensorList element as a subtype.
     VariantType handle_dtype() {
-      return getElementTypeOrSelf(getHandle().getType()).cast<TF::VariantType>();
+      return llvm::cast<TF::VariantType>(getElementTypeOrSelf(getHandle().getType()));
     }
   }];
 }
@@ -118,7 +118,7 @@ An n-way switch statement, implementing the following:
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
     // enabling reusing cached symbol table lookup.
     func::FuncOp ResolveBranchFunction(::mlir::SymbolTableCollection* table, int index) {
-      auto flat_sym_ref = getBranches()[index].cast<FlatSymbolRefAttr>();
+      auto flat_sym_ref = llvm::cast<FlatSymbolRefAttr>(getBranches()[index]);
       if (table)
         return table->lookupNearestSymbolFrom<func::FuncOp>(*this, flat_sym_ref);
       return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, flat_sym_ref);
@@ -457,6 +457,8 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
 
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs,
 
     FlatSymbolRefAttr:$f,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$_disable_call_shape_inference
@@ -615,6 +617,8 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
 
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs,
 
     FlatSymbolRefAttr:$f,
     StrAttr:$config,
@@ -850,14 +854,14 @@ Example:
       "return getElementTypeOrSelf(resource_subtype());">;
   DerivedAttr shape = DerivedAttr<
       "ShapedType",
-      "return resource_subtype().cast<ShapedType>();",
+      "return llvm::cast<ShapedType>(resource_subtype());",
       [{ mlir::TF::ShapeAttr::get($_ctxt, $_self) }]>;
 
   let extraClassDeclaration = [{
     TensorType resource_subtype() { return resource_type().getSubtypes()[0]; }
 
     ResourceType resource_type() {
-      return getElementTypeOrSelf(getResource()).cast<TF::ResourceType>();
+      return llvm::cast<TF::ResourceType>(getElementTypeOrSelf(getResource()));
     }
   }];
 
@@ -1068,6 +1072,8 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall",
 
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs,
     TF_Int32Tensor:$device_ordinal,
 
     SymbolRefAttr:$f,
@@ -2189,7 +2195,7 @@ def TF_XlaSparseDenseMatmulWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulWithCsrIn
     TF_Int32Tensor:$sorted_sample_ids,
     TF_Int32Tensor:$sorted_token_ids,
     TF_Float32Tensor:$sorted_gains,
-    TF_Float32Tensor:$embedding_table,
+    TF_Tensor:$embedding_table,
     TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
 
     ConfinedAttr<I64Attr, [IntMinValue<0>]>:$input_size,
@@ -2200,7 +2206,39 @@ def TF_XlaSparseDenseMatmulWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulWithCsrIn
   );
 
   let results = (outs
-    TF_Float32Tensor:$activations
+    TF_Tensor:$activations
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<4>;
+}
+
+def TF_XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInput", [Pure]> {
+  let summary = "This op looks up the embedding vectors on SparseCores and performs the given combiner computation on TensorCores.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Int32Tensor:$sorted_pos_ids,
+    TF_Float32Tensor:$sorted_gains,
+    TF_Float32Tensor:$embedding_table,
+    TF_Float32Tensor:$weights,
+
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$input_size,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$max_valency,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_weights,
+    OptionalAttr<F32Attr>:$quantization_config_low,
+    OptionalAttr<F32Attr>:$quantization_config_high,
+    OptionalAttr<I64Attr>:$quantization_config_num_buckets,
+
+    SymbolRefAttr:$combiner_computation,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$activations,
+    TF_Int32Tensor:$preserved_valencies,
+    TF_Float32Tensor:$preserved_vectors
   );
 }
 
@@ -2728,6 +2766,66 @@ def XlaSparseDenseMatmulGradWithFtrlAndStaticBufferSizeOp : TF_Op<"XlaSparseDens
   );
 }
 
+def TF_UniformDequantizeOp : TF_Op<"UniformDequantize", [Pure]> {
+  let summary = "Perform dequantization on the quantized Tensor `input`.";
+
+  let description = [{
+Given quantized `input` which was quantized using `scales` and `zero_points`, performs dequantization using the formula:
+dequantized_data = (quantized_data - zero_point) * scale.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Qint32, TF_Qint8, TF_Quint8]>, [{Must be a Tensor of Tin.}]>:$input,
+    Arg<TF_Float32Tensor, [{The float value(s) used as scale(s) when quantizing original data that input represents.
+Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).}]>:$scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero_point(s) when quantizing original data that input represents.
+Same shape condition as scales.}]>:$zero_points,
+
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$quantization_axis,
+    I64Attr:$quantization_min_val,
+    I64Attr:$quantization_max_val
+  );
+
+  let results = (outs
+    Res<TF_Float32Tensor, [{The output dequantized Tensor of Tout, whose shape is same as input.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
+}
+
+def TF_UniformQuantizeOp : TF_Op<"UniformQuantize", [Pure]> {
+  let summary = "Perform quantization on Tensor `input`.";
+
+  let description = [{
+Given `input`, `scales` and `zero_points`, performs quantization using the formula:
+quantized_data = floor(input_data * (1.0f / scale) + 0.5f) + zero_point
+  }];
+
+  let arguments = (ins
+    Arg<TF_Float32Tensor, [{Must be a Tensor of Tin.}]>:$input,
+    Arg<TF_Float32Tensor, [{The float value(s) to use as scale(s) to quantize `input`.
+Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).}]>:$scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) to use as zero_point(s) to quantize `input`.
+Same shape condition as scales.}]>:$zero_points,
+
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$quantization_axis,
+    I64Attr:$quantization_min_val,
+    I64Attr:$quantization_max_val
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Qint32, TF_Qint8, TF_Quint8]>, [{The output quantized Tensor of Tout, whose shape is same as input.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
+}
+
 def TF_XlaSparseDenseMatmulGradWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulGradWithCsrInput", [AttrSizedOperandSegments, Pure]> {
   let summary = "A XLA op which performs the custom optimizer per-row update for the dense-sparse matrix multiplication.";
 
@@ -2737,7 +2835,7 @@ def TF_XlaSparseDenseMatmulGradWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulGradW
     TF_Int32Tensor:$sorted_token_ids,
     TF_Float32Tensor:$sorted_gains,
     TF_Float32Tensor:$activation_gradients,
-    Variadic<TF_Float32Tensor>:$tables,
+    Variadic<TF_Tensor>:$tables,
     Variadic<TF_Float32Tensor>:$hyperparameters,
     TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
 
@@ -2746,10 +2844,382 @@ def TF_XlaSparseDenseMatmulGradWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulGradW
   );
 
   let results = (outs
-    Variadic<TF_Float32Tensor>:$updated_tables
+    Variadic<TF_Tensor>:$updated_tables
   );
 
   TF_DerivedOperandSizeAttr M = TF_DerivedOperandSizeAttr<6>;
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<5>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<5>;
+}
+
+def TF_XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInputOp : TF_Op<"XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInput", [Pure]> {
+  let summary = "This op back-propagates the activation gradients to the embedding table and the combiner weights.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Int32Tensor:$sorted_pos_ids,
+    TF_Float32Tensor:$sorted_gains,
+    // Custom combiner learnable weights to be updated in this backward pass.
+    TF_Float32Tensor:$weights,
+    // Preserved outputs of the SparseCore embedding forward pass (for TC
+    // combiner VJP).
+    TF_Int32Tensor:$preserved_valencies,
+    TF_Float32Tensor:$preserved_vectors,
+    TF_Float32Tensor:$preserved_weights,
+    // Gradients of the activation.
+    TF_Float32Tensor:$activation_gradients,
+    // Learning rate of the embedding table.
+    TF_Float32Tensor:$learning_rate,
+    // Learning rate of the custom combiner weights (using SGD).
+    TF_Float32Tensor:$combiner_weights_learning_rate,
+    TF_Float32Tensor:$embedding_table,
+
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$max_valency,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_weights,
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
+
+    SymbolRefAttr:$combiner_table_vjp_computation,
+    SymbolRefAttr:$combiner_weights_vjp_computation,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table,
+    TF_Float32Tensor:$updated_weights
+  );
+}
+
+def TF_XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradAndCsrInputOp : TF_Op<"XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradAndCsrInput", [Pure]> {
+  let summary = "This op back-propagates the activation gradients to the embedding table and the combiner weights.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Int32Tensor:$sorted_pos_ids,
+    TF_Float32Tensor:$sorted_gains,
+    // Custom combiner learnable weights to be updated in this backward pass.
+    TF_Float32Tensor:$weights,
+    // Preserved outputs of the SparseCore embedding forward pass (for TC
+    // combiner VJP).
+    TF_Int32Tensor:$preserved_valencies,
+    TF_Float32Tensor:$preserved_vectors,
+    TF_Float32Tensor:$preserved_weights,
+    // Gradients of the activation.
+    TF_Float32Tensor:$activation_gradients,
+    // Learning rate of the embedding table.
+    TF_Float32Tensor:$learning_rate,
+    // Learning rate of the custom combiner weights (using SGD).
+    TF_Float32Tensor:$combiner_weights_learning_rate,
+    TF_Float32Tensor:$embedding_table,
+    TF_Float32Tensor:$accumulator,
+
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$max_valency,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_weights,
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
+
+    SymbolRefAttr:$combiner_table_vjp_computation,
+    SymbolRefAttr:$combiner_weights_vjp_computation,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table,
+    TF_Float32Tensor:$updated_accumulator,
+    TF_Float32Tensor:$updated_weights
+  );
+}
+
+def TF_XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradMomentumAndCsrInputOp : TF_Op<"XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradMomentumAndCsrInput", [Pure]> {
+  let summary = "This op back-propagates the activation gradients to the embedding table and the combiner weights.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Int32Tensor:$sorted_pos_ids,
+    TF_Float32Tensor:$sorted_gains,
+    // Custom combiner learnable weights to be updated in this backward pass.
+    TF_Float32Tensor:$weights,
+    // Preserved outputs of the SparseCore embedding forward pass (for TC
+    // combiner VJP).
+    TF_Int32Tensor:$preserved_valencies,
+    TF_Float32Tensor:$preserved_vectors,
+    TF_Float32Tensor:$preserved_weights,
+    // Gradients of the activation.
+    TF_Float32Tensor:$activation_gradients,
+    // Learning rate of the embedding table.
+    TF_Float32Tensor:$learning_rate,
+    // Learning rate of the custom combiner weights (using SGD).
+    TF_Float32Tensor:$combiner_weights_learning_rate,
+    TF_Float32Tensor:$embedding_table,
+    TF_Float32Tensor:$accumulator,
+    TF_Float32Tensor:$momenta,
+
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$max_valency,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_weights,
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
+
+    BoolAttr:$use_nesterov,
+    F32Attr:$exponent,
+    F32Attr:$beta1,
+    F32Attr:$beta2,
+    F32Attr:$epsilon,
+
+    SymbolRefAttr:$combiner_table_vjp_computation,
+    SymbolRefAttr:$combiner_weights_vjp_computation,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table,
+    TF_Float32Tensor:$updated_accumulator,
+    TF_Float32Tensor:$updated_momenta,
+    TF_Float32Tensor:$updated_weights
+  );
+}
+
+def TF_XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdamAndCsrInputOp : TF_Op<"XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdamAndCsrInput", [Pure]> {
+  let summary = "This op back-propagates the activation gradients to the embedding table and the combiner weights.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Int32Tensor:$sorted_pos_ids,
+    TF_Float32Tensor:$sorted_gains,
+    // Custom combiner learnable weights to be updated in this backward pass.
+    TF_Float32Tensor:$weights,
+    // Preserved outputs of the SparseCore embedding forward pass (for TC
+    // combiner VJP).
+    TF_Int32Tensor:$preserved_valencies,
+    TF_Float32Tensor:$preserved_vectors,
+    TF_Float32Tensor:$preserved_weights,
+    // Gradients of the activation.
+    TF_Float32Tensor:$activation_gradients,
+    // Learning rate of the embedding table.
+    TF_Float32Tensor:$learning_rate,
+    // Learning rate of the custom combiner weights (using SGD).
+    TF_Float32Tensor:$combiner_weights_learning_rate,
+    TF_Float32Tensor:$embedding_table,
+    TF_Float32Tensor:$momenta,
+    TF_Float32Tensor:$velocity,
+
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$max_valency,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_weights,
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
+
+    BoolAttr:$use_sum_inside_sqrt,
+    F32Attr:$beta1,
+    F32Attr:$beta2,
+    F32Attr:$epsilon,
+
+    SymbolRefAttr:$combiner_table_vjp_computation,
+    SymbolRefAttr:$combiner_weights_vjp_computation,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table,
+    TF_Float32Tensor:$updated_momenta,
+    TF_Float32Tensor:$updated_velocity,
+    TF_Float32Tensor:$updated_weights
+  );
+}
+
+def TF_XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInputOp : TF_Op<"XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInput", [Pure]> {
+  let summary = "This op back-propagates the activation gradients to the embedding table and the combiner weights.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Int32Tensor:$sorted_pos_ids,
+    TF_Float32Tensor:$sorted_gains,
+    // Custom combiner learnable weights to be updated in this backward pass.
+    TF_Float32Tensor:$weights,
+    // Preserved outputs of the SparseCore embedding forward pass (for TC
+    // combiner VJP).
+    TF_Int32Tensor:$preserved_valencies,
+    TF_Float32Tensor:$preserved_vectors,
+    TF_Float32Tensor:$preserved_weights,
+    // Gradients of the activation.
+    TF_Float32Tensor:$activation_gradients,
+    // Learning rate of the embedding table.
+    TF_Float32Tensor:$learning_rate,
+    // Learning rate of the custom combiner weights (using SGD).
+    TF_Float32Tensor:$combiner_weights_learning_rate,
+    TF_Float32Tensor:$embedding_table,
+    TF_Float32Tensor:$accumulator,
+    TF_Float32Tensor:$linear,
+
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$max_valency,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_weights,
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
+
+    BoolAttr:$multiply_linear_by_learning_rate,
+    F32Attr:$beta,
+    F32Attr:$learning_rate_power,
+    F32Attr:$l1_regularization_strength,
+    F32Attr:$l2_regularization_strength,
+
+    SymbolRefAttr:$combiner_table_vjp_computation,
+    SymbolRefAttr:$combiner_weights_vjp_computation,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table,
+    TF_Float32Tensor:$updated_accumulator,
+    TF_Float32Tensor:$updated_linear,
+    TF_Float32Tensor:$updated_weights
+  );
+}
+
+def TF_XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInput", [AttrSizedOperandSegments, Pure]> {
+  let summary = "This op back-propagates the activation gradients to the embedding table and the combiner weights.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Int32Tensor:$sorted_pos_ids,
+    TF_Float32Tensor:$sorted_gains,
+    // Custom combiner learnable weights to be updated in this backward pass.
+    TF_Float32Tensor:$weights,
+    // Preserved outputs of the SparseCore embedding forward pass (for TC
+    // combiner VJP).
+    TF_Int32Tensor:$preserved_valencies,
+    TF_Float32Tensor:$preserved_vectors,
+    TF_Float32Tensor:$preserved_weights,
+    // Gradients of the activation.
+    TF_Float32Tensor:$activation_gradients,
+    // The embedding table and the associated slot variables.
+    Variadic<TF_Float32Tensor>:$tables,
+    // Hyperparameters of the current optimizer.
+    Variadic<TF_Float32Tensor>:$hyperparameters,
+    // Learning rate of the custom combiner weights (using SGD).
+    TF_Float32Tensor:$combiner_weights_learning_rate,
+
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$max_valency,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_weights,
+
+    SymbolRefAttr:$combiner_table_vjp_computation,
+    SymbolRefAttr:$combiner_weights_vjp_computation,
+    SymbolRefAttr:$optimizer_custom_computation,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    Variadic<TF_Float32Tensor>:$updated_tables,
+    TF_Float32Tensor:$updated_weights
+  );
+
+  // Number of embedding table + its associated slot variables.
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<10>;
+  // Number of hyperparameters.
+  TF_DerivedOperandSizeAttr M = TF_DerivedOperandSizeAttr<11>;
+}
+
+// b/394499589: move back to tf_generated_ops.td
+def TF_PartitionedCallOp : TF_Op<"PartitionedCall", [CallOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface>, Pure]> {
+  let summary = [{
+returns `f(inputs)`, where `f`'s body is placed and partitioned.
+  }];
+
+  let description = [{
+Asynchronously executes a function, potentially across multiple devices but
+within a single process. The kernel places and partitions a given function's
+underlying graph, and executes each of the partitioned subgraphs as a function.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Tensor>, [{A list of input tensors.}]>:$args,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs,
+
+    SymbolRefAttr:$f,
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$config,
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$config_proto,
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$executor_type
+  );
+
+  let results = (outs
+    Res<Variadic<TF_Tensor>, [{A list of return values.}]>:$output
+  );
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+
+  let extraClassDeclaration = [{
+    // Gets the argument operands to the called function.
+    operand_range getArgOperands() { return getArgs(); }
+    MutableOperandRange getArgOperandsMutable() {
+      return getArgsMutable();
+    }
+
+    // Returns the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
+    // Sets the callee from the callable.
+    void setCalleeFromCallable(CallInterfaceCallable callee);
+
+    // returns the callee of this operation.
+    func::FuncOp func() {
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getF());
+    }
+  }];
+}
+
+def TF_XlaSparseActivationsUnstackOp : TF_Op<"XlaSparseActivationsUnstack", [Pure]> {
+  let summary = [{
+    XlaSparseActivationsUnstackOp attempts to fuse transpose, relayout,
+    conversion, stacking and optionally interleaving of the embedding
+    activations, while also offloading this work to SparseCore.
+
+    The op assumes its operand is in SparseCore layout, while also being F32.
+    The output is a tuple of tensors in TensorCore layout, in any data type.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$stacked_activations,
+
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_tables,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<1>]>:$sample_counts,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<1>]>:$features,
+    BoolAttr:$interleaved
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$unstacked_embedding_activations
+  );
+}
+
+def TF_XlaSparseGradientsStackOp : TF_Op<"XlaSparseGradientsStack", [Pure]> {
+  let summary = [{
+    XlaSparseGradientsStackOp attempts to fuse transpose, relayout, conversion,
+    unstacking and optionally interleaving of the embedding gradients, while
+    also offloading this work to SparseCore.
+
+    The op assumes its operands are in TensoreCore layout and in any data type.
+    The output is in SparseCore layout and is expected to be F32.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$unstacked_gradients,
+
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_tables,
+    BoolAttr:$interleaved
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$stacked_gradients
+  );
 }
 #endif // TF_OPS

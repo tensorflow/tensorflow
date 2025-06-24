@@ -32,30 +32,19 @@ import time
 
 # File parameters.
 TF_SRC_DIR = "tensorflow"
-VERSION_H = "%s/core/public/version.h" % TF_SRC_DIR
-SETUP_PY = "%s/tools/pip_package/setup.py" % TF_SRC_DIR
 README_MD = "./README.md"
-TENSORFLOW_BZL = "%s/tensorflow.bzl" % TF_SRC_DIR
-TF_MAC_ARM64_CI_BUILD = (
-    "%s/tools/ci_build/osx/arm64/tensorflow_as_build_release.Jenkinsfile"
-    % TF_SRC_DIR
-)
-TF_MAC_ARM64_CI_TEST = (
-    "%s/tools/ci_build/osx/arm64/tensorflow_as_test_release.Jenkinsfile"
-    % TF_SRC_DIR
-)
+TF_VERSION_BZL = "%s/tf_version.bzl" % TF_SRC_DIR
+BAZEL_RC = "./.bazelrc"
 RELEVANT_FILES = [
     TF_SRC_DIR,
-    VERSION_H,
-    SETUP_PY,
+    TF_VERSION_BZL,
     README_MD,
-    TF_MAC_ARM64_CI_BUILD,
-    TF_MAC_ARM64_CI_TEST
+    BAZEL_RC,
 ]
 
 # Version type parameters.
 NIGHTLY_VERSION = 1
-REGULAR_VERSION = 0
+SNAPSHOT_VERSION = 0
 
 
 def check_existence(filename):
@@ -90,7 +79,7 @@ class Version(object):
       minor: minor string eg. (3)
       patch: patch string eg. (1)
       identifier_string: extension string eg. (-rc0)
-      version_type: version parameter ((REGULAR|NIGHTLY)_VERSION)
+      version_type: version parameter ((SNAPSHOT|NIGHTLY)_VERSION)
     """
     self.major = major
     self.minor = minor
@@ -114,7 +103,7 @@ class Version(object):
 
   @property
   def pep_440_str(self):
-    if self.version_type == REGULAR_VERSION:
+    if self.version_type == SNAPSHOT_VERSION:
       return_string = "%s.%s.%s%s" % (self.major,
                                       self.minor,
                                       self.patch,
@@ -151,11 +140,14 @@ class Version(object):
     else:
       identifier_string = ""
 
-    return Version(major,
-                   minor,
-                   patch,
-                   identifier_string,
-                   version_type)
+    return Version(major, minor, patch, identifier_string, version_type)
+
+
+def _get_regex_match(line, regex, is_last_match=False):
+  match = re.search(regex, line)
+  if match:
+    return (match.group(1), is_last_match)
+  return (None, False)
 
 
 def get_current_semver_version():
@@ -163,59 +155,64 @@ def get_current_semver_version():
 
   Returns:
     version: Version object of current SemVer string based on information from
-    core/public/version.h
+    .bazelrc and tf_version.bzl files.
   """
 
   # Get current version information.
-  version_file = open(VERSION_H, "r")
-  for line in version_file:
-    major_match = re.search("^#define TF_MAJOR_VERSION ([0-9]+)", line)
-    minor_match = re.search("^#define TF_MINOR_VERSION ([0-9]+)", line)
-    patch_match = re.search("^#define TF_PATCH_VERSION ([0-9]+)", line)
-    extension_match = re.search("^#define TF_VERSION_SUFFIX \"(.*)\"", line)
-    if major_match:
-      old_major = major_match.group(1)
-    if minor_match:
-      old_minor = minor_match.group(1)
-    if patch_match:
-      old_patch_num = patch_match.group(1)
-    if extension_match:
-      old_extension = extension_match.group(1)
+  bazel_rc_file = open(BAZEL_RC, "r")
+
+  wheel_type = ""
+  wheel_build_date = ""
+  wheel_version_suffix = ""
+
+  for line in bazel_rc_file:
+    wheel_type = (
+        _get_regex_match(line, '^build --repo_env=ML_WHEEL_TYPE="(.+)"')[0]
+        or wheel_type
+    )
+    wheel_build_date = (
+        _get_regex_match(
+            line, '^build --repo_env=ML_WHEEL_BUILD_DATE="([0-9]*)"'
+        )[0]
+        or wheel_build_date
+    )
+    (wheel_version_suffix, is_matched) = _get_regex_match(
+        line,
+        '^build --repo_env=ML_WHEEL_VERSION_SUFFIX="(.*)"',
+        is_last_match=True,
+    )
+    if is_matched:
       break
 
-  if "dev" in old_extension:
+  tf_version_bzl_file = open(TF_VERSION_BZL, "r")
+  wheel_version = ""
+  for line in tf_version_bzl_file:
+    (wheel_version, is_matched) = _get_regex_match(
+        line, '^TF_VERSION = "([0-9.]+)"', is_last_match=True
+    )
+    if is_matched:
+      break
+  (old_major, old_minor, old_patch_num) = wheel_version.split(".")
+
+  if wheel_type == "nightly":
     version_type = NIGHTLY_VERSION
   else:
-    version_type = REGULAR_VERSION
+    version_type = SNAPSHOT_VERSION
+
+  old_extension = ""
+  if wheel_type == "nightly":
+    old_extension = "-dev{}".format(wheel_build_date)
+  else:
+    if wheel_build_date:
+      old_extension += "-dev{}".format(wheel_build_date)
+    if wheel_version_suffix:
+      old_extension += wheel_version_suffix
 
   return Version(old_major,
                  old_minor,
                  old_patch_num,
                  old_extension,
                  version_type)
-
-
-def update_version_h(old_version, new_version):
-  """Update tensorflow/core/public/version.h."""
-  replace_string_in_line("#define TF_MAJOR_VERSION %s" % old_version.major,
-                         "#define TF_MAJOR_VERSION %s" % new_version.major,
-                         VERSION_H)
-  replace_string_in_line("#define TF_MINOR_VERSION %s" % old_version.minor,
-                         "#define TF_MINOR_VERSION %s" % new_version.minor,
-                         VERSION_H)
-  replace_string_in_line("#define TF_PATCH_VERSION %s" % old_version.patch,
-                         "#define TF_PATCH_VERSION %s" % new_version.patch,
-                         VERSION_H)
-  replace_string_in_line(
-      "#define TF_VERSION_SUFFIX \"%s\"" % old_version.identifier_string,
-      "#define TF_VERSION_SUFFIX \"%s\"" % new_version.identifier_string,
-      VERSION_H)
-
-
-def update_setup_dot_py(old_version, new_version):
-  """Update setup.py."""
-  replace_string_in_line("_VERSION = '%s'" % old_version.string,
-                         "_VERSION = '%s'" % new_version.string, SETUP_PY)
 
 
 def update_readme(old_version, new_version):
@@ -226,32 +223,65 @@ def update_readme(old_version, new_version):
                          "%s-" % pep_440_str, README_MD)
 
 
-def update_tensorflow_bzl(old_version, new_version):
-  """Update tensorflow.bzl."""
-  old_mmp = "%s.%s.%s" % (old_version.major, old_version.minor,
-                          old_version.patch)
-  new_mmp = "%s.%s.%s" % (new_version.major, new_version.minor,
-                          new_version.patch)
-  replace_string_in_line('VERSION = "%s"' % old_mmp,
-                         'VERSION = "%s"' % new_mmp, TENSORFLOW_BZL)
-  replace_string_in_line(
-      'WHEEL_VERSION = "%s"' % old_version.string,
-      'WHEEL_VERSION = "%s"' % new_version.string,
-      TENSORFLOW_BZL,
+def _get_mmp(version):
+  return "%s.%s.%s" % (version.major, version.minor, version.patch)
+
+
+def _get_wheel_type(version):
+  if version.version_type == NIGHTLY_VERSION:
+    return "nightly"
+  else:
+    return "snapshot"
+
+
+def _get_wheel_build_date(version):
+  date_match = re.search(".*dev([0-9]{8}).*", version.identifier_string)
+  if date_match:
+    return date_match.group(1)
+  return ""
+
+
+def _get_wheel_version_suffix(version):
+  return version.identifier_string.replace(
+      "-dev{}".format(_get_wheel_build_date(version)), ""
   )
 
 
-def update_m1_builds(old_version, new_version):
-  """Update M1 builds."""
+def update_tf_version_bzl(old_version, new_version):
+  """Update tf_version.bzl."""
+  old_mmp = _get_mmp(old_version)
+  new_mmp = _get_mmp(new_version)
   replace_string_in_line(
-      "RELEASE_BRANCH = 'r%s.%s'" % (old_version.major, old_version.minor),
-      "RELEASE_BRANCH = 'r%s.%s'" % (new_version.major, new_version.minor),
-      TF_MAC_ARM64_CI_BUILD,
+      'TF_VERSION = "%s"' % old_mmp,
+      'TF_VERSION = "%s"' % new_mmp,
+      TF_VERSION_BZL,
   )
+
+
+def update_bazelrc(old_version, new_version):
+  """Update .bazelrc."""
+  old_wheel_type = _get_wheel_type(old_version)
+  new_wheel_type = _get_wheel_type(new_version)
   replace_string_in_line(
-      "RELEASE_BRANCH = 'r%s.%s'" % (old_version.major, old_version.minor),
-      "RELEASE_BRANCH = 'r%s.%s'" % (new_version.major, new_version.minor),
-      TF_MAC_ARM64_CI_TEST,
+      'build --repo_env=ML_WHEEL_TYPE="%s"' % old_wheel_type,
+      'build --repo_env=ML_WHEEL_TYPE="%s"' % new_wheel_type,
+      BAZEL_RC,
+  )
+
+  old_wheel_build_date = _get_wheel_build_date(old_version)
+  new_wheel_build_date = _get_wheel_build_date(new_version)
+  replace_string_in_line(
+      'build --repo_env=ML_WHEEL_BUILD_DATE="%s"' % old_wheel_build_date,
+      'build --repo_env=ML_WHEEL_BUILD_DATE="%s"' % new_wheel_build_date,
+      BAZEL_RC,
+  )
+
+  old_wheel_suffix = _get_wheel_version_suffix(old_version)
+  new_wheel_suffix = _get_wheel_version_suffix(new_version)
+  replace_string_in_line(
+      'build --repo_env=ML_WHEEL_VERSION_SUFFIX="%s"' % old_wheel_suffix,
+      'build --repo_env=ML_WHEEL_VERSION_SUFFIX="%s"' % new_wheel_suffix,
+      BAZEL_RC,
   )
 
 
@@ -334,14 +364,11 @@ def main():
                             "-dev" + time.strftime("%Y%m%d"),
                             NIGHTLY_VERSION)
   else:
-    new_version = Version.parse_from_string(args.version, REGULAR_VERSION)
-    # Update Apple Silicon release CI files for release builds only
-    update_m1_builds(old_version, new_version)
+    new_version = Version.parse_from_string(args.version, SNAPSHOT_VERSION)
 
-  update_version_h(old_version, new_version)
-  update_setup_dot_py(old_version, new_version)
+  update_tf_version_bzl(old_version, new_version)
+  update_bazelrc(old_version, new_version)
   update_readme(old_version, new_version)
-  update_tensorflow_bzl(old_version, new_version)
 
   # Print transition details.
   print("Major: %s -> %s" % (old_version.major, new_version.major))

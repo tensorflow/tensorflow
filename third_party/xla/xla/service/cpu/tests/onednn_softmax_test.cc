@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 
 #include <utility>
 
@@ -29,10 +28,11 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 
 namespace xla {
 namespace cpu {
+
+#if defined(INTEL_MKL)
 
 std::string TestParamsToString(
     const ::testing::TestParamInfo<std::tuple<PrimitiveType, int>>& data) {
@@ -258,7 +258,10 @@ TEST_F(OneDnnSoftmaxTest, SoftmaxWithBF16ConvertOutputFP32Pattern) {
   TestSoftmaxPatternMatching(softmax_hlo_string, /*expected_softmax_axis=*/2);
 }
 
+#endif  // INTEL_MKL
+
+// Ensure at least one test case is linked to avoid test failures.
+TEST(Dummy, Test) {}
+
 }  // namespace cpu
 }  // namespace xla
-
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3

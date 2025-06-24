@@ -46,8 +46,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
@@ -62,8 +62,6 @@ namespace mlir::quant::stablehlo {
 
 namespace {
 
-using ::mlir::quant::FindUserOfType;
-using ::mlir::quant::TryCast;
 using ::mlir::stablehlo::AddOp;
 using ::mlir::stablehlo::BroadcastInDimOp;
 using ::mlir::stablehlo::ConcatenateOp;
@@ -672,11 +670,12 @@ class XlaCallModuleOpToCallOp : public OpRewritePattern<TF::XlaCallModuleOp> {
  public:
   explicit XlaCallModuleOpToCallOp(
       MLIRContext& ctx, const bool enable_per_channel_quantized_weight)
-      : OpRewritePattern<TF::XlaCallModuleOp>(&ctx),
+      : OpRewritePattern<TF::XlaCallModuleOp>::OpRewritePattern(&ctx),
         enable_per_channel_quantized_weight_(
             enable_per_channel_quantized_weight) {}
 
-  LogicalResult match(TF::XlaCallModuleOp op) const override {
+  LogicalResult matchAndRewrite(TF::XlaCallModuleOp op,
+                                PatternRewriter& rewriter) const override {
     ModuleOp module_op = op->getParentOfType<ModuleOp>();
 
     // Ignore ops without quantization method.
@@ -697,22 +696,20 @@ class XlaCallModuleOpToCallOp : public OpRewritePattern<TF::XlaCallModuleOp> {
       return failure();
     }
     Method quantization_method = GetQuantizationMethodOrDefault(op);
-    return FuncBodyRewritePatternT(enable_per_channel_quantized_weight_)
-        .match(entry_func_op, quantization_method);
-  }
+    if (FuncBodyRewritePatternT(enable_per_channel_quantized_weight_)
+            .match(entry_func_op, quantization_method)
+            .failed()) {
+      return failure();
+    }
 
-  void rewrite(TF::XlaCallModuleOp xla_call_module_op,
-               PatternRewriter& rewriter) const override {
     // TODO: b/331145946 - Each quantization method should be valid
     // (GetQuantizationMethodOrDefault swallows invalid method attribute). Check
     // the validity in `match()`. Use accessors to achieve this.
-    const Method quantization_method =
-        GetQuantizationMethodOrDefault(xla_call_module_op);
-
     ReplaceQuantizedXlaCallModuleOpWithQuantizedCallOp(
-        *rewriter.getContext(), rewriter, xla_call_module_op,
+        *rewriter.getContext(), rewriter, op,
         FuncBodyRewritePatternT(enable_per_channel_quantized_weight_),
         quantization_method);
+    return success();
   }
 
  private:
@@ -725,12 +722,22 @@ class XlaCallModuleOpToCallOp : public OpRewritePattern<TF::XlaCallModuleOp> {
 // Quantizes only when the nested region consists of ops whose quantization
 // parameters can be propagated from outside.
 class QuantizeOpWithRegionPattern
-    : public OpRewritePattern<quantfork::DequantizeCastOp> {
+    : public OpRewritePattern<mlir::quant::ir::DequantizeCastOp> {
  public:
   explicit QuantizeOpWithRegionPattern(MLIRContext& ctx)
-      : OpRewritePattern<quantfork::DequantizeCastOp>(&ctx) {};
+      : OpRewritePattern<mlir::quant::ir::DequantizeCastOp>(&ctx) {};
 
-  LogicalResult match(quantfork::DequantizeCastOp op) const final {
+  LogicalResult matchAndRewrite(mlir::quant::ir::DequantizeCastOp op,
+                                PatternRewriter& rewriter) const final {
+    if (match(op).failed()) {
+      return failure();
+    }
+    rewrite(op, rewriter);
+    return success();
+  }
+
+ private:
+  LogicalResult match(mlir::quant::ir::DequantizeCastOp op) const {
     // Match only when there is one user of the dequantize op.
     if (!op.getResult().hasOneUse()) {
       return failure();
@@ -758,8 +765,8 @@ class QuantizeOpWithRegionPattern
     return success();
   }
 
-  void rewrite(quantfork::DequantizeCastOp op,
-               PatternRewriter& rewriter) const final {
+  void rewrite(mlir::quant::ir::DequantizeCastOp op,
+               PatternRewriter& rewriter) const {
     // Rewrite the floating-point ops to the quantized version, by fusing
     // preceding dequantize ops and succeding quantize ops.
     for (Operation* op_with_region : op.getResult().getUsers()) {
@@ -776,7 +783,7 @@ class QuantizeOpWithRegionPattern
 
         const Type element_type =
             mlir::cast<TensorType>(operand.getType()).getElementType();
-        if (auto dq_op = dyn_cast_or_null<quantfork::DequantizeCastOp>(
+        if (auto dq_op = dyn_cast_or_null<mlir::quant::ir::DequantizeCastOp>(
                 operand.getDefiningOp())) {
           inputs.push_back(dq_op.getOperand());
         } else if (isa<IntegerType>(element_type)) {
@@ -804,8 +811,9 @@ class QuantizeOpWithRegionPattern
             mlir::cast<TensorType>(result.getType()).getElementType();
         // If the user is the QuantizeOp, it must be the only user.
         if (result.hasOneUse() &&
-            isa<quantfork::QuantizeCastOp>(*result.user_begin())) {
-          auto user = cast<quantfork::QuantizeCastOp>(*result.user_begin());
+            isa<mlir::quant::ir::QuantizeCastOp>(*result.user_begin())) {
+          auto user =
+              cast<mlir::quant::ir::QuantizeCastOp>(*result.user_begin());
           outputs_replaced.push_back(user.getResult());
           output_types.push_back(user.getType());
         } else if (isa<IntegerType>(result_element_type)) {
@@ -846,7 +854,6 @@ class QuantizeOpWithRegionPattern
     }
   }
 
- private:
   // Checks if an op is quantizable in a nested region.
   bool IsOpQuantizableInNestedRegion(Operation& op) const {
     return isa<mlir::stablehlo::MaxOp, mlir::stablehlo::ReturnOp>(op);
@@ -936,8 +943,8 @@ bool IsQuantizedCompositeFunction(func::CallOp call_op) {
 
 bool IsConnectedWithQuantizedCompsiteFunction(Operation* same_scale_op) {
   for (const Value operand : same_scale_op->getOperands()) {
-    auto dq_op =
-        dyn_cast_or_null<quantfork::DequantizeCastOp>(operand.getDefiningOp());
+    auto dq_op = dyn_cast_or_null<mlir::quant::ir::DequantizeCastOp>(
+        operand.getDefiningOp());
     if (!dq_op) continue;
 
     Operation* preceding_op = dq_op.getArg().getDefiningOp();
@@ -965,11 +972,11 @@ bool IsConnectedWithQuantizedCompsiteFunction(Operation* same_scale_op) {
   for (const Value result : same_scale_op->getResults()) {
     // If the user is the Quantize op, it must be the only user.
     if (!result.hasOneUse() ||
-        !isa<quantfork::QuantizeCastOp>(*result.user_begin())) {
+        !isa<mlir::quant::ir::QuantizeCastOp>(*result.user_begin())) {
       continue;
     }
 
-    auto q_op = cast<quantfork::QuantizeCastOp>(*result.user_begin());
+    auto q_op = cast<mlir::quant::ir::QuantizeCastOp>(*result.user_begin());
     for (Operation* following_op : q_op->getUsers()) {
       // Check whether the following op is a quantized composite function.
       if (isa<func::CallOp>(following_op)) {

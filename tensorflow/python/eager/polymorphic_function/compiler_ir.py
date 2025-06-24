@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Implmentation for defining get_compiler_ir."""
+"""Implementation for defining get_compiler_ir."""
 from typing import List, Optional
 import warnings
 

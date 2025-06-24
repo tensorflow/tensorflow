@@ -59,6 +59,34 @@ H AbslHashValue(H h, const CliqueId& id) {
   return H::combine(std::move(h), id.data());
 }
 
+// An evenly distributed list of root ranks (cliqueIds) to spread communication
+// during clique setup.
+class CliqueIds {
+ public:
+  CliqueIds() = default;
+
+  explicit CliqueIds(const CliqueId& id);
+
+  void Add(const CliqueId& id);
+
+  absl::Span<const CliqueId> data() const;
+
+  const CliqueId& at(size_t index) const;
+
+  uint32_t fingerprint() const;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const CliqueIds& ids);
+
+ private:
+  std::vector<CliqueId> ids_;
+};
+
+template <typename H>
+H AbslHashValue(H h, const CliqueIds& ids) {
+  return H::combine(std::move(h), ids.data());
+}
+
 }  // namespace xla
 
 #endif  // XLA_CORE_COLLECTIVES_CLIQUE_ID_H_

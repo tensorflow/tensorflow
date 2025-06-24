@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_VARIANT_TENSOR_DATA_H_
 
 #include <algorithm>
+#include <type_traits>
 #include <vector>
 
 #include "tensorflow/core/framework/tensor.h"
@@ -47,7 +48,9 @@ class VariantTensorData {
   const std::string& type_name() const { return type_name_; }
   void set_type_name(const std::string& type_name) { type_name_ = type_name; }
 
-  template <typename T, bool = std::is_pod<typename std::decay<T>::type>::value>
+  template <typename T,
+            bool =
+                std::is_trivially_copyable<typename std::decay<T>::type>::value>
   struct PODResolver {};
 
   // Portions of the object that are not Tensors.

@@ -23,25 +23,27 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
 
-#include "absl/container/flat_hash_map.h"
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/service/executable.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/event.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
 
@@ -51,22 +53,17 @@ void BufferSequencingEvent::SetSequencingEvent(EventPool::Handle event,
                                                se::Stream* stream) {
   {
     absl::MutexLock lock(&mu_);
-    defined_status_.emplace(absl::OkStatus());
     CHECK(!event_.event());
     event_ = std::move(event);
     CHECK(streams_defined_on_.empty());
     streams_defined_on_.push_back(stream);
     sequence_number_.store(event_.sequence_number(), std::memory_order_seq_cst);
   }
-  this->ExecuteFutureTasks();
+  defined_status_.emplace(absl::OkStatus());
 }
 
 bool BufferSequencingEvent::EventHasBeenRecorded() const {
   return event_.event() != nullptr;
-}
-
-bool BufferSequencingEvent::IsDefinedNoLock() const {
-  return defined_status_.IsConcrete();
 }
 
 uint64_t BufferSequencingEvent::sequence_number() const {
@@ -110,21 +107,18 @@ absl::Status BufferSequencingEvent::WaitForEventOnExternalStream(
 
 bool BufferSequencingEvent::IsPredeterminedErrorOrDefinedOn(
     se::Stream* stream) {
-  absl::MutexLock lock(&mu_);
-  // IsDefined would be true for both a defined buffer and an error buffer.
-  // Can't use BufferSequencingEvent::EventHasBeenRecorded here since that's
-  // only true for a non-error buffer(i.e. defined buffer).
-  mu_.Await(absl::Condition(this, &BufferSequencingEvent::IsDefinedNoLock));
+  tsl::BlockUntilReady(defined_status_);
+  CHECK(defined_status_.IsConcrete());
 
-  if (defined_status_.IsConcrete() && !defined_status_.get().ok()) {
-    // IsPredeterminedError
+  // IsPredeterminedError
+  if (!defined_status_->ok()) {
     return true;
   }
 
   // The set of defined streams is expected to be very small indeed (usually
   // 1-2), so a simple linear scan should be fast enough.
-  return std::find(streams_defined_on_.begin(), streams_defined_on_.end(),
-                   stream) != streams_defined_on_.end();
+  absl::MutexLock lock(&mu_);
+  return absl::c_find(streams_defined_on_, stream) != streams_defined_on_.end();
 }
 
 bool BufferSequencingEvent::IsComplete() {
@@ -143,69 +137,89 @@ void BufferSequencingEvent::ExecuteOrAddToFutureTasks(
   tsl::profiler::TraceMeProducer producer(
       "BufferSequencingEvent::ExecuteOrAddToFutureTasks",
       tsl::profiler::ContextType::kPjRt);
-  uint64_t context_id = producer.GetContextId();
-  auto wrapped_task = [task = std::move(task), context_id]() {
+
+  auto traced_task = [task = std::move(task),
+                      context_id = producer.GetContextId()]() {
     tsl::profiler::TraceMeConsumer consumer("BufferSequencingEvent::Execute",
                                             tsl::profiler::ContextType::kPjRt,
                                             context_id);
     task();
   };
-  {
-    absl::MutexLock lock(&mu_);
-    if (!defined_status_.IsConcrete()) {
-      on_ready_tasks_callback_[task_name] = std::move(wrapped_task);
-      return;
-    }
-    // Release the lock to avoid deadlock, in the case where the
-    // thread_pool_->Schedule() executes wrapped_task inline.
-    // This is rare but could happen. The callbacks could potentially try to
-    // acquire the mutex of this BufferSequencingEvent.
-  }
-  thread_pool_->Schedule(std::move(wrapped_task));
-}
 
-void BufferSequencingEvent::ExecuteFutureTasks() {
-  absl::flat_hash_map<std::string, std::function<void()>>
-      on_ready_tasks_callback;
-  {
-    absl::MutexLock lock(&mu_);
-    on_ready_tasks_callback = std::move(on_ready_tasks_callback_);
-    // Release the lock to avoid deadlock, in the case where the
-    // thread_pool_->Schedule() executes call_all_task_callbacks inline.
-    // This is rare but could happen. The callbacks could potentially try to
-    // acquire the mutex of this BufferSequencingEvent.
-  }
-  auto call_all_task_callbacks = [on_ready_tasks_callback =
-                                      std::move(on_ready_tasks_callback)]() {
-    for (auto& [task_name, task_callback] : on_ready_tasks_callback) {
-      task_callback();
-    }
-  };
-  thread_pool_->Schedule(std::move(call_all_task_callbacks));
-}
-
-/* static */ std::shared_ptr<TrackedDeviceBuffer>
-TrackedDeviceBuffer::FromScopedShapedBuffer(
-    ScopedShapedBuffer* shaped_buffer,
-    absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events,
-    PjRtDevice* device) {
-  ShapeTree<se::DeviceMemoryBase>::iterator iterator =
-      shaped_buffer->buffers().begin();
-  std::vector<se::DeviceMemoryBase> buffers;
-  buffers.reserve(1);
-
-  ShapeUtil::ForEachSubshape(
-      shaped_buffer->on_device_shape(), [&](const Shape&, const ShapeIndex&) {
-        CHECK(iterator != shaped_buffer->buffers().end());
-        buffers.push_back(iterator->second);
-        iterator->second = se::DeviceMemoryBase();
-        ++iterator;
+  // Execute the `task` when definition event becomes available. If it's already
+  // available, the task will be executed immediately.
+  defined_status_.AndThen(
+      [this, traced_task = std::move(traced_task)]() mutable {
+        thread_pool_->Schedule(std::move(traced_task));
       });
-  CHECK(iterator == shaped_buffer->buffers().end());
-  return std::make_shared<TrackedDeviceBuffer>(
-      shaped_buffer->memory_allocator(), device,
-      absl::Span<se::DeviceMemoryBase>(buffers), definition_events,
-      /*on_delete_callback=*/nullptr);
+}
+
+ShapedBuffer RawSEDeviceMemory::AsShapedBuffer(
+    PjRtDevice* device, const Shape& on_device_shape) const {
+  ShapedBuffer shaped_buffer(on_device_shape, device->local_device_id().value(),
+                             device->local_hardware_id().value());
+  ShapeTree<se::DeviceMemoryBase>::iterator iterator =
+      shaped_buffer.buffers().begin();
+  CHECK(iterator != shaped_buffer.buffers().end());
+  iterator->second = mem();
+  ++iterator;
+  CHECK(iterator == shaped_buffer.buffers().end());
+  return shaped_buffer;
+}
+
+class AllocatedRawSEDeviceMemory : public RawSEDeviceMemory {
+ public:
+  AllocatedRawSEDeviceMemory(se::DeviceMemoryBase value, int device_ordinal,
+                             se::DeviceMemoryAllocator* allocator)
+      : RawSEDeviceMemory(value),
+        allocator_(allocator),
+        device_ordinal_(device_ordinal) {}
+
+  ~AllocatedRawSEDeviceMemory() override {
+    if (allocator_) {
+      absl::Status status = allocator_->Deallocate(device_ordinal_, mem());
+      if (!status.ok()) {
+        LOG(ERROR) << "Buffer deallocation failed: " << status;
+      }
+    }
+  }
+
+  void UnsafeReleaseMemory() override { allocator_ = nullptr; }
+
+ private:
+  se::DeviceMemoryAllocator* allocator_;
+  int device_ordinal_;
+};
+
+tsl::RCReference<RawSEDeviceMemory> RawSEDeviceMemory::Create(
+    se::DeviceMemoryBase value, PjRtLocalDeviceId device_id,
+    se::DeviceMemoryAllocator* allocator) {
+  return tsl::MakeRef<AllocatedRawSEDeviceMemory>(value, device_id.value(),
+                                                  allocator);
+}
+
+class ForeignRawSEDeviceMemory : public RawSEDeviceMemory {
+ public:
+  ForeignRawSEDeviceMemory(se::DeviceMemoryBase value,
+                           absl::AnyInvocable<void() &&> on_delete_callback)
+      : RawSEDeviceMemory(value),
+        on_delete_callback_(std::move(on_delete_callback)) {}
+
+  ~ForeignRawSEDeviceMemory() override { std::move(on_delete_callback_)(); }
+
+  void UnsafeReleaseMemory() override {
+    LOG(FATAL) << "ForeignRawSEDeviceMemory cannot be donated.";
+  }
+
+ private:
+  absl::AnyInvocable<void() &&> on_delete_callback_;
+};
+
+tsl::RCReference<RawSEDeviceMemory> RawSEDeviceMemory::CreateForeign(
+    se::DeviceMemoryBase value,
+    absl::AnyInvocable<void() &&> on_delete_callback) {
+  return tsl::MakeRef<ForeignRawSEDeviceMemory>(value,
+                                                std::move(on_delete_callback));
 }
 
 ShapedBuffer TrackedDeviceBuffer::AsShapedBuffer(
@@ -215,70 +229,35 @@ ShapedBuffer TrackedDeviceBuffer::AsShapedBuffer(
                              device_->local_hardware_id().value());
   ShapeTree<se::DeviceMemoryBase>::iterator iterator =
       shaped_buffer.buffers().begin();
-  for (const se::DeviceMemoryBase& buf : device_memory_) {
+  if (device_memory_) {
     CHECK(iterator != shaped_buffer.buffers().end());
-    iterator->second = buf;
+    iterator->second = device_memory_->mem();
     ++iterator;
   }
   CHECK(iterator == shaped_buffer.buffers().end());
   return shaped_buffer;
 }
 
-// See comment on ExecutionInput in xla/service/executable.h to understand
-// the meaning of owned/unowned in that class.
-
-void TrackedDeviceBuffer::AddToInputAsImmutable(
-    ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
-    const ShapeTree<MaybeOwningDeviceMemory>::iterator& end) const {
-  for (const se::DeviceMemoryBase& buf : device_memory_) {
-    CHECK(*iterator != end);
-    // Set buffers to be case (1) in the comment on ExecutionInput.
-    (*iterator)->second = MaybeOwningDeviceMemory(buf);
-    ++(*iterator);
-  }
-}
-
-void TrackedDeviceBuffer::AddToInputAsDonated(
-    ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
-    const ShapeTree<MaybeOwningDeviceMemory>::iterator& end,
-    ExecutionInput* execution_input,
-    se::DeviceMemoryAllocator* allocator) const {
-  for (const se::DeviceMemoryBase& buf : device_memory_) {
-    CHECK(*iterator != end);
-    // Set buffers to be case (2) in the comment on ExecutionInput.
-    (*iterator)->second = MaybeOwningDeviceMemory(se::OwningDeviceMemory(
-        buf, device_->local_device_id().value(), allocator));
-    execution_input->SetUnownedIndex((*iterator)->first);
-    ++(*iterator);
-  }
-}
-
 TrackedDeviceBuffer::TrackedDeviceBuffer(
-    se::DeviceMemoryAllocator* allocator, PjRtDevice* device,
-    absl::Span<se::DeviceMemoryBase const> device_memory,
-    absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events,
-    absl::AnyInvocable<void() &&> on_delete_callback)
-    : allocator_(allocator),
-      device_(device),
-      device_memory_(device_memory.begin(), device_memory.end()),
+    PjRtDevice* device, tsl::RCReference<RawSEDeviceMemory> device_memory,
+    absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events)
+    : device_(device),
+      device_memory_(std::move(device_memory)),
       definition_events_(std::make_move_iterator(definition_events.begin()),
                          std::make_move_iterator(definition_events.end())),
-      in_use_(true),
-      on_delete_callback_(std::move(on_delete_callback)) {}
+      in_use_(true) {}
 
-TrackedDeviceBuffer::~TrackedDeviceBuffer() {
-  if (allocator_) {
-    for (const se::DeviceMemoryBase& buffer : device_memory_) {
-      absl::Status status =
-          allocator_->Deallocate(device_->local_device_id().value(), buffer);
-      if (!status.ok()) {
-        LOG(ERROR) << "Buffer deallocation failed: " << status;
-      }
-    }
-  }
-  if (on_delete_callback_) {
-    std::move(on_delete_callback_)();
-  }
+TrackedDeviceBuffer::~TrackedDeviceBuffer() = default;
+
+void TrackedDeviceBuffer::ReleaseDeviceMemory() {
+  device_memory_ = tsl::RCReference<RawSEDeviceMemory>();
+}
+
+void TrackedDeviceBuffer::ConfirmDonation() {
+  // As a sanity check ensure no more usage events can be added to the buffer.
+  LockUseAndTransferUsageEvents();
+  // Release the memory so that no new usage is possible.
+  ReleaseDeviceMemory();
 }
 
 void TrackedDeviceBuffer::AddUsageEvent(
@@ -329,12 +308,20 @@ void GetDeviceBufferEvents(
   }
 }
 
-void WaitForBufferDefinitionEventsOnStream(const TrackedDeviceBuffer& buffer,
-                                           se::Stream* stream) {
-  absl::flat_hash_set<BufferSequencingEvent*> events;
-  GetDeviceBufferEvents(buffer, /*get_usage_events=*/false, &events);
-  for (BufferSequencingEvent* event : events) {
-    event->WaitForEventOnStream(stream);
+void WaitForBufferDefinitionEventsOnStream(
+    absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events,
+    se::Stream* stream) {
+  if (definition_events.size() <= 1) {
+    for (const auto& event : definition_events) {
+      event->WaitForEventOnStream(stream);
+    }
+  } else {
+    absl::flat_hash_set<BufferSequencingEvent*> events;
+    for (const auto& event : definition_events) {
+      if (events.emplace(event.get()).second) {
+        event->WaitForEventOnStream(stream);
+      }
+    }
   }
 }
 

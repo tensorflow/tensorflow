@@ -33,21 +33,41 @@ limitations under the License.
 namespace xla::gpu {
 
 namespace {
+
+void ClearSchedulingAnnotations(HloInstruction* instr) {
+  // These attributes are only valid on the async pairs.
+  instr->erase_frontend_attribute(kXlaSchedulingGroupIdAttr);
+  instr->erase_frontend_attribute(kXlaStreamAnnotationAttr);
+}
+
 static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
   if (instr->opcode() != HloOpcode::kCall ||
       !instr->frontend_attributes().map().contains(kXlaStreamAnnotationAttr)) {
     return false;
   }
   HloComputation* computation = instr->parent();
+  auto original_attributes = instr->frontend_attributes();
+
+  // These annotations are only legal on the async instructions and
+  // can cause issues if the annotations remain on the inner operations,
+  // so we clear them before creating the async pair.
+  for (auto* inner_instr : instr->called_computations()[0]->instructions()) {
+    ClearSchedulingAnnotations(inner_instr);
+  }
+  ClearSchedulingAnnotations(instr);
+
   TF_ASSIGN_OR_RETURN(
       HloInstruction * done,
       computation->CreateAsyncInstructions(
           instr, {},
           ExplicitStreamAnnotationAsyncWrapper::kExplicitExecutionThread,
           /*replace=*/true));
+  // Replace the original attributes after creating the async pair.
+  done->set_frontend_attributes(original_attributes);
+  done->mutable_operand(0)->set_frontend_attributes(original_attributes);
   TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                       done->backend_config<GpuBackendConfig>());
-  // Set the false delay of done op to be false so it can be scheduled
+  // Set earliest schedule of done op to be false so it can be scheduled
   // far apart from start.
   gpu_config.set_force_earliest_schedule(false);
   TF_RETURN_IF_ERROR(done->set_backend_config(gpu_config));
@@ -60,7 +80,8 @@ absl::StatusOr<bool> ExplicitStreamAnnotationAsyncWrapper::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (const HloComputation* comp : module->computations()) {
+  for (const HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instr : comp->instructions()) {
       TF_ASSIGN_OR_RETURN(bool result, AsynchronizeInstruction(instr));
       changed |= result;

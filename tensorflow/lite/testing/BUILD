@@ -6,6 +6,7 @@ load(
     "tf_features_nolayering_check_if_ios",
 )
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 load(
     "//tensorflow/lite:build_def.bzl",
     "tflite_custom_android_library",
@@ -128,10 +129,9 @@ py_strict_library(
     data = [
         "//tensorflow/compiler/mlir/lite:tf_tfl_translate",
     ],
-    srcs_version = "PY3",
     deps = [
         ":zip_test_utils",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python:lite",
         "//tensorflow/lite/python:test_util",
         "//tensorflow/python/platform:resource_loader",
         "//tensorflow/python/saved_model:signature_constants",
@@ -142,7 +142,6 @@ py_strict_library(
 py_strict_library(
     name = "op_tests",
     srcs = glob(["op_tests/*.py"]),
-    srcs_version = "PY3",
     deps = [
         ":zip_test_utils",
         "//third_party/py/numpy",
@@ -151,6 +150,7 @@ py_strict_library(
         # "//third_party/py/tensorflow_addons",
         # copybara:uncomment_end
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/lite/python:lite",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:list_ops",
         "//tensorflow/python/ops:rnn",
@@ -160,7 +160,6 @@ py_strict_library(
 py_strict_library(
     name = "generate_examples_lib",
     srcs = ["generate_examples_lib.py"],
-    srcs_version = "PY3",
     deps = [
         ":op_tests",
         ":zip_test_utils",
@@ -171,24 +170,28 @@ py_strict_library(
 py_strict_library(
     name = "zip_test_utils",
     srcs = ["zip_test_utils.py"],
-    srcs_version = "PY3",
     deps = [
-        ":_pywrap_string_util",
         ":generate_examples_report",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python:lite",
         "//tensorflow/lite/tools:flatbuffer_utils",
         "//tensorflow/python/framework:convert_to_constants",
         "//tensorflow/python/saved_model:signature_constants",
         "//third_party/py/numpy",
-        "@ml_dtypes",
-    ],
+        "@ml_dtypes_py//ml_dtypes",
+    ] + if_pywrap(
+        if_false = [
+            ":_pywrap_string_util",
+        ],
+        if_true = [
+            "//tensorflow/lite/python:pywrap_tflite",
+        ],
+    ),
 )
 
 py_strict_binary(
     name = "generate_examples",
     srcs = ["generate_examples.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":generate_examples_lib",
         ":mlir_convert",
@@ -199,7 +202,6 @@ py_strict_binary(
 py_strict_library(
     name = "generate_examples_report",
     srcs = ["generate_examples_report.py"],
-    srcs_version = "PY3",
 )
 
 cc_library(
@@ -644,8 +646,8 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/python/interpreter_wrapper:numpy",
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",
-        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
+        "@local_xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -703,16 +705,21 @@ pybind_extension(
     additional_stubgen_deps = [
         "//third_party/py/numpy:numpy",
     ],
+    common_lib_packages = [
+        "litert/python",
+        "third_party/tensorflow/lite/python",
+    ],
     enable_stub_generation = True,
     features = ["-use_header_modules"],
     pytype_srcs = [
         "_pywrap_string_util.pyi",
     ],
+    wrap_py_init = True,
     deps = [
         ":string_util_lib",
         "//tensorflow/lite/python/interpreter_wrapper:numpy",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )

@@ -208,7 +208,7 @@ absl::Status EagerOperation::SetAttrShapeList(const char* attr_name,
     }
   }
   MutableAttrs()->Set(
-      attr_name, gtl::ArraySlice<TensorShapeProto>(proto.get(), num_values));
+      attr_name, absl::Span<const TensorShapeProto>(proto.get(), num_values));
   return absl::OkStatus();
 }
 
@@ -371,7 +371,7 @@ absl::Status EagerOperation::Reset(
   if (eager_func_params.has_value()) {
     eager_func_params_ = eager_func_params;
   }
-  op_name_ = op;
+  op_name_ = std::string(op);
   return SetDeviceName(device_name);
 }
 

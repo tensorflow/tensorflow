@@ -1,4 +1,4 @@
-load("//xla:xla.bzl", "xla_cc_test")
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
@@ -11,7 +11,7 @@ cc_library(
     srcs = ["module_parsing.cc"],
     hdrs = ["module_parsing.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//xla/python/ifrt:friends"],
+    visibility = ["//xla/python/ifrt:users"],
     deps = [
         "//xla/mlir/utils:error_util",
         "//xla/mlir_hlo:hlo_dialect_registration",
@@ -36,7 +36,7 @@ cc_library(
     srcs = ["sharding_conversions.cc"],
     hdrs = ["sharding_conversions.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//xla/python/ifrt:friends"],
+    visibility = ["//xla/python/ifrt:users"],
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -62,18 +62,19 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:tile_assignment",
         "//xla/python/ifrt",
+        "//xla/python/ifrt:basic_device_list",
         "//xla/python/ifrt:mock",
         "//xla/python/ifrt:test_util",
         "//xla/python/ifrt/ir:sharding_param",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )

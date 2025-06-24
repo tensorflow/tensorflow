@@ -1980,46 +1980,44 @@ class AUC(Metric):
   Use `sample_weight` of 0 to mask values.
 
   Args:
-    num_thresholds: (Optional) Defaults to 200. The number of thresholds to
-      use when discretizing the roc curve. Values must be > 1.
+    num_thresholds: (Optional) Defaults to 200. The number of thresholds to use
+      when discretizing the roc curve. Values must be > 1.
     curve: (Optional) Specifies the name of the curve to be computed, 'ROC'
       [default] or 'PR' for the Precision-Recall-curve.
     summation_method: (Optional) Specifies the [Riemann summation method](
-        https://en.wikipedia.org/wiki/Riemann_sum) used.
-        'interpolation' (default) applies mid-point summation scheme for `ROC`.
-        For PR-AUC, interpolates (true/false) positives but not the ratio that
-        is precision (see Davis & Goadrich 2006 for details);
-        'minoring' applies left summation
-        for increasing intervals and right summation for decreasing intervals;
-        'majoring' does the opposite.
+        https://en.wikipedia.org/wiki/Riemann_sum) used. 'interpolation'
+          (default) applies mid-point summation scheme for `ROC`. For PR-AUC,
+          interpolates (true/false) positives but not the ratio that is
+          precision (see Davis & Goadrich 2006 for details); 'minoring' applies
+          left summation for increasing intervals and right summation for
+          decreasing intervals; 'majoring' does the opposite.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
     thresholds: (Optional) A list of floating point values to use as the
       thresholds for discretizing the curve. If set, the `num_thresholds`
       parameter is ignored. Values should be in [0, 1]. Endpoint thresholds
-      equal to {-epsilon, 1+epsilon} for a small positive epsilon value will
-      be automatically included with these to correctly handle predictions
-      equal to exactly 0 or 1.
-    multi_label: boolean indicating whether multilabel data should be
-      treated as such, wherein AUC is computed separately for each label and
-      then averaged across labels, or (when False) if the data should be
-      flattened into a single label before AUC computation. In the latter
-      case, when multilabel data is passed to AUC, each label-prediction pair
-      is treated as an individual data point. Should be set to False for
-      multi-class data.
+      equal to {-epsilon, 1+epsilon} for a small positive epsilon value will be
+      automatically included with these to correctly handle predictions equal to
+      exactly 0 or 1.
+    multi_label: boolean indicating whether multilabel data should be treated as
+      such, wherein AUC is computed separately for each label and then averaged
+      across labels, or (when False) if the data should be flattened into a
+      single label before AUC computation. In the latter case, when multilabel
+      data is passed to AUC, each label-prediction pair is treated as an
+      individual data point. Should be set to False for multi-class data.
     num_labels: (Optional) The number of labels, used when `multi_label` is
       True. If `num_labels` is not specified, then state variables get created
       on the first call to `update_state`.
     label_weights: (Optional) list, array, or tensor of non-negative weights
-      used to compute AUCs for multilabel data. When `multi_label` is True,
-      the weights are applied to the individual label AUCs when they are
-      averaged to produce the multi-label AUC. When it's False, they are used
-      to weight the individual label predictions in computing the confusion
-      matrix on the flattened data. Note that this is unlike class_weights in
-      that class_weights weights the example depending on the value of its
-      label, whereas label_weights depends only on the index of that label
-      before flattening; therefore `label_weights` should not be used for
-      multi-class data.
+      used to compute AUCs for multilabel data. When `multi_label` is True, the
+      weights are applied to the individual label AUCs when they are averaged to
+      produce the multi-label AUC. When it's False, they are used to weight the
+      individual label predictions in computing the confusion matrix on the
+      flattened data. Note that this is unlike class_weights in that
+      class_weights weights the example depending on the value of its label,
+      whereas label_weights depends only on the index of that label before
+      flattening; therefore `label_weights` should not be used for multi-class
+      data.
     from_logits: boolean indicating whether the predictions (`y_pred` in
       `update_state`) are probabilities or sigmoid logits. As a rule of thumb,
       when using a keras loss, the `from_logits` constructor argument of the
@@ -2045,12 +2043,12 @@ class AUC(Metric):
   Usage with `compile()` API:
 
   ```python
-  # Reports the AUC of a model outputing a probability.
+  # Reports the AUC of a model outputting a probability.
   model.compile(optimizer='sgd',
                 loss=tf.keras.losses.BinaryCrossentropy(),
                 metrics=[tf.keras.metrics.AUC()])
 
-  # Reports the AUC of a model outputing a logit.
+  # Reports the AUC of a model outputting a logit.
   model.compile(optimizer='sgd',
                 loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
                 metrics=[tf.keras.metrics.AUC(from_logits=True)])

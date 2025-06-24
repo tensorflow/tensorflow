@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 
 namespace tsl {
 
@@ -180,5 +181,33 @@ TEST(AsyncValueTest, StackAllocatedAsyncValue) {
   std::make_unique<AsyncValueOwningRef<Payload>>(std::move(owner));
   EXPECT_EQ(2, counter);
 }
+
+TEST(AsyncValueTest, MoveOnlyCallback) {
+  struct MoveOnlyCb {
+    void operator()() && {}
+  };
+  auto value = MakeConstructedAsyncValueRef<int32_t>(123);
+  value.AndThen(MoveOnlyCb());
+  value.SetStateConcrete();
+}
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks below
+//===----------------------------------------------------------------------===//
+
+static void BM_AddAndThenCallback(benchmark::State& state) {
+  for (auto _ : state) {
+    internal::AsyncValueStorage<int32_t> storage;
+
+    AsyncValueOwningRef<int32_t> owner =
+        MakeConstructedAsyncValueRef<int32_t>(storage, 42);
+    AsyncValuePtr<int32_t> ptr = owner.AsPtr();
+
+    ptr.AndThen([] {});
+    ptr.SetStateConcrete();
+  }
+}
+
+BENCHMARK(BM_AddAndThenCallback);
 
 }  // namespace tsl

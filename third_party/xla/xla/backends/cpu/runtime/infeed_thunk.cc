@@ -19,22 +19,22 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <utility>
+#include <vector>
 
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/backends/cpu/runtime/resource_use.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
 
@@ -54,8 +54,6 @@ InfeedThunk::InfeedThunk(Info info,
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> InfeedThunk::Execute(
     const ExecuteParams& params) {
-  tsl::profiler::TraceMe trace([&] { return TraceMeEncode(); });
-
   VLOG(3) << absl::StreamFormat("Infeed %d buffers", infeed_buffers_.size());
 
   runtime::XfeedManager* xfeed = params.xfeed;

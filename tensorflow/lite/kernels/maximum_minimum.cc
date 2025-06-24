@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include "Eigen/Core"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -57,6 +58,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   OpContext op_context(context, node);
+  TF_LITE_ENSURE(context, op_context.input1 != nullptr);
+  TF_LITE_ENSURE(context, op_context.input2 != nullptr);
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.input1->type,
                           op_context.input2->type);
   op_context.output->type = op_context.input1->type;
@@ -182,6 +185,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     case kTfLiteInt16:
       TFLiteOperation<kernel_type, int16_t, OpType>(context, node, op_context);
+      break;
+    case kTfLiteFloat16:
+      TFLiteOperation<kernel_type, Eigen::half, OpType>(context, node,
+                                                        op_context);
+      break;
+    case kTfLiteBFloat16:
+      TFLiteOperation<kernel_type, Eigen::bfloat16, OpType>(context, node,
+                                                            op_context);
       break;
     default:
       TF_LITE_KERNEL_LOG(context,

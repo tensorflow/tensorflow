@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_REPLICATED_SPMD_EXPANDER_H_
 #define TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_REPLICATED_SPMD_EXPANDER_H_
 
+#include <vector>
+
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/dtensor/cc/dstatus.h"

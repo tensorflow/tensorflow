@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"
 
-#include <algorithm>
+#include <cstdint>
 
 namespace tflite {
 

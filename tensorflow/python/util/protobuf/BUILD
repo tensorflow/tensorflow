@@ -41,7 +41,6 @@ tf_py_strict_test(
     size = "small",
     srcs = ["compare_test.py"],
     main = "compare_test.py",
-    python_version = "PY3",
     tags = ["no_pip"],  # compare_test_pb2 proto is not available in pip.
     deps = [
         ":compare_test_proto_py",
@@ -71,7 +70,6 @@ py_strict_library(
         exclude = ["*_test.py"],
     ),
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
     visibility = visibility + [
         "//tensorflow:__pkg__",
         "//third_party/py/tensorflow_core:__subpackages__",

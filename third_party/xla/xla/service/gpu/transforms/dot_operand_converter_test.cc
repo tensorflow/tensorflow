@@ -124,6 +124,23 @@ TEST_F(DotOperandConverterTest, NoConvertFromF8toF8) {
   EXPECT_FALSE(upcasted);
 }
 
+TEST_F(DotOperandConverterTest, NoConvertFromF8FNUZtoF8FNUZ) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = f8e4m3fnuz[2,3]{1,0} parameter(0)
+    p1 = f8e5m2fnuz[3,2]{1,0} parameter(1)
+    ROOT dot = bf16[2,2]{1,0} dot(p0, p1), lhs_contracting_dims={1},
+                                           rhs_contracting_dims={0}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool upcasted,
+                          DotOperandConverter().Run(module.get()));
+  EXPECT_FALSE(upcasted);
+}
+
 TEST_F(DotOperandConverterTest, CompilerOptimizesUsingDotOperandConverter) {
   absl::string_view module_string = R"(
   HloModule module

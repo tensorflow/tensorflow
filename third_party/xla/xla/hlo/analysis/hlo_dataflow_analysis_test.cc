@@ -18,15 +18,19 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -42,9 +46,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -156,6 +159,11 @@ TEST_P(HloDataflowAnalysisTest, BinaryOperation) {
   EXPECT_FALSE(analysis.GetValueDefinedAt(constant1).live_out_of_module());
   EXPECT_FALSE(analysis.GetValueDefinedAt(constant2).live_out_of_module());
   EXPECT_TRUE(analysis.GetValueDefinedAt(add).live_out_of_module());
+
+  // Check analysis ToString
+  EXPECT_THAT(
+      analysis.ToString(),
+      testing::HasSubstr("HloDataflowAnalysis, module BinaryOperation"));
 }
 
 TEST_P(HloDataflowAnalysisTest, TupleAndGtes) {
@@ -2164,6 +2172,52 @@ TEST_F(HloDataflowAnalysisTest, AllReduceStartAndDoneTwoOperands) {
               UnorderedElementsAre(HloUse{done, 0, {}}));
 }
 
+TEST_F(HloDataflowAnalysisTest, CombinedCollectivePermuteStartAndDone) {
+  const char* hlo_text = R"(
+    HloModule test
+    ENTRY entry {
+      p0 = f32[2] parameter(0)
+      p1 = f32[2] parameter(1)
+      start = ((f32[2], f32[2]), (f32[2], f32[2])) collective-permute-start(p0, p1), source_target_pairs={{0,1},{1,0}}
+      ROOT done = (f32[2], f32[2]) collective-permute-done(start)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
+  const HloDataflowAnalysis& analysis = RunAnalysis(/*ssa_form=*/false);
+  absl::Status status = analysis.Verify();
+  EXPECT_TRUE(status.ok()) << status;
+
+  HloInstruction* done = module_->entry_computation()->root_instruction();
+  HloInstruction* start = done->mutable_operand(0);
+  HloInstruction* param0 = start->mutable_operand(0);
+  HloInstruction* param1 = start->mutable_operand(1);
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(start, /*index=*/{}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(start, /*index=*/{1}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(start, /*index=*/{1, 0}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(start, /*index=*/{1, 1}));
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(done, /*index=*/{}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(done, /*index=*/{0}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(done, /*index=*/{1}));
+
+  EXPECT_THAT(
+      analysis.GetValueDefinedAt(param0).GetUses(),
+      UnorderedElementsAre(HloUse{start, 0, {}}, HloUse{done, 0, {0, 0}}));
+  EXPECT_THAT(
+      analysis.GetValueDefinedAt(param1).GetUses(),
+      UnorderedElementsAre(HloUse{start, 1, {}}, HloUse{done, 0, {0, 1}}));
+
+  EXPECT_THAT(HloValuesAt(start, /*index=*/{0, 0}),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(param0, {})));
+  EXPECT_THAT(HloValuesAt(start, /*index=*/{0, 1}),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(param1, {})));
+  EXPECT_THAT(HloValuesAt(done, /*index=*/{0}),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(start, {1, 0})));
+  EXPECT_THAT(HloValuesAt(done, /*index=*/{1}),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(start, {1, 1})));
+}
+
 TEST_F(HloDataflowAnalysisTest, AllGatherStartAndDoneWithTuple) {
   const char* hlo_text = R"(
     HloModule test
@@ -2923,6 +2977,49 @@ TEST_F(CanShareOperandBufferWithUserTest, FusionCanShareBufferCustomized) {
                                                                 fusion, {}));
 }
 
+class CustomAliasInfo : public AliasInfo {
+ public:
+  std::optional<bool> MayAlias(const HloInstruction*, const ShapeIndex&,
+                               const HloInstruction* fusion,
+                               const ShapeIndex&) const override {
+    return fusion->IsLoopFusion();
+  }
+};
+
+std::unique_ptr<HloDataflowAnalysis> RunAnalysis(const HloModule& module,
+                                                 const AliasInfo* alias_info) {
+  return HloDataflowAnalysis::Run(module, alias_info, /*ssa_form=*/false,
+                                  /*bitcast_defines_value=*/false)
+      .value();
+}
+
+TEST_F(CanShareOperandBufferWithUserTest,
+       FusionCanShareBufferCustomizedAliasInfo) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+
+  auto one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  auto operand = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape, one, {}));
+  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      data_shape, HloOpcode::kMultiply, operand, operand));
+  auto two = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(data_shape, HloOpcode::kAdd, mul, two));
+
+  auto module = CreateNewVerifiedModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  auto fusion = computation->CreateFusionInstruction(
+      {add, two, mul}, HloInstruction::FusionKind::kInput);
+  CustomAliasInfo alias_info;
+  auto dataflow_analysis = RunAnalysis(*module, &alias_info);
+
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(operand, {},
+                                                                fusion, {}));
+}
+
 TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
   auto module = CreateNewVerifiedModule();
   Shape data_shape = ShapeUtil::MakeShape(F32, {8});
@@ -3571,6 +3668,105 @@ ENTRY AllToAll {
   std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
   expected_pairs.push_back({HloOperandIndex{1, {}}, {}});
   EXPECT_EQ(in_place_pairs, expected_pairs);
+}
+
+// Test to check that the dataflow analysis works with a module that has scalar
+// bitcast user.
+TEST_P(HloDataflowAnalysisTest, b409416499) {
+  const char* after_layout_bitcast = R"(
+  HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(s32[1]{0:T(128)}, s32[1]{0:T(128)}, s32[1]{0:T(128)}, s32[1]{0:T(128)})->(s32[1]{0:T(128)}, s32[1]{0:T(128)}, s32[1]{0:T(128)}, s32[1]{0:T(128)})}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, allow_spmd_sharding_propagation_to_output={true,true,true,true}, num_partitions=4
+  %region_0.13_spmd (param.1: s32[]) -> s32[] {
+    %param.1 = s32[]{:T(128)} parameter(0), metadata={op_name="jit(<unnamed wrapped function>)/jit(main)/jit(shmap_body)/while"}
+    %constant.1 = s32[]{:T(128)} constant(1)
+    ROOT %add.0 = s32[]{:T(128)} add(%param.1, %constant.1), metadata={op_name="jit(<unnamed wrapped function>)/jit(main)/jit(shmap_body)/while/body/add" source_file="third_party/py/jax/tests/shard_map_test.py" source_line=1052}
+  }
+
+  %region_1.17_spmd (param: s32[]) -> pred[] {
+    %param = s32[]{:T(128)} parameter(0), metadata={op_name="jit(<unnamed wrapped function>)/jit(main)/jit(shmap_body)/while"}
+    %constant = s32[]{:T(128)} constant(1)
+    ROOT %compare.0 = pred[]{:T(512)} compare(%param, %constant), direction=LT, metadata={op_name="jit(<unnamed wrapped function>)/jit(main)/jit(shmap_body)/while/cond/lt" source_file="third_party/py/jax/tests/shard_map_test.py" source_line=1049}
+  }
+
+  ENTRY %main.44_spmd (param.2: s32[1], param.3: s32[1], param.4: s32[1], param.5: s32[1]) -> (s32[1], s32[1], s32[1], s32[1]) {
+    %param.2 = s32[1]{0:T(128)} parameter(0), sharding={devices=[4]<=[4]}, metadata={op_name="args[0]"}
+    %bitcast.2 = s32[]{:T(128)} bitcast(%param.2), metadata={op_name="jit(<unnamed wrapped function>)/jit(main)/jit(shmap_body)/squeeze" source_file="third_party/py/jax/tests/shard_map_test.py" source_line=1053}
+    %while.1 = s32[]{:T(128)} while(%bitcast.2), condition=%region_1.17_spmd, body=%region_0.13_spmd, metadata={op_name="jit(<unnamed wrapped function>)/jit(main)/jit(shmap_body)/while" source_file="third_party/py/jax/tests/shard_map_test.py" source_line=1053}
+    %bitcast.3 = s32[1]{0:T(128)} bitcast(%while.1), metadata={op_name="jit(<unnamed wrapped function>)/jit(main)/jit(shmap_body)/broadcast_in_dim" source_file="third_party/py/jax/tests/shard_map_test.py" source_line=1053}
+    %param.3 = s32[1]{0:T(128)} parameter(1), sharding={devices=[4]<=[4]}, metadata={op_name="args[1]"}
+    %param.4 = s32[1]{0:T(128)} parameter(2), sharding={devices=[4]<=[4]}, metadata={op_name="args[2]"}
+    %param.5 = s32[1]{0:T(128)} parameter(3), sharding={devices=[4]<=[4]}, metadata={op_name="args[3]"}
+    ROOT %tuple.1 = (s32[1]{0:T(128)}, s32[1]{0:T(128)}, s32[1]{0:T(128)}, s32[1]{0:T(128)}) tuple(%bitcast.3, %param.3, %param.4, %param.5)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto after_layout_bitcast_module,
+                          ParseAndReturnVerifiedModule(after_layout_bitcast));
+  TF_ASSERT_OK_AND_ASSIGN(auto analysis,
+                          HloDataflowAnalysis::Run(*after_layout_bitcast_module,
+                                                   /*ssa_form=*/false));
+  HloInstruction* bitcast3 =
+      FindInstruction(after_layout_bitcast_module.get(), "bitcast.3");
+  HloInstruction* param2 =
+      FindInstruction(after_layout_bitcast_module.get(), "param.2");
+  HloComputation* while_body =
+      FindComputation(after_layout_bitcast_module.get(), "region_0.13_spmd");
+  HloInstruction* add0 = while_body->root_instruction();
+  std::vector<HloInstruction*> defining_instructions;
+  for (const HloValue* value :
+       analysis->GetValueSet(bitcast3, {}).TakeValues()) {
+    defining_instructions.push_back(value->defining_instruction());
+  }
+  EXPECT_THAT(defining_instructions, UnorderedElementsAre(param2, add0));
+}
+
+TEST_P(HloDataflowAnalysisTest, b409756077) {
+  const char* after_layout_bitcast = R"(
+  HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f32[1,256,256]{2,1,0:T(8,128)})->f32[1,256,256]{2,1,0:T(8,128)}}
+  add_f32 {
+    %add_lhs = f32[] parameter(0)
+    %add_rhs = f32[] parameter(1)
+    ROOT %add = f32[] add(%add_lhs, %add_rhs)
+  }
+  
+  %while_body (param.1: f32[256,256]) -> f32[256,256] {
+    %param.1 = f32[256,256]{1,0:T(8,128)} parameter(0)
+    %constant.0 = f32[]{:T(8,128)} constant(1)
+    %constant.1 = f32[256,256]{1,0:T(8,128)} broadcast(%constant.0), dimensions={}
+    ROOT %add.0 = f32[256,256]{1,0:T(8,128)} add(%param.1, %constant.1)
+  }
+
+  %while_condition (param: f32[256,256]) -> pred[] {
+    %param.0 = f32[256,256]{1,0:T(8,128)} parameter(0)
+    %zero = f32[]{:T(8,128)} constant(0)
+    %sum_of_values_in_param = f32[]{:T(8,128)} reduce(%param.0, %zero), dimensions={0,1}, to_apply=%add_f32
+    %constant = f32[]{:T(8,128)} constant(512)
+    ROOT %compare.0 = pred[] compare(%sum_of_values_in_param, %constant), direction=LT
+  }
+
+  ENTRY %main (param.2: f32[1,256,256]) -> f32[1,256,256] {
+    %param.2 = f32[1,256,256]{2,1,0:T(8,128)} parameter(0)
+    %bitcast.2 = f32[256,256]{1,0:T(8,128)} bitcast(%param.2)
+    %while.1 = f32[256,256]{1,0:T(8,128)} while(%bitcast.2), condition=%while_condition, body=%while_body
+    ROOT %bitcast.3 = f32[1,256,256]{2,1,0:T(8,128)} bitcast(%while.1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto after_layout_bitcast_module,
+                          ParseAndReturnVerifiedModule(after_layout_bitcast));
+  TF_ASSERT_OK_AND_ASSIGN(auto analysis,
+                          HloDataflowAnalysis::Run(*after_layout_bitcast_module,
+                                                   /*ssa_form=*/false));
+  HloInstruction* bitcast3 =
+      FindInstruction(after_layout_bitcast_module.get(), "bitcast.3");
+  HloInstruction* param2 =
+      FindInstruction(after_layout_bitcast_module.get(), "param.2");
+  HloComputation* while_body =
+      FindComputation(after_layout_bitcast_module.get(), "while_body");
+  HloInstruction* add0 = while_body->root_instruction();
+  std::vector<HloInstruction*> defining_instructions;
+  for (const HloValue* value :
+       analysis->GetValueSet(bitcast3, {}).TakeValues()) {
+    defining_instructions.push_back(value->defining_instruction());
+  }
+  EXPECT_THAT(defining_instructions, UnorderedElementsAre(param2, add0));
 }
 
 }  // namespace

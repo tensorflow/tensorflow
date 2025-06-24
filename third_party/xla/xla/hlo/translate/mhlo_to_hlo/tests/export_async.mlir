@@ -20,12 +20,12 @@ func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x128xf32> {
 
 // CHECK: ENTRY
 // CHECK: %[[INPUT:.*]] = f32[128,32] parameter(0)
-// CHECK: %[[OUTPUT:.*]] = f32[128,128] all-gather-start(f32[128,32] %[[INPUT]])
+// CHECK: %[[OUTPUT:.*]] = f32[128,128] all-gather-start(%[[INPUT]])
 // CHECK-SAME: channel_id=1
 // CHECK-SAME{LITERAL}: replica_groups={{0,2,4,6},{1,3,5,7}}
 // CHECK-SAME: dimensions={1}
 // CHECK-SAME: use_global_device_ids=true
-// CHECK: ROOT {{.*}} f32[128,128] all-gather-done(f32[128,128] %[[OUTPUT]]
+// CHECK: ROOT {{.*}} f32[128,128] all-gather-done(%[[OUTPUT]]
 
 // -----
 
@@ -55,11 +55,11 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 
 // CHECK: ENTRY
 // CHECK: %[[INPUT:.*]] = f32[10] parameter(0)
-// CHECK: %[[OUTPUT:.*]] = f32[10] all-reduce-start(f32[10] %[[INPUT]])
+// CHECK: %[[OUTPUT:.*]] = f32[10] all-reduce-start(%[[INPUT]])
 // CHECK-SAME:  channel_id=5
 // CHECK-SAME{LITERAL}:  replica_groups={{0,2,4,6},{1,3,5,7}}
 // CHECK-SAME: use_global_device_ids=true
-// CHECK: ROOT {{.*}} f32[10] all-reduce-done(f32[10] %[[OUTPUT]]
+// CHECK: ROOT {{.*}} f32[10] all-reduce-done(%[[OUTPUT]]
 
 // -----
 
@@ -125,10 +125,10 @@ func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
 
 // CHECK: ENTRY
 // CHECK: %[[INPUT:.*]] = f32[128,32] parameter(0)
-// CHECK: %[[OUTPUT:.*]] = f32[128,32] collective-permute-start(f32[128,32] %[[INPUT]])
+// CHECK: %[[OUTPUT:.*]] = f32[128,32] collective-permute-start(%[[INPUT]])
 // CHECK-SAME:  channel_id=1
 // CHECK-SAME{LITERAL}:  source_target_pairs={{0,1},{1,2},{2,3}}
-// CHECK: ROOT {{.*}} f32[128,32] collective-permute-done(f32[128,32] %[[OUTPUT]]
+// CHECK: ROOT {{.*}} f32[128,32] collective-permute-done(%[[OUTPUT]]
 
 // -----
 
@@ -146,9 +146,9 @@ func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
 
 // CHECK: ENTRY
 // CHECK: %[[INPUT:.*]] = f32[128,32] parameter(0)
-// CHECK: %[[OUTPUT:.*]] = (f32[128,32], f32[128,32], u32[]) copy-start(f32[128,32] %[[INPUT]])
+// CHECK: %[[OUTPUT:.*]] = (f32[128,32], f32[128,32], u32[]) copy-start(%[[INPUT]])
 // CHECK-SAME:  cross_program_prefetch_index=0
-// CHECK: ROOT {{.*}} f32[128,32] copy-done((f32[128,32], f32[128,32], u32[]) %[[OUTPUT]]
+// CHECK: ROOT {{.*}} f32[128,32] copy-done(%[[OUTPUT]]
 
 // -----
 
@@ -173,8 +173,8 @@ func.func @main(%token: !mhlo.token) -> (!mhlo.token) {
 
 // CHECK:  ENTRY
 // CHECK:  [[TOKEN:%.*]] = token[] parameter(0)
-// CHECK:  [[RECV:%.*]] = ((), u32[], token[]) recv(token[] [[TOKEN]]), channel_id=5
-// CHECK:  ((), token[]) recv-done(((), u32[], token[]) [[RECV]]), channel_id=5
+// CHECK:  [[RECV:%.*]] = ((), u32[], token[]) recv([[TOKEN]]), channel_id=5
+// CHECK:  ((), token[]) recv-done([[RECV]]), channel_id=5
 
 // -----
 
@@ -198,17 +198,17 @@ func.func @main(%token: !mhlo.token) -> (tensor<3x4xi32>, !mhlo.token) {
 
 // CHECK:  ENTRY
 // CHECK:  [[TOKEN:%.*]] = token[] parameter(0)
-// CHECK:  [[RECV:%.*]] = (s32[3,4], u32[], token[]) recv(token[] [[TOKEN]]), channel_id=5, is_host_transfer
+// CHECK:  [[RECV:%.*]] = (s32[3,4], u32[], token[]) recv([[TOKEN]]), channel_id=5, is_host_transfer
 // CHECK-SAME:  sharding={
 // CHECK-SAME:    {maximal device=0}, {maximal device=0}, {maximal device=0}
 // CHECK-SAME:  }
-// CHECK:  [[RECV_DONE:%.*]] = (s32[3,4], token[]) recv-done((s32[3,4], u32[], token[]) [[RECV]]), channel_id=5, is_host_transfer
+// CHECK:  [[RECV_DONE:%.*]] = (s32[3,4], token[]) recv-done([[RECV]]), channel_id=5, is_host_transfer
 // CHECK-SAME:  sharding={
 // CHECK-SAME:    {maximal device=0}, {maximal device=0}
 // CHECK-SAME:  }
-// CHECK:  [[TUPLE0:%.*]] = s32[3,4] get-tuple-element((s32[3,4], token[]) [[RECV_DONE]]), index=0, sharding={maximal device=0}
-// CHECK:  [[TUPLE1:%.*]] = token[] get-tuple-element((s32[3,4], token[]) [[RECV_DONE]]), index=1, sharding={maximal device=0}
-// CHECK:  ROOT {{%.*}} = (s32[3,4], token[]) tuple(s32[3,4] [[TUPLE0]], token[] [[TUPLE1]])
+// CHECK:  [[TUPLE0:%.*]] = s32[3,4] get-tuple-element([[RECV_DONE]]), index=0, sharding={maximal device=0}
+// CHECK:  [[TUPLE1:%.*]] = token[] get-tuple-element([[RECV_DONE]]), index=1, sharding={maximal device=0}
+// CHECK:  ROOT {{%.*}} = (s32[3,4], token[]) tuple([[TUPLE0]], [[TUPLE1]])
 
 // -----
 
@@ -233,9 +233,9 @@ func.func @main(%arg: tensor<3x4xi32>, %token: !mhlo.token) -> !mhlo.token {
 // CHECK:  ENTRY
 // CHECK:  [[ARG:%.*]] = s32[3,4] parameter(0)
 // CHECK:  [[TOKEN:%.*]] = token[] parameter(1)
-// CHECK:  [[SEND:%.*]] = (s32[3,4], u32[], token[]) send(s32[3,4] [[ARG]], token[] [[TOKEN]]), channel_id=5, is_host_transfer
+// CHECK:  [[SEND:%.*]] = (s32[3,4], u32[], token[]) send([[ARG]], [[TOKEN]]), channel_id=5, is_host_transfer
 // CHECK:  ROOT
-// CHECK-SAME:  token[] send-done((s32[3,4], u32[], token[]) [[SEND]]), channel_id=5
+// CHECK-SAME:  token[] send-done([[SEND]]), channel_id=5
 
 // -----
 
@@ -258,9 +258,9 @@ func.func @main(%token: !mhlo.token) -> !mhlo.token {
 
 // CHECK:  ENTRY
 // CHECK:  [[TOKEN:%.*]] = token[] parameter(0)
-// CHECK:  [[SEND:%.*]] = ((), u32[], token[]) send(() [[UNIT:%.*]], token[] [[TOKEN]]), channel_id=5
+// CHECK:  [[SEND:%.*]] = ((), u32[], token[]) send([[UNIT:%.*]], [[TOKEN]]), channel_id=5
 // CHECK:  ROOT
-// CHECK-SAME:  token[] send-done(((), u32[], token[]) [[SEND]]), channel_id=5
+// CHECK-SAME:  token[] send-done([[SEND]]), channel_id=5
 
 // -----
 
@@ -275,12 +275,12 @@ func.func @AsyncOp(%arg0: tensor<10xf32>) -> tensor<20xf32>
 // CHECK: ENTRY
 func.func @main(%arg0: tensor<10xf32>) -> tensor<20xf32> {
   // CHECK: %[[ARG0:.*]] = f32[10] parameter(0)
-  // CHECK: %[[START:.*]] = ((f32[10]), f32[20], s32[]) async-start(f32[10] %[[ARG0]])
+  // CHECK: %[[START:.*]] = ((f32[10]), f32[20], s32[]) async-start(%[[ARG0]])
   // CHECK-SAME: calls=[[CALLED_COMPUTATION]]
   %0 = "mhlo.async_start"(%arg0) {called_computation = @AsyncOp, execution_thread = "thread"} : (tensor<10xf32>) -> !mhlo.async_bundle<tuple<tensor<10xf32>>, tensor<20xf32>, tensor<i32>>
-  // CHECK: %[[UPDATE:.*]] = ((f32[10]), f32[20], s32[]) async-update(((f32[10]), f32[20], s32[]) %[[START]])
+  // CHECK: %[[UPDATE:.*]] = ((f32[10]), f32[20], s32[]) async-update(%[[START]])
   %1 = "mhlo.async_update"(%0) : (!mhlo.async_bundle<tuple<tensor<10xf32>>, tensor<20xf32>, tensor<i32>>) -> !mhlo.async_bundle<tuple<tensor<10xf32>>, tensor<20xf32>, tensor<i32>>
-  // CHECK: ROOT %{{.*}} = (f32[20]) async-done(((f32[10]), f32[20], s32[]) %[[UPDATE]])
+  // CHECK: ROOT %{{.*}} = (f32[20]) async-done(%[[UPDATE]])
   %2 = "mhlo.async_done"(%1) : (!mhlo.async_bundle<tuple<tensor<10xf32>>, tensor<20xf32>, tensor<i32>>) -> tensor<20xf32>
   return %2 : tensor<20xf32>
 }
@@ -300,10 +300,10 @@ func.func @AsyncOp(%arg0: tensor<10xf32>) -> tensor<20xf32>
 // CHECK: ENTRY
 func.func @main(%arg0: tensor<10xf32>) -> tensor<20xf32> {
   // CHECK: %[[ARG0:.*]] = f32[10] parameter(0)
-  // CHECK: %[[START:.*]] = ((f32[10]), f32[20], s32[]) async-start(f32[10] %[[ARG0]]), async_execution_thread="thread", calls=[[CALLED_COMPUTATION]],
-  // CHECK: %[[UPDATE:.*]] = ((f32[10]), f32[20], s32[]) async-update(((f32[10]), f32[20], s32[]) %[[START]])
+  // CHECK: %[[START:.*]] = ((f32[10]), f32[20], s32[]) async-start(%[[ARG0]]), async_execution_thread="thread", calls=[[CALLED_COMPUTATION]],
+  // CHECK: %[[UPDATE:.*]] = ((f32[10]), f32[20], s32[]) async-update(%[[START]])
   // CHECK: ROOT
-  // CHECK-SAME: (f32[20]) async-done(((f32[10]), f32[20], s32[]) %[[UPDATE]])
+  // CHECK-SAME: (f32[20]) async-done(%[[UPDATE]])
 
   %0 = "mhlo.async_start"(%arg0) {called_computation = @AsyncOp, execution_thread="thread"} : (tensor<10xf32>) -> !mhlo.async_bundle<tuple<tensor<10xf32>>, tensor<20xf32>, tensor<i32>>
   %1 = "mhlo.async_update"(%0) : (!mhlo.async_bundle<tuple<tensor<10xf32>>, tensor<20xf32>, tensor<i32>>) -> !mhlo.async_bundle<tuple<tensor<10xf32>>, tensor<20xf32>, tensor<i32>>
@@ -321,12 +321,12 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<20xf32> {
 // CHECK: ENTRY
 func.func @main() -> tensor<1x2xf32> attributes {allow_soft_placement = false, tf.entry_function = {control_outputs = "", inputs = "", outputs = "_retval0"}} {
   // CHECK:               %[[AFTER_ALL:.*]] = token[] after-all()
-  // CHECK-NEXT:          %[[RECV:.*]] = (f32[1,2], u32[], token[]) recv(token[] %[[AFTER_ALL]]), channel_id=2, is_host_transfer=true,
+  // CHECK-NEXT:          %[[RECV:.*]] = (f32[1,2], u32[], token[]) recv(%[[AFTER_ALL]]), channel_id=2, is_host_transfer=true,
   // CHECK-SAME{LITERAL}:   sharding={{manual}, {manual}, {manual}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_1_retvals_htod_0"}
-  // CHECK-NEXT:          %[[RECV_DONE:.*]] = (f32[1,2], token[]) recv-done((f32[1,2], u32[], token[]) %[[RECV]]), channel_id=2, is_host_transfer=true,
+  // CHECK-NEXT:          %[[RECV_DONE:.*]] = (f32[1,2], token[]) recv-done(%[[RECV]]), channel_id=2, is_host_transfer=true,
   // CHECK-SAME{LITERAL}:   sharding={{manual}, {manual}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_1_retvals_htod_0"}
-  // CHECK-NEXT:          ROOT %[[GET_TUPLE_0:.*]] = f32[1,2] get-tuple-element((f32[1,2], token[]) %[[RECV_DONE]]), index=0, sharding={manual}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_1_retvals_htod_0"}
-  // CHECK-NEXT:          %[[GET_TUPLE_1:.*]] = token[] get-tuple-element((f32[1,2], token[]) %[[RECV_DONE]]), index=1, sharding={manual}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_1_retvals_htod_0"}
+  // CHECK-NEXT:          ROOT %[[GET_TUPLE_0:.*]] = f32[1,2] get-tuple-element(%[[RECV_DONE]]), index=0, sharding={manual}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_1_retvals_htod_0"}
+  // CHECK-NEXT:          %[[GET_TUPLE_1:.*]] = token[] get-tuple-element(%[[RECV_DONE]]), index=1, sharding={manual}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_1_retvals_htod_0"}
   %0 = mhlo.create_token : !mhlo.token
   %1:2 = "mhlo.recv"(%0) <{channel_handle = #mhlo.channel_handle<handle = 2, type = 3>, is_host_transfer = true}> {mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "host_compute_channel_1_retvals_htod_0"}, mhlo.sharding = "\08\04"} : (!mhlo.token) -> (tensor<1x2xf32>, !mhlo.token)
   return %1#0 : tensor<1x2xf32>
@@ -346,15 +346,15 @@ func.func @main() -> tensor<1x2xf32> attributes {allow_soft_placement = false, t
 func.func @main(%arg0: tensor<1x2xi64>) -> tensor<1x2xi64> attributes {allow_soft_placement = false, tf.entry_function = {control_outputs = "", inputs = "_arg0", outputs = "_retval0"}} {
   // CHECK:               %[[ARG0:.*]] = s64[1,2] parameter(0)
   // CHECK-NEXT:          %[[AFTER_ALL:.*]] = token[] after-all()
-  // CHECK-NEXT:          %[[SEND:.*]] = (s64[1,2], u32[], token[]) send(s64[1,2] %[[ARG0]], token[] %[[AFTER_ALL]]), channel_id=3, is_host_transfer=true,
+  // CHECK-NEXT:          %[[SEND:.*]] = (s64[1,2], u32[], token[]) send(%[[ARG0]], %[[AFTER_ALL]]), channel_id=3, is_host_transfer=true,
   // CHECK-SAME{LITERAL}:   sharding={{manual}, {manual}, {manual}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_0_args_dtoh_0"}
-  // CHECK-NEXT:          %[[SEND_DONE:.*]] = token[] send-done((s64[1,2], u32[], token[]) %[[SEND]]), channel_id=3, is_host_transfer=true, sharding={manual}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_0_args_dtoh_0"}
-  // CHECK-NEXT:          %[[RECV:.*]] = (s64[1,2], u32[], token[]) recv(token[] %[[SEND_DONE]]), channel_id=4, is_host_transfer=true,
+  // CHECK-NEXT:          %[[SEND_DONE:.*]] = token[] send-done(%[[SEND]]), channel_id=3, is_host_transfer=true, sharding={manual}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_0_args_dtoh_0"}
+  // CHECK-NEXT:          %[[RECV:.*]] = (s64[1,2], u32[], token[]) recv(%[[SEND_DONE]]), channel_id=4, is_host_transfer=true,
   // CHECK-SAME{LITERAL}:   sharding={{manual}, {manual}, {manual}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_0_retvals_htod_0"}
-  // CHECK-NEXT:          %[[RECV_DONE:.*]] = (s64[1,2], token[]) recv-done((s64[1,2], u32[], token[]) %[[RECV]]), channel_id=4, is_host_transfer=true,
+  // CHECK-NEXT:          %[[RECV_DONE:.*]] = (s64[1,2], token[]) recv-done(%[[RECV]]), channel_id=4, is_host_transfer=true,
   // CHECK-SAME{LITERAL}:   sharding={{manual}, {manual}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_0_retvals_htod_0"}
-  // CHECK-NEXT:          ROOT %[[GET_TUPLE_0:.*]] = s64[1,2] get-tuple-element((s64[1,2], token[]) %[[RECV_DONE]]), index=0, sharding={manual}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_0_retvals_htod_0"}
-  // CHECK-NEXT:          %[[GET_TUPLE_1:.*]]  = token[] get-tuple-element((s64[1,2], token[]) %[[RECV_DONE]]), index=1, sharding={manual}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_0_retvals_htod_0"}
+  // CHECK-NEXT:          ROOT %[[GET_TUPLE_0:.*]] = s64[1,2] get-tuple-element(%[[RECV_DONE]]), index=0, sharding={manual}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_0_retvals_htod_0"}
+  // CHECK-NEXT:          %[[GET_TUPLE_1:.*]]  = token[] get-tuple-element(%[[RECV_DONE]]), index=1, sharding={manual}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_0_retvals_htod_0"}
   %0 = mhlo.create_token : !mhlo.token
   %1 = "mhlo.send"(%arg0, %0) <{channel_handle = #mhlo.channel_handle<handle = 3, type = 2>, is_host_transfer = true}> {mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "host_compute_channel_0_args_dtoh_0"}, mhlo.sharding = "\08\04"} : (tensor<1x2xi64>, !mhlo.token) -> !mhlo.token
   %2:2 = "mhlo.recv"(%1) <{channel_handle = #mhlo.channel_handle<handle = 4, type = 3>, is_host_transfer = true}> {mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "host_compute_channel_0_retvals_htod_0"}, mhlo.sharding = "\08\04"} : (!mhlo.token) -> (tensor<1x2xi64>, !mhlo.token)

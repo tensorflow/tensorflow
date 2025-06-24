@@ -58,6 +58,10 @@ class CpuElementalIrEmitter final : public ElementalIrEmitter {
   absl::StatusOr<llvm::Value*> EmitErf(PrimitiveType prim_type,
                                        llvm::Value* value) override;
 
+  absl::StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
+                                       llvm::Value* value,
+                                       absl::string_view name) override;
+
   absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
       absl::string_view name, bool is_reducer) override;

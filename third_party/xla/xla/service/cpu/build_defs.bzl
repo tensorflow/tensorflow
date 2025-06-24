@@ -1,6 +1,13 @@
 """build_defs for service/cpu."""
 
+load(
+    "//xla/tsl:package_groups.bzl",
+    "DEFAULT_LOAD_VISIBILITY",
+    "LEGACY_SERVICE_CPU_BUILD_DEFS_USERS",
+)
 load("//xla/tsl:tsl.bzl", "clean_dep")
+
+visibility(DEFAULT_LOAD_VISIBILITY + LEGACY_SERVICE_CPU_BUILD_DEFS_USERS)
 
 def runtime_copts():
     """Returns copts used for CPU runtime libraries."""

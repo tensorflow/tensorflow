@@ -19,12 +19,12 @@ limitations under the License.
 
 #include "xla/tsl/platform/test.h"
 
+namespace tsl {
+namespace {
+
 // LLVM does not support <cfenv>. Disable these tests when building with it.
 // See b/35384639 for more information.
 #if !defined(__clang__) || !defined(__OPTIMIZE__)
-
-namespace tsl {
-namespace {
 
 void CheckDownward() {
   EXPECT_EQ(12, std::nearbyint(12.0));
@@ -97,7 +97,10 @@ TEST(SetScopedSetRound, Scoped) {
   CheckToNearest();
 }
 
+#endif  // !defined(__clang__) || !defined(__OPTIMIZE__)
+
+// Ensure at least one test case is linked to avoid test failures.
+TEST(Dummy, Test) {}
+
 }  // namespace
 }  // namespace tsl
-
-#endif  // !defined(__clang__) || !defined(__OPTIMIZE__)

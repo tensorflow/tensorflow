@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -57,13 +57,13 @@ ProfileOptions GetOptions(const ProfileOptions& opts) {
 }
 
 absl::Status ProfilerSession::Status() {
-  mutex_lock l(mutex_);
+  absl::MutexLock l(&mutex_);
   return status_;
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
 absl::Status ProfilerSession::CollectDataInternal(XSpace* space) {
-  mutex_lock l(mutex_);
+  absl::MutexLock l(&mutex_);
   TF_RETURN_IF_ERROR(status_);
   LOG(INFO) << "Profiler session collecting data.";
   if (profilers_ != nullptr) {
@@ -121,7 +121,13 @@ ProfilerSession::ProfilerSession(const ProfileOptions& options)
   DCHECK(profiler_lock_.Active());
   profilers_ = std::make_unique<tsl::profiler::ProfilerCollection>(
       profiler::CreateProfilers(options_));
-  profilers_->Start().IgnoreError();
+
+  absl::Status status = profilers_->Start();
+  if (options_.raise_error_on_start_failure()) {
+    status_ = status;
+  } else {
+    status.IgnoreError();
+  }
 #endif
 }
 

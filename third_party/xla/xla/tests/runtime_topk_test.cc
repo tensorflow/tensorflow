@@ -20,17 +20,16 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
 namespace {
 
-class TopkTest : public HloTestBase {};
+class TopkTest : public HloPjRtTestBase {};
 
-XLA_TEST_F(TopkTest, CustomCallTarget) {
+TEST_F(TopkTest, CustomCallTarget) {
   absl::string_view hlo_text_module = R"(
   HloModule topk
 

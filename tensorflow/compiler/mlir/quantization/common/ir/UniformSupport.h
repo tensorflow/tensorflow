@@ -34,7 +34,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 
-namespace mlir::quantfork {
+namespace mlir::quant::ir {
 
 // Performs type conversion from an arbitrary input type to a type
 // that is expressed by a QuantizedType.
@@ -242,6 +242,6 @@ class UniformQuantizedPerAxisValueConverter {
   int32_t quantization_dim_;
 };
 
-}  // namespace mlir::quantfork
+}  // namespace mlir::quant::ir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_IR_UNIFORMSUPPORT_H_

@@ -23,13 +23,15 @@ namespace tflite {
 
 namespace reference_ops {
 
-inline void Floor(const RuntimeShape& input_shape, const float* input_data,
-                  const RuntimeShape& output_shape, float* output_data) {
+template <typename T>
+inline void Floor(const RuntimeShape& input_shape, const T* input_data,
+                  const RuntimeShape& output_shape, T* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
     int offset = i;
-    output_data[offset] = std::floor(input_data[offset]);
+    output_data[offset] =
+        static_cast<T>(std::floor(static_cast<float>(input_data[offset])));
   }
 }
 

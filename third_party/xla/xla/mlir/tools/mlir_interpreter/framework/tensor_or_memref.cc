@@ -77,14 +77,14 @@ SmallVector<int64_t> BufferView::GetStridesForLayout(ArrayRef<int64_t> sizes,
 }
 
 LogicalResult BufferView::Slice(int64_t dim_index, int64_t dim_offset) {
-  llvm::SmallVector<int64_t> offsets(Rank(), 0);
+  llvm::SmallVector<int64_t> offsets(num_dimensions(), 0);
   offsets[dim_index] = dim_offset;
   if (auto new_offset = GetPhysicalIndex(offsets)) {
     offset = *new_offset;
   } else {
     return failure();
   }
-  if (dim_index >= Rank()) --*num_vector_dims;
+  if (dim_index >= num_dimensions()) --*num_vector_dims;
   strides.erase(strides.begin() + dim_index);
   sizes.erase(sizes.begin() + dim_index);
   return success();
@@ -92,7 +92,7 @@ LogicalResult BufferView::Slice(int64_t dim_index, int64_t dim_offset) {
 
 LogicalResult BufferView::Slice(int64_t dim_index, int64_t dim_offset,
                                 int64_t dim_size, int64_t dim_stride) {
-  llvm::SmallVector<int64_t> offsets(Rank(), 0);
+  llvm::SmallVector<int64_t> offsets(num_dimensions(), 0);
   offsets[dim_index] = dim_offset;
   if (dim_size == 0) {
     offset = 0;

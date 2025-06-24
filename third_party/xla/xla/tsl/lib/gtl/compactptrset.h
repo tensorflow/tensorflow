@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef XLA_TSL_LIB_GTL_COMPACTPTRSET_H_
 #define XLA_TSL_LIB_GTL_COMPACTPTRSET_H_
 
+#include <cstdint>
 #include <type_traits>
 
 #include "xla/tsl/lib/gtl/flatset.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace tsl {
 namespace gtl {
@@ -126,7 +128,7 @@ class CompactPointerSet {
   std::pair<iterator, bool> insert(T elem) {
     if (!isbig()) {
       if (rep_ == 0) {
-        uintptr_t v = reinterpret_cast<uintptr_t>(elem);
+        uintptr_t v = safe_reinterpret_cast<std::uintptr_t>(elem);
         if (v == 0 || ((v & 0x3) != 0)) {
           // Cannot use small representation for nullptr.  Fall through.
         } else {
@@ -155,7 +157,7 @@ class CompactPointerSet {
   }
 
   iterator find(T elem) const {
-    if (rep_ == reinterpret_cast<uintptr_t>(elem)) {
+    if (rep_ == safe_reinterpret_cast<std::uintptr_t>(elem)) {
       return iterator(rep_);
     } else if (!isbig()) {
       return iterator(0);
@@ -168,7 +170,7 @@ class CompactPointerSet {
 
   size_t erase(T elem) {
     if (!isbig()) {
-      if (rep_ == reinterpret_cast<uintptr_t>(elem)) {
+      if (rep_ == safe_reinterpret_cast<std::uintptr_t>(elem)) {
         rep_ = 0;
         return 1;
       } else {
@@ -199,7 +201,7 @@ class CompactPointerSet {
     if (rep_ != 0) {
       big->insert(reinterpret_cast<T>(rep_));
     }
-    rep_ = reinterpret_cast<uintptr_t>(big) + 0x1;
+    rep_ = safe_reinterpret_cast<std::uintptr_t>(big) + 0x1;
   }
 };
 

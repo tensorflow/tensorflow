@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/while_loop_unroller.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <memory>
@@ -45,21 +46,24 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/overflow_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/constant_value.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/scheduling_annotations_util.h"
 #include "xla/service/value_range.h"
 #include "xla/service/while_loop_constant_sinking.h"
+#include "xla/service/while_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -117,7 +121,7 @@ absl::Status HandleDynamicGteOrTuple(HloInstruction* instr) {
     auto index = LiteralUtil::LiteralAsScalarInt64(std::move(index_lit));
     // The index must have a compile-time integer value at this point.
     TF_RET_CHECK(index.has_value());
-    for (int64_t i = 0; i < instr->operand(0)->shape().tuple_shapes_size();
+    for (int64_t i = 0; i < instr->operand(0)->shape().tuple_shapes().size();
          i++) {
       if (i == index.value()) {
         tuple_operands.push_back(instr->mutable_operand(1));
@@ -185,7 +189,8 @@ absl::Status ReplaceInductionVarUses(HloComputation* body,
 absl::StatusOr<std::unique_ptr<HloComputation>>
 UnrollSingleIterationOfTrivialLoop(HloInstruction* while_op,
                                    WhileLoopConfig config,
-                                   const int64_t induction_value) {
+                                   const int64_t induction_value,
+                                   int64_t& next_scheduling_id) {
   // We clone the body since we are changing the computation.
   std::unique_ptr<HloComputation> while_body_clone =
       while_op->while_body()->Clone(
@@ -206,6 +211,7 @@ UnrollSingleIterationOfTrivialLoop(HloInstruction* while_op,
                                              induction_value_constant,
                                              config.induction_var_idx));
 
+  absl::flat_hash_set<int64_t> seen_scheduling_ids;
   for (HloInstruction* body_inst : while_body_clone->instructions()) {
     // We need to assign a unique channel_id for the collective ops that are
     // unrolled within the while loop body or fusions containing collectives.
@@ -216,6 +222,20 @@ UnrollSingleIterationOfTrivialLoop(HloInstruction* while_op,
       // channel_id across the module.
       collective->set_channel_id(unique_channel_id++);
     }
+
+    // We need to assign a unique id to each scheduling group (of instructions)
+    // that are unrolled within the while loop body.
+    TF_ASSIGN_OR_RETURN(std::optional<int64_t> scheduling_id,
+                        GetSchedulingAnnotationGroupId(body_inst));
+    if (scheduling_id.has_value()) {
+      if (!seen_scheduling_ids.contains(scheduling_id.value())) {
+        seen_scheduling_ids.insert(scheduling_id.value());
+        next_scheduling_id++;
+      }
+      TF_RETURN_IF_ERROR(
+          SetSchedulingAnnotationGroupId(body_inst, next_scheduling_id));
+    }
+
     // Handle DynamicGte and DynamicTuple custom-calls created during unstacking
     // pass. All custom-calls must be replaced for the loop to be unrolled
     // successfully.
@@ -278,11 +298,16 @@ absl::StatusOr<bool> UnrollInternal(HloInstruction* while_op,
   HloComputation* computation = while_op->parent();
   HloInstruction* unrolled_body_call_op;
   std::vector<HloInstruction*> call_operands = {while_op->operands().at(0)};
+
+  TF_ASSIGN_OR_RETURN(int64_t next_scheduling_id,
+                      NextSchedulingGroupId(*while_op->GetModule()));
   for (int64_t i = config.init; i < config.trip_count + config.init; ++i) {
     CHECK(OverflowSafeAdd(i, (int64_t)1).has_value());
 
     HloComputation* unrolled_body = module->AddEmbeddedComputation(
-        UnrollSingleIterationOfTrivialLoop(while_op, config, i).value());
+        UnrollSingleIterationOfTrivialLoop(while_op, config, i,
+                                           next_scheduling_id)
+            .value());
     unrolled_body_call_op =
         computation->AddInstruction(HloInstruction::CreateCall(
             while_op->shape(), call_operands, unrolled_body));
@@ -317,11 +342,15 @@ absl::StatusOr<UnrollResult> UnrollInternalWrappedAndReturnReplacement(
   // We assume while has only one tuple parameter
   call_operands.emplace_back(std::move(p.value()));
 
+  TF_ASSIGN_OR_RETURN(int64_t next_scheduling_id,
+                      NextSchedulingGroupId(*while_op->GetModule()));
   for (int64_t i = config.init; i < config.trip_count + config.init; ++i) {
     CHECK(OverflowSafeAdd(i, (int64_t)1).has_value());
 
     HloComputation* unrolled_body = module->AddEmbeddedComputation(
-        UnrollSingleIterationOfTrivialLoop(while_op, config, i).value());
+        UnrollSingleIterationOfTrivialLoop(while_op, config, i,
+                                           next_scheduling_id)
+            .value());
 
     unrolled_body_call_op = body_builder.AddInstruction(
         HloInstruction::CreateCall(while_op->shape(), call_operands,
@@ -361,9 +390,24 @@ absl::StatusOr<bool> UnrollInternalWrapped(HloInstruction* while_op,
   return result.unrolled;
 }
 
-};  // namespace
+// Recursively checks if the given instruction points to the induction var of
+// the given loop config.
+bool IsLoopInductionVar(const HloInstruction* instr,
+                        const WhileLoopConfig& config) {
+  if (!instr->parent()->IsFusionComputation()) {
+    return Match(instr, match::GetTupleElement(match::Parameter(),
+                                               config.induction_var_idx));
+  } else {
+    if (!Match(instr, match::Parameter())) {
+      return false;
+    }
+    HloInstruction* caller_fusion = instr->parent()->FusionInstruction();
+    return IsLoopInductionVar(caller_fusion->operand(instr->parameter_number()),
+                              config);
+  }
+}
 
-// Recursively checks if the given instruction inside a while loop body can be
+// Recursively checks if the given instruction inside a while loop can be
 // expressed as a value range, possibly depending on the loop induction variable
 // of that while loop.
 std::optional<Range> IdentifyRangeAsFunctionOfInductionVar(
@@ -396,6 +440,261 @@ std::optional<Range> IdentifyRangeAsFunctionOfInductionVar(
       RecursivelyIdentifyRange(instr, predefined_ranges, nullptr);
   return instr_range;
 }
+
+// Finds the indices of the dynamic dimensions in the given slice instruction.
+// Any index that is not a constant is considered dynamic. The slice shape must
+// match the input shape on all non-dynamic dimensions.
+absl::StatusOr<std::vector<int64_t>> FindDynamicIndices(
+    const HloInstruction* instr, int64_t start_indices_offset,
+    const Shape& slice_shape, const Shape& input_shape) {
+  const int64_t num_indices = slice_shape.dimensions_size();
+  TF_RET_CHECK(num_indices == input_shape.dimensions_size());
+  std::vector<int64_t> dynamic_indices;
+  for (int64_t index = 0; index < num_indices; ++index) {
+    int64_t operand_index = start_indices_offset + index;
+    const HloInstruction* potential_dynamic_index =
+        instr->operand(operand_index);
+    if (!Match(potential_dynamic_index, match::ConstantScalar())) {
+      dynamic_indices.push_back(index);
+      continue;
+    }
+
+    // This is a non-dynamic index. Check that it starts at zero and the slice
+    // size matches the input size.
+    TF_RET_CHECK(Match(potential_dynamic_index, match::ConstantScalar(0)))
+        << "Non-dynamic-index dimensions must start at zero; nonzero at "
+           "index "
+        << index;
+    TF_RET_CHECK(slice_shape.dimensions(index) == input_shape.dimensions(index))
+        << "The slice sizes must match the input shape on non-dynamic-index "
+           "dimensions; mismatch at index "
+        << index;
+  }
+  return dynamic_indices;
+}
+
+// Returns the first index of 'target' that occurs in the operands sequence.
+// Returns nullopt if target is not an operand.
+std::optional<int64_t> MaybeGetOperandIndex(const HloInstruction* instr,
+                                            const HloInstruction* target) {
+  for (int64_t i = 0; i < instr->operand_count(); ++i) {
+    if (instr->operand(i) == target) {
+      return i;
+    }
+  }
+  return std::nullopt;
+}
+
+// Returns the first GTE instruction in the while body that points to the given
+// index of the while body input tuple.
+HloInstruction* GetGteForIndex(const HloInstruction* while_instr,
+                               int64_t index) {
+  const HloComputation* while_body = while_instr->while_body();
+  const HloInstruction* while_body_input_tuple =
+      while_body->parameter_instruction(0);
+  for (HloInstruction* user : while_body_input_tuple->users()) {
+    if (Match(user, match::GetTupleElement(match::Parameter(0), index))) {
+      return user;
+    }
+  }
+  return nullptr;
+}
+
+// Returns the first GTE instruction in the while body that points to `instr`.
+const HloInstruction* MaybeFindParameterGte(const HloInstruction* while_instr,
+                                            const HloInstruction* instr) {
+  const std::optional<int64_t> tuple_index =
+      MaybeGetOperandIndex(while_instr->operand(0), instr);
+  if (!tuple_index.has_value()) {
+    return nullptr;
+  }
+  return GetGteForIndex(while_instr, *tuple_index);
+}
+
+// Returns the first while instruction in the while body. Returns nullptr if
+// there is no nested while loop.
+HloInstruction* GetNestedWhileInstruction(const WhileLoopConfig& config) {
+  for (HloInstruction* instr :
+       config.while_instr->while_body()->instructions()) {
+    if (instr->opcode() == HloOpcode::kWhile) {
+      return instr;
+    }
+  }
+  return nullptr;
+}
+
+// Constructs a single valued Range object with the given value.
+Range ConstructTrivialRange(int64_t value, int64_t bitwidth, bool is_signed) {
+  const ConstantValue index_value =
+      ConstantValue::Get(value, bitwidth, is_signed);
+  return Range(index_value, index_value,
+               /*step=*/ConstantValue::Get(1, bitwidth, is_signed),
+               /*is_linear=*/true);
+}
+
+// Given a while loop and one of its inputs (before it gets tupled), determines
+// the DUS instructions in the while loop that edit that position of the while
+// tuple. Fails if anything other than a DUS chain produces the new value at
+// that position. Permits nested while loops full of more DUS instruction
+// chains, but does not return those DUS instructions.
+absl::StatusOr<std::vector<const HloInstruction*>> FindDynamicInstructions(
+    const HloInstruction* input, const HloInstruction* while_instr) {
+  std::vector<const HloInstruction*> dynamic_instructions;
+  int64_t tuple_index = while_instr->operand(0)->operand_index(input);
+  HloInstruction* root_instruction =
+      while_instr->while_body()->root_instruction();
+  if (root_instruction->opcode() != HloOpcode::kTuple) {
+    return absl::NotFoundError(
+        "Valid DUS chain from input tuple to output tuple not found.");
+  }
+  const HloInstruction* instruction = root_instruction->operand(tuple_index);
+  while (instruction->opcode() == HloOpcode::kDynamicUpdateSlice ||
+         instruction->opcode() == HloOpcode::kGetTupleElement) {
+    if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
+      dynamic_instructions.push_back(instruction);
+      instruction = instruction->operand(0);
+    } else {  // instruction->opcode() == HloOpcode::kGetTupleElement
+      if (instruction->operand(0) ==
+          while_instr->while_body()->parameter_instruction(0)) {
+        // The only valid way to end is to GTE from parameter zero.
+        return dynamic_instructions;
+      }
+      if (instruction->operand(0)->opcode() == HloOpcode::kWhile) {
+        // Nested while loops are allowed, but only if they only DUS. We use a
+        // recursive call to check.
+        int64_t nested_tuple_index = instruction->tuple_index();
+        const HloInstruction* nested_while_instr = instruction->operand(0);
+        const HloInstruction* nested_input =
+            nested_while_instr->operand(0)->operand(nested_tuple_index);
+        if (!FindDynamicInstructions(nested_input, nested_while_instr).ok()) {
+          return absl::NotFoundError(
+              "Valid DUS chain from input tuple to output tuple not found.");
+        }
+        // Rewind from GTE -> while -> tuple -> tuple input element.
+        instruction = nested_input;
+      } else {
+        return absl::NotFoundError(
+            "Valid DUS chain from input tuple to output tuple not found.");
+      }
+    }
+  }
+  return absl::NotFoundError(
+      "Valid DUS chain from input tuple to output tuple not found.");
+}
+
+// Populates `entries_written` with the indices in `input` covered by dynamic
+// instructions in the inner loop. This is a helper function for
+// IsInputShapeCoveredByDynamicUpdateSliceInstructions().
+absl::Status FindIndicesCoveredByDynamicInstructionsInInnerLoop(
+    const HloInstruction* input, const HloInstruction* while_instr,
+    absl::flat_hash_map<const HloInstruction*, Range> predefined_ranges,
+    std::pair<int64_t, int64_t> dynamic_indices,
+    std::vector<std::vector<bool>>& entries_written) {
+  // Step 0: Propagate predefined ranges to GTEs in the while body.
+  std::vector<std::pair<const HloInstruction*, Range>>
+      additional_predefined_ranges;
+  for (const auto& [instr, range] : predefined_ranges) {
+    const HloInstruction* gte = MaybeFindParameterGte(while_instr, instr);
+    if (gte == nullptr) {
+      continue;
+    }
+    additional_predefined_ranges.push_back({gte, range});
+  }
+  for (const auto& [instr, range] : additional_predefined_ranges) {
+    predefined_ranges[instr] = range;
+  }
+
+  // Step 1: Compute the range of the loop induction variable.
+  const std::optional<int64_t> induction_var_idx =
+      GetLoopInductionVarTupleIdxWithKnownValues(while_instr,
+                                                 predefined_ranges);
+  TF_RET_CHECK(induction_var_idx.has_value());
+  std::optional<Range> loop_range = MatchLoopRangeWithKnownValues(
+      while_instr, *induction_var_idx, predefined_ranges);
+  TF_RET_CHECK(loop_range.has_value());
+
+  // Loop range is empty. Return early.
+  if (loop_range->IsEmpty() || loop_range->min().GetSignedValue() >
+                                   loop_range->max()->GetSignedValue()) {
+    return absl::OkStatus();
+  }
+
+  // Propagate the loop range to GTEs in the while body.
+  const HloInstruction* induction_var_gte =
+      GetGteForIndex(while_instr, *induction_var_idx);
+  TF_RET_CHECK(induction_var_gte != nullptr);
+  predefined_ranges[induction_var_gte] = loop_range.value();
+
+  // Step 2: Find dynamic instructions inside the while body.
+  TF_ASSIGN_OR_RETURN(std::vector<const HloInstruction*> dynamic_instructions,
+                      FindDynamicInstructions(input, while_instr));
+
+  const Shape& input_shape = input->shape();
+  const int64_t dimension_size = input_shape.dimensions(dynamic_indices.first);
+  TF_RET_CHECK(dimension_size ==
+               input_shape.dimensions(dynamic_indices.second));
+
+  // Step 3: For each dynamic instruction, compute the range of each dynamic
+  // index in the instruction. Populates `entries_written` with the indices in
+  // `input` covered by each dynamic instruction.
+  for (const HloInstruction* dynamic_instruction : dynamic_instructions) {
+    TF_RET_CHECK(dynamic_instruction->opcode() ==
+                 HloOpcode::kDynamicUpdateSlice);
+
+    int64_t start_indices_offset = 2;
+    const Shape* slice_shape = &dynamic_instruction->operand(1)->shape();
+
+    std::optional<Range> first_index_range = RecursivelyIdentifyRange(
+        dynamic_instruction->operand(start_indices_offset +
+                                     dynamic_indices.first),
+        predefined_ranges, nullptr);
+    std::optional<Range> second_index_range = RecursivelyIdentifyRange(
+        dynamic_instruction->operand(start_indices_offset +
+                                     dynamic_indices.second),
+        predefined_ranges, nullptr);
+
+    TF_RET_CHECK(first_index_range.has_value() &&
+                 first_index_range->IsBounded() &&
+                 first_index_range->IsStepKnown());
+    TF_RET_CHECK(second_index_range.has_value() &&
+                 second_index_range->IsBounded() &&
+                 second_index_range->IsStepKnown());
+    TF_RET_CHECK(first_index_range->IsSingleValue() ||
+                 second_index_range->IsSingleValue())
+        << "At least one of first_dynamic_index_range and "
+           "second_dynamic_index_range must be non-trivial.";
+
+    // Here, we simulate the loop based on the xla::Range that we have computed
+    // to represent the input to the DS/DUS.
+    const int64_t slice_size = slice_shape->dimensions(dynamic_indices.first);
+    TF_RET_CHECK(slice_size == slice_shape->dimensions(dynamic_indices.second));
+    for (int64_t first_start = first_index_range->min().GetSignedValue();
+         first_start <= first_index_range->max()->GetSignedValue();
+         first_start += first_index_range->step()->GetSignedValue()) {
+      // DUS clamps start indices so that the entire region is in-bounds.
+      const int64_t clamped_first_start = std::min(
+          std::max<int64_t>(first_start, 0), dimension_size - slice_size);
+      for (int64_t second_start = second_index_range->min().GetSignedValue();
+           second_start <= second_index_range->max()->GetSignedValue();
+           second_start += second_index_range->step()->GetSignedValue()) {
+        // DUS clamps start indices so that the entire region is in-bounds.
+        const int64_t clamped_second_start = std::min(
+            std::max<int64_t>(second_start, 0), dimension_size - slice_size);
+
+        for (int64_t first_index = clamped_first_start;
+             first_index < clamped_first_start + slice_size; ++first_index) {
+          for (int64_t second_index = clamped_second_start;
+               second_index < clamped_second_start + slice_size;
+               ++second_index) {
+            entries_written[first_index][second_index] = true;
+          }
+        }
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+};  // namespace
 
 // Recursively checks if the given instruction is effectively static by checking
 // if it is a constant or a parameter that points to the induction var of the
@@ -485,16 +784,12 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
     return std::nullopt;
   }
   // Based on the instruction type, start indices start from index 1 or 2 of the
-  // operands and the slice shape is either the shape of instr (i.e. its output
-  // shape) or the shape of its operand at index 1.
+  // operands.
   int64_t start_indices_offset;
-  const Shape* slice_shape;
   if (instr->opcode() == HloOpcode::kDynamicSlice) {
     start_indices_offset = 1;
-    slice_shape = &instr->shape();
   } else if (instr->opcode() == HloOpcode::kDynamicUpdateSlice) {
     start_indices_offset = 2;
-    slice_shape = &instr->operand(1)->shape();
   } else {
     return std::nullopt;
   }
@@ -504,8 +799,7 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
     return std::nullopt;
   }
 
-  std::optional<int64_t> dynamic_index;
-  std::optional<Range> dynamic_index_range;
+  int64_t dynamic_index = -1;
   for (int64_t start_index = start_indices_offset;
        start_index < instr->operand_count(); ++start_index) {
     const HloInstruction* index = instr->operand(start_index);
@@ -520,83 +814,302 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
       continue;
     }
 
-    // Try to compute a Range for this interval based on the loop induction
-    // variable's Range.
-    std::optional<Range> index_range =
-        IdentifyRangeAsFunctionOfInductionVar(index, config);
-    if (index_range != std::nullopt && !index_range->IsSingleValue()) {
+    // Check that the instruction's dynamic index points to the loop induction
+    // variable.
+    if (IsLoopInductionVar(index, config)) {
       // In order to cover the whole shape only a single non-constant index is
       // allowed.
-      if (dynamic_index != std::nullopt) {
+      if (dynamic_index != -1) {
         VLOG(3) << "Multiple non-constant indices.";
         return std::nullopt;
       }
       dynamic_index = start_index - start_indices_offset;
-      dynamic_index_range = index_range;
-      continue;
     }
-
-    VLOG(3) << "Index is neither constant nor a function of loop induction "
-               "var.";
-    return std::nullopt;
   }
 
-  if (dynamic_index == std::nullopt) {
+  if (dynamic_index == -1) {
     VLOG(3) << "No dynamic index found.";
     return std::nullopt;
   }
 
-  const ConstantValue& min_index_touched = dynamic_index_range->min();
-  const ConstantValue operand_first_index = ConstantValue::GetZero(
-      min_index_touched.GetBitwidth(), min_index_touched.IsSigned());
-  if (min_index_touched.gt(operand_first_index)) {
-    VLOG(3) << "The dynamic_index must cover index zero, but it begins at "
-            << min_index_touched.ToString();
+  if (operand->shape().dimensions(dynamic_index) != config.trip_count) {
+    VLOG(3) << "The dynamic_index dimension size of the operand must be equal "
+               "to the loop trip count.";
     return std::nullopt;
   }
 
-  const ConstantValue slice_size =
-      ConstantValue::Get(slice_shape->dimensions(dynamic_index.value()),
-                         dynamic_index_range->max()->GetBitwidth(),
-                         dynamic_index_range->max()->IsSigned());
-  const ConstantValue max_index_touched_plus_one =
-      dynamic_index_range->max()->add(slice_size);
-  const Shape& operand_shape = operand->shape();
-  const ConstantValue operand_last_index_plus_one =
-      ConstantValue::Get(operand_shape.dimensions(dynamic_index.value()),
-                         dynamic_index_range->max()->GetBitwidth(),
-                         dynamic_index_range->max()->IsSigned());
-  if (max_index_touched_plus_one.lt(operand_last_index_plus_one)) {
-    const ConstantValue constant_one =
-        ConstantValue::GetOne(dynamic_index_range->max()->GetBitwidth(),
-                              dynamic_index_range->max()->IsSigned());
-    VLOG(3) << "The dynamic_index must cover index "
-            << operand_last_index_plus_one.sub(constant_one).ToString()
-            << " but the last value it takes on is "
-            << dynamic_index_range->max()->ToString()
-            << " and the slice size is " << slice_size.ToString()
-            << " so it only reaches "
-            << max_index_touched_plus_one.sub(constant_one).ToString();
+  if (opcode == HloOpcode::kDynamicSlice) {
+    const Shape& result_shape = instr->shape();
+    if (result_shape.dimensions(dynamic_index) != 1) {
+      VLOG(3) << "The slice size on the dynamic_index dimension must be 1.";
+      return std::nullopt;
+    }
+
+    const Shape& operand_shape = operand->shape();
+    CHECK_EQ(result_shape.dimensions().size(),
+             operand_shape.dimensions().size());
+    for (int64_t i = 0; i < result_shape.dimensions().size(); ++i) {
+      if (i != dynamic_index &&
+          result_shape.dimensions(i) != operand_shape.dimensions(i)) {
+        VLOG(3) << "The slice sizes must match the operand-shape on "
+                   "non-dynamic-index dimensions.";
+        return std::nullopt;
+      }
+    }
+  }
+
+  return dynamic_index;
+}
+
+// Returns true if the input shape is fully covered by dynamic update slice
+// instructions inside the while loop (potentially via those in nested loops).
+absl::StatusOr<bool> IsInputShapeCoveredByDynamicUpdateSliceInstructions(
+    int64_t input_idx, const WhileLoopConfig& config) {
+  TF_RET_CHECK(input_idx < config.while_instr->operand(0)->operand_count());
+  const HloInstruction* input =
+      config.while_instr->operand(0)->operand(input_idx);
+
+  TF_ASSIGN_OR_RETURN(std::vector<const HloInstruction*> dynamic_instructions,
+                      FindDynamicInstructions(input, config.while_instr));
+
+  TF_RET_CHECK(dynamic_instructions.size() == 1);
+  const HloInstruction* dus = dynamic_instructions.front();
+  VLOG(5) << "Found dynamic instruction: " << dus->ToShortString();
+
+  HloInstruction* inner_while_instr = GetNestedWhileInstruction(config);
+  if (inner_while_instr == nullptr) {
+    VLOG(5) << "No nested while loop";
+    std::optional<int64_t> dynamic_index =
+        AdvancedMatchShapeCoveringDynamicIndexInstruction(
+            dus, /*input=*/nullptr, HloOpcode::kDynamicUpdateSlice, config);
+    return dynamic_index.has_value();
+  }
+
+  // We have nested while loops. We have limited support for nested while loops.
+  // If any of the following conditions are not met, we return an error.
+  // 1. Only a single nested while loop.
+  // 2. Outer while loop has a single DUS instruction, say `dus`.
+  // 3. `dus` has exactly two dynamic indices which both refer to the same
+  // HloInstruction.
+  // 4. The input shape and slice shape are effectively square, i.e., the size
+  // of each dynamic dimension is the same.
+
+  const int64_t start_indices_offset = 2;
+  const Shape& slice_shape = dus->operand(1)->shape();
+  const Shape& input_shape = dus->operand(0)->shape();
+  TF_RET_CHECK(input_shape == input->shape());
+  absl::StatusOr<std::vector<int64_t>> dynamic_indices =
+      FindDynamicIndices(dus, start_indices_offset, slice_shape, input_shape);
+  TF_RET_CHECK(dynamic_indices.ok() && dynamic_indices->size() == 2)
+      << "Exactly two dynamic indices are supported in the outer while loop.";
+
+  // Initialize the entries_written vector with all false.
+  const int64_t dimension_size = input_shape.dimensions(dynamic_indices->at(0));
+  TF_RET_CHECK(dimension_size ==
+               input_shape.dimensions(dynamic_indices->at(1)));
+  std::vector<std::vector<bool>> entries_written(
+      dimension_size, std::vector<bool>(dimension_size, false));
+
+  // Step 1: Simulate the dynamic update slice in the outer while loop.
+  // Step 1.1: Compute the range of the loop induction variable.
+  std::optional<Range> loop_range = MatchTrivialLoopRange(config.while_instr);
+  TF_RET_CHECK(loop_range.has_value())
+      << "Could not compute loop range for outer while loop.";
+  VLOG(5) << "Loop range: " << loop_range->ToString();
+
+  // Check that both dynamic indices of the DUS refer to the same instruction.
+  TF_RET_CHECK(dus->operand(start_indices_offset + dynamic_indices->at(0)) ==
+               dus->operand(start_indices_offset + dynamic_indices->at(1)));
+
+  // Step 1.2: Propagate the loop range to the dynamic index.
+  absl::flat_hash_map<const HloInstruction*, Range> predefined_ranges;
+  HloInstruction* induction_var_gte =
+      GetGteForIndex(config.while_instr, config.induction_var_idx);
+  predefined_ranges[induction_var_gte] = loop_range.value();
+  std::optional<Range> dynamic_index_range = RecursivelyIdentifyRange(
+      dus->operand(start_indices_offset + dynamic_indices->at(0)),
+      predefined_ranges, /*dataflow_analysis=*/nullptr);
+
+  TF_RET_CHECK(dynamic_index_range.has_value() &&
+               dynamic_index_range->IsBounded() &&
+               dynamic_index_range->IsStepKnown());
+
+  // Step 1.3: Simulate the loop and populate `entries_written`.
+  const int64_t slice_size = slice_shape.dimensions(dynamic_indices->at(0));
+  TF_RET_CHECK(slice_size == slice_shape.dimensions(dynamic_indices->at(1)));
+
+  for (int64_t start_index_value = dynamic_index_range->min().GetSignedValue();
+       start_index_value <= dynamic_index_range->max()->GetSignedValue();
+       start_index_value += dynamic_index_range->step()->GetSignedValue()) {
+    // DS and DUS clamp start indices so that the entire region is in-bounds.
+    int64_t clamped_start_index_value = std::min(
+        std::max<int64_t>(start_index_value, 0), dimension_size - slice_size);
+    for (int64_t first_index = clamped_start_index_value;
+         first_index < clamped_start_index_value + slice_size; ++first_index) {
+      for (int64_t second_index = clamped_start_index_value;
+           second_index < clamped_start_index_value + slice_size;
+           ++second_index) {
+        entries_written[first_index][second_index] = true;
+      }
+    }
+  }
+
+  // Step 2: Unroll the outer while loop to analyze the dynamic instructions in
+  // the inner while loop.
+  const HloInstruction* input_gte =
+      GetGteForIndex(config.while_instr, input_idx);
+  TF_RET_CHECK(input_gte != nullptr);
+  const auto type = induction_var_gte->shape().element_type();
+  const int64_t bitwidth = primitive_util::BitWidth(type);
+  const bool is_signed = primitive_util::IsSignedIntegralType(type);
+  for (int64_t outer_loop_induction_var = loop_range->min().GetSignedValue();
+       outer_loop_induction_var <= loop_range->max()->GetSignedValue();
+       outer_loop_induction_var += loop_range->step()->GetSignedValue()) {
+    // Step 2.1: Construct a single valued range for the outer loop induction
+    // variable and propagate it to other operands of the inner while.
+    absl::flat_hash_map<const HloInstruction*, Range> trivial_predefined_ranges;
+    trivial_predefined_ranges[induction_var_gte] =
+        ConstructTrivialRange(outer_loop_induction_var, bitwidth, is_signed);
+    const HloInstruction* inner_while_input = inner_while_instr->operand(0);
+    for (int64_t input_tuple_idx = 0;
+         input_tuple_idx < inner_while_input->operand_count();
+         ++input_tuple_idx) {
+      const HloInstruction* instr = inner_while_input->operand(input_tuple_idx);
+      if (instr->opcode() == HloOpcode::kConstant) {
+        continue;
+      }
+      std::optional<Range> operand_trivial_range = RecursivelyIdentifyRange(
+          instr, trivial_predefined_ranges, /*dataflow_analysis=*/nullptr);
+      if (operand_trivial_range.has_value() &&
+          operand_trivial_range->IsSingleValue()) {
+        trivial_predefined_ranges[instr] = operand_trivial_range.value();
+      }
+    }
+
+    // Step 2.2: Simulate the dynamic update slice(s) in the inner while loop.
+    TF_RET_CHECK(
+        FindIndicesCoveredByDynamicInstructionsInInnerLoop(
+            /*input=*/input_gte, inner_while_instr, trivial_predefined_ranges,
+            {dynamic_indices->at(0), dynamic_indices->at(1)}, entries_written)
+            .ok());
+  }
+
+  // Returns true if and only if all of entries_written are true.
+  return absl::c_all_of(entries_written, [](const std::vector<bool>& row) {
+    return absl::c_all_of(row, [](bool cell) { return cell; });
+  });
+}
+
+// TODO(b/393399049): Replace MatchShapeCoveringDynamicInstruction with this
+// one.
+// Compared to the MatchShapeCoveringDynamicInstruction() method above, this
+// implementation determines whether the (single) dynamic dimension is fully
+// covered by simulating the loop and noting which indices have been covered
+// at any point.
+std::optional<int64_t> AdvancedMatchShapeCoveringDynamicIndexInstruction(
+    const HloInstruction* instr, const HloInstruction* input, HloOpcode opcode,
+    const WhileLoopConfig& config) {
+  if (instr->opcode() != opcode) {
+    return std::nullopt;
+  }
+  // Based on the instruction type, start indices start from index 1 or 2 of the
+  // operands and the slice shape is either the shape of instr (i.e. its output
+  // shape) or the shape of its operand at index 1.
+  int64_t start_indices_offset;
+  const Shape* slice_shape;
+  if (instr->opcode() == HloOpcode::kDynamicSlice) {
+    start_indices_offset = 1;
+    slice_shape = &instr->shape();
+  } else if (instr->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    start_indices_offset = 2;
+    slice_shape = &instr->operand(1)->shape();
+  } else {
     return std::nullopt;
   }
 
-  if (dynamic_index_range->step()->gt(slice_size)) {
-    VLOG(3) << "The dynamic_index has a step size of "
-            << dynamic_index_range->step()->ToString()
-            << " but the slice size is " << slice_size.ToString();
+  if (input != nullptr && input != instr->operand(0)) {
+    VLOG(3) << "Input of dynamic index instruction is not the given operand.";
     return std::nullopt;
   }
+  input = instr->operand(0);
+  const Shape& input_shape = input->shape();
 
-  CHECK_EQ(slice_shape->dimensions_size(), operand_shape.dimensions_size());
-  for (int64_t i = 0; i < slice_shape->dimensions_size(); ++i) {
-    if (i != dynamic_index &&
-        slice_shape->dimensions(i) != operand_shape.dimensions(i)) {
-      VLOG(3) << "The slice sizes must match the operand-shape on "
-                 "non-dynamic-index dimensions.";
+  const int64_t num_indices = slice_shape->dimensions().size();
+  CHECK_EQ(num_indices, input_shape.dimensions().size());
+  CHECK_EQ(num_indices, instr->operand_count() - start_indices_offset);
+
+  std::vector<int64_t> dynamic_indices;
+  for (int64_t index = 0; index < num_indices; ++index) {
+    int64_t start_index_offset = start_indices_offset + index;
+    const HloInstruction* start_index = instr->operand(start_index_offset);
+
+    if (!Match(start_index, match::ConstantScalar())) {
+      dynamic_indices.push_back(index);
+      continue;
+    }
+    // This is a non-dynamic index. It must start at zero and have a slice
+    // size matching the input size.
+    if (!Match(start_index, match::ConstantScalar(0))) {
+      VLOG(3) << "Non-dynamic-index dimensions must start at zero; "
+                 "nonzero at index "
+              << index;
+      return std::nullopt;
+    }
+    if (slice_shape->dimensions(index) != input_shape.dimensions(index)) {
+      VLOG(3) << "The slice sizes must match the input shape on "
+                 "non-dynamic-index dimensions; mismatch at index "
+              << index;
       return std::nullopt;
     }
   }
 
+  if (dynamic_indices.empty()) {
+    VLOG(3) << "No dynamic index found.";
+    return std::nullopt;
+  }
+  if (dynamic_indices.size() >= 2) {
+    VLOG(3) << "Too many dynamic indices; found " << dynamic_indices.size();
+    return std::nullopt;
+  }
+
+  std::optional<int64_t> dynamic_index = dynamic_indices[0];
+  std::optional<Range> dynamic_index_range =
+      IdentifyRangeAsFunctionOfInductionVar(
+          instr->operand(start_indices_offset + dynamic_indices[0]), config);
+  if (dynamic_index_range == std::nullopt ||
+      !dynamic_index_range->IsBounded() ||
+      !dynamic_index_range->IsStepKnown()) {
+    VLOG(3) << "Could not compute compact dynamic index range.";
+    return std::nullopt;
+  }
+
+  const int64_t dimension_size = input_shape.dimensions(dynamic_index.value());
+  // We keep a boolean per possible index of the dynamic dimension, initially
+  // false.
+  std::vector<bool> indices_covered(dimension_size);
+  const int64_t slice_size = slice_shape->dimensions(dynamic_index.value());
+
+  // Here, we simulate the loop based on the xla::Range that we have computed
+  // to represent the input to the DS/DUS.
+  for (int64_t start_index_value = dynamic_index_range->min().GetSignedValue();
+       start_index_value <= dynamic_index_range->max()->GetSignedValue();
+       start_index_value += dynamic_index_range->step()->GetSignedValue()) {
+    // DS and DUS clamp start indices so that the entire region is in-bounds.
+    int64_t clamped_start_index_value = std::min(
+        std::max<int64_t>(start_index_value, 0), dimension_size - slice_size);
+    // The DS/DUS covers `slice_size` many indices.
+    for (int64_t index = clamped_start_index_value;
+         index < clamped_start_index_value + slice_size; ++index) {
+      indices_covered[index] = true;
+    }
+  }
+
+  for (int index = 0; index < indices_covered.size(); ++index) {
+    if (!indices_covered[index]) {
+      VLOG(3) << "Index " << index << " was not covered.";
+      return std::nullopt;
+    }
+  }
   return dynamic_index;
 }
 
@@ -866,6 +1379,67 @@ absl::StatusOr<bool> WhileLoopUnroller::Run(
 
   XLA_VLOG_LINES(3, "WhileLoopUnroller::Run(), after:\n" + module->ToString());
   return changed;
+}
+
+absl::StatusOr<std::vector<HloInstruction*>> CreatePartiallyUnrolledLoop(
+    HloComputation* computation, std::vector<HloInstruction*>& init_values,
+    WhileUtil::LoopBodyGeneratorTy loop_body_generator, int32_t trip_count,
+    int32_t unroll_factor, const OpMetadata& metadata) {
+  int32_t outer_loop_trip_count = trip_count / unroll_factor;
+  int32_t residue_count = trip_count % unroll_factor;
+  absl::StatusOr<std::vector<HloInstruction*>> loop_result_status;
+
+  if (unroll_factor > 1 && outer_loop_trip_count > 0) {
+    // Handle the main loop.
+    loop_result_status = WhileUtil::MakeCountedLoop(
+        computation, outer_loop_trip_count, init_values,
+        [&, unroll_factor, loop_body_generator](
+            HloInstruction* induction_var,
+            const std::vector<HloInstruction*>& loop_state)
+            -> absl::StatusOr<std::vector<HloInstruction*>> {
+          std::vector<HloInstruction*> inner_loop_state = loop_state;
+          TF_ASSIGN_OR_RETURN(
+              HloInstruction * inner_loop_indvar,
+              MakeBinaryHlo(
+                  HloOpcode::kMultiply, induction_var,
+                  MakeR0ConstantHlo(induction_var->parent(), unroll_factor)));
+          for (int i = 0; i < unroll_factor; ++i) {
+            TF_ASSIGN_OR_RETURN(
+                inner_loop_state,
+                loop_body_generator(inner_loop_indvar, inner_loop_state));
+            TF_ASSIGN_OR_RETURN(
+                inner_loop_indvar,
+                MakeBinaryHlo(
+                    HloOpcode::kAdd, inner_loop_indvar,
+                    MakeR0ConstantHlo(inner_loop_indvar->parent(), 1)));
+          }
+          return inner_loop_state;
+        },
+        metadata);
+    if (loop_result_status.ok() && residue_count > 0) {
+      // Handle the residue loop.
+      init_values = loop_result_status.value();
+      int32_t starting_index = trip_count - residue_count;
+      loop_result_status = WhileUtil::MakeCountedLoop(
+          computation, residue_count, init_values,
+          [&, loop_body_generator](
+              HloInstruction* induction_var,
+              const std::vector<HloInstruction*>& loop_state)
+              -> absl::StatusOr<std::vector<HloInstruction*>> {
+            TF_ASSIGN_OR_RETURN(
+                HloInstruction * adjusted_induction_var,
+                MakeBinaryHlo(HloOpcode::kAdd, induction_var,
+                              MakeR0ConstantHlo(induction_var->parent(),
+                                                starting_index)));
+            return loop_body_generator(adjusted_induction_var, loop_state);
+          },
+          metadata);
+    }
+  } else {
+    loop_result_status = WhileUtil::MakeCountedLoop(
+        computation, trip_count, init_values, loop_body_generator, metadata);
+  }
+  return loop_result_status;
 }
 
 }  // namespace xla

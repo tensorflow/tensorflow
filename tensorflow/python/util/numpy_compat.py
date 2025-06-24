@@ -75,7 +75,7 @@ def np_asarray(values, dtype=None, order=None, copy=None):
   """
   if np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0':
     if dtype is not None and np.issubdtype(dtype, np.number):
-      return np.asarray(values, order=order, copy=copy).astype(dtype)
+      return np.asarray(values, order=order, copy=copy).astype(dtype, copy=copy)
     else:
       return np.asarray(values, dtype=dtype, order=order, copy=copy)
   else:

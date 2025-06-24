@@ -21,8 +21,8 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/backends/cpu/runtime/resource_use.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -50,6 +50,11 @@ class InfeedThunk final : public Thunk {
 
   BufferUses buffer_uses() const final;
   ResourceUses resource_uses() const final;
+
+  const InfeedResources& infeed_resources() const { return infeed_resources_; }
+  const std::vector<InfeedBuffer>& infeed_buffers() const {
+    return infeed_buffers_;
+  }
 
  private:
   InfeedThunk(Info info, absl::Span<const InfeedBuffer> infeed_buffers,

@@ -34,7 +34,7 @@ class AutotuneAlgorithm(enum.Enum):
   DEFAULT: The default behavior is implementation specific and may change over
   time.
 
-  HILL_CLIMB: In each optimization step, this algorithm chooses the optimial
+  HILL_CLIMB: In each optimization step, this algorithm chooses the optimal
   parameter and increases its value by 1.
 
   GRADIENT_DESCENT: In each optimization step, this algorithm updates the
@@ -241,6 +241,16 @@ class AutotuneOptions(options_lib.OptionsBase):
       ),
   )
 
+  min_parallelism = options_lib.create_option(
+      name="min_parallelism",
+      ty=int,
+      docstring=(
+          "When true, `.map(num_parallel_calls=AUTOTUNE)` and"
+          " `.batch(num_parallel_calls=AUTOTUNE)` will be at least"
+          " parallelized by `min_parallelism` threads."
+      ),
+  )
+
   def _to_proto(self):
     pb = dataset_options_pb2.AutotuneOptions()
     if self.enabled is not None:
@@ -254,6 +264,8 @@ class AutotuneOptions(options_lib.OptionsBase):
           self.autotune_algorithm)
     if self.initial_parallelism is not None:
       pb.initial_parallelism = self.initial_parallelism
+    if self.min_parallelism is not None:
+      pb.min_parallelism = self.min_parallelism
     return pb
 
   def _from_proto(self, pb):
@@ -268,6 +280,8 @@ class AutotuneOptions(options_lib.OptionsBase):
           pb.autotune_algorithm)
     if pb.WhichOneof("optional_initial_parallelism") is not None:
       self.initial_parallelism = pb.initial_parallelism
+    if pb.WhichOneof("optional_min_parallelism") is not None:
+      self.min_parallelism = pb.min_parallelism
 
   def _set_mutable(self, mutable):
     """Change the mutability value to `mutable` on this options and children."""
@@ -499,7 +513,7 @@ class ServiceOptions(options_lib.OptionsBase):
       ty=bool,
       docstring=(
           "If true, the tf.data service client allocates data to pinned memory,"
-          " which faciliates more efficient copying from host memory to GPU"
+          " which facilitates more efficient copying from host memory to GPU"
           " memory downstream. For gRPC, compression must be disabled for this"
           " to take effect. For alternative data transfer protocols, this may"
           " or may not take effect, depending on the implementation."

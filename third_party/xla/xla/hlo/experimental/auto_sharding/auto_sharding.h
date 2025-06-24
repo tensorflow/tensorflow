@@ -128,10 +128,6 @@ class AutoSharding : public HloModulePass {
 namespace spmd {
 // Function declarations.
 // Their comments can be found in their definitions in *.cc files.
-HloSharding Tile(const Shape& shape, absl::Span<const int64_t> tensor_dims,
-                 absl::Span<const int64_t> mesh_dims,
-                 const DeviceMesh& device_mesh);
-
 std::vector<double> CommunicationReshardingCostVector(
     const StrategyGroup& strategy_group, const Shape& shape,
     const HloSharding& required_sharding,
@@ -212,10 +208,6 @@ HloSharding GetReduceScatterOutput(const HloInstruction* ins,
                                    const InputShardings& input_shardings,
                                    const ShardingStrategy& strategy,
                                    const ClusterEnvironment& cluster_env);
-
-// Populates temporal distance values.
-void PopulateTemporalValues(const CostGraph& cost_graph,
-                            AutoShardingSolverRequest& request);
 
 void AddReplicatedStrategy(
     const HloInstruction* ins, const Shape& shape,

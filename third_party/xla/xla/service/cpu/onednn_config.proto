@@ -36,7 +36,7 @@ message OneDnnOptimizationConfig {
 }
 
 message OneDnnFusionConfig {
-  // These enum needs to be mapped to oneDNN enum for post_op algorithm.
+  // This enum needs to be mapped to oneDNN enum for post_op algorithm.
   // TODO(intel-tf): Add kinds supported by oneDNN.
   enum FusionKind {
     UNDEFINED = 0;
@@ -50,11 +50,12 @@ message OneDnnFusionConfig {
     ELU = 8;
     RELU6 = 9;
     SIGMOID = 10;
+    SUM = 11;  // This represents in-place accumulation.
   }
   repeated FusionKind ops = 1;
   // To avoid protobuf failures for specific decimal values,
   // the original float value alpha is type-casted to int32.
-  int32 alpha_typecast = 2;
+  repeated int32 alpha_typecast = 2;
 }
 
 message OneDnnTensorLayoutProto {
@@ -82,6 +83,9 @@ message OneDnnMatMulConfig {
   reserved 7;  // was user_scratchpad
 
   OneDnnOptimizationConfig optimization_config = 8;
+  OneDnnTensorLayoutProto lhs = 9;
+  OneDnnTensorLayoutProto rhs = 10;
+  OneDnnTensorLayoutProto result = 11;
 }
 
 message OneDnnWindowProto {
