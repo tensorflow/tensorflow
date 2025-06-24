@@ -124,7 +124,7 @@ def all_reduce_v2(t,
       timeout value in seconds. This feature is experimental.
     ordering_token: a resource tensor on the same device as the op to order the
       collectives in a per-device manner by auto control dependency. This
-      argument can be omited when there is one collective Op per `tf.function`,
+      argument can be omitted when there is one collective Op per `tf.function`,
       or when explicit control dependency is used instead of auto control
       dependency.
     max_subdivs_per_device: int specifying the maximum number of subdivisions a
