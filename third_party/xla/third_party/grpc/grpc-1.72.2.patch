@@ -17,6 +17,131 @@ diff --git a/bazel/cc_grpc_library.bzl b/bazel/cc_grpc_library.bzl
              **kwargs
          )
  
+diff --git a/src/core/config/config_vars.cc b/src/core/config/config_vars.cc
+--- a/src/core/config/config_vars.cc
++++ b/src/core/config/config_vars.cc
+@@ -35,10 +35,10 @@
+ #define GRPC_ENABLE_FORK_SUPPORT_DEFAULT false
+ #endif  // GRPC_ENABLE_FORK_SUPPORT
+ 
+-ABSL_FLAG(std::vector<std::string>, grpc_experiments, {},
++ABSL_FLAG(std::vector<std::string>, grpc_experiments_, {},
+           "A comma separated list of currently active experiments. Experiments "
+           "may be prefixed with a '-' to disable them.");
+-ABSL_FLAG(absl::optional<int32_t>, grpc_client_channel_backup_poll_interval_ms,
++ABSL_FLAG(absl::optional<int32_t>, grpc_client_channel_backup_poll_interval_ms_,
+           {},
+           "Declares the interval in ms between two backup polls on client "
+           "channels. These polls are run in the timer thread so that gRPC can "
+@@ -46,33 +46,33 @@ ABSL_FLAG(absl::optional<int32_t>, grpc_client_channel_backup_poll_interval_ms,
+           "thread. They help reconnect disconnected client channels (mostly "
+           "due to idleness), so that the next RPC on this channel won't fail. "
+           "Set to 0 to turn off the backup polls.");
+-ABSL_FLAG(absl::optional<std::string>, grpc_dns_resolver, {},
++ABSL_FLAG(absl::optional<std::string>, grpc_dns_resolver_, {},
+           "Declares which DNS resolver to use. The default is ares if gRPC is "
+           "built with c-ares support. Otherwise, the value of this environment "
+           "variable is ignored.");
+-ABSL_FLAG(std::vector<std::string>, grpc_trace, {},
++ABSL_FLAG(std::vector<std::string>, grpc_trace_, {},
+           "A comma separated list of tracers that provide additional insight "
+           "into how gRPC C core is processing requests via debug logs.");
+-ABSL_FLAG(absl::optional<std::string>, grpc_verbosity, {},
++ABSL_FLAG(absl::optional<std::string>, grpc_verbosity_, {},
+           "Logging verbosity.");
+-ABSL_FLAG(absl::optional<bool>, grpc_enable_fork_support, {},
++ABSL_FLAG(absl::optional<bool>, grpc_enable_fork_support_, {},
+           "Enable fork support");
+-ABSL_FLAG(absl::optional<std::string>, grpc_poll_strategy, {},
++ABSL_FLAG(absl::optional<std::string>, grpc_poll_strategy_, {},
+           "Declares which polling engines to try when starting gRPC. This is a "
+           "comma-separated list of engines, which are tried in priority order "
+           "first -> last.");
+-ABSL_FLAG(absl::optional<bool>, grpc_abort_on_leaks, {},
++ABSL_FLAG(absl::optional<bool>, grpc_abort_on_leaks_, {},
+           "A debugging aid to cause a call to abort() when gRPC objects are "
+           "leaked past grpc_shutdown()");
+-ABSL_FLAG(absl::optional<std::string>, grpc_system_ssl_roots_dir, {},
++ABSL_FLAG(absl::optional<std::string>, grpc_system_ssl_roots_dir_, {},
+           "Custom directory to SSL Roots");
+-ABSL_FLAG(absl::optional<std::string>, grpc_default_ssl_roots_file_path, {},
++ABSL_FLAG(absl::optional<std::string>, grpc_default_ssl_roots_file_path_, {},
+           "Path to the default SSL roots file.");
+-ABSL_FLAG(absl::optional<bool>, grpc_not_use_system_ssl_roots, {},
++ABSL_FLAG(absl::optional<bool>, grpc_not_use_system_ssl_roots_, {},
+           "Disable loading system root certificates.");
+-ABSL_FLAG(absl::optional<std::string>, grpc_ssl_cipher_suites, {},
++ABSL_FLAG(absl::optional<std::string>, grpc_ssl_cipher_suites_, {},
+           "A colon separated list of cipher suites to use with OpenSSL");
+-ABSL_FLAG(absl::optional<bool>, grpc_cpp_experimental_disable_reflection, {},
++ABSL_FLAG(absl::optional<bool>, grpc_cpp_experimental_disable_reflection_, {},
+           "EXPERIMENTAL. Only respected when there is a dependency on "
+           ":grpc++_reflection. If true, no reflection server will be "
+           "automatically added.");
+@@ -81,50 +81,50 @@ namespace grpc_core {
+ 
+ ConfigVars::ConfigVars(const Overrides& overrides)
+     : client_channel_backup_poll_interval_ms_(
+-          LoadConfig(FLAGS_grpc_client_channel_backup_poll_interval_ms,
++          LoadConfig(FLAGS_grpc_client_channel_backup_poll_interval_ms_,
+                      "GRPC_CLIENT_CHANNEL_BACKUP_POLL_INTERVAL_MS",
+                      overrides.client_channel_backup_poll_interval_ms, 5000)),
+       enable_fork_support_(LoadConfig(
+-          FLAGS_grpc_enable_fork_support, "GRPC_ENABLE_FORK_SUPPORT",
++          FLAGS_grpc_enable_fork_support_, "GRPC_ENABLE_FORK_SUPPORT",
+           overrides.enable_fork_support, GRPC_ENABLE_FORK_SUPPORT_DEFAULT)),
+-      abort_on_leaks_(LoadConfig(FLAGS_grpc_abort_on_leaks,
++      abort_on_leaks_(LoadConfig(FLAGS_grpc_abort_on_leaks_,
+                                  "GRPC_ABORT_ON_LEAKS",
+                                  overrides.abort_on_leaks, false)),
+       not_use_system_ssl_roots_(LoadConfig(
+-          FLAGS_grpc_not_use_system_ssl_roots, "GRPC_NOT_USE_SYSTEM_SSL_ROOTS",
++          FLAGS_grpc_not_use_system_ssl_roots_, "GRPC_NOT_USE_SYSTEM_SSL_ROOTS",
+           overrides.not_use_system_ssl_roots, false)),
+       cpp_experimental_disable_reflection_(
+-          LoadConfig(FLAGS_grpc_cpp_experimental_disable_reflection,
++          LoadConfig(FLAGS_grpc_cpp_experimental_disable_reflection_,
+                      "GRPC_CPP_EXPERIMENTAL_DISABLE_REFLECTION",
+                      overrides.cpp_experimental_disable_reflection, false)),
+-      dns_resolver_(LoadConfig(FLAGS_grpc_dns_resolver, "GRPC_DNS_RESOLVER",
++      dns_resolver_(LoadConfig(FLAGS_grpc_dns_resolver_, "GRPC_DNS_RESOLVER",
+                                overrides.dns_resolver, "")),
+-      verbosity_(LoadConfig(FLAGS_grpc_verbosity, "GRPC_VERBOSITY",
++      verbosity_(LoadConfig(FLAGS_grpc_verbosity_, "GRPC_VERBOSITY",
+                             overrides.verbosity,
+                             GPR_DEFAULT_LOG_VERBOSITY_STRING)),
+-      poll_strategy_(LoadConfig(FLAGS_grpc_poll_strategy, "GRPC_POLL_STRATEGY",
++      poll_strategy_(LoadConfig(FLAGS_grpc_poll_strategy_, "GRPC_POLL_STRATEGY",
+                                 overrides.poll_strategy, "all")),
+       ssl_cipher_suites_(LoadConfig(
+-          FLAGS_grpc_ssl_cipher_suites, "GRPC_SSL_CIPHER_SUITES",
++          FLAGS_grpc_ssl_cipher_suites_, "GRPC_SSL_CIPHER_SUITES",
+           overrides.ssl_cipher_suites,
+           "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_"
+           "SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:"
+           "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384")),
+-      experiments_(LoadConfig(FLAGS_grpc_experiments, "GRPC_EXPERIMENTS",
++      experiments_(LoadConfig(FLAGS_grpc_experiments_, "GRPC_EXPERIMENTS",
+                               overrides.experiments, "")),
+-      trace_(LoadConfig(FLAGS_grpc_trace, "GRPC_TRACE", overrides.trace, "")),
++      trace_(LoadConfig(FLAGS_grpc_trace_, "GRPC_TRACE", overrides.trace, "")),
+       override_system_ssl_roots_dir_(overrides.system_ssl_roots_dir),
+       override_default_ssl_roots_file_path_(
+           overrides.default_ssl_roots_file_path) {}
+ 
+ std::string ConfigVars::SystemSslRootsDir() const {
+-  return LoadConfig(FLAGS_grpc_system_ssl_roots_dir,
++  return LoadConfig(FLAGS_grpc_system_ssl_roots_dir_,
+                     "GRPC_SYSTEM_SSL_ROOTS_DIR", override_system_ssl_roots_dir_,
+                     "");
+ }
+ 
+ std::string ConfigVars::DefaultSslRootsFilePath() const {
+-  return LoadConfig(FLAGS_grpc_default_ssl_roots_file_path,
++  return LoadConfig(FLAGS_grpc_default_ssl_roots_file_path_,
+                     "GRPC_DEFAULT_SSL_ROOTS_FILE_PATH",
+                     override_default_ssl_roots_file_path_, "");
+ }
 diff --git a/src/core/lib/promise/party.h b/src/core/lib/promise/party.h
 --- a/src/core/lib/promise/party.h
 +++ b/src/core/lib/promise/party.h

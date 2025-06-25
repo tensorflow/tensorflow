@@ -19,10 +19,9 @@ diff --git a/src/device/common.h b/src/device/common.h
  struct ncclShmemGroup {
    ncclConnInfo *recvConns[NCCL_MAX_ARITY];
 diff --git a/src/device/generate.py b/src/device/generate.py
-index a0d2259..62d6014 100755
 --- a/src/device/generate.py
 +++ b/src/device/generate.py
-@@ -194,8 +194,8 @@ kernel_funcs = sorted(set(best_kernel(*fn) for fn in primary_funcs))
+@@ -197,8 +197,8 @@ kernel_funcs = sorted(set(best_kernel(*fn) for fn in primary_funcs))
  
  ################################################################################
  
@@ -33,7 +32,7 @@ index a0d2259..62d6014 100755
    out = f.write
    out('#include "common.h"\n')
    out("\n")
-@@ -210,7 +210,7 @@ with open(os.path.join(gensrc, "device_table.cu"), "w") as f:
+@@ -213,7 +213,7 @@ with open(os.path.join(gensrc, "device_table.cu"), "w") as f:
        out("#endif\n")
    out("\n")
  
@@ -42,7 +41,7 @@ index a0d2259..62d6014 100755
    index = 0
    for fn in primary_funcs:
      sym = paste("_", "ncclDevFunc", *fn)
-@@ -262,28 +262,43 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
+@@ -265,28 +265,43 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
  
    # List of all kernel function pointers.
    out("extern int const ncclDevKernelCount = %d;\n" % len(kernel_funcs))
@@ -92,7 +91,7 @@ index a0d2259..62d6014 100755
      index += 1
    out("nullptr};\n")
    out("\n")
-@@ -302,7 +317,7 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
+@@ -305,7 +320,7 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
  # "coll" is reflected in the name: formally that no two funcs having different
  # coll's map to the same filename.
  def impl_filename(coll, redop, ty, algo, proto):
@@ -101,7 +100,7 @@ index a0d2259..62d6014 100755
  
  # Partition the functions and kernels to the .cu filenames. The partition is
  # a dictionary mapping filename to (coll, func-tuple list)
-@@ -323,7 +338,7 @@ name_to_kernels = partition_by_name(kfn for kfn in kernel_funcs if kfn[0]!="Gene
+@@ -326,7 +341,7 @@ name_to_kernels = partition_by_name(kfn for kfn in kernel_funcs if kfn[0]!="Gene
  with open(os.path.join(gensrc, "rules.mk"), "w") as f:
    out = f.write
    impl_names = sorted(name_to_funcs.keys())
@@ -110,3 +109,16 @@ index a0d2259..62d6014 100755
    out("LIB_OBJS_GEN = $(patsubst %, $(OBJDIR)/genobj/%.o, {names})\n"
        .format(names=" ".join(names)))
    out("\n")
+diff --git a/src/ras/ras.cc b/src/ras/ras.cc
+--- a/src/ras/ras.cc
++++ b/src/ras/ras.cc
+@@ -5,7 +5,9 @@
+  ************************************************************************/
+ 
+ // Workaround for libstdc++ trying to force public visibility of std:: symbols.  We don't want to do that in libnccl.so.
++#if defined(__GLIBCXX__)
+ #include <bits/c++config.h>
++#endif
+ #undef _GLIBCXX_VISIBILITY
+ #define _GLIBCXX_VISIBILITY(V)
+ #include <cstddef>

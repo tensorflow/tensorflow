@@ -225,6 +225,7 @@ _merge_archive = rule(
         #     default = ["@bazel_tools//tools/cpp:crosstool"]
         # ),
     },
+    toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],
     outputs = {"out": "lib%{name}.a"},
 )
 """Merges srcs into a single archive."""
@@ -314,8 +315,16 @@ def cuda_rdc_library(name, hdrs = None, copts = None, linkstatic = True, **kwarg
     native.cc_library(
         name = lib,
         hdrs = hdrs,
-        copts = _rdc_copts() + copts,
+        copts = _rdc_copts() + copts + [
+          "--cuda-path=external/cuda_nvcc",
+          "--cuda-feature=+ptx83",
+        ],
         linkstatic = linkstatic,
+        additional_compiler_inputs = [
+          "@cuda_nvcc//:nvvm",
+          "@cuda_nvcc//:bin",
+          "@cuda_nvcc//:headers",
+        ],
         **kwargs
     )
 
