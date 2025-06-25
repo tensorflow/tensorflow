@@ -171,3 +171,8 @@ Learn more about the
 ## License
 
 [Apache License 2.0](LICENSE)
+
+## Community Contributions
+
+This repository has inspired a wide range of applications, including research and deployments in diverse fields such as computer vision, natural language processing and telephony.
+_Contributor Note_: This repository also supports my ongoing work in telephony and real-time signal processing for communication systems.
