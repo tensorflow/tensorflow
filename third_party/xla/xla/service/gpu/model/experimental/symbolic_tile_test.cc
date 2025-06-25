@@ -27,7 +27,6 @@ namespace xla::gpu {
 namespace {
 
 using ::mlir::AffineExpr;
-using ::mlir::AffineMap;
 
 using SymbolicTileTest = HloHardwareIndependentTestBase;
 
@@ -37,16 +36,23 @@ TEST_F(SymbolicTileTest, StringFormat) {
   mlir::bindDims(&mlir_context, tid0, tid1);
   mlir::bindSymbols(&mlir_context, ts0, ts1, rt);
   auto c1 = mlir::getAffineConstantExpr(1, &mlir_context);
+  auto c16 = mlir::getAffineConstantExpr(16, &mlir_context);
+  auto c32 = mlir::getAffineConstantExpr(32, &mlir_context);
 
-  auto map = AffineMap::get(
-      2, 3, {tid0 * ts0, rt + tid1 * ts1, ts0, ts1, c1, c1}, &mlir_context);
-  ExperimentalSymbolicTile tile{map, {nullptr}};
+  ExperimentalSymbolicTile tile{&mlir_context,
+                                /*num_tile_ids=*/2,
+                                /*offsets=*/{tid0 * ts0, rt + tid1 * ts1},
+                                /*sizes=*/{ts0, ts1},
+                                /*strides=*/{c1, c1},
+                                /*upper_bounds=*/{c16, c32},
+                                /*rt_vars=*/{nullptr}};
 
   EXPECT_THAT(tile.ToString(), MatchIndexingString(R"(
     (tid_0, tid_1)[ts_0, ts_1]{rt_0} ->
-      [tid_0 * ts_0, tid_1 * ts_1 + rt_0]
-      [ts_0, ts_1]
-      [1, 1]
+      offsets [tid_0 * ts_0, tid_1 * ts_1 + rt_0]
+      sizes [ts_0, ts_1]
+      strides [1, 1]
+      upper bounds [16, 32]
       rt_0: nullptr
   )"));
 }

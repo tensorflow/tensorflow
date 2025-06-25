@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
-#include "absl/log/check.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -34,9 +33,9 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+using ::llvm::ArrayRef;
 using ::llvm::SmallVector;
 using ::mlir::AffineExpr;
-using ::mlir::AffineMap;
 
 SmallVector<std::string> GetVarNames(int64_t num_vars, llvm::StringRef prefix) {
   SmallVector<std::string> var_names;
@@ -47,13 +46,25 @@ SmallVector<std::string> GetVarNames(int64_t num_vars, llvm::StringRef prefix) {
   return var_names;
 }
 
-std::string ToStringImpl(AffineMap affine_map,
-                         absl::Span<const HloInstruction* const> rt_vars,
-                         absl::Span<const std::string> tid_names,
-                         absl::Span<const std::string> ts_names,
-                         absl::Span<const std::string> rt_names) {
-  CHECK_EQ(tid_names.size(), affine_map.getNumDims());
-  CHECK_EQ(ts_names.size() + rt_names.size(), affine_map.getNumSymbols());
+}  // namespace
+
+ExperimentalSymbolicTile::ExperimentalSymbolicTile(
+    mlir::MLIRContext* mlir_context, int64_t num_tile_ids,
+    ArrayRef<AffineExpr> offsets, ArrayRef<AffineExpr> sizes,
+    ArrayRef<AffineExpr> strides, ArrayRef<AffineExpr> upper_bounds,
+    ArrayRef<const HloInstruction*> rt_vars)
+    : mlir_context_(mlir_context),
+      num_tile_ids_(num_tile_ids),
+      offsets_(offsets.begin(), offsets.end()),
+      sizes_(sizes.begin(), sizes.end()),
+      strides_(strides.begin(), strides.end()),
+      upper_bounds_(upper_bounds.begin(), upper_bounds.end()),
+      rt_vars_(rt_vars.begin(), rt_vars.end()) {}
+
+std::string ExperimentalSymbolicTile::ToString() const {
+  auto tid_names = GetVarNames(num_tile_ids(), "tid_");
+  auto ts_names = GetVarNames(num_tile_ids(), "ts_");
+  auto rt_names = GetVarNames(num_rt_vars(), "rt_");
 
   std::string s;
   llvm::raw_string_ostream ss(s);
@@ -70,51 +81,24 @@ std::string ToStringImpl(AffineMap affine_map,
   symbol_names.reserve(ts_names.size() + rt_names.size());
   symbol_names.append(ts_names.begin(), ts_names.end());
   symbol_names.append(rt_names.begin(), rt_names.end());
-  int64_t num_tiled_results = affine_map.getNumResults() / 3;
-  auto map_results = affine_map.getResults();
   auto print_expr = [&](AffineExpr expr) {
     ss << ::xla::ToString(expr, tid_names, symbol_names);
   };
   // Print offsets.
-  ss << " -> [";
-  llvm::interleaveComma(map_results.take_front(num_tiled_results), ss,
-                        print_expr);
-  ss << "] [";
-  llvm::interleaveComma(
-      map_results.drop_front(num_tiled_results).take_front(num_tiled_results),
-      ss, print_expr);
-  ss << "] [";
-  llvm::interleaveComma(map_results.take_back(num_tiled_results), ss,
-                        print_expr);
+  ss << " -> offsets [";
+  llvm::interleaveComma(offsets_, ss, print_expr);
+  ss << "] sizes [";
+  llvm::interleaveComma(sizes_, ss, print_expr);
+  ss << "] strides [";
+  llvm::interleaveComma(strides_, ss, print_expr);
+  ss << "] upper bounds [";
+  llvm::interleaveComma(upper_bounds_, ss, print_expr);
   ss << ']';
-  for (const auto& [hlo, rt_var_name] : llvm::zip(rt_vars, rt_names)) {
+  for (const auto& [hlo, rt_var_name] : llvm::zip(rt_vars_, rt_names)) {
     ss << " " << rt_var_name << ": " << (hlo ? hlo->ToString() : "nullptr")
        << "\n";
   }
   return s;
-}
-
-}  // namespace
-
-std::string ExperimentalSymbolicTile::ToString() const {
-  return ToStringImpl(tile_map, rt_vars, GetVarNames(num_tids(), "tid_"),
-                      GetVarNames(num_tids(), "ts_"),
-                      GetVarNames(num_rt_vars(), "rt_"));
-}
-
-AffineMap ExperimentalSymbolicTile::offset_map() const {
-  int64_t num_dims = tile_map.getNumResults();
-  return tile_map.getSliceMap(0, num_dims);
-}
-
-AffineMap ExperimentalSymbolicTile::size_map() const {
-  int64_t num_dims = tile_map.getNumResults();
-  return tile_map.getSliceMap(num_dims, num_dims);
-}
-
-AffineMap ExperimentalSymbolicTile::stride_map() const {
-  int64_t num_dims = tile_map.getNumResults();
-  return tile_map.getSliceMap(2 * num_dims, num_dims);
 }
 
 }  // namespace xla::gpu

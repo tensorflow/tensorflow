@@ -39,8 +39,6 @@ namespace {
 
 using ::llvm::SmallVector;
 using ::mlir::AffineExpr;
-using ::mlir::AffineMap;
-using ::mlir::getAffineDimExpr;
 using ::mlir::MLIRContext;
 
 TiledOperands PropagateTileToInputForCwiseOp(
@@ -51,47 +49,42 @@ TiledOperands PropagateTileToInputForCwiseOp(
 
 std::optional<TiledOperands> PropagateTileToInputForPadOp(
     const HloPadInstruction& pad, const ExperimentalSymbolicTile& result_tile) {
-  MLIRContext* ctx = result_tile.tile_map.getContext();
+  MLIRContext* ctx = result_tile.mlir_context();
   const PaddingConfig& padding_config = pad.padding_config();
 
-  // We don't handle interior padding for now.
-  for (const auto& dimension : padding_config.dimensions()) {
-    if (dimension.interior_padding() != 0) {
+  int64_t num_result_dims = result_tile.num_result_dims();
+  SmallVector<AffineExpr, 3> new_offsets, new_sizes, new_bounds;
+  new_offsets.reserve(num_result_dims);
+  new_sizes.reserve(num_result_dims);
+  new_bounds.reserve(num_result_dims);
+
+  // For each dimension, the low padding is subtracted from the offsets.
+  for (const auto [current_offset, current_size, padding_dim, operand_dim] :
+       llvm::zip(result_tile.offsets(), result_tile.sizes(),
+                 padding_config.dimensions(),
+                 pad.operand(0)->shape().dimensions())) {
+    if (padding_dim.interior_padding() != 0) {
       VLOG(2)
           << "Can't propagate tile to input of pad op with interior padding.";
       return std::nullopt;
     }
+    new_offsets.push_back(current_offset - padding_dim.edge_padding_low());
+    new_sizes.push_back(current_size);
+    new_bounds.push_back(mlir::getAffineConstantExpr(operand_dim, ctx));
   }
 
-  int64_t num_result_dims = result_tile.tile_map.getNumResults();
-  std::vector<AffineExpr> transformation_exprs;
-  transformation_exprs.reserve(num_result_dims);
-
-  // For each dimension, the low padding is subtracted from the offsets.
-  for (const auto [id, padding_dimension] :
-       llvm::enumerate(padding_config.dimensions())) {
-    AffineExpr offset_id = getAffineDimExpr(id, ctx);
-    transformation_exprs.push_back(offset_id -
-                                   padding_dimension.edge_padding_low());
-  }
-
-  // The tile sizes as well as the strides are unchanged in the undilated case.
-  for (int64_t id = transformation_exprs.size(); id < num_result_dims; ++id) {
-    transformation_exprs.push_back(getAffineDimExpr(id, ctx));
-  }
-
-  AffineMap transformation_map = AffineMap::get(
-      num_result_dims, /*symbolCount=*/0, transformation_exprs, ctx);
-
-  ExperimentalSymbolicTile operand_tile{
-      transformation_map.compose(result_tile.tile_map), result_tile.rt_vars};
+  ExperimentalSymbolicTile operand_tile{ctx,
+                                        result_tile.num_tile_ids(),
+                                        new_offsets,
+                                        new_sizes,
+                                        result_tile.strides(),
+                                        new_bounds,
+                                        result_tile.rt_vars()};
 
   // Pad also has a padding value, but it is a scalar, therefore we only need
   // to propagate the inputs.
   ExperimentalSymbolicTile padding_value_tile{
-      AffineMap::get(result_tile.tile_map.getNumDims(),
-                     result_tile.tile_map.getNumSymbols(), ctx),
-      result_tile.rt_vars};
+      ctx, result_tile.num_tile_ids(), {}, {}, {}, {}, {}};
 
   return TiledOperands{SymbolicTiles{operand_tile, padding_value_tile},
                        ConstraintExpression::GetAlwaysSatisfied()};
