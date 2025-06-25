@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <limits>
 
+#include <gtest/gtest.h>
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
