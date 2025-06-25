@@ -487,7 +487,7 @@ TEST(TfrtGpuClientTest, AcquireDonation) {
   auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
       std::move(buffer_async_value_ref),
       tsl::MakeAvailableAsyncValueRef<GpuEvent>(),
-      tsl::MakeAvailableAsyncValueRef<GpuEvent>());
+      tsl::MakeAvailableAsyncValueRef<GpuEvent>(), nullptr);
   auto memory_space = device->default_memory_space().value();
   auto tfrt_buffer = std::make_unique<TfrtGpuBuffer>(
       on_device_shape, std::move(tracked_device_buffer), tfrt_client, device,

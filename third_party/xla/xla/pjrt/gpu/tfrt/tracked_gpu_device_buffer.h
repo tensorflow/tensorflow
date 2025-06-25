@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <type_traits>
 #include <utility>
 
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/event.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/framework/allocator.h"
 
@@ -88,6 +90,7 @@ class TrackedGpuDeviceBuffer {
       tsl::AsyncValueRef<GpuDeviceMemory> buffer,
       tsl::AsyncValueRef<GpuEvent> definition_event,
       tsl::AsyncValueRef<GpuEvent> ready_event,
+      std::shared_ptr<stream_executor::Event> cuda_event,
       absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
   TrackedGpuDeviceBuffer(TrackedGpuDeviceBuffer&&) = default;
@@ -128,6 +131,10 @@ class TrackedGpuDeviceBuffer {
 
   friend class TfrtGpuBuffer;
 
+  // Gets the cuda execute event to wait if this buffer depends on executions
+  // from other cuda streams.
+  stream_executor::Event* GetCudaEvent() const { return cuda_event_.get(); }
+
  private:
   tsl::AsyncValueRef<GpuDeviceMemory> buffer_;
 
@@ -146,6 +153,8 @@ class TrackedGpuDeviceBuffer {
   // used to make sure that allocations are sequenced with respect to
   // deallocations in program order.
   tsl::AsyncValueRef<GpuEvent> deallocation_event_;
+
+  std::shared_ptr<stream_executor::Event> cuda_event_;
 
   // A callback to call when the TrackedGpuDeviceBuffer is about to be
   // destroyed.
