@@ -55,7 +55,7 @@ struct GpuClientOptions {
 
   std::optional<int> slice_index;
 
-  bool use_tfrt_gpu_client = false;
+  bool use_tfrt_gpu_client = true;
 };
 
 }  //  namespace xla

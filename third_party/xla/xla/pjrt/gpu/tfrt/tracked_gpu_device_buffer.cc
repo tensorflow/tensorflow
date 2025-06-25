@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/framework/allocator.h"
@@ -80,10 +82,12 @@ TrackedGpuDeviceBuffer::TrackedGpuDeviceBuffer(
     tsl::AsyncValueRef<GpuDeviceMemory> buffer,
     tsl::AsyncValueRef<GpuEvent> definition_event,
     tsl::AsyncValueRef<GpuEvent> ready_event,
+    std::shared_ptr<stream_executor::Event> cuda_event,
     absl::AnyInvocable<void() &&> on_delete_callback)
     : buffer_(std::move(buffer)),
       definition_event_(std::move(definition_event)),
       ready_event_(std::move(ready_event)),
+      cuda_event_(std::move(cuda_event)),
       on_delete_callback_(std::move(on_delete_callback)) {
   VLOG(4) << "TrackedGpuDeviceBuffer::TrackedGpuDeviceBuffer: " << this << "\n "
           << tsl::CurrentStackTrace();
