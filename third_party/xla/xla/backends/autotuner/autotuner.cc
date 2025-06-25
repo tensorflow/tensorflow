@@ -32,6 +32,8 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace xla {
@@ -50,63 +52,62 @@ tsl::Fprint128 GetFingerprint(const HloInstruction* instr) {
 
 absl::StatusOr<std::unique_ptr<Autotuner>> Autotuner::Create(
     std::vector<std::unique_ptr<CodegenBackend>> codegen_backends,
-    std::unique_ptr<Profiler> profiler, AutotuneConfig autotune_config) {
+    std::unique_ptr<Profiler> profiler, AutotuneConfig autotune_config,
+    tsl::thread::ThreadPool* thread_pool) {
   if (codegen_backends.empty()) {
     return absl::InvalidArgumentError("No codegen backends provided");
   }
-  return absl::WrapUnique(new Autotuner(std::move(codegen_backends),
-                                        std::move(profiler),
-                                        std::move(autotune_config)));
+  return absl::WrapUnique(
+      new Autotuner(std::move(codegen_backends), std::move(profiler),
+                    std::move(autotune_config), thread_pool));
 }
 
 absl::Status Autotuner::Autotune(HloInstruction* instr) {
   VLOG(1) << "Autotuning HLO: " << instr->ToString();
   TF_ASSIGN_OR_RETURN(auto best_config, GetBestConfig(instr));
-  CodegenBackend* best_codegen_backend = best_config.first;
-  return best_codegen_backend->ApplyConfig(*instr, *best_config.second);
+  CodegenBackend* best_codegen_backend = best_config.codegen_backend;
+  return best_codegen_backend->ApplyConfig(*instr, *best_config.backend_config);
 }
 
-absl::StatusOr<std::pair<CodegenBackend*, std::unique_ptr<BackendConfig>>>
-Autotuner::GetBestConfig(HloInstruction* instr) {
-  std::unique_ptr<BackendConfig> best_config;
-  CodegenBackend* best_codegen_backend = nullptr;
+absl::StatusOr<Autotuner::Config> Autotuner::GetBestConfig(
+    HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(std::vector<Config> supported_configs,
+                      GetSupportedConfigs(instr));
+  if (supported_configs.empty()) {
+    return absl::InternalError("No supported configs found!");
+  }
+  VLOG(1) << "Found " << supported_configs.size() << " supported configs.";
+
+  std::vector<absl::StatusOr<std::unique_ptr<Executable>>> executables =
+      CompileAll(instr, supported_configs);
+
+  std::vector<Config> valid_configs;
+  std::vector<std::unique_ptr<Executable>> valid_executables;
+  for (int i = 0; i < supported_configs.size(); ++i) {
+    if (executables[i].ok()) {
+      valid_configs.push_back(std::move(supported_configs[i]));
+      valid_executables.push_back(std::move(executables[i].value()));
+    }
+  }
+  VLOG(1) << "Successfully compiled " << valid_configs.size()
+          << " configs out of " << supported_configs.size() << " configs.";
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<ProfileResult> results,
+      profiler_->ProfileWithSharedBuffers(std::move(valid_executables)));
   absl::Duration min_duration = absl::InfiniteDuration();
-  for (auto& codegen_backend : codegen_backends_) {
-    TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
-                        codegen_backend->GetSupportedConfigs(*instr));
-    VLOG(1) << "Got " << configs.size()
-            << " configs from codegen backend: " << codegen_backend->name();
-    std::vector<std::unique_ptr<Executable>> executables;
-    std::vector<std::unique_ptr<BackendConfig>> valid_configs;
-    for (auto& config : configs) {
-      VLOG(2) << "Trying to compile config: " << config->DebugString();
-      auto executable = codegen_backend->Compile(*instr, *config);
-      // TODO b/407495547: Change it to tolerate only specific compilation
-      // errors, as opposed to all errors.
-      if (!executable.ok() && autotune_config_.skip_failing_configs) {
-        VLOG(1) << "Failed to compile: " << executable.status();
-        continue;
-      }
-      executables.push_back(std::move(executable.value()));
-      valid_configs.push_back(std::move(config));
-    }
-    CHECK_EQ(executables.size(), valid_configs.size());
-    TF_ASSIGN_OR_RETURN(
-        std::vector<ProfileResult> results,
-        profiler_->ProfileWithSharedBuffers(std::move(executables)));
-    for (int i = 0; i < results.size(); ++i) {
-      if (results[i].duration < min_duration) {
-        min_duration = results[i].duration;
-        best_config = std::move(valid_configs[i]);
-        best_codegen_backend = codegen_backend.get();
-      }
+  Config best_config{nullptr, nullptr};
+  for (int i = 0; i < results.size(); ++i) {
+    if (results[i].duration < min_duration) {
+      min_duration = results[i].duration;
+      best_config = std::move(valid_configs[i]);
     }
   }
-  if (best_config == nullptr) {
-    return absl::InternalError("No config found!");
+  if (best_config.codegen_backend == nullptr) {
+    return absl::InternalError("No valid config found!");
   }
-  CHECK(best_codegen_backend != nullptr);
-  return std::make_pair(best_codegen_backend, std::move(best_config));
+  CHECK(best_config.backend_config != nullptr);
+  return best_config;
 }
 
 Autotuner::InstructionsByFingerprint Autotuner::GetAutotuningCandidates(
@@ -135,14 +136,56 @@ absl::Status Autotuner::Autotune(HloModule* module,
           << " unique instructions.";
   for (auto& [_, instructions] : instrunctions_by_fingerprint) {
     CHECK(!instructions.empty());
-    TF_ASSIGN_OR_RETURN(auto best_config, GetBestConfig(instructions[0]));
-    CodegenBackend* best_codegen_backend = best_config.first;
+    VLOG(1) << "Autotuning instruction:" << instructions[0]->ToString();
+    TF_ASSIGN_OR_RETURN(Config best_config, GetBestConfig(instructions[0]));
+    CodegenBackend* best_codegen_backend = best_config.codegen_backend;
     for (auto* instr : instructions) {
-      TF_RETURN_IF_ERROR(
-          best_codegen_backend->ApplyConfig(*instr, *best_config.second));
+      TF_RETURN_IF_ERROR(best_codegen_backend->ApplyConfig(
+          *instr, *best_config.backend_config));
     }
   }
   return absl::OkStatus();
+}
+
+absl::StatusOr<std::vector<Autotuner::Config>> Autotuner::GetSupportedConfigs(
+    HloInstruction* instr) {
+  std::vector<Config> configs;
+  for (auto& codegen_backend : codegen_backends_) {
+    std::vector<std::unique_ptr<BackendConfig>> per_backend_configs;
+    TF_ASSIGN_OR_RETURN(per_backend_configs,
+                        codegen_backend->GetSupportedConfigs(*instr));
+    for (auto& config : per_backend_configs) {
+      configs.push_back({codegen_backend.get(), std::move(config)});
+    }
+  }
+  return configs;
+}
+
+std::vector<absl::StatusOr<std::unique_ptr<Executable>>> Autotuner::CompileAll(
+    HloInstruction* instr, std::vector<Config>& configs) {
+  if (thread_pool_ == nullptr) {
+    std::vector<absl::StatusOr<std::unique_ptr<Executable>>> executables;
+    executables.reserve(configs.size());
+    for (auto& config : configs) {
+      executables.emplace_back(
+          config.codegen_backend->Compile(*instr, *config.backend_config));
+    }
+    return executables;
+  }
+
+  std::vector<absl::StatusOr<std::unique_ptr<Executable>>> executables(
+      configs.size());
+  tsl::BlockingCounter counter(configs.size());
+  for (int i = 0; i < configs.size(); ++i) {
+    auto compile_fn = [&, i]() {
+      executables[i] = configs[i].codegen_backend->Compile(
+          *instr, *configs[i].backend_config);
+      counter.DecrementCount();
+    };
+    thread_pool_->Schedule(compile_fn);
+  }
+  counter.Wait();
+  return executables;
 }
 
 }  // namespace xla
