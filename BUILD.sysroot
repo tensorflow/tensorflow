@@ -1,0 +1,48 @@
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        [
+            "lib/x86_64-linux-gnu/ld*",
+            "lib/x86_64-linux-gnu/libc*",
+            "lib/x86_64-linux-gnu/libdl*",
+            "lib/x86_64-linux-gnu/libgcc*",
+            "lib/x86_64-linux-gnu/libm*",
+            "lib/x86_64-linux-gnu/libpthread*",
+            "lib/x86_64-linux-gnu/librt*",
+            "lib/x86_64-linux-gnu/libutil*",
+            "lib64/**",
+            "usr/include/*.h",
+            "usr/include/arpa/**",
+            "usr/include/asm-generic/**",
+            "usr/include/linux/**",
+            "usr/include/net/**",
+            "usr/include/netinet/**",
+            "usr/include/rpc/**",
+            "usr/include/sys/**",
+            "usr/include/x86_64-linux-gnu/**",
+            "usr/lib/gcc/**",
+            "usr/lib/x86_64-linux-gnu/*crt*.o",
+            "usr/lib/x86_64-linux-gnu/libc_nonshared.a",
+            "usr/lib/x86_64-linux-gnu/libc.a",
+            "usr/lib/x86_64-linux-gnu/libc.so",
+            "usr/lib/x86_64-linux-gnu/libdl*",
+            "usr/lib/x86_64-linux-gnu/libm*",
+            "usr/lib/x86_64-linux-gnu/libpthread*",
+            "usr/lib/x86_64-linux-gnu/libresolv.so",
+            "usr/lib/x86_64-linux-gnu/librt*",
+            "usr/lib/x86_64-linux-gnu/libutil*",
+        ],
+        exclude = [
+            # The sysroot contains libstdc++, but we use libc++ from our toolchain
+            # repo. Exclude these files so we don't pull them into the sandbox
+            # unnecessarily. When upgrading, make sure the newest libstdc++ is
+            # excluded.
+            "usr/include/c++/**",
+            "usr/include/x86_64-linux-gnu/c++/**",
+            "usr/lib/gcc/x86_64-linux-gnu/6/libstdc++*",
+            "usr/lib/gcc/x86_64-linux-gnu/10/libstdc++*",
+        ],
+    ),
+    visibility = ["//visibility:public"],
+)
+
