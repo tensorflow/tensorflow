@@ -1,7 +1,6 @@
 # Description:
 #    LLVM-based CPU backend for XLA.
 
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load(
     "//third_party/compute_library:build_defs.bzl",
     "acl_deps",
@@ -9,7 +8,6 @@ load(
 )
 load(
     "//xla:xla.default.bzl",
-    "xla_cc_binary",
     "xla_cc_test",
 )
 load("//xla/tests:build_defs.bzl", "xla_test")
@@ -1067,33 +1065,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-build_test(
-    name = "sample_harness_build_test",
-    targets = [
-        ":sample_harness",
-    ],
-)
-
-xla_cc_binary(
-    name = "sample_harness",
-    srcs = ["sample_harness.cc"],
-    deps = [
-        "//xla:array4d",
-        "//xla:literal",
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "//xla/client",
-        "//xla/client:client_library",
-        "//xla/client:local_client",
-        "//xla/hlo/builder:xla_builder",
-        "//xla/hlo/builder:xla_computation",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 
