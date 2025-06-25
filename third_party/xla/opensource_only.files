@@ -25,13 +25,6 @@ tensorflow/third_party/py/python_repo.bzl:
 tensorflow/third_party/py/python_wheel.bzl:
 tensorflow/third_party/py/rules_pywrap/def_file_filter_tool.py:
 tensorflow/third_party/py/rules_pywrap/wrapped_py_init.cc:
-tensorflow/third_party/tensorrt/BUILD.tpl:
-tensorflow/third_party/tensorrt/LICENSE:
-tensorflow/third_party/tensorrt/build_defs.bzl.tpl:
-tensorflow/third_party/tensorrt/tensorrt/include/tensorrt_config.h.tpl:
-tensorflow/third_party/tensorrt/tensorrt/tensorrt_config.py.tpl:
-tensorflow/third_party/tensorrt/tensorrt_configure.bzl:
-tensorflow/third_party/tensorrt/workspace.bzl:
 tensorflow/tools/def_file_filter/BUILD.tpl:
 tensorflow/tools/def_file_filter/BUILD:
 tensorflow/tools/def_file_filter/def_file_filter.py.tpl:
@@ -157,4 +150,11 @@ xla/third_party/pybind11.BUILD:
 xla/third_party/six.BUILD:
 xla/third_party/snappy.BUILD:
 xla/third_party/spirv_llvm_translator/spirv_llvm_translator.BUILD:
+xla/third_party/tensorrt/BUILD.tpl:
+xla/third_party/tensorrt/LICENSE:
+xla/third_party/tensorrt/build_defs.bzl.tpl:
+xla/third_party/tensorrt/tensorrt/include/tensorrt_config.h.tpl:
+xla/third_party/tensorrt/tensorrt/tensorrt_config.py.tpl:
+xla/third_party/tensorrt/tensorrt_configure.bzl:
+xla/third_party/tensorrt/workspace.bzl:
 xla/third_party/zlib.BUILD:

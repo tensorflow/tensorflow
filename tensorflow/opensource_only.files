@@ -254,13 +254,6 @@ tf_staging/third_party/systemlibs/snappy.BUILD:
 tf_staging/third_party/systemlibs/sqlite.BUILD:
 tf_staging/third_party/systemlibs/syslibs_configure.bzl:
 tf_staging/third_party/systemlibs/zlib.BUILD:
-tf_staging/third_party/tensorrt/BUILD.tpl:
-tf_staging/third_party/tensorrt/LICENSE:
-tf_staging/third_party/tensorrt/build_defs.bzl.tpl:
-tf_staging/third_party/tensorrt/tensorrt/include/tensorrt_config.h.tpl:
-tf_staging/third_party/tensorrt/tensorrt/tensorrt_config.py.tpl:
-tf_staging/third_party/tensorrt/tensorrt_configure.bzl:
-tf_staging/third_party/tensorrt/workspace.bzl:
 tf_staging/third_party/tf_toolchains.BUILD:
 tf_staging/third_party/tflite_mobilenet.BUILD:
 tf_staging/third_party/tflite_mobilenet_float.BUILD:
