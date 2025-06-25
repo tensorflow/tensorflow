@@ -1918,6 +1918,29 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
 }
 
 namespace {
+bool ShouldAddCopyForCollectiveMemorySpace(const HloValue* value) {
+  const HloInstruction* inst = value->defining_instruction();
+  const HloModule* module = inst->GetModule();
+  // If no collective memory is needed, return.
+  if (!module->config().debug_options().xla_gpu_enable_nccl_user_buffers() &&
+      !module->config().debug_options().xla_gpu_experimental_enable_nvshmem()) {
+    return false;
+  }
+  // Add copy if a potential collective-memmory-spaced op directly consumes from
+  // module input or a constant as they are allocated by bfc ahead of time and
+  // the alignment might not match collective memory space's requiment.
+  if (absl::c_linear_search(
+          module->entry_computation()->parameter_instructions(), inst) ||
+      (inst->opcode() == HloOpcode::kConstant)) {
+    for (auto& use : value->GetUses()) {
+      if (IsCollective(use.instruction)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 absl::Status RunPostSchedulingCopyInsertion(HloModule* module,
                                             const GpuAliasInfo* alias_info) {
   // We run a separate pass of copy elision here because the sequential ordering
@@ -1941,8 +1964,9 @@ absl::Status RunPostSchedulingCopyInsertion(HloModule* module,
   // whether it is legal to remove a copy. However, copies in the graph may be
   // necessary for other reason such as preventing a constant from being live
   // out of the graph. So run AddSpecialCaseCopies to re-insert these copies.
-  TF_RETURN_IF_ERROR(
-      copy_insertion.CopyInsertion::AddSpecialCaseCopies(module));
+
+  TF_RETURN_IF_ERROR(copy_insertion.CopyInsertion::AddSpecialCaseCopies(
+      module, /*execution_threads=*/{}, ShouldAddCopyForCollectiveMemorySpace));
 
   TF_RETURN_IF_ERROR(HloDCE().Run(module).status());
 
