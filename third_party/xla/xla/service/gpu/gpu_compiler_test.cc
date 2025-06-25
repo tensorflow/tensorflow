@@ -1760,7 +1760,6 @@ TEST_F(GpuCompilerTest,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> exec,
                           test_runner_as_hlo_runner().ExecutableFromWrapped(
                               std::move(wrapped_exec)));
-  std::cout << "exec module: " << exec->module().ToString() << "\n";
   const char* kExpected = R"(
     // CHECK:      dynamic-slice-fusion{{.+}} {
     // CHECK:        %[[slice:.+]] = {{.+}} slice({{.+}}), slice={[4:8], [0:32]}
