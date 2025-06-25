@@ -520,7 +520,8 @@ bool MMapWeightCacheProvider::Load() {
   }
 
   XNNPACK_RETURN_CHECK(mmap_handle.size() >= sizeof(XNNPackCacheHeader),
-                       "invalid cache file size.");
+                       "invalid cache file size: %zu, expected at least %zu.",
+                       mmap_handle.size(), sizeof(XNNPackCacheHeader));
 
   const XNNPackCacheHeader header = [&mmap_handle] {
     XNNPackCacheHeader header;

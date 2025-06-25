@@ -664,6 +664,23 @@ struct TestVariant {
     }
     return "WithImplicitFileDescriptor";
   }
+
+  friend std::ostream& operator<<(std::ostream& os, const TestVariant& tv) {
+    if (tv.use_in_memory_cache) {
+      return os << "in-memory";
+    }
+    if (tv.use_explicit_fd) {
+      os << "explicit fd:";
+    } else {
+      return os << "implicit fd from path";
+    }
+    if (tv.explicit_fd_path) {
+      os << tv.explicit_fd_path;
+    } else {
+      os << "[no path]";
+    }
+    return os;
+  }
 };
 
 auto TestVariants() {
