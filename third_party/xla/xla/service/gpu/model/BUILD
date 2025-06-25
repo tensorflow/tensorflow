@@ -126,7 +126,12 @@ xla_cc_test(
     srcs = ["sol_gpu_cost_model_test.cc"],
     deps = [
         ":sol_gpu_cost_model",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
     ],

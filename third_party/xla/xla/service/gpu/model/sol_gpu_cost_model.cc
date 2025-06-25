@@ -62,7 +62,7 @@ static auto& device_to_cfg =
                 /*nccl_op_launch_time=*/absl::Microseconds(
                     100.0f * kDefaultNcclCostModelCoeff),
                 /*nic_speed_gbps=*/
-                55.56f * kDefaultNcclCostModelCoeff,
+                111.12f * kDefaultNcclCostModelCoeff,
                 /*chunk_prep_time=*/
                 absl::Microseconds(13.34f * kDefaultNcclCostModelCoeff),
                 /*rtt=*/
