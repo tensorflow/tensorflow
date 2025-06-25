@@ -3264,6 +3264,58 @@ ENTRY main {
   EXPECT_EQ(ag_start->operand(0)->shape().layout().memory_space(), 1);
 }
 
+TEST_F(CollectiveOpsTestE2E,
+       CollectiveConsumingConstantAndModuleShouldHaveCopies) {
+  absl::string_view hlo_string = R"(
+HloModule CollectiveCopies, entry_computation_layout={(bf16[1024,1024]{1,0})->(bf16[1024,1024]{1,0}, bf16[])}, num_partitions=4
+apply_op {
+x = bf16[] parameter(0)
+y = bf16[] parameter(1)
+ROOT apply_op = bf16[] add(x, y)
+}
+ENTRY main {
+Arg_1 = bf16[1024,1024]{1,0} parameter(0)
+constant0 = bf16[] constant(10)
+all-reduce-start.const = bf16[] all-reduce-start(constant0), to_apply=apply_op, replica_groups={{0,1,2,3}}
+all-reduce-done.const = bf16[] all-reduce-done(all-reduce-start.const)
+all-reduce-start = bf16[1024,1024]{1,0} all-reduce-start(Arg_1), to_apply=apply_op, replica_groups={{0,1,2,3}}
+all-reduce-done = bf16[1024,1024]{1,0} all-reduce-done(all-reduce-start)
+ROOT tuple = (bf16[1024,1024]{1,0}, bf16[]) tuple(all-reduce-done, all-reduce-done.const)
+} // main
+)";
+
+  const int64_t kNumReplicas = 1;
+  const int64_t kNumPartitions = 4;
+  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                 << " devices (" << test_runner().device_count()
+                 << " available)";
+  }
+
+  HloModuleConfig config = GetModuleConfigForTest(kNumReplicas, kNumPartitions);
+  auto opts = GetDebugOptionsForTest();
+  opts.set_xla_gpu_enable_nccl_user_buffers(true);
+  opts.add_xla_disable_hlo_passes("gpu-convert-async-collectives-to-sync");
+
+  config.set_debug_options(opts);
+  config.set_use_spmd_partitioning(false);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const executable_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
+  std::vector<HloInstruction*> all_ar =
+      FindInstructions(executable_module, HloOpcode::kAllReduceStart);
+  // Both allreduces should have their operands copied to collective memory
+  // space.
+  for (auto ar : all_ar) {
+    EXPECT_EQ(ar->operand(0)->opcode(), HloOpcode::kCopy);
+    EXPECT_EQ(ar->operand(0)->shape().layout().memory_space(), 1);
+  }
+}
+
 class AllReduceTest
     : public CollectiveOpsWithFlagsBase,
       public ::testing::WithParamInterface<std::tuple<bool, bool>> {

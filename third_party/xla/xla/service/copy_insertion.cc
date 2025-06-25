@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <tuple>
@@ -1213,15 +1214,20 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
 
 absl::Status CopyInsertion::AddSpecialCaseCopies(
     HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    std::function<bool(const HloValue* value)>
+        should_add_target_specific_copies) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
-  return AddSpecialCaseCopies(*call_graph, execution_threads, module);
+  return AddSpecialCaseCopies(*call_graph, execution_threads, module,
+                              should_add_target_specific_copies);
 }
 
 absl::Status CopyInsertion::AddSpecialCaseCopies(
     const CallGraph& call_graph,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
-    HloModule* module) {
+    HloModule* module,
+    std::function<bool(const HloValue* value)>
+        should_add_target_specific_copies) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, alias_info_));
 
@@ -1263,6 +1269,14 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
                  "Copying.";
       add_index_to_copy(value->defining_instruction(), value->defining_index());
     }
+
+    if (should_add_target_specific_copies &&
+        should_add_target_specific_copies(value)) {
+      VLOG(2) << "Adding target specific copies for value "
+              << value->ToShortString();
+      add_index_to_copy(value->defining_instruction(), value->defining_index());
+    }
+
     for (const HloValue* value2 : buffer.values()) {
       // Find HloValues that share a position and use, which would cause the use
       // and operand to share buffers. Check if this is allowed and insert a
@@ -1531,7 +1545,7 @@ absl::StatusOr<bool> CopyInsertion::Run(
   DumpHloModuleDuringPassIfEnabled(name(), "after removing unnecessary copies",
                                    *module);
   TF_RETURN_IF_ERROR(
-      AddSpecialCaseCopies(*call_graph, execution_threads, module));
+      AddSpecialCaseCopies(*call_graph, execution_threads, module, nullptr));
   DumpHloModuleDuringPassIfEnabled(name(), "after adding special-case copies",
                                    *module);
 
