@@ -402,9 +402,9 @@ cc_library(
     name = "util",
     hdrs = ["util.h"],
     deps = [
-        "//tensorflow/lite:error_reporter",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core/api",
+        "@com_google_absl//absl/flags:flag",
         "@local_tsl//tsl/platform:logging",
     ],
 )
