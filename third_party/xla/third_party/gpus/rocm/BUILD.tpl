@@ -10,10 +10,10 @@ string_flag(
     name = "rocm_path_type",
     build_setting_default = "system",
     values = [
-       "hermetic",
-       "multiple",
-       "system",
-    ]
+        "hermetic",
+        "multiple",
+        "system",
+    ],
 )
 
 config_setting(
@@ -69,7 +69,7 @@ cc_library(
 )
 
 # This target is required to
-# add includes that are used by rocm headers themself 
+# add includes that are used by rocm headers themself
 # through the virtual includes
 # cleaner solution would be to adjust the xla code
 # and remove include prefix that is used to include rocm headers.
@@ -92,8 +92,8 @@ cc_library(
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
     deps = [
-        ":rocm_rpath",
         ":rocm_headers_includes",
+        ":rocm_rpath",
     ],
 )
 
@@ -183,14 +183,14 @@ cc_library(
 # Used by jax_rocm_plugin to minimally link to hip runtime.
 cc_library(
     name = "hip_runtime",
-    visibility = ["//visibility:public"],
-    hdrs = glob(["%{rocm_root}/include/hip/**"]),
     srcs = glob(["%{rocm_root}/lib/libamdhip*.so"]),
+    hdrs = glob(["%{rocm_root}/include/hip/**"]),
     include_prefix = "rocm",
     includes = [
         "%{rocm_root}/include",
     ],
     strip_include_prefix = "%{rocm_root}",
+    visibility = ["//visibility:public"],
     deps = [
         ":rocm_config",
         ":rocprofiler_register",
@@ -288,8 +288,8 @@ cc_library(
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
     deps = [
-      ":rocm_config",
-      ":system_libs",
+        ":rocm_config",
+        ":system_libs",
     ],
 )
 
@@ -393,6 +393,21 @@ cc_library(
     srcs = glob(["%{rocm_root}/lib/libhipblas.so*"]),
     hdrs = glob(["%{rocm_root}/include/hipblas/**"]),
     data = glob(["%{rocm_root}/lib/libhipblas.so*"]),
+    include_prefix = "rocm",
+    includes = [
+        "%{rocm_root}/include/",
+    ],
+    strip_include_prefix = "%{rocm_root}",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":hipblas-common",
+        ":rocm_config",
+    ],
+)
+
+cc_library(
+    name = "hipblas-common",
+    hdrs = glob(["%{rocm_root}/include/hipblas-common/**"]),
     include_prefix = "rocm",
     includes = [
         "%{rocm_root}/include/",
