@@ -681,6 +681,11 @@ struct BuildMMapWeightCacheProviderTest : testing::TestWithParam<TestVariant> {
   enum { kBufferId1, kBufferId2, kBufferId3, kBufferId4 };
 
   void SetUp() override {
+    if (use_in_memory_cache &&
+        !TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider()) {
+      GTEST_SKIP() << "In-memory weight cache isn't enabled for this build or "
+                      "isn't supported by the current system, skipping test.";
+    }
     AddTensors();
     EndSetup();
   }
@@ -833,6 +838,10 @@ struct LoadMMapWeightCacheProviderTest : BuildMMapWeightCacheProviderTest {
 
   void SetUp() override {
     BuildMMapWeightCacheProviderTest::SetUp();
+    if (IsSkipped()) {
+      return;
+    }
+
     ASSERT_TRUE(cache_provider.StartBuildStep());
 
     pack_id_1 = ctx.PackTensors(&cache_provider.GetCacheProvider(), kAlgoSeed1,
@@ -889,6 +898,13 @@ TEST_P(LoadMMapWeightCacheProviderTest, LookUpSucceeds) {
 }
 
 struct MMapWeightCacheProviderTest : testing::TestWithParam<TestVariant> {
+  void SetUp() override {
+    if (use_in_memory_cache &&
+        !TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider()) {
+      GTEST_SKIP() << "In-memory weight cache isn't enabled for this build or "
+                      "isn't supported by the current system, skipping test.";
+    }
+  }
   bool use_explicit_fd = GetParam().use_explicit_fd;
   const char* const explicit_fd_path = GetParam().explicit_fd_path;
   const bool use_in_memory_cache = GetParam().use_in_memory_cache;
