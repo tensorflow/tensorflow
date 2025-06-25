@@ -94,6 +94,7 @@ limitations under the License.
 #include "xla/pjrt/utils.h"
 #include "xla/pjrt/worker_thread.h"
 #include "xla/primitive_util.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
@@ -4249,6 +4250,8 @@ absl::StatusOr<CompiledMemoryStats> TfrtGpuExecutable::GetCompiledMemoryStats()
       executables_[0]->executable()->buffer_assignment_proto();
   if (proto != nullptr) {
     memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
+    TF_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(*proto));
+    memory_stats.peak_memory_in_bytes = peak_memory;
   }
   memory_stats.PopulateBufferStatsFromAllocations(
       executables_[0]->executable()->GetAllocations());

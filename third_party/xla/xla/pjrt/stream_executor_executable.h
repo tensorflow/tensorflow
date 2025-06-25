@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_proto_util.h"
@@ -104,9 +105,11 @@ class StreamExecutorExecutable : public PjRtExecutable {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffers,
                           aot_executable->buffer_assignment());
 
-      memory_stats.serialized_buffer_assignment =
-          buffers->ToProto().SerializeAsString();
+      BufferAssignmentProto proto = buffers->ToProto();
+      memory_stats.serialized_buffer_assignment = proto.SerializeAsString();
       memory_stats.PopulateBufferStatsFromAllocations(buffers->Allocations());
+      TF_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(proto));
+      memory_stats.peak_memory_in_bytes = peak_memory;
       return memory_stats;
     } else {
       const auto& local_executables =
@@ -120,6 +123,8 @@ class StreamExecutorExecutable : public PjRtExecutable {
           local_executables[0]->executable()->buffer_assignment_proto();
       if (proto != nullptr) {
         memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
+        TF_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(*proto));
+        memory_stats.peak_memory_in_bytes = peak_memory;
       }
       memory_stats.PopulateBufferStatsFromAllocations(
           local_executables[0]->executable()->GetAllocations());

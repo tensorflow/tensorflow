@@ -584,6 +584,7 @@ cc_library(
         "//xla/client:local_client",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt/proto:compile_options_proto_cc",
+        "//xla/service:buffer_assignment",
         "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:hlo_proto_cc",
