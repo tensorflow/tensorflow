@@ -505,7 +505,7 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
   }
 
   if (detail::IsUnifiedAnalyticalModelEnabled(module, gpu_device_info)) {
-    VLOG(1) << "Using Speed-of-Light (SoL) analytical latency estimator";
+    VLOG(1) << "Using unified latency estimator";
     auto cost_analysis =
         std::make_unique<GpuHloCostAnalysis>(GpuHloCostAnalysis::Options{
             ShapeSizeBytesFunction(pointer_size),
@@ -513,7 +513,15 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
             /*min_latencies_seconds=*/{},
             /*count_multiple_input_accesses=*/true,
         });
-    CHECK_OK(module.entry_computation()->Accept(cost_analysis.get()));
+    if (absl::Status status =
+            module.entry_computation()->Accept(cost_analysis.get());
+        !status.ok()) {
+      LOG(WARNING)
+          << "Cannot construct unified latency estimator, falling back "
+             "to T-shirt sizes. Reason: "
+          << status;
+      return std::make_unique<GpuLatencyEstimator>(pointer_size);
+    }
     auto sol_latency_estimator = SolLatencyEstimator::Create(
         config, std::move(gpu_latency_estimator), gpu_device_info,
         ShapeSizeBytesFunction(pointer_size), module.entry_computation(),

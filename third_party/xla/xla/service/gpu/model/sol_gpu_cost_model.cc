@@ -73,16 +73,6 @@ static auto& device_to_cfg =
         },
     }));
 
-// Returns the number of communicators in the mask.
-// For example, if the mask is 0x0, this function returns 1. If the mask is 0x7,
-// this function returns 8.
-int NumCommunicators(const absl::string_view mask) {
-  // Assuming the mask is a hexadecimal number
-  uint64_t mask_value = std::stoul(std::string(mask), nullptr, 16);
-  int bit_count = absl::popcount(mask_value);  // Count set bits
-  return static_cast<int>(std::pow(2, bit_count));
-}
-
 // Returns the number of rounds for the given collective type.
 int NumRounds(const SolGPUCostModel::CollectiveType& coll_type) {
   // AllReduce requires ReduceScatter and AllGather, so it has 2 rounds.
@@ -164,10 +154,11 @@ absl::Duration SolGPUCostModel::TransferDuration(
   return absl::Microseconds(ret * (1 + kHeaderOverhead));
 }
 
-absl::Duration SolGPUCostModel::RingLatency(
-    const int64_t buff_size_bytes, const int num_nodes,
-    const CollectiveType& coll_type, const absl::string_view mask) const {
-  const int num_gpus = NumGpusPerComm(num_nodes, coll_type, mask);
+absl::Duration SolGPUCostModel::RingLatency(const int64_t buff_size_bytes,
+                                            const int num_nodes,
+                                            const CollectiveType& coll_type,
+                                            const int num_communicators) const {
+  int num_gpus = NumGpusPerComm(num_nodes, coll_type, num_communicators);
 
   int64_t per_gpu_msg_size_bytes;
   if (coll_type == CollectiveType::kSendRecv) {
@@ -214,11 +205,10 @@ absl::Duration SolGPUCostModel::RingLatency(
 // Helper functions
 int SolGPUCostModel::NumGpusPerComm(int num_nodes,
                                     const CollectiveType& coll_type,
-                                    const absl::string_view mask) const {
+                                    const int num_comms) const {
   if (coll_type == CollectiveType::kSendRecv) {
     return 2;
   }
-  int num_comms = NumCommunicators(mask);
   CHECK_EQ(xla_flag_config_.gpus_per_node % num_comms, 0)
       << "GPU_PER_NODE must be divisible by the number of communicators. "
          "GPU_PER_NODE: "

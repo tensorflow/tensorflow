@@ -27,6 +27,7 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
+
 constexpr int64_t kTenMB = 10 * 1024 * 1024;  // 10MB
 
 using ::testing::TestWithParam;
@@ -54,7 +55,8 @@ class SolGPUCostModelTest : public TestWithParam<RingLatencyTestCase> {
 TEST_P(SolGPUCostModelTest, TestRingLatency) {
   const RingLatencyTestCase& test_case = GetParam();
   absl::Duration actual_latency =
-      absl::Trunc(model_.RingLatency(kTenMB, 1, test_case.collective_type),
+      absl::Trunc(model_.RingLatency(kTenMB, 1, test_case.collective_type,
+                                     /*num_communicators=*/1),
                   absl::Microseconds(1));
   EXPECT_EQ(actual_latency, test_case.expected_latency);
 }

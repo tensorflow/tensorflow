@@ -75,7 +75,7 @@ absl::StatusOr<HloInstructionProfileList> ReadProfiles(
 }
 
 std::optional<absl::Duration> DCNCollectiveDuration(
-    int num_participating_hosts, absl::string_view mask,
+    int num_participating_hosts, int num_communicators,
     const HloInstruction& instr, const se::DeviceDescription& gpu_device_info,
     const SolGPUCostModel::Config& sol_flags,
     const GpuHloCostAnalysis& analysis) {
@@ -92,7 +92,7 @@ std::optional<absl::Duration> DCNCollectiveDuration(
     case HloOpcode::kAllGatherStart: {
       result += sol_model.RingLatency(
           msg_size, num_participating_hosts,
-          SolGPUCostModel::CollectiveType::kAllGather, mask);
+          SolGPUCostModel::CollectiveType::kAllGather, num_communicators);
       break;
     }
     case HloOpcode::kAllReduce:
@@ -102,7 +102,7 @@ std::optional<absl::Duration> DCNCollectiveDuration(
               .compute_time;
       result += sol_model.RingLatency(
           msg_size, num_participating_hosts,
-          SolGPUCostModel::CollectiveType::kAllReduce, mask);
+          SolGPUCostModel::CollectiveType::kAllReduce, num_communicators);
       break;
     }
     case HloOpcode::kReduceScatter: {
@@ -111,7 +111,7 @@ std::optional<absl::Duration> DCNCollectiveDuration(
               .compute_time;
       result += sol_model.RingLatency(
           msg_size, num_participating_hosts,
-          SolGPUCostModel::CollectiveType::kReduceScatter, mask);
+          SolGPUCostModel::CollectiveType::kReduceScatter, num_communicators);
       break;
     }
     case HloOpcode::kAsyncStart: {
@@ -122,7 +122,7 @@ std::optional<absl::Duration> DCNCollectiveDuration(
                       .compute_time;
         result += sol_model.RingLatency(
             msg_size, num_participating_hosts,
-            SolGPUCostModel::CollectiveType::kReduceScatter, mask);
+            SolGPUCostModel::CollectiveType::kReduceScatter, num_communicators);
       }
       break;
     }
@@ -130,7 +130,7 @@ std::optional<absl::Duration> DCNCollectiveDuration(
     case HloOpcode::kSend: {
       result += sol_model.RingLatency(
           msg_size, num_participating_hosts,
-          SolGPUCostModel::CollectiveType::kSendRecv, mask);
+          SolGPUCostModel::CollectiveType::kSendRecv, num_communicators);
       break;
     }
     // note: AllToAll is not yet supported in XLA
@@ -170,13 +170,14 @@ std::optional<absl::Duration> DispatchEstimation(
     case GPUCommunicationType::RAIL_ALIGNED: {
       return DCNCollectiveDuration(
           (*num_groups_and_devices)->second / sol_flags.gpus_per_node,
-          SolGPUCostModel::kSplitMaskWorldLevel, instr, gpu_device_info,
-          sol_flags, analysis);
+          /*num_communicators=*/(*num_groups_and_devices)->first, instr,
+          gpu_device_info, sol_flags, analysis);
     }
     case GPUCommunicationType::NON_RAIL_ALIGNED: {
-      return DCNCollectiveDuration((*num_groups_and_devices)->second,
-                                   SolGPUCostModel::kSplitMaskNonRailAligned,
-                                   instr, gpu_device_info, sol_flags, analysis);
+      return DCNCollectiveDuration(
+          (*num_groups_and_devices)->second,
+          /*num_communicators=*/(*num_groups_and_devices)->first, instr,
+          gpu_device_info, sol_flags, analysis);
     }
     case GPUCommunicationType::SINGLE_HOST: {
       if (collective_interpolator == nullptr) {
