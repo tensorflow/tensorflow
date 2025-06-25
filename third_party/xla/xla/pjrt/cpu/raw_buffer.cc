@@ -348,6 +348,26 @@ CpuRawBuffer::MakeAllocationReadyEvent() {
       tsl::MakeAvailableAsyncValueRef<CpuEvent>());
 }
 
+void CpuRawBuffer::CopyToLiteralAsync(
+    PjRtFuture<>::Promise promise,
+    tsl::RCReference<PjRtDeviceEventPromise> device_promise,
+    MutableLiteralBase* literal, xla::Shape shape) {
+  absl::Span<const char> input_span{
+      static_cast<const char*>(buffer_->untyped_data()), buffer_->size_bytes()};
+  size_t output_size =
+      static_cast<size_t>(ShapeUtil::ByteSizeOf(literal->shape()));
+  absl::Span<char> output_span{static_cast<char*>(literal->untyped_data()),
+                               output_size};
+  if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
+    primitive_util::UnpackIntN(shape.element_type(), input_span, output_span);
+  } else {
+    std::memcpy(output_span.data(), input_span.data(), output_size);
+  }
+  device_promise->Set(tsl::MakeRef<CpuTrackedDeviceEvent>(
+      tsl::MakeAvailableAsyncValueRef<CpuEvent>()));
+  promise.Set(absl::OkStatus());
+}
+
 void CpuRawBuffer::CopyTo(
     tsl::RCReference<CommonPjRtRawBuffer> dst_raw_buffer,
     tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,

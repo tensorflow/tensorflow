@@ -27,14 +27,18 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/device_event.h"
+#include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -52,6 +56,33 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
+
+std::pair<PjRtFuture<>::Promise, PjRtFuture<>>
+CommonPjRtClient::CreateLinkedUserPromise(PjRtMemorySpace* memory_space,
+                                          const char* callee_type,
+                                          const char* callee_method,
+                                          absl::string_view debug_info) {
+  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
+  auto result = PjRtFuture<>(
+      promise,
+      /*on_block_start=*/
+      [ready_event = FormRef(promise.async_value()), callee_type,
+       callee_method]() {
+        tsl::profiler::TraceMeProducer traceme(
+            [&] { return absl::StrCat(callee_type, "::", callee_method); });
+        VLOG(1) << callee_type << "::" << callee_method;
+        PjRtFutureHelpers::ProfilingKeys keys;
+        keys.traceme_context_id = traceme.GetContextId();
+        return keys;
+      },
+      /*on_block_end=*/
+      [callee_type, callee_method](PjRtFutureHelpers::ProfilingKeys keys) {
+        tsl::profiler::TraceMeConsumer traceme(
+            [&] { return absl::StrCat(callee_type, "::", callee_method); },
+            keys.traceme_context_id);
+      });
+  return std::make_pair(std::move(promise), std::move(result));
+}
 
 tsl::AsyncValueRef<bool> CommonPjRtClient::CreateAllocationEventForTransfers(
     PjRtMemorySpace* memory_space,
@@ -355,6 +386,118 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(
       });
 
   return dst_buffer;
+}
+
+PjRtFuture<> CommonPjRtBufferImpl::LazyToLiteral(
+    absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator) {
+  return ToLiteralImpl(nullptr, std::move(generator));
+}
+
+PjRtFuture<> CommonPjRtBufferImpl::ToLiteral(MutableLiteralBase* literal) {
+  return ToLiteralImpl(literal, [] {
+    return FailedPrecondition("ToLiteral generator should never be called");
+  });
+}
+
+PjRtFuture<> CommonPjRtBufferImpl::ToLiteralImpl(
+    MutableLiteralBase* literal,
+    absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator) {
+  tsl::profiler::TraceMe traceme("CommonPjRtBuffer::ToLiteral");
+  VLOG(1) << "CommonPjRtBuffer::ToLiteral";
+  auto common_client = tensorflow::down_cast<CommonPjRtClient*>(client());
+  if (!common_client->allows_recursion() && ThisThreadIsInsideHostCallback()) {
+    // Because TPU is single threaded, and the host callback currently blocking
+    // the TPU, we should not block on any outstanding computations because that
+    // risks deadlocking the TPU.
+    return PjRtFuture<>(
+        InvalidArgument("ToLiteral() called from inside host callback."));
+  }
+  absl::StatusOr<Shape> device_shape = logical_on_device_shape();
+  if (!device_shape.ok()) {
+    return PjRtFuture<>(device_shape.status());
+  }
+
+  // TODO(zhangqiaorjc): Fast path if zero device_buffer wait events.
+  // Make two copies because EnqueueWorkWhenReady below needs two different
+  // lifetimes.
+  std::vector<tsl::RCReference<tsl::AsyncValue>> src_definition_events_avs;
+
+  tsl::RCReference<PjRtDeviceEventPromise> device_promise;
+  tsl::RCReference<CommonPjRtRawBuffer> raw_buffer;
+  auto hold_status = AcquireScopedRawBuffer(
+      [&](tsl::RCReference<CommonPjRtRawBuffer> buf_raw_buffer,
+          std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events)
+          -> absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> {
+        src_definition_events_avs = std::move(definition_events);
+        if (buf_raw_buffer) {
+          raw_buffer = std::move(buf_raw_buffer);
+          tsl::RCReference<PjRtDeviceEvent> device_event;
+          TF_ASSIGN_OR_RETURN(std::tie(device_promise, device_event),
+                              common_client->CreateLinkedEventPromise(
+                                  memory_space_, "ToLiteral Leaf: 0"));
+          return device_event;
+        }
+        return tsl::RCReference<PjRtDeviceEvent>();
+      },
+      "ToLiteral()");
+  if (!hold_status.ok()) {
+    return PjRtFuture<>(std::move(hold_status));
+  }
+
+  auto [promise, result] = common_client->CreateLinkedUserPromise(
+      memory_space(), "CommonPjRtBuffer", "ToLiteral", "ToLiteralEvent");
+  if (device_promise) {
+    device_promise->AddEventDependencies(src_definition_events_avs);
+  }
+
+  // Wait for buffer definition events to finish before d2h dispatch.
+  // D2H dispatch should be in parallel, e.g. one Execute event finish may
+  // trigger multiple outputs' D2H, they should happen in different threads in
+  // parallel.
+  absl::Span<const tsl::RCReference<tsl::AsyncValue>>
+      src_definition_events_avs_copy = src_definition_events_avs;
+  common_client->async_work_runner()->ScheduleWhenReady(
+      src_definition_events_avs_copy,
+      [shape = *std::move(device_shape),
+       src_definition_events_avs = std::move(src_definition_events_avs),
+       raw_buffer = std::move(raw_buffer),
+       device_promise = std::move(device_promise), literal,
+       generator = std::move(generator),
+       promise = std::move(promise)]() mutable {
+        // Notify all pending events with `status`.
+        auto notify_all = [&](absl::Status status) {
+          promise.Set(status);
+          if (device_promise) {
+            device_promise->SetError(status);
+          }
+        };
+        tsl::profiler::TraceMe traceme([&] {
+          return tsl::profiler::TraceMeEncode(
+              "D2H Dispatch",
+              {{"shape", shape.ToString(/*print_layout=*/true)}});
+        });
+        if (literal == nullptr) {
+          absl::StatusOr<MutableLiteralBase*> generated =
+              std::move(generator)();
+          if (!generated.ok()) {
+            notify_all(generated.status());
+            return;
+          }
+          literal = *generated;
+        }
+        DCHECK(ShapeUtil::Compatible(shape, literal->shape()));
+        // Errors in src buffer are surfaced to user.
+        for (const auto& av : src_definition_events_avs) {
+          if (auto* error = av->GetErrorIfPresent()) {
+            notify_all(*error);
+            return;
+          }
+        }
+
+        raw_buffer->CopyToLiteralAsync(promise, device_promise, literal,
+                                       std::move(shape));
+      });
+  return result;
 }
 
 }  // namespace xla

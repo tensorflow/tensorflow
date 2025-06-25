@@ -40,6 +40,10 @@ class CommonPjRtClient : public PjRtClient {
   // TODO(parkers): make pure virtual and update all clients.
   virtual AsyncWorkRunner* async_work_runner() const { return nullptr; }
 
+  // Some clients do not support recursion eg: calling to_literal in host
+  // callbacks. Those clients should return false here.
+  virtual bool allows_recursion() const { return true; }
+
   // Computes the memory requirements for storing shape on memory_space.
   // TODO(parkers): make pure virtual and update all clients.
   virtual absl::StatusOr<int64_t> GetOnDeviceBytesCount(
@@ -97,6 +101,14 @@ class CommonPjRtClient : public PjRtClient {
     return absl::UnimplementedError(
         "CreateLinkedEventPromise is not supported");
   }
+
+  // Create a linked PjRtFuture<> and ::Promise pair for operations on
+  // buffers in memory_space which populates debug information like linked
+  // tracmes.
+  virtual std::pair<PjRtFuture<>::Promise, PjRtFuture<>>
+  CreateLinkedUserPromise(PjRtMemorySpace* memory_space,
+                          const char* callee_type, const char* callee_method,
+                          absl::string_view debug_info);
 
   // Registers the necessary debug information for an allocation event.
   // TODO(parkers): Once everything is unified this should be controlled
@@ -160,6 +172,19 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
   // require no layout changes.
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> DirectCopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space);
+
+  using PjRtBuffer::ToLiteralSync;
+  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
+  PjRtFuture<> LazyToLiteral(
+      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
+      override;
+
+ protected:
+  // Shared implementation for ToLiteral and LazyToLiteral. If `literal` is
+  // null, will call the function in the generator.
+  PjRtFuture<> ToLiteralImpl(
+      MutableLiteralBase* literal,
+      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator);
 };
 
 }  // namespace xla
