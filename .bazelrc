@@ -159,9 +159,13 @@ common --incompatible_enforce_config_setting_visibility
 # TODO: Enable Bzlmod
 common --noenable_bzlmod
 
+build --incompatible_enable_cc_toolchain_resolution
+build --repo_env USE_HERMETIC_CC_TOOLCHAIN=1
+
 # TODO: Migrate for https://github.com/bazelbuild/bazel/issues/7260
-common --noincompatible_enable_cc_toolchain_resolution
-common --noincompatible_enable_android_toolchain_resolution
+build:clang_local --noincompatible_enable_cc_toolchain_resolution
+build:clang_local --noincompatible_enable_android_toolchain_resolution
+build:clang_local --repo_env USE_HERMETIC_CC_TOOLCHAIN=0
 
 # Print a stacktrace when a test is killed
 test --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
@@ -172,6 +176,7 @@ test --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
 # Android configs. Bazel needs to have --cpu and --fat_apk_cpu both set to the
 # target CPU to build transient dependencies correctly. See
 # https://docs.bazel.build/versions/master/user-manual.html#flag--fat_apk_cpu
+build:android --config=clang_local
 build:android --crosstool_top=//external:android/crosstool
 build:android --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 build:android_arm --config=android
@@ -197,6 +202,8 @@ build:android --dynamic_mode=off
 # TODO(belitskiy): Remove once on Clang 20.
 build:android --define=xnn_enable_avxvnniint8=false
 
+build:macos --config=clang_local
+
 # Sets the default Apple platform to macOS.
 build:macos --apple_platform_type=macos
 
@@ -220,6 +227,7 @@ build:apple-toolchain --crosstool_top=@local_config_apple_cc//:toolchain
 build:apple-toolchain --host_crosstool_top=@local_config_apple_cc//:toolchain
 
 # Settings for MacOS on ARM CPUs.
+build:macos_arm64 --config=clang_local
 build:macos_arm64 --cpu=darwin_arm64
 build:macos_arm64 --macos_minimum_os=11.0
 build:macos_arm64 --platforms=@build_bazel_apple_support//configs/platforms:darwin_arm64
@@ -229,6 +237,7 @@ build:ios --apple_platform_type=ios
 build:ios --copt=-fembed-bitcode
 build:ios --copt=-Wno-c++11-narrowing
 build:ios --config=apple-toolchain
+build:ios --config=clang_local
 build:ios_armv7 --config=ios
 build:ios_armv7 --cpu=ios_armv7
 build:ios_armv7 --platforms=@org_tensorflow//tensorflow/tools/toolchains/ios:ios_armv7
@@ -354,6 +363,7 @@ build:tpu --define=framework_shared_object=true
 build:tpu --copt=-DLIBTPU_ON_GCE
 build:tpu --define=enable_mlir_bridge=true
 
+build:rocm --config=clang_local
 build:rocm --copt=-Wno-gnu-offsetof-extensions
 build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm --define=using_rocm_hipcc=true
@@ -374,6 +384,7 @@ build:rocm_ci_hermetic --repo_env="OS=ubuntu_22.04"
 build:rocm_ci_hermetic --repo_env="ROCM_VERSION=6.2.0"
 build:rocm_ci_hermetic --@local_config_rocm//rocm:use_rocm_hermetic_rpath=True
 
+build:sycl --config=clang_local
 build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
 build:sycl --define=using_sycl=true
 build:sycl --define=tensorflow_mkldnn_contraction_kernel=0
@@ -418,6 +429,7 @@ build:linux --copt="-Werror=switch"
 # Linux ARM64 specific options
 build:linux_arm64 --copt="-mtune=generic" --copt="-march=armv8-a" --copt="-O3"
 
+build:windows --config=clang_local
 
 # On Windows, `__cplusplus` is wrongly defined without this switch
 # See https://devblogs.microsoft.com/cppblog/msvc-now-correctly-reports-__cplusplus/
@@ -536,6 +548,7 @@ test:win_clang_base --host_linkopt=/FORCE:MULTIPLE
 test:win_clang_base --build_tests_only --keep_going --test_output=errors --verbose_failures=true --test_summary=short
 
 build:win_clang --config=win_clang_base
+build:win_clang --config=clang_local
 build:win_clang --extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-clang-cl
 build:win_clang --extra_execution_platforms=//tensorflow/tools/toolchains/win:x64_windows-clang-cl
 build:win_clang --host_platform=//tensorflow/tools/toolchains/win:x64_windows-clang-cl
@@ -599,11 +612,6 @@ build:rbe_linux --host_linkopt=-lm
 
 build:rbe_linux_cpu --config=rbe_linux
 # Linux cpu and cuda builds share the same toolchain now.
-build:rbe_linux_cpu --host_crosstool_top="@local_config_cuda//crosstool:toolchain"
-build:rbe_linux_cpu --crosstool_top="@local_config_cuda//crosstool:toolchain"
-build:rbe_linux_cpu --extra_toolchains="@local_config_cuda//crosstool:toolchain-linux-x86_64"
-build:rbe_linux_cpu --repo_env=CC="/usr/lib/llvm-18/bin/clang"
-build:rbe_linux_cpu --repo_env=TF_SYSROOT="/dt9"
 build:rbe_linux_cpu --extra_execution_platforms="@ml_build_config_platform//:platform"
 build:rbe_linux_cpu --host_platform="@ml_build_config_platform//:platform"
 build:rbe_linux_cpu --platforms="@ml_build_config_platform//:platform"
@@ -624,6 +632,13 @@ common:rbe_linux_cpu --remote_instance_name=projects/tensorflow-testing/instance
 # TODO(ybaturina): Uncomment when RBE is ready to support this.
 # build:rbe_linux_cpu --repo_env USE_CUDA_REDISTRIBUTIONS=1
 # build:rbe_linux_cpu --config=cuda_version
+
+build:rbe_linux_cpu_clang_local --config=clang_local
+build:rbe_linux_cpu_clang_local --host_crosstool_top="@local_config_cuda//crosstool:toolchain"
+build:rbe_linux_cpu_clang_local --crosstool_top="@local_config_cuda//crosstool:toolchain"
+build:rbe_linux_cpu_clang_local --extra_toolchains="@local_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe_linux_cpu_clang_local --repo_env=CC="/usr/lib/llvm-18/bin/clang"
+build:rbe_linux_cpu_clang_local --repo_env=TF_SYSROOT="/dt9"
 
 # TODO(kanglan): Remove it after toolchain update is complete.
 build:rbe_linux_cpu_old --config=rbe_linux
@@ -648,6 +663,7 @@ build:rbe_linux_cuda_nvcc --config=cuda_nvcc
 build:rbe_linux_cuda_nvcc --repo_env TF_NCCL_USE_STUB=1
 
 build:rbe_win_base --config=rbe_base
+build:rbe_win_base --config=clang_local
 build:rbe_win_base --shell_executable=C:\\tools\\msys64\\usr\\bin\\bash.exe
 build:rbe_win_base --remote_instance_name=projects/tensorflow-testing/instances/windows
 # Don't build the python zip archive in the RBE build.
@@ -663,6 +679,7 @@ build:rbe_windows_x86_cpu_2022 --config=rbe_win_base --config=windows_x86_cpu_20
 # END TF REMOTE BUILD EXECUTION OPTIONS
 
 # TFLite build configs for generic embedded Linux
+build:elinux --config=clang_local
 build:elinux --crosstool_top=@local_config_embedded_arm//:toolchain
 build:elinux --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 build:elinux_aarch64 --config=elinux
@@ -709,20 +726,19 @@ build:release_linux_base --linkopt=-Wl,--undefined-version
 
 # Container environment settings below this point.
 # Set Clang as compiler. Use the actual path to clang installed in container.
-build:release_linux_base --repo_env=CC="/usr/lib/llvm-18/bin/clang"
-build:release_linux_base --repo_env=BAZEL_COMPILER="/usr/lib/llvm-18/bin/clang"
 # Test-related settings below this point.
 test:release_linux_base --build_tests_only --keep_going --test_output=errors --verbose_failures=true
 test:release_linux_base --local_test_jobs=HOST_CPUS
 # Give only the list of failed tests at the end of the log
 test:release_linux_base --test_summary=short
 
-# Use the Clang toolchain to compile
 build:release_cpu_linux --config=release_linux_base
-build:release_cpu_linux --crosstool_top="@local_config_cuda//crosstool:toolchain"
-build:release_cpu_linux --repo_env=TF_SYSROOT="/dt9"
 # Target the AVX instruction set
 build:release_cpu_linux --config=avx_linux
+
+# Deprecated release_cpu_linux config with non-hermetic toolchains.
+build:release_cpu_linux_clang_local --crosstool_top="@local_config_cuda//crosstool:toolchain"
+build:release_cpu_linux_clang_local --repo_env=TF_SYSROOT="/dt9"
 
 build:release_gpu_linux --config=release_cpu_linux
 # Set up compilation CUDA version and paths and use the CUDA Clang toolchain.
@@ -733,6 +749,9 @@ test:release_gpu_linux --test_timeout=300,450,1200,3600 --local_test_jobs=4 --ru
 
 build:release_arm64_linux --config=release_linux_base
 build:release_arm64_linux --config=linux_arm64
+build:release_arm64_linux --config=clang_local
+build:release_arm64_linux --repo_env=CC="/usr/lib/llvm-18/bin/clang"
+build:release_arm64_linux --repo_env=BAZEL_COMPILER="/usr/lib/llvm-18/bin/clang"
 build:release_arm64_linux --crosstool_top="@ml2014_clang_aarch64_config_aarch64//crosstool:toolchain"
 build:release_arm64_linux --config=mkl_aarch64_threadpool
 build:release_arm64_linux --copt=-flax-vector-conversions
@@ -741,6 +760,7 @@ test:release_arm64_linux --flaky_test_attempts=3
 build:release_cpu_macos --config=avx_linux
 
 # Base build configs for macOS
+build:release_macos_base --config=clang_local
 build:release_macos_base --action_env  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 build:release_macos_base --define=no_nccl_support=true --output_filter=^$
 
@@ -906,6 +926,7 @@ test:windows_x86_cpu_2022_pycpp_test --config=windows_x86_cpu_2022_pycpp_test_op
 # flags seem to be actually used to specify the execution platform details. It
 # seems it is this way because these flags are old and predate the distinction
 # between host and execution platform.
+build:cross_compile_base --config=clang_local
 build:cross_compile_base --host_cpu=k8
 build:cross_compile_base --host_crosstool_top=//tensorflow/tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
 build:cross_compile_base --extra_execution_platforms=//tensorflow/tools/toolchains/cross_compile/config:linux_x86_64

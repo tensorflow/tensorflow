@@ -426,7 +426,7 @@ verify_manylinux_compliance_test(
         "manual",
     ],
     wheel = ":wheel",
-    x86_64_compliance_tag = "manylinux_2_17_x86_64",
+    x86_64_compliance_tag = "manylinux_2_27_x86_64",
 )
 
 py_import(
