@@ -131,7 +131,7 @@ using ProfilingOutput = AutotunerCompileUtil::ProfilingOutput;
 namespace {
 
 // Minimum tile size.
-constexpr int kMinTileSize = 16;
+constexpr int kMinTileSize = 1;
 
 // Split-K is enabled when the estimate number of waves is lower than the limit.
 constexpr int kMaxWavesForSplitK = 5;
