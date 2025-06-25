@@ -1477,6 +1477,11 @@ const HloInstruction* GetInterestingProducer(const HloInstruction* instr) {
         instr = instr->operand(0);
         break;
       case HloOpcode::kTuple:
+        if (tuple_index.empty()) {
+          // Return the tuple itself, since we have not encountered a
+          // corresponding get-tuple-element before.
+          return instr;
+        }
         // Resolve the tuple index and move on.
         if (instr->operand_count() <= tuple_index.back()) {
           LOG(ERROR) << "Tuple index " << tuple_index.back()

@@ -315,5 +315,32 @@ TEST_F(HloGraphDumperTest, AnnotateCalledComputationsParameters) {
   EXPECT_THAT(graph, HasSubstr("<b>Parameter 1</b><br/><i>mul.456</i>"));
 }
 
+TEST_F(HloGraphDumperTest, AnnotateCalledComputationsParametersTuple) {
+  const char* hlo_string = R"(
+    command_buffer {
+      p0 = (f32[1024], f32[1024]) parameter(0)
+      gte.0 = f32[1024] get-tuple-element(p0), index=0
+      gte.1 = f32[1024] get-tuple-element(p0), index=1
+      ROOT tuple = (f32[1024], f32[1024]) tuple(gte.0, gte.1)
+    }
+    ENTRY comp {
+      p0 = f32[1024] parameter(0)
+      add.123 = f32[1024] add(p0, p0)
+      mul.456 = f32[1024] multiply(p0, p0)
+      tuple.1 = (f32[1024], f32[1024]) tuple(add.123, mul.456)
+      call.0 = (f32[1024], f32[1024]) call(tuple.1), to_apply=command_buffer
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::string graph,
+      RenderGraph(*module->entry_computation()->root_instruction()->to_apply(),
+                  /*label=*/"command buffer", DebugOptions(),
+                  RenderedGraphFormat::kDot));
+  // Annotate the parameter as `tuple.1`, rather than `add.123` or `mul.456`,
+  // because both are being passed at the same time.
+  EXPECT_THAT(graph, HasSubstr("<b>Parameter 0</b><br/><i>tuple.1</i>"));
+}
+
 }  // anonymous namespace
 }  // namespace xla
