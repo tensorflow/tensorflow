@@ -1999,7 +1999,6 @@ absl::Status MsaAlgorithm::ProcessColoredBuffers() {
     // repacking can account for the reserved memory.
     repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
         start_time, end_time, chunk_candidate.size, chunk_candidate.offset,
-        static_cast<int64_t>(repack_allocation_blocks_.size()),
         reserved_allocations.back().get()));
     repack_allocation_blocks_.back().next_colocated =
         &(repack_allocation_blocks_.back());
@@ -4067,7 +4066,6 @@ void MsaAlgorithm::AllocateCrossProgramPrefetchBuffer(
       repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
           allocation->start_time(), allocation->end_time(),
           allocation->chunk().size, allocation->chunk().offset,
-          static_cast<int64_t>(repack_allocation_blocks_.size()),
           allocation.get()));
       colocations.push_back(&repack_allocation_blocks_.back());
     }
@@ -4156,9 +4154,7 @@ void MsaAlgorithm::AllocateScopedAllocation(HloInstruction* instruction,
 
   repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
       time, time, size,
-      /*initial_offset=*/0,
-      static_cast<int64_t>(repack_allocation_blocks_.size()),
-      allocations_->back().get()));
+      /*initial_offset=*/0, allocations_->back().get()));
   repack_allocation_blocks_.back().next_colocated =
       &repack_allocation_blocks_.back();
 }
@@ -4873,9 +4869,7 @@ void MsaAlgorithm::FinalizeAllocations(
       repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
           colocated_allocation->start_time(), colocated_allocation->end_time(),
           colocated_allocation->chunk().size,
-          colocated_allocation->chunk().offset,
-          static_cast<int64_t>(repack_allocation_blocks_.size()),
-          colocated_allocation));
+          colocated_allocation->chunk().offset, colocated_allocation));
       colocations.push_back(&repack_allocation_blocks_.back());
     }
     for (int i = 0; i < colocations.size() - 1; ++i) {
@@ -5048,15 +5042,12 @@ void MsaAlgorithm::ReleaseReservedAllocationForAlternateMemoryColorings(
                               reserved_allocation->end_time(),
                               reserved_allocation->chunk()));
   reserved_allocation->chunk_freed_in_interval_tree();
-  // Remove the allocation from the repack_allocation_blocks_ list.
-  auto it = std::remove_if(
-      repack_allocation_blocks_.begin(), repack_allocation_blocks_.end(),
+  size_t original_size = repack_allocation_blocks_.size();
+  repack_allocation_blocks_.remove_if(
       [reserved_allocation](
           const RepackAllocationBlock& repack_allocation_block) {
         return repack_allocation_block.allocation == reserved_allocation;
       });
-  size_t original_size = repack_allocation_blocks_.size();
-  repack_allocation_blocks_.erase(it, repack_allocation_blocks_.end());
   CHECK_EQ(original_size - repack_allocation_blocks_.size(), 1);
 }
 

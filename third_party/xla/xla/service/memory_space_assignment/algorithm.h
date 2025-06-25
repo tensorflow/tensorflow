@@ -1059,16 +1059,18 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       int exclusive_start_time, int end_time, int64_t size) const;
 
   // Creates and returns a RepackAllocationBlock.
-  static RepackAllocationBlock MakeRepackAllocationBlock(
-      int64_t start_time, int64_t end_time, int64_t size,
-      int64_t initial_offset, int64_t id, Allocation* allocation) {
+  RepackAllocationBlock MakeRepackAllocationBlock(int64_t start_time,
+                                                  int64_t end_time,
+                                                  int64_t size,
+                                                  int64_t initial_offset,
+                                                  Allocation* allocation) {
     RepackAllocationBlock allocation_block;
     allocation_block.inclusive_start_time = start_time;
     allocation_block.end_time = end_time;
     allocation_block.size = size;
     allocation_block.offset = -1;
     allocation_block.initial_offset = initial_offset;
-    allocation_block.id = id;
+    allocation_block.id = next_repack_allocation_block_id_++;
     allocation_block.next_colocated = nullptr;
     allocation_block.allocation = allocation;
     return allocation_block;
@@ -1158,6 +1160,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // used for repacking. We use a list here because we need pointer stability
   // for aliased allocations.
   std::list<RepackAllocationBlock> repack_allocation_blocks_;
+  int64_t next_repack_allocation_block_id_ = 0;
   int64_t num_repacks_ = 0;
   int64_t num_repacks_successful_ = 0;
   std::vector<std::pair<MsaBufferInterval, Chunk>> pending_chunks_;

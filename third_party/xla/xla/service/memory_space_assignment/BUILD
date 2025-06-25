@@ -81,6 +81,7 @@ xla_cc_test(
         ":algorithm",
         ":allocation",
         ":allocation_value",
+        ":best_fit_repacker",
         ":buffer_interval_comparator",
         ":cost_analysis",
         ":memory_space_assignment",

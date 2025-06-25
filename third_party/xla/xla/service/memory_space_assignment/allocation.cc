@@ -354,7 +354,7 @@ std::string ReservedAllocation::ToString() const {
     absl::StrAppend(&memory_space_str, " chunk: ", chunk->ToString());
   }
   return absl::StrCat(
-      "ReservedAllocationdefined in alternate memory defined at ",
+      "ReservedAllocation defined in alternate memory defined at ",
       original_defining_position().ToString(), ", start_time: ", start_time(),
       ", end_time: ", end_time(), " reserved: ", reserved_);
 }

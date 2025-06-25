@@ -104,13 +104,13 @@ std::string Options::ToString() const {
        absl::StrCat("repacker: ", repacker ? "present" : "nullptr"),
        absl::StrCat("autotuning_config: ",
                     autotuning_config.has_value() ? "present" : "nullopt"),
-       absl::StrCat("preferred_prefetch_overrides: ",
+       absl::StrCat("preferred_prefetch_overrides: \n",
                     preferred_prefetch_overrides.DebugString()),
-       absl::StrCat("sliced_prefetch_options: ",
+       absl::StrCat("sliced_prefetch_options: \n",
                     sliced_prefetch_options.DebugString()),
-       absl::StrCat("memory_bound_loop_optimizer_options: ",
+       absl::StrCat("memory_bound_loop_optimizer_options: \n",
                     memory_bound_loop_optimizer_options.DebugString()),
-       absl::StrCat("msa_sort_order_overrides: ",
+       absl::StrCat("msa_sort_order_overrides: \n",
                     msa_sort_order_overrides.DebugString())},
       "\n");
 }

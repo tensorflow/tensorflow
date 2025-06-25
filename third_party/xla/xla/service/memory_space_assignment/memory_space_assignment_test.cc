@@ -68,6 +68,7 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/algorithm.h"
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/allocation_value.h"
+#include "xla/service/memory_space_assignment/best_fit_repacker.h"
 #include "xla/service/memory_space_assignment/buffer_interval_comparator.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
@@ -14469,6 +14470,140 @@ ENTRY %main.13 (Arg_0.1: f32[8,128]) -> (f32[8,128], f32[8,128]) {
             kAlternateMemorySpace);
 
   EXPECT_EQ(FindInstruction(module.get(), "copy_done.3")
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, TestCustomKernelColoringBug) {
+  absl::string_view hlo_string = R"(
+HloModule jit_run_benchmark, is_scheduled=true, entry_computation_layout={(bf16[1024,512]{1,0:T(8,128)(2,1)}, bf16[2,512,4096]{2,1,0:T(8,128)(2,1)}, s32[3]{0:T(128)})->bf16[1024,512]{1,0:T(8,128)(2,1)}}, allow_spmd_sharding_propagation_to_parameters={false,false,false}, allow_spmd_sharding_propagation_to_output={true}, num_partitions=8
+
+ENTRY %main.28_spmd (param.1: bf16[1024,512], param.2: bf16[2,512,4096], param: s32[3]) -> bf16[1024,512] {
+  %constant.1 = s32[1]{0:T(128)} constant({0}), metadata={op_name="call.0"}
+  %param.2 = bf16[2,512,4096]{2,1,0:T(8,128)(2,1)} parameter(1), sharding={devices=[1,8,1]<=[8]}, metadata={op_name="args[1]"}
+  %param.1 = bf16[1024,512]{1,0:T(8,128)(2,1)} parameter(0), sharding={devices=[1,8]<=[8]}, metadata={op_name="args[0]"}
+  %param = s32[3]{0:T(128)} parameter(2), sharding={replicated}, metadata={op_name="args[2]"}
+  %make_group_metadata.1 = (s32[1]{0:T(128)S(4)}, s32[1]{0:T(128)S(4)}, s32[4]{0:T(128)S(4)}, s32[3]{0:T(128)S(4)}, s32[3]{0:T(128)S(4)}) custom-call(%param, %constant.1), custom_call_target="tpu_custom_call", operand_layout_constraints={s32[3]{0}, s32[1]{0}}, backend_config={"custom_call_config": {"body": "", "serialization_format": 1, "needs_layout_passes": true, "output_memory_space_colors": [{"shape_index":[0],"color":4},{"shape_index":[1],"color":4},{"shape_index":[2],"color":4},{"shape_index":[3],"color":4},{"shape_index":[4],"color":4}]}}
+  %get-tuple-element.11 = s32[1]{0:T(128)S(4)} get-tuple-element(%make_group_metadata.1), index=1
+  %get-tuple-element.10 = s32[1]{0:T(128)S(4)} get-tuple-element(%make_group_metadata.1), index=0
+  %get-tuple-element.28 = s32[3]{0:T(128)S(4)} get-tuple-element(%make_group_metadata.1), index=4
+  %get-tuple-element.22 = s32[3]{0:T(128)S(4)} get-tuple-element(%make_group_metadata.1), index=3
+  %get-tuple-element.16 = s32[4]{0:T(128)S(4)} get-tuple-element(%make_group_metadata.1), index=2
+  %ragged_latency_optimized_reduce_scatter_out_feature_matmul.1 = bf16[1024,512]{1,0:T(8,128)(2,1)} custom-call(%get-tuple-element.10, %get-tuple-element.11, %get-tuple-element.16, %get-tuple-element.22, %get-tuple-element.28, /*index=5*/%param.1, %param.2), custom_call_target="tpu_custom_call", operand_layout_constraints={s32[1]{0}, s32[1]{0}, s32[4]{0}, s32[3]{0}, s32[3]{0}, bf16[1024,512]{1,0}, bf16[2,512,4096]{2,1,0}}, backend_config={"flag_configs":[{"flag_type":"XLA_TPU_EVENLY_DISTRIBUTE_CRITICAL_NODES","value":{"boolean_value":true}},{"flag_type":"XLA_TPU_ENABLE_LLO_PIPELINING","value":{"boolean_value":true}},{"flag_type":"XLA_TPU_ENABLE_LLO_SMALL_LOOP_FLATTENING","value":{"boolean_value":true}},{"flag_type":"XLA_TPU_RESCHEDULE_DMA_DONES","value":{"boolean_value":true}},{"flag_type":"XLA_TPU_MAX_INSTS_TO_PREDICATE","value":{"integer_value":"65536"}}],"barrier_config":{"barrier_type":"CUSTOM","id":"0"},"scoped_memory_configs":[],"custom_call_config":{"body":"","has_communication":true,"collective_id":"1","cost_estimate":{"flops":"5","transcendentals":"0","bytes_accessed":"15000000"},"needs_layout_passes":true,"allow_input_fusion":[],"serialization_format":"1","output_memory_colors":[],"output_memory_space_colors":[{"color":"1","shape_index":[]}],"input_memory_space_colors":[{"operand_index":"5","color":"1","shape_index":[]},{"operand_index":"6","color":"1","shape_index":[]}]},"used_scoped_memory_configs":[]}
+  ROOT %copy.22 = bf16[1024,512]{1,0:T(8,128)(2,1)} copy(%ragged_latency_optimized_reduce_scatter_out_feature_matmul.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+
+  HloInstruction* custom_kernel = FindInstruction(
+      module.get(),
+      "ragged_latency_optimized_reduce_scatter_out_feature_matmul.1");
+  HloPosition custom_kernel_position{custom_kernel, {}};
+  HloUse custom_kernel_param_1_use{custom_kernel, 5, {}};
+  HloUse custom_kernel_param_2_use{custom_kernel, 6, {}};
+
+  memory_space_options.buffer_colorings = {
+      {custom_kernel_position, kAlternateMemorySpace},
+      {custom_kernel_param_1_use, kAlternateMemorySpace},
+      {custom_kernel_param_2_use, kAlternateMemorySpace}};
+
+  memory_space_options.default_memory_space = 0;
+  memory_space_options.alternate_memory_space = 1;
+  memory_space_options.max_size_in_bytes = 62537728;
+  memory_space_options.alignment_in_bytes = 4096;
+  memory_space_options.replicated_split_dimension = -1;
+  memory_space_options.any_split_dimension = -2;
+  memory_space_options.reduce_scoped_memory_limit = false;
+  memory_space_options.allocate_reserved_scoped_memory_at_same_offset = true;
+  memory_space_options.max_outstanding_prefetches = 40;
+  memory_space_options.max_outstanding_evictions = 40;
+  memory_space_options.while_use_extra_outstanding_prefetch_limit = 4;
+  memory_space_options.max_retries = 2;
+  memory_space_options.max_repacks = 4;
+  memory_space_options.repack_after_every_allocation = false;
+  memory_space_options.verify = false;
+  memory_space_options.enable_cross_program_prefetch = true;
+  memory_space_options.default_cross_program_prefetch_heuristic = false;
+  memory_space_options.enable_cross_program_prefetch_freeing = true;
+  memory_space_options.max_cross_program_prefetches = 1;
+  memory_space_options.cross_program_prefetch_permissive_mode = false;
+  memory_space_options.enable_while_redundant_eviction_elimination = true;
+  memory_space_options.use_repeated_instance_for_preferred_prefetch_time =
+      false;
+  memory_space_options.enforce_prefetch_fifo_order = false;
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+  memory_space_options.extend_async_copies_limit_for_sync_mem_op_conversion = 0;
+  memory_space_options.inefficient_use_to_copy_ratio = 0.5;
+  memory_space_options.always_spill_to_default_memory = false;
+  memory_space_options.enable_window_prefetch = false;
+  memory_space_options.window_prefetch_mode =
+      WindowPrefetchMode::kWindowExposure;
+  memory_space_options.expanded_scoped_alternate_memory_mode =
+      ExpandedScopedAlternateMemoryMode::DISABLED;
+  memory_space_options.post_module_scoped_alternate_memory_size_in_bytes = 0;
+  memory_space_options.sliced_prefetch_options.set_max_slices(4);
+  memory_space_options.sliced_prefetch_options.set_min_bytes(1048576);
+  memory_space_options.sliced_prefetch_options
+      .set_all_slice_time_permutations_threshold(4);
+  memory_space_options.memory_bound_loop_optimizer_options.set_enabled(true);
+  memory_space_options.memory_bound_loop_optimizer_options
+      .set_desired_copy_ratio(0.7);
+  memory_space_options.memory_bound_loop_optimizer_options
+      .set_allow_unsatisfied_fully_pipelined_prefetch(true);
+  memory_space_options.memory_bound_loop_optimizer_options
+      .set_min_num_iterations(6);
+  memory_space_options.is_allowed_in_alternate_mem_fn =
+      [&](const HloValue& value) {
+        // Check if the value belongs in the entry computation.
+        HloInstruction* instruction = value.instruction();
+        HloComputation* computation = instruction->parent();
+        bool in_entry_computation =
+            (computation == computation->parent()->entry_computation());
+        if (in_entry_computation &&
+            instruction->opcode() == HloOpcode::kParameter) {
+          return value.shape().has_layout() &&
+                 value.shape().layout().memory_space() != kDefaultMemorySpace;
+        }
+        if (instruction->opcode() == HloOpcode::kCopyStart &&
+            value.index() == ShapeIndex({2})) {
+          // This is a sync flag, so don't put it in alternate memory.
+          return false;
+        }
+        return true;
+      };
+  MemorySpaceAssignmentBestFitRepacker best_fit_repacker(
+      memory_space_options.max_size_in_bytes,
+      memory_space_options.alignment_in_bytes,
+      (memory_space_options.sliced_prefetch_options.max_slices() >
+               memory_space_options.sliced_prefetch_options
+                   .all_slice_time_permutations_threshold()
+           ? SliceTimePermutationIterator::Ty::kPreferred
+           : SliceTimePermutationIterator::Ty::kAll));
+  memory_space_options.repacker = &best_fit_repacker;
+
+  XLA_VLOG_LINES(3, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  XLA_VLOG_LINES(3, "After MSA: \n" + module->ToString());
+  auto latency_optimized_reduce_scatter_kernel = FindInstruction(
+      module.get(),
+      "ragged_latency_optimized_reduce_scatter_out_feature_matmul.1");
+  // The custom kernel should be in alternate memory.
+  EXPECT_EQ(
+      latency_optimized_reduce_scatter_kernel->shape().layout().memory_space(),
+      kAlternateMemorySpace);
+  // The operands 5 and 6 of the custom kernel should be in alternate memory.
+  EXPECT_EQ(latency_optimized_reduce_scatter_kernel->operand(5)
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(latency_optimized_reduce_scatter_kernel->operand(6)
                 ->shape()
                 .layout()
                 .memory_space(),
