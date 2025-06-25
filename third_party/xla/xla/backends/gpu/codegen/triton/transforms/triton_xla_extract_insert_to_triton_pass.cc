@@ -24,6 +24,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -98,6 +100,27 @@ bool TmaIsEnabledForDevice(
   bool is_cuda = std::holds_alternative<stream_executor::CudaComputeCapability>(
       device_info.gpu_compute_capability());
   return is_cuda && device_info.cuda_compute_capability().IsAtLeastHopper();
+}
+
+// Canonicalizes tile strides. If a tile stride is 0, and the corresponding
+// tile shape or original shape value at the same index is 1, then the tile
+// stride is set to 1. Otherwise, it returns an error.
+absl::Status CanonicalizeTileStrides(SmallVector<int64_t>& tile_strides,
+                                     const ArrayRef<int64_t>& tile_shape,
+                                     const ArrayRef<int64_t>& original_shape) {
+  for (int64_t i = 0; i < tile_strides.size(); ++i) {
+    if (tile_strides[i] == 0) {
+      if (tile_shape[i] != 1 && original_shape[i] != 1) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "tile_stride at index %d is 0, but tile_shape at the same "
+            "index is %d, and original_shape at the same index is %d. Expected "
+            "tile_shape or original_shape to be 1 at that index.",
+            i, tile_shape[i], original_shape[i]));
+      }
+      tile_strides[i] = 1;
+    }
+  }
+  return absl::OkStatus();
 }
 
 bool CanUseTMA(::xla::EmitterLocOpBuilder& builder, bool tma_enabled,
@@ -474,7 +497,14 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
     auto offsets = op.getOffsetsAsValues(builder);
     if (CanUseTMA(builder, tma_enabled_, *device_description_, tile_shape,
                   op.getStaticStrides(), op.getSrc(), op.getLayout())) {
-      AddTmaAttributes(builder, op.getSrc(), tile_shape, op.getStaticStrides(),
+      SmallVector<int64_t> strides = llvm::to_vector(op.getStaticStrides());
+      if (auto result =
+              CanonicalizeTileStrides(strides, tile_shape, original_shape);
+          !result.ok()) {
+        return rewriter.notifyMatchFailure(op, result.message());
+      }
+
+      AddTmaAttributes(builder, op.getSrc(), tile_shape, strides,
                        op.getLayout());
 
       SmallVector<int64_t> normalized_tile_shape =
@@ -563,7 +593,14 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
     auto offsets = op.getOffsetsAsValues(builder);
     if (CanUseTMA(builder, tma_enabled_, *device_description_, tile_shape,
                   op.getStaticStrides(), op.getDst(), op.getLayout())) {
-      AddTmaAttributes(builder, op.getDst(), tile_shape, op.getStaticStrides(),
+      SmallVector<int64_t> strides = llvm::to_vector(op.getStaticStrides());
+      if (auto result =
+              CanonicalizeTileStrides(strides, tile_shape, original_shape);
+          !result.ok()) {
+        return rewriter.notifyMatchFailure(op, result.message());
+      }
+
+      AddTmaAttributes(builder, op.getDst(), tile_shape, strides,
                        op.getLayout());
 
       SmallVector<int64_t> normalized_tile_shape =

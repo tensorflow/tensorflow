@@ -224,3 +224,18 @@ func.func @lower_extract_insert_5d(%arg0: tensor<16x16x16x16x16xbf16>,
 // CHECK-TMA:    %[[LOAD:.*]] = tt.descriptor_load %[[ARG_0]]
 // CHECK-TMA:    tt.descriptor_store %[[ARG_1]][{{.*}}], %[[LOAD]]
 // CHECK-TMA:    tt.return
+
+// -----
+
+func.func @extract_insert_with_zero_stride(%arg0: tensor<512x128xbf16>,
+          %arg1: tensor<256x256xbf16>) -> tensor<256x256xbf16> {
+  %extracted_tensor = triton_xla.extract %arg0 [0, 0] [1, 64] [0, 1]
+    {layout = array<i64:1, 0>} : tensor<512x128xbf16> to tensor<1x64xbf16>
+  %updated_tensor = triton_xla.insert %extracted_tensor into
+    %arg1 [0, 0] [1, 64] [0, 1] {layout = array<i64:1, 0>}
+    : tensor<1x64xbf16> into tensor<256x256xbf16>
+  func.return %updated_tensor : tensor<256x256xbf16>
+}
+
+// CHECK-TMA-LABEL: tt.func @extract_insert_with_zero_stride
+// CHECK-TMA-SAME:  %[[ARG_0:.*]]: !tt.tensordesc{{.*}} tile_strides = [1, 1], {{.*}} %[[ARG_1:.*]]: !tt.tensordesc{{.*}} tile_strides = [1, 1]
