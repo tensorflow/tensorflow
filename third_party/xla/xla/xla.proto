@@ -680,7 +680,7 @@ message DebugOptions {
   // If true, NCCL collectives (e.g., AllReduce) execute asynchronously. If
   // xla_gpu_nccl_blocking_communicators is false, then
   // xla_gpu_nccl_async_execution must be true.
-  bool xla_gpu_nccl_async_execution = 393;
+  optional bool xla_gpu_nccl_async_execution = 393;
 
   // There are two types of NCCL communicators: blocking and non-blocking.  When
   // a collective operation is called on a blocking communicator, the
@@ -688,7 +688,7 @@ message DebugOptions {
   // non-blocking communicator, on the other hand, returns immediately.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/types.html#c.blocking
-  bool xla_gpu_nccl_blocking_communicators = 390;
+  optional bool xla_gpu_nccl_blocking_communicators = 390;
 
   // Specify the maximum number of channels(SMs) NCCL
   // will use for collective operations.
