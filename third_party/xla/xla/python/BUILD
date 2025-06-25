@@ -90,7 +90,10 @@ py_strict_test(
 cc_library(
     name = "types",
     srcs = ["types.cc"],
-    hdrs = ["types.h"],
+    hdrs = [
+        "types.h",
+        "version.h",
+    ],
     compatible_with = [],
     copts = [
         "-fexceptions",
