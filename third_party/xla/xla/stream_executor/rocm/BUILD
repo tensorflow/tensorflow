@@ -11,6 +11,7 @@ load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
 )
+load("//xla/stream_executor/gpu:build_defs.bzl", "cc_embed_rocm_library")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
@@ -1255,4 +1256,28 @@ rocm_library(
         "//xla/stream_executor/gpu:gpu_test_kernel_traits",
     ],
     alwayslink = 1,
+)
+
+cc_embed_rocm_library(
+    name = "gpu_test_kernels_rocm_embedded",
+    testonly = 1,
+    rocm_library_target = ":gpu_test_kernels_rocm",
+)
+
+xla_test(
+    name = "gpu_test_kernels_rocm_embedded_test",
+    srcs = ["gpu_test_kernels_rocm_embedded_test.cc"],
+    backends = ["gpu"],
+    tags = ["rocm-only"],
+    deps = [
+        ":gpu_test_kernels_rocm_embedded",
+        ":rocm_platform_id",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
