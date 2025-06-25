@@ -398,6 +398,23 @@ absl::Status DumpOutput(
     absl::string_view dump_output_to, int task_id,
     OutputFormat output_format = OutputFormat::kText);
 
+// Contains the output of a RunAsync call. The callers are responsible for
+// calling Await() on the futures.
+struct ExecutionResult {
+  std::vector<PjRtFuture<>> futures;
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
+};
+
+absl::StatusOr<std::unique_ptr<ExecutionResult>> RunAsync(
+    PjRtClient& client, PjRtLoadedExecutable* executable,
+    std::shared_ptr<const PerDeviceLiteralVecType> arguments,
+    const RunningOptions& running_options, std::minstd_rand0* engine);
+
+absl::StatusOr<PerDeviceLiteralVecType> FetchOutput(
+    PjRtClient& client,
+    const std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>& output_buffers,
+    ModuleOutputMode module_output_mode);
+
 }  // namespace FunctionalHloRunner
 
 void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module);

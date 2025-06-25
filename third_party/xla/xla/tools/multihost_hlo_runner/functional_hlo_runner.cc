@@ -147,6 +147,18 @@ enum class ParameterType {
   kOther = 2
 };
 
+// Used for setting up the parameters for PjRT Execute
+struct ExecutionMetadata {
+  ExecuteOptions execute_options;
+  std::shared_ptr<HloModule> hlo_module;
+  bool flatten_arguments;
+  std::function<std::optional<int64_t>(int64_t)>
+      get_output_index_for_one_tuple_of_arrays;
+  std::function<std::optional<int64_t>(int64_t)>
+      get_output_index_for_one_list_of_arrays;
+  bool default_untuple_result;
+};
+
 ParameterType GetParameterType(const HloModule& module) {
   int num_parameters = module.entry_computation()->num_parameters();
   if (num_parameters == 1) {
@@ -332,7 +344,7 @@ ReplicasAndPartitions GetReplicasAndPartitions(
   return result;
 }
 
-absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
+absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutputInternal(
     PjRtClient& client,
     const std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>& output_buffers,
     ModuleOutputMode module_output_mode, bool log_output) {
@@ -492,12 +504,8 @@ absl::Status EnsureSingleTupleForFlattening(const HloModule& module) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
-    PjRtClient& client, PjRtLoadedExecutable* executable,
-    std::function<absl::StatusOr<
-        std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>(bool)>
-        create_argument_buffers_on_device,
-    const RunningOptions& running_options) {
+absl::StatusOr<ExecutionMetadata> InitializeExecutionMetadata(
+    PjRtLoadedExecutable* executable, const RunningOptions& running_options) {
   ExecuteOptions execute_options;
   if (running_options.multi_slice_config != nullptr) {
     execute_options.multi_slice_config = running_options.multi_slice_config;
@@ -544,7 +552,6 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
     return 0;
   };
 
-  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
   auto output_has_tuple_leaf_on_host_memory_space = [&module]() {
     if (!module.result_shape().IsTuple()) {
       return false;
@@ -574,10 +581,62 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
   if (must_untuple_result) {
     execute_options.untuple_result = true;
   }
+  return ExecutionMetadata{std::move(execute_options),
+                           std::move(hlo_modules.front()),
+                           flatten_arguments,
+                           get_output_index_for_one_tuple_of_arrays,
+                           get_output_index_for_one_list_of_arrays,
+                           default_untuple_result};
+}
+
+absl::StatusOr<std::unique_ptr<ExecutionResult>> RunAsyncInternal(
+    PjRtLoadedExecutable* executable,
+    std::function<absl::StatusOr<
+        std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>(bool)>
+        create_argument_buffers_on_device,
+    const FunctionalHloRunner::RunningOptions& running_options) {
+  auto result = std::make_unique<ExecutionResult>();
+  if (running_options.num_repeats > 1) {
+    return absl::InvalidArgumentError(
+        "Run async mode only supports num_repeats = 1.");
+  }
+  TF_ASSIGN_OR_RETURN(auto execution_metadata,
+                      InitializeExecutionMetadata(executable, running_options));
   std::optional<std::vector<PjRtFuture<>>> futures;
   futures.emplace();
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> device_buffers;
   std::vector<std::vector<PjRtBuffer*>> argument_ptrs;
+  ExecuteOptions execute_options = execution_metadata.execute_options;
+  TF_ASSIGN_OR_RETURN(
+      device_buffers,
+      create_argument_buffers_on_device(execution_metadata.flatten_arguments));
+  argument_ptrs = CreateArgumentPointersFromDeviceBuffers(device_buffers);
+  execute_options.untuple_result = execution_metadata.default_untuple_result;
+  TF_ASSIGN_OR_RETURN(
+      result->output_buffers,
+      executable->Execute(argument_ptrs, execute_options, futures));
+  for (auto& future : *futures) {
+    result->futures.push_back(std::move(future));
+  }
+  return result;
+}
+
+absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
+    PjRtClient& client, PjRtLoadedExecutable* executable,
+    std::function<absl::StatusOr<
+        std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>(bool)>
+        create_argument_buffers_on_device,
+    const RunningOptions& running_options) {
+  TF_ASSIGN_OR_RETURN(ExecutionMetadata execution_metadata,
+                      InitializeExecutionMetadata(executable, running_options));
+  std::optional<std::vector<PjRtFuture<>>> futures;
+  futures.emplace();
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> device_buffers;
+  std::vector<std::vector<PjRtBuffer*>> argument_ptrs;
+  ExecuteOptions execute_options = execution_metadata.execute_options;
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
+  ParameterType parameter_type =
+      GetParameterType(*execution_metadata.hlo_module);
   for (int repeat = 0; repeat < running_options.num_repeats; ++repeat) {
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices started (repeat = "
             << repeat << ").";
@@ -588,12 +647,14 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
         VLOG(1) << "Creating argument buffers. repeat = " << repeat;
         device_buffers.clear();
         argument_ptrs.clear();
-        TF_ASSIGN_OR_RETURN(device_buffers, create_argument_buffers_on_device(
-                                                flatten_arguments));
+        TF_ASSIGN_OR_RETURN(device_buffers,
+                            create_argument_buffers_on_device(
+                                execution_metadata.flatten_arguments));
         argument_ptrs = CreateArgumentPointersFromDeviceBuffers(device_buffers);
       }
       if (repeat == running_options.num_repeats - 1) {
-        execute_options.untuple_result = default_untuple_result;
+        execute_options.untuple_result =
+            execution_metadata.default_untuple_result;
         if (running_options.profiler != nullptr) {
           running_options.profiler->CreateSession();
         }
@@ -619,12 +680,12 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
         case ParameterType::kOneTupleOfArrays:
           argument_ptrs = CreateArgumentPointersBasedOnAliasing(
               output_buffers, device_buffers,
-              get_output_index_for_one_tuple_of_arrays);
+              execution_metadata.get_output_index_for_one_tuple_of_arrays);
           break;
         case ParameterType::kOneListOfArrays:
           argument_ptrs = CreateArgumentPointersBasedOnAliasing(
               output_buffers, device_buffers,
-              get_output_index_for_one_list_of_arrays);
+              execution_metadata.get_output_index_for_one_list_of_arrays);
           break;
         case ParameterType::kOther:
           argument_ptrs =
@@ -634,10 +695,11 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(PerDeviceLiteralVecType results,
-                      FetchAndLogOutput(client, output_buffers,
-                                        running_options.module_output_mode,
-                                        running_options.log_input_output()));
+  TF_ASSIGN_OR_RETURN(
+      PerDeviceLiteralVecType results,
+      FetchAndLogOutputInternal(client, output_buffers,
+                                running_options.module_output_mode,
+                                running_options.log_input_output()));
   if (running_options.profiler != nullptr) {
     running_options.profiler->UploadSession();
   }
@@ -647,12 +709,12 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
 // Creates argument buffers based on the given arguments map. Note that the
 // arguments might be invalid when arguments are destructed.
 absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
-CopyArgumentsToDevice(PjRtClient& client,
-                      const PjRtLoadedExecutable* executable,
-                      const PerDeviceLiteralVecType& arguments,
-                      const RunningOptions& running_options,
-                      bool flattened_arguments,
-                      bool clone_device0_arguments = false) {
+CopyArgumentsToDeviceImpl(PjRtClient& client,
+                          const PjRtLoadedExecutable* executable,
+                          const PerDeviceLiteralVecType& arguments,
+                          const RunningOptions& running_options,
+                          bool flattened_arguments,
+                          bool clone_device0_arguments = false) {
   const bool log_input = running_options.log_input_output();
   absl::Span<PjRtDevice* const> addressable_devices =
       executable->addressable_devices();
@@ -767,6 +829,50 @@ CopyArgumentsToDevice(PjRtClient& client,
       argument_buffers[i].push_back(std::move(argument_buffer));
     }
   }
+  return argument_buffers;
+}
+
+// Overload 1: Accepts a shared_ptr for async lifetime management.
+absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
+CopyArgumentsToDeviceAsync(
+    PjRtClient& client, const PjRtLoadedExecutable* executable,
+    std::shared_ptr<const PerDeviceLiteralVecType> arguments,
+    const RunningOptions& running_options, bool flattened_arguments,
+    bool clone_device0_arguments = false) {
+  // Dereference the pointer and delegate to the implementation.
+  // The caller's shared_ptr keeps the data alive for the async operation.
+  return CopyArgumentsToDeviceImpl(client, executable, *arguments,
+                                   running_options, flattened_arguments,
+                                   clone_device0_arguments);
+}
+
+// Overload 2: Accepts a const reference for synchronous callers.
+absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
+CopyArgumentsToDeviceAsync(PjRtClient& client,
+                           const PjRtLoadedExecutable* executable,
+                           const PerDeviceLiteralVecType& arguments,
+                           const RunningOptions& running_options,
+                           bool flattened_arguments,
+                           bool clone_device0_arguments = false) {
+  // Pass the reference directly to the implementation.
+  return CopyArgumentsToDeviceImpl(client, executable, arguments,
+                                   running_options, flattened_arguments,
+                                   clone_device0_arguments);
+}
+
+// Creates argument buffers based on the given arguments map. Note that the
+// arguments might be invalid when arguments are destructed.
+absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
+CopyArgumentsToDevice(PjRtClient& client,
+                      const PjRtLoadedExecutable* executable,
+                      const PerDeviceLiteralVecType& arguments,
+                      const RunningOptions& running_options,
+                      bool flattened_arguments,
+                      bool clone_device0_arguments = false) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> argument_buffers,
+      CopyArgumentsToDeviceAsync(client, executable, arguments, running_options,
+                                 flattened_arguments, clone_device0_arguments));
   for (const auto& device_argument_buffers : argument_buffers) {
     for (const auto& device_buffer : device_argument_buffers) {
       TF_RETURN_IF_ERROR(device_buffer->GetReadyFuture().Await());
@@ -1474,6 +1580,31 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> Run(
   };
   return RunInternal(client, executable, create_argument_buffers_on_device,
                      running_options);
+}
+
+absl::StatusOr<std::unique_ptr<ExecutionResult>> RunAsync(
+    PjRtClient& client, PjRtLoadedExecutable* executable,
+    std::shared_ptr<const PerDeviceLiteralVecType> arguments,
+    const RunningOptions& running_options, std::minstd_rand0* engine) {
+  auto create_argument_buffers_on_device =
+      [&client, executable, arguments,
+       &running_options](bool flatten_tupled_arguments) {
+        // Since the arguments is a shared pointer, arguments are expected to be
+        // alive after the async function returns.
+        return CopyArgumentsToDeviceAsync(client, executable, arguments,
+                                          running_options,
+                                          /*flattened_arguments=*/false);
+      };
+  return RunAsyncInternal(executable, create_argument_buffers_on_device,
+                          running_options);
+}
+
+absl::StatusOr<PerDeviceLiteralVecType> FetchOutput(
+    PjRtClient& client,
+    const std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>& output_buffers,
+    ModuleOutputMode module_output_mode) {
+  return FetchAndLogOutputInternal(client, output_buffers, module_output_mode,
+                                   /*log_output=*/false);
 }
 
 namespace {
