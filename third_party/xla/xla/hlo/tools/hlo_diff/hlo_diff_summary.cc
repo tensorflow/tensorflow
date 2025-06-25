@@ -186,15 +186,23 @@ FindConnectedComponents(
     absl::flat_hash_map<const HloComputation*, const ComputationSummary>
         computation_summary) {
   ConnectedComponentsFinder cc;
+  std::vector<std::vector<const HloComputation*>> unmatched_computations;
   absl::flat_hash_map<uint64_t, std::vector<ComputationGroup>> result;
   for (const auto& [computation, computation_match_info] :
        computation_summary) {
     if (computation_match_info.main_matched_computation != nullptr) {
       cc.AddEdge(computation, computation_match_info.main_matched_computation);
+    } else {
+      // main_matched_computation is nullptr means all instructions in the
+      // computation are unmatched.
+      unmatched_computations.push_back({computation});
     }
   }
   std::vector<std::vector<const HloComputation*>> connected_component_groups =
       cc.FindConnectedComponents();
+  connected_component_groups.insert(connected_component_groups.end(),
+                                    unmatched_computations.begin(),
+                                    unmatched_computations.end());
 
   for (const auto& component_group : connected_component_groups) {
     bool all_unchanged = true;
