@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/hlo_graph_dumper.h"
 
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -25,7 +27,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal_util.h"
-#include "xla/tests/test_utils.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -212,6 +214,31 @@ ENTRY %conditional_select (constant: pred[]) -> (f32[]) {
       std::string graph,
       RenderGraph(*module->entry_computation(), /*label=*/"tuple_constant",
                   DebugOptions(), RenderedGraphFormat::kDot));
+}
+
+TEST_F(HloGraphDumperTest, ShowCallers) {
+  const char* hlo_string = R"(
+    command_buffer {
+      ROOT root = f32[16] parameter(0)
+    }
+    ENTRY comp {
+      p0 = f32[16] parameter(0)
+      ROOT call.1 = f32[16] call(p0), to_apply=command_buffer
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::string graph, RenderGraph(*module->entry_computation(),
+                                     /*label=*/"command_buffer", DebugOptions(),
+                                     RenderedGraphFormat::kDot));
+  EXPECT_THAT(graph, HasSubstr("ENTRY computation"));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      graph,
+      RenderGraph(*module->entry_computation()->root_instruction()->to_apply(),
+                  /*label=*/"command_buffer", DebugOptions(),
+                  RenderedGraphFormat::kDot));
+  EXPECT_THAT(graph, HasSubstr("Caller instructions: call.1"));
 }
 
 TEST_F(HloGraphDumperTest, OverrideColors) {

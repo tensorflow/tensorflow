@@ -572,6 +572,15 @@ stylesheet=<
   if (computation_->IsFusionComputation()) {
     StrAppend(&graph_label, " (in fusion instruction ",
               computation_->FusionInstruction()->name(), ")");
+  } else if (computation_->IsEntryComputation()) {
+    StrAppend(&graph_label, "<br/>ENTRY computation");
+  } else if (!computation_->caller_computations().empty()) {
+    std::string callers =
+        absl::StrJoin(computation_->caller_instructions(), ", ",
+                      [](std::string* out, const HloInstruction* instr) {
+                        absl::StrAppend(out, instr->name());
+                      });
+    StrAppend(&graph_label, "<br/>Caller instructions: ", callers);
   }
 
   // Create CSS rules that say, when you hover over the given node or cluster,
