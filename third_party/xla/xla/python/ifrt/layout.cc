@@ -57,11 +57,7 @@ absl::StatusOr<LayoutProto> Layout::ToProto(SerDesVersion version) const {
   LayoutProto layout_proto;
   // `LayoutProto` does not store its own version. It delegates the details to
   // SerDes of the `Layout` subclasses.
-  std::unique_ptr<SerializeOptions> options;
-  if (version != SerDesVersion::current()) {
-    options = std::make_unique<SerializeOptions>();
-    options->version = version;
-  }
+  auto options = std::make_unique<SerializeOptions>(version);
   TF_ASSIGN_OR_RETURN(*layout_proto.mutable_serialized_layout(),
                       Serialize(*this, std::move(options)));
   return layout_proto;

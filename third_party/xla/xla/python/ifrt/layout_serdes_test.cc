@@ -41,8 +41,7 @@ class LayoutSerDesTest : public testing::TestWithParam<SerDesVersion> {
 TEST_P(LayoutSerDesTest, CompactLayoutRoundTrip) {
   TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({1, 0}));
 
-  auto options = std::make_unique<SerializeOptions>();
-  options->version = version();
+  auto options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(auto serialized,
                           Serialize(*layout, std::move(options)));
 

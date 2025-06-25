@@ -32,8 +32,7 @@ namespace {
 TEST(PluginProgramSerDesTest, RoundTrip) {
   PluginProgram orig;
   orig.data = "foo";
-  auto options = std::make_unique<SerializeOptions>();
-  options->version = SerDesVersion::current();
+  auto options = std::make_unique<SerializeOptions>(SerDesVersion::current());
   TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
                           Serialize(orig, std::move(options)));
   TF_ASSERT_OK_AND_ASSIGN(
@@ -45,8 +44,7 @@ TEST(PluginProgramSerDesTest, RoundTrip) {
 
 TEST(PluginCompileOptionsSerDesTest, RoundTrip) {
   PluginCompileOptions orig;
-  auto options = std::make_unique<SerializeOptions>();
-  options->version = SerDesVersion::current();
+  auto options = std::make_unique<SerializeOptions>(SerDesVersion::current());
   TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
                           Serialize(orig, std::move(options)));
   TF_EXPECT_OK(

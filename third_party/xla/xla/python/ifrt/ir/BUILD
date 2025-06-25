@@ -139,6 +139,7 @@ cc_library(
     visibility = ["//xla/python/ifrt:users"],
     deps = [
         ":sharding_param_proto_cc",
+        "//xla/python/ifrt:serdes_default_version_accessor",
         "//xla/python/ifrt:serdes_version",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/status",
@@ -169,6 +170,7 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt:basic_device_list",
         "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:serdes_default_version_accessor",
         "//xla/python/ifrt:serdes_version",
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/tsl/platform:statusor",

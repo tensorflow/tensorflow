@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/execute_options.pb.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/xla_data.pb.h"
 
@@ -134,7 +135,7 @@ struct ExecuteOptions {
   std::optional<AttributeMap> custom_options;
 
   absl::StatusOr<ExecuteOptionsProto> ToProto(
-      SerDesVersion version = SerDesVersion::current()) const;
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
 
   static absl::StatusOr<ExecuteOptions> FromProto(
       const ExecuteOptionsProto& proto);

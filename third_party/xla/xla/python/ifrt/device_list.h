@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device.pb.h"
 #include "xla/python/ifrt/ref_wrapper.h"
+#include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -52,7 +53,7 @@ class DeviceList : public tsl::ReferenceCounted<DeviceList>,
 
   // Returns a `DeviceListProto` representation.
   DeviceListProto ToProto(
-      SerDesVersion version = SerDesVersion::current()) const;
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
 
   // Returns the number of devices.
   // TODO(hyeontaek): Make this a virtual method and make it possible for a

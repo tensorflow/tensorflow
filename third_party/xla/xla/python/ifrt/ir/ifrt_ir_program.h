@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 
 namespace xla {
@@ -63,10 +64,15 @@ struct IfrtIRProgram : llvm::RTTIExtends<IfrtIRProgram, Program> {
 // Options for serializing IFRT IR programs.
 struct SerializeIfrtIRProgramOptions
     : llvm::RTTIExtends<SerializeIfrtIRProgramOptions, SerializeOptions> {
-  explicit SerializeIfrtIRProgramOptions(std::string ifrt_version,
-                                         std::string atom_program_version,
-                                         bool version_in_place = true)
-      : ifrt_version(std::move(ifrt_version)),
+  explicit SerializeIfrtIRProgramOptions(
+      std::string ifrt_version, std::string atom_program_version,
+      bool version_in_place = true,
+      // Using a parameter name `serdes_version` avoids shadowing the base class
+      // member variable `version`.
+      SerDesVersion serdes_version = SerDesDefaultVersionAccessor::Get())
+      : llvm::RTTIExtends<SerializeIfrtIRProgramOptions, SerializeOptions>(
+            /*version=*/serdes_version),
+        ifrt_version(std::move(ifrt_version)),
         atom_program_version(std::move(atom_program_version)),
         version_in_place(version_in_place) {}
 
@@ -140,7 +146,7 @@ struct IfrtIRCompileOptions
 
   // Returns a `IfrtIrCompileOptionsProto` representation.
   absl::StatusOr<IfrtIrCompileOptionsProto> ToProto(
-      SerDesVersion version = SerDesVersion::current()) const;
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
 
   static char ID;  // NOLINT
 };

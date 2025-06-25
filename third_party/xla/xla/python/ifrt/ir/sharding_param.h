@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/python/ifrt/ir/sharding_param.pb.h"
+#include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 
 namespace xla {
@@ -162,7 +163,7 @@ class ShardingParam {
 
   // Returns a `ShardingParamProto` representation.
   absl::StatusOr<ShardingParamProto> ToProto(
-      SerDesVersion version = SerDesVersion::current()) const;
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
 
   // Constructs `ShardingParam` from `ShardingParamProto`.
   static absl::StatusOr<ShardingParam> FromProto(

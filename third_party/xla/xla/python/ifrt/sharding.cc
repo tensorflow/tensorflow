@@ -194,11 +194,7 @@ absl::StatusOr<ShardingProto> Sharding::ToProto(SerDesVersion version) const {
   ShardingProto sharding_proto;
   // `ShardingProto` does not store its own version. It delegates the details to
   // SerDes of the `Sharding` subclasses.
-  std::unique_ptr<SerializeOptions> options;
-  if (version != SerDesVersion::current()) {
-    options = std::make_unique<SerializeOptions>();
-    options->version = version;
-  }
+  auto options = std::make_unique<SerializeOptions>(version);
   TF_ASSIGN_OR_RETURN(*sharding_proto.mutable_serialized_sharding(),
                       Serialize(*this, std::move(options)));
   return sharding_proto;

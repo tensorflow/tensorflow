@@ -102,8 +102,7 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
                     /*sharding=*/sharding1},
       });
 
-  auto serialize_options = std::make_unique<SerializeOptions>();
-  serialize_options->version = version();
+  auto serialize_options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
                           Serialize(orig, std::move(serialize_options)));
   TF_ASSERT_OK_AND_ASSIGN(
@@ -161,8 +160,7 @@ class CustomCallCompileOptionsSerDesTest
 
 TEST_P(CustomCallCompileOptionsSerDesTest, RoundTrip) {
   CustomCallCompileOptions orig;
-  auto serialize_options = std::make_unique<SerializeOptions>();
-  serialize_options->version = version();
+  auto serialize_options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
                           Serialize(orig, std::move(serialize_options)));
   TF_EXPECT_OK(
@@ -172,8 +170,7 @@ TEST_P(CustomCallCompileOptionsSerDesTest, RoundTrip) {
 
 TEST_P(CustomCallCompileOptionsSerDesTest, InvalidSerialized) {
   CustomCallCompileOptions orig;
-  auto serialize_options = std::make_unique<SerializeOptions>();
-  serialize_options->version = version();
+  auto serialize_options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
                           Serialize(orig, std::move(serialize_options)));
   serialized.set_data("abc");

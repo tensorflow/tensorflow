@@ -85,6 +85,7 @@ cc_library(
         ":ref_wrapper",
         ":remap_plan_proto_cc",
         ":serdes",
+        ":serdes_default_version_accessor",
         ":serdes_version",
         ":shape_proto_cc",
         ":sharding_proto_cc",
@@ -153,6 +154,7 @@ cc_library(
     ]),
     deps = [
         ":attribute_map_proto_cc",
+        ":serdes_default_version_accessor",
         ":serdes_version",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
@@ -603,6 +605,20 @@ cc_library(
 )
 
 cc_library(
+    name = "serdes_default_version_accessor",
+    hdrs = ["serdes_default_version_accessor.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+    ]),
+    deps = [
+        ":serdes_version",
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
+cc_library(
     name = "serdes_week_4_old_version_accessor",
     hdrs = ["serdes_week_4_old_version_accessor.h"],
     compatible_with = get_compatible_with_portable(),
@@ -639,6 +655,7 @@ cc_library(
         ":users",
     ]),
     deps = [
+        ":serdes_default_version_accessor",
         ":serdes_proto_cc",
         ":serdes_version",
         "//xla/tsl/platform:statusor",

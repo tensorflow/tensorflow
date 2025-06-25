@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/python/ifrt/serdes.pb.h"
+#include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -64,7 +65,7 @@ char SerDes::ID = 0;
 
 SerDesVersion GetRequestedSerDesVersion(const SerializeOptions* options) {
   if (options == nullptr) {
-    return SerDesVersion::current();
+    return SerDesDefaultVersionAccessor::Get();
   }
   return options->version;
 }
