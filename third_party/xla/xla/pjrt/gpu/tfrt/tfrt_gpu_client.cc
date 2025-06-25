@@ -2136,37 +2136,31 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
   VLOG(4) << "TfrtGpuClient::BufferFromHostLiteral: shape: "
           << literal.shape().ToString() << " device: " << device->DebugString();
   const Shape& shape = literal.shape();
+  if (shape.IsTuple()) {
+    return Unimplemented(
+        "Tuple case is not supported in TfrtGpuClient::BufferFromHostLiteral");
+  }
 
   // Add a placeholder definition event for each leaf buffer when creating the
   // buffer. They are set only after h2d dispatch.
-  absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events;
-  absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4> avs;
-  int num_leaf_buffers = shape.IsTuple() ? shape.tuple_shapes().size() : 1;
-  for (int i = 0; i < num_leaf_buffers; ++i) {
-    tsl::AsyncValueRef<GpuEvent> definition_event =
-        tsl::MakeConstructedAsyncValueRef<GpuEvent>();
-    definition_events.push_back(definition_event.CopyRef());
-    avs.push_back(std::move(definition_event));
-  }
+  tsl::AsyncValueRef<GpuEvent> definition_event =
+      tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<TfrtGpuBuffer> output_buffer,
-      AllocateTfrtGpuDestinationBuffer(shape, AfterAll(definition_events),
+      AllocateTfrtGpuDestinationBuffer(shape, definition_event,
                                        tsl::down_cast<TfrtGpuDevice*>(device),
                                        this, memory_space));
 
   auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   auto* device_buffer = output_buffer->AcquireUsage(usage_event);
   CHECK(device_buffer);
-  if (shape.IsTuple()) {
-    return Unimplemented(
-        "Tuple case is not supported in TfrtGpuClient::BufferFromHostLiteral");
-  }
+
   // It is OK to capture `buffer` pointer because the `output_buffer` can't
   // be deleted until all the usage holds have gone away.
   VLOG(4) << "BufferFromHostLiteral for device_buffer: " << device_buffer;
   EnqueueWork(
       non_blocking_thread_pool_.get(),
-      [literal, av = avs[0], device_buffer, shape, this,
+      [literal, definition_event, device_buffer, shape, this,
        device = tsl::down_cast<TfrtGpuDevice*>(device),
        usage_event = std::move(usage_event)]() mutable {
         tsl::profiler::TraceMe traceme("BufferFromHostLiteral::H2D_Dispatch");
@@ -2192,9 +2186,9 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
         }
         CHECK_OK(status) << "Failed to block host until done";
         VLOG(3) << "BufferFromHostLiteral done for device_buffer: "
-                << device_buffer << " AsyncValue: " << av.get();
+                << device_buffer;
 
-        av->SetStateConcrete();
+        definition_event.SetStateConcrete();
         usage_event.SetStateConcrete();
       });
   return std::unique_ptr<PjRtBuffer>(std::move(output_buffer));
