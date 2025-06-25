@@ -138,6 +138,19 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
  } : (tensor<2x2xi64>, !stablehlo.token) -> !stablehlo.token
  ```
  
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/dialect/StablehloOps.h
+--- stablehlo/stablehlo/dialect/StablehloOps.h
++++ stablehlo/stablehlo/dialect/StablehloOps.h
+@@ -179,7 +179,8 @@
+ template <typename OpTy>
+ void buildReduceBody(Type elementType, Region &body, OpBuilder &builder) {
+   OpBuilder::InsertionGuard guard(builder);
+-  Block *block = builder.createBlock(&body);
++  if (body.getBlocks().empty()) builder.createBlock(&body);
++  Block *block = &body.getBlocks().front();
+ 
+   // Block arguments are scalars of the given element type.
+   Type type = RankedTensorType::get(/*shape=*/{}, elementType);
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
 --- stablehlo/stablehlo/dialect/StablehloOps.td
 +++ stablehlo/stablehlo/dialect/StablehloOps.td
@@ -200,6 +213,138 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
  
    let results = (outs Variadic<HLO_StaticShapeTensorOrPerAxisQuantizedTensorOrToken>);
    let hasVerifier = 1;
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -957,12 +957,12 @@
+ 
+ // Returns the types of the terminator arguments of the input  mlir::Block
+ // 'block'.
+-FailureOr<SmallVector<ShapedType>> getAccumulatorTypes(
+-    std::optional<Location> loc, Region& region) {
+-  if (region.empty()) {
+-    return emitOptionalError(
+-        loc, "Expects non-empty reduction block for type inference");
+-  }
++// Falls back to using the input types if the region is not set.
++// If different precision body is required, don't use TypeInference APIs.
++SmallVector<ShapedType> getAccumulatorTypesOrInputTypes(
++    std::optional<Location> loc, Region& region,
++    ArrayRef<ShapedType> inputTypes) {
++  if (region.empty()) return llvm::to_vector(inputTypes);
+ 
+   Block& block = region.front();
+   return llvm::map_to_vector(
+@@ -1894,12 +1894,11 @@
+   auto inputArgTensorTypes = llvm::map_to_vector(
+       inputTypes, [](Type t) { return cast<ShapedType>(t); });
+   // all_reduce_c6, all_reduce_c7
+-  auto accumulatorTypesOrErr = getAccumulatorTypes(location, computation);
+-  if (failed(accumulatorTypesOrErr)) return failure();
++  auto accumulatorTypes = getAccumulatorTypesOrInputTypes(location, computation,
++                                                          inputArgTensorTypes);
+   for (size_t inputIdx = 0; inputIdx < inputTypes.size(); ++inputIdx) {
+-    inferredReturnShapes.emplace_back(
+-        getSameShapeTensorType(inputArgTensorTypes[inputIdx],
+-                               (*accumulatorTypesOrErr)[0].getElementType()));
++    inferredReturnShapes.emplace_back(getSameShapeTensorType(
++        inputArgTensorTypes[inputIdx], accumulatorTypes[0].getElementType()));
+   }
+ 
+   return success();
+@@ -3089,10 +3088,10 @@
+           location, inputArgTensorTypes, dimensions, newDimensions, encoding)))
+     return failure();
+   // reduce_c3, reduce_c7, reduce_c8
+-  auto accumulatorTypesOrErr = getAccumulatorTypes(location, body);
+-  if (failed(accumulatorTypesOrErr)) return failure();
++  auto accumulatorTypes =
++      getAccumulatorTypesOrInputTypes(location, body, inputArgTensorTypes);
+   for (uint64_t inputIdx = 0; inputIdx < inputTypes.size(); ++inputIdx) {
+-    Type elementType = (*accumulatorTypesOrErr)[inputIdx].getElementType();
++    Type elementType = accumulatorTypes[inputIdx].getElementType();
+     inferredReturnShapes.emplace_back(newDimensions, elementType, encoding);
+   }
+ 
+@@ -3122,20 +3121,20 @@
+     return failure();
+ 
+   // reduce_window_c1, reduce_window_c14...reduce_window_c16
+-  auto accumulatorTypesOrErr = getAccumulatorTypes(location, body);
+-  if (failed(accumulatorTypesOrErr)) return failure();
++  auto accumulatorTypes =
++      getAccumulatorTypesOrInputTypes(location, body, inputTypes);
+   for (size_t i = 0; i < inputTypes.size(); ++i) {
+     auto inputRankedType = cast<RankedTensorType>(inputs[i].getType());
+     auto resultShape =
+         inferWindowOutputShape(inputTypes[i].getShape(), inferredWindow);
+     auto inputBounds = encodingToBounds(inputRankedType.getEncoding());
+     if (inputBounds.empty()) {
+-      inferredReturnShapes.emplace_back(
+-          resultShape, (*accumulatorTypesOrErr)[i].getElementType());
++      inferredReturnShapes.emplace_back(resultShape,
++                                        accumulatorTypes[i].getElementType());
+     } else {
+       auto resultBounds = inferWindowOutputShape(inputBounds, inferredWindow);
+       inferredReturnShapes.emplace_back(
+-          resultShape, (*accumulatorTypesOrErr)[i].getElementType(),
++          resultShape, accumulatorTypes[i].getElementType(),
+           boundsToEncoding(inputRankedType.getEncoding(), resultBounds));
+     }
+   }
+@@ -3196,12 +3195,14 @@
+                              ValueRange inputs, Region& updateComputation,
+                              SmallVectorImpl<Type>& inferredReturnTypes) {
+   // scatter_c24, scatter_c25
+-  auto accumulatorTypesOrErr = getAccumulatorTypes(location, updateComputation);
+-  if (failed(accumulatorTypesOrErr)) return failure();
++  auto inputTypes = llvm::map_to_vector(
++      inputs.getTypes(), [](Type t) { return cast<ShapedType>(t); });
++  auto accumulatorTypes =
++      getAccumulatorTypesOrInputTypes(location, updateComputation, inputTypes);
+   for (uint64_t inputIdx = 0; inputIdx < inputs.size(); ++inputIdx) {
+     auto inputShapedTy = cast<ShapedType>(inputs[inputIdx].getType());
+     inferredReturnTypes.push_back(getSameShapeTensorType(
+-        inputShapedTy, (*accumulatorTypesOrErr)[inputIdx].getElementType()));
++        inputShapedTy, accumulatorTypes[inputIdx].getElementType()));
+   }
+   return success();
+ }
+@@ -3235,11 +3236,12 @@
+     std::optional<Location> location, Value operand, Region& scatter,
+     SmallVectorImpl<Type>& inferredReturnTypes) {
+   // select_and_scatter_c11, select_and_scatter_c12
+-  auto accumulatorTypesOrErr = getAccumulatorTypes(location, scatter);
+-  if (failed(accumulatorTypesOrErr)) return failure();
++  auto inputType = cast<ShapedType>(operand.getType());
++  auto accumulatorTypes =
++      getAccumulatorTypesOrInputTypes(location, scatter, {inputType});
+   auto operandShapedTy = cast<ShapedType>(operand.getType());
+   inferredReturnTypes.push_back(getSameShapeTensorType(
+-      operandShapedTy, (*accumulatorTypesOrErr)[0].getElementType()));
++      operandShapedTy, accumulatorTypes[0].getElementType()));
+   return success();
+ }
+ 
+@@ -4618,13 +4620,12 @@
+   }
+ 
+   // reduce_scatter_c9
+-  auto accumulatorTypesOrErr = getAccumulatorTypes(location, computation);
+-  if (failed(accumulatorTypesOrErr)) return failure();
+-  if (resultType.getElementType() !=
+-      (*accumulatorTypesOrErr)[0].getElementType()) {
++  auto accumulatorTypes =
++      getAccumulatorTypesOrInputTypes(location, computation, {operandType});
++  if (resultType.getElementType() != accumulatorTypes[0].getElementType()) {
+     return emitOptionalError(location, "result element-type is expected to be ",
+-                             (*accumulatorTypesOrErr)[0].getElementType(),
+-                             ", but got ", resultType.getElementType());
++                             accumulatorTypes[0].getElementType(), ", but got ",
++                             resultType.getElementType());
+   }
+ 
+   return success();
 diff --ruN a/stablehlo/stablehlo/dialect/Version.h b/stablehlo/stablehlo/dialect/Version.h
 --- stablehlo/stablehlo/dialect/Version.h
 +++ stablehlo/stablehlo/dialect/Version.h
