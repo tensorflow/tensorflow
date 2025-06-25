@@ -423,6 +423,79 @@ diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.td b/stablehlo/stablehlo/dialec
    );
    let results = (outs VHLO_AnyType:$result);
  }
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+@@ -1633,17 +1633,17 @@
+   %s4 = stablehlo.select %4, %arg1, %arg2 : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+   %s5 = stablehlo.select %5, %arg1, %arg3 : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+ 
+-  // CHECK-DAG:  [[C0:%.+]] = stablehlo.compare EQ, [[ARG0]], [[ARG1]], SIGNED
+-  // CHECK-DAG:  [[C1:%.+]] = stablehlo.compare NE, [[ARG0]], [[ARG1]], SIGNED
+-
+-  // CHECK-DAG:  [[S0:%.+]] = stablehlo.select [[C0]], [[ARG0]], [[ARG1]]
+-  // CHECK-DAG:  [[S1:%.+]] = stablehlo.select [[C1]], [[ARG0]], [[ARG1]]
+-  // CHECK-DAG:  [[S2:%.+]] = stablehlo.maximum [[ARG0]], [[ARG1]]
+-  // CHECK-DAG:  [[S3:%.+]] = stablehlo.maximum [[ARG0]], [[ARG2]]
+-  // CHECK-DAG:  [[S4:%.+]] = stablehlo.minimum [[ARG1]], [[ARG2]]
+-  // CHECK-DAG:  [[S5:%.+]] = stablehlo.minimum [[ARG1]], [[ARG3]]
+-
+-  // CHECK-NEXT: return [[S0]], [[S1]], [[S2]], [[S3]], [[S4]], [[S5]]
++  // DISABLED-CHECK-DAG:  [[C0:%.+]] = stablehlo.compare EQ, [[ARG0]], [[ARG1]], SIGNED
++  // DISABLED-CHECK-DAG:  [[C1:%.+]] = stablehlo.compare NE, [[ARG0]], [[ARG1]], SIGNED
++
++  // DISABLED-CHECK-DAG:  [[S0:%.+]] = stablehlo.select [[C0]], [[ARG0]], [[ARG1]]
++  // DISABLED-CHECK-DAG:  [[S1:%.+]] = stablehlo.select [[C1]], [[ARG0]], [[ARG1]]
++  // DISABLED-CHECK-DAG:  [[S2:%.+]] = stablehlo.maximum [[ARG0]], [[ARG1]]
++  // DISABLED-CHECK-DAG:  [[S3:%.+]] = stablehlo.maximum [[ARG0]], [[ARG2]]
++  // DISABLED-CHECK-DAG:  [[S4:%.+]] = stablehlo.minimum [[ARG1]], [[ARG2]]
++  // DISABLED-CHECK-DAG:  [[S5:%.+]] = stablehlo.minimum [[ARG1]], [[ARG3]]
++
++  // DISABLED-CHECK-NEXT: return [[S0]], [[S1]], [[S2]], [[S3]], [[S4]], [[S5]]
+   return %s0, %s1, %s2, %s3, %s4, %s5 :
+          tensor<2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>
+ }
+@@ -1674,23 +1674,23 @@
+   %s6 = stablehlo.select %6, %arg3, %arg2 : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
+   %s7 = stablehlo.select %7, %arg2, %arg3 : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
+ 
+-  // CHECK-DAG:  [[C1:%.+]] = stablehlo.compare GT, [[ARG1]], [[ARG2]], SIGNED
+-  // CHECK-DAG:  [[C3:%.+]] = stablehlo.compare GE, [[ARG1]], [[ARG2]], SIGNED
+-
+-  // CHECK-DAG:  [[S0:%.+]] = stablehlo.minimum [[ARG0]], [[ARG1]]
+-  // CHECK-DAG:  [[S1:%.+]] = stablehlo.select [[C1]], [[ARG0]], [[ARG1]]
+-  // CHECK-DAG:  [[S2:%.+]] = stablehlo.minimum [[ARG3]], [[ARG1]]
+-  // CHECK-DAG:  [[S3:%.+]] = stablehlo.select [[C3]], [[ARG0]], [[ARG2]]
+-
+-  // CHECK-DAG:  [[C5:%.+]] = stablehlo.compare LT, [[ARG0]], [[ARG2]], SIGNED
+-  // CHECK-DAG:  [[C7:%.+]] = stablehlo.compare LE, [[ARG0]], [[ARG2]], SIGNED
+-
+-  // CHECK-DAG:  [[S4:%.+]] = stablehlo.maximum [[ARG2]], [[ARG1]]
+-  // CHECK-DAG:  [[S5:%.+]] = stablehlo.select [[C5]], [[ARG1]], [[ARG2]]
+-  // CHECK-DAG:  [[S6:%.+]] = stablehlo.maximum [[ARG3]], [[ARG2]]
+-  // CHECK-DAG:  [[S7:%.+]] = stablehlo.select [[C7]], [[ARG2]], [[ARG3]]
+-
+-  // CHECK-NEXT: return [[S0]], [[S1]], [[S2]], [[S3]], [[S4]], [[S5]], [[S6]], [[S7]]
++  // DISABLED-CHECK-DAG:  [[C1:%.+]] = stablehlo.compare GT, [[ARG1]], [[ARG2]], SIGNED
++  // DISABLED-CHECK-DAG:  [[C3:%.+]] = stablehlo.compare GE, [[ARG1]], [[ARG2]], SIGNED
++
++  // DISABLED-CHECK-DAG:  [[S0:%.+]] = stablehlo.minimum [[ARG0]], [[ARG1]]
++  // DISABLED-CHECK-DAG:  [[S1:%.+]] = stablehlo.select [[C1]], [[ARG0]], [[ARG1]]
++  // DISABLED-CHECK-DAG:  [[S2:%.+]] = stablehlo.minimum [[ARG3]], [[ARG1]]
++  // DISABLED-CHECK-DAG:  [[S3:%.+]] = stablehlo.select [[C3]], [[ARG0]], [[ARG2]]
++
++  // DISABLED-CHECK-DAG:  [[C5:%.+]] = stablehlo.compare LT, [[ARG0]], [[ARG2]], SIGNED
++  // DISABLED-CHECK-DAG:  [[C7:%.+]] = stablehlo.compare LE, [[ARG0]], [[ARG2]], SIGNED
++
++  // DISABLED-CHECK-DAG:  [[S4:%.+]] = stablehlo.maximum [[ARG2]], [[ARG1]]
++  // DISABLED-CHECK-DAG:  [[S5:%.+]] = stablehlo.select [[C5]], [[ARG1]], [[ARG2]]
++  // DISABLED-CHECK-DAG:  [[S6:%.+]] = stablehlo.maximum [[ARG3]], [[ARG2]]
++  // DISABLED-CHECK-DAG:  [[S7:%.+]] = stablehlo.select [[C7]], [[ARG2]], [[ARG3]]
++
++  // DISABLED-CHECK-NEXT: return [[S0]], [[S1]], [[S2]], [[S3]], [[S4]], [[S5]], [[S6]], [[S7]]
+   return %s0, %s1, %s2, %s3, %s4, %s5, %s6, %s7 : tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>,
+                                                   tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>
+ }
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_12_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_12_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_12_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_12_0.mlir
@@ -3883,4 +3956,360 @@ diff --ruN a/stablehlo/stablehlo/transforms/VhloToVersionPatterns.td b/stablehlo
 +            (resultAccuracyOpV1V2Pair[0]:$dst $operand),
 +            [], [(VHLO_CopyDiscardableAttrs $src, $dst)]>;
  }
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/Passes.td b/stablehlo/stablehlo/transforms/optimization/Passes.td
+--- stablehlo/stablehlo/transforms/optimization/Passes.td
++++ stablehlo/stablehlo/transforms/optimization/Passes.td
+@@ -23,10 +23,14 @@
+          "explicit MLIR `MemoryEffects`. Notably, this means `func.call` ops "
+          "will be assumed pure.">,
+   Option<"foldOpElementLimit", "fold-op-element-limit", "int64_t",
+-         /*default=*/"65536",
+-         "Upper limit on how many elements may be folded by an op folder. "
+-         "This limit doesn't apply in certain special cases such as "
+-         "addition with 0, multiplication by 1, and some splat operations.">,
++         /*default=*/"1",
++         "Folding an op into a constant can sometimes come at the cost of "
++         "memory overhead. (This occurs if the op's inputs are reused, meaning "
++         "that they can't be deleted after the op is folded to a constant, or "
++         "when folding operations like `iota` whose outputs take up more "
++         "memory than their inputs.) In such cases, this config option sets an "
++         "upper limit on how many elements an op's result may have before the "
++         "op is no longer folded.">,
+   Option<"optimizeFloat", "optimize-float", "bool", /*default=*/"true",
+          "Allow float optimizations that, though mathematically equivalent, "
+          "may result in slightly different quantization of floating-point "
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+@@ -328,23 +328,38 @@
+ struct FoldAndOpPattern : public ShapeOpRewritePattern<AndOp> {
+   using ShapeOpRewritePattern::ShapeOpRewritePattern;
+ 
+-  LogicalResult matchAndRewrite(mlir::stablehlo::AndOp op,
+-                                PatternRewriter& rewriter) const override {
+-    // TODO: Support more int types
++  LogicalResult matchAndRewrite(AndOp op,
++                                PatternRewriter& rewriter) const override {
+     auto resultType = op.getType();
+-    if (!resultType.getElementType().isInteger(1))
+-      return rewriter.notifyMatchFailure(op, "expected boolean element type");
+-
+-    auto res = foldBinaryOpIntOrFloat(rewriter, op, FoldAnd{});
+-    if (failed(res)) return failure();
+-    rewriter.replaceOpWithNewOp<mlir::stablehlo::ConstantOp>(op, res.value());
+-    return success();
+-  }
+-
+-  struct FoldAnd {
++    auto resultElementType = resultType.getElementType();
++    FailureOr<TypedAttr> result;
++
++    if (resultElementType.isInteger(/*width=*/1)) {
++      result = foldBinaryOpIntOrFloat(rewriter, op, FoldLogicalAnd{});
++    } else if (resultElementType.isInteger()) {
++      result = foldBinaryOpIntOrFloat(rewriter, op, FoldBitwiseAnd{});
++    } else {
++      return rewriter.notifyMatchFailure(op, "Expected integral element type.");
++    }
++
++    if (failed(result)) return failure();
++    rewriter.replaceOpWithNewOp<mlir::stablehlo::ConstantOp>(op,
++                                                             result.value());
++    return success();
++  }
++
++  struct FoldLogicalAnd {
+     APInt operator()(APInt lhs, APInt rhs) const {
+       return APInt(lhs.getBitWidth(), !lhs.isZero() && !rhs.isZero());
+     }
++    std::optional<APFloat> operator()(APFloat lhs, APFloat rhs) const {
++      return std::nullopt;
++    }
++  };
++
++  struct FoldBitwiseAnd {
++    APInt operator()(APInt lhs, APInt rhs) const { return lhs & rhs; }
++
+     std::optional<APFloat> operator()(APFloat lhs, APFloat rhs) const {
+       return std::nullopt;
+     }
+@@ -604,11 +619,14 @@
+   LogicalResult matchAndRewrite(MaxOp op,
+                                 PatternRewriter& rewriter) const override {
+     auto resultType = op.getType();
++    auto resultElementType = resultType.getElementType();
+     if (failed(validateShapeFoldDtype(rewriter, op, resultType)))
+       return failure();
+ 
+-    bool isUnsignedInt = resultType.getElementType().isUnsignedInteger();
+-    auto res = foldBinaryOpIntOrFloat(rewriter, op, FoldMax(isUnsignedInt));
++    bool isUnsignedIntOrBool = resultElementType.isUnsignedInteger() ||
++                               resultElementType.isInteger(/*width=*/1);
++    auto res =
++        foldBinaryOpIntOrFloat(rewriter, op, FoldMax(isUnsignedIntOrBool));
+     if (failed(res)) return failure();
+     rewriter.replaceOpWithNewOp<mlir::stablehlo::ConstantOp>(op, res.value());
+     return success();
+@@ -684,21 +702,36 @@
+ 
+   LogicalResult matchAndRewrite(OrOp op,
+                                 PatternRewriter& rewriter) const override {
+-    // TODO: Support more int types
+     auto resultType = op.getType();
+-    if (!resultType.getElementType().isInteger(1))
+-      return rewriter.notifyMatchFailure(op, "expected boolean element type");
+-
+-    auto res = foldBinaryOpIntOrFloat(rewriter, op, FoldOr{});
+-    if (failed(res)) return failure();
+-    rewriter.replaceOpWithNewOp<mlir::stablehlo::ConstantOp>(op, res.value());
+-    return success();
+-  }
+-
+-  struct FoldOr {
++    auto resultElementType = resultType.getElementType();
++    FailureOr<TypedAttr> result;
++
++    if (resultElementType.isInteger(/*width=*/1)) {
++      result = foldBinaryOpIntOrFloat(rewriter, op, FoldLogicalOr{});
++    } else if (resultElementType.isInteger()) {
++      result = foldBinaryOpIntOrFloat(rewriter, op, FoldBitwiseOr{});
++    } else {
++      return rewriter.notifyMatchFailure(op, "Expected integral element type.");
++    }
++
++    if (failed(result)) return failure();
++    rewriter.replaceOpWithNewOp<mlir::stablehlo::ConstantOp>(op,
++                                                             result.value());
++    return success();
++  }
++
++  struct FoldLogicalOr {
+     APInt operator()(APInt lhs, APInt rhs) const {
+       return APInt(lhs.getBitWidth(), !lhs.isZero() || !rhs.isZero());
+     }
++    std::optional<APFloat> operator()(APFloat lhs, APFloat rhs) const {
++      return std::nullopt;
++    }
++  };
++
++  struct FoldBitwiseOr {
++    APInt operator()(APInt lhs, APInt rhs) const { return lhs | rhs; }
++
+     std::optional<APFloat> operator()(APFloat lhs, APFloat rhs) const {
+       return std::nullopt;
+     }
+@@ -1088,13 +1121,9 @@
+ 
+     for (auto [inputValue, bodyArg] :
+          llvm::zip_equal(op.getOperands(), body.getArguments())) {
+-      auto inputConstantOp = inputValue.getDefiningOp<ConstantOp>();
+-      if (!inputConstantOp)
+-        return rewriter.notifyMatchFailure(op, "Input must be a constant.");
+-
+-      auto inputConstantAttr =
+-          dyn_cast_or_null<DenseElementsAttr>(inputConstantOp.getValue());
+-      if (!inputConstantAttr)
++      SplatElementsAttr constantSplatAttr;
++      matchPattern(inputValue, m_Constant(&constantSplatAttr));
++      if (!constantSplatAttr)
+         return rewriter.notifyMatchFailure(op,
+                                            "Input must be a splat constant.");
+ 
+@@ -1104,7 +1133,7 @@
+             op, "Could not get the shape of the body argument.");
+ 
+       bodyArgConstantAttrs.push_back(DenseElementsAttr::get(
+-          bodyArgShapedType, inputConstantAttr.getSplatValue<Attribute>()));
++          bodyArgShapedType, constantSplatAttr.getSplatValue<Attribute>()));
+     }
+ 
+     for (BlockArgument bodyArg : body.getArguments()) {
+@@ -1215,6 +1244,27 @@
+   }
+ };
+ 
++// Return success if the while condition is always false.
++LogicalResult whileCondIsFalse(WhileOp op, PatternRewriter& rewriter) {
++  auto condReturnOp = dyn_cast<ReturnOp>(op.getCond().front().back());
++  if (!condReturnOp)
++    return rewriter.notifyMatchFailure(
++        op, "Condition region is missing a return statement.");
++
++  DenseIntElementsAttr condValue;
++  if (!matchPattern(condReturnOp.getOperand(0), m_Constant(&condValue)))
++    return rewriter.notifyMatchFailure(
++        op, "Condition block does not return a constant.");
++  if (condValue.getSplatValue<BoolAttr>().getValue())
++    return rewriter.notifyMatchFailure(
++        op, "Condition value is not a splat of the bool `false`.");
++
++  return success();
++}
++
++// Pattern: while(operands, cond=false) -> operands
++// Replace a while loop's uses with its operands if the condition is always
++// false.
+ struct FoldWhileOpPattern : public FoldOpRewritePattern<WhileOp> {
+   using FoldOpRewritePattern::FoldOpRewritePattern;
+ 
+@@ -1229,18 +1279,8 @@
+       return rewriter.notifyMatchFailure(
+           op, "Keeping dead while op due to known or potential side effects.");
+ 
+-    auto condReturnOp = dyn_cast<ReturnOp>(op.getCond().front().back());
+-    if (!condReturnOp)
+-      return rewriter.notifyMatchFailure(
+-          op, "Condition region is missing a return statement.");
+-
+-    DenseIntElementsAttr condValue;
+-    if (!matchPattern(condReturnOp.getOperand(0), m_Constant(&condValue)))
+-      return rewriter.notifyMatchFailure(
+-          op, "Condition block does not return a constant.");
+-    if (condValue.getSplatValue<BoolAttr>().getValue())
+-      return rewriter.notifyMatchFailure(
+-          op, "Condition value is not a splat of the bool `false`.");
++    // Check if the while condition is always false, i.e. body never executed.
++    if (failed(whileCondIsFalse(op, rewriter))) return failure();
+ 
+     // Replace uses of the op's result, but don't remove the op itself; let
+     // dedicated DCE logic handle that step if appropriate. (This is because of
+@@ -1251,55 +1291,63 @@
+   }
+ };
+ 
+-bool hasNoDeclaredSideEffects(Operation* op) {
++bool hasAnyDeclaredSideEffects(Operation* op) {
+   if (auto memInterface = dyn_cast<MemoryEffectOpInterface>(op)) {
+-    // Return false if the op has memory effects of its own.
+-    if (!memInterface.hasNoEffect()) return false;
+-    // The op has no direct memory effects. Return true if it has no recursive
++    // Return true if the op explicitly declares any memory effects of its own.
++    if (!memInterface.hasNoEffect()) return true;
++    // The op has no direct memory effects. Return false if it has no recursive
+     // memory effects, either.
+-    if (!op->hasTrait<OpTrait::HasRecursiveMemoryEffects>()) return true;
++    if (!op->hasTrait<OpTrait::HasRecursiveMemoryEffects>()) return false;
+   } else {
+     // The op doesn't implement the memory-effect interface. This function is
+     // only interested in explicitly declared side effects, so we treat it as
+-    // having none and move on to checking its regions in case they have any.
++    // having none of its own; proceed with a recursive check of its regions.
+   }
+ 
+   // The op doesn't declare any side effects of its own, but its regions could
+   // still contain ops that do declare side effects. Recursively check them.
+   for (Region& region : op->getRegions()) {
+-    for (Operation& op : region.getOps()) {
+-      if (!hasNoDeclaredSideEffects(&op)) return false;
+-    }
+-  }
+-  return true;
+-}
+-
+-struct FoldWhileOpDeadWithNoSideEffects : public FoldOpRewritePattern<WhileOp> {
++    for (Operation& nestedOp : region.getOps()) {
++      if (hasAnyDeclaredSideEffects(&nestedOp)) return true;
++    }
++  }
++  return false;
++}
++
++// Pattern: while(cond=false) { call @fn } -> ()
++// `CallOp`s are considered to have side effects by default, but we may want to
++// DCE a `WhileOp` that will never execute its body regardless of `CallOp` side
++// effects. This is because dead while loops containing large kernels can cause
++// massive increases in program size that can in turn cause OOMs in compilation.
++//
++// TODO: Add a pre-processing pass to annotate call ops that are safe to
++// DCE and a pattern to remove dead call ops; then we won't need this check.
++struct FoldWhileOpIfDeadAndPresumedPure : public FoldOpRewritePattern<WhileOp> {
+   using FoldOpRewritePattern::FoldOpRewritePattern;
+ 
+   LogicalResult matchAndRewrite(WhileOp op,
+                                 PatternRewriter& rewriter) const override {
+-    if (!op->use_empty()) {
+-      return rewriter.notifyMatchFailure(op, "The op's result is in use.");
+-    }
+-
+-    if (options.assumeNoUndeclaredSideEffects) {
+-      if (!hasNoDeclaredSideEffects(op)) {
+-        return rewriter.notifyMatchFailure(
+-            op,
+-            "The op, or another op within its region, explicitly declares side "
+-            "effects.");
+-      }
+-    } else {
+-      if (!isMemoryEffectFree(op)) {
+-        return rewriter.notifyMatchFailure(
+-            op, "Not removing the op due to potential side effects.");
+-      }
+-    }
+-
+-    // Neither this op nor any in its regions have any declared side effects (or
+-    // any potential side effects if `assumeNoUndeclaredSideEffects` is false),
+-    // and the op's result is unused. Erase the op.
++    if (!options.assumeNoUndeclaredSideEffects)
++      return rewriter.notifyMatchFailure(
++          op,
++          "Pattern skipped: only applicable if `assumeNoUndeclaredSideEffects` "
++          "is enabled.");
++
++    // Only delete while ops that are dead and cannot be executed. We should
++    // preserve any `WhileOp` that may be executed, e.g. in case its body
++    // contains debug prints.
++    if (!op->use_empty() || failed(whileCondIsFalse(op, rewriter)))
++      return rewriter.notifyMatchFailure(op, "The while body may run.");
++
++    if (hasAnyDeclaredSideEffects(op))
++      return rewriter.notifyMatchFailure(
++          op,
++          "The op, or another op within its region, explicitly declares side "
++          "effects.");
++
++    // Neither this op nor any in its regions have any declared side effects,
++    // `assumeNoUndeclaredSideEffects` is true, and the op's result is unused.
++    // Erase the op.
+     rewriter.eraseOp(op);
+     return success();
+   }
+@@ -1352,8 +1400,8 @@
+                 FoldReduceOpWithRedundantResults,   //
+                 FoldSqrtOpPattern,                  //
+                 FoldTransposeOpPattern,             //
++                FoldWhileOpIfDeadAndPresumedPure,   //
+                 FoldWhileOpPattern,                 //
+-                FoldWhileOpDeadWithNoSideEffects,   //
+                 LowerBoolSplatConstantsIntoReduceOpRegion>(context, options,
+                                                            benefit);
+ }
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+@@ -1601,8 +1601,9 @@
+     const StablehloAggressiveSimplificationPassOptions &options,
+     PatternBenefit benefit) {
+   populateWithGenerated(*patterns);
++  // TODO: Re-enable `CompareSelectIntoMinMax` after fixing legalization issue.
+   patterns->add<
+-      CompareOpCanon, CompareSelectIntoMinMax, ConcatenateOpFlatten,
++      CompareOpCanon, /*CompareSelectIntoMinMax,*/ ConcatenateOpFlatten,
+       ConcatenateOpNoop, ConcatenateOpRemoveEmpty,
+       CustomCallUnregisteredBackendConfigToFfi, DynamicIotaOpToBroadcast,
+       DynamicReshapeOpSameOperandAndResultShape, DynamicSliceOpToSlice,
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+@@ -387,9 +387,10 @@
+ 
+ // Pattern: multiply(X, 0i) -> 0i
+ //
+-// Multiplication by 0. This fold is not trivial for floats in presence of NaNs.
++// Multiplication by 0. This fold is not trivial for floats in presence of NaNs,
++// so we currently only enable it for ints.
+ def MulOp_FoldToZero
+-  : Pat<(StableHLO_MulOp $lhs, (StableHLO_ConstantOp:$zero AnyZero:$value)),
++  : Pat<(StableHLO_MulOp $lhs, (StableHLO_ConstantOp:$zero IntZero:$value)),
+         (replaceWithValue $zero)>;
+ 
+ // Pattern: multiply(X, 1i) -> X
 
