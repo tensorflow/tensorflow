@@ -32,10 +32,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/literal.h"
+#include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -61,6 +63,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_compiler.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/xla_data.pb.h"
 
@@ -103,6 +106,8 @@ class PjRtClient final
  public:
   struct CreateOptions {
     std::shared_ptr<xla::PjRtClient> pjrt_client;
+
+    std::shared_ptr<xla::DistributedRuntimeClient> distributed_client = nullptr;
 
     // KV store for coordinating cross-host device transfers and sharing
     // topology information. If present and `use_kv_store_for_topology_exchange`
@@ -362,9 +367,15 @@ class PjRtClient final
   // If true, the backend implements the cross-host transfer APIs.
   bool pjrt_supports_cross_host_transfers_ = false;
 
+  absl::Status PollGlobalProcessInfo(tsl::CoordinationServiceAgent& agent);
+
   std::atomic<int64_t> next_transfer_key_ = 0;
+  std::shared_ptr<xla::DistributedRuntimeClient> distributed_client_;
   std::shared_ptr<xla::KeyValueStoreInterface> kv_store_;
   absl::Duration cross_host_transfer_timeout_;
+
+  absl::Notification shutting_down_;
+  std::unique_ptr<tsl::Thread> global_process_info_thread_;
 
   friend class PjRtClientPeer;
 };
