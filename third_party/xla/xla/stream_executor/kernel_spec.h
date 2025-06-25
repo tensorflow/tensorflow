@@ -52,6 +52,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_spec.pb.h"
 
 namespace stream_executor {
 
@@ -168,6 +169,11 @@ class KernelLoaderSpec {
   }
 
   const std::string &kernel_name() const { return kernel_name_; }
+
+  absl::StatusOr<KernelLoaderSpecProto> ToProto() const;
+
+  static absl::StatusOr<KernelLoaderSpec> FromProto(
+      const KernelLoaderSpecProto &proto);
 
  private:
   using Payload =

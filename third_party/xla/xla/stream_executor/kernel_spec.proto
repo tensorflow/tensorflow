@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package stream_executor;
+
+message CudaPtxProto {
+  string data = 1;
+}
+
+message CudaCubinProto {
+  bytes data = 1;
+}
+
+message KernelLoaderSpecProto {
+  oneof payload {
+    CudaPtxProto ptx = 1;
+    CudaCubinProto cubin = 2;
+  }
+
+  int32 arity = 3;
+  string kernel_name = 4;
+}

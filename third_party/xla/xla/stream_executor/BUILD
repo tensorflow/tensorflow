@@ -532,11 +532,18 @@ cc_library(
     hdrs = ["kernel_spec.h"],
     deps = [
         ":kernel",
+        ":kernel_spec_proto_cc",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
+)
+
+tf_proto_library(
+    name = "kernel_spec_proto",
+    srcs = ["kernel_spec.proto"],
 )
 
 xla_cc_test(
@@ -544,10 +551,15 @@ xla_cc_test(
     srcs = ["kernel_spec_test.cc"],
     deps = [
         ":kernel_spec",
+        ":kernel_spec_proto_cc",
         "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
