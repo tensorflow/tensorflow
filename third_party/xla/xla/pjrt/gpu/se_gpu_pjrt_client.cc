@@ -547,27 +547,26 @@ static absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
 // Aborts all NCCL collectives when a task fails, as reported by the
 // JobStateUpdate.
 absl::Status AbortOnFailure(
-    const tsl::CoordinationServiceAgent::JobStateUpdate& update) {
-  if (update.previous_state.empty()) {
+    absl::Span<const tensorflow::CoordinatedTaskStateInfo> previous_state,
+    absl::Span<const tensorflow::CoordinatedTaskStateInfo> current_state) {
+  if (previous_state.empty()) {
     // When a job first starts, there is no previous job state.
     return absl::OkStatus();
   }
 
-  // We expect update.previous_state and update.current_state to have the same
-  // size, and we expect for every i, previous_state[i] and current_state[i]
-  // correspond to the same task.
-  if (update.previous_state.size() != update.current_state.size()) {
+  // We expect previous_state and current_state to have the same size, and we
+  // expect for every i, previous_state[i] and current_state[i] correspond to
+  // the same task.
+  if (previous_state.size() != current_state.size()) {
     return FailedPrecondition(
         "Previous and current job states have different sizes: %d vs %d",
-        update.previous_state.size(), update.current_state.size());
+        previous_state.size(), current_state.size());
   }
 
   std::vector<IncarnationId> failed_incarnations;
-  for (int i = 0; i < update.previous_state.size(); ++i) {
-    const tensorflow::CoordinatedTaskStateInfo& previous =
-        update.previous_state[i];
-    const tensorflow::CoordinatedTaskStateInfo& current =
-        update.current_state[i];
+  for (int i = 0; i < previous_state.size(); ++i) {
+    const tensorflow::CoordinatedTaskStateInfo& previous = previous_state[i];
+    const tensorflow::CoordinatedTaskStateInfo& current = current_state[i];
     if (previous.task().task_id() != current.task().task_id()) {
       return FailedPrecondition(
           "Previous and current job states have mismatched task ids: %d vs %d",
@@ -612,6 +611,7 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
           std::move(allocator), std::move(host_memory_allocator),
           should_stage_host_to_device_transfers, std::move(gpu_run_options)),
       num_nodes_(num_nodes),
+      abort_collectives_on_failure_(abort_collectives_on_failure),
       topology_(xla::StreamExecutorGpuTopologyDescription(
           tsl::Fingerprint64(platform_name), platform_name,
           std::move(gpu_topology), GetAttrsForDevices(addressable_devices()),
@@ -645,20 +645,6 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
                [](const PjRtMemorySpace* a, const PjRtMemorySpace* b) {
                  return a->id() < b->id();
                });
-
-  // Add a JobStateCallback to abort collectives when tasks fail.
-  if (abort_collectives_on_failure && distributed_client_) {
-    absl::StatusOr<tsl::CoordinationServiceAgent*> agent =
-        distributed_client_->GetCoordinationServiceAgent();
-    if (agent.ok()) {
-      (*agent)->AddJobStateCallback(
-          [](const tsl::CoordinationServiceAgent::JobStateUpdate& update) {
-            if (absl::Status s = AbortOnFailure(update); !s.ok()) {
-              LOG(ERROR) << "Error aborting on failure: " << s;
-            }
-          });
-    }
-  }
 }
 
 absl::string_view StreamExecutorGpuClient::platform_version() const {
@@ -686,8 +672,15 @@ std::optional<PjRtPluginAttributes> StreamExecutorGpuClient::plugin_attributes()
 
 void StreamExecutorGpuClient::UpdateGlobalProcessInfo(
     absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) {
-  // TODO: mwhittaker - Move the AbortOnFailure logic here.
-  LOG(WARNING) << "UpdateGlobalProcessInfo is not supported.";
+  if (!abort_collectives_on_failure_) {
+    return;
+  }
+
+  absl::MutexLock lock(&task_state_infos_mu_);
+  if (absl::Status s = AbortOnFailure(task_state_infos_, infos); !s.ok()) {
+    LOG(ERROR) << s;
+  }
+  task_state_infos_ = {infos.begin(), infos.end()};
 }
 
 absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
