@@ -286,6 +286,9 @@ def xla_test(
       **kwargs: Additional keyword arguments to pass to strict_cc_test.
     """
 
+    # precompile_test is not supported in OSS.
+    kwargs.pop("precompile_test", None)
+
     test_names = []
     if not backends:
         backends = _DEFAULT_BACKENDS
