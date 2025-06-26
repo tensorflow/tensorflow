@@ -203,8 +203,10 @@ absl::StatusOr<mlir::func::FuncOp> EmitKernelApi(
 }
 
 void SetIndexDataLayout(mlir::ModuleOp module,
-                        const HloInstruction& hlo_instruction) {
-  int index_bitwidth = Needs64BitIndices(&hlo_instruction) ? 64 : 32;
+                        const HloInstruction& hlo_instruction,
+                        bool force_64_bit) {
+  int index_bitwidth =
+      force_64_bit || Needs64BitIndices(&hlo_instruction) ? 64 : 32;
   mlir::OpBuilder b(module->getContext());
   auto index_layout = mlir::DataLayoutEntryAttr::get(
       b.getIndexType(), b.getI32IntegerAttr(index_bitwidth));

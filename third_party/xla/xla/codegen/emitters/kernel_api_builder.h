@@ -46,7 +46,8 @@ absl::StatusOr<mlir::func::FuncOp> EmitKernelApi(
     absl::string_view entry_function_name);
 
 void SetIndexDataLayout(mlir::ModuleOp module,
-                        const HloInstruction& hlo_instruction);
+                        const HloInstruction& hlo_instruction,
+                        bool force_64_bit = false);
 
 // Get the default indexing map for the given work dimensions, unroll factor,
 // and output shape.

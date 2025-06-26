@@ -93,7 +93,8 @@ LoopFusionKernelEmitter::EmitKernelDefinition() {
   mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(
       loc, absl::StrCat(fusion_.name(), "_kernel_module"));
 
-  emitters::SetIndexDataLayout(*module, fusion_);
+  bool force_64_bit = backend_kind_ == BackendKind::kCpu;
+  emitters::SetIndexDataLayout(*module, fusion_, force_64_bit);
 
   TF_ASSIGN_OR_RETURN(
       mlir::func::FuncOp entry_func,
