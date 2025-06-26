@@ -160,10 +160,30 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -130,6 +130,27 @@
- }
+@@ -88,6 +88,7 @@
+ #include "stablehlo/dialect/AssemblyFormat.h"
+ #include "stablehlo/dialect/Base.h"
+ #include "stablehlo/dialect/StablehloBytecode.h"
++#include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/dialect/StablehloOps.h.inc"
+ #include "stablehlo/dialect/TypeInference.h"
  
- //===----------------------------------------------------------------------===//
+@@ -127,6 +128,36 @@
+     llvm::function_ref<mlir::InFlightDiagnostic()> emitError) const {
+   return hlo::verifyBounds(
+       getBounds(), RankedTensorType::get(shape, elementType), emitError);
++}
++
++ArrayAttr PrecisionConfigAttr::get(MLIRContext* context,
++                                   ArrayRef<Precision> precisions) {
++  SmallVector<Attribute> precisionAttrs =
++      llvm::map_to_vector(precisions, [&](Precision precision) -> Attribute {
++        return PrecisionAttr::get(context, precision);
++      });
++  return ArrayAttr::get(context, precisionAttrs);
++}
++
++//===----------------------------------------------------------------------===//
 +// Attributes
 +//===----------------------------------------------------------------------===//
 +
@@ -182,16 +202,21 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
 +  auto modeAttr =
 +      ResultAccuracyModeAttr::get(context, ResultAccuracyMode::TOLERANCE);
 +  return get(context, atol, rtol, ulps, modeAttr);
-+}
-+
-+//===----------------------------------------------------------------------===//
- // ReduceScatterOp
- //===----------------------------------------------------------------------===//
+ }
  
+ //===----------------------------------------------------------------------===//
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/dialect/StablehloOps.h
 --- stablehlo/stablehlo/dialect/StablehloOps.h
 +++ stablehlo/stablehlo/dialect/StablehloOps.h
-@@ -179,7 +179,8 @@
+@@ -40,6 +40,7 @@
+ #include "mlir/IR/Types.h"
+ #include "mlir/Interfaces/InferTypeOpInterface.h"
+ #include "mlir/Interfaces/SideEffectInterfaces.h"
++#include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "stablehlo/dialect/Base.h"
+ #include "stablehlo/dialect/Version.h"
+@@ -179,7 +180,8 @@
  template <typename OpTy>
  void buildReduceBody(Type elementType, Region &body, OpBuilder &builder) {
    OpBuilder::InsertionGuard guard(builder);
@@ -201,6 +226,20 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/di
  
    // Block arguments are scalars of the given element type.
    Type type = RankedTensorType::get(/*shape=*/{}, elementType);
+@@ -191,6 +193,13 @@
+   builder.create<stablehlo::ReturnOp>(loc, reducer.getResult());
+ }
+ 
++// PrecisionConfigAttr is a constraint attribute on ArrayAttrs.
++// Create this class to allow for building this attr similar to other
++// attributes.
++struct PrecisionConfigAttr : public ArrayAttr {
++  static ArrayAttr get(MLIRContext *context, ArrayRef<Precision> precisions);
++};
++
+ }  // end namespace stablehlo
+ }  // end namespace mlir
+ 
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
 --- stablehlo/stablehlo/dialect/StablehloOps.td
 +++ stablehlo/stablehlo/dialect/StablehloOps.td
