@@ -266,3 +266,82 @@ func.func @unique_channel_handle_2(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.s
   %0 = sdy.all_reduce {"x"} %arg0 out_sharding=<@mesh, [{}, {}]> : tensor<8x8xf32>
   return %0 : tensor<8x8xf32>
 }
+
+// -----
+
+sdy.mesh @mesh = <["x"=4, "y"=2]>
+
+// CHECK-LABEL: func @unreduced_transpose_of_unreduced_dot
+func.func @unreduced_transpose_of_unreduced_dot(%arg0: tensor<8x4xf32>, %arg1: tensor<4x2xf32>) -> tensor<2x8xf32> {
+  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT]
+  // CHECK-SAME:   {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x", "y"}>]>}
+  // CHECK-NEXT: %[[TRANSPOSE:.*]] = stablehlo.transpose %[[DOT_GENERAL]], dims = [1, 0] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x", "y"}>]>}
+  // CHECK-NEXT: return %[[TRANSPOSE]]
+  %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT]
+      {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x", "y"}>]>} : (tensor<8x4xf32>, tensor<4x2xf32>) -> tensor<8x2xf32>
+  %1 = stablehlo.transpose %0, dims = [1, 0] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x", "y"}>]>} : (tensor<8x2xf32>) -> tensor<2x8xf32>
+  return %1 : tensor<2x8xf32>
+}
+
+// CHECK-LABEL: func @unreduced_transpose_of_dot_without_sharding
+func.func @unreduced_transpose_of_dot_without_sharding(%arg0: tensor<8x4xf32>, %arg1: tensor<4x2xf32>) -> tensor<2x8xf32> {
+  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT]
+  // CHECK-SAME:   {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x", "y"}>]>}
+  // CHECK-NEXT: %[[TRANSPOSE:.*]] = stablehlo.transpose %[[DOT_GENERAL]], dims = [1, 0] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x", "y"}>]>}
+  // CHECK-NEXT: return %[[TRANSPOSE]]
+  %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<8x4xf32>, tensor<4x2xf32>) -> tensor<8x2xf32>
+  %1 = stablehlo.transpose %0, dims = [1, 0] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x", "y"}>]>} : (tensor<8x2xf32>) -> tensor<2x8xf32>
+  return %1 : tensor<2x8xf32>
+}
+
+// CHECK-LABEL: func @unreduced_sharded_transpose_of_sharded_dot_without_unreduced
+func.func @unreduced_sharded_transpose_of_sharded_dot_without_unreduced(%arg0: tensor<8x4xf32>, %arg1: tensor<4x2xf32>) -> tensor<2x8xf32> {
+  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT]
+  // CHECK-SAME:   {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}], unreduced={"y"}>]>}
+  // CHECK-NEXT: %[[TRANSPOSE:.*]] = stablehlo.transpose %[[DOT_GENERAL]], dims = [1, 0] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}], unreduced={"y"}>]>}
+  // CHECK-NEXT: return %[[TRANSPOSE]]
+  %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT]
+      {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>} : (tensor<8x4xf32>, tensor<4x2xf32>) -> tensor<8x2xf32>
+  %1 = stablehlo.transpose %0, dims = [1, 0] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}], unreduced={"y"}>]>} : (tensor<8x2xf32>) -> tensor<2x8xf32>
+  return %1 : tensor<2x8xf32>
+}
+
+// CHECK-LABEL: func @unreduced_transpose_of_dot_with_overlapping_dim_sharding
+func.func @unreduced_transpose_of_dot_with_overlapping_dim_sharding(%arg0: tensor<8x4xf32>, %arg1: tensor<4x2xf32>) -> tensor<2x8xf32> {
+  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT]
+  // CHECK-SAME:   {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x":(2)2}]>]>}
+  // CHECK-NEXT: %[[TRANSPOSE:.*]] = stablehlo.transpose %[[DOT_GENERAL]], dims = [1, 0] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x", "y"}>]>}
+  // CHECK-NEXT: return %[[TRANSPOSE]]
+  %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT]
+      {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x":(2)2}]>]>} : (tensor<8x4xf32>, tensor<4x2xf32>) -> tensor<8x2xf32>
+  %1 = stablehlo.transpose %0, dims = [1, 0] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x", "y"}>]>} : (tensor<8x2xf32>) -> tensor<2x8xf32>
+  return %1 : tensor<2x8xf32>
+}
+
+// CHECK-LABEL: func @propagate_unreduced_backwards_through_chain_of_ops
+func.func @propagate_unreduced_backwards_through_chain_of_ops(%arg0: tensor<8x4xf32>, %arg1: tensor<4x2xf32>) -> tensor<2x4x2xf32> {
+  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT]
+  // CHECK-SAME:   {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}], unreduced={"y"}>]>}
+  // CHECK-NEXT: %[[TRANSPOSE:.*]] = stablehlo.transpose %[[DOT_GENERAL]], dims = [1, 0] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}], unreduced={"y"}>]>}
+  // CHECK-NEXT: %[[COPY:.*]] = mhlo.copy %[[TRANSPOSE]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"y"}>]>}
+  // CHECK-NEXT: %[[RESHAPE:.*]] = stablehlo.reshape %[[COPY]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}, {}], unreduced={"y"}>]>}
+  // CHECK-NEXT: return %[[RESHAPE]]
+  %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT]
+      {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>} : (tensor<8x4xf32>, tensor<4x2xf32>) -> tensor<8x2xf32>
+  %1 = stablehlo.transpose %0, dims = [1, 0] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x2xf32>) -> tensor<2x8xf32>
+  %2 = mhlo.copy %1 : tensor<2x8xf32>
+  %3 = stablehlo.reshape %2 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}, {}], unreduced={"y"}>]>} : (tensor<2x8xf32>) -> tensor<2x4x2xf32>
+  return %3 : tensor<2x4x2xf32>
+}
+
+// CHECK-LABEL: func @unreduced_sine_of_replicated_dot
+func.func @unreduced_sine_of_replicated_dot(%arg0: tensor<8x4xf32>, %arg1: tensor<4x2xf32>) -> tensor<8x2xf32> {
+  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT]
+  // CHECK-SAME:   {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>}
+  // CHECK-NEXT: %[[SINE:.*]] = stablehlo.sine %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x"}>]>}
+  // CHECK-NEXT: return %[[SINE]]
+  %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT]
+      {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>} : (tensor<8x4xf32>, tensor<4x2xf32>) -> tensor<8x2xf32>
+  %1 = stablehlo.sine %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x"}>]>} : tensor<8x2xf32>
+  return %1 : tensor<8x2xf32>
+}

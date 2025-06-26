@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -29,10 +30,13 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Iterators.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
@@ -41,6 +45,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/array.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/spmd/shardy/utils.h"
 
 namespace xla {
@@ -253,6 +258,37 @@ int64_t convertReduceScatter(sdy::ReduceScatterOp op, int64_t nextChannelId,
   return nextChannelId;
 }
 
+void syncInOutUnreducedAxes(mlir::Operation* op) {
+  Value input = op->getOperand(0);
+  TensorShardingAttr outSharding = sdy::getSharding(op->getResult(0));
+  if (mlir::isa<mlir::BlockArgument>(input) || !outSharding ||
+      outSharding.getUnreducedAxes().empty()) {
+    return;
+  }
+
+  TensorShardingAttr inSharding = sdy::getOrCreateSharding(
+      input, outSharding.getMeshOrRef(), /*closedIfMissing=*/true);
+  if (inSharding.getUnreducedAxes() == outSharding.getUnreducedAxes()) {
+    return;
+  }
+
+  if (inSharding.anyOfDimShardingOrReplicatedAxis([&](AxisRefAttr inAxis) {
+        return llvm::any_of(outSharding.getUnreducedAxes(),
+                            [&](AxisRefAttr unreducedAxis) {
+                              return inAxis.overlaps(unreducedAxis);
+                            });
+      })) {
+    LOG(WARNING) << toStringView(op->getName().getStringRef())
+                 << " has unreduced axes, but input is sharded along one of "
+                    "those axes, this can lead to undefined behavior. Please "
+                    "contact the Shardy team.";
+    return;
+  }
+
+  sdy::setSharding(
+      input, inSharding.replaceUnreducedAxes(outSharding.getUnreducedAxes()));
+}
+
 class StablehloExportManualReductionCollectivesPass
     : public mlir::PassWrapper<StablehloExportManualReductionCollectivesPass,
                                OperationPass<ModuleOp>> {
@@ -263,6 +299,17 @@ class StablehloExportManualReductionCollectivesPass
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
     mlir::IRRewriter rewriter(moduleOp.getContext());
+
+    // Do very restricted backward propagation of unreduced axes along specific
+    // ops that don't modify the data.
+    moduleOp.walk<mlir::WalkOrder::PostOrder, mlir::ReverseIterator>(
+        [&](mlir::Operation* op) {
+          if (mlir::isa<stablehlo::TransposeOp, stablehlo::ReshapeOp,
+                        mlir::mhlo::CopyOp>(op)) {
+            syncInOutUnreducedAxes(op);
+          }
+        });
+
     int64_t nextChannelId = getNextChannelId(moduleOp);
     moduleOp.walk([&](mlir::Operation* op) {
       if (auto allReduce = mlir::dyn_cast<sdy::AllReduceOp>(op)) {
