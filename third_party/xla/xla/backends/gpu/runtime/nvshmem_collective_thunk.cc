@@ -53,12 +53,13 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
-namespace {
 
+namespace {
 static constexpr CollectiveStreamId kNoStreamId = CollectiveStreamId(0);
 
 bool IsTypeSupportedByNvshmem(PrimitiveType element_type,
@@ -191,6 +192,22 @@ absl::Status IsValidNvshmemOperand(Shape shape, Thunk::Kind reduction_op) {
         primitive_util::LowercasePrimitiveTypeName(shape.element_type())));
   }
   return absl::OkStatus();
+}
+
+absl::StatusOr<void*> NvshmemBufferAddresses::GetNvshmemPtr(
+    int device_ordinal) {
+  absl::MutexLock lock(&mu_);
+  auto it = buffer_addrs_.find(device_ordinal);
+  if (it != buffer_addrs_.end()) {
+    return it->second;
+  }
+  return absl::NotFoundError("Buffer address not found for device");
+}
+
+void NvshmemBufferAddresses::StoreNvshmemPtr(int device_ordinal,
+                                             void* buffer_addr) {
+  absl::MutexLock lock(&mu_);
+  buffer_addrs_[device_ordinal] = buffer_addr;
 }
 
 }  // namespace gpu

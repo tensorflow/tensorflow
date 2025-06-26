@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
-#include "xla/backends/gpu/runtime/nvshmem_p2p_thunk_common.h"
+#include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -61,7 +61,7 @@ namespace {
 
 absl::StatusOr<const int64_t> GetCurrentId(
     Thunk::CollectiveExecuteParams* collective_params,
-    const NvshmemP2PConfig& config) {
+    const P2PConfig& config) {
   GlobalDeviceId global_device_id = collective_params->global_device_id;
   TF_ASSIGN_OR_RETURN(
       const DeviceAssignment::LogicalID current_logical_id,
@@ -86,11 +86,10 @@ NvshmemCollectivePermuteStartThunk::NvshmemCollectivePermuteStartThunk(
       buffers_(buffers),
       p2p_memcpy_enabled_(p2p_memcpy_enabled) {}
 
-/*static*/ NvshmemP2PConfig
-NvshmemCollectivePermuteStartThunk::GetNvshmemP2PConfig(
+/*static*/ P2PConfig NvshmemCollectivePermuteStartThunk::GetNvshmemP2PConfig(
     const HloCollectivePermuteInstruction* instr, int64_t replica_count,
     int64_t partition_count) {
-  NvshmemP2PConfig collective_permute_config;
+  P2PConfig collective_permute_config;
   auto& config = collective_permute_config.config;
 
   config.operand_count = instr->operand_count();
@@ -159,20 +158,18 @@ absl::Status NvshmemCollectivePermuteStartThunk::RunNvshmemCollective(
   std::string device_string =
       CollectiveThunk::GetDeviceString(*params.collective_params);
 
-  int device_ordinal = stream.parent()->device_ordinal();
-
-  const NvshmemP2PConfig::SourceTargetMapEntry source_target =
-      NvshmemP2PConfig::GetSourceTarget(config_.id_to_source_target,
-                                        device_ordinal);
+  const P2PConfig::SourceTargetMapEntry source_target =
+      P2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
 
   return ::xla::gpu::RunCollectivePermute(source_target, device_buffers, stream,
                                           device_string, current_id);
 }
 
-absl::Status RunCollectivePermute(
-    NvshmemP2PConfig::SourceTargetMapEntry source_target,
-    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-    absl::string_view device_string, int64_t current_id) {
+absl::Status RunCollectivePermute(P2PConfig::SourceTargetMapEntry source_target,
+                                  std::vector<DeviceBufferPair>& buffers,
+                                  se::Stream& stream,
+                                  absl::string_view device_string,
+                                  int64_t current_id) {
   TF_ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectivesFromRegistry());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Communicator> nvshmem_comm,
                       collectives->CreateCommunicator());

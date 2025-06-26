@@ -110,8 +110,6 @@ class NvshmemCommunicator : public Communicator {
     return absl::UnimplementedError("Not implemented.");
   };
 
-  absl::Status RegisterBuffer(void* addr, size_t length) final;
-
   tsl::AsyncValueRef<Event> Send(se::DeviceMemoryBase recv_buffer,
                                  se::DeviceMemoryBase send_buffer,
                                  PrimitiveType dtype, size_t count, RankId peer,
