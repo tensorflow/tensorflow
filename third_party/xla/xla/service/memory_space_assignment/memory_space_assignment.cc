@@ -1136,8 +1136,8 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
         return Internal(
             ("Value %s (%d, %d) off: %d size: %d overlaps with another chunk"
              " off: %d size: %d"),
-            value->ToShortString(), start_time, end_time, chunk.offset,
-            chunk.size, overlapping_chunk.offset, overlapping_chunk.size);
+            value->ToString(), start_time, end_time, chunk.offset, chunk.size,
+            overlapping_chunk.offset, overlapping_chunk.size);
       }
     }
     interval_tree.Add(start_time, end_time - 1, chunk);

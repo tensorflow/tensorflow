@@ -14610,6 +14610,38 @@ ENTRY %main.28_spmd (param.1: bf16[1024,512], param.2: bf16[2,512,4096], param: 
             kAlternateMemorySpace);
 }
 
+TEST_F(MemorySpaceAssignmentTest, TestColoringMultipleOperands) {
+  absl::string_view hlo_string = R"(
+  HloModule NegateChain, is_scheduled=true, entry_computation_layout={(f32[2,3]{1,0}, f32[2,3]{1,0:S(2)})->f32[2,3]{1,0}}
+
+  ENTRY %NegateChain (p0: f32[2,3], p1: f32[2,3]) -> f32[2,3] {
+    %p0 = f32[2,3]{1,0} parameter(0)
+    %p1 = f32[2,3]{1,0} parameter(1)
+    ROOT %add = f32[2,3]{1,0} add(f32[2,3]{1,0} %p0, f32[2,3]{1,0} %p1)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+
+  HloInstruction* add = FindInstruction(module.get(), "add");
+  HloUse add_param_1_use{add, 0, {}};
+  HloUse add_param_2_use{add, 1, {}};
+  memory_space_options.buffer_colorings = {
+      {add_param_1_use, kAlternateMemorySpace},
+      {add_param_2_use, kAlternateMemorySpace}};
+  memory_space_options.max_size_in_bytes = 48;
+
+  XLA_VLOG_LINES(3, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  XLA_VLOG_LINES(3, "After MSA: \n" + module->ToString());
+
+  HloInstruction* add_after_msa = FindInstruction(module.get(), "add");
+  EXPECT_EQ(add_after_msa->operand(0)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(add_after_msa->operand(1)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+}
+
 }  // namespace
 }  // namespace memory_space_assignment
 }  // namespace xla

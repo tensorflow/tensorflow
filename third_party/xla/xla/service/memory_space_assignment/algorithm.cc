@@ -5677,6 +5677,8 @@ AllocationResult MsaAlgorithm::ForceAlternateMemoryAllocationForMinTime(
     return AllocationResult::kFailOutOfMemory;
   }
 
+  AddToPendingChunks(alternate_mem_interval, chunk_candidate);
+
   const HloPosition& defining_position =
       request.allocation_value->defining_position();
   request.allocation_value->mutable_allocation_sequence()->push_back(
@@ -6094,6 +6096,7 @@ AllocationResult MsaAlgorithm::Prefetch(
   if (chunk_candidate.chunk_end() > available_heap_size()) {
     return AllocationResult::kFailOutOfMemory;
   }
+  AddToPendingChunks(alternate_mem_interval, chunk_candidate);
 
   AddAsyncCopyOrOtherMemOp(
       prev_allocation_in_default_mem, MemorySpace::kAlternate, chunk_candidate,
