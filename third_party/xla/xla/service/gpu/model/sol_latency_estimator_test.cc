@@ -330,6 +330,19 @@ ENTRY e {
       /*expected_latency=*/absl::Microseconds(8),
   };
 
+  EstimatorTestCase noop = {
+      /*test_name=*/"noop",
+      /*module_string=*/R"(
+HloModule m
+
+ENTRY e {
+  ROOT _ = f16[] constant(3.14)
+})",
+      /*opcode_to_find=*/HloOpcode::kConstant,
+      /*cost_type=*/CostType::kNodeCost,
+      /*expected_latency=*/absl::ZeroDuration(),
+  };
+
   return {all_gather_intra_host,
           all_gather_inter_host_pairwise,
           all_gather_all_ranks,
@@ -338,7 +351,8 @@ ENTRY e {
           matmul_f32_batch4_256_1024_256,
           triton_matmul_bf16_batch1_1024_1024_1024,
           cublas_matmul_bf16_batch1_1024_1024_1024,
-          simple_fusion_elementwise};
+          simple_fusion_elementwise,
+          noop};
 }
 
 INSTANTIATE_TEST_SUITE_P(SolLatencyEstimatorTests, SolLatencyEstimatorTest,

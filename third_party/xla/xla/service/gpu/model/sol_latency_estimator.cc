@@ -321,7 +321,7 @@ LatencyEstimator::TimeCost SolLatencyEstimator::GetLatencyBetween(
     double coll_time = absl::ToDoubleMicroseconds(ComputeCollectiveTime(
         from.GetInstr(), gpu_info_, shape_size_function_, sol_flags_,
         *cost_analysis_, collective_interpolator_.get()));
-    VLOG(10) << "[SoL] Analytical estimator calculated latency between "
+    VLOG(10) << "Analytical estimator calculated latency between "
              << from.GetInstr().name() << " and " << target.GetInstr().name()
              << " to be: " << coll_time << " us.";
     return coll_time;
@@ -343,6 +343,9 @@ LatencyEstimator::TimeCost SolLatencyEstimator::NodeCost(
   }
 
   LatencyEstimator::TimeCost cost_in_us;
+  // Custom fusion ops are hard to estimate, so we only use the performance
+  // model for loop and input fusions. Otherwise we return a small cost to make
+  // sure we can achieve overlap (even at the cost of overextension).
   if (instr->IsLoopFusion() || instr->IsInputFusion()) {
     absl::Duration total_estimated_time =
         gpu_performance_model_
@@ -350,7 +353,7 @@ LatencyEstimator::TimeCost SolLatencyEstimator::NodeCost(
             .exec_time;
     cost_in_us = absl::ToDoubleMicroseconds(total_estimated_time);
   } else {
-    cost_in_us = 0.01 * kLowCost;
+    cost_in_us = 0.01 * latency_estimator_->NodeCost(instr);
   }
   VLOG(10) << "Analytical estimator calculated cost for: " << instr->name()
            << ". Cost: " << cost_in_us;
