@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape_layout.h"
 #include "xla/xla_data.pb.h"
@@ -118,11 +117,6 @@ class HloRunnerPjRt : public HloRunnerInterface {
       DeviceAssignment* device_assignment, ExecutionProfile* profile = nullptr);
 
   absl::string_view Name() const override;
-
-  void UpdateEntryComputationLayout(HloModule* module) {
-    // TODO - b/391868033: Remove UpdateEntryComputationLayout from this class.
-    xla::UpdateEntryComputationLayout(module, device_shape_representation_fn_);
-  }
 
   DeviceShapeRepresentationFn device_shape_representation_fn() const override {
     return device_shape_representation_fn_;
