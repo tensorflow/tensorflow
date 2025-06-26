@@ -31,6 +31,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "add_reduction_fast_math_flags.cc",
         "expand_float_ops.cc",
         "lower_to_llvm.cc",
         "lower_xla_shared.cc",
@@ -44,6 +45,7 @@ cc_library(
         "//xla/codegen/emitters/ir:xla",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:CallOpInterfaces",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",

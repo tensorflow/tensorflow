@@ -28,6 +28,7 @@ namespace xla::cpu {
 
 std::unique_ptr<mlir::Pass> CreateLowerXlaSharedPass();
 std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass();
+std::unique_ptr<mlir::Pass> CreateAddReductionFastMathFlagsPass();
 
 #define GEN_PASS_REGISTRATION
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h.inc"

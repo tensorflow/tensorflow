@@ -69,3 +69,18 @@ def ExpandFloatOpsPass : Pass<"xla-cpu-expand-float-ops", "mlir::func::FuncOp"> 
 
   let constructor = "CreateExpandFloatOpsPass()";
 }
+
+def AddReductionFastMathFlagsPass : Pass<"xla-cpu-add-reduction-fast-math-flags", "mlir::ModuleOp"> {
+  let summary = "Add fast math flags to reduction functions.";
+
+  let description = [{
+     It has been shown that the XLA:CPU compiler benefits significantly from
+     having fast-math-flags on reduction functions, this pass adds them.
+  }];
+
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+  ];
+
+  let constructor = "CreateAddReductionFastMathFlagsPass()";
+}
