@@ -90,6 +90,36 @@ std::optional<TiledOperands> PropagateTileToInputForPadOp(
                        ConstraintExpression::GetAlwaysSatisfied()};
 }
 
+std::optional<TiledOperands> PropagateTileToInputForTransposeOp(
+    const HloInstruction& transpose,
+    const ExperimentalSymbolicTile& result_tile) {
+  MLIRContext* ctx = result_tile.mlir_context();
+  int64_t num_result_dims = result_tile.num_result_dims();
+
+  SmallVector<AffineExpr, 3> new_offsets(num_result_dims),
+      new_sizes(num_result_dims), new_strides(num_result_dims),
+      new_bounds(num_result_dims);
+
+  for (int64_t dim = 0; dim < num_result_dims; ++dim) {
+    int64_t operand_dim = transpose.dimensions()[dim];
+    new_offsets[operand_dim] = result_tile.offsets()[dim];
+    new_sizes[operand_dim] = result_tile.sizes()[dim];
+    new_strides[operand_dim] = result_tile.strides()[dim];
+    new_bounds[operand_dim] = result_tile.upper_bounds()[dim];
+  }
+
+  ExperimentalSymbolicTile operand_tile{ctx,
+                                        result_tile.num_tile_ids(),
+                                        new_offsets,
+                                        new_sizes,
+                                        new_strides,
+                                        new_bounds,
+                                        result_tile.rt_vars()};
+
+  return TiledOperands{SymbolicTiles{operand_tile},
+                       ConstraintExpression::GetAlwaysSatisfied()};
+}
+
 }  // namespace
 
 std::string TiledOperands::ToString() const {
@@ -114,6 +144,10 @@ std::optional<TiledOperands> PropagateTileToInput(
   if (hlo.opcode() == HloOpcode::kPad) {
     const HloPadInstruction& pad = *Cast<HloPadInstruction>(&hlo);
     return PropagateTileToInputForPadOp(pad, result_tile);
+  }
+
+  if (hlo.opcode() == HloOpcode::kTranspose) {
+    return PropagateTileToInputForTransposeOp(hlo, result_tile);
   }
 
   return std::nullopt;

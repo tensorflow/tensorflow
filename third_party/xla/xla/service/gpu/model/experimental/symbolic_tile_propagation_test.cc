@@ -154,5 +154,25 @@ TEST_F(SymbolicTilePropagationTest,
   EXPECT_EQ(tiled_operands, std::nullopt);
 }
 
+TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfTransposeOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[2,5,1,3] parameter(0)
+      ROOT transpose = f32[1,2,3,5] transpose(p0), dimensions={2,0,3,1}
+    }
+  )");
+  MLIRContext mlir_context;
+  std::optional<TiledOperands> tiled_operands = PropagateTileToInput(
+      *root, GetTestSymbolicTile(root->shape().dimensions(), &mlir_context), 0);
+  EXPECT_THAT(tiled_operands, Optional(MatchString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3)[ts_0, ts_1, ts_2, ts_3]
+      -> offsets [tid_1 * ts_1, tid_3 * ts_3, tid_0 * ts_0, tid_2 * ts_2]
+         sizes [ts_1, ts_3, ts_0, ts_2]
+         strides [2, 4, 1, 3]
+         upper bounds [2, 5, 1, 3]
+  )")));
+}
+
 }  // namespace
 }  // namespace xla::gpu
