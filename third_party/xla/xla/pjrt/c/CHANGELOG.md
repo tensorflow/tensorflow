@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.72
+
+* Added `peak_memory_in_bytes` to `CompiledMemoryStats`.
+
 ## 0.71
 
 *   Added `overridden_serialized_compile_options` and

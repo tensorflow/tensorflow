@@ -282,6 +282,7 @@ TEST_F(PjrtCApiGpuExecutableTest, GetCompiledMemoryStats) {
             stats.host_output_size_in_bytes);
   EXPECT_EQ(ref_stats.host_alias_size_in_bytes, stats.host_alias_size_in_bytes);
   EXPECT_EQ(ref_stats.host_temp_size_in_bytes, stats.host_temp_size_in_bytes);
+  EXPECT_EQ(ref_stats.peak_memory_in_bytes, stats.peak_memory_in_bytes);
 }
 
 TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
