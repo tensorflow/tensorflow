@@ -36,15 +36,16 @@ namespace xla::gpu {
 //     offsets [offsets_]  sizes [sizes_] strides [strides_]
 //     upper bounds [upper_bounds_]
 //
-// tile IDs correspond to the dimension variables of the affine expressions
+// tile IDs correspond to the dimension variables of the affine expressions;
 // tile sizes and RT vars correspond to the symbol variables.
 //
+// The masking condition of the upper bound can be written as:
+// dimension_index < upper_bounds[i](tile IDs)
+//
 // In most of the cases, the upper bounds will coincide with the shape of the
-// tensor from which the tile is extracted. It can be different when we tile the
-// reshape.
+// tensor from which the tile is extracted.
 //
-// Example:
-//
+// One example when upper bound does not match the shape is a reshape:
 // output = s32[2, 17] reshape (s32[34] input)
 //
 // If we propagate the `output` tile with the ts0 == 1,
@@ -54,8 +55,8 @@ namespace xla::gpu {
 //
 // to the `input` we will get a stricter upper bound
 //
-// (tid)[ts] -> offsets [17 * tid0 + tid1 * ts1] sizes [ts1] strides [1]
-//              upper bounds [17]
+// (tid0, tid1)[ts1] -> offsets [17 * tid0 + tid1 * ts1] sizes [ts1] strides [1]
+//              upper bounds [17 * tid0]
 class ExperimentalSymbolicTile {
  public:
   ExperimentalSymbolicTile(mlir::MLIRContext* mlir_context,

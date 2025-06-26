@@ -151,6 +151,45 @@ std::optional<TiledOperands> PropagateTileToInputForTransposeOp(
                        ConstraintExpression::GetAlwaysSatisfied()};
 }
 
+std::optional<TiledOperands> PropagateTileToInputForSliceOp(
+    const HloInstruction& slice, const ExperimentalSymbolicTile& result_tile) {
+  MLIRContext* ctx = result_tile.mlir_context();
+  int64_t num_result_dims = result_tile.num_result_dims();
+
+  SmallVector<AffineExpr, 3> new_offsets(num_result_dims),
+      new_sizes(num_result_dims), new_strides(num_result_dims),
+      new_bounds(num_result_dims);
+
+  for (int64_t dim = 0; dim < num_result_dims; ++dim) {
+    // To compute element r of the result we access input
+    //   in = r * slice_strides[i] + slice_starts[i].
+    // Replacing r with (t * strides[i] + offsets[i]) we get
+    //   t * (strides[i] * slice_strides[i]) +
+    //   (offsets[i] * slice_strides[i] + slice_starts[i]).
+    new_strides[dim] = result_tile.strides()[dim] * slice.slice_strides(dim);
+    new_offsets[dim] = slice.slice_starts(dim) +
+                       result_tile.offsets()[dim] * slice.slice_strides(dim);
+    new_sizes[dim] = result_tile.sizes()[dim];
+    // Upper bound condition is `r < upper_bounds[i](t)`.
+    // By replacing r with `(in - slice_starts[i]) / slice_strides[i]` we get
+    // in < upper_bounds[i](t) * slice_strides[i] + slice_starts[i].
+    new_bounds[dim] =
+        result_tile.upper_bounds()[dim] * slice.slice_strides(dim) +
+        slice.slice_starts(dim);
+  }
+
+  ExperimentalSymbolicTile operand_tile{ctx,
+                                        result_tile.num_tile_ids(),
+                                        new_offsets,
+                                        new_sizes,
+                                        new_strides,
+                                        new_bounds,
+                                        result_tile.rt_vars()};
+
+  return TiledOperands{SymbolicTiles{operand_tile},
+                       ConstraintExpression::GetAlwaysSatisfied()};
+}
+
 }  // namespace
 
 std::string TiledOperands::ToString() const {
@@ -186,6 +225,11 @@ std::optional<TiledOperands> PropagateTileToInput(
     return PropagateTileToInputForTransposeOp(hlo, result_tile);
   }
 
+  if (hlo.opcode() == HloOpcode::kSlice) {
+    return PropagateTileToInputForSliceOp(hlo, result_tile);
+  }
+
+  LOG(INFO) << "Tile propagation not implemented for " << hlo.opcode();
   return std::nullopt;
 }
 
