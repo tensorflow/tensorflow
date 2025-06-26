@@ -320,8 +320,8 @@ class WrapEntryWithCallFrame
           mlir::DataLayout::closest(builder.getInsertionBlock()->getParentOp())
               .getTypeSizeInBits(mlir::IndexType::get(context)));
       if (index_ty != i64_ty) {
-        workgroup_dim =
-            builder.create<mlir::LLVM::TruncOp>(index_ty, workgroup_dim);
+        workgroup_dim = builder.create<mlir::LLVM::TruncOp>(
+            index_ty, workgroup_dim, mlir::LLVM::IntegerOverflowFlags::nsw);
       }
       auto workgroup_dim_cast =
           builder.create<mlir::UnrealizedConversionCastOp>(
