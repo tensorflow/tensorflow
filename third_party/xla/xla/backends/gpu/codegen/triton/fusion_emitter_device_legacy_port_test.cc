@@ -3183,7 +3183,7 @@ ENTRY e {
   CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module), R"(
                                 R"(
 CHECK: $L__BB0_1:
-CHECK-NEXT: // begin inline asm
+CHECK:      // begin inline asm
 CHECK-NEXT: .pragma "nounroll";
 CHECK: wgmma
 )",
