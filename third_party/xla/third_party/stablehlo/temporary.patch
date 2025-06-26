@@ -138,6 +138,56 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
  } : (tensor<2x2xi64>, !stablehlo.token) -> !stablehlo.token
  ```
  
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo/dialect/StablehloAttrs.td
+--- stablehlo/stablehlo/dialect/StablehloAttrs.td
++++ stablehlo/stablehlo/dialect/StablehloAttrs.td
+@@ -222,6 +222,15 @@
+   let hasCustomAssemblyFormat = 1;
+   let genVerifyDecl = 1;
+   let constBuilderCall = "::mlir::stablehlo::ResultAccuracyAttr::get($_builder.getContext(), APFloat(0.0), APFloat(0.0), 0, ::mlir::stablehlo::ResultAccuracyModeAttr::get($_builder.getContext(), $0))";
++  let builders = [
++    AttrOrTypeBuilder<(ins)>,
++    AttrOrTypeBuilder<(ins
++      "mlir::stablehlo::ResultAccuracyMode":$mode)>,
++    AttrOrTypeBuilder<(ins
++      "APFloat":$atol,
++      "APFloat":$rtol,
++      "int64_t":$ulps)>
++  ];
+ }
+ 
+ #endif // STABLEHLO_DIALECT_STABLEHLO_ATTRS
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -130,6 +130,27 @@
+ }
+ 
+ //===----------------------------------------------------------------------===//
++// Attributes
++//===----------------------------------------------------------------------===//
++
++ResultAccuracyAttr ResultAccuracyAttr::get(MLIRContext* context) {
++  return get(context, ResultAccuracyMode::DEFAULT);
++}
++
++ResultAccuracyAttr ResultAccuracyAttr::get(MLIRContext* context,
++                                           ResultAccuracyMode mode) {
++  auto modeAttr = ResultAccuracyModeAttr::get(context, mode);
++  return get(context, APFloat(0.0), APFloat(0.0), 0, modeAttr);
++}
++
++ResultAccuracyAttr ResultAccuracyAttr::get(MLIRContext* context, APFloat atol,
++                                           APFloat rtol, int64_t ulps) {
++  auto modeAttr =
++      ResultAccuracyModeAttr::get(context, ResultAccuracyMode::TOLERANCE);
++  return get(context, atol, rtol, ulps, modeAttr);
++}
++
++//===----------------------------------------------------------------------===//
+ // ReduceScatterOp
+ //===----------------------------------------------------------------------===//
+ 
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/dialect/StablehloOps.h
 --- stablehlo/stablehlo/dialect/StablehloOps.h
 +++ stablehlo/stablehlo/dialect/StablehloOps.h
