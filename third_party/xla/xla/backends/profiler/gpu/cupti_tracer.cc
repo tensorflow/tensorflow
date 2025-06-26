@@ -1363,6 +1363,14 @@ absl::Status CuptiTracer::DisableActivityTracing() {
       if (activity == CUPTI_ACTIVITY_KIND_UNIFIED_MEMORY_COUNTER) {
         ConfigureActivityUnifiedMemoryCounter(false);
       }
+      // TODO: b/422262733 - Temporarily skip calling disable because of the NV
+      // bug (https://partners.nvidia.com/Bug/ViewBug/5350647). Re-enable after
+      // the fix.
+      if (activity == CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL) {
+        VLOG(1) << "Skip disabling activity tracing for: " << activity
+                << " due to deadlock";
+        continue;
+      }
       RETURN_IF_CUPTI_ERROR(cupti_interface_->ActivityDisable(activity));
     }
     option_->activities_selected.clear();
