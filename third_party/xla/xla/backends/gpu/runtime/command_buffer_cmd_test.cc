@@ -73,8 +73,8 @@ static constexpr auto serialize =
 struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
   TestOnlyCommandBufferCmd(ExecutionStreamId execution_stream_id,
                            BufferUseVector buffer_usage)
-      : CommandBufferCmd(CommandBufferCmdType::kUnknownCmd,
-                         execution_stream_id),
+      : CommandBufferCmd(CommandBufferCmdType::kUnknownCmd, execution_stream_id,
+                         {}),
         buffer_usage(buffer_usage) {}
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
@@ -92,7 +92,7 @@ class FakeCmd : public CommandBufferCmd {
  public:
   explicit FakeCmd(ExecutionStreamId execution_stream_id)
       : CommandBufferCmd(CommandBufferCmdType::kTracedCommandBufferCmd,
-                         execution_stream_id) {}
+                         execution_stream_id, {}) {}
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams&, const RecordParams&, RecordAction,
