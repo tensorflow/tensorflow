@@ -74,6 +74,7 @@ limitations under the License.
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -670,6 +671,15 @@ absl::string_view StreamExecutorGpuClient::platform_version() const {
 #else
   return "<unknown>";
 #endif  // TENSORFLOW_USE_ROCM && defined(TF_ROCM_VERSION)
+}
+
+std::optional<PjRtPluginAttributes> StreamExecutorGpuClient::plugin_attributes()
+    const {
+  PjRtPluginAttributes attrs;
+  attrs.pjrt_c_api_major_version = 0;
+  attrs.pjrt_c_api_minor_version = 0;
+  attrs.attributes["supports_cross_host_transfers"] = PjRtValueType(true);
+  return attrs;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>

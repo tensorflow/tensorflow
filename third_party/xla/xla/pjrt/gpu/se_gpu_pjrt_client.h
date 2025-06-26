@@ -119,6 +119,8 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 
   absl::string_view platform_version() const override;
 
+  std::optional<PjRtPluginAttributes> plugin_attributes() const override;
+
   using PjRtStreamExecutorClient::CreateBuffersForAsyncHostToDevice;
   absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(

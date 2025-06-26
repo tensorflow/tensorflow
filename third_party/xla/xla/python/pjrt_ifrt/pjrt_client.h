@@ -359,6 +359,9 @@ class PjRtClient final
   // transfer, so that the returned value must be the same in all processes.
   int64_t CreateNewTransferKey();
 
+  // If true, the backend implements the cross-host transfer APIs.
+  bool pjrt_supports_cross_host_transfers_ = false;
+
   std::atomic<int64_t> next_transfer_key_ = 0;
   std::shared_ptr<xla::KeyValueStoreInterface> kv_store_;
   absl::Duration cross_host_transfer_timeout_;

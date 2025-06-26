@@ -826,6 +826,14 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
   client->kv_store_ = std::move(options.kv_store);
   client->cross_host_transfer_timeout_ = options.cross_host_transfer_timeout;
 
+  if (client->pjrt_client()->plugin_attributes().has_value()) {
+    auto attrs = client->pjrt_client()->plugin_attributes()->attributes;
+    if (attrs.contains("supports_cross_host_transfers")) {
+      client->pjrt_supports_cross_host_transfers_ =
+          std::get<bool>(attrs.at("supports_cross_host_transfers"));
+    }
+  }
+
   LogDeviceSummary(client.get());
   return client;
 }
@@ -1234,6 +1242,10 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::CopyArrays(
       }
     }
     return new_arrays;
+  }
+  if (!pjrt_supports_cross_host_transfers_) {
+    return absl::UnimplementedError(
+        "Cross-host transfers are not supported by this backend.");
   }
   return CopyArraysForCrossHost(arrays, src_devices, dst_devices, memory_kind);
 }
