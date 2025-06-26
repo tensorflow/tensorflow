@@ -1042,6 +1042,14 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> NestGemmFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  if (!module->config()
+           .debug_options()
+           .xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms()) {
+    VLOG(1) << "NestGemmFusion: "
+               "--xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms "
+               "is not set, do nothing";
+    return false;
+  }
   bool changed = false;
   auto call_graph = CallGraph::Build(module, execution_threads);
   mlir::MLIRContext ctx;

@@ -357,12 +357,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     TF_RETURN_IF_ERROR(fusion_wrapper.Run(new_module.get()).status());
   }
 
-  if (debug_opts
-          .xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms()) {
-    NestGemmFusion nest_gemm_fusion(gpu_device_info.gpu_compute_capability());
-    TF_RETURN_IF_ERROR(nest_gemm_fusion.Run(new_module.get()).status());
-  }
-
+  NestGemmFusion nest_gemm_fusion(gpu_device_info.gpu_compute_capability());
+  TF_RETURN_IF_ERROR(nest_gemm_fusion.Run(new_module.get()).status());
   return new_module;
 }
 

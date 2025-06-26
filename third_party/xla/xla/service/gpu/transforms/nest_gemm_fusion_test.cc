@@ -77,6 +77,14 @@ class NestGemmFusionTest : public HloHardwareIndependentTestBase,
   const se::GpuComputeCapability compute_capability_{
       TestGpuDeviceInfo::RTXA6000DeviceInfo(se::CudaComputeCapability::Ampere())
           .gpu_compute_capability()};
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    options.set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(
+        true);
+    return options;
+  }
 };
 
 TEST_P(NestGemmFusionTest, BasicTest) {
