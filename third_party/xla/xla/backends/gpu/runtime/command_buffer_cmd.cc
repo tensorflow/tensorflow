@@ -237,7 +237,8 @@ namespace {
 class CommandOperation : public ExecutionGraph::Operation {
  public:
   explicit CommandOperation(const CommandBufferCmd* cmd)
-      : name_(cmd->ToString()),
+      : name_(absl::StrFormat("cmd %s: %s", cmd->ToString(),
+                              cmd->profile_annotation())),
         buffers_(cmd->buffers()),
         resources_(cmd->resources()) {}
 
@@ -254,6 +255,16 @@ class CommandOperation : public ExecutionGraph::Operation {
 };
 }  // namespace
 
+static std::vector<CommandOperation> CreateCommandOperations(
+    const CommandBufferCmdSequence& commands) {
+  std::vector<CommandOperation> operations;
+  operations.reserve(commands.size());
+  for (const std::unique_ptr<CommandBufferCmd>& cmd : commands) {
+    operations.emplace_back(cmd.get());
+  }
+  return operations;
+}
+
 absl::StatusOr<CommandBufferCmdExecutor> CommandBufferCmdExecutor::Create(
     CommandBufferCmdSequence commands,
     SynchronizationMode synchronization_mode) {
@@ -263,11 +274,7 @@ absl::StatusOr<CommandBufferCmdExecutor> CommandBufferCmdExecutor::Create(
   // sequence of commands and derive the structure of command dependencies
   // from the buffer use conflicts.
   if (synchronization_mode == SynchronizationMode::kAutomatic) {
-    std::vector<CommandOperation> operations;
-    operations.reserve(commands.size());
-    for (const std::unique_ptr<CommandBufferCmd>& cmd : commands) {
-      operations.emplace_back(cmd.get());
-    }
+    auto operations = CreateCommandOperations(commands);
     TF_ASSIGN_OR_RETURN(execution_graph,
                         ExecutionGraph::Create<CommandOperation>(operations));
   }
@@ -578,6 +585,29 @@ const absl::flat_hash_set<BufferUse>& CommandBufferCmdExecutor::buffers()
 absl::Span<const BufferAllocation::Index>
 CommandBufferCmdExecutor::allocs_indices() const {
   return allocs_indices_;
+}
+
+absl::StatusOr<std::string> CommandBufferCmdExecutor::RenderExecutionGraph() {
+  ExecutionGraph::Renderer* renderer = ExecutionGraph::GetRenderer();
+  if (renderer == nullptr) {
+    return Unimplemented("No execution graph renderer registered");
+  }
+
+  if (synchronization_mode_ != SynchronizationMode::kAutomatic) {
+    return Unimplemented(
+        "Execution graph rendering is only supported for "
+        "automatic synchronization mode");
+  }
+
+  auto operations = CreateCommandOperations(commands_);
+  absl::InlinedVector<const ExecutionGraph::Operation*, 32> operations_ptrs;
+  operations_ptrs.reserve(operations.size());
+  for (const auto& operation : operations) {
+    operations_ptrs.push_back(&operation);
+  }
+
+  auto graph_as_string = renderer->GenerateGraphAsString(operations_ptrs);
+  return renderer->PublishGraph(graph_as_string);
 }
 
 //===----------------------------------------------------------------------===//

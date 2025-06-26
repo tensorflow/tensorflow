@@ -20,10 +20,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "xla/backends/gpu/runtime/all_gather_thunk.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/all_to_all_thunk.h"
@@ -51,9 +54,6 @@ limitations under the License.
 namespace xla::gpu {
 
 // Appends command(s) converted from `thunk` to `cmd_sequence`.
-static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
-                                   const Thunk& thunk,
-                                   const ConvertToCommandsOptions& options);
 
 // Appends command(s) converted from `sequence` to `cmd_sequence`.
 static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
@@ -395,6 +395,9 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
 
 absl::StatusOr<CommandBufferCmdExecutor> ConvertToCommands(
     const ThunkSequence& sequence, const ConvertToCommandsOptions& options) {
+  VLOG(3) << absl::StreamFormat(
+      "Convert thunk sequence to command executor: synchronization_mode=%v",
+      options.synchronization_mode);
   CommandBufferCmdSequence cmd_sequence;
   TF_RETURN_IF_ERROR(AppendCommands(cmd_sequence, sequence, options));
   return CommandBufferCmdExecutor::Create(std::move(cmd_sequence),

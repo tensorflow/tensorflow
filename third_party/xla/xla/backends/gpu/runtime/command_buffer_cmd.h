@@ -415,6 +415,10 @@ class CommandBufferCmdExecutor {
     });
   }
 
+  // Renders the execution graph using default renderer. Returns url of the
+  // rendered graph, or an error if rendering failed.
+  absl::StatusOr<std::string> RenderExecutionGraph();
+
  private:
   // We use index into the `commands_` vector as a command id.
   using CommandId = int64_t;
@@ -523,8 +527,8 @@ class TracedCommandBufferCmd : public CommandBufferCmd {
 
 class EmptyCmd : public CommandBufferCmd {
  public:
-  EmptyCmd(ExecutionStreamId execution_stream_id,
-           ResourceUseVector resources = {});
+  explicit EmptyCmd(ExecutionStreamId execution_stream_id,
+                    ResourceUseVector resources = {});
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
