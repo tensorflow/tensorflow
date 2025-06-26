@@ -1,4 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
@@ -149,5 +150,48 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:fingerprint",
+    ],
+)
+
+cc_library(
+    name = "debug",
+    srcs = ["debug.cc"],
+    hdrs = ["debug.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:random",
+        "@local_tsl//tsl/platform:regexp",
+    ],
+)
+
+xla_cc_test(
+    name = "debug_test",
+    srcs = ["debug_test.cc"],
+    deps = [
+        ":debug",
+        "//xla/python/ifrt/support:module_parsing",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:status_matchers",
     ],
 )
