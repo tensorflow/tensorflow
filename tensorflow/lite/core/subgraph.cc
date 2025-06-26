@@ -1136,11 +1136,19 @@ TfLiteStatus Subgraph::AddNodeWithParameters(
   node.outputs = ConvertVectorToTfLiteIntArray(outputs);
   node.intermediates = ConvertVectorToTfLiteIntArray(intermediates);
   node.temporaries = TfLiteIntArrayCreate(0);
+  bool init_failed = false;
   if (init_data) {
-    node.user_data = OpInit(*registration, init_data, init_data_size);
+    node.user_data =
+        OpInit(*registration, init_data, init_data_size, &init_failed);
   } else {
     node.user_data = OpInit(
-        *registration, static_cast<const char*>(builtin_data_deleter.get()), 0);
+        *registration, static_cast<const char*>(builtin_data_deleter.get()), 0,
+        &init_failed);
+  }
+  if (init_failed) {
+    // Delegate kernels may fail to initialize. Return an error to the caller in
+    // this case.
+    return kTfLiteError;
   }
 
   node.builtin_data = builtin_data_deleter.release();
@@ -1302,7 +1310,15 @@ TfLiteStatus Subgraph::ReleaseMemory() {
 // 'buffer'. If registration_external is valid, use the 'init' callback from
 // that.
 void* Subgraph::OpInit(const TfLiteRegistration& op_reg, const char* buffer,
-                       size_t length) {
+                       size_t length, bool* success) {
+  const bool is_delegate_kernel = op_reg.builtin_code == kTfLiteBuiltinDelegate;
+  auto CheckSuccess = [is_delegate_kernel, success](void* init_result) {
+    if (is_delegate_kernel && init_result == nullptr) {
+      *success = false;
+    }
+    *success = true;
+    return init_result;
+  };
   // Delegates that use the stable delegate API to iterate over the nodes and
   // registrations are presented with ABI stable 'TfLiteOperator'
   // pointers, as opposed to ABI unstable 'TfLiteRegistration' pointers, even
@@ -1321,21 +1337,22 @@ void* Subgraph::OpInit(const TfLiteRegistration& op_reg, const char* buffer,
           &nodes_and_registration_[op_reg.registration_external->node_index]
                .second;
       if (referenced_registration->init == nullptr) return nullptr;
-      return referenced_registration->init(&context_, buffer, length);
+      return CheckSuccess(
+          referenced_registration->init(&context_, buffer, length));
     }
     if (op_reg.registration_external->init_with_data) {
       void* user_data = op_reg.registration_external->user_data;
-      return op_reg.registration_external->init_with_data(
+      return CheckSuccess(op_reg.registration_external->init_with_data(
           user_data, reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer,
-          length);
+          length));
     }
     if (op_reg.registration_external->init) {
-      return op_reg.registration_external->init(
-          reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer, length);
+      return CheckSuccess(op_reg.registration_external->init(
+          reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer, length));
     }
   }
   if (op_reg.init == nullptr) return nullptr;
-  return op_reg.init(&context_, buffer, length);
+  return CheckSuccess(op_reg.init(&context_, buffer, length));
 }
 
 TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
