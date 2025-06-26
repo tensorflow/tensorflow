@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -141,8 +140,43 @@ AffineExpr Swizzle(AffineExpr shmem_row, AffineExpr shmem_col,
 
 }  // namespace
 
+absl::Status TransposeFusionBase::EmitEntryFunction(
+    const emitters::PartitionedComputations& computations,
+    const emitters::CallTargetProvider& call_targets,
+    mlir::func::FuncOp entry_function,
+    const HloFusionInstruction& fusion) const {
+  const auto& root_computation = computations.FindPartitionedComputation(
+      fusion.fused_instructions_computation());
+  // Write intermediate results to shmem.
+  mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
+  builder.setInsertionPointToStart(entry_function.addEntryBlock());
+  auto thread_and_block_ids = EmitThreadAndBlockIds(builder);
+  auto written = EmitWriteToShMemMlir(
+      builder, entry_function, fusion, root_computation, call_targets,
+      entry_function.getArguments().take_back(analysis_.fusion_roots().size()),
+      thread_and_block_ids);
+  // Read intermediate results from shmem and compute epilogues.
+  EmitReadFromShMemMlir(builder, entry_function, fusion, computations, written,
+                        thread_and_block_ids);
+  return absl::OkStatus();
+}
+
+std::vector<emitters::EpilogueSpecification> TransposeFusionBase::GetEpilogues(
+    const HloFusionInstruction& fusion, MLIRContext* mlir_context) const {
+  std::vector<emitters::EpilogueSpecification> epilogues{
+      GetEpilogueForOutputIndexing(analysis_, shmem_transposes_,
+                                   shmem_transpose_roots_, mlir_context)};
+  // Add empty epilogues for the side outputs. This ensures their roots don't
+  // get "fused" into the tuple function.
+  for (const auto* root : side_output_roots_) {
+    epilogues.push_back(emitters::EpilogueSpecification::FromIdentityIndexing(
+        root, root, mlir_context));
+  }
+  return epilogues;
+}
+
 TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis)
-    : analysis_(analysis),
+    : TransposeFusionBase(analysis),
       transpose_(analysis.tiled_transpose()),
       permutation_(transpose_.permutation),
       input_shape_(
@@ -451,41 +485,6 @@ void TransposeFusion::EmitReadFromShMemMlir(
   builder.create<ReturnOp>(result_tensors);
 }
 
-std::vector<emitters::EpilogueSpecification> TransposeFusion::GetEpilogues(
-    const HloFusionInstruction& fusion, MLIRContext* mlir_context) const {
-  std::vector<emitters::EpilogueSpecification> epilogues{
-      GetEpilogueForOutputIndexing(analysis_, shmem_transposes_,
-                                   shmem_transpose_roots_, mlir_context)};
-  // Add empty epilogues for the side outputs. This ensures their roots don't
-  // get "fused" into the tuple function.
-  for (const auto* root : side_output_roots_) {
-    epilogues.push_back(emitters::EpilogueSpecification::FromIdentityIndexing(
-        root, root, mlir_context));
-  }
-  return epilogues;
-}
-
-absl::Status TransposeFusion::EmitEntryFunction(
-    const emitters::PartitionedComputations& computations,
-    const emitters::CallTargetProvider& call_targets,
-    mlir::func::FuncOp entry_function,
-    const HloFusionInstruction& fusion) const {
-  const auto& root_computation = computations.FindPartitionedComputation(
-      fusion.fused_instructions_computation());
-  // Write intermediate results to shmem.
-  mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
-  builder.setInsertionPointToStart(entry_function.addEntryBlock());
-  auto thread_and_block_ids = EmitThreadAndBlockIds(builder);
-  auto written = EmitWriteToShMemMlir(
-      builder, entry_function, fusion, root_computation, call_targets,
-      entry_function.getArguments().take_back(analysis_.fusion_roots().size()),
-      thread_and_block_ids);
-  // Read intermediate results from shmem and compute epilogues.
-  EmitReadFromShMemMlir(builder, entry_function, fusion, computations, written,
-                        thread_and_block_ids);
-  return absl::OkStatus();
-}
-
 llvm::SmallVector<mlir::AffineExpr, 4> TransposeFusion::GetThreadOffsets(
     bool read, mlir::MLIRContext* ctx) const {
   auto thread = getAffineDimExpr(
@@ -557,7 +556,7 @@ PackedTranspose::PackedTranspose(const HloFusionAnalysis& analysis,
                                  const TransposeSpec& spec,
                                  absl::Span<const int64_t> output_block_tile,
                                  int64_t num_warps)
-    : analysis_(analysis),
+    : TransposeFusionBase(analysis),
       spec_(spec),
       output_tile_(output_block_tile.begin(), output_block_tile.end()),
       input_tile_(Permute(output_tile_, spec_.canonical_inv_permutation)),
@@ -795,41 +794,6 @@ void PackedTranspose::EmitReadFromShMemMlir(
         return inner_loop_results;
       });
   builder.create<ReturnOp>(outer_loop_results);
-}
-
-std::vector<emitters::EpilogueSpecification> PackedTranspose::GetEpilogues(
-    const HloFusionInstruction& fusion, MLIRContext* mlir_context) const {
-  std::vector<emitters::EpilogueSpecification> epilogues{
-      GetEpilogueForOutputIndexing(analysis_, shmem_transposes_,
-                                   shmem_transpose_roots_, mlir_context)};
-  // Add empty epilogues for the side outputs. This ensures their roots don't
-  // get "fused" into the tuple function.
-  for (const auto* root : side_output_roots_) {
-    epilogues.push_back(emitters::EpilogueSpecification::FromIdentityIndexing(
-        root, root, mlir_context));
-  }
-  return epilogues;
-}
-
-absl::Status PackedTranspose::EmitEntryFunction(
-    const emitters::PartitionedComputations& computations,
-    const emitters::CallTargetProvider& call_targets,
-    mlir::func::FuncOp entry_function,
-    const HloFusionInstruction& fusion) const {
-  const auto& root_computation = computations.FindPartitionedComputation(
-      fusion.fused_instructions_computation());
-  // Write intermediate results to shmem.
-  mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
-  builder.setInsertionPointToStart(entry_function.addEntryBlock());
-  auto thread_and_block_ids = EmitThreadAndBlockIds(builder);
-  auto written = EmitWriteToShMemMlir(
-      builder, entry_function, fusion, root_computation, call_targets,
-      entry_function.getArguments().take_back(analysis_.fusion_roots().size()),
-      thread_and_block_ids);
-  // Read intermediate results from shmem and compute epilogues.
-  EmitReadFromShMemMlir(builder, entry_function, fusion, computations, written,
-                        thread_and_block_ids);
-  return absl::OkStatus();
 }
 
 IndexingMap PackedTranspose::GetInputIndexing(MLIRContext* ctx) const {
