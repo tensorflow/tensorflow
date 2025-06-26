@@ -140,6 +140,11 @@ class CommandBuffer {
   // Command buffer API
   //===--------------------------------------------------------------------===//
 
+  // Creates an empty command.
+  virtual absl::StatusOr<const Command*> CreateEmptyCmd(
+      absl::Span<const Command* const> dependencies,
+      StreamPriority priority = StreamPriority::Default) = 0;
+
   // Creates a kernel launch command.
   virtual absl::StatusOr<const Command*> CreateLaunch(
       const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
