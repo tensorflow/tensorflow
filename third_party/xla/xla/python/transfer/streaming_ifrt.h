@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/python/ifrt/array.h"
-#include "xla/python/ifrt/device.h"
 #include "xla/python/transfer/streaming.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -47,15 +46,8 @@ absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> MapPjrtMemory(
     std::shared_ptr<xla::PjRtClient> client, void* data, size_t buffer_size,
     std::shared_ptr<void> owner);
 
-absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> MapPjrtMemory(
-    xla::ifrt::Client* client, void* data, size_t buffer_size,
-    std::shared_ptr<void> owner);
-
 absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> AllocateAndMapPjrtMemory(
     std::shared_ptr<xla::PjRtClient> client, size_t buffer_size);
-
-absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> AllocateAndMapPjrtMemory(
-    xla::ifrt::Client* client, size_t buffer_size);
 
 // An structure which represents a single copy of a chunk out of a buffer
 // with an assigned 'buffer_id'.

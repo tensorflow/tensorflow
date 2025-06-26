@@ -32,9 +32,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_future.h"
-#include "xla/python/ifrt/array.h"
-#include "xla/python/ifrt/client.h"
-#include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/transfer/streaming.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -65,17 +62,6 @@ PremappedPjRtBuffer::~PremappedPjRtBuffer() {
 }
 
 absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> MapPjrtMemory(
-    xla::ifrt::Client* client, void* data, size_t buffer_size,
-    std::shared_ptr<void> owner) {
-  auto* ifrt_client = llvm::dyn_cast_or_null<xla::ifrt::PjRtClient>(client);
-  if (ifrt_client == nullptr) {
-    return absl::InternalError("MapPjrtMemory only supports PjRtClient");
-  }
-  return MapPjrtMemory(ifrt_client->shared_ptr_pjrt_client(), data, buffer_size,
-                       std::move(owner));
-}
-
-absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> MapPjrtMemory(
     std::shared_ptr<xla::PjRtClient> pjrt_client, void* data,
     size_t buffer_size, std::shared_ptr<void> owner) {
   auto s = pjrt_client->DmaMap(data, buffer_size);
@@ -88,17 +74,6 @@ absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> MapPjrtMemory(
       absl::MakeSpan(reinterpret_cast<uint8_t*>(data), buffer_size),
       pjrt_client, std::move(owner));
   return std::shared_ptr<absl::Span<uint8_t>>(result, result->data());
-}
-
-absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> AllocateAndMapPjrtMemory(
-    xla::ifrt::Client* client, size_t buffer_size) {
-  void* data = nullptr;
-  if (posix_memalign(&data, kCpuPageSize, buffer_size) != 0) {
-    return absl::InternalError("error in posix_memalign.");
-  }
-  std::shared_ptr<void> owner =
-      std::shared_ptr<void>(data, [](void* data) { free(data); });
-  return MapPjrtMemory(client, data, buffer_size, std::move(owner));
 }
 
 absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> AllocateAndMapPjrtMemory(

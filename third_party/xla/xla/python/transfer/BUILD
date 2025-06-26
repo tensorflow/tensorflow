@@ -112,7 +112,6 @@ cc_library(
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt:raw_buffer",
         "//xla/python/ifrt",
-        "//xla/python/pjrt_ifrt",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
