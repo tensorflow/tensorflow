@@ -829,7 +829,7 @@ class BufferAssigner {
 };
 
 // Computes the peak memory usage through the proto's heap simulator traces.
-absl::StatusOr<int> ComputePeakMemory(const BufferAssignmentProto& proto);
+absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto);
 
 }  // namespace xla
 

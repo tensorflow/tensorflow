@@ -4108,5 +4108,18 @@ TEST(ComputePeakMemoryTest, ParamBufferAndAllocationBuffer) {
   EXPECT_EQ(*ComputePeakMemory(proto), 123 + 321);
 }
 
+TEST(ComputePeakMemoryTest, LargeResult) {
+  BufferAssignmentProto proto;
+  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  buffer0->set_id(0);
+  buffer0->set_size(1LL << 33);
+
+  BufferAllocationProto* alloc = proto.add_buffer_allocations();
+  alloc->add_assigned()->set_logical_buffer_id(0);
+  alloc->set_is_entry_computation_parameter(true);
+
+  EXPECT_EQ(*ComputePeakMemory(proto), 1LL << 33);
+}
+
 }  // namespace
 }  // namespace xla

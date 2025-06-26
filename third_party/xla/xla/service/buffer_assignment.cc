@@ -2397,7 +2397,7 @@ int64_t AllocateStaticBuffers(BufferMap& buffers,
 
 }  // namespace
 
-absl::StatusOr<int> ComputePeakMemory(const BufferAssignmentProto& proto) {
+absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto) {
   BufferMap buffers(proto);
 
   int64_t memory = AllocateStaticBuffers(buffers, proto);
