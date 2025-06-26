@@ -499,6 +499,7 @@ xla_cc_test(
     srcs = ["gpu_blas_lt_test.cc"],
     deps = [
         ":gpu_blas_lt",
+        ":gpu_blas_lt_proto_cc",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor:blas",
         "//xla/tsl/platform:statusor",
