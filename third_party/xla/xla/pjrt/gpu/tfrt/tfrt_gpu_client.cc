@@ -2696,28 +2696,32 @@ TfrtGpuBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
         "buffer.");
   }
 
-  // Combine the original definition event and usage event.
-  tsl::AsyncValueRef<GpuEvent> usage_definition_events =
-      AfterAll({tracked_buffer->LockUseAndTransferUsageEvents(),
-                tracked_buffer->definition_event()});
+  tsl::AsyncValueRef<GpuEvent> usage_event =
+      tracked_buffer->LockUseAndTransferUsageEvents();
 
-  // Create an event for `dependency`.
-  tsl::AsyncValueRef<GpuEvent> dependency_event =
-      tsl::MakeConstructedAsyncValueRef<GpuEvent>();
-  dependency.OnReady([dependency_event](absl::Status status) {
-    if (status.ok()) {
-      dependency_event.SetStateConcrete();
-    } else {
-      dependency_event.SetError(status);
+  auto new_definition_event = tsl::MakeIndirectAsyncValue<GpuEvent>();
+  const auto forward_event_func =
+      [new_def_event = new_definition_event,
+       def_event = tracked_buffer->definition_event()]() mutable {
+        new_def_event->ForwardTo(def_event.CopyRCRef());
+      };
+  dependency.OnReady([usage_event = usage_event.CopyRef(),
+                      new_def_event = new_definition_event,
+                      forward_event_func = std::move(forward_event_func),
+                      client = client_](absl::Status status) {
+    if (!status.ok()) {
+      new_def_event->SetError(status);
+      return;
     }
+    EnqueueWorkWhenReady(client->blocking_thread_pool(),
+                         {usage_event.CopyRCRef()}, forward_event_func);
   });
 
   // Create new buffer with the combined event and underlying data from the
   // original buffer.
-  tsl::AsyncValueRef<GpuEvent> new_definition_event =
-      AfterAll({usage_definition_events, dependency_event});
   auto new_tracked_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
-      tracked_buffer->buffer(), std::move(new_definition_event),
+      tracked_buffer->buffer(),
+      tsl::AsyncValueRef<GpuEvent>(new_definition_event),
       tracked_buffer->ready_event(),
       std::move(tracked_buffer->on_delete_callback_));
 
@@ -2728,7 +2732,7 @@ TfrtGpuBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
   // Commit will set the underlying device buffer unowned. This may break other
   // ongoing users. Only commit after all the pending definition and usage
   // events are ready.
-  usage_definition_events.AndThen(
+  usage_event.AndThen(
       [donation_transaction = std::move(donation_transaction)]() mutable {
         std::move(donation_transaction).Commit();
       });
