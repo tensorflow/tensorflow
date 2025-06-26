@@ -45,17 +45,17 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "8665f9876227fc1f5aaea9ca46bd24dac65d85053a510a6e71857ee32055e126",
-        strip_prefix = "XNNPACK-0a3103ab29306b25a6d1293a746945754a556b9c",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/0a3103ab29306b25a6d1293a746945754a556b9c.zip"),
+        sha256 = "763f32eed3520cdb2fc906555315701ac4cc92e3d77acd4a3eafd8a553996d63",
+        strip_prefix = "XNNPACK-0a655ef53812ce9bd8ce2628757cc0f476efcf51",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/0a655ef53812ce9bd8ce2628757cc0f476efcf51.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "ca8b8ee0c3dd2284c1eae3ac07f7064ce92317ac7c3cfcd1d511662e0594cdb8",
-        strip_prefix = "kleidiai-fb4caf0937a45002861cc12788b6018bfb89ae58",
-        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/fb4caf0937a45002861cc12788b6018bfb89ae58.zip"),
+        sha256 = "439926527fca9405ae90b602a3938d3435751ec78492e5f1c62d85f5df8c2784",
+        strip_prefix = "kleidiai-dc69e899945c412a8ce39ccafd25139f743c60b1",
+        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/dc69e899945c412a8ce39ccafd25139f743c60b1.zip"),
     )
 
     tf_http_archive(
@@ -74,9 +74,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "pthreadpool",
-        sha256 = "b193fcb18abf0d5bdb989968ccd8e274ae0ce8d89b0f1a61763582fb716b259c",
-        strip_prefix = "pthreadpool-dcc9f28589066af0dbd4555579281230abbf74dd",
-        urls = tf_mirror_urls("https://github.com/google/pthreadpool/archive/dcc9f28589066af0dbd4555579281230abbf74dd.zip"),
+        sha256 = "516ba8d05c30e016d7fd7af6a7fc74308273883f857faf92bc9bb630ab6dba2c",
+        strip_prefix = "pthreadpool-c2ba5c50bb58d1397b693740cf75fad836a0d1bf",
+        urls = tf_mirror_urls("https://github.com/google/pthreadpool/archive/c2ba5c50bb58d1397b693740cf75fad836a0d1bf.zip"),
     )
 
     tf_http_archive(
