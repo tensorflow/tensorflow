@@ -201,6 +201,7 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& scores,
                            bool return_scores_tensor = false,
                            bool pad_to_max_output_size = false,
                            int* ptr_num_valid_outputs = nullptr) {
+  // Defensive check for negative max_output_size
   const int output_size = max_output_size.scalar<int>()();
   OP_REQUIRES(context, output_size >= 0,
               errors::InvalidArgument("output size must be non-negative"));
