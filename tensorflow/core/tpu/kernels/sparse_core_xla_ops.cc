@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
@@ -1056,6 +1057,60 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
     return arguments;
   }
 
+  // Compiles and returns the VJP computation that generates the combiner weight
+  // gradients. If the combiner weights are unused (i.e., the compiled
+  // computation returns an empty tuple), returns an invalid (empty) XlaOp.
+  absl::StatusOr<xla::XlaOp> TryEmittingCombinerWeightUpdate(
+      XlaOpKernelContext* ctx, xla::XlaBuilder* builder, int32_t input_size,
+      int32_t feature_width, absl::Span<const xla::XlaOp> vjp_args) {
+    xla::XlaOp weights = ctx->Input("weights");
+    TF_ASSIGN_OR_RETURN(
+        std::shared_ptr<xla::XlaComputation> combiner_weights_vjp,
+        BuildCombinerVjpComputation(ctx, input_size, feature_width,
+                                    combiner_weights_custom_vjp_computation_));
+    // It is possible that the combiner owns weights that are never used, in
+    // which case the VJP computation should simply return an empty tuple.
+    TF_ASSIGN_OR_RETURN(auto program_shape,
+                        combiner_weights_vjp->GetProgramShape());
+    const xla::Shape& weight_shape = program_shape.result();
+    if (weight_shape.IsTuple() && weight_shape.tuple_shapes().empty()) {
+      // Signal that the weights are unused with an invalid XlaOp.
+      return xla::XlaOp();
+    }
+    // Sanity check that the return shape is f32[input_size, num_weights].
+    TF_RET_CHECK(weight_shape.IsArray() &&
+                 weight_shape.element_type() == xla::F32 &&
+                 weight_shape.dimensions().size() == 2 &&
+                 weight_shape.dimensions(0) == input_size &&
+                 weight_shape.dimensions(1) == num_weights_)
+        << "Expecting the combiner weight VJP computation return shape to be"
+        << " f32[" << input_size << ", " << num_weights_ << "], but got "
+        << weight_shape.ToString();
+    // The weights VJP returns a tensor of shape f32[input_size, num_weights].
+    xla::XlaOp weights_gradients_all_samples =
+        xla::Call(builder, *combiner_weights_vjp, vjp_args);
+    // Local reduction, which aggregates the contributions from all samples
+    // and returns a tensor of shape f32[num_weights].
+    xla::XlaOp per_replica_reduced_weights_gradients = xla::Reduce(
+        weights_gradients_all_samples, xla::ConstantR0<float>(builder, 0.0),
+        xla::CreateScalarAddComputation(xla::F32, builder), {0});
+    // Global reduction, which aggregates the contributions from all replicas
+    // and returns a tensor of shape f32[num_weights].
+    // Here we assume that all replicas participate in the all-reduce (using
+    // default value of `replica_groups`) and that all-reduce from different
+    // modules do not participate in this reduction (using default value of
+    // `channel_id`).
+    xla::XlaOp global_reduced_weights_gradients =
+        xla::AllReduce(per_replica_reduced_weights_gradients,
+                       xla::CreateScalarAddComputation(xla::F32, builder));
+    // Use SGD optimizer on the weights.
+    // TODO: b/427804797 - Add support for more optimizers.
+    xla::XlaOp learning_rate = ctx->Input("combiner_weights_learning_rate");
+    xla::XlaOp updated_weights =
+        weights - learning_rate * global_reduced_weights_gradients;
+    return updated_weights;
+  }
+
   absl::StatusOr<std::shared_ptr<xla::XlaComputation>>
   BuildCombinerVjpComputation(XlaOpKernelContext* ctx, int32_t input_size,
                               int32_t feature_width,
@@ -1077,7 +1132,6 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
   absl::StatusOr<xla::XlaOp> EmitTensorCoreComputations(
       XlaOpKernelContext* ctx, xla::XlaBuilder* builder, int32_t input_size,
       int32_t feature_width) {
-    xla::XlaOp weights = ctx->Input("weights");
     xla::XlaOp preserved_weights = ctx->Input("preserved_weights");
     xla::XlaOp activation_gradients = ctx->Input("activation_gradients");
     xla::XlaOp valencies = ctx->Input("preserved_valencies");
@@ -1088,14 +1142,10 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
         std::shared_ptr<xla::XlaComputation> combiner_vectors_vjp,
         BuildCombinerVjpComputation(ctx, input_size, feature_width,
                                     combiner_lookups_custom_vjp_computation_));
-    TF_ASSIGN_OR_RETURN(
-        std::shared_ptr<xla::XlaComputation> combiner_weights_vjp,
-        BuildCombinerVjpComputation(ctx, input_size, feature_width,
-                                    combiner_weights_custom_vjp_computation_));
-
     // The updated weights are the last output in the list.
     const int32_t kUpdatedWeightsIndex = ctx->num_outputs() - 1;
 
+    // Build the arguments of the VJP computations.
     std::vector<xla::XlaOp> vjp_args;
     if (num_weights_ > 0) {
       xla::XlaOp broadcasted_preserved_weights =
@@ -1111,35 +1161,19 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
     xla::XlaOp lookup_gradients =
         xla::Call(builder, *combiner_vectors_vjp, vjp_args);
 
-    // Compute the weights gradients based on the activation gradients.
+    // Compute the updated weights based on the activation gradients. Set the
+    // buffer to zeros if the weights are unused.
+    xla::XlaOp updated_weights;
     if (num_weights_ > 0) {
-      // The weights VJP returns a tensor of shape f32[input_size, num_weights].
-      xla::XlaOp weights_gradients_all_samples =
-          xla::Call(builder, *combiner_weights_vjp, vjp_args);
-      // Local reduction, which aggregates the contributions from all samples
-      // and returns a tensor of shape f32[num_weights].
-      xla::XlaOp per_replica_reduced_weights_gradients = xla::Reduce(
-          weights_gradients_all_samples, xla::ConstantR0<float>(builder, 0.0),
-          xla::CreateScalarAddComputation(xla::F32, builder), {0});
-      // Global reduction, which aggregates the contributions from all replicas
-      // and returns a tensor of shape f32[num_weights].
-      // Here we assume that all replicas participate in the all-reduce (using
-      // default value of `replica_groups`) and that all-reduce from different
-      // modules do not participate in this reduction (using default value of
-      // `channel_id`).
-      xla::XlaOp global_reduced_weights_gradients =
-          xla::AllReduce(per_replica_reduced_weights_gradients,
-                         xla::CreateScalarAddComputation(xla::F32, builder));
-      // Use SGD optimizer on the weights.
-      // TODO(peitianpan): Add support for more optimizers.
-      xla::XlaOp learning_rate = ctx->Input("combiner_weights_learning_rate");
-      xla::XlaOp updated_weights =
-          weights - learning_rate * global_reduced_weights_gradients;
-      ctx->SetOutput(kUpdatedWeightsIndex, updated_weights);
-    } else {
-      // The caller is not supposed to rely on this output if num_weights is 0.
-      ctx->SetOutput(kUpdatedWeightsIndex, xla::ConstantR0<float>(builder, 0));
+      TF_ASSIGN_OR_RETURN(updated_weights, TryEmittingCombinerWeightUpdate(
+                                               ctx, builder, input_size,
+                                               feature_width, vjp_args));
     }
+    if (!updated_weights.valid()) {
+      std::vector<float> zeros(num_weights_, 0.0f);
+      updated_weights = xla::ConstantR1<float>(builder, zeros);
+    }
+    ctx->SetOutput(kUpdatedWeightsIndex, updated_weights);
 
     return lookup_gradients;
   }
