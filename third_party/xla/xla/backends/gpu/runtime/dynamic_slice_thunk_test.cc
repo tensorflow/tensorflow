@@ -33,11 +33,11 @@ limitations under the License.
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/resource_requests.h"
-#include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape_util.h"
@@ -50,20 +50,13 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
-
 namespace {
 
-class DynamicSliceThunkTest : public HloRunnerAgnosticTestBase {
- public:
-  DynamicSliceThunkTest()
-      : HloRunnerAgnosticTestBase(std::make_unique<HloRunner>(
-            PlatformUtil::GetDefaultPlatform().value())) {}
-};
+using DynamicSliceThunkTest = HloHardwareIndependentTestBase;
 
 std::string GetPlatformName() {
   return absl::AsciiStrToUpper(
@@ -75,8 +68,6 @@ se::StreamExecutor* GpuExecutor() {
       se::PlatformManager::PlatformWithName(GetPlatformName()).value();
   return platform->ExecutorForDevice(0).value();
 }
-
-}  // namespace
 
 TEST_F(DynamicSliceThunkTest, SlicedGemm) {
   se::StreamExecutor* executor = GpuExecutor();
@@ -1761,4 +1752,5 @@ TEST_F(DynamicSliceThunkTest,
   EXPECT_EQ(dst, std::vector<float>({5 * 4 + 6 * 3 + 7 * 2 + 8 * 1}));
 }
 
+}  // namespace
 }  // namespace xla::gpu

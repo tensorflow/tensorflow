@@ -519,10 +519,8 @@ xla_cc_test(
     deps = [
         ":all_reduce_decomposer",
         "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:hlo_cse",
-        "//xla/service:hlo_runner",
-        "//xla/service:platform_util",
-        "//xla/tests:hlo_runner_agnostic_test_base",
         "//xla/tests:test_utils",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",

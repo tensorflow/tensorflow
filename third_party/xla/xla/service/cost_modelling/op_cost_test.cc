@@ -24,13 +24,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/map_util.h"
 #include "xla/service/cost_modelling/op_cost_test_utils.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/hlo_runner.h"
-#include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -83,16 +81,12 @@ std::unique_ptr<OpCostCalculator> CreateOpCostCalculatorFromMap(
   return std::make_unique<OpCostCalculatorFromMap>(std::move(metric_map));
 }
 
-class OpCostTest : public HloRunnerAgnosticTestBase {
+class OpCostTest : public HloHardwareIndependentTestBase {
  protected:
   using CalculatorValues = std::vector<std::pair<std::string, CostValue>>;
 
-  OpCostTest()
-      : HloRunnerAgnosticTestBase(std::make_unique<HloRunner>(
-            PlatformUtil::GetDefaultPlatform().value())) {}
-
   void SetUp() override {
-    HloRunnerAgnosticTestBase::SetUp();
+    HloHardwareIndependentTestBase::SetUp();
 
     constexpr absl::string_view kHloModule = R"(
     HloModule mymodule
