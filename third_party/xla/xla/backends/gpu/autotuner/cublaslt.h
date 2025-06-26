@@ -58,13 +58,6 @@ class CublasLtBackend : public GpuCodegenBackend {
 
   absl::Status ApplyConfig(HloInstruction& instr,
                            const BackendConfig& config) override;
-
- private:
-  absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
-      std::unique_ptr<HloModule> hlo_module,
-      const Compiler::CompileOptions& options) override {
-    return absl::UnimplementedError("Not implemented.");
-  }
 };
 
 }  // namespace gpu

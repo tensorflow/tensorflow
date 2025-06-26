@@ -83,7 +83,10 @@ class GpuCodegenBackend : public CodegenBackend {
   // only optimized and fused HLOs.
   virtual absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> hlo_module,
-      const Compiler::CompileOptions& options) = 0;
+      const Compiler::CompileOptions& options) {
+    // No additional passes needed for most backends.
+    return hlo_module;
+  };
 
   std::string name_;
   stream_executor::StreamExecutor* stream_executor_;
