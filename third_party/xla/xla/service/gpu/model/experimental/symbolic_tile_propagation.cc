@@ -19,7 +19,6 @@ limitations under the License.
 #include <optional>
 #include <sstream>
 #include <string>
-#include <vector>
 
 #include "absl/log/log.h"
 #include "llvm/ADT/STLExtras.h"
@@ -44,6 +43,38 @@ using ::mlir::MLIRContext;
 TiledOperands PropagateTileToInputForCwiseOp(
     const HloInstruction& hlo, const ExperimentalSymbolicTile& result_tile) {
   return TiledOperands{SymbolicTiles(hlo.operand_count(), result_tile),
+                       ConstraintExpression::GetAlwaysSatisfied()};
+}
+
+std::optional<TiledOperands> PropagateTileToInputForBroadcastOp(
+    const HloBroadcastInstruction& broadcast,
+    const ExperimentalSymbolicTile& result_tile) {
+  MLIRContext* ctx = result_tile.mlir_context();
+
+  int64_t num_operand_dims = broadcast.operand(0)->shape().dimensions().size();
+
+  SmallVector<AffineExpr, 3> new_offsets, new_sizes, new_strides, new_bounds;
+  new_offsets.reserve(num_operand_dims);
+  new_sizes.reserve(num_operand_dims);
+  new_strides.reserve(num_operand_dims);
+  new_bounds.reserve(num_operand_dims);
+
+  for (auto broadcast_dim : broadcast.dimensions()) {
+    new_offsets.push_back(result_tile.offsets()[broadcast_dim]);
+    new_sizes.push_back(result_tile.sizes()[broadcast_dim]);
+    new_strides.push_back(result_tile.strides()[broadcast_dim]);
+    new_bounds.push_back(result_tile.upper_bounds()[broadcast_dim]);
+  }
+
+  ExperimentalSymbolicTile operand_tile{ctx,
+                                        result_tile.num_tile_ids(),
+                                        new_offsets,
+                                        new_sizes,
+                                        new_strides,
+                                        new_bounds,
+                                        result_tile.rt_vars()};
+
+  return TiledOperands{SymbolicTiles{operand_tile},
                        ConstraintExpression::GetAlwaysSatisfied()};
 }
 
@@ -139,6 +170,11 @@ std::optional<TiledOperands> PropagateTileToInput(
   if (HloInstruction::IsOpElementwise(hlo.opcode()) ||
       hlo.opcode() == HloOpcode::kMap) {
     return PropagateTileToInputForCwiseOp(hlo, result_tile);
+  }
+
+  if (hlo.opcode() == HloOpcode::kBroadcast) {
+    return PropagateTileToInputForBroadcastOp(
+        *Cast<HloBroadcastInstruction>(&hlo), result_tile);
   }
 
   if (hlo.opcode() == HloOpcode::kPad) {

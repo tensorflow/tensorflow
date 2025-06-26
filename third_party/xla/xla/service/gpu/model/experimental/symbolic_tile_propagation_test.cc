@@ -112,6 +112,26 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfElementwiseOp) {
   )")));
 }
 
+TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfBroadcastOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[10, 30] parameter(0)
+      ROOT broadcast = f32[10, 20, 30] broadcast(p0), dimensions={0,2}
+    }
+  )");
+  MLIRContext mlir_context;
+  std::optional<TiledOperands> tiled_operands = PropagateTileToInput(
+      *root, GetTestSymbolicTile(root->shape().dimensions(), &mlir_context), 0);
+  EXPECT_THAT(tiled_operands, Optional(MatchString(R"(
+    0) (tid_0, tid_1, tid_2)[ts_0, ts_1, ts_2]
+      -> offsets [tid_0 * ts_0, tid_2 * ts_2]
+         sizes [ts_0, ts_2]
+         strides [1, 3]
+         upper bounds [10, 30]
+  )")));
+}
+
 TEST_F(SymbolicTilePropagationTest,
        CanPropagateToInputsOfPadOpWithEdgePadding) {
   auto root = ParseAndGetRoot(R"(
