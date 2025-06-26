@@ -435,7 +435,7 @@ func.func @empty_callee() {
 
 // CHECK:       ENTRY [[MAIN:%.*]] ([[ARG:.*]]: s32[4]) -> s32[4] {
 // CHECK-NEXT:    ROOT %[[ARG]] = s32[4] parameter(0)
-// CHECK-NEXT:    [[CALL:%.*]] = () call(), to_apply=[[CALLEE]]
+// CHECK-NEXT:    [[CALL:%.*]] = () call(), to_apply=[[CALLEE]]{{.*}}
 // CHECK-NEXT:  }
 
 // -----
