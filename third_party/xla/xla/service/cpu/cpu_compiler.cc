@@ -2220,8 +2220,8 @@ CpuCompiler::CompileAheadOfTimeThunks(
   IrEmitter2 ir_emitter2(*module, llvm_module.get(), &nested_ir_emitter);
 
   ThunkEmitter::Options thunk_emitter_options = {
-      /*compile_copy_as_llvm_kernel=*/aot_options
-          .compile_copy_as_llvm_kernel()};
+      /*compile_copy_as_llvm_kernel=*/aot_options.compile_copy_as_llvm_kernel(),
+      /*is_aot_compilation=*/true};
   // Thunk emitter is responsible for building a Thunk sequence that will
   // resolved kernels in the compiled LLVM module and execute them together
   // with Thunks implemented as library calls (e.g. oneDNN or Eigen).
