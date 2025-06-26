@@ -32,6 +32,7 @@
 #include "grpcpp/support/sync_stream.h"
 #include "xla/pjrt/distributed/util.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/proto_util.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
@@ -46,12 +47,20 @@ namespace proxy {
                                            const GrpcGetVersionRequest* request,
                                            GrpcGetVersionResponse* response) {
   auto protocol_version =
-      ChooseVersion(request->min_version().protocol_version(),
-                    request->max_version().protocol_version());
+      ChooseProtocolVersion(request->min_version().protocol_version(),
+                            request->max_version().protocol_version());
   if (!protocol_version.ok()) {
     return xla::ToGrpcStatus(protocol_version.status());
   }
+  auto ifrt_serdes_version_number = ChooseIfrtSerdesVersionNumber(
+      SerDesVersionNumber(request->min_version().ifrt_serdes_version_number()),
+      SerDesVersionNumber(request->max_version().ifrt_serdes_version_number()));
+  if (!ifrt_serdes_version_number.ok()) {
+    return xla::ToGrpcStatus(ifrt_serdes_version_number.status());
+  }
   response->mutable_version()->set_protocol_version(*protocol_version);
+  response->mutable_version()->set_ifrt_serdes_version_number(
+      ifrt_serdes_version_number->value());
   return ::grpc::Status::OK;
 }
 

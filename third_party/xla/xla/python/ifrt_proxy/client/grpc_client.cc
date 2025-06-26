@@ -28,6 +28,8 @@
 #include "xla/pjrt/distributed/util.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/serdes_any_version_accessor.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt_proxy/client/client.h"
 #include "xla/python/ifrt_proxy/client/global_flags.h"
 #include "xla/python/ifrt_proxy/client/grpc_client_session.h"
@@ -103,6 +105,10 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
     GrpcGetVersionRequest request;
     request.mutable_min_version()->set_protocol_version(kClientMinVersion);
     request.mutable_max_version()->set_protocol_version(kClientMaxVersion);
+    request.mutable_min_version()->set_ifrt_serdes_version_number(
+        SerDesAnyVersionAccessor::GetMinimum().version_number().value());
+    request.mutable_max_version()->set_ifrt_serdes_version_number(
+        SerDesVersion::current().version_number().value());
 
     ::grpc::ClientContext context;
     GrpcGetVersionResponse response;
@@ -111,10 +117,15 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
 
     CHECK_GE(response.version().protocol_version(), kClientMinVersion);
     CHECK_LE(response.version().protocol_version(), kClientMaxVersion);
+    CHECK_GE(response.version().ifrt_serdes_version_number(),
+             SerDesAnyVersionAccessor::GetMinimum().version_number().value());
+    CHECK_LE(response.version().ifrt_serdes_version_number(),
+             SerDesVersion::current().version_number().value());
     *metadata.mutable_version() = response.version();
   }
-  *metadata.mutable_initialization_data() =
-      options.initialization_data.ToProto();
+  *metadata.mutable_initialization_data() = options.initialization_data.ToProto(
+      SerDesAnyVersionAccessor::Get(SerDesVersionNumber(
+          metadata.version().ifrt_serdes_version_number())));
 
   auto session = GrpcClientSession::Create(control_path_stub, metadata,
                                            session_disconnect_cb);

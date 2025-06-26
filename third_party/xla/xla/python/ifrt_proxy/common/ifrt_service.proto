@@ -33,6 +33,7 @@ option cc_enable_arenas = true;
 
 message IfrtProxyVersion {
   int32 protocol_version = 1;
+  int32 ifrt_serdes_version_number = 2;
 }
 
 message IfrtRequest {

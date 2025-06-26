@@ -89,7 +89,7 @@ class IfrtIRProgramSerDes
         program.mlir_module->getContext());
 
     const auto* serialize_options =
-        llvm::cast_or_null<SerializeIfrtIRProgramOptions>(options.get());
+        llvm::dyn_cast_or_null<SerializeIfrtIRProgramOptions>(options.get());
     if (serialize_options == nullptr) {
       // Serialize to bytecode the whole program if no options are provided.
       // This is a fast path for the case where the user does not care about

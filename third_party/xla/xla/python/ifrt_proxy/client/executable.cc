@@ -286,106 +286,102 @@ LoadedExecutable::LoadedExecutable(
   auto req = std::make_unique<LoadedExecutableMetadataRequest>();
   req->set_loaded_executable_handle(handle_);
 
-  auto on_done =
-      [promise](
-          absl::StatusOr<std::shared_ptr<LoadedExecutableMetadataResponse>>
-              response) mutable {
-        if (!response.ok()) {
-          LOG(ERROR) << "LoadedExecutableMetadata: Got " << response.status();
-          promise.Set(response.status());
-          return;
-        }
+  auto on_done = [promise](absl::StatusOr<
+                           std::shared_ptr<LoadedExecutableMetadataResponse>>
+                               response) mutable {
+    if (!response.ok()) {
+      LOG(ERROR) << "LoadedExecutableMetadata: Got " << response.status();
+      promise.Set(response.status());
+      return;
+    }
 
-        auto info = std::make_shared<Metadata>();
+    auto info = std::make_shared<Metadata>();
 
-        if (response.value()->has_parameter_shardings()) {
-          const auto& p = response.value()->parameter_shardings().shardings();
-          info->parameter_shardings.emplace(p.begin(), p.end());
-        }
-        if (response.value()->has_output_shardings()) {
-          const auto& o = response.value()->output_shardings().shardings();
-          info->output_shardings.emplace(o.begin(), o.end());
-        }
+    if (response.value()->has_parameter_shardings()) {
+      const auto& p = response.value()->parameter_shardings().shardings();
+      info->parameter_shardings.emplace(p.begin(), p.end());
+    }
+    if (response.value()->has_output_shardings()) {
+      const auto& o = response.value()->output_shardings().shardings();
+      info->output_shardings.emplace(o.begin(), o.end());
+    }
 
-        auto parse_layouts =
-            [](const LoadedExecutableMetadataResponse::LayoutList& list)
-            -> absl::StatusOr<
-                std::vector<std::shared_ptr<const xla::PjRtLayout>>> {
-          std::vector<std::shared_ptr<const xla::PjRtLayout>> layouts;
-          layouts.reserve(list.layouts_size());
-          for (const auto& layout_proto : list.layouts()) {
-            TF_ASSIGN_OR_RETURN(xla::Layout layout,
-                                xla::Layout::FromProto(layout_proto));
-            layouts.push_back(
-                std::make_shared<xla::PjRtLayout>(std::move(layout)));
-          }
-          return layouts;
-        };
+    auto parse_layouts =
+        [](const LoadedExecutableMetadataResponse::LayoutList& list)
+        -> absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>> {
+      std::vector<std::shared_ptr<const xla::PjRtLayout>> layouts;
+      layouts.reserve(list.layouts_size());
+      for (const auto& layout_proto : list.layouts()) {
+        TF_ASSIGN_OR_RETURN(xla::Layout layout,
+                            xla::Layout::FromProto(layout_proto));
+        layouts.push_back(std::make_shared<xla::PjRtLayout>(std::move(layout)));
+      }
+      return layouts;
+    };
 
-        if (response.value()->has_parameter_layouts_list()) {
-          info->parameter_layouts =
-              parse_layouts(response.value()->parameter_layouts_list());
-        } else if (response.value()->has_parameter_layouts_error()) {
-          info->parameter_layouts =
-              tsl::StatusFromProto(response.value()->parameter_layouts_error());
-        } else {
-          info->parameter_layouts = absl::UnimplementedError(
-              "IFRT Proxy server did not return parameter layouts");
-        }
-        if (response.value()->has_output_layouts_list()) {
-          info->output_layouts =
-              parse_layouts(response.value()->output_layouts_list());
-        } else if (response.value()->has_output_layouts_error()) {
-          info->output_layouts =
-              tsl::StatusFromProto(response.value()->output_layouts_error());
-        } else {
-          info->output_layouts = absl::UnimplementedError(
-              "IFRT Proxy server did not return output layouts");
-        }
+    if (response.value()->has_parameter_layouts_list()) {
+      info->parameter_layouts =
+          parse_layouts(response.value()->parameter_layouts_list());
+    } else if (response.value()->has_parameter_layouts_error()) {
+      info->parameter_layouts =
+          tsl::StatusFromProto(response.value()->parameter_layouts_error());
+    } else {
+      info->parameter_layouts = absl::UnimplementedError(
+          "IFRT Proxy server did not return parameter layouts");
+    }
+    if (response.value()->has_output_layouts_list()) {
+      info->output_layouts =
+          parse_layouts(response.value()->output_layouts_list());
+    } else if (response.value()->has_output_layouts_error()) {
+      info->output_layouts =
+          tsl::StatusFromProto(response.value()->output_layouts_error());
+    } else {
+      info->output_layouts = absl::UnimplementedError(
+          "IFRT Proxy server did not return output layouts");
+    }
 
-        if (const absl::Status s = tsl::StatusFromProto(
-                response.value()->output_memory_kinds().status());
-            !s.ok()) {
-          info->output_memory_kinds = s;
-        } else {
-          std::vector<std::vector<absl::string_view>> output_memory_kinds;
-          for (const auto& list :
-               response.value()->output_memory_kinds().memory_kind_lists()) {
-            std::vector<absl::string_view> kinds;
-            kinds.reserve(list.memory_kinds_size());
-            for (const absl::string_view kind : list.memory_kinds()) {
-              const auto it =
-                  info->memory_kinds.insert(std::string(kind)).first;
-              kinds.push_back(*it);
-            }
-            output_memory_kinds.push_back(std::move(kinds));
-          }
-          info->output_memory_kinds = std::move(output_memory_kinds);
+    if (const absl::Status s = tsl::StatusFromProto(
+            response.value()->output_memory_kinds().status());
+        !s.ok()) {
+      info->output_memory_kinds = s;
+    } else {
+      std::vector<std::vector<absl::string_view>> output_memory_kinds;
+      for (const auto& list :
+           response.value()->output_memory_kinds().memory_kind_lists()) {
+        std::vector<absl::string_view> kinds;
+        kinds.reserve(list.memory_kinds_size());
+        for (const absl::string_view kind : list.memory_kinds()) {
+          const auto it = info->memory_kinds.insert(std::string(kind)).first;
+          kinds.push_back(*it);
         }
+        output_memory_kinds.push_back(std::move(kinds));
+      }
+      info->output_memory_kinds = std::move(output_memory_kinds);
+    }
 
-        if (response.value()->has_donated_input_indices()) {
-          info->donatable_input_indices =
-              std::vector<int>(response.value()
-                                   ->donated_input_indices()
-                                   .donated_input_indices()
-                                   .begin(),
-                               response.value()
-                                   ->donated_input_indices()
-                                   .donated_input_indices()
-                                   .end());
-          info->donatable_input_indices_set =
-              absl::flat_hash_set<int>(info->donatable_input_indices->begin(),
-                                       info->donatable_input_indices->end());
-        } else if (response.value()->has_donated_input_indices_error()) {
-          info->donatable_input_indices = tsl::StatusFromProto(
-              response.value()->donated_input_indices_error());
-        } else {
-          info->donatable_input_indices = absl::UnimplementedError(
-              "IFRT Proxy server did not return donated input indices");
-        }
+    if (response.value()->has_donated_input_indices()) {
+      info->donatable_input_indices =
+          std::vector<int>(response.value()
+                               ->donated_input_indices()
+                               .donated_input_indices()
+                               .begin(),
+                           response.value()
+                               ->donated_input_indices()
+                               .donated_input_indices()
+                               .end());
+      info->donatable_input_indices_set =
+          absl::flat_hash_set<int>(info->donatable_input_indices->begin(),
+                                   info->donatable_input_indices->end());
+    } else if (response.value()->has_donated_input_indices_error()) {
+      info->donatable_input_indices =
+          tsl::StatusFromProto(response.value()->donated_input_indices_error());
+    } else {
+      info->donatable_input_indices = absl::UnimplementedError(
+          "IFRT Proxy server did not return donated input indices");
+    }
 
-        promise.Set(std::move(info));
-      };
+    promise.Set(std::move(info));
+  };
   rpc_helper_->LoadedExecutableMetadata(std::move(req))
       .OnReady(std::move(on_done));
 }
@@ -537,7 +533,8 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
       req->add_args_handles(handle.handle);
     }
   }
-  TF_ASSIGN_OR_RETURN(*req->mutable_execute_options(), options.ToProto());
+  TF_ASSIGN_OR_RETURN(*req->mutable_execute_options(),
+                      options.ToProto(rpc_helper_->ifrt_serdes_version()));
   if (devices.has_value()) {
     for (const auto* device : (*devices)->devices()) {
       req->add_device_ids(device->Id().value());
@@ -547,13 +544,13 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
   // Starting version 6, the server populates the status future only if it was
   // explicitly requested via `options.fill_status`.
   const bool result_needs_exec_status =
-      rpc_helper_->version().protocol_version() < 6 || options.fill_status;
+      rpc_helper_->protocol_version() < 6 || options.fill_status;
 
   // The client generates handles if the protocol version is sufficiently newer,
   // and we've already seen at least one response from an execute (and thus know
   // the number of handles to generate).
   const bool client_generated_handles =
-      (rpc_helper_->version().protocol_version() >=
+      (rpc_helper_->protocol_version() >=
        protocol_version::kClientHandlesExecutableOptimization) &&
       output_spec_cache_->Retrieve().has_value();
 

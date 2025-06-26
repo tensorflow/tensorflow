@@ -62,8 +62,10 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
   auto request = std::make_unique<CompileRequest>();
   {
     tsl::profiler::TraceMe traceme("IfrtProxyProgramSerialize");
+    auto serialize_options = std::make_unique<xla::ifrt::SerializeOptions>(
+        rpc_helper_->ifrt_serdes_version());
     TF_ASSIGN_OR_RETURN(*request->mutable_program(),
-                        Serialize(*program, /*options=*/nullptr));
+                        Serialize(*program, std::move(serialize_options)));
   }
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       [prog_size = request->program().data().size()]() {
@@ -118,8 +120,10 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
 #endif
   }
 
+  auto serialize_options = std::make_unique<xla::ifrt::SerializeOptions>(
+      rpc_helper_->ifrt_serdes_version());
   TF_ASSIGN_OR_RETURN(*request->mutable_compile_options(),
-                      Serialize(*options, /*options=*/nullptr));
+                      Serialize(*options, std::move(serialize_options)));
 
   // TODO(b/266635130): Avoid blocking the caller.
   TF_ASSIGN_OR_RETURN(std::shared_ptr<CompileResponse> response,
