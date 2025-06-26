@@ -2167,6 +2167,59 @@ ENTRY test {
       )");
 }
 
+TEST_F(CublasLtGemmRewriteTest, MatrixBiasSwishActivation) {
+  auto runtime_version = GetRuntimeVersion();
+  bool rocm_gelu_available =
+      IsRocm() &&
+      (runtime_version >= stream_executor::SemanticVersion(7, 0, 0));
+  if (!rocm_gelu_available) {
+    GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
+  }
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  dot = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  neg = f32[2,4] negate(dot) 
+  exp = f32[2,4] exponential(neg)
+  one = f32[] constant(1)
+  one_bcast = f32[2,4] broadcast(one), dimensions={}
+  denom = f32[2,4] add(one_bcast, exp)
+  sigmoid = f32[2,4] divide(one_bcast, denom)
+  ROOT swish = f32[2,4] multiply(dot, sigmoid)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4]) -> f32[2,4] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK-NEXT:    [[OUT:%[^ ]+]] = (f32[2,4]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"SILU"
+; CHECK:           }
+      )");
+}
+
 TEST_F(CublasLtGemmRewriteTest, VectorBiasThenApproxGeluActivation) {
   auto runtime_version = GetRuntimeVersion();
   bool rocm_gelu_available =
