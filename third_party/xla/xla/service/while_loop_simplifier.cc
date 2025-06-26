@@ -1523,6 +1523,15 @@ absl::StatusOr<bool> WhileLoopSimplifier::Run(
   }
 
   for (HloInstruction* while_op : while_ops) {
+    // TODO(b/260601110) : Bail if any of the computations the while_op uses are
+    // used by something else.  In theory, we could handle this case more
+    // cleanly, but that'd require restructuring the pass, and there's no need
+    // to do it right now, so just add a bail-out to be conservative.
+    if (while_op->while_body()->caller_instructions().size() > 1 ||
+        while_op->while_condition()->caller_instructions().size() > 1) {
+      continue;
+    }
+
     // Each of the optimizations below modifies the while loop itself if it's
     // successful, meaning that `while_op` is no longer valid after one of these
     // transformations returns true.
