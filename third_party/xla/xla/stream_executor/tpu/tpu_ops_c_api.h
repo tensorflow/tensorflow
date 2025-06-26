@@ -743,6 +743,7 @@ typedef struct SparseCore_GetMaxIdsAndUniques_Params {
   TF_Status* status;
   int64_t max_ids_per_partition;
   int64_t max_unique_ids_per_partition;
+  int sc_lane_size;
 } SparseCore_GetMaxIdsAndUniques_Params;
 
 TFTPU_CAPI_EXPORT void SparseCore_GetMaxIdsAndUniques(

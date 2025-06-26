@@ -121,6 +121,7 @@ absl::Status GetMaxIdsAndUniquesExternal(
   params.feature_width = feature_width;
   StatusHelper status;
   params.status = status.c_status;
+  params.sc_lane_size = 8;  // TODO: b/427506297 - Configure sc_lane_size.
 
   stream_executor::tpu::OpsApiFn()->SparseCore_GetMaxIdsAndUniquesFn(&params);
   *max_ids_per_partition = params.max_ids_per_partition;
