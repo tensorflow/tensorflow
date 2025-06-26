@@ -657,6 +657,17 @@ PlanHoistBitcastUpwardsToCallers(const HloInstruction* bitcast) {
       // Only update the dimensions keeping the type intact.
       Shape updated_shape(shape);
       updated_shape.set_element_type(instruction->shape().element_type());
+      updated_shape.mutable_layout()->set_element_size_in_bits(
+          instruction->shape().layout().element_size_in_bits());
+      CHECK_EQ(ShapeUtil::ArrayDataSize(updated_shape),
+               ShapeUtil::ArrayDataSize(instruction->shape()))
+          << absl::StrCat(
+                 "instruction ", instruction->ToString(),
+                 " data size changed by updating layout from ",
+                 ShapeUtil::HumanStringWithLayout(instruction->shape()),
+                 " size ", ShapeUtil::ArrayDataSize(instruction->shape()),
+                 " to ", ShapeUtil::HumanStringWithLayout(updated_shape),
+                 " size ", ShapeUtil::ArrayDataSize(updated_shape));
       if (it == to_update.end()) {
         to_update.emplace(instruction, updated_shape);
       } else if (it->second != updated_shape) {
@@ -758,6 +769,11 @@ PlanHoistBitcastDownwardsToCallers(const HloInstruction* bitcast) {
       // Only update the dimensions keeping the type intact.
       Shape updated_shape(shape);
       updated_shape.set_element_type(instruction->shape().element_type());
+      updated_shape.mutable_layout()->set_element_size_in_bits(
+          instruction->shape().layout().element_size_in_bits());
+      // TODO(b/393299275): it would be nice to check that the size is not
+      // changing but unfortunately this routine does not walk the graph
+      // in the "correct" direction from producers to consumers.
       if (it == to_update.end()) {
         to_update.emplace(instruction, updated_shape);
       } else if (it->second != updated_shape) {
@@ -771,15 +787,8 @@ PlanHoistBitcastDownwardsToCallers(const HloInstruction* bitcast) {
   };
   TF_RETURN_IF_ERROR(set_shape(bitcast->users(), bitcast->operand(0)->shape()));
   std::vector<std::pair<HloInstruction*, Shape>> result;
-  // We want to visit instructions in order from producers to consumers: we
-  // hoist the bitcast/reshape downwards and having a valid HLO at every rewrite
-  // step helps a lot. A simple DFS or BFS over results will not work in
-  // non-tree situations when there are multiple producers of the same consumer.
-  // Instead of writing a custom traversal we can simply walk the post-order
-  // (producers before consumers) list and only update the instructions
-  // affected.
-  // TODO(b/393299275): use MakeInstructionPostOrderFrom(bitcast) - that should
-  // be slightly more efficient.
+  // TODO(b/393299275): unlike PlanHoistBitcastUpwardsToCallers here we want to
+  // do that in the opposite direction: from consumers to producers.
   auto def_before_use = bitcast->parent()->MakeInstructionPostOrder();
   for (HloInstruction* instruction : def_before_use) {
     auto it = to_update.find(instruction);

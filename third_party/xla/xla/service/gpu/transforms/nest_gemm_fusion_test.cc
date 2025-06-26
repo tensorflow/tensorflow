@@ -377,6 +377,49 @@ ENTRY entry {
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
+TEST_P(NestGemmFusionTest, BitcastsKeepElementSizeInBits) {
+  HloOpcode opcode = GetParam();
+  absl::string_view hlo = R"(
+dot {
+  lhs = s8[21]{0:E(4)} parameter(0)
+  c1 = s8[21] convert(lhs)
+  c2 = f32[21] convert(c1)
+  b0 = f32[3,7] $0(c2)
+  rhs = f32[7,11] parameter(1)
+  dot = f32[3,11] dot(b0, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  b1 = f32[33] $0(dot)
+  ROOT c = s8[33]{0:E(4)} convert(b1)
+}
+
+ENTRY entry {
+  p0 = s8[21]{0:E(4)} parameter(0)
+  p1 = f32[7,11] parameter(1)
+  ROOT fusion = s8[33]{0:E(4)} fusion(p0, p1),
+    kind=kCustom, calls=dot, backend_config={
+      "fusion_backend_config": {
+        "kind":"__triton_gemm",  "triton_gemm_config": {
+          "block_m":"32", "block_n":"64", "block_k":"16",
+          "split_k":"1", "num_stages":"1", "num_warps":"1", "num_ctas":"1"
+        }
+      }
+    }
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(
+                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+  CHECK: ENTRY
+  CHECK: {{.*}} = s8[3,7]{1,0:E(4)} bitcast({{.*}})
+  CHECK: [[fusion:[^ ]+]] = s8[3,11]{1,0:E(4)} fusion({{.*}})
+  CHECK: ROOT {{.*}} = s8[33]{0:E(4)} bitcast([[fusion]])
+)"),
+      IsOkAndHolds(true));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+}
+
 TEST_P(NestGemmFusionTest, TritonFusionEmitterDeviceLegacyTestSample1) {
   HloOpcode opcode = GetParam();
   absl::string_view hlo = R"(
@@ -813,7 +856,6 @@ gemm_dot {
   p0 = pred[3,122,96,12] parameter(0)
   bitcast0 = pred[3,122,1152] $0(p0)
   transpose0 = pred[3,1152,122] transpose(bitcast0), dimensions={0,2,1}
-  // bitcast1 = pred[3,96,12,122] $0(transpose0)
   bitcast2 = pred[3456,122] $0(transpose0)
   convert0 = f16[3456,122] convert(bitcast2)
   p1 = pred[1,5,122] parameter(1)
