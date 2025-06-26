@@ -239,10 +239,8 @@ TEST(RuntimeShapeTest, TestExtendedShapeSmallToBig) {
 TEST_P(RuntimeShapeTest, TestFlatSize) {
   const std::vector<int32_t> src = IotaVector(kSmallSize);
   const RuntimeShape shape(src.size(), src.data());
-  int32_t flat_size = 1;
-  for (std::vector<int>::const_iterator it = src.begin(); it != src.end(); ++it)
-    flat_size *= *it;
-  EXPECT_EQ(shape.FlatSize(), flat_size);
+  EXPECT_EQ(shape.FlatSize(),
+            std::reduce(src.begin(), src.end(), 1, std::multiplies<int>{}));
 }
 
 INSTANTIATE_TEST_SUITE_P(BigSmall, RuntimeShapeTest,
