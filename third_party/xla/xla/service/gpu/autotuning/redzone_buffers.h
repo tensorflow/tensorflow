@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/executable.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -63,6 +64,12 @@ class RedzoneBuffers {
       bool should_init_buffers, bool should_check_correctness,
       int redzone_padding_bytes);
 
+  static absl::StatusOr<RedzoneBuffers> FromComputation(
+      const HloComputation& computation, se::DeviceMemoryAllocator* allocator,
+      se::Stream* stream, BuffersToCreate buffers_to_create,
+      bool should_init_buffers, bool should_check_correctness,
+      int redzone_padding_bytes);
+
   const std::vector<se::DeviceMemoryBase>& input_buffers() const {
     return input_buffers_;
   }
@@ -77,8 +84,9 @@ class RedzoneBuffers {
   se::RedzoneAllocator& RedzoneAllocator() const { return *redzone_allocator_; }
 
  private:
-  absl::Status CreateInputs(const HloInstruction& instruction,
-                            bool should_init_buffers, int64_t& rng_state);
+  absl::Status CreateInputs(
+      const HloInstruction::InstructionVector& instructions,
+      bool should_init_buffers, int64_t& rng_state);
 
   absl::Status CreateOutputs(const HloInstruction& instruction,
                              BuffersToCreate buffers_to_create,
