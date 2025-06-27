@@ -104,7 +104,7 @@ class BasicStringArray final
     return sharding_;
   }
 
-  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> layout()
+  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()
       const override;
 
   absl::StatusOr<std::vector<ArrayRef>> DisassembleIntoSingleDeviceArrays(

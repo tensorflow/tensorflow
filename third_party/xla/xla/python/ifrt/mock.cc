@@ -79,10 +79,10 @@ MockArray::MockArray(xla::ifrt::ArrayRef delegated)
   ON_CALL(*this, shared_ptr_sharding).WillByDefault([this]() {
     return delegated_->shared_ptr_sharding();
   });
-  ON_CALL(*this, layout)
+  ON_CALL(*this, pjrt_layout)
       .WillByDefault(
           [this]() -> absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> {
-            return delegated_->layout();
+            return delegated_->pjrt_layout();
           });
   ON_CALL(*this, DisassembleIntoSingleDeviceArrays(_, _))
       .WillByDefault(

@@ -410,7 +410,7 @@ absl::StatusOr<ArrayRef> BasicStringArray::FullyReplicatedShard(
 }
 
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>
-BasicStringArray::layout() const {
+BasicStringArray::pjrt_layout() const {
   return absl::UnimplementedError("String arrays do not support PjRtLayout");
 }
 

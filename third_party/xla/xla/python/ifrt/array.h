@@ -79,8 +79,13 @@ class Array : public llvm::RTTIExtends<Array, Value> {
   // The device memory layout for each shard of the Array. All shards are
   // assumed to have the same layout. Cannot be nullptr; implementations should
   // return UNIMPLEMENTED instead.
-  virtual absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> layout()
+  virtual absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()
       const = 0;
+  // Legacy name for `pjrt_layout()`. Will be removed, and then re-introduced as
+  // a new signature that returns `xla::ifrt::LayoutRef`.
+  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> layout() const {
+    return pjrt_layout();
+  }
 
   // Breaks an array up into per-device arrays. This is the elimination
   // counterpart of `Client::AssembleArrayFromSingleDeviceArrays()`.

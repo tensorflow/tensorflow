@@ -937,7 +937,7 @@ Future<> Array::CopyToHostBuffer(
   return Future<>(std::move(promise));
 }
 
-absl::StatusOr<std::shared_ptr<const PjRtLayout>> Array::layout() const {
+absl::StatusOr<std::shared_ptr<const PjRtLayout>> Array::pjrt_layout() const {
   absl::MutexLock l(&mu_);
   if (custom_layout_ != nullptr) {
     return custom_layout_;
