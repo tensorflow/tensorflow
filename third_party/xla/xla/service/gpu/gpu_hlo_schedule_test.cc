@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -88,6 +89,7 @@ class GpuHloScheduleTest : public HloTestBase {
   struct TestConfig {
     bool enable_latency_hiding_scheduler = false;
     bool enable_pipelined_p2p = false;
+    bool enable_sol_latency_estimator = false;
     std::string fdo_profile = "";
   };
 
@@ -98,16 +100,20 @@ class GpuHloScheduleTest : public HloTestBase {
         test_config.enable_latency_hiding_scheduler);
     debug_options.set_xla_gpu_enable_pipelined_p2p(
         test_config.enable_pipelined_p2p);
+    debug_options.set_xla_gpu_enable_analytical_sol_latency_estimator(
+        test_config.enable_sol_latency_estimator);
     config.set_debug_options(debug_options);
     config.set_fdo_profile(test_config.fdo_profile);
     return config;
   }
 
   std::unique_ptr<HloModule> CreateNewVerifiedModule(
-      bool enable_latency_hiding_scheduler = false) {
+      bool enable_latency_hiding_scheduler = false,
+      bool enable_sol_latency_estimator = false) {
     TestConfig test_config;
     test_config.enable_latency_hiding_scheduler =
         enable_latency_hiding_scheduler;
+    test_config.enable_sol_latency_estimator = enable_sol_latency_estimator;
     return std::make_unique<HloModule>("test_module",
                                        GetModuleConfig(test_config));
   }
@@ -335,6 +341,7 @@ TEST_F(GpuHloScheduleTest, LHSCostModel) {
 
   TestConfig test_config;
   test_config.enable_latency_hiding_scheduler = true;
+  test_config.enable_sol_latency_estimator = false;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(hlo_text, GetModuleConfig(test_config)));
@@ -1442,7 +1449,7 @@ TEST_F(GpuHloScheduleTest, ProfileGuidedCostModelWithForceEarliestSchedule) {
 
 class GpuHloScheduleParameterizedTest
     : public GpuHloScheduleTest,
-      public ::testing::WithParamInterface<bool> {};
+      public ::testing::WithParamInterface<std::tuple<bool, bool>> {};
 
 TEST_P(GpuHloScheduleParameterizedTest, AsyncAllReduce) {
   // All-reduce reduction computation.
@@ -1459,9 +1466,12 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncAllReduce) {
       reduction_builder.AddInstruction(HloInstruction::CreateBinary(
           ShapeUtil::MakeScalarShape(F32), HloOpcode::kAdd, x0, y0));
 
-  const bool use_latency_hiding_scheduler = GetParam();
-  std::unique_ptr<HloModule> module =
-      CreateNewVerifiedModule(use_latency_hiding_scheduler);
+  bool use_latency_hiding_scheduler, use_unified_latency_estimator;
+  std::tie(use_latency_hiding_scheduler, use_unified_latency_estimator) =
+      GetParam();
+  std::unique_ptr<HloModule> module = CreateNewVerifiedModule(
+      use_latency_hiding_scheduler, use_unified_latency_estimator);
+
   HloComputation* reduction_computation =
       module->AddEmbeddedComputation(reduction_builder.Build(add));
 
@@ -1484,7 +1494,9 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncAllReduce) {
   HloInstruction* all_reduce_start =
       builder.AddInstruction(HloInstruction::CreateAllReduceStart(
           all_reduce_start_shape, {add0}, reduction_computation,
-          /*device_list=*/CollectiveDeviceList(), /*constrain_layout=*/false,
+          /*device_list=*/
+          CollectiveDeviceList(IotaReplicaGroupList(1024, 1024)),
+          /*constrain_layout=*/false,
           /*channel_id=*/std::nullopt, /*use_global_device_ids=*/true));
   // In addition, add control_dependency: add1->nonblocking_call.
   TF_CHECK_OK(add1->AddControlDependencyTo(all_reduce_start));
@@ -1580,7 +1592,9 @@ TEST_F(GpuHloScheduleTest, LHSResourceModel) {
 }
 
 INSTANTIATE_TEST_SUITE_P(GpuHloScheduleParameterizedTest,
-                         GpuHloScheduleParameterizedTest, ::testing::Bool());
+                         GpuHloScheduleParameterizedTest,
+                         ::testing::Combine(::testing::Bool(),
+                                            ::testing::Bool()));
 
 using GpuHloSchedulePostProcessTest = HloTestBase;
 
@@ -1881,6 +1895,8 @@ TEST_F(IsUnifiedAnalyticalModelEnabledTest, EnabledBySolEstimatorFlagOnHopper) {
 TEST_F(IsUnifiedAnalyticalModelEnabledTest, DisabledIfFlagIsOffOnHopper) {
   HloModuleConfig config;
 
+  config.mutable_debug_options()
+      .set_xla_gpu_enable_analytical_sol_latency_estimator(false);
   gpu_device_info_.set_cuda_compute_capability(9, 0);  // Hopper
 
   auto module = CreateTestModule(config);

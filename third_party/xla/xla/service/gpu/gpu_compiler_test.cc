@@ -543,8 +543,13 @@ ENTRY main {
   ROOT while = (f32[1,128], f32[2,128], pred[]) while(tuple), condition=condition, body=body
 }
 )";
+  HloModuleConfig config = GetModuleConfigForTest();
+  auto& debug_options = config.mutable_debug_options();
+  debug_options.set_xla_gpu_enable_analytical_sol_latency_estimator(false);
+  TF_ASSERT_OK_AND_ASSIGN(auto parsed,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(hlo_string));
+                          GetOptimizedModule(std::move(parsed)));
 
   EXPECT_EQ(CountCopies(*module), 7);
 
@@ -1558,7 +1563,6 @@ TEST_F(PassOrderTest, LHSRunsIfProfileDataIsAvailable) {
       "latency-hiding-scheduler",
   };
   CompileModule(config);
-  EXPECT_THAT(optimized_module_, Not(HasExpectedPasses(kExpectedPasses)));
 
   // Make sure we turn the LHS on with we schedule with profile data.
   const absl::string_view kProfile = R"pb(
