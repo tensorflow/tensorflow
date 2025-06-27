@@ -440,7 +440,6 @@ cc_library(
         ":cudnn_frontend_helpers",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:data_type",
-        "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:event_based_timer",
