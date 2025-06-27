@@ -7013,5 +7013,18 @@ bool MsaAlgorithm::IsPositionColoredInDefaultMemoryAtTime(
   return false;
 }
 
+int64_t AsynchronousCopyResource::GetScaledIntegerResource(
+    float resource) const {
+  float scaled_value = resource * kCopyResourceIntScale;
+  if (scaled_value > std::numeric_limits<int64_t>::max()) {
+    LOG(WARNING) << "Scaled value " << scaled_value
+                 << " is greater than the maximum int64_t value "
+                 << std::numeric_limits<int64_t>::max();
+    return std::numeric_limits<int64_t>::max();
+  }
+  int64_t scaled_value_int = static_cast<int64_t>(scaled_value);
+  return scaled_value_int;
+}
+
 }  // namespace memory_space_assignment
 }  // namespace xla

@@ -14476,7 +14476,7 @@ ENTRY %main.13 (Arg_0.1: f32[8,128]) -> (f32[8,128], f32[8,128]) {
             kAlternateMemorySpace);
 }
 
-TEST_F(MemorySpaceAssignmentTest, DISABLED_TestCustomKernelColoringBug) {
+TEST_F(MemorySpaceAssignmentTest, TestCustomKernelColoringBug) {
   absl::string_view hlo_string = R"(
 HloModule jit_run_benchmark, is_scheduled=true, entry_computation_layout={(bf16[1024,512]{1,0:T(8,128)(2,1)}, bf16[2,512,4096]{2,1,0:T(8,128)(2,1)}, s32[3]{0:T(128)})->bf16[1024,512]{1,0:T(8,128)(2,1)}}, allow_spmd_sharding_propagation_to_parameters={false,false,false}, allow_spmd_sharding_propagation_to_output={true}, num_partitions=8
 

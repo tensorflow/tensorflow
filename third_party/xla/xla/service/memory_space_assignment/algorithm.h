@@ -35,8 +35,6 @@ limitations under the License.
 #endif
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
-#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -51,7 +49,6 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/allocation_value.h"
-#include "xla/service/memory_space_assignment/buffer_interval_comparator.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/options.h"
 #include "xla/service/memory_space_assignment/slice.h"
@@ -208,11 +205,7 @@ class AsynchronousCopyResource {
   // order specified.
   bool HasEnoughResourceMultiCheck(const std::vector<ResourceSpec>& specs);
 
-  int64_t GetScaledIntegerResource(float resource) const {
-    float scaled_value = resource * kCopyResourceIntScale;
-    int64_t scaled_value_int = static_cast<int64_t>(scaled_value);
-    return scaled_value_int;
-  }
+  int64_t GetScaledIntegerResource(float resource) const;
 
   float GetDescaledFloatResource(int64_t scaled_resource) const {
     return scaled_resource / kCopyResourceIntScale;
@@ -238,7 +231,7 @@ class AsynchronousCopyResource {
   // The scale factor to convert a float resource to an integer resource. Note
   // that is a power of 2 to avoid introducing noise when casting the scaled
   // value to an int64_t.
-  static constexpr int64_t kCopyResourceIntScale = 1ULL << 50;
+  static constexpr int64_t kCopyResourceIntScale = 1ULL << 40;
 
  private:
   // Internal helper method to implement adding/removing/checking resources.
