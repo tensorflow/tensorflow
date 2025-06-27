@@ -51,13 +51,13 @@ cc_binary(
     name = "add_cpu_test_external_delegate.so",
     srcs = [
         "external_delegate_adaptor.cc",
+        "fpga_ip_driver.cc",
     ],
     defines = ["TFL_EXTERNAL_DELEGATE_COMPILE_LIBRARY"],
     linkshared = 1,
     linkstatic = 1,
     deps = [
         ":add_cpu_test_delegate",
-        ":fpga_ip_driver",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/external:external_delegate_interface",
         "//tensorflow/lite/tools:command_line_flags",
