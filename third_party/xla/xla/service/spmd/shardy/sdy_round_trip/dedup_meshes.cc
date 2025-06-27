@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/sdy_round_trip/dedup_meshes.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <memory>  // IWYU pragma: keep
@@ -66,10 +67,11 @@ using ::mlir::sdy::TensorShardingAttr;
 
 namespace sdy = ::mlir::sdy;
 
-using AxisMap = SmallDenseMap<StringRef, AxisRefAttr>;
+using AxisRefVector = SmallVector<AxisRefAttr>;
+// Maps a target axis name to a list of (sub-)axes in the main mesh.
+using AxisMap = SmallDenseMap<StringRef, AxisRefVector>;
 using TotalDeviceCountMapInfo = DenseMapInfo<int64_t>;
 using DeviceIdsMapInfo = DenseMapInfo<ArrayRef<int64_t>>;
-using AxisRefVector = SmallVector<AxisRefAttr>;
 
 bool hasFakeAxis(MeshOp mesh) {
   ArrayRef<MeshAxisAttr> axes = mesh.getMesh().getAxes();
@@ -128,9 +130,10 @@ class AddAxisOrMergeInserter {
                                   const MeshAttr* mesh)
       : axisRefs(newAxisRefs), mesh(mesh) {}
 
-  // The core logic: assignment calls push_back
-  AddAxisOrMergeInserter& operator=(const AxisRefAttr& value) {
-    sdy::addAxisOrMerge(*axisRefs, value, *mesh);
+  AddAxisOrMergeInserter& operator=(ArrayRef<AxisRefAttr> values) {
+    for (AxisRefAttr value : values) {
+      sdy::addAxisOrMerge(*axisRefs, value, *mesh);
+    }
     return *this;
   }
 
@@ -139,6 +142,7 @@ class AddAxisOrMergeInserter {
   AddAxisOrMergeInserter& operator++(int) { return *this; }
 
  private:
+  // Use a pointer so that callers like `llvm::transform` can copy the inserter.
   AxisRefVector* axisRefs;
   const MeshAttr* mesh;
 };
@@ -150,45 +154,63 @@ bool mapTargetAxesToMainAxes(MeshOp targetMesh, MeshOp mainMesh,
                              mlir::MLIRContext* context) {
   ArrayRef<MeshAxisAttr> mainAxes = mainMesh.getMesh().getAxes();
   ArrayRef<MeshAxisAttr> targetAxes = targetMesh.getMesh().getAxes();
-  int mainAxisIndex = 0, targetAxisIndex = 0;
-  int64_t preSize = 1, remainingMainAxisSize = 1;
-  while (mainAxisIndex < mainAxes.size() &&
-         targetAxisIndex < targetAxes.size()) {
-    const MeshAxisAttr mainAxis = mainAxes[mainAxisIndex];
-    const MeshAxisAttr targetAxis = targetAxes[targetAxisIndex];
-    if (mainAxis.getSize() == 1 && targetAxis.getSize() != 1) {
-      mainAxisIndex++;
-      continue;
+  struct AxisMappingState {
+    int64_t axisIndex = -1;
+    int64_t preSize = 1;
+    int64_t remainingSize = 1;
+  };
+
+  AxisMappingState mainAxisState, targetAxisState;
+  auto advanceToNextNonSizeOneAxis = [](ArrayRef<MeshAxisAttr> axes,
+                                        AxisMappingState& state) {
+    state.axisIndex++;
+    while (state.axisIndex < axes.size() &&
+           axes[state.axisIndex].getSize() == 1) {
+      state.axisIndex++;
     }
-    // We can leave mainAxis of size 1 without being mapped.
-    if (targetAxis.getSize() == 1 && mainAxis.getSize() != 1) {
+    state.preSize = 1;
+    if (state.axisIndex < axes.size()) {
+      state.remainingSize = axes[state.axisIndex].getSize();
+    }
+  };
+  advanceToNextNonSizeOneAxis(mainAxes, mainAxisState);
+  advanceToNextNonSizeOneAxis(targetAxes, targetAxisState);
+  while (mainAxisState.axisIndex < mainAxes.size() &&
+         targetAxisState.axisIndex < targetAxes.size()) {
+    MeshAxisAttr mainAxis = mainAxes[mainAxisState.axisIndex];
+    MeshAxisAttr targetAxis = targetAxes[targetAxisState.axisIndex];
+
+    const auto [sizeToConsume, largerRemainingSize] = std::minmax(
+        {mainAxisState.remainingSize, targetAxisState.remainingSize});
+    if (largerRemainingSize % sizeToConsume != 0) {
       return false;
     }
-    // The targetAxis of size 1 can only be mapped to a mainAxis of size 1.
-    if (remainingMainAxisSize == 1) {
-      remainingMainAxisSize = mainAxis.getSize();
-    }
-    if (remainingMainAxisSize % targetAxis.getSize() != 0) {
-      return false;
-    }
-    // Set SubAxisInfoAttr to null when target axis maps to an entire main axis.
-    const AxisRefAttr mainAxisRef = AxisRefAttr::get(
+    AxisRefAttr mainAxisRef = AxisRefAttr::get(
         context, mainAxis.getName(),
-        mainAxis.getSize() == targetAxis.getSize()
+        mainAxis.getSize() == sizeToConsume
             ? nullptr
-            : SubAxisInfoAttr::get(context, preSize, targetAxis.getSize()));
-    targetToMainAxisMap[targetAxis.getName()] = mainAxisRef;
-    preSize *= targetAxis.getSize();
-    targetAxisIndex++;
-    remainingMainAxisSize /= targetAxis.getSize();
-    if (remainingMainAxisSize == 1) {
-      preSize = 1;
-      mainAxisIndex++;
-    }
+            : SubAxisInfoAttr::get(context, mainAxisState.preSize,
+                                   sizeToConsume));
+    targetToMainAxisMap[targetAxis.getName()].push_back(mainAxisRef);
+
+    auto updateMappingState =
+        [sizeToConsume = sizeToConsume, advanceToNextNonSizeOneAxis](
+            ArrayRef<MeshAxisAttr> axes, AxisMappingState& state) {
+          state.remainingSize /= sizeToConsume;
+          if (state.remainingSize == 1) {
+            advanceToNextNonSizeOneAxis(axes, state);
+          } else {
+            state.preSize *= sizeToConsume;
+          }
+        };
+    updateMappingState(mainAxes, mainAxisState);
+    updateMappingState(targetAxes, targetAxisState);
   }
-  CHECK_EQ(remainingMainAxisSize, 1);
-  return mainAxisIndex == mainAxes.size() &&
-         targetAxisIndex == targetAxes.size();
+  CHECK_EQ(mainAxisState.remainingSize, 1);
+  CHECK_EQ(targetAxisState.remainingSize, 1);
+  CHECK_EQ(mainAxisState.axisIndex, mainAxes.size());
+  CHECK_EQ(targetAxisState.axisIndex, targetAxes.size());
+  return true;
 }
 
 // Maps a pair of <total number of devices, device_ids> to a list of meshes
@@ -200,6 +222,60 @@ using MeshIdentifierToMainMeshesMap =
 // Maps a mesh name to the main mesh name that will be used to replace it, and a
 // map of old axes to the (sub)axes in the main mesh.
 using MeshToAxisMap = SmallDenseMap<StringRef, std::pair<StringRef, AxisMap>>;
+
+// Takes an old axis ref, find the mapped new (sub-)axes, add them to the new
+// axis ref list and merge consecutive sub-axes.
+void addOrMergeNewAxisRefAttr(AxisRefAttr oldAxisRef,
+                              AxisRefVector& newAxisRefs,
+                              mlir::MLIRContext* context,
+                              const MeshAttr& mainMesh,
+                              const AxisMap& axisMap) {
+  if (!axisMap.contains(oldAxisRef.getName())) {
+    // The old axis is of size 1, skip it.
+    return;
+  }
+  ArrayRef<AxisRefAttr> mainAxisRefs = axisMap.at(oldAxisRef.getName());
+  if (!oldAxisRef.getSubAxisInfo()) {
+    for (AxisRefAttr mainAxisRef : mainAxisRefs) {
+      sdy::addAxisOrMerge(newAxisRefs, mainAxisRef, mainMesh);
+    }
+    return;
+  }
+  // TODO(zenong): We can iterate the list once for sub-axes of a target axis.
+  int64_t remainingOldPreSize = oldAxisRef.getSubAxisInfo().getPreSize();
+  int64_t remainingOldSize = oldAxisRef.getSubAxisInfo().getSize();
+  for (AxisRefAttr mainAxisRef : mainAxisRefs) {
+    // Consume presize from the old axis ref.
+    const int64_t mainAxisSize = mainAxisRef.getSize(mainMesh);
+    // Find the correct (sub-)axis to start from.
+    if (remainingOldPreSize >= mainAxisSize) {
+      // Cases like "[a":6] -> ["x":2, "y":3] then "a":(3)2 are not supported.
+      CHECK_EQ(remainingOldPreSize % mainAxisSize, 0);
+      remainingOldPreSize /= mainAxisSize;
+      continue;
+    }
+    // Cases like "[a":6] -> ["x":3, "y":2] then "a":(2)3 are not supported.
+    CHECK_EQ(mainAxisSize % remainingOldPreSize, 0);
+    const int64_t consumableMainAxisSize = mainAxisSize / remainingOldPreSize;
+    const int64_t consumedSize =
+        std::min(remainingOldSize, consumableMainAxisSize);
+    AxisRefAttr newAxisRef =
+        consumedSize == mainAxisSize
+            ? mainAxisRef
+            : AxisRefAttr::get(
+                  context, mainAxisRef.getName(),
+                  remainingOldPreSize * mainAxisRef.getSubAxisPreSize(),
+                  consumedSize);
+    sdy::addAxisOrMerge(newAxisRefs, newAxisRef, mainMesh);
+    // Cases like "[a":6] -> ["x":2, "y":3] then "a":(1)3 are not supported.
+    CHECK_EQ(remainingOldSize % consumedSize, 0);
+    remainingOldPreSize = 1;
+    remainingOldSize /= consumedSize;
+    if (remainingOldSize == 1) {
+      break;
+    }
+  }
+}
 
 // Builds a map of meshes to the main mesh name that will be used (which has the
 // same total number of devices and device_ids) and a map of old axis name to
@@ -231,7 +307,7 @@ MeshToAxisMap buildDuplicateMeshesToAxisMap(ModuleOp moduleOp) {
     if (targetMesh == mainMesh) {
       continue;
     }
-    SmallDenseMap<StringRef, AxisRefAttr> targetToMainAxisMap;
+    AxisMap targetToMainAxisMap;
     if (mapTargetAxesToMainAxes(targetMesh, mainMesh, targetToMainAxisMap,
                                 moduleOp.getContext())) {
       duplicateMeshesToAxisMap.try_emplace(targetMesh.getSymName(),
@@ -261,42 +337,29 @@ TensorShardingAttr replaceAxesInSharding(
   }
   auto [mainMeshName, axisMap] = meshNameAndAxisMap->getSecond();
   MeshAttr mainMesh = sdy::getMeshOp(symbolTable, mainMeshName).getMesh();
-  auto buildNewAxisRef = [&, &axisMap = axisMap](AxisRefAttr oldAxisRef) {
-    // If the old axis had a sub-axis info, we need to look up the
-    // corresponding main axis without sub-axis info, and build the new
-    // axis info.
-    AxisRefAttr mappedAxisRef = axisMap.at(oldAxisRef.getName());
-    if (oldAxisRef.getSubAxisInfo()) {
-      SubAxisInfoAttr newSubAxisInfo =
-          SubAxisInfoAttr::get(context,
-                               mappedAxisRef.getSubAxisPreSize() *
-                                   oldAxisRef.getSubAxisInfo().getPreSize(),
-                               oldAxisRef.getSubAxisInfo().getSize());
-      return AxisRefAttr::get(context, mappedAxisRef.getName(), newSubAxisInfo);
-    }
-    return mappedAxisRef;
-  };
   SmallVector<DimensionShardingAttr> newDimShardings;
   newDimShardings.reserve(oldSharding.getDimShardings().size());
   for (DimensionShardingAttr oldDimSharding : oldSharding.getDimShardings()) {
     AxisRefVector newAxisRefs;
     newAxisRefs.reserve(oldDimSharding.getAxes().size());
-    llvm::transform(oldDimSharding.getAxes(),
-                    AddAxisOrMergeInserter(&newAxisRefs, &mainMesh),
-                    buildNewAxisRef);
+    for (AxisRefAttr oldAxisRef : oldDimSharding.getAxes()) {
+      addOrMergeNewAxisRefAttr(oldAxisRef, newAxisRefs, context, mainMesh,
+                               axisMap);
+    }
     newDimShardings.push_back(DimensionShardingAttr::get(
         context, newAxisRefs, oldDimSharding.getIsClosed(),
         oldDimSharding.getPriority()));
   }
-  auto buildNewAxisRefList = [buildNewAxisRef,
-                              mainMesh](ArrayRef<AxisRefAttr> oldAxisRefs) {
-    AxisRefVector newAxisRefs;
-    newAxisRefs.reserve(oldAxisRefs.size());
-    llvm::transform(oldAxisRefs,
-                    AddAxisOrMergeInserter(&newAxisRefs, &mainMesh),
-                    buildNewAxisRef);
-    return newAxisRefs;
-  };
+  auto buildNewAxisRefList =
+      [&, &axisMap = axisMap](ArrayRef<AxisRefAttr> oldAxisRefs) {
+        AxisRefVector newAxisRefs;
+        newAxisRefs.reserve(oldAxisRefs.size());
+        for (AxisRefAttr oldAxisRef : oldAxisRefs) {
+          addOrMergeNewAxisRefAttr(oldAxisRef, newAxisRefs, context, mainMesh,
+                                   axisMap);
+        }
+        return newAxisRefs;
+      };
   AxisRefVector newReplicatedAxes =
       buildNewAxisRefList(oldSharding.getReplicatedAxes());
   AxisRefVector newUnreducedAxes =
@@ -335,7 +398,10 @@ void replaceManualAxes(sdy::ManualComputationOp manualComputation,
   newAxisRefs.reserve(manualComputation.getManualAxes().size());
   llvm::transform(manualComputation.getManualAxes(),
                   AddAxisOrMergeInserter(&newAxisRefs, &mainMesh),
-                  [&axisMap = axisMap](StringAttr manualAxis) {
+                  [&axisMap = axisMap](StringAttr manualAxis) -> AxisRefVector {
+                    if (!axisMap.contains(manualAxis.getValue())) {
+                      return {};
+                    }
                     return axisMap.at(manualAxis.getValue());
                   });
   SmallVector<StringAttr> newManualAxes;
