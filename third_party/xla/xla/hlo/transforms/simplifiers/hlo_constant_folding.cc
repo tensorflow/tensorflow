@@ -182,6 +182,9 @@ absl::StatusOr<bool> HloConstantFolding::Run(
       if (level_ == Level::kDefault && !AnyOperandsConstant(instruction)) {
         continue;
       }
+
+      // TODO(b/260601110): We may want to specialize calls and propagate
+      // constants into them even if only some operands are constants.
       if (!AllOperandsConstantOrBroadcastConstant(instruction)) {
         continue;
       }
