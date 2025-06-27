@@ -574,6 +574,7 @@ cc_library(
     srcs = ["affine_map_evaluator.cc"],
     hdrs = ["affine_map_evaluator.h"],
     deps = [
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -589,6 +590,7 @@ xla_cc_test(
         ":affine_map_evaluator",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:test",
     ],
