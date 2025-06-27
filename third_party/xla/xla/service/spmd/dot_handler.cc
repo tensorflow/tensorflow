@@ -2794,6 +2794,7 @@ GetDotGroupPartitionContractingOutputShardings(
     bool* output_replicate_dim_grouped = nullptr) {
   HloSharding inner_output_sharding = HloSharding::Replicate();
   HloSharding outer_output_tmp_sharding = HloSharding::Replicate();
+
   // Try to match the case where we can group the replicated dimension to match
   // contracting dimensions groups.
   // Handle the case where the output dimension is a subtiling of one of the
@@ -2841,6 +2842,7 @@ GetDotGroupPartitionContractingOutputShardings(
       }
     }
   }
+
   std::vector<int64_t> output_slice_dims;
   if (output_sharding.ReplicateOnLastTileDim() &&
       output_sharding.tile_assignment().dimensions().back() % group_count ==
@@ -2856,46 +2858,43 @@ GetDotGroupPartitionContractingOutputShardings(
         /*ignore_group_order=*/true);
     outer_output_tmp_sharding = UngroupSharding(grouped);
     inner_output_sharding = std::move(grouped.sharding);
-  } else {
-    if (auto found_dims = FindMatchingPartitionedDimsForGrouping(
-            output_sharding, lhs_grouped.device_groups)) {
-      output_slice_dims = std::move(*found_dims);
-      if (!output_slice_dims.empty()) {
-        // FindMatchingPartitionedDimsForGrouping already makes sure the groups
-        // are compatible with LHS/RHS. We avoid AlignGroupsWith/UngroupSharding
-        // because that could change the group order causing a reshard with
-        // collective-permute, which is unnecessary since these groups will be
-        // all-reduced upon anyway for contracting-dim sharding.
-        auto grouped = hlo_sharding_util::GroupShardingOnDims(
-            output_sharding, output_slice_dims);
-        inner_output_sharding = grouped.sharding;
-        outer_output_tmp_sharding = output_sharding;
+  } else if (auto found_dims = FindMatchingPartitionedDimsForGrouping(
+                 output_sharding, lhs_grouped.device_groups)) {
+    output_slice_dims = std::move(*found_dims);
+    if (!output_slice_dims.empty()) {
+      // FindMatchingPartitionedDimsForGrouping already makes sure the groups
+      // are compatible with LHS/RHS. We avoid AlignGroupsWith/UngroupSharding
+      // because that could change the group order causing a reshard with
+      // collective-permute, which is unnecessary since these groups will be
+      // all-reduced upon anyway for contracting-dim sharding.
+      auto grouped = hlo_sharding_util::GroupShardingOnDims(output_sharding,
+                                                            output_slice_dims);
+      inner_output_sharding = grouped.sharding;
+      outer_output_tmp_sharding = output_sharding;
+    }
+  } else if (!output_sharding.IsReplicated()) {
+    if (output_lhs_non_contracting_partitions == group_count) {
+      for (const auto& dim : dims_mapping.lhs_non_contracting_dims) {
+        output_slice_dims.push_back(dim.output);
       }
-    } else if (output_lhs_non_contracting_partitions == group_count ||
-               output_rhs_non_contracting_partitions == group_count ||
-               output_batch_partitions == group_count) {
-      if (output_lhs_non_contracting_partitions == group_count) {
-        for (const auto& dim : dims_mapping.lhs_non_contracting_dims) {
-          output_slice_dims.push_back(dim.output);
-        }
-      } else if (output_rhs_non_contracting_partitions == group_count) {
-        for (const auto& dim : dims_mapping.rhs_non_contracting_dims) {
-          output_slice_dims.push_back(dim.output);
-        }
-      } else {
-        for (const auto& dim : dims_mapping.batch_dims) {
-          output_slice_dims.push_back(dim.output);
-        }
+    } else if (output_rhs_non_contracting_partitions == group_count) {
+      for (const auto& dim : dims_mapping.rhs_non_contracting_dims) {
+        output_slice_dims.push_back(dim.output);
       }
-      if (!output_slice_dims.empty()) {
-        auto grouped = AlignGroupsWith(hlo_sharding_util::GroupShardingOnDims(
-                                           output_sharding, output_slice_dims),
-                                       lhs_grouped);
-        inner_output_sharding = grouped.sharding;
-        outer_output_tmp_sharding = UngroupSharding(grouped);
+    } else if (output_batch_partitions == group_count) {
+      for (const auto& dim : dims_mapping.batch_dims) {
+        output_slice_dims.push_back(dim.output);
       }
     }
+    if (!output_slice_dims.empty()) {
+      auto grouped = AlignGroupsWith(hlo_sharding_util::GroupShardingOnDims(
+                                         output_sharding, output_slice_dims),
+                                     lhs_grouped);
+      inner_output_sharding = grouped.sharding;
+      outer_output_tmp_sharding = UngroupSharding(grouped);
+    }
   }
+
   if (output_replicate_dim_grouped) {
     *output_replicate_dim_grouped = absl::c_linear_search(
         output_slice_dims, output_base_shape.dimensions().size());
