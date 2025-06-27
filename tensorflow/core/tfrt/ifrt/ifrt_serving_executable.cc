@@ -121,17 +121,17 @@ absl::StatusOr<std::vector<DtypeAndShape>> BuildDtypeAndShape(
   std::vector<DtypeAndShape> dtypes_and_shapes;
   dtypes_and_shapes.reserve(inputs.size());
 
-  int variable_index = 0;
+  int variable_arg_index = 0;
   for (int i = 0; i < inputs.size(); i++) {
-    if (variable_index < variable_arg_indices.size() &&
-        i == variable_arg_indices[variable_index]) {
+    if (variable_arg_index < variable_arg_indices.size() &&
+        i == variable_arg_indices[variable_arg_index]) {
       // Get already loaded variable tensor.
       TF_ASSIGN_OR_RETURN(auto dtype_and_shape,
                           ifrt_restore_tensor_registry.GetDtypeAndShape(
                               inputs[i].scalar<tsl::tstring>()()));
       dtypes_and_shapes.push_back(std::move(dtype_and_shape));
 
-      variable_index++;
+      variable_arg_index++;
     } else {
       dtypes_and_shapes.push_back(DtypeAndShape{.dtype = inputs[i].dtype(),
                                                 .shape = inputs[i].shape()});
@@ -749,10 +749,10 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
 
   std::vector<xla::ifrt::ArrayRef> args;
   args.reserve(inputs.size());
-  int variable_index = 0;
+  int variable_arg_index = 0;
   for (int i = 0; i < inputs.size(); i++) {
-    if (variable_index < variable_arg_indices.size() &&
-        i == variable_arg_indices[variable_index]) {
+    if (variable_arg_index < variable_arg_indices.size() &&
+        i == variable_arg_indices[variable_arg_index]) {
       std::vector<int> device_ids;
       device_ids.reserve(device_list->size());
       for (xla::ifrt::Device* device : device_list->devices()) {
@@ -773,7 +773,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
       TF_ASSIGN_OR_RETURN(xla::ifrt::ArrayRef single_array,
                           loaded_variable.array.Await());
       args.push_back(std::move(single_array));
-      variable_index++;
+      variable_arg_index++;
     } else {
       // If the input shape is not the same as the shape after Tf2Hlo
       // compilation, reshape the input tensor to the expected shape. Note that
