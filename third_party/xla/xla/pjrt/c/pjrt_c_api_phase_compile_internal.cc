@@ -33,7 +33,7 @@ PJRT_PhaseCompile_Extension CreatePhaseCompileExtension(
       },
       /*phase_compile_get_compiler=*/get_compiler,
       /*phase_compile_destroy_compiler=*/destroy_compiler,
-      /*phase_compile_run_phase=*/nullptr,
+      /*phase_compile_run_phases=*/nullptr,
       /*phase_compile_get_phase_names=*/
       nullptr,
   };

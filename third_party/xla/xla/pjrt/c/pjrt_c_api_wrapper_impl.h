@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -225,6 +226,24 @@ struct PJRT_Layouts_MemoryLayout {
 
 struct PJRT_Layouts_SerializedLayout {
   std::string serialized;
+};
+
+// This struct is used to pass a `xla::PjRtPhaseCompiler` through the C API.
+// These objects are created by the plugin developer. A plugin developer can
+// pass either an owning or a non-owning pointer of `xla::PjRtPhaseCompiler`. If
+// an owning pointer is provided, the underlying `xla::PjRtPhaseCompiler` object
+// will be deleted when this `PJRT_PhaseCompiler` object is destroyed.
+// Otherwise, the caller is responsible for deleting the underlying
+// `xla::PjRtPhaseCompiler` object.
+struct PJRT_PhaseCompiler {
+  xla::PjRtPhaseCompiler* compiler;
+  std::unique_ptr<xla::PjRtPhaseCompiler> owned_compiler;
+  explicit PJRT_PhaseCompiler(
+      std::unique_ptr<xla::PjRtPhaseCompiler> phase_compiler)
+      : compiler(phase_compiler.get()),
+        owned_compiler(std::move(phase_compiler)) {}
+  explicit PJRT_PhaseCompiler(xla::PjRtPhaseCompiler* phase_compiler)
+      : compiler(phase_compiler), owned_compiler(nullptr) {}
 };
 
 namespace pjrt {
