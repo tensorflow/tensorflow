@@ -2735,4 +2735,19 @@ absl::StatusOr<std::unique_ptr<PjRtCompiler>> GetCApiCompiler(
   return std::make_unique<PjRtCApiCompiler>(c_api);
 }
 
+absl::StatusOr<std::unique_ptr<PjRtCompiler>> GetCApiCompiler() {
+  TF_ASSIGN_OR_RETURN(std::vector<std::string> device_types,
+                      pjrt::GetRegisteredPjrtApis());
+  if (device_types.empty()) {
+    return absl::FailedPreconditionError("PJRT_Api is not initialized.");
+  }
+  if (device_types.size() > 1) {
+    return absl::FailedPreconditionError(
+        "More than one device type registered. Please use "
+        "GetCApiCompiler(absl::string_view device_type) "
+        "instead.");
+  }
+  return GetCApiCompiler(device_types[0]);
+}
+
 }  // namespace xla
