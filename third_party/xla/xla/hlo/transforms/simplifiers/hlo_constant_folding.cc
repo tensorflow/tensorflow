@@ -291,24 +291,21 @@ absl::StatusOr<bool> HloConstantFolding::Run(
       absl::Duration slow_timeout =
           absl::Seconds(uint64_t{1} << slow_op_counter_.load());
       SlowOperationAlarm slow_alarm(slow_timeout, [instruction, slow_timeout] {
-        const bool ndebug =
 #if NDEBUG
-            true;
-#else
-            false;
-#endif
         absl::string_view explanation_msg =
-            ndebug
-                ? "This isn't necessarily a bug; constant-folding is "
-                  "inherently a trade-off between compilation time and speed "
-                  "at runtime. XLA has some guards that attempt to keep "
-                  "constant folding from taking too long, but fundamentally "
-                  "you'll always be able to come up with an input program that "
-                  "takes a long time.\n\n"
-                  "If you'd like to file a bug, run with envvar "
-                  "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results."
-                : "XLA was built without compiler optimizations, which can be "
-                  "slow. Try rebuilding with -c opt.";
+            "This isn't necessarily a bug; constant-folding is "
+            "inherently a trade-off between compilation time and speed "
+            "at runtime. XLA has some guards that attempt to keep "
+            "constant folding from taking too long, but fundamentally "
+            "you'll always be able to come up with an input program that "
+            "takes a long time.\n\n"
+            "If you'd like to file a bug, run with envvar "
+            "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.";
+#else
+        absl::string_view explanation_msg =
+            "XLA was built without compiler optimizations, which can be "
+            "slow. Try rebuilding with -c opt.";
+#endif
         return absl::StrFormat(
             "Constant folding an instruction is taking > %s:\n\n"
             "  %s\n\n"  // instruction->name() or instruction->ToString()
