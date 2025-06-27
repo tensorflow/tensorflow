@@ -90,6 +90,15 @@ class EuclideanNNInterpolator : public InterpolatorBase<R, N> {
   std::vector<std::pair<std::array<int64_t, N>, R>> plane_;
 };
 
+// `EuclideanComplementInterpolator` takes `next_context`, `next_power_context`,
+// `max_context` and `min_context` and then lookups out the closes neighbour in
+// N-dimensional euclidean space. The additional input context is necessary for
+// fast interpolation.
+//
+// The constructor API is as follows: `next_context` just specifies the next
+// potential dimension for each dimension. `next_power_context` specifies the
+// next power of two dimension for each dimension. `max_context` and
+// `min_context` specify the maximum and minimum value for each dimension.
 template <typename R, size_t N>
 class EuclideanComplementInterpolator : public EuclideanNNInterpolator<R, N> {
  public:
@@ -186,6 +195,16 @@ struct Neighbour {
   double weight;
 };
 
+// `EuclideanWeightedAverageInterpolator` takes `next_context`,
+// `next_power_context`, `max_context` and `min_context`, then lookups convex
+// hull of the point of interest and returns the weighted average of the values
+// at the convex hull. The additional input context is necessary for fast
+// nearest neighbour search.
+//
+// The constructor API is as follows: `next_context` just specifies the next
+// potential dimension for each dimension. `next_power_context` specifies the
+// next power of two dimension for each dimension. `max_context` and
+// `min_context` specify the maximum and minimum value for each dimension.
 template <size_t N>
 class EuclideanWeightedAverageInterpolator
     : public EuclideanComplementInterpolator<double, N> {
