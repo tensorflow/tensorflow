@@ -83,17 +83,11 @@ class HloDataflowAnalysis {
   //   bitcast_defines_value : If true then the Bitcast HLO instruction defines
   //     a new HLO value in the analysis. If false then Bitcast forwards the
   //     value of its operand.
-  // TODO(b/424109294): Replace users of this function with the one below.
+  // TODO(b/424109294): Remove `can_share_buffer` parameter.
   static absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> Run(
       const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false,
       const CanShareBuffer& can_share_buffer = nullptr,
-      absl::flat_hash_set<absl::string_view> execution_threads = {});
-
-  // Same as above, but with `alias_info` instead of `can_share_buffer` hook.
-  static absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> Run(
-      const HloModule& module, const AliasInfo* alias_info,
-      bool ssa_form = false, bool bitcast_defines_value = false,
       absl::flat_hash_set<absl::string_view> execution_threads = {});
 
   // Returns true if 'instruction' defines an HLO value at the given shape index
@@ -171,7 +165,8 @@ class HloDataflowAnalysis {
   bool CanShareOperandBufferWithUser(HloInstruction* operand,
                                      const ShapeIndex& operand_index,
                                      HloInstruction* user,
-                                     const ShapeIndex& user_index) const;
+                                     const ShapeIndex& user_index,
+                                     const AliasInfo* alias_info) const;
 
   const HloModule& module() const { return module_; }
 
@@ -210,10 +205,6 @@ class HloDataflowAnalysis {
   HloDataflowAnalysis(const HloModule& module, bool ssa_form,
                       bool bitcast_defines_value,
                       const CanShareBuffer& can_share_buffer,
-                      absl::flat_hash_set<absl::string_view> execution_threads);
-
-  HloDataflowAnalysis(const HloModule& module, const AliasInfo* alias_info,
-                      bool ssa_form, bool bitcast_defines_value,
                       absl::flat_hash_set<absl::string_view> execution_threads);
 
   // Runs dataflow analysis on the module attached to this HloDataflowAnalysis.
@@ -347,9 +338,6 @@ class HloDataflowAnalysis {
   // a buffer with its operand.
   // TODO(b/424109294): Remove this.
   CanShareBuffer can_share_buffer_ = nullptr;
-
-  // Backend specific aliasing information.
-  const AliasInfo* alias_info_ = nullptr;
 };
 
 // Removes layers of tuple indirection introduced via 'tuple' and

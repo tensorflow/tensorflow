@@ -97,6 +97,7 @@ cc_library(
     srcs = ["hlo_ordering.cc"],
     hdrs = ["hlo_ordering.h"],
     deps = [
+        ":alias_info",
         ":hlo_dataflow_analysis",
         ":hlo_reachability",
         "//xla:shape_util",
@@ -123,6 +124,7 @@ xla_cc_test(
     size = "small",
     srcs = ["hlo_ordering_test.cc"],
     deps = [
+        ":alias_info",
         ":hlo_dataflow_analysis",
         ":hlo_ordering",
         "//xla:literal_util",
@@ -440,6 +442,7 @@ xla_cc_test(
     name = "hlo_alias_analysis_test",
     srcs = ["hlo_alias_analysis_test.cc"],
     deps = [
+        ":alias_info",
         ":hlo_alias_analysis",
         ":hlo_ordering",
         "//xla:literal_util",

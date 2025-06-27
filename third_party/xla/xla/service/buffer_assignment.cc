@@ -1316,9 +1316,10 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     std::optional<BufferAssignment::BufferIsolationOptions> isolation_options,
     std::optional<BufferValue::Color> temp_buffer_color) {
   BufferAssigner assigner(allocate_buffers_for_constants, std::move(colorer),
-                          must_not_live_out, std::move(preset_assignments));
+                          must_not_live_out, std::move(preset_assignments),
+                          alias_info);
   return assigner.CreateAssignment(
-      module, std::move(hlo_ordering), std::move(buffer_size), alias_info,
+      module, std::move(hlo_ordering), std::move(buffer_size),
       std::move(color_alignment), private_stacks, heap_buffer_interval_compare,
       isolation_options, temp_buffer_color);
 }
@@ -1341,8 +1342,9 @@ bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
 
   // Check if a user value can share the same buffer as its operand.
   auto can_share_as_operand =
-      [&assignment](const HloValue* user_value, const HloValue* operand_value,
-                    const HloLiveRange::TimeBound& operand_live_range) {
+      [&assignment, this](const HloValue* user_value,
+                          const HloValue* operand_value,
+                          const HloLiveRange::TimeBound& operand_live_range) {
         // An hlo value can hold multiple instructions during its life time. We
         // only look at the last instruction and check if it can be shared with
         // the operand.
@@ -1352,7 +1354,7 @@ bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
                    operand_end_position.instruction) &&
                assignment->dataflow_analysis().CanShareOperandBufferWithUser(
                    operand_end_position.instruction, operand_end_position.index,
-                   user_value->instruction(), user_value->index());
+                   user_value->instruction(), user_value->index(), alias_info_);
       };
 
   const auto& live_range_1 = live_range_it1->second;
@@ -1469,7 +1471,7 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
         }
       } else if (assignment->hlo_ordering().MayInterfere(
                      assigned_buffer, *new_value,
-                     assignment->dataflow_analysis())) {
+                     assignment->dataflow_analysis(), alias_info_)) {
         // Fallback to partial order based interference detection (slower) when
         // we don't have a total order scheduled module.
         VLOG(4) << "Can't assign: assignee " << assigned_buffer
@@ -1942,7 +1944,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
               HeapSimulator::Run(
                   get_heap_algorithm(alignment), *private_stack_computation,
                   *instruction_sequence, assignment->alias_analysis(),
-                  assignment->buffer_size_, &schedule, options));
+                  alias_info_, assignment->buffer_size_, &schedule, options));
           AssignBuffersFromHeapSimulator(result, assignment, color,
                                          isolation_options);
         }
@@ -1952,7 +1954,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
             HeapSimulator::Result<HloValue> result,
             HeapSimulator::Run(get_heap_algorithm(alignment),
                                assignment->module(), schedule,
-                               assignment->alias_analysis(),
+                               assignment->alias_analysis(), alias_info_,
                                assignment->buffer_size_, options));
         AssignBuffersFromHeapSimulator(result, assignment, color,
                                        isolation_options);
@@ -1986,7 +1988,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
             HeapSimulator::Result<HloValue> result,
             HeapSimulator::Run(get_heap_algorithm(alignment), *computation,
                                *instruction_sequence,
-                               assignment->alias_analysis(),
+                               assignment->alias_analysis(), alias_info_,
                                assignment->buffer_size_, options));
         AssignBuffersFromHeapSimulator(result, assignment, color,
                                        isolation_options);
@@ -2219,7 +2221,7 @@ void BufferAssigner::AssignBuffersFromHeapSimulator(
 absl::StatusOr<std::unique_ptr<BufferAssignment>>
 BufferAssigner::CreateAssignment(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-    BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info,
+    BufferValue::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,
     const PrivateStacks& private_stacks,
     GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
@@ -2227,7 +2229,7 @@ BufferAssigner::CreateAssignment(
     std::optional<BufferAssignment::BufferIsolationOptions> isolation_options,
     std::optional<BufferValue::Color> temp_buffer_color) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, alias_info));
+                      HloAliasAnalysis::Run(module));
 
   // Set up a schedule for each computation.
   HloSchedule schedule(module);

@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
@@ -602,9 +603,12 @@ Relation::RuntimeOrder ComputeRelativeLocation::ComputeRuntimeOrdering(
 
 CopyRemover::CopyRemover(
     const HloModule& module, const HloAliasAnalysis& alias_analysis,
-    HloOrdering* ordering, bool check_live_range_ordering,
+    const AliasInfo* alias_info, HloOrdering* ordering,
+    bool check_live_range_ordering,
     const absl::flat_hash_set<absl::string_view>& execution_threads)
-    : dataflow_(alias_analysis.dataflow_analysis()), ordering_(ordering) {
+    : dataflow_(alias_analysis.dataflow_analysis()),
+      alias_info_(alias_info),
+      ordering_(ordering) {
   // Instruction indices based on post order traversal of computations and
   // instructions. Used as an enhancement for getting strict weak ordering
   // used for sorting below.
@@ -1242,7 +1246,7 @@ bool CopyRemover::LiveRangeBefore(const ValueNode& a, const ValueNode& b) {
     return false;
   }
   return ordering_->UsesBeforeValueDefinition(
-      a.uses, *b.value, dataflow_,
+      a.uses, *b.value, dataflow_, alias_info_,
       /* use_is_always_before_def_in_same_instr=*/false);
 }
 

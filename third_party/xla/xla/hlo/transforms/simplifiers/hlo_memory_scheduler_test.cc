@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -60,9 +61,11 @@ int64_t PeakMemoryUseOfEntryComputation(
 
   HloComputation* computation = module->entry_computation();
   const HloInstructionSequence& sequence = schedule.sequence(computation);
+  AliasInfo alias_info;
   return HeapSimulator::Run(
              std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
-             *computation, sequence, *alias_analysis, size_function)
+             *computation, sequence, *alias_analysis, &alias_info,
+             size_function)
       .value()
       .heap_size;
 }

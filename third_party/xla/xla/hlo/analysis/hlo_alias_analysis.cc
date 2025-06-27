@@ -445,7 +445,7 @@ absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
   auto alias_analysis = absl::WrapUnique(new HloAliasAnalysis(module));
   TF_ASSIGN_OR_RETURN(
       alias_analysis->dataflow_analysis_,
-      HloDataflowAnalysis::Run(*module, alias_info, /*ssa_form=*/true,
+      HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
                                /*bitcast_defines_value=*/false));
 
   size_t num_values = alias_analysis->dataflow_analysis_->values().size();

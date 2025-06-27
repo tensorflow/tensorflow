@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -319,6 +320,7 @@ MemorySpaceAssignment::CalculateAsyncCopyStats(
 MemorySpaceAssignment::Run(HloModule* module,
                            const HloLiveRange& hlo_live_range,
                            const HloAliasAnalysis& alias_analysis,
+                           const AliasInfo* alias_info,
                            const Options& options) {
   CHECK(module->has_schedule());
   if (VLOG_IS_ON(3)) {
@@ -328,7 +330,7 @@ MemorySpaceAssignment::Run(HloModule* module,
     XLA_LOG_LINES(INFO, module->ToString());
     LOG(INFO) << "Schedule: " << module->schedule().ToString();
   }
-  MemorySpaceAssignment memory_space_assignment(module, options,
+  MemorySpaceAssignment memory_space_assignment(module, alias_info, options,
                                                 hlo_live_range);
 
   return memory_space_assignment.RunMemorySpaceAssignment(hlo_live_range,
@@ -458,7 +460,7 @@ absl::Status MemorySpaceAssignment::FindAllocationSequence(
   heap_simulator_options.alloc_constants = true;
   TF_RETURN_IF_ERROR(HeapSimulator::Run(std::move(algorithm), *module_,
                                         module_->schedule(), alias_analysis,
-                                        options_.size_fn,
+                                        alias_info_, options_.size_fn,
                                         heap_simulator_options)
                          .status());
   return absl::OkStatus();
