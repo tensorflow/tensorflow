@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/flag_utils.h"
 #include "xla/service/gpu/model/collective_interpolator.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
@@ -56,6 +57,21 @@ namespace xla {
 namespace gpu {
 
 namespace {
+
+bool HasOnlySupportedCollectives(const HloModule& module) {
+  for (const HloComputation* comp : module.computations()) {
+    for (const HloInstruction* instr : comp->instructions()) {
+      if (hlo_query::IsCollectiveCommunicationOp(instr->opcode()) &&
+          HloPredicateIsNotOp<HloOpcode::kAllReduceStart, HloOpcode::kAllReduce,
+                              HloOpcode::kReduceScatter,
+                              HloOpcode::kAllGatherStart,
+                              HloOpcode::kAllGather>(instr)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
 
 absl::StatusOr<HloInstructionProfileList> ReadProfiles(
     const std::string& perf_table_path,
@@ -307,6 +323,26 @@ SolLatencyEstimator::Create(
       config, std::move(latency_estimator), gpu_info, std::move(cost_analysis),
       shape_size_function, sol_config, std::move(collective_interpolator),
       std::move(matmul_interpolator)));
+}
+
+/*static*/ bool SolLatencyEstimator::IsSupportedForModule(
+    const HloModule& module, const se::DeviceDescription& gpu_device_info) {
+  if (IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module)) {
+    // If the user enabled opt effort we turn the estimator on if we're
+    // compiling for Hopper.
+    return gpu_device_info.cuda_compute_capability().IsHopper();
+  }
+  // If this flag is on by default then we provide users an escape hatch in case
+  // they find the new cost model less profitable than T-shirt sizes.
+  if (!module.config()
+           .debug_options()
+           .xla_gpu_enable_analytical_sol_latency_estimator()) {
+    return false;
+  }
+  // Otherwise we are more conservative and we turn it on only for Hopper and if
+  // `module` contains only supported collectives.
+  return gpu_device_info.cuda_compute_capability().IsHopper() &&
+         HasOnlySupportedCollectives(module);
 }
 
 LatencyEstimator::TimeCost SolLatencyEstimator::GetLatencyBetween(

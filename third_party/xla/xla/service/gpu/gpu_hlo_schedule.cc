@@ -86,21 +86,6 @@ using tensorflow::profiler::ProfiledInstructionsProto;
 
 namespace {
 
-bool HasOnlySupportedCollectives(const HloModule& module) {
-  for (const HloComputation* comp : module.computations()) {
-    for (const HloInstruction* instr : comp->instructions()) {
-      if (hlo_query::IsCollectiveCommunicationOp(instr->opcode()) &&
-          HloPredicateIsNotOp<HloOpcode::kAllReduceStart, HloOpcode::kAllReduce,
-                              HloOpcode::kReduceScatter,
-                              HloOpcode::kAllGatherStart,
-                              HloOpcode::kAllGather>(instr)) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
 bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
     case HloOpcode::kAllReduceStart:
@@ -504,7 +489,7 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
         ShapeSizeBytesFunction(pointer_size), module.entry_computation());
   }
 
-  if (detail::IsUnifiedAnalyticalModelEnabled(module, gpu_device_info)) {
+  if (SolLatencyEstimator::IsSupportedForModule(module, gpu_device_info)) {
     VLOG(1) << "Using unified latency estimator";
     auto cost_analysis =
         std::make_unique<GpuHloCostAnalysis>(GpuHloCostAnalysis::Options{
@@ -632,7 +617,7 @@ bool IsLHSEnabled(const HloModule& module, absl::string_view fingerprint,
     return true;
   }
 
-  if (detail::IsUnifiedAnalyticalModelEnabled(module, gpu_device_info)) {
+  if (SolLatencyEstimator::IsSupportedForModule(module, gpu_device_info)) {
     // We also enable LHS when we satisfy requirements for enabling unified
     // latency estimator.
     return true;
@@ -856,30 +841,6 @@ SchedulerConfig MakeGPUSchedulerConfig(uint64_t memory_limit,
 
   return config;
 }
-
-namespace detail {
-
-bool IsUnifiedAnalyticalModelEnabled(
-    const HloModule& module, const se::DeviceDescription& gpu_device_info) {
-  if (IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module)) {
-    // If the user enabled opt effort we turn the estimator on if we're
-    // compiling for Hopper.
-    return gpu_device_info.cuda_compute_capability().IsHopper();
-  }
-  // If this flag is on by default then we provide users an escape hatch in case
-  // they find the new cost model less profitable than T-shirt sizes.
-  if (!module.config()
-           .debug_options()
-           .xla_gpu_enable_analytical_sol_latency_estimator()) {
-    return false;
-  }
-  // Otherwise we are more conservative and we turn it on only for Hopper and if
-  // `module` contains only supported collectives.
-  return gpu_device_info.cuda_compute_capability().IsHopper() &&
-         HasOnlySupportedCollectives(module);
-}
-
-}  // namespace detail
 
 }  // namespace gpu
 }  // namespace xla

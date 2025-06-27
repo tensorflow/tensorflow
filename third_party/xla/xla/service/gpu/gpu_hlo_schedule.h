@@ -30,6 +30,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+constexpr absl::string_view kFingerprintBeforeLHS = "fingerprint_before_lhs";
+
 // Converts sync collective instructions to a pair of async start and done
 // instructions.
 absl::Status RunAsyncCollectivesConversionPasses(HloModule* module);
@@ -61,15 +63,6 @@ absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
     int64_t* peak_memory_bytes = nullptr);
 
 HloInstructionSequence PostProcessSchedule(const HloInstructionSequence& input);
-
-constexpr absl::string_view kFingerprintBeforeLHS = "fingerprint_before_lhs";
-
-namespace detail {
-
-bool IsUnifiedAnalyticalModelEnabled(
-    const HloModule& module, const se::DeviceDescription& gpu_device_info);
-
-}
 
 }  // namespace gpu
 }  // namespace xla

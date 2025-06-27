@@ -88,6 +88,12 @@ class SolLatencyEstimator : public LatencyEstimator {
       const HloComputation* computation,
       std::unique_ptr<GpuHloCostAnalysis> cost_analysis = nullptr);
 
+  // Returns true if the module is supported by the SoL latency estimator.
+  // In particular, it checks that the module contains only supported
+  // collectives.
+  static bool IsSupportedForModule(
+      const HloModule& module, const se::DeviceDescription& gpu_device_info);
+
   static constexpr TimeCost kLowCost = 1.0;
   static constexpr TimeCost kLowLatency = 1.0;
 
