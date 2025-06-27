@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
