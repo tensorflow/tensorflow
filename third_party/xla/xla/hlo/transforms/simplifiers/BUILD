@@ -951,6 +951,7 @@ cc_library(
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:slow_operation_alarm",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

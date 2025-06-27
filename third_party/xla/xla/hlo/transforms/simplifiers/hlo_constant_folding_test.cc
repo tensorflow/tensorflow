@@ -647,5 +647,26 @@ TEST_F(HloConstantFoldingTest, FoldCall) {
               GmockMatch(m::Constant()));
 }
 
+TEST_F(HloConstantFoldingTest, FoldCallToFft) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    Fn {
+      param0 = c64[8] parameter(0)
+      ROOT fft = c64[8] fft(param0), fft_type=FFT, fft_length={32}
+    }
+
+    ENTRY entry {
+      constant.0 = c64[8] constant({(0,0), (0,0), (0,0), (0,0), (0,0), (0,0), (0,0), (0,0)})
+      ROOT call = c64[8] call(constant.0), to_apply=Fn
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_FALSE(result);
+}
+
 }  // namespace
 }  // namespace xla
