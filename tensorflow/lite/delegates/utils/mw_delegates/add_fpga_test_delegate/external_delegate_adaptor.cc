@@ -4,7 +4,7 @@
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/external/external_delegate_interface.h"
-#include "tensorflow/lite/delegates/utils/mw_delegates/add_cpu_test_delegate/add_cpu_test_delegate.h"
+#include "tensorflow/lite/delegates/utils/mw_delegates/add_fpga_test_delegate/add_cpu_test_delegate.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/logging.h"
 

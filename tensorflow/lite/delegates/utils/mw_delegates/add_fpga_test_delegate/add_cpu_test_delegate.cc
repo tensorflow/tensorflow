@@ -1,4 +1,4 @@
-#include "tensorflow/lite/delegates/utils/mw_delegates/add_cpu_test_delegate/add_cpu_test_delegate.h"
+#include "tensorflow/lite/delegates/utils/mw_delegates/add_fpga_test_delegate/add_cpu_test_delegate.h"
 
 #include <memory>
 #include <utility>
@@ -92,7 +92,7 @@ class AddCpuTestDelegateKernel : public SimpleDelegateKernelInterface {
     }
     // This code assumes no activation, and no broadcasting needed (both inputs
     // have the same size).
-    bool add_flag = false;
+  
     auto* input_1 = GetTensorData<int32>(input_tensor_1);
     auto* input_2 = GetTensorData<int32>(input_tensor_2);
     auto* output = GetTensorData<int32>(output_tensor);
