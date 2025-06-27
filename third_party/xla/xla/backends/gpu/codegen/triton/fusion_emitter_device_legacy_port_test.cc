@@ -663,12 +663,14 @@ ENTRY r {
 })";
 
   MatchOptimizedHlo(kHloText, R"(
-; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: fusion(
-; CHECK-SAME: kind=kCustom
-; CHECK-SAME: "__triton_nested_gemm_fusion"
+; CHECK: %[[p0:.*]] = f16[10,3,128]{2,0,1} parameter(0)
+; CHECK: %[[cv:.*]] = f32[10,3,128]{2,0,1} convert(%[[p0]])
+; CHECK: ROOT
+; CHECK-SAME: f32[3,10,128]{2,0,1} transpose(%[[cv]]), dimensions={1,0,2}
+; CHECK: %[[p0:.*]] = f16[10,3,128]{2,0,1} parameter(0)
+; CHECK: %[[fusion:.*]] = f32[3,10,128]{2,0,1} fusion(%[[p0]])
+; CHECK: ROOT
+; CHECK-SAME: f32[3,128,123]{2,1,0} dot(%[[fusion]],
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -1290,7 +1292,8 @@ ENTRY e {
                           GetOptimizedModule(kHloText));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
-      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())
+      GmockMatch(m::Fusion(m::Parameter(), m::Bitcast(m::Parameter()),
+                           m::Bitcast(m::Parameter()))
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 }
 
@@ -1708,8 +1711,9 @@ ENTRY e {
   }
   EXPECT_THAT(
       instr,
-      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())
-                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+      GmockMatch(
+          m::Fusion(m::Parameter(), m::Parameter(), m::Bitcast(m::Parameter()))
+              .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
 }
