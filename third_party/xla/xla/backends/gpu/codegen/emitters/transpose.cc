@@ -990,19 +990,12 @@ IndexingMap PackedTranspose::GetOutputIndexing(mlir::MLIRContext* ctx) const {
 
 std::unique_ptr<EmitterBase> CreateTransposeFusion(
     const HloFusionAnalysis& analysis) {
-  absl::Span<const HloInstructionAdaptor> heroes = analysis.fusion_heroes();
-  auto transpose_it =
-      absl::c_find_if(heroes, [](const HloInstructionAdaptor& hero) {
-        return hero.opcode() == HloOpcode::kTranspose;
-      });
-  if (transpose_it != heroes.end()) {
-    auto spec = GetTransposeSpec(
-        Cast<HloTransposeInstruction>(&transpose_it->instruction()));
-    auto packed_transpose_tile = GetPackedTransposeTileSizes(spec);
-    if (packed_transpose_tile.ok()) {
-      return std::make_unique<PackedTranspose>(
-          analysis, spec, *packed_transpose_tile, /* num_warps= */ 4);
-    }
+  auto spec = GetTransposeSpec(
+      Cast<HloTransposeInstruction>(analysis.tiled_transpose().instr));
+  auto packed_transpose_tile = GetPackedTransposeTileSizes(spec);
+  if (packed_transpose_tile.ok()) {
+    return std::make_unique<PackedTranspose>(
+        analysis, spec, *packed_transpose_tile, /* num_warps= */ 4);
   }
   return std::make_unique<TransposeFusion>(analysis);
 }
