@@ -57,6 +57,7 @@ cc_binary(
     linkstatic = 1,
     deps = [
         ":add_cpu_test_delegate",
+        ":fpga_ip_driver",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/external:external_delegate_interface",
         "//tensorflow/lite/tools:command_line_flags",
