@@ -50,6 +50,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -73,10 +74,12 @@ cc_library(
     hdrs = ["onednn_matcher.h"],
     deps = [
         ":library_matcher",
+        "//xla/backends/cpu:onednn_fusion",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

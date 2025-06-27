@@ -16,9 +16,14 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_TRANSFORMS_ONEDNN_MATCHER_H_
 #define XLA_BACKENDS_CPU_TRANSFORMS_ONEDNN_MATCHER_H_
 
+#include <algorithm>
+#include <string>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/backends/cpu/onednn_fusion.h"
 #include "xla/backends/cpu/transforms/library_matcher.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -33,14 +38,30 @@ class OneDnnMatcher : public LibraryMatcher {
 
   // Returns the set of supported HLO instructions.
   absl::flat_hash_set<HloOpcode> SupportedOps() const override {
-    static const auto* kSupportedOps = new absl::flat_hash_set<HloOpcode>{};
+    static const auto* kSupportedOps = new absl::flat_hash_set<HloOpcode>{
+        HloOpcode::kDot, HloOpcode::kAdd, HloOpcode::kMultiply,
+        HloOpcode::kExp};
     return *kSupportedOps;
   }
 
   // Returns true if the HLO instruction is supported by the library.
   absl::StatusOr<bool> IsOpSupported(const HloInstruction* instr) override {
-    return false;
+    if (!SupportedOps().contains(instr->opcode())) {
+      return false;
+    }
+    // Assume all ops are supported as long as all inputs and output are F32.
+    return instr->shape().element_type() == F32 &&
+           std::all_of(instr->operands().begin(), instr->operands().end(),
+                       [](const HloInstruction* operand) {
+                         return operand->shape().element_type() == F32;
+                       });
   }
+
+  // Returns a prefix string for the fusion op's name.
+  std::string fusion_prefix() const override { return "onednn_"; }
+
+  // Returns a string for FusionBackendConfig's fusion kind.
+  absl::string_view fusion_kind() const override { return kOneDnnFusionKind; }
 };
 
 }  // namespace xla::cpu
