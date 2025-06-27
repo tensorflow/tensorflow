@@ -87,17 +87,17 @@ absl::StatusOr<std::string> GetDataTypeString(xla::PrimitiveType data_type) {
   }
 }
 
-TEST(NvshmemGpuCollectivesTest, NvshmemCollectivePermuteFloat) {
-  constexpr int num_ranks = 2;
-
+void RunNvshmemTest(PrimitiveType data_type, absl::string_view test_case) {
+  const int num_ranks = 2;
   tsl::SubProcess child[num_ranks];
   for (int rank_id = 0; rank_id < num_ranks; ++rank_id) {
     std::vector<std::string> argv;
     argv.push_back(test_binary_name);
     argv.push_back(absl::StrFormat("--rank_id=%d", rank_id));
     argv.push_back(absl::StrFormat("--num_ranks=%d", num_ranks));
-    argv.push_back(
-        absl::StrFormat("--input_data_type=%d", (int)xla::PrimitiveType::F32));
+    argv.push_back(absl::StrFormat("--input_data_type=%d", (int)data_type));
+    argv.push_back(absl::StrFormat("--test_case=%s", test_case));
+    argv.push_back(absl::StrFormat("--v=1"));
     child[rank_id].SetProgram(test_binary_name, argv);
     child[rank_id].SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
     child[rank_id].SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
@@ -114,8 +114,17 @@ TEST(NvshmemGpuCollectivesTest, NvshmemCollectivePermuteFloat) {
   }
 }
 
+TEST(NvshmemGpuCollectivesTest, NvshmemCollectivePermuteFloat) {
+  RunNvshmemTest(PrimitiveType::F32, "collective_permute");
+}
+
+TEST(NvshmemGpuCollectivesTest, NvshmemSendRecvFloat) {
+  RunNvshmemTest(PrimitiveType::F32, "send_recv");
+}
+
 absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
-                                       int input_data_type) {
+                                       int input_data_type,
+                                       absl::string_view test_case) {
   xla::PrimitiveType data_type = (xla::PrimitiveType)input_data_type;
   std::unique_ptr<xla::DistributedRuntimeService> service;
   if (rank_id == 0) {
@@ -147,19 +156,37 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
   options.executable_build_options.set_use_spmd_partitioning(false);
   options.executable_build_options.set_num_replicas(num_ranks);
   TF_ASSIGN_OR_RETURN(std::string data_type_str, GetDataTypeString(data_type));
-  const std::string kProgram = absl::StrFormat(R"(
+  std::string kProgram;
+
+  if (test_case == "collective_permute") {
+    kProgram = absl::StrFormat(R"(
         HloModule NvshmemCollectivePermute
         ENTRY test_computation {
           data = %s[] constant(42)
           start = (%s[], %s[]) collective-permute-start(data),
                 source_target_pairs={{0,1},{1,0}},
-                channel_id=1,
                 backend_config={"collective_backend_config":{"backend":"NVSHMEM"}}
           ROOT done = %s[] collective-permute-done(start)
         })",
-                                               data_type_str, data_type_str,
-                                               data_type_str, data_type_str);
-
+                               data_type_str, data_type_str, data_type_str,
+                               data_type_str);
+  } else if (test_case == "send_recv") {
+    kProgram = absl::StrFormat(R"(
+        HloModule NvshmemSendRecv
+        ENTRY test_computation {
+          data = %s[] constant(42)
+          after-all = token[] after-all()
+          recv = (%s[], %s[], token[]) recv(after-all), channel_id=0, frontend_attributes={_xla_send_recv_source_target_pairs="{{0,1}}"}, backend_config={"collective_backend_config":{"backend":"NVSHMEM"}}
+          send = (%s[], %s[], token[]) send(data, after-all), channel_id=0, control-predecessors={recv}, frontend_attributes={_xla_send_recv_source_target_pairs="{{0,1}}"}, backend_config={"collective_backend_config":{"backend":"NVSHMEM"}}
+          recv-done = (%s[], token[]) recv-done(recv), channel_id=0
+          recv-data = %s[] get-tuple-element(recv-done), index=0
+          send-done = token[] send-done(send), channel_id=0, control-predecessors={recv}
+          ROOT result = %s[] copy(recv-data)
+        })",
+                               data_type_str, data_type_str, data_type_str,
+                               data_type_str, data_type_str, data_type_str,
+                               data_type_str, data_type_str);
+  }
   TF_ASSIGN_OR_RETURN(auto executable,
                       CompileExecutable(kProgram, *client, options));
   TF_ASSIGN_OR_RETURN(auto hlo_modules, executable->GetHloModules());
@@ -168,41 +195,97 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
   TF_ASSIGN_OR_RETURN(std::shared_ptr<xla::Literal> literal,
                       result_buffers[0]->ToLiteralSync());
 
-  switch (data_type) {
-    case xla::PrimitiveType::F32: {
-      TF_RET_CHECK(literal->data<float>()[0] == 42.0f);
-      break;
+  if (test_case == "collective_permute") {
+    switch (data_type) {
+      case xla::PrimitiveType::F32: {
+        TF_RET_CHECK(literal->data<float>()[0] == 42.0f);
+        break;
+      }
+      case xla::PrimitiveType::F64: {
+        TF_RET_CHECK(literal->data<double>()[0] == 42.0);
+        break;
+      }
+      case xla::PrimitiveType::BF16: {
+        TF_RET_CHECK(literal->data<Eigen::bfloat16>()[0] ==
+                     Eigen::bfloat16(42));
+        break;
+      }
+      case xla::PrimitiveType::F16: {
+        TF_RET_CHECK(literal->data<Eigen::half>()[0] == Eigen::half(42));
+        break;
+      }
+      case xla::PrimitiveType::U32: {
+        TF_RET_CHECK(literal->data<uint32_t>()[0] == 42);
+        break;
+      }
+      case xla::PrimitiveType::U64: {
+        TF_RET_CHECK(literal->data<uint64_t>()[0] == 42);
+        break;
+      }
+      case xla::PrimitiveType::S32: {
+        TF_RET_CHECK(literal->data<int32_t>()[0] == 42);
+        break;
+      }
+      case xla::PrimitiveType::S64: {
+        TF_RET_CHECK(literal->data<int64_t>()[0] == 42);
+        break;
+      }
+      default:
+        return absl::InvalidArgumentError("Invalid data type.");
     }
-    case xla::PrimitiveType::F64: {
-      TF_RET_CHECK(literal->data<double>()[0] == 42.0);
-      break;
+  } else if (test_case == "send_recv" && rank_id == 1) {
+    switch (data_type) {
+      case xla::PrimitiveType::F32: {
+        float value = literal->data<float>()[0];
+        TF_RET_CHECK(value == 42.0f)
+            << "Value mismatch: got " << value << ", expected 42.0f";
+        break;
+      }
+      case xla::PrimitiveType::F64: {
+        double value = literal->data<double>()[0];
+        TF_RET_CHECK(value == 42.0)
+            << "Value mismatch: got " << value << ", expected 42.0";
+        break;
+      }
+      case xla::PrimitiveType::BF16: {
+        float value = static_cast<float>(literal->data<Eigen::bfloat16>()[0]);
+        TF_RET_CHECK(literal->data<Eigen::bfloat16>()[0] == Eigen::bfloat16(42))
+            << "Value mismatch: got " << value << ", expected 42";
+        break;
+      }
+      case xla::PrimitiveType::F16: {
+        float value = static_cast<float>(literal->data<Eigen::half>()[0]);
+        TF_RET_CHECK(literal->data<Eigen::half>()[0] == Eigen::half(42))
+            << "Value mismatch: got " << value << ", expected 42";
+        break;
+      }
+      case xla::PrimitiveType::U32: {
+        uint32_t value = literal->data<uint32_t>()[0];
+        TF_RET_CHECK(value == 42)
+            << "Value mismatch: got " << value << ", expected 42";
+        break;
+      }
+      case xla::PrimitiveType::U64: {
+        uint64_t value = literal->data<uint64_t>()[0];
+        TF_RET_CHECK(value == 42)
+            << "Value mismatch: got " << value << ", expected 42";
+        break;
+      }
+      case xla::PrimitiveType::S32: {
+        int32_t value = literal->data<int32_t>()[0];
+        TF_RET_CHECK(value == 42)
+            << "Value mismatch: got " << value << ", expected 42";
+        break;
+      }
+      case xla::PrimitiveType::S64: {
+        int64_t value = literal->data<int64_t>()[0];
+        TF_RET_CHECK(value == 42)
+            << "Value mismatch: got " << value << ", expected 42";
+        break;
+      }
+      default:
+        return absl::InvalidArgumentError("Invalid data type.");
     }
-    case xla::PrimitiveType::BF16: {
-      TF_RET_CHECK(literal->data<Eigen::bfloat16>()[0] == Eigen::bfloat16(42));
-      break;
-    }
-    case xla::PrimitiveType::F16: {
-      TF_RET_CHECK(literal->data<Eigen::half>()[0] == Eigen::half(42));
-      break;
-    }
-    case xla::PrimitiveType::U32: {
-      TF_RET_CHECK(literal->data<uint32_t>()[0] == 42);
-      break;
-    }
-    case xla::PrimitiveType::U64: {
-      TF_RET_CHECK(literal->data<uint64_t>()[0] == 42);
-      break;
-    }
-    case xla::PrimitiveType::S32: {
-      TF_RET_CHECK(literal->data<int32_t>()[0] == 42);
-      break;
-    }
-    case xla::PrimitiveType::S64: {
-      TF_RET_CHECK(literal->data<int64_t>()[0] == 42);
-      break;
-    }
-    default:
-      return absl::InvalidArgumentError("Invalid data type.");
   }
 
   VLOG(1) << "Rank " << rank_id << " completed successfully";
@@ -226,14 +309,15 @@ int main(int argc, char* argv[]) {
       tsl::Flag("input_data_type", &input_data_type,
                 "Data type to test for nvshmem collective test."),
       tsl::Flag("test_case", &test_case,
-                "Test case to run (all_reduce or collective_permute)."),
+                "Test case to run (collective_permute, send_recv)."),
   };
   xla::AppendDebugOptionsFlags(&flag_list);
   std::string usage = tsl::Flags::Usage(argv[0], flag_list);
   tsl::Flags::Parse(&argc, argv, flag_list);
   testing::InitGoogleTest(&argc, argv);
   if (rank_id >= 0) {
-    return xla::NvshmemCollectiveTestBody(rank_id, num_ranks, input_data_type)
+    return xla::NvshmemCollectiveTestBody(rank_id, num_ranks, input_data_type,
+                                          test_case)
         .raw_code();
   }
   return RUN_ALL_TESTS();

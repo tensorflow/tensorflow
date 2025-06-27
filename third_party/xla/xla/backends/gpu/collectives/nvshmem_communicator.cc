@@ -16,15 +16,16 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/include/cuda_bf16.h"
 #include "third_party/gpus/cuda/include/cuda_fp16.h"
-#include "third_party/nvshmem/nvshmemx.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "third_party/nvshmem/nvshmem.h"   // IWYU pragma: keep
+#include "third_party/nvshmem/nvshmemx.h"  // IWYU pragma: keep
 #include "xla/backends/gpu/collectives/nvshmem_collectives.h"
-#include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
@@ -33,11 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
-#include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 
 namespace xla::gpu {
 
@@ -338,7 +335,7 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
                                       se::DeviceMemoryBase send_buffer,
                                       size_t count, RankId peer,
                                       const Executor& executor) {
-  if (!op_name.empty() && op_name != "put" && op_name != "get") {
+  if (!op_name.empty() && op_name != "send" && op_name != "recv") {
     return absl::InternalError(
         absl::StrFormat("Unsupported NVSHMEM operation: %s", op_name));
   }
@@ -346,17 +343,11 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
   void* source_ptr = send_buffer.opaque();
   void* dest_ptr = recv_buffer.opaque();
 
-  // Register the source buffer since it's allocated in device memory (not with
-  // nvshmem_malloc). This is required for NVSHMEM to access the buffer during
-  // P2P operations.
-  TF_RETURN_IF_ERROR(
-      RegisterBuffer(source_ptr, count * GetPrimitiveTypeSize(type)));
-
   TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
   switch (type) {
     case PrimitiveType::F64:
-      if (op_name == "put") {
+      if (op_name == "send") {
         CALL_NVSHMEM_P2P(put, double, double, peer, source_ptr, dest_ptr, count,
                          stream);
       } else {
@@ -365,7 +356,7 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
       }
       break;
     case PrimitiveType::F32:
-      if (op_name == "put") {
+      if (op_name == "send") {
         CALL_NVSHMEM_P2P(put, float, float, peer, source_ptr, dest_ptr, count,
                          stream);
       } else {
@@ -374,7 +365,7 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
       }
       break;
     case PrimitiveType::F16:
-      if (op_name == "put") {
+      if (op_name == "send") {
         CALL_NVSHMEM_P2P(put, half, __half, peer, source_ptr, dest_ptr, count,
                          stream);
       } else {
@@ -383,7 +374,7 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
       }
       break;
     case PrimitiveType::BF16:
-      if (op_name == "put") {
+      if (op_name == "send") {
         CALL_NVSHMEM_P2P(put, bfloat16, __nv_bfloat16, peer, source_ptr,
                          dest_ptr, count, stream);
       } else {
@@ -392,7 +383,7 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
       }
       break;
     case PrimitiveType::S32:
-      if (op_name == "put") {
+      if (op_name == "send") {
         CALL_NVSHMEM_P2P(put, int32, int32_t, peer, source_ptr, dest_ptr, count,
                          stream);
       } else {
@@ -401,7 +392,7 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
       }
       break;
     case PrimitiveType::S64:
-      if (op_name == "put") {
+      if (op_name == "send") {
         CALL_NVSHMEM_P2P(put, int64, int64_t, peer, source_ptr, dest_ptr, count,
                          stream);
       } else {
@@ -410,7 +401,7 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
       }
       break;
     case PrimitiveType::U32:
-      if (op_name == "put") {
+      if (op_name == "send") {
         CALL_NVSHMEM_P2P(put, uint32, uint32_t, peer, source_ptr, dest_ptr,
                          count, stream);
       } else {
@@ -419,7 +410,7 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
       }
       break;
     case PrimitiveType::U64:
-      if (op_name == "put") {
+      if (op_name == "send") {
         CALL_NVSHMEM_P2P(put, uint64, uint64_t, peer, source_ptr, dest_ptr,
                          count, stream);
       } else {
@@ -431,20 +422,6 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
       return absl::InternalError(
           absl::StrFormat("Invalid NVSHMEM %s type.", op_name));
   }
-  return absl::OkStatus();
-}
-
-absl::Status NvshmemCommunicator::RegisterBuffer(void* addr, size_t length) {
-  VLOG(3) << absl::StreamFormat("Registering NVSHMEM buffer: %p, length: %zu",
-                                addr, length);
-
-  if (nvshmemx_buffer_register(addr, length) != 0) {
-    LOG(ERROR) << absl::StrFormat(
-        "Failed to register NVSHMEM buffer at %p with length %zu", addr,
-        length);
-    return absl::InternalError("Failed to register NVSHMEM buffer");
-  }
-
   return absl::OkStatus();
 }
 
@@ -461,7 +438,7 @@ tsl::AsyncValueRef<NvshmemCommunicator::Event> NvshmemCommunicator::Send(
 
   count = ToRealCount(dtype, count);
   TF_RETURN_IF_ERROR(
-      P2P("put", dtype, recv_buffer, send_buffer, count, peer, executor));
+      P2P("send", dtype, recv_buffer, send_buffer, count, peer, executor));
   return tsl::MakeAvailableAsyncValueRef<Event>();
 }
 
@@ -478,7 +455,7 @@ tsl::AsyncValueRef<NvshmemCommunicator::Event> NvshmemCommunicator::Recv(
 
   count = ToRealCount(dtype, count);
   TF_RETURN_IF_ERROR(
-      P2P("get", dtype, recv_buffer, send_buffer, count, peer, executor));
+      P2P("recv", dtype, recv_buffer, send_buffer, count, peer, executor));
   return tsl::MakeAvailableAsyncValueRef<Event>();
 }
 
