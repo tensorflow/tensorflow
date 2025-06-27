@@ -85,8 +85,13 @@ GpuProfiler::ProfileWithSharedBuffers(
   if (executables.empty()) {
     return results;
   }
-  TF_ASSIGN_OR_RETURN(RedzoneBuffers buffers,
-                      CreateInputBuffers(executables[0].get()));
+  TF_ASSIGN_OR_RETURN(
+      RedzoneBuffers buffers,
+      RedzoneBuffers::FromComputation(
+          *executables[0]->module().entry_computation(), allocator_.get(),
+          stream_.get(), RedzoneBuffers::BuffersToCreate::kAllInputsAllOutputs,
+          options_.should_init_buffers,
+          /*should_check_correctness=*/true, options_.redzone_padding_bytes));
   for (auto& executable : executables) {
     TF_ASSIGN_OR_RETURN(ProfileResult result,
                         ProfileInternal(executable.get(), buffers));
@@ -137,17 +142,6 @@ absl::StatusOr<ExecutionOutput> GpuProfiler::Execute(
   ServiceExecutableRunOptions service_run_options(run_options);
   return executable->ExecuteAsyncOnStreamWrapper(&service_run_options,
                                                  std::move(inputs));
-}
-
-absl::StatusOr<RedzoneBuffers> GpuProfiler::CreateInputBuffers(
-    const Executable* executable) {
-  const HloInstruction* root_instr =
-      executable->module().entry_computation()->root_instruction();
-  return RedzoneBuffers::FromInstruction(
-      *root_instr, allocator_.get(), stream_.get(),
-      RedzoneBuffers::BuffersToCreate::kAllInputsAllOutputs,
-      options_.should_init_buffers, /*should_check_correctness=*/true,
-      options_.redzone_padding_bytes);
 }
 
 }  // namespace gpu
