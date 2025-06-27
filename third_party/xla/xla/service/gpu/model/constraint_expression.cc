@@ -213,7 +213,14 @@ void ConstraintExpression::Print(std::ostream& out) const {
           absl::StrCat(xla::ToString(expr), " in ", interval.ToString()));
     }
     std::sort(constraint_strings.begin(), constraint_strings.end());
-    conjunction_strings.push_back(absl::StrJoin(constraint_strings, " && "));
+    if (constraint_strings.size() > 1 &&
+        disjoint_conjoint_constraints_.size() > 1) {
+      // Print parenthesis if there might be ambiguity.
+      conjunction_strings.push_back(
+          absl::StrCat("(", absl::StrJoin(constraint_strings, " && "), ")"));
+    } else {
+      conjunction_strings.push_back(absl::StrJoin(constraint_strings, " && "));
+    }
   }
   std::sort(conjunction_strings.begin(), conjunction_strings.end());
   out << absl::StrJoin(conjunction_strings, " || ") << "\n";

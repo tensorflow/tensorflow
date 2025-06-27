@@ -93,8 +93,9 @@ TEST_F(ConstraintExpressionTest, PrettyPrintingTest) {
   ConstraintExpression constraints =
       GetConstraint("d2", 5, 6) ||
       (GetConstraint("d1", 3, 4) && GetConstraint("d0", 1, 2));
-  EXPECT_THAT(constraints, MatchConstraintExpressionString(
-                               "d0 in [1, 2] && d1 in [3, 4] || d2 in [5, 6]"));
+  EXPECT_THAT(constraints,
+              MatchConstraintExpressionString(
+                  "(d0 in [1, 2] && d1 in [3, 4]) || d2 in [5, 6]"));
 }
 
 TEST_F(ConstraintExpressionTest,
@@ -154,8 +155,9 @@ TEST_F(
       GetConstraint("d0", 0, 5) && GetConstraint("d1", 0, 5);
   constraints = constraints || GetConstraint("d2", 0, 5);
   EXPECT_TRUE(constraints.is_satisfiable());
-  EXPECT_THAT(constraints, MatchConstraintExpressionString(
-                               "d0 in [0, 5] && d1 in [0, 5] || d2 in [0, 5]"));
+  EXPECT_THAT(constraints,
+              MatchConstraintExpressionString(
+                  "(d0 in [0, 5] && d1 in [0, 5]) || d2 in [0, 5]"));
 }
 
 TEST_F(
@@ -184,9 +186,9 @@ TEST_F(
   EXPECT_THAT(
       result_constraint_expression,
       MatchConstraintExpressionString(
-          "d0 in [0, 5] && d2 in [0, 5] || d0 in [0, 5] && d3 in [0, 5] || "
-          "d0 in [0, 5] && d4 in [0, 5] || d1 in [0, 5] && d2 in [0, 5] || "
-          "d1 in [0, 5] && d3 in [0, 5] || d1 in [0, 5] && d4 in [0, 5]"));
+          "(d0 in [0, 5] && d2 in [0, 5]) || (d0 in [0, 5] && d3 in [0, 5]) || "
+          "(d0 in [0, 5] && d4 in [0, 5]) || (d1 in [0, 5] && d2 in [0, 5]) || "
+          "(d1 in [0, 5] && d3 in [0, 5]) || (d1 in [0, 5] && d4 in [0, 5])"));
 
   // Lastly, make sure that the conjunction of an empty `ConstraintExpression`
   // with a non-empty one results in passing the non-empty one through, on both
@@ -270,7 +272,7 @@ TEST_F(ConstraintExpressionTest, SimplifyRemovesRedundantConstraints) {
   EXPECT_THAT(
       Simplify((c0 && c1) || (c1 && c0) || c0 || (c1 && c0) || (c0 && c1)),
       MatchConstraintExpressionString(
-          "d0 in [0, 0] || d0 in [0, 0] && d1 in [1, 1]"));
+          "(d0 in [0, 0] && d1 in [1, 1]) || d0 in [0, 0]"));
 }
 
 TEST_F(ConstraintExpressionTest, ConstraintSatisfactionIsEvaluatedCorrectly) {
