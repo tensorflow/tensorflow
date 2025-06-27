@@ -456,14 +456,14 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
         computation->CanExpandIntoSingleInstruction()) {
       continue;
     }
-    if (computation == entry_computation()) {
-      printer->Append("ENTRY ");
-    }
+    HloPrintOptions new_options = options;
+    new_options.set_print_computation_mode(
+        HloPrintOptions::PrintComputationMode::kComputationWithEntryKeyword);
     if (has_schedule() && schedule().is_computation_scheduled(computation)) {
-      computation->Print(printer, options,
+      computation->Print(printer, new_options,
                          schedule().sequence(computation).instructions());
     } else {
-      computation->Print(printer, options);
+      computation->Print(printer, new_options);
     }
     printer->Append("\n\n");
   }

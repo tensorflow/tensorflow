@@ -1117,6 +1117,12 @@ void HloComputation::Print(
 
   printer->Append(tab);
 
+  if (options.print_computation_mode() ==
+          HloPrintOptions::PrintComputationMode::kComputationWithEntryKeyword &&
+      IsEntryComputation()) {
+    printer->Append("ENTRY ");
+  }
+
   if (!options.is_in_nested_computation()) {
     if (options.print_percent()) {
       printer->Append("%");
