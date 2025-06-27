@@ -286,6 +286,10 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kNvshmemCollectivePermute);
     CASE(kNvshmemCollectivePermuteDone);
     CASE(kNvshmemCollectivePermuteStart);
+    CASE(kNvshmemRecv);
+    CASE(kNvshmemRecvDone);
+    CASE(kNvshmemSend);
+    CASE(kNvshmemSendDone);
     CASE(kOutfeed);
     CASE(kPartitionId);
     CASE(kRaggedAllToAll);

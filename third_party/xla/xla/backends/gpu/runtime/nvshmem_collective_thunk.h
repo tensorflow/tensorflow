@@ -125,6 +125,24 @@ absl::Status IsValidNvshmemOperand(Shape shape, Thunk::Kind reduction_op);
 
 absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectivesFromRegistry();
 
+// NvshmemBufferAddresses provides a mechanism to store and retrieve buffer
+// addresses for NVSHMEM put/get operations. This is necessary because NVSHMEM
+// uses one-way put/get operations where both source and destination addresses
+// are required.
+class NvshmemBufferAddresses {
+ public:
+  // Get buffer address for a device
+  absl::StatusOr<void*> GetNvshmemPtr(int device_ordinal);
+
+  // Store buffer address for a device
+  void StoreNvshmemPtr(int device_ordinal, void* buffer_addr);
+
+ private:
+  absl::Mutex mu_;
+  // Map from device ordinal to buffer address
+  absl::flat_hash_map<int, void*> buffer_addrs_ ABSL_GUARDED_BY(mu_);
+};
+
 }  // namespace gpu
 }  // namespace xla
 
