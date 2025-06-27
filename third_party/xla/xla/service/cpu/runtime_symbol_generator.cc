@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/service/cpu/runtime_conv3d.h"
 #include "xla/service/cpu/runtime_custom_call_status.h"
 #include "xla/service/cpu/runtime_fp16.h"
-#include "xla/service/cpu/runtime_handle_ffi_call.h"
 #include "xla/service/cpu/runtime_key_value_sort.h"
 #include "xla/service/cpu/runtime_matmul.h"
 #include "xla/service/cpu/runtime_matmul_acl.h"
@@ -185,7 +184,6 @@ static bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(StatusIsSuccess);
   REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSort);
   REGISTER_CPU_RUNTIME_SYMBOL(TopKF32);
-  REGISTER_CPU_RUNTIME_SYMBOL(HandleFfiCall);
 #if defined(INTEL_MKL)
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnMatMul);
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnSoftmax);
