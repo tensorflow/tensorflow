@@ -982,12 +982,7 @@ std::optional<xla::OpSharding> CreateTupleSharding(
   xla::OpSharding sharding;
   sharding.set_type(xla::OpSharding::TUPLE);
   for (const std::optional<xla::OpSharding>& tuple_sharding : tuple_shardings) {
-    if (tuple_sharding && tuple_sharding->type() == xla::OpSharding::TUPLE) {
-      for (const xla::OpSharding& subsharding :
-           tuple_sharding->tuple_shardings()) {
-        *sharding.add_tuple_shardings() = subsharding;
-      }
-    } else if (tuple_sharding) {
+    if (tuple_sharding) {
       *sharding.add_tuple_shardings() = *tuple_sharding;
     } else {
       xla::OpSharding fallback_sharding;
@@ -5630,14 +5625,6 @@ LogicalResult ConvertToHloModule::LowerReturn(
     if (failed(GetXlaOp(ret, value_map, &operand, inst))) return failure();
 
     if (ret_tuple_sharding) {
-      // Set the sharding of the created tuple to the sharding of the operand.
-      // If operand has no sharding, then we are okay for the tuple to have no
-      // sharding either.
-      if (absl::StatusOr<std::optional<xla::OpSharding>> in_sharding =
-              operand.builder()->GetOpSharding(operand);
-          in_sharding.ok() && in_sharding.value().has_value()) {
-        builder->SetSharding(in_sharding.value().value());
-      }
       auto tuple = Tuple(builder, {operand});
       builder->SetSharding(*ret_shardings[0]);
       *return_value = GetTupleElement(tuple, 0);
