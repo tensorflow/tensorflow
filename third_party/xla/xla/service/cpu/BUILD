@@ -83,7 +83,6 @@ filegroup(
         "runtime_matmul_f32.cc",
         "runtime_matmul_f64.cc",
         "runtime_matmul_s32.cc",
-        "runtime_fork_join.cc",
         "//xla/backends/cpu/runtime:runtime_srcs",
         #"runtime_handle_ffi_call.cc", # TODO(b/338344732): Add  "runtime_handle_ffi_call.cc".
     ],
@@ -107,7 +106,6 @@ filegroup(
         # Multi-threaded support.
         "runtime_conv2d.h",
         "runtime_conv3d.h",
-        "runtime_fork_join.h",
         "runtime_lightweight_check.h",
         "runtime_matmul.h",
         "//xla/backends/cpu/runtime:runtime_hdrs",
@@ -597,7 +595,6 @@ cc_library(
         ":runtime_conv2d_acl",
         ":runtime_conv3d",
         ":runtime_custom_call_status",
-        ":runtime_fork_join",
         ":runtime_fp16",
         ":runtime_handle_ffi_call",
         ":runtime_key_value_sort",
@@ -1334,24 +1331,6 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
-    ],
-)
-
-cc_library(
-    name = "runtime_fork_join",
-    srcs = ["runtime_fork_join.cc"],
-    hdrs = ["runtime_fork_join.h"],
-    copts = runtime_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//xla:executable_run_options",
-        "//xla/service:custom_call_status_internal",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
-        "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
