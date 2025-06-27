@@ -126,30 +126,30 @@ public:
 };
 
 //test code
-int main() {
-    try {
-        FpgaIpDriver driver;
-        int32_t input_1, input_2;
-        bool add_flag;
-        // take user inputs for computation
-        std::cout << "Enter two integers to add/subtract: " << std::endl;
-        std::cin >> input_1 >> input_2; // Get user input for input_1 and input_2
-        std::cout << "Enter 1 for addition or 0 for subtraction: ";
-        std::cin >> add_flag; // Get user input for add_flag
+// int main() {
+//     try {
+//         FpgaIpDriver driver;
+//         int32_t input_1, input_2;
+//         bool add_flag;
+//         // take user inputs for computation
+//         std::cout << "Enter two integers to add/subtract: " << std::endl;
+//         std::cin >> input_1 >> input_2; // Get user input for input_1 and input_2
+//         std::cout << "Enter 1 for addition or 0 for subtraction: ";
+//         std::cin >> add_flag; // Get user input for add_flag
 
 
-        if (std::cin.fail()) {
-            std::cerr << "Invalid input. Please enter integers." << std::endl;
-            return 1;
-        }
+//         if (std::cin.fail()) {
+//             std::cerr << "Invalid input. Please enter integers." << std::endl;
+//             return 1;
+//         }
 
-        int32_t result = driver.fpga_compute(input_1, input_2, add_flag);
+//         int32_t result = driver.fpga_compute(input_1, input_2, add_flag);
 
-        std::cout << "Result from FPGA: " << result << std::endl;
-    } catch (const std::exception& ex) {
-        std::cerr << "Exception: " << ex.what() << std::endl;
-        return 1;
-    }
+//         std::cout << "Result from FPGA: " << result << std::endl;
+//     } catch (const std::exception& ex) {
+//         std::cerr << "Exception: " << ex.what() << std::endl;
+//         return 1;
+//     }
 
-    return 0;
-}   
+//     return 0;
+// }   
