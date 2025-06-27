@@ -414,7 +414,7 @@ TEST_F(CollectiveOpsTest, AllReduce_AllCombinations) {
 // http://b/259130904 [XLA:GPU] AllReduce_ManyConcurrentAllReduces subtest fails
 //                     with async all-reduce enables
 TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
-  if (test::DeviceIs(test::kGpu)) {
+  if (test::DeviceTypeIs(test::kGpu)) {
     GTEST_SKIP();
   }
   const int64_t kNumElems = 1024;

@@ -94,7 +94,7 @@ ENTRY entry {
 // This is an HLO module optimized for CPU backend, it may be invalid for other
 // backends.
 TEST_F(NumericsTest, MultiplySubtractConcatTest) {
-  if (test::DeviceIs(test::kGpu) || test::DeviceTypeIs(test::kTpu)) {
+  if (test::DeviceTypeIsOneOf({test::kGpu, test::kTpu})) {
     GTEST_SKIP();
   }
   const char* test_hlo = R"(

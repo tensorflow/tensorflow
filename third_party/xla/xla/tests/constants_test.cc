@@ -101,7 +101,7 @@ TEST_F(ConstantsTest, OneCellU32) {
 }
 
 TEST_F(ConstantsTest, OneCellU4) {
-  if (test::DeviceIsOneOf({test::kCpu, test::kGpu})) {
+  if (test::DeviceTypeIsOneOf({test::kCpu, test::kGpu})) {
     GTEST_SKIP();
   }
   std::vector<u4> constant = {u4(2)};
@@ -115,7 +115,7 @@ TEST_F(ConstantsTest, OneCellU4) {
 }
 
 TEST_F(ConstantsTest, OneCellS4) {
-  if (test::DeviceIsOneOf({test::kCpu, test::kGpu})) {
+  if (test::DeviceTypeIsOneOf({test::kCpu, test::kGpu})) {
     GTEST_SKIP();
   }
   std::vector<s4> constant = {s4(-2)};
@@ -261,7 +261,7 @@ using ConstantsHloTest = HloPjRtTestBase;
 
 // TODO(b/121147351): Fails on GPU. Not clear if this is expected behavior.
 TEST_F(ConstantsHloTest, BitcastOfConstant) {
-  if (test::DeviceIs(test::kGpu) || test::DeviceTypeIs(test::kTpu)) {
+  if (test::DeviceTypeIsOneOf({test::kGpu, test::kTpu})) {
     GTEST_SKIP();
   }
   const char* testcase = R"(

@@ -59,8 +59,7 @@ ENTRY %a_inference_call_110__.55 (arg0.1: f32[1,8], arg1.2: f32[8], arg2.3: f32[
 }
 
 TEST_F(GetDimensionSizeTest, ReturnsErrorWhenHloPassesDisabled) {
-  if (test::DeviceIsOneOf({test::kGpu, test::kInterpreter}) ||
-      test::DeviceTypeIs(test::kTpu)) {
+  if (test::DeviceTypeIsOneOf({test::kGpu, test::kInterpreter, test::kTpu})) {
     GTEST_SKIP();
   }
   const char* const kModuleStr = R"(

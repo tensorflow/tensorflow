@@ -257,7 +257,7 @@ TEST_F(SVDTest, Various_Size_Random_Matrix_512x256) {
 
 // Too slow on the CPU, GPU and interpreter backends.
 TEST_F(SVDTest, Various_Size_Random_Matrix_512x512) {
-  if (test::DeviceIsOneOf({test::kCpu, test::kGpu, test::kInterpreter})) {
+  if (test::DeviceTypeIsOneOf({test::kCpu, test::kGpu, test::kInterpreter})) {
     GTEST_SKIP();
   }
   XlaBuilder builder(TestName());

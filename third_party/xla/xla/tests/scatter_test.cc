@@ -902,7 +902,7 @@ ENTRY main {
 
 // TODO(b/230137437): Enable this on GPU once mhlo allows variadic scatter.
 TEST_F(ScatterTest, Multioutput) {
-  if (test::DeviceIs(test::kGpu)) {
+  if (test::DeviceTypeIs(test::kGpu)) {
     GTEST_SKIP();
   }
   constexpr char hlo_text[] = R"(

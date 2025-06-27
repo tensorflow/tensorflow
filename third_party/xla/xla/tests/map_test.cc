@@ -458,7 +458,7 @@ class MapHloTest : public HloTestBase {};
 
 // TODO(b/230123847): Enable this on GPU once mhlo allows mixed-type map.
 TEST_F(MapHloTest, MapWithMixedInputTypes) {
-  if (test::DeviceIs(test::kGpu)) {
+  if (test::DeviceTypeIs(test::kGpu)) {
     GTEST_SKIP();
   }
   absl::string_view hlo_string = R"(

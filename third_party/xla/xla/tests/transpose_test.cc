@@ -205,8 +205,7 @@ using HloTransposeTest = HloPjRtTestBase;
 
 // Disable HLO passes to verify the default behavior
 TEST_F(HloTransposeTest, HloPassesDisabled) {
-  if (test::DeviceIsOneOf({test::kGpu, test::kInterpreter}) ||
-      test::DeviceTypeIs(test::kTpu)) {
+  if (test::DeviceTypeIsOneOf({test::kGpu, test::kInterpreter, test::kTpu})) {
     GTEST_SKIP();
   }
   const char* const kModuleStr = R"(

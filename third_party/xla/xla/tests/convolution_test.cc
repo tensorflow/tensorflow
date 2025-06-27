@@ -1686,7 +1686,7 @@ ENTRY Test {
 }
 
 TEST_F(ConvolutionHloTest, ConvolveC64Forward) {
-  if (test::DeviceIs(test::kGpu)) {
+  if (test::DeviceTypeIs(test::kGpu)) {
     GTEST_SKIP();
   }
   constexpr char kHlo[] = R"(

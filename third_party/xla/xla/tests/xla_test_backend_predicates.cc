@@ -61,6 +61,15 @@ bool DeviceTypeIs(absl::string_view device) {
   return device == GetXlaTestDeviceType();
 }
 
+bool DeviceTypeIsOneOf(absl::Span<const absl::string_view> devices) {
+  for (const absl::string_view device : devices) {
+    if (DeviceTypeIs(device)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool HasModifiers(absl::Span<const absl::string_view> modifiers) {
   std::vector<absl::string_view> set_modifiers = GetXlaTestModifiers();
   for (const absl::string_view m : modifiers) {
