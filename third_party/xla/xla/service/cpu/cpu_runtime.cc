@@ -299,40 +299,13 @@ void ReleaseOutfeedBufferAfterPopulationImpl(
   xfeed->outfeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr,
                                          std::move(shape));
 }
-
 }  // namespace
+
 }  // namespace runtime
 }  // namespace cpu
 }  // namespace xla
 
 extern "C" {
-
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY int __xla_cpu_runtime_PrintfToStderr(
-    const char* format, ...) {
-  VLOG(3) << "__xla_cpu_runtime_PrintfToStderr " << format;
-  va_list args;
-  va_start(args, format);
-  int result = vfprintf(stderr, format, args);
-  va_end(args);
-  return result;
-}
-
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY int64_t __xla_cpu_runtime_TracingStart(
-    const void* /* ExecutableRunOptions*  run_options_ptr*/, const char* name,
-    const char* hlo_module, int64_t program_id) {
-  VLOG(3) << "TracingStart " << name;
-  auto trace_in =
-      tsl::profiler::TraceMeEncode(name, {{"hlo_op", name},
-                                          {"hlo_module", hlo_module},
-                                          {"program_id", program_id}});
-  return tsl::profiler::TraceMe::ActivityStart(trace_in);
-}
-
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_TracingEnd(
-    const void* /* ExecutableRunOptions*  run_options_ptr*/, int64_t id) {
-  VLOG(3) << "TracingEnd " << id;
-  tsl::profiler::TraceMe::ActivityEnd(id);
-}
 
 void* __xla_cpu_runtime_AcquireInfeedBufferForDequeue(
     const xla::ExecutableRunOptions* run_options, int32_t buffer_length,
@@ -360,63 +333,6 @@ void __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
     void* buffer_ptr, const void* shape_ptr, int32_t shape_length) {
   return xla::cpu::runtime::ReleaseOutfeedBufferAfterPopulationImpl(
       run_options, buffer_length, buffer_ptr, shape_ptr, shape_length);
-}
-
-void __xla_cpu_runtime_AllToAll(const xla::ExecutableRunOptions* run_options,
-                                int32_t channel_id_present, int64_t op_id,
-                                const void* replica_groups_str,
-                                int32_t replica_groups_str_size,
-                                int32_t num_buffers, int64_t buffer_size,
-                                void** source_buffers,
-                                void** destination_buffers) {
-  LOG(FATAL) << "Legacy XLA:CPU runtime does not support collective execution";
-}
-
-void __xla_cpu_runtime_AllGather(const xla::ExecutableRunOptions* run_options,
-                                 int32_t channel_id_present,
-                                 int32_t use_global_device_ids, int64_t op_id,
-                                 const void* replica_groups_str,
-                                 int32_t replica_groups_str_size,
-                                 int64_t buffer_size, void* source_buffer,
-                                 void* destination_buffer) {
-  LOG(FATAL) << "Legacy XLA:CPU runtime does not support collective execution";
-}
-
-void __xla_cpu_runtime_ReduceScatter(
-    const xla::ExecutableRunOptions* run_options,
-    const void* replica_groups_str, int32_t replica_groups_str_size,
-    int32_t channel_id_present, int32_t use_global_device_ids, int64_t op_id,
-    int32_t reduction_kind, int32_t element_type, int64_t chunk_elems,
-    void* input_buffer, void* output_buffer) {
-  LOG(FATAL) << "Legacy XLA:CPU runtime does not support collective execution";
-}
-
-void __xla_cpu_runtime_AllReduce(const xla::ExecutableRunOptions* run_options,
-                                 const void* replica_groups_str,
-                                 int32_t replica_groups_str_size,
-                                 int32_t channel_id_present,
-                                 int32_t use_global_device_ids, int64_t op_id,
-                                 int32_t reduction_kind, const void* shape_ptr,
-                                 int32_t shape_length, int32_t num_buffers,
-                                 void** input_buffers, void** output_buffers) {
-  LOG(FATAL) << "Legacy XLA:CPU runtime does not support collective execution";
-}
-
-void __xla_cpu_runtime_ReplicaId(const xla::ExecutableRunOptions* run_options,
-                                 void* output_buffer) {
-  LOG(FATAL) << "Legacy XLA:CPU runtime does not support collective execution";
-}
-
-void __xla_cpu_runtime_PartitionId(const xla::ExecutableRunOptions* run_options,
-                                   void* output_buffer) {
-  LOG(FATAL) << "Legacy XLA:CPU runtime does not support collective execution";
-}
-
-void __xla_cpu_runtime_CollectivePermute(
-    const xla::ExecutableRunOptions* run_options, int32_t channel_id_present,
-    int64_t op_id, int32_t byte_size, void* input_buffer, void* output_buffer,
-    const void* source_target_pairs, int32_t source_target_pairs_size) {
-  LOG(FATAL) << "Legacy XLA:CPU runtime does not support collective execution";
 }
 
 }  // extern "C"
