@@ -25,10 +25,13 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/dot_lib.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
@@ -259,6 +262,24 @@ bool IsBitcastOpSupportedByXnn(const HloInstruction* hlo) {
   }
   const HloInstruction* input = hlo->operand(0);
   return hlo->shape().element_type() == input->shape().element_type();
+}
+
+bool IsBroadcastOpSupportedByXnn(const HloInstruction* hlo) {
+  CHECK(hlo->opcode() == HloOpcode::kBroadcast);
+  if (!XnnDatatype(hlo->shape().element_type()).ok()) {
+    return false;
+  }
+  const absl::Span<const int64_t> dims =
+      Cast<HloBroadcastInstruction>(hlo)->dimensions();
+  if (dims.empty()) {
+    return true;
+  }
+  if (!std::is_sorted(dims.begin(), dims.end())) {
+    return false;
+  }
+  // TODO(ashaposhnikov): this case works well, but we should investigate the
+  // performance regressions that occur if this condition is removed.
+  return dims.back() + 1 == dims.size();
 }
 
 }  // namespace xla::cpu

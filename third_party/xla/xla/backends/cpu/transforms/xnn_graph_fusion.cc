@@ -37,6 +37,11 @@ FusionDecision XnnGraphFusion::ShouldFuse(HloInstruction* consumer,
     return FusionDecision::Forbid("Unsupported consumer");
   }
 
+  if (consumer->opcode() == HloOpcode::kBroadcast) {
+    return FusionDecision::Forbid(
+        "Do not start growing fusions from broadcasts");
+  }
+
   HloInstruction* producer = consumer->mutable_operand(operand_index);
   if (!(producer->opcode() == HloOpcode::kParameter ||
         IsOpSupported(producer))) {
@@ -81,6 +86,16 @@ bool XnnGraphFusion::IsOpSupported(const HloInstruction* instr) const {
   switch (instr->opcode()) {
     case HloOpcode::kBitcast:
       return IsBitcastOpSupportedByXnn(instr);
+    case HloOpcode::kBroadcast: {
+      if (instr->GetModule()
+              ->config()
+              .debug_options()
+              .xla_cpu_experimental_xnn_graph_fusion_mode() !=
+          DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY) {
+        return false;
+      }
+      return IsBroadcastOpSupportedByXnn(instr);
+    }
     default:
       return false;
   }

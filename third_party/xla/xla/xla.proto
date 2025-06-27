@@ -148,6 +148,7 @@ message DebugOptions {
   enum XnnGraphFusionMode {
     XNN_GRAPH_FUSION_MODE_DISABLED = 0;
     XNN_GRAPH_FUSION_MODE_GREEDY = 1;
+    XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY = 2;
   }
 
   // Use region analysis in copy insertion pass.

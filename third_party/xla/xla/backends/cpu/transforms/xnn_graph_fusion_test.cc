@@ -104,5 +104,83 @@ ENTRY entry {
   ASSERT_FALSE(changed);
 }
 
+static void SetFusionMode(HloModule* module,
+                          DebugOptions::XnnGraphFusionMode mode) {
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_experimental_xnn_graph_fusion_mode(mode);
+}
+
+TEST_F(XnnGraphFusionTest, BasicBroadcast) {
+  std::string hlo_string = R"(
+HloModule BroadcastFusion
+
+ENTRY entry {
+  %param.0 = f32[] parameter(0)
+  %broadcast.0 = f32[2,2] broadcast(f32[] %param.0), dimensions={}
+  ROOT result = f32[2,2] add(f32[2,2] %broadcast.0, f32[2,2] %broadcast.0)
+}
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  SetFusionMode(module.get(),
+                DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_TRUE(changed);
+  EXPECT_THAT(module.get()->entry_computation()->root_instruction(),
+              op::Fusion());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kFusion);
+  HloFusionInstruction* fusion = Cast<HloFusionInstruction>(root);
+  TF_ASSERT_OK_AND_ASSIGN(auto backend_config,
+                          fusion->backend_config<BackendConfig>());
+  ASSERT_TRUE(backend_config.has_fusion_config());
+  EXPECT_EQ(backend_config.fusion_config().kind(), kXnnFusionKind);
+}
+
+TEST_F(XnnGraphFusionTest, SkipRootBroadcast) {
+  std::string hlo_string = R"(
+HloModule SkipRootBroadcast
+
+ENTRY entry {
+  %param.0 = f32[] parameter(0)
+  %add.0 = f32[] add(f32[] %param.0, f32[] %param.0)
+  ROOT result = f32[2,2] broadcast(f32[] %param.0), dimensions={}
+}
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  SetFusionMode(module.get(),
+                DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_FALSE(changed);
+}
+
+TEST_F(XnnGraphFusionTest, SkipUnsupportedBroadcast) {
+  // Broadcast changes the relative order of dimensions.
+  std::string hlo_string = R"(
+HloModule SkipUnsupportedBroadcast
+
+ENTRY entry {
+  %param.0 = f32[2,3] parameter(0)
+  %broadcast.0 = f32[4,3,2] broadcast(f32[2,3] %param.0), dimensions={2,1}
+  ROOT result = f32[4,3,2] add(f32[4,3,2] %broadcast.0, f32[4,3,2] %broadcast.0)
+}
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  SetFusionMode(module.get(),
+                DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla::cpu
