@@ -1061,11 +1061,18 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
       -> absl::StatusOr<std::unique_ptr<Executable>> {
     tsl::profiler::TraceMe traceme("Compile");
     if (std::holds_alternative<TritonGemmConfig>(config)) {
-      return compile_util.Compile([&](const DebugOptions& opts) {
+      auto executable_or = compile_util.Compile([&](const DebugOptions& opts) {
         return TritonGemmAutotuneExtractor(
             std::get<TritonGemmConfig>(config), config_.GetDeviceDescription(),
             fusion, opts, allow_filtering_kernels_spilling_registers);
       });
+      if (!executable_or.ok()) {
+        LOG(WARNING) << "Compilation of TritonGemmAutotuneExtractor result "
+                        "failed and config will be ignored: "
+                     << executable_or.status();
+        return nullptr;
+      }
+      return executable_or;
     }
 
     if (std::holds_alternative<CuDnnConfig>(config)) {

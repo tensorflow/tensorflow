@@ -1199,13 +1199,16 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
       computation->root_instruction()->shape().dimensions().size();
   VLOG(3) << "FindOutputTileSizesForEpilogue: computation root shape: "
           << computation->root_instruction()->shape().ToString();
-  auto output_tile_sizes = get_tile_sizes(out_rank);
+  llvm::SmallVector<int64_t> output_tile_sizes = get_tile_sizes(out_rank);
+
   std::sort(output_tile_sizes.begin(), output_tile_sizes.end());
 
   const TilingSpecification& tiling_specification =
       analysis.GetTilingSpecification();
 
   do {
+    VLOG(4) << "trying output_tile_sizes = ("
+            << absl::StrJoin(output_tile_sizes, ",") << ")";
     Tiling::TileMapping tile_mapping;
     tile_mapping[dot] = {config.block_k};
     // If the `dot` is a root, we need to assign both the hidden parameter and
@@ -1223,11 +1226,12 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
     TF_ASSIGN_OR_RETURN(bool parameters_satisfy_constraints,
                         analysis.ParametersSatisfyConstraints(tiling));
     if (!parameters_satisfy_constraints) {
+      VLOG(4) << "Parameters don't satisfy constraints";
       continue;
     }
     TF_ASSIGN_OR_RETURN(FlatTiling flat_tiling_parameters,
                         tiling.Flatten(tiling_specification));
-    auto mapped_dot_tile_sizes =
+    llvm::SmallVector<int64_t> mapped_dot_tile_sizes =
         EvaluateTileSizes(tiled_dot.symbolic_tile(), flat_tiling_parameters);
     if (mapped_dot_tile_sizes == expected_dot_tile_sizes) {
       BlockLevelParameters params;
@@ -1238,6 +1242,9 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
       params.num_stages = config.num_stages;
       return params;
     }
+    VLOG(4) << "mapped_dot_tile_sizes: "
+            << absl::StrJoin(mapped_dot_tile_sizes, ",")
+            << " != " << absl::StrJoin(expected_dot_tile_sizes, ",");
   } while (std::next_permutation(output_tile_sizes.begin(),
                                  output_tile_sizes.end()));
 
