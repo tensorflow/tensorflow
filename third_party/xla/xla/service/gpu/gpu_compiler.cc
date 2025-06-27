@@ -401,7 +401,7 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
     return std::move(module_);
   }
 
-  absl::StatusOr<std::unique_ptr<BufferAssignment>> buffer_assignment()
+  absl::StatusOr<const BufferAssignmentProto*> buffer_assignment_proto()
       const override;
 
  private:
@@ -418,17 +418,9 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
 
 }  // end anonymous namespace
 
-absl::StatusOr<std::unique_ptr<BufferAssignment>>
-GpuThunkAotCompilationResult::buffer_assignment() const {
-  auto buffer_size_bytes_function =
-      [pointer_size = pointer_size_](const BufferValue& buffer) {
-        return gpu::ShapeSizeBytesFunction(pointer_size)(buffer.shape());
-      };
-
-  // Recreate BufferAssignment from proto.
-  return BufferAssignment::FromProto(proto_.buffer_assignment(), module_.get(),
-                                     buffer_size_bytes_function,
-                                     /*can_share_buffer=*/nullptr);
+absl::StatusOr<const BufferAssignmentProto*>
+GpuThunkAotCompilationResult::buffer_assignment_proto() const {
+  return &proto_.buffer_assignment();
 }
 
 absl::StatusOr<std::unique_ptr<Executable>>
