@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
+#include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -156,6 +157,9 @@ class IrEmitterUnnested : public IrEmitter {
 
   absl::Status EmitCollectiveAsyncDone(Thunk::Kind kind,
                                        const HloInstruction* instr);
+
+  absl::Status EmitNvshmemAsyncDone(Thunk::Kind kind,
+                                    const HloInstruction* instr);
 
   template <typename ThunkType>
   absl::Status EmitReplicaOrPartitionId(const HloInstruction* instr);
@@ -332,6 +336,9 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Container for async copy-start/copy-done events.
   std::shared_ptr<CopyThunk::AsyncEvents> copy_events_;
+
+  // Shared buffer addresses registry for NVSHMEM put/get operations.
+  std::shared_ptr<NvshmemBufferAddresses> nvshmem_buffer_addresses_;
 
   // Cache to store the call_graph.
   std::unique_ptr<CallGraph> call_graph_;
