@@ -130,11 +130,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "thunk",
-    hdrs = ["thunk.h"],
-)
-
-cc_library(
     name = "work_cluster",
     hdrs = ["work_cluster.h"],
     deps = [
