@@ -113,7 +113,7 @@ class AsNumpyIteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.eager_only_combinations())
   def testNoneElement(self):
     ds = dataset_ops.Dataset.from_tensors((2, None))
-    self.assertDatasetProduces(ds, [(2, None)])
+    self.assertAllEqual(list(ds.as_numpy_iterator()), [(2, None)])
 
   @combinations.generate(combinations.times(
       test_base.eager_only_combinations(),
