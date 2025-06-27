@@ -6126,7 +6126,8 @@ LogicalResult ConvertToHloModule::LowerRegionAsComputation(
 }
 
 // Runs the PrepareForExport pass on the ModuleOp.
-absl::Status PrepareForExport(mlir::ModuleOp module) {
+absl::Status PrepareForExport(mlir::ModuleOp module,
+                              bool legalize_chlo = false) {
   bool hasShapeOps = false;
   module.walk([&](Operation* op) {
     hasShapeOps |= isa<shape::ShapeDialect>(op->getDialect());
@@ -6141,6 +6142,12 @@ absl::Status PrepareForExport(mlir::ModuleOp module) {
 #endif
   pm.enableVerifier(enableVerifier);
 
+  if (legalize_chlo) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::mhlo::createChloLegalizeToHighLevelMhloPass());
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::stablehlo::createChloLegalizeToStablehloPass());
+  }
   pm.addNestedPass<mlir::func::FuncOp>(mhlo::createPrepareForExportPass());
   if (hasShapeOps) {
     // Experimental support for exporting dynamic MHLO programs to HLO.
@@ -6308,7 +6315,7 @@ absl::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
                                  std::vector<xla::XlaOp>& returns,
                                  MlirToHloConversionOptions options) {
   auto module = block.getParentOp()->getParentOfType<mlir::ModuleOp>();
-  TF_RETURN_IF_ERROR(PrepareForExport(module));
+  TF_RETURN_IF_ERROR(PrepareForExport(module, /*legalize_chlo=*/true));
   // No tuple support in Builder converter API.
   options.return_tuple = false;
   options.use_tuple_args = false;
