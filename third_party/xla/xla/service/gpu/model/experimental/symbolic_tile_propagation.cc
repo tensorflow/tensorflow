@@ -46,7 +46,7 @@ TiledOperands PropagateTileToInputForCwiseOp(
                        ConstraintExpression::GetAlwaysSatisfied()};
 }
 
-std::optional<TiledOperands> PropagateTileToInputForBroadcastOp(
+TiledOperands PropagateTileToInputForBroadcastOp(
     const HloBroadcastInstruction& broadcast,
     const ExperimentalSymbolicTile& result_tile) {
   MLIRContext* ctx = result_tile.mlir_context();
@@ -121,7 +121,7 @@ std::optional<TiledOperands> PropagateTileToInputForPadOp(
                        ConstraintExpression::GetAlwaysSatisfied()};
 }
 
-std::optional<TiledOperands> PropagateTileToInputForTransposeOp(
+TiledOperands PropagateTileToInputForTransposeOp(
     const HloInstruction& transpose,
     const ExperimentalSymbolicTile& result_tile) {
   MLIRContext* ctx = result_tile.mlir_context();
@@ -151,7 +151,7 @@ std::optional<TiledOperands> PropagateTileToInputForTransposeOp(
                        ConstraintExpression::GetAlwaysSatisfied()};
 }
 
-std::optional<TiledOperands> PropagateTileToInputForSliceOp(
+TiledOperands PropagateTileToInputForSliceOp(
     const HloInstruction& slice, const ExperimentalSymbolicTile& result_tile) {
   MLIRContext* ctx = result_tile.mlir_context();
   int64_t num_result_dims = result_tile.num_result_dims();
