@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -149,14 +150,8 @@ class HeapSimulator {
   // assuming no fragmentation.
   static absl::StatusOr<int64_t> MinimumMemoryForComputation(
       const HloComputation& computation, const HloInstructionSequence& sequence,
-      const HloAliasAnalysis& alias_analysis,
+      const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
       const LogicalBuffer::SizeFunction& size_function);
-
-  static absl::StatusOr<int64_t> MinimumMemoryForComputation(
-      const HloComputation& computation, const HloInstructionSequence& sequence,
-      const HloAliasAnalysis& alias_analysis,
-      const LogicalBuffer::SizeFunction& size_function,
-      const HloSchedule* schedule);
 
   // Run the heap simulation with the given algorithm, assuming the given
   // schedule, which must contain a topologically-consistent total
@@ -170,7 +165,7 @@ class HeapSimulator {
   static absl::StatusOr<Result<HloValue>> Run(
       std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
       const HloModule& module, const HloSchedule& schedule,
-      const HloAliasAnalysis& alias_analysis,
+      const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
       const BufferValue::SizeFunction& size_fn,
       const Options& options = Options());
 
@@ -182,7 +177,7 @@ class HeapSimulator {
       std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
       const HloComputation& computation,
       const HloInstructionSequence& instruction_sequence,
-      const HloAliasAnalysis& alias_analysis,
+      const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
       const BufferValue::SizeFunction& size_fn,
       const Options& options = Options());
 
@@ -192,7 +187,7 @@ class HeapSimulator {
       std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
       const HloComputation& computation,
       const HloInstructionSequence& instruction_sequence,
-      const HloAliasAnalysis& alias_analysis,
+      const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
       const BufferValue::SizeFunction& size_fn, const HloSchedule* schedule,
       const Options& options = Options());
 
@@ -208,7 +203,8 @@ class HeapSimulator {
   absl::Status RunComputation(
       const HloComputation& computation,
       const HloInstructionSequence& instruction_sequence,
-      const HloAliasAnalysis& alias_analysis, HloLiveRange* live_range);
+      const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
+      HloLiveRange* live_range);
 
   bool IgnoreBuffer(const HloValue* buffer) const;
   void Alloc(const HloValue* buffer, const HloInstruction* instruction);

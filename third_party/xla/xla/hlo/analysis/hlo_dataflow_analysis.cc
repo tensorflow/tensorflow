@@ -114,17 +114,6 @@ HloDataflowAnalysis::HloDataflowAnalysis(
       call_graph_(CallGraph::Build(&module)),
       can_share_buffer_(can_share_buffer) {}
 
-HloDataflowAnalysis::HloDataflowAnalysis(
-    const HloModule& module, const AliasInfo* alias_info, bool ssa_form,
-    bool bitcast_defines_value,
-    absl::flat_hash_set<absl::string_view> execution_threads)
-    : module_(module),
-      execution_threads_(std::move(execution_threads)),
-      ssa_form_(ssa_form),
-      bitcast_defines_value_(bitcast_defines_value),
-      call_graph_(CallGraph::Build(&module)),
-      alias_info_(alias_info) {}
-
 bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
     const HloInstruction* inst) {
   absl::flat_hash_set<const HloInstruction*> visited;
@@ -1659,20 +1648,6 @@ absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
   return dataflow_analysis;
 }
 
-/* static */
-absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
-    const HloModule& module, const AliasInfo* alias_info, bool ssa_form,
-    bool bitcast_defines_value,
-    absl::flat_hash_set<absl::string_view> execution_threads) {
-  VLOG(1) << "HloDataflowAnalysis::Run on module " << module.name();
-  XLA_VLOG_LINES(2, module.ToString());
-
-  auto dataflow_analysis = absl::WrapUnique(new HloDataflowAnalysis(
-      module, alias_info, ssa_form, bitcast_defines_value, execution_threads));
-  TF_RETURN_IF_ERROR(dataflow_analysis->RunImpl());
-  return dataflow_analysis;
-}
-
 absl::Status HloDataflowAnalysis::RunImpl() {
   TF_RETURN_IF_ERROR(InitializeInstructionValueSets());
   Propagate();
@@ -2015,7 +1990,8 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(
 
 bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     HloInstruction* operand, const ShapeIndex& operand_index,
-    HloInstruction* user, const ShapeIndex& user_index) const {
+    HloInstruction* user, const ShapeIndex& user_index,
+    const AliasInfo* alias_info) const {
   CHECK(user->IsUserOf(operand))
       << "user: " << user->ToString() << " operand: " << operand->ToString();
   if (operand->opcode() == HloOpcode::kConstant) {
@@ -2066,11 +2042,9 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
       return *hint;
     }
   }
-  if (alias_info_ != nullptr) {
-    if (std::optional<bool> hint =
-            alias_info_->MayAlias(operand, operand_index, user, user_index)) {
-      return *hint;
-    }
+  if (std::optional<bool> hint =
+          alias_info->MayAlias(operand, operand_index, user, user_index)) {
+    return *hint;
   }
 
   if (!shapes_equal) {
