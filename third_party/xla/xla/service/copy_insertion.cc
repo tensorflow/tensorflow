@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
@@ -847,8 +848,17 @@ std::optional<RotatedChainInfo> FindRotatedChainInfo(
     return std::nullopt;
   }
 
-  HloInstruction* first_part_start =
-      while_body->parameter_instruction(second_part_end_output_index);
+  HloInstruction* first_part_start = nullptr;
+  for (HloInstruction* user : while_body->parameter_instruction(0)->users()) {
+    if (Match(user, match::GetTupleElement(match::Parameter(0),
+                                           second_part_end_output_index))) {
+      first_part_start = user;
+      break;
+    }
+  }
+  if (first_part_start == nullptr) {
+    return std::nullopt;
+  }
   VLOG(2) << "FindRotatedChainInfo first_part_start: "
           << first_part_start->ToString();
 
