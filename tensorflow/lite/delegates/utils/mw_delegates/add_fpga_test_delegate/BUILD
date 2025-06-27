@@ -13,10 +13,10 @@ package(
 cc_library(
     name = "fpga_ip_driver",
     srcs = [
-        "add_fpga_test_delegate/fpga_ip_driver.cc",
+        "fpga_ip_driver.cc",
     ],
     hdrs = [
-        "add_fpga_test_delegate/fpga_ip_driver.h",
+        "fpga_ip_driver.h",
     ],
     visibility = ["//visibility:public"],
 )
