@@ -1,4 +1,5 @@
 load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -16,7 +17,10 @@ cc_library(
     hdrs = ["xla_tpu_pjrt_client.h"],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
-        ":tpu_static_registration",
+        if_google(
+            ":tpu_static_registration",
+            ":tpu_dynamic_registration",
+        ),
         "//xla/pjrt:pjrt_api",
         "//xla/pjrt:pjrt_c_api_client",
         "//xla/pjrt:pjrt_client",
@@ -37,6 +41,17 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_tpu_internal",
         "//xla/pjrt/plugin:plugin_names",
         "//xla/pjrt/plugin:static_registration",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "tpu_dynamic_registration",
+    srcs = ["tpu_dynamic_registration.cc"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    deps = [
+        "//xla/pjrt/plugin:dynamic_registration",
+        "//xla/pjrt/plugin:plugin_names",
     ],
     alwayslink = True,
 )
