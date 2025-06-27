@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/dump.h"
@@ -86,7 +85,6 @@ limitations under the License.
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shaped_buffer.h"
-#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
@@ -98,7 +96,6 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tools/hlo_decomposer.h"
-#include "xla/tsl/lib/core/bits.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
@@ -129,19 +126,6 @@ using BackendConfigs = GemmFusionAutotunerImpl::BackendConfigs;
 using ProfilingOutput = AutotunerCompileUtil::ProfilingOutput;
 
 namespace {
-
-// Minimum tile size.
-constexpr int kMinTileSize = 16;
-
-// Split-K is enabled when the estimate number of waves is lower than the limit.
-constexpr int kMaxWavesForSplitK = 5;
-
-// Search space for exhaustive matmul autotuning.
-constexpr std::array<int, 6> kBlockSizes = {16, 32, 64, 128, 256, 512};
-constexpr std::array<int, 4> kNumStages = {1, 2, 3, 4};
-constexpr std::array<int, 4> kNumWarps = {2, 4, 8, 16};
-constexpr std::array<int, 5> kSplitK = {1, 2, 4, 8, 16};
-constexpr std::array<int, 5> kNumCtas = {1, 2, 4, 8, 16};
 
 using AutoTuneCacheKeyCount = absl::flat_hash_map<AutotuneCacheKey, uint64_t>;
 
@@ -269,38 +253,6 @@ class GemmFusionCollector : public ConstDfsHloVisitorWithDefault {
   GemmFusionCollectorResult result_;
   AutotuneCacheKeySet handled_fusions_;
 };
-
-struct TileSizeLimit {
-  int block_m = 0;
-  int block_n = 0;
-  int block_k = 0;
-};
-
-absl::StatusOr<TileSizeLimit> GetLimits(const HloDotInstruction& dot) {
-  TF_ASSIGN_OR_RETURN(int64_t non_contracting_index_lhs,
-                      NonContractingDimensionIndex(dot, /*operand_number=*/0));
-  TF_ASSIGN_OR_RETURN(int64_t non_contracting_index_rhs,
-                      NonContractingDimensionIndex(dot, /*operand_number=*/1));
-  TF_ASSIGN_OR_RETURN(int64_t contracting_index,
-                      ContractingDimensionIndex(dot, /*operand_number=*/1));
-  // This is not a sharp upper limit, the actual m value can be much smaller
-  // based on how much of the m dimension is physically contiguous.
-  const int max_m = tsl::NextPowerOfTwoS64(
-      dot.operand(0)->shape().dimensions(non_contracting_index_lhs));
-  // Theoretically the same is true as for m, but that is not possible in
-  // practice with the current implementation.
-  const int max_n = tsl::NextPowerOfTwoS64(
-      dot.operand(1)->shape().dimensions(non_contracting_index_rhs));
-  // This is before doing the split-k transform.
-  const int max_k = tsl::NextPowerOfTwoS64(
-      dot.operand(1)->shape().dimensions(contracting_index));
-
-  return TileSizeLimit{
-      /*block_m=*/std::max(max_m, kMinTileSize),
-      /*block_n=*/std::max(max_n, kMinTileSize),
-      /*block_k=*/std::max(max_k, kMinTileSize),
-  };
-}
 
 int GetLogEveryN() { return VLOG_IS_ON(3) ? 100 : 1000; }
 
@@ -867,43 +819,9 @@ GemmFusionAutotunerImpl::GenerateConfigs(const HloFusionInstruction& fusion) {
   return configs;
 }
 
-void ModifyPotentiallyFailingConfig(TritonGemmConfig& config, int minBitWidth,
-                                    int kLdmatrixGranularity) {
-  // TODO(b/337839570): Triton currently has a limitation where it crashes
-  // on small block_k values depending on the bit-width of the inputs to the
-  // dot. The logic below accounts for this limitation.
-  // We don't do this for predicates now because as of
-  // https://github.com/triton-lang/triton/commit/d9facf3a6edbc819c80d58b87e689bc0c2632756,
-  // this leads to registers spilling (see b/388714585). Bug filed upstream:
-  // https://github.com/triton-lang/triton/issues/5572. While it used to work
-  // previously, it is quite limiting for predicates as the smallest acceptable
-  // block_k value would be 256.
-  if (minBitWidth > 1) {
-    config.block_k =
-        std::max(config.block_k, kLdmatrixGranularity / minBitWidth);
-  }
-
-  // Additionally, there are further issues happening on 8 bit types and
-  // predicates that require additional restriction on block_m when num_warps
-  // > 8 (see b/378660935). It's unclear if the issue extends beyond these
-  // cases, so restrictions here are conservative to these.
-  if (minBitWidth <= 8 && config.num_warps > 8) {
-    config.block_m = std::max(config.block_m, 32);
-  }
-}
-
 absl::StatusOr<std::vector<TritonGemmConfig>>
 GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
   tsl::profiler::TraceMe traceme("GenerateTritonConfigs");
-  // Default tiling when autotuning is disabled.
-  constexpr TritonGemmConfig kDefaultConfig = {
-      /*block_m=*/32, /*block_n=*/32,   /*block_k=*/32,
-      /*split_k=*/1,  /*num_stages=*/1, /*num_warps=*/4,
-      /*num_ctas=*/1};
-  constexpr int kMinGemmElements = 2 * 32 * 32;
-  bool small_dot = ShapeUtil::ElementsIn(dot.operand(0)->shape()) +
-                       ShapeUtil::ElementsIn(dot.operand(1)->shape()) <=
-                   kMinGemmElements;
   // TODO: b/393299275 - Remove this once the new emitter lands and we can
   // support slices in contracting dimension with splits.
   bool supports_contracting_split =
@@ -914,112 +832,25 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
       supports_contracting_split &&
       debug_options_.xla_gpu_enable_split_k_autotuning();
 
-  if (debug_options_.xla_gpu_experimental_enable_dynamic_dot_search_space()) {
-    TritonDotFusionSearchSpace search_space(config_.GetDeviceDescription(),
-                                            &dot);
-    VLOG(1) << "Generating configs from search space: "
-            << search_space.ToString();
-    // We don't need to consider small_dot here. The new search space will
-    // already generate a unique config for small problems.
-    std::vector<TritonGemmConfig> configs = search_space.GenerateConfigs(
-        /*force_contracting_split=*/autotune_contracting_split
-            ? std::nullopt
-            : std::make_optional(1));
-    if (!debug_options_.xla_gpu_exhaustive_tiling_search()) {
-      VLOG(1) << "Restricting configs to the default set.";
-      configs = search_space.OptimizeConfigSet(
-          configs, /*hints=*/GetDefaultTritonConfigs());
-    }
-    if (!IsAutotuningEnabled()) {
-      // Keep the first config, which likely does not spill registers.
-      configs.resize(1);
-    }
-    return configs;
+  TritonDotFusionSearchSpace search_space(config_.GetDeviceDescription(), &dot);
+  VLOG(1) << "Generating configs from search space: "
+          << search_space.ToString();
+  // We don't need to consider small_dot here. The new search space will
+  // already generate a unique config for small problems.
+  std::vector<TritonGemmConfig> configs = search_space.GenerateConfigs(
+      /*force_contracting_split=*/autotune_contracting_split
+          ? std::nullopt
+          : std::make_optional(1));
+  if (!debug_options_.xla_gpu_exhaustive_tiling_search()) {
+    VLOG(1) << "Restricting configs to the default set.";
+    configs = search_space.OptimizeConfigSet(
+        configs, /*hints=*/GetDefaultTritonConfigs());
   }
-
-  // Retrieve the minimum bit-width participating in the dot. This is needed
-  // to avoid autotuning configurations that are not supported by Triton. This
-  // is used to restrict the values for tile_k.
-  std::vector<const HloInstruction*> converts =
-      HloBfsFindAll({&dot}, [&](const HloInstruction* node) {
-        return node->opcode() == HloOpcode::kConvert;
-      });
-  PrimitiveType out = dot.shape().element_type();
-  PrimitiveType in0 = dot.operand(0)->shape().element_type();
-  PrimitiveType in1 = dot.operand(1)->shape().element_type();
-  int minBitWidth =
-      std::min({primitive_util::BitWidth(out), primitive_util::BitWidth(in0),
-                primitive_util::BitWidth(in1)});
-  for (auto convert : converts) {
-    auto in_type = convert->operand(0)->shape().element_type();
-    auto out_type = convert->shape().element_type();
-    minBitWidth = std::min({minBitWidth, primitive_util::BitWidth(in_type),
-                            primitive_util::BitWidth(out_type)});
+  if (!IsAutotuningEnabled()) {
+    // Keep the first config, which likely does not spill registers.
+    configs.resize(1);
   }
-
-  std::vector<TritonGemmConfig> result_configs;
-  TF_ASSIGN_OR_RETURN(TileSizeLimit limits, GetLimits(dot));
-
-  // Generate the list of configurations (once).
-  if (triton_configs_.empty()) {
-    triton_configs_ = !IsAutotuningEnabled() ? std::vector(1, kDefaultConfig)
-                      : debug_options_.xla_gpu_exhaustive_tiling_search()
-                          ? GetExhaustiveTritonConfigs()
-                          : GetDefaultTritonConfigs();
-  }
-
-  std::vector<TritonGemmConfig> triton_configs =
-      small_dot ? std::vector(1, kDefaultConfig) : triton_configs_;
-
-  // Split-K optimization enables more even utilization of a GPU in cases
-  // where tiling just the non-contracting dimensions of a GEMM does not create
-  // a sufficient number of thread block programs to occupy all available cores.
-  // Around 5 full waves completely avoid the need for split-K.
-  // n_tiles = split_k * (M * N) / (block_m * block_n)
-  const int kCoreCount = config_.GetDeviceDescription().core_count();
-  CHECK_GE(kCoreCount, 1);
-  const int64_t kSufficientNumberOfTiles = kMaxWavesForSplitK * kCoreCount;
-  const int64_t result_size = ShapeUtil::ElementsIn(dot.shape());
-  const int64_t threads_per_warp =
-      config_.GetDeviceDescription().threads_per_warp();
-
-  // Triton configurations are adjusted and deduplicated.
-  absl::flat_hash_set<TritonGemmConfig> added;
-  for (TritonGemmConfig& config : triton_configs) {
-    config.block_m = std::min(config.block_m, limits.block_m);
-    config.block_n = std::min(config.block_n, limits.block_n);
-    config.block_k = std::min(config.block_k, limits.block_k);
-    int max_split_k = 1;
-    if (autotune_contracting_split) {
-      int64_t ratio = kSufficientNumberOfTiles * config.block_m *
-                      config.block_n / result_size;
-      max_split_k = 1 << std::max<int>(tsl::Log2Floor64(ratio), 0);
-    }
-    config.split_k = std::min(config.split_k, max_split_k);
-
-    constexpr int kLdmatrixGranularity = 256;
-    // Unfortunately, we need to apply corrections to configurations that are
-    // potentially failing due to Triton limitations/bugs.
-    ModifyPotentiallyFailingConfig(config, minBitWidth, kLdmatrixGranularity);
-
-    // Sparse meta should have at least one element per thread.
-    // Note: only 2:4 structured sparsity is currently supported.
-    if (dot.sparse_operands()) {
-      config.block_m = std::max(config.block_m, 64);
-      config.num_warps = std::max(config.num_warps, 4);
-      config.block_k = std::max(
-          config.block_k,
-          2 * std::max(kMinTileSize, kLdmatrixGranularity / minBitWidth));
-      int meta_elements = config.block_m * config.block_k / 16;
-      config.num_warps =
-          std::min<int>(config.num_warps, meta_elements / threads_per_warp);
-    }
-
-    if (added.insert(config).second) {
-      result_configs.push_back(config);
-    }
-  }
-  return result_configs;
+  return configs;
 }
 
 absl::StatusOr<absl::flat_hash_map<
@@ -1333,57 +1164,6 @@ absl::StatusOr<std::vector<AutotuneResult>> GemmFusionAutotunerImpl::Profile(
   }
   VLOG(2) << "Done profiling " << fusion.name() << ".";
   return results;
-}
-
-std::vector<TritonGemmConfig>
-GemmFusionAutotunerImpl::GetExhaustiveTritonConfigs() const {
-  tsl::profiler::TraceMe traceme("GetExhaustiveTritonConfigs");
-  std::vector<TritonGemmConfig> configs;
-  se::GpuComputeCapability gcc = GetComputeCapability();
-
-  bool tune_ctas = !isRocm() && debug_options_.xla_gpu_enable_triton_hopper() &&
-                   std::get<se::CudaComputeCapability>(gcc).IsAtLeastHopper();
-
-  const int64_t threads_per_warp =
-      config_.GetDeviceDescription().threads_per_warp();
-
-  for (int num_stages : kNumStages) {
-    for (int tile_m : kBlockSizes) {
-      for (int tile_n : kBlockSizes) {
-        for (int tile_k : kBlockSizes) {
-          const int tile_lhs = tile_m * tile_k;
-          const int tile_rhs = tile_k * tile_n;
-          for (int num_warps : kNumWarps) {
-            // Each thread should read at least one input element.
-            if (num_warps * threads_per_warp > std::min(tile_lhs, tile_rhs)) {
-              break;
-            }
-            for (int split_k : kSplitK) {
-              // Split-K autotuning may be disabled by a flag.
-              if (!debug_options_.xla_gpu_enable_split_k_autotuning() &&
-                  split_k > 1) {
-                break;
-              }
-              for (int num_ctas : kNumCtas) {
-                // Clusters are only supported on Hopper.
-                // Autotuning this parameter is enabled by a flag.
-                if (!tune_ctas && num_ctas > 1) {
-                  break;
-                }
-                if (num_ctas > num_warps) {
-                  break;
-                }
-                configs.push_back(TritonGemmConfig(tile_m, tile_n, tile_k,
-                                                   split_k, num_stages,
-                                                   num_warps, num_ctas));
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  return configs;
 }
 
 static absl::Status DumpAutotuningLogs(const DebugOptions& debug_opts,

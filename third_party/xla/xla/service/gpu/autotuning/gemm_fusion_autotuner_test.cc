@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <variant>
@@ -24,15 +23,11 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "absl/time/time.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
@@ -50,10 +45,8 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/transforms/gemm_fusion.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
@@ -394,31 +387,6 @@ class GemmFusionAutotunerTest : public StatelessAutotunerTest {
                      0);
           }
         });
-  }
-};
-
-// TODO: b/404470821 - Remove once this is enabled by default.
-class DynamicSearchSpaceAutotunerTest : public GemmFusionAutotunerTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        GemmFusionAutotunerTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_experimental_enable_dynamic_dot_search_space(
-        true);
-    return debug_options;
-  }
-};
-
-// TODO: b/404470821 - Merge this with the autotuning levels test once dynamic
-// search space is enabled by default.
-class DynamicSearchSpaceAutotunerDisabledTest
-    : public DynamicSearchSpaceAutotunerTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        GemmFusionAutotunerTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_autotune_level(0);
-    return debug_options;
   }
 };
 
@@ -996,6 +964,30 @@ ENTRY e {
                     tsl::error::INTERNAL,
                     ::testing::HasSubstr(
                         "Expect autotune result cache hit for deviceless")));
+  }
+}
+
+TEST_P(GemmFusionAutotunerLevelTest,
+       ReturnsSingleConfigWhenAutotuningIsDisabled) {
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[1024,1024] parameter(0)
+  p1 = f32[1024,1024] parameter(1)
+  ROOT r = f32[1024,1024] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})")
+                                                  .value();
+  const se::CudaComputeCapability compute_capability{
+      se::CudaComputeCapability::kAmpere, /*minor=*/0};
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<TritonGemmConfig> configs,
+      GetPossibleMatmulAutotuneTritonConfigs(
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
+          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
+
+  if (GetDebugOptionsForTest().xla_gpu_autotune_level() == 0) {
+    EXPECT_EQ(configs.size(), 1);
   }
 }
 
@@ -1589,27 +1581,7 @@ TEST_F(GemmFusionAutotunerTest, RewritesGemmFusionToCustomKernelFusion) {
   EXPECT_TRUE(file_check_matches);
 }
 
-TEST_F(DynamicSearchSpaceAutotunerTest, AutotunesSimpleDotFusion) {
-  const std::string hlo = R"(
-HloModule module
-ENTRY e {
-  x = s8[128,64] parameter(0)
-  c = f16[128,64] convert(x)
-  y = f16[64,6144] parameter(1)
-  ROOT out = f16[128,6144] dot(c, y),
-                lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-
-  CheckTritonAutotuning(hlo, R"(
-// CHECK: ENTRY
-// CHECK: ROOT
-// CHECK-SAME: kCustom
-// CHECK-SAME: block_m
-)");
-  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
-}
-
-TEST_F(DynamicSearchSpaceAutotunerTest, UsesSplitKForSmallOuterDimensions) {
+TEST_F(GemmFusionAutotunerTest, UsesSplitKForSmallOuterDimensions) {
   const std::string hlo = R"(
 HloModule module
 ENTRY e {
@@ -1628,8 +1600,7 @@ ENTRY e {
 )");
 }
 
-TEST_F(DynamicSearchSpaceAutotunerTest,
-       FindsValidConfigForSlicedContractingDimension) {
+TEST_F(GemmFusionAutotunerTest, FindsValidConfigForSlicedContractingDimension) {
   const std::string hlo = R"(
 ENTRY e {
   p0 = f16[32,16400] parameter(0)
@@ -1643,28 +1614,6 @@ ENTRY e {
 // CHECK: ENTRY
 // CHECK: __triton_gemm
 )");
-}
-
-TEST_F(DynamicSearchSpaceAutotunerDisabledTest,
-       ReturnsSingleConfigWhenAutotuningIsDisabled) {
-  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
-ENTRY e {
-  p0 = f32[1024,1024] parameter(0)
-  p1 = f32[1024,1024] parameter(1)
-  ROOT r = f32[1024,1024] dot(p0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})")
-                                                  .value();
-  const se::CudaComputeCapability compute_capability{
-      se::CudaComputeCapability::kAmpere, /*minor=*/0};
-  TF_ASSERT_OK_AND_ASSIGN(
-      const std::vector<TritonGemmConfig> configs,
-      GetPossibleMatmulAutotuneTritonConfigs(
-          *Cast<HloDotInstruction>(
-              module->entry_computation()->root_instruction()),
-          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
-
-  EXPECT_EQ(configs.size(), 1);
 }
 
 TEST_F(GemmFusionAutotunerTest, VerifyHopperConfigsAreDifferentFromBlackwell) {

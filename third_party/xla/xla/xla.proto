@@ -534,11 +534,6 @@ message DebugOptions {
   // xla_gpu_multi_streamed_windowed_einsum is set to true.
   optional bool xla_gpu_experimental_enable_alltoall_windowed_einsum = 360;
 
-  // Enable dynamically generating and pruning the autotuning search space for
-  // Triton dot fusions, based on the properties of the problem and hardware
-  // (shapes, instructions, GPU limits, etc.).
-  optional bool xla_gpu_experimental_enable_dynamic_dot_search_space = 385;
-
   // Enabling this flag will attempt to redirect every already-constructed
   // fusion possible to the Triton emitter.
   //
@@ -837,6 +832,7 @@ message DebugOptions {
 
   reserved 276;  // xla_gpu_enable_nccl_per_stream_comms
   reserved 226;  // xla_gpu_triton_gemm_disable_reduced_precision_reduction
+  reserved 385;  // xla_gpu_experimental_enable_dynamic_dot_search_space
 
   //--------------------------------------------------------------------------//
   // XLA:TPU options.
