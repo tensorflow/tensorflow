@@ -348,6 +348,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":file_util",
+        ":mmap_handle",
         ":weight_cache_schema",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
@@ -362,6 +363,40 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_library(
+    name = "weight_cache_test_helpers",
+    testonly = True,
+    hdrs = ["weight_cache_test_helpers.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":file_util",
+        "//tensorflow/lite:minimal_logging",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "mmap_handle",
+    srcs = ["mmap_handle.cc"],
+    hdrs = ["mmap_handle.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":file_util",
+        "//tensorflow/lite:minimal_logging",
+    ],
+)
+
+cc_test(
+    name = "mmap_handle_test",
+    srcs = ["mmap_handle_test.cc"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":mmap_handle",
+        ":weight_cache_test_helpers",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -2638,9 +2673,11 @@ cc_test(
     srcs = ["weight_cache_test.cc"],
     deps = [
         ":file_util",
+        ":mmap_handle",
         ":test_main",
         ":weight_cache",
         ":weight_cache_schema",
+        ":weight_cache_test_helpers",
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite/c:common",
         "@XNNPACK",

@@ -22,11 +22,11 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <vector>
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/xnnpack/file_util.h"
+#include "tensorflow/lite/delegates/xnnpack/mmap_handle.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
 
 // WARNING: the interface in this file is still under experimentation and WILL
@@ -42,7 +42,7 @@ namespace xnnpack {
 //
 // This is useful when disk space is not available or when having to manage the
 // cache file freshness is too complicated and still provides the deduplication
-// mechanism for constant buffers that are reused accross graph signatures.
+// mechanism for constant buffers that are reused across graph signatures.
 inline constexpr char kInMemoryCachePath[] = ":memory";
 
 // This structure is written at the start of every cache file.
@@ -94,76 +94,6 @@ struct BufferLocation {
     constexpr BufferLocation invalid = Invalid();
     return offset == invalid.offset && size == invalid.size;
   }
-};
-
-// Handles MMap allocations lifetime.
-//
-// When mapped, provides a view over the allocation for convenience.
-//
-// WARNING: the interface in this file is still under experimentation and WILL
-// CHANGE. Do not rely on it.
-class MMapHandle {
- public:
-  using value_type = uint8_t;
-
-  MMapHandle() = default;
-  ~MMapHandle();
-  MMapHandle(const MMapHandle&) = delete;
-  MMapHandle& operator=(const MMapHandle&) = delete;
-  MMapHandle(MMapHandle&&);
-  MMapHandle& operator=(MMapHandle&&);
-
-  // Maps the file at the given path.
-  [[nodiscard /*Mapping a file can fail.*/]]
-  bool Map(const char* path, size_t offset = 0);
-
-  // Maps the fd associated to the file descriptor.
-  //
-  // The debug_path is printed along the error messages.
-  [[nodiscard /*Mapping a file can fail.*/]]
-  bool Map(const FileDescriptorView& fd, size_t offset = 0,
-           const char* debug_path = "unspecified");
-
-  // Tries to resize the current mapping.
-  //
-  // Only succeeds if the mapping could be resized without being moved.
-  //
-  // WARNING: expects `IsMapped()` to be true.
-  [[nodiscard /*Resizing a file can fail.*/]]
-  bool Resize(size_t new_size);
-
-  // Unmaps an existing mapping.
-  void UnMap();
-
-  // Returns true if a mapping exists.
-  bool IsMapped() const { return data_ != nullptr; }
-
-  // Returns the mapping buffer.
-  uint8_t* data() { return data_ + offset_page_adjustment_; }
-
-  // Returns the mapping buffer.
-  const uint8_t* data() const { return data_ + offset_page_adjustment_; }
-
-  // Returns the mapping size in bytes.
-  size_t size() const { return size_; }
-
-  size_t offset() const { return offset_; }
-
-  uint8_t* begin() { return data(); }
-
-  const uint8_t* begin() const { return data(); }
-
-  uint8_t* end() { return data() + size(); }
-
-  const uint8_t* end() const { return data() + size(); }
-
-  friend void swap(MMapHandle& a, MMapHandle& b);
-
- private:
-  size_t size_ = 0;
-  size_t offset_ = 0;
-  size_t offset_page_adjustment_ = 0;
-  uint8_t* data_ = nullptr;
 };
 
 // Provides storage to write the packed buffers to and saves those to disk.
