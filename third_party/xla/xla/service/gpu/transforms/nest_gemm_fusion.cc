@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout.h"
@@ -369,6 +370,13 @@ absl::Status VerifyIsClosedProducerSet(
                                       &HloInstruction::users);
 }
 
+// Copies the element type and size from `source` to `destination`.
+void CopyElementType(const Shape& source, Shape* destination) {
+  destination->set_element_type(source.element_type());
+  destination->mutable_layout()->set_element_size_in_bits(
+      source.layout().element_size_in_bits());
+}
+
 llvm::SmallVector<int64_t> GetInversePermutation(
     absl::Span<const int64_t> permutation) {
   llvm::SmallVector<int64_t> result(permutation.size());
@@ -457,7 +465,7 @@ absl::StatusOr<BitcastParams> CalculateBitcastOfBroadcast(
   absl::c_sort(new_dims);  // Sort into logical order.
 
   BitcastParams result;
-  result.new_shape.set_element_type(result_shape.element_type());
+  CopyElementType(result_shape, &result.new_shape);
   for (int64_t index : new_dims) {
     result.new_shape.add_dimensions(result_shape.dimensions(index));
   }
@@ -545,7 +553,7 @@ absl::StatusOr<BitcastParams> CalculateBroadcastOfBitcast(
   }
 
   BitcastParams result;
-  result.new_shape.set_element_type(operand_shape.element_type());
+  CopyElementType(operand_shape, &result.new_shape);
   result.new_dims.resize(operand_shape.dimensions().size());
   auto* new_layout =
       result.new_shape.mutable_layout()->mutable_minor_to_major();
@@ -649,7 +657,7 @@ absl::StatusOr<BitcastParams> CalculateBitcastOfTransposeImpl(
   }
 
   BitcastParams result;
-  result.new_shape.set_element_type(result_shape.element_type());
+  CopyElementType(result_shape, &result.new_shape);
   // Just like the old transpose, the new transpose does not change the
   // layout.
   *result.new_shape.mutable_layout() = result_shape.layout();
@@ -759,21 +767,21 @@ PlanHoistBitcastUpwardsToCallers(const HloInstruction* bitcast) {
           const Shape& shape) -> absl::Status {
     for (HloInstruction* instruction : instructions) {
       // Only update the dimensions keeping the type intact.
-      Shape updated_shape(shape);
-      updated_shape.set_element_type(instruction->shape().element_type());
-      updated_shape.mutable_layout()->set_element_size_in_bits(
-          instruction->shape().layout().element_size_in_bits());
-      CHECK_EQ(ShapeUtil::ArrayDataSize(updated_shape),
+      Shape new_shape(shape);
+      CopyElementType(instruction->shape(), &new_shape);
+      CHECK_EQ(ShapeUtil::ArrayDataSize(new_shape),
                ShapeUtil::ArrayDataSize(instruction->shape()))
           << " instruction " << instruction->ToString()
           << " updating result shape from "
           << ShapeUtil::HumanStringWithLayout(instruction->shape()) << " to "
-          << ShapeUtil::HumanStringWithLayout(updated_shape)
+          << ShapeUtil::HumanStringWithLayout(new_shape)
           << " with different data size";
       auto it = result_shapes.find(instruction);
       if (it == result_shapes.end()) {
-        result_shapes.emplace(instruction, updated_shape);
-      } else if (it->second != updated_shape) {
+        VLOG(2) << "updating the result shape of " << instruction->ToString()
+                << " to " << ShapeUtil::HumanStringWithLayout(new_shape);
+        result_shapes.emplace(instruction, new_shape);
+      } else if (it->second != new_shape) {
         return absl::FailedPreconditionError(absl::StrCat(
             "Conflicting shape assignment for ", instruction->ToString(),
             " got ", ShapeUtil::HumanStringWithLayout(it->second), " and ",
@@ -805,8 +813,6 @@ PlanHoistBitcastUpwardsToCallers(const HloInstruction* bitcast) {
       continue;  // No change.
     }
     result.emplace_back(instruction, result_shape);
-    VLOG(2) << "updating the result shape of " << instruction->ToString()
-            << " to " << ShapeUtil::HumanStringWithLayout(result_shape);
     switch (instruction->opcode()) {
       case HloOpcode::kParameter:
       case HloOpcode::kConstant:
@@ -873,26 +879,24 @@ absl::StatusOr<Shape> ComputeRootShapeAfterHoistingBitcasts(
           const Shape& shape) -> absl::Status {
     for (HloInstruction* instruction : instructions) {
       // Only update the dimensions keeping the type intact.
-      Shape updated_shape(shape);
-      updated_shape.set_element_type(instruction->shape().element_type());
-      updated_shape.mutable_layout()->set_element_size_in_bits(
-          instruction->shape().layout().element_size_in_bits());
-      // TODO(b/393299275): it would be nice to check that the size is not
-      // changing but unfortunately this routine does not walk the graph
-      // in the "correct" direction from producers to consumers.
-      /*
-      CHECK_EQ(ShapeUtil::ArrayDataSize(updated_shape),
-               ShapeUtil::ArrayDataSize(instruction->shape()))
+      Shape new_shape(shape);
+      const HloInstruction* operand = instruction->operand(0);
+      CopyElementType(operand->shape(), &new_shape);
+      CHECK_EQ(ShapeUtil::ArrayDataSize(new_shape),
+               ShapeUtil::ArrayDataSize(operand->shape()))
           << " instruction " << instruction->ToString()
           << " updating operand shape from "
-          << ShapeUtil::HumanStringWithLayout(instruction->shape()) << " to "
-          << ShapeUtil::HumanStringWithLayout(updated_shape)
+          << ShapeUtil::HumanStringWithLayout(operand->shape()) << " to "
+          << ShapeUtil::HumanStringWithLayout(new_shape)
           << " with different data size";
-      */
       auto it = operand_shapes.find(instruction);
       if (it == operand_shapes.end()) {
-        operand_shapes.emplace(instruction, updated_shape);
-      } else if (it->second != updated_shape) {
+        VLOG(2) << "updating the operand shape of "
+                << instruction->ToString(
+                       HloPrintOptions().set_print_operand_shape(true))
+                << " to " << ShapeUtil::HumanStringWithLayout(new_shape);
+        operand_shapes.emplace(instruction, new_shape);
+      } else if (it->second != new_shape) {
         return absl::FailedPreconditionError(absl::StrCat(
             "Conflicting shape assignment for ", instruction->ToString(),
             " got ", ShapeUtil::HumanStringWithLayout(it->second), " and ",
@@ -937,6 +941,7 @@ absl::StatusOr<Shape> ComputeRootShapeAfterHoistingBitcasts(
       }
     }());
     if (instruction->IsRoot()) {
+      CopyElementType(instruction->shape(), &result_shape);
       return result_shape;
     }
     TF_RETURN_IF_ERROR(set_operand_shape(instruction->users(), result_shape));
