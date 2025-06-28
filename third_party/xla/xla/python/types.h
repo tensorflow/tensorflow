@@ -66,50 +66,28 @@ absl::StatusOr<nanobind::str> TypeDescriptorForPrimitiveType(
 
 struct NumpyScalarTypes {
   nanobind::object np_bool;
-#if JAX_IFRT_VERSION_NUMBER >= 11
   nanobind::object np_int2;
-#else
-  // Remove std::optional once the minimum ml_dtypes in JAX is >= 0.4.1.
-  std::optional<nanobind::object> np_int2;
-#endif
   nanobind::object np_int4;
   nanobind::object np_int8;
   nanobind::object np_int16;
   nanobind::object np_int32;
   nanobind::object np_int64;
-#if JAX_IFRT_VERSION_NUMBER >= 11
   nanobind::object np_uint2;
-#else
-  // Remove std::optional once the minimum ml_dtypes in JAX is >= 0.4.1.
-  std::optional<nanobind::object> np_uint2;
-#endif
   nanobind::object np_uint4;
   nanobind::object np_uint8;
   nanobind::object np_uint16;
   nanobind::object np_uint32;
   nanobind::object np_uint64;
   nanobind::object np_bfloat16;
-#if JAX_IFRT_VERSION_NUMBER >= 11
   nanobind::object np_float4_e2m1fn;
   nanobind::object np_float8_e3m4;
   nanobind::object np_float8_e4m3;
-#else
-  // Remove std::optional once the minimum ml_dtypes in JAX is >= 0.5.0.
-  std::optional<nanobind::object> np_float4_e2m1fn;
-  std::optional<nanobind::object> np_float8_e3m4;
-  std::optional<nanobind::object> np_float8_e4m3;
-#endif
   nanobind::object np_float8_e4m3fn;
   nanobind::object np_float8_e4m3b11fnuz;
   nanobind::object np_float8_e4m3fnuz;
   nanobind::object np_float8_e5m2;
   nanobind::object np_float8_e5m2fnuz;
-#if JAX_IFRT_VERSION_NUMBER >= 11
   nanobind::object np_float8_e8m0fnu;
-#else
-  // Remove std::optional once the minimum ml_dtypes in JAX is >= 0.5.0.
-  std::optional<nanobind::object> np_float8_e8m0fnu;
-#endif
   nanobind::object np_float16;
   nanobind::object np_float32;
   nanobind::object np_float64;
