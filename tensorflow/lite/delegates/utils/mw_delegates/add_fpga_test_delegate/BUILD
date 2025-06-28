@@ -30,6 +30,7 @@ cc_library(
         "add_cpu_test_delegate.h",
     ],
     deps = [
+        ":fpga_ip_driver",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
