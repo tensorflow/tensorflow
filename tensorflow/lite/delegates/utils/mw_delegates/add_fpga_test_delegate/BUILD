@@ -40,7 +40,6 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels/internal:compatibility",
-
     ],
 )
 
