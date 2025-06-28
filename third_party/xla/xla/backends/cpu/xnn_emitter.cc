@@ -188,7 +188,7 @@ static absl::StatusOr<uint32_t> DefineBroadcastOp(xnn_subgraph_t subgraph,
   const absl::Span<const int64_t> output_dims = instr->shape().dimensions();
   const absl::Span<const int64_t> dims = broadcast_instr->dimensions();
   CHECK(std::is_sorted(dims.begin(), dims.end()));
-  CHECK(input_dims.size() <= output_dims.size());
+  CHECK_LE(input_dims.size(), output_dims.size());
 
   const size_t num_new_axes = output_dims.size() - input_dims.size();
   // New axis positions used by XNNPACK expand_dims.

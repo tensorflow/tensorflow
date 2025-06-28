@@ -256,7 +256,7 @@ bool IsElementwiseOpSupportedByXnn(const HloInstruction* hlo) {
 }
 
 bool IsBitcastOpSupportedByXnn(const HloInstruction* hlo) {
-  CHECK(hlo->opcode() == HloOpcode::kBitcast);
+  CHECK_EQ(hlo->opcode(), HloOpcode::kBitcast);
   if (!XnnDatatype(hlo->shape().element_type()).ok()) {
     return false;
   }
@@ -265,7 +265,7 @@ bool IsBitcastOpSupportedByXnn(const HloInstruction* hlo) {
 }
 
 bool IsBroadcastOpSupportedByXnn(const HloInstruction* hlo) {
-  CHECK(hlo->opcode() == HloOpcode::kBroadcast);
+  CHECK_EQ(hlo->opcode(), HloOpcode::kBroadcast);
   if (!XnnDatatype(hlo->shape().element_type()).ok()) {
     return false;
   }
