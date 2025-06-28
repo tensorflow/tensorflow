@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/core/async/c/async_kernel.h"
 
+#include <cstddef>
+
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
 #include "tensorflow/lite/core/async/c/types.h"
 
