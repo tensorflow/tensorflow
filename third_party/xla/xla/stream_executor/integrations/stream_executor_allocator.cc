@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
