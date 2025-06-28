@@ -525,6 +525,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
+        "@local_tsl//tsl/platform:stacktrace",
     ],
     alwayslink = True,
 )

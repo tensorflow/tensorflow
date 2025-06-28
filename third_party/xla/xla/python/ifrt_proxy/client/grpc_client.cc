@@ -25,6 +25,7 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "grpcpp/client_context.h"
+#include "grpcpp/grpcpp.h"
 #include "xla/pjrt/distributed/util.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/future.h"
@@ -41,6 +42,7 @@
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/stacktrace.h"
 
 namespace xla {
 namespace ifrt {
@@ -88,7 +90,8 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
         if (init_response.IsReady() && init_response.Await().ok()) {
           // If the init RPC has already completed successfully, we have
           // already or will be returning OK from the `AttemptConnection` call.
-          LOG(WARNING) << "IFRT proxy server disconnected: " << s;
+          LOG(WARNING) << "IFRT proxy server disconnected: " << s
+                       << "; Stack trace: " << tsl::CurrentStackTrace();
           if (on_disconnect != nullptr) {
             on_disconnect(s);
           }
@@ -165,8 +168,9 @@ absl::StatusOr<std::unique_ptr<Client>> CreateGrpcClient(
   absl::Time start_time = absl::Now();
   absl::Status last_status;
   for (int i = 0; absl::Now() - start_time < options.connection_timeout; ++i) {
-    CONN_UPDATE_LOG(absl::StrCat("Connecting to IFRT proxy server at ",
-                                 server_address, ", attempt #", i, "..."));
+    CONN_UPDATE_LOG(absl::StrCat(
+        "Connecting to IFRT proxy server (grpc version '", ::grpc::Version(),
+        "') at ", server_address, ", attempt #", i, "..."));
     absl::StatusOr<std::unique_ptr<Client>> result =
         AttemptConnection(server_address, i, options);
     if (result.ok()) {
