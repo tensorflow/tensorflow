@@ -383,7 +383,7 @@ absl::Status CpuScatterFusion::EmitEntryFunction(
         Value update_id = update_indices.front();
 
         Value c0 = nested_b.create<mlir::arith::ConstantIndexOp>(0);
-        Value in_bounds = nested_b.create<ma::ConstantIntOp>(1, b.getI1Type());
+        Value in_bounds = nested_b.create<ma::ConstantIntOp>(b.getI1Type(), 1);
 
         SmallVector<Value, 4> update_offsets(
             scatter_operands.front()->shape().dimensions().size(), c0);

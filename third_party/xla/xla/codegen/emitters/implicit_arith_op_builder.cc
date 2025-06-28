@@ -138,7 +138,7 @@ ImplicitArithOpBuilder ImplicitArithOpBuilder::operator!=(int64_t rhs) const {
 }
 
 ImplicitArithOpBuilder ImplicitArithOpBuilder::MakeConstant(int64_t c) const {
-  return {builder_->create<mlir::arith::ConstantIntOp>(c, value_.getType()),
+  return {builder_->create<mlir::arith::ConstantIntOp>(value_.getType(), c),
           builder_};
 }
 
