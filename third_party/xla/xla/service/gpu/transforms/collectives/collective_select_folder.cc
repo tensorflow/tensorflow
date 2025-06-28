@@ -139,7 +139,9 @@ static bool SelectPredicateEval(const FoldableSelect& select_match,
 static std::optional<bool> StaticallyEvaluatePredicateForAllSourceIDs(
     const FoldableSelect& select_match, const SourceTargetPairsType& pairs) {
   // If there are no pairs, the predicate is undefined.
-  if (pairs.empty()) return std::nullopt;
+  if (pairs.empty()) {
+    return std::nullopt;
+  }
 
   // Evaluate the select predicate for the first source target pair.
   CHECK(select_match.cmp_direction == Comparison::Direction::kEq ||
@@ -166,7 +168,9 @@ static absl::StatusOr<bool> TryFoldColectivePermuteOfSelect(
   // Root op must be a collective-permute.
   HloCollectivePermuteInstruction* cp =
       DynCast<HloCollectivePermuteInstruction>(inst);
-  if (cp == nullptr) return false;
+  if (cp == nullptr) {
+    return false;
+  }
   VLOG(3) << "Try folding collective-permute(*) at " << cp->ToShortString();
 
   // Operand must be a foldable select, i.e. a select op that this pass'
@@ -175,7 +179,9 @@ static absl::StatusOr<bool> TryFoldColectivePermuteOfSelect(
       MatchFoldableSelect(inst->mutable_operand(0));
   VLOG(3) << (select_match.has_value() ? "Matched" : "Did not match")
           << " foldable select at " << cp->ToShortString();
-  if (!select_match.has_value()) return false;
+  if (!select_match.has_value()) {
+    return false;
+  }
 
   // We have to maintain integrity of relationship between the predicate, which
   // is based on partition or replica ID, and the collective mode of the
@@ -189,7 +195,9 @@ static absl::StatusOr<bool> TryFoldColectivePermuteOfSelect(
   VLOG(3) << "Collective mode "
           << (collective_mode_is_compatible ? "is" : "is not")
           << " compatible with select predicate";
-  if (!collective_mode_is_compatible) return false;
+  if (!collective_mode_is_compatible) {
+    return false;
+  }
 
   // We can only actually fold the select if we can evaluate the predicate
   // statically to a known value for all relevant source IDs.

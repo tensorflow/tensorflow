@@ -33,7 +33,8 @@ namespace xla::gpu {
 static int64_t GetDefaultValue(HloOpcode opcode) {
   if (opcode == HloOpcode::kAllGather) {
     return kDefaultAllGatherCombineThreshold;
-  } else if (opcode == HloOpcode::kAllReduce) {
+  }
+  if (opcode == HloOpcode::kAllReduce) {
     return kDefaultAllReduceCombineThreshold;
   } else if (opcode == HloOpcode::kReduceScatter) {
     return kDefaultReduceScatterCombineThreshold;

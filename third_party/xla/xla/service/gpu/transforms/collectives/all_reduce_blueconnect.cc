@@ -82,7 +82,8 @@ static std::optional<GlobalDeviceId> TryConvertingReplicaIdToDeviceId(
       return std::nullopt;
     }
     return GlobalDeviceId{device_assignment(replica_id, /*computation_id=*/0)};
-  } else if (collective_group_mode == CollectiveOpGroupMode::kFlattenedID) {
+  }
+  if (collective_group_mode == CollectiveOpGroupMode::kFlattenedID) {
     int partition_count = device_assignment.computation_count();
     int64_t actual_replica_id = replica_id / partition_count;
     int64_t partition_id = replica_id % partition_count;
@@ -185,7 +186,9 @@ TryDecomposeReplicaGroups(const HloAllReduceInstruction& all_reduce,
                                  num_devices_per_host,
                                  collective_op_group_mode));
 
-    if (!decomposed_groups) return {std::nullopt};
+    if (!decomposed_groups) {
+      return {std::nullopt};
+    }
 
     int scatter_group_size =
         decomposed_groups->scatter_gather_groups[0].replica_ids_size();
@@ -248,7 +251,9 @@ static absl::StatusOr<bool> TryDecomposeAllReduce(
       std::optional<DecomposedReplicaGroups> decomposed_groups,
       TryDecomposeReplicaGroups(*all_reduce, num_devices_per_host));
 
-  if (!decomposed_groups) return false;
+  if (!decomposed_groups) {
+    return false;
+  }
 
   // Bitcast operands to 1D to guarantee that first dimension is divisible by
   // scatter group size (we checked num elements was divisible above).
