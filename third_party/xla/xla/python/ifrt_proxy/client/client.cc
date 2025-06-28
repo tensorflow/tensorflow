@@ -442,9 +442,11 @@ xla::ifrt::DeviceListRef Client::MakeDeviceList(
   return xla::ifrt::BasicDeviceList::Create(devices);
 }
 
-absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> Client::GetDefaultLayout(
-    xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
-    xla::ifrt::Device* device, xla::ifrt::MemoryKind memory_kind) const {
+absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>
+Client::GetDefaultPjRtLayout(xla::ifrt::DType dtype,
+                             absl::Span<const int64_t> dims,
+                             xla::ifrt::Device* device,
+                             xla::ifrt::MemoryKind memory_kind) const {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointGetDefaultLayout");
   auto req = std::make_unique<GetDefaultLayoutRequest>();

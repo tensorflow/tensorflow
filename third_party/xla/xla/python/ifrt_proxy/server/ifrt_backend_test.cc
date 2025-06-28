@@ -1690,7 +1690,7 @@ TEST_P(IfrtBackendHandlerTest,
               StatusIs(absl::StatusCode::kUnknown, StrEq("injected error")));
 }
 
-TEST_P(IfrtBackendHandlerTest, GetDefaultLayoutSuccess) {
+TEST_P(IfrtBackendHandlerTest, GetDefaultPjRtLayoutSuccess) {
   const auto kDefaultLayout = std::make_shared<xla::PjRtLayout>(
       xla::LayoutUtil::MakeDescendingLayout(1));
   const xla::ifrt::DType kDType = xla::ifrt::DType(xla::ifrt::DType::kF32);
@@ -1704,8 +1704,8 @@ TEST_P(IfrtBackendHandlerTest, GetDefaultLayoutSuccess) {
       .WillByDefault(Return(mock_device.get()));
 
   EXPECT_CALL(*mock_client_,
-              GetDefaultLayout(kDType, absl::MakeConstSpan(kDims),
-                               mock_device.get(), kMemoryKind))
+              GetDefaultPjRtLayout(kDType, absl::MakeConstSpan(kDims),
+                                   mock_device.get(), kMemoryKind))
       .WillOnce(Return(std::shared_ptr<const xla::PjRtLayout>(kDefaultLayout)));
 
   auto request = NewIfrtRequest(NewOpId());

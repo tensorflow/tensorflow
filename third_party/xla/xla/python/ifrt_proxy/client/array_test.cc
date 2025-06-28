@@ -124,7 +124,7 @@ TEST_F(ArrayTest, Destruction) {
   EXPECT_CALL(*session_,
               Enqueue(IfrtRequestOfType(IfrtRequest::kDestructArrayRequest)))
       .WillOnce(MockClientCaptureAndReturn(&requests_queue, IfrtResponse()));
-  ON_CALL(*mock_client_, GetDefaultLayout).WillByDefault(Return(kLayout1));
+  ON_CALL(*mock_client_, GetDefaultPjRtLayout).WillByDefault(Return(kLayout1));
 
   tsl::MakeRef<Array>(mock_client_.get(), rpc_helper_,
                       DType(DType::Kind::kBF16), Shape({}),
@@ -146,7 +146,7 @@ TEST_F(ArrayTest, FullyReplicatedShard) {
       *session_,
       Enqueue(IfrtRequestOfType(IfrtRequest::kFullyReplicatedShardRequest)))
       .WillOnce(MockClientCaptureAndReturn(&requests_queue, response));
-  ON_CALL(*mock_client_, GetDefaultLayout).WillByDefault(Return(kLayout1));
+  ON_CALL(*mock_client_, GetDefaultPjRtLayout).WillByDefault(Return(kLayout1));
 
   auto array = tsl::MakeRef<Array>(
       mock_client_.get(), rpc_helper_, DType(DType::Kind::kBF16), Shape({}),
@@ -159,8 +159,8 @@ TEST_F(ArrayTest, FullyReplicatedShard) {
   EXPECT_EQ(req.result_handle(), 1);
 }
 
-TEST_F(ArrayTest, GetDefaultLayoutSuccess) {
-  ON_CALL(*mock_client_, GetDefaultLayout).WillByDefault(Return(kLayout1));
+TEST_F(ArrayTest, GetDefaultPjRtLayoutSuccess) {
+  ON_CALL(*mock_client_, GetDefaultPjRtLayout).WillByDefault(Return(kLayout1));
 
   auto array = tsl::MakeRef<Array>(
       mock_client_.get(), rpc_helper_, DType(DType::Kind::kBF16), Shape({}),
@@ -274,7 +274,7 @@ TEST_F(ArrayTest, AssembleArrayFromSingleDeviceArraysSuccess) {
   EXPECT_EQ(*layout, *kLayout1);
 }
 
-TEST_F(ArrayTest, AssembleArrayFromSingleDeviceArraysDefaultLayoutSuccess) {
+TEST_F(ArrayTest, AssembleArrayFromSingleDeviceArraysDefaultPjRtLayoutSuccess) {
   IfrtResponse response;
   ASSERT_TRUE(
       TextFormat::ParseFromString(
@@ -287,7 +287,7 @@ TEST_F(ArrayTest, AssembleArrayFromSingleDeviceArraysDefaultLayoutSuccess) {
               Enqueue(IfrtRequestOfType(
                   IfrtRequest::kAssembleArrayFromSingleDeviceArraysRequest)))
       .WillOnce(MockClientSessionReturnResponse(response));
-  ON_CALL(*mock_client_, GetDefaultLayout).WillByDefault(Return(kLayout1));
+  ON_CALL(*mock_client_, GetDefaultPjRtLayout).WillByDefault(Return(kLayout1));
 
   auto array = tsl::MakeRef<Array>(
       mock_client_.get(), rpc_helper_, DType(DType::Kind::kBF16), Shape({}),

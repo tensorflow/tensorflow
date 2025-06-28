@@ -350,11 +350,20 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
 
   // Returns the default layout on `device` with `memory_kind` for a buffer with
   // `dtype` and single-shard dimensions `dims`.
+  virtual absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>
+  GetDefaultPjRtLayout(DType dtype, absl::Span<const int64_t> dims,
+                       Device* device,
+                       xla::ifrt::MemoryKind memory_kind) const = 0;
+
+  // Legacy name for `GetDefaultPjRtLayout()`. Will be removed, and then
+  // re-introduced as a new signature that returns `xla::ifrt::CustomLayoutRef`.
   // TODO(hyeontaek): Change the API to take `Shape` and `Sharding` instead of
   // single-shard dimensions and device.
-  virtual absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>
-  GetDefaultLayout(DType dtype, absl::Span<const int64_t> dims, Device* device,
-                   xla::ifrt::MemoryKind memory_kind) const = 0;
+  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetDefaultLayout(
+      DType dtype, absl::Span<const int64_t> dims, Device* device,
+      xla::ifrt::MemoryKind memory_kind) const {
+    return GetDefaultPjRtLayout(dtype, dims, device, memory_kind);
+  }
 
   // Returns a UserContext that captures the current context information such as
   // the stack trace. IFRT implementations that do not support UserContext will

@@ -112,7 +112,7 @@ TEST(PjRtLayoutTest, ToPjRtLayout) {
     auto device = std::make_unique<MockDevice>();
     Shape shape({3, 2});
     ON_CALL(*device, client).WillByDefault(Return(client.get()));
-    EXPECT_CALL(*client, GetDefaultLayout)
+    EXPECT_CALL(*client, GetDefaultPjRtLayout)
         .With(std::make_tuple(DType(DType::kS32), shape.dims(),
                               static_cast<Device*>(device.get()), MemoryKind()))
         .WillOnce(Return(absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>(

@@ -277,7 +277,7 @@ class PjRtClient final
   absl::StatusOr<std::shared_ptr<Topology>> GetTopologyForDevices(
       const DeviceListRef& devices) const override;
 
-  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetDefaultLayout(
+  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetDefaultPjRtLayout(
       DType dtype, absl::Span<const int64_t> dims, Device* device,
       MemoryKind memory_kind) const override;
 
