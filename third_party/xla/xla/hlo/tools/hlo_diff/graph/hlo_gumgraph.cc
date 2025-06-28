@@ -134,7 +134,8 @@ absl::Status HloGumgraph::ConstructGraph(const HloModule& hlo_module) {
       node->props.fingerprint = GetHloInstructionFingerprint(
           instruction, CreateHloPrintOptions(fingerprint_options_));
       node->props.canonical_fingerprint = GetHloInstructionFingerprint(
-          instruction, HloPrintOptions::Fingerprint());
+          instruction,
+          HloPrintOptions::Fingerprint().set_print_parameter_number(false));
 
       bool inline_called_computations = false;
       switch (instruction->opcode()) {

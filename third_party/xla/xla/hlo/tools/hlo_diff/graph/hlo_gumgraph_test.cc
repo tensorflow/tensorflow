@@ -251,7 +251,7 @@ ENTRY entry {
                   /*generation=*/3,
                   /*height=*/1, /*subgraph_fingerprint=*/856105463456541506U,
                   /*fingerprint=*/856105463456541506U,
-                  /*canonical_fingerprint=*/2283891754502192697U));
+                  /*canonical_fingerprint=*/1668459129586447343U));
 
   EXPECT_THAT(
       graph->AllComputationProps(),
@@ -307,7 +307,7 @@ ENTRY entry {
                   /*generation=*/3,
                   /*height=*/1, /*subgraph_fingerprint=*/7851455295828926644U,
                   /*fingerprint=*/7851455295828926644U,
-                  /*canonical_fingerprint=*/2283891754502192697U));
+                  /*canonical_fingerprint=*/1668459129586447343U));
 
   EXPECT_THAT(
       graph->AllComputationProps(),
