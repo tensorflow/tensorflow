@@ -747,23 +747,23 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
 
   VLOG(2) << "Completed AsyncLoadIfrtArray";
 
+  std::vector<int> device_ids;
+  device_ids.reserve(device_list->size());
+  for (xla::ifrt::Device* device : device_list->devices()) {
+    device_ids.push_back(device->Id().value());
+  }
   std::vector<xla::ifrt::ArrayRef> args;
   args.reserve(inputs.size());
   int variable_arg_index = 0;
   for (int i = 0; i < inputs.size(); i++) {
     if (variable_arg_index < variable_arg_indices.size() &&
         i == variable_arg_indices[variable_arg_index]) {
-      std::vector<int> device_ids;
-      device_ids.reserve(device_list->size());
-      for (xla::ifrt::Device* device : device_list->devices()) {
-        device_ids.push_back(device->Id().value());
-      }
       TF_ASSIGN_OR_RETURN(
           xla::HloSharding hlo_sharding,
           xla::HloSharding::FromProto(
               executable_bundle->compile_metadata.args()[i].sharding()));
       IfrtLoadedVariableRegistry::Key key{
-          .device_ids = std::move(device_ids),
+          .device_ids = device_ids,
           .input_name = inputs[i].scalar<tsl::tstring>()(),
           .hlo_sharding = std::move(hlo_sharding),
       };
