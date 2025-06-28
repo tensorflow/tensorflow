@@ -16,9 +16,13 @@ limitations under the License.
 
 #include <stdlib.h>
 
-#include <string>
+#include <cstdint>
+#include <memory>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
