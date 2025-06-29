@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/tile_assignment.h"  // IWYU pragma: export
@@ -162,6 +163,10 @@ class HloSharding {
   // Checks whether device is a reserved device number. A reserved device number
   // has usually a special meaning, with dedicated handling logic.
   static bool IsReservedDevice(int64_t device) { return device < 0; }
+
+  // Returns the name of the frontend attribute that stores a sharding
+  // (e.g., shardy).
+  static absl::string_view ShardingFrontendAttrName();
 
   OpSharding ToProto() const;
 
