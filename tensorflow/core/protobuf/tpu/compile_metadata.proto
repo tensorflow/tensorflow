@@ -123,6 +123,9 @@ message TPUCompileMetadataProto {
   // requested.
   bool use_spmd_for_xla_partitioning = 15;
 
+  // Whether to use Shardy partitioner when compiler partitioning is requested.
+  bool use_shardy_partitioner = 23;
+
   // Whether to automatically generate XLA shardings for SPMD partitioner.
   bool use_auto_spmd_for_xla_partitioning = 18;
 
