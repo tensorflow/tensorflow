@@ -414,8 +414,7 @@ std::string PrintNodePairsAsList(
 // order of the number of instructions for each opcode.
 std::string PrintUnmatchedInstructions(
     const absl::flat_hash_set<const HloInstruction*>& instructions,
-    InstructionLocation location,
-    const absl::flat_hash_set<HloOpcode>& opcodes_to_ignore, bool name_only,
+    InstructionLocation location, bool name_only,
     GraphUrlGenerator* url_generator) {
   absl::flat_hash_map<HloOpcode, std::vector<const HloInstruction*>>
       instructions_by_opcode = GroupInstructionsByOpcode(instructions);
@@ -427,9 +426,6 @@ std::string PrintUnmatchedInstructions(
             [](const auto& a, const auto& b) { return a.second > b.second; });
   std::stringstream ss;
   for (auto cit = opcode_counts.begin(); cit != opcode_counts.end(); ++cit) {
-    if (opcodes_to_ignore.contains(cit->first)) {
-      continue;
-    }
     ss << PrintDetails(
         absl::StrFormat("%s (%d)", HloOpcodeString(cit->first), cit->second),
         PrintInstructionsAsList(instructions_by_opcode[cit->first], location,
@@ -443,7 +439,6 @@ std::string PrintUnmatchedInstructions(
 std::string PrintInstructionPairsByOpcode(
     const absl::flat_hash_map<const HloInstruction*, const HloInstruction*>&
         instructions,
-    const absl::flat_hash_set<HloOpcode>& opcodes_to_ignore,
     GraphUrlGenerator* url_generator,
     std::optional<absl::FunctionRef<DecorationPrinter<HloInstruction>>>
         decoration_printer = std::nullopt) {
@@ -459,9 +454,6 @@ std::string PrintInstructionPairsByOpcode(
             [](const auto& a, const auto& b) { return a.second > b.second; });
   std::stringstream ss;
   for (auto cit = opcode_counts.begin(); cit != opcode_counts.end(); ++cit) {
-    if (opcodes_to_ignore.contains(cit->first)) {
-      continue;
-    }
     absl::string_view op_name = HloOpcodeString(cit->first);
     ss << PrintDetails(absl::StrFormat("%s (%d)", op_name, cit->second),
                        PrintNodePairsAsList<HloInstruction>(
@@ -523,7 +515,6 @@ std::string PrintChangedInstructionDiffTypeSummary(
 std::string PrintChangedInstructions(
     const absl::flat_hash_map<const HloInstruction*, const HloInstruction*>&
         instructions,
-    const absl::flat_hash_set<HloOpcode>& opcodes_to_ignore,
     GraphUrlGenerator* url_generator) {
   std::function<DecorationPrinter<HloInstruction>> decorated_printer =
       [](const HloInstruction* left_inst,
@@ -548,8 +539,8 @@ std::string PrintChangedInstructions(
               }
             }));
   };
-  return PrintInstructionPairsByOpcode(instructions, opcodes_to_ignore,
-                                       url_generator, decorated_printer);
+  return PrintInstructionPairsByOpcode(instructions, url_generator,
+                                       decorated_printer);
 }
 
 // Prints unchanged instructions grouped by opcode and print in a
@@ -557,10 +548,8 @@ std::string PrintChangedInstructions(
 std::string PrintUnchangedInstructions(
     const absl::flat_hash_map<const HloInstruction*, const HloInstruction*>&
         instructions,
-    const absl::flat_hash_set<HloOpcode>& opcodes_to_ignore,
     GraphUrlGenerator* url_generator) {
-  return PrintInstructionPairsByOpcode(instructions, opcodes_to_ignore,
-                                       url_generator);
+  return PrintInstructionPairsByOpcode(instructions, url_generator);
 }
 
 /* Metrics diff */
@@ -721,6 +710,10 @@ void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
                 std::ostringstream& out) {
   const absl::flat_hash_set<HloOpcode> ignored_opcodes(kIgnoredOpcodes.begin(),
                                                        kIgnoredOpcodes.end());
+
+  DiffResult filtered_diff_result =
+      FilterDiffResultByOpcode(diff_result, ignored_opcodes);
+
   out << PrintCss() << PrintJavascript();
 
   // Print full diff results
@@ -728,50 +721,52 @@ void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
       "Full Diff Results",
       absl::StrCat(
           PrintDetails(
-              absl::StrFormat(
-                  "Unmatched Instructions (left) (%d)",
-                  diff_result.left_module_unmatched_instructions.size()),
+              absl::StrFormat("Unmatched Instructions (left) (%d)",
+                              filtered_diff_result
+                                  .left_module_unmatched_instructions.size()),
               PrintUnmatchedInstructions(
-                  diff_result.left_module_unmatched_instructions,
-                  InstructionLocation::kLeft, ignored_opcodes,
+                  filtered_diff_result.left_module_unmatched_instructions,
+                  InstructionLocation::kLeft,
                   /*name_only=*/false, url_generator)),
           PrintDetails(
-              absl::StrFormat(
-                  "Unmatched Instructions (right) (%d)",
-                  diff_result.right_module_unmatched_instructions.size()),
+              absl::StrFormat("Unmatched Instructions (right) (%d)",
+                              filtered_diff_result
+                                  .right_module_unmatched_instructions.size()),
               PrintUnmatchedInstructions(
-                  diff_result.right_module_unmatched_instructions,
-                  InstructionLocation::kRight, ignored_opcodes,
+                  filtered_diff_result.right_module_unmatched_instructions,
+                  InstructionLocation::kRight,
                   /*name_only=*/false, url_generator)),
           PrintDetails(
               absl::StrFormat("Changed Instructions (%d)",
-                              diff_result.changed_instructions.size()),
-              PrintChangedInstructions(diff_result.changed_instructions,
-                                       ignored_opcodes, url_generator))));
+                              filtered_diff_result.changed_instructions.size()),
+              PrintChangedInstructions(
+                  filtered_diff_result.changed_instructions, url_generator))));
 
   // Print profile metrics diff
   if (left_op_metric_getter != nullptr && right_op_metric_getter != nullptr) {
     out << PrintSectionWithHeader(
         "Profile Metrics Diff",
         absl::StrCat(
-            PrintDetails("Left Module Unmatched Instructions",
-                         PrintUnmatchedMetricsDiff(
-                             diff_result.left_module_unmatched_instructions,
-                             *left_op_metric_getter, url_generator)),
-            PrintDetails("Right Module Unmatched Instructions",
-                         PrintUnmatchedMetricsDiff(
-                             diff_result.right_module_unmatched_instructions,
-                             *right_op_metric_getter, url_generator)),
             PrintDetails(
-                "Changed Instructions",
-                PrintMatchedMetricsDiff(
-                    diff_result.changed_instructions, *left_op_metric_getter,
+                "Left Module Unmatched Instructions",
+                PrintUnmatchedMetricsDiff(
+                    filtered_diff_result.left_module_unmatched_instructions,
+                    *left_op_metric_getter, url_generator)),
+            PrintDetails(
+                "Right Module Unmatched Instructions",
+                PrintUnmatchedMetricsDiff(
+                    filtered_diff_result.right_module_unmatched_instructions,
                     *right_op_metric_getter, url_generator)),
-            PrintDetails(
-                "Unchanged Instructions",
-                PrintMatchedMetricsDiff(
-                    diff_result.unchanged_instructions, *left_op_metric_getter,
-                    *right_op_metric_getter, url_generator))));
+            PrintDetails("Changed Instructions",
+                         PrintMatchedMetricsDiff(
+                             filtered_diff_result.changed_instructions,
+                             *left_op_metric_getter, *right_op_metric_getter,
+                             url_generator)),
+            PrintDetails("Unchanged Instructions",
+                         PrintMatchedMetricsDiff(
+                             filtered_diff_result.unchanged_instructions,
+                             *left_op_metric_getter, *right_op_metric_getter,
+                             url_generator))));
   }
 
   // Print repetitive computation groups
