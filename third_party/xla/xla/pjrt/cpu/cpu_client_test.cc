@@ -338,6 +338,19 @@ TEST(PjRtCpuClientTest, BufferFromLiteralInt4) {
               ElementsAreArray(literal.data<s4>()));
 }
 
+TEST(PjRtCpuClientTest, LiteralRoundTripWithLayout) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  xla::Shape shape =
+      xla::ShapeUtil::MakeShapeWithDenseLayout(S8, {4, 2, 8}, {0, 2, 1});
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
+  Literal received_literal(shape);
+  TF_ASSERT_OK(buffer->ToLiteral(&received_literal).Await());
+  EXPECT_EQ(literal, received_literal);
+}
+
 TEST(PjRtCpuClientTest, CopyToMemorySpace) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = xla::ShapeUtil::MakeShape(S32, {128, 256});
