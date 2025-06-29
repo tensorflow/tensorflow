@@ -17,11 +17,14 @@ limitations under the License.
 
 #ifdef STANDALONE_DEMO_LIB
 
+#ifdef __ANDROID__
 #include <android/log.h>
+#endif
 #include <stdlib.h>
 #include <time.h>
 #include <iostream>
 #include <sstream>
+#include <cstdarg>
 
 LogMessage::LogMessage(const char* fname, int line, int severity)
     : fname_(fname), line_(line), severity_(severity) {}
