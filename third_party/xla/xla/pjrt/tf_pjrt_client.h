@@ -98,7 +98,7 @@ class TfPjRtBuffer : public PjRtBuffer {
     return wrapped_->ReleaseDeviceMemoryOwnership(
         wait_for_operations_to_complete);
   }
-  bool IsDeleted() override { return wrapped_->IsDeleted(); }
+  bool IsDeleted() const override { return wrapped_->IsDeleted(); }
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) override;
   void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
@@ -171,7 +171,7 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
       std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
 
   void Delete() override { return wrapped_->Delete(); }
-  bool IsDeleted() override { return wrapped_->IsDeleted(); }
+  bool IsDeleted() const override { return wrapped_->IsDeleted(); }
 
   absl::StatusOr<std::string> SerializeExecutable() const override {
     return wrapped_->SerializeExecutable();

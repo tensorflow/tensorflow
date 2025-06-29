@@ -1129,7 +1129,7 @@ PjRtCpuExecutable::PjRtCpuExecutable(
 
 void PjRtCpuExecutable::Delete() {}
 
-bool PjRtCpuExecutable::IsDeleted() { return false; }
+bool PjRtCpuExecutable::IsDeleted() const { return false; }
 
 absl::Status PjRtCpuExecutable::SetUpDonation(bool tuple_inputs) {
   TF_ASSIGN_OR_RETURN(parameters_that_must_be_donated_,

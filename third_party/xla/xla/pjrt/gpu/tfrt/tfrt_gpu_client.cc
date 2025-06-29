@@ -3113,7 +3113,7 @@ void TfrtGpuBuffer::Delete() {
       });
 }
 
-bool TfrtGpuBuffer::IsDeleted() {
+bool TfrtGpuBuffer::IsDeleted() const {
   absl::MutexLock lock(&mu_);
   return tracked_device_buffer_ == nullptr;
 }
