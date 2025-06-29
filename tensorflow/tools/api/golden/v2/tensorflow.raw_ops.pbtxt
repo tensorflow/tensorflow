@@ -1934,7 +1934,7 @@ tf_module {
   }
   member_method {
     name: "GetMinibatchSplitsWithPhysicalReplica"
-    argspec: "args=[\'program_key\', \'row_ids\', \'col_ids\', \'gains\', \'sample_count\', \'num_replica\', \'table_vocab_size\', \'feature_width\', \'num_sc_per_chip\', \'table_name\', \'mini_batch_splits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'program_key\', \'row_ids\', \'col_ids\', \'gains\', \'sample_count\', \'num_replica\', \'table_vocab_size\', \'feature_width\', \'num_sc_per_chip\', \'table_name\', \'mini_batch_splits\', \'sc_lane_size\', \'name\'], varargs=None, keywords=None, defaults=[\'8\', \'None\'], "
   }
   member_method {
     name: "GetMinibatchesInCsrWithPhysicalReplica"
