@@ -192,9 +192,9 @@ class TileAssignment {
       : iota_(IotaTileAssignment::Create(dims, reshape_dims, transpose_perm)) {}
 
   TileAssignment(const TileAssignment& other);
-  TileAssignment(TileAssignment&& other);
+  TileAssignment(TileAssignment&& other) noexcept;
   TileAssignment& operator=(const TileAssignment& other);
-  TileAssignment& operator=(TileAssignment&& other);
+  TileAssignment& operator=(TileAssignment&& other) noexcept;
 
   bool operator==(const TileAssignment& other) const;
   bool operator!=(const TileAssignment& other) const {
