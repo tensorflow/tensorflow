@@ -24,6 +24,7 @@ limitations under the License.
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/sync_fallback_kernels.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -32,6 +33,10 @@ limitations under the License.
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/common_runtime/cost_util.h"
+#include "tensorflow/core/common_runtime/request_cost.h"
+#include "tensorflow/core/common_runtime/request_cost_accessor.h"
+#include "tensorflow/core/common_runtime/request_cost_accessor_registry.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -42,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
@@ -61,6 +67,7 @@ namespace tensorflow {
 namespace tfrt_stub {
 namespace {
 
+using ::testing::NotNull;
 using ::testing::status::StatusIs;
 
 class GraphExecutorForTestingCostAnalysis : public GraphExecutor {
@@ -75,7 +82,24 @@ class GraphExecutorForTestingCostAnalysis : public GraphExecutor {
   }
 };
 
-class GraphExecutorTest : public ::testing::TestWithParam<bool> {};
+class TestRequestCostAccessor : public RequestCostAccessor {
+ public:
+  RequestCost* GetRequestCost() const override {
+    static RequestCost* request_cost = new RequestCost();
+    return request_cost;
+  }
+};
+
+class GraphExecutorTestForTestSuite : public ::testing::TestWithParam<bool> {
+ protected:
+  static void SetUpTestSuite() {
+    // setenv needs to be called before the RequestCostAccessor is registered.
+    setenv("TF_REQUEST_COST_ACCESSOR_TYPE", "test", /*overwrite=*/1);
+    // RequestCostAccessor can only be registered once.
+    RequestCostAccessorRegistry::RegisterRequestCostAccessor(
+        "test", []() { return std::make_unique<TestRequestCostAccessor>(); });
+  }
+};
 
 absl::Status GetSimpleGraphDef(GraphDef& graph_def) {
   auto scope = tensorflow::Scope::NewRootScope().WithDevice("/device:CPU:0");
@@ -95,7 +119,7 @@ std::unique_ptr<mlrt::KernelRegistry> GetKernelRegistry() {
   return kernel_registry;
 }
 
-TEST_P(GraphExecutorTest, Vanilla) {
+TEST_P(GraphExecutorTestForTestSuite, Vanilla) {
   GraphDef graph_def;
   TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
 
@@ -128,9 +152,24 @@ TEST_P(GraphExecutorTest, Vanilla) {
 
   EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
               ::testing::ElementsAreArray({2}));
+
+  const std::string kTopGraphQueueingDelayUsecsMetric =
+      "top_graph_queueing_delay_usecs";
+  std::unique_ptr<tensorflow::RequestCostAccessor> cost_accessor =
+      tensorflow::CreateRequestCostAccessor();
+  ASSERT_THAT(cost_accessor, NotNull());
+  ASSERT_THAT(cost_accessor->GetRequestCost(), NotNull());
+  const absl::flat_hash_map<std::string, double>& metrics =
+      cost_accessor->GetRequestCost()->GetMetrics();
+  if (GetParam()) {
+    EXPECT_TRUE(metrics.contains(kTopGraphQueueingDelayUsecsMetric));
+    EXPECT_GT(metrics.at(kTopGraphQueueingDelayUsecsMetric), 0);
+  } else {
+    EXPECT_FALSE(metrics.contains(kTopGraphQueueingDelayUsecsMetric));
+  }
 }
 
-TEST_P(GraphExecutorTest, OnlineCostAnalysisOptionsOverrideToOnce) {
+TEST_P(GraphExecutorTestForTestSuite, OnlineCostAnalysisOptionsOverrideToOnce) {
   GraphDef graph_def;
   TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
 
@@ -189,7 +228,7 @@ TEST_P(GraphExecutorTest, OnlineCostAnalysisOptionsOverrideToOnce) {
   EXPECT_EQ(graph_executor->num_recompilations(), 1);
 }
 
-TEST_P(GraphExecutorTest, OnlineCostAnalysisEveryTime) {
+TEST_P(GraphExecutorTestForTestSuite, OnlineCostAnalysisEveryTime) {
   GraphDef graph_def;
   TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
 
@@ -233,7 +272,7 @@ TEST_P(GraphExecutorTest, OnlineCostAnalysisEveryTime) {
   }
 }
 
-TEST_P(GraphExecutorTest, OnlineCostAnalysisDisabled) {
+TEST_P(GraphExecutorTestForTestSuite, OnlineCostAnalysisDisabled) {
   GraphDef graph_def;
   TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
 
@@ -272,7 +311,7 @@ TEST_P(GraphExecutorTest, OnlineCostAnalysisDisabled) {
   EXPECT_EQ(graph_executor->num_recompilations(), 0);
 }
 
-TEST_P(GraphExecutorTest, OnlineCostAnalysisPeriodic) {
+TEST_P(GraphExecutorTestForTestSuite, OnlineCostAnalysisPeriodic) {
   GraphDef graph_def;
   TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
 
@@ -386,7 +425,7 @@ class TestIsCancelledKernel : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TestIsCancelled").Device(DEVICE_CPU),
                         TestIsCancelledKernel);
 
-TEST_P(GraphExecutorTest, Cancellation) {
+TEST_P(GraphExecutorTestForTestSuite, Cancellation) {
   GraphDef graph_def;
 
   tensorflow::GraphDefBuilder builder(
@@ -447,8 +486,15 @@ TEST_P(GraphExecutorTest, Cancellation) {
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(GraphExecutorTestSuite, GraphExecutorTest,
+INSTANTIATE_TEST_SUITE_P(GraphExecutorTestSuite, GraphExecutorTestForTestSuite,
                          ::testing::Bool());
+
+class GraphExecutorTest : public ::testing::Test {
+ protected:
+  static void SetUpTestSuite() {
+    setenv("TF_REQUEST_COST_ACCESSOR_TYPE", "test", /*overwrite=*/1);
+  }
+};
 
 TEST_F(GraphExecutorTest, Extend) {
   GraphDef graph_def;
