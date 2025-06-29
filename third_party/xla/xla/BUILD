@@ -1,8 +1,7 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 
 # copybara:uncomment load("@rules_python//python:proto.bzl", "py_proto_library")
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 load("//xla:package_groups.bzl", "xla_package_groups")
 load("//xla:xla.default.bzl", "xla_bzl_library", "xla_cc_test", "xla_py_proto_library")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
@@ -18,36 +17,6 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility(["//xla:internal"]),
     licenses = ["notice"],
-)
-
-# Indicates whether --//third_party/tensorflow/compiler/xla:ci_build=True
-# is set on the bazel command line.
-#
-# Example:
-#   cc_binary(
-#     name = "foo",
-#     srcs = ["foo.cc"],
-#     linkstatic = select({
-#         # If --//third_party/tensorflow/compiler/xla:ci_build=True is set
-#         # on the bazel command line, then the binary is linked statically.
-#         "//xla:is_ci_build": True,
-#         # Otherwise, the binary is linked dynamically.
-#         "//conditions:default": False,
-#     }),
-#     deps = [...],
-#   )
-config_setting(
-    name = "is_ci_build",
-    flag_values = {":ci_build": "True"},
-    visibility = ["//visibility:public"],
-)
-
-# Implements the custom bazel flag
-# --//third_party/tensorflow/compiler/xla:ci_build=True.
-bool_flag(
-    name = "ci_build",
-    build_setting_default = False,
-    visibility = ["//visibility:public"],
 )
 
 exports_files([

@@ -546,7 +546,7 @@ config_setting(
 bool_flag(
     name = "ci_build",
     build_setting_default = False,
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
 )
 
 bzl_library(
