@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/shape.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
