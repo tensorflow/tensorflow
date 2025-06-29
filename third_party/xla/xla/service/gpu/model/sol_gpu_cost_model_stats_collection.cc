@@ -24,8 +24,12 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
@@ -36,6 +40,17 @@ limitations under the License.
 namespace xla::gpu {
 
 namespace {
+
+bool IsTritonGemm(const HloInstruction& instr) {
+  if (instr.called_computations().size() != 1) {
+    return false;
+  }
+  if (!IsTritonFusedComputation(*instr.called_computations()[0])) {
+    return false;
+  }
+  auto fused_range = instr.fused_instructions();
+  return absl::c_count_if(fused_range, HloPredicateIsOp<HloOpcode::kDot>) == 1;
+}
 
 // Returns true if successfully set the reification cost.
 bool SetReificationCost(HloInstruction* instr, double cost_us) {
@@ -91,8 +106,13 @@ absl::StatusOr<bool> SolGpuCostModelStatsCollection::Run(
           shape_size_in_bytes_fn_, module->entry_computation(),
           std::move(cost_analysis)));
 
-  for (HloComputation* comp : module->computations()) {
-    for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
+  for (HloComputation* comp : module->MakeComputationPostOrder()) {
+    for (HloInstruction* instr : comp->instructions()) {
+      if (instr->opcode() != HloOpcode::kFusion &&
+          !hlo_query::IsAsyncCollectiveStartOp(instr) &&
+          !IsCublasGemm(*instr) && !IsTritonGemm(*instr)) {
+        continue;
+      }
       if (!RecordReificationCost(*instr, *estimator)) {
         VLOG(2) << "Cannot record reification cost for: " << instr->ToString();
       }
