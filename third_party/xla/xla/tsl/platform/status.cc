@@ -18,9 +18,6 @@ limitations under the License.
 #include <stdio.h>
 
 #include <deque>
-#include <functional>
-#include <memory>
-#include <ostream>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -28,11 +25,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/base/log_severity.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/log_entry.h"
+#include "absl/log/log_sink.h"
+#include "absl/log/log_sink_registry.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
-#include "absl/strings/escaping.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
@@ -42,8 +41,6 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "xla/tsl/platform/stack_frame.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
-#include "tsl/platform/stacktrace.h"
-#include "tsl/platform/str_util.h"
 #include "tsl/platform/strcat.h"
 #include "tsl/platform/stringprintf.h"
 #include "tsl/platform/thread_annotations.h"
@@ -54,7 +51,7 @@ namespace {
 
 // Log sink is used to collect recent warning and error log messages to be
 // attached to the error status.
-class StatusLogSink : public TFLogSink {
+class StatusLogSink : public absl::LogSink {
  public:
   static StatusLogSink* GetInstance() {
     static StatusLogSink* const sink = new StatusLogSink();
@@ -76,7 +73,7 @@ class StatusLogSink : public TFLogSink {
       }
 
       if (num_messages_ > 0) {
-        TFAddLogSink(this);
+        absl::AddLogSink(this);
       }
     });
   }
@@ -89,11 +86,11 @@ class StatusLogSink : public TFLogSink {
     }
   }
 
-  void Send(const TFLogEntry& entry) override TF_LOCKS_EXCLUDED(mu_) {
+  void Send(const absl::LogEntry& entry) override TF_LOCKS_EXCLUDED(mu_) {
     if (entry.log_severity() < absl::LogSeverity::kWarning) return;
 
     absl::MutexLock lock(&mu_);
-    messages_.emplace_back(entry.ToString());
+    messages_.emplace_back(entry.text_message_with_prefix());
     if (messages_.size() > static_cast<size_t>(num_messages_)) {
       messages_.pop_front();
     }
@@ -283,7 +280,7 @@ absl::Status StatusGroup::as_summary_status() const {
   if (non_derived_.size() == 1) {
     return MakeStatus(
         non_derived_.begin()->code(),
-        strings::StrCat(non_derived_.begin()->message(), get_recent_logs()),
+        absl::StrCat(non_derived_.begin()->message(), get_recent_logs()),
         GetPayloads());
   }
 

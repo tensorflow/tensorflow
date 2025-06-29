@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdio>
 
+#include "absl/flags/flag.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/string_type.h"
 #include "tsl/platform/logging.h"
