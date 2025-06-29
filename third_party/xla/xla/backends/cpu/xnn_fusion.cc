@@ -245,6 +245,14 @@ bool IsElementwiseOpSupportedByXnn(const HloInstruction* hlo) {
     return false;
   }
 
+  if (hlo->operand_count() >= 3 ||
+      !std::all_of(hlo->operands().begin(), hlo->operands().end(),
+                   [](const HloInstruction* op) {
+                     return XnnDatatype(op->shape().element_type()).ok();
+                   })) {
+    return false;
+  }
+
   switch (hlo->operand_count()) {
     case 1:
       return XnnUnaryOperator(hlo->opcode()).ok();
