@@ -157,6 +157,9 @@ TEST_F(ShapeTest, EqualityTest) {
   EXPECT_FALSE(
       Shape::Equal()(ShapeUtil::MakeValidatedBufferShape(S32, {3, 4}).value(),
                      ShapeUtil::MakeShape(S32, {3, 4})));
+  EXPECT_TRUE(Shape::Equal().IgnoreBuffer().IgnoreLayout()(
+      ShapeUtil::MakeValidatedBufferShape(S32, {3, 4}).value(),
+      ShapeUtil::MakeShapeWithDenseLayout(S32, {3, 4}, {0, 1})));
 }
 
 TEST_F(ShapeTest, AreAllLeavesIntegers) {
