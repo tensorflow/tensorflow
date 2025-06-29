@@ -25,6 +25,13 @@ limitations under the License.
 namespace xla {
 namespace hlo_diff {
 
+// Enums to define the mapping by position behavior
+enum class MapByPositionMode {
+  kNever,           // Never map by position
+  kAlways,          // Always attempt to map by position
+  kOnlyIfSameSize,  // Map by position only if sets are of the same size
+};
+
 // Find optimal matches between the left and right instruction set.
 // The goal is to establish a mapping between corresponding instructions from
 // the 'left_instructions' and 'right_instructions' sets, all of the same type.
@@ -36,7 +43,7 @@ void MatchSameTypeInstructions(
     const std::vector<const HloInstructionNode*>& left_instructions,
     const std::vector<const HloInstructionNode*>& right_instructions,
     HloGumgraphMappings& mappings, const MatcherType& matcher_type,
-    bool map_by_position = false);
+    MapByPositionMode map_by_position = MapByPositionMode::kNever);
 
 // Find optimal matches between the left and right instruction set.
 // Sort the instructions by opcode and call MatchSameTypeInstructions for each
@@ -46,7 +53,7 @@ void MatchLeafInstructions(
     const std::vector<HloInstructionNode*>& left_instructions,
     const std::vector<HloInstructionNode*>& right_instructions,
     HloGumgraphMappings& mappings, const MatcherType& matcher_type,
-    bool map_by_position = false);
+    MapByPositionMode map_by_position = MapByPositionMode::kNever);
 
 }  // namespace hlo_diff
 }  // namespace xla
