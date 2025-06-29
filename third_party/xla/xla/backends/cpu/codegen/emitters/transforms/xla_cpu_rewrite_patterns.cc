@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -105,6 +106,13 @@ struct LowerLoadOp : public mlir::OpRewritePattern<LoadOp> {
     arg_ptr.setInvariant(true);
     arg_ptr->setAttr(mlir::LLVM::LLVMDialect::getAlignAttrName(),
                      b.getIndexAttr(32));
+
+    if (auto dereferenceable = op->getAttrOfType<mlir::IntegerAttr>(
+            mlir::LLVM::LLVMDialect::getDereferenceableAttrName())) {
+      arg_ptr.setDereferenceable(
+          rewriter.getAttr<mlir::LLVM::DereferenceableAttr>(
+              dereferenceable.getInt(), false));
+    }
 
     auto arg_ptr_cast = b.create<mlir::UnrealizedConversionCastOp>(
         op.getLoc(), op->getResult(0).getType(), arg_ptr.getResult());
@@ -235,10 +243,17 @@ class WrapEntryWithCallFrame
 
     mlir::BlockArgument call_frame_arg = kernel_func.getArgument(0);
     llvm::SmallVector<mlir::Value> call_args;
+    mlir::ArrayAttr arg_attrs = op.getArgAttrsAttr();
     for (const auto& [idx, arg] :
          llvm::enumerate(op.getArguments().drop_back(3))) {
-      call_args.push_back(
-          builder.create<LoadOp>(arg.getType(), call_frame_arg, idx));
+      mlir::DictionaryAttr arg_attr =
+          arg_attrs ? mlir::dyn_cast<mlir::DictionaryAttr>(arg_attrs[idx])
+                    : nullptr;
+      LoadOp load = builder.create<LoadOp>(arg.getType(), call_frame_arg, idx);
+      if (arg_attr) {
+        load->setAttrs(arg_attr);
+      }
+      call_args.push_back(load);
     }
     call_args.append(GetWorkGroupIds(call_frame_arg, builder));
 
