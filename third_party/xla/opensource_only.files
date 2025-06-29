@@ -13,6 +13,7 @@ tensorflow/compiler/xla/tsl/mkl/MKL_LICENSE:
 tensorflow/compiler/xla/tsl/mkl/build_defs.bzl:
 tensorflow/compiler/xla/tsl/package_groups.bzl:
 tensorflow/third_party/py/BUILD.tpl:
+tensorflow/third_party/py/create_py_import_output.py:
 tensorflow/third_party/py/manylinux_compliance_test.py:
 tensorflow/third_party/py/py_import.bzl:
 tensorflow/third_party/py/py_manylinux_compliance_test.bzl:

@@ -58,3 +58,10 @@ filegroup(
     srcs = ["manylinux_compliance_test.py"],
     visibility = ["//visibility:public"],
 )
+
+py_binary(
+    name = "create_py_import_output_tool",
+    srcs = ["create_py_import_output.py"],
+    main = "create_py_import_output.py",
+    visibility = ["//visibility:public"],
+)
