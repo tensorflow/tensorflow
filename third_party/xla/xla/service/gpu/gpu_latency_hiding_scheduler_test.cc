@@ -29,10 +29,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/gpu/alias_info.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/profile_guided_latency_estimator.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -58,23 +60,23 @@ int GetIndexByName(absl::Span<HloInstruction* const> instruction_sequence,
 // into broader GPU scheduling related tests vs. tests related to components of
 // GPU LHS.
 
-class GpuLatencyHidingSchedulerBaseTest : public HloTestBase {
+class GpuLatencyHidingSchedulerBaseTest
+    : public HloHardwareIndependentTestBase {
  protected:
   absl::StatusOr<HloModule*> ScheduleModule(
       HloModule* module, int64_t num_parallel_resources = 1,
       DebugOptions::PGLEStrictnessLevel strictness =
           DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR) {
-    auto& test_backend = backend();
-    const auto& gpu_device_info =
-        test_backend.default_stream_executor()->GetDeviceDescription();
+    auto gpu_device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
+    GpuAliasInfo alias_info(&gpu_device_info);
     DebugOptions& options = module->mutable_config().mutable_debug_options();
     options.set_xla_gpu_experimental_parallel_collective_overlap_limit(
         num_parallel_resources);
     options.set_xla_gpu_pgle_accuracy_checker(strictness);
 
-    TF_RETURN_IF_ERROR(
-        ScheduleGpuModule(module, /*pointer_size=*/8, gpu_device_info)
-            .status());
+    TF_RETURN_IF_ERROR(ScheduleGpuModule(module, /*pointer_size=*/8,
+                                         gpu_device_info, &alias_info)
+                           .status());
     return module;
   }
 

@@ -184,9 +184,9 @@ class GpuOptProvider : public CompiledOptProvider {
         gpu_compiler->GetAliasInfo(device_description);
     if (!optimized_module->has_schedule()) {
       TF_ASSIGN_OR_RETURN(gpu::ScheduleMetadata schedule_metadata,
-                          gpu::ScheduleGpuModule(optimized_module,
-                                                 gpu_compiler->GetPointerSize(),
-                                                 device_description));
+                          gpu::ScheduleGpuModule(
+                              optimized_module, gpu_compiler->GetPointerSize(),
+                              device_description, alias_info.get()));
       TF_RETURN_IF_ERROR(gpu_compiler->RunPostSchedulingPipelines(
           optimized_module, schedule_metadata.scheduler_mem_limit,
           device_description, alias_info.get()));

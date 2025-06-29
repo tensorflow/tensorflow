@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/gpu/transforms/collectives/convert_async_collectives_to_sync.h"
@@ -84,13 +85,13 @@ static absl::flat_hash_set<std::string> SyncCollectiveIds(
 // scheduling.
 static absl::StatusOr<absl::flat_hash_set<std::string>> SynchronousCollectives(
     const HloModule& module, int64_t pointer_size,
-    const se::DeviceDescription& device_info) {
+    const se::DeviceDescription& device_info, const GpuAliasInfo* alias_info) {
   std::unique_ptr<HloModule> cloned_module = module.Clone();
   AnnotateCollectives(cloned_module.get());
   TF_RETURN_IF_ERROR(RunAsyncCollectivesConversionPasses(cloned_module.get()));
-  TF_RETURN_IF_ERROR(
-      ScheduleGpuModule(cloned_module.get(), pointer_size, device_info)
-          .status());
+  TF_RETURN_IF_ERROR(ScheduleGpuModule(cloned_module.get(), pointer_size,
+                                       device_info, alias_info)
+                         .status());
   TF_RETURN_IF_ERROR(AnnotateSyncCollectives(cloned_module.get()));
   return SyncCollectiveIds(*cloned_module);
 }
@@ -98,9 +99,9 @@ static absl::StatusOr<absl::flat_hash_set<std::string>> SynchronousCollectives(
 absl::StatusOr<bool> CollectiveCombinerAnnotator::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_ASSIGN_OR_RETURN(
-      absl::flat_hash_set<std::string> sync_collectives,
-      SynchronousCollectives(*module, pointer_size_, device_info_));
+  TF_ASSIGN_OR_RETURN(absl::flat_hash_set<std::string> sync_collectives,
+                      SynchronousCollectives(*module, pointer_size_,
+                                             device_info_, alias_info_));
   if (sync_collectives.empty()) {
     return false;
   }

@@ -1181,12 +1181,13 @@ constexpr int kCombineThresholdCount = 256;
 
 void AddCollectiveCombinerPasses(
     HloPassPipeline& pipeline, const HloModule& module,
-    const se::DeviceDescription& device_description, int pointer_size) {
+    const se::DeviceDescription& device_description,
+    const GpuAliasInfo* alias_info, int pointer_size) {
   const DebugOptions& opts = module.config().debug_options();
 
   if (opts.xla_gpu_experimental_enable_sync_collective_combining()) {
     pipeline.AddPass<CollectiveCombinerAnnotator>(device_description,
-                                                  pointer_size);
+                                                  alias_info, pointer_size);
   }
 
   pipeline.AddPass<GpuAllGatherCombiner>(
@@ -1210,11 +1211,11 @@ void AddCollectiveCombinerPasses(
 
 absl::Status RunPostFusionPasses(
     HloModule* hlo_module, const se::DeviceDescription& device_description,
-    int pointer_size) {
+    const GpuAliasInfo* alias_info, int pointer_size) {
   HloPassPipeline pipeline("post-fusion optimization");
   pipeline.AddPass<RenameFusions>();
   AddCollectiveCombinerPasses(pipeline, *hlo_module, device_description,
-                              pointer_size);
+                              alias_info, pointer_size);
 
   pipeline.AddPass<AllReduceContiguous>();
 
@@ -1379,7 +1380,8 @@ absl::Status GpuCompiler::RunCollectiveScheduleLinearizerPasses(
 // Runs optimization passes on the given HLO module.
 absl::Status GpuCompiler::OptimizeHloModule(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    const CompileOptions& options, const TargetConfig& gpu_target_config) {
+    const CompileOptions& options, const TargetConfig& gpu_target_config,
+    const GpuAliasInfo* alias_info) {
   tsl::profiler::TraceMe traceme("OptimizeHloModule");
   const se::DeviceDescription& device_description =
       gpu_target_config.device_description;
@@ -1450,8 +1452,8 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(RunFusionPasses(hlo_module, gpu_target_config,
                                      thread_pool.get_mutable(),
                                      ShapeSizeBytesFunction()));
-  TF_RETURN_IF_ERROR(
-      RunPostFusionPasses(hlo_module, device_description, pointer_size_));
+  TF_RETURN_IF_ERROR(RunPostFusionPasses(hlo_module, device_description,
+                                         alias_info, pointer_size_));
   TF_RETURN_IF_ERROR(RunAsyncCollectivesConversionPasses(hlo_module));
   TF_RETURN_IF_ERROR(RunPostFusionSimplificationPasses(
       hlo_module, layout_insensitive_algsimp_opts, gpu_version,
@@ -1869,13 +1871,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
       [&] { return absl::StrCat("HLO Transforms:", module->name()); },
       tsl::profiler::TraceMeLevel::kInfo);
 
-  TF_RETURN_IF_ERROR(OptimizeHloModule(module.get(),
-                                       is_deviceless ? nullptr : stream_exec,
-                                       options, gpu_target_config));
-
   const se::DeviceDescription& device_description =
       gpu_target_config.device_description;
   std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(device_description);
+  TF_RETURN_IF_ERROR(
+      OptimizeHloModule(module.get(), is_deviceless ? nullptr : stream_exec,
+                        options, gpu_target_config, alias_info.get()));
+
   TF_RETURN_IF_ERROR(RunPreSchedulingCopyInsertion(*module, device_description,
                                                    alias_info.get()));
 
@@ -2352,9 +2354,9 @@ GpuCompiler::CompileToBackendResult(
   std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(gpu_device_info);
   TF_RETURN_IF_ERROR(RunPreSchedulingPasses(module, executor, gpu_device_info,
                                             alias_info.get()));
-  TF_ASSIGN_OR_RETURN(
-      ScheduleMetadata schedule_metadata,
-      ScheduleGpuModule(module, pointer_size_, gpu_device_info));
+  TF_ASSIGN_OR_RETURN(ScheduleMetadata schedule_metadata,
+                      ScheduleGpuModule(module, pointer_size_, gpu_device_info,
+                                        alias_info.get()));
   TF_RETURN_IF_ERROR(
       RunPostSchedulingPipelines(module, schedule_metadata.scheduler_mem_limit,
                                  gpu_device_info, alias_info.get()));

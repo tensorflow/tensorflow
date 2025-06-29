@@ -218,7 +218,8 @@ class GpuCompiler : public LLVMCompiler {
   absl::Status OptimizeHloModule(HloModule* hlo_module,
                                  se::StreamExecutor* stream_exec,
                                  const CompileOptions& options,
-                                 const TargetConfig& gpu_target_config);
+                                 const TargetConfig& gpu_target_config,
+                                 const GpuAliasInfo* alias_info);
 
   virtual absl::Status OptimizeHloConvolutionCanonicalization(
       HloModule* hlo_module, se::GpuComputeCapability gpu_version,

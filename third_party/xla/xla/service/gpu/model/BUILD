@@ -164,6 +164,8 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:latency_hiding_scheduler",
+        "//xla/service/gpu:alias_info",
+        "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
@@ -172,7 +174,8 @@ xla_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:casts",
     ],
 )
 

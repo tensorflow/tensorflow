@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -38,9 +39,10 @@ class CollectiveCombinerAnnotatorTest : public HloHardwareIndependentTestBase {
     int pointer_size = 4;
     stream_executor::DeviceDescription device_info;
     device_info.set_device_memory_size(20000);
-    return RunHloPass(
-        CollectiveCombinerAnnotator(std::move(device_info), pointer_size),
-        module);
+    GpuAliasInfo alias_info(&device_info);
+    return RunHloPass(CollectiveCombinerAnnotator(std::move(device_info),
+                                                  &alias_info, pointer_size),
+                      module);
   }
 };
 

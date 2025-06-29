@@ -30,6 +30,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/service/gpu/alias_info.h"
+#include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/latency_hiding_scheduler.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/casts.h"
 
 namespace xla {
 
@@ -61,6 +64,7 @@ SchedulerConfig GetDefaultSchedulerConfig() {
 
 absl::StatusOr<bool> RunScheduler(
     HloModule* module, const SchedulerConfig& sched_config,
+    const GpuAliasInfo* alias_info,
     std::unique_ptr<LatencyEstimator> latency_estimator =
         std::make_unique<ApproximateLatencyEstimator>()) {
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes =
@@ -78,7 +82,7 @@ absl::StatusOr<bool> RunScheduler(
   std::shared_ptr<const SchedulingContext> scheduling_context =
       std::make_shared<const SchedulingContext>(
           module, std::move(latency_estimator), std::move(async_tracker),
-          shape_size_bytes);
+          alias_info, shape_size_bytes);
   auto scheduler_core =
       std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
   TF_ASSIGN_OR_RETURN(
@@ -95,11 +99,15 @@ class AnalyticalLatencyHidingSchedulerTest : public GpuCodegenTest {
       absl::string_view hlo_string) {
     return ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest());
   }
+  const se::DeviceDescription& GetDeviceDescription() {
+    return backend().default_stream_executor()->GetDeviceDescription();
+  }
   se::GpuComputeCapability GetGpuComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability();
+    return GetDeviceDescription().gpu_compute_capability();
+  }
+  std::unique_ptr<GpuAliasInfo> GetAliasInfo() {
+    return tensorflow::down_cast<GpuCompiler*>(backend().compiler())
+        ->GetAliasInfo(GetDeviceDescription());
   }
 };
 
@@ -159,7 +167,8 @@ ENTRY entry {
       scheduler_config, std::make_unique<ApproximateLatencyEstimator>(),
       dev_info, HloCostAnalysis::DefaultShapeSize,
       hlo_module->entry_computation());
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), scheduler_config,
+  auto alias_info = GetAliasInfo();
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), scheduler_config, alias_info.get(),
                            std::move(latency_estimator))
                   .ok());
   EXPECT_TRUE(hlo_module->has_entry_computation());
