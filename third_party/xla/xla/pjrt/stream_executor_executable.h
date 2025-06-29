@@ -102,13 +102,19 @@ class StreamExecutorExecutable : public PjRtExecutable {
             "executables.");
       }
       const auto& aot_executable = (*aot_executables)[0];
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffers,
-                          aot_executable->buffer_assignment());
+      TF_ASSIGN_OR_RETURN(const BufferAssignmentProto* proto,
+                          aot_executable->buffer_assignment_proto());
 
-      BufferAssignmentProto proto = buffers->ToProto();
-      memory_stats.serialized_buffer_assignment = proto.SerializeAsString();
-      memory_stats.PopulateBufferStatsFromAllocations(buffers->Allocations());
-      TF_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(proto));
+      memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
+      std::vector<BufferAllocation> buffer_allocations;
+      buffer_allocations.reserve(proto->buffer_allocations_size());
+      for (const BufferAllocationProto& allocation_proto :
+           proto->buffer_allocations()) {
+        buffer_allocations.push_back(
+            BufferAllocation::FromProto(allocation_proto));
+      }
+      memory_stats.PopulateBufferStatsFromAllocations(buffer_allocations);
+      TF_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(*proto));
       memory_stats.peak_memory_in_bytes = peak_memory;
       return memory_stats;
     } else {

@@ -1514,11 +1514,11 @@ cc_library(
     hdrs = ["compiler.h"],
     visibility = internal_visibility(["//xla/internal:hwi_internal"]),
     deps = [
-        ":buffer_assignment",
         ":buffer_value",
         ":computation_placer",
         ":executable",
         ":hlo_module_config",
+        ":hlo_proto_cc",
         ":metrics_hook_interface",
         "//xla:util",
         "//xla/hlo/ir:hlo",
