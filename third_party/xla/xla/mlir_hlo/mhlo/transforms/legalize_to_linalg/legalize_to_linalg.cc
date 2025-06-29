@@ -3290,8 +3290,9 @@ struct ConvolutionOpGeneralConversion
                 /*bodyBuild=*/
                 [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange) {
                   ImplicitLocOpBuilder builder(nestedLoc, nestedBuilder);
-                  linalg::Conv2DOp::regionBuilder(
-                      builder, *builder.getInsertionBlock(), {});
+                  linalg::Conv2DOp::regionBuilder(builder,
+                                                  *builder.getInsertionBlock(),
+                                                  {}, /*emitError=*/{});
                 },
                 linalg::getPrunedAttributeList(op))
             .getResult(0);
@@ -4297,7 +4298,8 @@ class DotGeneralOpConversion : public OpConversionPattern<mhlo::DotGeneralOp> {
             /*nReduction=*/numContracting),
         [](OpBuilder& b, Location loc, ValueRange) {
           ImplicitLocOpBuilder builder(loc, b);
-          linalg::MatmulOp::regionBuilder(builder, *b.getInsertionBlock(), {});
+          linalg::MatmulOp::regionBuilder(builder, *b.getInsertionBlock(), {},
+                                          /*emitError=*/{});
         },
         linalg::getPrunedAttributeList(op));
 

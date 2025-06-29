@@ -85,7 +85,7 @@ struct RewriteCmpI : OpRewritePattern<CmpIOp> {
         EvaluateCmpI(op.getPredicate(), *lhs, *rhs);
     if (result != std::nullopt) {
       rewriter.replaceOpWithNewOp<mlir::arith::ConstantIntOp>(
-          op, *result, rewriter.getI1Type());
+          op, rewriter.getI1Type(), *result);
       return mlir::success();
     }
     return rewriter.notifyMatchFailure(op, "not a constant result");

@@ -88,8 +88,8 @@ struct RewriteErf32Pattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     auto c = [&](float v) -> Value {
-      return b.create<ma::ConstantFloatOp>(llvm::APFloat(v),
-                                           rewriter.getF32Type());
+      return b.create<ma::ConstantFloatOp>(rewriter.getF32Type(),
+                                           llvm::APFloat(v));
     };
 
     auto poly = [&](auto x, auto coefficients) -> Value {
@@ -131,7 +131,7 @@ Value IsInf(Value value, mlir::ImplicitLocOpBuilder& b) {
   if (mlir::LLVM::isCompatibleOuterType(ty)) {
     value = b.create<mlir::math::AbsFOp>(value);
     Value inf = b.create<ma::ConstantFloatOp>(
-        llvm::APFloat::getInf(ty.getFloatSemantics()), ty);
+        ty, llvm::APFloat::getInf(ty.getFloatSemantics()));
     return b.create<ma::CmpFOp>(ma::CmpFPredicate::OEQ, value, inf);
   }
 
@@ -147,7 +147,7 @@ Value IsInf(Value value, mlir::ImplicitLocOpBuilder& b) {
     Val bits{b.create<ma::BitcastOp>(b.getI8Type(), value), &b};
     return (bits & 0x7F) == 0x70;
   } else {
-    return b.create<ma::ConstantIntOp>(false, b.getI1Type());
+    return b.create<ma::ConstantIntOp>(b.getI1Type(), false);
   }
 }
 
@@ -157,7 +157,7 @@ Value IsNaN(Value value, mlir::ImplicitLocOpBuilder& b) {
     return b.create<ma::CmpFOp>(ma::CmpFPredicate::UNO, value, value);
   }
   if (llvm::isa<mlir::Float4E2M1FNType>(ty)) {
-    return b.create<ma::ConstantIntOp>(false, b.getI1Type());
+    return b.create<ma::ConstantIntOp>(b.getI1Type(), false);
   }
 
   assert(ty.getIntOrFloatBitWidth() == 8);
@@ -197,12 +197,12 @@ Value EmitF16ToF8e5m2(Value in, mlir::ImplicitLocOpBuilder& b) {
   Value value = EmitReducePrecision(in, 5, 2, b);
   value = b.create<ma::BitcastOp>(b.getI16Type(), value);
   value = b.create<ma::ShRUIOp>(value,
-                                b.create<ma::ConstantIntOp>(8, b.getI16Type()));
+                                b.create<ma::ConstantIntOp>(b.getI16Type(), 8));
   value = b.create<ma::TruncIOp>(b.getI8Type(), value);
   // When the input is NaN, just truncating can turn a NaN into an inf if the
   // mantissa becomes 0.
   value = b.create<ma::SelectOp>(
-      is_nan, b.create<ma::ConstantIntOp>(0x7F, value.getType()), value);
+      is_nan, b.create<ma::ConstantIntOp>(value.getType(), 0x7F), value);
   return b.create<ma::BitcastOp>(b.getType<mlir::Float8E5M2Type>(), value);
 }
 
@@ -281,7 +281,7 @@ Value EmitFloatConversion(Value value, mlir::FloatType to_ty,
   }
 
   auto cst = [&](mlir::Type ty, int64_t n) -> Val {
-    return {b.create<ma::ConstantIntOp>(n, ty), &b};
+    return {b.create<ma::ConstantIntOp>(ty, n), &b};
   };
 
   // Shift bits to destination type, without sign bit.
@@ -563,7 +563,7 @@ struct RewriteF8Cst : public mlir::OpRewritePattern<ma::CmpFOp> {
         int_value = int_value & mask;
         constant &= mask;
       }
-      auto cst = b.create<ma::ConstantIntOp>(constant, int_ty);
+      auto cst = b.create<ma::ConstantIntOp>(int_ty, constant);
       rewriter.replaceOpWithNewOp<ma::CmpIOp>(op, ma::CmpIPredicate::ne,
                                               int_value, cst);
       return mlir::success();

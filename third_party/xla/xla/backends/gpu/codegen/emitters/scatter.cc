@@ -139,7 +139,7 @@ Value EmitBoundsCheck(ImplicitLocOpBuilder& b,
                       absl::Span<const int64_t> slice_shape,
                       absl::Span<const int64_t> operand_shape,
                       ValueRange offsets) {
-  Value in_bounds = b.create<arith::ConstantIntOp>(1, b.getI1Type());
+  Value in_bounds = b.create<arith::ConstantIntOp>(b.getI1Type(), 1);
   for (auto [update_dim, operand_dim, offset] :
        llvm::zip(slice_shape, operand_shape, offsets)) {
     Value ub = b.create<arith::ConstantIndexOp>(operand_dim - update_dim);
@@ -154,7 +154,7 @@ Value EmitBoundsCheck(ImplicitLocOpBuilder& b,
 
 Value EmitInequalityCheck(ImplicitLocOpBuilder& b, ValueRange lhs,
                           ValueRange rhs) {
-  Value not_equal = b.create<arith::ConstantIntOp>(0, b.getI1Type());
+  Value not_equal = b.create<arith::ConstantIntOp>(b.getI1Type(), 0);
   for (auto [lhs_elem, rhs_elem] : llvm::zip(lhs, rhs)) {
     not_equal = b.createOrFold<arith::OrIOp>(
         not_equal, b.createOrFold<arith::CmpIOp>(arith::CmpIPredicate::ne,
@@ -684,7 +684,7 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
 
   // Prepare loop initial values. Inits are packed as
   // [index_changed, is_inbounds, index_0,  ..., accumulator].
-  Value is_inbounds_init = b.create<arith::ConstantIntOp>(0, b.getI1Type());
+  Value is_inbounds_init = b.create<arith::ConstantIntOp>(b.getI1Type(), 0);
   Value slice_id_init = b.create<arith::ConstantIndexOp>(0);
   std::vector<Value> indices_init(description_.index_vector_length,
                                   b.create<arith::ConstantIndexOp>(-1));
