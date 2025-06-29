@@ -160,7 +160,7 @@ class SparseXentOpDeterministicTest(
     deterministic implementation, tf.gather throws an exception instead.
     """
     self._testInvalidLabelCPU(
-        expected_regex="indices\[0\] = 4 is not in \[0, 4\)")
+        expected_regex=r"indices\[0\] = 4 is not in \[0, 4\)")
 
   def testLabelsPlaceholderScalar(self):
     """Test exception-throwing for non-statically-shaped, zero-rank labels.
@@ -171,7 +171,7 @@ class SparseXentOpDeterministicTest(
     throws an error.
     """
     self._testLabelsPlaceholderScalar(
-        expected_error_message="Expected batch_dims in the range \[0, 0\], " +
+        expected_error_message=r"Expected batch_dims in the range \[0, 0\], " +
         "but got 1")
 
   def testScalarHandling(self):
@@ -183,7 +183,7 @@ class SparseXentOpDeterministicTest(
     throws an error.
     """
     self._testScalarHandling(
-        expected_regex="Expected batch_dims in the range \[0, 0\], but got 1.*")
+        expected_regex=r"Expected batch_dims in the range \[0, 0\], but got 1.*")
 
 
 if __name__ == "__main__":
