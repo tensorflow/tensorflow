@@ -112,6 +112,7 @@ AttributeMap MakeAttributeMap(xla::PjRtClient* pjrt_client) {
     attributes.insert(
         {"pjrt_c_api_minor_version",
          PjRtValueType(plugin_attributes->pjrt_c_api_minor_version)});
+    attributes.insert({"serialize_with_sdy", PjRtValueType(true)});
     for (const auto& [key, value] : plugin_attributes->attributes) {
       attributes.insert({key, value});
     }

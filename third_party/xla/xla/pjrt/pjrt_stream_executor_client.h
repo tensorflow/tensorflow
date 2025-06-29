@@ -266,6 +266,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
   absl::string_view platform_name() const override { return platform_name_; }
   absl::string_view platform_version() const override { return "<unknown>"; }
 
+  std::optional<PjRtPluginAttributes> plugin_attributes() const override;
+
   // Most platforms expect device-to-device transfers to be enqueued on the
   // source d2d stream, but some platforms use the destination d2d stream. This
   // function specifies which one the platform expects.

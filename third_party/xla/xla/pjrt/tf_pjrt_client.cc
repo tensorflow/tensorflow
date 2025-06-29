@@ -188,6 +188,13 @@ void TfPjRtClient::DestroyWrappedBuffersAndClient() {
   LOG(INFO) << "TfPjRtClient::DestroyWrappedBuffersAndClient completed.";
 }
 
+std::optional<PjRtPluginAttributes> TfPjRtClient::plugin_attributes() const {
+  PjRtPluginAttributes attributes =
+      PjRtClient::plugin_attributes().value_or(PjRtPluginAttributes());
+  attributes.attributes["serialize_with_sdy"] = true;
+  return attributes;
+}
+
 std::unique_ptr<TfPjRtClient> TfPjRtClient::CreateTfPjRtClient(
     std::unique_ptr<PjRtClient> wrapped) {
   return std::make_unique<TfPjRtClient>(std::move(wrapped));

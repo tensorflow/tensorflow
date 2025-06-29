@@ -1385,6 +1385,13 @@ absl::Span<PjRtMemorySpace* const> TfrtGpuClient::memory_spaces() const {
   return memory_spaces_;
 }
 
+std::optional<PjRtPluginAttributes> TfrtGpuClient::plugin_attributes() const {
+  PjRtPluginAttributes attributes =
+      PjRtClient::plugin_attributes().value_or(PjRtPluginAttributes());
+  attributes.attributes["serialize_with_sdy"] = true;
+  return attributes;
+}
+
 absl::StatusOr<DeviceAssignment> TfrtGpuClient::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
   return computation_placer_->AssignDevices(num_replicas, num_partitions);

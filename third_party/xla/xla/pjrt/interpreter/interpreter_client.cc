@@ -319,6 +319,14 @@ absl::StatusOr<Literal> InterpreterLoadedExecutable::Evaluate(
   return hlo_evaluator_->Evaluate(computation, arg_literals);
 }
 
+std::optional<PjRtPluginAttributes> InterpreterClient::plugin_attributes()
+    const {
+  PjRtPluginAttributes attributes =
+      PjRtClient::plugin_attributes().value_or(PjRtPluginAttributes());
+  attributes.attributes["serialize_with_sdy"] = true;
+  return attributes;
+}
+
 absl::StatusOr<DeviceAssignment> InterpreterClient::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
   if (num_replicas != 1 || num_partitions != 1) {
