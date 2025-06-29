@@ -25,9 +25,9 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
 
 namespace xla {
 namespace hlo_diff {
@@ -73,6 +73,21 @@ absl::flat_hash_map<
 GroupInstructionPairsByOpcode(
     const absl::flat_hash_map<const HloInstruction*, const HloInstruction*>&
         instructions);
+
+// Filters the instructions by opcode.
+absl::flat_hash_map<const HloInstruction*, const HloInstruction*>
+FilterInstructionsByOpcode(
+    const absl::flat_hash_map<const HloInstruction*, const HloInstruction*>&
+        instructions,
+    const absl::flat_hash_set<HloOpcode>& ignored_opcodes);
+absl::flat_hash_set<const HloInstruction*> FilterInstructionsByOpcode(
+    const absl::flat_hash_set<const HloInstruction*>& instructions,
+    const absl::flat_hash_set<HloOpcode>& ignored_opcodes);
+
+// Filters the diff result by opcode.
+DiffResult FilterDiffResultByOpcode(
+    const DiffResult& diff_result,
+    const absl::flat_hash_set<HloOpcode>& ignored_opcodes);
 
 }  // namespace hlo_diff
 }  // namespace xla
