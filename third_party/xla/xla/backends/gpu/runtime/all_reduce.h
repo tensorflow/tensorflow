@@ -31,8 +31,14 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Returns true if the all-reduce kernel is supported for the given number of
-// inputs, elements, element type and reduction kind.
+// Returns the launch dimensions for the all-reduce kernel.
+// The launch dimensions are determined by the number of elements and the
+// the all-reduce strategy.
+LaunchDimensions AllReduceLaunchDimensions(int64_t elements, int64_t num_ranks,
+                                           se::gpu::AllReduceStrategy strategy);
+
+// Returns true if the all-reduce kernel is supported for the given number
+// of inputs, elements, element type and reduction kind.
 bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
                                 PrimitiveType element_type,
                                 ReductionKind reduction_kind,
