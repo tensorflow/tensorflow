@@ -322,7 +322,9 @@ absl::Status CreateClientOnce(
             /*gpu_run_options=*/std::move(gpu_run_options), kv_store,
             /*distributed_client=*/nullptr,
             /*abort_collectives_on_failure=*/false,
-            xla::GpuTopology::FromProto(device_topology_pair->second));
+            /*gpu_topology=*/
+            xla::GpuTopology::FromProto(device_topology_pair->second),
+            /*num_nodes=*/num_nodes);
     VLOG(2) << "PJRT GPU client with remote devices created.";
     auto status = SetPjRtClientInTFGlobalResourceManager(
         DeviceType(DEVICE_GPU), std::move(pjrt_client));
