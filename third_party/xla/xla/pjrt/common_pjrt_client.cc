@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/raw_buffer.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -498,6 +499,62 @@ PjRtFuture<> CommonPjRtBufferImpl::ToLiteralImpl(
                                        std::move(shape));
       });
   return result;
+}
+
+absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>
+CommonPjRtBufferImpl::CreateRawAliasOfBuffer() {
+  tsl::RCReference<CommonPjRtRawBuffer> raw_buffer;
+  TF_RETURN_IF_ERROR(AcquireScopedRawBuffer(
+      [&](tsl::RCReference<CommonPjRtRawBuffer> buf_raw_buffer,
+          std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events)
+          -> absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> {
+        raw_buffer = std::move(buf_raw_buffer);
+        return tsl::RCReference<PjRtDeviceEvent>();
+      },
+      "CreateRawAliasOfBuffer()"));
+  return raw_buffer;
+}
+
+static std::optional<absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>>
+CommonPjRtBufferImpl_CreateRawAliasOfBuffer(PjRtBuffer* buffer) {
+  if (auto* common_buffer = dynamic_cast<CommonPjRtBufferImpl*>(buffer)) {
+    return common_buffer->CreateRawAliasOfBuffer();
+  }
+  return std::nullopt;
+}
+
+REGISTER_PJRT_RAW_BUFFER_FACTORY(CommonPjRtBufferImpl_CreateRawAliasOfBuffer);
+
+absl::StatusOr<std::unique_ptr<CommonPjRtBufferImpl::ExternalReference>>
+CommonPjRtBufferImpl::AcquireExternalReference() {
+  ScopedHold hold = GetBufferWithHold(ScopedHold::kExternalReference);
+  TF_RETURN_IF_ERROR(hold.status());
+
+  class ScopedHoldAsExternalReference : public ExternalReference {
+   public:
+    explicit ScopedHoldAsExternalReference(
+        ScopedHold hold, tsl::RCReference<CommonPjRtRawBuffer> raw_buffer)
+        : external_reference_(std::move(hold)),
+          raw_buffer_(std::move(raw_buffer)) {
+      CHECK(external_reference_.type() == ScopedHold::kExternalReference);
+      if (!raw_buffer_) {
+        data_ptr_ = nullptr;
+      } else {
+        data_ptr_ = raw_buffer_->OpaqueDeviceMemoryDataPointer();
+      }
+    }
+
+    ~ScopedHoldAsExternalReference() override = default;
+
+   private:
+    ScopedHold external_reference_;
+    tsl::RCReference<CommonPjRtRawBuffer> raw_buffer_;
+  };
+
+  auto raw_buffer = hold.buffer()->GetRawBuffer(memory_space_);
+  return std::unique_ptr<ExternalReference>(
+      std::make_unique<ScopedHoldAsExternalReference>(std::move(hold),
+                                                      std::move(raw_buffer)));
 }
 
 }  // namespace xla

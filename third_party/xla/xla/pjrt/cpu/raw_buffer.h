@@ -117,6 +117,14 @@ class CpuRawBuffer : public CommonPjRtRawBuffer {
 
   void* GetHostPointer() const override;
 
+  void* OpaqueDeviceMemoryDataPointer() const override {
+    // We need to wait for the memory to be allocated before sharing it with
+    // external frameworks like NumPy.
+    tsl::BlockUntilReady(buffer_);
+    CHECK(buffer_.IsConcrete());
+    return buffer_->untyped_data();
+  }
+
   const tsl::AsyncValueRef<CpuDeviceMemory>& buffer() const { return buffer_; }
 
   PjRtMemorySpace* memory_space() const override { return memory_space_; }

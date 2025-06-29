@@ -255,6 +255,8 @@ class CommonPjRtBuffer : public PjRtBuffer {
     return device_buffer_.get();
   }
 
+  ScopedHold GetBufferWithHold(ScopedHold::Type type);
+
   mutable absl::Mutex mu_;
   PjRtFuture<>::Promise definition_promise_ ABSL_GUARDED_BY(mu_);
   PjRtMemorySpace* const memory_space_;
