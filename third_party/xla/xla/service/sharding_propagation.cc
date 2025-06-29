@@ -1308,7 +1308,7 @@ bool InferReduceShardingFromOperand(HloInstruction* instruction,
     if (instruction->shape().IsArray()) {
       return sharding;
     }
-    std::vector<HloSharding> tuple(instruction->shape().tuple_shapes_size(),
+    std::vector<HloSharding> tuple(instruction->shape().tuple_shapes().size(),
                                    std::move(sharding));
     return HloSharding::Tuple(instruction->shape(), tuple);
   };
@@ -1740,7 +1740,7 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
           user.shape(), {user.operand_index(&instruction)});
       // In case the instruction is used as the operands multiple times within
       // this tuple, we will return the most specific sharding and propagate up.
-      for (int64_t i = 0; i < user.shape().tuple_shapes_size(); ++i) {
+      for (int64_t i = 0; i < user.shape().tuple_shapes().size(); ++i) {
         if (user.operand(i) == &instruction) {
           // Only evaluate GetSubSharding if this operand is of interest,
           // as it is relatively expensive.
@@ -1756,7 +1756,7 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
     }
     case HloOpcode::kGetTupleElement: {
       int64_t sharding_index = 0;
-      for (int i = 0; i < instruction.shape().tuple_shapes_size(); ++i) {
+      for (int i = 0; i < instruction.shape().tuple_shapes().size(); ++i) {
         if (i == user.tuple_index()) {
           break;
         }
@@ -2164,7 +2164,7 @@ bool ShardingPropagation::InferShardingFromOperands(
     if (instruction->shape().IsArray()) {
       return sharding;
     }
-    std::vector<HloSharding> tuple(instruction->shape().tuple_shapes_size(),
+    std::vector<HloSharding> tuple(instruction->shape().tuple_shapes().size(),
                                    std::move(sharding));
     return HloSharding::Tuple(instruction->shape(), tuple);
   };
@@ -3220,7 +3220,7 @@ absl::StatusOr<bool> ShardingPropagation::Run(
       HloInstruction* param =
           module->entry_computation()->parameter_instruction(0);
       return param->shape().IsTuple() &&
-             size == param->shape().tuple_shapes_size();
+             size == param->shape().tuple_shapes().size();
     };
     auto size = allow_spmd_sharding_propagation_to_parameters_vector_.size();
     CHECK(size == 1 || size == module->entry_computation()->num_parameters() ||
@@ -3511,12 +3511,12 @@ absl::StatusOr<bool> ShardingPropagation::Run(
       }
     } else if (params.size() == 1 && saved_parameter_shardings.size() == 1 &&
                params[0]->shape().IsTuple() &&
-               params[0]->shape().tuple_shapes_size() ==
+               params[0]->shape().tuple_shapes().size() ==
                    allow_spmd_sharding_propagation_to_parameters_vector_
                        .size()) {
       // There is a single parameter which is a tuple with many elements.
       HloSharding param_sharding = params[0]->sharding();
-      for (int64_t i = 0; i < params[0]->shape().tuple_shapes_size(); ++i) {
+      for (int64_t i = 0; i < params[0]->shape().tuple_shapes().size(); ++i) {
         HloSharding saved_subsharding =
             saved_parameter_shardings.at(0).GetSubSharding(params[0]->shape(),
                                                            {i});
@@ -3558,11 +3558,11 @@ absl::StatusOr<bool> ShardingPropagation::Run(
       root_instruction->has_sharding()) {
     if (root_instruction->shape().IsTuple() &&
         allow_spmd_sharding_propagation_to_output_vector_.size() ==
-            root_instruction->shape().tuple_shapes_size()) {
+            root_instruction->shape().tuple_shapes().size()) {
       // The output shape is a tuple and sharding propagation is allowed for at
       // least one of its elements.
       HloSharding root_sharding = root_instruction->sharding();
-      for (int64_t i = 0; i < root_instruction->shape().tuple_shapes_size();
+      for (int64_t i = 0; i < root_instruction->shape().tuple_shapes().size();
            ++i) {
         if (allow_spmd_sharding_propagation_to_output_vector_[i] &&
             !evenly_partitions(root_instruction->shape().tuple_shapes(i),
@@ -3592,11 +3592,11 @@ absl::StatusOr<bool> ShardingPropagation::Run(
       }
     } else if (params.size() == 1 && params[0]->shape().IsTuple() &&
                params[0]->has_sharding() &&
-               params[0]->shape().tuple_shapes_size() ==
+               params[0]->shape().tuple_shapes().size() ==
                    allow_spmd_sharding_propagation_to_parameters_vector_
                        .size()) {
       HloSharding param_sharding = params[0]->sharding();
-      for (int64_t i = 0; i < params[0]->shape().tuple_shapes_size(); ++i) {
+      for (int64_t i = 0; i < params[0]->shape().tuple_shapes().size(); ++i) {
         if (allow_spmd_sharding_propagation_to_parameters_vector_[i] &&
             !evenly_partitions(params[0]->shape().tuple_shapes(i),
                                params[0]->sharding().GetSubSharding(

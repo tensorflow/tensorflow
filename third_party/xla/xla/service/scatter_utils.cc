@@ -159,7 +159,7 @@ absl::StatusOr<HloComputation*> CallComputationAndGetIthOutputWithBinaryParams(
     return original;
   }
   int64_t num_params = original->num_parameters();
-  int64_t num_outputs = original_root->shape().tuple_shapes_size();
+  int64_t num_outputs = original_root->shape().tuple_shapes().size();
 
   CHECK_EQ(num_params / 2, num_outputs);
   HloComputation* new_comp = [&] {
