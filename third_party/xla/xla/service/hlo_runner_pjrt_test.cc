@@ -27,12 +27,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/pjrt/interpreter/interpreter_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/fingerprint.h"
-#include "tsl/platform/notification.h"
 #include "tsl/platform/path.h"
 
 namespace xla {
@@ -151,8 +150,6 @@ using CompilePhaseHloRunnerPjRtTest = ArtifactDirTest;
 // Tests that a call to CreateExecutable places the file in the right location.
 TEST_F(CompilePhaseHloRunnerPjRtTest, CreateExecutablePlacesFileCorrectly) {
   CompilePhaseHloRunnerPjRt runner(std::make_unique<FakeClient>(),
-                                   InterpreterClient::DeviceShapeRepresentation,
-                                   InterpreterClient::ShapeSizeBytes,
                                    artifact_dir_);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
   TF_ASSERT_OK(
@@ -181,8 +178,7 @@ TEST_F(ExecutePhaseHloRunnerPjRtTest, CreateExecutableReadsFileCorrectly) {
             serialized_representation_read = serialized;
             notification.Notify();
           }),
-      InterpreterClient::DeviceShapeRepresentation,
-      InterpreterClient::ShapeSizeBytes, artifact_dir_);
+      artifact_dir_);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<OpaqueExecutable> executable,

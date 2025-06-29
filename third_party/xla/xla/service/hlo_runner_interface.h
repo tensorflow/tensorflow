@@ -201,9 +201,6 @@ class HloRunnerInterface {
     bool use_threads = false;
   };
 
-  using DeviceShapeRepresentationFn = std::function<Shape(const Shape&)>;
-  using DeviceShapeSizeFn = std::function<int64_t(const Shape&)>;
-
   HloRunnerInterface() = default;
   virtual ~HloRunnerInterface() = default;
 
@@ -320,14 +317,6 @@ class HloRunnerInterface {
 
   // Returns the name of this runner.
   virtual absl::string_view Name() const = 0;
-
-  // Return the device shape representation of 'host_shape'.
-  virtual DeviceShapeRepresentationFn device_shape_representation_fn()
-      const = 0;
-  // Return the device shape size of 'host_shape'.
-  // This function is used e.g. to create a VerifiedHloModule. It returns an
-  // integer representing the size of the shape in bytes as opposed to a Shape.
-  virtual DeviceShapeSizeFn device_shape_size_fn() const = 0;
 
   // Returns the number of devices which are known. Not all of these devices may
   // be usable by XLA.

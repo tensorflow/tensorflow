@@ -37,9 +37,7 @@ class HloPjRtInterpreterReferenceMixin
   explicit HloPjRtInterpreterReferenceMixin(BaseArgs&&... base_args)
       : HloRunnerAgnosticReferenceMixin<T>(
             std::make_unique<HloRunnerPjRt>(
-                std::make_unique<InterpreterClient>(),
-                InterpreterClient::DeviceShapeRepresentation,
-                InterpreterClient::ShapeSizeBytes),
+                std::make_unique<InterpreterClient>()),
             std::forward<BaseArgs>(base_args)...) {}
   ~HloPjRtInterpreterReferenceMixin() override = default;
 };

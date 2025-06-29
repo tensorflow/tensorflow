@@ -29,6 +29,9 @@ static_assert(false,
               "that uses HloTestBase.");
 #endif  // XLA_TEST_NOT_MIGRATED_TO_HLO_RUNNER_PJRT
 
+#include <memory>
+
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -46,6 +49,14 @@ class HloPjRtTestBase : public HloRunnerAgnosticTestBase {
   // This uses the PjRt interpreter backend for the reference backend and
   // automatically finds a PjRt backend for the test backend.
   explicit HloPjRtTestBase(HloPjRtTestBaseOptions options = {});
+
+ private:
+  HloPjRtTestBase(std::unique_ptr<PjRtClient> client,
+                  HloPjRtTestBaseOptions options);
+  HloPjRtTestBase(DeviceShapeRepresentationFn device_shape_representation_fn,
+                  DeviceShapeSizeFn device_shape_size_fn,
+                  std::unique_ptr<PjRtClient> client,
+                  HloPjRtTestBaseOptions options);
 };
 
 }  // namespace xla
