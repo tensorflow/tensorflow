@@ -5973,17 +5973,10 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
       return failure();
     }
 
-    if (op.get_XlaSharding().has_value() &&
-        op.get_XlaShardingV2().has_value() &&
-        tensorflow::VerifyShardingEquivalent(op.get_XlaShardingAttr(),
-                                             op.get_XlaShardingV2Attr())
-            .failed()) {
+    auto sharding = tensorflow::GetXlaShardingAttrFromShardingOp(op);
+    if (!sharding.ok()) {
       return failure();
     }
-
-    Attribute sharding = op.get_XlaShardingV2().has_value()
-                             ? op.get_XlaShardingV2Attr()
-                             : op.get_XlaShardingAttr();
 
     NamedAttribute call_target_name = rewriter.getNamedAttr(
         "call_target_name", rewriter.getStringAttr("Sharding"));
@@ -5991,7 +5984,7 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
     auto custom_call = rewriter.create<stablehlo::CustomCallOp>(
         op.getLoc(), op.getType(), op.getInput(),
         ArrayRef<NamedAttribute>{call_target_name});
-    custom_call->setAttr(kShardingAttr, sharding);
+    custom_call->setAttr(kShardingAttr, *sharding);
     rewriter.replaceOp(op, custom_call.getResult(0));
     return success();
   }

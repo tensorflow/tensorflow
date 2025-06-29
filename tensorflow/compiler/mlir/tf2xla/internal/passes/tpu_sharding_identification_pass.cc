@@ -317,20 +317,9 @@ std::optional<llvm::StringRef> AssignLogicalDeviceFromTPUReplicatedCoreAttr(
 
 absl::StatusOr<std::optional<llvm::StringRef>> GetXlaShardingFromShardingOp(
     mlir::TF::XlaShardingOp sharding) {
-  if (!sharding.get_XlaShardingV2().has_value()) {
-    return sharding.get_XlaSharding();
-  }
-
-  if (sharding.get_XlaSharding().has_value() &&
-      tensorflow::VerifyShardingEquivalent(sharding.get_XlaShardingV2Attr(),
-                                           sharding.get_XlaShardingAttr())
-          .failed()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("_XlaShardingV2 is not equivalent to _XlaSharding: ",
-                     sharding.get_XlaShardingV2().value().str(), " vs ",
-                     sharding.get_XlaSharding().value().str()));
-  }
-  return sharding.get_XlaShardingV2();
+  TF_ASSIGN_OR_RETURN(auto attr, GetXlaShardingAttrFromShardingOp(sharding));
+  return attr ? ::std::optional<::llvm::StringRef>(attr.getValue())
+              : (::std::nullopt);
 }
 
 // Returns XLA sharding from a XlaSharding op connected to an argument value. If
