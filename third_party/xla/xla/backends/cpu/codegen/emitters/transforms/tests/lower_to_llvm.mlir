@@ -34,7 +34,9 @@ func.func @output_not_error(%arg0: !xla_cpu.call_frame) -> index {
 
 // -----
 
-func.func private @wrap_entry(%arg0: tensor<2xi32>, %arg1: tensor<21x12xi32>)
+func.func private @wrap_entry(
+  %arg0: tensor<2xi32> {llvm.dereferenceable = 8 : index},
+  %arg1: tensor<21x12xi32> {llvm.dereferenceable = 1008 : index})
     -> (tensor<2xi32>, tensor<21x12xi32>, index, index, index)
     attributes {xla.entry}
 {
@@ -53,21 +55,21 @@ func.func private @wrap_entry(%arg0: tensor<2xi32>, %arg1: tensor<21x12xi32>)
 // CHECK-DAG:    %[[TENSOR_GEP:.+]] = llvm.getelementptr inbounds %[[CALL_FRAME]][0, 3]
 // CHECK-DAG:    %[[TENSOR_PTR:.+]] = llvm.load %[[TENSOR_GEP]] invariant
 // CHECK-DAG:    %[[TENSOR_0_GEP:.+]] = llvm.getelementptr inbounds %[[TENSOR_PTR]][0, 0]
-// CHECK-DAG:    %[[TENSOR_0_PTR:.+]] = llvm.load %[[TENSOR_0_GEP]] invariant {llvm.align = 32 : index}
+// CHECK-DAG:    %[[TENSOR_0_PTR:.+]] = llvm.load %[[TENSOR_0_GEP]] invariant dereferenceable<bytes = 8>
 // CHECK-DAG:    %[[TENSOR_0:.+]] = builtin.unrealized_conversion_cast %[[TENSOR_0_PTR]]
 // CHECK-DAG:    %[[TENSOR_1_GEP:.+]] = llvm.getelementptr inbounds %[[TENSOR_PTR]][1, 0]
-// CHECK-DAG:    %[[TENSOR_1_PTR:.+]] = llvm.load %[[TENSOR_1_GEP]] invariant {llvm.align = 32 : index}
+// CHECK-DAG:    %[[TENSOR_1_PTR:.+]] = llvm.load %[[TENSOR_1_GEP]] invariant dereferenceable<bytes = 1008>
 // CHECK-DAG:    %[[TENSOR_1:.+]] = builtin.unrealized_conversion_cast %[[TENSOR_1_PTR]]
 // CHECK-DAG:    %[[WORKGROUP_IDS_GEP:.+]] = llvm.getelementptr inbounds %[[CALL_FRAME]][0, 1]
 // CHECK-DAG:    %[[WORK_IDS_PTR:.+]] = llvm.load %[[WORKGROUP_IDS_GEP]]
 // CHECK-DAG:    %[[WORK_ID_0_GEP:.+]] = llvm.getelementptr inbounds %[[WORK_IDS_PTR]][0, 0]
-// CHECK-DAG:    %[[WORK_ID_0_PTR:.+]] = llvm.load %[[WORK_ID_0_GEP]]
+// CHECK-DAG:    %[[WORK_ID_0_PTR:.+]] = llvm.load %[[WORK_ID_0_GEP]] invariant
 // CHECK-DAG:    %[[WORK_ID_0:.+]] = builtin.unrealized_conversion_cast %[[WORK_ID_0_PTR]]
 // CHECK-DAG:    %[[WORK_ID_1_GEP:.+]] = llvm.getelementptr inbounds %[[WORK_IDS_PTR]][0, 1]
-// CHECK-DAG:    %[[WORK_ID_1_PTR:.+]] = llvm.load %[[WORK_ID_1_GEP]]
+// CHECK-DAG:    %[[WORK_ID_1_PTR:.+]] = llvm.load %[[WORK_ID_1_GEP]] invariant
 // CHECK-DAG:    %[[WORK_ID_1:.+]] = builtin.unrealized_conversion_cast %[[WORK_ID_1_PTR]]
 // CHECK-DAG:    %[[WORK_ID_2_GEP:.+]] = llvm.getelementptr inbounds %[[WORK_IDS_PTR]][0, 2]
-// CHECK-DAG:    %[[WORK_ID_2_PTR:.+]] = llvm.load %[[WORK_ID_2_GEP]]
+// CHECK-DAG:    %[[WORK_ID_2_PTR:.+]] = llvm.load %[[WORK_ID_2_GEP]] invariant
 // CHECK-DAG:    %[[WORK_ID_2:.+]] = builtin.unrealized_conversion_cast %[[WORK_ID_2_PTR]]
 // CHECK-DAG:    call @wrap_entry_wrapped(%[[TENSOR_0]],
 // CHECK-DAG                              %[[TENSOR_1]],
@@ -77,7 +79,8 @@ func.func private @wrap_entry(%arg0: tensor<2xi32>, %arg1: tensor<21x12xi32>)
 // CHECK-DAG:    return %[[RETURN_PTR]]
 // CHECK:      }
 // CHECK:      func.func private @wrap_entry_wrapped(
-// CHECK:         %[[ARG_0:.+]]: tensor<2xi32>, %[[ARG_1:.+]]: tensor<21x12xi32>,
+// CHECK:         %[[ARG_0:.+]]: tensor<2xi32> {llvm.dereferenceable = 8 : index},
+// CHECK:         %[[ARG_1:.+]]: tensor<21x12xi32> {llvm.dereferenceable = 1008 : index},
 // CHECK:         %[[ARG_2:.+]]: index, %[[ARG_3:.+]]: index, %[[ARG_4:.+]]: index)
 // CHECK:       return %[[ARG_0]], %[[ARG_1]], %[[ARG_3]], %[[ARG_2]], %[[ARG_4]]
 // CHECK:      }
