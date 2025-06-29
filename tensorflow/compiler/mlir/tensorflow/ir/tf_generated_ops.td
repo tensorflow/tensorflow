@@ -18919,6 +18919,7 @@ This operation holds the metadata common to operations of a `tpu.replicate()` co
     DefaultValuedOptionalAttr<StrAttr, "\"STEP_MARK_AT_ENTRY\"">:$step_marker_location,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$allow_soft_placement,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$use_spmd_for_xla_partitioning,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$use_shardy_partitioner,
     DefaultValuedOptionalAttr<StrAttr, "\"\"">:$tpu_compile_options_proto
   );
 

@@ -229,10 +229,15 @@ class PaddingSpec(enum.IntEnum):
 
 @tf_export("tpu.XLAOptions")
 class XLAOptions(
-    collections.namedtuple("XLAOptions", [
-        "use_spmd_for_xla_partitioning",
-        "enable_xla_dynamic_padder",
-    ])):
+    collections.namedtuple(
+        "XLAOptions",
+        [
+            "use_spmd_for_xla_partitioning",
+            "enable_xla_dynamic_padder",
+            "use_shardy_partitioner",
+        ],
+    )
+):
   """XLA compilation options.
 
   Attributes:
@@ -247,11 +252,18 @@ class XLAOptions(
       already handled in the user side.
   """
 
-  def __new__(cls,
-              use_spmd_for_xla_partitioning=True,
-              enable_xla_dynamic_padder=True):
-    return super(XLAOptions, cls).__new__(cls, use_spmd_for_xla_partitioning,
-                                          enable_xla_dynamic_padder)
+  def __new__(
+      cls,
+      use_spmd_for_xla_partitioning=True,
+      enable_xla_dynamic_padder=True,
+      use_shardy_partitioner=False,
+  ):
+    return super(XLAOptions, cls).__new__(
+        cls,
+        use_spmd_for_xla_partitioning,
+        enable_xla_dynamic_padder,
+        use_shardy_partitioner,
+    )
 
 
 @tf_export(v1=["tpu.replicate"])
@@ -751,6 +763,7 @@ def split_compile_and_replicate(
       computation, "step_marker_location", "STEP_MARK_AT_ENTRY")
   metadata_kwargs["use_spmd_for_xla_partitioning"] = \
       xla_options.use_spmd_for_xla_partitioning
+  metadata_kwargs["use_shardy_partitioner"] = xla_options.use_shardy_partitioner
 
   graph = ops.get_default_graph()
 
