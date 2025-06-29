@@ -15,8 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/graph_analyzer/test_tools.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <map>
+#include <set>
+#include <vector>
+
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 
 namespace tensorflow {
 namespace grappler {
