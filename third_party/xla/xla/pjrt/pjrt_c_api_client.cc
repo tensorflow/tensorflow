@@ -254,6 +254,7 @@ void PjRtCApiClient::InitAttributes() {
   pjrt::LogFatalIfPjrtError(c_api_->PJRT_Plugin_Attributes(&args), c_api_);
   attributes_ =
       pjrt::ConvertFromPjRtNamedValueList(args.attributes, args.num_attributes);
+  attributes_["mixed_mlir_dialects"] = true;
 }
 
 int PjRtCApiClient::device_count() const { return devices_.size(); }
