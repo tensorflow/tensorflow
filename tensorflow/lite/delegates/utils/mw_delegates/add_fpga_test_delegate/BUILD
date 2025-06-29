@@ -9,17 +9,17 @@ package(
     ],
     licenses = ["notice"],
 )
-
--- cc_library(
---     name = "fpga_ip_driver",
---     srcs = [
---         "fpga_ip_driver.cc",
---     ],
---     hdrs = [
---         "fpga_ip_driver.h",
---     ],
---     visibility = ["//visibility:public"],
--- )
+cc_library(
+     name = "fpga_ip_driver",
+     srcs = [
+         "fpga_ip_driver.cc",
+     ],
+     hdrs = [
+         "fpga_ip_driver.h",
+     ],
+     alwayslink = 1,
+     visibility = ["//visibility:public"],
+)
 
 cc_library(
     name = "add_cpu_test_delegate",
@@ -30,7 +30,7 @@ cc_library(
         "add_cpu_test_delegate.h",
     ],
     deps = [
-        -- ":fpga_ip_driver",
+        ":fpga_ip_driver",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
@@ -41,6 +41,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels/internal:compatibility",
     ],
+    alwayslink = 1,
 )
 
 
@@ -49,17 +50,14 @@ cc_binary(
     name = "add_cpu_test_external_delegate.so",
     srcs = [
         "external_delegate_adaptor.cc",
-        "fpga_ip_driver.cc",
     ],
-    hdrs = [
-        "fpga_ip_driver.h",
-    ],
+
     defines = ["TFL_EXTERNAL_DELEGATE_COMPILE_LIBRARY"],
     linkshared = 1,
     linkstatic = 1,
     deps = [
         ":add_cpu_test_delegate",
-        -- ":fpga_ip_driver",
+        ":fpga_ip_driver",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/external:external_delegate_interface",
         "//tensorflow/lite/tools:command_line_flags",
