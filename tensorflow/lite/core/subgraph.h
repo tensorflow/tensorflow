@@ -706,8 +706,10 @@ class Subgraph {
   // Give 'op_reg' a chance to initialize itself using the contents of
   // 'buffer'. If registration_external is valid, use the 'init' callback from
   // that.
+  //
+  // The flag `success` indicates whether the initialization was successful.
   void* OpInit(const TfLiteRegistration& op_reg, const char* buffer,
-               size_t length);
+               size_t length, bool& success);
 
   // Let 'op_reg' release any memory it might have allocated via 'OpInit'.
   // If registration_external is valid, use the 'free' callback from that.
