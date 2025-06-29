@@ -5,14 +5,14 @@ def flex_portable_tensorflow_deps():
 
     return [
         "//third_party/fft2d:fft2d_headers",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
-        "@eigen_archive//:eigen3",
-        "@gemmlowp",
-        "@icu//:common",
+        "//third_party/absl/log",
+        "//third_party/absl/log:check",
+        "//third_party/absl/strings",
+        "//third_party/absl/strings:str_format",
+        "//third_party/absl/types:optional",
+        "//third_party/eigen3",
+        "//third_party/gemmlowp",
+        "//third_party/icu:common",
         "//third_party/icu/data:conversion_data",
     ]
 
