@@ -10,17 +10,17 @@
 
 namespace tflite {
 namespace tools {
-    TfLiteDelegate* CreateAddCpuTestDelegateFromOptions(
+    TfLiteDelegate* CreateAddFpgaTestDelegateFromOptions(
         const char* const* options_keys, const char* const* options_values,
         size_t num_options) {
-      AddCpuTestDelegateOptions options = TfLiteAddCpuTestDelegateOptionsDefault();
+      AddFpgaTestDelegateOptions options = TfLiteAddFpgaTestDelegateOptionsDefault();
 
       // Parse key-values options to SASimDelegateOptions by mimicking them as
     // command-line flags.
     std::vector<const char*> argv;
     argv.reserve(num_options + 1);
-    constexpr char kAddCpuTestDelegateParsing[] = "add_cpu_test_delegate_parsing";
-    argv.push_back(kAddCpuTestDelegateParsing);
+    constexpr char kAddFpgaTestDelegateParsing[] = "add_cpu_test_delegate_parsing";
+    argv.push_back(kAddFpgaTestDelegateParsing);
 
     std::vector<std::string> option_args;
     option_args.reserve(num_options);
@@ -65,7 +65,7 @@ namespace tools {
     TFLITE_LOG(INFO) << "Add CPU test delegate: error_during_invoke set to "
                      << options.error_during_invoke << ".";
 
-    return TfLiteAddCpuTestDelegateCreate(&options);
+    return TfLiteAddFpgaTestDelegateCreate(&options);
     }
 }  // namespace tools
 }  // namespace tflite
@@ -79,13 +79,13 @@ tflite_plugin_create_delegate(const char* const* options_keys,
                               const char* const* options_values,
                               size_t num_options,
                               void (*report_error)(const char*)) {
-  return tflite::tools::CreateAddCpuTestDelegateFromOptions(
+  return tflite::tools::CreateAddFpgaTestDelegateFromOptions(
       options_keys, options_values, num_options);
 }
 
 TFL_EXTERNAL_DELEGATE_EXPORT void tflite_plugin_destroy_delegate(
     TfLiteDelegate* delegate) {
-  TfLiteAddCpuTestDelegateDelete(delegate);
+  TfLiteAddFpgaTestDelegateDelete(delegate);
 }
 
 }  // extern "C"

@@ -22,12 +22,12 @@ cc_library(
 )
 
 cc_library(
-    name = "add_cpu_test_delegate",
+    name = "add_fpga_test_delegate",
     srcs = [
-        "add_cpu_test_delegate.cc",
+        "add_fpga_test_delegate.cc",
     ],
     hdrs = [
-        "add_cpu_test_delegate.h",
+        "add_fpga_test_delegate.h",
     ],
     deps = [
         ":fpga_ip_driver",
@@ -47,29 +47,23 @@ cc_library(
 
 
 cc_binary(
-    name = "add_cpu_test_external_delegate.so",
-    srcs = [
-        "external_delegate_adaptor.cc",
+    name = "add_fpga_test_external_delegate.so",
+    deps = [
+        ":add_fpga_test_delegate",
+        ":fpga_ip_driver",
     ],
-
-    defines = ["TFL_EXTERNAL_DELEGATE_COMPILE_LIBRARY"],
+    
+    copts = ["-fPIC"],
     linkshared = 1,
     linkstatic = 1,
-    deps = [
-        ":add_cpu_test_delegate",
-        ":fpga_ip_driver",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/delegates/external:external_delegate_interface",
-        "//tensorflow/lite/tools:command_line_flags",
-        "//tensorflow/lite/tools:logging",
-    ],
+    visibility = ["//visibility:public"],
 )
 
 sh_test(
     name = "external_delegate_test",
     srcs = ["external_delegate_test.sh"],
     data = [
-        "//tensorflow/lite/delegates/utils/mw_delegates/add_cpu_test_delegate:add_cpu_test_external_delegate.so",
+        "//tensorflow/lite/delegates/utils/mw_delegates/add_fpga_test_delegate:add_fpga_test_external_delegate.so",
         "//tensorflow/lite/tools/benchmark:benchmark_model",
         "@tflite_mobilenet_float//:mobilenet_v1_1.0_224.tflite",
     ],

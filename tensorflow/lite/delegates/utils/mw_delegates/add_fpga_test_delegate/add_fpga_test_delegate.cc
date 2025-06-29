@@ -1,4 +1,4 @@
-#include "tensorflow/lite/delegates/utils/mw_delegates/add_fpga_test_delegate/add_cpu_test_delegate.h"
+#include "tensorflow/lite/delegates/utils/mw_delegates/add_fpga_test_delegate/add_fpga_test_delegate.h"
 
 #include <memory>
 #include <utility>
@@ -13,13 +13,13 @@
 #include "tensorflow/lite/delegates/utils/mw_delegates/add_fpga_test_delegate/fpga_ip_driver.h"
 
 namespace tflite {
-namespace add_cpu_test {
+namespace add_fpga_test {
 
-// AddCpuTestDelegateKernel implements the interface of SimpleDelegateKernelInterface.
+// AddFpgaTestDelegateKernel implements the interface of SimpleDelegateKernelInterface.
 // This holds the Delegate capabilities.
-class AddCpuTestDelegateKernel : public SimpleDelegateKernelInterface {
+class AddFpgaTestDelegateKernel : public SimpleDelegateKernelInterface {
  public:
-  explicit AddCpuTestDelegateKernel(const AddCpuTestDelegateOptions& options)
+  explicit AddFpgaTestDelegateKernel(const AddFpgaTestDelegateOptions& options)
       : options_(options), fpga_driver_(std::make_unique<FpgaIpDriver>()) {}
 
   TfLiteStatus Init(TfLiteContext* context,
@@ -77,7 +77,7 @@ class AddCpuTestDelegateKernel : public SimpleDelegateKernelInterface {
   }
 
  private:
-  const AddCpuTestDelegateOptions options_;
+  const AddFpgaTestDelegateOptions options_;
   std::vector<std::vector<int>> inputs_, outputs_;
   std::vector<int> builtin_code_;
   std::unique_ptr<FpgaIpDriver> fpga_driver_;  // FPGA driver instance
@@ -122,9 +122,9 @@ class AddCpuTestDelegateKernel : public SimpleDelegateKernelInterface {
   }
 };
 
-class AddCpuTestDelegate : public SimpleDelegateInterface {
+class AddFpgaTestDelegate : public SimpleDelegateInterface {
  public:
-  explicit AddCpuTestDelegate(const AddCpuTestDelegateOptions& options)
+  explicit AddFpgaTestDelegate(const AddFpgaTestDelegateOptions& options)
       : options_(options) {}
 
   bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration,
@@ -152,7 +152,7 @@ class AddCpuTestDelegate : public SimpleDelegateInterface {
   TfLiteStatus Initialize(TfLiteContext* context) override { return kTfLiteOk; }
 
   const char* Name() const override {
-    static constexpr char kName[] = "AddCpuTestDelegate";
+    static constexpr char kName[] = "AddFpgaTestDelegate";
     // This name is used for debugging/logging/profiling.
     // It is important to use a unique name for each delegate.
     // If multiple delegates have the same name, it can lead to confusion in
@@ -161,7 +161,7 @@ class AddCpuTestDelegate : public SimpleDelegateInterface {
 
   std::unique_ptr<SimpleDelegateKernelInterface> CreateDelegateKernelInterface()
       override {
-    return std::make_unique<AddCpuTestDelegateKernel>(options_);
+    return std::make_unique<AddFpgaTestDelegateKernel>(options_);
   }
 
   SimpleDelegateInterface::Options DelegateOptions() const override {
@@ -170,14 +170,14 @@ class AddCpuTestDelegate : public SimpleDelegateInterface {
   }
 
  private:
-  const AddCpuTestDelegateOptions options_;
+  const AddFpgaTestDelegateOptions options_;
 };
 
-}  // namespace add_cpu_test
+}  // namespace add_fpga_test
 }  // namespace tflite
 
-AddCpuTestDelegateOptions TfLiteAddCpuTestDelegateOptionsDefault() {
-  AddCpuTestDelegateOptions options = {0};
+AddFpgaTestDelegateOptions TfLiteAddFpgaTestDelegateOptionsDefault() {
+  AddFpgaTestDelegateOptions options = {0};
   // Just assign an invalid builtin code so that this dummy test delegate will
   // not support any node by default.
   options.allowed_builtin_code = -1;
@@ -185,17 +185,17 @@ AddCpuTestDelegateOptions TfLiteAddCpuTestDelegateOptionsDefault() {
 }
 
 // Creates a new delegate instance that need to be destroyed with
-// `TfLiteAddCpuTestDelegateDelete` when delegate is no longer used by TFLite.
+// `TfLiteAddFpgaTestDelegateDelete` when delegate is no longer used by TFLite.
 // When `options` is set to `nullptr`, the above default values are used:
-TfLiteDelegate* TfLiteAddCpuTestDelegateCreate(const AddCpuTestDelegateOptions* options) {
-  std::unique_ptr<tflite::add_cpu_test::AddCpuTestDelegate> add_cpu_test_delegate(
-      new tflite::add_cpu_test::AddCpuTestDelegate(
-          options ? *options : TfLiteAddCpuTestDelegateOptionsDefault()));
-  return tflite::TfLiteDelegateFactory::CreateSimpleDelegate(std::move(add_cpu_test_delegate));
+TfLiteDelegate* TfLiteAddFpgaTestDelegateCreate(const AddFpgaTestDelegateOptions* options) {
+  std::unique_ptr<tflite::add_fpga_test::AddFpgaTestDelegate> add_fpga_test_delegate(
+      new tflite::add_fpga_test::AddFpgaTestDelegate(
+          options ? *options : TfLiteAddFpgaTestDelegateOptionsDefault()));
+  return tflite::TfLiteDelegateFactory::CreateSimpleDelegate(std::move(add_fpga_test_delegate));
 }
 
-// Destroys a delegate created with `TfLiteAddCpuTestDelegateCreate` call.
-void TfLiteAddCpuTestDelegateDelete(TfLiteDelegate* delegate) {
+// Destroys a delegate created with `TfLiteAddFpgaTestDelegateCreate` call.
+void TfLiteAddFpgaTestDelegateDelete(TfLiteDelegate* delegate) {
   tflite::TfLiteDelegateFactory::DeleteSimpleDelegate(delegate);
 }
 
