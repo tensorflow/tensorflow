@@ -16,10 +16,52 @@ limitations under the License.
 #ifndef XLA_PJRT_C_PJRT_C_API_PHASE_COMPILE_INTERNAL_H_
 #define XLA_PJRT_C_PJRT_C_API_PHASE_COMPILE_INTERNAL_H_
 
+#include <cstddef>
+#include <string>
+#include <vector>
+
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
 
 namespace pjrt {
+
+// Converts an array of C-style character buffers to a vector of C++
+// strings. This function is essential for the PJRT C API's pass-through layer,
+// where `xla::PjRtPartialProgramProto` data is communicated via portable C
+// structs. This function takes ownership of both the `char_buffers` and
+// `char_buffer_sizes` memory and frees them, helping to manage memory across
+// the C/C++ boundary.
+//
+// Args:
+//   char_buffers: An array of C-style character pointers. Each pointer points
+//   to a C-string. char_buffer_sizes: An array of sizes corresponding to each
+//   C-string in `char_buffers`. num_strings: The number of C-strings in the
+//   `char_buffers` array.
+// Returns:
+//   A `std::vector<std::string>` containing the converted C++ strings.
+std::vector<std::string> ConvertCharBufferToCppStrings(
+    const char** char_buffers, const size_t* char_buffer_sizes,
+    size_t num_strings);
+
+// Converts a vector of C++ strings to an array of C-style character buffers.
+// This function allocates memory for the `char_buffers`, the
+// individual C-strings, and `char_buffer_sizes` (if `is_null_terminated` is
+// false). The caller is responsible for freeing this memory. This conversion is
+// vital for preparing C++ string data to be passed across the PJRT C API
+// boundary, where C structs are used for communication.
+//
+// Args:
+//   strings: A `std::vector<std::string>` to be converted.
+//   char_buffers: Output parameter. A pointer to an array of C-style character
+//                pointers.
+//   char_buffer_sizes: Output parameter. A pointer to an array of sizes
+//                      corresponding to each C-string in `char_buffers`.
+//   num_strings: Output parameter. The number of strings in the `char_buffers`
+//                array.
+void ConvertCppStringsToCharBuffer(const std::vector<std::string>& strings,
+                                   const char*** char_buffers,
+                                   const size_t** char_buffer_sizes,
+                                   size_t* num_strings);
 
 // Creates and initializes a PJRT_PhaseCompile_Extension struct. This function
 // is used by plugins to create and chain the phase compilation extension

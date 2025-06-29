@@ -47,6 +47,7 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::tsl::proto_testing::EqualsProto;
+using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
 constexpr absl::string_view kStablehloModuleStr = R"(
@@ -243,10 +244,9 @@ TEST_F(SamplePhaseCompilerTest, PluginSpecificValidationWithUnexpectedFormat) {
 // compiler.
 TEST_F(SamplePhaseCompilerTest, TestSamplePhaseCompilerGetPhaseNames) {
   auto phase_names_status = phase_compiler_->GetPhaseNames();
-  TF_EXPECT_OK(phase_names_status);
-  std::vector<std::string> phase_names = *phase_names_status;
-  EXPECT_THAT(phase_names,
-              ElementsAre(phase_compile_sample_plugin::kPhaseName));
+  EXPECT_THAT(
+      phase_names_status,
+      IsOkAndHolds(ElementsAre(phase_compile_sample_plugin::kPhaseName)));
 }
 
 }  // namespace
