@@ -39,7 +39,7 @@ py_strict_library(
     srcs = ["self_check.py"],
     deps = if_oss([
         ":build_info",
-        ":_pywrap_cpu_feature_guard",
+        "//tensorflow/python:_pywrap_tensorflow",
     ]),
 )
 
