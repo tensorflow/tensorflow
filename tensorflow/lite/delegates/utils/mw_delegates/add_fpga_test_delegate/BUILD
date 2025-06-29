@@ -48,9 +48,15 @@ cc_library(
 
 cc_binary(
     name = "add_fpga_test_external_delegate.so",
+    srcs = [
+        "external_delegate_adaptor.cc",
+    ],
     deps = [
         ":add_fpga_test_delegate",
         ":fpga_ip_driver",
+        "//tensorflow/lite/delegates/external:external_delegate_interface",
+        "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:logging",
     ],
     
     copts = ["-fPIC"],
