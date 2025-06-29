@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <utility>
 
 #include "xnnpack.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -287,6 +290,59 @@ bool IsBroadcastOpSupportedByXnn(const HloInstruction* hlo) {
   // TODO(ashaposhnikov): this case works well, but we should investigate the
   // performance regressions that occur if this condition is removed.
   return dims.back() + 1 == dims.size();
+}
+
+template <class T>
+static T InvariantValueFor(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kAdd:
+      return T{0};
+    case HloOpcode::kMinimum:
+      return std::numeric_limits<T>::infinity();
+    case HloOpcode::kMaximum:
+      return -std::numeric_limits<T>::infinity();
+    default:
+      LOG(FATAL) << "Unexpected opcode " << opcode;
+  }
+}
+
+bool IsReduceOpSupportedByXnn(const HloInstruction* hlo) {
+  CHECK_EQ(hlo->opcode(), HloOpcode::kReduce);
+  if (!XnnDatatype(hlo->shape().element_type()).ok()) {
+    return false;
+  }
+  const HloReduceInstruction* reduce = Cast<HloReduceInstruction>(hlo);
+  CHECK_NE(reduce, nullptr);
+  // TODO(ashaposhnikov): we can support this edge case,
+  // planning to come back to this later.
+  if (reduce->dimensions().empty()) {
+    return false;
+  }
+  const HloComputation* to_apply = reduce->to_apply();
+  CHECK_NE(to_apply, nullptr);
+  if (!Match(to_apply->root_instruction(),
+             match::AnyOf<HloInstruction>(match::Add(), match::Maximum(),
+                                          match::Minimum())
+                 .WithBinaryOperandsAnyOrder(match::Parameter(0),
+                                             match::Parameter(1)))) {
+    return false;
+  }
+  if (reduce->init_values().size() != 1) {
+    return false;
+  }
+  HloInstruction* init = reduce->init_values().front();
+  CHECK_EQ(init->shape().element_type(), hlo->shape().element_type());
+  const HloOpcode opcode = to_apply->root_instruction()->opcode();
+  const PrimitiveType ty = init->shape().element_type();
+  return primitive_util::FloatingPointTypeSwitch(
+      [&](auto primitive_type) {
+        return Match(
+            init,
+            match::ConstantScalar(
+                InvariantValueFor<primitive_util::NativeTypeOf<primitive_type>>(
+                    opcode)));
+      },
+      ty);
 }
 
 }  // namespace xla::cpu

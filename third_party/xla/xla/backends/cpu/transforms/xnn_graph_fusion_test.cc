@@ -198,5 +198,89 @@ ENTRY entry {
   ASSERT_FALSE(changed);
 }
 
+TEST_F(XnnGraphFusionTest, BasicReduce) {
+  std::string hlo_string = R"(
+HloModule BasicReduce
+
+reducer {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+
+ENTRY main {
+  arg_0 = f32[3,2] parameter(0)
+  init = f32[] constant(-inf)
+  ROOT result = f32[] reduce(arg_0, init), dimensions={0,1}, to_apply=reducer
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  SetFusionMode(module.get(),
+                DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_TRUE(changed);
+  EXPECT_THAT(module.get()->entry_computation()->root_instruction(),
+              op::Fusion());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloFusionInstruction* fusion = Cast<HloFusionInstruction>(root);
+  TF_ASSERT_OK_AND_ASSIGN(auto backend_config,
+                          fusion->backend_config<BackendConfig>());
+  ASSERT_TRUE(backend_config.has_fusion_config());
+  EXPECT_EQ(backend_config.fusion_config().kind(), kXnnFusionKind);
+}
+
+TEST_F(XnnGraphFusionTest, SkipReduceWithUnsupportedInit) {
+  std::string hlo_string = R"(
+HloModule SkipReduceWithUnsupportedInit
+
+reducer {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+
+ENTRY main {
+  arg_0 = f32[3,2] parameter(0)
+  init = f32[] constant(1.33)
+  ROOT result = f32[] reduce(arg_0, init), dimensions={0,1}, to_apply=reducer
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  SetFusionMode(module.get(),
+                DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_FALSE(changed);
+}
+
+TEST_F(XnnGraphFusionTest, SkipReduceWithUnsupportedReducer) {
+  std::string hlo_string = R"(
+HloModule SkipReduceWithUnsupportedReducer
+
+reducer {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT sub = f32[] subtract(arg_0, arg_1)
+}
+
+ENTRY main {
+  arg_0 = f32[3,2] parameter(0)
+  init = f32[] constant(1.33)
+  ROOT result = f32[] reduce(arg_0, init), dimensions={0,1}, to_apply=reducer
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  SetFusionMode(module.get(),
+                DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla::cpu
