@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/service/computation_placer.h"
 
+#include <iostream>
 #include <memory>
+#include <optional>
 
 #include <gtest/gtest.h>
 #include "xla/runtime/device_id.h"
@@ -23,6 +25,63 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+struct AggType {
+  int a;
+  int b;
+};
+
+void processAggType(AggType t) {
+  std::cout << "opt: " << t.a << " " << t.b << "\n";
+}
+
+TEST(Experiment, AggregateTypes) {
+  processAggType(AggType{1, 2});
+  processAggType(AggType{.a = 1, .b = 2});
+  processAggType(AggType(1, 2));
+  processAggType({1, 2});
+  processAggType({.a = 1, .b = 2});
+  // {
+  //   struct AggType1 {
+  //     int a;
+  //     int b;
+  //   };
+  //   std::optional<AggType1> opt;
+  //   opt.emplace(1, 2);  //  fails
+  //   std::cout << "opt: " << opt.value().a << "\n";
+  // }
+
+  {
+    struct AggType2 {
+      int a;
+      int b;
+      AggType2() = default;
+      AggType2(int a, int b) : a(a), b(b) {};
+    };
+    std::optional<AggType2> opt;
+    opt.emplace(1, 2);
+    std::cout << "opt: " << opt.value().a << "\n";
+  }
+
+  {
+    struct AggType3 {
+      int a;
+      int b;
+    };
+    std::optional<AggType3> opt;
+    opt.emplace(AggType3{1, 2});
+    std::cout << "opt: " << opt.value().a << "\n";
+  }
+
+  {
+    struct AggType4 {
+      int a;
+      int b;
+    };
+    AggType4 agg = {.a = 1, .b = 2};
+    std::cout << "opt: " << agg.a << "\n";
+  }
+}
 
 TEST(ComputationPlacerTest, Basic) {
   ComputationPlacer cp;
