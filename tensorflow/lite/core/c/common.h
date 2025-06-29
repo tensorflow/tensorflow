@@ -1161,6 +1161,8 @@ typedef struct TfLiteRegistration {
   /// NOTE: if the data is already in the desired format, simply implement this
   /// function to return `nullptr` and implement the free function to be a
   /// no-op.
+  /// NOTE: For a Delegate kernel, returns `nullptr` if it fails on the
+  /// initialization.
   void* (*init)(TfLiteContext* context, const char* buffer, size_t length);
 
   /// The pointer `buffer` is the data previously returned by an init
