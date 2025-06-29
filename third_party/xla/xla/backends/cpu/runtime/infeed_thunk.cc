@@ -56,7 +56,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> InfeedThunk::Execute(
     const ExecuteParams& params) {
   VLOG(3) << absl::StreamFormat("Infeed %d buffers", infeed_buffers_.size());
 
-  runtime::XfeedManager* xfeed = params.xfeed;
+  XfeedManager* xfeed = params.xfeed;
   if (xfeed == nullptr) {
     return InvalidArgument("Xfeed must be not null to execute infeed thunk");
   }
@@ -74,7 +74,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> InfeedThunk::Execute(
                                   infeed_data.opaque());
 
     // Acquire infeed buffer from the runtime.
-    runtime::XfeedBuffer* buffer = xfeed->infeed()->BlockingDequeueBuffer();
+    XfeedBuffer* buffer = xfeed->infeed()->BlockingDequeueBuffer();
     if (buffer->length() != infeed_buffer.slice.size()) {
       return Internal(
           "XLA runtime-managed infeed buffer size %d did not match the "

@@ -18,16 +18,29 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 
+#include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/logging.h"
 
-namespace xla {
-namespace cpu {
-namespace runtime {
+namespace xla::cpu {
+
+static absl::Mutex xfeed_manager_mutex(absl::kConstInit);
+
+XfeedManager* GetXfeedManager(int device_ordinal) {
+  absl::MutexLock lock(&xfeed_manager_mutex);
+  static auto* const managers = new absl::flat_hash_map<int, XfeedManager*>();
+
+  auto it = managers->find(device_ordinal);
+  if (it == managers->end()) {
+    it = managers->emplace(device_ordinal, new XfeedManager()).first;
+  }
+  return it->second;
+}
 
 void XfeedQueueManager::EnqueueBuffersAtomically(
     absl::Span<XfeedBuffer* const> buffers) {
@@ -73,6 +86,4 @@ int64_t GetByteSizeRequirement(const Shape& shape, int64_t pointer_size) {
   return ShapeUtil::ByteSizeOf(shape, pointer_size) + metadata_size;
 }
 
-}  // namespace runtime
-}  // namespace cpu
-}  // namespace xla
+}  // namespace xla::cpu

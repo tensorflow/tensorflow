@@ -17,26 +17,24 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <utility>
 
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
-#include "xla/service/cpu/cpu_runtime.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/threadpool.h"
 
-namespace xla {
+namespace xla::cpu {
 namespace {
 
 class InfeedManagerTest : public ::testing::Test {};
 
-class TestInfeedBuffer : public cpu::runtime::XfeedBuffer {
+class TestInfeedBuffer : public XfeedBuffer {
  public:
   explicit TestInfeedBuffer(int32_t length, bool expect_shape_match = true)
       : shape_(ShapeUtil::MakeShape(U8, {length})),
@@ -69,57 +67,62 @@ class TestInfeedBuffer : public cpu::runtime::XfeedBuffer {
 
 // Performs the acquire/release sequence on the infeed, as the generated CPU
 // code would in the process of executing the infeed operation.
-void ProcessNextBuffer(int32_t length) {
+void ProcessNextBuffer(XfeedManager* xfeed, int32_t length) {
   const auto shape = ShapeUtil::MakeShape(U8, {length});
   const std::string bytes = shape.ToProto().SerializeAsString();
-  void* const buffer = __xla_cpu_runtime_AcquireInfeedBufferForDequeue(
-      /*run_options=*/nullptr, length, bytes.data(), bytes.size());
-  __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(
-      /*run_options=*/nullptr, length, buffer, bytes.data(), bytes.size());
+
+  XfeedBuffer* buffer = xfeed->infeed()->BlockingDequeueBuffer();
+  ASSERT_EQ(buffer->length(), length);
+
+  xfeed->infeed()->ReleaseCurrentBuffer(buffer->length(), buffer->data(),
+                                        std::move(shape));
 }
 
 // Performs the acquire/release sequence on the outfeed, as the generated CPU
 // code would in the process of executing the outfeed operation.
-void ProcessNextOutfeedBuffer(int32_t length, const Shape& shape) {
+void ProcessNextOutfeedBuffer(XfeedManager* xfeed, int32_t length,
+                              const Shape& shape) {
   const std::string bytes = shape.ToProto().SerializeAsString();
-  void* const buffer = __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
-      /*run_options=*/nullptr, length, bytes.data(), bytes.size());
-  __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
-      /*run_options=*/nullptr, length, buffer, bytes.data(), bytes.size());
+
+  XfeedBuffer* buffer = xfeed->outfeed()->BlockingDequeueBuffer();
+  ASSERT_EQ(buffer->length(), length);
+
+  xfeed->outfeed()->ReleaseCurrentBuffer(buffer->length(), buffer->data(),
+                                         std::move(shape));
 }
 
 TEST_F(InfeedManagerTest, SingleThreadedSequential) {
   TestInfeedBuffer* a = new TestInfeedBuffer(64);
   TestInfeedBuffer* b = new TestInfeedBuffer(32);
 
-  cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager(0);
+  XfeedManager* xfeed = GetXfeedManager(0);
 
   xfeed->infeed()->EnqueueBuffersAtomically({a});
   xfeed->infeed()->EnqueueBuffersAtomically({b});
-  ProcessNextBuffer(a->length());
-  ProcessNextBuffer(b->length());
+  ProcessNextBuffer(xfeed, a->length());
+  ProcessNextBuffer(xfeed, b->length());
 }
 
 TEST_F(InfeedManagerTest, SingleThreadedInterleaved) {
   TestInfeedBuffer* a = new TestInfeedBuffer(64);
   TestInfeedBuffer* b = new TestInfeedBuffer(32);
 
-  cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager(0);
+  XfeedManager* xfeed = GetXfeedManager(0);
 
   xfeed->infeed()->EnqueueBuffersAtomically({a});
-  ProcessNextBuffer(a->length());
+  ProcessNextBuffer(xfeed, a->length());
   xfeed->infeed()->EnqueueBuffersAtomically({b});
-  ProcessNextBuffer(b->length());
+  ProcessNextBuffer(xfeed, b->length());
 }
 
 TEST_F(InfeedManagerTest, MultiThreaded) {
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "test", 2);
 
-  cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager(0);
+  XfeedManager* xfeed = GetXfeedManager(0);
 
   const int32_t length = 64;
 
-  pool.Schedule([length, &xfeed]() {
+  pool.Schedule([&xfeed]() {
     // Spin for 100 milliseconds
     int64_t start_micros = tsl::Env::Default()->NowMicros();
     while (true) {
@@ -132,32 +135,32 @@ TEST_F(InfeedManagerTest, MultiThreaded) {
     xfeed->infeed()->EnqueueBuffersAtomically({a});
   });
 
-  ProcessNextBuffer(length);
+  ProcessNextBuffer(xfeed, length);
 }
 
 TEST_F(InfeedManagerTest, OutfeedBasic) {
   TestInfeedBuffer* b = new TestInfeedBuffer(32, /*expect_shape_match=*/true);
-  cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager(0);
+  XfeedManager* xfeed = GetXfeedManager(0);
   xfeed->outfeed()->EnqueueBuffersAtomically({b});
 
-  ProcessNextOutfeedBuffer(32, ShapeUtil::MakeShape(U8, {32}));
+  ProcessNextOutfeedBuffer(xfeed, 32, ShapeUtil::MakeShape(U8, {32}));
 }
 
 TEST_F(InfeedManagerTest, OutfeedEmpty) {
   TestInfeedBuffer* b = new TestInfeedBuffer(0, /*expect_shape_match=*/true);
-  cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager(0);
+  XfeedManager* xfeed = GetXfeedManager(0);
   xfeed->outfeed()->EnqueueBuffersAtomically({b});
 
-  ProcessNextOutfeedBuffer(0, ShapeUtil::MakeShape(U8, {0}));
+  ProcessNextOutfeedBuffer(xfeed, 0, ShapeUtil::MakeShape(U8, {0}));
 }
 
 TEST_F(InfeedManagerTest, OutfeedWrongShape) {
   TestInfeedBuffer* b = new TestInfeedBuffer(32, /*expect_shape_match=*/false);
-  cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager(0);
+  XfeedManager* xfeed = GetXfeedManager(0);
   xfeed->outfeed()->EnqueueBuffersAtomically({b});
 
-  ProcessNextOutfeedBuffer(32, ShapeUtil::MakeShape(U8, {33}));
+  ProcessNextOutfeedBuffer(xfeed, 32, ShapeUtil::MakeShape(U8, {33}));
 }
 
 }  // namespace
-}  // namespace xla
+}  // namespace xla::cpu
