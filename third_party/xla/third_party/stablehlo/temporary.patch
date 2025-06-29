@@ -1,3 +1,15 @@
+diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.cpp b/stablehlo/stablehlo/dialect/AssemblyFormat.cpp
+--- stablehlo/stablehlo/dialect/AssemblyFormat.cpp
++++ stablehlo/stablehlo/dialect/AssemblyFormat.cpp
+@@ -655,7 +655,7 @@
+   }
+   p.printOptionalAttrDictWithKeyword(op->getAttrs());
+   p.printNewline();
+-  p << " cond ";
++  p << "cond ";
+   p.printRegion(cond, /*printEntryBlockArgs=*/false);
+   p << " do ";
+   p.printRegion(body, /*printEntryBlockArgs=*/false);
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo/dialect/StablehloAttrs.td
 --- stablehlo/stablehlo/dialect/StablehloAttrs.td
 +++ stablehlo/stablehlo/dialect/StablehloAttrs.td
