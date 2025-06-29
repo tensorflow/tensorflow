@@ -4806,7 +4806,12 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(
         CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
                                        node->outputs->data[0], node_index));
-
+    if (num_reduction_axes <= 0) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "Not handling ill defined empty reduction in node #%d", node_index);
+      return kTfLiteError;
+    }
     uint32_t flags = 0;
     if (reducer_params->keep_dims) {
       flags |= XNN_FLAG_KEEP_DIMS;
