@@ -82,8 +82,7 @@ absl::Status TritonToLLVM(
   pm.enableVerifier();
   TF_RETURN_IF_ERROR(
       xla::gpu::CreateTritonPipeline(&pm, std::string(arch_name), num_warps,
-                                     num_ctas, num_stages, *out_cluster_info,
-                                     /*is_xla_fusion=*/false));
+                                     num_ctas, num_stages, *out_cluster_info));
   return pm.run(module).succeeded()
              ? absl::OkStatus()
              : absl::InternalError("Failed to compile Triton IR to LLVM IR");

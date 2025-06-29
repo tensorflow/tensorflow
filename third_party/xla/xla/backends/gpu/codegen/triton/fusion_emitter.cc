@@ -1685,7 +1685,7 @@ absl::Status CreateInternalError(absl::string_view message,
 }
 
 // Legacy emitter works with tt.func. New emitter works with func.func.
-// TODO(393299275): Remove legacy optionality once migration is complete.
+// TODO(b/393299275): Remove legacy optionality once migration is complete.
 void AppendFuncArgType(absl::Span<const int64_t> dims,
                        absl::string_view fusion_kind, Type ir_type,
                        SmallVector<Type>& fn_arg_types) {
@@ -1701,7 +1701,7 @@ void AppendFuncArgType(absl::Span<const int64_t> dims,
 
 // Only needed for the new emitter since we are using func.func instead of
 // tt.func.
-// TODO(393299275): Remove legacy optionality once migration is complete.
+// TODO(b/393299275): Remove legacy optionality once migration is complete.
 void AppendFuncResultType(absl::string_view fusion_kind,
                           absl::Span<const int64_t> dims, Type ir_type,
                           SmallVector<Type>& fn_result_types) {
@@ -1713,7 +1713,7 @@ void AppendFuncResultType(absl::string_view fusion_kind,
 }
 
 // Legacy emitter works with tt.func. New emitter works with func.func.
-// TODO(393299275): Remove legacy optionality once migration is complete.
+// TODO(b/393299275): Remove legacy optionality once migration is complete.
 mlir::FunctionOpInterface CreateFuncOp(EmitterLocOpBuilder& b,
                                        absl::string_view fn_name,
                                        absl::string_view fusion_kind,
@@ -1734,7 +1734,7 @@ mlir::FunctionOpInterface CreateFuncOp(EmitterLocOpBuilder& b,
 }
 
 // Legacy emitter works with tt.return. New emitter works with func.return.
-// TODO(393299275): Remove legacy optionality once migration is complete.
+// TODO(b/393299275): Remove legacy optionality once migration is complete.
 void EmitReturnOp(EmitterLocOpBuilder& b, absl::string_view fusion_kind,
                   SmallVector<Value> insert_results) {
   if (fusion_kind == kTritonGemmFusionKind) {
@@ -2008,6 +2008,10 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     }
   }
 
+  if (is_xla_fusion) {
+    pm.addPass(mlir::triton::xla::CreateInt4ToPackedInt4RewritePass());
+  }
+
   pm.addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass(
       device_info,
       hlo_config.debug_options().xla_gpu_experimental_enable_triton_tma()));
@@ -2031,7 +2035,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
 
   mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
   if (!CreateTritonPipeline(&pm, arch_name, num_warps, num_ctas, num_stages,
-                            cluster_info, is_xla_fusion)
+                            cluster_info)
            .ok()) {
     return Internal("Failed to create Triton pipeline.");
   }

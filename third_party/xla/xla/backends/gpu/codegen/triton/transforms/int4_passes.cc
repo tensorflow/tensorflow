@@ -13,18 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/Patterns.h"
 #include "mlir/IR/Block.h"
@@ -32,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
@@ -39,11 +44,13 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
@@ -54,6 +61,7 @@ using ::xla::llvm_ir::DumpToString;
 
 namespace mt = ::mlir::triton;
 namespace ma = ::mlir::arith;
+namespace mtx = ::mlir::triton::xla;
 
 #define GEN_PASS_DEF_LOADINT4REWRITEPASS
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
@@ -74,14 +82,20 @@ class I4ToI8Converter : public TypeConverter {
 
   Type convertRankedTensorType(RankedTensorType type) const {
     VLOG(2) << "I4ToI8Converter: RankedTensorType for " << DumpToString(type);
-    if (!type.getElementType().isInteger(4)) return type;
+    if (!type.getElementType().isInteger(4)) {
+      return type;
+    }
 
     auto shape = type.getShape();
-    if (shape[0] == ShapedType::kDynamic)
-      return type;  // Only handle static shapes for simplicity
+    // Only handle static shapes for simplicity.
+    if (mlir::ShapedType::isDynamicShape(shape)) {
+      return type;
+    }
 
     std::vector<int64_t> new_shape = shape;
-    new_shape[packed_dimension()] /= 2;
+    if (!shape.empty()) {
+      new_shape[packed_dimension()] /= 2;
+    }
 
     auto new_type = RankedTensorType::get(
         new_shape, IntegerType::get(type.getContext(), 8));
@@ -107,10 +121,14 @@ class I4ToI8Converter : public TypeConverter {
             << DumpToString(func_type);
 
     SmallVector<Type> inputs;
-    if (failed(convertTypes(func_type.getInputs(), inputs))) return func_type;
+    if (failed(convertTypes(func_type.getInputs(), inputs))) {
+      return func_type;
+    }
 
     SmallVector<Type> results;
-    if (failed(convertTypes(func_type.getResults(), results))) return func_type;
+    if (failed(convertTypes(func_type.getResults(), results))) {
+      return func_type;
+    }
 
     auto new_func_type =
         FunctionType::get(func_type.getContext(), inputs, results);
@@ -175,6 +193,51 @@ std::optional<int64_t> GetConstValue(Value value) {
   }
   return std::nullopt;
 }
+
+class TritonXlaExtractOpConversionPattern
+    : public OpConversionPattern<mtx::ExtractOp> {
+ public:
+  using OpConversionPattern<mtx::ExtractOp>::OpConversionPattern;
+
+  TritonXlaExtractOpConversionPattern(const I4ToI8Converter &converter,
+                                      MLIRContext *context)
+      : OpConversionPattern<mtx::ExtractOp>(converter, context),
+        converter_(converter) {}
+
+  LogicalResult matchAndRewrite(
+      mtx::ExtractOp op, OpConversionPattern<mtx::ExtractOp>::OpAdaptor adaptor,
+      ConversionPatternRewriter &r) const override {
+    // Convert the tensor type using the TypeConverter
+    auto new_result_type = mlir::cast<mlir::RankedTensorType>(
+        getTypeConverter()->convertType(op.getResultType()));
+
+    ImplicitLocOpBuilder builder(op.getLoc(), r);
+    // We can safely assume these are static because they were checked in
+    // GetPackedDimension.
+    SmallVector<int64_t, 2> tile_strides(adaptor.getStaticStrides());
+
+    // The stride of the i8 tensor is half of the i4 tensor but at least 1.
+    SmallVector<Value, 2> tile_strides_values;
+    for (auto stride : tile_strides) {
+      tile_strides_values.push_back(builder.create<ma::ConstantOp>(
+          builder.getIndexAttr(ceil(stride / 2.0))));
+    }
+
+    // We update the offset of the packed dimension to be half of the original
+    // offset.
+    SmallVector<Value, 2> tile_offsets_values = op.getOffsetsAsValues(builder);
+    tile_offsets_values[converter_.packed_dimension()] =
+        div(r, tile_offsets_values[converter_.packed_dimension()], 2);
+
+    r.replaceOpWithNewOp<mtx::ExtractOp>(
+        op, new_result_type, adaptor.getSrc(), tile_offsets_values,
+        tile_strides_values, adaptor.getLayout());
+    return success();
+  }
+
+ private:
+  const I4ToI8Converter &converter_;
+};
 
 class MakeTensorPtrOpConversionPattern
     : public OpConversionPattern<MakeTensorPtrOp> {
@@ -412,29 +475,62 @@ std::vector<Operation *> FindInt4ExtSIOp(const ModuleOp &module) {
   return result;
 }
 
-// Finds the packed dimension from the MakeTensorPtrOp.
-// The tensor is packed along the minor dimension. Minor dimension is the one
-// that has a stride of 1 but a shape that is not 1. For a shape dimension of 1
-// the stride can be any value.
-int GetPackedDimension(MLIRContext *ctx, const std::vector<Operation *> &ops) {
+// Finds the packed dimension from MakeTensorPtrOp or mtx::ExtractOp.
+// The packed dimension is the most minor dimension that has a unit stride and a
+// shape that is > 1.
+// TODO(b/393299275): MakeTensorPtrOp will not be emitted by the generic Triton
+// emitter. Remove this once the legacy Triton emitter is deprecated.
+absl::StatusOr<int> GetPackedDimension(MLIRContext *ctx,
+                                       const std::vector<Operation *> &ops) {
   for (auto *op : ops) {
-    auto make_tensor_ptr = dyn_cast<MakeTensorPtrOp>(op);
-    if (!make_tensor_ptr) {
+    auto make_tensor_ptr_op = dyn_cast<MakeTensorPtrOp>(op);
+    auto extract_op = dyn_cast<mtx::ExtractOp>(op);
+    if (!make_tensor_ptr_op && !extract_op) {
       continue;
     }
-    // The order attribute is ignored in Triton, check for default order here.
-    CHECK(absl::c_is_sorted(make_tensor_ptr.getOrder(), std::greater<int>()))
-        << "Not default order: " << DumpToString(op);
-    auto shape = make_tensor_ptr.getShape();
-    auto strides = make_tensor_ptr.getStrides();
-    for (auto dim : make_tensor_ptr.getOrder()) {
-      if (GetConstValue(strides[dim]).value_or(1) == 1 &&
-          GetConstValue(shape[dim]).value_or(0) != 1) {
-        return dim;
+
+    if (make_tensor_ptr_op) {
+      // The order attribute is ignored in Triton, check for default order here.
+      CHECK(
+          absl::c_is_sorted(make_tensor_ptr_op.getOrder(), std::greater<int>()))
+          << "Not default order: " << DumpToString(op);
+      auto shape = make_tensor_ptr_op.getShape();
+      auto strides = make_tensor_ptr_op.getStrides();
+      for (auto dim : make_tensor_ptr_op.getOrder()) {
+        if (GetConstValue(strides[dim]).value_or(1) == 1 &&
+            GetConstValue(shape[dim]).value_or(0) != 1) {
+          return dim;
+        }
       }
     }
+
+    if (extract_op) {
+      // Make sure the packed dimension is not dynamic and has a stride of 1.
+      auto tile_strides = extract_op.getStaticStrides();
+      auto tile_sizes = extract_op.getStaticSizes();
+      auto original_shape = extract_op.getSrcType().getShape();
+
+      if (mlir::ShapedType::isDynamicShape(tile_strides) ||
+          mlir::ShapedType::isDynamicShape(tile_sizes) ||
+          mlir::ShapedType::isDynamicShape(original_shape)) {
+        return absl::InvalidArgumentError(
+            "dynamic shapes, tile strides, and tile sizes not supported");
+      }
+
+      for (auto dim : extract_op.getLayout()) {
+        if (tile_strides[dim] == 1 && tile_sizes[dim] > 1 &&
+            original_shape[dim] > 1) {
+          return dim;
+        }
+      }
+
+      return absl::InvalidArgumentError("Failed to find a packed dimension.");
+    }
   }
-  LOG(FATAL) << "No MakeTensorPtrOp found";
+  std::string not_found_message =
+      "No MakeTensorPtrOp or mlir::triton::xla::ExtractOp found";
+  LOG(FATAL) << not_found_message;
+  return absl::InvalidArgumentError(not_found_message);
 }
 
 LogicalResult SitofpInt4ToInt8Rewrite(ma::SIToFPOp op, PatternRewriter &r) {
@@ -463,13 +559,13 @@ LogicalResult TruncfSitofpToSitofpRewrite(ma::TruncFOp trunc_op,
 
 struct PlainInt4ToPackedInt4RewritePass
     : public impl::LoadInt4RewritePassBase<PlainInt4ToPackedInt4RewritePass> {
-  // The pass converts the types like tensor<AxBxi4> to tensor<A/2xBxi8> in the
-  // Triton dialect and replaces the ExtSIOp with the unpack sequence that
-  // accepts twice smaller i8 tensor and converts it to the twice bigger i8
-  // tensor where every i4 element uses i8 space. At the end the module accepts
-  // the tt.ptr<i8> to the packed i4 tensor, and unpacks it to the i8 tensor for
-  // further processing. It gets the packed dimension from the MakeTensorPtrOp
-  // attribute.
+  // The pass converts the types like tensor<AxBxi4> to tensor<AxB/2xi8>
+  // (assuming B is the packed dimension) in the Triton dialect and replaces
+  // the ExtSIOp with the unpack sequence that accepts twice smaller i8 tensor
+  // and converts it to the twice bigger i8 tensor where every i4 element uses
+  // i8 space. At the end the module accepts the tt.ptr<i8> to the packed i4
+  // tensor, and unpacks it to the i8 tensor for further processing. It gets the
+  // packed dimension from MakeTensorPtrOp or mtx::ExtractOp.
   void runOnOperation() override {
     auto *ctx = &getContext();
     auto module = getOperation();
@@ -489,13 +585,19 @@ struct PlainInt4ToPackedInt4RewritePass
     for (auto *op : ext_ops) {
       VLOG(2) << "ext_op: " << DumpToString(op);
       auto ops = TraverseUpwards(op);
-      packed_dimension = GetPackedDimension(ctx, ops);
+      auto packed_dimension_result = GetPackedDimension(ctx, ops);
+      if (!packed_dimension_result.ok()) {
+        VLOG(2) << "failed to get packed dimension: "
+                << packed_dimension_result.status();
+        signalPassFailure();
+      };
+      packed_dimension = packed_dimension_result.value();
     }
 
     ConversionTarget target(*ctx);
     I4ToI8Converter converter(packed_dimension);
     target.markUnknownOpDynamicallyLegal([&](Operation *op) {
-      if (auto func_op = dyn_cast<FuncOp>(op)) {
+      if (auto func_op = dyn_cast<mlir::FunctionOpInterface>(op)) {
         VLOG(2) << "check funcOp: " << DumpToString(func_op);
         if (func_op.getFunctionType() !=
             converter.convertType(func_op.getFunctionType())) {
@@ -510,12 +612,24 @@ struct PlainInt4ToPackedInt4RewritePass
     RewritePatternSet patterns(ctx);
     scf::populateSCFStructuralTypeConversions(converter, patterns);
     patterns.add<ExtSIInt4ToInt8Pattern>(converter, ctx);
+
+    // TODO(b/393299275): LoadOp, AdvanceOp, AddPtrOp, and MakeTensorPtrOp will
+    // not be emitted by the generic Triton emitter. Remove these once the
+    // legacy Triton emitter is deprecated.
     patterns.add<OpTypeConversionPattern<LoadOp>>(converter, ctx);
     patterns.add<AdvanceOpConversionPattern>(converter, ctx);
     patterns.add<AddPtrOpConversionPattern>(converter, ctx);
     patterns.add<MakeTensorPtrOpConversionPattern>(converter, ctx);
-    populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns,
-                                                             converter);
+
+    patterns.add<TritonXlaExtractOpConversionPattern>(converter, ctx);
+
+    // TODO(b/393299275): Remove mt::FuncOp once the legacy Triton emitter is
+    // deprecated.
+    populateFunctionOpInterfaceTypeConversionPattern<mt::FuncOp>(patterns,
+                                                                 converter);
+
+    populateFunctionOpInterfaceTypeConversionPattern<mlir::func::FuncOp>(
+        patterns, converter);
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       VLOG(2) << "failed to apply partial conversion";
       signalPassFailure();
@@ -523,13 +637,6 @@ struct PlainInt4ToPackedInt4RewritePass
   }
 };
 
-// The pass converts the types like tensor<AxBxi4> to tensor<A/2xBxi8> in the
-// Triton dialect and replaces the ExtSIOp with the unpack sequence that accepts
-// twice smaller i8 tensor and convert it to the twice bigger i8 tensor where
-// every i4 element uses i8 space. At the end the module accepts the tt.ptr<i8>
-// to the packed i4 tensor, and unpacks it to the i8 tensor for the further
-// processing. It expects that the i4 tensor is packed along the major
-// dimension.
 std::unique_ptr<Pass> CreateInt4ToPackedInt4RewritePass() {
   return std::make_unique<PlainInt4ToPackedInt4RewritePass>();
 }

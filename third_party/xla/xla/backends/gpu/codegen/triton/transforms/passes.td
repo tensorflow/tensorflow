@@ -79,6 +79,9 @@ def LoadInt4RewritePass
     the twice smaller size. It also replaces the plain ExtSIOp upcast to the
     int8 tensor with the unpack sequence.
   }];
+  let dependentDialects = [
+    "triton::TritonDialect"
+  ];
   let constructor = "CreateInt4ToPackedInt4RewritePass()";
 }
 

@@ -42,11 +42,9 @@ namespace mt = ::mlir::triton;
 namespace mt_xla = ::mlir::triton::xla;
 namespace ttng = mlir::triton::nvidia_gpu;
 
-absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
-                                  std::string arch_name, int num_warps,
-                                  int num_ctas, int num_stages,
-                                  mt::nvidia_gpu::ClusterInfo& out_cluster_info,
-                                  bool is_xla_fusion) {
+absl::Status CreateTritonPipeline(
+    mlir::OpPassManager* pm, std::string arch_name, int num_warps, int num_ctas,
+    int num_stages, mt::nvidia_gpu::ClusterInfo& out_cluster_info) {
   TF_ASSIGN_OR_RETURN(
       const stream_executor::CudaComputeCapability cc,
       stream_executor::CudaComputeCapability::FromString(arch_name));
@@ -54,9 +52,6 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   const int threadsPerWarp = 32;
 
   pm->addPass(mt_xla::CreateRoundF32ToTF32ForTf32DotRewritePass());
-  if (is_xla_fusion) {
-    pm->addPass(mt_xla::CreateInt4ToPackedInt4RewritePass());
-  }
 
   // Based on make_ttir() in
   // @triton//:third_party/nvidia/backend/compiler.py

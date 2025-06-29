@@ -2721,6 +2721,29 @@ ENTRY entry_computation {
       RunAndCompareNoHloPasses(std::move(module), {&literal}, kExactMatch));
 }
 
+TEST_P(TmaParameterizedTritonEmitterTest, ConvertS4ToS8For2D) {
+  constexpr absl::string_view kHloText = R"(
+computation {
+  p0 = s4[64,64] parameter(0)
+  ROOT convert = s8[64,64] convert(p0)
+}
+
+ENTRY entry_computation {
+  p0 = s4[64,64] parameter(0)
+  ROOT fusion = s8[64,64] fusion(p0), kind=kCustom,
+    calls=computation,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["32", "32"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+})";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
 TEST_F(TritonEmitterTest, SingleTileDotWithNestedFusionsIsEmittedCorrectly) {
   // Simplest case when everything fits into one tile that is useful for
   // debugging. This also tests support for empty nested fusions.

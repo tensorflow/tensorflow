@@ -53,9 +53,7 @@ TEST(TritonStub, CallStubApi) {
   mlir::OpPassManager pm;
   ::mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
 
-  EXPECT_FALSE(CreateTritonPipeline(&pm, "", 1, 1, 1, cluster_info,
-                                    /*is_xla_fusion=*/true)
-                   .ok());
+  EXPECT_FALSE(CreateTritonPipeline(&pm, "", 1, 1, 1, cluster_info).ok());
   EXPECT_EQ(GetLibdevicePath({}, {}), "");
 
   HloConstantInstruction constant(LiteralUtil::CreateR1<int>({1, 1}));
