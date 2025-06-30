@@ -1386,6 +1386,110 @@ class FlashAttentionPagedAttention : public MultiHeadedAttentionTest {
   }
 };
 
+class FlashAttentionFlexAttention : public MultiHeadedAttentionTest {
+ protected:
+  absl::string_view
+  GetModuleFlash_Attention_Flex_Attention_Soft_Capping_BF16() {
+    static constexpr absl::string_view kHloText = R"(
+    HloModule jit__unnamed_wrapped_function_
+
+    %soft_cap.14 (Arg_0.15: f32[4,4,1024,1024]) -> f32[4,4,1024,1024] {
+      %Arg_0.15 = f32[4,4,1024,1024]{3,2,1,0} parameter(0)
+      %constant.1 = f32[] constant(0.333333343)
+      %broadcast.1 = f32[4,4,1024,1024]{3,2,1,0} broadcast(%constant.1), dimensions={}
+      %multiply.1 = f32[4,4,1024,1024]{3,2,1,0} multiply(%Arg_0.15, %broadcast.1)
+      %tanh.19 = f32[4,4,1024,1024]{3,2,1,0} tanh(%multiply.1)
+      %constant.16 = f32[] constant(3)
+      %broadcast.17 = f32[4,4,1024,1024]{3,2,1,0} broadcast(%constant.16), dimensions={}
+      ROOT %multiply.20 = f32[4,4,1024,1024]{3,2,1,0} multiply(%tanh.19, %broadcast.17)
+    }
+
+    ENTRY %main.25 (Arg_0.1: bf16[4,1024,4,64], Arg_1.2: bf16[4,1024,4,64], Arg_2.3: bf16[4,1024,4,64]) -> bf16[4,1024,4,64] {
+      %Arg_0.1 = bf16[4,1024,4,64]{3,2,1,0} parameter(0)
+      %Arg_1.2 = bf16[4,1024,4,64]{3,2,1,0} parameter(1)
+      %Arg_2.3 = bf16[4,1024,4,64]{3,2,1,0} parameter(2)
+      %custom-call.21 = (bf16[4,4,1024,64]{3,1,2,0}, u8[0]{0}) custom-call(%Arg_0.1, %Arg_1.2, %Arg_2.3), custom_call_target="__cudnn$fmhaSoftmax", api_version=API_VERSION_STATUS_RETURNING, called_computations={%soft_cap.14}, backend_config={"operation_queue_id": "0", "wait_on_operation_queues": [], "cudnn_fmha_backend_config": {"algorithm": {"algo_id": "0", "math_type": "TENSOR_OP_MATH", "tuning_knobs": {"17": "1", "24": "0"}, "is_cudnn_frontend": true, "workspace_size": "0"}, "fmha_scale": 1.0, "intermediate_tensor_shape": {"element_type": "BF16", "dimensions": ["4", "4", "1024", "1024"], "tuple_shapes": [], "layout": {"dim_level_types": [], "dim_unique": [], "dim_ordered": [], "minor_to_major": ["3", "2", "1", "0"], "tiles": [], "element_size_in_bits": "0", "memory_space": "0", "index_primitive_type": "PRIMITIVE_TYPE_INVALID", "pointer_primitive_type": "PRIMITIVE_TYPE_INVALID", "dynamic_shape_metadata_prefix_bytes": "0"}, "is_dynamic_dimension": [false, false, false, false]}, "is_flash_attention": true, "mask_type": "NO_MASK", "bmm1_dot_dimension_numbers": {"lhs_contracting_dimensions": ["3"], "rhs_contracting_dimensions": ["3"], "lhs_batch_dimensions": ["0", "2"], "rhs_batch_dimensions": ["0", "2"]}, "bmm2_dot_dimension_numbers": {"lhs_contracting_dimensions": ["3"], "rhs_contracting_dimensions": ["1"], "lhs_batch_dimensions": ["0", "1"], "rhs_batch_dimensions": ["0", "2"]}, "dropout_rate": 0, "seed": 42, "sliding_window_length": 0, "max_seg_per_batch": 1}}
+      %get-tuple-element.22 = bf16[4,4,1024,64]{3,1,2,0} get-tuple-element(%custom-call.21), index=0
+      ROOT %transpose.24 = bf16[4,1024,4,64]{3,2,1,0} transpose(%get-tuple-element.22), dimensions={0,2,1,3}
+    }
+  )";
+    return kHloText;
+  }
+
+  absl::string_view
+  GetModuleFlash_Attention_Flex_Attention_Soft_Capping_Reference_BF16() {
+    static constexpr absl::string_view kHloText = R"(
+    HloModule jit__unnamed_wrapped_function_
+
+    %max (Arg_0.15: f32[], Arg_1.16: f32[]) -> f32[] {
+      %Arg_0.15 = f32[] parameter(0)
+      %Arg_1.16 = f32[] parameter(1)
+      ROOT %maximum.17 = f32[] maximum(%Arg_0.15, %Arg_1.16)
+    }
+
+    %add (Arg_0.27: f32[], Arg_1.28: f32[]) -> f32[] {
+      %Arg_0.27 = f32[] parameter(0)
+      %Arg_1.28 = f32[] parameter(1)
+      ROOT %add.29 = f32[] add(%Arg_0.27, %Arg_1.28)
+    }
+
+    ENTRY %main.40 (Arg_0.1: bf16[4,1024,4,64], Arg_1.2: bf16[4,1024,4,64], Arg_2.3: bf16[4,1024,4,64]) -> bf16[4,1024,4,64] {
+      %Arg_2.3 = bf16[4,1024,4,64]{3,2,1,0} parameter(2)
+      %transpose.2 = bf16[4,4,64,1024]{3,2,1,0} transpose(%Arg_2.3), dimensions={0,2,3,1}
+      %reshape.15 = bf16[16,64,1024]{2,1,0} reshape(%transpose.2)
+      %Arg_0.1 = bf16[4,1024,4,64]{3,2,1,0} parameter(0)
+      %transpose = bf16[4,4,1024,64]{3,2,1,0} transpose(%Arg_0.1), dimensions={0,2,1,3}
+      %reshape.12 = bf16[16,1024,64]{2,1,0} reshape(%transpose)
+      %Arg_1.2 = bf16[4,1024,4,64]{3,2,1,0} parameter(1)
+      %transpose.1 = bf16[4,4,64,1024]{3,2,1,0} transpose(%Arg_1.2), dimensions={0,2,3,1}
+      %reshape.13 = bf16[16,64,1024]{2,1,0} reshape(%transpose.1)
+      %dot.3 = f32[16,1024,1024]{2,1,0} dot(%reshape.12, %reshape.13), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+      %reshape.14 = f32[4,4,1024,1024]{3,2,1,0} reshape(%dot.3)
+      %constant = f32[] constant(0.333333343)
+      %broadcast = f32[4,4,1024,1024]{3,2,1,0} broadcast(%constant), dimensions={}
+      %multiply = f32[4,4,1024,1024]{3,2,1,0} multiply(%reshape.14, %broadcast)
+      %tanh.12 = f32[4,4,1024,1024]{3,2,1,0} tanh(%multiply)
+      %constant.6 = f32[] constant(3)
+      %broadcast.7 = f32[4,4,1024,1024]{3,2,1,0} broadcast(%constant.6), dimensions={}
+      %multiply.13 = f32[4,4,1024,1024]{3,2,1,0} multiply(%tanh.12, %broadcast.7)
+      %neg_inf = f32[] constant(-inf)
+      %reduce.18 = f32[4,4,1024]{2,1,0} reduce(%multiply.13, %neg_inf), dimensions={3}, to_apply=%max
+      %broadcast.23 = f32[4,4,1024,1024]{3,2,1,0} broadcast(%reduce.18), dimensions={0,1,2}
+      %subtract.24 = f32[4,4,1024,1024]{3,2,1,0} subtract(%multiply.13, %broadcast.23)
+      %exponential.25 = f32[4,4,1024,1024]{3,2,1,0} exponential(%subtract.24)
+      %zero = f32[] constant(0)
+      %reduce.30 = f32[4,4,1024]{2,1,0} reduce(%exponential.25, %zero), dimensions={3}, to_apply=%add
+      %broadcast.34 = f32[4,4,1024,1024]{3,2,1,0} broadcast(%reduce.30), dimensions={0,1,2}
+      %divide.35 = f32[4,4,1024,1024]{3,2,1,0} divide(%exponential.25, %broadcast.34)
+      %convert.36 = bf16[4,4,1024,1024]{3,2,1,0} convert(%divide.35)
+      %reshape.16 = bf16[16,1024,1024]{2,1,0} reshape(%convert.36)
+      %dot.4 = f32[16,64,1024]{2,1,0} dot(%reshape.15, %reshape.16), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={2}
+      %reshape.17 = f32[4,4,64,1024]{3,2,1,0} reshape(%dot.4)
+      %convert.0 = bf16[4,4,64,1024]{3,2,1,0} convert(%reshape.17)
+      ROOT %transpose.10 = bf16[4,1024,4,64]{3,2,1,0} transpose(%convert.0), dimensions={0,3,1,2}
+    }
+  )";
+    return kHloText;
+  }
+
+  template <typename T>
+  void TestImpl_Flash_Attention_Flex_Attention() {
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+    if (GetDnnVersionInfoOrDefault(backend().default_stream_executor()) <
+        se::dnn::VersionInfo(9, 7, 0)) {
+      GTEST_SKIP() << "Flash Attention requires cuDNN >= 9.7.0.";
+    }
+    // Extend cudnn sdpa soft capping using flex attention
+    absl::string_view hlo_string =
+        GetModuleFlash_Attention_Flex_Attention_Soft_Capping_BF16();
+    // Reference implementation is pure xla sdpa soft capping.
+    absl::string_view hlo_string_ref =
+        GetModuleFlash_Attention_Flex_Attention_Soft_Capping_Reference_BF16();
+    EXPECT_TRUE(RunAndCompareTwoModules(hlo_string, hlo_string_ref,
+                                        ErrorSpec{1e-3, 1e-3}));
+  }
+};
+
 class FlashAttentionBMMScaleSoftmaxBMMF8 : public MultiHeadedAttentionTest {};
 
 class FlashAttentionBMMScaleSoftmaxDropoutBMM
@@ -1509,6 +1613,11 @@ TEST_F(FlashAttentionBMMScaleSegmentMaskSoftmaxBMM,
 // Paged Attention
 TEST_F(FlashAttentionPagedAttention, Flash_Attention_Paged_Attention_BF16) {
   TestImpl_Flash_Attention_Paged_Attention<bfloat16>();
+}
+
+// Flex Attention
+TEST_F(FlashAttentionFlexAttention, Flash_Attention_Flex_Attention_BF16) {
+  TestImpl_Flash_Attention_Flex_Attention<bfloat16>();
 }
 
 absl::string_view GetModuleFlashAttentionBMMScaleSoftmaxBMMCommonRef() {

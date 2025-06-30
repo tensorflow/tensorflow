@@ -438,6 +438,7 @@ cc_library(
         ":cuda_diagnostics",
         ":cuda_platform_id",
         ":cudnn_frontend_helpers",
+        ":cudnn_sdpa_score_mod",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:data_type",
         "//xla/stream_executor:device_memory",
@@ -478,6 +479,45 @@ cc_library(
         "@local_tsl//tsl/platform:tensor_float_32_utils",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "cudnn_sdpa_score_mod",
+    srcs = ["cudnn_sdpa_score_mod.cc"],
+    hdrs = ["cudnn_sdpa_score_mod.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:stream_executor_util",
+        "//xla/stream_executor:dnn",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@cudnn_frontend_archive//:cudnn_frontend",
+        "@local_config_cuda//cuda:cudnn_header",
+    ],
+)
+
+xla_test(
+    name = "cudnn_sdpa_score_mod_test",
+    srcs = ["cudnn_sdpa_score_mod_test.cc"],
+    backends = ["gpu"],
+    tags = ["cuda-only"],
+    deps = [
+        ":cudnn_sdpa_score_mod",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@cudnn_frontend_archive//:cudnn_frontend",
+        "@jsoncpp_git//:jsoncpp",
+        "@local_config_cuda//cuda:cudnn_header",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+    ],
 )
 
 cc_library(

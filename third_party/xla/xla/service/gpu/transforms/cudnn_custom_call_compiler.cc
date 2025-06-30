@@ -39,11 +39,13 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/transforms/block_scaling_rewriter.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_dnn.h"
 #include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
+#include "xla/stream_executor/cuda/cudnn_sdpa_score_mod.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
@@ -55,6 +57,7 @@ namespace xla {
 namespace gpu {
 
 namespace {
+namespace m = match;
 
 inline absl::StatusOr<CudnnfMHAMaskKind> AsCudnnFmhaMaskKind(
     CudnnfMHABackendConfig_MaskType mask_type) {
@@ -175,15 +178,25 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHA(
         page_table_v,
         TensorDescriptorFor(custom_call->operand(input_index++)->shape()));
   }
-  TF_RET_CHECK(input_index == custom_call->operand_count());
 
+  auto computations = custom_call->called_computations();
+  const HloComputation *score_mod_fwd_comp = nullptr;
+  stream_executor::gpu::ScoreModFunc *score_mod = nullptr;
+  TF_RET_CHECK(computations.size() <= 1);
+  if (computations.size() == 1) {
+    score_mod_fwd_comp = computations[0];
+    auto smf = stream_executor::gpu::ScoreModFunc(score_mod_fwd_comp, nullptr);
+    score_mod = &smf;
+    input_index += score_mod_fwd_comp->num_parameters() - 1;
+  }
+  TF_RET_CHECK(input_index == custom_call->operand_count());
   TF_ASSIGN_OR_RETURN(
       se::gpu::CudnnGraph graph,
       se::gpu::GetCudnnFlashAttentionOperationGraph(
           dnn_support, lhs_bmm1, rhs_bmm1, rhs_bmm2, output, bias, activation,
           page_table_k, page_table_v, static_cast<float>(config.fmha_scale()),
           dropout_rate > 0.0, dropout_rate, dnn_mask_type,
-          sliding_window_length, max_seg_per_batch));
+          sliding_window_length, max_seg_per_batch, score_mod));
   return graph;
 }
 
@@ -276,7 +289,6 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHA(
     // skip q_offsets and kv_offsets
     input_index += 2;
   }
-  TF_RET_CHECK(input_index == custom_call->operand_count());
 
   int output_index = 0;
   const Shape &d_bmm1_lhs_shape =
@@ -345,6 +357,27 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHA(
                       GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(cudnn_mask_type));
 
   const int sliding_window_length = config.sliding_window_length();
+  auto computations = custom_call->called_computations();
+  const HloComputation *score_mod_fwd_comp = nullptr;
+  const HloComputation *score_mod_bwd_comp = nullptr;
+  stream_executor::gpu::ScoreModFunc *score_mod = nullptr;
+  TF_RET_CHECK(computations.size() <= 1);
+  if (computations.size() == 1) {
+    score_mod_bwd_comp = computations[0];
+    auto softmax_aux = custom_call->mutable_operand(3);
+    HloInstruction *fwd_custom_call;
+    if (!Match(softmax_aux,
+               m::GetTupleElement(m::CustomCall(&fwd_custom_call), 1))) {
+      return absl::InternalError("Can't find fmha fwd custom call.");
+    }
+    score_mod_fwd_comp = fwd_custom_call->called_computations()[0];
+    auto smf = stream_executor::gpu::ScoreModFunc(score_mod_fwd_comp,
+                                                  score_mod_bwd_comp);
+    score_mod = &smf;
+    input_index += score_mod_fwd_comp->num_parameters() - 1;
+  }
+  TF_RET_CHECK(input_index == custom_call->operand_count());
+
   TF_ASSIGN_OR_RETURN(
       se::gpu::CudnnGraph graph,
       se::gpu::GetCudnnFlashAttentionBackwardOperationGraph(
@@ -353,7 +386,7 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHA(
           d_bmm1_rhs, d_bmm2_rhs, bias, dbias, dropout_rate, config.seed(),
           config.fmha_scale(), dropout_rate > 0.0, bias != std::nullopt,
           dnn_mask_type, force_deterministic, sliding_window_length,
-          max_seg_per_batch));
+          max_seg_per_batch, score_mod));
   return graph;
 }
 

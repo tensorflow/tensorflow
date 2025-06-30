@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"
+#include "xla/stream_executor/cuda/cudnn_sdpa_score_mod.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/numeric_options.h"
@@ -711,7 +712,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
     std::optional<dnn::TensorDescriptor> page_table_v_descriptor, double scale,
     bool use_dropout, std::optional<double> dropout_rate,
     dnn::FMHAMaskKind mask_type, int sliding_window_length,
-    int max_seg_per_batch);
+    int max_seg_per_batch, ScoreModFunc* score_mod);
 
 absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionF8OperationGraph(
     dnn::DnnSupport& dnn_support,
@@ -733,8 +734,10 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     const std::optional<dnn::TensorDescriptor> bias_descriptor,
     const std::optional<dnn::TensorDescriptor> dbias_descriptor,
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
-    double scale, bool use_dropout, bool use_bias, dnn::FMHAMaskKind mask_type,
-    bool force_deterministic, int sliding_window_length, int max_seg_per_batch);
+    double scale, bool use_dropout, bool use_bias,
+    const dnn::FMHAMaskKind mask_type, bool force_deterministic,
+    const int sliding_window_length, const int max_seg_per_batch,
+    ScoreModFunc* score_mod);
 
 absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardF8OperationGraph(
     dnn::DnnSupport& dnn_support, const dnn::MatmulTensorDescriptor& q_desc,

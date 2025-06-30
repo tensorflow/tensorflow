@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
+#include "xla/stream_executor/cuda/cudnn_sdpa_score_mod.h"
 #include "xla/stream_executor/data_type.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
@@ -4032,7 +4033,8 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
     const std::optional<dnn::TensorDescriptor> page_table_v_descriptor,
     double scale, const bool use_dropout,
     const std::optional<double> dropout_rate, const dnn::FMHAMaskKind mask_type,
-    const int sliding_window_length, const int max_seg_per_batch) {
+    const int sliding_window_length, const int max_seg_per_batch,
+    ScoreModFunc* score_mod) {
   using cudnn_frontend::graph::Tensor_attributes;
 
 #if CUDNN_VERSION >= 90000
@@ -4060,8 +4062,8 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
   graph.set_intermediate_data_type(cudnn_frontend::DataType_t::FLOAT)
       .set_io_data_type(ioDataType)
       .set_compute_data_type(cudnn_frontend::DataType_t::FLOAT);
-
-  auto next_uid = [uid = 0]() mutable -> int { return CuDnnTensorUID(uid++); };
+  int64_t uid = 0;
+  auto next_uid = [&]() -> int64_t { return CuDnnTensorUID(uid++); };
 
   bool is_paged_attention = page_table_k_descriptor.has_value() &&
                             page_table_v_descriptor.has_value();
@@ -4213,6 +4215,13 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
 
   if (sliding_window_length > 0) {
     sdpa_options.set_sliding_window_length(sliding_window_length);
+  }
+
+  if (score_mod) {
+    TF_RETURN_IF_ERROR(score_mod->UpdateCudnnMap(graph, next_uid));
+    sdpa_options.set_score_mod([=](Graph graph, Tensor score) -> Tensor {
+      return score_mod->Forward(graph, score);
+    });
   }
   // Add SDPA to the graph.
   auto [o_tensor, stats_tensor] =
@@ -4704,7 +4713,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
     double scale, bool use_dropout, bool use_bias, dnn::FMHAMaskKind mask_type,
     bool force_deterministic, const int sliding_window_length,
-    const int max_seg_per_batch) {
+    const int max_seg_per_batch, ScoreModFunc* score_mod) {
 #if CUDNN_VERSION >= 90000
   VLOG(4) << "\n bmm1_grad_gemm1_rhs(q): " << q_desc.ToString()
           << "\n bmm1_grad_gemm2_rhs(k): " << k_desc.ToString()
@@ -4770,7 +4779,8 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
           .set_attn_scale(scale)
           .set_compute_data_type(cudnn_frontend::DataType_t::FLOAT);
 
-  auto next_uid = [uid = 0]() mutable -> int { return CuDnnTensorUID(uid++); };
+  int64_t uid = 0;
+  auto next_uid = [&]() -> int64_t { return CuDnnTensorUID(uid++); };
 
   std::shared_ptr<Tensor_attributes> q =
       graph.tensor(Tensor_attributes()
@@ -4925,6 +4935,17 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     sdpa_backward_options.set_sliding_window_length(sliding_window_length);
   }
 
+  if (score_mod) {
+    TF_RETURN_IF_ERROR(score_mod->UpdateCudnnMap(graph, next_uid));
+    sdpa_backward_options.set_score_mod(
+        [=](Graph graph, Tensor score) -> Tensor {
+          return score_mod->Forward(graph, score);
+        });
+    sdpa_backward_options.set_score_mod_bprop(
+        [=](Graph graph, Tensor grad) -> Tensor {
+          return score_mod->Backward(graph, grad);
+        });
+  }
   auto [dQ, dK, dV] =
       graph.sdpa_backward(q, k, v, o, dO, stats, sdpa_backward_options);
 
