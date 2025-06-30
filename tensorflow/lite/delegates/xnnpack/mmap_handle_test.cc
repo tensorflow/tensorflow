@@ -16,8 +16,17 @@ limitations under the License.
 
 #include <cerrno>
 #include <cstddef>
+#include <cstdint>
+#include <cstdio>
 #include <string>
 #include <utility>
+
+#if defined(_MSC_VER)
+#include <io.h>
+#define ftruncate64 _chsize_s
+#elif defined(__APPLE__)
+#define ftruncate64 ftruncate
+#endif
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -160,6 +169,19 @@ TEST(MMapHandleTest, ResizeMapWithOffset) {
 #else
   GTEST_SKIP() << "Resize is not supported for this build.";
 #endif
+}
+
+TEST(MMapHandleTest, WorksWithHugeFiles) {
+#if INTPTR_MAX == INT32_MAX
+  GTEST_SKIP()
+      << "Files bigger than 2GiB cannot be mapped on 32 bit architectures.";
+#endif
+  TempFileDesc tmp_file;
+  int64_t huge_file_size = 2254857830;  // More than 2 GiB.
+  ASSERT_EQ(ftruncate64(tmp_file.Value(), huge_file_size), 0);
+  tmp_file.Close();
+  MMapHandle handle;
+  ASSERT_TRUE(handle.Map(tmp_file.GetCPath(), /*offset=*/0));
 }
 
 }  // namespace

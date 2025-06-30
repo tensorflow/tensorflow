@@ -74,10 +74,17 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
                        "cannot mmap invalid file descriptor %d ('%s').",
                        fd.Value(), path);
 
+#if defined(_MSC_VER)
+  struct _stat64 file_stats;
+  XNNPACK_RETURN_CHECK(_fstat64(fd.Value(), &file_stats) == 0,
+                       "could not access file stats to get size ('%s'): %s.",
+                       path, strerror(errno));
+#else
   struct stat file_stats;
   XNNPACK_RETURN_CHECK(fstat(fd.Value(), &file_stats) == 0,
                        "could not access file stats to get size ('%s'): %s.",
                        path, strerror(errno));
+#endif
 
   // This will reset data_ and size_ on return until it is deactivated.
   ScopeGuard unmap_on_error([this] { UnMap(); });
