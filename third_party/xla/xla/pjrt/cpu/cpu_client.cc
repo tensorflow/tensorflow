@@ -15,10 +15,6 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/cpu_client.h"
 
-#include <tuple>
-
-#define EIGEN_USE_THREADS
-
 #include <algorithm>
 #include <cfenv>  // NOLINT
 #include <cstddef>
@@ -29,6 +25,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -46,7 +43,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "unsupported/Eigen/CXX11/Tensor"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/array.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
@@ -104,6 +100,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
 #include "xla/service/cpu/cpu_runtime.h"
+#include "xla/service/cpu/xfeed_manager.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/dump.h"
@@ -136,25 +133,11 @@ limitations under the License.
 #include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme.h"
 
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
+
 namespace xla {
 namespace {
-
-// Converts the shape used to represent the host buffer to the shape used to
-// represent the on-device buffer.
-Shape HostShapeToOnDeviceShape(const Shape& shape) {
-  // AbstractCpuBuffer packs sub-byte non-pred types. The on-device shape
-  // should reflect this so that our memory allocation and overflow checks are
-  // correct.
-  if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
-    Shape on_device_shape = shape;
-    on_device_shape.mutable_layout()->set_element_size_in_bits(
-        primitive_util::BitWidth(shape.element_type()));
-    return on_device_shape;
-  }
-
-  // Otherwise, return the shape as-is.
-  return shape;
-}
 
 void EnqueueWork(tsl::thread::ThreadPool* pool,
                  absl::AnyInvocable<void() &&> callee) {
@@ -1622,7 +1605,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
       cpu::Thunk::ExecuteParams execute_params = {
           cpu_executable->function_library(),
           &allocations,
-          cpu::runtime::GetXfeedManager(run_options.device_ordinal()),
+          cpu::GetXfeedManager(run_options.device_ordinal()),
           run_options.intra_op_thread_pool(),
           &task_runner,
           &collective_params,
@@ -1746,7 +1729,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
               cpu::Thunk::ExecuteParams execute_params = {
                   cpu_executable->function_library(),
                   &allocations,
-                  cpu::runtime::GetXfeedManager(run_options.device_ordinal()),
+                  cpu::GetXfeedManager(run_options.device_ordinal()),
                   run_options.intra_op_thread_pool(),
                   &task_runner,
                   &*collective_params,

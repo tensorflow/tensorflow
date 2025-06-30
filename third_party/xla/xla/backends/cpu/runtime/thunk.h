@@ -254,7 +254,7 @@ class Thunk {
   struct ExecuteParams {
     FunctionLibrary* function_library = nullptr;
     const BufferAllocations* buffer_allocations = nullptr;
-    runtime::XfeedManager* xfeed = nullptr;
+    XfeedManager* xfeed = nullptr;
     const Eigen::ThreadPoolDevice* intra_op_threadpool = nullptr;
     TaskRunner* task_runner = nullptr;
     CollectiveExecuteParams* collective_params = nullptr;

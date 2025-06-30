@@ -56,7 +56,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> OutfeedThunk::Execute(
     const ExecuteParams& params) {
   VLOG(3) << absl::StreamFormat("Outfeed %d buffers", outfeed_buffers_.size());
 
-  runtime::XfeedManager* xfeed = params.xfeed;
+  XfeedManager* xfeed = params.xfeed;
   if (xfeed == nullptr) {
     return InvalidArgument("Xfeed must be not null to execute outfeed thunk");
   }
@@ -74,7 +74,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> OutfeedThunk::Execute(
         outfeed_data.opaque());
 
     // Acquire outfeed buffer from the runtime.
-    runtime::XfeedBuffer* buffer = xfeed->outfeed()->BlockingDequeueBuffer();
+    XfeedBuffer* buffer = xfeed->outfeed()->BlockingDequeueBuffer();
     if (buffer->length() != outfeed_buffer.slice.size()) {
       return Internal(
           "XLA runtime-managed outfeed buffer size %d did not match the "

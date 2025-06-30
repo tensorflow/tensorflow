@@ -24,16 +24,14 @@ limitations under the License.
 #include <deque>
 #include <string>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/shape.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla {
-namespace cpu {
-namespace runtime {
+namespace xla::cpu {
 
 // Abstract class defining an infeed buffer that is passed to the
 // runtime by a client. The client manages the storage of the buffer.
@@ -53,7 +51,8 @@ class XfeedBuffer {
 // Reusable component for managing the infeed and outfeed queue state.
 class XfeedQueueManager {
  public:
-  XfeedQueueManager(std::string queue_name) : queue_name_(queue_name) {}
+  explicit XfeedQueueManager(std::string queue_name)
+      : queue_name_(queue_name) {}
 
   // Adds a sequence of buffers to the queue atomically. buffer->Done will be
   // called when the buffer will no longer be accessed by the XfeedManager,
@@ -88,7 +87,7 @@ class XfeedQueueManager {
 
   // XfeedBuffer* queue contents are not owned, but buffer->Done must
   // be called when the buffer is no longer needed by the runtime.
-  std::deque<XfeedBuffer*> enqueued_buffers_;
+  std::deque<XfeedBuffer*> enqueued_buffers_ ABSL_GUARDED_BY(mu_);
 
   // If non-NULL, the buffer that is currently being processed by the
   // runtime. Not owned.
@@ -104,14 +103,16 @@ class XfeedManager {
   XfeedQueueManager* outfeed() { return &outfeed_; }
 
  private:
-  XfeedQueueManager infeed_ = {"infeed"};
-  XfeedQueueManager outfeed_ = {"outfeed"};
+  XfeedQueueManager infeed_{"infeed"};
+  XfeedQueueManager outfeed_{"outfeed"};
 };
 
 int64_t GetByteSizeRequirement(const Shape& shape, int64_t pointer_size);
 
-}  // namespace runtime
-}  // namespace cpu
-}  // namespace xla
+// Returns the infeed manager used by the CPU runtime for the CPU device
+// `device_ordinal`.  Note the device ordinal does not name a CPU
+XfeedManager* GetXfeedManager(int device_ordinal);
+
+}  // namespace xla::cpu
 
 #endif  // XLA_SERVICE_CPU_XFEED_MANAGER_H_
