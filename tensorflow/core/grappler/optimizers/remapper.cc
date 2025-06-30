@@ -1916,8 +1916,8 @@ bool FindMulAndMaximum(RemapperContext* ctx, int node_index,
 }
 
 bool FindMatMulBiasMulAddElu(RemapperContext* ctx, int node_index,
-                       std::map<string, int>* matched_nodes_map,
-                       std::set<int>* remove_node_indices) {
+                             std::map<string, int>* matched_nodes_map,
+                             std::set<int>* remove_node_indices) {
   // Find MatMul + BiasAdd + Mul + Add + Elu pattern
   // where 1 input to MM, BiasAdd, Mul & Add is Const or Cast with Const input.
   using utils::MatchingDirection;
@@ -1949,7 +1949,7 @@ bool FindMatMulBiasMulAddElu(RemapperContext* ctx, int node_index,
         }
       }
     }
-    };
+  };
   // clang-format on
 
   // Check for allowed datatypes
@@ -1970,8 +1970,8 @@ bool FindMatMulBiasMulAddElu(RemapperContext* ctx, int node_index,
   remove_node_indices->clear();
 
   found_op_type_match = graph_matcher.GetMatchedNodes(
-      mm_pattern, {}, ctx->graph_view.GetNode(node_index),
-      matched_nodes_map, remove_node_indices);
+      mm_pattern, {}, ctx->graph_view.GetNode(node_index), matched_nodes_map,
+      remove_node_indices);
   return found_op_type_match;
 }
 
@@ -3992,22 +3992,22 @@ Status AddFusedMatMulBiasMulAddAndElu(
   auto* matmul_node =
       ctx->graph_view.GetNode(matched_nodes_map.at("matmul"))->node();
   auto* bias_in2_node =
-       ctx->graph_view.GetNode(matched_nodes_map.at("bias_in2"))->node();
+      ctx->graph_view.GetNode(matched_nodes_map.at("bias_in2"))->node();
   auto* mul_in2_node =
-        ctx->graph_view.GetNode(matched_nodes_map.at("mul_in2"))->node();
+      ctx->graph_view.GetNode(matched_nodes_map.at("mul_in2"))->node();
   auto* add_in2_node =
-        ctx->graph_view.GetNode(matched_nodes_map.at("add_in2"))->node();
+      ctx->graph_view.GetNode(matched_nodes_map.at("add_in2"))->node();
 
   auto* matmul_addv2_in_node =
       ctx->graph_view.GetNode(matched_nodes_map.at("matmul_addv2_in"))->node();
-    auto* matmul_in2_node =
+  auto* matmul_in2_node =
       ctx->graph_view.GetNode(matched_nodes_map.at("matmul_in2"))->node();
 
   // M = M1.M2
   NodeDef new_mul_node;
   new_mul_node.set_op("Mul");
   new_mul_node.set_device(matmul_node->device());
-  new_mul_node.set_name(matmul_in2_node->name()+"_folded");
+  new_mul_node.set_name(matmul_in2_node->name() + "_folded");
   new_mul_node.add_input(matmul_in2_node->name());
   new_mul_node.add_input(mul_in2_node->name());
   auto* attr1 = new_mul_node.mutable_attr();
@@ -4019,7 +4019,7 @@ Status AddFusedMatMulBiasMulAddAndElu(
   NodeDef new_mul_node2;
   new_mul_node2.set_op("Mul");
   new_mul_node2.set_device(bias_in2_node->device());
-  new_mul_node2.set_name(bias_in2_node->name()+"_mul_folded");
+  new_mul_node2.set_name(bias_in2_node->name() + "_mul_folded");
   new_mul_node2.add_input(bias_in2_node->name());
   new_mul_node2.add_input(mul_in2_node->name());
   auto* attr2 = new_mul_node2.mutable_attr();
@@ -4029,7 +4029,7 @@ Status AddFusedMatMulBiasMulAddAndElu(
   NodeDef new_add_node;
   new_add_node.set_op("AddV2");
   new_add_node.set_device(add_in2_node->device());
-  new_add_node.set_name(add_in2_node->name()+"_add_folded");
+  new_add_node.set_name(add_in2_node->name() + "_add_folded");
   new_add_node.add_input(new_mul_node2.name());
   new_add_node.add_input(add_in2_node->name());
   auto* attr3 = new_add_node.mutable_attr();
@@ -5191,7 +5191,7 @@ absl::Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       std::map<string, int> mm_matched_nodes_map;
       std::set<int> mm_remove_node_indices;
       if (FindMatMulBiasMulAddElu(&ctx, i, &mm_matched_nodes_map,
-                            &mm_remove_node_indices)) {
+                                  &mm_remove_node_indices)) {
         TF_RETURN_IF_ERROR(AddFusedMatMulBiasMulAddAndElu(
             &ctx, mm_matched_nodes_map, mm_remove_node_indices,
             &invalidated_nodes, &nodes_to_delete));
