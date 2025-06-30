@@ -65,6 +65,7 @@ cc_library(
         ":propagate_alias_scopes",
         ":simplify_affine_pass",
         ":simplify_arith_pass",
+        "//third_party/protobuf",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
