@@ -476,12 +476,12 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
   if (lhs.IsBuffer() || rhs.IsBuffer()) {
     if (!ignore_buffer_) {
       return lhs.IsBuffer() && rhs.IsBuffer() &&
-             lhs.buffer_shape() == rhs.buffer_shape();
+             (*this)(lhs.buffer_shape(), rhs.buffer_shape());
     }
     const auto underlying_shape = [](const Shape& shape) -> const Shape& {
       return shape.IsBuffer() ? shape.buffer_shape() : shape;
     };
-    return underlying_shape(lhs) == underlying_shape(rhs);
+    return (*this)(underlying_shape(lhs), underlying_shape(rhs));
   }
 
   if (!lhs.IsArray()) {
