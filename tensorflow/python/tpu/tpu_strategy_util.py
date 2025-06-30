@@ -15,6 +15,7 @@
 """TPU specific APIs to be used in conjunction with TPU Strategy."""
 
 import gc
+import os
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
@@ -33,6 +34,57 @@ from tensorflow.python.util import compat
 
 _INITIALIZED_TPU_SYSTEMS = {}
 _LOCAL_MASTERS = ("", "local")
+
+
+def _is_colab_v2_environment():
+  """Check if running in Google Colab V2 environment."""
+  try:
+    import google.colab  # pylint: disable=import-outside-toplevel,unused-import
+    colab_env = os.environ.get('COLAB_TPU_ADDR', '')
+    runtime_name = os.environ.get('COLAB_RUNTIME_NAME', '')
+    return 'v2-8' in colab_env or 'v2' in runtime_name.lower()
+  except ImportError:
+    return False
+
+
+def _ensure_libtpu_available():
+  """Ensure libtpu is available and provide helpful error messages."""
+  if _is_colab_v2_environment():
+    try:
+      # Try to import TPU-related modules to check if libtpu is available
+      from tensorflow.python.tpu import tpu_strategy_util  # pylint: disable=import-outside-toplevel,unused-import
+      return True
+    except ImportError:
+      logging.error(
+          "TPU libraries not found in Google Colab V2. Please install with:\n"
+          "!pip install -U \"https://storage.googleapis.com/libtpu-releases/libtpu-nightly.tar.gz\"\n"
+          "Then restart the runtime and import tensorflow again."
+      )
+      return False
+  return True
+
+
+def _apply_colab_v2_workarounds():
+  """Apply workarounds for Google Colab V2 TPU issues."""
+  if not _is_colab_v2_environment():
+    return
+    
+  # Set environment variables that help with TPU detection in Colab V2
+  if 'TPU_LIBRARY_PATH' not in os.environ:
+    # Try common libtpu locations
+    possible_paths = [
+        '/usr/local/lib/python*/site-packages/libtpu/libtpu.so',
+        '/opt/conda/lib/python*/site-packages/libtpu/libtpu.so',
+        'libtpu.so'
+    ]
+    
+    import glob
+    for path_pattern in possible_paths:
+      matches = glob.glob(path_pattern)
+      if matches:
+        os.environ['TPU_LIBRARY_PATH'] = matches[0]
+        logging.info(f"Set TPU_LIBRARY_PATH to {matches[0]} for Colab V2 compatibility")
+        break
 
 
 _tpu_worker_address = monitoring.StringGauge(
@@ -100,6 +152,17 @@ def initialize_tpu_system_impl(cluster_resolver, tpu_cluster_resolver_cls):
 
   logging.info("Initializing the TPU system: %s", tpu_name)
 
+  # Apply Colab V2 specific workarounds
+  _apply_colab_v2_workarounds()
+  
+  # Check if libtpu is available, especially for Colab V2
+  if not _ensure_libtpu_available():
+    raise errors.NotFoundError(
+        None, None,
+        "TPU libraries not available. In Google Colab V2, please install with: "
+        "!pip install -U \"https://storage.googleapis.com/libtpu-releases/libtpu-nightly.tar.gz\""
+    )
+
   # This function looks as it is for the following non-intuitive reasons.
   # tpu.initialize_system creates a dummy op whose sole purpose is to trigger
   # DistributedTPURewritePass. This pass actually adds real ops that
@@ -139,10 +202,23 @@ def initialize_tpu_system_impl(cluster_resolver, tpu_cluster_resolver_cls):
         output = _tpu_init_fn()
       context.async_wait()
     except errors.InvalidArgumentError as e:
-      raise errors.NotFoundError(
-          None, None,
-          "TPUs not found in the cluster. Failed in initialization: "
-          + str(e))
+      # Enhanced error handling for Colab V2
+      error_msg = str(e)
+      if _is_colab_v2_environment() and "No OpKernel was registered" in error_msg:
+        raise errors.NotFoundError(
+            None, None,
+            "TPU initialization failed in Google Colab V2. This is a known issue. "
+            "Please try the following steps:\n"
+            "1. Install the correct TPU libraries: "
+            "!pip install -U \"https://storage.googleapis.com/libtpu-releases/libtpu-nightly.tar.gz\"\n"
+            "2. Restart the runtime\n"
+            "3. Import tensorflow after installing libtpu\n"
+            f"Original error: {error_msg}")
+      else:
+        raise errors.NotFoundError(
+            None, None,
+            "TPUs not found in the cluster. Failed in initialization: "
+            + str(e))
     finally:
       if run_eagerly is not None:
         def_function.run_functions_eagerly(run_eagerly)

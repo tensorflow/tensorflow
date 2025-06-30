@@ -600,6 +600,24 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
+    name = "tpu_colab_v2_utils",
+    srcs = ["tpu_colab_v2_utils.py"],
+    visibility = [
+        "//tensorflow:__subpackages__",
+    ],
+    deps = [
+        ":tpu_strategy_util",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/tpu:tpu",
+    ],
+)
+
+pytype_strict_library(
     name = "tpu_hardware_feature",
     srcs = ["tpu_hardware_feature.py"],
     deps = [
