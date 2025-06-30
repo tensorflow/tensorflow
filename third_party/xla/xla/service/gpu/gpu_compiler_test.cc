@@ -33,13 +33,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/log_severity.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/log_sink.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -68,6 +66,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/xla_debug_info_manager.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -88,13 +87,10 @@ limitations under the License.
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/regexp.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -543,8 +539,13 @@ ENTRY main {
   ROOT while = (f32[1,128], f32[2,128], pred[]) while(tuple), condition=condition, body=body
 }
 )";
+  HloModuleConfig config = GetModuleConfigForTest();
+  auto& debug_options = config.mutable_debug_options();
+  debug_options.set_xla_gpu_enable_analytical_sol_latency_estimator(false);
+  TF_ASSERT_OK_AND_ASSIGN(auto parsed,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(hlo_string));
+                          GetOptimizedModule(std::move(parsed)));
 
   EXPECT_EQ(CountCopies(*module), 7);
 
