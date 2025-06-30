@@ -66,7 +66,7 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-SAME:        {xla.invariant, xla.slice_index = 0 : i64}, %[[ARG1:.*]]: index) -> f32 {
 // CHECK-DAG:       %[[C2:.*]] = arith.constant 2.000000e+00
 // CHECK-DAG:       %[[IDX:.*]] = arith.index_castui %[[ARG1]] : index to i32
-// CHECK-DAG:       %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][%[[IDX]]]
+// CHECK-DAG:       %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[IDX]]]
 // CHECK-DAG:       %[[V2:.*]] = llvm.load %[[PTR]] invariant
 // CHECK:           %[[RET:.*]] = call @add(%[[C2]], %[[V2]])
 // CHECK:           return %[[RET]]
@@ -80,9 +80,9 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-SAME:        %[[ARG0:.*]]: !llvm.ptr {xla.slice_index = 0 : i64},
 // CHECK-SAME:        %[[ARG1:.*]]: !llvm.ptr {xla.slice_index = 1 : i64})
 // CHECK-NEXT:      %[[CST:.*]] = arith.constant 3.000000e+00 : f32
-// CHECK-NEXT:      %[[PTR1:.*]] = llvm.getelementptr inbounds %[[ARG1]][17]
+// CHECK-NEXT:      %[[PTR1:.*]] = llvm.getelementptr inbounds %[[ARG1]][0, 17]
 // CHECK-NEXT:      llvm.store %[[CST]], %[[PTR1]]
-// CHECK-NEXT:      %[[PTR2:.*]] = llvm.getelementptr inbounds %[[ARG1]][23]
+// CHECK-NEXT:      %[[PTR2:.*]] = llvm.getelementptr inbounds %[[ARG1]][0, 23]
 // CHECK-NEXT:      llvm.store %[[CST]], %[[PTR2]]
 // CHECK-NEXT:      return
 
@@ -117,7 +117,7 @@ func.func @store_control_flow( %arg0: tensor<2xf32>, %arg1: index)
 // CHECK-DAG:   %[[C2:.*]] = arith.constant 2 : index
 // CHECK:       scf.for %[[I:.*]] = %[[C0]] to %[[C2]] step %[[C1]] {
 // CHECK:         %[[CAST:.*]] = arith.index_castui %[[I]] : index to i64
-// CHECK:         %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][%[[CAST]]]
+// CHECK:         %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[CAST]]]
 // CHECK:         llvm.store {{.*}}, %[[PTR]]
 // CHECK:       %[[INBOUNDS:.*]] = arith.cmpi
 // CHECK:       scf.if %[[INBOUNDS]] {
@@ -147,7 +147,7 @@ func.func @extract_from_constant(%arg0: tensor<2xf32>, %arg1: index) -> f32 {
 // CHECK-SAME: [1.000000e+00, 2.000000e+00]> : tensor<2xf32>) {addr_space = 0 : i32} : !llvm.array<2 x f32>
 // CHECK-LABEL: @extract_from_constant
 // CHECK: %[[ADDR_OF:.*]] = llvm.mlir.addressof @global_cst_0 : !llvm.ptr
-// CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ADDR_OF]][%{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+// CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ADDR_OF]][0, %{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<2 x f32>
 // CHECK: %[[LOAD:.*]] = llvm.load %[[GEP]] : !llvm.ptr -> f32
 // CHECK: %[[ADD:.*]] = arith.addf %{{.*}}, %[[LOAD]] : f32
 // CHECK: return %[[ADD]] : f32
@@ -176,7 +176,7 @@ func.func @complex_tensor_insert(
 // CHECK-LABEL: @complex_tensor_insert(
 // CHECK-SAME: %[[ARG0:.*]]: !llvm.ptr
 // CHECK: %[[C:.*]] = complex.create
-// CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(f32, f32)>
+// CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 1] : (!llvm.ptr) -> !llvm.ptr, !llvm.array<10 x struct<(f32, f32)>>
 // CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %[[C]] : complex<f32> to !llvm.struct<(f32, f32)>
 // CHECK: llvm.store %[[CAST]], %[[GEP]] : !llvm.struct<(f32, f32)>, !llvm.ptr
 
@@ -190,7 +190,7 @@ func.func @complex_tensor_extract(
 }
 // CHECK-LABEL: @complex_tensor_extract(
 // CHECK-SAME: %[[ARG0:.*]]: !llvm.ptr
-// CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(f32, f32)>
+// CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 1] : (!llvm.ptr) -> !llvm.ptr, !llvm.array<10 x struct<(f32, f32)>>
 // CHECK: %[[LOAD:.*]] = llvm.load %[[GEP]] : !llvm.ptr -> !llvm.struct<(f32, f32)>
 // CHECK: builtin.unrealized_conversion_cast %[[LOAD]] : !llvm.struct<(f32, f32)> to complex<f32>
 
@@ -272,7 +272,7 @@ func.func @atomic_rmw_f16(%in: tensor<8xf16>, %i: index)
 // CHECK-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
 // CHECK-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
 // CHECK-NEXT: %[[INDEX:.*]] = llvm.mul %[[OFFSET]], %{{.*}}
-// CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]][%[[INDEX]]]
+// CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]]
 // CHECK: %[[INIT:.*]] = llvm.load %[[BASE]]
 // CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
 // CHECK-NEXT: %[[VAR_SHIFT:.*]] = llvm.lshr %[[VAR]], %{{.*}}
@@ -302,7 +302,7 @@ func.func @atomic_rmw_f8E4M3(%in: tensor<8xf8E4M3>, %i: index)
 // CHECK-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
 // CHECK-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
 // CHECK-NEXT: %[[INDEX:.*]] = llvm.mul %[[OFFSET]], %{{.*}}
-// CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]][%[[INDEX]]]
+// CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]]
 // CHECK: %[[INIT:.*]] = llvm.load %[[BASE]]
 // CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
 // CHECK-NEXT: %[[VAR_SHIFT:.*]] = llvm.lshr %[[VAR]], %{{.*}}
@@ -345,8 +345,8 @@ func.func @atomic_rmw_i4(%in: tensor<8xi4>, %i: index) -> (tensor<8xi4>) {
 // CHECK:  %[[VAL_14:.*]] = arith.andi %[[VAL_13]], %[[C1]] : i64
 // CHECK:  %[[VAL_15:.*]] = arith.cmpi eq, %[[VAL_14]], %[[C0]] : i64
 // CHECK:  %[[VAL_16:.*]] = arith.shrui %[[VAL_13]], %[[C1]] : i64
-// CHECK:  %[[VAL_17:.*]] = llvm.getelementptr inbounds %[[VAL_0]][%[[VAL_16]]]
-// CHECK-SAME:   : (!llvm.ptr, i64) -> !llvm.ptr, i8
+// CHECK:  %[[VAL_17:.*]] = llvm.getelementptr inbounds %[[VAL_0]][0, %[[VAL_16]]]
+// CHECK-SAME:   : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<4 x i8>
 
 // CHECK:  %[[VAL_18:.*]] = llvm.ptrtoint %[[VAL_17]] : !llvm.ptr to i64
 // CHECK:  %[[VAL_19:.*]] = llvm.and %[[VAL_18]], %[[LC3]] : i64
@@ -450,10 +450,10 @@ func.func @i4_load_store(%arg: tensor<10xi4>, %i: index, %j: index)
 // CHECK-DAG: %[[C15:.*]] = arith.constant 15 : i8
 // CHECK-DAG: %[[C_NEG16:.*]] = arith.constant -16 : i8
 // CHECK: llvm.getelementptr
-// CHECK-SAME: -> !llvm.ptr, i8
+// CHECK-SAME: -> !llvm.ptr, !llvm.array<5 x i8>
 // CHECK: %[[VALUE_I8:.*]] = arith.extui {{.*}} : i4 to i8
 // CHECK: llvm.getelementptr
-// CHECK-SAME: -> !llvm.ptr, i8
+// CHECK-SAME: -> !llvm.ptr, !llvm.array<10 x i8>
 // CHECK: %[[CURRENT_I32:.*]] = llvm.load
 // CHECK-SAME: !llvm.ptr -> i32
 // CHECK: scf.while (%[[INIT:.*]] = %[[CURRENT_I32]])
@@ -854,9 +854,9 @@ func.func @transfer_write(%arg0: tensor<43xf32> {xla.slice_index = 1}) -> tensor
   func.return %out2 : tensor<43xf32>
 }
 // CHECK-LABEL: @transfer_write
-// CHECK:           %[[PTR1:.*]] = llvm.getelementptr inbounds %[[BUF:.*]][16]
+// CHECK:           %[[PTR1:.*]] = llvm.getelementptr inbounds %[[BUF:.*]][0, 16]
 // CHECK-NEXT:      llvm.store %[[CST:.*]], %[[PTR1]]
-// CHECK-NEXT:      %[[PTR2:.*]] = llvm.getelementptr inbounds %[[BUF]][22]
+// CHECK-NEXT:      %[[PTR2:.*]] = llvm.getelementptr inbounds %[[BUF]][0, 22]
 // CHECK-NEXT:      llvm.store %[[CST]], %[[PTR2]]
 
 // -----
@@ -868,7 +868,7 @@ func.func @transfer_read(%arg0: tensor<43xf32> {xla.slice_index = 1}) -> vector<
   func.return %out : vector<2xf32>
 }
 // CHECK-LABEL: @transfer_read
-// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[16]
+// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, 16]
 // CHECK-NEXT:      llvm.load %[[PTR]] : !llvm.ptr -> vector<2xf32>
 
 // -----
@@ -884,10 +884,10 @@ func.func @transfer_write_i1(%arg0: tensor<43xi1> {xla.slice_index = 1},
 // CHECK-LABEL: @transfer_write_i1
 // CHECK-SAME:      (%[[ARG0:.*]]: !llvm.ptr
 // CHECK-SAME:       %[[V1:.*]]: vector<2xi1>, %[[V2:.*]]: vector<2xi1>)
-// CHECK-DAG:       %[[PTR1:.*]] = llvm.getelementptr inbounds %[[BUF:.*]][16]
+// CHECK-DAG:       %[[PTR1:.*]] = llvm.getelementptr inbounds %[[BUF:.*]][0, 16]
 // CHECK-DAG:       %[[V1_EXT:.*]] = arith.extui %[[V1]]
 // CHECK:           llvm.store %[[V1_EXT]], %[[PTR1]]
-// CHECK-DAG:       %[[PTR2:.*]] = llvm.getelementptr inbounds %[[BUF]][22]
+// CHECK-DAG:       %[[PTR2:.*]] = llvm.getelementptr inbounds %[[BUF]][0, 22]
 // CHECK-DAG:       %[[V2_EXT:.*]] = arith.extui %[[V2]]
 // CHECK:           llvm.store %[[V2_EXT]], %[[PTR2]]
 
@@ -901,7 +901,7 @@ func.func @transfer_read_i1(%arg0: tensor<43xi1> {xla.slice_index = 1}) -> vecto
 }
 // CHECK-LABEL: @transfer_read_i1
 // CHECK-DAG:       %[[C0:.*]] = arith.constant dense<0> : vector<2xi8>
-// CHECK-DAG:       %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[16]
+// CHECK-DAG:       %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, 16]
 // CHECK:           %[[LOADED:.*]] = llvm.load %[[PTR]] : !llvm.ptr
 // CHECK:           %[[CAST:.*]] = arith.cmpi ne, %[[LOADED]], %[[C0]]
 // CHECK:           return %[[CAST]] : vector<2xi1>
@@ -916,7 +916,9 @@ func.func @transfer_read_alignment(%arg0: tensor<8xi64> {llvm.align = 32 : index
 }
 // CHECK-LABEL: @transfer_read_alignment(
 // CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
-// CHECK:           %[[LOADED:.*]] = llvm.load %[[ARG0]] {alignment = 32 : i64} : !llvm.ptr
+// CHECK:           %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 0] :
+// CHECK-SAME:        !llvm.array<8 x i64>
+// CHECK:           %[[LOADED:.*]] = llvm.load %[[GEP]] {alignment = 32 : i64} : !llvm.ptr
 // CHECK:           return %[[LOADED]] : vector<8xi64>
 
 // -----
@@ -929,7 +931,7 @@ func.func @transfer_read_alignment_non_zero_index(%arg0: tensor<16xi64> {llvm.al
 }
 // CHECK-LABEL: @transfer_read_alignment_non_zero_index(
 // CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
-// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][8]
+// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 8]
 // CHECK-NEXT:      llvm.load %[[PTR]] : !llvm.ptr -> vector<8xi64>
 
 // -----
@@ -1017,7 +1019,8 @@ func.func @transfer_read_f4(%arg0: tensor<43xf4E2M1FN> {xla.slice_index = 1}) ->
   func.return %out : vector<2xf4E2M1FN>
 }
 // CHECK-LABEL: @transfer_read_f4
-// CHECK: %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[8]
+// CHECK: %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, 8] :
+// CHECK-SAME: (!llvm.ptr) -> !llvm.ptr, !llvm.array<22 x i8>
 // CHECK: llvm.load %[[PTR]] : !llvm.ptr -> vector<2xi4>
 // CHECK: %[[OUT:.*]] = builtin.unrealized_conversion_cast %{{.*}} : vector<2xi4> to vector<2xf4E2M1FN>
 // CHECK: return %[[OUT]] : vector<2xf4E2M1FN>
@@ -1031,5 +1034,5 @@ func.func @transfer_write_f4(%arg0: tensor<43xf4E2M1FN> {xla.slice_index = 1},
   func.return %out : tensor<43xf4E2M1FN>
 }
 // CHECK-LABEL: @transfer_write_f4
-// CHECK: %[[PTR:.*]] = llvm.getelementptr inbounds %arg0[5] : (!llvm.ptr) -> !llvm.ptr, i8
+// CHECK: %[[PTR:.*]] = llvm.getelementptr inbounds %arg0[0, 5] : (!llvm.ptr) -> !llvm.ptr, !llvm.array<22 x i8>
 // CHECK: %[[OUT:.*]] = builtin.unrealized_conversion_cast %{{.*}} : vector<2xf4E2M1FN> to vector<2xi4>
