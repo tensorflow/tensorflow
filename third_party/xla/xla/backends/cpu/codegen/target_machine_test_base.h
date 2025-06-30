@@ -55,7 +55,8 @@ class TargetMachineTestBase : public HloHardwareIndependentTestBase {
       LOG(ERROR) << "Failed to lookup target: " << error;
     }
 
-    llvm::Triple triple(triple_string);
+    llvm::Twine triple_twine(triple_string);
+    llvm::Triple triple(triple_twine);
     llvm::TargetOptions target_options;
     return absl::WrapUnique(target->createTargetMachine(
         triple, cpu_name, features, target_options, /*RM=*/std::nullopt));
