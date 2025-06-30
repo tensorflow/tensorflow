@@ -30,18 +30,12 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/debug_options_flags.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/permutation_util.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 
@@ -278,7 +272,7 @@ absl::StatusOr<HloInstruction*> ReshapeMover::ApplyInverseRearrange(
 
 // Actually performs the reshape-move transformation -- that is, sinks the
 // reshape or transpose operands of `instruction` across it.
-absl::StatusOr<HloInstruction*> ReshapeMover::SinkRearrangeOperands(
+absl::StatusOr<bool> ReshapeMover::SinkRearrangeOperands(
     HloInstruction* instruction) {
   auto print_no_metadata = HloPrintOptions().set_print_metadata(false);
 
@@ -336,10 +330,9 @@ absl::StatusOr<HloInstruction*> ReshapeMover::SinkRearrangeOperands(
     new_elementwise->clear_sharding();
   }
 
-  HloInstruction* ret = new_rearrange.get();
   TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
       instruction, std::move(new_rearrange)));
-  return ret;
+  return true;
 }
 
 // Reshape-moves all qualifying instructions in candidates.  Returns true if it
@@ -357,67 +350,49 @@ absl::StatusOr<HloInstruction*> ReshapeMover::SinkRearrangeOperands(
 // the routine returns true.
 absl::StatusOr<bool> ReshapeMover::TryReshapeMoveOnCandidates(
     HloInstructionSet* candidates) {
-  bool changed = false;
-  while (!candidates->empty()) {
-    VLOG(3) << "Initial candidates: " << candidates->size();
-
-    bool removed = true;
-    while (!candidates->empty() && removed) {
-      if (VLOG_IS_ON(5)) {
-        for (const HloInstruction* instruction : *candidates) {
-          VLOG(5) << "candidate " << instruction->ToString();
-        }
-      }
-      ConstHloInstructionSet rearrange_operands;
+  bool removed = true;
+  while (!candidates->empty() && removed) {
+    if (VLOG_IS_ON(5)) {
       for (const HloInstruction* instruction : *candidates) {
-        for (const auto* operand : instruction->operands()) {
-          if (IsRearrange(operand)) {
-            rearrange_operands.insert(operand);
-          }
-        }
+        VLOG(5) << "candidate " << instruction->ToString();
       }
-
-      removed = false;
-      for (auto operand : rearrange_operands) {
-        if (absl::c_any_of(operand->users(), [&](HloInstruction* user) {
-              return !candidates->count(user);
-            })) {
-          for (auto* user : operand->users()) {
-            removed |= candidates->erase(user) > 0;
-          }
+    }
+    ConstHloInstructionSet rearrange_operands;
+    for (const HloInstruction* instruction : *candidates) {
+      for (const auto* operand : instruction->operands()) {
+        if (IsRearrange(operand)) {
+          rearrange_operands.insert(operand);
         }
       }
     }
 
-    if (candidates->empty()) {
-      break;
-    }
-
-    changed = true;
-    VLOG(3) << "Remaining candidates: " << candidates->size();
-
-    HloInstructionSet new_candidates;
-    for (HloInstruction* instruction : *candidates) {
-      if (!ConsumeFuel("reshape-mover", [&] {
-            return absl::StrCat("instruction: ", instruction->ToString(),
-                                "\nFull module:\n",
-                                instruction->GetModule()->ToString());
+    removed = false;
+    for (auto operand : rearrange_operands) {
+      if (absl::c_any_of(operand->users(), [&](HloInstruction* user) {
+            return !candidates->count(user);
           })) {
-        break;
-      }
-      TF_ASSIGN_OR_RETURN(instruction, SinkRearrangeOperands(instruction));
-      for (HloInstruction* user : instruction->users()) {
-        if (IsReshapeMoveCandidate(user)) {
-          VLOG(5) << "New candidate for reshape-move created: "
-                  << user->ToString();
-          new_candidates.insert(user);
+        for (auto* user : operand->users()) {
+          removed |= candidates->erase(user) > 0;
         }
       }
     }
-    candidates->swap(new_candidates);
   }
 
-  return changed;
+  if (candidates->empty()) {
+    return false;
+  }
+  for (HloInstruction* instruction : *candidates) {
+    if (!ConsumeFuel("reshape-mover", [&] {
+          return absl::StrCat("instruction: ", instruction->ToString(),
+                              "\nFull module:\n",
+                              instruction->GetModule()->ToString());
+        })) {
+      break;
+    }
+    TF_ASSIGN_OR_RETURN(bool did_change, SinkRearrangeOperands(instruction));
+    CHECK(did_change);
+  }
+  return true;
 }
 
 absl::StatusOr<bool> ReshapeMover::Run(
