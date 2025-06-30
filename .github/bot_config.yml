@@ -15,7 +15,7 @@
 
 # A list of assignees
 assignees:
-   - tilakrayal
+-  - tilakrayal
    - Venkat6871
 # A list of assignees for compiler folder
 compiler_assignees:
