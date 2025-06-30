@@ -58,21 +58,25 @@ namespace xla {
 
 HloRunnerAgnosticTestBase::HloRunnerAgnosticTestBase(
     absl_nonnull std::unique_ptr<HloRunnerInterface> test_runner,
+    DeviceShapeRepresentationFn device_shape_representation_fn,
+    DeviceShapeSizeFn device_shape_size_fn,
     const bool verifier_layout_sensitive,
     const bool allow_mixed_precision_in_hlo_verifier,
     const HloPredicate instruction_can_change_layout_func)
     : HloHardwareIndependentTestBase(verifier_layout_sensitive,
                                      allow_mixed_precision_in_hlo_verifier,
                                      instruction_can_change_layout_func),
-      test_runner_(std::move(test_runner)) {}
+      test_runner_(std::move(test_runner)),
+      device_shape_representation_fn_(
+          std::move(device_shape_representation_fn)),
+      device_shape_size_fn_(std::move(device_shape_size_fn)) {}
 
 std::unique_ptr<VerifiedHloModule>
 HloRunnerAgnosticTestBase::CreateNewVerifiedModule(
     const std::string& name, const int64_t replica_count) {
   return std::make_unique<VerifiedHloModule>(
       name, GetModuleConfigForTest(replica_count), verifier_layout_sensitive(),
-      allow_mixed_precision_in_hlo_verifier(),
-      test_runner_->device_shape_size_fn(),
+      allow_mixed_precision_in_hlo_verifier(), device_shape_size_fn_,
       instruction_can_change_layout_func());
 }
 
@@ -81,7 +85,7 @@ HloRunnerAgnosticTestBase::ParseAndReturnVerifiedModule(
     absl::string_view hlo_text, const HloModuleConfig& config,
     const HloParserOptions& parser_options) const {
   return HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule(
-      hlo_text, config, parser_options, test_runner_->device_shape_size_fn());
+      hlo_text, config, parser_options, device_shape_size_fn_);
 }
 
 HloComputation*
@@ -96,8 +100,7 @@ HloRunnerAgnosticTestBase::AddEntryComputationAndUpdateEntryComputationLayout(
 void HloRunnerAgnosticTestBase::UpdateEntryComputationLayout(
     HloModule* const module) const {
   // TODO - b/391868033: Remove UpdateEntryComputationLayout from this class.
-  xla::UpdateEntryComputationLayout(
-      module, test_runner_->device_shape_representation_fn());
+  xla::UpdateEntryComputationLayout(module, device_shape_representation_fn_);
 }
 
 absl::StatusOr<Literal> HloRunnerAgnosticTestBase::Execute(
