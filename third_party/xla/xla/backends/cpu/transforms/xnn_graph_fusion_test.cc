@@ -182,5 +182,21 @@ ENTRY entry {
   ASSERT_FALSE(changed);
 }
 
+TEST_F(XnnGraphFusionTest, BasicFusionUnsupportedOperandType) {
+  std::string hlo_string = R"(
+HloModule BasicFusionUnsupportedOperandType
+
+ENTRY entry {
+   %param.0 = s1[2,2] parameter(0)
+   ROOT %converted_param.0 = f32[2,2] convert(s1[2,2] %param.0)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla::cpu
