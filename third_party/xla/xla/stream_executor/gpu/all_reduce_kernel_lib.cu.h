@@ -20,8 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <type_traits>
 
-#include "third_party/gpus/cuda/include/cuda/atomic"
-#include "third_party/gpus/cuda/include/cuda_bf16.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 
@@ -35,14 +33,6 @@ union alignas(16) Vec<float> {
   using PackedType = int4;
 
   float data[4];
-  PackedType packed;
-};
-
-template <>
-union alignas(8) Vec<__nv_bfloat16> {
-  using PackedType = int2;
-
-  __nv_bfloat16 data[4];
   PackedType packed;
 };
 
@@ -88,23 +78,10 @@ __device__ __forceinline__ void VecOp(Vec<T>& res, const Vec<T>& vec) {
   res.data[3] = ApplyBinaryOp<T, ReductionKindT>(res.data[3], vec.data[3]);
 }
 
-__device__ __forceinline__ void PutSignalFlag(uint32_t* addr, uint32_t val) {
-  ::cuda::atomic_ref<uint32_t, ::cuda::thread_scope_system> ref(*addr);
-  // During signaling release semantics are used to ensure that writes
-  // by the current thread are visible to the waiting thread.
-  ref.store(val, ::cuda::memory_order_release);
-}
+__device__ __forceinline__ void PutSignalFlag(uint32_t* addr, uint32_t val);
 
 __device__ __forceinline__ void WaitSignalFlag(uint32_t* addr,
-                                               uint32_t expected) {
-  ::cuda::atomic_ref<uint32_t, ::cuda::thread_scope_system> ref(*addr);
-  // During waiting we use acquire semantics to ensure all memory writes by the
-  // remote thread are visible to the current thread.
-  // If the flag is greater it means that the other GPU has already signaled
-  // the next sync point.
-  while (ref.load(::cuda::memory_order_acquire) < expected) {
-  }
-}
+                                               uint32_t expected);
 
 __device__ __forceinline__ void SyncRemoteBlocks(
     std::array<RestrictedPtr<uint32_t>, kMaxNumAllReduceInputPtrs>
