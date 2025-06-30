@@ -52,6 +52,10 @@ _XLA_DEFAULT_TARGET_PATTERNS = (
     "//build_tools/...",
     "@local_tsl//tsl/...",
 )
+_XLA_ONEAPI_TARGET_PATTERNS = (
+    "//xla/stream_executor/sycl:stream_executor_sycl",
+    "//xla/stream_executor/sycl:sycl_status_test",
+)
 _XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
     "//xla/tools/multihost_hlo_runner:hlo_runner_main",
     "//xla/tools:compute_xspace_stats_main",
@@ -105,6 +109,7 @@ class BuildType(enum.Enum):
   XLA_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_ONEAPI_GITHUB_ACTIONS = enum.auto()
 
   # Presubmit builds for regression testing.
   XLA_LINUX_ARM64_CPU_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
@@ -231,6 +236,7 @@ class Build:
 def _tag_filters_for_compute_capability(
     compute_capability: int,
 ) -> Tuple[str, ...]:
+  """Returns the tag filters for the given compute capability."""
   tag_filters = (f"requires-gpu-sm{compute_capability}-only",)
   for cc in (60, 70, 80, 90, 100):
     if compute_capability >= cc:
@@ -239,6 +245,7 @@ def _tag_filters_for_compute_capability(
       tag_filters += (f"-requires-gpu-sm{cc}",)
       tag_filters += (f"-requires-gpu-sm{cc}-only",)
   tag_filters += ("-requires-gpu-amd",)
+  tag_filters += ("-requires-gpu-intel",)
   return tag_filters
 
 
@@ -254,9 +261,21 @@ def nvidia_gpu_build_with_compute_capability(
       repo="openxla/xla",
       target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
       configs=configs,
-      test_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only")
+      test_tag_filters=(
+          "-no_oss",
+          "requires-gpu-nvidia",
+          "gpu",
+          "-rocm-only",
+          "-oneapi-only",
+      )
       + extra_gpu_tags,
-      build_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only"),
+      build_tag_filters=(
+          "-no_oss",
+          "requires-gpu-nvidia",
+          "gpu",
+          "-rocm-only",
+          "-oneapi-only",
+      ),
       options={
           "run_under": "//build_tools/ci:parallel_gpu_execute",
           "@cuda_driver//:enable_forward_compatibility": "true",
@@ -272,6 +291,7 @@ cpu_x86_tag_filter = (
     "-gpu",
     "-requires-gpu-nvidia",
     "-requires-gpu-amd",
+    "-requires-gpu-intel",
 )
 Build(
     type_=BuildType.XLA_LINUX_X86_CPU_GITHUB_ACTIONS,
@@ -288,6 +308,7 @@ cpu_arm_tag_filter = (
     "-gpu",
     "-requires-gpu-nvidia",
     "-requires-gpu-amd",
+    "-requires-gpu-intel",
     "-not_run:arm",
 )
 Build(
@@ -306,6 +327,39 @@ nvidia_gpu_build_with_compute_capability(
     compute_capability=75,
 )
 
+oneapi_build_tag_filter = (
+    "oneapi-only",
+    "requires-gpu-intel",
+    "-requires-gpu-amd",
+    "-requires-gpu-nvidia",
+    "-no_oss",
+    "-cuda-only",
+    "-rocm-only",
+    "-no-oneapi",
+)
+
+oneapi_test_tag_filter = (
+    "oneapi-only",
+    # This build of oneAPI backend runs on X86 host without an Intel GPU,so
+    # we are excluding the tests requiring Intel GPU
+    "-requires-gpu-intel",
+    "-requires-gpu-amd",
+    "-requires-gpu-nvidia",
+    "-no_oss",
+    "-cuda-only",
+    "-rocm-only",
+    "-no-oneapi",
+)
+
+Build(
+    type_=BuildType.XLA_LINUX_X86_GPU_ONEAPI_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    configs=("sycl", "sycl_hermetic"),
+    target_patterns=_XLA_ONEAPI_TARGET_PATTERNS,
+    build_tag_filters=oneapi_build_tag_filter,
+    test_tag_filters=oneapi_test_tag_filter,
+    options=_DEFAULT_BAZEL_OPTIONS,
+)
 
 Build(
     type_=BuildType.XLA_LINUX_X86_CPU_128_VCPU_PRESUBMIT_GITHUB_ACTIONS,
@@ -334,9 +388,21 @@ Build(
     repo="openxla/xla",
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
     configs=("warnings", "rbe_linux_cuda_nvcc"),
-    test_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only")
+    test_tag_filters=(
+        "-no_oss",
+        "requires-gpu-nvidia",
+        "gpu",
+        "-rocm-only",
+        "-oneapi-only",
+    )
     + _tag_filters_for_compute_capability(compute_capability=75),
-    build_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only"),
+    build_tag_filters=(
+        "-no_oss",
+        "requires-gpu-nvidia",
+        "gpu",
+        "-rocm-only",
+        "-oneapi-only",
+    ),
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         "@cuda_driver//:enable_forward_compatibility": "false",
@@ -354,9 +420,21 @@ Build(
     repo="openxla/xla",
     configs=("warnings", "rbe_linux_cuda_nvcc"),
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    test_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only")
+    test_tag_filters=(
+        "-no_oss",
+        "requires-gpu-nvidia",
+        "gpu",
+        "-rocm-only",
+        "-oneapi-only",
+    )
     + _tag_filters_for_compute_capability(compute_capability=75),
-    build_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only"),
+    build_tag_filters=(
+        "-no_oss",
+        "requires-gpu-nvidia",
+        "gpu",
+        "-rocm-only",
+        "-oneapi-only",
+    ),
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         "@cuda_driver//:enable_forward_compatibility": "false",
@@ -374,9 +452,21 @@ Build(
     repo="openxla/xla",
     configs=(),
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    test_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only")
+    test_tag_filters=(
+        "-no_oss",
+        "requires-gpu-nvidia",
+        "gpu",
+        "-rocm-only",
+        "-oneapi-only",
+    )
     + _tag_filters_for_compute_capability(compute_capability=100),
-    build_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only"),
+    build_tag_filters=(
+        "-no_oss",
+        "requires-gpu-nvidia",
+        "gpu",
+        "-rocm-only",
+        "-oneapi-only",
+    ),
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         # Use User Mode and Kernel Mode Drivers pre-installed on the system.
@@ -399,6 +489,7 @@ macos_tag_filter = (
     "-mac_excluded",
     "-requires-gpu-nvidia",
     "-requires-gpu-amd",
+    "-requires-gpu-intel",
 )
 
 Build(

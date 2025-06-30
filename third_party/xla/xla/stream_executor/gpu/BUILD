@@ -525,7 +525,7 @@ cc_library(
     linkstatic = True,
     tags = [
         "gpu",
-        "no-sycl",
+        "no-oneapi",
     ],
     deps = [
         ":gpu_kernel_registry",

@@ -49,6 +49,12 @@ jobs:
             repo: "openxla/xla",
           },
           {
+            pool: "linux-x86-n2-16",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
+            name: "XLA Linux X86 GPU ONEAPI",
+            repo: "openxla/xla",
+          },
+          {
             pool: "linux-x86-g2-16-l4-1gpu",
             container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             name: "XLA Linux x86 GPU T4",

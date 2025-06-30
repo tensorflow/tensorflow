@@ -235,7 +235,7 @@ cc_library(
         ]),
     tags = [
         "gpu",
-        "no-sycl",
+        "no-oneapi",
     ],
     visibility = ["//visibility:private"],
     deps = [
@@ -263,7 +263,7 @@ cc_library(
         ]),
     tags = [
         "gpu",
-        "no-sycl",
+        "no-oneapi",
     ],
     visibility = ["//visibility:private"],
     deps = [
@@ -329,7 +329,7 @@ cc_library(
     ]),
     tags = [
         "gpu",
-        "no-sycl",
+        "no-oneapi",
     ],
     visibility = ["//visibility:private"],
     deps = [
@@ -449,7 +449,7 @@ xla_test(
         # go/chloroxylenol-faq#how-do-i-stop-chloroxylenol-from-running-my-test
         # go/cuda#memorysanitizer
         "nomsan",
-        "no-sycl",
+        "no-oneapi",
     ],
     visibility = ["//visibility:private"],
     deps = [
