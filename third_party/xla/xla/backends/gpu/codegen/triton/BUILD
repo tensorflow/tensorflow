@@ -6,7 +6,7 @@ load(
     "if_cuda_or_rocm_is_configured",
     "if_gpu_is_configured",
 )
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
@@ -22,6 +22,9 @@ package_group(
         "//xla:friends",
     ],
 )
+
+# Generate test_suites for all backends, named "${backend}_tests".
+generate_backend_suites()
 
 cc_library(
     name = "fusion",
