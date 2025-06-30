@@ -25,6 +25,7 @@ tensorflow/third_party/py/python_repo.bzl:
 tensorflow/third_party/py/python_wheel.bzl:
 tensorflow/third_party/py/rules_pywrap/def_file_filter_tool.py:
 tensorflow/third_party/py/rules_pywrap/wrapped_py_init.cc:
+tensorflow/third_party/py/unpack_wheel_and_unzip_archive_files.py:
 tensorflow/tools/def_file_filter/BUILD.tpl:
 tensorflow/tools/def_file_filter/BUILD:
 tensorflow/tools/def_file_filter/def_file_filter.py.tpl:
