@@ -9,6 +9,10 @@ load(
     _if_cuda_newer_than = "if_cuda_newer_than",
     _is_cuda_configured = "is_cuda_configured",
 )
+load(
+    "@rules_ml_toolchain//third_party/gpus:nvidia_common_rules.bzl",
+    _cuda_rpath_flags = "cuda_rpath_flags",
+)
 
 # IMPORTANT: Do not remove this load statement. We rely on that //xla/tsl doesn't exist in g3
 # to prevent g3 .bzl files from loading this file.
@@ -31,10 +35,7 @@ def is_cuda_configured():
 # both the root of the TensorFlow installation directory as well as from
 # various pywrap libs within the 'python' subdir.
 def cuda_rpath_flags(relpath):
-    return [
-        "-Wl,-rpath='$$ORIGIN/../../" + relpath + "'",
-        "-Wl,-rpath='$$ORIGIN/../" + relpath + "'",
-    ]
+    return _cuda_rpath_flags(relpath)
 
 def if_cuda_newer_than(wanted_ver, if_true, if_false = []):
     return _if_cuda_newer_than(wanted_ver, if_true, if_false)

@@ -1,5 +1,6 @@
 load(
     "//xla:xla.default.bzl",
+    "xla_cc_binary",
     "xla_cc_test",
 )
 load(
@@ -20,7 +21,9 @@ cc_library(
     hdrs = ["generate_benchmark_matrices.h"],
     deps = [
         "//xla/tools/benchmarks/proto:benchmark_config_proto_cc",
-        "//xla/tsl/platform:file_system_helper",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -44,6 +47,25 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@jsoncpp_git//:jsoncpp",
         "@local_tsl//tsl/platform:path",
+    ],
+)
+
+xla_cc_binary(
+    name = "generate_benchmark_matrices_main",
+    srcs = ["generate_benchmark_matrices_main.cc"],
+    deps = [
+        ":generate_benchmark_matrices_cc",
+        "//xla/tools/benchmarks/proto:benchmark_config_proto_cc",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@jsoncpp_git//:jsoncpp",
+        "@local_tsl//tsl/platform:platform_port",
     ],
 )

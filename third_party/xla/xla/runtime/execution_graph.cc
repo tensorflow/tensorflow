@@ -20,15 +20,19 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/const_init.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
@@ -368,6 +372,28 @@ int64_t ExecutionGraph::RunTransitiveReductionAndUpdatePriorities(
   }
 
   return num_erased_edges;
+}
+
+// Execution graph renderer registration logic
+
+absl::Mutex renderer_mu(absl::kConstInit);
+ExecutionGraph::Renderer* graph_renderer ABSL_GUARDED_BY(renderer_mu) = nullptr;
+
+ExecutionGraph::Renderer* ExecutionGraph::GetRenderer() {
+  absl::MutexLock lock(&renderer_mu);
+  return graph_renderer;
+}
+
+void ExecutionGraph::RegisterRenderer(
+    std::unique_ptr<ExecutionGraph::Renderer> renderer) {
+  absl::MutexLock lock(&renderer_mu);
+  if (graph_renderer != nullptr) {
+    LOG(WARNING) << "Multiple calls to RegisterRenderer. Last "
+                    "call wins, but because order of initialization in C++ is "
+                    "nondeterministic, this may not be what you want.";
+    delete graph_renderer;
+  }
+  graph_renderer = renderer.release();
 }
 
 }  // namespace xla

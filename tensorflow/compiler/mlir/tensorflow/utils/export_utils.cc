@@ -161,7 +161,7 @@ absl::Status ConvertAttribute(const mlir::StringAttr& attr, AttrValue* value) {
   absl::string_view attr_value(attr.getValue().data(), attr.getValue().size());
   switch (mangling_util::GetMangledKind(attr_value)) {
     case mangling_util::MangledKind::kUnknown: {
-      value->set_s(std::string(attr_value));
+      value->set_s(attr_value);
       return absl::OkStatus();
     }
     case mangling_util::MangledKind::kDataType: {

@@ -40,6 +40,9 @@ class PjRtDeviceEventOrPromise
   virtual void AppendDescriptionToEvent(
       absl::string_view description,
       absl::Span<PjRtDeviceEventOrPromise* const> waiters) {}
+
+  virtual void AddEventDependencies(
+      absl::Span<const tsl::RCReference<tsl::AsyncValue>> dependencies) {}
 };
 
 // A device event occurs (potentially) on a device. It can be waited on

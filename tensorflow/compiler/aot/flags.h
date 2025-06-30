@@ -40,6 +40,7 @@ struct MainFlags {
   string out_function_object;
   string out_metadata_object;
   string out_header;
+  string out_constant_buffers_object;
   string out_session_module;
   string mlir_components;
   bool experimental_quantize = false;
@@ -51,6 +52,7 @@ struct MainFlags {
   // C++ codegen options
   bool gen_name_to_index = false;
   bool gen_program_shape = false;
+  bool use_xla_nanort_runtime = false;
 };
 
 // Appends to flag_list a tensorflow::Flag for each field in MainFlags.

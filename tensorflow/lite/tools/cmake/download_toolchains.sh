@@ -30,6 +30,21 @@ TOOLCHAINS_DIR=$(realpath tensorflow/lite/tools/cmake/toolchains)
 mkdir -p ${TOOLCHAINS_DIR}
 
 case $1 in
+  armhf_vfpv3)
+    if [[ ! -d "${TOOLCHAINS_DIR}/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf" ]]; then
+      curl -LO https://storage.googleapis.com/mirror.tensorflow.org/developer.arm.com/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz >&2
+      tar xvf gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz -C ${TOOLCHAINS_DIR} >&2
+    fi
+    ARMCC_ROOT=${TOOLCHAINS_DIR}/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf
+    echo "ARMCC_FLAGS=\"-march=armv7-a -mfpu=neon-vfpv3 -funsafe-math-optimizations \
+      -isystem ${ARMCC_ROOT}/lib/gcc/arm-linux-gnueabihf/8.3.0/include \
+      -isystem ${ARMCC_ROOT}/lib/gcc/arm-linux-gnueabihf/8.3.0/include-fixed \
+      -isystem ${ARMCC_ROOT}/arm-linux-gnueabihf/include/c++/8.3.0 \
+      -isystem ${ARMCC_ROOT}/arm-linux-gnueabihf/libc/usr/include \
+      -isystem \"\${CROSSTOOL_PYTHON_INCLUDE_PATH}\" \
+      -isystem /usr/include\""
+    echo "ARMCC_PREFIX=${ARMCC_ROOT}/bin/arm-linux-gnueabihf-"
+    ;;
   armhf)
     if [[ ! -d "${TOOLCHAINS_DIR}/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf" ]]; then
       curl -LO https://storage.googleapis.com/mirror.tensorflow.org/developer.arm.com/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz >&2

@@ -48,7 +48,7 @@ cc_library(
         "@local_xla//xla:xla_proto_cc",
         "@local_xla//xla/client:compile_only_client",
         "@local_xla//xla/hlo/ir:hlo",
-        "@local_xla//xla/pjrt:compile_options_proto_cc",
+        "@local_xla//xla/pjrt/proto:compile_options_proto_cc",
         "@local_xla//xla/tsl/platform:statusor",
     ],
 )

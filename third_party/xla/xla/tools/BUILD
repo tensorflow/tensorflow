@@ -551,6 +551,7 @@ xla_cc_test(
         "data/add_mhlo.mlir",
         "data/add_stablehlo.mlir",
         "data/input_literal_f32_2_2.pbtxt",
+        "data/large_constant.hlo",
         "data/must_alias.hlo",
         "data/must_alias_with_sharding.hlo",
         ":run_hlo_module",
@@ -588,6 +589,7 @@ cc_library(
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/service:call_graph",
         "//xla/service:collective_ops_utils",
+        "//xla/service:hlo_proto_cc",
         "//xla/service:tuple_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -643,7 +645,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/utils:hlo_query",
-        "//xla/service:executable",
         "//xla/service:gpu_plugin",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
@@ -653,10 +654,13 @@ cc_library(
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/service/gpu/model:hlo_op_profiler_lib",
         "//xla/service/gpu/model:hlo_op_profiles",
+        "//xla/service/gpu/model:matmul_interpolator_utils",
         "//xla/tests:test_utils",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
@@ -677,9 +681,11 @@ xla_test(
     local_defines = if_cuda(["GOOGLE_CUDA"]),
     deps = [
         ":matmul_perf_table_gen",
+        "//xla:xla_data_proto_cc",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
+        "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -838,6 +844,38 @@ xla_cc_binary(
     ],
     deps = [
         ":matmul_perf_table_gen_main_lib",
+    ],
+)
+
+xla_test(
+    name = "matmul_perf_table_gen_run",
+    timeout = "eternal",
+    srcs = ["matmul_perf_table_gen_run.cc"],
+    # TODO(b/372714955): Fix the memory leak.
+    args = if_google(["--heap_check="]),
+    backends = [
+        "h100",
+        "b200",
+        "amdgpu_any",
+    ],
+    tags = [
+        "gpu",
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":matmul_perf_table_gen",
+        ":matmul_perf_table_gen_main_lib",
+        "//xla/service:hlo_runner",
+        "//xla/service:platform_util",
+        "//xla/service/gpu/model:hlo_op_profile_proto_cc",
+        "//xla/service/gpu/model:hlo_op_profiles",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",  # buildcleaner: keep
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -1001,7 +1039,7 @@ xla_test(
     ],
     data = [
         ":data/add.hlo",
-        "//xla/service:xla_aot_compile_test_gpu_target_config.prototxt",
+        "//xla/service:xla_aot_compile_test_gpu_target_config.txtpb",
         "//xla/service/gpu:gpu_compiler_test_autotune_db.textproto",
     ],
     deps = [
@@ -1048,7 +1086,7 @@ xla_test(
 xla_cc_binary(
     name = "print_indexing",
     srcs = ["print_indexing.cc"],
-    visibility = ["//xla/backends/gpu/codegen:__subpackages__"],
+    visibility = ["//visibility:private"],
     deps = [
         ":hlo_module_loader",
         "//xla/hlo/analysis:indexing_analysis",

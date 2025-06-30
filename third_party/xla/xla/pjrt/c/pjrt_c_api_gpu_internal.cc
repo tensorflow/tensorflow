@@ -87,6 +87,8 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
           {"num_nodes", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
           {"should_stage_host_to_device_transfers",
            PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
+          {"abort_collectives_on_failure",
+           PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"enable_mock_nccl", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"mock_gpu_topology", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
           {"slice_index", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
@@ -149,6 +151,11 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       it != create_options.end()) {
     should_stage_host_to_device_transfers = std::get<bool>(it->second);
   }
+  bool abort_collectives_on_failure = false;
+  if (auto it = create_options.find("abort_collectives_on_failure");
+      it != create_options.end()) {
+    abort_collectives_on_failure = std::get<bool>(it->second);
+  }
   bool enable_mock_nccl = false;
   if (auto it = create_options.find("enable_mock_nccl");
       it != create_options.end()) {
@@ -176,6 +183,7 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       args->kv_try_get_user_arg, args->kv_put_callback, args->kv_put_user_arg);
   options.should_stage_host_to_device_transfers =
       should_stage_host_to_device_transfers;
+  options.abort_collectives_on_failure = abort_collectives_on_failure;
   options.enable_mock_nccl = enable_mock_nccl;
   options.mock_gpu_topology = mock_gpu_topology;
   options.slice_index = slice_index;

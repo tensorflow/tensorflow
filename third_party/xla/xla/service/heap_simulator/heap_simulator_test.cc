@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -55,10 +56,14 @@ namespace xla {
 namespace {
 
 using ::testing::ContainerEq;
+using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::StrEq;
 
-class MinimumMemoryForSequenceTest : public HloHardwareIndependentTestBase {};
+class MinimumMemoryForSequenceTest : public HloHardwareIndependentTestBase {
+ protected:
+  AliasInfo alias_info_;
+};
 
 TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
   auto module = CreateNewVerifiedModule();
@@ -232,7 +237,7 @@ TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
   // so we don't double count.
   EXPECT_EQ(64, HeapSimulator::MinimumMemoryForComputation(
                     *entry_computation, schedule.sequence(entry_computation),
-                    *alias_analysis, size_fn)
+                    *alias_analysis, &alias_info_, size_fn)
                     .value());
 }
 
@@ -341,7 +346,7 @@ class HeapSimulatorTracker {
     };
     auto algorithm = std::make_unique<HeapCallRecorder>(&actual_calls_);
     result_ = HeapSimulator::Run(std::move(algorithm), *module_, schedule,
-                                 *alias_analysis_, size_fn)
+                                 *alias_analysis_, &alias_info_, size_fn)
                   .value();
   }
 
@@ -411,12 +416,13 @@ class HeapSimulatorTracker {
     result_ =
         HeapSimulator::Run(std::move(algorithm), *module_->entry_computation(),
                            HloInstructionSequence(instruction_sequence),
-                           *alias_analysis_, zero_size, options)
+                           *alias_analysis_, &alias_info_, zero_size, options)
             .value();
   }
 
   std::unique_ptr<HloModule> module_;
   std::unique_ptr<HloAliasAnalysis> alias_analysis_;
+  AliasInfo alias_info_;
   CallSequence actual_calls_;
   HeapSimulator::Result<HloValue> result_;
 };
@@ -429,6 +435,7 @@ class HeapSimulatorTest : public HloHardwareIndependentTestBase {
   // Shapes for use in the examples.
   Shape f32scalar_ = ShapeUtil::MakeShape(xla::F32, {});
   Shape f32vec4_ = ShapeUtil::MakeShape(F32, {4});
+  AliasInfo alias_info_;
 };
 
 TEST_F(HeapSimulatorTest, ScalarConstant) {
@@ -988,7 +995,7 @@ TEST_F(HeapSimulatorTest, AsyncCallImplicitSharding) {
 
   HeapSimulator::Result<HloValue> result =
       HeapSimulator::Run(std::move(algorithm), *module, module->schedule(),
-                         *alias_analysis, size_fn)
+                         *alias_analysis, &alias_info_, size_fn)
           .value();
   for (const auto& [value, chunk] : result.heap_results[0].chunk_map) {
     if (value->instruction()->name() == "dynamic-update-slice") {
@@ -3775,6 +3782,32 @@ TEST_F(SliceTimePermutationIteratorTest, Repacks) {
   for (const RepackTestCase& test_case : test_cases) {
     test_case.Test();
   }
+}
+
+class BreadthFirstMidpointIteratorTest : public ::testing::Test {
+ protected:
+  static void RunTest(int start, int end, std::vector<int> expected_order) {
+    std::vector<int> actual;
+    for (BreadthFirstMidpointIterator iterator(start, end); !iterator.End();
+         iterator.Next()) {
+      actual.push_back(iterator.value());
+    }
+    EXPECT_THAT(actual, ElementsAreArray(expected_order));
+  }
+};
+
+TEST_F(BreadthFirstMidpointIteratorTest, NoValues) { RunTest(1, 0, {}); }
+
+TEST_F(BreadthFirstMidpointIteratorTest, OneValue) { RunTest(1, 1, {1}); }
+
+TEST_F(BreadthFirstMidpointIteratorTest, TwoValues) { RunTest(1, 2, {2, 1}); }
+
+TEST_F(BreadthFirstMidpointIteratorTest, General1) {
+  RunTest(1, 5, {3, 2, 5, 1, 4});
+}
+
+TEST_F(BreadthFirstMidpointIteratorTest, General2) {
+  RunTest(0, 10, {5, 2, 8, 1, 4, 7, 10, 0, 3, 6, 9});
 }
 
 }  // namespace

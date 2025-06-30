@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -28,10 +29,6 @@ namespace gpu {
 // Speed-of-Light (SoL) analytical cost model for NCCL collectives.
 class SolGPUCostModel {
  public:
-  static constexpr absl::string_view kSplitMaskWorldLevel = "0x0";
-
-  static constexpr absl::string_view kSplitMaskNonRailAligned = "0x7";
-
   // Tunable system configuration, see
   // xla_gpu_analytical_latency_estimator_options
   struct Config {
@@ -57,7 +54,8 @@ class SolGPUCostModel {
   explicit SolGPUCostModel(const Config& sys_config);
 
   // Extract the SoL-related configuration from XLA flags.
-  static SolGPUCostModel::Config GetConfig(const HloModule* module);
+  static SolGPUCostModel::Config GetConfig(
+      const HloModule* module, const se::DeviceDescription& device_info);
 
   // Returns the latency of a NCCL ring collective.
   //
@@ -65,9 +63,9 @@ class SolGPUCostModel {
   // `num_nodes`: the number of nodes participating in the ring.
   // `coll_type`: the type of the collective (eg AllGather).
   // `mask`: the mask of the collective (AllWorld 0x0 vs RailAligned 0x7).
-  absl::Duration RingLatency(
-      int64_t buff_size_bytes, int num_nodes, const CollectiveType& coll_type,
-      absl::string_view mask = kSplitMaskWorldLevel) const;
+  absl::Duration RingLatency(int64_t buff_size_bytes, int num_nodes,
+                             const CollectiveType& coll_type,
+                             int num_communicators) const;
 
  private:
   // Helper functions to estimate the latency subcomponents
@@ -77,7 +75,7 @@ class SolGPUCostModel {
   // NumGpusPerComm returns  GPUs number participating in a given NCCL
   // collective operation.
   int NumGpusPerComm(int num_nodes, const CollectiveType& coll_type,
-                     absl::string_view mask) const;
+                     int num_communicators) const;
 
   // SoL-related configuration for NCCL cost modelling passed by user as flags.
   Config xla_flag_config_;

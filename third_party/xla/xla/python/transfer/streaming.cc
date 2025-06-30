@@ -59,6 +59,8 @@ class StringFutureChunkDestination : public aux::ChunkDestination {
     return absl::OkStatus();
   }
 
+  void Poison(absl::Status s) override { CHECK_OK(s); }
+
   absl::StatusOr<std::string> ConsumeFinalResult() {
     absl::MutexLock l(&mu_);
     std::sort(chunks_.begin(), chunks_.end());

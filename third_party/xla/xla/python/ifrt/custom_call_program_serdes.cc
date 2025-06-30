@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -31,8 +32,8 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/program_serdes.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/sharding.pb.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -50,22 +51,30 @@ class CustomCallProgramSerDes
 
   absl::StatusOr<std::string> Serialize(
       const Serializable& serializable,
-      std::unique_ptr<SerializeOptions>) override {
+      std::unique_ptr<SerializeOptions> options) override {
+    const SerDesVersion version = GetRequestedSerDesVersion(options.get());
+    if (version.version_number() < SerDesVersionNumber(0)) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported ", version.version_number(),
+                       " for CustomCallProgram serialization"));
+    }
+
     const CustomCallProgram& program =
         llvm::cast<CustomCallProgram>(serializable);
     CustomCallProgramProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
     proto.set_type(program.type);
     proto.set_name(program.name);
     // TODO(hyeontaek): Remove absl::Cord flattening once protobuf [CTYPE=CORD]
     // generates `absl::Cord` support on all platforms.
     absl::CopyCordToString(program.serialized_program_text,
                            proto.mutable_serialized_program_text());
-    *proto.mutable_devices() = program.devices->ToProto();
+    *proto.mutable_devices() = program.devices->ToProto(version);
     for (const ArraySpec& spec : program.input_specs) {
-      TF_ASSIGN_OR_RETURN(*proto.add_input_specs(), spec.ToProto());
+      TF_ASSIGN_OR_RETURN(*proto.add_input_specs(), spec.ToProto(version));
     }
     for (const ArraySpec& spec : program.output_specs) {
-      TF_ASSIGN_OR_RETURN(*proto.add_output_specs(), spec.ToProto());
+      TF_ASSIGN_OR_RETURN(*proto.add_output_specs(), spec.ToProto(version));
     }
     return proto.SerializeAsString();
   }
@@ -81,6 +90,13 @@ class CustomCallProgramSerDes
       return absl::InvalidArgumentError(
           "Failed to parse serialized CustomCallProgramProto");
     }
+    const SerDesVersionNumber version_number(proto.version_number());
+    if (version_number != SerDesVersionNumber(0)) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported ", version_number,
+                       " for CustomCallProgram deserialization"));
+    }
+
     TF_ASSIGN_OR_RETURN(
         DeviceListRef devices,
         DeviceList::FromProto(deserialize_program_options->client,

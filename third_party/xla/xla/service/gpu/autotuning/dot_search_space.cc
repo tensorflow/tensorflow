@@ -29,6 +29,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/shape.h"
@@ -96,6 +98,8 @@ TritonDotFusionSearchSpace::TritonDotFusionSearchSpace(
           primitive_util::BitWidth(dot->operand(0)->shape().element_type())),
       compute_bitwidth_(primitive_util::BitWidth(dot->shape().element_type())),
       // Figure out some basic limitations on tiling based on the above.
+      lhs_has_expensive_op_(HasExpensiveTransitiveParent(dot->operand(0))),
+      rhs_has_expensive_op_(HasExpensiveTransitiveParent(dot->operand(1))),
       desired_total_warps_(GetDesiredTotalWarps()),
       max_out_tile_(GetMaxOutputTile()),
       should_optimize_for_occupancy_(ShouldOptimizeForOccupancy()),
@@ -215,6 +219,22 @@ std::string TritonDotFusionSearchSpace::ToString() const {
       should_optimize_for_occupancy_, min_warps_per_cta_);
 }
 
+bool TritonDotFusionSearchSpace::HasExpensiveTransitiveParent(
+    const HloInstruction* operand) const {
+  return HloBfsAnyOf({operand}, [](const HloInstruction* instr) {
+    // XLA uses old absl that doesn't have absl:NoDestructor, so have to use
+    // new instead to prevent the destructor from being called.
+    static const auto kExpensiveOps = new absl::flat_hash_set<HloOpcode>{
+        HloOpcode::kAtan2,    HloOpcode::kCos,   HloOpcode::kExp,
+        HloOpcode::kExpm1,    HloOpcode::kLog,   HloOpcode::kLog1p,
+        HloOpcode::kLogistic, HloOpcode::kPower, HloOpcode::kRsqrt,
+        HloOpcode::kSin,      HloOpcode::kSqrt,  HloOpcode::kTan,
+        HloOpcode::kTanh,
+    };
+    return kExpensiveOps->contains(instr->opcode());
+  });
+}
+
 int TritonDotFusionSearchSpace::GetDesiredTotalWarps() const {
   constexpr int kSchedulersPerCore = 4;
   constexpr int kDesiredWarpsPerCore =
@@ -298,6 +318,12 @@ TritonDotFusionSearchSpace::GetMinOutputTile() const {
 }
 
 int TritonDotFusionSearchSpace::GetMinWarpsPerCta() const {
+  if (operand_bitwidth_ >= 32) {
+    // Triton is generating quite suboptimal code for 32-bit dots, especially
+    // when we use wgmma, or larger blocks.
+    // TODO: b/422419331 - Remove this once Triton properly handles 32-bit dots.
+    return kMinWarpsPerCtaForOccupancy;
+  }
   if (device_description_.cuda_compute_capability().IsAtLeastHopper() &&
       !should_optimize_for_occupancy_) {
     VLOG(5) << "Computing num_warps: Want to use wgmma, so num_warps >= "
@@ -470,8 +496,15 @@ void TritonDotFusionSearchSpace::AddOutputTilings(
       return !(a.second < b.first || b.second < a.first);
     };
     if (m < lhs_parallel_size_ && overlaps({m / 2, m * 2}, {min_n, max_n})) {
-      min_n = std::max(m / 2, min_n);
-      max_n = std::min(m * 2, max_n);
+      // If one of the sides has an expensive op fused in, then we should allow
+      // the tile of the other side to be larger, as that reduce the amount of
+      // recomputation of the expensive op.
+      if (!rhs_has_expensive_op_) {
+        min_n = std::max(m / 2, min_n);
+      }
+      if (!lhs_has_expensive_op_) {
+        max_n = std::min(m * 2, max_n);
+      }
       VLOG(5) << "Computing output tile: For m = " << m
               << ", restricting n-space to [" << min_n << "," << max_n
               << "] to have square-ish tiles.";

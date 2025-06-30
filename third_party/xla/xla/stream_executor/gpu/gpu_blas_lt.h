@@ -24,12 +24,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/protobuf_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.pb.h"
 #include "xla/stream_executor/host_or_device_scalar.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -76,6 +80,10 @@ struct MatrixLayout {  // plain MatrixLayout which is extended with create
   // `batch_stride` is set to `0` when `batch_size == 1`.
   int64_t batch_stride;
   blas::Transpose transpose;
+
+  static absl::StatusOr<MatrixLayout> FromProto(
+      const xla::GemmConfigProto::MatrixLayout& proto);
+  xla::GemmConfigProto::MatrixLayout ToProto() const;
 };
 
 // compact version of the matrix layout to be used to pass matrices
@@ -122,6 +130,10 @@ struct GemmConfig {  // plain GemmConfig which is extended with create functions
   bool grad_x;
   bool grad_y;
   std::optional<blas::ComputationType> compute_type;
+
+  static absl::StatusOr<GemmConfig> FromProto(
+      const xla::GemmConfigProto& proto);
+  xla::GemmConfigProto ToProto() const;
 };
 
 struct BlasLt {
@@ -130,10 +142,14 @@ struct BlasLt {
     kReLU = 2,                      // Apply point-wise ReLU function
     kBias = 4,                      // Add broadcasted bias vector
     kBiasThenReLU = kBias | kReLU,  // Apply bias and then ReLU transform
-    kGELU = 32,                // Apply GELU point-wise transform to the results
-    kGELUWithAux = 32 | 1024,  // Apply GELU with auxiliary output.
+    kGELU = 32,  // Apply GELU point-wise transform to the results
+    kSILU = 64,  // Apply swish point-wise transform to the results
+    kSILUWithAux = kSILU | 1024,    // Apply swish with auxiliary output
+    kGELUWithAux = 32 | 1024,       // Apply GELU with auxiliary output.
     kBiasThenGELU = kBias | kGELU,  // Apply bias and then approximate GELU.
+    kBiasThenSILU = kBias | kSILU,  // Apply bias and then approximate Swish.
     kBiasThenGELUWithAux = kBiasThenGELU | 1024,
+    kBiasThenSILUWithAux = kBiasThenSILU | 1024,
   };
 
   // Describes the location of pointers for the scaling factors alpha and beta.

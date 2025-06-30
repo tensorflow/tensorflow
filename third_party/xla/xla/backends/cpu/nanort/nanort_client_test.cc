@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/cpu/nanort/nanort_client.h"
 
+#include <stdalign.h>
+
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -42,6 +44,8 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
+#include "xla/runtime/device_id.h"
+#include "xla/service/computation_placer.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -279,6 +283,55 @@ ENTRY test_module {
 
   EXPECT_TRUE(event.IsConcrete());
   EXPECT_EQ(result_span[0], expected_result);
+}
+
+TEST(NanoRtClientTest, CompileAndRunPartitionAndReplicaIdInstructions) {
+  constexpr absl::string_view hlo = R"(
+    HloModule replica-and-partition-id
+
+ENTRY ReplicaAndPartitionId {
+  replica_id = u32[] replica-id()
+  partition_id = u32[] partition-id()
+  ROOT result = (u32[], u32[]) tuple(replica_id, partition_id)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  XlaComputation computation(module->ToProto());
+
+  NanoRtClient client;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                          client.Compile(computation));
+
+  ComputationPlacer computation_placer;
+  constexpr int kReplicaCount = 2;
+  constexpr int kComputationCount = 2;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto device_assignment,
+      computation_placer.AssignDevices(kReplicaCount, kComputationCount));
+
+  for (int i = 0; i < kReplicaCount; ++i) {
+    for (int j = 0; j < kComputationCount; ++j) {
+      alignas(32) uint32_t result_replica_id = 0;
+      alignas(32) uint32_t result_computation_id = 0;
+      Results results = {{&result_replica_id, 1}, {&result_computation_id, 1}};
+
+      auto execute_options = NanoRtExecutable::ExecuteOptions();
+      execute_options.set_device_assignment(&device_assignment);
+
+      TF_ASSERT_OK_AND_ASSIGN(
+          auto device_id,
+          computation_placer.DeviceId(i, j, kReplicaCount, kComputationCount));
+      execute_options.set_global_device_id(GlobalDeviceId(device_id));
+
+      auto event = executable->Execute({}, results, {}, execute_options);
+      tsl::BlockUntilReady(event);
+
+      EXPECT_TRUE(event.IsConcrete());
+      EXPECT_EQ(result_replica_id, i);
+      EXPECT_EQ(result_computation_id, j);
+    }
+  }
 }
 
 //===----------------------------------------------------------------------===//

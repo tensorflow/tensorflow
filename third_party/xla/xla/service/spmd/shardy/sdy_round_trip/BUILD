@@ -3,19 +3,14 @@ load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [":friends"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
 package_group(
     name = "friends",
-    packages = [
-        "//learning/deepmind/partir/compiler/mpmd/...",
-        "//learning/deepmind/partir/compiler/shardonnay/...",
-        "//third_party/australis/google/ifrt/...",
-        "//third_party/openxla/shardy/tools/...",
-        "//third_party/py/jax/...",
-        "//xla/...",
+    includes = [
+        "//xla:friends",
     ],
 )
 
@@ -131,25 +126,11 @@ cc_library(
 )
 
 cc_library(
-    name = "import_callback_custom_calls",
-    srcs = ["import_callback_custom_calls.cc"],
-    hdrs = ["import_callback_custom_calls.h"],
-    deps = [
-        "//xla/service/spmd/shardy:constants",
-        "//xla/service/spmd/shardy:utils",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@stablehlo//:stablehlo_ops",
-    ],
-)
-
-cc_library(
     name = "dedup_meshes",
     srcs = ["dedup_meshes.cc"],
     hdrs = ["dedup_meshes.h"],
     deps = [
+        "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -168,7 +149,6 @@ cc_library(
         ":dedup_meshes",
         ":export_ops",
         ":export_shardy_attrs",
-        ":import_callback_custom_calls",
         ":import_shardy_attrs",
         ":remove_size_one_axes",
         ":shard_map_export",

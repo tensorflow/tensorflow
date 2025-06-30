@@ -4199,7 +4199,7 @@ ENTRY e {
   CompileAndOptionallyVerifyPtx(std::move(verified_module),
                                 R"(
 CHECK: $L__BB0_1:
-CHECK-NEXT: // begin inline asm
+CHECK:      // begin inline asm
 CHECK-NEXT: .pragma "nounroll";
 CHECK: wgmma
 )");

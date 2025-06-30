@@ -58,6 +58,7 @@ cc_library(
 xla_cc_test(
     name = "xnn_threadpool_test",
     srcs = ["xnn_threadpool_test.cc"],
+    linkstatic = True,  # required to override pthreadpool symbols
     deps = [
         ":xnn_threadpool",
         "//xla/backends/cpu/runtime:parallel_loop_runner",
@@ -101,6 +102,7 @@ cc_library(
 xla_cc_test(
     name = "xnn_convolution_thunk_test",
     srcs = ["xnn_convolution_thunk_test.cc"],
+    linkstatic = True,  # required to override pthreadpool symbols
     deps = [
         ":xnn_convolution_thunk",
         "//xla:error_spec",
@@ -142,10 +144,12 @@ cc_library(
         "//xla/backends/cpu/runtime:dot_lib",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/service:buffer_assignment",
+        "//xla/stream_executor:device_memory",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@XNNPACK",
+        "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -157,6 +161,7 @@ cc_library(
 xla_cc_test(
     name = "xnn_dot_thunk_test",
     srcs = ["xnn_dot_thunk_test.cc"],
+    linkstatic = True,  # required to override pthreadpool symbols
     deps = [
         ":xnn_dot_thunk",
         "//xla:literal_util",
@@ -195,13 +200,16 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@XNNPACK",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -213,6 +221,7 @@ cc_library(
 xla_cc_test(
     name = "xnn_fusion_thunk_test",
     srcs = ["xnn_fusion_thunk_test.cc"],
+    linkstatic = True,  # required to override pthreadpool symbols
     deps = [
         ":xnn_fusion_thunk",
         ":xnn_interop",

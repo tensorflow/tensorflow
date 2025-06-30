@@ -206,5 +206,64 @@ TEST_F(FusionConstantSinkingTest, SinkConstantNested) {
               1);
 }
 
+TEST_F(FusionConstantSinkingTest, SinkNonTopLevelConstant) {
+  std::string hlo_string = R"(
+  HloModule fusion.2653, entry_computation_layout={(bf16[16,128]{1,0:T(8,128)(2,1)}, u32[]{:T(128)}, bf16[128,16,8,1]{1,2,0,3:T(8,128)(2,1)})->bf16[32,8,2,128]{3,1,2,0:T(8,128)(2,1)}}
+
+fused_computation.4564 {
+  param_1.225408 = bf16[128,16,8,1]{1,2,0,3:T(8,128)(2,1)S(1)} parameter(1)
+  param_2.150049 = bf16[]{:T(256)} parameter(2)
+  pad.29514 = bf16[128,16,8,2]{1,2,0,3:T(8,128)(2,1)} pad(param_1.225408, param_2.150049), padding=0_0x0_0x0_0x0_1
+  param_0.180938 = u32[]{:T(128)} parameter(0)
+  constant.227383 = u32[]{:T(128)} constant(0)
+  ROOT dynamic-slice.51000 = bf16[32,16,8,2]{1,2,0,3:T(8,128)(2,1)} dynamic-slice(pad.29514, param_0.180938, constant.227383, constant.227383, constant.227383), dynamic_slice_sizes={32,16,8,2}
+}
+
+fused_computation.4568 {
+  param_0.180939 = u32[]{:T(128)} parameter(0)
+  param_1.225409 = bf16[128,16,8,1]{1,2,0,3:T(8,128)(2,1)S(1)} parameter(1)
+  constant.227393 = bf16[]{:T(256)} constant(-inf)
+  fusion.46232 = bf16[32,16,8,2]{1,2,0,3:T(8,128)(2,1)} fusion(param_0.180939, param_1.225409, constant.227393), kind=kLoop, calls=fused_computation.4564
+  ROOT copy.63812 = bf16[32,16,8,2]{1,2,3,0:T(8,128)(2,1)} copy(fusion.46232)
+}
+
+fused_computation.4579 {
+  param_0.12345 = bf16[16,128]{1,0:T(8,128)(2,1)S(1)} parameter(0)
+  ROOT bitcast.21843 = bf16[16,128,1,1]{1,0,3,2:T(8,128)(2,1)} bitcast(param_0.12345)
+}
+
+fused_computation.4567 {
+  param_1.225407 = u32[]{:T(128)} parameter(1)
+  param_2.150048 = bf16[128,16,8,1]{1,2,0,3:T(8,128)(2,1)S(1)} parameter(2)
+  fusion.2654 = bf16[32,16,8,2]{1,2,3,0:T(8,128)(2,1)} fusion(param_1.225407, param_2.150048), kind=kLoop, calls=fused_computation.4568
+  param_0.180937 = bf16[16,128]{1,0:T(8,128)(2,1)S(1)} parameter(0)
+  fusion.2661 = bf16[16,128,1,1]{1,0,3,2:T(8,128)(2,1)} fusion(param_0.180937), kind=kLoop, calls=fused_computation.4579
+  ROOT convolution.6282 = bf16[32,8,2,128]{3,1,2,0:T(8,128)(2,1)S(1)} convolution(fusion.2654, fusion.2661), window={size=1x1}, dim_labels=0fb1_io01->0b1f, operand_precision={highest,highest}
+}
+
+ENTRY fusion.2653 {
+  parameter.0 = bf16[16,128]{1,0:T(8,128)(2,1)} parameter(0)
+  copy.1 = bf16[16,128]{1,0:T(8,128)(2,1)S(1)} copy(parameter.0)
+  parameter.1 = u32[]{:T(128)} parameter(1)
+  parameter.2 = bf16[128,16,8,1]{1,2,0,3:T(8,128)(2,1)} parameter(2)
+  copy.2 = bf16[128,16,8,1]{1,2,0,3:T(8,128)(2,1)S(1)} copy(parameter.2)
+  fusion.2653 = bf16[32,8,2,128]{3,1,2,0:T(8,128)(2,1)S(1)} fusion(copy.1, parameter.1, copy.2), kind=kOutput, calls=fused_computation.4567
+  ROOT copy = bf16[32,8,2,128]{3,1,2,0:T(8,128)(2,1)} copy(fusion.2653)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  FusionConstantSinking constant_sinking;
+
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_sinking, module.get()));
+
+  EXPECT_TRUE(result);
+  EXPECT_THAT(module->GetComputationWithName("fused_computation.4564")
+                  ->num_parameters(),
+              2);
+}
+
 }  // namespace
 }  // namespace xla

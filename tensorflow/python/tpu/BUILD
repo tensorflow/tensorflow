@@ -21,6 +21,7 @@ visibility = [
     "//smartass/brain/configure:__subpackages__",
     "//third_party/py/jax_tpu_embedding:__subpackages__",
     "//third_party/py/lingvo:__subpackages__",
+    "//third_party/py/orbit:__subpackages__",
     "//third_party/py/medical_research_foundations:__subpackages__",
     "//tensorflow:__subpackages__",
     "//waymo/ml/deploy/sync_test/tools:__subpackages__",
@@ -45,6 +46,14 @@ py_strict_library(
     deps = [
         "//tensorflow/python/platform:flags",
         "//tensorflow/python/util:tf_inspect",
+    ],
+)
+
+py_strict_library(
+    name = "embedding_context_utils",
+    srcs = ["embedding_context_utils.py"],
+    deps = [
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -1009,7 +1018,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:pybind11_status_headers",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:status_casters",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
@@ -1034,7 +1043,7 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/core/tpu/kernels:sparse_core_ops_utils",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
         "@pybind11",
     ],
 )
@@ -1045,6 +1054,7 @@ py_strict_library(
     deps = [
         ":_pywrap_sparse_core_layout",
         ":_pywrap_tpu_embedding",
+        ":embedding_context_utils",
         ":tpu_embedding_base",
         ":tpu_embedding_v2_utils",
         ":tpu_embedding_v3_checkpoint_adapter",
@@ -1100,6 +1110,7 @@ tpu_py_strict_test(
     shard_count = 4,
     # copybara:uncomment use_tpu_plugin_and_capi = True,
     deps = [
+        ":embedding_context_utils",
         ":tpu_embedding_for_serving",
         ":tpu_embedding_v2_utils",
         ":tpu_embedding_v3",
@@ -1176,6 +1187,31 @@ tpu_py_strict_test(
         "//tensorflow/python/saved_model:save",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tpu_py_strict_test(
+    name = "tpu_embedding_v3_checkpoint_test",
+    srcs = ["tpu_embedding_v3_checkpoint_test.py"],
+    disable_experimental = True,
+    disable_tfrt = False,
+    disable_v2 = True,
+    disable_v3 = True,
+    # copybara:uncomment disable_v4i = True,
+    # copybara:uncomment disable_v5 = False,
+    # copybara:uncomment disable_v5_grm = True,
+    deps = [
+        ":tpu_embedding_v2_utils",
+        ":tpu_embedding_v3",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/ops:init_ops_v2",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

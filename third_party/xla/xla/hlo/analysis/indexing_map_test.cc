@@ -96,7 +96,8 @@ TEST_F(IndexingMapTest, VerifyDimensions) {
   std::stringstream ss;
   EXPECT_FALSE(indexing_map.Verify(ss));
   EXPECT_EQ(ss.str(),
-            "dim size must match the number of dimensions in the affine map");
+            "number of dim vars (2) must match the number of dimensions in the "
+            "affine map (1)");
 }
 
 TEST_F(IndexingMapTest, VerifySymbols) {
@@ -107,8 +108,8 @@ TEST_F(IndexingMapTest, VerifySymbols) {
   std::stringstream ss;
   EXPECT_FALSE(indexing_map.Verify(ss));
   EXPECT_EQ(ss.str(),
-            "range vars size + rt var size must match the number of symbols in "
-            "the affine map");
+            "number of range (1) + runtime (0) variables must match the number "
+            "of symbols in the affine map (0)");
 }
 
 TEST_F(IndexingMapTest, RTVar) {
@@ -1690,6 +1691,34 @@ TEST_F(IndexingMapTest, ConvertRangeVariablesToDimensions) {
      to_convert_0 in [0, 2],
      to_convert_1 in [0, 3],
      range in [0, 1]
+  )"));
+}
+
+TEST_F(IndexingMapTest, ConvertRangeVariablesToDimensionsWithRuntimeVars) {
+  IndexingMap indexing_map = Parse(R"(
+     (d0, d1)[to_convert_0, range, to_convert_1]{rt0, rt1}
+       -> (d1, d0, range + to_convert_1 + rt0, to_convert_0),
+     domain:
+     d0 in [0, 3],
+     d1 in [0, 3],
+     to_convert_0 in [0, 2],
+     range in [0, 1],
+     to_convert_1 in [0, 3],
+     rt0 in [0, 0],
+     rt1 in [0, 1]
+  )");
+  EXPECT_THAT(ConvertRangeVariablesToDimensions(indexing_map, {0, 2}),
+              MatchIndexingMap(R"(
+     (d0, d1, to_convert_0, to_convert_1)[range]{rt0, rt1}
+       -> (d1, d0, to_convert_1 + range + rt0, to_convert_0),
+     domain:
+     d0 in [0, 3],
+     d1 in [0, 3],
+     to_convert_0 in [0, 2],
+     to_convert_1 in [0, 3],
+     range in [0, 1],
+     rt0 in [0, 0],
+     rt1 in [0, 1]
   )"));
 }
 

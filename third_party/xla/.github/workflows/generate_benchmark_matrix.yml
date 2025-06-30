@@ -1,0 +1,141 @@
+# Copyright 2025 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+# .github/workflows/generate_benchmark_matrix.yml
+name: Generate Benchmark Matrix
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      registry_file:
+        description: 'Path to the benchmark registry file (relative to repository root)'
+        required: false
+        type: string
+        default: 'xla/tools/benchmarks/registries/default_registry.yml'
+      workflow_type:
+        description: 'The type of workflow triggering this generation (e.g. PRESUBMIT, POSTSUBMIT, SCHEDULED, MANUAL, or aliases like nightly)'
+        required: true
+        type: string
+      checkout_ref:
+        description: 'The Git ref (branch, tag, or SHA) to checkout'
+        required: false
+        type: string
+        default: ''
+    outputs:
+      matrix_include_json:
+        description: 'JSON string representing the array for the "include" matrix strategy'
+        value: ${{ jobs.generate.outputs.matrix_json_output }}
+
+jobs:
+  generate:
+    name: Generate Matrix (${{ inputs.workflow_type }})
+    runs-on: linux-x86-n2-64
+    container: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest
+    outputs:
+      matrix_json_output: ${{ steps.run_generator.outputs.matrix_json }}
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout OpenXLA
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          # Use inputs.checkout_ref if provided, otherwise default to the event's ref
+          # (e.g., PR's HEAD SHA or caller's commit SHA)
+          ref: ${{ inputs.checkout_ref || github.ref }} 
+          fetch-depth: 0 # Fetch all history, might be needed by build/configure scripts
+
+      - name: Configure OpenXLA
+        run: |
+          echo "Configuring OpenXLA for CPU to build the generator tool..."
+          if [ -f "./configure.py" ]; then
+            ./configure.py --backend=CPU 
+          else
+            echo "::warning::configure.py not found. Assuming C++ tool build doesn't require it or is pre-configured."
+          fi
+      # TODO(juliagmt): Use build.py to build the binary.
+      - name: Build generate_benchmark_matrices_main
+        run: |
+          echo "Building generator..."
+          bazel build \
+                --build_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,-requires-gpu-amd \
+                --test_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,-requires-gpu-amd \
+                --config=warnings \
+                --config=nonccl \
+                --config=rbe_linux_cpu \
+                --color=yes \
+                --test_output=errors \
+                --verbose_failures \
+                --keep_going \
+                --nobuild_tests_only \
+                --profile=profile.json.gz \
+                --flaky_test_attempts=3 \
+                --jobs=150 \
+                --bes_upload_mode=fully_async \
+                //xla/tools/benchmarks/utils:generate_benchmark_matrices_main
+          if [ $? -ne 0 ]; then
+             echo "::error::Failed to build generate_benchmark_matrices_main"
+             exit 1
+          fi
+
+
+      - name: Run generate_benchmark_matrices_main
+        id: run_generator
+        run: |
+          BINARY_PATH="./bazel-bin/xla/tools/benchmarks/utils/generate_benchmark_matrices_main"
+          REGISTRY_PATH="${{ inputs.registry_file }}"
+          # Convert workflow_type input to uppercase for the C++ binary, 
+          # as the binary's GetWorkflowTypeFromStr expects uppercase or known aliases.
+          WORKFLOW_TYPE_ARG_UPPER=$(echo "${{ inputs.workflow_type }}" | tr '[:lower:]' '[:upper:]')
+
+
+          if [ ! -f "$BINARY_PATH" ]; then 
+            echo "::error::Generator binary not found at $BINARY_PATH after build."
+            # List bazel-bin for debugging if binary not found
+            echo "Listing bazel-bin directory:"
+            ls -R bazel-bin || echo "bazel-bin directory not found."
+            exit 1
+          fi
+
+          echo "Generating matrix for workflow type: $WORKFLOW_TYPE_ARG_UPPER (original input: ${{ inputs.workflow_type }}) using registry: $REGISTRY_PATH"
+
+          # Execute and capture output
+          JSON_ARRAY_STRING=$("$BINARY_PATH" --registry_file="$REGISTRY_PATH" --workflow_type="$WORKFLOW_TYPE_ARG_UPPER")
+          BINARY_EXIT_CODE=$?
+
+          if [ $BINARY_EXIT_CODE -ne 0 ]; then
+            echo "::error::generate_benchmark_matrices_main failed with exit code $BINARY_EXIT_CODE."
+            echo "Output from binary was:"
+            echo "$JSON_ARRAY_STRING" # This might contain error messages from the binary's LOG(QFATAL)
+            exit 1
+          fi
+
+          # Basic validation: must be an array (even if empty "[]")
+          if ! echo "$JSON_ARRAY_STRING" | jq -e '. | type == "array"' > /dev/null; then
+             echo "::error::Generator output is not a valid JSON array."
+             echo "Output was: $JSON_ARRAY_STRING"
+             exit 1
+          fi
+
+          echo "Generated matrix JSON array string:"
+          echo "$JSON_ARRAY_STRING"
+
+          echo "matrix_json<<EOF_MATRIX_JSON" >> $GITHUB_OUTPUT
+          echo "$JSON_ARRAY_STRING" >> $GITHUB_OUTPUT
+          echo "EOF_MATRIX_JSON" >> $GITHUB_OUTPUT

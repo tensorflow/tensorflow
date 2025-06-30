@@ -106,7 +106,7 @@ class ShardingConversionsTest : public testing::TestWithParam<int> {
     TF_ASSERT_OK_AND_ASSIGN(ShardingRef sharding,
                             ShardingParamSharding::Create(
                                 sharding_param, device_list, MemoryKind()));
-    const xla::Shape xla_shape(PrimitiveType::F16, shape.dims(), {});
+    const xla::Shape xla_shape(PrimitiveType::F16, shape.dims());
 
     TF_ASSERT_OK_AND_ASSIGN(const std::vector<IndexDomain> index_domains,
                             sharding->IndexDomains(shape));

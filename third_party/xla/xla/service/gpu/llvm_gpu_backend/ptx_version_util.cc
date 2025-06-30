@@ -19,7 +19,7 @@ namespace xla::gpu::nvptx {
 
 namespace {
 constexpr stream_executor::SemanticVersion kFallbackPtxVersion{6, 5, 0};
-constexpr stream_executor::SemanticVersion kMaxPtxVersion{8, 7, 0};
+constexpr stream_executor::SemanticVersion kMaxPtxVersion{8, 8, 0};
 }  // namespace
 
 stream_executor::SemanticVersion
@@ -44,7 +44,8 @@ DetermineHighestSupportedPtxVersionFromCudaVersion(
   }
   // CUDA 12.6 -> PTX 8.5
   // CUDA 12.8 -> PTX 8.7
-  if (cuda_version < stream_executor::SemanticVersion{12, 9, 0}) {
+  // CUDA 12.9 -> PTX 8.8
+  if (cuda_version < stream_executor::SemanticVersion{12, 10, 0}) {
     return {cuda_version.major() - 4, cuda_version.minor() - 1, 0};
   }
 

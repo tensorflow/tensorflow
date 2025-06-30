@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/convolution_lib.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/service/cpu/executable.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace tensorflow {
 namespace tfcompile {
@@ -73,6 +74,9 @@ class ThunkProtoExecutionDeserializer {
       const xla::cpu::WhileThunkProto& while_thunk);
 
   absl::StatusOr<std::string> GetWhileThunkRunImpl(
+      const xla::cpu::ThunkProto& thunk);
+
+  absl::StatusOr<std::string> GetSortThunkRunImpl(
       const xla::cpu::ThunkProto& thunk);
 
   absl::StatusOr<std::string> CppDataTypeFromXlaType(

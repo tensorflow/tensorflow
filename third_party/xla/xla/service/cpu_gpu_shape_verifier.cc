@@ -32,11 +32,6 @@ absl::Status CpuGpuShapeVerifier::Preprocess(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       hlo->shape(), [&](const Shape& shape, const ShapeIndex&) {
         if (shape.has_layout()) {
-          if (LayoutUtil::IsSparseArray(shape)) {
-            return absl::InvalidArgumentError(absl::StrFormat(
-                "The XLA CPU/GPU backend does not support sparse shapes: %s",
-                hlo->ToString()));
-          }
           if (!primitive_util::IsSubByteNonPredType(shape.element_type()) &&
               shape.layout().element_size_in_bits() != 0) {
             return absl::InvalidArgumentError(absl::StrFormat(

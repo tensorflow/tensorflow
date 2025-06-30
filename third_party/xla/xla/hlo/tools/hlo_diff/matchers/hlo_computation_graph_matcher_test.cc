@@ -16,6 +16,7 @@
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -244,6 +245,42 @@ ENTRY entry {
               UnorderedElementsAre(Pair("p2", "p21"), Pair("p3", "p31"),
                                    Pair("add.1", "add.11"),
                                    Pair("fusion.1", "fusion.11")));
+}
+
+TEST_F(HloComputationGraphMatcherTest, MatchComputationOtherLeafInstructions) {
+  const char* hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  iota = s32[4,3,5]{2,1,0} iota(), iota_dimension=0
+  bitcast.1 = s32[1,1,1,4,3,5]{5,4,3,2,1,0} bitcast(iota)
+  ROOT tuple = (s32[1,1,1,4,3,5]{5,4,3,2,1,0}) tuple(bitcast.1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
+                          HloGumgraph::Create(left_module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
+                          HloGumgraph::Create(right_module.get()));
+  auto mappings = std::make_unique<HloGumgraphMappings>();
+  const CallGraphNode& left_entry_computation =
+      left_gumgraph->GetCallGraph().GetNode(left_module->entry_computation());
+  const CallGraphNode& right_entry_computation =
+      right_gumgraph->GetCallGraph().GetNode(right_module->entry_computation());
+
+  mappings->MapComputationsIfAbsent(left_entry_computation,
+                                    right_entry_computation,
+                                    ComputationMatchType::kSignature);
+  MatchComputationGraphs(*left_gumgraph, *right_gumgraph,
+                         left_entry_computation, right_entry_computation,
+                         *mappings);
+
+  auto matched_params = ExtractMappedInstructionNames(*mappings);
+  EXPECT_THAT(matched_params, UnorderedElementsAre(Pair("iota", "iota"),
+                                                   Pair("tuple", "tuple")));
 }
 
 }  // namespace

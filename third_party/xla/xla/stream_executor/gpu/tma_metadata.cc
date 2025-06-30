@@ -26,10 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "llvm/ADT/APInt.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/errors.h"
 
 namespace stream_executor {
@@ -58,10 +55,10 @@ const uint64_t kMaxGlobalStide = pow(2, 40) - 1;
 // Maximum element stride.
 const uint32_t kMaxElementStride = 8;
 
-absl::Status ValidateRank(llvm::ArrayRef<uint64_t> global_dims,
-                          llvm::ArrayRef<uint64_t> global_strides,
-                          llvm::ArrayRef<uint32_t> box_dims,
-                          llvm::ArrayRef<uint32_t> element_strides,
+absl::Status ValidateRank(absl::Span<const uint64_t> global_dims,
+                          absl::Span<const uint64_t> global_strides,
+                          absl::Span<const uint32_t> box_dims,
+                          absl::Span<const uint32_t> element_strides,
                           TmaDescriptor::TmaInterleave interleave) {
   int rank = global_dims.size();
   if (rank < kMinRank || rank > kMaxRank) {
@@ -84,8 +81,8 @@ absl::Status ValidateRank(llvm::ArrayRef<uint64_t> global_dims,
   return absl::OkStatus();
 }
 
-absl::Status ValidateGlobalDims(llvm::ArrayRef<uint64_t> global_dims) {
-  if (llvm::any_of(global_dims, [](uint64_t dim) {
+absl::Status ValidateGlobalDims(absl::Span<const uint64_t> global_dims) {
+  if (absl::c_any_of(global_dims, [](uint64_t dim) {
         return dim == 0 || dim > kMaxGlobalDim;
       })) {
     return absl::InvalidArgumentError(
@@ -95,10 +92,11 @@ absl::Status ValidateGlobalDims(llvm::ArrayRef<uint64_t> global_dims) {
   return absl::OkStatus();
 }
 
-absl::Status ValidateGlobalStrides(llvm::ArrayRef<uint64_t> global_dims,
-                                   llvm::ArrayRef<uint64_t> global_strides,
+absl::Status ValidateGlobalStrides(absl::Span<const uint64_t> global_dims,
+                                   absl::Span<const uint64_t> global_strides,
                                    TmaDescriptor::TmaInterleave interleave) {
-  for (auto [i, stride] : llvm::enumerate(global_strides)) {
+  for (int i = 0; i < global_strides.size(); ++i) {
+    uint64_t stride = global_strides[i];
     if (stride % 16 != 0 || stride > kMaxGlobalStide) {
       return absl::InvalidArgumentError(
           absl::StrFormat("global_strides (%s) must be a multiple of 16 and "
@@ -125,11 +123,12 @@ absl::Status ValidateGlobalStrides(llvm::ArrayRef<uint64_t> global_dims,
   return absl::OkStatus();
 }
 
-absl::Status ValidateBoxDims(llvm::ArrayRef<uint32_t> box_dims,
+absl::Status ValidateBoxDims(absl::Span<const uint32_t> box_dims,
                              int element_byte_width,
                              TmaDescriptor::TmaInterleave interleave) {
-  if (llvm::any_of(box_dims,
-                   [](uint32_t dim) { return dim == 0 || dim > kMaxBoxDim; })) {
+  if (absl::c_any_of(box_dims, [](uint32_t dim) {
+        return dim == 0 || dim > kMaxBoxDim;
+      })) {
     return absl::InvalidArgumentError(
         absl::StrFormat("box_dims [%s] must be non-zero and <= 256.",
                         absl::StrJoin(box_dims, ",")));
@@ -146,7 +145,7 @@ absl::Status ValidateBoxDims(llvm::ArrayRef<uint32_t> box_dims,
 
 absl::Status ValidateInterleaveAndSwizzleCombos(
     TmaDescriptor::TmaInterleave interleave, TmaDescriptor::TmaSwizzle swizzle,
-    llvm::ArrayRef<uint32_t> box_dims, int element_byte_width) {
+    absl::Span<const uint32_t> box_dims, int element_byte_width) {
   if (interleave == TmaDescriptor::TmaInterleave::kNone &&
       swizzle != TmaDescriptor::TmaSwizzle::kNone) {
     uint32_t bounding_box_inner_dim = box_dims[0] * element_byte_width;
@@ -155,13 +154,15 @@ absl::Status ValidateInterleaveAndSwizzleCombos(
       return absl::FailedPreconditionError(
           "when interleave is kNone and swizzle is k32B, box_dims[0] * "
           "element_byte_width must be <= 32.");
-    } else if (swizzle == TmaDescriptor::TmaSwizzle::k64B &&
-               bounding_box_inner_dim > 64) {
+    }
+    if (swizzle == TmaDescriptor::TmaSwizzle::k64B &&
+        bounding_box_inner_dim > 64) {
       return absl::FailedPreconditionError(
           "when interleave is kNone and swizzle is k64B, box_dims[0] * "
           "element_byte_width must be <= 64.");
-    } else if (swizzle == TmaDescriptor::TmaSwizzle::k128B &&
-               bounding_box_inner_dim > 128) {
+    }
+    if (swizzle == TmaDescriptor::TmaSwizzle::k128B &&
+        bounding_box_inner_dim > 128) {
       return absl::FailedPreconditionError(
           "when interleave is kNone and swizzle is k128B, box_dims[0] * "
           "element_byte_width must be <= 128.");
@@ -175,8 +176,9 @@ absl::Status ValidateInterleaveAndSwizzleCombos(
   return absl::OkStatus();
 }
 
-absl::Status ValidateElementStrides(llvm::ArrayRef<uint32_t> element_strides) {
-  if (llvm::any_of(element_strides, [](uint32_t stride) {
+absl::Status ValidateElementStrides(
+    absl::Span<const uint32_t> element_strides) {
+  if (absl::c_any_of(element_strides, [](uint32_t stride) {
         return stride == 0 || stride > kMaxElementStride;
       })) {
     return absl::InvalidArgumentError(
@@ -187,9 +189,10 @@ absl::Status ValidateElementStrides(llvm::ArrayRef<uint32_t> element_strides) {
 }
 
 absl::StatusOr<TmaDescriptor> TmaDescriptor::Create(
-    llvm::ArrayRef<uint64_t> global_dims,
-    llvm::ArrayRef<uint64_t> global_strides, llvm::ArrayRef<uint32_t> box_dims,
-    llvm::ArrayRef<uint32_t> element_strides, int element_byte_width,
+    absl::Span<const uint64_t> global_dims,
+    absl::Span<const uint64_t> global_strides,
+    absl::Span<const uint32_t> box_dims,
+    absl::Span<const uint32_t> element_strides, int element_byte_width,
     TmaInterleave interleave, TmaSwizzle swizzle, TmaL2Promotion l2_promotion,
     TmaFloatOobFill float_oob_fill) {
   // Validate each of the parameters as documented here:
@@ -216,10 +219,10 @@ absl::StatusOr<TmaDescriptor> TmaDescriptor::Create(
                        float_oob_fill);
 }
 
-TmaDescriptor::TmaDescriptor(llvm::ArrayRef<uint64_t> global_dims,
-                             llvm::ArrayRef<uint64_t> global_strides,
-                             llvm::ArrayRef<uint32_t> box_dims,
-                             llvm::ArrayRef<uint32_t> element_strides,
+TmaDescriptor::TmaDescriptor(absl::Span<const uint64_t> global_dims,
+                             absl::Span<const uint64_t> global_strides,
+                             absl::Span<const uint32_t> box_dims,
+                             absl::Span<const uint32_t> element_strides,
                              int element_size, TmaInterleave interleave,
                              TmaSwizzle swizzle, TmaL2Promotion l2_promotion,
                              TmaFloatOobFill float_oob_fill)

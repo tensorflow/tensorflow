@@ -248,14 +248,16 @@ TEST_P(PjRtClientTest, ExecuteWithDonationAbort) {
       MakeIncrementProgram(client.get(), /*alias=*/true, /*device=*/0);
 
   std::vector<int32_t> data(4, 0);
+  auto shared_data = std::make_shared<std::vector<int32_t>>(data);
   Shape shape = ShapeUtil::MakeShape(S32, {4});
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->BufferFromHostBuffer(
-          data.data(), shape.element_type(), shape.dimensions(),
+          shared_data->data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
-          PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr,
-          client->memory_spaces()[0], /*device_layout=*/nullptr));
+          PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
+          [shared_data]() {}, client->memory_spaces()[0],
+          /*device_layout=*/nullptr));
 
   auto external_reference = buffer->AcquireExternalReference();
 
@@ -439,7 +441,7 @@ TEST(PjRtClientTest, CopyToDeviceAsync) {
                                             *device_1->default_memory_space()));
   }
 
-  // The destructor of TfrtCpuBuffer should wait for outstanding copy.
+  // The destructor of PjRtCpuBuffer should wait for outstanding copy.
   buffer.reset();
 
   for (const auto& result : results) {
@@ -486,7 +488,7 @@ TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
                                             *device_1->default_memory_space()));
   }
 
-  // The destructor of TfrtCpuBuffer should wait for outstanding copy.
+  // The destructor of PjRtCpuBuffer should wait for outstanding copy.
   buffer.reset();
 
   for (const auto& result : results) {

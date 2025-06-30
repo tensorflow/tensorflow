@@ -1076,9 +1076,9 @@ def strided_slice(input_,
 
   Args:
     input_: A `Tensor`.
-    begin: An `int32` or `int64` `Tensor`.
-    end: An `int32` or `int64` `Tensor`.
-    strides: An `int32` or `int64` `Tensor`.
+    begin: An `int16`, `int32` or `int64` `Tensor`.
+    end: An `int16`, `int32` or `int64` `Tensor`.
+    strides: An `int16`, `int32` or `int64` `Tensor`.
     begin_mask: An `int32` mask.
     end_mask: An `int32` mask.
     ellipsis_mask: An `int32` mask.

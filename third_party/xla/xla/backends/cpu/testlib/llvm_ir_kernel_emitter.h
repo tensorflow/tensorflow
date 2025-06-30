@@ -23,11 +23,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/codegen/kernel_definition.h"
-#include "xla/codegen/kernel_emitter.h"
+#include "xla/codegen/llvm_kernel_definition.h"
+#include "xla/codegen/llvm_kernel_emitter.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/launch_dim.h"
 
 namespace xla::cpu {
 
@@ -35,7 +35,7 @@ namespace xla::cpu {
 // into the dedicated LLVM context and module instance. This kernel emitter is
 // intended to be used for testing purposes only: (1) load pre-compiled LLVM IR
 // into the XLA kernel spec; (2) Execute it with user provided input buffers.
-class LlvmIrKernelEmitter : public KernelEmitter {
+class LlvmTestKernelEmitter : public LlvmKernelEmitter {
  public:
   // When loading kernel IR into the KernelSpec we create a separate buffer
   // allocation for every kernel argument. We don't use buffer assignment in
@@ -45,16 +45,19 @@ class LlvmIrKernelEmitter : public KernelEmitter {
     BufferUse::MemoryAccess memory_access;
   };
 
-  LlvmIrKernelEmitter(absl::string_view llvm_ir, absl::string_view kernel_name,
-                      se::ThreadDim thread_dim,
-                      absl::Span<const KernelArg> args);
+  LlvmTestKernelEmitter(absl::string_view llvm_ir,
+                        absl::string_view kernel_name,
+                        NumWorkGroups num_workgroups,
+                        absl::Span<const KernelArg> args);
 
-  absl::StatusOr<KernelDefinition> EmitKernelDefinition() final;
+  absl::StatusOr<LlvmKernelDefinition> EmitKernelDefinition() final;
+
+  std::string name() const override { return "llvm_test_kernel_emitter"; }
 
  private:
   std::string llvm_ir_;
   std::string kernel_name_;
-  se::ThreadDim thread_dim_;
+  NumWorkGroups num_workgroups_;
   std::vector<KernelArg> args_;
   // Normally this would be populated by the buffer assignment pass, but for
   // testing purposes we hold it in the emitter.

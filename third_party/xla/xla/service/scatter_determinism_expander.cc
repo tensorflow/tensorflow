@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -84,7 +85,7 @@ HloInstruction* CreateBoundTensorGeneric(
           LiteralUtil::CreateR1<T>(out_of_bound_array)));
 
   const Shape& index_shape = scatter_indices->shape();
-  CHECK_GT(index_shape.dimensions_size(), 1);
+  CHECK_GT(index_shape.dimensions().size(), 1);
   Shape result_shape = ShapeUtil::MakeShape(
       index_shape.element_type(),
       {index_shape.dimensions(0), bounds->shape().dimensions(0)});
@@ -447,7 +448,7 @@ HloInstruction* ExpandIndexOffsetsFromUpdateShape(
   // The offset tensor is represented in (num_elements_in_update, index_dim).
 
   int64_t num_elements = ShapeUtil::ElementsIn(update_shape);
-  int64_t operand_rank = operand_shape.dimensions_size();
+  int64_t operand_rank = operand_shape.dimensions().size();
 
   Array2D<T> offset_tensor(num_elements, operand_rank);
 
@@ -578,7 +579,7 @@ absl::StatusOr<HloInstruction*> CheckValidIndices(
       ShapeUtil::MakeShape(PRED, indices->shape().dimensions()),
       max_valid_index_constant, indices, ComparisonDirection::kGe));
   HloInstruction* oob_check_mask;
-  if (indices->shape().dimensions_size() == 1) {
+  if (indices->shape().dimensions().size() == 1) {
     oob_check_mask = oob_check;
   } else {
     // Reduce across rows to get a mask (for multi-dimensional indices).
@@ -631,9 +632,10 @@ std::vector<int64_t> ComputeFullIndexToOperandDims(
       dim_numbers.scatter_dims_to_operand_dims().begin(),
       dim_numbers.scatter_dims_to_operand_dims().end());
 
-  for (int i = 0; i < operand_shape.dimensions_size(); i++) {
-    if (existing_dims.find(i) == existing_dims.end())
+  for (int i = 0; i < operand_shape.dimensions().size(); i++) {
+    if (existing_dims.find(i) == existing_dims.end()) {
       full_index_to_operand_dims.push_back(i);
+    }
   }
   return full_index_to_operand_dims;
 }
@@ -678,14 +680,14 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
   // We compromise for maintainability and make the scatter_indices always 2D,
   // so that the implementation could be easier, as we do not need to maintain
   // two sets of code for 1D and 2D scatter_indices.
-  if (scatter_indices->shape().dimensions_size() == 1) {
+  if (scatter_indices->shape().dimensions().size() == 1) {
     scatter_indices =
         scatter->parent()->AddInstruction(HloInstruction::CreateReshape(
             ShapeUtil::MakeShape(scatter_indices->shape().element_type(),
                                  {scatter_indices->shape().dimensions(0), 1}),
             scatter_indices));
   }
-  CHECK_GT(scatter_indices->shape().dimensions_size(), 1);
+  CHECK_GT(scatter_indices->shape().dimensions().size(), 1);
   bool has_scalar_indices = scatter_indices->shape().dimensions(1) == 1;
 
   // Canonicalize the updates, after which the size of their most-major
@@ -707,7 +709,7 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
 
   ScatterDimensionNumbers new_dim_numbers;
   // Check if each update is a scalar based on update shape
-  bool non_scalar_update = scatter_updates[0]->shape().dimensions_size() > 1;
+  bool non_scalar_update = scatter_updates[0]->shape().dimensions().size() > 1;
 
   std::vector<int64_t> full_index_to_operand_dims =
       ComputeFullIndexToOperandDims(scatter_operands[0]->shape(), dim_numbers);
@@ -721,7 +723,7 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
     // Extract operand dimensions
     const Shape& operand_shape = scatter_operands[0]->shape();
 
-    int num_operand_dims = operand_shape.dimensions_size();
+    int num_operand_dims = operand_shape.dimensions().size();
     std::vector<int64_t> actual_update_window_dims(num_operand_dims);
     int update_dim_index = 0;
     for (int i = 0; i < num_operand_dims; ++i) {
@@ -749,7 +751,7 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
     TF_ASSIGN_OR_RETURN(
         scatter_indices,
         AddImplicitDimensionsToIndices(
-            scatter_operands[0]->shape().dimensions_size(),
+            scatter_operands[0]->shape().dimensions().size(),
             dim_numbers.scatter_dims_to_operand_dims(), scatter_indices));
     CHECK(scatter_indices->shape().dimensions(0) == scatter_indices_count);
 
@@ -757,7 +759,7 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
     TF_ASSIGN_OR_RETURN(
         out_of_bound_tensor,
         AddImplicitDimensionsToIndices(
-            scatter_operands[0]->shape().dimensions_size(),
+            scatter_operands[0]->shape().dimensions().size(),
             dim_numbers.scatter_dims_to_operand_dims(), out_of_bound_tensor));
 
     // If any updates are out of bound, we change the corresponding indices to
@@ -795,12 +797,13 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
     // As we have scalar updates, there is no update_window_dims
     new_dim_numbers.clear_update_window_dims();
     // Mitigate the missed dimensions
-    for (int i = 0; i < operand_shape.dimensions_size() -
-                            dim_numbers.input_batching_dims_size();
+    for (int64_t i = 0;
+         i < static_cast<int64_t>(operand_shape.dimensions().size()) -
+                 dim_numbers.input_batching_dims_size();
          i++) {
       new_dim_numbers.add_inserted_window_dims(i);
     }
-    for (int i = 0; i < operand_shape.dimensions_size(); i++) {
+    for (int i = 0; i < operand_shape.dimensions().size(); i++) {
       new_dim_numbers.add_scatter_dims_to_operand_dims(
           full_index_to_operand_dims[i]);
     }

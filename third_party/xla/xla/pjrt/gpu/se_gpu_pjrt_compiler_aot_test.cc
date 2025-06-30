@@ -206,5 +206,51 @@ TEST(StreamExecutorGpuCompilerTest, SuccessSerializeDeserialize) {
   EXPECT_EQ(deserialized_executable->GetExecutable()->name(), "Identity");
 }
 
+constexpr char const* kD2HProgramTupleOutput = R"(
+  HloModule f
+
+  ENTRY main.5 {
+    p = s32[4]{0} parameter(0)
+    cc = s32[4] custom-call(p),
+        custom_call_target="annotate_device_placement",
+        frontend_attributes={_xla_buffer_placement="pinned_host"}
+    ROOT tuple = (s32[4]{0}, s32[4]{0}) tuple(s32[4]{0} p, s32[4]{0} cc)
+  }
+)";
+TEST(StreamExecutorGpuCompilerTest, UnloadedExecutableMemoryStats) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  auto se_client = absl::WrapUnique(
+      tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
+  StreamExecutorGpuCompiler compiler(se_client->client()->platform()->id());
+  xla::CompileOptions options;
+  options.target_config = Compiler::TargetConfig(
+      se_client->client()->backend().default_stream_executor());
+
+  // Build the output shape with the correct memory space set.
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {4}, {0});
+  Shape host_shape = shape;
+  host_shape.mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
+  Shape out_shape = ShapeUtil::MakeTupleShape({shape, host_shape});
+  options.executable_build_options.set_result_layout(out_shape);
+
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation,
+                          GetXlaComputation(kD2HProgramTupleOutput));
+  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                          se_client->GetTopologyDescription());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtExecutable> executable,
+      compiler.Compile(options, computation, *topology, /*client=*/nullptr));
+
+  TF_ASSERT_OK_AND_ASSIGN(CompiledMemoryStats compiled_memory_stats,
+                          executable->GetCompiledMemoryStats());
+
+  EXPECT_EQ(compiled_memory_stats.argument_size_in_bytes, 16);
+  EXPECT_EQ(compiled_memory_stats.output_size_in_bytes, 32);
+  EXPECT_GT(compiled_memory_stats.temp_size_in_bytes, 0);
+  EXPECT_EQ(compiled_memory_stats.host_temp_size_in_bytes, 0);
+  EXPECT_EQ(compiled_memory_stats.host_output_size_in_bytes, 16);
+}
+
 }  // namespace
 }  // namespace xla

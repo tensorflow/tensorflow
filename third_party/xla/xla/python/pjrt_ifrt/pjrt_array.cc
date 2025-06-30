@@ -187,7 +187,7 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
       PjRtBuffers({std::move(pjrt_buffer)}), std::move(layout));
 }
 
-absl::StatusOr<tsl::RCReference<Array>> PjRtArray::FullyReplicatedShard(
+absl::StatusOr<ArrayRef> PjRtArray::FullyReplicatedShard(
     ArrayCopySemantics semantics) {
   return PjRtArray::Create(client(), GetPjRtBuffer(semantics, 0));
 }
@@ -297,7 +297,7 @@ PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype,
       pjrt_buffers_(std::move(pjrt_buffers)),
       layout_(std::move(layout)) {}
 
-absl::StatusOr<std::vector<tsl::RCReference<Array>>>
+absl::StatusOr<std::vector<ArrayRef>>
 PjRtArray::DisassembleIntoSingleDeviceArrays(
     ArrayCopySemantics semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
@@ -309,7 +309,7 @@ PjRtArray::DisassembleIntoSingleDeviceArrays(
         "devices: %v",
         *sharding_->devices());
   }
-  std::vector<tsl::RCReference<Array>> result;
+  std::vector<ArrayRef> result;
   result.reserve(sharding_->devices()->AddressableDeviceList()->size());
   TF_RETURN_IF_ERROR(std::visit(
       [&](const auto& this_shape) {
@@ -418,7 +418,7 @@ absl::StatusOr<Memory*> GetMemorySpaceFromMemoryKind(
   return memory;
 }
 
-absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Copy(
+absl::StatusOr<ArrayRef> PjRtArray::Copy(
     std::optional<xla::ifrt::DeviceListRef> devices,
     std::optional<xla::ifrt::MemoryKind> memory_kind,
     ArrayCopySemantics semantics) {
@@ -562,7 +562,8 @@ bool PjRtArray::IsDeleted() const {
 
 std::string PjRtArray::DebugString() const {
   DCHECK(this);
-  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> layout_ptr = layout();
+  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> layout_ptr =
+      pjrt_layout();
   std::string layout_str =
       layout_ptr.ok() ? (*layout_ptr)->ToString() : "<unknown>";
 
@@ -573,7 +574,7 @@ std::string PjRtArray::DebugString() const {
       sharding_->DebugString(), layout_str);
 }
 
-absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> PjRtArray::layout()
+absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> PjRtArray::pjrt_layout()
     const {
 #ifndef NDEBUG
   for (int i = 1; i < pjrt_buffers_.size(); ++i) {

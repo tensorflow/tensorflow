@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
 #define XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
 
+#include "absl/log/log.h"
 #define _USE_MATH_DEFINES
 
 #include <complex>
@@ -46,7 +47,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
-#include "xla/service/call_graph.h"
 #include "xla/service/dynamic_dimension_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -67,12 +67,14 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // recomputation during evaluation.
   struct PrecomputedAnalyses {
     TuplePointsToAnalysis* tuple_points_to;
-    CallGraph* call_graph;
   };
 
   // Only evaluate up to max_loop_iterations per while-loop execution if
   // specified.
   explicit HloEvaluator(int64_t max_loop_iterations = -1);
+
+  // Returns true if the opcode is implemented by HloEvaluator. False otherwise.
+  static bool IsOpcodeImplemented(HloOpcode opcode);
 
   // Called by the evaluator to create an embedded evaluator to execute a
   // sub-region of control flow. Subclasses should override this to return an
@@ -591,7 +593,6 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   TraceMACHandler trace_mac_handler_;
 
   // TODO(ezhulenev): Move cache members to EvaluationState.
-  std::unique_ptr<CallGraph> call_graph_cache_;
   std::unique_ptr<TuplePointsToAnalysis> tuple_points_to_analysis_cache_;
 
   // Set by EvaluateInternal and opportunitiscally used by the HandleXXX

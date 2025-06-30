@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/map_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_pipeliner_utils.h"
 #include "xla/service/constant_value.h"
@@ -340,7 +339,7 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
     if (i->HasControlDependencies() || !acceptable_formatting(i)) {
       return false;
     }
-    if (i->opcode() == HloOpcode::kReduce &&
+    if (i->opcode() == HloOpcode::kReduce && i->shape().IsArray() &&
         (ShapeUtil::ElementsIn(i->shape()) ==
              ShapeUtil::ElementsIn(instr->operand(0)->shape()) ||
          ShapeUtil::ElementsIn(instr->operand(0)->shape()) < 1024)) {
@@ -350,7 +349,8 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
                             HloOpcode::kPad, HloOpcode::kCollectivePermute,
                             HloOpcode::kConvert, HloOpcode::kReshape,
                             HloOpcode::kAllReduce, HloOpcode::kTranspose,
-                            HloOpcode::kBroadcast, HloOpcode::kAllGather>(i) ||
+                            HloOpcode::kBroadcast, HloOpcode::kAllGather,
+                            HloOpcode::kReduce>(i) ||
            (multi_uses_pipelining && i->IsElementwise()) ||
            i->IsCustomCall(CollectivePipeliner::kInsertedByPreviousStep) ||
            i->IsCustomCall(CollectivePipeliner::kSunkByPreviousStep);
@@ -778,13 +778,12 @@ class WhileLoopAnalysis {
   explicit WhileLoopAnalysis(
       HloInstruction* while_instr, int64_t max_pipelining_per_loop,
       bool pipeline_use_tree, bool process_different_sized_options,
-      TuplePointsToAnalysis* tuple_points_to_analysis, CallGraph* call_graph,
+      TuplePointsToAnalysis* tuple_points_to_analysis,
       std::optional<ConstantValue> known_start = std::nullopt)
       : while_(while_instr),
         loop_start_(known_start),
         max_pipelining_per_loop_(max_pipelining_per_loop),
         tuple_points_to_analysis_(tuple_points_to_analysis),
-        call_graph_(call_graph),
         pipeline_use_tree_(pipeline_use_tree),
         process_different_sized_options_(process_different_sized_options) {}
   std::optional<ConstantValue> GetLoopIterationCount() const;
@@ -883,9 +882,6 @@ class WhileLoopAnalysis {
   // Precomputed TuplePointsToAnalysis for the HLO module containing `while_`.
   // May be null, in which case the analysis will be performed from scratch.
   TuplePointsToAnalysis* tuple_points_to_analysis_;
-  // Precomputed CallGraph analysis for the HLO module containing `while_`.
-  // May be null, in which case the analysis will be performed from scratch.
-  CallGraph* call_graph_;
 
   bool pipeline_use_tree_;
   bool process_different_sized_options_;
@@ -925,8 +921,8 @@ bool WhileLoopAnalysis::ComputeLoopStatistics() {
   if (loop_iteration_count_) {
     return true;
   }
-  std::optional<ParsedWhileLoop> parsed_loop = PatternMatchParseWhileLoop(
-      while_, {tuple_points_to_analysis_, call_graph_});
+  std::optional<ParsedWhileLoop> parsed_loop =
+      PatternMatchParseWhileLoop(while_, {tuple_points_to_analysis_});
   if (!parsed_loop || !parsed_loop->static_while_loop) {
     return false;
   }
@@ -1180,7 +1176,8 @@ void WhileLoopAnalysis::MergeIntoExistingCollectivesForwardSink(
           int64_t sliced_idx_to_merge,
           std::vector<int64_t>& output_indices_to_merge) {
         for (HloInstruction* op : collectives_to_merge) {
-          if (!existing_collectives_to_move.count(op)) {
+          if (!existing_collectives_to_move.count(op) &&
+              !existing_formatting_ops.count(op)) {
             move_infos_[target_idx].collectives_to_move.push_back(op);
           }
         }
@@ -1916,7 +1913,6 @@ absl::Status TransformLoopForward(
       new_while_loop, loop_analysis.GetMaxPipeliningPerLoop(),
       pipeline_use_tree, process_different_sized_ops,
       /*tuple_points_to_analysis=*/nullptr,
-      /*call_graph=*/nullptr,
       loop_analysis.GetLoopStart()->add(*loop_analysis.GetLoopIncrement()));
   new_loop_analysis.ComputeLoopStatistics();
   new_loop_analysis.CollectCollectivesToMove(
@@ -2644,8 +2640,8 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
             transpose_instruction->dimensions().begin(),
             transpose_instruction->dimensions().end());
         new_dims.insert(new_dims.begin(), 0);
-        for (int64_t& dim : new_dims) {
-          ++dim;
+        for (int64_t i = 1; i < new_dims.size(); ++i) {
+          ++new_dims[i];
         }
         HloInstruction* expanded_transpose =
             loop_computation->AddInstruction(HloInstruction::CreateTranspose(
@@ -2861,6 +2857,7 @@ static absl::Status TransformLoopBackward(
   }
   // Record the loop variant parameters used in the backward chain.
   LoopVariantParameterInfo loop_variant_parameter_info;
+  annotation_map.clear();
   // Clone loop in the body of the new loop. We change some things like
   // input/output shapes and how we connect loop iterator to the original
   // chains that we are pipelining.
@@ -3093,7 +3090,6 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<TuplePointsToAnalysis> tuple_points_to_analysis,
       TuplePointsToAnalysis::Run(module));
-  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
 
   std::vector<std::pair<HloInstruction*, std::unique_ptr<WhileLoopAnalysis>>>
       loop_analyses;
@@ -3112,7 +3108,7 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
       auto loop_analysis = std::make_unique<WhileLoopAnalysis>(
           instruction, config_.max_pipelining_per_loop,
           config_.pipeline_use_tree, config_.process_different_sized_ops,
-          tuple_points_to_analysis.get(), call_graph.get());
+          tuple_points_to_analysis.get());
       loop_analysis->ComputeLoopStatistics();
       if (loop_analysis->GetLoopIterationCount() &&
           loop_analysis->GetLoopIterationCount()->GetUnsignedValue() > 1) {

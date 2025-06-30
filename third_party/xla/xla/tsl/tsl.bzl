@@ -1,5 +1,6 @@
 """Provides build configuration for TSL"""
 
+load("@rules_python//python:py_library.bzl", "py_library")
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
@@ -10,6 +11,7 @@ load(
     "if_enable_mkl",
     "if_mkl",
     "if_mkldnn_aarch64_acl",
+    "if_mkldnn_aarch64_acl_openmp",
     "if_mkldnn_openmp",
     "onednn_v3_define",
 )
@@ -221,7 +223,6 @@ def if_nccl(if_true, if_false = []):
     return select({
         clean_dep("//xla/tsl:no_nccl_support"): if_false,
         clean_dep("//xla/tsl:windows"): if_false,
-        clean_dep("//xla/tsl:arm_any"): if_false,
         "//conditions:default": if_true,
     })
 
@@ -231,16 +232,6 @@ def if_with_tpu_support(if_true, if_false = []):
         clean_dep("//xla/tsl:with_tpu_support"): if_true,
         "//conditions:default": if_false,
     })
-
-# These configs are used to determine whether we should use CUDA tools and libs in cc_libraries.
-# They are intended for the OSS builds only.
-def if_cuda_tools(if_true, if_false = []):  # buildifier: disable=unused-variable
-    """Shorthand for select()'ing on whether we're building with hCUDA tools."""
-    return select({"@local_config_cuda//cuda:cuda_tools": if_true, "//conditions:default": if_false})  # copybara:comment_replace return if_false
-
-def if_cuda_libs(if_true, if_false = []):  # buildifier: disable=unused-variable
-    """Shorthand for select()'ing on whether we need to include hermetic CUDA libraries."""
-    return select({"@local_config_cuda//cuda:cuda_tools_and_libs": if_true, "//conditions:default": if_false})  # copybara:comment_replace return if_false
 
 def get_win_copts(is_external = False):
     WINDOWS_COPTS = [
@@ -333,6 +324,7 @@ def tsl_copts(
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         onednn_v3_define() +
         if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
+        if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +
         if_android_arm(["-mfpu=neon", "-fomit-frame-pointer"]) +
         if_linux_x86_64(["-msse3"]) +
@@ -815,7 +807,7 @@ def tsl_pybind_extension_opensource(
         testonly = testonly,
     )
 
-    native.py_library(
+    py_library(
         name = name,
         data = select({
             clean_dep("//xla/tsl:windows"): [pyd_file],

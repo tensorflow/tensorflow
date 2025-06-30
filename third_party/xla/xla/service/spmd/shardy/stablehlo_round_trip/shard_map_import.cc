@@ -351,9 +351,8 @@ class ShardMapImportPass
       }
 
       auto manualComputationOp = builder.create<ManualComputationOp>(
-          op->getLoc(), resultTypes, newOperands,
-          TensorShardingPerValueAttr::get(context, inShardings),
-          TensorShardingPerValueAttr::get(context, outShardings), manualAxes);
+          op->getLoc(), resultTypes, newOperands, inShardings, outShardings,
+          manualAxes);
 
       // Inline or clone the called function.
       mlir::Region& manualComputationRegion = manualComputationOp.getRegion();

@@ -15,14 +15,14 @@ sdy.mesh @mesh4 = <["a"=1, "b"=2, "c"=1]>
 // CHECK-SAME:    %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh1, [{"d", ?}, {}], replicated={"b"}>},
 // CHECK-SAME:    %arg2: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh2, [{"a"}, {"b"}]>}
 // CHECK-SAME:  ) -> (
-// CHECK-SAME:    tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh1, [{}, {?}]>},
+// CHECK-SAME:    tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh1, [{}, {?}], unreduced={"d"}>},
 // CHECK-SAME:    tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh1, [{"b"}, {}]>}) {
 func.func @func_and_op_shardings(
   %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh1, [{"a", "b"}, {"c", ?}]>},
   %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh1, [{"d", "e", ?}, {}], replicated={"b", "c"}>},
   %arg2: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh2, [{"a"}, {"b"}]>}
-) -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh1, [{"e"}, {"c", ?}]>},
-      tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh1, [{"a", "b", "c"}, {}], replicated={"e"}>}) {
+) -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh1, [{"e"}, {"c", ?}], unreduced={"a", "d"}>},
+      tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh1, [{"a", "b", "c"}, {}], unreduced={"e"}>}) {
   // CHECK-NEXT:   %[[ADD1:.*]] = stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh1, [{"d", ?}, {?}]>]>}
   // CHECK-NEXT:   %[[ADD2:.*]] = stablehlo.add %arg2, %arg2
   // CHECK-NOT:    sdy.sharding
@@ -71,7 +71,7 @@ func.func @manual_computation(%arg0: tensor<8x16xf32>, %arg1: tensor<16x32xf32>)
   // CHECK-NEXT:          %[[MAN_COMP:.*]] = sdy.manual_computation(%arg0, %arg1)
   // CHECK-SAME{LITERAL}:     in_shardings=[<@mesh1, [{"d"}, {"b"}]>, <@mesh1, [{"b"}, {}], replicated={"d"}>]
   // CHECK-SAME{LITERAL}:     out_shardings=[<@mesh1, [{"d"}, {}], replicated={"b"}>]
-  // CHECK-SAME{LITERAL}:     manual_axes={"b", "d"}
+  // CHECK-SAME{LITERAL}:     manual_axes={"a", "b", "c", "d"}
   // CHECK-SAME:              (%arg2: tensor<2x8xf32>, %arg3: tensor<8x32xf32>) {
   // CHECK-NEXT:            stablehlo.add %arg2, %arg2 {sdy.sharding = #sdy.sharding_per_value<[<@mesh1, [{?}, {?}]>]>}
   // CHECK:               } : (tensor<8x16xf32>, tensor<16x32xf32>) -> tensor<8x32xf32>
@@ -99,7 +99,7 @@ func.func @manual_computation_inlined_mesh(%arg0: tensor<8x16xf32>, %arg1: tenso
   // CHECK-NEXT:          %[[MAN_COMP:.*]] = sdy.manual_computation(%arg0, %arg1)
   // CHECK-SAME{LITERAL}:     in_shardings=[<@mesh4, [{"b"}, {}]>, <mesh<["a"=1, "b"=2, "c"=1]>, [{"b"}, {}]>]
   // CHECK-SAME{LITERAL}:     out_shardings=[<mesh<["a"=1, "b"=2, "c"=1]>, [{"b"}, {}]>]
-  // CHECK-SAME{LITERAL}:     manual_axes={"b"}
+  // CHECK-SAME{LITERAL}:     manual_axes={"a", "b"}
   %0 = sdy.manual_computation(%arg0, %arg1)
       in_shardings=[<@mesh4, [{"b", "a"}, {}]>, <mesh<["a"=1, "b"=2, "c"=1]>, [{"b"}, {}], replicated={"a"}>]
       out_shardings=[<mesh<["a"=1, "b"=2, "c"=1]>, [{"a", "b"}, {}]>]

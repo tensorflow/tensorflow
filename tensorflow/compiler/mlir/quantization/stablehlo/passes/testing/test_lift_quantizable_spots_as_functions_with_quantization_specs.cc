@@ -128,7 +128,8 @@ void TestLiftQuantizableSpotsAsFunctionsWithQuantizationSpecsPass::
   }
 
   pass_manager.addPass(
-      CreateLiftQuantizableSpotsAsFunctionsPass(*quantization_specs));
+      quant::stablehlo::CreateLiftQuantizableSpotsAsFunctionsPass(
+          *quantization_specs));
 
   if (failed(pass_manager.run(getOperation()))) {
     signalPassFailure();

@@ -35,7 +35,7 @@ py_strict_test(
         "no_windows",  # Bugs due to some paths.
     ],
     deps = [
-        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
+        # copybara:uncomment #"//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:client_testlib",

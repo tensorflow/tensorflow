@@ -3061,6 +3061,18 @@ func.func @convert_iota_3d() -> tensor<5x7x9xi32> {
   func.return %0 : tensor<5x7x9xi32>
 }
 
+// CHECK-LABEL:   func @convert_iota_ui64() -> tensor<123xui64> {
+// CHECK-DAG:       %[[VAL_0:.*]] = "tf.Const"() <{value = dense<0> : tensor<ui64>}> : () -> tensor<ui64>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() <{value = dense<123> : tensor<ui64>}> : () -> tensor<ui64>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() <{value = dense<1> : tensor<ui64>}> : () -> tensor<ui64>
+// CHECK:           %[[VAL_3:.*]] = "tf.Range"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) : (tensor<ui64>, tensor<ui64>, tensor<ui64>) -> tensor<123xui64>
+// CHECK:           return %[[VAL_3]] : tensor<123xui64>
+// CHECK:         }
+func.func @convert_iota_ui64() -> tensor<123xui64> {
+  %0 = "mhlo.iota"() <{ iota_dimension = 0 : i64 }> : () -> tensor<123xui64>
+  func.return %0 : tensor<123xui64>
+}
+
 // CHECK-LABEL:   func @convert_avgpool_valid(
 // CHECK-SAME:                                %[[VAL_0:.*]]: tensor<4x16x16x8xf32>) -> tensor<4x7x7x8xf32> {
 // CHECK:           %[[VAL_1:.*]] = "tf.AvgPool"(%[[VAL_0]]) <{data_format = "NHWC", ksize = [1, 3, 3, 1], padding = "VALID", strides = [1, 2, 2, 1]}> : (tensor<4x16x16x8xf32>) -> tensor<4x7x7x8xf32>

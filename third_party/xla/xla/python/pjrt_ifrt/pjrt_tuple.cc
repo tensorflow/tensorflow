@@ -36,7 +36,7 @@ namespace xla {
 namespace ifrt {
 
 /*static*/ absl::StatusOr<tsl::RCReference<PjRtTuple>> PjRtTuple::Create(
-    PjRtCompatibleClient* client, absl::Span<tsl::RCReference<Value>> values) {
+    PjRtCompatibleClient* client, absl::Span<ValueRef> values) {
   return tsl::MakeRef<PjRtTuple>(client, values);
 }
 
@@ -79,14 +79,13 @@ bool PjRtTuple::IsDeleted() const {
 std::string PjRtTuple::DebugString() const {
   return absl::StrFormat(
       "PjRtTuple(%s)",
-      absl::StrJoin(values_, ",",
-                    [](std::string* out, const tsl::RCReference<Value>& value) {
-                      out->append(value->DebugString());
-                    }));
+      absl::StrJoin(values_, ",", [](std::string* out, const ValueRef& value) {
+        out->append(value->DebugString());
+      }));
 }
 int PjRtTuple::Arity() { return values_.size(); }
 
-absl::Status PjRtTuple::Unpack(absl::Span<tsl::RCReference<Value>> values_out) {
+absl::Status PjRtTuple::Unpack(absl::Span<ValueRef> values_out) {
   if (values_out.size() != values_.size()) {
     return InvalidArgument(
         "Wrong number of output values for "
@@ -99,8 +98,7 @@ absl::Status PjRtTuple::Unpack(absl::Span<tsl::RCReference<Value>> values_out) {
 
 char PjRtTuple::ID = 0;
 
-PjRtTuple::PjRtTuple(PjRtCompatibleClient* client,
-                     absl::Span<tsl::RCReference<Value>> values)
+PjRtTuple::PjRtTuple(PjRtCompatibleClient* client, absl::Span<ValueRef> values)
     : client_(client), values_(values.begin(), values.end()) {}
 
 }  // namespace ifrt

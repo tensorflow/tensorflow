@@ -16,6 +16,7 @@
 
 import functools
 import hashlib
+import sys
 
 import numpy as np
 
@@ -1373,15 +1374,21 @@ def parent_frame_arguments():
 
   # Remove the *varargs, and flatten the **kwargs. Both are
   # nested lists.
-  local_vars.pop(variable_arg_name, {})
-  keyword_args = local_vars.pop(keyword_arg_name, {})
+  if sys.version_info >= (3, 13):
+    keyword_args = local_vars.get(keyword_arg_name, {})
+  else:
+    local_vars.pop(variable_arg_name, {})
+    keyword_args = local_vars.pop(keyword_arg_name, {})
 
   final_args = {}
   # Copy over arguments and their values. In general, local_vars
   # may contain more than just the arguments, since this method
   # can be called anywhere in a function.
   for arg_name in arg_names:
-    final_args[arg_name] = local_vars.pop(arg_name)
+    if sys.version_info >= (3, 13):
+      final_args[arg_name] = local_vars[arg_name]
+    else:
+      final_args[arg_name] = local_vars.pop(arg_name)
   final_args.update(keyword_args)
 
   return final_args

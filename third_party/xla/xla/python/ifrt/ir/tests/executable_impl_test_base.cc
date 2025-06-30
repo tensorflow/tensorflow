@@ -126,8 +126,7 @@ IfrtIrExecutableImplTestBase::SerDeRoundTrip(
   return program;
 }
 
-absl::StatusOr<tsl::RCReference<Array>>
-IfrtIrExecutableImplTestBase::CreateArray(
+absl::StatusOr<ArrayRef> IfrtIrExecutableImplTestBase::CreateArray(
     absl::Span<void* const> per_shard_data, Shape shape, DType dtype,
     ShardingParam sharding_param, DeviceListRef device_list) {
   TF_RET_CHECK(per_shard_data.size() == device_list->devices().size())
@@ -139,11 +138,11 @@ IfrtIrExecutableImplTestBase::CreateArray(
   TF_ASSIGN_OR_RETURN(auto per_shard, sharding->Disassemble(shape));
   // All shards have the same shape. Just pick 0.
   Shape per_shard_shape = per_shard[0].first;
-  std::vector<tsl::RCReference<Array>> per_shard_arrays;
+  std::vector<ArrayRef> per_shard_arrays;
   per_shard_arrays.reserve(per_shard_data.size());
   for (int i = 0; i < per_shard_data.size(); ++i) {
     TF_ASSIGN_OR_RETURN(
-        tsl::RCReference<Array> per_shard_array,
+        ArrayRef per_shard_array,
         client_->MakeArrayFromHostBuffer(
             per_shard_data[i], dtype, per_shard_shape,
             /*byte_strides=*/std::nullopt,

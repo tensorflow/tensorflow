@@ -52,7 +52,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:mlir_import_options",
         "@local_xla//xla/mlir/framework/transforms:passes",
         "@local_xla//xla/mlir_hlo:all_passes",
-        "//tensorflow/compiler/mlir/lite:flatbuffer_import",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:error_util",

@@ -361,6 +361,7 @@ void CompileAndFilecheck(
   FunctionalHloRunner::RawCompileOptions opts;
   opts.hlo_passes_mode = hlo_passes_mode;
   opts.num_partitions = num_partitions;
+  opts.spmd_mode = FunctionalHloRunner::SpmdMode::kUseSpmdPartitioning;
   opts.xla_dump_to = dump_dir;
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndCompile(
       *client, xla::DebugOptions{}, preproc_options, opts, hlo_file,
@@ -408,6 +409,20 @@ TEST_F(FunctionalHloRunnerTest, AutoLayoutAssignsNonDefaultLayout) {
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   preproc_options.use_layouts_from_hlo_module = true;
   CompileAndFilecheck(GetHloPath("auto_layout.hlo"),
+                      // Makes LHS contracting dimension minor.
+                      "// CHECK: entry_computation_layout={(bf16[4096,64,8]{0",
+                      preproc_options,
+                      FunctionalHloRunner::HloPassesMode::kStandardCompile,
+                      /*num_partitions=*/1);
+}
+
+TEST_F(FunctionalHloRunnerTest, FixedLayoutAssignsNonDefaultLayout) {
+  if (IsTestingCpu()) {
+    GTEST_SKIP() << "CPU doesn't support auto-layout yet.";
+  }
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  preproc_options.force_auto_layout = true;
+  CompileAndFilecheck(GetHloPath("fixed_layout.hlo"),
                       // Makes LHS contracting dimension minor.
                       "// CHECK: entry_computation_layout={(bf16[4096,64,8]{0",
                       preproc_options,
@@ -632,6 +647,8 @@ TEST_F(FunctionalHloRunnerTest, Sharded2DevicesHloUnoptimizedSnapshot) {
   FunctionalHloRunner::RawCompileOptions raw_compile_options;
   raw_compile_options.num_replicas = 1;
   raw_compile_options.num_partitions = 2;
+  raw_compile_options.spmd_mode =
+      FunctionalHloRunner::SpmdMode::kUseSpmdPartitioning;
   FunctionalHloRunner::RunningOptions running_options;
 
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
@@ -778,6 +795,25 @@ TEST(FunctionalHloRunnerTest, TestDebugOptionsAreNotOverwrittenByRawOptions) {
                                                 /*kv_store=*/nullptr));
   EXPECT_TRUE(compile_options.executable_build_options.debug_options()
                   .xla_dump_hlo_as_text());
+}
+
+TEST(FunctionalHloRunnerTest, RespectUseSpmdPartitioning) {
+  // Respect disabled SPMD partitioning if #partitions is > 1.
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.spmd_mode =
+      FunctionalHloRunner::SpmdMode::kNotUseSpmdPartitioning;
+  raw_compile_options.num_replicas = 1;
+  raw_compile_options.num_partitions = 16;
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
+  TF_ASSERT_OK_AND_ASSIGN(
+      CompileOptions compile_options,
+      FunctionalHloRunner::CreateCompileOptions(*client, raw_compile_options,
+                                                /*task_id=*/0, /*num_nodes=*/1,
+                                                /*kv_store=*/nullptr));
+  EXPECT_FALSE(
+      compile_options.executable_build_options.use_spmd_partitioning());
 }
 
 }  // namespace

@@ -40,19 +40,23 @@ class CodegenBackend {
   virtual absl::string_view name() const = 0;
 
   // Returns all supported configs for the given HLO instruction.
-  virtual std::vector<std::unique_ptr<BackendConfig>> GetSupportedConfigs(
-      const HloInstruction& instr) = 0;
+  virtual absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+  GetSupportedConfigs(const HloInstruction& instr) = 0;
 
   // Returns a default config for the given HLO instruction.
   virtual absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
-      HloInstruction* instr) {
+      const HloInstruction& instr) {
     return absl::UnimplementedError("Not implemented.");
   };
 
-  // Wraps the HLO instruction in a module, assigns the given config, and
+  // Wraps the HLO instruction in a module, applies the given config, and
   // compiles it.
   virtual absl::StatusOr<std::unique_ptr<Executable>> Compile(
       const HloInstruction& instr, const BackendConfig& config) = 0;
+
+  // Apply config to the given HLO instruction.
+  virtual absl::Status ApplyConfig(HloInstruction& instr,
+                                   const BackendConfig& config) = 0;
 };
 
 }  // namespace xla

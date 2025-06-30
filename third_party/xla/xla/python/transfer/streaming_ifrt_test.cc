@@ -25,6 +25,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
@@ -42,21 +43,22 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/casts.h"
 
 namespace aux {
 namespace {
 
-xla::ifrt::PjRtDevice* GetOtherDevice(tsl::RCReference<xla::ifrt::Array> arr) {
+xla::ifrt::PjRtDevice* GetOtherDevice(xla::ifrt::ArrayRef arr) {
   auto* ifrt_client =
       llvm::dyn_cast_or_null<xla::ifrt::PjRtClient>(arr->client());
   return llvm::dyn_cast<xla::ifrt::PjRtDevice>(ifrt_client->devices()[1]);
 }
 
-xla::ifrt::PjRtClient* GetIfrtClient(tsl::RCReference<xla::ifrt::Array> arr) {
+xla::ifrt::PjRtClient* GetIfrtClient(xla::ifrt::ArrayRef arr) {
   return llvm::dyn_cast_or_null<xla::ifrt::PjRtClient>(arr->client());
 }
 
-xla::Shape ShapeFromIfrt(tsl::RCReference<xla::ifrt::Array> arr) {
+xla::Shape ShapeFromIfrt(xla::ifrt::ArrayRef arr) {
   auto* pjrt_arr =
       llvm::dyn_cast_or_null<xla::ifrt::PjRtCompatibleArray>(arr.get());
   auto buffer = pjrt_arr->pjrt_buffers()[0].get();
@@ -65,7 +67,7 @@ xla::Shape ShapeFromIfrt(tsl::RCReference<xla::ifrt::Array> arr) {
 
 struct SingleBufferCopyPlan {
   std::vector<tsl::RCReference<ChunkDestination>> dests;
-  std::vector<tsl::RCReference<xla::ifrt::Array>> arrays;
+  std::vector<xla::ifrt::ArrayRef> arrays;
 };
 
 // Single buffer copy plan example.
@@ -86,7 +88,7 @@ absl::StatusOr<SingleBufferCopyPlan> SetupTransferDestList(
 
   results.dests.push_back(MakeDmaDestination(atm, 0, copy_size));
   TF_ASSIGN_OR_RETURN(auto arr,
-                   ifrt_client->CreatePjRtArray(atm->RetrieveBuffer(0)));
+                      ifrt_client->CreatePjRtArray(atm->RetrieveBuffer(0)));
   results.arrays.push_back(std::move(arr));
   return results;
 }
@@ -98,11 +100,15 @@ TEST(PremappedCopierState, RoundTrip) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto arr, tests::CopyTestPatternToDevice(
                     client.get(), client->devices()[0], test_pattern));
+  std::shared_ptr<xla::PjRtClient> pjrt_client =
+      tensorflow::down_cast<xla::ifrt::PjRtClient*>(arr->client())
+          ->shared_ptr_pjrt_client();
   TF_ASSERT_OK_AND_ASSIGN(
-      auto scratch, AllocateAndMapPjrtMemory(arr->client(), 1024 * 1024 * 16));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto src_work_units,
-      DmaCopyChunk::DivideBufferCopiesEvenly(arr, xfer_size, 0));
+      auto scratch, AllocateAndMapPjrtMemory(pjrt_client, 1024 * 1024 * 16));
+  auto* array = static_cast<xla::ifrt::PjRtCompatibleArray*>(arr.get());
+  TF_ASSERT_OK_AND_ASSIGN(auto src_work_units,
+                          DmaCopyChunk::DivideBufferCopiesEvenly(
+                              array->pjrt_buffers()[0], xfer_size, 0));
   TF_ASSERT_OK_AND_ASSIGN(
       auto dest_copy_plan,
       SetupTransferDestList(ShapeFromIfrt(arr), GetOtherDevice(arr),
@@ -119,11 +125,13 @@ TEST(PremappedCopierState, RoundTrip) {
 
   for (size_t i = 0; i < src_work_units.size(); ++i) {
     cstate->ScheduleCopy(
-        src_work_units[i],
-        [&mu, &local_queue](PremappedCopierState* state, void* buf,
+        std::move(src_work_units[i]),
+        [&mu, &local_queue](PremappedCopierState* state,
+                            absl::StatusOr<void*> buf,
                             const DmaCopyChunk& chunk) {
+          CHECK_OK(buf.status());
           absl::MutexLock l(&mu);
-          local_queue.push_back(LocalQueueInfo{buf, chunk.offset, chunk.size});
+          local_queue.push_back(LocalQueueInfo{*buf, chunk.offset, chunk.size});
         });
   }
   for (size_t i = 0; i < src_work_units.size(); ++i) {
@@ -141,19 +149,26 @@ TEST(PremappedCopierState, RoundTrip) {
 
   std::vector<int32_t> result;
   result.resize(test_pattern.size());
-  TF_ASSERT_OK(pull_result_arr
-                ->CopyToHostBuffer(result.data(), std::nullopt,
-                                   xla::ifrt::ArrayCopySemantics::kReuseInput)
-                .Await());
+  TF_ASSERT_OK(
+      pull_result_arr
+          ->CopyToHostBuffer(result.data(), std::nullopt,
+                             xla::ifrt::ArrayCopySemantics::kReuseInput)
+          .Await());
   EXPECT_EQ(result, test_pattern);
 }
 
 TEST(Semaphore, Basic) {
   internal::IsLastSemaphore semaphore(15);
   for (size_t i = 0; i < 10; ++i) {
-    semaphore.DoWork(1, [&](bool is_last) { EXPECT_FALSE(is_last); });
+    CHECK_OK(semaphore.DoWork(1, [&](bool is_last) -> absl::Status {
+      EXPECT_FALSE(is_last);
+      return absl::OkStatus();
+    }));
   }
-  semaphore.DoWork(5, [&](bool is_last) { EXPECT_TRUE(is_last); });
+  CHECK_OK(semaphore.DoWork(5, [&](bool is_last) -> absl::Status {
+    EXPECT_TRUE(is_last);
+    return absl::OkStatus();
+  }));
 }
 
 TEST(Semaphore, Async) {
@@ -177,24 +192,26 @@ TEST(Semaphore, Async) {
       tsl::Env::Default()->StartThread({}, "t1", [&]() {
         for (size_t i = 0; i < 8; ++i) {
           thread_wait_flip(0);
-          o_semaphore.DoWork(1, [&](bool is_last) {
+          CHECK_OK(o_semaphore.DoWork(1, [&](bool is_last) -> absl::Status {
             thread_flip(0);
             EXPECT_FALSE(is_last);
-          });
+            return absl::OkStatus();
+          }));
         }
       }));
   std::unique_ptr<tsl::Thread> t2(
       tsl::Env::Default()->StartThread({}, "t2", [&]() {
         for (size_t i = 0; i < 8; ++i) {
           thread_wait_flip(1);
-          o_semaphore.DoWork(1, [&](bool is_last) {
+          CHECK_OK(o_semaphore.DoWork(1, [&](bool is_last) -> absl::Status {
             thread_flip(1);
             if (i == 7) {
               EXPECT_TRUE(is_last);
             } else {
               EXPECT_FALSE(is_last);
             }
-          });
+            return absl::OkStatus();
+          }));
         }
       }));
 }

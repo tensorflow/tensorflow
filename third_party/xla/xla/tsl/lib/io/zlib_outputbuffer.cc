@@ -99,7 +99,7 @@ void ZlibOutputBuffer::AddToInputBuffer(absl::string_view data) {
   int32_t free_tail_bytes =
       input_buffer_capacity_ - (read_bytes + unread_bytes);
 
-  if (static_cast<int32>(bytes_to_write) > free_tail_bytes) {
+  if (bytes_to_write > static_cast<size_t>(free_tail_bytes)) {
     memmove(z_stream_input_.get(), z_stream_->next_in, z_stream_->avail_in);
     z_stream_->next_in = z_stream_input_.get();
   }

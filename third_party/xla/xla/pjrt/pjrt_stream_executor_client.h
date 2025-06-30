@@ -334,11 +334,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
       const LiteralSlice& literal, PjRtMemorySpace* memory_space,
       const Layout* device_layout) override;
 
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
-                              PjRtDevice* device,
-                              PjRtCrossHostRecvNotifier notifier) override;
-
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
       std::function<void()> on_delete_callback,
@@ -367,7 +362,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
     return should_stage_host_to_device_transfers_;
   }
 
-  gpu::GpuExecutableRunOptions* gpu_run_options() const {
+  virtual gpu::GpuExecutableRunOptions* gpu_run_options() {
     return gpu_run_options_.get();
   }
 
@@ -382,16 +377,9 @@ class PjRtStreamExecutorClient : public PjRtClient {
   friend class PjRtStreamExecutorBuffer;
   friend class PjRtStreamExecutorRawBuffer;
 
-  virtual absl::Status EnqueueCrossHostReceive(
-      absl::Span<const std::unique_ptr<PjRtBuffer>> buffers,
-      std::shared_ptr<BufferSequencingEvent> definition_event,
-      PjRtCrossHostRecvNotifier notifier) const {
-    return Unimplemented("Cross host receives not implemented.");
-  }
-
-  virtual void CopyToRemoteDevice(
-      PjRtBuffer* buffer, absl::string_view serialized_descriptor,
-      PjRtBuffer::RemoteSendCallback on_done) const {
+  virtual void CopyToRemoteDevice(PjRtBuffer* buffer,
+                                  absl::string_view serialized_descriptor,
+                                  PjRtBuffer::RemoteSendCallback on_done) {
     on_done(Unimplemented("Cross host sends not implemented."),
             /*sends_were_enqueued=*/false);
   }
@@ -427,22 +415,32 @@ class PjRtStreamExecutorClient : public PjRtClient {
   };
 
   // Updates `options` for compilation.
-  absl::Status UpdateCompileOptions(CompileOptions* options);
+  absl::Status UpdateCompileOptions(CompileOptions* options,
+                                    bool lookup_addressable_devices);
 
   // Same as above, but also returns the executable extras.
   absl::StatusOr<ExecutableExtras> UpdateCompileOptionsAndGetExecutableExtras(
       CompileOptions* options);
 
   // Updates `options` for compilation, and gets the executable extras if
-  // `returned_extras` is not null.
+  // `returned_extras` is not null. It skips addressable device lookup if
+  // `lookup_addressable_devices` is false.
   absl::Status UpdateCompileOptionsInternal(CompileOptions* options,
-                                            ExecutableExtras* returned_extras);
+                                            ExecutableExtras* returned_extras,
+                                            bool lookup_addressable_devices);
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      const XlaComputation& computation, CompileOptions options,
+      bool lookup_addressable_devices);
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      mlir::ModuleOp mlir_module, CompileOptions options,
+      bool lookup_addressable_devices);
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> CompileInternal(
       const XlaComputation& computation,
       const std::vector<const Shape*>& argument_layout_pointers,
       LayoutCanonicalizationCallback layout_canonicalization_callback,
-      CompileOptions options);
+      CompileOptions options, bool lookup_addressable_devices);
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> BuildPjRtExecutable(
       std::vector<std::unique_ptr<LocalExecutable>> local_executables,
@@ -674,7 +672,6 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBuffer {
   PjRtStreamExecutorClient* const client_;
   const Shape on_device_shape_;
   PjRtStreamExecutorDevice* const device_;
-  PjRtMemorySpace* const memory_space_;
 };
 
 // Allocates the device buffers for a buffer that will be used as the
@@ -740,9 +737,12 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
     }
     CompiledMemoryStats memory_stats = CompiledMemoryStats();
     memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
-    const HloProto* proto = executables_[0]->executable()->hlo_proto();
+    const BufferAssignmentProto* proto =
+        executables_[0]->executable()->buffer_assignment_proto();
     if (proto != nullptr) {
-      memory_stats.serialized_hlo_proto = proto->SerializeAsString();
+      memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
+      TF_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(*proto));
+      memory_stats.peak_memory_in_bytes = peak_memory;
     }
     memory_stats.PopulateBufferStatsFromAllocations(
         executables_[0]->executable()->GetAllocations());

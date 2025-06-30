@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_OP_OR_ARG_NAME_MAPPER_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "absl/strings/string_view.h"
@@ -36,6 +37,12 @@ using OpOrVal = llvm::PointerUnion<mlir::Operation*, mlir::Value>;
 // Mapper from operation or value to name.
 class OpOrArgNameMapper {
  public:
+  // Returns mapped name for the operation or value.
+  std::optional<llvm::StringRef> GetMappedName(OpOrVal op_or_val);
+
+  // Returns mapped name for the operation or value as a string_view.
+  std::optional<absl::string_view> GetMappedNameView(OpOrVal op_or_val);
+
   // Returns unique name for the given prefix.
   llvm::StringRef GetUniqueName(llvm::StringRef prefix, int hash_value = 0);
 

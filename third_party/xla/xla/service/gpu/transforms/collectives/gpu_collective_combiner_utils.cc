@@ -29,9 +29,8 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla::gpu {
-namespace {
 
-int64_t GetDefaultValue(HloOpcode opcode) {
+static int64_t GetDefaultValue(HloOpcode opcode) {
   if (opcode == HloOpcode::kAllGather) {
     return kDefaultAllGatherCombineThreshold;
   } else if (opcode == HloOpcode::kAllReduce) {
@@ -43,8 +42,6 @@ int64_t GetDefaultValue(HloOpcode opcode) {
   }
   return -1;
 }
-
-}  // namespace
 
 int64_t MaxAvailableMemory(const HloModule& module,
                            const se::DeviceDescription& device_info) {
@@ -82,15 +79,19 @@ absl::Status AppendPipelinedInstruction(HloInstruction* instr,
   return instr->set_backend_config(config);
 }
 
+bool IsPipelinedCollective(const HloInstruction& instr) {
+  auto backend_config = instr.backend_config<GpuBackendConfig>();
+  if (!backend_config.ok()) {
+    VLOG(2) << "Cannot read backend config for: " << instr.ToString();
+    return false;
+  }
+  return backend_config->collective_backend_config().is_pipelined();
+}
+
 bool ContainsPipelinedInstruction(const HloModule& module) {
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instr : computation->instructions()) {
-      auto backend_config = instr->backend_config<GpuBackendConfig>();
-      if (!backend_config.ok()) {
-        VLOG(2) << "Cannot read backend config for: " << instr->ToString();
-        continue;
-      }
-      if (backend_config->collective_backend_config().is_pipelined()) {
+      if (IsPipelinedCollective(*instr)) {
         return true;
       }
     }

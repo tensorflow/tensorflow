@@ -251,13 +251,11 @@ class HloComputation {
                                    std::unique_ptr<HloInstruction> instruction);
 
   // Remove the param_no'th parameter from the computation.
-  // Note this is only applicatable to the computation for the fusion
-  // instruction.
+  // Note this is only applicable to the computation for the fusion instruction.
   absl::Status RemoveParameter(int64_t param_no);
 
   // Remove unused parameters from the computation.
-  // Note this is only applicatable to the computation for the fusion
-  // instruction.
+  // Note this is only applicable to the computation for the fusion instruction.
   absl::Status RemoveUnusedParametersFromFusedComputation();
 
   // Remove unused parameters from the computation. Unlike
@@ -810,7 +808,9 @@ class HloComputation {
   }
 
   // Returns if this computation is an async computation.
-  bool IsAsyncComputation() const { return async_start_ != nullptr; }
+  bool IsAsyncComputation() const {
+    return !caller_instructions(HloOpcode::kAsyncStart).empty();
+  }
 
   // Returns true if this computation only contains send/recv instructions.
   bool OnlyContainsSendRecv() {
@@ -823,19 +823,6 @@ class HloComputation {
     }
     return true;
   }
-
-  // Returns the owning async instruction. It's nullptr if this is not an async
-  // computation.
-  HloInstruction* AsyncStart() const { return async_start_; }
-
-  void AddAsyncStart(HloInstruction* async_instruction) {
-    // TODO: Add instruction type for async instructions.
-    CHECK(instruction_type() == InstructionType::kUnset);
-    CHECK(async_instruction->opcode() == HloOpcode::kAsyncStart);
-    async_start_ = async_instruction;
-  }
-
-  void RemoveAsyncStart() { async_start_ = nullptr; }
 
   // Clear the unique ID of the computation so that it can be re-assigned, such
   // as for the purpose of compacting the unique IDs.
@@ -1041,12 +1028,6 @@ class HloComputation {
   // /*count=*/int> in the high bits and a CallersType in the least significant
   // bit.
   uintptr_t callers_ = 0;
-
-  // If this computation is an async computation, this field points to the
-  // first async instruction (async-start) in the asynchronous op chain that
-  // calls this computation.
-  // Otherwise, this is empty.
-  HloInstruction* async_start_ = nullptr;
 
   HloInstruction::InstructionVector param_instructions_;
 

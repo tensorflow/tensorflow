@@ -35,8 +35,10 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_value.h"
@@ -207,8 +209,23 @@ NanoRtExecutable::ExecuteOptions::set_launch_id(int32_t launch_id) {
 }
 
 NanoRtExecutable::ExecuteOptions&
-NanoRtExecutable::ExecuteOptions::set_device_ordinal(int32_t device_ordinal) {
-  device_ordinal_ = device_ordinal;
+NanoRtExecutable::ExecuteOptions::set_local_device_id(
+    LocalDeviceId local_device_id) {
+  local_device_id_ = local_device_id;
+  return *this;
+}
+
+NanoRtExecutable::ExecuteOptions&
+NanoRtExecutable::ExecuteOptions::set_global_device_id(
+    GlobalDeviceId global_device_id) {
+  global_device_id_ = global_device_id;
+  return *this;
+}
+
+NanoRtExecutable::ExecuteOptions&
+NanoRtExecutable::ExecuteOptions::set_device_assignment(
+    DeviceAssignment* device_assignment) {
+  device_assignment_ = device_assignment;
   return *this;
 }
 
@@ -368,22 +385,30 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
                                               /*xfeed=*/nullptr,
                                               options.intra_op_thread_pool(),
                                               options.task_runner()}),
+          collective_execute_params(
+              RunId(options.launch_id()), options.local_device_id().value(),
+
+              GlobalDeviceId(options.global_device_id()),
+              options.device_assignment(), /*collectives=*/nullptr),
           custom_call_execute_params(
-              RunId(options.launch_id()), options.device_ordinal(),
+              RunId(options.launch_id()), options.local_device_id().value(),
               options.intra_op_thread_pool(), options.ffi_context()) {
+      execute_params.collective_params = &collective_execute_params;
       execute_params.custom_call_params = &custom_call_execute_params;
     }
 
     cpu::BufferAllocations allocations;
     Thunk::ExecuteParams execute_params;
+    Thunk::CollectiveExecuteParams collective_execute_params;
     Thunk::CustomCallExecuteParams custom_call_execute_params;
   };
 
-  // Do a heap allocation if we're running with a thread pool or using
-  // custom calls. This allows us to keep the execution context
-  // alive as long as we need it, but also to skip a dynamic allocation when it
-  // is not required.
-  if (options.intra_op_thread_pool() || options.ffi_context()) {
+  // Do a heap allocation if we're running with a thread pool, using
+  // custom calls, or passed a device assignment. This allows us to keep the
+  // execution context alive as long as we need it, but also to skip a dynamic
+  // allocation when it is not required.
+  if (options.intra_op_thread_pool() || options.ffi_context() ||
+      options.device_assignment()) {
     auto execution_context = std::make_unique<ExecutionContext>(
         std::move(buffers), executable->function_library(), options);
 

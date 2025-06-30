@@ -94,9 +94,11 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
+#include "xla/backends/cpu/transforms/dot_library_rewriter.h"
 #include "xla/backends/cpu/transforms/xnn_graph_fusion.h"
 #include "xla/backends/cpu/xnn_fusion.h"
 #include "xla/cpu_function_runtime.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/analysis/indexed_array_analysis.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -451,7 +453,8 @@ void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
 }
 
 std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
-    absl::string_view name, HloModule* module, bool is_fusion_emitters) {
+    absl::string_view name, HloModule* module, bool is_fusion_emitters,
+    bool is_onednn_compatible) {
   // Run the following passes to a fixed point.
   auto pipeline =
       std::make_unique<HloPassFix<HloPassPipeline>>(std::string(name));
@@ -465,6 +468,7 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
       !module->config().debug_options().xla_cpu_enable_fast_min_max());
   options.set_supports_non_canonical_dots(false);
   options.set_executing_on_cpu(true);
+  options.set_enable_onednn_support(is_onednn_compatible);
   pipeline->AddPass<AlgebraicSimplifier>(options);
   pipeline->AddPass<SortSimplifier>();
   pipeline->AddPass<HloDCE>();
@@ -512,6 +516,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       is_thunk_runtime &&
       module->config().debug_options().xla_cpu_use_fusion_emitters();
   bool use_shardy_partitioner = module->config().use_shardy_partitioner();
+  bool is_onednn_compatible = false;
   if (num_partitions > 1) {
     if (!module->config().use_spmd_partitioning()) {
       return InvalidArgument(
@@ -522,6 +527,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     // Run some IR cleanup passes before running the SPMD partitioning
     // passes.
     AddHloVerifier(&spmd_pipeline);
+    spmd_pipeline.AddPass<FlattenCallGraph>();
     spmd_pipeline.AddPass<CallInliner>();
     spmd_pipeline.AddPass<ZeroSizedHloElimination>();
     spmd_pipeline.AddPass<ConditionalCanonicalizer>();
@@ -539,6 +545,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   } else {
     HloPassPipeline sharding_removal_pipeline("sharding-removal");
     AddHloVerifier(&sharding_removal_pipeline);
+    sharding_removal_pipeline.AddPass<FlattenCallGraph>();
     // Remove redundant sharding ops when partition_count == 1.
     sharding_removal_pipeline.AddPass<ShardingRemover>();
     // Run ShardyXLA without propagation, which enforces use-tuple-args.
@@ -559,6 +566,19 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
         SubByteNormalization::SET_ELEMENT_SIZE);
     TF_RETURN_IF_ERROR(subbyte_packer_pipeline.Run(module).status());
   }
+
+  // Guard this experimental pipeline with flags until we make sure that
+  // calling `DotDecomposer` early is okay.
+  DotLibraryRewriterOptions options = {
+      /*use_onednn=*/module->config().debug_options().xla_cpu_use_onednn(),
+      /*use_xnnpack=*/module->config().debug_options().xla_cpu_use_xnnpack()};
+  if (options.use_onednn || options.use_xnnpack) {
+    HloPassPipeline lib_pipeline("dot-library-passes");
+    lib_pipeline.AddPass<DotDecomposer>();
+    lib_pipeline.AddPass<DotLibraryRewriter>(target_machine_features, options);
+    TF_RETURN_IF_ERROR(lib_pipeline.Run(module).status());
+  }
+
   HloPassPipeline pipeline("HLO passes through layout assignment");
   AddHloVerifier(&pipeline);
   pipeline.AddPass<BatchedGatherScatterNormalizer>();
@@ -580,10 +600,10 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   };
   HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
     if (!call_library_for_dot(*instr)) return true;
-    return !IsXnnDotSupported(instr->dot_dimension_numbers(),
-                              instr->operand(0)->shape(),
-                              instr->operand(1)->shape(), instr->shape(),
-                              target_machine_features)
+    return !IsDotSupportedByXnn(instr->dot_dimension_numbers(),
+                                instr->operand(0)->shape(),
+                                instr->operand(1)->shape(), instr->shape(),
+                                target_machine_features)
                 .value_or(false);
   };
   pipeline.AddPass<OperandUpcaster>(upcaster_filter);
@@ -623,7 +643,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Rewrite to custom calls with target as oneDNN library calls.
 #if defined(INTEL_MKL)
   // AOT compiled code runs in single thread.
-  if (!is_aot_compile && !is_thunk_runtime) {
+  is_onednn_compatible = !is_aot_compile && !is_thunk_runtime;
+  if (is_onednn_compatible) {
     // Placing OneDnnOpsRewriter here to match the flax patterns
     // TODO: Decide where would be the appropriate place for this pass to make
     // it more generic
@@ -644,7 +665,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
                                target_machine_features);
 #if defined(INTEL_MKL)
   OneDnnFloatSupport onednn_bf16_support(BF16);
-  if (!is_aot_compile && !is_thunk_runtime) {
+  if (is_onednn_compatible) {
     pipeline.AddPass<FloatNormalization>(&onednn_bf16_support);
   } else {
     pipeline.AddPass<FloatNormalization>(&bf16_support);
@@ -739,8 +760,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
         F16, F32, HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kConvolution>);
   }
 
-  pipeline.AddPass(CreateSimplificationPipeline("simplification", module,
-                                                is_fusion_emitters));
+  pipeline.AddPass(CreateSimplificationPipeline(
+      "simplification", module, is_fusion_emitters, is_onednn_compatible));
 
   // Scatter expander is sandwiched between two simplification pipelines to
   // enable constant folding with the original scatter instructions (which is
@@ -757,7 +778,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   }
 
   pipeline.AddPass(CreateSimplificationPipeline(
-      "post_scatter_expansion_simplification", module, is_fusion_emitters));
+      "post_scatter_expansion_simplification", module, is_fusion_emitters,
+      is_onednn_compatible));
 
   pipeline.AddPass<BitcastDtypesExpander>();
 
@@ -811,6 +833,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   const bool is_thunk_runtime = debug_options.xla_cpu_use_thunk_runtime();
   const bool is_fusion_emitters =
       is_thunk_runtime && debug_options.xla_cpu_use_fusion_emitters();
+  bool is_onednn_compatible = false;
   HloPassPipeline pipeline("HLO passes after layout assignment");
 
   {
@@ -835,7 +858,8 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
 #if defined(INTEL_MKL)
   // AOT compiled code runs in single thread.
-  if (!is_aot_compile && !is_thunk_runtime) {
+  is_onednn_compatible = !is_aot_compile && !is_thunk_runtime;
+  if (is_onednn_compatible) {
     // Run SimplifyFPConversions pass to simplify the BF16 pattern and make it
     // easier to match.
     // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
@@ -852,9 +876,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   }
 #endif  // INTEL_MKL
 
-  if (module->config()
-          .debug_options()
-          .xla_cpu_experimental_xnn_graph_fusion_mode() !=
+  if (debug_options.xla_cpu_experimental_xnn_graph_fusion_mode() !=
       DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED) {
     pipeline.AddPass<XnnGraphFusion>();
   }
@@ -870,7 +892,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // Run this to a fixed point.
   [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
        "simplification after layout assignment"),
-   &module] {
+   &module, is_onednn_compatible] {
     AddHloVerifier(
         &pipeline,
         HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
@@ -884,6 +906,8 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     options.set_minmax_propagate_nan(
         !module->config().debug_options().xla_cpu_enable_fast_min_max());
     options.set_executing_on_cpu(true);
+    // oneDNN support is currently enabled only when thunk runtime is turned off
+    options.set_enable_onednn_support(is_onednn_compatible);
     pipeline.AddPass<AlgebraicSimplifier>(options);
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
@@ -909,12 +933,13 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   pipeline.AddPass<OptimizeInputOutputBufferAlias>(true);
 
   // If enabled we'll use more precise region based analysis for copy removal.
+  AliasInfo alias_info;
   if (debug_options.xla_cpu_copy_insertion_use_region_analysis()) {
     pipeline.AddPass<CopyInsertion>(
-        /*can_share_buffer=*/nullptr,
+        &alias_info,
         /*use_region_based_live_range_analysis=*/-1);
   } else {
-    pipeline.AddPass<CopyInsertion>();
+    pipeline.AddPass<CopyInsertion>(&alias_info);
   }
 
   // The hoisting of small while loops is only useful in the context of the
@@ -1086,10 +1111,15 @@ static void DumpModuleToFile(const llvm::Module& llvm_module,
 // Dumps machine code if dumping is enabled for the module.
 static std::function<void(const llvm::Module&, const llvm::object::ObjectFile&)>
 CreateOrcJITPostCompilationHook(const HloModule* hlo_module,
-                                std::vector<std::string>* obj_files) {
+                                std::vector<ObjFileProto>* obj_files) {
   return [=](const llvm::Module& llvm_module,
              const llvm::object::ObjectFile& obj_file) {
-    if (obj_files) obj_files->push_back(obj_file.getData().str());
+    if (obj_files) {
+      ObjFileProto obj_file_proto;
+      obj_file_proto.set_name(obj_file.getFileName().str());
+      obj_file_proto.set_contents(obj_file.getData().str());
+      obj_files->push_back(obj_file_proto);
+    }
 
     if (DumpingEnabledForHloModule(*hlo_module)) {
       DumpModuleToFile(llvm_module, obj_file, *hlo_module);
@@ -1371,7 +1401,7 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
 
   // We collect compiled object files (machine code) so we can export
   // CpuExecutable to an AOT compilation result.
-  std::vector<std::string> obj_files;
+  std::vector<ObjFileProto> obj_files;
 
   // We split LLVM module and distribute it across separate DyLibs to enable
   // parallel compilation at run time.
@@ -1499,7 +1529,7 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
     // resolved kernels in the compiled LLVM module and execute them together
     // with Thunks implemented as library calls (e.g. oneDNN or Eigen).
     ThunkEmitter thunk_emitter(ir_emitter2, *assignment,
-                               target_machine_features, module->config());
+                               target_machine_features, *module);
     TF_ASSIGN_OR_RETURN(ThunkSequence thunks,
                         thunk_emitter.EmitEntryComputation(*module));
 
@@ -1958,12 +1988,13 @@ CpuCompiler::CompileAheadOfTimeLegacy(
 
   // Run buffer analysis on the HLO graph. This analysis figures out which
   // temporary buffers are required to run the computation.
+  AliasInfo alias_info;
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
-      BufferAssigner::Run(module.get(),
-                          std::make_unique<SequentialHloOrdering>(schedule),
-                          BufferSizeBytesFunction(), memory_alignment,
-                          /*allocate_buffers_for_constants=*/true));
+      BufferAssigner::Run(
+          module.get(), std::make_unique<SequentialHloOrdering>(schedule),
+          BufferSizeBytesFunction(), &alias_info, memory_alignment,
+          /*allocate_buffers_for_constants=*/true));
   // BufferAssignment::ToString() includes a header, so no need for us to
   // print one ourselves.
   if (DumpingEnabledForHloModule(*module)) {
@@ -2188,11 +2219,14 @@ CpuCompiler::CompileAheadOfTimeThunks(
   // corresponding HLO instructions (fusions, elemental instructions, etc.).
   IrEmitter2 ir_emitter2(*module, llvm_module.get(), &nested_ir_emitter);
 
+  ThunkEmitter::Options thunk_emitter_options = {
+      /*compile_copy_as_llvm_kernel=*/aot_options.compile_copy_as_llvm_kernel(),
+      /*is_aot_compilation=*/true};
   // Thunk emitter is responsible for building a Thunk sequence that will
   // resolved kernels in the compiled LLVM module and execute them together
   // with Thunks implemented as library calls (e.g. oneDNN or Eigen).
   ThunkEmitter thunk_emitter(ir_emitter2, *assignment, target_machine_features,
-                             module->config());
+                             *module, thunk_emitter_options);
   TF_ASSIGN_OR_RETURN(ThunkSequence thunks,
                       thunk_emitter.EmitEntryComputation(*module));
 
@@ -2228,10 +2262,14 @@ CpuCompiler::CompileAheadOfTimeThunks(
       GetIRModuleHooks(*module, user_pre_optimization_hook_,
                        user_post_optimization_hook_);
 
-  std::vector<std::string> obj_files;
+  std::vector<ObjFileProto> obj_files;
   auto post_codegen_hook = [&](const llvm::Module& llvm_module,
                                const llvm::object::ObjectFile& obj_file) {
-    obj_files.push_back(obj_file.getData().str());
+    ObjFileProto obj_file_proto;
+    obj_file_proto.set_name(obj_file.getFileName().str());
+    obj_file_proto.set_contents(obj_file.getData().str());
+    obj_files.push_back(std::move(obj_file_proto));
+
     if (!DumpingEnabledForHloModule(*module)) {
       return;
     }
@@ -2422,7 +2460,7 @@ class CpuExecutableAotCompilationResult : public AotCompilationResult {
  public:
   static absl::StatusOr<std::unique_ptr<CpuExecutableAotCompilationResult>>
   Create(const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
-         absl::string_view function_name, std::vector<std::string> obj_files,
+         absl::string_view function_name, std::vector<ObjFileProto> obj_files,
          std::vector<SymbolProto> symbols, const ThunkSequence* thunks,
          CompilationResultProto::ObjFileKind obj_file_kind) {
     std::optional<ThunkSequenceProto> thunk_proto;
@@ -2471,7 +2509,7 @@ class CpuExecutableAotCompilationResult : public AotCompilationResult {
  private:
   CpuExecutableAotCompilationResult(
       const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
-      absl::string_view function_name, std::vector<std::string> obj_files,
+      absl::string_view function_name, std::vector<ObjFileProto> obj_files,
       std::vector<SymbolProto> symbols,
       const std::optional<ThunkSequenceProto>& thunks,
       CompilationResultProto::ObjFileKind obj_file_kind) {
@@ -2480,8 +2518,8 @@ class CpuExecutableAotCompilationResult : public AotCompilationResult {
         hlo_module->config().ToProto();
     *proto_.mutable_buffer_assignment() = buffer_assignment->ToProto();
     proto_.set_entry_function_name(std::string(function_name));
-    for (std::string& obj_file : obj_files) {
-      proto_.add_obj_files(std::move(obj_file));
+    for (auto& obj_file : obj_files) {
+      *proto_.add_object_files() = std::move(obj_file);
     }
 
     for (const auto& symbol : symbols) {
@@ -2555,17 +2593,15 @@ CpuExecutableAotCompilationResult::LoadExecutable(
 
   // We might have an XLA:CPU executable that has only runtime thunks and
   // doesn't have any corresponding object files, and it's absolutely fine.
-  VLOG(2) << "Load XLA:CPU executable from " << proto_.obj_files_size()
+  VLOG(2) << "Load XLA:CPU executable from " << proto_.object_files_size()
           << " object files; entry_function_name="
           << proto_.entry_function_name();
 
-  size_t obj_file_index = 0;
-  for (auto& obj_file : proto_.obj_files()) {
-    llvm::StringRef data(obj_file.data(), obj_file.size());
-    TF_RETURN_IF_ERROR(
-        object_loader.AddObjFile(llvm::MemoryBuffer::getMemBuffer(
-            data, absl::StrCat(proto_.entry_function_name(), "_",
-                               obj_file_index++))));
+  for (auto& obj_file : proto_.object_files()) {
+    llvm::StringRef data(obj_file.contents().data(),
+                         obj_file.contents().size());
+    TF_RETURN_IF_ERROR(object_loader.AddObjFile(
+        llvm::MemoryBuffer::getMemBuffer(data, obj_file.name())));
   }
 
   std::unique_ptr<CpuExecutable> cpu_executable;
@@ -2651,9 +2687,9 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
     return Internal("Could not downcast Executable to CpuExecutable");
 
   // Export object files for all dylibs.
-  std::vector<std::string> obj_files;
+  std::vector<ObjFileProto> obj_files;
   for (const auto& obj_file : cpu_executable->obj_files()) {
-    obj_files.push_back(std::string(obj_file));
+    obj_files.push_back(obj_file);
   }
 
   auto kind = cpu_executable->has_thunks() ? CompilationResultProto::KERNELS
@@ -2697,9 +2733,10 @@ absl::StatusOr<HloSchedule> CpuCompiler::CreateHloSchedule(
 absl::StatusOr<std::unique_ptr<BufferAssignment>>
 CpuCompiler::CreateBufferAssignment(const HloModule& module) const {
   // Run buffer allocation on the HLO graph.
+  AliasInfo alias_info;
   return BufferAssigner::Run(
       &module, std::make_unique<SequentialHloOrdering>(module.schedule()),
-      BufferSizeBytesFunction(), memory_alignment,
+      BufferSizeBytesFunction(), &alias_info, memory_alignment,
       /*allocate_buffers_for_constants=*/true);
 }
 

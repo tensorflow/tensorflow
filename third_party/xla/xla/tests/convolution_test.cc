@@ -23,6 +23,8 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
@@ -42,7 +44,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/types.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -124,7 +125,7 @@ class ForwardPassConvolution_3x3x256_256_OutputZ_Iota : public ConvolutionTest {
 };
 
 TYPED_TEST_CASE(ForwardPassConvolution_3x3x256_256_OutputZ_Iota, TestTypes);
-XLA_TYPED_TEST(ForwardPassConvolution_3x3x256_256_OutputZ_Iota, Types) {
+TYPED_TEST(ForwardPassConvolution_3x3x256_256_OutputZ_Iota, Types) {
   this->RunTest();
 }
 
@@ -275,7 +276,7 @@ class Convolve_1x1x4x4_1x1x3x3_Same : public ConvolutionTest {
 TYPED_TEST_CASE(Convolve_1x1x4x4_1x1x3x3_Same, TestTypes);
 TYPED_TEST(Convolve_1x1x4x4_1x1x3x3_Same, Types) { this->RunTest(); }
 
-XLA_TEST_F(ConvolutionTest, Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid) {
+TEST_F(ConvolutionTest, Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid) {
   XlaBuilder builder(TestName());
   std::vector<int64_t> input_dims = {1, 4, 2, 3, 3};
   std::vector<int64_t> filter_dims = {2, 2, 2, 3, 3};
@@ -1534,7 +1535,7 @@ class ConvolveWithAndWithoutCanonicalization
     : public ConvolutionTest,
       public ::testing::WithParamInterface<bool> {};
 
-XLA_TEST_P(ConvolveWithAndWithoutCanonicalization, Convolve2D_NoSpatialDims) {
+TEST_P(ConvolveWithAndWithoutCanonicalization, Convolve2D_NoSpatialDims) {
   if (GetParam()) {
     mutable_debug_options()->add_xla_disable_hlo_passes(
         "convolution-canonicalization");
@@ -1573,7 +1574,7 @@ INSTANTIATE_TEST_CASE_P(ConvolveWithAndWithoutCanonicalization_Instantiation,
                         ConvolveWithAndWithoutCanonicalization,
                         ::testing::Values(true, false));
 
-XLA_TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
+TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
   XlaBuilder builder(TestName());
   Shape input_shape = ShapeUtil::MakeShape(BF16, {1, 1, 1, 2});
   Shape filter_shape = ShapeUtil::MakeShape(BF16, {1, 1, 1, 2});
@@ -1597,7 +1598,7 @@ XLA_TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
 
 // Check that GPU convs still work if the CudnnAlgorithmPicker pass is disabled.
 // (We run this test on all platforms, because, what the heck.)
-XLA_TEST_F(ConvolutionTest, NoCudnnAlgorithmPicker) {
+TEST_F(ConvolutionTest, NoCudnnAlgorithmPicker) {
   if (IsRocm()) {
     GTEST_SKIP();
   }
@@ -1621,7 +1622,7 @@ XLA_TEST_F(ConvolutionTest, NoCudnnAlgorithmPicker) {
   ComputeAndCompare(&builder, {&input_data_literal, &filter_data_literal});
 }
 
-XLA_TEST_F(ConvolutionTest, ConvolveF32BackwardInputGroupedConvolution) {
+TEST_F(ConvolutionTest, ConvolveF32BackwardInputGroupedConvolution) {
   XlaBuilder builder(TestName());
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 64, 100, 100});
   Array4D<float> input_data(1, 64, 100, 100);
@@ -1666,7 +1667,10 @@ class ConvolutionHloTest
   }
 };
 
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_TPU(ConvolveF64Forward)) {
+TEST_F(ConvolutionHloTest, ConvolveF64Forward) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   if (IsRocm()) {
     GTEST_SKIP() << "double datatype is not yet supported in ROCm";
   }
@@ -1681,7 +1685,10 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_GPU(ConvolveC64Forward)) {
+TEST_F(ConvolutionHloTest, ConvolveC64Forward) {
+  if (test::DeviceTypeIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1693,7 +1700,7 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, ConvolveF32ForwardReversed) {
+TEST_F(ConvolutionHloTest, ConvolveF32ForwardReversed) {
   if (IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm";
   }
@@ -1709,7 +1716,10 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_TPU(ConvolveF64BackwardFilter)) {
+TEST_F(ConvolutionHloTest, ConvolveF64BackwardFilter) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   if (IsRocm()) {
     GTEST_SKIP() << "double datatype is not yet supported in ROCm";
   }
@@ -1724,7 +1734,10 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_TPU(ConvolveF64BackwardInput)) {
+TEST_F(ConvolutionHloTest, ConvolveF64BackwardInput) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   if (IsRocm()) {
     GTEST_SKIP() << "double datatype is not yet supported in ROCm";
   }
@@ -1740,7 +1753,7 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, ConvolveBackwardInput) {
+TEST_F(ConvolutionHloTest, ConvolveBackwardInput) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1753,7 +1766,7 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, SwappedOperandConvolve) {
+TEST_F(ConvolutionHloTest, SwappedOperandConvolve) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1767,7 +1780,7 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, SwappedOperandConvolveWithStride) {
+TEST_F(ConvolutionHloTest, SwappedOperandConvolveWithStride) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1780,7 +1793,7 @@ ENTRY Test {
 })";
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }
-XLA_TEST_F(ConvolutionHloTest, SwappedOperandConvolve2) {
+TEST_F(ConvolutionHloTest, SwappedOperandConvolve2) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1794,7 +1807,7 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, TestConv0D) {
+TEST_F(ConvolutionHloTest, TestConv0D) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1806,7 +1819,7 @@ ENTRY TestComputation {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, TestConv2DF16) {
+TEST_F(ConvolutionHloTest, TestConv2DF16) {
   std::string kHlo = R"(
 HloModule TestModule
 
@@ -1819,7 +1832,7 @@ ENTRY TestComputation {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, TestFusedConv2D) {
+TEST_F(ConvolutionHloTest, TestFusedConv2D) {
   std::string kHlo = R"(
 HloModule TestModule
 
@@ -1877,7 +1890,7 @@ ENTRY TestComputation {
                     ErrorSpec{0.03, 0.03}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, TestFusedConv3D) {
+TEST_F(ConvolutionHloTest, TestFusedConv3D) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1895,7 +1908,7 @@ ENTRY TestComputation {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, TestBooleanInput) {
+TEST_F(ConvolutionHloTest, TestBooleanInput) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1991,7 +2004,7 @@ class Transposed2DConvHloTest
   int lhs_dilation_y_;
 };
 
-XLA_TEST_P(Transposed2DConvHloTest, Simple) {
+TEST_P(Transposed2DConvHloTest, Simple) {
   const auto input_shape =
       ShapeUtil::MakeShape(F32, {batch_, input_channels_, input_x_, input_y_});
   const auto kernel_shape = ShapeUtil::MakeShape(

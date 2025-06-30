@@ -33,8 +33,8 @@ class ProfilerSessionWrapper {
  public:
   absl::Status Start(
       const char* logdir,
-      const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-          options);
+      const absl::flat_hash_map<std::string,
+                                std::variant<bool, int, std::string>>& options);
   absl::Status Stop(tensorflow::string* result);
   absl::Status ExportToTensorBoard();
 

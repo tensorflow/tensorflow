@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "xla/pjrt/plugin/example_plugin/myplugin_c_pjrt.h"
 
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/pjrt/c/pjrt_c_api.h"
-#include "tsl/platform/test.h"
 
 namespace {
 

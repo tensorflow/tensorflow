@@ -58,7 +58,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
-#include "xla/stream_executor/gpu/gpu_types.h"  // IWYU pragma: keep
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -71,18 +70,13 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/profiler_lock.h"
-
-#ifdef GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#endif
 
 namespace xla::gpu {
 
 using MemoryAccess = BufferUse::MemoryAccess;
-using KernelArgsPacking = se::MultiKernelLoaderSpec::KernelArgsPacking;
+using KernelArgsPacking = se::KernelLoaderSpec::KernelArgsPacking;
 
 namespace {
 
@@ -101,8 +95,9 @@ struct OwningExecutableSource {
 };
 
 absl::StatusOr<OwningExecutableSource> ExecutableSource() {
-  TF_ASSIGN_OR_RETURN(std::vector<uint8_t> fatbin,
-                      se::gpu::GetGpuTestKernelsFatbin());
+  TF_ASSIGN_OR_RETURN(
+      std::vector<uint8_t> fatbin,
+      se::gpu::GetGpuTestKernelsFatbin(GpuExecutor()->GetPlatform()->Name()));
   return OwningExecutableSource{/*text=*/{},
                                 /*binary=*/fatbin};
 }
@@ -558,8 +553,9 @@ TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
 
   auto packing = CreateDefaultArgsPacking();
 
-  se::MultiKernelLoaderSpec spec(/*arity=*/3, std::move(packing));
-  spec.AddInProcessSymbol(se::gpu::internal::GetAddI32Kernel(), "add");
+  TF_ASSERT_OK_AND_ASSIGN(stream_executor::KernelLoaderSpec spec,
+                          stream_executor::gpu::GetAddI32TestKernelSpec(
+                              stream_executor->GetPlatform()->id()));
 
   auto custom_kernel =
       CustomKernel("AddI32", std::move(spec), se::BlockDim(),
@@ -1549,6 +1545,48 @@ TEST(CommandBufferThunkTest, ToStringPrintsNestedThunks) {
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks)));
   EXPECT_TRUE(
       absl::StrContains(thunk.ToString(/*indent=*/1), "    kMemset32BitValue"));
+}
+
+TEST_F(CmdBufferTest, ControlDependencyTest) {
+  const char* module_str = R"(
+HloModule m
+
+%x (a: f32[3200,6400]) -> f32[3200,6400] {
+  %a = f32[3200,6400]{1,0} parameter(0)
+  ROOT %b = f32[3200,6400]{1,0} negate(%a)
+}
+
+%y (a.1: f32[3200,6400]) -> f32[3200,6400] {
+  %a.1 = f32[3200,6400]{1,0} parameter(0)
+  ROOT %b.1 = f32[3200,6400]{1,0} add(%a.1, %a.1)
+}
+
+%command_buffer (p: f32[3200,6400], p.1: f32[3200,6400]) -> (f32[3200,6400], f32[3200,6400]) {
+  %p = f32[3200,6400]{1,0} parameter(0)
+  %p.1 = f32[3200,6400]{1,0} parameter(1)
+  %b.2 = f32[3200,6400]{1,0} fusion(%p), kind=kLoop, calls=%x
+  %c = f32[3200,6400]{1,0} fusion(%p.1), kind=kLoop, calls=%y, control-predecessors={%b.2}
+  ROOT %tuple = (f32[3200,6400]{1,0}, f32[3200,6400]{1,0}) tuple(%b.2, %c)
+}
+
+ENTRY %e (m: f32[3200,6400], n: f32[3200,6400]) -> (f32[3200,6400], f32[3200,6400]) {
+  %m = f32[3200,6400]{1,0} parameter(0)
+  %n = f32[3200,6400]{1,0} parameter(1)
+  %call = (f32[3200,6400]{1,0}, f32[3200,6400]{1,0}) call(%m, %n), to_apply=%command_buffer
+  %get-tuple-element = f32[3200,6400]{1,0} get-tuple-element(%call), index=0
+  %get-tuple-element.1 = f32[3200,6400]{1,0} get-tuple-element(%call), index=1
+  ROOT %t = (f32[3200,6400]{1,0}, f32[3200,6400]{1,0}) tuple(%get-tuple-element, %get-tuple-element.1)
+}
+)";
+
+  // running with module without exclusive lock on GpuExecutable
+  HloModuleConfig config;
+  auto debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_disable_all_hlo_passes(true);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str, config));
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 2e-3}));
 }
 
 }  // namespace xla::gpu

@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
@@ -63,10 +64,10 @@ limitations under the License.
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/custom_kernel_fusion.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -93,7 +94,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
     CustomKernel custom_kernel) {
   TF_ASSIGN_OR_RETURN(
       auto kernel_arguments,
-      KernelArguments::Create(ir_emitter_context.buffer_assignment(), &fusion));
+      emitters::KernelArguments::Create(ir_emitter_context.buffer_assignment(),
+                                        GetDefaultBufferAlignment(), &fusion));
 
   return std::make_unique<CustomKernelThunk>(
       &fusion, std::move(custom_kernel), std::move(kernel_arguments.args()));
@@ -313,10 +315,8 @@ absl::Status CollectSliceInfo(
   }
   auto* arg_slice_instr =
       Cast<HloDynamicIndexInstruction>(slice_instrs[arg_idx]);
-  std::optional<HloInstruction*> async_caller = std::nullopt;
-  if (fusion_instr.parent()->IsAsyncComputation()) {
-    async_caller = fusion_instr.parent()->AsyncStart();
-  }
+  std::optional<HloInstruction*> async_caller =
+      fusion_instr.parent()->GetUniqueCaller(HloOpcode::kAsyncStart);
 
   std::vector<DynamicSliceThunk::Offset> arg_offsets;
   for (auto idx_op : arg_slice_instr->index_operands()) {
@@ -1253,8 +1253,11 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
     seq.emplace_back(std::move(collective_start_thunk));
     // If the fusion is async, we do not emit the done thunk at the end.
     if (fusion_instr.parent()->IsAsyncComputation()) {
+      auto async_start =
+          fusion_instr.parent()->GetUniqueCaller(HloOpcode::kAsyncStart);
+      CHECK(async_start) << "Async computations should have a unique caller.";
       ir_emitter_context.collectives_async_events().insert(
-          {fusion_instr.parent()->AsyncStart(), async_events});
+          {*async_start, async_events});
     } else {
       auto collective_done_thunk = std::make_unique<CollectiveDoneThunk>(
           /*kind=*/collective_done_thunk_kind,

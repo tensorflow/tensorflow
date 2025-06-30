@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef XLA_SHAPE_H_
 #define XLA_SHAPE_H_
 
+#include <stdbool.h>
+
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -75,12 +78,13 @@ class Shape {
 
   // Constructs a shape from a ShapeProto. Results in an invalid shape (as
   // opposed to crashing) if the proto has logically invalid fields.
-  ABSL_DEPRECATED("Use FromProto instead.")
-  explicit Shape(const ShapeProto& shape_proto);
+  ABSL_DEPRECATE_AND_INLINE()
+  explicit Shape(const ShapeProto& shape_proto)
+      : Shape(FromProto(shape_proto).value_or(Shape())) {}
 
-  // Creates a token or opaque shape.
+  // Creates a token, opaque or buffer shape.
   // Precondition:
-  //  - `element_type` must be TOKEN or OPAQUE_TYPE.
+  //  - `element_type` must be TOKEN, OPAQUE_TYPE or BUFFER.
   explicit Shape(PrimitiveType element_type);
 
   // Creates an array shape. `dimensions` can be empty, in which case the shape
@@ -88,9 +92,11 @@ class Shape {
   // Precondition:
   //  - `element_type` must be a valid array type.
   //  - `dynamic_dimensions` must be either empty or have the same size as
-  //    `dimensions`. If it's empty, all dimensions are static.
+  //    `dimensions`. If it's empty (the default), all dimensions are static.
+  //    Otherwise, `dynamic_dimensions[i]` is true if the `i`th dimension is
+  //    dynamic.
   Shape(PrimitiveType element_type, absl::Span<const int64_t> dimensions,
-        absl::Span<const bool> dynamic_dimensions);
+        absl::Span<const bool> dynamic_dimensions = {});
 
   // Creates a tuple shape. `tuple_shapes` can be empty, in which case the
   // shape is a nil shape (empty tuple).
@@ -124,6 +130,14 @@ class Shape {
     const bool result = element_type() == TUPLE;
     // We do this check in debug mode only to avoid performance regressions.
     DCHECK_EQ(result, if_tuple_state() != nullptr)
+        << "Shape " << ToString()
+        << " has inconsistent element_type and state.";
+    return result;
+  }
+  bool IsBuffer() const {
+    const bool result = element_type() == BUFFER;
+    // We do this check in debug mode only to avoid performance regressions.
+    DCHECK_EQ(result, if_buffer_state() != nullptr)
         << "Shape " << ToString()
         << " has inconsistent element_type and state.";
     return result;
@@ -346,6 +360,9 @@ class Shape {
     return &tuple_state().tuple_shapes;
   }
 
+  // Returns the underlying shape of the buffer.
+  const Shape& buffer_shape() const;
+
   // Returns true if the shape is an array and has a layout.
   bool has_layout() const {
     const auto* const state = if_array_state();
@@ -399,9 +416,6 @@ class Shape {
 
   // Resets this to the default state (an invalid shape).
   void Clear();
-
-  std::string ShortDebugString() const { return ToProto().ShortDebugString(); }
-  std::string DebugString() const { return ToProto().DebugString(); }
 
   // Equal is a configurable functor to check the equality of two shapes.
   //
@@ -466,6 +480,10 @@ class Shape {
       ignore_split_config_in_layout_ = true;
       return *this;
     }
+    Equal& IgnoreBuffer(bool ignore_buffer = true) {
+      ignore_buffer_ = ignore_buffer;
+      return *this;
+    }
 
    private:
     bool ignore_layout_ = false;
@@ -478,6 +496,7 @@ class Shape {
     bool ignore_dimensions_ = false;
     bool ignore_tail_padding_alignment_in_elements_in_layout_ = false;
     bool ignore_split_config_in_layout_ = false;
+    bool ignore_buffer_ = false;
   };
 
   // Test that all fields of the shape are the same, equivalent to Equal().
@@ -500,6 +519,9 @@ class Shape {
       }
       return h;
     }
+    if (const auto* const state = s.if_buffer_state()) {
+      return H::combine(std::move(h), s.element_type_, state->buffer_shape);
+    }
     return H::combine(std::move(h), s.element_type_);
   }
 
@@ -509,6 +531,7 @@ class Shape {
   }
 
  private:
+  friend class ShapeUtil;
   friend absl::Status ValidateNonLayoutProperties(const Shape& shape);
 
   // Define one state struct for each shape category. Depending on the element
@@ -543,9 +566,20 @@ class Shape {
     // The tuple element subshapes.
     std::vector<Shape> tuple_shapes;
   };
+  struct BufferState {
+    // Creates a buffer state with an empty buffer shape.
+    BufferState();
 
+    // Supports copying.
+    BufferState(const BufferState& state);
+    BufferState& operator=(const BufferState& state);
+
+    // The underlying array shape for the buffer type. Not null.
+    // Using Shape directly results in a circular dependency.
+    std::unique_ptr<Shape> buffer_shape;
+  };
   using State = std::variant<InvalidState, TokenState, OpaqueState, ArrayState,
-                             TupleState>;
+                             TupleState, BufferState>;
 
   // CHECKs that the dimension size is valid.
   void CheckDimensionSize(int dim_index, int64_t size, bool is_dynamic);
@@ -585,6 +619,10 @@ class Shape {
     return std::get_if<TupleState>(&state_);
   }
   TupleState* if_tuple_state() { return std::get_if<TupleState>(&state_); }
+  const BufferState* if_buffer_state() const {
+    return std::get_if<BufferState>(&state_);
+  }
+  BufferState* if_buffer_state() { return std::get_if<BufferState>(&state_); }
 
   const InvalidState& invalid_state() const {
     const auto* const state = if_invalid_state();
@@ -605,6 +643,8 @@ class Shape {
   ArrayState& array_state();
   const TupleState& tuple_state() const;
   TupleState& tuple_state();
+  const BufferState& buffer_state() const;
+  BufferState& buffer_state();
 
   // CHECK-fails if this shape's state is not empty.
   void CheckStateIsEmpty() const;
@@ -621,15 +661,21 @@ class Shape {
 // to a traditional function signature.
 class ProgramShape {
  public:
+  // Constructs an empty ProgramShape, which has 0 parameters and an empty
+  // (invalid) result shape.
   ProgramShape();
   ~ProgramShape();
+
   ProgramShape(const ProgramShape&);
   ProgramShape(ProgramShape&&);
   ProgramShape& operator=(const ProgramShape&);
   ProgramShape& operator=(ProgramShape&&);
 
-  ABSL_DEPRECATED("Use FromProto instead.")
-  explicit ProgramShape(const ProgramShapeProto& program_shape_proto);
+  // Constructs a ProgramShape from a ProgramShapeProto protobuf. If the
+  // ProgramShapeProto is invalid, an empty ProgramShape is constructed.
+  ABSL_DEPRECATE_AND_INLINE()
+  explicit ProgramShape(const ProgramShapeProto& program_shape_proto)
+      : ProgramShape(FromProto(program_shape_proto).value_or(ProgramShape())) {}
 
   // Creates a ProgramShape from a ProgramShapeProto protobuf.
   static absl::StatusOr<ProgramShape> FromProto(

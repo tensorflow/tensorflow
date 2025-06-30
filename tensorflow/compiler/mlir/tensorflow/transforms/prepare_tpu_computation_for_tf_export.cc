@@ -155,8 +155,11 @@ void UpdateArgAttributes(mlir::func::FuncOp func) {
         // attributes, only set the 'sharding' attribute. Both attributes are
         // currently required as the XlaSharding xla op kernel doesn't use the
         // 'sharding' attribute.
+        // TODO(b/414807890): Not sure whether we need to pass a V2 sharding to
+        // the _XlaShardingV2, do this when we actually have a use case.
         auto updated_arg = builder.create<TF::XlaShardingOp>(
-            func.getLoc(), arg.getType(), arg, sharding, sharding);
+            func.getLoc(), arg.getType(), arg, /*sharding=*/sharding,
+            /*_XlaSharding=*/sharding, /*_XlaShardingV2=*/mlir::StringAttr());
         func.getArgument(i).replaceAllUsesExcept(
             updated_arg, llvm::SmallPtrSet<Operation*, 1>({updated_arg}));
       }

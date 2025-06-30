@@ -18,15 +18,19 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/event.h"
@@ -56,6 +60,24 @@ class DeviceToDeviceCopyThunk : public Thunk {
     return destination_buffer_;
   }
   uint64_t size_bytes() const { return mem_size_; }
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
+  static absl::StatusOr<std::unique_ptr<DeviceToDeviceCopyThunk>> FromProto(
+      ThunkInfo thunk_info, const DeviceToDeviceCopyThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
+  friend bool operator==(const DeviceToDeviceCopyThunk& lhs,
+                         const DeviceToDeviceCopyThunk& rhs) {
+    return std::tie(lhs.source_buffer_, lhs.destination_buffer_,
+                    lhs.mem_size_) ==
+           std::tie(rhs.source_buffer_, rhs.destination_buffer_, rhs.mem_size_);
+  }
+
+  friend bool operator!=(const DeviceToDeviceCopyThunk& lhs,
+                         const DeviceToDeviceCopyThunk& rhs) {
+    return !(lhs == rhs);
+  }
 
  private:
   const BufferAllocation::Slice source_buffer_;
@@ -96,6 +118,17 @@ class CopyThunk : public Thunk {
   }
   uint64_t size_bytes() const { return mem_size_; }
 
+  bool operator==(const CopyThunk& other) const {
+    return source() == other.source() && destination() == other.destination() &&
+           size_bytes() == other.size_bytes();
+  }
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
+  static absl::StatusOr<std::unique_ptr<CopyThunk>> FromProto(
+      ThunkInfo thunk_info, const CopyThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
  private:
   const BufferAllocation::Slice source_buffer_;
   const BufferAllocation::Slice destination_buffer_;
@@ -122,6 +155,12 @@ class DeviceToHostCopyThunk : public CopyThunk {
                         const HloInstruction* instr);
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
+  static absl::StatusOr<std::unique_ptr<DeviceToHostCopyThunk>> FromProto(
+      ThunkInfo thunk_info, const DeviceToHostCopyThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
  private:
   std::shared_ptr<CopyThunk::AsyncEvents> async_events_;
   const HloInstruction* instr_;
@@ -146,6 +185,12 @@ class HostToDeviceCopyThunk : public CopyThunk {
                         std::shared_ptr<CopyThunk::AsyncEvents> events,
                         const HloInstruction* instr);
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
+  static absl::StatusOr<std::unique_ptr<HostToDeviceCopyThunk>> FromProto(
+      ThunkInfo thunk_info, const HostToDeviceCopyThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
 
  private:
   std::shared_ptr<CopyThunk::AsyncEvents> async_events_;
@@ -175,11 +220,16 @@ class CopyDoneThunk : public Thunk {
 
 class DynamicMemcpyThunk : public Thunk {
  public:
+  // TODO(jreiffers): Move this to a more appropriate place.
   struct MemcpyDescriptor {
     struct DynamicOffset {
       // The while loop whose induction variable defines the offset.
       const HloInstruction* while_loop;
       const HloInstruction* induction_variable;
+
+      // See documentation for ResolveFunctionalDependencyOnInductionVariable.
+      absl::flat_hash_map<const HloComputation*, absl::InlinedVector<bool, 1>>
+          required_parameters;
 
       // All dependencies of `offset` must end in `induction_variable` or
       // constants only.
@@ -200,10 +250,16 @@ class DynamicMemcpyThunk : public Thunk {
     int64_t dst_byte_static_offset = 0;
   };
 
+  struct Offsets {
+    bool depends_on_loop;
+    std::vector<int64_t> src_offsets;
+    std::vector<int64_t> dst_offsets;
+  };
+
   DynamicMemcpyThunk(ThunkInfo thunk_info,
                      const BufferAllocation::Slice& source_buffer,
                      const BufferAllocation::Slice& destination_buffer,
-                     uint64_t mem_size, MemcpyDescriptor descriptor);
+                     uint64_t mem_size, Offsets offsets);
   DynamicMemcpyThunk(const DynamicMemcpyThunk&) = delete;
   DynamicMemcpyThunk& operator=(const DynamicMemcpyThunk&) = delete;
 
@@ -213,7 +269,7 @@ class DynamicMemcpyThunk : public Thunk {
   const BufferAllocation::Slice source_buffer_;
   const BufferAllocation::Slice destination_buffer_;
   const uint64_t mem_size_;
-  MemcpyDescriptor descriptor_;
+  Offsets offsets_;
 };
 
 }  // namespace gpu

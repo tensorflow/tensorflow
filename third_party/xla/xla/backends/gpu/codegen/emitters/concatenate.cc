@@ -139,10 +139,11 @@ absl::Status ConcatenateFusion::EmitEntryFunction(
 
   const auto* concat = &analysis_.fusion_hero(0).instruction();
   for (auto [operand_index, operand] : llvm::enumerate(concat->operands())) {
-    auto input_to_output_map =
-        *ComputeInputToOutputIndexing(concat, /*input_id=*/operand_index, ctx)
-             .indexing_maps.front()
-             .begin();
+    IndexingMap input_to_output_map =
+        ComputeInputToOutputIndexing(concat, /*input_id=*/operand_index, ctx)
+            .indexing_maps.front()
+            .begin()
+            ->map();
     auto thread_id_to_output_map = ComposeIndexingMaps(
         ComposeIndexingMaps(thread_id_to_input_map, input_to_output_map),
         epilogue_indexing);

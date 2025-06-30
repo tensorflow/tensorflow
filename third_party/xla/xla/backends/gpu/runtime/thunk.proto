@@ -1,0 +1,130 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla.gpu;
+
+import "xla/service/buffer_assignment.proto";
+import "xla/service/gpu/launch_dimensions.proto";
+import "xla/stream_executor/gpu/gpu_blas_lt.proto";
+import "xla/stream_executor/launch_dim.proto";
+import "xla/xla_data.proto";
+
+// Contains basic pieces of information that every thunk type has.
+message ThunkInfoProto {
+  string profile_annotation = 1;
+  int64 execution_stream_id = 2;
+}
+
+message CopyThunkProto {
+  xla.buffer_assignment.BufferAllocationSliceProto source_buffer = 1;
+  xla.buffer_assignment.BufferAllocationSliceProto destination_buffer = 2;
+  int64 mem_size = 3;
+}
+
+message DeviceToHostCopyThunkProto {
+  CopyThunkProto copy_thunk = 1;
+}
+
+message HostToDeviceCopyThunkProto {
+  CopyThunkProto copy_thunk = 1;
+}
+
+message DeviceToDeviceCopyThunkProto {
+  CopyThunkProto copy_thunk = 1;
+}
+
+message ConditionalThunkProto {
+  xla.buffer_assignment.BufferAllocationSliceProto branch_index_buffer = 1;
+  repeated SequentialThunkProto branch_thunks = 2;
+  bool branch_index_is_bool = 3;
+}
+
+message WhileThunkProto {
+  xla.buffer_assignment.BufferAllocationSliceProto
+      condition_result_buffer_index = 1;
+  SequentialThunkProto condition_thunk_sequence = 2;
+  SequentialThunkProto body_thunk_sequence = 3;
+  optional int64 trip_count = 4;
+}
+
+message KernelThunkProto {
+  repeated xla.buffer_assignment.BufferAllocationSliceProto args = 1;
+  repeated bool written = 2;
+  string kernel_name = 3;
+  LaunchDimensionsProto launch_dimensions = 4;
+  optional stream_executor.ClusterDimProto cluster_dim = 5;
+  int64 shmem_bytes = 6;
+}
+
+message GemmThunkProto {
+  xla.GemmConfigProto gemm_config = 1;
+  xla.buffer_assignment.BufferAllocationSliceProto lhs_buffer = 2;
+  xla.buffer_assignment.BufferAllocationSliceProto rhs_buffer = 3;
+  xla.buffer_assignment.BufferAllocationSliceProto output_buffer = 4;
+  optional xla.buffer_assignment.BufferAllocationSliceProto workspace = 5;
+  bool deterministic = 6;
+}
+
+message WaitForStreamsThunkProto {
+  int64 stream_id = 1;
+  int64 wait_for_stream_id = 2;
+}
+
+message TriangularSolveThunkProto {
+  xla.TriangularSolveOptions options = 1;
+  xla.buffer_assignment.BufferAllocationSliceProto a_buffer = 2;
+  xla.buffer_assignment.BufferAllocationSliceProto b_buffer = 3;
+  xla.buffer_assignment.BufferAllocationSliceProto temp_buffer = 4;
+  xla.PrimitiveType type = 5;
+  int64 batch_size = 6;
+  int64 m = 7;
+  int64 n = 8;
+  int64 a_batch_stride = 9;
+  int64 b_batch_stride = 10;
+}
+
+message ReplicaIdThunkProto {
+  xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
+}
+
+message PartitionIdThunkProto {
+  xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
+}
+
+message ThunkProto {
+  ThunkInfoProto thunk_info = 1;
+
+  oneof impl {
+    SequentialThunkProto sequential_thunk = 2;
+    CopyThunkProto copy_thunk = 3;
+    DeviceToHostCopyThunkProto device_to_host_copy_thunk = 4;
+    HostToDeviceCopyThunkProto host_to_device_copy_thunk = 5;
+    ConditionalThunkProto conditional_thunk = 6;
+    WhileThunkProto while_thunk = 7;
+    KernelThunkProto kernel_thunk = 8;
+    GemmThunkProto gemm_thunk = 9;
+    WaitForStreamsThunkProto wait_for_streams_thunk = 10;
+    TriangularSolveThunkProto triangular_solve_thunk = 11;
+    ReplicaIdThunkProto replica_id_thunk = 12;
+    DeviceToDeviceCopyThunkProto device_to_device_copy_thunk = 13;
+    PartitionIdThunkProto partition_id_thunk = 14;
+  }
+}
+
+message SequentialThunkProto {
+  repeated ThunkProto thunks = 1;
+}

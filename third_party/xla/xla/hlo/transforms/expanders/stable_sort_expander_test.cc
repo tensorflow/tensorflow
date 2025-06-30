@@ -358,5 +358,78 @@ TEST_F(StableSortExpanderTest, StabilizeSortR1NoRoot) {
       /*iota_parameter=*/1);
 }
 
+TEST_F(StableSortExpanderTest, MultipleSortsSingleComputationNoIota) {
+  const char* hlo_string = R"(
+    HloModule permutation_sort
+
+    compare {
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+    }
+
+    ENTRY sort_computation {
+      keys.0 = f32[64,8732]{1,0} parameter(0)
+      keys.1 = f32[64,8732]{1,0} parameter(1)
+      sort.0 = f32[64,8732]{1,0} sort(keys.0),
+        dimensions={1}, to_apply=compare, is_stable=true
+      sort.1 = f32[64,8732]{1,0} sort(keys.1),
+        dimensions={1}, to_apply=compare, is_stable=true
+      ROOT add = f32[64,8732]{1,0} add(sort.0, sort.1)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  StableSortExpander stabilizer;
+  EXPECT_TRUE(stabilizer.Run(module.get()).value());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              GmockMatch(m::Add(
+                  m::GetTupleElement(m::Sort(m::Parameter(0), m::Iota()), 0),
+                  m::GetTupleElement(m::Sort(m::Parameter(1), m::Iota()), 0))));
+  EXPECT_NE(root->operand(0)->operand(0)->to_apply()->unique_id(),
+            root->operand(1)->operand(0)->to_apply()->unique_id());
+}
+
+TEST_F(StableSortExpanderTest, MultipleSortsSingleComputationWithIota) {
+  const char* hlo_string = R"(
+    HloModule permutation_sort
+
+    compare {
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+    }
+
+    ENTRY sort_computation {
+      keys.0 = f32[64,8732]{1,0} parameter(0)
+      keys.1 = f32[64,8732]{1,0} parameter(1)
+      values = s32[64,8732]{1,0} iota(), iota_dimension=1
+      sort.0 = (f32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(keys.0, values),
+        dimensions={1}, to_apply=compare, is_stable=true
+      sort.1 = (f32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(keys.1, values),
+        dimensions={1}, to_apply=compare, is_stable=true
+      gte.0 = f32[64,8732]{1,0} get-tuple-element(sort.0), index=0
+      gte.1 = f32[64,8732]{1,0} get-tuple-element(sort.1), index=0
+      ROOT add = f32[64,8732]{1,0} add(gte.0, gte.1)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  StableSortExpander stabilizer;
+  EXPECT_TRUE(stabilizer.Run(module.get()).value());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              GmockMatch(m::Add(
+                  m::GetTupleElement(m::Sort(m::Parameter(0), m::Iota()), 0),
+                  m::GetTupleElement(m::Sort(m::Parameter(1), m::Iota()), 0))));
+  EXPECT_NE(root->operand(0)->operand(0)->to_apply()->unique_id(),
+            root->operand(1)->operand(0)->to_apply()->unique_id());
+}
+
 }  // namespace
 }  // namespace xla

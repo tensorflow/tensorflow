@@ -128,7 +128,7 @@ filegroup(
     }) + if_cuda([
         "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
-        "//third_party/mkl_dnn:LICENSE",
+        "@local_xla//third_party/mkl_dnn:LICENSE",
     ]) + if_enable_mkl(["@local_xla//xla/tsl/mkl:LICENSE"]) + if_not_system_lib(
         "absl_py",
         [

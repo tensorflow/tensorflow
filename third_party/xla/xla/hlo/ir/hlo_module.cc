@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/map_util.h"
@@ -183,7 +184,8 @@ HloComputation* HloModule::AddComputationInternal(
     computation_name_uniquer_.GetUniqueName(computation->name());
     for (auto* instruction : computation->instructions()) {
       instruction_name_uniquer_.GetUniqueName(instruction->name());
-      next_unique_id_ = std::max(next_unique_id_, instruction->unique_id() + 1);
+      next_unique_id_ =
+          std::max(next_unique_id_, instruction->unique_id_64_bits() + 1);
     }
     if (next_unique_id_ < computation->unique_id() + 1) {
       next_unique_id_ = computation->unique_id() + 1;
@@ -454,14 +456,14 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
         computation->CanExpandIntoSingleInstruction()) {
       continue;
     }
-    if (computation == entry_computation()) {
-      printer->Append("ENTRY ");
-    }
+    HloPrintOptions new_options = options;
+    new_options.set_print_computation_mode(
+        HloPrintOptions::PrintComputationMode::kComputationWithEntryKeyword);
     if (has_schedule() && schedule().is_computation_scheduled(computation)) {
-      computation->Print(printer, options,
+      computation->Print(printer, new_options,
                          schedule().sequence(computation).instructions());
     } else {
-      computation->Print(printer, options);
+      computation->Print(printer, new_options);
     }
     printer->Append("\n\n");
   }
@@ -620,9 +622,9 @@ HloModuleProtoWithConfig HloModule::ToProtoWithConfig() const {
 absl::Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions()
     const {
   absl::flat_hash_set<absl::string_view> computation_names;
-  absl::flat_hash_set<int> computation_ids;
+  absl::flat_hash_set<int64_t> computation_ids;
   absl::flat_hash_set<absl::string_view> instruction_names;
-  absl::flat_hash_set<int> instruction_ids;
+  absl::flat_hash_set<int64_t> instruction_ids;
 
   for (const HloComputation* computation : computations()) {
     TF_RET_CHECK(!ContainsKey(computation_names, computation->name()))
@@ -638,9 +640,11 @@ absl::Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions()
           << "Instruction name is not unique: " << instruction->name();
       instruction_names.insert(instruction->name());
 
-      TF_RET_CHECK(!ContainsKey(instruction_ids, instruction->unique_id()))
-          << "Instruction id is not unique: " << instruction->unique_id();
-      instruction_ids.insert(instruction->unique_id());
+      TF_RET_CHECK(
+          !ContainsKey(instruction_ids, instruction->unique_id_64_bits()))
+          << "Instruction id is not unique: "
+          << instruction->unique_id_64_bits();
+      instruction_ids.insert(instruction->unique_id_64_bits());
     }
   }
   return absl::OkStatus();
@@ -791,6 +795,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
       module->stack_frame_index_ = std::move(proto.stack_frame_index());
     }
   }
+  DeduplicateOriginalValues(module.get());
   return module;
 }
 
@@ -1104,36 +1109,33 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
                        post_order.end());
     }
     return post_order;
-  } else {
-    // The topological sort is a reverse post-order, reverse it so we get a
-    // post-order.
-    std::vector<HloComputation*> post_order;
-    post_order.reserve(computations_.size());
-    int num_computations = 0;
-    for (auto it = topological_sort_.rbegin(); it != topological_sort_.rend();
-         ++it) {
-      ++num_computations;
-      if (execution_threads.empty() ||
-          execution_threads.contains(it->execution_thread())) {
-        post_order.push_back(&*it);
-      }
+  }  // The topological sort is a reverse post-order, reverse it so we get a
+  // post-order.
+  std::vector<HloComputation*> post_order;
+  post_order.reserve(computations_.size());
+  int num_computations = 0;
+  for (auto it = topological_sort_.rbegin(); it != topological_sort_.rend();
+       ++it) {
+    ++num_computations;
+    if (execution_threads.empty() ||
+        execution_threads.contains(it->execution_thread())) {
+      post_order.push_back(&*it);
     }
-
-    if (num_computations != computations_.size()) {
-      for (HloComputation& computation : topological_sort_) {
-        LOG(ERROR) << "Reverse postorder: " << computation.name() << " ("
-                   << computation.parent()->name() << ")";
-      }
-      for (auto& computation : computations_) {
-        LOG(ERROR) << "Computations: " << computation->name() << " ("
-                   << computation->parent()->name() << ")";
-      }
-      LOG(FATAL) << "Mismatch computation count: post_order="
-                 << post_order.size()
-                 << " computation_count=" << computations_.size();
-    }
-    return post_order;
   }
+
+  if (num_computations != computations_.size()) {
+    for (HloComputation& computation : topological_sort_) {
+      LOG(ERROR) << "Reverse postorder: " << computation.name() << " ("
+                 << computation.parent()->name() << ")";
+    }
+    for (auto& computation : computations_) {
+      LOG(ERROR) << "Computations: " << computation->name() << " ("
+                 << computation->parent()->name() << ")";
+    }
+    LOG(FATAL) << "Mismatch computation count: post_order=" << post_order.size()
+               << " computation_count=" << computations_.size();
+  }
+  return post_order;
 }
 
 namespace {
@@ -1168,7 +1170,9 @@ void SortComputationsByContent(std::vector<HloComputation*>* computations) {
     }
     // Avoid computing fingerprints of (potentially) giant computation strings
     // just to compare when a == b
-    if (a == b) return false;
+    if (a == b) {
+      return false;
+    }
 
     return fingerprint_map.GetFingerprint(a) <
            fingerprint_map.GetFingerprint(b);

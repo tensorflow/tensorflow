@@ -127,10 +127,16 @@ class SignatureRunner {
 
   /// Returns the input tensor identified by 'input_name' in the
   /// given signature. Returns nullptr if the given name is not valid.
+  ///
+  /// \warning The returned pointer is not necessarily valid after calls to
+  /// AllocateTensors or Invoke.
   TfLiteTensor* input_tensor(const char* input_name);
 
   /// Returns the output tensor identified by 'output_name' in the
   /// given signature. Returns nullptr if the given name is not valid.
+  ///
+  /// \warning The returned pointer is not necessarily valid after calls to
+  /// AllocateTensors or Invoke.
   const TfLiteTensor* output_tensor(const char* output_name) const;
 
   /// Change a dimensionality of a given tensor. Note, this is only acceptable

@@ -17,15 +17,17 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_JIT_COMPILED_CPU_FUNCTION_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
-#include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
+#include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function_thunks.h"
 #include "xla/client/local_client.h"
 #include "xla/cpu_function_runtime.h"
+#include "xla/service/cpu/executable.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -65,10 +67,16 @@ class XlaJitCompiledCpuFunction {
   }
 
  private:
-  XlaJitCompiledCpuFunction() {}
+  XlaJitCompiledCpuFunction() : compilation_result_proto_(nullptr) {}
 
   // The executable holds the underlying function.
   std::unique_ptr<xla::LocalExecutable> executable_;
+
+  // The compilation result proto.
+  std::unique_ptr<xla::cpu::CompilationResultProto> compilation_result_proto_;
+
+  // Function library symbol map used to construct AotCompiledFunctionLibrary
+  absl::flat_hash_map<std::string, void*> function_library_symbol_map_;
 
   // The static data is backed by the rest of the state in this class.
   XlaCompiledCpuFunction::StaticData static_data_;
@@ -78,6 +86,9 @@ class XlaJitCompiledCpuFunction {
 
   // The backing array for the arg index table.
   std::vector<int32> arg_index_table_;
+
+  // The backing array for the result index table.
+  std::vector<int32> result_index_table_;
 
   // The backing arrays of arg and result names. We hold the actual strings in
   // nonempty_*_names_, and hold arrays of pointers in *_names_ for the static

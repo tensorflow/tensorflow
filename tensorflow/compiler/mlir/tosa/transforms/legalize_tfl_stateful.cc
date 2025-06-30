@@ -133,10 +133,11 @@ void TosaLegalizeTFLStateful::runOnOperation() {
     auto globalOp = std::get<1>(*globalOpIt);
 
     builder.setInsertionPoint(assign);
-    if (globalOp.getType() != value.getType()) {
+    auto variableType = mlir::tosa::getVariableType(globalOp);
+    if (variableType != value.getType()) {
       value = builder
                   .create<UnrealizedConversionCastOp>(assign.getLoc(),
-                                                      globalOp.getType(), value)
+                                                      variableType, value)
                   .getResult(0);
     }
 
@@ -157,7 +158,8 @@ void TosaLegalizeTFLStateful::runOnOperation() {
     builder.setInsertionPoint(read);
 
     Value load = builder.create<mlir::tosa::VariableReadOp>(
-        read.getLoc(), globalOp.getType(), llvm::StringRef(globalOp.getName()));
+        read.getLoc(), mlir::tosa::getVariableType(globalOp),
+        llvm::StringRef(globalOp.getName()));
 
     if (read.getType() != load.getType()) {
       load = builder

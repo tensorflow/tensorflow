@@ -24,6 +24,7 @@ limitations under the License.
 #include <cstring>
 #include <iterator>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -63,6 +64,9 @@ limitations under the License.
 namespace tflite {
 
 namespace {
+
+constexpr size_t kExtraNodeCapacity = 10;
+constexpr float kTensorCapacityInc = 1.1f;
 
 struct TfLiteQuantizationDeleter {
   void operator()(TfLiteQuantization* q) {
@@ -153,14 +157,15 @@ TfLiteQuantizationParams GetLegacyQuantization(
       static_cast<TfLiteAffineQuantization*>(quantization.params);
   if (!affine_quantization || !affine_quantization->scale ||
       !affine_quantization->zero_point ||
-      affine_quantization->scale->size != 1 ||
-      affine_quantization->zero_point->size != 1) {
+      affine_quantization->scale->size != 1) {
     return legacy_quantization;
   }
 
   // We know its per-layer quantization now.
   legacy_quantization.scale = affine_quantization->scale->data[0];
-  legacy_quantization.zero_point = affine_quantization->zero_point->data[0];
+  legacy_quantization.zero_point =
+      affine_quantization->zero_point ? affine_quantization->zero_point->data[0]
+                                      : 0;
   return legacy_quantization;
 }
 
@@ -1116,6 +1121,11 @@ TfLiteStatus Subgraph::AddNodeWithParameters(
 
   int new_node_index = nodes_and_registration_.size();
   if (node_index) *node_index = new_node_index;
+  // Avoid large over allocations by resizing every kExtraNodeCapacity nodes.
+  if (nodes_and_registration_.size() == nodes_and_registration_.capacity()) {
+    nodes_and_registration_.reserve(nodes_and_registration_.size() +
+                                    kExtraNodeCapacity);
+  }
   nodes_and_registration_.emplace_back();
   auto& node_and_reg = nodes_and_registration_.back();
   TfLiteNode& node = node_and_reg.first;
@@ -2158,7 +2168,8 @@ TfLiteStatus Subgraph::UndoAllDelegates() {
   // nodes' inputs to point to their fp16 versions (if delegate supports fp16
   // acceleration). This remapping is performed in FP16GraphPartitionHelper in
   // delegates/utils. We need to undo this remapping to ensure CPU kernels work.
-  std::vector<int> fp16_to_fp32(tensors_size(), -1);
+  std::vector<int> fp16_to_fp32(tensors_size());
+  std::iota(fp16_to_fp32.begin(), fp16_to_fp32.end(), 0);
   for (int execution_plan_index = 0;
        execution_plan_index < execution_plan_.size(); ++execution_plan_index) {
     int node_index = execution_plan_[execution_plan_index];
@@ -2410,12 +2421,8 @@ bool Subgraph::IsFullyDelegated() const {
 void Subgraph::EnsureTensorsVectorCapacity() {
   const size_t required_capacity = tensors_.size() + kTensorsCapacityHeadroom;
   if (required_capacity > tensors_.capacity()) {
-    // Whenever it's required to increase the vector capacity, make it at
-    // least twice bigger. The behavior is consistent with the default
-    // behavior of GCC STL's `std::vector::resize()`. This avoids frequently
-    // allocating and copying the underlying buffer.
-    size_t reserved_capacity =
-        std::max(required_capacity, tensors_.capacity() * 2);
+    size_t reserved_capacity = std::max(
+        required_capacity, (size_t)(tensors_.capacity() * kTensorCapacityInc));
     tensors_.reserve(reserved_capacity);
     context_.tensors = tensors_.data();
   }

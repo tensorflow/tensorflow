@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/call_graph.h"
 #include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shape_inference.h"
@@ -5467,11 +5466,9 @@ TEST_F(HloEvaluatorTest, ParameterThroughCallSucceedsWithPrecomputation) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<TuplePointsToAnalysis> tuple_points_to,
       TuplePointsToAnalysis::Run(hlo_module.get()));
-  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(hlo_module.get());
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result,
-      evaluator_.Evaluate(parameter_instruction,
-                          {tuple_points_to.get(), call_graph.get()},
+      evaluator_.Evaluate(parameter_instruction, {tuple_points_to.get()},
                           /*recursively_evaluate_nonconstant_operands=*/true));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
@@ -5563,12 +5560,11 @@ TEST_F(PatternMatchParseWhileLoopTest,
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<TuplePointsToAnalysis> tuple_points_to,
       TuplePointsToAnalysis::Run(hlo_module.get()));
-  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(hlo_module.get());
 
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  std::optional<ParsedWhileLoop> parsed_while_loop = PatternMatchParseWhileLoop(
-      while_op, {tuple_points_to.get(), call_graph.get()});
+  std::optional<ParsedWhileLoop> parsed_while_loop =
+      PatternMatchParseWhileLoop(while_op, {tuple_points_to.get()});
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());
   EXPECT_EQ(parsed_while_loop->static_while_loop->trip_count, 5);

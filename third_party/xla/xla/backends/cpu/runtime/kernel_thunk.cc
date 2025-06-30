@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -114,14 +115,14 @@ KernelThunk<num_arguments, num_results>::KernelThunk(
     Info info, absl::Span<const BufferAllocation::Slice> arguments_buffers,
     absl::Span<const BufferAllocation::Slice> results_buffers,
     absl::flat_hash_set<int64_t> invariant_arguments, std::string kernel_name,
-    se::ThreadDim thread_dim, std::optional<uint64_t> min_alignment)
+    NumWorkGroups num_workgroups, std::optional<uint64_t> min_alignment)
     : KernelThunkBase(Kind::kKernel, std::move(info)),
       invariant_arguments_(std::move(invariant_arguments)),
       num_kernel_args_(arguments_buffers.size() + results_buffers.size()),
       kernel_name_(std::move(kernel_name)),
-      thread_dim_(thread_dim),
+      num_workgroups_(num_workgroups),
       min_alignment_(min_alignment),
-      call_once_(thread_dim_ == se::ThreadDim()) {
+      call_once_(num_workgroups_ == NumWorkGroups()) {
   // Resize storage for arguments and results buffers if it is dynamic.
   if constexpr (IsDynamic(num_arguments)) {
     arguments_buffers_.resize(arguments_buffers.size());
@@ -160,9 +161,9 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE tsl::AsyncValueRef<Thunk::ExecuteEvent>
 KernelThunk<num_arguments, num_results>::ExecuteInternal(
     const ExecuteParams& params) {
   VLOG(3) << absl::StreamFormat(
-      "Launch host kernel %s with %d arguments and %d results: #threads=%s",
+      "Launch host kernel %s with %d arguments and %d results: #workgroups=%v",
       kernel_name_, arguments_buffers_.size(), results_buffers_.size(),
-      thread_dim_.ToString());
+      num_workgroups_);
 
   alignas(64) KernelArgs kernel_args = kernel_args_;
   XLA_CPU_KernelArg* kernel_args_ptr = kernel_args.data();
@@ -231,10 +232,11 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
   // by scheduling tasks into it. HostKernel launch completion will
   // automatically signal KernelThunk execute completion.
   if (ABSL_PREDICT_TRUE(params.intra_op_threadpool)) {
-    return kernel->Launch(thread_dim_, kernel_args, params.intra_op_threadpool);
+    return kernel->Launch(num_workgroups_, kernel_args,
+                          params.intra_op_threadpool);
   }
 
-  TF_RETURN_IF_ERROR(kernel->Launch(thread_dim_, kernel_args));
+  TF_RETURN_IF_ERROR(kernel->Launch(num_workgroups_, kernel_args));
   return OkExecuteEvent();
 }
 
@@ -310,7 +312,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
     Thunk::Info info,
     absl::Span<const BufferAllocation::Slice> arguments_buffers,
     absl::Span<const BufferAllocation::Slice> results_buffers,
-    std::string kernel_name, se::ThreadDim thread_dim,
+    std::string kernel_name, NumWorkGroups num_workgroups,
     absl::flat_hash_set<int64_t> invariant_arguments,
     std::optional<uint64_t> min_alignment) {
   if (min_alignment.has_value() && !absl::has_single_bit(*min_alignment)) {
@@ -322,8 +324,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
     return absl::WrapUnique(
         new SmallKernelThunk<num_arguments(), num_results()>(
             std::move(info), arguments_buffers, results_buffers,
-            std::move(invariant_arguments), std::move(kernel_name), thread_dim,
-            min_alignment));
+            std::move(invariant_arguments), std::move(kernel_name),
+            num_workgroups, min_alignment));
   };
 
   static constexpr auto _0 = std::integral_constant<size_t, 0>{};
@@ -364,7 +366,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
   return absl::WrapUnique(
       new KernelThunk(std::move(info), arguments_buffers, results_buffers,
                       std::move(invariant_arguments), std::move(kernel_name),
-                      thread_dim, min_alignment));
+                      num_workgroups, min_alignment));
 }
 
 absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
@@ -372,7 +374,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
     std::optional<uint64_t> min_alignment) {
   return Create(std::move(info), kernel_spec.argument_buffers(),
                 kernel_spec.result_buffers(), kernel_spec.name(),
-                kernel_spec.thread_dim(), kernel_spec.invariant_arguments(),
+                kernel_spec.num_workgroups(), kernel_spec.invariant_arguments(),
                 min_alignment);
 }
 

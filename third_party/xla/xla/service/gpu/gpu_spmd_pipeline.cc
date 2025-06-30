@@ -120,7 +120,8 @@ void AddSPMDPasses(
           .debug_options()
           .xla_gpu_multi_streamed_windowed_einsum(),
       /*skip_checking_windowed_einsum_users=*/true,
-      /*disable_ag_rewrite_for_multiple_consumers=*/true, oper_size_threshold);
+      /*disable_ag_rewrite_for_multiple_consumers=*/true,
+      /*enable_partial_windowed_einsums=*/true, oper_size_threshold);
   spmd_pipeline.AddPass<CollectivePermuteMotion>();
 }
 

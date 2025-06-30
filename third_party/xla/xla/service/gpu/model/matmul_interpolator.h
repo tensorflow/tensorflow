@@ -21,11 +21,13 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/interpolator.h"
+#include "xla/service/gpu/model/matmul_interpolator_utils.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
@@ -36,18 +38,34 @@ class MatmulInterpolator {
       const HloInstructionProfileList& profiles,
       const se::DeviceDescription& device_info);
 
+  static absl::StatusOr<std::unique_ptr<MatmulInterpolator>> Create(
+      const se::DeviceDescription& device_info);
+
   // Returns the estimated runtime for a supported `collective`.
   std::optional<absl::Duration> EstimatedRuntime(
       const HloInstruction& instr) const;
 
  private:
-  // Uses `EuclideanNNInterpolator` to figure get the closest neighbour from
-  // profiles.
   explicit MatmulInterpolator(
       std::unique_ptr<EuclideanNNInterpolator<int64_t, 4>> interpolator)
-      : interpolator_(std::move(interpolator)) {}
+      : nn_interpolator_(std::move(interpolator)) {}
 
-  std::unique_ptr<EuclideanNNInterpolator<int64_t, 4>> interpolator_;
+  explicit MatmulInterpolator(
+      std::unique_ptr<EuclideanWeightedAverageInterpolator<4>>
+          fallback_interpolator,
+      std::unique_ptr<absl::flat_hash_map<
+          MatmulDTypeKey,
+          std::unique_ptr<EuclideanWeightedAverageInterpolator<4>>>>
+          interpolators)
+      : fallback_interpolator_(std::move(fallback_interpolator)),
+        interpolators_(std::move(interpolators)) {}
+
+  std::unique_ptr<EuclideanWeightedAverageInterpolator<4>>
+      fallback_interpolator_;
+  std::unique_ptr<absl::flat_hash_map<
+      MatmulDTypeKey, std::unique_ptr<EuclideanWeightedAverageInterpolator<4>>>>
+      interpolators_;
+  std::unique_ptr<EuclideanNNInterpolator<int64_t, 4>> nn_interpolator_;
 };
 
 }  // namespace xla::gpu

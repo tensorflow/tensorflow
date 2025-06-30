@@ -105,7 +105,8 @@ ScopedLoggingTimer::ScopedLoggingTimer(absl::string_view label, bool enabled,
 void ScopedLoggingTimer::StopAndLog() {
   if (enabled_) {
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
-    double secs = (end_micros - start_micros_) / 1000000.0;
+    uint64_t elapsed_micros = end_micros - start_micros_;
+    double secs = elapsed_micros / 1000000.0;
 
     TimerStats& stats = *timer_stats_;
     absl::MutexLock lock(&stats.stats_mutex);
@@ -117,6 +118,7 @@ void ScopedLoggingTimer::StopAndLog() {
 
     LOG(INFO).AtLocation(file_, line_)
         << label_ << " time: " << tsl::strings::HumanReadableElapsedTime(secs)
+        << " (" << elapsed_micros << " us)"
         << " (cumulative: "
         << tsl::strings::HumanReadableElapsedTime(stats.cumulative_secs)
         << ", max: " << tsl::strings::HumanReadableElapsedTime(stats.max_secs)
@@ -366,7 +368,8 @@ std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
 
 absl::InlinedVector<std::pair<int64_t, int64_t>, 8> CommonFactors(
     absl::Span<const int64_t> a, absl::Span<const int64_t> b) {
-  CHECK_EQ(Product(a), Product(b));
+  CHECK_EQ(Product(a), Product(b)) << "a=[" << absl::StrJoin(a, ",") << "], b=["
+                                   << absl::StrJoin(b, ",") << "]";
   absl::InlinedVector<std::pair<int64_t, int64_t>, 8> bounds;
   if (absl::c_equal(a, b)) {
     bounds.reserve(a.size() + 1);

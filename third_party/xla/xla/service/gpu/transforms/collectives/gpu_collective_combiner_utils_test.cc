@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/collectives/gpu_collective_combiner_utils.h"
 
 #include <cstdint>
-#include <optional>
 
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"

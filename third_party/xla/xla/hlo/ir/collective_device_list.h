@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -58,6 +59,13 @@ class IotaReplicaGroupList {
         num_replica_groups_(num_replica_groups),
         num_devices_per_group_(num_devices_per_group) {}
 
+  bool operator==(const IotaReplicaGroupList& other) const {
+    return num_replica_groups() == other.num_replica_groups() &&
+           num_devices_per_group() == other.num_devices_per_group() &&
+           reshape_dims() == other.reshape_dims() &&
+           transpose_perm() == other.transpose_perm();
+  }
+
   int64_t num_replica_groups() const;
   int64_t num_devices_per_group() const;
   absl::Span<const int64_t> reshape_dims() const {
@@ -67,6 +75,7 @@ class IotaReplicaGroupList {
     return iota_tile_assignment_.transpose_perm();
   }
   Array<int64_t> ToArray() const { return iota_tile_assignment_.ToArray(); }
+  std::vector<std::vector<int64_t>> flattened_replica_groups() const;
 
   void Print(Printer* printer) const;
 
@@ -90,6 +99,10 @@ class CollectiveDeviceList {
   explicit CollectiveDeviceList()
       : replica_groups_(std::make_shared<std::vector<ReplicaGroup>>()) {};
 
+  explicit CollectiveDeviceList(std::vector<ReplicaGroup> replica_groups)
+      : replica_groups_(std::make_shared<std::vector<ReplicaGroup>>(
+            std::move(replica_groups))) {};
+
   explicit CollectiveDeviceList(absl::Span<const ReplicaGroup> replica_groups)
       : replica_groups_(std::make_shared<std::vector<ReplicaGroup>>(
             replica_groups.begin(), replica_groups.end())) {};
@@ -107,6 +120,18 @@ class CollectiveDeviceList {
   const std::vector<ReplicaGroup>& replica_groups() const;
   const std::optional<IotaReplicaGroupList>& iota_replica_group_list() const {
     return iota_replica_group_list_;
+  }
+
+  int64_t num_replica_groups() const {
+    return iota_replica_group_list_.has_value()
+               ? iota_replica_group_list_->num_replica_groups()
+               : replica_groups_->size();
+  }
+
+  int64_t num_devices_per_group() const {
+    return iota_replica_group_list_.has_value()
+               ? iota_replica_group_list_->num_devices_per_group()
+               : replica_groups_->begin()->replica_ids_size();
   }
 
   void Print(Printer* printer,

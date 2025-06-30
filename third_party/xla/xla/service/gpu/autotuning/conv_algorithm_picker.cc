@@ -42,9 +42,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal_util.h"
-#include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/gpu_autotuning.pb.h"
+#include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
@@ -445,10 +445,16 @@ absl::StatusOr<GpuConvAlgorithmPicker::AutotuneRuntimeArguments>
 GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
     const HloCustomCallInstruction* instr, const AutotuneConfig& config,
     const DebugOptions& debug_options) {
-  TF_ASSIGN_OR_RETURN(auto rz_buffers,
-                      RedzoneBuffers::FromInstruction(
-                          *instr, config, debug_options,
-                          RedzoneBuffers::kAllInputsOutputsNoScratch));
+  bool should_init_buffers = config.should_init_buffers();
+  bool should_check_correctness = config.should_check_correctness();
+  int redzone_padding_bytes = debug_options.xla_gpu_redzone_padding_bytes();
+  TF_ASSIGN_OR_RETURN(se::Stream * stream, config.GetStream());
+  TF_ASSIGN_OR_RETURN(
+      auto rz_buffers,
+      RedzoneBuffers::FromInstruction(
+          *instr, config.GetAllocator(), stream,
+          RedzoneBuffers::kAllInputsOutputsNoScratch, should_init_buffers,
+          should_check_correctness, redzone_padding_bytes));
 
   // Get canonical HLO.
   std::string canonical_hlo(
@@ -558,27 +564,10 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   }
 
   GpuConvConfig config = runtime_arguments.gpu_conv_config;
-  auto activation_mode =
-      config.fusion ? config.fusion->mode : se::dnn::ActivationMode::kNone;
-
   // For fused convolutions with the identity function as the activation, only
   // ALGO_IMPLICIT_PRECOMP_GEMM does the right thing. Other algorithms
   // silently do Relu. See
   // https://docs.nvidia.com/deeplearning/sdk/cudnn-developer-guide/index.html#cudnnConvolutionBiasActivationForward
-  //
-  // For cuDNN Frontend, there is no way to check whether we're using a broken
-  // algorithm, so on versions where some algorithms are broken, we don't use
-  // the cuDNN Frontend for these convs at all.  As such, if we get a
-  // frontend-based runner, we can be sure it's not one of the broken
-  // algorithms we're checking for.
-  if (!alg.is_cudnn_frontend() &&
-      config.kind == CudnnConvKind::kForwardActivation &&
-      activation_mode == se::dnn::ActivationMode::kNone &&
-      alg.algo_id() != CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM) {
-    return make_failure(AutotuneResult::DISQUALIFIED,
-                        "Disqualified for implicit RELU.");
-  }
-
   TF_ASSIGN_OR_RETURN(se::Stream * stream, config_.GetStream());
   se::RedzoneAllocator scratch_allocator(
       stream, config_.GetAllocator(),

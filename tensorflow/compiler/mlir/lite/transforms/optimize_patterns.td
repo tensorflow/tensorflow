@@ -155,7 +155,7 @@ multiclass FuseBinaryOpToPrecedingAffine<Op binaryOp> {
               (Arith_ConstantOp FloatElementsAttr:$value), $act_fn),
     (TFL_TransposeConvOp $output_shape, $weights, $input,
       (binaryOp (Arith_ConstantOp $bias),
-         (Arith_ConstantOp $value), TFL_AF_None),
+         (Arith_ConstantOp (FlattenTo1D $value)), TFL_AF_None),
       $padding, $stride_h, $stride_w, $act_fn),
     [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
      (HasOneUse $output)]>;
@@ -166,7 +166,7 @@ multiclass FuseBinaryOpToPrecedingAffine<Op binaryOp> {
                 $stride_h, $stride_w, TFL_AF_None),
               (Arith_ConstantOp FloatElementsAttr:$value), $act_fn),
     (TFL_TransposeConvOp $output_shape, $weights, $input,
-      (TFL_MulOp  (Arith_ConstantOp $value),
+      (TFL_MulOp  (Arith_ConstantOp (FlattenTo1D $value)),
                   (GetBiasMultiplier $root, $value),
                   TFL_AF_None
       ),
@@ -2084,13 +2084,18 @@ def ReorderGatherAndCast : Pat<
 // Replace division by a constant with a multiplication by a reciprocal of that
 // constant. Floating point division can be ~10x more expensive than a
 // multiplication.
+// Only do the replacement when arg0 is not a constant, otherwise the newly
+// generated div will be converted to mul again if the const div is not
+// folded (that could happen when const tensor is very large), and that will
+// cause infinite recursion.
 def RealDivWithF32ConstDivisor : Pat<
   (TFL_DivOp:$src $arg0, (Arith_ConstantOp FloatElementsAttr<32>:$value), $activation),
   (TFL_MulOp:$dest1 $arg0,
     (TFL_DivOp (Arith_ConstantOp
       (GetScalarOfType<1> (Arith_ConstantOp $value))),
       (Arith_ConstantOp $value),  TFL_AF_None),
-    $activation)>;
+    $activation),
+  [(NotConstantLike $arg0)]>;
 
 // Replace casting a boolean tensor to a numeric type, followed by comparing
 // with zero. Note it doesn't matter what type we're casting to. HasSameType
@@ -2172,3 +2177,46 @@ def CastLessZero : Pat<
   (TFL_LessOp:$result (TFL_CastOp $input), (Arith_ConstantOp $zero)),
   (TFL_ZerosLikeOp $input),
   [(IsConstantValueOf<0> $zero), (HasSameType $input, $result)]>;
+
+//  x + (y - y) -> x
+// This pattern can emerge through some usages of gradient stop. Note, for all
+// activation functions fn(0) = 0, so it can be anything in the subtraction.
+def AddComputedZeroRHS : Pat<
+  (TFL_AddOp:$output
+    $input,
+    (TFL_SubOp $input2, $input2, $activation),
+    TFL_AF_None),
+  (replaceWithValue $input),
+  [(HasSameType $input, $output)]>;
+//  (y - y) + x -> x
+def AddComputedZeroLHS : Pat<
+  (TFL_AddOp:$output
+    (TFL_SubOp $input2, $input2, $activation),
+    $input,
+    TFL_AF_None),
+  (replaceWithValue $input),
+  [(HasSameType $input, $output)]>;
+
+// Replace matmul where inputs & weights have a last dimension of 1 with an
+// elementwise multiplication that broadcasts, i.e. replace:
+//   [a, b, 1] x [n, 1] => [a, b, n]
+// with:
+//   [a, b, 1] * [n] => [a, b, n]
+def DegenerateFCtoMul : Pat<
+  (TFL_FullyConnectedOp
+    $input,
+    (Arith_ConstantOp:$filter $filterVal),
+    $bias,
+    $fused_activation_function,
+    TFL_FCWO_Default,
+    ConstBoolAttrTrue,
+    $asymmetric_quantize_inputs),
+  (TFL_MulOp
+    $input,
+    (Arith_ConstantOp (FlattenTo1D $filterVal)),
+    $fused_activation_function),
+  [(HasRankAtMost<4> $input),
+   (HasRank<2> $filter),
+   (IsLastDimensionEqualOne $input),
+   (SameElementType $input, $filter),
+   (IsNoneType $bias)]>;

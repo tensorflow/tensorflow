@@ -49,8 +49,8 @@ struct OpData {
   int output_offset;
   bool needs_rescale;
   union {
-    int8_t lut_int8[LUTSize<int8_t>()];
-    int16_t lut_int16[LUTSize<int16_t>()];
+    int8_t* lut_int8;
+    int16_t* lut_int16;
   };
 };
 
@@ -118,10 +118,16 @@ void LogLUTPrepare(TfLiteType type, OpData* op_data, float input_scale,
   };
 
   if (type == kTfLiteInt8) {
+    if (!op_data->lut_int8) {
+      op_data->lut_int8 = new int8_t[LUTSize<int8_t>()];
+    }
     LUTPopulate<int8_t>(input_scale, input_zero_point, output_scale,
                         output_zero_point, lut_func, lut_func_params,
                         op_data->lut_int8);
   } else {
+    if (!op_data->lut_int16) {
+      op_data->lut_int16 = new int16_t[LUTSize<int16_t>()];
+    }
     LUTPopulate<int16_t>(input_scale, input_zero_point, output_scale,
                          output_zero_point, lut_func, lut_func_params,
                          op_data->lut_int16);
@@ -208,6 +214,9 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node,
           }
           return 1.0f / std::sqrt(value);
         };
+        if (!op_data->lut_int16) {
+          op_data->lut_int16 = new int16_t[LUTSize<int16_t>()];
+        }
         LUTPopulate<int16_t>(input_scale, input_params->zero_point->data[0],
                              output_scale, output_params->zero_point->data[0],
                              lut_func, lut_func_params, op_data->lut_int16);
@@ -292,7 +301,11 @@ void* ElementWiseQuantizedInit(TfLiteContext* context, const char* buffer,
 }
 
 void ElementWiseQuantizedFree(TfLiteContext* context, void* buffer) {
-  delete static_cast<OpData*>(buffer);
+  OpData* data = static_cast<OpData*>(buffer);
+  if (data && data->lut_int8) {
+    delete[] data->lut_int8;
+  }
+  delete data;
 }
 
 template <typename T>
@@ -322,7 +335,8 @@ TfLiteStatus AbsEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteType type = input->type;
   switch (type) {
     case kTfLiteFloat32:
-      return EvalImpl<float>(context, node, std::abs<float>, type);
+      return EvalImpl<float>(
+          context, node, [](float f) { return std::abs(f); }, type);
     case kTfLiteInt8:
       return AbsEvalQuantized<int8_t>(context, node, type);
     case kTfLiteInt16:

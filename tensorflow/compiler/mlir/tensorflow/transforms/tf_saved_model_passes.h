@@ -38,6 +38,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeGlobalTensorsPass(
 std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeAssetsPass(
     std::string saved_model_dir = "");
 
+// Creates a pass that unfreezes mutable global tensors.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateUnfreezeMutableGlobalTensorsPass();
+
 // Creates as pass that removes variables in the session initializer.
 // This job is required with lifting variable passes. Originally, the session
 // initializer function does assigning variables. However, the read-only

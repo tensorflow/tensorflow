@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -100,6 +102,33 @@ std::optional<ReductionKind> MatchReductionComputation(
     kind = std::nullopt;
   }
   return kind;
+}
+
+std::unique_ptr<HloComputation> MakeReductionComputation(
+    ReductionKind reduction_kind, PrimitiveType element_type) {
+  auto builder = HloComputation::Builder("make_reduction_computation");
+  auto lhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(element_type, {}), "lhs"));
+  auto rhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(element_type, {}), "rhs"));
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      lhs->shape(), *ReductionKindToOpcode(reduction_kind), lhs, rhs));
+  return builder.Build();
+}
+
+std::optional<HloOpcode> ReductionKindToOpcode(ReductionKind reduction_kind) {
+  switch (reduction_kind) {
+    case ReductionKind::SUM:
+      return HloOpcode::kAdd;
+    case ReductionKind::PRODUCT:
+      return HloOpcode::kMultiply;
+    case ReductionKind::MIN:
+      return HloOpcode::kMinimum;
+    case ReductionKind::MAX:
+      return HloOpcode::kMaximum;
+    default:
+      return std::nullopt;
+  }
 }
 
 std::optional<Literal> GetReductionIdentity(ReductionKind kind,
@@ -379,43 +408,26 @@ GetParticipatingDevicesGroups(const HloInstruction* collective) {
       device_assignment, GetCollectiveReplicaGroups(collective), mode);
 }
 
-absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
     const DeviceAssignment& device_assignment,
-    absl::Span<const ReplicaGroup> replica_groups,
+    const CollectiveDeviceList& collective_device_list,
     CollectiveOpGroupMode group_mode) {
-  // Compute the device_id to flattened_id mapping once to avoid brute force
-  // searching through device assignment repeatedly.
-  absl::flat_hash_map<GlobalDeviceId, int64_t> device_id_to_flattened_id;
-  for (int r = 0; r < device_assignment.replica_count(); ++r) {
-    for (int c = 0; c < device_assignment.computation_count(); ++c) {
-      GlobalDeviceId device_id = GlobalDeviceId(device_assignment(r, c));
-      int64_t flattened_id = r * device_assignment.computation_count() + c;
-      device_id_to_flattened_id[device_id] = flattened_id;
-    }
-  }
-
-  std::vector<ReplicaGroup> flattened_id_groups;
-  TF_ASSIGN_OR_RETURN(std::vector<std::vector<GlobalDeviceId>> device_groups,
-                      GetParticipatingDevicesGroups(
-                          device_assignment, replica_groups, group_mode));
-  for (const auto& device_group : device_groups) {
-    ReplicaGroup flattened_id_group;
-    flattened_id_group.mutable_replica_ids()->Reserve(device_group.size());
-    for (const GlobalDeviceId& device_id : device_group) {
-      flattened_id_group.add_replica_ids(device_id_to_flattened_id[device_id]);
-    }
-    flattened_id_groups.push_back(flattened_id_group);
-  }
-  return flattened_id_groups;
+  return GetParticipatingFlattenedIdGroups(
+      collective_device_list, group_mode, device_assignment.replica_count(),
+      device_assignment.computation_count());
 }
 
-absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
-    absl::Span<const ReplicaGroup> replica_groups,
+absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
+    const CollectiveDeviceList& collective_device_list,
     CollectiveOpGroupMode group_mode, int replica_count, int partition_count) {
+  if (group_mode == CollectiveOpGroupMode::kFlattenedID) {
+    return collective_device_list;
+  }
   std::vector<ReplicaGroup> filled_empty_replica_group;
-  absl::Span<const ReplicaGroup> original_replica_groups = replica_groups;
+  absl::Span<const ReplicaGroup> original_replica_groups =
+      collective_device_list.replica_groups();
   std::vector<ReplicaGroup> flattened_replica_groups;
-  if (replica_groups.empty()) {
+  if (collective_device_list.replica_groups().empty()) {
     filled_empty_replica_group.emplace_back();
     const int64_t id_count =
         group_mode == CollectiveOpGroupMode::kCrossPartition ? partition_count
@@ -425,11 +437,7 @@ absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     }
     original_replica_groups = filled_empty_replica_group;
   }
-  if (group_mode == CollectiveOpGroupMode::kFlattenedID) {
-    flattened_replica_groups.insert(flattened_replica_groups.end(),
-                                    original_replica_groups.begin(),
-                                    original_replica_groups.end());
-  } else if (group_mode == CollectiveOpGroupMode::kCrossReplica) {
+  if (group_mode == CollectiveOpGroupMode::kCrossReplica) {
     flattened_replica_groups.resize(original_replica_groups.size() *
                                     partition_count);
     for (int64_t i = 0, current_group_offset = 0;
@@ -474,30 +482,30 @@ absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
       }
     }
   }
-  return flattened_replica_groups;
+  return CollectiveDeviceList(flattened_replica_groups);
 }
 
-absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
     const HloInstruction* hlo, const DeviceAssignment& device_assignment) {
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
                       GetCollectiveOpGroupMode(hlo));
   TF_ASSIGN_OR_RETURN(
-      std::vector<ReplicaGroup> replica_groups,
+      CollectiveDeviceList collective_device_list,
       GetParticipatingFlattenedIdGroups(device_assignment,
-                                        GetCollectiveReplicaGroups(hlo), mode));
-  return replica_groups;
+                                        GetCollectiveDeviceList(hlo), mode));
+  return collective_device_list;
 }
 
 // Same as above, used for cases where static_device_assignment is not present.
-absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
     const HloInstruction* hlo, int replica_count, int partition_count) {
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
                       GetCollectiveOpGroupMode(hlo));
   TF_ASSIGN_OR_RETURN(
-      std::vector<ReplicaGroup> replica_groups,
-      GetParticipatingFlattenedIdGroups(GetCollectiveReplicaGroups(hlo), mode,
+      CollectiveDeviceList collective_device_list,
+      GetParticipatingFlattenedIdGroups(GetCollectiveDeviceList(hlo), mode,
                                         replica_count, partition_count));
-  return replica_groups;
+  return collective_device_list;
 }
 
 absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
@@ -836,58 +844,6 @@ HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction) {
   return nullptr;
 }
 
-using SourceTargetPairType = std::pair<int64_t, int64_t>;
-using SourceTargetPairsType = std::vector<SourceTargetPairType>;
-
-std::pair<CycleType, std::set<int>> GetCycleTypeAndIndices(
-    const SourceTargetPairsType& pairs) {
-  std::set<int> seen_replica_ids;
-  std::set<std::pair<int64_t, int64_t>> tentative_results;
-  // first figure out if we're dealing with a potential forward or backward
-  // cycle.
-  int forward_edge_counter = 0;
-  int backward_edge_counter = 0;
-  for (auto pair : pairs) {
-    pair.first < pair.second ? forward_edge_counter++ : backward_edge_counter++;
-  }
-  bool is_forward_cycle = forward_edge_counter > backward_edge_counter;
-  for (int64_t i = 0; i < pairs.size(); ++i) {
-    const SourceTargetPairType& pair = pairs[i];
-    if (is_forward_cycle) {
-      // check if the source of the current pair is smaller than the target
-      if (pair.first < pair.second) {
-        seen_replica_ids.insert(pair.first);
-      } else {
-        // the source of the current pair is larger than the target, so the
-        // current pair may be part of a cycle. We keep track of the target ID
-        // and the index of the pair in the original pairs array.
-        tentative_results.insert(std::make_pair(pair.second, i));
-      }
-    } else {
-      // The backward cycle check uses similar logic but in reverse.
-      if (pair.first > pair.second) {
-        seen_replica_ids.insert(pair.second);
-      } else {
-        tentative_results.insert(std::make_pair(pair.first, i));
-      }
-    }
-  }
-  std::set<int> final_results;
-  // Iterate over the tentative results and only keep the indices that form an
-  // actual cycle. This is done by checking if the target replica ID of the
-  // pair is in the set of seen replica IDs. Note that the tentative results
-  // array will be fairly small in practice, so this is not adding too much to
-  // the runtime.
-  for (auto& [replica_id, index] : tentative_results) {
-    if (seen_replica_ids.find(replica_id) != seen_replica_ids.end()) {
-      final_results.insert(index);
-    }
-  }
-  CycleType cycle_type = final_results.empty() ? CycleType::kNone
-                         : is_forward_cycle    ? CycleType::kForward
-                                               : CycleType::kBackward;
-  return std::make_pair(cycle_type, final_results);
-}
 
 bool IsExclusivelyCrossModule(absl::Span<const ReplicaGroup> replica_groups,
                               bool use_global_ids, bool has_channel_id,

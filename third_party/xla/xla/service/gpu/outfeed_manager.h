@@ -55,7 +55,7 @@ class OutfeedBuffer {
  private:
   std::unique_ptr<MutableBorrowingLiteral> destination_;
   const int64_t length_;
-  tsl::Notification done_;
+  absl::Notification done_;
 };
 
 // Manages a thread-safe queue of buffers. The buffers are supposed to be

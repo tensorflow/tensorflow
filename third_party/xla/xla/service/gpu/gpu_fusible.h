@@ -128,6 +128,15 @@ bool IsNestableVariadicReduceWindow(const HloInstruction& instr);
 bool IsInputFusibleScatter(const HloInstruction& instr);
 
 // Determines whether the combination of `instr1` and `instr2` into a (possibly
+// multi-output) fusion fits within the maximum number of parameters that can be
+// passed to a kernel. If the fusion is a producer/consumer fusion and `instr1`
+// is the consumer and `instr2` is the producer, set consumer_producer_fusion to
+// true to enable more fusion.
+FusionDecision FusionFitsInParameterLimit(
+    const HloInstruction& instr1, const HloInstruction& instr2,
+    bool is_consumer_producer_fusion = false);
+
+// Determines whether the combination of `instr1` and `instr2` into a (possibly
 // multi-output) fusion fits within a "budget" -- i.e., does have more operands
 // and outputs than is allowed or occupy too much shared memory. If the fusion
 // is a producer/consumer fusion and `instr1` is the consumer and `instr2` is

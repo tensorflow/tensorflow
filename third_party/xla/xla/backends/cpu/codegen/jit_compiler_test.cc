@@ -43,6 +43,7 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -74,6 +75,8 @@ static absl::StatusOr<llvm::orc::ThreadSafeModule> ParseModule(
     return Internal("Failed to parse LLVM IR: %s",
                     diagnostic.getMessage().str());
   }
+
+  SetModuleMemoryRegionName(*m, "jit_compiler_test");
 
   return llvm::orc::ThreadSafeModule(std::move(m), context);
 }

@@ -39,14 +39,14 @@ namespace ifrt_serving {
 
 // Create a tensor from the given host tensor based on given device ids and
 // sharding information.
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
+absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
     absl::Span<const int> device_ids, const xla::HloSharding& hlo_sharding,
     const tsl::thread::ThreadPool& thread_pool);
 
 // A variant of the above api. The difference is that the user passes in
 // device_list directly instead of a list of device_ids.
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
+absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
     const xla::ifrt::DeviceListRef& device_list,
     const xla::HloSharding& hlo_sharding,

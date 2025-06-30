@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
 
-#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <functional>
@@ -24,11 +23,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -62,6 +59,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
@@ -90,61 +88,28 @@ using ::mlir::SymbolTable;
 using ::mlir::func::FuncOp;
 
 using ::mlir::sdy::AxisRefAttr;
-using ::mlir::sdy::DimensionShardingAttr;
 using ::mlir::sdy::kShardingAttr;
+using ::mlir::sdy::ManualAxesAttr;
 using ::mlir::sdy::MeshAttr;
-using ::mlir::sdy::MeshAxisAttr;
 using ::mlir::sdy::MeshOp;
 using ::mlir::sdy::SdyDialect;
-using ::mlir::sdy::SubAxisInfoAttr;
 using ::mlir::sdy::TensorShardingAttr;
 
-// Return all axes or sub-axes in the `mesh`, such that sub-axes are derived
-// from `dimShardings` and sorted by their order in the mesh. For example, given
-// mesh <"x"=2, "y"=16, "z"=4> and dimShardings [{"x"}, {"y":2(2)}], we would
-// return ["x", "y":1(2), "y":2(2), "y":4(4), "z"].
-SmallVector<AxisRefAttr> getOrderedAxisRefs(
-    ArrayRef<DimensionShardingAttr> dimShardings, MeshAttr mesh) {
-  // We use a map vector to maintain the order of mesh axes.
-  llvm::MapVector<StringRef, SmallVector<int64_t>> axisNameToPreSizes;
-  axisNameToPreSizes.reserve(mesh.getAxes().size());
-  for (MeshAxisAttr meshAxis : mesh.getAxes()) {
-    SmallVector<int64_t>& preSizes = axisNameToPreSizes[meshAxis.getName()];
-    preSizes.push_back(1);
-    preSizes.push_back(meshAxis.getSize());
-  }
-
-  for (const DimensionShardingAttr dimSharding : dimShardings) {
-    for (AxisRefAttr axisRef : dimSharding.getAxes()) {
-      // Add sub-axis pre-sizes to `axisNameToPreSizes`. We'll dedup later.
-      if (axisRef.getSubAxisInfo()) {
-        SmallVector<int64_t>& preSizes = axisNameToPreSizes[axisRef.getName()];
-        preSizes.push_back(axisRef.getSubAxisInfo().getPreSize());
-        preSizes.push_back(axisRef.getSubAxisInfo().getNextPreSize());
-      }
+// Check if all shardings in an array are unreduced. Hard fail if at least one
+// but not all are unreduced.
+bool allShardingsUnreduced(ArrayRef<TensorShardingAttr> shardings) {
+  bool hasUnreduced = false;
+  bool hasNonUnreduced = false;
+  for (TensorShardingAttr sharding : shardings) {
+    if (sharding.getUnreducedAxes().empty()) {
+      hasNonUnreduced = true;
+    } else {
+      hasUnreduced = true;
     }
   }
-
-  SmallVector<AxisRefAttr> axisRefs;
-  mlir::MLIRContext* ctx = mesh.getContext();
-  for (auto& [axisName, preSizes] : axisNameToPreSizes) {
-    if (preSizes.size() == 2) {
-      // Full axis
-      axisRefs.push_back(AxisRefAttr::get(ctx, axisName));
-      continue;
-    }
-    absl::c_sort(preSizes);
-    preSizes.erase(std::unique(preSizes.begin(), preSizes.end()),
-                   preSizes.end());
-    for (int64_t i = 0; i < preSizes.size() - 1; ++i) {
-      int64_t preSize = preSizes[i];
-      int64_t size = preSizes[i + 1] / preSize;
-      axisRefs.push_back(AxisRefAttr::get(
-          ctx, axisName, SubAxisInfoAttr::get(ctx, preSize, size)));
-    }
-  }
-
-  return axisRefs;
+  CHECK(!hasUnreduced || !hasNonUnreduced)
+      << "Shardings have a mix of unreduced and non-unreduced.";
+  return hasUnreduced;
 }
 
 // Convert the shardings from kShardingAttr into kXlaShardingAttr.
@@ -163,9 +128,15 @@ LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
   for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); ++argNum) {
     if (auto sdySharding = funcOp.getArgAttrOfType<TensorShardingAttr>(
             argNum, kShardingAttr)) {
-      funcOp.setArgAttr(
-          argNum, kXlaShardingAttr,
-          getStringAttr(convertToHloSharding(sdySharding, getMeshAttr)));
+      ArrayRef<StringAttr> manualAxes;
+      if (ManualAxesAttr manualAxesAttr =
+              funcOp.getArgAttrOfType<ManualAxesAttr>(argNum, kManualAxes)) {
+        manualAxes = manualAxesAttr.getValue();
+        funcOp.removeArgAttr(argNum, kManualAxes);
+      }
+      funcOp.setArgAttr(argNum, kXlaShardingAttr,
+                        getStringAttr(convertToHloSharding(
+                            sdySharding, getMeshAttr, manualAxes)));
       funcOp.removeArgAttr(argNum, kShardingAttr);
     }
   }
@@ -173,25 +144,44 @@ LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
   for (int64_t resNum = 0; resNum < funcOp.getNumResults(); ++resNum) {
     if (auto sdySharding = funcOp.getResultAttrOfType<TensorShardingAttr>(
             resNum, kShardingAttr)) {
-      funcOp.setResultAttr(
-          resNum, kXlaShardingAttr,
-          getStringAttr(convertToHloSharding(sdySharding, getMeshAttr)));
+      ArrayRef<StringAttr> manualAxes;
+      if (ManualAxesAttr manualAxesAttr =
+              funcOp.getResultAttrOfType<ManualAxesAttr>(resNum, kManualAxes)) {
+        manualAxes = manualAxesAttr.getValue();
+        funcOp.removeResultAttr(resNum, kManualAxes);
+      }
+      funcOp.setResultAttr(resNum, kXlaShardingAttr,
+                           getStringAttr(convertToHloSharding(
+                               sdySharding, getMeshAttr, manualAxes)));
       funcOp.removeResultAttr(
           resNum, StringAttr::get(funcOp.getContext(), kShardingAttr));
     }
   }
 
   funcOp.front().walk([&](Operation* op) {
+    ArrayRef<StringAttr> manualAxes;
+    if (ManualAxesAttr manualAxesAttr =
+            op->getAttrOfType<ManualAxesAttr>(kManualAxes)) {
+      manualAxes = manualAxesAttr.getValue();
+      op->removeAttr(kManualAxes);
+    }
+
     if (ArrayRef<TensorShardingAttr> shardings = mlir::sdy::getShardings(op);
         !shardings.empty()) {
-      setHloShardingAttr(op, shardings, getMeshAttr);
+      if (allShardingsUnreduced(shardings)) {
+        setFrontendAttribute(op, kHasUnreducedAxes,
+                             builder.getStringAttr("true"));
+      }
+      setHloShardingAttr(op, shardings, getMeshAttr, manualAxes);
       op->removeAttr(kShardingAttr);
     } else if (addMissingShardingToControlFlow &&
                mlir::isa<stablehlo::WhileOp, stablehlo::CaseOp,
-                         stablehlo::IfOp>(op) &&
-               !op->hasAttr(kXlaShardingAttr)) {
-      // We check if the op already has a `kXlaShardingAttr`, since a manual
-      // sharding might have been added in shard map export pass.
+                         stablehlo::IfOp>(op)) {
+      // The shard map export pass assigns shardings to any operation with
+      // manual axes. Since this operation lacks shardings
+      // (`shardings.empty()`), it cannot have manual axes. This CHECK asserts
+      // this invariant before we add a replicated sharding.
+      CHECK(manualAxes.empty());
       op->setAttr(kXlaShardingAttr, getStringAttr(HloSharding::Replicate()));
     }
   });
@@ -276,7 +266,8 @@ HloSharding getHloShardingForOp(
     ArrayRef<StringAttr> manualAxes) {
   // TODO(bartchr): pass through a symbol table to `getMesh(...)` below.
   bool isNoResultMaximal = op->getNumResults() == 0 && shardings.size() == 1 &&
-                           shardings.front().getMesh(op).isMaximal();
+                           (shardings.front().getMesh(op).isMaximal() ||
+                            shardings.front().isFullyReplicated());
   CHECK(shardings.size() == op->getNumResults() || isNoResultMaximal);
   if (op->getNumResults() == 1 || isNoResultMaximal) {
     return convertToHloSharding(shardings.front(), getMeshAttr, manualAxes);
@@ -344,8 +335,7 @@ HloSharding convertToHloSharding(
   }
 
   // We will add all axes and let canonicalization merge adjacent axes.
-  SmallVector<AxisRefAttr> meshAxisRefs =
-      getOrderedAxisRefs(sdySharding.getDimShardings(), mesh);
+  SmallVector<AxisRefAttr> meshAxisRefs = getOrderedAxisRefs(sdySharding, mesh);
   SmallVector<int64_t> reshapeDims(meshAxisRefs.size());
   SmallVector<int> transposePerm(meshAxisRefs.size());
 

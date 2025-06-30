@@ -1378,8 +1378,9 @@ absl::Status GcsFileSystem::NewAppendableFile(
   TF_RETURN_IF_ERROR(GetTmpFilename(&old_content_filename));
   std::ofstream old_content(old_content_filename, std::ofstream::binary);
   while (true) {
-    status = reader->Read(offset, kReadAppendableFileBufferSize, &read_chunk,
-                          buffer.get());
+    status = reader->Read(
+        offset, read_chunk,
+        absl::MakeSpan(buffer.get(), kReadAppendableFileBufferSize));
     if (status.ok()) {
       old_content << read_chunk;
       offset += kReadAppendableFileBufferSize;
@@ -1452,7 +1453,7 @@ absl::Status GcsFileSystem::NewReadOnlyMemoryRegionFromFile(
   TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, token, &file));
 
   absl::string_view piece;
-  TF_RETURN_IF_ERROR(file->Read(0, size, &piece, data.get()));
+  TF_RETURN_IF_ERROR(file->Read(0, piece, absl::MakeSpan(data.get(), size)));
 
   result->reset(new GcsReadOnlyMemoryRegion(std::move(data), size));
   return absl::OkStatus();

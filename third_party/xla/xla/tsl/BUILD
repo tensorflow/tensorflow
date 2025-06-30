@@ -297,7 +297,7 @@ config_setting(
     name = "linux_ppc64le",
     constraint_values =
         [
-            "@platforms//cpu:ppc64le",
+            "@platforms//cpu:ppc",
             "@platforms//os:linux",
         ],
     visibility = ["//visibility:public"],
@@ -519,6 +519,36 @@ selects.config_setting_group(
     visibility = ["//visibility:public"],
 )
 
+# Indicates whether --//third_party/tensorflow/compiler/xla/tsl:ci_build=True
+# is set on the bazel command line.
+#
+# Example:
+#   cc_binary(
+#     name = "foo",
+#     srcs = ["foo.cc"],
+#     linkstatic = select({
+#         # If --//third_party/tensorflow/compiler/xla/tsl:ci_build=True is set
+#         # on the bazel command line, then the binary is linked statically.
+#         "//xla/tsl/tsl:is_ci_build": True,
+#         # Otherwise, the binary is linked dynamically.
+#         "//conditions:default": False,
+#     }),
+#     deps = [...],
+#   )
+config_setting(
+    name = "is_ci_build",
+    flag_values = {":ci_build": "True"},
+    visibility = ["//visibility:public"],
+)
+
+# Implements the custom bazel flag
+# --//third_party/tensorflow/compiler/xla/tsl:ci_build=True.
+bool_flag(
+    name = "ci_build",
+    build_setting_default = False,
+    visibility = ["//visibility:private"],
+)
+
 bzl_library(
     name = "tsl_bzl",
     srcs = ["tsl.bzl"],
@@ -551,6 +581,16 @@ bzl_library(
     name = "package_groups_bzl",
     srcs = ["package_groups.bzl"],
     visibility = ["//xla:__subpackages__"],
+)
+
+bzl_library(
+    name = "tsl_default_bzl",
+    srcs = if_oss(["tsl.default.bzl"]),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":package_groups_bzl",
+        ":tsl_bzl",
+    ],
 )
 
 # copybara:comment_begin(oss-only)

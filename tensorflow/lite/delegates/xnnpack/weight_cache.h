@@ -22,11 +22,11 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <vector>
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/xnnpack/file_util.h"
+#include "tensorflow/lite/delegates/xnnpack/mmap_handle.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
 
 // WARNING: the interface in this file is still under experimentation and WILL
@@ -42,7 +42,7 @@ namespace xnnpack {
 //
 // This is useful when disk space is not available or when having to manage the
 // cache file freshness is too complicated and still provides the deduplication
-// mechanism for constant buffers that are reused accross graph signatures.
+// mechanism for constant buffers that are reused across graph signatures.
 inline constexpr char kInMemoryCachePath[] = ":memory";
 
 // This structure is written at the start of every cache file.
@@ -61,6 +61,8 @@ struct XNNPackCacheHeader {
   uint64_t buffer_list_offset;
   uint64_t buffer_list_size;
 };
+
+bool IsCompatibleCacheFile(const char* path);
 
 struct PackIdentifier {
   enum { kNoId = SIZE_MAX };
@@ -94,76 +96,6 @@ struct BufferLocation {
   }
 };
 
-// Handles MMap allocations lifetime.
-//
-// When mapped, provides a view over the allocation for convenience.
-//
-// WARNING: the interface in this file is still under experimentation and WILL
-// CHANGE. Do not rely on it.
-class MMapHandle {
- public:
-  using value_type = uint8_t;
-
-  MMapHandle() = default;
-  ~MMapHandle();
-  MMapHandle(const MMapHandle&) = delete;
-  MMapHandle& operator=(const MMapHandle&) = delete;
-  MMapHandle(MMapHandle&&);
-  MMapHandle& operator=(MMapHandle&&);
-
-  // Maps the file at the given path.
-  [[nodiscard /*Mapping a file can fail.*/]]
-  bool Map(const char* path, size_t offset = 0);
-
-  // Maps the fd associated to the file descriptor.
-  //
-  // The debug_path is printed along the error messages.
-  [[nodiscard /*Mapping a file can fail.*/]]
-  bool Map(const FileDescriptor& fd, size_t offset = 0,
-           const char* debug_path = "unspecified");
-
-  // Tries to resize the current mapping.
-  //
-  // Only succeeds if the mapping could be resized without being moved.
-  //
-  // WARNING: expects `IsMapped()` to be true.
-  [[nodiscard /*Resizing a file can fail.*/]]
-  bool Resize(size_t new_size);
-
-  // Unmaps an existing mapping.
-  void UnMap();
-
-  // Returns true if a mapping exists.
-  bool IsMapped() const { return data_ != nullptr; }
-
-  // Returns the mapping buffer.
-  uint8_t* data() { return data_ + offset_page_adjustment_; }
-
-  // Returns the mapping buffer.
-  const uint8_t* data() const { return data_ + offset_page_adjustment_; }
-
-  // Returns the mapping size in bytes.
-  size_t size() const { return size_; }
-
-  size_t offset() const { return offset_; }
-
-  uint8_t* begin() { return data(); }
-
-  const uint8_t* begin() const { return data(); }
-
-  uint8_t* end() { return data() + size(); }
-
-  const uint8_t* end() const { return data() + size(); }
-
-  friend void swap(MMapHandle& a, MMapHandle& b);
-
- private:
-  size_t size_ = 0;
-  size_t offset_ = 0;
-  size_t offset_page_adjustment_ = 0;
-  uint8_t* data_ = nullptr;
-};
-
 // Provides storage to write the packed buffers to and saves those to disk.
 //
 // WARNING: the interface in this file is still under experimentation and WILL
@@ -182,7 +114,7 @@ class WeightCacheBuilder {
   WeightCacheBuilder& operator=(WeightCacheBuilder&&);
 
   [[nodiscard /*Starting the builder may fail.*/]]
-  bool Start(const char* path);
+  bool Start(const char* path, const FileDescriptor& fd);
 
   [[nodiscard]]
   bool IsStarted() const {
@@ -236,7 +168,7 @@ class WeightCacheBuilder {
   }
 
   // Returns the file descriptor.
-  const FileDescriptor& GetFileDescriptor() const { return fd_; }
+  FileDescriptorView GetFileDescriptor() const { return fd_; }
 
   // Returns the capacity of the underlying reserved buffer.
   //
@@ -264,8 +196,8 @@ class WeightCacheBuilder {
   // cache. To ensure a smooth reloading, we need to ensure that the file header
   // is correct. This flag lets us know if that has happened.
   bool first_write_done_ = false;
-  // Temporary file descriptor to write the weights to disk immediately.
-  FileDescriptor fd_;
+  // File descriptor view.
+  FileDescriptorView fd_;
   std::string file_path_;
 
   bool is_build_step_ = false;
@@ -301,15 +233,19 @@ class MMapWeightCacheProvider {
 
   // Tries to load the given file. If the file doesn't exist starts building the
   // cache for it.
+  //
+  // If `fd` is provided, use that instead of reopening the file at the given
+  // path.
   [[nodiscard /*Loading a cache file may fail.*/]]
-  bool LoadOrStartBuild(const char* file_path);
+  bool LoadOrStartBuild(const char* file_path,
+                        FileDescriptor fd = FileDescriptor());
 
   [[nodiscard /*Starting to build a cache file may fail.*/]]
-  bool StartBuild(const char* file_path);
+  bool StartBuild(const char* file_path, FileDescriptor fd = FileDescriptor());
 
-  // Set the weight file path and loads it.
+  // Sets the weight file path and loads it.
   [[nodiscard /*Loading a cache file may fail.*/]]
-  bool Load(const std::string& path);
+  bool Load(const std::string& path, FileDescriptor fd = FileDescriptor());
 
   // Loads the weight cache previously set with `SetFilePath`.
   [[nodiscard /*Loading cache data may fail.*/]]
@@ -444,9 +380,8 @@ class MMapWeightCacheProvider {
   // The offset to the first buffer data in the MMap allocation.
   size_t mmap_buffer_base_offset_;
 
-  // Can hold a file descriptor when building a temporary cache to prevent it
-  // from being deleted.
-  FileDescriptor temporary_file_descriptor_;
+  // Holds a file descriptor to the cache file.
+  FileDescriptor file_descriptor_;
 
   // Used to build the cache.
   WeightCacheBuilder builder_;

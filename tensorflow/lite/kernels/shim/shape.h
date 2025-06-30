@@ -57,7 +57,7 @@ class Shape {
   int Dim(const int idx) const;
 
   // Returns the rank of the shape
-  const int Rank() const { return has_value_ ? value_.size() : kUnknownRank; }
+  int Rank() const { return has_value_ ? value_.size() : kUnknownRank; }
 
   // Whether all the dimensions of the shape are known
   bool FullyDefined() const;

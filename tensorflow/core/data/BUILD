@@ -757,6 +757,7 @@ tf_cc_test(
     # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":utils",
+        "//tensorflow/core:framework",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -19,15 +19,16 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "absl/status/statusor.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/literal_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -171,11 +172,12 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
   }
 
   HloComputation* entry_computation;
+  HloInstruction* while_op;
   {
     HloComputation::Builder builder(TestName() + ".entry");
     HloInstruction* false_constant = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
-    builder.AddInstruction(HloInstruction::CreateWhile(
+    while_op = builder.AddInstruction(HloInstruction::CreateWhile(
         ShapeUtil::MakeShape(PRED, {}), cond_computation, cond_computation,
         false_constant));
     entry_computation = module->AddEntryComputation(builder.Build());
@@ -190,9 +192,10 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
   {
     TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
     EXPECT_TRUE(result);
+    EXPECT_NE(while_op->while_body(), while_op->while_condition());
     std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
     const CallGraphNode& cond_node = call_graph->GetNode(cond_computation);
-    EXPECT_EQ(1, cond_node.caller_callsites().size());
+    EXPECT_EQ(0, cond_node.caller_callsites().size());
   }
 }
 
@@ -243,7 +246,7 @@ TEST_F(FlattenCallGraphTest, FlattenCallsInConditional) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(56.0f)));
   auto constant2 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(12.0f)));
-  builder.AddInstruction(HloInstruction::CreateConditional(
+  auto cond = builder.AddInstruction(HloInstruction::CreateConditional(
       kScalarShape, pred, constant1, sub_computation, constant2,
       sub_computation));
   module->AddEntryComputation(builder.Build());
@@ -253,10 +256,12 @@ TEST_F(FlattenCallGraphTest, FlattenCallsInConditional) {
   EXPECT_TRUE(result);
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   // The true and false computations must now be different.
-  EXPECT_EQ(3, module->computation_count());
+  EXPECT_EQ(4, module->computation_count());
+  EXPECT_NE(cond->branch_computation(0), cond->branch_computation(1));
 
+  //  The original computation is no longer used.
   const CallGraphNode& sub_node = call_graph->GetNode(sub_computation);
-  EXPECT_EQ(1, sub_node.caller_callsites().size());
+  EXPECT_EQ(0, sub_node.caller_callsites().size());
 }
 
 TEST_F(FlattenCallGraphTest, AsyncCall) {
@@ -307,6 +312,191 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
             FindInstruction(module.get(), "call-start.1")
                 ->async_wrapped_instruction()
                 ->called_computations()[0]);
+}
+
+TEST_F(FlattenCallGraphTest, WhileInCall) {
+  std::string hlo_string = R"(
+HloModule WhileInCall
+
+  %while_cond {
+    %p.cond = (f32[4096]{0}) parameter(0)
+    ROOT %eq = pred[] constant(false)
+  }
+
+  %while_body {
+    ROOT %p = (f32[4096]{0}) parameter(0)
+  }
+
+  %called_computation(arg: f32[4096]) -> f32[4096] {
+    %arg = f32[4096]{0} parameter(0)
+    %while_init = (f32[4096]{0}) tuple(%arg)
+    %while = (f32[4096]{0}) while(%while_init), condition=%while_cond, body=%while_body
+    ROOT %get-tuple-element = f32[4096]{0} get-tuple-element(%while), index=0
+  }
+
+  ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
+    %a = f32[4096]{0} parameter(0)
+    %b = f32[4096]{0} parameter(1)
+    %call0 = f32[4096]{0} call(%a), to_apply=%called_computation
+    %call1 = f32[4096]{0} call(%b), to_apply=%called_computation
+    ROOT %multiply = f32[4096]{0} multiply(%call0, %call1)
+  }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_EQ(module->computation_count(), 4);
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(module->computation_count(), 7);
+}
+
+TEST_F(FlattenCallGraphTest, CallInWhileInCall) {
+  std::string hlo_string = R"(
+HloModule CallInWhileInCall
+
+  %called_computation_internal(arg: f32[4096]) -> f32[4096] {
+    ROOT %arg.internal = f32[4096]{0} parameter(0)
+  }
+
+  %while_cond {
+    %p.cond = (f32[4096]{0}) parameter(0)
+    ROOT %eq = pred[] constant(false)
+  }
+
+  %while_body {
+    %p.body = (f32[4096]{0}) parameter(0)
+    %gte = f32[4096]{0} get-tuple-element(%p.body), index=0
+    %call.internal = f32[4096]{0} call(%gte), to_apply=%called_computation_internal
+    ROOT %tuple.body = (f32[4096]{0}) tuple(%call.internal)
+  }
+
+  %called_computation_external(arg: f32[4096]) -> f32[4096] {
+    %arg.external = f32[4096]{0} parameter(0)
+    %while.init = (f32[4096]{0}) tuple(%arg.external)
+    %while = (f32[4096]{0}) while(%while.init), condition=%while_cond, body=%while_body
+    ROOT %get-tuple-element = f32[4096]{0} get-tuple-element(%while), index=0
+  }
+
+  ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
+    %a = f32[4096]{0} parameter(0)
+    %b = f32[4096]{0} parameter(1)
+    %call0 = f32[4096]{0} call(%a), to_apply=%called_computation_external
+    %call1 = f32[4096]{0} call(%b), to_apply=%called_computation_external
+    ROOT %multiply = f32[4096]{0} multiply(%call0, %call1)
+  }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_EQ(module->computation_count(), 5);
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(module->computation_count(), 9);
+}
+
+TEST_F(FlattenCallGraphTest, SortInCall) {
+  std::string hlo_string = R"(
+HloModule SortInCall
+
+  %compare {
+    %p.0.lhs = f32[] parameter(0)
+    %p.0.rhs = f32[] parameter(1)
+    ROOT %lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+  }
+
+  %called_computation(arg: f32[4096]) -> f32[4096] {
+    %x = f32[4096]{0} parameter(0)
+    ROOT %sort =f32[4096]{0} sort(%x), dimensions={0}, to_apply=%compare
+  }
+
+  ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
+    %a = f32[4096]{0} parameter(0)
+    %b = f32[4096]{0} parameter(1)
+    %call0 = f32[4096]{0} call(%a), to_apply=%called_computation
+    %call1 = f32[4096]{0} call(%b), to_apply=%called_computation
+    ROOT %multiply = f32[4096]{0} multiply(%call0, %call1)
+  }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_EQ(module->computation_count(), 3);
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  ASSERT_EQ(module->computation_count(), 5);
+  EXPECT_TRUE(result);
+
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  for (const CallGraphNode& node : call_graph->nodes()) {
+    EXPECT_LE(node.caller_callsites().size(), 1);
+  }
+}
+
+TEST_F(FlattenCallGraphTest, CallInSortInCall) {
+  std::string hlo_string = R"(
+HloModule CallInSortInCall
+
+  %compare.impl {
+    %p.0.lhs = f32[] parameter(0)
+    %p.0.rhs = f32[] parameter(1)
+    ROOT %lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+  }
+
+  %compare {
+    %p.0.lhs = f32[] parameter(0)
+    %p.0.rhs = f32[] parameter(1)
+    ROOT %lt = pred[] call(%p.0.lhs, %p.0.rhs), to_apply=%compare.impl
+  }
+
+  %called_computation(arg: f32[4096]) -> f32[4096] {
+    %x = f32[4096]{0} parameter(0)
+    ROOT %sort =f32[4096]{0} sort(%x), dimensions={0}, to_apply=%compare
+  }
+
+  ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
+    %a = f32[4096]{0} parameter(0)
+    %b = f32[4096]{0} parameter(1)
+    %call0 = f32[4096]{0} call(%a), to_apply=%called_computation
+    %call1 = f32[4096]{0} call(%b), to_apply=%called_computation
+    ROOT %multiply = f32[4096]{0} multiply(%call0, %call1)
+  }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_EQ(module->computation_count(), 4);
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  ASSERT_EQ(module->computation_count(), 7);
+  EXPECT_TRUE(result);
+
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  for (const CallGraphNode& node : call_graph->nodes()) {
+    EXPECT_LE(node.caller_callsites().size(), 1);
+  }
+}
+
+TEST_F(FlattenCallGraphTest, NoChange) {
+  std::string hlo_string = R"(
+HloModule NoChange
+
+  ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
+    %a = f32[4096]{0} parameter(0)
+    %b = f32[4096]{0} parameter(1)
+    ROOT %multiply = f32[4096]{0} multiply(%a, %b)
+  }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_EQ(module->computation_count(), 1);
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  ASSERT_EQ(module->computation_count(), 1);
+  EXPECT_FALSE(result);
 }
 
 }  // namespace

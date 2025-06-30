@@ -25,7 +25,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectRegistry.h"
@@ -36,7 +35,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
-#include "shardy/dialect/sdy/ir/utils.h"
 #include "shardy/dialect/sdy/transforms/common/sharding_walker.h"
 
 namespace xla {
@@ -47,13 +45,10 @@ namespace {
 using ::mlir::ModuleOp;
 using ::mlir::Operation;
 using ::mlir::SmallVector;
-using ::mlir::StringAttr;
 using ::mlir::StringRef;
 using ::mlir::SymbolTable;
 using ::mlir::sdy::AxisRefAttr;
 using ::mlir::sdy::DimensionShardingAttr;
-using ::mlir::sdy::ManualAxesAttr;
-using ::mlir::sdy::ManualComputationOp;
 using ::mlir::sdy::MeshAttr;
 using ::mlir::sdy::MeshAxisAttr;
 using ::mlir::sdy::MeshOp;
@@ -96,23 +91,13 @@ TensorShardingAttr removeSizeOneAxes(TensorShardingAttr sharding,
   llvm::copy_if(sharding.getReplicatedAxes(),
                 std::back_inserter(replicatedAxes), isNotSizeOne);
 
+  // Remove from unreduced axes.
+  SmallVector<AxisRefAttr> unreducedAxes;
+  llvm::copy_if(sharding.getUnreducedAxes(), std::back_inserter(unreducedAxes),
+                isNotSizeOne);
+
   return TensorShardingAttr::get(sharding.getContext(), sharding.getMeshOrRef(),
-                                 dimShardings, replicatedAxes);
-}
-
-void removeSizeOneManualAxes(ManualComputationOp manualComputationOp,
-                             const SymbolTable& symbolTable) {
-  MeshAttr mesh = mlir::sdy::getCommonMesh(
-      manualComputationOp.getInShardings().getShardings(),
-      manualComputationOp.getOutShardings().getShardings(), symbolTable);
-  CHECK(mesh) << "no common mesh found for ManualComputationOp";
-
-  SmallVector<StringAttr> newManualAxes;
-  llvm::copy_if(
-      manualComputationOp.getManualAxes(), std::back_inserter(newManualAxes),
-      [&](StringAttr axisName) { return mesh.getAxisSize(axisName) != 1; });
-  manualComputationOp.setManualAxesAttr(
-      ManualAxesAttr::get(manualComputationOp.getContext(), newManualAxes));
+                                 dimShardings, replicatedAxes, unreducedAxes);
 }
 
 class SdyRoundTripRemoveSizeOneAxesPass
@@ -137,12 +122,6 @@ class SdyRoundTripRemoveSizeOneAxesPass
         moduleOp,
         [&](TensorShardingAttr sharding) {
           return removeSizeOneAxes(sharding, symbolTable);
-        },
-        [&](Operation* op) {
-          if (auto manualComputationOp =
-                  mlir::dyn_cast<ManualComputationOp>(op)) {
-            removeSizeOneManualAxes(manualComputationOp, symbolTable);
-          }
         });
     // The meshes still have size one axes, but they are not used in the
     // shardings anymore.

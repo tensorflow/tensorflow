@@ -95,6 +95,8 @@ message GemmBackendConfig {
     GELU_AUX = 5;
     BIAS_GELU = 6;
     BIAS_GELU_AUX = 7;
+    SILU = 8;
+    BIAS_SILU = 9;
   }
 
   Epilogue epilogue = 13;
@@ -194,6 +196,22 @@ message BlockLevelFusionConfig {
   int32 num_stages = 5;
 }
 
+message DynamicMemcpyConfig {
+  // If true, the offsets depend on the innermost while loop's induction
+  // variable. `src_offset_bytes` and `dst_offset_bytes` contain one entry
+  // for each iteration.
+  // Otherwise, `src_offset_bytes` and `dst_offset_bytes` contain one entry
+  // each, and the offset is static.
+  bool depends_on_loop = 1;
+
+  // Source offsets for each invocation of the fusion.
+  repeated int64 src_offset_bytes = 2;
+
+  // Destination offsets for invocation of the fusion.
+  repeated int64 dst_offset_bytes = 3;
+}
+
+// Next id: 8
 message FusionBackendConfig {
   // kLoop, kInput, or kOutput (from HloInstruction::FusionKind), or your own
   // custom string.
@@ -220,6 +238,8 @@ message FusionBackendConfig {
   // Cost model prediction.
 
   CuDnnFusionConfig cudnn_fusion_config = 5;
+
+  DynamicMemcpyConfig dynamic_memcpy_config = 7;
 
   reserved 3;
 }
@@ -296,6 +316,9 @@ message CudnnfMHABackendConfig {
   // Only used with packed layout
   // ignored if the valued <= 1
   int32 max_seg_per_batch = 25;
+
+  // Is Paged Attention
+  bool is_paged_attention = 26;
 }
 
 // Backend config for a general custom call instruction, e.g. XLA FFI.

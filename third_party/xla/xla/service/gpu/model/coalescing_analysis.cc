@@ -221,12 +221,11 @@ bool EstimateCoalescingViaMemoryTransactionsCount(
 
 // Returns a linearized shape, i.e. tensor<num_elements(input) x element_type>.
 Shape GetLinearizedShape(const Shape& shape) {
-  if (shape.dimensions().size() == 0) {
+  if (shape.dimensions().empty()) {
     return shape;
   }
   std::vector<int64_t> dims{ShapeUtil::ElementsIn(shape)};
-  auto result = Shape(shape.element_type(), dims,
-                      absl::InlinedVector<bool, 4>(dims.size(), false));
+  auto result = Shape(shape.element_type(), dims);
   *result.mutable_layout() = xla::Layout({0});
   return result;
 }
@@ -243,7 +242,7 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
        llvm::enumerate(fusion_analysis.fusion_heroes())) {
     for (const auto& [hero_operand_index, hero_operand] :
          llvm::enumerate(hero.GetOperands())) {
-      if (hero_operand.shape().dimensions().size() == 0) {
+      if (hero_operand.shape().dimensions().empty()) {
         continue;
       }
       // Compute thread ID -> hero operand indexing map.
@@ -254,7 +253,7 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
         return std::nullopt;
       }
       // Compute indexing from output to inputs for logical layout.
-      GroupedByOpIndexingMap instr_indexing_keyed_by_operands =
+      GroupedByOpIndexing instr_indexing_keyed_by_operands =
           ComputeGroupedOutputToInputIndexing(fusion_adaptor, hero_operand,
                                               mlir_context);
       // For every operand compute thread ID -> physical layout of operand
@@ -280,8 +279,9 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
             operand_physical_to_linearized_shape;
         operand_logical_to_linearized_physical_shape.Simplify();
 
-        for (const IndexingMap& operand_indexing_map :
+        for (const OperandIndexing& operand_indexing :
              operand_indexing_maps_it->second) {
+          const IndexingMap& operand_indexing_map = operand_indexing.map();
           // If one of the indexing maps for the operand is undefined, we remove
           // all indexing maps for it and store only the undefined one.
           if (operand_indexing_map.IsUndefined()) {
@@ -666,7 +666,7 @@ bool CoalescingAnalysis::ComputeCoalescingForAllOperands(
     return false;
   }
   for (const HloInstruction* operand : operands) {
-    if (operand->shape().dimensions().size() == 0) {
+    if (operand->shape().dimensions().empty()) {
       coalescing_per_operand_.insert({operand, true});
       continue;
     }

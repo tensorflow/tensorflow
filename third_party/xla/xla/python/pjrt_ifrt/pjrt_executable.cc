@@ -189,10 +189,9 @@ char PjRtCompatibleLoadedExecutable::ID = 0;
 char PjRtExecutable::ID = 0;
 char PjRtLoadedExecutable::ID = 0;
 
-absl::StatusOr<std::unique_ptr<Executable>> PjRtExecutable::Create(
+absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
     std::shared_ptr<xla::PjRtExecutable> pjrt_executable) {
-  return std::unique_ptr<Executable>(
-      new PjRtExecutable(std::move(pjrt_executable)));
+  return ExecutableRef(new PjRtExecutable(std::move(pjrt_executable)));
 }
 
 absl::StatusOr<std::optional<std::string>> PjRtExecutable::Fingerprint() const {
@@ -205,7 +204,7 @@ absl::StatusOr<std::string> PjRtExecutable::Serialize() const {
   return pjrt_executable_->SerializeExecutable();
 }
 
-absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
+absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
     PjRtCompatibleClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
     std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
@@ -246,7 +245,7 @@ static absl::StatusOr<std::vector<xla::Shape>> ResultShapesOfModule(
   return result_shapes;
 }
 
-absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
+absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
     PjRtCompatibleClient* client, mlir::ModuleOp module,
     xla::CompileOptions compile_options,
     std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
@@ -318,8 +317,7 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
   }
 }
 
-absl::StatusOr<std::unique_ptr<LoadedExecutable>>
-PjRtLoadedExecutable::CreateInternal(
+absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::CreateInternal(
     PjRtCompatibleClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
     absl::Span<const xla::PrimitiveType> result_element_types,
@@ -482,7 +480,7 @@ PjRtLoadedExecutable::CreateInternal(
     addressable_devices.push_back(ifrt_device);
   }
 
-  return std::unique_ptr<LoadedExecutable>(new PjRtLoadedExecutable(
+  return LoadedExecutableRef(new PjRtLoadedExecutable(
       client, std::move(pjrt_loaded_executable), std::move(executable_devices),
       std::move(addressable_devices), std::move(loaded_host_callbacks),
       std::move(host_send_and_recv_callbacks), std::move(output_dtypes),
@@ -513,7 +511,7 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
 PjRtLoadedExecutable::~PjRtLoadedExecutable() = default;
 
 absl::StatusOr<PjRtLoadedExecutable::ExecuteResult>
-PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
+PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
                               const ExecuteOptions& options,
                               std::optional<DeviceListRef> devices) {
   DCHECK(this);
@@ -568,6 +566,7 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
   opts.launch_id = options.launch_id;
   opts.use_major_to_minor_data_layout_for_callbacks = true;
   opts.non_donatable_input_indices = options.non_donatable_input_indices;
+  opts.execution_stream_id = options.execution_stream_id;
 
   auto context = std::make_unique<xla::ExecuteContext>();
   auto platform_id = pjrt_loaded_executable_->client()->platform_id();
@@ -670,7 +669,7 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
   }
 
   // Convert 2-level PjRtBuffer vectors into an Array vector.
-  std::vector<tsl::RCReference<Array>> outputs;
+  std::vector<ArrayRef> outputs;
   // TODO(hyeontaek): Check output dtype/shape consistency with the actual
   // output.
   if (pjrt_outputs.size() != num_computations) {
@@ -678,7 +677,8 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
         "Unexpected number of computations in outputs: %d vs. %d",
         pjrt_outputs.size(), num_computations);
   }
-  const int num_outputs = pjrt_outputs.front().size();
+  const int num_outputs = pjrt_outputs.empty() ? output_dtypes_.size()
+                                               : pjrt_outputs.front().size();
   if (num_outputs != output_dtypes_.size()) {
     return FailedPrecondition("Unexpected number of outputs: %d vs. %d",
                               num_outputs, output_dtypes_.size());
@@ -724,22 +724,21 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
   for (int i = 0; i < num_outputs; ++i) {
     PjRtArray::PjRtBuffers buffers;
     buffers.reserve(num_computations);
-    const MemoryKind first_memory_kind =
-        MakeMemoryKindFromPjRtBuffer(pjrt_outputs[0][i].get());
-    const MemoryKind canonical_first_memory_kind =
-        CanonicalizeMemoryKindWithPjRtDevice(first_memory_kind,
-                                             pjrt_outputs[0][i]->device());
+    const MemoryKind dst_memory_kind = output_shardings_[i]->memory_kind();
+    const MemoryKind canonical_dst_memory_kind = CanonicalizeMemoryKind(
+        dst_memory_kind, output_shardings_[i]->devices()->devices().front());
+
     for (int j = 0; j < num_computations; ++j) {
       if (j > 0) {
         if (auto memory_kind =
                 MakeMemoryKindFromPjRtBuffer(pjrt_outputs[j][i].get());
-            canonical_first_memory_kind !=
+            canonical_dst_memory_kind !=
             CanonicalizeMemoryKindWithPjRtDevice(
                 memory_kind, pjrt_outputs[j][i]->device())) {
           return FailedPrecondition(
-              "Memory kind mismatch between PjRtBuffers. Got one buffer with "
-              "memory kind '%v' and another with memory_kind '%v'",
-              first_memory_kind, memory_kind);
+              "Memory kind mismatch. Got sharding with memory kind '%v' and "
+              "buffer with memory_kind '%v'",
+              dst_memory_kind, memory_kind);
         }
       }
       buffers.push_back(
@@ -747,14 +746,13 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
     }
     std::optional<ShardingRef> sharding;
     if (portable_execution) {
-      if (auto it = single_device_shardings.find(first_memory_kind);
+      if (auto it = single_device_shardings.find(dst_memory_kind);
           it == single_device_shardings.end()) {
-        sharding =
-            single_device_shardings
-                .insert({first_memory_kind,
-                         SingleDeviceSharding::Create(portable_execution_device,
-                                                      first_memory_kind)})
-                .first->second;
+        sharding = single_device_shardings
+                       .insert({dst_memory_kind, SingleDeviceSharding::Create(
+                                                     portable_execution_device,
+                                                     dst_memory_kind)})
+                       .first->second;
       } else {
         sharding = it->second;
       }
@@ -792,13 +790,6 @@ absl::StatusOr<std::optional<std::string>> PjRtLoadedExecutable::Fingerprint()
 absl::StatusOr<std::string> PjRtLoadedExecutable::Serialize() const {
   DCHECK(this);
   return pjrt_loaded_executable_->SerializeExecutable();
-}
-
-Future<> PjRtLoadedExecutable::Delete() {
-  DCHECK(this);
-  pjrt_loaded_executable_->Delete();
-  // TODO(hyeontaek): Return a correct future.
-  return Future<>(absl::OkStatus());
 }
 
 }  // namespace ifrt

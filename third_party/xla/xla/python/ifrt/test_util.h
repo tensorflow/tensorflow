@@ -58,8 +58,7 @@ void SetTestFilterIfNotUserSpecified(absl::string_view custom_filter);
 // This will blocking copy the data to host buffer.
 template <typename ElementT>
 void AssertPerShardData(
-    tsl::RCReference<Array> actual, DType expected_dtype,
-    Shape expected_per_shard_shape,
+    ArrayRef actual, DType expected_dtype, Shape expected_per_shard_shape,
     absl::Span<const absl::Span<const ElementT>> expected_per_shard_data,
     DeviceListRef expected_device_list) {
   ASSERT_EQ(actual->dtype(), expected_dtype);
@@ -72,7 +71,7 @@ void AssertPerShardData(
   ASSERT_EQ(actual_per_shard_arrays.size(), expected_per_shard_data.size());
   for (int i = 0; i < actual_per_shard_arrays.size(); ++i) {
     SCOPED_TRACE(absl::StrCat("Shard ", i));
-    const tsl::RCReference<Array>& array = actual_per_shard_arrays[i];
+    const ArrayRef& array = actual_per_shard_arrays[i];
     ASSERT_EQ(array->shape(), expected_per_shard_shape);
     std::vector<ElementT> actual_data(expected_per_shard_shape.num_elements());
     TF_ASSERT_OK(array

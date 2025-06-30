@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-optimize-functional-ops -split-input-file | FileCheck %s
+// RUN: litert-opt %s -tfl-optimize-functional-ops -split-input-file | FileCheck %s
 
 // CHECK-LABEL: main
 func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {

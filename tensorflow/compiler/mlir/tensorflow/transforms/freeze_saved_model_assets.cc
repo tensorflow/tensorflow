@@ -105,7 +105,10 @@ void FreezeAssetsPass::runOnOperation() {
         init_op.erase();
       }
     }
-    func.eraseArguments(args_to_erase);
+
+    if (failed(func.eraseArguments(args_to_erase))) {
+      return signalPassFailure();
+    }
   }
 }
 

@@ -988,7 +988,9 @@ static absl::StatusOr<std::vector<int>> RewriteWithArgs(
                                 main_fn.getFunctionType().getResults()));
   }
 
-  for (int idx : llvm::reverse(args_to_erase)) main_fn.eraseArgument(idx);
+  for (int idx : llvm::reverse(args_to_erase)) {
+    CHECK(llvm::succeeded(main_fn.eraseArgument(idx)));
+  }
 
   return params;
 }

@@ -19,14 +19,18 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
+#include <string>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
@@ -66,6 +70,46 @@ class ExecutionGraph {
 
   static constexpr NodeId kInvalidNodeId = std::numeric_limits<NodeId>::min();
 
+  // A base class for an operation that can be executed by the runtime.
+  class Operation {
+   public:
+    virtual ~Operation() = default;
+
+    virtual absl::string_view name() const = 0;
+    // Optional function that allows grouping operations of the same kind. E.x.
+    // on XLA:CPU this is the id of the thunk kind, and is used for color coding
+    // graph visualization.
+    virtual int64_t op_type_id() const { return 0; };
+    virtual absl::Span<const BufferUse> BufferUses() const = 0;
+    virtual absl::Span<const ResourceUse> ResourceUses() const = 0;
+
+    const std::vector<
+        std::pair<std::string, std::vector<std::unique_ptr<Operation>>>>&
+    named_nested_operations() const {
+      return named_nested_operations_;
+    }
+
+   protected:
+    std::vector<
+        std::pair<std::string, std::vector<std::unique_ptr<Operation>>>>&
+    named_nested_operations() {
+      return named_nested_operations_;
+    }
+
+    Operation() = default;
+
+    Operation(const Operation&) = default;
+    Operation& operator=(const Operation&) = default;
+
+    Operation(Operation&&) = default;
+    Operation& operator=(Operation&&) = default;
+
+   private:
+    std::vector<std::pair<std::string, std::vector<std::unique_ptr<Operation>>>>
+        named_nested_operations_;
+  };
+
+  // An edge between two nodes created for the execution graph operations.
   struct NodeEdge {
     // Edge kind defines execution ordering between two operations. Scheduling
     // edge is weaker than an execution edge, as it gives more flexibility
@@ -130,23 +174,26 @@ class ExecutionGraph {
     int64_t priority = 0;
   };
 
-  // A base class for an operation that can be executed by the runtime.
-  class Operation {
+  class Renderer {
    public:
-    virtual ~Operation() = default;
+    Renderer() = default;
+    virtual ~Renderer() = default;
 
-    virtual absl::Span<const BufferUse> BufferUses() const = 0;
-    virtual absl::Span<const ResourceUse> ResourceUses() const = 0;
+    // Generates a string representation for the given execution graph
+    // operations which can be published to a URL using `PublishGraph`.
+    virtual std::string GenerateGraphAsString(
+        absl::Span<const ExecutionGraph::Operation* const> operations) = 0;
 
-   protected:
-    Operation() = default;
-
-    Operation(const Operation&) = default;
-    Operation& operator=(const Operation&) = default;
-
-    Operation(Operation&&) = default;
-    Operation& operator=(Operation&&) = default;
+    // Publishes the generated graph.
+    virtual absl::StatusOr<std::string> PublishGraph(
+        absl::string_view graph_as_string) = 0;
   };
+
+  // Returns the registered renderer for execution graphs.
+  static Renderer* GetRenderer();
+
+  // Registers a renderer for execution graphs.
+  static void RegisterRenderer(std::unique_ptr<Renderer> renderer);
 
   // Constructs an execution graph from a sequence of operations.
   template <typename Op,
@@ -158,6 +205,10 @@ class ExecutionGraph {
     }
     return Create(ptrs);
   }
+
+  // Constructs an execution graph from a sequence of operations.
+  static absl::StatusOr<ExecutionGraph> Create(
+      absl::Span<const Operation* const> operations);
 
   // Returns execution graph nodes definitions.
   absl::Span<const NodeDef> nodes_defs() const { return nodes_defs_; }
@@ -199,10 +250,6 @@ class ExecutionGraph {
   bool is_sequential() const { return is_sequential_; }
 
  private:
-  // Constructs an execution graph from a sequence of operations.
-  static absl::StatusOr<ExecutionGraph> Create(
-      absl::Span<const Operation* const> operations);
-
   // We store all `in_edges` and `out_edges` referenced by the `NodeDef` inside
   // large vectors to optimize for data locality on a hot path.
   using NodesEdges = std::vector<NodeEdge>;

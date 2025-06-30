@@ -88,11 +88,13 @@ absl::StatusOr<tsl::RCReference<BasicStringArray>> BasicStringArray::Create(
           return;
         }
 
-        if (sharding->devices()->size() != (*buffers).size()) {
+        const int64_t num_addressable_devices =
+            sharding->devices()->AddressableDeviceList()->size();
+        if (num_addressable_devices != (*buffers).size()) {
           auto error = absl::FailedPreconditionError(absl::StrCat(
               "Number of buffers: ", (*buffers).size(),
-              " does not match the number of devices in sharding: ",
-              sharding->devices()->size()));
+              " does not match the number of addressable devices in sharding: ",
+              num_addressable_devices));
           buffers_promise.Set(error);
           ready_promise.Set(error);
           return;
@@ -154,7 +156,7 @@ Future<> BasicStringArray::GetReadyFuture() const {
   return ready_future_;
 }
 
-absl::StatusOr<std::vector<tsl::RCReference<Array>>>
+absl::StatusOr<std::vector<ArrayRef>>
 BasicStringArray::DisassembleIntoSingleDeviceArrays(
     ArrayCopySemantics semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
@@ -172,7 +174,10 @@ BasicStringArray::DisassembleIntoSingleDeviceArrays(
     return absl::FailedPreconditionError("Array has already been deleted");
   }
 
-  int num_shards = sharding_->devices()->size();
+  TF_ASSIGN_OR_RETURN(
+      auto shapes_and_shadings,
+      sharding_->Disassemble(shape_, single_device_shard_semantics));
+  const int num_shards = shapes_and_shadings.size();
 
   // For each single device array we are going to pre-make:
   //   (1) a Promise-Future pair for passing the buffers,
@@ -240,9 +245,7 @@ BasicStringArray::DisassembleIntoSingleDeviceArrays(
   // Make and return the individual single device arrays. These will become
   // ready when the this (source) array becomes ready and the callback we set
   // up above runs.
-  TF_ASSIGN_OR_RETURN(auto shapes_and_shadings, sharding_->Disassemble(shape_));
-
-  std::vector<tsl::RCReference<Array>> arrays;
+  std::vector<ArrayRef> arrays;
   arrays.reserve(num_shards);
   for (int i = 0; i < num_shards; ++i) {
     TF_ASSIGN_OR_RETURN(auto array,
@@ -293,7 +296,7 @@ Future<> BasicStringArray::CopyToHostBuffer(
   return copy_completion_future;
 }
 
-absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::Copy(
+absl::StatusOr<ArrayRef> BasicStringArray::Copy(
     std::optional<xla::ifrt::DeviceListRef> devices,
     std::optional<xla::ifrt::MemoryKind> memory_kind,
     ArrayCopySemantics semantics) {
@@ -351,7 +354,7 @@ absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::Copy(
 }
 
 // Makes a single sharded BasicStringArray from the first shard.
-absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::FullyReplicatedShard(
+absl::StatusOr<ArrayRef> BasicStringArray::FullyReplicatedShard(
     ArrayCopySemantics semantics) {
   absl::MutexLock lock(&mu_);
   if (is_deleted_) {
@@ -407,7 +410,7 @@ absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::FullyReplicatedShard(
 }
 
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>
-BasicStringArray::layout() const {
+BasicStringArray::pjrt_layout() const {
   return absl::UnimplementedError("String arrays do not support PjRtLayout");
 }
 

@@ -127,6 +127,11 @@ absl::StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
     }
     sort = Cast<HloSortInstruction>(new_sort);
     iota_index = sort->operand_count() - 1;
+  } else if (sort->to_apply()->caller_instructions().size() > 1) {
+    // Even if we didn't need to add an iota, we still need to clone the
+    // comparator if it has more than one use.
+    sort->set_to_apply(
+        sort->GetModule()->AddEmbeddedComputation(sort->to_apply()->Clone()));
   }
 
   // Modify the computation to break ties using the iota operand.

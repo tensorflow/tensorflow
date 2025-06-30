@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
@@ -242,8 +243,9 @@ TEST(ShapeUtilTest, CompatibleTuples) {
 }
 
 TEST(ShapeUtilTest, MakeMaybeTupleShape) {
-  Shape s1 =
-      ShapeUtil::MakeMaybeTupleShape({ShapeUtil::MakeShape(F32, {3, 2})});
+  Shape s1 = ShapeUtil::MakeValidatedMaybeTupleShape(
+                 {ShapeUtil::MakeValidatedShape(F32, {3, 2}).value()})
+                 .value();
   EXPECT_TRUE(ShapeUtil::Compatible(s1, ShapeUtil::MakeShape(F32, {3, 2})));
 }
 
@@ -1213,7 +1215,6 @@ TEST(ShapeUtilTest, B_250640044) {
              dimensions: 137438953472
              layout {
                minor_to_major: 0
-               dim_level_types: DIM_COMPRESSED
                physical_shape {
                  element_type: TUPLE
                  tuple_shapes {}
@@ -1561,6 +1562,17 @@ TEST(ShapeUtilTest, FlattenTupleShape) {
   EXPECT_EQ(flattened_shapes[1]->ToString(), "f32[4,5]");
   EXPECT_EQ(flattened_shapes[2]->ToString(), "f32[6,7]");
   EXPECT_EQ(flattened_shapes[3]->ToString(), "f32[8,9]");
+}
+
+TEST(ShapeUtilTest, ShapeIndexProtoSerialization) {
+  ShapeIndex empty{};
+  EXPECT_EQ(empty, ShapeIndex::FromProto(empty.ToProto()));
+
+  ShapeIndex single_index{1};
+  EXPECT_EQ(single_index, ShapeIndex::FromProto(single_index.ToProto()));
+
+  ShapeIndex multi_index{1, 2, 42};
+  EXPECT_EQ(multi_index, ShapeIndex::FromProto(multi_index.ToProto()));
 }
 
 void BM_MakeShape(::testing::benchmark::State& state) {

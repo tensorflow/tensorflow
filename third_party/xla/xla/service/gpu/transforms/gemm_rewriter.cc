@@ -582,8 +582,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         options_(options) {}
 
   absl::Status HandleDot(HloInstruction *instr) override {
-    if (!IsMatrixMultiplication(*instr) &&
-        !IsMatrixVectorMultiplication(*instr)) {
+    TF_ASSIGN_OR_RETURN(
+        bool is_supported_matmul,
+        IsCublasSupportedMatMul(*instr,
+                                /*allow_matrix_vector_multiplication=*/true));
+    if (!is_supported_matmul) {
       return absl::OkStatus();
     }
     // Sparse dot is not supported.
@@ -603,11 +606,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
 
-    CHECK(!instr->IsRank2Transpose());
-    if (instr->operand(0)->IsRank2Transpose() ||
-        instr->operand(1)->IsRank2Transpose()) {
-      return absl::OkStatus();
-    }
     // Create a GemmBackendConfig based on the instruction.
     TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
                         instr->backend_config<GpuBackendConfig>());
@@ -759,20 +757,23 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return F8ScaleD(instr, existing_gemm, d_scale);
     }
 
-    // Attempt to match approximate GELU activation
-    // (https://arxiv.org/abs/1606.08415), where:
-    // approx_gelu(x) = x * cdf(x)
-    // cdf(x) = 0.5 * (1 + tanh(sqrt(2 / pi) * (x + 0.044715 * x**3))
-    HloInstruction *cdf, *slice_or_bitcast = nullptr;
-    if (Match(instr, m::MultiplyAnyOrder(
-                         m::AnyOf<HloInstruction>(
-                             m::Slice(&slice_or_bitcast,
-                                      CublasLtMatmulMaybeF8(&existing_gemm)),
-                             m::Bitcast(&slice_or_bitcast,
-                                        CublasLtMatmulMaybeF8(&existing_gemm)),
-                             CublasLtMatmulMaybeF8(&existing_gemm)),
-                         m::Op(&cdf).WithOneUser())) &&
-        Match(cdf,
+    {
+      // Attempt to match approximate GELU activation
+      // (https://arxiv.org/abs/1606.08415), where:
+      // approx_gelu(x) = x * cdf(x)
+      // cdf(x) = 0.5 * (1 + tanh(sqrt(2 / pi) * (x + 0.044715 * x**3))
+      HloInstruction *cdf, *slice_or_bitcast = nullptr;
+      if (Match(instr,
+                m::MultiplyAnyOrder(
+                    m::AnyOf<HloInstruction>(
+                        m::Slice(&slice_or_bitcast,
+                                 CublasLtMatmulMaybeF8(&existing_gemm)),
+                        m::Bitcast(&slice_or_bitcast,
+                                   CublasLtMatmulMaybeF8(&existing_gemm)),
+                        CublasLtMatmulMaybeF8(&existing_gemm)),
+                    m::Op(&cdf).WithOneUser())) &&
+          Match(
+              cdf,
               m::MultiplyAnyOrder(
                   BcastConstScalar(0.5),
                   m::AddAnyOrder(
@@ -802,7 +803,38 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                   .WithOneUser())
                               .WithOneUser())
                           .WithOneUser())))) {
-      return FuseGeluActivation(instr, existing_gemm, slice_or_bitcast);
+        return FuseGeluActivation(instr, existing_gemm, slice_or_bitcast);
+      }
+    }
+
+    const auto is_rocm =
+        std::holds_alternative<se::RocmComputeCapability>(gpu_version_);
+    if (is_rocm &&
+        toolkit_version_ >= stream_executor::SemanticVersion{7, 0, 0}) {
+      // Attempt to match approximate Swish activation
+      // (https://flax.readthedocs.io/en/v0.5.3/_autosummary/flax.linen.swish.html),
+      // where: swish(x) = x * sigmoid(x)
+      // where: sigmoid(x) = 1/(1 + exp(-x))
+      HloInstruction *sigmoid, *slice_or_bitcast = nullptr;
+      if (Match(instr,
+                m::MultiplyAnyOrder(
+                    m::AnyOf<HloInstruction>(
+                        m::Slice(&slice_or_bitcast,
+                                 CublasLtMatmulMaybeF8(&existing_gemm)),
+                        m::Bitcast(&slice_or_bitcast,
+                                   CublasLtMatmulMaybeF8(&existing_gemm)),
+                        CublasLtMatmulMaybeF8(&existing_gemm)),
+                    m::Op(&sigmoid).WithOneUser())) &&
+          Match(sigmoid,
+                m::Divide(BcastConstScalar(1.0),
+                          m::AddAnyOrder(
+                              BcastConstScalar(1.0),
+                              m::Exp(m::Negate(m::Op().Is(slice_or_bitcast
+                                                              ? slice_or_bitcast
+                                                              : existing_gemm)))
+                                  .WithOneUser())))) {
+        return FuseSwishActivation(instr, existing_gemm, slice_or_bitcast);
+      }
     }
     return absl::OkStatus();
   }
@@ -1962,6 +1994,60 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return ReplaceWithNewInstruction(multiply, std::move(output));
   }
 
+  absl::Status FuseSwishActivation(HloInstruction *multiply,
+                                   HloInstruction *gemm,
+                                   HloInstruction *slice_or_bitcast = nullptr) {
+    if (!SupportsEpilogueFusion(gemm->shape().element_type())) {
+      return absl::OkStatus();
+    }
+    // For CUDA versions less than 12.3.2, cuBLAS LT returns
+    // CUBLAS_STATUS_NOT_SUPPORTED in some cases when fusing gelu into an FP8
+    // matmul. We cannot check the patch version, so disable this fusion with
+    // CUDA versions less than 12.4.
+    if (IsCuda(gpu_version_) &&
+        toolkit_version_ < stream_executor::SemanticVersion{12, 4, 0} &&
+        IsCublasLtMatmulF8(*gemm)) {
+      return absl::OkStatus();
+    }
+
+    // There are four users of the gemm output within the GELU calculation.
+    bool has_aux = gemm->user_count() > 4;
+
+    TF_ASSIGN_OR_RETURN(auto gpu_config,
+                        gemm->backend_config<GpuBackendConfig>());
+    GemmBackendConfig &config = *gpu_config.mutable_gemm_backend_config();
+
+    if (config.epilogue() == GemmBackendConfig::DEFAULT) {
+      config.set_epilogue(GemmBackendConfig::SILU);
+    } else if (config.epilogue() == GemmBackendConfig::BIAS) {
+      config.set_epilogue(GemmBackendConfig::BIAS_SILU);
+    } else {
+      return absl::OkStatus();
+    }
+
+    std::unique_ptr<HloInstruction> output = gemm->CloneWithNewShape(
+        has_aux ? ShapeUtil::MakeTupleShape({gemm->shape(), gemm->shape()})
+                : gemm->shape());
+    TF_RETURN_IF_ERROR(output->set_backend_config(gpu_config));
+    TF_RETURN_IF_ERROR(SetName(multiply->GetModule(), output.get()));
+
+    if (slice_or_bitcast) {
+      output = slice_or_bitcast->CloneWithNewOperands(
+          slice_or_bitcast->shape(),
+          {gemm->parent()->AddInstruction(std::move(output))});
+    }
+
+    if (has_aux) {
+      HloInstruction *tuple_output =
+          gemm->parent()->AddInstruction(std::move(output));
+      TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
+          gemm, HloInstruction::CreateGetTupleElement(tuple_output, 1)));
+      output = HloInstruction::CreateGetTupleElement(tuple_output, 0);
+    }
+
+    return ReplaceWithNewInstruction(multiply, std::move(output));
+  }
+
  private:
   se::GpuComputeCapability gpu_version_;
   stream_executor::SemanticVersion toolkit_version_;
@@ -2450,8 +2536,12 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
       workspace = GemmConfig::kHopperWorkspace;
     }
     auto *rocm_cc = std::get_if<se::RocmComputeCapability>(&gpu_version_);
-    if (rocm_cc != nullptr && rocm_cc->gfx_version() == "gfx950") {
-      workspace = GemmConfig::kGFX950Workspace;
+    if (rocm_cc != nullptr) {
+      if (rocm_cc->gfx_version() == "gfx942") {
+        workspace = GemmConfig::kGFX942Workspace;
+      } else if (rocm_cc->gfx_version() == "gfx950") {
+        workspace = GemmConfig::kGFX950Workspace;
+      }
     }
 
     // We do not know the workspace size required by cuBLAS, but we can guess

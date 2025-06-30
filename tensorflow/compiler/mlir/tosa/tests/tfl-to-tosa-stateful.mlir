@@ -10,8 +10,8 @@
 // CHECK-LABEL: tosa.variable @var_x = dense<7.000000e+00> : tensor<1xf32>
 // CHECK-LABEL: test_stateful_ops(
 // CHECK-SAME: %[[VAL_0:.*]]: tensor<1xf32>
-// CHECK: tosa.variable.write @var_x, %[[VAL_0]] : tensor<1xf32>
-// CHECK: %[[VAL_1:.*]] = tosa.variable.read @var_x : tensor<1xf32>
+// CHECK: tosa.variable_write @var_x, %[[VAL_0]] : tensor<1xf32>
+// CHECK: %[[VAL_1:.*]] = tosa.variable_read @var_x : tensor<1xf32>
 // CHECK: return %[[VAL_1]] : tensor<1xf32>
 module attributes {tf_saved_model.semantics, tfl.description = "Test.", tfl.schema_version = 3 : i32} {
     func.func @test_stateful_ops(%arg0: tensor<1xf32> {tf_saved_model.index_path = ["placeholder_0"]})
@@ -43,14 +43,14 @@ module attributes {tf_saved_model.semantics, tfl.description = "Test.", tfl.sche
 // CHECK: %[[VAL_3:.*]] = "tosa.const"() <{values = dense<2> : tensor<1xi8>}> : () -> tensor<1xi8>
 // CHECK: %[[VAL_4:.*]] = "tosa.const"() <{values = dense<11> : tensor<1xi8>}> : () -> tensor<1xi8>
 // CHECK: %[[VAL_5:.*]] = "tosa.const"() <{values = dense<1073741824> : tensor<1xi32>}> : () -> tensor<1xi32>
-// CHECK: %[[VAL_6:.*]] = tosa.variable.read @Variable : tensor<2x3xi8>
+// CHECK: %[[VAL_6:.*]] = tosa.variable_read @Variable : tensor<2x3xi8>
 // CHECK: %[[VAL_7:.*]] = builtin.unrealized_conversion_cast %[[VAL_6]] : tensor<2x3xi8> to tensor<2x3x!quant.uniform<i8:f32, 1.000000e-01:2>>
 // CHECK: %[[VAL_8:.*]] = tosa.rescale %[[VAL_7]], %[[VAL_5]], %[[VAL_4]], %[[VAL_3]], %[[VAL_2]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "DOUBLE_ROUND", scale32 = true} : (tensor<2x3x!quant.uniform<i8:f32, 1.000000e-01:2>>, tensor<1xi32>, tensor<1xi8>, tensor<1xi8>, tensor<1xi32>) -> tensor<2x3xi32>
 // CHECK: %[[VAL_9:.*]] = tosa.rescale %[[VAL_0]], %[[VAL_5]], %[[VAL_4]], %[[VAL_3]], %[[VAL_2]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "DOUBLE_ROUND", scale32 = true} : (tensor<2x3x!quant.uniform<i8:f32, 1.000000e-01:2>>, tensor<1xi32>, tensor<1xi8>, tensor<1xi8>, tensor<1xi32>) -> tensor<2x3xi32>
 // CHECK: %[[VAL_10:.*]] = tosa.add %[[VAL_8]], %[[VAL_9]] : (tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
 // CHECK: %[[VAL_11:.*]] = tosa.rescale %[[VAL_10]], %[[VAL_5]], %[[VAL_1]], %[[VAL_2]], %[[VAL_3]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "DOUBLE_ROUND", scale32 = true} : (tensor<2x3xi32>, tensor<1xi32>, tensor<1xi8>, tensor<1xi32>, tensor<1xi8>) -> tensor<2x3x!quant.uniform<i8:f32, 1.000000e-01:2>>
 // CHECK: %[[VAL_12:.*]] = builtin.unrealized_conversion_cast %[[VAL_11]] : tensor<2x3x!quant.uniform<i8:f32, 1.000000e-01:2>> to tensor<2x3xi8>
-// CHECK: tosa.variable.write @Variable, %[[VAL_12]] : tensor<2x3xi8>
+// CHECK: tosa.variable_write @Variable, %[[VAL_12]] : tensor<2x3xi8>
 // CHECK: return %[[VAL_11]] : tensor<2x3x!quant.uniform<i8:f32, 1.000000e-01:2>>
 module {
     func.func @readAssignQuant(%arg0: tensor<2x3x!quant.uniform<i8:f32, 0.1:2>>) -> (tensor<2x3x!quant.uniform<i8:f32, 0.1:2>>) {

@@ -41,11 +41,11 @@ tsl_pybind_extension(
     ],
     features = ["-use_header_modules"],
     deps = [
-        "//third_party/python_runtime:headers",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:CAPIIR",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MLIRBindingsPythonHeadersAndDeps",
+        "@local_xla//third_party/python_runtime:headers",
         "@nanobind",
         "@stablehlo//:stablehlo_capi",
     ],
@@ -95,7 +95,7 @@ cc_library(
         "transforms/fold_broadcast_pass.cc",
     ],
     hdrs = [
-        "transforms/stablehlo_passes.h",
+        "transforms/fold_broadcast_pass.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = [
@@ -261,7 +261,7 @@ cc_library(
         "transforms/mhlo_passes/fuse_convolution_pass.cc",
     ],
     hdrs = [
-        "transforms/stablehlo_passes.h",
+        "transforms/mhlo_passes/fuse_convolution_pass.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = [
@@ -290,7 +290,7 @@ cc_library(
         "transforms/mhlo_passes/unfuse_batch_norm_pass.cc",
     ],
     hdrs = [
-        "transforms/stablehlo_passes.h",
+        "transforms/mhlo_passes/unfuse_batch_norm_pass.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = [

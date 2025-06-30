@@ -77,6 +77,11 @@ class AotCompilationResult {
     return Unimplemented("LoadExecutable unimplemented.");
   }
 
+  virtual absl::StatusOr<std::unique_ptr<BufferAssignment>> buffer_assignment()
+      const {
+    return Unimplemented("buffer_assignment unimplemented.");
+  }
+
   // Returns the optimized HLO module if one was computed and the implementation
   // supports it.
   virtual const HloModule* optimized_module() const = 0;
@@ -323,7 +328,8 @@ class Compiler {
   // Returns a MetricsHookInterface object used to instrument Compiler's
   // compilation stages.
   virtual std::unique_ptr<MetricsHookInterface> CreateMetricsHook(
-      absl::string_view filename_prefix) const;
+      absl::string_view filename_prefix,
+      absl::string_view hlo_module_name) const;
 
   virtual absl::StatusOr<std::unique_ptr<Executable>> DeserializeExecutable(
       const absl::string_view serialized) const {

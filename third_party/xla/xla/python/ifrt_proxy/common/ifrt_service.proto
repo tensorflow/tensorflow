@@ -33,6 +33,7 @@ option cc_enable_arenas = true;
 
 message IfrtProxyVersion {
   int32 protocol_version = 1;
+  int32 ifrt_serdes_version_number = 2;
 }
 
 message IfrtRequest {
@@ -70,8 +71,10 @@ message IfrtRequest {
     // ===== LoadedExecutable =====
     LoadedExecutableMetadataRequest loaded_executable_metadata_request = 14;
     LoadedExecutableExecuteRequest loaded_executable_execute_request = 15;
-    LoadedExecutableDeleteRequest loaded_executable_delete_request = 16;
-    LoadedExecutableIsDeletedRequest loaded_executable_is_deleted_request = 17;
+    LoadedExecutableDeleteRequest loaded_executable_delete_request = 16
+        [deprecated = true];
+    LoadedExecutableIsDeletedRequest loaded_executable_is_deleted_request = 17
+        [deprecated = true];
     LoadedExecutableDestructRequest loaded_executable_destruct_request = 18;
 
     // ===== LoadedHostCallback =====
@@ -235,6 +238,8 @@ message InitResponse {
   }
 
   repeated Memory memories = 9;
+
+  AttributeMapProto client_attributes = 11;
 }
 
 // ================ Future-related operations ================

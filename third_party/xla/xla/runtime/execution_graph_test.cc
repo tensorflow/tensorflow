@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
@@ -43,6 +44,8 @@ class Operation : public ExecutionGraph::Operation {
   explicit Operation(std::vector<BufferUse> buffers,
                      std::vector<ResourceUse> resources = {})
       : buffers_(std::move(buffers)), resources_(std::move(resources)) {}
+
+  absl::string_view name() const final { return ""; }
 
   absl::Span<const BufferUse> BufferUses() const final { return buffers_; }
 

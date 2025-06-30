@@ -21,7 +21,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "xla/tsl/platform/status_matchers.h"
 
 namespace stream_executor::gpu {

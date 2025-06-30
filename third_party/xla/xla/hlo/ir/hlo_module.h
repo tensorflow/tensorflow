@@ -232,8 +232,9 @@ class HloModule {
   // with respect to HloInstruction::Identical() method.
   template <typename H>
   friend H AbslHashValue(H h, const HloModule& module) {
-    if (module.config().has_entry_computation_layout())
+    if (module.config().has_entry_computation_layout()) {
       h = H::combine(std::move(h), module.entry_computation_layout());
+    }
     // Use MakeComputationSorted() instead of MakeComputationPostOrder()
     // because naming may affect the order of MakeComputationPostOrder() but not
     // MakeComputationSorted().
@@ -474,8 +475,8 @@ class HloModule {
   NameUniquer& computation_name_uniquer() { return computation_name_uniquer_; }
 
   // Assign a new unique dense id for an instruction
-  int NewUniqueInstructionId() {
-    int result = next_unique_id_;
+  int64_t NewUniqueInstructionId() {
+    int64_t result = next_unique_id_;
     next_unique_id_++;
     return result;
   }
@@ -733,7 +734,7 @@ class HloModule {
   // unique per module.
   NameUniquer computation_name_uniquer_{/*separator=*/"."};
   NameUniquer instruction_name_uniquer_{/*separator=*/"."};
-  int next_unique_id_ = 0;
+  int64_t next_unique_id_ = 0;
 
   // Used to keep track of the next unique module id that should be assigned.
   static std::atomic<int> next_unique_module_id_;

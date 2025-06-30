@@ -1155,27 +1155,31 @@ def update_docstrings_with_api_lists():
   `dispatch_for_binary_elementwise_apis`, by replacing the string '<<API_LIST>>'
   with a list of APIs that have been registered for that decorator.
   """
-  _update_docstring_with_api_list(dispatch_for_unary_elementwise_apis,
-                                  _UNARY_ELEMENTWISE_APIS)
-  _update_docstring_with_api_list(dispatch_for_binary_elementwise_apis,
-                                  _BINARY_ELEMENTWISE_APIS)
-  _update_docstring_with_api_list(dispatch_for_binary_elementwise_assert_apis,
-                                  _BINARY_ELEMENTWISE_ASSERT_APIS)
-  _update_docstring_with_api_list(dispatch_for_api,
-                                  _TYPE_BASED_DISPATCH_SIGNATURES)
+  _update_docstring_with_api_list(
+      dispatch_for_unary_elementwise_apis, _UNARY_ELEMENTWISE_APIS)
+  _update_docstring_with_api_list(
+      dispatch_for_binary_elementwise_apis, _BINARY_ELEMENTWISE_APIS)
+  _update_docstring_with_api_list(
+      dispatch_for_binary_elementwise_assert_apis,
+      _BINARY_ELEMENTWISE_ASSERT_APIS)
+  _update_docstring_with_api_list(
+      dispatch_for_api, _TYPE_BASED_DISPATCH_SIGNATURES)
 
 
 def _update_docstring_with_api_list(target, api_list):
   """Replaces `<<API_LIST>>` in target.__doc__ with the given list of APIs."""
   lines = []
   for func in api_list:
+    if isinstance(func, dict):
+      func = list(func.keys())[0]
     name = tf_export_lib.get_canonical_name_for_symbol(
-        func, add_prefix_to_v1_names=True)
+        func, add_prefix_to_v1_names=True
+    )
     if name is not None:
       params = tf_inspect.signature(func).parameters.keys()
       lines.append(f"  * `tf.{name}({', '.join(params)})`")
   lines.sort()
-  target.__doc__ = target.__doc__.replace("  <<API_LIST>>", "\n".join(lines))
+  target.__doc__ = target.__doc__.replace("<<API_LIST>>", "\n".join(lines))
 
 
 ################################################################################

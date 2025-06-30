@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/jit_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/cpu_function_runtime.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -107,6 +108,7 @@ TEST_F(IrEmitterTest, ComputeFuncStack) {
   const HloInstruction* zero = FindInstruction(hlo.get(), "zero");
   ASSERT_NE(zero, nullptr);
 
+  AliasInfo alias_info;
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
@@ -114,7 +116,7 @@ TEST_F(IrEmitterTest, ComputeFuncStack) {
           [](const BufferValue& buffer) {
             return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
           },
-          [](LogicalBuffer::Color) { return /*alignment=*/1; }));
+          &alias_info, [](LogicalBuffer::Color) { return /*alignment=*/1; }));
 
   TargetMachineFeaturesStub target_machine([](int64_t size) { return 1; });
 
@@ -284,13 +286,14 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
   auto memory_alignment = [](LogicalBuffer::Color) {
     return cpu_function_runtime::MinAlign();
   };
+  AliasInfo alias_info;
   // Run buffer allocation on the HLO graph.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
-      BufferAssigner::Run(&module,
-                          std::make_unique<SequentialHloOrdering>(schedule),
-                          buffer_size_bytes_function, memory_alignment,
-                          /*allocate_buffers_for_constants=*/true));
+      BufferAssigner::Run(
+          &module, std::make_unique<SequentialHloOrdering>(schedule),
+          buffer_size_bytes_function, &alias_info, memory_alignment,
+          /*allocate_buffers_for_constants=*/true));
 
   auto target_machine_features =
       std::make_unique<TargetMachineFeatures>(jit_compiler.target_machine());

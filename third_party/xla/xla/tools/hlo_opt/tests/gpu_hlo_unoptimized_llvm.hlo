@@ -1,6 +1,7 @@
-// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../gpu_specs/%{GPU}.txtpb | FileCheck %s
+// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../gpu_specs/%{GPU}.txtpb | FileCheck --check-prefixes=CHECK,CHECK-%{PTX} %s
 
-// CHECK:       define ptx_kernel void @fusion
+// CHECK-PTX:     define ptx_kernel void @fusion
+// CHECK-GCN:     define amdgpu_kernel void @fusion
 // CHECK:         br i1
 // CHECK:         br label
 

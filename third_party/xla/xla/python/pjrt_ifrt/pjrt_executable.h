@@ -85,7 +85,7 @@ class PjRtExecutable final
     : public llvm::RTTIExtends<PjRtExecutable, PjRtCompatibleExecutable> {
  public:
   // Creates PjRtExecutable from xla::PjRtExecutable.
-  static absl::StatusOr<std::unique_ptr<Executable>> Create(
+  static absl::StatusOr<ExecutableRef> Create(
       std::shared_ptr<xla::PjRtExecutable> pjrt_executable);
 
   // PjRtCompatibleExecutable implementation.
@@ -181,7 +181,7 @@ class PjRtLoadedExecutable final
   // Creates PjRtExecutable from xla::PjRtLoadedExecutable. We expect that
   // xla::PjRtLoadedExecutable has fixed output dtypes/shapes/shardings.
   // PjRtLoadedExecutable::GetHloModules() must be implemented.
-  static absl::StatusOr<std::unique_ptr<LoadedExecutable>> Create(
+  static absl::StatusOr<LoadedExecutableRef> Create(
       PjRtCompatibleClient* client,
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
       std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
@@ -192,7 +192,7 @@ class PjRtLoadedExecutable final
   // options.executable_build_options has use_auto_spmd_partitioning or
   // allow_spmd_sharding_propagation_to_output enabled,
   // PjRtLoadedExecutable::GetHloModules() must be implemented.
-  static absl::StatusOr<std::unique_ptr<LoadedExecutable>> Create(
+  static absl::StatusOr<LoadedExecutableRef> Create(
       PjRtCompatibleClient* client, mlir::ModuleOp module,
       xla::CompileOptions compile_options,
       std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
@@ -289,14 +289,8 @@ class PjRtLoadedExecutable final
     return client_;
   }
   absl::StatusOr<ExecuteResult> Execute(
-      absl::Span<tsl::RCReference<Array>> args, const ExecuteOptions& options,
+      absl::Span<ArrayRef> args, const ExecuteOptions& options,
       std::optional<DeviceListRef> devices) override;
-
-  Future<> Delete() override;
-  bool IsDeleted() const override {
-    DCHECK(this);
-    return pjrt_loaded_executable_->IsDeleted();
-  }
 
   absl::Span<Device* const> addressable_devices() const override {
     DCHECK(this);
@@ -312,7 +306,7 @@ class PjRtLoadedExecutable final
   static char ID;  // NOLINT
 
  private:
-  static absl::StatusOr<std::unique_ptr<LoadedExecutable>> CreateInternal(
+  static absl::StatusOr<LoadedExecutableRef> CreateInternal(
       PjRtCompatibleClient* client,
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
       absl::Span<const xla::PrimitiveType> result_element_types,

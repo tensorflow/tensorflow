@@ -84,7 +84,10 @@ std::vector<IndexingMapSet> ComputeOperandIndexingMaps(
     auto operands_indexing =
         ComputeOutputToInputIndexing(instr, /*output_id=*/0, mlir_context);
     operands_indexing.Simplify();
-    indexing_maps_per_operand = std::move(operands_indexing.indexing_maps);
+    indexing_maps_per_operand.reserve(operands_indexing.indexing_maps.size());
+    for (auto& indexing_maps : operands_indexing.indexing_maps) {
+      indexing_maps_per_operand.push_back(ToIndexingMapSet(indexing_maps));
+    }
   }
   return indexing_maps_per_operand;
 }
@@ -109,10 +112,13 @@ EpilogueSpecification EpilogueSpecification::FromIdentityIndexing(
 std::string PartitionedComputation::Subgraph::ToString(int indentation) const {
   std::string indent(indentation, ' ');
   std::ostringstream ss;
-  ss << indent << "SUBGRAPH " << name << " {\n";
+  ss << indent << "SUBGRAPH " << name << (has_no_compute ? " no_compute" : "")
+     << " {\n";
   for (auto* instr :
        (*instructions.begin())->parent()->MakeInstructionPostOrder()) {
-    if (!instructions.contains(instr)) continue;
+    if (!instructions.contains(instr)) {
+      continue;
+    }
     ss << indent << "  ";
     if (absl::c_linear_search(roots, instr)) {
       ss << "ROOT ";
@@ -277,8 +283,10 @@ PartitionedComputation::PartitionedComputation(
     bool has_no_compute = true;
     for (auto* instruction : instructions) {
       has_no_compute &=
-          HloPredicateIsOp<HloOpcode::kParameter, HloOpcode::kIota,
-                           HloOpcode::kConstant>(instruction);
+          HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kConstant,
+                           HloOpcode::kIota, HloOpcode::kParameter,
+                           HloOpcode::kReshape, HloOpcode::kReverse,
+                           HloOpcode::kTranspose>(instruction);
       if (id_to_subgraph_data[instr_to_id[instruction]].is_root) {
         roots.push_back(instruction);
         if (first_root_shape) {

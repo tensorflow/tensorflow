@@ -1601,6 +1601,7 @@ def TFL_DivOp : TFL_Op<"div", [
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
     ResultsBroadcastableShape,
     Pure,
+    QuantizableResult,
     DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Division operator";
 
@@ -1609,11 +1610,11 @@ def TFL_DivOp : TFL_Op<"div", [
   }];
 
   let arguments = (
-      ins TFL_TensorOf<[F32, I32, QUI8]>:$lhs,
-      TFL_TensorOf<[F32, I32, QUI8]>:$rhs,
+      ins TFL_TensorOf<[F32, I32, QUI8, QI8]>:$lhs,
+      TFL_TensorOf<[F32, I32, QUI8, QI8]>:$rhs,
       TFL_AFAttr:$fused_activation_function);
 
-  let results = (outs TFL_TensorOf<[F32, I32, QUI8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, QUI8, QI8]>:$output);
 
   let builders = [TFL_FusedBroadcastableBinaryBuilder];
 

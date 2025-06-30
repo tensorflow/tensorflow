@@ -365,7 +365,7 @@ DestroyResourceOp::DestroyResourceOp(OpKernelConstruction* ctx)
 void DestroyResourceOp::Compute(OpKernelContext* ctx) {
   const ResourceHandle& p = HandleFromInput(ctx, 0);
   absl::Status status = DeleteResource(ctx, p);
-  if (ignore_lookup_error_ && errors::IsNotFound(status)) {
+  if (ignore_lookup_error_ && absl::IsNotFound(status)) {
     return;
   }
   OP_REQUIRES_OK(ctx, status);

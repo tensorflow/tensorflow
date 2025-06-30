@@ -16,10 +16,18 @@ limitations under the License.
 #ifndef XLA_PJRT_COMMON_PJRT_CLIENT_H_
 #define XLA_PJRT_COMMON_PJRT_CLIENT_H_
 
+#include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -32,6 +40,10 @@ class CommonPjRtClient : public PjRtClient {
   // TODO(parkers): make pure virtual and update all clients.
   virtual AsyncWorkRunner* async_work_runner() const { return nullptr; }
 
+  // Some clients do not support recursion eg: calling to_literal in host
+  // callbacks. Those clients should return false here.
+  virtual bool allows_recursion() const { return true; }
+
   // Computes the memory requirements for storing shape on memory_space.
   // TODO(parkers): make pure virtual and update all clients.
   virtual absl::StatusOr<int64_t> GetOnDeviceBytesCount(
@@ -40,11 +52,22 @@ class CommonPjRtClient : public PjRtClient {
   }
 
   // Allocates a raw buffer of a particular size after an optional
-  // allocate_after.
+  // allocate_after. Backends may support retrying allocation on oom which
+  // can be controlled via retry_on_oom.
   virtual absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
   AllocateRawBuffer(PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
+                    bool retry_on_oom,
                     tsl::AsyncValueRef<bool> allocate_after) {
     return absl::UnimplementedError("AllocateRawBuffer is not supported");
+  }
+
+  // Imports foreign memory as a raw buffer.
+  virtual absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
+  ImportForeignMemory(void* device_ptr,
+                      absl::AnyInvocable<void() &&> on_delete_callback,
+                      size_t on_device_bytes_count,
+                      PjRtMemorySpace* memory_space) {
+    return absl::UnimplementedError("ImportForeignMemory is not supported");
   }
 
   // Linearizes a literal into a raw buffer and returns a DeviceEvent
@@ -60,7 +83,8 @@ class CommonPjRtClient : public PjRtClient {
       const Shape& on_device_shape,
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
       absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
-          definition_device_events) {
+          definition_device_events,
+      bool raw_buffer_is_mutable) {
     return absl::UnimplementedError("DefineBuffer is not supported");
   }
 
@@ -78,6 +102,14 @@ class CommonPjRtClient : public PjRtClient {
         "CreateLinkedEventPromise is not supported");
   }
 
+  // Create a linked PjRtFuture<> and ::Promise pair for operations on
+  // buffers in memory_space which populates debug information like linked
+  // tracmes.
+  virtual std::pair<PjRtFuture<>::Promise, PjRtFuture<>>
+  CreateLinkedUserPromise(PjRtMemorySpace* memory_space,
+                          const char* callee_type, const char* callee_method,
+                          absl::string_view debug_info);
+
   // Registers the necessary debug information for an allocation event.
   // TODO(parkers): Once everything is unified this should be controlled
   // by a non-device-specific config instead of delegating this control
@@ -86,9 +118,24 @@ class CommonPjRtClient : public PjRtClient {
       PjRtMemorySpace* memory_space,
       const std::optional<std::string>& debug_info);
 
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      HostBufferSemantics host_buffer_semantics,
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+      PjRtMemorySpace* memory_space, const Layout* device_layout) override;
+
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtMemorySpace* memory_space,
       const Layout* device_layout) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
+      const Shape& shape, PjRtMemorySpace* memory_space) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
+      void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
+      std::function<void()> on_delete_callback,
+      std::optional<std::intptr_t> stream) override;
 
   // Applies memory-space normalization logic on top of
   // GetTopologyDescription()->GetDefaultLayout() to select the default
@@ -96,6 +143,48 @@ class CommonPjRtClient : public PjRtClient {
   virtual absl::StatusOr<xla::Shape> MakeDefaultShapeForMemorySpace(
       PjRtMemorySpace* memory_space, xla::Shape shape,
       const xla::Layout* layout) const;
+
+  virtual bool BufferFromHostBufferSupportsZeroCopy(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides, const Shape& shape,
+      PjRtMemorySpace* memory_space, const Layout* device_layout) const {
+    return false;
+  }
+
+  virtual absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
+  LinearizeHostBufferInto(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      HostBufferSemantics host_buffer_semantics,
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+      const xla::Shape& device_shape,
+      tsl::RCReference<CommonPjRtRawBuffer> raw_buffer) {
+    return absl::UnimplementedError("LinearizeHostBufferInto is not supported");
+  }
+};
+
+// TODO(parkers): Merge everything here into CommonPjRtBuffer.
+class CommonPjRtBufferImpl : public CommonPjRtBuffer {
+ public:
+  using CommonPjRtBuffer::CommonPjRtBuffer;
+
+  // This behaves like CopyToMemorySpace for memory space pairs which
+  // require no layout changes.
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> DirectCopyToMemorySpace(
+      PjRtMemorySpace* dst_memory_space);
+
+  using PjRtBuffer::ToLiteralSync;
+  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
+  PjRtFuture<> LazyToLiteral(
+      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
+      override;
+
+ protected:
+  // Shared implementation for ToLiteral and LazyToLiteral. If `literal` is
+  // null, will call the function in the generator.
+  PjRtFuture<> ToLiteralImpl(
+      MutableLiteralBase* literal,
+      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator);
 };
 
 }  // namespace xla

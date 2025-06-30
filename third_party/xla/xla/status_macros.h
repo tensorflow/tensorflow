@@ -16,19 +16,22 @@ limitations under the License.
 #ifndef XLA_STATUS_MACROS_H_
 #define XLA_STATUS_MACROS_H_
 
+#include <cstddef>
 #include <memory>
 #include <ostream>  // NOLINT
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include "absl/base/log_severity.h"
 #include "absl/base/optimization.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/platform/errors.h"  // IWYU pragma: keep, used in macro.
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace status_macros {
@@ -36,6 +39,70 @@ namespace status_macros {
 // This is a useful error message when encountering XLA Compiler errors that
 // could be handled with the non-strict AutoJit mode.
 extern const char kPossibleAutoJitAlternative[];
+
+namespace internal {
+
+// Detects if type `T` supports streaming to `std::ostream`s with `operator<<`.
+// TODO: b/415071252 - Remove this once a new version of absl is available in
+// OpenXLA.
+template <typename T, typename = void>
+struct HasOstreamOperator : std::false_type {};
+
+template <typename T>
+struct HasOstreamOperator<
+    T, std::enable_if_t<std::is_same<
+           std::ostream&, decltype(std::declval<std::ostream&>()
+                                   << std::declval<const T&>())>::value>>
+    : std::true_type {};
+
+// This is an empty class not intended to be used. It exists so that
+// `HasAbslStringify` can reference a universal class rather than needing to be
+// copied for each new sink.
+class UnimplementedSink {
+ public:
+  void Append(size_t count, char ch);
+
+  void Append(absl::string_view v);
+
+  // Support `absl::Format(&sink, format, args...)`.
+  friend void AbslFormatFlush(UnimplementedSink* sink, absl::string_view v);
+};
+
+// `HasAbslStringify<T>` detects if type `T` supports the `AbslStringify()`
+// customization point (see
+// https://abseil.io/docs/cpp/guides/format#abslstringify for the
+// documentation).
+//
+// Note that there are types that can be `StrCat`-ed that do not use the
+// `AbslStringify` customization point (for example, `int`).
+// TODO: b/415071252 - Remove this once a new version of absl is available in
+// OpenXLA.
+template <typename T, typename = void>
+struct HasAbslStringify : std::false_type {};
+
+template <typename T>
+struct HasAbslStringify<
+    T,
+    std::enable_if_t<std::is_void<decltype(AbslStringify(
+        std::declval<UnimplementedSink&>(), std::declval<const T&>()))>::value>>
+    : std::true_type {};
+
+// Formats a value for a failing `TF_RET_CHECK` statement. Excepting a few
+// special-case overloads below, behavior attempts to mimic ABSL logging.
+// The stream operator is used if supported; else absl::Stringify() support
+// is checked.
+template <typename T>
+inline void PrintToStream(const T& v, std::ostream* os) {
+  if constexpr (HasOstreamOperator<T>::value) {
+    (*os) << v;
+  } else {
+    static_assert(HasAbslStringify<T>::value,
+                  "Type must support the stream operator or absl::Stringify");
+    absl::Format(os, "%v", v);
+  }
+}
+
+}  // namespace internal
 
 // Stream object used to collect error messages in MAKE_ERROR macros
 // or append error messages with APPEND_ERROR.  It accepts any
@@ -113,7 +180,7 @@ class MakeErrorStream {
   template <typename T>
   MakeErrorStreamWithOutput& operator<<(const T& value) {
     CheckNotDone();
-    impl_->stream_ << value;
+    internal::PrintToStream(value, &impl_->stream_);
     return impl_->make_error_stream_with_output_wrapper_;
   }
 

@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
 
 namespace xla {
@@ -227,7 +226,7 @@ std::string BuildHloTextGroupedConvolution2D(
   }
 }
 
-XLA_TEST_P(GroupedConvolution2DTest, DoIt) {
+TEST_P(GroupedConvolution2DTest, DoIt) {
   const GroupedConvolution2DSpec& spec = ::testing::get<0>(GetParam());
   bool use_bfloat16 = ::testing::get<1>(GetParam());
 
@@ -257,7 +256,7 @@ INSTANTIATE_TEST_CASE_P(
 
 using GroupedConvolutionTest = HloTestBase;
 
-XLA_TEST_F(GroupedConvolutionTest, BackwardInputConvolution) {
+TEST_F(GroupedConvolutionTest, BackwardInputConvolution) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule convolution_module
 

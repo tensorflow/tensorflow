@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
@@ -49,6 +50,8 @@ struct DummyThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return absl::OkStatus();
   }
+
+  absl::StatusOr<ThunkProto> ToProto() const override { return ThunkProto{}; }
 };
 
 TEST(ForAllThunksTest, SingleThunk) {
@@ -102,10 +105,11 @@ TEST(ForAllThunksTest, ConditionalThunk) {
       Thunk::ThunkInfo(), std::move(thunk_sequence));
   SequentialThunk* sequential_thunk_ptr = sequential_thunk.get();
 
-  ConditionalThunkConfig config;
-  config.branch_thunks.push_back(std::move(sequential_thunk));
-  ConditionalThunk conditional_thunk(Thunk::ThunkInfo(), std::move(config),
-                                     BufferAllocation::Slice());
+  std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
+  branch_thunks.push_back(std::move(sequential_thunk));
+  ConditionalThunk conditional_thunk(
+      Thunk::ThunkInfo(), BufferAllocation::Slice(), std::move(branch_thunks),
+      /*branch_index_is_bool=*/false);
 
   EXPECT_THAT(GetAllThunks(&conditional_thunk),
               UnorderedElementsAre(thunk_ptr, sequential_thunk_ptr,

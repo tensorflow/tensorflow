@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/while_loop_simplifier.h"
 
+#include <cstdint>
 #include <string>
 
 #include <gmock/gmock.h>
@@ -22,6 +23,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -59,6 +61,11 @@ class WhileLoopSimplifierTest : public HloHardwareIndependentTestBase {
   // loop-condition parameter.
   [[nodiscard]] std::unique_ptr<VerifiedHloModule>
   MakeModuleWithSimpleLoopTupleElementLoopBound(int num_iters);
+
+  // Similar to MakeModuleWithSimpleLoop except that the loop body and condition
+  // are used by two while instructions.
+  [[nodiscard]] std::unique_ptr<VerifiedHloModule>
+  MakeModuleWithSimpleLoopSharedBody(int num_iters);
 };
 
 std::unique_ptr<VerifiedHloModule>
@@ -164,6 +171,13 @@ TEST_F(WhileLoopSimplifierTest,
 
 TEST_F(WhileLoopSimplifierTest, LoopWithTwoIterationsNotSimplified) {
   auto m = MakeModuleWithSimpleLoop(/*num_iters=*/2);
+  EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
+}
+
+TEST_F(WhileLoopSimplifierTest, LoopWithTwoIterationsAndDeadCodeNotSimplified) {
+  auto m = MakeModuleWithSimpleLoop(/*num_iters=*/2);
+  m->entry_computation()->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(50)));
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
 }
 
@@ -487,6 +501,51 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
   EXPECT_THAT(new_while_op->while_condition()->root_instruction(),
               op::Eq(op::Constant(),
                      op::GetTupleElement(op::Parameter(0), /*tuple_index=*/1)));
+
+  EXPECT_THAT(new_while_op->while_init(),
+              op::Tuple(op::Constant(), op::Parameter(1)));
+}
+
+TEST_F(WhileLoopSimplifierTest, NoRemoveUnusedLoopOperandsMultipleUsers) {
+  const std::string hlo_string = R"(
+  HloModule RemoveUnusedOperands
+  RemoveUnusedOperands.body {
+    loop_var = (s32[], s32[], s32[]) parameter(0)
+    get-tuple-element.1 = s32[] get-tuple-element((s32[], s32[],
+      s32[]) loop_var), index=0
+    get-tuple-element.2 = s32[] get-tuple-element((s32[], s32[],
+      s32[]) loop_var), index=1
+    constant.1 = s32[] constant(1)
+    add = s32[] add(s32[] get-tuple-element.2, s32[] constant.1)
+    get-tuple-element.3 = s32[] get-tuple-element((s32[], s32[], s32[])
+      loop_var), index=2
+    ROOT tuple = (s32[], s32[], s32[]) tuple(s32[] get-tuple-element.1,
+      s32[] add, s32[] get-tuple-element.3)
+  }
+  RemoveUnusedOperands.loop_condition {
+    constant.2 = s32[] constant(0)
+    param0 = (s32[], s32[], s32[]) parameter(0)
+    get-tuple-element = s32[] get-tuple-element((s32[], s32[], s32[]) param0),
+      index=2
+    ROOT equal-to = pred[] compare(s32[] constant.2, s32[] get-tuple-element), direction=EQ
+  }
+  ENTRY RemoveUnusedOperands {
+    x = s32[] parameter(0)
+    constant.3 = s32[] constant(0)
+    y = s32[] parameter(1)
+    tuple.1 = (s32[], s32[], s32[]) tuple(s32[] x, s32[] constant.3,
+      s32[] y)
+    while.0 = (s32[], s32[], s32[]) while((s32[], s32[], s32[]) tuple.1),
+      condition=RemoveUnusedOperands.loop_condition,
+      body=RemoveUnusedOperands.body
+    ROOT while.1 = (s32[], s32[], s32[]) while((s32[], s32[], s32[]) while.0),
+      condition=RemoveUnusedOperands.loop_condition,
+      body=RemoveUnusedOperands.body
+  }
+  )";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
 }
 
 // This while loop has three tuple elements.  Element 0 is unused and should be
@@ -930,6 +989,43 @@ TEST_F(WhileLoopSimplifierTest, RemoveRepeatedParams) {
   EXPECT_TRUE(ShapeUtil::Equal(
       new_while->while_condition()->parameter_instruction(0)->shape(),
       new_while_shape));
+}
+
+TEST_F(WhileLoopSimplifierTest, RepeatedParamsWithDomain) {
+  const std::string hlo_string = R"(
+  HloModule SwappingTupleElements
+
+  SwappingTupleElements.body {
+    loop_var = (s32[], s32[], s32[]) parameter(0)
+    get-tuple-element = s32[] get-tuple-element(loop_var), index=0
+    get-tuple-element.1 = s32[] get-tuple-element(loop_var), index=1
+    get-tuple-element.2 = s32[] get-tuple-element(loop_var), index=2
+    y = s32[] add(get-tuple-element.1, get-tuple-element.2)
+    ROOT tuple = (s32[], s32[], s32[]) tuple(s32[] get-tuple-element, y,
+      s32[] get-tuple-element.2)
+  }
+
+  SwappingTupleElements.always_true {
+   param = (s32[], s32[], s32[]) parameter(0)
+   dom0 = (s32[], s32[], s32[]) domain((s32[], s32[], s32[]) param), domain={kind="sharding", entry={maximal device=0}, exit={maximal device=1}}
+   get-tuple-element = s32[] get-tuple-element(dom0), index=0
+   get-tuple-element.1 = s32[] get-tuple-element(dom0), index=1
+   less-than = pred[] compare(get-tuple-element, get-tuple-element.1), direction=LT
+   ROOT dom1 = pred[] domain(pred[] less-than), domain={kind="sharding", entry={maximal device=1}, exit={maximal device=0}}
+  }
+
+  ENTRY SwappingTupleElements {
+   x = s32[] parameter(0)
+   y = s32[] parameter(1)
+   tuple.1 = (s32[], s32[], s32[]) tuple(s32[] x, s32[] y, s32[] x)
+   ROOT while = (s32[], s32[], s32[]) while(tuple.1),
+     condition=SwappingTupleElements.always_true,
+     body=SwappingTupleElements.body
+  }
+  )";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
 }
 
 // A group of elements are inter-dependent, but unused as by the output.

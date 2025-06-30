@@ -64,7 +64,7 @@ class TopKOp : public XlaOpKernel {
 
     OP_REQUIRES(context, input_shape.dimensions().size() >= 1,
                 errors::InvalidArgument("input must be >= 1-D, got shape ",
-                                        input_shape.DebugString()));
+                                        input_shape.ToString()));
 
     OP_REQUIRES(
         context, last_dim_size >= k,

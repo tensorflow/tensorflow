@@ -186,6 +186,10 @@ class ImportSdyCustomCallsPass
            "ShardingConstraintOp and with target name ShardingGroup into a "
            "ShardingGroupOp.";
   }
+
+  void getDependentDialects(mlir::DialectRegistry& registry) const final {
+    registry.insert<mlir::sdy::SdyDialect>();
+  }
 };
 
 }  // namespace

@@ -9,9 +9,8 @@ package(
 
 package_group(
     name = "friends",
-    packages = [
-        "//third_party/py/jax/...",
-        "//xla/...",
+    includes = [
+        "//xla:friends",
     ],
 )
 
@@ -40,6 +39,8 @@ cc_library(
     srcs = ["export_named_computations.cc"],
     hdrs = ["export_named_computations.h"],
     deps = [
+        "//xla/service/spmd/shardy:constants",
+        "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

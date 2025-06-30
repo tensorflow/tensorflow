@@ -15,9 +15,18 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 
+#include <memory>
+#include <utility>
+
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -33,6 +42,45 @@ absl::Status ReplicaOrPartitionIdThunk::ExecuteOnStream(
   int id = kind() == Kind::kReplicaId ? logical_id.replica_id
                                       : logical_id.computation_id;
   return params.stream->Memset32(&dest_addr, id, /*size=*/4);
+}
+
+absl::StatusOr<ThunkProto> ReplicaIdThunk::ToProto() const {
+  ThunkProto proto;
+  TF_ASSIGN_OR_RETURN(*proto.mutable_thunk_info(), GetThunkInfoProto());
+
+  auto* replica_id_thunk_proto = proto.mutable_replica_id_thunk();
+  TF_ASSIGN_OR_RETURN(*replica_id_thunk_proto->mutable_dest_buffer(),
+                      dest().ToProto());
+  return proto;
+}
+
+absl::StatusOr<std::unique_ptr<ReplicaIdThunk>> ReplicaIdThunk::FromProto(
+    ThunkInfo thunk_info, const ReplicaIdThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dest,
+                      BufferAllocation::Slice::FromProto(
+                          thunk_proto.dest_buffer(), buffer_allocations));
+  return std::make_unique<ReplicaIdThunk>(std::move(thunk_info), dest);
+}
+
+absl::StatusOr<ThunkProto> PartitionIdThunk::ToProto() const {
+  ThunkProto proto;
+  TF_ASSIGN_OR_RETURN(*proto.mutable_thunk_info(), GetThunkInfoProto());
+
+  auto* partition_id_thunk_proto = proto.mutable_partition_id_thunk();
+  TF_ASSIGN_OR_RETURN(*partition_id_thunk_proto->mutable_dest_buffer(),
+                      dest().ToProto());
+  return proto;
+}
+
+/*static*/ absl::StatusOr<std::unique_ptr<PartitionIdThunk>>
+PartitionIdThunk::FromProto(ThunkInfo thunk_info,
+                            const PartitionIdThunkProto& proto,
+                            absl::Span<const BufferAllocation> allocations) {
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice dest_buffer,
+      BufferAllocation::Slice::FromProto(proto.dest_buffer(), allocations));
+  return std::make_unique<PartitionIdThunk>(std::move(thunk_info), dest_buffer);
 }
 
 }  // namespace gpu

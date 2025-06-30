@@ -10,7 +10,7 @@ load(
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
-    "tf_cuda_tests_tags",
+    "tf_gpu_tests_tags",
 )
 
 # hlo-opt tool.
@@ -33,6 +33,7 @@ cc_library(
     deps = [
         "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/tools/hlo_opt:opt_lib",
         "//xla/hlo/transforms/expanders:bitcast_dtypes_expander",
@@ -59,11 +60,10 @@ cc_library(
         "//xla/service:while_loop_constant_sinking",
         "//xla/service:while_loop_invariant_code_motion",
         "//xla/service:while_loop_simplifier",
-        "//xla/service/gpu/transforms:all_gather_dynamic_slice_simplifier",
-        "//xla/service/gpu/transforms:all_reduce_splitter",
-        "//xla/service/gpu/transforms:collective_permute_valid_iteration_annotator",
         "//xla/service/gpu/transforms:scatter_expander",
         "//xla/service/gpu/transforms:scatter_slice_simplifier",
+        "//xla/service/gpu/transforms/collectives:all_gather_dynamic_slice_simplifier",
+        "//xla/service/gpu/transforms/collectives:all_reduce_splitter",
         "//xla/service/spmd:sharding_format_picker",
         "//xla/service/spmd/shardy:shardy_xla_pass",
         "//xla/stream_executor:platform",
@@ -95,13 +95,12 @@ cc_library(
         "//xla/service:hlo_graph_dumper",
         "//xla/service:hlo_module_config",
         "//xla/service:platform_util",
-        "//xla/service/gpu:buffer_sharing",
+        "//xla/service/gpu:alias_info",
         "//xla/service/gpu:compile_module_to_llvm_ir",
         "//xla/service/gpu:executable_proto_cc",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:gpu_hlo_schedule",
         "//xla/service/gpu:gpu_spmd_pipeline",
-        "//xla/service/gpu/transforms:all_gather_optimizer",
         "//xla/service/gpu/transforms:cudnn_custom_call_converter",
         "//xla/service/gpu/transforms:dot_algorithm_rewriter",
         "//xla/service/gpu/transforms:dot_dimension_sorter",
@@ -111,7 +110,6 @@ cc_library(
         "//xla/service/gpu/transforms:gemm_broadcast_folding_rewriter",
         "//xla/service/gpu/transforms:gemm_fusion",
         "//xla/service/gpu/transforms:gemv_rewriter",
-        "//xla/service/gpu/transforms:pipelined_p2p_rewriter",
         "//xla/service/gpu/transforms:reduce_scatter_creator",
         "//xla/service/gpu/transforms:reduction_degenerate_dim_remover",
         "//xla/service/gpu/transforms:reduction_dimension_grouper",
@@ -123,6 +121,7 @@ cc_library(
         "//xla/service/gpu/transforms:topk_splitter",
         "//xla/service/gpu/transforms:transpose_dimension_grouper",
         "//xla/service/gpu/transforms:windowed_einsum_handler",
+        "//xla/service/gpu/transforms/collectives:all_gather_optimizer",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/spmd:schedule_aware_collective_ops_cse",
         "//xla/stream_executor:device_description",
@@ -235,10 +234,10 @@ lit_test_suite(
     ]),
     cfg = "//xla:lit.cfg.py",
     data = [":test_utilities"],
-    default_tags = tf_cuda_tests_tags(),
-    hermetic_cuda_data_dir = "%S/../../../../cuda_nvcc",
+    default_tags = tf_gpu_tests_tags(),
+    hermetic_cuda_data_dir = "%S/../../../../../cuda_nvcc",
     tags_override = {
-        "gpu_hlo_ptx.hlo": ["cuda-only"],
+        "tests/gpu_hlo_ptx.hlo": ["cuda-only"],
     },
     tools = [
         "//xla/tools:hlo-opt",

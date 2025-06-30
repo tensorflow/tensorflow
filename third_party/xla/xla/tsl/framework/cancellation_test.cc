@@ -131,9 +131,9 @@ TEST(Cancellation, CancelMultiple) {
 TEST(Cancellation, IsCancelled) {
   auto cm = std::make_unique<CancellationManager>();
   thread::ThreadPool w(Env::Default(), "test", 4);
-  std::vector<Notification> done(8);
+  std::vector<absl::Notification> done(8);
   for (size_t i = 0; i < done.size(); ++i) {
-    Notification* n = &done[i];
+    absl::Notification* n = &done[i];
     w.Schedule([n, &cm]() {
       while (!cm->IsCancelled()) {
       }
@@ -150,9 +150,9 @@ TEST(Cancellation, IsCancelled) {
 
 TEST(Cancellation, IsCancelling) {
   CancellationManager cm;
-  Notification started_cancelling;
-  Notification can_finish_cancel;
-  Notification cancel_done;
+  absl::Notification started_cancelling;
+  absl::Notification can_finish_cancel;
+  absl::Notification cancel_done;
   thread::ThreadPool w(Env::Default(), "test", 1);
   auto token = cm.get_cancellation_token();
   ASSERT_TRUE(
@@ -198,7 +198,7 @@ TEST(Cancellation, TryDeregisterAfterCancel) {
 }
 
 TEST(Cancellation, TryDeregisterDuringCancel) {
-  Notification cancel_started, finish_callback, cancel_complete;
+  absl::Notification cancel_started, finish_callback, cancel_complete;
   auto manager = std::make_unique<CancellationManager>();
   auto token = manager->get_cancellation_token();
   bool registered = manager->RegisterCallback(token, [&]() {

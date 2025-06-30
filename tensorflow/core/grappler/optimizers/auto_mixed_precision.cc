@@ -1865,10 +1865,6 @@ void AutoMixedPrecisionImpl::PropagateAllowThroughClear(
 void AutoMixedPrecisionImpl::AddInferToAllowIfFollowAllow(
     const absl::flat_hash_set<int>& deny_set,
     absl::flat_hash_set<int>* allow_set) const {
-  // Currently only target for oneDNN
-  if (mode_ != AutoMixedPrecisionMode::BF16) {
-    return;
-  }
   for (int item_idx = 0; item_idx < graph_type_view_.num_nodes(); ++item_idx) {
     const NodeTypeId& item = *graph_type_view_.GetNode(item_idx);
     if (!ShouldProcess(*item.node) || deny_set.count(item_idx) ||

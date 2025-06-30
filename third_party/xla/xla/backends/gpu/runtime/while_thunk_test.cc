@@ -18,15 +18,18 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -42,12 +45,53 @@ limitations under the License.
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla::gpu {
 namespace {
 
 using ::testing::ElementsAre;
+using ::tsl::proto_testing::EqualsProto;
 using ::tsl::testing::IsOk;
+using Kind = Thunk::Kind;
+
+// A dummy `Thunk` that does nothing.
+struct DummyThunk : public Thunk {
+  explicit DummyThunk(Thunk::Kind kind, Thunk::ThunkInfo thunk_info)
+      : Thunk(kind, std::move(thunk_info)) {}
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override {
+    return absl::OkStatus();
+  }
+  static absl::StatusOr<std::unique_ptr<DummyThunk>> FromProto(
+      const ThunkProto& thunk_proto, Thunk::Kind kind) {
+    TF_ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
+                        Thunk::ThunkInfo::FromProto(thunk_proto.thunk_info()));
+    return std::make_unique<DummyThunk>(kind, std::move(thunk_info));
+  }
+
+  absl::StatusOr<ThunkProto> ToProto() const override {
+    ThunkProto proto;
+    TF_ASSIGN_OR_RETURN(*proto.mutable_thunk_info(), GetThunkInfoProto());
+    return proto;
+  }
+};
+
+WhileThunk CreateWhileThunk(
+    const Thunk::ThunkInfo& thunk_info,
+    const BufferAllocation::Slice& condition_result_buffer_index,
+    ThunkSequence condition_thunks, ThunkSequence body_thunks,
+    std::optional<int64_t> trip_count) {
+  auto condition_thunk_sequence = std::make_unique<SequentialThunk>(
+      thunk_info, std::move(condition_thunks));
+
+  auto body_thunk_sequence =
+      std::make_unique<SequentialThunk>(thunk_info, std::move(body_thunks));
+
+  return WhileThunk(thunk_info, /*loop=*/nullptr, condition_result_buffer_index,
+                    std::move(condition_thunk_sequence),
+                    std::move(body_thunk_sequence), trip_count);
+}
 
 class IterationLoggerThunk : public Thunk {
  public:
@@ -202,6 +246,137 @@ TEST_F(KnownTripCountWhileThunkTest, CurrentLoopIterationUnknownLoopTest) {
   EXPECT_THAT(ExecuteThunk(while_thunk), IsOk());
   EXPECT_THAT(logger->logged_counters(),
               ElementsAre(std::nullopt, std::nullopt, std::nullopt));
+}
+
+TEST(WhileThunkTest, ToProto) {
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = "profile_annotation";
+  thunk_info.execution_stream_id = 123;
+
+  BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
+  BufferAllocation::Slice slice(&alloc, /*offset=*/0, /*size=*/256);
+
+  ThunkSequence condition_thunks;
+  condition_thunks.push_back(
+      std::make_unique<DummyThunk>(Kind::kConditional, thunk_info));
+  condition_thunks.push_back(
+      std::make_unique<DummyThunk>(Kind::kConditional, thunk_info));
+
+  ThunkSequence body_thunks;
+  body_thunks.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+  body_thunks.push_back(
+      std::make_unique<DummyThunk>(Kind::kCustomCall, thunk_info));
+
+  WhileThunk thunk =
+      CreateWhileThunk(thunk_info, slice, std::move(condition_thunks),
+                       std::move(body_thunks), /*trip_count=*/10);
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+
+  EXPECT_THAT(proto, EqualsProto(R"pb(
+                thunk_info {
+                  profile_annotation: "profile_annotation"
+                  execution_stream_id: 123
+                }
+                while_thunk {
+                  condition_result_buffer_index { size: 256 }
+                  condition_thunk_sequence {
+                    thunks {
+                      thunk_info {
+                        profile_annotation: "profile_annotation"
+                        execution_stream_id: 123
+                      }
+                    }
+                    thunks {
+                      thunk_info {
+                        profile_annotation: "profile_annotation"
+                        execution_stream_id: 123
+                      }
+                    }
+                  }
+                  body_thunk_sequence {
+                    thunks {
+                      thunk_info {
+                        profile_annotation: "profile_annotation"
+                        execution_stream_id: 123
+                      }
+                    }
+                    thunks {
+                      thunk_info {
+                        profile_annotation: "profile_annotation"
+                        execution_stream_id: 123
+                      }
+                    }
+                  }
+                  trip_count: 10
+                }
+              )pb"));
+}
+
+TEST(WhileThunkTest, FromProto) {
+  ThunkProto proto;
+  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        thunk_info {
+          profile_annotation: "profile_annotation"
+          execution_stream_id: 123
+        }
+        while_thunk {
+          condition_result_buffer_index {
+            buffer_allocation_index: 1
+            offset: 16
+            size: 256
+          }
+          condition_thunk_sequence {
+            thunks {
+              thunk_info {
+                profile_annotation: "profile_annotation"
+                execution_stream_id: 123
+              }
+            }
+            thunks {
+              thunk_info {
+                profile_annotation: "profile_annotation"
+                execution_stream_id: 123
+              }
+            }
+          }
+          body_thunk_sequence {
+            thunks {
+              thunk_info {
+                profile_annotation: "profile_annotation"
+                execution_stream_id: 123
+              }
+            }
+            thunks {
+              thunk_info {
+                profile_annotation: "profile_annotation"
+                execution_stream_id: 123
+              }
+            }
+          }
+          trip_count: 10
+        }
+      )pb",
+      &proto));
+
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = "profile_annotation";
+  thunk_info.execution_stream_id = 123;
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
+      BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<WhileThunk> thunk,
+      WhileThunk::FromProto(thunk_info, proto.while_thunk(), buffer_allocations,
+                            [](const ThunkProto& proto)
+                                -> absl::StatusOr<std::unique_ptr<DummyThunk>> {
+                              return DummyThunk::FromProto(proto,
+                                                           Kind::kCustomCall);
+                            }));
+  ASSERT_NE(thunk, nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
 }  // namespace

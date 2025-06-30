@@ -13,29 +13,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
-#include "absl/status/statusor.h"
+#include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/layout_util.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/service.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
-#include "xla/tests/test_utils.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
 class ClientTest : public ClientLibraryTestBase {};
 
-XLA_TEST_F(ClientTest, ExecuteWithLayout) {
+TEST_F(ClientTest, ExecuteWithLayout) {
   XlaBuilder b(TestName());
 
   std::vector<std::vector<int64_t>> layouts = {{0, 1}, {1, 0}};
@@ -60,14 +66,15 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
       TF_ASSERT_OK_AND_ASSIGN(
           auto computed, client_->Transfer(*data, &expected_literal.shape()));
 
-      ASSERT_TRUE(LiteralTestUtil::EqualShapesAndLayouts(
-          expected_literal.shape(), computed.shape()));
+      ASSERT_THAT(
+          computed.shape().ToProto(),
+          tsl::proto_testing::EqualsProto(expected_literal.shape().ToProto()));
       EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, computed));
     }
   }
 }
 
-XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
+TEST_F(ClientTest, ExecuteWithTupleLayout) {
   XlaBuilder b(TestName());
 
   Tuple(&b, {ConstantR2<int32_t>(&b, {{1, 2}, {3, 4}}),
@@ -109,8 +116,10 @@ XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
 
 // Disabled for interpreter since ExecuteAsyncOnStream is not implemented on
 // interpreter backend.
-XLA_TEST_F(ClientTest,
-           DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(ExecuteParallel))) {
+TEST_F(ClientTest, ExecuteParallel) {
+  if (test::DeviceTypeIsOneOf({test::kCpu, test::kGpu})) {
+    GTEST_SKIP();
+  }
   XlaComputation add_with_one_arg, mul_with_two_args, dot_with_one_arg;
   Shape shape = ShapeUtil::MakeShape(S32, {2, 2});
 

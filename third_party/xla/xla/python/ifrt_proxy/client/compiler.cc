@@ -25,6 +25,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
+#include "xla/debug_options_flags.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
@@ -42,6 +43,7 @@
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -54,14 +56,16 @@ Compiler::Compiler(xla::ifrt::Client* client,
                    std::shared_ptr<RpcHelper> rpc_helper)
     : client_(client), rpc_helper_(std::move(rpc_helper)) {}
 
-absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> Compiler::Compile(
+absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
     std::unique_ptr<Program> program,
     std::unique_ptr<xla::ifrt::CompileOptions> options) {
   auto request = std::make_unique<CompileRequest>();
   {
     tsl::profiler::TraceMe traceme("IfrtProxyProgramSerialize");
+    auto serialize_options = std::make_unique<xla::ifrt::SerializeOptions>(
+        rpc_helper_->ifrt_serdes_version());
     TF_ASSIGN_OR_RETURN(*request->mutable_program(),
-                        Serialize(*program, /*options=*/nullptr));
+                        Serialize(*program, std::move(serialize_options)));
   }
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       [prog_size = request->program().data().size()]() {
@@ -99,10 +103,27 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> Compiler::Compile(
     }
 
     loaded_host_callbacks.swap(xla_options->loaded_host_callbacks);
+
+#if defined(PLATFORM_GOOGLE)
+    // Capture XLA flags.
+    // This is disabled for OSS because, if not, it creates a difference in
+    // behavior between OSS XLA_FLAGS and XLA TPU flags. XLA_FLAGS would be
+    // captured here and propagated to the server, but XLA TPU flags would not.
+    //
+    // With the current implementation both XLA_FLAGS and XLA TPU flags should
+    // be set at the proxy server in OSS/Cloud. For google internal usecases,
+    // both should be set at the proxy client.
+    auto& build_options = xla_options->compile_options.executable_build_options;
+    *build_options.mutable_debug_options() = xla::GetDebugOptionsFromFlags();
+    TF_RETURN_IF_ERROR(
+        build_options.mutable_comp_envs()->InitializeAllKnownEnvs());
+#endif
   }
 
+  auto serialize_options = std::make_unique<xla::ifrt::SerializeOptions>(
+      rpc_helper_->ifrt_serdes_version());
   TF_ASSIGN_OR_RETURN(*request->mutable_compile_options(),
-                      Serialize(*options, /*options=*/nullptr));
+                      Serialize(*options, std::move(serialize_options)));
 
   // TODO(b/266635130): Avoid blocking the caller.
   TF_ASSIGN_OR_RETURN(std::shared_ptr<CompileResponse> response,
@@ -144,14 +165,14 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> Compiler::Compile(
       std::move(loaded_host_callback_handles));
 }
 
-absl::StatusOr<std::unique_ptr<Executable>> Compiler::Compile(
+absl::StatusOr<xla::ifrt::ExecutableRef> Compiler::Compile(
     std::unique_ptr<Program> program, const Topology& topology,
     std::unique_ptr<CompileOptions> options) {
   return absl::UnimplementedError(
       "IFRT service compiler does not support `Compile` with a topology");
 }
 
-absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>>
+absl::StatusOr<xla::ifrt::LoadedExecutableRef>
 Compiler::DeserializeLoadedExecutable(
     absl::string_view serialized,
     std::unique_ptr<xla::ifrt::DeserializeExecutableOptions> options) {

@@ -43,7 +43,8 @@ const HloInstructionNode* GetNodeByName(const HloGumgraph& graph,
 void OverwriteMapInstructions(const HloInstructionNode* left,
                               const HloInstructionNode* right,
                               HloGumgraphMappings& mappings,
-                              bool position_unchanged) {
+                              bool position_unchanged,
+                              absl::string_view matcher_debug_info) {
   ASSERT_NE(left, nullptr);
   ASSERT_NE(right, nullptr);
   if (auto it = mappings.left_to_right_instruction_map.left.find(left);
@@ -57,7 +58,10 @@ void OverwriteMapInstructions(const HloInstructionNode* left,
   }
 
   mappings.left_to_right_instruction_map.insert(
-      InstructionPair(left, right, {.matcher_type = MatcherType::kManual}));
+      InstructionPair(left, right,
+                      {.matcher_type = MatcherType::kManual,
+                       .matcher_debug_info = std::string(matcher_debug_info)}));
+
   if (position_unchanged) {
     mappings.left_to_right_instruction_map.left.find(left)->info.unchanged =
         true;

@@ -4,4 +4,4 @@ syntax = "proto2";
 
 package tensorflow.profiler.hlo_stats;
 
-import public "plugin/tensorboard_plugin_profile/protobuf/hlo_stats.proto";
+import public "plugin/xprof/protobuf/hlo_stats.proto";

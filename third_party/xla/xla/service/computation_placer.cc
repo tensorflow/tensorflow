@@ -16,53 +16,51 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
-#include "absl/status/status.h"
+#include "absl/base/const_init.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/literal.h"
+#include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/service/global_device_id.h"
-#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
-#include "xla/types.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 using absl::StrAppend;
-using absl::StrCat;
 
 namespace xla {
 
 absl::StatusOr<DeviceAssignment::LogicalID>
 DeviceAssignment::LogicalIdForDevice(GlobalDeviceId device_id) const {
-  std::optional<DeviceAssignment::LogicalID> logical_id;
+  std::optional<LogicalID> res;
+  int64_t id = device_id.value();
   for (int r = 0; r < replica_count(); ++r) {
     for (int c = 0; c < computation_count(); ++c) {
-      if ((*this)(r, c) == device_id.value()) {
-        if (logical_id.has_value()) {
-          return Internal("Device %d appears twice in DeviceAssignment: %s",
-                          device_id.value(), ToString());
+      if (operator()(r, c) == device_id.value()) {
+        if (res.has_value()) {
+          return Internal("Device %d not unique in %v", id, *this);
         }
-        logical_id.emplace(DeviceAssignment::LogicalID{r, c});
+        res = LogicalID{r, c};
       }
     }
   }
-  if (logical_id.has_value()) {
-    return *logical_id;
-  } else {
-    return Internal("Device %d doesn't appear in DeviceAssignment: %s",
-                    device_id.value(), ToString());
+  if (!res.has_value()) {
+    return Internal("Device %d doesn't appear in %v", id, *this);
   }
+  return res.value();
 }
 
 absl::StatusOr<int> DeviceAssignment::ReplicaIdForDevice(
@@ -107,22 +105,16 @@ void DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
 /* static */ absl::StatusOr<std::unique_ptr<DeviceAssignment>>
 DeviceAssignment::Deserialize(const DeviceAssignmentProto& proto) {
   TF_RET_CHECK(proto.computation_devices_size() == proto.computation_count());
-  if (proto.replica_count() <= 0 || proto.computation_count() <= 0) {
-    return InvalidArgument(
-        "Invalid device assignment topology: replica_count=%d, "
-        "computation_count=%d",
-        proto.replica_count(), proto.computation_count());
-  }
+  TF_RET_CHECK(proto.replica_count() > 0);
+  TF_RET_CHECK(proto.computation_count() > 0);
   auto assignment = std::make_unique<DeviceAssignment>(
       proto.replica_count(), proto.computation_count());
-  for (int computation = 0; computation < proto.computation_count();
-       ++computation) {
-    const auto& computation_device = proto.computation_devices(computation);
-    int64_t replica_count = proto.replica_count();
-    int64_t ids = computation_device.replica_device_ids_size();
-    TF_RET_CHECK(ids == replica_count);
+  for (int comp = 0; comp < proto.computation_count(); ++comp) {
+    const auto& computation_device = proto.computation_devices(comp);
+    TF_RET_CHECK(computation_device.replica_device_ids_size() ==
+                 proto.replica_count());
     for (int replica = 0; replica < proto.replica_count(); ++replica) {
-      (*assignment)(replica, computation) =
+      (*assignment)(replica, comp) =
           computation_device.replica_device_ids(replica);
     }
   }
@@ -130,15 +122,21 @@ DeviceAssignment::Deserialize(const DeviceAssignmentProto& proto) {
 }
 
 std::string DeviceAssignment::ToString() const {
-  std::string output = StrCat("Computations: ", computation_count(),
-                              " Replicas: ", replica_count(), "\n");
+  std::string output = absl::StrFormat(
+      "DeviceAssignment{replica_count=%d, computation_count=%d,",
+      replica_count(), computation_count());
   for (int computation = 0; computation < computation_count(); ++computation) {
-    StrAppend(&output, "Computation ", computation, ": ");
+    StrAppend(&output, " Computation", computation, "{");
     for (int replica = 0; replica < replica_count(); ++replica) {
-      StrAppend(&output, operator()(replica, computation), " ");
+      if (replica > 0) {
+        StrAppend(&output, " ");
+      }
+      int device_id = operator()(replica, computation);
+      StrAppend(&output, device_id);
     }
-    StrAppend(&output, "\n");
+    StrAppend(&output, "}");
   }
+  StrAppend(&output, "}");
   return output;
 }
 
@@ -147,7 +145,6 @@ absl::StatusOr<int> ComputationPlacer::DeviceId(int replica, int computation,
                                                 int computation_count) {
   TF_RET_CHECK(replica < replica_count);
   TF_RET_CHECK(computation < computation_count);
-
   return computation * replica_count + replica;
 }
 
@@ -162,7 +159,7 @@ absl::StatusOr<DeviceAssignment> ComputationPlacer::AssignDevices(
       assignment(replica, computation) = device_id;
     }
   }
-  return std::move(assignment);
+  return assignment;
 }
 
 /* static */ void ComputationPlacer::RegisterComputationPlacer(

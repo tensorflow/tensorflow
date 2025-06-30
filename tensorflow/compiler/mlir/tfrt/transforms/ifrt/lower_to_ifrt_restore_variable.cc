@@ -80,20 +80,28 @@ class LowerToIfrtRestoreVariablePass
   mlir::LogicalResult ValidateThenUpdateUser(
       mlir::Operation* user,
       std::vector<RestoredTensorUser>& restored_tensor_users) {
+    // Traverses the user chain of a restored tensor, validates it, and collects
+    // user information.
     RestoredTensorUser restored_tensor_user;
     for (;;) {
       restored_tensor_user.path_to_assign_variable_op.push_back(user);
+      // The user chain must consist of zero or more `TF::CastOp`s followed by
+      // a `TF::AssignVariableOp`.
       if (auto cast_op = llvm::dyn_cast<mlir::TF::CastOp>(user)) {
+        // The chain can contain intermediate `CastOp`s.
         if (!cast_op.getResult().hasOneUse()) {
           return cast_op->emitOpError()
                  << " has more than one use in the restore user chain";
         }
         restored_tensor_user.truncate_in_cast = cast_op.getTruncate();
+        // Move to the next operation in the user chain.
         user = *cast_op.getResult().getUsers().begin();
       } else if (auto assign_variable_op =
                      llvm::dyn_cast<mlir::TF::AssignVariableOp>(user)) {
+        // The chain must end with an `AssignVariableOp`.
         if (auto var_handle_op = llvm::dyn_cast<mlir::TF::VarHandleOp>(
                 assign_variable_op.getResource().getDefiningOp())) {
+          // The AssignVariableOp must be associated with a VarHandleOp.
           restored_tensor_user.var_handle_op = var_handle_op;
           break;
         } else {
@@ -101,15 +109,18 @@ class LowerToIfrtRestoreVariablePass
                  << "does not have any associated VarHandle";
         }
       } else {
+        // Any other op in the user chain is not supported.
         return user->emitOpError() << "is not a supported user of RestoreV2Op";
       }
     }
 
+    // If the user chain is valid, add the collected information.
     restored_tensor_users.push_back(restored_tensor_user);
     return mlir::success();
   }
 
   mlir::LogicalResult RewriteRestore(mlir::TF::RestoreV2Op restore_op) {
+    // Find and validate all users of the RestoreV2Op's output tensors.
     std::vector<RestoredTensorUser> restored_tensor_users;
 
     for (const auto& out_tensor : restore_op.getTensors()) {
@@ -120,18 +131,21 @@ class LowerToIfrtRestoreVariablePass
       }
     }
 
+    // Check that each tensor has exactly one valid user chain.
     if (restored_tensor_users.size() != restore_op.getTensors().size()) {
       return restore_op->emitOpError()
              << "expects " << restore_op.getTensors().size()
              << " valid users, but got " << restored_tensor_users.size();
     }
 
+    // Collect tensor dtypes for the new op.
     std::vector<mlir::Attribute> dtypes;
     for (const auto& dtype : restore_op.getDtypes()) {
       dtypes.push_back(mlir::TypeAttr::get(dtype));
     }
 
     std::vector<mlir::Value> var_handle_values;
+    // Collect attributes from users and delete the old user op chain.
     llvm::SmallVector<bool, 4> truncate_in_cast;
     var_handle_values.reserve(restored_tensor_users.size());
     truncate_in_cast.reserve(restored_tensor_users.size());
@@ -149,6 +163,7 @@ class LowerToIfrtRestoreVariablePass
       }
     }
 
+    // Create the new IfrtRestoreVariableOp.
     // Insert at the end of the block so that all dependencies are satisfied.
     mlir::OpBuilder builder =
         mlir::OpBuilder::atBlockTerminator(restore_op->getBlock());
@@ -158,6 +173,7 @@ class LowerToIfrtRestoreVariablePass
         var_handle_values, builder.getArrayAttr(dtypes),
         builder.getDenseBoolArrayAttr(truncate_in_cast));
 
+    // Finally, erase the original RestoreV2Op.
     if (!restore_op->use_empty()) {
       return restore_op->emitOpError() << "failed to identify all users"
                                           "associated with this RestoreV2Op.";

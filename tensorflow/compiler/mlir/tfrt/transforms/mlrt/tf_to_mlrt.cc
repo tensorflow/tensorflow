@@ -842,9 +842,20 @@ class BatchFunctionOpConversion
     llvm::SmallVector<mlir::Type, 4> result_types(
         op->getNumResults(), rewriter.getType<mlrt::compiler::FutureType>());
 
-    rewriter.replaceOpWithNewOp<tf_mlrt::BatchFunctionOp>(
-        op, result_types, adaptor.getOperands(), node_def.device(),
-        op.getFAttr(), node_def_text);
+    if (auto custom_device =
+            op->getAttrOfType<mlir::StringAttr>(kTfMlrtCustomDevice)) {
+      mlir::Value device =
+          CreateCustomDevice(op->getLoc(), custom_device.getValue(), rewriter);
+      if (!device) return op->emitWarning("Failed to create custom device.");
+
+      rewriter.replaceOpWithNewOp<tf_mlrt::BatchFunctionWithDeviceOp>(
+          op, result_types, device, adaptor.getOperands(), node_def.device(),
+          op.getFAttr(), node_def_text);
+    } else {
+      rewriter.replaceOpWithNewOp<tf_mlrt::BatchFunctionOp>(
+          op, result_types, adaptor.getOperands(), node_def.device(),
+          op.getFAttr(), node_def_text);
+    }
 
     return mlir::success();
   }
@@ -978,8 +989,36 @@ class TfToMlrtPreParallelizationConversionPass
     return mlir::applyPartialConversion(func, target, std::move(patterns));
   }
 
+  void maySetTpuHostAllocatorForBatch(mlir::TF::BatchFunctionOp batch_op,
+                                      mlir::ModuleOp module,
+                                      mlir::SymbolTable &symbol_table) {
+    mlir::func::FuncOp batched = llvm::dyn_cast<mlir::func::FuncOp>(
+        symbol_table.lookupSymbolIn(module, batch_op.getF()));
+    int used_by_tpu = 0;
+    for (auto arg : batched.getArguments()) {
+      for (auto user : arg.getUsers()) {
+        if (llvm::isa<mlir::TF::TPUCompileMlirAndExecuteOp>(user)) {
+          used_by_tpu++;
+          break;
+        }
+      }
+    }
+
+    if (used_by_tpu == batched.getArguments().size()) {
+      mlir::OpBuilder builder(module);
+      batch_op->setAttr(kTfMlrtCustomDevice,
+                        builder.getStringAttr(kTpuHostDevice));
+    }
+  }
+
   void runOnOperation() override {
     auto module = getOperation();
+    mlir::SymbolTable symbol_table(module);
+    if (use_tpu_host_allocator_for_inputs_) {
+      module.walk([&](mlir::TF::BatchFunctionOp batch_op) {
+        maySetTpuHostAllocatorForBatch(batch_op, module, symbol_table);
+      });
+    }
 
     for (auto func : module.getOps<mlir::func::FuncOp>()) {
       if (mlir::failed(runOnFunction(func))) {

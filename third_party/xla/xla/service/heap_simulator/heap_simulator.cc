@@ -44,6 +44,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -219,36 +220,27 @@ absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForModule(
   // ignoring fragmentation. We run the heap simulation on the whole module,
   // rather than summing each computation, since it gives us a better lower
   // bound, by minimizing the liveness of sub-computations.
+  // TODO(b/424109294): Callers should pass the right backend-specific AliasInfo
+  // to MinimumMemoryForModule().
+  AliasInfo alias_info;
   TF_ASSIGN_OR_RETURN(
       HeapSimulator::Result<HloValue> result,
       HeapSimulator::Run(std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
-                         *module, schedule, *alias_analysis, size_function));
+                         *module, schedule, *alias_analysis, &alias_info,
+                         size_function));
   return result.heap_size;
 }
 
 /*static*/
 absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
     const HloComputation& computation, const HloInstructionSequence& sequence,
-    const HloAliasAnalysis& alias_analysis,
+    const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
     const LogicalBuffer::SizeFunction& size_function) {
   TF_ASSIGN_OR_RETURN(
       HeapSimulator::Result<HloValue> result,
       HeapSimulator::Run(std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
-                         computation, sequence, alias_analysis, size_function,
-                         HeapSimulator::Options()));
-  return result.heap_size;
-}
-
-absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
-    const HloComputation& computation, const HloInstructionSequence& sequence,
-    const HloAliasAnalysis& alias_analysis,
-    const LogicalBuffer::SizeFunction& size_function,
-    const HloSchedule* schedule) {
-  TF_ASSIGN_OR_RETURN(
-      HeapSimulator::Result<HloValue> result,
-      HeapSimulator::Run(std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
-                         computation, sequence, alias_analysis, size_function,
-                         schedule, HeapSimulator::Options()));
+                         computation, sequence, alias_analysis, alias_info,
+                         size_function, HeapSimulator::Options()));
   return result.heap_size;
 }
 
@@ -256,7 +248,8 @@ absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
 absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
     std::unique_ptr<HeapAlgorithm<HloValue>> algorithm, const HloModule& module,
     const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
-    const BufferValue::SizeFunction& size_fn, const Options& options) {
+    const AliasInfo* alias_info, const BufferValue::SizeFunction& size_fn,
+    const Options& options) {
   HeapSimulator heap(std::move(algorithm), size_fn, options, &schedule);
   const HloComputation* entry_computation = module.entry_computation();
   const HloInstructionSequence& instruction_sequence =
@@ -266,7 +259,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
       HloLiveRange::Run(schedule, alias_analysis, entry_computation));
   TF_RETURN_IF_ERROR(heap.RunComputation(*entry_computation,
                                          instruction_sequence, alias_analysis,
-                                         hlo_live_range.get()));
+                                         alias_info, hlo_live_range.get()));
   return heap.Finish();
 }
 
@@ -275,7 +268,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
     std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
     const HloComputation& computation,
     const HloInstructionSequence& instruction_sequence,
-    const HloAliasAnalysis& alias_analysis,
+    const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
     const BufferValue::SizeFunction& size_fn, const Options& options) {
   HeapSimulator heap(std::move(algorithm), size_fn, options,
                      /*schedule=*/nullptr);
@@ -285,7 +278,8 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
                       HloLiveRange::Run(schedule, alias_analysis, &computation,
                                         /*module_scoped_analysis=*/false));
   TF_RETURN_IF_ERROR(heap.RunComputation(computation, instruction_sequence,
-                                         alias_analysis, hlo_live_range.get()));
+                                         alias_analysis, alias_info,
+                                         hlo_live_range.get()));
   return heap.Finish();
 }
 
@@ -294,7 +288,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
     std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
     const HloComputation& computation,
     const HloInstructionSequence& instruction_sequence,
-    const HloAliasAnalysis& alias_analysis,
+    const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
     const BufferValue::SizeFunction& size_fn, const HloSchedule* schedule,
     const Options& options) {
   HeapSimulator heap(std::move(algorithm), size_fn, options,
@@ -303,7 +297,8 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
       std::unique_ptr<HloLiveRange> hlo_live_range,
       HloLiveRange::Run(*schedule, alias_analysis, &computation));
   TF_RETURN_IF_ERROR(heap.RunComputation(computation, instruction_sequence,
-                                         alias_analysis, hlo_live_range.get()));
+                                         alias_analysis, alias_info,
+                                         hlo_live_range.get()));
   return heap.Finish();
 }
 
@@ -312,7 +307,8 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
 absl::Status HeapSimulator::RunComputation(
     const HloComputation& computation,
     const HloInstructionSequence& instruction_sequence,
-    const HloAliasAnalysis& alias_analysis, HloLiveRange* hlo_live_range) {
+    const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
+    HloLiveRange* hlo_live_range) {
   XLA_VLOG_LINES(1, computation.parent()->ToString());
   XLA_VLOG_LINES(2, computation.ToString());
 
@@ -457,7 +453,7 @@ absl::Status HeapSimulator::RunComputation(
                 value->instruction()->opcode() != HloOpcode::kCopy &&
                 dataflow_analysis.CanShareOperandBufferWithUser(
                     operand_value->instruction(), operand_value->index(),
-                    value->instruction(), value->index())) {
+                    value->instruction(), value->index(), alias_info)) {
               // Remove the operand buffer right before sharing (allocating) a
               // new one.
               Free(operand_value, operand_value->instruction());
@@ -2617,6 +2613,42 @@ ChooseBestHeapAlgorithm<BufferType>::Finish() {
 
   DCHECK_GE(min_size_index, 0);
   return results[min_size_index];
+}
+
+BreadthFirstMidpointIterator::BreadthFirstMidpointIterator(int start, int end)
+    : initial_work_item_({start, end}) {
+  Begin();
+}
+
+int BreadthFirstMidpointIterator::value() const {
+  CHECK(value_.has_value());
+  return *value_;
+}
+
+void BreadthFirstMidpointIterator::Begin() {
+  work_items_.clear();
+  value_ = std::nullopt;
+
+  work_items_.push_back(initial_work_item_);
+  Next();
+}
+
+void BreadthFirstMidpointIterator::Next() {
+  if (work_items_.empty()) {
+    value_ = std::nullopt;
+    return;
+  }
+
+  WorkItem work_item = work_items_.front();
+  work_items_.pop_front();
+  if (work_item.start > work_item.end) {
+    Next();
+    return;
+  }
+  int midpoint = CeilOfRatio(work_item.start + work_item.end, 2);
+  value_ = midpoint;
+  work_items_.push_back({work_item.start, midpoint - 1});
+  work_items_.push_back({midpoint + 1, work_item.end});
 }
 
 template class GlobalDecreasingSizeBestFitHeap<HloValue>;

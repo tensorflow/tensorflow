@@ -126,22 +126,6 @@ class GpuPerformanceModelCache {
       fusion_runtime_data_;
 };
 
-struct GpuPerformanceModelOptions {
-  // If present, use this to retrieve fusion analyses.
-  HloFusionAnalysisCache* fusion_analysis_cache = nullptr;
-
-  GpuPerformanceModelCache* gpu_performance_model_cache = nullptr;
-
-  static GpuPerformanceModelOptions Default(
-      HloFusionAnalysisCache* fusion_analysis_cache = nullptr,
-      GpuPerformanceModelCache* gpu_performance_model_cache = nullptr) {
-    GpuPerformanceModelOptions config;
-    config.fusion_analysis_cache = fusion_analysis_cache;
-    config.gpu_performance_model_cache = gpu_performance_model_cache;
-    return config;
-  }
-};
-
 class GpuPerformanceModelBase {
  public:
   struct RunTimes {

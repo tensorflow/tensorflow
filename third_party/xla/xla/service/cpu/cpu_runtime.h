@@ -49,7 +49,6 @@ extern const char* const kEigenMatMulC128SymbolName;
 extern const char* const kEigenMatMulS32SymbolName;
 extern const char* const kEigenMatMulU8SymbolName;
 extern const char* const kEigenBatchMatMulF32SymbolName;
-extern const char* const kMKLConv2DF32SymbolName;
 extern const char* const kACLConv2DF32SymbolName;
 extern const char* const kACLMatMulF32SymbolName;
 extern const char* const kACLBatchMatMulF32SymbolName;
@@ -114,32 +113,6 @@ int GetDeviceOrdinal(const xla::ExecutableRunOptions* run_options);
 
 extern "C" {
 
-extern int __xla_cpu_runtime_PrintfToStderr(const char* format, ...);
-
-extern int64_t __xla_cpu_runtime_TracingStart(
-    const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
-    const char* name, const char* hlo_module, int64_t program_id);
-extern void __xla_cpu_runtime_TracingEnd(
-    const void* /* xla::ExecutableRunOptions* */ run_options_ptr, int64_t id);
-
-// Some things common to all of the runtime entry points below:
-//
-//  * The shape pointer and shape_length reflect values that can be deserialized
-//    via llvm_ir::DecodeSelfDescribingShapeConstant. This is the way we pass
-//    reified type information from the generated program to the runtime, which
-//    helps check the type safety and contract for the emitted-code/runtime
-//    communication.
-//
-//  * run_options is used to look up the device ordinal for the stream executor
-//    we're executing under.  If it is null the device ordinal is assumed to be
-//    0 (this behavior helps in writing tests).
-
-// Note: in the runtime entry points below, the shape pointer and shape_length
-// reflect values that can be deserialized via
-// llvm_ir::DecodeSelfDescribingShapeConstant. This is the way we pass reified
-// type information from the generated program to the runtime, which helps check
-// the type safety and contract for the emitted-code/runtime communication.
-
 // Blocks until the next infeed buffer is ready to be dequeued, then
 // returns it. Fails catastrophically if the next enqueued buffer is
 // not of the correct length in bytes. Checking the shape rather than
@@ -183,52 +156,6 @@ extern void* __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
 extern void __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
     const xla::ExecutableRunOptions* run_options, int32_t buffer_length,
     void* buffer_ptr, const void* shape_ptr, int32_t shape_length);
-
-// Perform all reduce on a CPU.
-//
-// participating_replicas: array of replica IDs participating in the reduction,
-// cf. GetParticipatingIDs.
-// channel_id_present, op_id: whether op_id is a channel ID or a module ID.
-// reduction_kind: operator used for a reduction, cf. ReductionKind.
-// shape_ptr: shape of all input/output buffers.
-extern void __xla_cpu_runtime_AllReduce(
-    const xla::ExecutableRunOptions* run_options,
-    const void* replica_groups_str, int32_t replica_groups_str_size,
-    int32_t channel_id_present, int32_t use_global_device_ids, int64_t op_id,
-    int32_t reduction_kind, const void* shape_ptr, int32_t shape_length,
-    int32_t num_buffers, void** input_buffers, void** output_buffers);
-
-extern void __xla_cpu_runtime_CollectivePermute(
-    const xla::ExecutableRunOptions* run_options, int32_t channel_id_present,
-    int64_t op_id, int32_t byte_size, void* input_buffer, void* output_buffer,
-    const void* source_target_pairs, int32_t source_target_pairs_size);
-
-extern void __xla_cpu_runtime_AllToAll(
-    const xla::ExecutableRunOptions* run_options, int32_t channel_id_present,
-    int64_t op_id, const void* replica_groups_str,
-    int32_t replica_groups_str_size, int32_t num_buffers, int64_t buffer_size,
-    void** source_buffers, void** destination_buffers);
-
-extern void __xla_cpu_runtime_AllGather(
-    const xla::ExecutableRunOptions* run_options, int32_t channel_id_present,
-    int32_t use_global_device_ids, int64_t op_id,
-    const void* replica_groups_str, int32_t replica_groups_str_size,
-    int64_t buffer_size, void* source_buffer, void* destination_buffer);
-
-void __xla_cpu_runtime_ReduceScatter(
-    const xla::ExecutableRunOptions* run_options,
-    const void* replica_groups_str, int32_t replica_groups_str_size,
-    int32_t channel_id_present, int32_t use_global_device_ids, int64_t op_id,
-    int32_t reduction_kind, int32_t element_type, int64_t chunk_elems,
-    void* input_buffer, void* output_buffer);
-
-// Write the partition ID into the output buffer.
-extern void __xla_cpu_runtime_PartitionId(
-    const xla::ExecutableRunOptions* run_options, void* output_buffer);
-// Write the replica ID into the output buffer.
-extern void __xla_cpu_runtime_ReplicaId(
-    const xla::ExecutableRunOptions* run_options, void* output_buffer);
-
 }  // extern "C"
 
 #endif  // XLA_SERVICE_CPU_CPU_RUNTIME_H_

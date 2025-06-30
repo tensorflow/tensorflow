@@ -33,16 +33,20 @@ namespace cpu {
 
 FusionDecision XnnGraphFusion::ShouldFuse(HloInstruction* consumer,
                                           int64_t operand_index) {
-  if (!IsXnnGraphFusion(consumer)) {
-    if (!(consumer->IsRoot() && IsOpSupported(consumer)))
-      return FusionDecision::Forbid("Unsupported consumer");
+  if (!IsXnnGraphFusion(consumer) && !IsOpSupported(consumer)) {
+    return FusionDecision::Forbid("Unsupported consumer");
+  }
+
+  if (consumer->opcode() == HloOpcode::kBroadcast) {
+    return FusionDecision::Forbid(
+        "Do not start growing fusions from broadcasts");
   }
 
   HloInstruction* producer = consumer->mutable_operand(operand_index);
   if (!(producer->opcode() == HloOpcode::kParameter ||
-        producer->opcode() == HloOpcode::kConstant || IsOpSupported(producer)))
+        IsOpSupported(producer))) {
     return FusionDecision::Forbid("Unsupported producer");
-
+  }
   return FusionDecision::Allow();
 }
 
@@ -65,16 +69,38 @@ HloInstruction* XnnGraphFusion::Fuse(HloInstruction* producer,
   return fusion;
 }
 
-bool XnnGraphFusion::IsOpSupported(HloInstruction* instr) const {
+bool XnnGraphFusion::IsOpSupported(const HloInstruction* instr) const {
+  if (!IsLayoutSupportedByXnn(instr->shape())) {
+    return false;
+  }
+  if (!XnnDatatype(instr->shape().element_type()).ok()) {
+    return false;
+  }
+  if (instr->IsConstant()) {
+    return IsConstantSupportedByXnn(instr);
+  }
+  if (instr->IsElementwise()) {
+    return IsElementwiseOpSupportedByXnn(instr);
+  }
+
   switch (instr->opcode()) {
-    case HloOpcode::kAdd:
-    case HloOpcode::kSubtract:
-    case HloOpcode::kMultiply:
-      return true;
+    case HloOpcode::kBitcast:
+      return IsBitcastOpSupportedByXnn(instr);
+    case HloOpcode::kBroadcast: {
+      if (instr->GetModule()
+              ->config()
+              .debug_options()
+              .xla_cpu_experimental_xnn_graph_fusion_mode() !=
+          DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY) {
+        return false;
+      }
+      return IsBroadcastOpSupportedByXnn(instr);
+    }
     default:
       return false;
   }
 }
+
 bool XnnGraphFusion::IsXnnGraphFusion(const HloInstruction* instr) const {
   if (instr->opcode() != HloOpcode::kFusion) {
     return false;

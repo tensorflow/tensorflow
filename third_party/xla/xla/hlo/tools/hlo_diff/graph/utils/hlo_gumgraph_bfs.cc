@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <queue>
+#include <utility>
 #include <vector>
 
 #include "absl/functional/function_ref.h"
@@ -42,25 +43,28 @@ void SetVisited(std::vector<uint64_t>& visited, int node_index) {
 
 void HloGumgraphBfs(
     absl::Span<const HloInstructionNode* const> start_nodes,
-    absl::FunctionRef<bool(const HloInstructionNode&)> per_node_fn,
+    absl::FunctionRef<bool(const HloInstructionNode&, int distance)>
+        per_node_fn,
     BfsTraversalDirection direction, int node_limit,
-    absl::FunctionRef<bool(const HloInstructionNode&)> expand_node_fn) {
-  std::queue<const HloInstructionNode*> nodes_to_expand;
+    absl::FunctionRef<bool(const HloInstructionNode&, int distance)>
+        expand_node_fn) {
+  std::queue<std::pair<const HloInstructionNode*, int>> nodes_to_expand;
   std::vector<uint64_t> visited((node_limit + 63) / 64, 0);
 
   for (const HloInstructionNode* start_node : start_nodes) {
     CHECK(start_node != nullptr) << "Expected a non-null root node";
-    if (!per_node_fn(*start_node)) {
+    if (!per_node_fn(*start_node, 0)) {
       return;
     }
-    if (expand_node_fn(*start_node)) {
-      nodes_to_expand.push(start_node);
+    if (expand_node_fn(*start_node, 0)) {
+      nodes_to_expand.push({start_node, 0});
     }
     SetVisited(visited, start_node->unique_node_index);
   }
 
   while (!nodes_to_expand.empty()) {
-    const HloInstructionNode* current_node = nodes_to_expand.front();
+    const HloInstructionNode* current_node = nodes_to_expand.front().first;
+    int distance = nodes_to_expand.front().second;
     nodes_to_expand.pop();
 
     std::vector<HloInstructionNode*> adjacent_nodes =
@@ -69,25 +73,16 @@ void HloGumgraphBfs(
 
     for (auto* adjacent_node : adjacent_nodes) {
       if (!GetVisited(visited, adjacent_node->unique_node_index)) {
-        if (!per_node_fn(*adjacent_node)) {
+        if (!per_node_fn(*adjacent_node, distance + 1)) {
           return;
         }
-        if (expand_node_fn(*adjacent_node)) {
-          nodes_to_expand.push(adjacent_node);
+        if (expand_node_fn(*adjacent_node, distance + 1)) {
+          nodes_to_expand.push({adjacent_node, distance + 1});
         }
         SetVisited(visited, adjacent_node->unique_node_index);
       }
     }
   }
-}
-
-void HloGumgraphBfs(
-    const HloInstructionNode& start_node,
-    absl::FunctionRef<bool(const HloInstructionNode&)> per_node_fn,
-    BfsTraversalDirection direction, int node_limit,
-    absl::FunctionRef<bool(const HloInstructionNode&)> expand_node_fn) {
-  HloGumgraphBfs(std::vector<const HloInstructionNode*>({&start_node}),
-                 per_node_fn, direction, node_limit, expand_node_fn);
 }
 
 std::vector<const HloInstructionNode*> GetAllNodesInBfsOrder(

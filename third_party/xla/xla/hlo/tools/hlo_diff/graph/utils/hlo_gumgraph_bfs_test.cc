@@ -241,6 +241,85 @@ TEST_F(HloGumgraphBfsTest, BfsEarlyTerminationWorks) {
   EXPECT_THAT(visited_nodes,
               ElementsAre("root", "add_0", "add_1", "baz", "foo"));
 }
+
+TEST_F(HloGumgraphBfsTest, BfsLimitDistanceWorks) {
+  // Create a module with entry computation containing the following structure:
+  // [Param foo] ------> ┌-------┐
+  //                     | add_1 | ---> ┌-------┐      ┌------┐
+  // [Constant bar] ---> └-------┘      | add_0 | ---> | ROOT |
+  // [Param baz] ---------------------> └-------┘      └------┘
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  foo = f32[8,2048]{1,0:T(8,128)} parameter(0)
+  bar = f32[8,2048]{1,0:T(8,128)} constant(0)
+  baz = f32[8,2048]{1,0:T(8,128)} parameter(1)
+  add_1 = f32[8,2048]{1,0:T(8,128)} add(foo, bar)
+  add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz)
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                          HloGumgraph::Create(module.get()));
+
+  std::vector<absl::string_view> visited_nodes;
+  // This is an example of how to use per_node_fn return value to limit a BFS
+  // traversal to stop after already visiting 2 layers of nodes.
+  HloGumgraphBfs(
+      graph->GetRoot(),
+      [&](const HloInstructionNode& node, int distance) {
+        if (distance > 2) {
+          return false;
+        }
+        visited_nodes.push_back(node.GetName());
+        return true;
+      },
+      BfsTraversalDirection::kForward, graph->GetNodeCount());
+
+  EXPECT_THAT(visited_nodes, ElementsAre("root", "add_0", "add_1", "baz"));
+}
+
+TEST_F(HloGumgraphBfsTest, BfsLimitDistanceFromMultipleNodesWorks) {
+  // Create a module with entry computation containing the following structure:
+  // [Param foo] ------> ┌-------┐
+  //                     | add_1 | ---> ┌-------┐      ┌------┐
+  // [Constant bar] ---> └-------┘      | add_0 | ---> | ROOT |
+  // [Param baz] ---------------------> └-------┘      └------┘
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  foo = f32[8,2048]{1,0:T(8,128)} parameter(0)
+  bar = f32[8,2048]{1,0:T(8,128)} constant(0)
+  baz = f32[8,2048]{1,0:T(8,128)} parameter(1)
+  add_1 = f32[8,2048]{1,0:T(8,128)} add(foo, bar)
+  add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz)
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                          HloGumgraph::Create(module.get()));
+
+  std::vector<absl::string_view> visited_nodes;
+  // This is an example of how to use per_node_fn return value to limit a BFS
+  // traversal to stop after already visiting 2 layers of nodes.
+  HloGumgraphBfs(
+      std::vector<const HloInstructionNode*>{
+          graph->GetRoot().children[0]->children[0]->children[1],
+          graph->GetRoot().children[0]->children[1]},
+      [&](const HloInstructionNode& node, int distance) {
+        if (distance > 1) {
+          return false;
+        }
+        visited_nodes.push_back(node.GetName());
+        return true;
+      },
+      BfsTraversalDirection::kReverse, graph->GetNodeCount());
+
+  EXPECT_THAT(visited_nodes, ElementsAre("bar", "baz", "add_1", "add_0"));
+}
+
 }  // namespace
 }  // namespace hlo_diff
 }  // namespace xla

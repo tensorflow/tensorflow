@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/platform/types.h"
 
 // TODO(intel-tf): Move all MKL ops in this file to a separate file,
 // mkl_math_ops.cc.
@@ -1552,7 +1553,7 @@ REGISTER_OP("Range")
     .Attr(
         "Tidx: "
         "{bfloat16, half, float, double, int8, int16, int32, int64, uint16, "
-        "uint32} = "
+        "uint32, uint64} = "
         "DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
@@ -1583,6 +1584,8 @@ REGISTER_OP("Range")
         return RangeSize<uint16>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_UINT32) {
         return RangeSize<uint32>(start_t, limit_t, delta_t, c);
+      } else if (dtype == DT_UINT64) {
+        return RangeSize<uint64>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_FLOAT) {
         return RangeSize<float>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_DOUBLE) {

@@ -69,7 +69,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/call_graph.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "xla/service/gather_scatter_utils.h"
@@ -841,6 +840,45 @@ std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
   return std::nullopt;
 }
 
+/*static*/ bool HloEvaluator::IsOpcodeImplemented(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherDone:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceDone:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kCholesky:
+    case HloOpcode::kCollectiveBroadcast:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectivePermuteDone:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kDomain:
+    case HloOpcode::kDynamicReshape:
+    case HloOpcode::kOptimizationBarrier:
+    case HloOpcode::kOutfeed:
+    case HloOpcode::kPartitionId:
+    case HloOpcode::kRaggedAllToAll:
+    case HloOpcode::kRaggedDot:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kReduceScatter:
+    case HloOpcode::kReplicaId:
+    case HloOpcode::kRngBitGenerator:
+    case HloOpcode::kRngGetAndUpdateState:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
+    case HloOpcode::kTriangularSolve:
+      return false;
+    default:
+      return true;
+  }
+}
+
 // Note that unsupported types by the typed visitor does not necessarily imply
 // the non-typed HloEvaluator (parent evaluator) would not support them either
 // in the type-agnostic handler. For e.g., HandleGetTupleElement in the parent
@@ -934,7 +972,6 @@ absl::StatusOr<Literal> HloEvaluator::Evaluate(
   // Reset evaluation state with the argument literals.
   ScopedEvaluateState evaluate_state(&state_, args);
 
-  call_graph_cache_.reset();
   tuple_points_to_analysis_cache_.reset();
 
   // Re-seed RNG, either from the configuration's seed or a monotonic
@@ -976,7 +1013,6 @@ absl::StatusOr<Literal> HloEvaluator::Evaluate(
     SetEvaluatedLiteralFor(substituted_instr, literal_value->Clone());
   }
 
-  call_graph_cache_.reset();
   tuple_points_to_analysis_cache_.reset();
   auto enable_partial_evaluation_cleanup =
       absl::MakeCleanup([this] { enable_partial_evaluation_ = false; });
@@ -1094,8 +1130,7 @@ absl::Status HloEvaluator::EvaluateParameterFromCallerArgument(
     PrecomputedAnalyses analyses) {
   CHECK(!state_.has_evaluated(parameter));
   const HloComputation* parent_computation = parameter->parent();
-  std::vector<HloInstruction*> computation_callers =
-      analyses.call_graph->GetComputationCallers(parent_computation);
+  auto computation_callers = parent_computation->caller_instructions();
   // If the parent computation has multiple callers, we cannot determine from
   // which caller the arguments are passed.
   if (computation_callers.size() != 1) {
@@ -1115,14 +1150,28 @@ absl::Status HloEvaluator::EvaluateParameterFromCallerArgument(
         ", which is not yet supported.");
   }
   if (computation_caller->opcode() == HloOpcode::kWhile) {
+    if (!analyses.tuple_points_to && !tuple_points_to_analysis_cache_) {
+      absl::StatusOr<std::unique_ptr<TuplePointsToAnalysis>> tuple_points_to =
+          TuplePointsToAnalysis::Run(parameter->GetModule());
+      if (!tuple_points_to.ok()) {
+        return absl::FailedPreconditionError(
+            "Failed to run TuplePointsToAnalysis.");
+      }
+      tuple_points_to_analysis_cache_ = *std::move(tuple_points_to);
+    }
+    TuplePointsToAnalysis* tuple_points_to_analysis =
+        analyses.tuple_points_to != nullptr
+            ? analyses.tuple_points_to
+            : tuple_points_to_analysis_cache_.get();
+
     HloComputation* while_body = computation_caller->while_body();
     TF_ASSIGN_OR_RETURN(
         const LogicalBuffer* logical_buffer,
-        analyses.tuple_points_to->GetBufferDefinedAt(
+        tuple_points_to_analysis->GetBufferDefinedAt(
             while_body->parameter_instruction(parameter->parameter_number()),
             shape_index));
     const TuplePointsToAnalysis::BufferAliasVector& buffer_aliases =
-        analyses.tuple_points_to->GetBufferAliases(*logical_buffer);
+        tuple_points_to_analysis->GetBufferAliases(*logical_buffer);
     bool unchanged_in_return = false;
     for (const BufferAlias& buffer_alias : buffer_aliases) {
       if (buffer_alias.instruction() == while_body->root_instruction() &&
@@ -1184,6 +1233,12 @@ absl::Status HloEvaluator::EvaluateInternal(
     const HloInstruction* instruction, PrecomputedAnalyses precomputed_analyses,
     const ShapeIndex& shape_index,
     bool recursively_evaluate_nonconstant_operands) {
+  // No need to evaluate the operand subtrees if the instruction opcode is not
+  // implemented.
+  if (!IsOpcodeImplemented(instruction->opcode())) {
+    return Unimplemented("HloEvaluator does not implement the %s opcode.",
+                         HloOpcodeString(instruction->opcode()));
+  }
   // Don't need to evaluate this instruction again if it has already been
   // evaluated.
   if (IsAlreadyEvaluated(instruction, shape_index)) {
@@ -1216,38 +1271,13 @@ absl::Status HloEvaluator::EvaluateInternal(
                            precomputed_analyses, new_shape_index,
                            /*recursively_evaluate_nonconstant_operands=*/true));
     } else if (instruction->opcode() == HloOpcode::kParameter) {
-      CallGraph* call_graph =
-          (precomputed_analyses.call_graph != nullptr)
-              ? precomputed_analyses.call_graph
-              : std::invoke([this, instruction]() -> CallGraph* {
-                  call_graph_cache_ =
-                      CallGraph::Build(instruction->GetModule());
-                  return call_graph_cache_.get();
-                });
-      TuplePointsToAnalysis* tuple_points_to_analysis =
-          (precomputed_analyses.tuple_points_to != nullptr)
-              ? precomputed_analyses.tuple_points_to
-              : std::invoke([this, instruction]() -> TuplePointsToAnalysis* {
-                  absl::StatusOr<std::unique_ptr<TuplePointsToAnalysis>>
-                      tuple_points_to_analysis =
-                          TuplePointsToAnalysis::Run(instruction->GetModule());
-                  if (!tuple_points_to_analysis.ok()) {
-                    return nullptr;
-                  }
-                  tuple_points_to_analysis_cache_ =
-                      *std::move(tuple_points_to_analysis);
-                  return tuple_points_to_analysis_cache_.get();
-                });
-      if (call_graph && tuple_points_to_analysis) {
-        absl::Status argument_eval_status = EvaluateParameterFromCallerArgument(
-            instruction, shape_index, {tuple_points_to_analysis, call_graph});
-        if (!argument_eval_status.ok()) {
-          VLOG(4) << "Failed to evaluate parameter " << instruction->name()
-                  << " from caller. Reason: " << argument_eval_status.message();
-        } else {
-          VLOG(4) << "Successfully evaluated parameter: "
-                  << instruction->name();
-        }
+      absl::Status argument_eval_status = EvaluateParameterFromCallerArgument(
+          instruction, shape_index, precomputed_analyses);
+      if (!argument_eval_status.ok()) {
+        VLOG(4) << "Failed to evaluate parameter " << instruction->name()
+                << " from caller. Reason: " << argument_eval_status.message();
+      } else {
+        VLOG(4) << "Successfully evaluated parameter: " << instruction->name();
       }
     } else {
       for (HloInstruction* operand : instruction->operands()) {
@@ -1657,7 +1687,7 @@ absl::Status HloEvaluator::HandleTuple(const HloInstruction* tuple) {
 
   if (state_.has_evaluated(tuple)) {
     CHECK(new_result.IsDetermined(visitor_shape_index_));
-    Literal literal;
+    Literal literal = Literal::CreateFromShape(new_result.shape());
     TF_RETURN_IF_ERROR(
         literal.CopyFrom(new_result,
                          /*dest_shape_index=*/visitor_shape_index_,
@@ -1973,7 +2003,7 @@ class FftTransform {
     const int64_t num_dimensions = lengths.size();
 
     // Make sure that the layout length matches the number of dimensions.
-    CHECK_EQ(num_dimensions, layout.minor_to_major_size());
+    CHECK_EQ(num_dimensions, layout.minor_to_major().size());
 
     // Calculate strides using layout-specified ordering of the dimensions and
     // place the stride for axis 0 at index 0, for axis 1 at index 1, etc.
@@ -3612,10 +3642,10 @@ absl::StatusOr<Literal> TryParseAndEvaluateWhileInductionVar(
       Literal result,
       CreateScalarLiteral(induction_var_value, result_shape.element_type()));
   std::vector<Literal*> while_result_element_ptrs;
-  while_result_element_ptrs.reserve(while_hlo->shape().tuple_shapes_size());
+  while_result_element_ptrs.reserve(while_hlo->shape().tuple_shapes().size());
   std::vector<Literal> while_result_elements(
-      while_hlo->shape().tuple_shapes_size());
-  for (int i = 0; i < while_hlo->shape().tuple_shapes_size(); ++i) {
+      while_hlo->shape().tuple_shapes().size());
+  for (int i = 0; i < while_hlo->shape().tuple_shapes().size(); ++i) {
     if (i == parsed_while_loop->static_while_loop->induction_var_index) {
       while_result_element_ptrs.push_back(&result);
     } else {

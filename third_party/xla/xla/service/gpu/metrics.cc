@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/tsl/lib/monitoring/counter.h"
 #include "xla/tsl/lib/monitoring/gauge.h"
 #include "xla/tsl/lib/monitoring/sampler.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/stacktrace.h"
 
 namespace xla {
@@ -101,6 +102,11 @@ void RecordXlaDeviceBinarySize(const int64_t size) {
 }
 
 void RecordGpuCompilerStacktrace() {
+  // Only record stack traces in google as streamz doesn't work in OSS.
+  if (tsl::kIsOpenSource) {
+    return;
+  }
+
   std::string tsl_stacktrace = tsl::CurrentStackTrace();
 
   // tsl::CurrentStackTrace() adds a prefix and postfix lines, so remove them.

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/compilation_environments.h"
 
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -27,6 +26,8 @@ limitations under the License.
 #include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -34,11 +35,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/xla.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -152,8 +151,8 @@ CompilationEnvironments::CreateFromProto(
         tsl::protobuf::MessageFactory::generated_factory()->GetPrototype(
             descriptor);
     if (prototype == nullptr) {
-      return tsl::errors::Internal(
-          "Unsupported CompilationEnvironment message type: %s", fullname);
+      return absl::InternalError(absl::StrCat(
+          "Unsupported CompilationEnvironment message type: ", fullname));
     }
 
     std::unique_ptr<tsl::protobuf::Message> env(prototype->New());
@@ -183,6 +182,29 @@ void CompilationEnvironments::RegisterProcessNewEnvFn(
           .second;
   CHECK(inserted) << "ProcessNewEnvFn for XLA compilation environment '"
                   << descriptor->full_name() << "' has already been registered";
+}
+
+absl::Status CompilationEnvironments::InitializeAllKnownEnvs() {
+  std::vector<const tsl::protobuf::Descriptor*> descriptors;
+  {
+    absl::MutexLock l(&process_new_env_fns_mu);
+    if (process_new_env_fns == nullptr) {
+      return absl::OkStatus();
+    }
+    descriptors.reserve(process_new_env_fns->size());
+    for (const auto& [descriptor, fn] : *process_new_env_fns) {
+      descriptors.push_back(descriptor);
+    }
+  }
+  for (const auto& descriptor : descriptors) {
+    auto it = environments_.find(descriptor);
+    if (it == environments_.end()) {
+      TF_RETURN_IF_ERROR(AddEnvImpl(*descriptor, nullptr));
+      DefaultEnvCreatedByCompilationEnvironments(descriptor->full_name());
+    }
+  }
+
+  return absl::OkStatus();
 }
 
 absl::Status CompilationEnvironments::AddEnv(

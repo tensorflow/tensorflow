@@ -953,7 +953,7 @@ Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
 Value getTosaConstTensorScalarInt(ImplicitLocOpBuilder& builder, Type type,
                                   int64_t val, int rank) {
   assert(rank >= 0);
-  assert(type.isa<IntegerType>());
+  assert(mlir::isa<IntegerType>(type));
   mlir::RankedTensorType const_type;
   mlir::DenseElementsAttr const_attr;
   auto bit_width = type.getIntOrFloatBitWidth();
@@ -1324,7 +1324,7 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // We use top-down traversal so that shape inference can fully infer types
   // during pattern rewrite.
   GreedyRewriteConfig config;
-  config.useTopDownTraversal = true;
+  config.setUseTopDownTraversal(true);
   if (failed(applyPatternsGreedily(func, patterns, config))) {
     return failure();
   }

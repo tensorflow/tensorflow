@@ -315,19 +315,14 @@ class PjRtCApiClient : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       mlir::ModuleOp module, CompileOptions options) override;
 
-  // `PjRtCApiClient::LoadSerializedExecutable()` ignores `CompileOptions` arg
+  // `PjRtCApiClient::LoadSerializedExecutable()` ignores `LoadOptions` arg
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
   LoadSerializedExecutable(absl::string_view serialized,
                            std::optional<CompileOptions> options,
                            const LoadOptions& load_options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
-      const Shape& shape, PjRtMemorySpace* memory_space) override {
-    return Unimplemented(
-        "PJRT C API does not support CreateUninitializedBuffer. Please report "
-        "an issue at https://github.com/google/jax/issues if you need this "
-        "feature.");
-  }
+      const Shape& shape, PjRtMemorySpace* memory_space) override;
 
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override;
@@ -768,6 +763,9 @@ absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
 absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
     absl::string_view device_type, absl::string_view topology_name,
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {});
+
+absl::StatusOr<std::unique_ptr<PjRtCompiler>> GetCApiCompiler(
+    absl::string_view device_type);
 
 }  // namespace xla
 

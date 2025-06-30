@@ -87,7 +87,7 @@ class ManualComputationPattern : public OpConversionPattern<CallOp> {
     // `ManualComputationOp` differently depending on whether the original had
     // operands/results.
     CustomCallOp globalToLocalShape;
-    mlir::ValueRange operands = callOp->getOperands();
+    mlir::ValueRange operands = adaptor.getOperands();
     if (!operands.empty()) {
       // An input to `sdy.manual_computation` can have a dimension of size 0
       // (i.e. 0 num-elements), in which case, the corresponding result of
@@ -97,7 +97,11 @@ class ManualComputationPattern : public OpConversionPattern<CallOp> {
       auto customCallResIt = llvm::find_if(operands, [](mlir::Value operand) {
         return operand.getDefiningOp<CustomCallOp>();
       });
-      CHECK(customCallResIt != operands.end());
+      if (customCallResIt == operands.end()) {
+        return callOp->emitOpError("expected at least one operand of ")
+               << callOp.getCalleeAttr() << " to be produced by a "
+               << kGlobalToLocalShapeCallTargetName << " CustomCallOp";
+      }
       globalToLocalShape = (*customCallResIt).getDefiningOp<CustomCallOp>();
       CHECK(globalToLocalShape.getCallTargetName() ==
             kGlobalToLocalShapeCallTargetName);
@@ -106,10 +110,19 @@ class ManualComputationPattern : public OpConversionPattern<CallOp> {
     mlir::TypeRange resultTypes = callOp->getResultTypes();
     CustomCallOp localToGlobalShape;
     if (!resultTypes.empty()) {
-      CHECK(callOp->getResult(0).hasOneUse())
-          << "all CallOp results should be used by a single LocalToGlobalShape";
-      localToGlobalShape =
-          mlir::cast<CustomCallOp>(*callOp->getResult(0).getUsers().begin());
+      // Same as above, a result of `sdy.manual_computation` can have a
+      // dimension of size 0, in which case, the corresponding result of
+      // `@local_xla.sdy.manual_computation_body` call would be replaced with a
+      // constant. Therefore, we check the first use rather than first result.
+      if (!callOp->use_empty()) {
+        localToGlobalShape =
+            mlir::dyn_cast<CustomCallOp>(*callOp->user_begin());
+      }
+      if (!localToGlobalShape) {
+        return callOp->emitOpError("expected the first use of ")
+               << callOp.getCalleeAttr() << " to be by a "
+               << kLocalToGlobalShapeCallTargetName << " CustomCallOp";
+      }
       CHECK(localToGlobalShape.getCallTargetName() ==
             kLocalToGlobalShapeCallTargetName);
       resultTypes = localToGlobalShape->getResultTypes();
@@ -204,8 +217,20 @@ class SdyRoundTripShardMapImportPass
     patterns.add<ManualComputationPattern>(&context, symbolTable);
     if (mlir::failed(mlir::applyPartialConversion(module, target,
                                                   std::move(patterns)))) {
-      signalPassFailure();
+      return signalPassFailure();
     }
+
+    // At this point, there may be stray `xla.sdy.GlobalToLocalShape` and
+    // `xla.sdy.LocalToGlobalShape`, if the `@local_xla.sdy.manual_computation_body`
+    // call was eliminated through DCE and the custom call uses were replaced
+    // with constants as they had 0 elements, then it's safe to erase.
+    module->walk([](CustomCallOp op) {
+      if (op.getCallTargetName() == kGlobalToLocalShapeCallTargetName ||
+          op.getCallTargetName() == kLocalToGlobalShapeCallTargetName) {
+        CHECK(op.use_empty());
+        op.erase();
+      }
+    });
   }
 
   StringRef getArgument() const override {

@@ -17,11 +17,28 @@ syntax = "proto3";
 
 package xla.ifrt;
 
-import "xla/pjrt/compile_options.proto";
+import "xla/pjrt/proto/compile_options.proto";
 
 // Proto equivalent of C++ `IfrtIRCompileOptions`.
 message IfrtIrCompileOptionsProto {
+  int32 version_number = 4;
+
   repeated int32 device_ids = 1;
   map<string, xla.CompileOptionsProto> compile_option_overrides = 2;
   bool propagate_shardings = 3;
+
+  // If not empty, dump textual programs to the specified directory. By default,
+  // programs are dumped only at the beginning of each IFRT pass manager run.
+  optional string mlir_dump_to = 5;
+  // Regular expression that matches the names of passes in pascal case (e.g.,
+  // FooPass) before/after which programs will be dumped. Effective only if
+  // `mlir_dump_to` is not empty.
+  optional string mlir_dump_pass_re = 6;
+  // Regular expression that matches the names of functions to be dumped. MLIR
+  // modules are dumped only if there's at least one public function in the
+  // module whose name matches the pattern. Effective only if `mlir_dump_to` is
+  // not empty.
+  optional string mlir_dump_func_re = 7;
+  // If true, report the execution time of each mlir pass.
+  optional bool mlir_enable_timing = 8;
 }

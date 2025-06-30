@@ -2201,9 +2201,9 @@ tf_cuda_library(
     deps = [
         ":core_cpu_internal",
         ":local_session_selection",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -2216,6 +2216,8 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:optional",
     ],
     alwayslink = 1,
 )
@@ -2471,6 +2473,7 @@ tf_cc_tests(
     create_named_test_suite = True,
     data = [
         "testdata/simplify_ici_dummy_variables_pass_before.pbtxt",
+        "testdata/simplify_ici_dummy_variables_pass_updatevars_before.pbtxt",
     ],
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
@@ -3603,6 +3606,8 @@ tf_cc_fuzz_test(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/ops",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 

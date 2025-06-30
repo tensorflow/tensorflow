@@ -78,7 +78,11 @@ std::shared_ptr<StackTrace> StackTrace::Capture(int limit) {
 
   static absl::flat_hash_map<uint64_t, std::shared_ptr<StackTrace>>* cache =
       new absl::flat_hash_map<uint64_t, std::shared_ptr<StackTrace>>();
+#ifdef Py_GIL_DISABLED
+  static absl::Mutex mu(absl::kConstInit);
 
+  absl::MutexLock lock(&mu);
+#endif  // Py_GIL_DISABLED
   uint64_t hash_code = result.hash();
   if (!cache->contains(hash_code)) {
     cache->insert(std::make_pair(

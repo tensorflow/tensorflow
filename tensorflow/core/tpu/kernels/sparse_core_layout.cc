@@ -144,7 +144,7 @@ absl::Status SparseCoreLayoutStacker::AddTable(absl::string_view table_name,
   // Need to wrap the absl::string_view in std::string constructor because as of
   // Q4 2023, on windows, the set function for protos doesn't accept a
   // string_view.
-  layout.set_table_name(std::string(table_name));
+  layout.set_table_name(table_name);
   layout.set_num_sparse_cores(num_sparse_cores_);
   layout.set_num_partitions(num_partitions_);
   layout.add_unsharded_shape(table_height);

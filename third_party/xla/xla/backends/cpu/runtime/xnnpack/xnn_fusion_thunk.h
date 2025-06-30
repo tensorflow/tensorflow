@@ -26,9 +26,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
-#include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -78,13 +77,15 @@ class XnnFusionThunk : public Thunk {
       absl::Span<const Argument> arguments, absl::Span<const Result> results)>;
 
   // Builder function that constructs XNNPACK subgraph for the fusion operation
-  // using resolved buffers for arguments and results. Such XNNPACK subgraph
-  // can't be reused for multiple executions as it might capture the address of
-  // the buffer(s).
-  using OneUseBuilder = absl::AnyInvocable<absl::StatusOr<xnn_subgraph_t>(
+  // and captures some of the arguments buffers by value. Such XNNPACK subgraphs
+  // can't be reused if captured arguments are not the same, and can lead to
+  // crashes and undefined behavior if captured arguments are destroyed.
+  // Capturing arguments by value allows XNNPACK to do packing at graph compile
+  // time, and avoid re-packing costs at run time (at inference weights stay
+  // constant, i.e. convolution filters and one of the dot arguments).
+  using CapturingBuilder = absl::AnyInvocable<absl::StatusOr<xnn_subgraph_t>(
       absl::Span<const Argument> arguments, absl::Span<const Result> results,
-      absl::Span<const se::DeviceMemoryBase> arguments_buffers,
-      absl::Span<const se::DeviceMemoryBase> results_buffers)>;
+      absl::Span<const se::DeviceMemoryBase> arguments_buffers)>;
 
   static absl::StatusOr<std::unique_ptr<XnnFusionThunk>> Create(
       Options options, Info info, std::vector<Argument> arguments,
@@ -92,9 +93,8 @@ class XnnFusionThunk : public Thunk {
 
   static absl::StatusOr<std::unique_ptr<XnnFusionThunk>> Create(
       Options options, Info info, std::vector<Argument> arguments,
-      std::vector<Result> results, OneUseBuilder one_use_builder,
-      absl::Span<const int64_t> value_arguments,
-      absl::Span<const int64_t> value_results);
+      std::vector<Result> results, CapturingBuilder capturing_builder,
+      absl::Span<const int64_t> captured_arguments_ids);
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
@@ -111,9 +111,8 @@ class XnnFusionThunk : public Thunk {
 
   XnnFusionThunk(XnnFusionKind kind, Options options, Info info,
                  std::vector<Argument> arguments, std::vector<Result> results,
-                 OneUseBuilder one_use_builder,
-                 absl::Span<const int64_t> by_value_arguments,
-                 absl::Span<const int64_t> by_value_results);
+                 CapturingBuilder capturing_builder,
+                 absl::Span<const int64_t> captured_arguments_ids);
 
   // Extension points for subclasses to customize the logging behavior.
   virtual std::string fusion_kind() const { return "fusion"; }
@@ -134,33 +133,46 @@ class XnnFusionThunk : public Thunk {
   // XNNPACK runtime instantiated for the fusion operation.
   struct XnnRuntime;
 
+  // Creates XnnRuntime for the fusion operation using one of the builders.
   absl::StatusOr<XnnRuntime> CreateXnnRuntime(
-      const Eigen::ThreadPoolDevice* device, bool one_use,
-      absl::FunctionRef<absl::StatusOr<xnn_subgraph_t>()> builder);
+      const Eigen::ThreadPoolDevice* device,
+      absl::Span<const se::DeviceMemoryBase> arguments_buffers);
 
+  // Updates XnnRuntime to the XNN subgraph constructed with the given
+  // arguments buffers.
+  absl::Status UpdateXnnRuntime(
+      XnnRuntime& runtime,
+      absl::Span<const se::DeviceMemoryBase> arguments_buffers);
+
+  // Returns the list of captured arguments buffers.
+  std::vector<se::DeviceMemoryBase> CaptureArguments(
+      absl::Span<const se::DeviceMemoryBase> arguments_buffers);
+
+  XnnFusionKind xnn_fusion_kind_;
   Options options_;
 
   std::vector<Argument> arguments_;
   std::vector<Result> results_;
 
-  // Only one kind of the builder should be set, depending on whether the
-  // subgraph can be reused for multiple executions.
+  // Builder that constructs XNNPACK subgraph for the fusion operation.
   Builder builder_;
-  OneUseBuilder one_use_builder_;
 
-  XnnFusionKind xnn_fusion_kind_;
+  // Builder that constructs XNNPACK subgraph for the fusion operation and
+  // captures some of the arguments buffers by value. Such subgraphs can't be
+  // reused if captured arguments changed since the last execution.
+  CapturingBuilder capturing_builder_;
 
-  // Indices of arguments and results that are captured by XNNPACK subgraph by
-  // value (can be captured by one-use builder only).
-  absl::flat_hash_set<int64_t> by_value_arguments_;
-  absl::flat_hash_set<int64_t> by_value_results_;
+  // Indices of arguments that are captured by XNNPACK subgraph by value.
+  std::vector<int64_t> captured_arguments_ids_;
 
   // XLA:CPU executable can be called concurrently from multiple threads,
   // and we need to keep a pool of XNNPACK runtimes to avoid data races.
-  ObjectPool<XnnRuntime, const Eigen::ThreadPoolDevice*> xnn_runtime_pool_;
+  using XnnRuntimePool = ObjectPool<XnnRuntime, const Eigen::ThreadPoolDevice*,
+                                    absl::Span<const se::DeviceMemoryBase>>;
+  XnnRuntimePool xnn_runtime_pool_;
 
-  // The number of XNNPACK runtimes created for one-use only.
-  std::atomic<int64_t> num_one_use_created_{0};
+  // The number of XNNPACK runtimes created for capturing graphs.
+  std::atomic<int64_t> num_capturing_created_{0};
 };
 
 std::ostream& operator<<(std::ostream& os, XnnFusionThunk::XnnFusionKind kind);

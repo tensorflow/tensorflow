@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/priority_fusion.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,6 +24,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -36,8 +38,10 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace m = ::xla::match;
 
@@ -57,7 +61,9 @@ class PriorityFusionTest : public HloHardwareIndependentTestBase {
     EXPECT_THAT(module->RemoveUnusedComputations(), IsOk());
     std::vector<HloFusionAnalysis::EmitterFusionKind> kinds;
     for (auto computation : module->computations()) {
-      if (!computation->FusionInstruction()) continue;
+      if (!computation->FusionInstruction()) {
+        continue;
+      }
 
       auto analysis = HloFusionAnalysis::Create(
           *computation->FusionInstruction(), device_info_);
@@ -1129,6 +1135,48 @@ ENTRY main {
             2);
 }
 
+TEST_F(PriorityFusionTest, FuseTritonFusionBothEndsUsingMultiOutputFusion) {
+  // Here, we fuse `fusion` first into `exp` and `sqrt`. When we try to fuse
+  // `log` into the two fusions resulting from the previous step using
+  // multi-output fusion, we currently don't allow that, as we would need to
+  // select with which fusion to fuse first.
+  // TODO(b/390559452): Improve the logic to select the best consumer candidate
+  // for multi-output fusion.
+  const std::string kHloText = R"(
+HloModule t
+
+consumer_computation {
+  parameter_0 = f32[1024,512] parameter(0)
+  ROOT log = f32[1024,512] negate(parameter_0)
+}
+
+ENTRY main {
+  param_0 = f32[1024,512] parameter(0)
+  log = f32[1024,512] log(param_0)
+  fusion = f32[1024,512] fusion(log), kind=kCustom, calls=consumer_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["1","128"]}],"num_warps":"4"}}}
+  exponential = f32[1024,512] exponential(fusion)
+  sqrt = f32[1024,512] sqrt(fusion)
+  ROOT tuple = (f32[1024,512],f32[1024,512],f32[1024,512]) tuple(exponential, sqrt, log)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
+  EXPECT_TRUE(priority_fusion_.Run(module.get()).value());
+  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloInstruction *fusion1, *fusion2;
+  EXPECT_THAT(root,
+              GmockMatch(m::Tuple(m::Fusion(&fusion1, m::Log()),
+                                  m::Fusion(&fusion2, m::Log()), m::Log())));
+  EXPECT_NE(fusion1, fusion2);
+  EXPECT_TRUE(IsGenericTritonFusion(*fusion1));
+  EXPECT_TRUE(IsGenericTritonFusion(*fusion2));
+}
+
 TEST_F(PriorityFusionTest, TritonProducerNotSupported_DoNotFuse) {
   const std::string kHloText = R"(
 HloModule t
@@ -1239,6 +1287,72 @@ ENTRY main {
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
   EXPECT_TRUE(IsGenericTritonFusion(*root));
+}
+
+TEST_F(PriorityFusionWithTritonEnabledTest, DoNotFuseIntoRoot) {
+  auto module = *ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    ENTRY %main (p.0: s32[2], p.1: s32[]) -> s32[2] {
+      %p.0 = s32[2]{0} parameter(0)
+      %p.1 = s32[] parameter(1)
+      ROOT %broadcast = s32[2]{0} broadcast(s32[] %p.1), dimensions={}, sharding={replicated}
+      %add = s32[2]{0} add(s32[2]{0} %p.0, s32[2]{0} %broadcast)
+      %tuple.1 = (s32[2]{0}, s32[2]{0}) tuple(s32[2]{0} %add, s32[2]{0} %broadcast)
+      %token.0 = token[] after-all()
+      %outfeed.6 = token[] outfeed((s32[2]{0}, s32[2]{0}) %tuple.1, token[] %token.0), outfeed_shape=(s32[2]{0}, s32[2]{0}), sharding={maximal device=0}
+    })");
+
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(PriorityFusionWithTritonEnabledTest, LimitNumberOfParameters) {
+  std::string module_text =
+      "HloModule m\n\nENTRY main {\nadd0 = f32[] parameter(0)\n";
+  for (int64_t i = 1; i <= MaxOperandsAndOutputsPerFusion(); ++i) {
+    module_text += absl::StrFormat("p%d = f32[] parameter(%d)\n", i, i);
+    module_text +=
+        absl::StrFormat("add%d = f32[] add(add%d, p%d)\n", i, i - 1, i);
+  }
+  module_text += "}";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(module_text));
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
+  // Assert that there is not just a single fusion with all parameters as
+  // operands.
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_LE(root->operand_count(), MaxOperandsAndOutputsPerFusion());
+}
+
+TEST_F(PriorityFusionWithTritonEnabledTest,
+       MultipleMultiOutputFusionCandidates) {
+  auto module = *ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    ENTRY main {
+      p0 = f32[] parameter(0)
+      negate = f32[] negate(p0)
+      log = f32[] log(negate)
+      p1 = f32[] parameter(1)
+      exp = f32[] exponential(p1)
+      add = f32[] add(exp, log)
+      ROOT res = (f32[], f32[], f32[]) tuple(add, negate, exp)
+    })");
+
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "priority-fusion-test", 8);
+  GpuHloCostAnalysis::Options options;
+  options.count_multiple_input_accesses = true;
+  PriorityFusion priority_fusion_with_thread_pool{/*thread_pool=*/&pool,
+                                                  device_info_, options};
+  EXPECT_THAT(priority_fusion_with_thread_pool.Run(module.get()),
+              IsOkAndHolds(true));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloInstruction* fusion;
+  EXPECT_THAT(root, GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion(&fusion)),
+                                        m::GetTupleElement(m::Fusion()),
+                                        m::GetTupleElement(m::Fusion()))));
+  EXPECT_THAT(fusion, GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
+  EXPECT_TRUE(IsGenericTritonFusion(*fusion));
 }
 
 }  // namespace gpu

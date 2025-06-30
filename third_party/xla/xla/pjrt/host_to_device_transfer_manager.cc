@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
@@ -73,7 +75,8 @@ class CommonAsyncHostToDeviceTransferManager
     std::optional<std::string> debug_info = std::nullopt;
     const auto& current_anno =
         tsl::profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
-    if (current_anno.pending_op_name && current_anno.pending_region_type) {
+    if (!current_anno.pending_op_name.empty() &&
+        !current_anno.pending_region_type.empty()) {
       debug_info = std::make_optional<std::string>(absl::StrCat(
           current_anno.pending_op_name, " ", current_anno.pending_region_type));
     }
@@ -146,10 +149,11 @@ class CommonAsyncHostToDeviceTransferManager
       TF_ASSIGN_OR_RETURN(
           auto raw_buffer,
           client->AllocateRawBuffer(memory_space, on_device_bytes_count,
-                                    allocation_event));
+                                    /*retry_on_oom=*/true, allocation_event));
       TF_ASSIGN_OR_RETURN(auto buffer,
                           client->DefineBuffer(device_shape, raw_buffer,
-                                               {std::move(definition_event)}));
+                                               {std::move(definition_event)},
+                                               /*raw_buffer_is_mutable=*/true));
       device_shapes.push_back(std::move(device_shape));
       buffers.push_back(std::move(buffer));
       undispatched_buffer_refs.push_back(raw_buffer);
@@ -338,8 +342,8 @@ class CommonAsyncHostToDeviceTransferManager
       op_name = debug_info.empty() ? "" : debug_info.front();
       region_type = debug_info.size() > 1 ? debug_info.back() : "";
     }
-    tsl::profiler::ScopedMemoryDebugAnnotation anno(
-        op_name.c_str(), region_type.c_str(), 0, []() { return ""; });
+    tsl::profiler::ScopedMemoryDebugAnnotation anno(op_name, region_type, 0,
+                                                    []() { return ""; });
     // Unblock allocating the underlying memory.
     allocation_events_[buffer_index].reset();
 

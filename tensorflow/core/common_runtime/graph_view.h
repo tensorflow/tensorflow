@@ -115,8 +115,8 @@ struct NodeItem {
     return absl::Span<EdgeInfo>(output_edge_base(), num_output_edges);
   }
 
-  gtl::ArraySlice<EdgeInfo> output_edges() const {
-    return gtl::ArraySlice<EdgeInfo>(output_edge_base(), num_output_edges);
+  absl::Span<const EdgeInfo> output_edges() const {
+    return absl::Span<const EdgeInfo>(output_edge_base(), num_output_edges);
   }
 
   gtl::ArraySlice<ControlEdgeInfo> output_control_edges() const {

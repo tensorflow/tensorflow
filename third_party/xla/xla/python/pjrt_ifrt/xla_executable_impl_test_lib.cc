@@ -68,7 +68,7 @@ static const char* const module_add_one =
 
 // Compiles an MLIR module on specified devices. If devices is empty, compiles
 // it as a portable executable.
-absl::StatusOr<std::unique_ptr<LoadedExecutable>> CompileOnDevices(
+absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
     Client* client, Compiler* compiler, absl::string_view mlir_module_str,
     absl::Span<Device* const> devices, bool replicated) {
   mlir::MLIRContext context;
@@ -111,8 +111,8 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> CompileOnDevices(
   }
   auto xla_compile_options = std::make_unique<XlaCompileOptions>(
       compile_options, std::move(device_list));
-  return compiler->Compile(std::make_unique<HloProgram>(*module),
-                           std::move(xla_compile_options));
+  return compiler->CompileAndLoad(std::make_unique<HloProgram>(*module),
+                                  std::move(xla_compile_options));
 }
 
 TEST(LoadedExecutableImplTest, GetDonatableInputIndices) {
@@ -280,33 +280,6 @@ TEST(LoadedExecutableImplTest, DoNotFillStatus) {
   std::vector<float> expected_out_data(6);
   std::iota(expected_out_data.begin(), expected_out_data.end(), 1);
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
-}
-
-TEST(LoadedExecutableImplTest, Delete) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-  Compiler* compiler = client->GetDefaultCompiler();
-
-  std::vector<Device*> devices = {client->addressable_devices().at(0)};
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto loaded_executable,
-      CompileOnDevices(client.get(), compiler, module_add_one, devices,
-                       /*replicated=*/false));
-  TF_EXPECT_OK(loaded_executable->Delete().Await());
-}
-
-TEST(LoadedExecutableImplTest, IsDeleted) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-  Compiler* compiler = client->GetDefaultCompiler();
-
-  std::vector<Device*> devices = {client->addressable_devices().at(0)};
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto loaded_executable,
-      CompileOnDevices(client.get(), compiler, module_add_one, devices,
-                       /*replicated=*/false));
-  EXPECT_FALSE(loaded_executable->IsDeleted());
-  auto future = loaded_executable->Delete();
-  EXPECT_TRUE(loaded_executable->IsDeleted());
-  TF_EXPECT_OK(future.Await());
 }
 
 }  // namespace

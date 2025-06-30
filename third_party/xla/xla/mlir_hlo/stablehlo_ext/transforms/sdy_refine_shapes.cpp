@@ -272,7 +272,7 @@ LogicalResult applyShapeRefinementPatterns(OpTy regionOp) {
   // which is a critical part of implementing type refinement for ops like
   // dynamic_broadcast_in_dim, dynamic_iota and dynamic_reshape whose shape
   // depends on the value of their shape operands.
-  stablehlo::populateStablehloShapeFolderPatterns(&patterns, context);
+  stablehlo::populateStablehloShapeFolderPatterns(context, &patterns);
 
   if (failed(applyPatternsGreedily(regionOp, std::move(patterns), config)))
     regionOp.emitError("Failed to converge StablehloRefineShapes in ")
@@ -401,8 +401,8 @@ struct RefineInferTypeOpInterfacePattern
 }  // namespace
 
 /// Patterns for refining shapes of Shardy ops.
-void populateSdyShapeRefinementPatterns(RewritePatternSet* patterns,
-                                        MLIRContext* context) {
+void populateSdyShapeRefinementPatterns(MLIRContext* context,
+                                        RewritePatternSet* patterns) {
   patterns->add<RefineManualComputationOpPattern>(context);
   patterns->add<RefineNamedComputationOpPattern>(context);
   patterns->add<RefineInferTypeOpInterfacePattern>(context);

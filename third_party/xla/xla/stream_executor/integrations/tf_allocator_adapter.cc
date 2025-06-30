@@ -30,11 +30,12 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace stream_executor {
 
 TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator *wrapped, Stream *stream)
-    : DeviceMemoryAllocator(stream->parent()->GetPlatform()),
+    : DeviceMemoryAllocator(CHECK_NOTNULL(stream)->parent()->GetPlatform()),
       wrapped_(wrapped),
       stream_(stream) {}
 

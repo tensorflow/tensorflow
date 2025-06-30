@@ -18,6 +18,7 @@ limitations under the License.
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
+#include <fstream>
 #include <limits>
 #include <memory>
 #include <string>
@@ -42,6 +43,8 @@ limitations under the License.
 #include "xla/service/collective_utils.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/cpu_info.h"  // NOLINT
@@ -92,9 +95,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_full_hlo_config(true);
   opts.set_xla_gpu_unsupported_annotate_with_emitter_loc(false);
   opts.set_xla_debug_buffer_assignment_show_max(15);
-#ifdef ENABLE_MKL
-  opts.set_xla_cpu_use_mkl_dnn(true);
-#endif  // ENABLE_MKL
+  opts.set_xla_cpu_use_onednn(false);
 #ifdef XLA_CPU_USE_ACL
   opts.set_xla_cpu_use_acl(true);
 #endif
@@ -163,7 +164,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_enable_dumping(true);
 
   opts.set_xla_gpu_enable_custom_fusions(false);
-  opts.set_xla_gpu_enable_dynamic_slice_fusion(false);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
@@ -184,23 +184,12 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_analytical_sol_latency_estimator(false);
   auto* sol_estimator_defaults =
       opts.mutable_xla_gpu_analytical_latency_estimator_options();
-  sol_estimator_defaults->emplace(
-      "nccl_op_launch_us",
-      absl::StrCat(static_cast<int>(100.0f * kDefaultNcclCostModelCoeff)));
-  // GBytes per second = 10^9 bytes per second
-  sol_estimator_defaults->emplace(
-      "nic_speed_gbps",
-      absl::StrCat(static_cast<int>(55.56f * kDefaultNcclCostModelCoeff)));
-  sol_estimator_defaults->emplace(
-      "chunk_prep_us",
-      absl::StrCat(static_cast<int>(13.34f * kDefaultNcclCostModelCoeff)));
-  sol_estimator_defaults->emplace(
-      "rtt_us",
-      absl::StrCat(static_cast<int>(68.89f * kDefaultNcclCostModelCoeff)));
-  sol_estimator_defaults->emplace(
-      "chunk_size_bytes", absl::StrCat(kDefaultNcclCostModelChunkSizeBytes));
-  sol_estimator_defaults->emplace(
-      "gpus_per_node", absl::StrCat(kDefaultNcclCostModelGPUsPerNode));
+  sol_estimator_defaults->emplace(kSolNcclOpLaunchUs, "-1");
+  sol_estimator_defaults->emplace(kSolNicSpeedGbps, "-1");
+  sol_estimator_defaults->emplace(kSolChunkPrepUs, "-1");
+  sol_estimator_defaults->emplace(kSolRttUs, "-1");
+  sol_estimator_defaults->emplace(kSolChunkSizeBytes, "-1");
+  sol_estimator_defaults->emplace(kSolGpusPerNode, "-1");
   opts.set_xla_gpu_pgle_profile_file_or_directory_path("");
   opts.set_xla_gpu_memory_limit_slop_factor(95);
   opts.set_xla_gpu_enable_highest_priority_async_stream(true);
@@ -223,7 +212,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_enable_triton_gemm(true);
   opts.set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(false);
-  opts.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(false);
+  opts.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(true);
   opts.set_xla_gpu_verify_triton_fusion_numerics(false);
@@ -241,7 +230,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_gb(0);
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio(1.1);
-  opts.set_xla_gpu_unsafe_pipelined_loop_annotator(false);
 
   opts.set_xla_gpu_copy_insertion_use_region_analysis(false);
   opts.set_xla_gpu_collect_cost_model_stats(false);
@@ -263,7 +251,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_operand_bytes_threshold_for_windowed_einsum(-1);
 
   opts.set_xla_gpu_enable_triton_hopper(false);
-  opts.set_xla_gpu_experimental_enable_dynamic_dot_search_space(false);
   opts.set_xla_gpu_experimental_enable_fusion_block_level_rewriter(false);
 
   opts.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
@@ -271,6 +258,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       stream_executor::IsLibNvPtxCompilerSupported());
   opts.set_xla_gpu_libnvjitlink_mode(DebugOptions::LIB_NV_JIT_LINK_MODE_AUTO);
 
+  opts.set_xla_gpu_nccl_async_execution(false);
+  opts.set_xla_gpu_nccl_blocking_communicators(true);
   opts.set_xla_gpu_nccl_collective_max_nchannels(0);
   opts.set_xla_gpu_nccl_p2p_max_nchannels(0);
   opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
@@ -372,7 +361,7 @@ static thread_local std::unique_ptr<
 // Logs a warning if a pass's fuel was never consumed, on the theory that this
 // may be a typo in the flag value.  Called atexit.
 static void WarnIfFuelWasNeverConsumed() {
-  CHECK(fuel_ever_consumed != nullptr);
+  CHECK_NOTNULL(fuel_ever_consumed);
   for (const auto& kv : *fuel_ever_consumed) {
     absl::string_view pass = kv.first;
     bool was_consumed = kv.second;
@@ -969,10 +958,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Extra options to pass to a backend; comma-separated list of 'key=val' "
       "strings (=val may be omitted); no whitespace around commas."));
   flag_list->push_back(
-      tsl::Flag("xla_cpu_use_mkl_dnn",
-                bool_setter_for(&DebugOptions::set_xla_cpu_use_mkl_dnn),
-                debug_options->xla_cpu_use_mkl_dnn(),
-                "Generate calls to MKL-DNN in the CPU backend."));
+      tsl::Flag("xla_cpu_use_onednn",
+                bool_setter_for(&DebugOptions::set_xla_cpu_use_onednn),
+                debug_options->xla_cpu_use_onednn(),
+                "Call oneDNN thunks for matmul and convolution fusions in the "
+                "CPU backend."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_use_acl", bool_setter_for(&DebugOptions::set_xla_cpu_use_acl),
       debug_options->xla_cpu_use_acl(),
@@ -1295,12 +1285,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "that falling back to the driver can have drawbacks like using more "
       "memory and/or other bugs during compilation, so we recommend setting "
       "this flag to false."));
-  flag_list->push_back(
-      tsl::Flag("xla_gpu_unsafe_pipelined_loop_annotator",
-                bool_setter_for(
-                    &DebugOptions::set_xla_gpu_unsafe_pipelined_loop_annotator),
-                debug_options->xla_gpu_unsafe_pipelined_loop_annotator(),
-                "[Deprecated, do not use]"));
   flag_list->push_back(tsl::Flag(
       "xla_multiheap_size_constraint_per_heap",
       int32_setter_for(
@@ -1991,15 +1975,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_enable_triton_hopper(),
       "Currently used to enable MMA_V3 for Hopper in Triton"));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_enable_dynamic_dot_search_space",
-      bool_setter_for(
-          &DebugOptions::
-              set_xla_gpu_experimental_enable_dynamic_dot_search_space),
-      debug_options->xla_gpu_experimental_enable_dynamic_dot_search_space(),
-      "Enable dynamically generating and pruning the autotuning search space "
-      "for Triton dot fusions, based on the properties of the problem and "
-      "hardware (shapes, instructions, GPU limits, etc.)."));
-  flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_enable_fusion_block_level_rewriter",
       bool_setter_for(
           &DebugOptions::
@@ -2032,6 +2007,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       stream_executor::IsLibNvJitLinkSupported(),
       "Use libnvjitlink for PTX-to-GPU-assembly compilation instead of "
       "calling ptxas."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_nccl_async_execution",
+      bool_setter_for(&DebugOptions::set_xla_gpu_nccl_async_execution),
+      debug_options->xla_gpu_nccl_async_execution(),
+      "Whether to use asynchronous execution for NCCL communicators"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_nccl_blocking_communicators",
+      bool_setter_for(&DebugOptions::set_xla_gpu_nccl_blocking_communicators),
+      debug_options->xla_gpu_nccl_blocking_communicators(),
+      "Whether to use non-blocking NCCL communicators"));
   flag_list->push_back(
       tsl::Flag("xla_gpu_nccl_collective_max_nchannels",
                 int64_setter_for(
@@ -2065,6 +2050,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_use_memcpy_local_p2p),
       debug_options->xla_gpu_use_memcpy_local_p2p(),
       "Whether to use memcpy for local p2p communication."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_use_inprocess_lld",
+                bool_setter_for(&DebugOptions::set_xla_gpu_use_inprocess_lld),
+                debug_options->xla_gpu_use_inprocess_lld(),
+                "Whether to use lld as a library for the linking."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_dump_autotune_logs_to",
       string_setter_for(&DebugOptions::set_xla_gpu_dump_autotune_logs_to),
@@ -2385,9 +2375,57 @@ static void AllocateFlags(DebugOptions* defaults) {
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }
 
-void ParseDebugOptionFlagsFromEnv() {
+void ParseDebugOptionFlagsFromEnv(bool reset_envvar) {
   absl::call_once(flags_init, &AllocateFlags, nullptr);
-  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects, reset_envvar);
+}
+
+bool ParseFlagsFromDebugOptionsFile(absl::string_view filename) {
+  absl::call_once(flags_init, &AllocateFlags, nullptr);
+  VLOG(2) << "Parsing flags from file: " << filename;
+  // Read the file content
+  std::string file_content;
+  std::ifstream file{std::string(filename)};
+  if (!file.is_open()) {
+    LOG(ERROR) << "Failed to open file: " << filename;
+    return false;
+  }
+  std::stringstream buffer;
+  buffer << file.rdbuf();
+  file_content = buffer.str();
+  file.close();
+  DebugOptions new_debug_options;
+  tsl::protobuf::TextFormat::Parser parser;
+  tsl::protobuf::TextFormat::ParseInfoTree tree;
+  parser.WriteLocationsTo(&tree);
+  VLOG(1) << "Debug options file contents: " << file_content;
+  if (!parser.ParseFromString(file_content, &new_debug_options)) {
+    LOG(ERROR) << "Ill formed debug options file, unable to parse: "
+               << filename;
+    return false;
+  }
+
+  // Read from new_debug_options, and overwrite the flags in debug_options that
+  // are actually mentioned in file_contents.
+  std::vector<const tsl::protobuf::FieldDescriptor*> overwritten_fields;
+  int field_count = new_debug_options.GetDescriptor()->field_count();
+  for (int i = 0; i < field_count; i++) {
+    const tsl::protobuf::FieldDescriptor* field =
+        new_debug_options.GetDescriptor()->field(i);
+    if (tree.GetLocation(field, field->is_repeated() ? 0 : -1).line != -1) {
+      VLOG(2) << "Non default field: " << field->name();
+      overwritten_fields.push_back(field);
+    }
+  }
+  flag_values->GetReflection()->SwapFields(flag_values, &new_debug_options,
+                                           overwritten_fields);
+  return true;
+};
+
+void ResetFlagValues() {
+  if (flag_values != nullptr) {
+    *flag_values = DefaultDebugOptionsIgnoringFlags();
+  }
 }
 
 void AppendDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
@@ -2411,7 +2449,7 @@ void ResetThreadLocalFuel() {
 
   thread_fuel = std::make_unique<
       absl::node_hash_map<std::string, std::atomic<int64_t>>>();
-  CHECK(initial_fuel != nullptr);
+  CHECK_NOTNULL(initial_fuel);
   for (const auto& kv : *initial_fuel) {
     thread_fuel->emplace(kv.first, kv.second);
   }

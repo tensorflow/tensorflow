@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "xla/service/maybe_owning_device_memory.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/tpu/tpu_executor.h"
 #include "xla/stream_executor/tpu/tpu_executor_interface.h"
@@ -171,7 +172,8 @@ absl::Status TPUReshardVariablesOpKernel::DoTpuExecute(
   se::Stream* stream = context->op_device_context()->stream();
 
   TF_RET_CHECK(executable->input_shapes_size() == 1);
-  xla::Shape host_shape(executable->input_shapes(0));
+  TF_ASSIGN_OR_RETURN(xla::Shape host_shape,
+                      xla::Shape::FromProto(executable->input_shapes(0)));
   std::vector<VariableInfo> variables;
   for (int i = 0; i < num_vars_; ++i) {
     TF_RET_CHECK(context->input_dtype(i) == DT_RESOURCE);

@@ -386,17 +386,17 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                           output_shape.element_type()));
   }
 
-  return GemmConfig{lhs_layout,
-                    rhs_layout,
-                    c_layout,
-                    output_layout,
-                    {alpha_real, alpha_imag},
-                    beta,
-                    compute_precision,
-                    precision_algorithm,
-                    algorithm,
-                    grad_x,
-                    grad_y};
+  return GemmConfig(se::gpu::GemmConfig{lhs_layout,
+                                        rhs_layout,
+                                        c_layout,
+                                        output_layout,
+                                        {alpha_real, alpha_imag},
+                                        beta,
+                                        compute_precision,
+                                        precision_algorithm,
+                                        algorithm,
+                                        grad_x,
+                                        grad_y});
 }
 
 namespace {
@@ -724,11 +724,13 @@ absl::StatusOr<bool> EpilogueAddsVectorBias(
     case GemmBackendConfig::RELU:
     case GemmBackendConfig::GELU:
     case GemmBackendConfig::GELU_AUX:
+    case GemmBackendConfig::SILU:
       return false;
     case GemmBackendConfig::BIAS:
     case GemmBackendConfig::BIAS_RELU:
     case GemmBackendConfig::BIAS_GELU:
     case GemmBackendConfig::BIAS_GELU_AUX:
+    case GemmBackendConfig::BIAS_SILU:
       return true;
     default:
       return Internal("Unknown Epilogue.");
@@ -744,6 +746,8 @@ absl::StatusOr<bool> EpilogueHasAuxiliaryOutput(
     case GemmBackendConfig::BIAS:
     case GemmBackendConfig::BIAS_RELU:
     case GemmBackendConfig::BIAS_GELU:
+    case GemmBackendConfig::SILU:
+    case GemmBackendConfig::BIAS_SILU:
       return false;
     case GemmBackendConfig::GELU_AUX:
     case GemmBackendConfig::BIAS_GELU_AUX:
@@ -764,6 +768,8 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
       return se::gpu::BlasLt::Epilogue::kGELU;
     case GemmBackendConfig::GELU_AUX:
       return se::gpu::BlasLt::Epilogue::kGELUWithAux;
+    case GemmBackendConfig::SILU:
+      return se::gpu::BlasLt::Epilogue::kSILU;
     case GemmBackendConfig::BIAS:
       return se::gpu::BlasLt::Epilogue::kBias;
     case GemmBackendConfig::BIAS_RELU:
@@ -772,6 +778,8 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
       return se::gpu::BlasLt::Epilogue::kBiasThenGELU;
     case GemmBackendConfig::BIAS_GELU_AUX:
       return se::gpu::BlasLt::Epilogue::kBiasThenGELUWithAux;
+    case GemmBackendConfig::BIAS_SILU:
+      return se::gpu::BlasLt::Epilogue::kBiasThenSILU;
     default:
       return Internal("unexpected epilogue value");
   }

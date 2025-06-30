@@ -673,14 +673,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     if (Match(instr, pattern)) {
       if (!IsSupportedType(contraction->shape().element_type()))
         return absl::OkStatus();
-      // TODO(intel-tf): Remove the condition below when the fusion Contraction
-      // + Add(bias) + Add(e.g., residual) is enabled.
-      auto contraction_config = contraction->backend_config<BackendConfig>();
-      auto orig_fusion_config = GetFusionsConfig(&contraction_config);
-      if (!orig_fusion_config->ops().empty() &&
-          orig_fusion_config->ops(0) == OneDnnFusionConfig::BIAS) {
-        return absl::OkStatus();
-      }
+
       std::vector<HloInstruction*> new_operands;
       for (auto operand : contraction->operands()) {
         new_operands.push_back(operand);
@@ -938,7 +931,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       fusions_config->add_ops(OneDnnFusionConfig::LINEAR);
       // Casting to int32 because of issues in proto config for decimal types
       // handling.
-      fusions_config->set_alpha_typecast(
+      fusions_config->add_alpha_typecast(
           *(reinterpret_cast<int32_t*>(&constant_value.value())));
       TF_RETURN_IF_ERROR(custom_call->set_backend_config(*backend_config));
       HloInstruction* new_instr;

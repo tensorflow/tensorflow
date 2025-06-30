@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_value.h"
@@ -277,7 +278,7 @@ struct AllocationRequest {
   std::optional<int64_t> no_copy_chunk_inclusive_start_time;
   // Indicates if the AllocationRequest start time (definition time) has an
   // alternate memory color requirement.
-  bool require_start_colored_in_alternate_memmory = false;
+  bool require_start_colored_in_alternate_memory = false;
   // Indicates if the AllocationRequest end time (use time) has an alternate
   // memory color requirement.
   bool require_end_colored_in_alternate_memory = false;
@@ -287,6 +288,8 @@ struct AllocationRequest {
   // Indicates if the AllocationRequest end time (use time) has a default
   // memory color requirement.
   bool require_end_colored_in_default_memory = false;
+
+  std::string ToString() const;
 };
 
 // Result of an allocation, prefetch, eviction etc. request.  The result is

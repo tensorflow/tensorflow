@@ -32,8 +32,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"
-#include "third_party/gpus/cudnn/cudnn_version.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/numeric_options.h"
@@ -708,7 +706,9 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
     const dnn::MatmulTensorDescriptor& v_descriptor,
     const dnn::TensorDescriptor& o_descriptor,
     std::optional<dnn::TensorDescriptor> bias_descriptor,
-    std::optional<dnn::TensorDescriptor> stats_descriptor, double scale,
+    std::optional<dnn::TensorDescriptor> stats_descriptor,
+    std::optional<dnn::TensorDescriptor> page_table_k_descriptor,
+    std::optional<dnn::TensorDescriptor> page_table_v_descriptor, double scale,
     bool use_dropout, std::optional<double> dropout_rate,
     dnn::FMHAMaskKind mask_type, int sliding_window_length,
     int max_seg_per_batch);

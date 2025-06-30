@@ -195,18 +195,12 @@ class BestFitRepacker
     // full_buffer_interval_map_, with colocations fully specified.
     for (AllocationBlock* allocation_block : allocation_blocks_) {
       // Check if any of the colocations are already added to buffer_intervals_.
-      bool need_allocation = true;
       CHECK_NE(allocation_block->next_colocated, nullptr);
-      for (AllocationBlock* colocated = allocation_block->next_colocated;
-           colocated != allocation_block;
-           colocated = colocated->next_colocated) {
-        auto aliased_it = full_buffer_interval_map_.find(colocated);
-        if (aliased_it != full_buffer_interval_map_.end() &&
-            aliased_it->second.need_allocation) {
-          aliased_it->second.colocations.push_back(allocation_block);
-          need_allocation = false;
-          break;
-        }
+      if (full_buffer_interval_map_.contains(allocation_block)) {
+        VLOG(4) << "Skipping " << allocation_block->ToString()
+                << " because it was already added to full_buffer_interval_map_ "
+                   "while processing its colocations.";
+        continue;
       }
       full_buffer_interval_map_.insert(
           std::make_pair(allocation_block,
@@ -215,7 +209,20 @@ class BestFitRepacker
                                         allocation_block->inclusive_start_time,
                                         allocation_block->end_time,
                                         {},
-                                        need_allocation}));
+                                        /*need_allocation=*/true}));
+      for (AllocationBlock* colocated = allocation_block->next_colocated;
+           colocated != allocation_block;
+           colocated = colocated->next_colocated) {
+        full_buffer_interval_map_.insert(std::make_pair(
+            colocated, BufferInterval{colocated,
+                                      colocated->size,
+                                      colocated->inclusive_start_time,
+                                      colocated->end_time,
+                                      {},
+                                      /*need_allocation=*/false}));
+        full_buffer_interval_map_.at(allocation_block)
+            .colocations.push_back(colocated);
+      }
     }
 
     // Now that full_buffer_interval_map_ has full colocation specifications,

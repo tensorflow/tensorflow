@@ -1372,7 +1372,8 @@ void BatchResourceBase::RecordBatchDelayMetrics(
         total_scheduler_delay - batching_delay;
     request_cost->RecordMetrics(
         {{"batching_delay_msecs", absl::ToDoubleMilliseconds(batching_delay)},
-         {"queueing_delay_msecs", absl::ToDoubleMilliseconds(queueing_delay)}});
+         {"batch_queueing_delay_msecs",
+          absl::ToDoubleMilliseconds(queueing_delay)}});
   }
 }
 

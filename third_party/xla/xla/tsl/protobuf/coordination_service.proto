@@ -254,6 +254,10 @@ message GetAliveTasksResponse {
   // The set of alive tasks. This set is a (non-strict) subset of the tasks
   // provided in the GetAliveTasksRequest.
   repeated CoordinatedTask alive_tasks = 1;
+
+  // The incarnation ids of the alive tasks. incarnations[i] is the incarnation
+  // id of alive_tasks[i].
+  repeated fixed64 incarnations = 2;
 }
 
 // Request and response messages for  cancelling generic sync barriers.

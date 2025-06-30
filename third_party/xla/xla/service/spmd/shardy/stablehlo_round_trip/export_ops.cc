@@ -65,6 +65,7 @@ using ::mlir::sdy::AllToAllOp;
 using ::mlir::sdy::CollectivePermuteOp;
 using ::mlir::sdy::ConstantOp;
 using ::mlir::sdy::PropagationBarrierOp;
+using ::mlir::sdy::ReduceScatterOp;
 using ::mlir::sdy::ReshardOp;
 using ::mlir::sdy::ShardingConstraintOp;
 using ::mlir::sdy::TensorShardingAttr;
@@ -120,13 +121,14 @@ void rewriteCollectiveOp(mlir::Operation* op, mlir::Value input,
   mlir::sdy::setShardings(copyOp, sharding);
 }
 
-class ReshardPattern : public OpConversionPattern<ReshardOp> {
+template <class OpTy>
+class ShardingPattern : public OpConversionPattern<OpTy> {
  public:
-  using OpConversionPattern::OpConversionPattern;
+  using OpConversionPattern<OpTy>::OpConversionPattern;
 
  private:
   LogicalResult matchAndRewrite(
-      ReshardOp op, OpAdaptor adaptor,
+      OpTy op, typename OpTy::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
     rewriteCollectiveOp(op, adaptor.getInput(), adaptor.getSharding(),
                         rewriter);
@@ -162,17 +164,20 @@ class ExportOpsPass
     // Hence, we add ShardingConstraintOp as an illegal op.
     target.addIllegalOp<ConstantOp, ReshardOp, AllGatherOp, AllReduceOp,
                         AllSliceOp, AllToAllOp, CollectivePermuteOp,
-                        ShardingConstraintOp, PropagationBarrierOp>();
+                        ReduceScatterOp, ShardingConstraintOp,
+                        PropagationBarrierOp>();
     target.addLegalOp<stablehlo::ConstantOp, mhlo::CopyOp>();
     mlir::RewritePatternSet patterns(&context);
     // After converting `sdy.constant` into `stablehlo.constant`, the constants
     // should not be deduped via folding. Fortunately, folding only happens in
     // greedy pattern rewriters. ExportHloShardingsPass does a simple walk,
     // which keeps the constants as is.
-    patterns.add<ConstantPattern, AllReducePattern, ReshardPattern,
+    patterns.add<ConstantPattern, AllReducePattern, ShardingPattern<ReshardOp>,
+                 ShardingPattern<ShardingConstraintOp>,
                  PropagationBarrierPattern, CollectivePattern<AllGatherOp>,
                  CollectivePattern<AllSliceOp>, CollectivePattern<AllToAllOp>,
-                 CollectivePattern<CollectivePermuteOp>>(&context);
+                 CollectivePattern<CollectivePermuteOp>,
+                 CollectivePattern<ReduceScatterOp>>(&context);
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
                                                   std::move(patterns)))) {
       signalPassFailure();

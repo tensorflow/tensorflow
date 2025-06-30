@@ -19,6 +19,10 @@ cc_library(
     hdrs = ["signature_def_util.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+    features = select({
+        "//tensorflow:android": ["-layering_check"],
+        "//conditions:default": [],
+    }),
     deps = replace_with_portable_tf_lib_when_required([
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",

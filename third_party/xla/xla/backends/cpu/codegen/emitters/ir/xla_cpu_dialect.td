@@ -26,6 +26,10 @@ def XlaCpuDialect : Dialect {
     backend and runtime.
   }];
 
+  let dependentDialects = [
+    "xla::XlaDialect",
+  ];
+
   let cppNamespace = "::xla::cpu";
   let useDefaultTypePrinterParser = 1;
 }

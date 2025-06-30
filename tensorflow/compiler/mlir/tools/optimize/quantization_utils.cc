@@ -21,8 +21,10 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
-#include "tensorflow/compiler/mlir/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/compiler/mlir/lite/kernels/internal/runtime_shape.h"
+#include "absl/types/span.h"
+#include "tensorflow/compiler/mlir/tools/safe_cast.h"
+#include "xla/tsl/platform/status.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tflite_migration {
 namespace optimize {
@@ -52,8 +54,8 @@ std::vector<BiasType> SymmetricBiasQuantize(const float* data,
     float scaling_factor_inv =
         scales.size() == 1 ? scaling_factor_inv_per_layer
                            : ((scales[idx] == 0) ? 0 : 1.0 / scales[idx]);
-    const BiasType quantized_value = tflite_migration::SafeCast<BiasType>(
-        std::round(data[idx] * scaling_factor_inv));
+    const BiasType quantized_value =
+        tools::SafeCast<BiasType>(std::round(data[idx] * scaling_factor_inv));
     buffer[idx] = std::min(kScale, std::max(-kScale, quantized_value));
   }
   return buffer;
@@ -87,20 +89,29 @@ void SymmetricPerChannelQuantizeValues(const float* const input,
                                        const std::vector<int32_t>& dimension,
                                        int32_t channel_dim_index,
                                        std::vector<int8_t>* output_value) {
-  using mlir::RuntimeShape;
   // Quantize the values.
   int indices[kPerChannelMaxDim];
-  RuntimeShape unextended_tensor_dims(dimension.size(), dimension.data());
-  RuntimeShape tensor_dims =
-      RuntimeShape::ExtendedShape(kPerChannelMaxDim, unextended_tensor_dims);
-  channel_dim_index +=
-      kPerChannelMaxDim - unextended_tensor_dims.DimensionsCount();
-  for (indices[0] = 0; indices[0] < tensor_dims.Dims(0); indices[0]++) {
-    for (indices[1] = 0; indices[1] < tensor_dims.Dims(1); indices[1]++) {
-      for (indices[2] = 0; indices[2] < tensor_dims.Dims(2); indices[2]++) {
-        for (indices[3] = 0; indices[3] < tensor_dims.Dims(3); indices[3]++) {
+  tensorflow::TensorShape unextended_shape;
+  TF_CHECK_OK(tensorflow::TensorShapeUtils::MakeShape(absl::MakeSpan(dimension),
+                                                      &unextended_shape));
+  tensorflow::TensorShape shape;
+  for (int i = 0; i < kPerChannelMaxDim - unextended_shape.dims(); ++i) {
+    TF_CHECK_OK(shape.AddDimWithStatus(1));
+  }
+  TF_CHECK_OK(shape.AppendShapeWithStatus(unextended_shape));
+  channel_dim_index += kPerChannelMaxDim - unextended_shape.dims();
+
+  for (indices[0] = 0; indices[0] < shape.dim_size(0); indices[0]++) {
+    for (indices[1] = 0; indices[1] < shape.dim_size(1); indices[1]++) {
+      for (indices[2] = 0; indices[2] < shape.dim_size(2); indices[2]++) {
+        for (indices[3] = 0; indices[3] < shape.dim_size(3); indices[3]++) {
           int channel_idx = indices[channel_dim_index];
-          int index = Offset(tensor_dims, indices);
+          int index = 0;
+          int current_stride = 1;
+          for (int i = kPerChannelMaxDim - 1; i >= 0; --i) {
+            index += indices[i] * current_stride;
+            current_stride *= shape.dim_size(i);
+          }
           const float val = input[index];
           const int32_t quantized_value =
               static_cast<int32_t>(std::round(val * scales_inv[channel_idx]));

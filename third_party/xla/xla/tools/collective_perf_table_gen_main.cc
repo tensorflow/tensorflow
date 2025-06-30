@@ -106,6 +106,10 @@ std::vector<CollectivePerfTableGen::CollectiveType> ParseCollectives(
       types.push_back(CollectivePerfTableGen::CollectiveType::REDUCE_SCATTER);
       continue;
     }
+    if (token == "ALL_TO_ALL") {
+      types.push_back(CollectivePerfTableGen::CollectiveType::ALL_TO_ALL);
+      continue;
+    }
   }
   CHECK_GT(types.size(), 0);
   return types;
@@ -160,10 +164,12 @@ int main(int argc, char* argv[]) {
   int32_t num_nodes = 1;
   int32_t num_devices_per_host = 8;
   int32_t task_id = 0;
-  std::string collectives_unparsed = "ALL_REDUCE,ALL_GATHER,REDUCE_SCATTER";
+  std::string collectives_unparsed =
+      "ALL_REDUCE,ALL_GATHER,REDUCE_SCATTER,ALL_TO_ALL";
   std::string tensor_size_bytes_spec_unparsed =
       "start=1024,stop=2147483648,factor=2";
-  std::string collective_devices_spec_unparsed;
+  std::string collective_devices_spec_unparsed =
+      "[1,8]<=[8];[2,4]<=[8];[4,2]<=[8]";
   std::string coordinator_address = std::string(kDefaultCoordinatorAddress);
   std::string output = std::string(CollectivePerfTableGen::Config::kStdout);
   std::string merge_path;
@@ -179,7 +185,8 @@ int main(int argc, char* argv[]) {
                 "across the distributed system you run it on."),
       tsl::Flag("collectives", &collectives_unparsed,
                 "Comma separated list of collectives to generate perf table "
-                "for. Allowed values: ALL_REDUCE, ALL_GATHER, REDUCE_SCATTER."),
+                "for. Allowed values: ALL_REDUCE, ALL_GATHER, REDUCE_SCATTER, "
+                "ALL_TO_ALL."),
       tsl::Flag("tensor_size_bytes_spec", &tensor_size_bytes_spec_unparsed,
                 "Spec for a search sweep over transfer sizes. Format example: "
                 "start=1,stop=8,factor=2 generates {1,2,4,8}."),

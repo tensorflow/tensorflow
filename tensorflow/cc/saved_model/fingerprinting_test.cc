@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
@@ -63,9 +64,13 @@ TEST(FingerprintingTest, TestCreateFingerprint) {
   EXPECT_EQ(fingerprint_def.signature_def_hash(), 15570736222402453744U);
   EXPECT_EQ(fingerprint_def.saved_object_graph_hash(), 3678101440349108924U);
 
-  // The uuid is a random number, but it should be a number > 0.
-  uint64 uuid = 0;
-  EXPECT_TRUE(absl::SimpleAtoi(fingerprint_def.uuid(), &uuid));
+  // The uuid is a random number (as string), but it should be a number > 0.
+  absl::uint128 uuid = 0;
+  EXPECT_TRUE(absl::SimpleAtoi(fingerprint_def.uuid(), &uuid))
+      << "String to Uint128 conversion failed. "
+      << "UUID from proto, and Uint128Max(): \n"
+      << fingerprint_def.uuid() << "\n"
+      << absl::Uint128Max();
   EXPECT_GT(uuid, 0);
 
   // TODO(b/242348400): The checkpoint hash is non-deterministic, so we cannot

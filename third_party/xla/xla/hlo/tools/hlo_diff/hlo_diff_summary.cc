@@ -28,8 +28,8 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "boost/bimap.hpp"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -141,7 +141,6 @@ DiffFingerprint ComputationDiffFingerprint(
     const absl::flat_hash_set<const HloInstruction*>& changed_instructions,
     const absl::flat_hash_set<const HloInstruction*>& unmatched_instructions) {
   absl::flat_hash_map<const HloInstruction*, uint64_t> subgraph_fingerprint;
-  DiffFingerprint result;
   bool all_unchanged = true;
   for (auto* instruction : computation->MakeInstructionPostOrder()) {
     uint64_t fp = static_cast<uint64_t>(instruction->opcode());
@@ -155,6 +154,7 @@ DiffFingerprint ComputationDiffFingerprint(
     // TODO(b/394201811): Make sure no fingerprint collision.
     subgraph_fingerprint[instruction] = fp;
   }
+  DiffFingerprint result;
   result.all_unchanged = all_unchanged;
   result.diff_fingerprint =
       subgraph_fingerprint.at(computation->root_instruction());
@@ -186,15 +186,23 @@ FindConnectedComponents(
     absl::flat_hash_map<const HloComputation*, const ComputationSummary>
         computation_summary) {
   ConnectedComponentsFinder cc;
+  std::vector<std::vector<const HloComputation*>> unmatched_computations;
   absl::flat_hash_map<uint64_t, std::vector<ComputationGroup>> result;
   for (const auto& [computation, computation_match_info] :
        computation_summary) {
     if (computation_match_info.main_matched_computation != nullptr) {
       cc.AddEdge(computation, computation_match_info.main_matched_computation);
+    } else {
+      // main_matched_computation is nullptr means all instructions in the
+      // computation are unmatched.
+      unmatched_computations.push_back({computation});
     }
   }
   std::vector<std::vector<const HloComputation*>> connected_component_groups =
       cc.FindConnectedComponents();
+  connected_component_groups.insert(connected_component_groups.end(),
+                                    unmatched_computations.begin(),
+                                    unmatched_computations.end());
 
   for (const auto& component_group : connected_component_groups) {
     bool all_unchanged = true;
@@ -202,6 +210,7 @@ FindConnectedComponents(
       all_unchanged =
           all_unchanged && computation_summary.at(computation).all_unchanged;
     }
+    // Skip the component group if all computations are unchanged.
     if (all_unchanged) {
       continue;
     }
@@ -293,6 +302,39 @@ SummarizeAllComputationsInGraph(
   }
   return result;
 }
+
+// Logs the computation group.
+void LogComputationGroup(const ComputationGroup& computation_group) {
+  std::vector<std::string> computations_str(
+      computation_group.left_computations.size() +
+      computation_group.right_computations.size());
+  for (int i = 0; i < computation_group.left_computations.size(); ++i) {
+    computations_str[i] = absl::StrFormat(
+        "L: %s", computation_group.left_computations[i]->name());
+  }
+  for (int i = 0; i < computation_group.right_computations.size(); ++i) {
+    computations_str[i] = absl::StrFormat(
+        "R: %s", computation_group.right_computations[i]->name());
+  }
+  LOG(INFO) << absl::StrJoin(computations_str, ", ");
+}
+
+// Logs the computation diff pattern.
+void LogComputationDiffPattern(const ComputationDiffPattern& diff_pattern) {
+  LOG(INFO) << diff_pattern.computation_groups.size()
+            << " Repeated Diff Pattern Fingerprint: "
+            << diff_pattern.fingerprint;
+  int i = 0;
+  for (const auto& computation_group : diff_pattern.computation_groups) {
+    ++i;
+    LogComputationGroup(computation_group);
+    if (i >= 5) {
+      LOG(INFO) << "...";
+      break;
+    }
+  }
+}
+
 }  // namespace
 
 std::unique_ptr<const DiffSummary> ConstructDiffSummary(
@@ -330,34 +372,20 @@ std::unique_ptr<const DiffSummary> ConstructDiffSummary(
 
 void LogDiffSummary(const DiffSummary& diff_summary) {
   // Log the connected components repeated more than 3 times.
-  LOG(INFO) << "Find Repeated Diff Patterns: ";
-  for (const ComputationDiffPattern& diff_pattern :
-       diff_summary.computation_diff_patterns) {
-    if (diff_pattern.computation_groups.size() < 3) {
-      continue;
-    }
-    LOG(INFO) << diff_pattern.computation_groups.size()
-              << " Repeated Diff Pattern Fingerprint: "
-              << diff_pattern.fingerprint;
-    int i = 0;
-    for (const auto& computation_group : diff_pattern.computation_groups) {
-      ++i;
-      std::string computations_str;
-      for (const HloComputation* computation :
-           computation_group.left_computations) {
-        absl::StrAppend(&computations_str,
-                        absl::StrFormat("L: %s, ", computation->name()));
+  LOG(INFO) << "Diff Summary: ";
+
+  // Log the computation diff patterns.
+  if (diff_summary.computation_diff_patterns.empty()) {
+    LOG(INFO) << "No diff patterns found.";
+  } else {
+    LOG(INFO) << "Found Repeated Diff Patterns: ";
+    for (const ComputationDiffPattern& diff_pattern :
+         diff_summary.computation_diff_patterns) {
+      // Only log the patterns with at least 3 repeats.
+      if (diff_pattern.computation_groups.size() < 3) {
+        continue;
       }
-      for (const HloComputation* computation :
-           computation_group.right_computations) {
-        absl::StrAppend(&computations_str,
-                        absl::StrFormat("R: %s, ", computation->name()));
-      }
-      LOG(INFO) << computations_str;
-      if (i >= 5) {
-        LOG(INFO) << "...";
-        break;
-      }
+      LogComputationDiffPattern(diff_pattern);
     }
   }
 }

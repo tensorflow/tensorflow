@@ -63,6 +63,16 @@ tf_cc_shared_object(
 )
 
 cc_library(
+    name = "test_next_pluggable_device_plugin",
+    srcs = ["test_next_pluggable_device_plugin.cc"],
+    visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [
+        ":plugin_c_api_hdrs",
+        "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
     name = "outside_compilation_params",
     hdrs = ["outside_compilation_params.h"],
     visibility = ["//visibility:public"],

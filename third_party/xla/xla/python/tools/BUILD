@@ -38,6 +38,7 @@ pytype_strict_library(
     # Cannot build this on OSS because the ":xla_data_proto_py_pb2"
     # dependency isn't part of the public API.
     tags = ["no_oss"],
+    # TODO(dsuo): Should this be public given note above?
     visibility = ["//visibility:public"],
     deps = [
         ":_types",  # buildcleaner: keep

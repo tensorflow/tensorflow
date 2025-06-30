@@ -12,6 +12,10 @@ tf_custom_op_library(
         "multiplex_4_kernel.cc",
         "multiplex_4_op.cc",
     ],
+    deps = [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 py_strict_library(

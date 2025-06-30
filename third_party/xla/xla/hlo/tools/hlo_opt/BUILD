@@ -121,6 +121,7 @@ cc_library(
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/hlo/transforms/simplifiers:zero_sized_hlo_elimination",
         "//xla/service:buffer_value",
+        "//xla/service:dump",
         "//xla/service:float_support",
         "//xla/service:platform_util",
         "//xla/stream_executor/platform:initialize",

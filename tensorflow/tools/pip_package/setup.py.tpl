@@ -54,10 +54,6 @@ from setuptools.dist import Distribution
 # result for pip.
 _VERSION = '0.0.0'
 
-# Update this version when a new libtpu stable version is released.
-LATEST_RELEASE_LIBTPU_VERSION = '0.0.14'
-NEXT_LIBTPU_VERSION = '0.0.15'
-
 # We use the same setup.py for all tensorflow_* packages and for the nightly
 # equivalents (tf_nightly_*). The package is controlled from the argument line
 # when building the pip package.
@@ -91,7 +87,7 @@ REQUIRED_PACKAGES = [
     'libclang >= 13.0.0',
     'opt_einsum >= 2.3.2',
     'packaging',
-    'protobuf>=4.21.6',
+    'protobuf>=5.28.0',
     'requests >= 2.21.0, < 3',
     'setuptools',
     'six >= 1.12.0',
@@ -113,7 +109,7 @@ REQUIRED_PACKAGES = [
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
     'tb-nightly ~= 2.19.0.a',
     'keras-nightly >= 3.6.0.dev',
-    'numpy >= 1.26.0, < 2.2.0',
+    'numpy >= 1.26.0',
     'h5py >= 3.11.0',
     'ml_dtypes >= 0.5.1, < 1.0.0',
 ]
@@ -126,8 +122,6 @@ FAKE_REQUIRED_PACKAGES = [
     # different architectures having different requirements.
     # The entries here should be a simple duplicate of those in the collaborator
     # build section.
-    standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
-    _VERSION + ';platform_system=="Windows"',
 ]
 
 if platform.system() == 'Linux' and platform.machine() == 'x86_64':
@@ -151,18 +145,18 @@ if collaborator_build:
 EXTRA_PACKAGES = {
     'and-cuda': [
         # TODO(nluehr): set nvidia-* versions based on build components.
-        'nvidia-cublas-cu12 == 12.5.3.2',
-        'nvidia-cuda-cupti-cu12 == 12.5.82',
-        'nvidia-cuda-nvcc-cu12 == 12.5.82',
-        'nvidia-cuda-nvrtc-cu12 == 12.5.82',
-        'nvidia-cuda-runtime-cu12 == 12.5.82',
-        'nvidia-cudnn-cu12 == 9.3.0.75',
-        'nvidia-cufft-cu12 == 11.2.3.61',
-        'nvidia-curand-cu12 == 10.3.6.82',
-        'nvidia-cusolver-cu12 == 11.6.3.83',
-        'nvidia-cusparse-cu12 == 12.5.1.3',
-        'nvidia-nccl-cu12 == 2.25.1',
-        'nvidia-nvjitlink-cu12 == 12.5.82',
+        'nvidia-cublas-cu12 >= 12.5.3.2, < 13.0',
+        'nvidia-cuda-cupti-cu12 >= 12.5.82, < 13.0',
+        'nvidia-cuda-nvcc-cu12 >= 12.5.82, < 13.0',
+        'nvidia-cuda-nvrtc-cu12 >= 12.5.82, < 13.0',
+        'nvidia-cuda-runtime-cu12 >= 12.5.82, < 13.0',
+        'nvidia-cudnn-cu12 >= 9.3.0.75, < 10.0',
+        'nvidia-cufft-cu12 >= 11.2.3.61, < 12.0',
+        'nvidia-curand-cu12 >= 10.3.6.82, < 11.0',
+        'nvidia-cusolver-cu12 >= 11.6.3.83, < 12.0',
+        'nvidia-cusparse-cu12 >= 12.5.1.3, < 13.0',
+        'nvidia-nccl-cu12 >= 2.25.1, < 3.0',
+        'nvidia-nvjitlink-cu12 >= 12.5.82, < 13.0',
     ],
     'gcs-filesystem': [
         ('tensorflow-io-gcs-filesystem>=0.23.1; '
@@ -309,24 +303,8 @@ matches = []
 for path in so_lib_paths:
   matches.extend(['../' + x for x in find_files('*', path) if '.py' not in x])
 
-# If building a tpu package, LibTPU for Cloud TPU VM can be installed via:
-# $ pip install <tf-tpu project> -f \
-#  https://storage.googleapis.com/libtpu-releases/index.html
-# libtpu is built and uploaded to this link every night (PST).
 if '_tpu' in project_name:
-  # For tensorflow-tpu releases, use a set libtpu version;
-  # For tf-nightly-tpu, use the most recent libtpu-nightly. Because of the
-  # timing of these tests, the UTC date from eight hours ago is expected to be a
-  # valid version.
-  _libtpu_version = standard_or_nightly(
-      LATEST_RELEASE_LIBTPU_VERSION,
-      NEXT_LIBTPU_VERSION + '.dev'
-      + (
-          datetime.datetime.now(tz=datetime.timezone.utc)
-          - datetime.timedelta(hours=8)
-      ).strftime('%Y%m%d') + '+nightly',
-  )
-  REQUIRED_PACKAGES.append([f'libtpu=={_libtpu_version}'])
+  REQUIRED_PACKAGES.append([f'libtpu~=0.0.14'])
   CONSOLE_SCRIPTS.extend([
       'start_grpc_tpu_worker = tensorflow.python.tools.grpc_tpu_worker:run',
       ('start_grpc_tpu_service = '

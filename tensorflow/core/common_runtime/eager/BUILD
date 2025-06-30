@@ -125,6 +125,7 @@ tf_cuda_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "@local_xla//xla/tsl/util:env_var",
     ] + select({
         "//tensorflow:android": [

@@ -154,6 +154,7 @@ def generated_test_models():
         "slice",
         "softmax",
         "softplus",
+        "softsign",
         "space_to_batch_nd",
         "space_to_depth",
         "sparse_to_dense",

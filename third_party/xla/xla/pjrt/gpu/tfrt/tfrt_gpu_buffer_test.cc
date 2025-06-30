@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
-#include "xla/pjrt/gpu/tfrt/tracked_tfrt_gpu_device_buffer.h"
+#include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/shape.h"
@@ -49,24 +49,28 @@ using ::tsl::thread::ThreadPool;
 TEST(TfrtGpuBufferTest, CreateBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
 
+  TfrtGpuClient* tfrt_gpu_client =
+      tensorflow::down_cast<TfrtGpuClient*>(client.get());
   Shape on_device_shape = ShapeUtil::MakeShapeWithType<int32_t>({4, 4});
   TfrtGpuDevice* device =
       tensorflow::down_cast<TfrtGpuDevice*>(client->devices()[0]);
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
-      MaybeOwningGpuMemory::AllocateShared(device->allocator(), size_in_bytes));
+      GpuDeviceMemory::Allocate(tfrt_gpu_client->allocator(),
+                                device->local_device_id().value(),
+                                size_in_bytes));
   auto buffer_async_value_ref =
-      tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
+      tsl::MakeAvailableAsyncValueRef<GpuDeviceMemory>(
           std::move(device_buffer));
-  auto tracked_device_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
+  auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
       std::move(buffer_async_value_ref),
+      tsl::MakeAvailableAsyncValueRef<GpuEvent>(),
       tsl::MakeAvailableAsyncValueRef<GpuEvent>());
   auto memory_space = device->default_memory_space().value();
   auto buffer = std::make_unique<TfrtGpuBuffer>(
-      on_device_shape, std::move(tracked_device_buffer),
-      tensorflow::down_cast<TfrtGpuClient*>(client.get()), device,
-      memory_space);
+      on_device_shape, std::move(tracked_device_buffer), tfrt_gpu_client,
+      device, memory_space);
 
   EXPECT_EQ(buffer->on_device_shape(), on_device_shape);
   EXPECT_EQ(buffer->device(), device);
@@ -78,24 +82,27 @@ TEST(TfrtGpuBufferTest, CreateBuffer) {
 TEST(TfrtGpuBufferTest, AcquireExternalReference) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
 
+  TfrtGpuClient* tfrt_gpu_client =
+      tensorflow::down_cast<TfrtGpuClient*>(client.get());
   Shape on_device_shape = ShapeUtil::MakeShapeWithType<int32_t>({4, 4});
   TfrtGpuDevice* device =
       tensorflow::down_cast<TfrtGpuDevice*>(client->devices()[0]);
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
-      MaybeOwningGpuMemory::AllocateShared(device->allocator(), size_in_bytes));
+      GpuDeviceMemory::Allocate(tfrt_gpu_client->allocator(),
+                                device->local_device_id().value(),
+                                size_in_bytes));
   auto buffer_async_value_ref =
-      tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
+      tsl::MakeAvailableAsyncValueRef<GpuDeviceMemory>(
           std::move(device_buffer));
   auto definition_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
-  auto tracked_device_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
-      std::move(buffer_async_value_ref), definition_event);
+  auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
+      std::move(buffer_async_value_ref), definition_event, definition_event);
   auto memory_space = device->default_memory_space().value();
   auto buffer = std::make_unique<TfrtGpuBuffer>(
-      on_device_shape, std::move(tracked_device_buffer),
-      tensorflow::down_cast<TfrtGpuClient*>(client.get()), device,
-      memory_space);
+      on_device_shape, std::move(tracked_device_buffer), tfrt_gpu_client,
+      device, memory_space);
 
   ThreadPool thread_pool(tsl::Env::Default(), "gpu_buffer_test",
                          /*num_threads=*/4);
@@ -122,34 +129,36 @@ TEST(TfrtGpuBufferTest, AcquireExternalReference) {
 TEST(TfrtGpuBufferTest, ReleaseDeviceMemoryOwnershipNoWait) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
 
+  TfrtGpuClient* tfrt_gpu_client =
+      tensorflow::down_cast<TfrtGpuClient*>(client.get());
   Shape on_device_shape = ShapeUtil::MakeShapeWithType<int32_t>({4, 4});
   TfrtGpuDevice* device =
       tensorflow::down_cast<TfrtGpuDevice*>(client->devices()[0]);
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
-      MaybeOwningGpuMemory::AllocateShared(device->allocator(), size_in_bytes));
+      GpuDeviceMemory::Allocate(tfrt_gpu_client->allocator(),
+                                device->local_device_id().value(),
+                                size_in_bytes));
   void* device_memory_opaque = device_buffer.buffer().opaque();
   auto buffer_async_value_ref =
-      tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
+      tsl::MakeAvailableAsyncValueRef<GpuDeviceMemory>(
           std::move(device_buffer));
 
   auto definition_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
-  auto tracked_device_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
-      std::move(buffer_async_value_ref), definition_event);
+  bool destructed = false;
+  auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
+      std::move(buffer_async_value_ref), definition_event, definition_event,
+      [&] { destructed = true; });
 
   auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   std::array usage_events{usage_event.CopyRef()};
   tracked_device_buffer->AddUsageEvents(absl::MakeSpan(usage_events));
 
-  bool destructed = false;
-  tracked_device_buffer->deallocation_event().AndThen(
-      [&] { destructed = true; });
   auto memory_space = device->default_memory_space().value();
   auto buffer = std::make_unique<TfrtGpuBuffer>(
-      on_device_shape, std::move(tracked_device_buffer),
-      tensorflow::down_cast<TfrtGpuClient*>(client.get()), device,
-      memory_space);
+      on_device_shape, std::move(tracked_device_buffer), tfrt_gpu_client,
+      device, memory_space);
 
   // Release and don't wait for definition or usage events to complete.
   auto ref_status = buffer->ReleaseDeviceMemoryOwnership(
@@ -168,34 +177,36 @@ TEST(TfrtGpuBufferTest, ReleaseDeviceMemoryOwnershipNoWait) {
 TEST(TfrtGpuBufferTest, ReleaseDeviceMemoryOwnershipWait) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
 
+  TfrtGpuClient* tfrt_gpu_client =
+      tensorflow::down_cast<TfrtGpuClient*>(client.get());
   Shape on_device_shape = ShapeUtil::MakeShapeWithType<int32_t>({4, 4});
   TfrtGpuDevice* device =
       tensorflow::down_cast<TfrtGpuDevice*>(client->devices()[0]);
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
-      MaybeOwningGpuMemory::AllocateShared(device->allocator(), size_in_bytes));
+      GpuDeviceMemory::Allocate(tfrt_gpu_client->allocator(),
+                                device->local_device_id().value(),
+                                size_in_bytes));
   void* device_memory_opaque = device_buffer.buffer().opaque();
   auto buffer_async_value_ref =
-      tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
+      tsl::MakeAvailableAsyncValueRef<GpuDeviceMemory>(
           std::move(device_buffer));
 
   auto definition_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
-  auto tracked_device_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
-      std::move(buffer_async_value_ref), definition_event);
+  bool destructed = false;
+  auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
+      std::move(buffer_async_value_ref), definition_event, definition_event,
+      [&] { destructed = true; });
 
   auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   std::array usage_events{usage_event.CopyRef()};
   tracked_device_buffer->AddUsageEvents(absl::MakeSpan(usage_events));
 
-  bool destructed = false;
-  tracked_device_buffer->deallocation_event().AndThen(
-      [&] { destructed = true; });
   auto memory_space = device->default_memory_space().value();
   auto buffer = std::make_unique<TfrtGpuBuffer>(
-      on_device_shape, std::move(tracked_device_buffer),
-      tensorflow::down_cast<TfrtGpuClient*>(client.get()), device,
-      memory_space);
+      on_device_shape, std::move(tracked_device_buffer), tfrt_gpu_client,
+      device, memory_space);
 
   ThreadPool thread_pool(tsl::Env::Default(), "gpu_buffer_test",
                          /*num_threads=*/4);
@@ -235,33 +246,35 @@ TEST(TfrtGpuBufferTest, ReleaseDeviceMemoryOwnershipWait) {
 TEST(TfrtGpuBufferTest, Delete) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
 
+  TfrtGpuClient* tfrt_gpu_client =
+      tensorflow::down_cast<TfrtGpuClient*>(client.get());
   Shape on_device_shape = ShapeUtil::MakeShapeWithType<int32_t>({4, 4});
   TfrtGpuDevice* device =
       tensorflow::down_cast<TfrtGpuDevice*>(client->devices()[0]);
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
-      MaybeOwningGpuMemory::AllocateShared(device->allocator(), size_in_bytes));
+      GpuDeviceMemory::Allocate(tfrt_gpu_client->allocator(),
+                                device->local_device_id().value(),
+                                size_in_bytes));
   auto buffer_async_value_ref =
-      tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
+      tsl::MakeAvailableAsyncValueRef<GpuDeviceMemory>(
           std::move(device_buffer));
 
   auto definition_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
-  auto tracked_device_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
-      std::move(buffer_async_value_ref), definition_event);
+  bool destructed = false;
+  auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
+      std::move(buffer_async_value_ref), definition_event, definition_event,
+      [&] { destructed = true; });
 
   auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   std::array usage_events{usage_event.CopyRef()};
   tracked_device_buffer->AddUsageEvents(absl::MakeSpan(usage_events));
 
-  bool destructed = false;
-  tracked_device_buffer->deallocation_event().AndThen(
-      [&] { destructed = true; });
   auto memory_space = device->default_memory_space().value();
   auto buffer = std::make_unique<TfrtGpuBuffer>(
-      on_device_shape, std::move(tracked_device_buffer),
-      tensorflow::down_cast<TfrtGpuClient*>(client.get()), device,
-      memory_space);
+      on_device_shape, std::move(tracked_device_buffer), tfrt_gpu_client,
+      device, memory_space);
 
   // Delete the buffer. The underlying device memory should not be freed until
   // the usage event is triggered.

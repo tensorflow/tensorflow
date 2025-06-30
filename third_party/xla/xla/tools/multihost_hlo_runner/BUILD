@@ -133,10 +133,22 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_input_output_format",
+    srcs = ["hlo_input_output_format.cc"],
+    hdrs = ["hlo_input_output_format.h"],
+    visibility = ["//devtools/ml/mlcompass:__subpackages__"],
+    deps = [
+        "//xla/tsl/util:fixed_option_set_flag",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "functional_hlo_runner",
     srcs = ["functional_hlo_runner.cc"],
     hdrs = ["functional_hlo_runner.h"],
     deps = [
+        ":hlo_input_output_format",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_layout",
@@ -185,6 +197,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:FuncExtensions",
         "@local_tsl//tsl/platform:protobuf",

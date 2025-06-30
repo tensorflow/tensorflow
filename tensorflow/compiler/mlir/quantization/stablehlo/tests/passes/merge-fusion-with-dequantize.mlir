@@ -1,4 +1,4 @@
-// RUN: stablehlo-quant-opt %s -stablehlo-merge-fusion-with-dequantize -split-input-file -verify-diagnostics | FileCheck %s
+// RUN: stablehlo-quant-opt %s -tf-stablehlo-merge-fusion-with-dequantize -split-input-file -verify-diagnostics | FileCheck %s
 
 // Merge fusion with dequantize for relu case.
 

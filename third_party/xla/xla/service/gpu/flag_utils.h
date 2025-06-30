@@ -43,9 +43,9 @@ bool IsPassEnabledAtOptimizationEffort(const HloModule& module) {
   if (is_collective_optimization_pass) {
     ExecutionOptions::EffortLevel opt_level =
         module.config().optimization_level();
-    return (opt_level == ExecutionOptions::EFFORT_O1) ||
-           (opt_level == ExecutionOptions::EFFORT_UNKNOWN &&
-            exec_effort >= kExtraCollectiveOptimizations);
+
+    return exec_effort >= kExtraCollectiveOptimizations ||
+           opt_level >= ExecutionOptions::EFFORT_O1;
   }
 
   return true;

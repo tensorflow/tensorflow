@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/debug_options_flags.h"
 #include "xla/parse_flags_from_env.h"
+#include "xla/service/dump.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -103,7 +104,7 @@ TEST(FuelTest, FuelPassCountsAreSeparate) {
   int* pargc;
   std::vector<char*>* pargv;
   ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
-  ParseDebugOptionFlagsFromEnv();
+  ParseDebugOptionFlagsFromEnv(false);
 
   EXPECT_TRUE(ConsumeFuel("ABC"));
   EXPECT_FALSE(ConsumeFuel("ABC"));
@@ -120,12 +121,205 @@ TEST(FuelTest,
   int* pargc;
   std::vector<char*>* pargv;
   ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
-  ParseDebugOptionFlagsFromEnv();
+  ParseDebugOptionFlagsFromEnv(true);
   EXPECT_FALSE(PassFuelIsSet("ABC"));
   EXPECT_TRUE(PassFuelIsSet("MNO"));
   EXPECT_FALSE(PassFuelIsSet("PQR"));
   EXPECT_TRUE(PassFuelIsSet("XYZ"));
 }
+
+std::string WriteDebugOptionsToTempFile(const DebugOptions& debug_options,
+                                        std::string* contents) {
+  *contents = GetNonDefaultDebugOptions(debug_options);
+  tsl::Env* env = tsl::Env::Default();
+  std::string fname;
+  EXPECT_TRUE(env->LocalTempFilename(&fname));
+  EXPECT_TRUE(
+      tsl::WriteStringToFile(tsl::Env::Default(), fname, *contents).ok());
+  return fname;
+}
+
+TEST(ParsingDebugOptionsTest, FailedParsing) {
+  tsl::Env* env = tsl::Env::Default();
+  std::string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
+  // The debug options file does not exist.
+  EXPECT_FALSE(ParseFlagsFromDebugOptionsFile(fname));
+}
+
+TEST(ParsingDebugOptionsTest, ParsingRepeatedFields) {
+  // Using the flag xla_gpu_disable_async_collectives
+  // Sanity checks: default value: empty
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  EXPECT_TRUE(debug_options.xla_gpu_disable_async_collectives().empty());
+  debug_options.add_xla_gpu_disable_async_collectives(DebugOptions::ALLGATHER);
+  debug_options.add_xla_gpu_disable_async_collectives(
+      DebugOptions::REDUCESCATTER);
+
+  ResetFlagValues();
+  std::string contents;
+  ASSERT_TRUE(ParseFlagsFromDebugOptionsFile(
+      WriteDebugOptionsToTempFile(debug_options, &contents)));
+  DebugOptions parsed_debug_options = GetDebugOptionsFromFlags();
+  EXPECT_TRUE(absl::StrContains(
+      contents, "xla_gpu_disable_async_collectives: ALLGATHER"));
+  EXPECT_TRUE(absl::StrContains(
+      contents, "xla_gpu_disable_async_collectives: REDUCESCATTER"));
+  EXPECT_EQ(parsed_debug_options.xla_gpu_disable_async_collectives_size(), 2);
+  EXPECT_EQ(parsed_debug_options.xla_gpu_disable_async_collectives(0),
+            DebugOptions::ALLGATHER);
+  EXPECT_EQ(parsed_debug_options.xla_gpu_disable_async_collectives(1),
+            DebugOptions::REDUCESCATTER);
+
+  // We are not resetting the flags here, because we want to ensure that
+  // [ALLGATHER, REDUCESCATTER] gets overwritted to [ALLTOALL] and not simply
+  // appended.
+  debug_options.clear_xla_gpu_disable_async_collectives();
+  debug_options.add_xla_gpu_disable_async_collectives(DebugOptions::ALLTOALL);
+  ASSERT_TRUE(ParseFlagsFromDebugOptionsFile(
+      WriteDebugOptionsToTempFile(debug_options, &contents)));
+  parsed_debug_options = GetDebugOptionsFromFlags();
+  EXPECT_TRUE(absl::StrContains(contents,
+                                "xla_gpu_disable_async_collectives: ALLTOALL"));
+  EXPECT_FALSE(absl::StrContains(
+      contents, "xla_gpu_disable_async_collectives: ALLGATHER"));
+  EXPECT_FALSE(absl::StrContains(
+      contents, "xla_gpu_disable_async_collectives: REDUCESCATTER"));
+  EXPECT_EQ(parsed_debug_options.xla_gpu_disable_async_collectives_size(), 1);
+  EXPECT_EQ(parsed_debug_options.xla_gpu_disable_async_collectives(0),
+            DebugOptions::ALLTOALL);
+}
+
+TEST(ParsingDebugOptionsTest, ParseFromDebugOptionsFile) {
+  // Sanity checks: The test needs to use two flags that have false and true
+  // default values.
+  // Default value of xla_hlo_pass_fix_detect_cycles is false.
+  // Default value of xla_dump_hlo_as_long_text is true.
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  EXPECT_TRUE(debug_options.xla_dump_hlo_as_long_text());
+  EXPECT_FALSE(debug_options.xla_hlo_pass_fix_detect_cycles());
+
+  // default value (should not be in debug_options file).
+  debug_options.set_xla_dump_hlo_as_long_text(true);
+  // non-default value (should be in debug_options file).
+  debug_options.set_xla_hlo_pass_fix_detect_cycles(true);
+  std::string contents;
+  auto temp_file = WriteDebugOptionsToTempFile(debug_options, &contents);
+  ResetFlagValues();
+  ASSERT_TRUE(ParseFlagsFromDebugOptionsFile(temp_file));
+  auto parsed_debug_options = GetDebugOptionsFromFlags();
+  EXPECT_TRUE(absl::StrContains(contents, "xla_hlo_pass_fix_detect_cycles"));
+  EXPECT_FALSE(absl::StrContains(contents, "xla_dump_hlo_as_long_text"));
+  EXPECT_TRUE(parsed_debug_options.xla_hlo_pass_fix_detect_cycles());
+  EXPECT_TRUE(parsed_debug_options.xla_dump_hlo_as_long_text());
+
+  // non-default value (should be in debug_options file).
+  debug_options.set_xla_dump_hlo_as_long_text(false);
+  // default value (should not be in debug_options file).
+  debug_options.set_xla_hlo_pass_fix_detect_cycles(false);
+  contents.clear();
+  temp_file = WriteDebugOptionsToTempFile(debug_options, &contents);
+  ResetFlagValues();
+  ASSERT_TRUE(ParseFlagsFromDebugOptionsFile(temp_file));
+  parsed_debug_options = GetDebugOptionsFromFlags();
+  EXPECT_TRUE(absl::StrContains(contents, "xla_dump_hlo_as_long_text"));
+  EXPECT_FALSE(absl::StrContains(contents, "xla_hlo_pass_fix_detect_cycles"));
+  EXPECT_FALSE(parsed_debug_options.xla_hlo_pass_fix_detect_cycles());
+  EXPECT_FALSE(parsed_debug_options.xla_dump_hlo_as_long_text());
+
+  // default value (should not be in debug_options file).
+  debug_options.set_xla_dump_hlo_as_long_text(true);
+  // default value (should not be in debug_options file).
+  debug_options.set_xla_hlo_pass_fix_detect_cycles(false);
+  contents.clear();
+  temp_file = WriteDebugOptionsToTempFile(debug_options, &contents);
+  ResetFlagValues();
+  ASSERT_TRUE(ParseFlagsFromDebugOptionsFile(temp_file));
+  parsed_debug_options = GetDebugOptionsFromFlags();
+  EXPECT_FALSE(absl::StrContains(contents, "xla_dump_hlo_as_long_text"));
+  EXPECT_FALSE(absl::StrContains(contents, "xla_hlo_pass_fix_detect_cycles"));
+  EXPECT_FALSE(parsed_debug_options.xla_hlo_pass_fix_detect_cycles());
+  EXPECT_TRUE(parsed_debug_options.xla_dump_hlo_as_long_text());
+
+  // non-default value. (should be in debug_options file).
+  debug_options.set_xla_dump_hlo_as_long_text(false);
+  // non-default value. (should be in debug_options file).
+  debug_options.set_xla_hlo_pass_fix_detect_cycles(true);
+  contents.clear();
+  temp_file = WriteDebugOptionsToTempFile(debug_options, &contents);
+  ResetFlagValues();
+  ASSERT_TRUE(ParseFlagsFromDebugOptionsFile(temp_file));
+  parsed_debug_options = GetDebugOptionsFromFlags();
+  EXPECT_TRUE(absl::StrContains(contents, "xla_dump_hlo_as_long_text"));
+  EXPECT_TRUE(absl::StrContains(contents, "xla_hlo_pass_fix_detect_cycles"));
+  EXPECT_FALSE(parsed_debug_options.xla_dump_hlo_as_long_text());
+  EXPECT_TRUE(parsed_debug_options.xla_hlo_pass_fix_detect_cycles());
+}
+
+TEST(ParsingDebugOptionsTest, EnvOverwritesDebugOptionsFile) {
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  debug_options.set_xla_dump_to("/path/from/debug/options/file");
+  debug_options.set_xla_gpu_target_config_filename(
+      "/gpu/target/config/from/debug/options/file");
+  std::string contents;
+  std::string debug_options_file =
+      WriteDebugOptionsToTempFile(debug_options, &contents);
+  EXPECT_TRUE(absl::StrContains(
+      contents, "xla_dump_to: \"/path/from/debug/options/file\""));
+  EXPECT_TRUE(
+      absl::StrContains(contents,
+                        "xla_gpu_target_config_filename: "
+                        "\"/gpu/target/config/from/debug/options/file\""));
+
+  ResetFlagValues();
+  tsl::setenv("XLA_FLAGS",
+              "--xla_dump_to=/path/from/env/var "
+              "--xla_gpu_per_fusion_autotune_cache_dir=/path/to/autotune/cache/"
+              "dir/from/env",
+              /*overwrite=*/true);
+  int* pargc;
+  std::vector<char*>* pargv;
+  ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+
+  // This is a proxy for the allocate call in run_hlo_module, which parses the
+  // options from env.
+  ParseDebugOptionFlagsFromEnv(false);
+
+  ASSERT_TRUE(ParseFlagsFromDebugOptionsFile(debug_options_file));
+  DebugOptions parsed_debug_options = GetDebugOptionsFromFlags();
+  EXPECT_EQ(parsed_debug_options.xla_dump_to(),
+            "/path/from/debug/options/file");
+  EXPECT_EQ(parsed_debug_options.xla_gpu_target_config_filename(),
+            "/gpu/target/config/from/debug/options/file");
+
+  // This is a proxy for the second parsing from env var after parsing from the
+  // file.
+  ParseDebugOptionFlagsFromEnv(true);
+  parsed_debug_options = GetDebugOptionsFromFlags();
+  EXPECT_EQ(parsed_debug_options.xla_dump_to(), "/path/from/env/var");
+  EXPECT_EQ(parsed_debug_options.xla_gpu_target_config_filename(),
+            "/gpu/target/config/from/debug/options/file");
+  EXPECT_EQ(parsed_debug_options.xla_gpu_per_fusion_autotune_cache_dir(),
+            "/path/to/autotune/cache/dir/from/env");
+  std::vector<tsl::Flag> flag_list;
+  xla::AppendDebugOptionsFlags(&flag_list);
+  std::vector<std::string> flag_list_str = {
+      "--xla_dump_to=/path/from/command/line/flags",
+      "--xla_gpu_experimental_collective_perf_table_path=/path/to/collective/"
+      "perf/table/from/command/line/flags"};
+  tsl::Flags::Parse(flag_list_str, flag_list);
+  parsed_debug_options = GetDebugOptionsFromFlags();
+  EXPECT_EQ(parsed_debug_options.xla_dump_to(),
+            "/path/from/command/line/flags");
+  EXPECT_EQ(parsed_debug_options.xla_gpu_target_config_filename(),
+            "/gpu/target/config/from/debug/options/file");
+  EXPECT_EQ(parsed_debug_options.xla_gpu_per_fusion_autotune_cache_dir(),
+            "/path/to/autotune/cache/dir/from/env");
+  EXPECT_EQ(
+      parsed_debug_options.xla_gpu_experimental_collective_perf_table_path(),
+      "/path/to/collective/perf/table/from/command/line/flags");
+}
+
 }  // namespace
 }  // namespace xla
 

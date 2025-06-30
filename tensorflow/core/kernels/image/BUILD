@@ -213,7 +213,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "draw_bounding_box_op",
     prefix = "draw_bounding_box_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["@com_google_absl//absl/log"],
 )
 
 tf_kernel_library(
@@ -454,6 +454,7 @@ cc_library(
     name = "android_tensorflow_image_op",
     srcs = if_android(["decode_image_op.cc"]),
     copts = tf_copts(),
+    features = if_android(["-layering_check"]),
     linkopts = ["-ldl"],
     visibility = ["//visibility:public"],
     deps = [

@@ -39,15 +39,15 @@ TEST(DynamicallyQuantizedConv2D, 3x3) {
   auto rng = std::mt19937(random_device());
   auto batch_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
+  auto output_rng =
       std::bind(std::uniform_int_distribution<int32_t>(5, 25), std::ref(rng));
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
   DynamicallyQuantizedConv2DTester()
       .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
       .KernelHeight(3)
@@ -69,15 +69,15 @@ TEST(DynamicallyQuantizedConv2D, 3x3Stride2) {
   auto rng = std::mt19937(random_device());
   auto batch_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
+  auto output_rng =
       std::bind(std::uniform_int_distribution<int32_t>(5, 25), std::ref(rng));
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
   DynamicallyQuantizedConv2DTester()
       .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
       .KernelHeight(3)
@@ -101,7 +101,7 @@ TEST(DynamicallyQuantizedConv2D, Grouped) {
   auto rng = std::mt19937(random_device());
   auto batch_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
+  auto output_rng =
       std::bind(std::uniform_int_distribution<int32_t>(5, 25), std::ref(rng));
   auto channel_per_group_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
@@ -111,8 +111,8 @@ TEST(DynamicallyQuantizedConv2D, Grouped) {
   auto groups = groups_rng();
   DynamicallyQuantizedConv2DTester()
       .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
       .InputChannels(groups * channel_per_group_rng())
       .OutputChannels(groups * channel_per_group_rng())
       .Groups(groups)
@@ -135,8 +135,8 @@ TEST(DynamicallyQuantizedConv2D, SmallKernelWithSamePadding) {
   auto rng = std::mt19937(random_device());
   auto batch_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 15), std::ref(rng));
   auto kernel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 7), std::ref(rng));
   auto channel_rng =
@@ -144,8 +144,8 @@ TEST(DynamicallyQuantizedConv2D, SmallKernelWithSamePadding) {
 
   DynamicallyQuantizedConv2DTester()
       .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
       .KernelHeight(kernel_rng())
@@ -167,8 +167,8 @@ TEST(DynamicallyQuantizedConv2D, SmallKernelWithValidPadding) {
   auto rng = std::mt19937(random_device());
   auto batch_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 15), std::ref(rng));
   auto kernel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 7), std::ref(rng));
   auto channel_rng =
@@ -176,8 +176,8 @@ TEST(DynamicallyQuantizedConv2D, SmallKernelWithValidPadding) {
 
   DynamicallyQuantizedConv2DTester()
       .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
       .KernelHeight(kernel_rng())
@@ -198,8 +198,8 @@ TEST(DynamicallyQuantizedConv2D, StrideWithSamePadding) {
   auto rng = std::mt19937(random_device());
   auto batch_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 15), std::ref(rng));
   auto kernel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
   auto stride_rng =
@@ -209,8 +209,8 @@ TEST(DynamicallyQuantizedConv2D, StrideWithSamePadding) {
 
   DynamicallyQuantizedConv2DTester()
       .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
       .KernelHeight(kernel_rng())
@@ -234,8 +234,8 @@ TEST(DynamicallyQuantizedConv2D, StrideWithValidPadding) {
   auto rng = std::mt19937(random_device());
   auto batch_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 15), std::ref(rng));
   auto kernel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
   auto stride_rng =
@@ -245,8 +245,8 @@ TEST(DynamicallyQuantizedConv2D, StrideWithValidPadding) {
 
   DynamicallyQuantizedConv2DTester()
       .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
       .KernelHeight(kernel_rng())
@@ -270,8 +270,8 @@ TEST(DynamicallyQuantizedConv2D, DilationWithSamePadding) {
   auto rng = std::mt19937(random_device());
   auto batch_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 15), std::ref(rng));
   auto kernel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 3), std::ref(rng));
   auto dilation_rng =
@@ -281,8 +281,8 @@ TEST(DynamicallyQuantizedConv2D, DilationWithSamePadding) {
 
   DynamicallyQuantizedConv2DTester()
       .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
       .KernelHeight(kernel_rng())
@@ -306,8 +306,8 @@ TEST(DynamicallyQuantizedConv2D, DilationWithValidPadding) {
   auto rng = std::mt19937(random_device());
   auto batch_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 15), std::ref(rng));
   auto kernel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 3), std::ref(rng));
   auto dilation_rng =
@@ -317,8 +317,8 @@ TEST(DynamicallyQuantizedConv2D, DilationWithValidPadding) {
 
   DynamicallyQuantizedConv2DTester()
       .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
       .KernelHeight(kernel_rng())
@@ -342,8 +342,8 @@ TEST(DynamicallyQuantizedConv2D, TensorWiseQuantizedInt8Weights) {
   auto rng = std::mt19937(random_device());
   auto batch_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 15), std::ref(rng));
   auto kernel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
   auto stride_rng =
@@ -353,8 +353,8 @@ TEST(DynamicallyQuantizedConv2D, TensorWiseQuantizedInt8Weights) {
 
   DynamicallyQuantizedConv2DTester()
       .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
       .KernelHeight(kernel_rng())
@@ -377,8 +377,8 @@ TEST(DynamicallyQuantizedConv2D, ChannelWiseQuantizedInt8Weights) {
   auto rng = std::mt19937(random_device());
   auto batch_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 15), std::ref(rng));
   auto kernel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
   auto stride_rng =
@@ -388,8 +388,8 @@ TEST(DynamicallyQuantizedConv2D, ChannelWiseQuantizedInt8Weights) {
 
   DynamicallyQuantizedConv2DTester()
       .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
       .KernelHeight(kernel_rng())
@@ -412,8 +412,8 @@ TEST(DynamicallyQuantizedConv2D, ReluActivation) {
   auto rng = std::mt19937(random_device());
   auto batch_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 15), std::ref(rng));
   auto kernel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
   auto stride_rng =
@@ -423,8 +423,8 @@ TEST(DynamicallyQuantizedConv2D, ReluActivation) {
 
   DynamicallyQuantizedConv2DTester()
       .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
       .KernelHeight(kernel_rng())
@@ -448,8 +448,8 @@ TEST(DynamicallyQuantizedConv2D, Relu6Activation) {
   auto rng = std::mt19937(random_device());
   auto batch_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 15), std::ref(rng));
   auto kernel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
   auto stride_rng =
@@ -459,8 +459,8 @@ TEST(DynamicallyQuantizedConv2D, Relu6Activation) {
 
   DynamicallyQuantizedConv2DTester()
       .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
       .KernelHeight(kernel_rng())
@@ -484,8 +484,8 @@ TEST(DynamicallyQuantizedConv2D, ReluMinus1To1Activation) {
   auto rng = std::mt19937(random_device());
   auto batch_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 15), std::ref(rng));
   auto kernel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
   auto stride_rng =
@@ -495,8 +495,8 @@ TEST(DynamicallyQuantizedConv2D, ReluMinus1To1Activation) {
 
   DynamicallyQuantizedConv2DTester()
       .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
       .KernelHeight(kernel_rng())
@@ -520,8 +520,8 @@ TEST(DynamicallyQuantizedConv2D, TanhActivation) {
   auto rng = std::mt19937(random_device());
   auto batch_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 15), std::ref(rng));
   auto kernel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
   auto stride_rng =
@@ -531,8 +531,8 @@ TEST(DynamicallyQuantizedConv2D, TanhActivation) {
 
   DynamicallyQuantizedConv2DTester()
       .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
       .KernelHeight(kernel_rng())
@@ -556,8 +556,8 @@ TEST(DynamicallyQuantizedConv2D, SignBitActivation) {
   auto rng = std::mt19937(random_device());
   auto batch_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 15), std::ref(rng));
   auto kernel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
   auto stride_rng =
@@ -567,8 +567,8 @@ TEST(DynamicallyQuantizedConv2D, SignBitActivation) {
 
   DynamicallyQuantizedConv2DTester()
       .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
       .KernelHeight(kernel_rng())
@@ -593,8 +593,8 @@ TEST(DynamicallyQuantizedConv2D, MultiThreading) {
   auto rng = std::mt19937(random_device());
   auto batch_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 15), std::ref(rng));
   auto kernel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
   auto stride_rng =
@@ -604,8 +604,8 @@ TEST(DynamicallyQuantizedConv2D, MultiThreading) {
 
   DynamicallyQuantizedConv2DTester()
       .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
       .KernelHeight(kernel_rng())
@@ -633,8 +633,8 @@ TEST(DynamicallyQuantizedConv2D, WeightsCache) {
   auto rng = std::mt19937(random_device());
   auto batch_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto output_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 15), std::ref(rng));
   auto kernel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
   auto stride_rng =
@@ -644,8 +644,8 @@ TEST(DynamicallyQuantizedConv2D, WeightsCache) {
 
   DynamicallyQuantizedConv2DTester()
       .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
       .KernelHeight(kernel_rng())
@@ -671,7 +671,7 @@ TEST(DynamicallyQuantizedConv2D, TransientIndirectionBuffer) {
   auto rng = std::mt19937(random_device());
   auto batch_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
+  auto output_rng =
       std::bind(std::uniform_int_distribution<int32_t>(5, 25), std::ref(rng));
   auto kernel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
@@ -682,8 +682,8 @@ TEST(DynamicallyQuantizedConv2D, TransientIndirectionBuffer) {
 
   DynamicallyQuantizedConv2DTester()
       .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
+      .OutputHeight(output_rng())
+      .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
       .KernelHeight(kernel_rng())

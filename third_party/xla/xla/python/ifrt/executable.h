@@ -23,7 +23,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -37,7 +36,8 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/execute_options.pb.h"
 #include "xla/python/ifrt/future.h"
-#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/python/ifrt/serdes_default_version_accessor.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -103,6 +103,8 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
   static char ID;  // NOLINT
 };
 
+using ExecutableRef = std::shared_ptr<Executable>;
+
 struct ExecuteOptions {
   // If non-zero, identifies this execution as part of a potentially
   // multi-device launch. This can be used to detect scheduling errors, e.g. if
@@ -132,7 +134,8 @@ struct ExecuteOptions {
   // are responsible for ensuring version compatibility.
   std::optional<AttributeMap> custom_options;
 
-  absl::StatusOr<ExecuteOptionsProto> ToProto() const;
+  absl::StatusOr<ExecuteOptionsProto> ToProto(
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
 
   static absl::StatusOr<ExecuteOptions> FromProto(
       const ExecuteOptionsProto& proto);
@@ -225,7 +228,7 @@ class LoadedExecutable
     // `ExecuteOptions::fill_status` is true.
     Future<> status;
     // Output arrays.
-    std::vector<tsl::RCReference<Array>> outputs;
+    std::vector<ArrayRef> outputs;
   };
 
   // Executes the executable on devices.
@@ -246,17 +249,8 @@ class LoadedExecutable
   // (e.g., having per-argument/output booleans or providing a separate barrier
   // API).
   virtual absl::StatusOr<ExecuteResult> Execute(
-      absl::Span<tsl::RCReference<Array>> args, const ExecuteOptions& options,
+      absl::Span<ArrayRef> args, const ExecuteOptions& options,
       std::optional<DeviceListRef> devices) = 0;
-
-  // Deletes the executable from the devices. The operation may be asynchronous.
-  // The returned future will have the result of the deletion on the devices.
-  // Implementations that do not track the completion of the deletion operation
-  // may make the future immediately ready with an OK status.
-  virtual Future<> Delete() = 0;
-  // Returns whether the executable has been enqueued for deletion from the
-  // devices.
-  virtual bool IsDeleted() const = 0;
 
   // The following APIs are taken from xla::PjRtLoadedExecutable for fast
   // prototyping.
@@ -267,6 +261,8 @@ class LoadedExecutable
 
   static char ID;  // NOLINT
 };
+
+using LoadedExecutableRef = std::shared_ptr<LoadedExecutable>;
 
 }  // namespace ifrt
 }  // namespace xla

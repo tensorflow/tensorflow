@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/transforms/utils.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla {
 namespace ifrt {
@@ -53,8 +55,9 @@ namespace {
 
 // Finds a nested call site location in the given location.
 std::optional<mlir::CallSiteLoc> GetCallSiteLoc(mlir::Location loc) {
-  if (mlir::dyn_cast<mlir::NameLoc>(loc))
+  if (mlir::dyn_cast<mlir::NameLoc>(loc)) {
     return GetCallSiteLoc(mlir::cast<mlir::NameLoc>(loc).getChildLoc());
+  }
   if (auto callLoc = mlir::dyn_cast<mlir::CallSiteLoc>(loc)) {
     return callLoc;
   }
@@ -267,6 +270,15 @@ absl::StatusOr<std::vector<std::string>> ExpandPlatformNames(
     }
   }
   return expanded_platform_names;
+}
+
+uint64_t MlirModuleFingerprint(mlir::ModuleOp module) {
+  std::string s;
+  llvm::raw_string_ostream os(s);
+  mlir::OpPrintingFlags flags;
+  flags.enableDebugInfo(false);
+  module.print(os, flags);
+  return tsl::Fingerprint64(os.str());
 }
 
 }  // namespace ifrt

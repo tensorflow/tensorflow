@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-legalize-tf='preserve-assert-op=true' | FileCheck %s --dump-input=fail
+// RUN: litert-opt %s -tfl-legalize-tf='preserve-assert-op=true' | FileCheck %s --dump-input=fail
 
 func.func @preserve_assert(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi1> {
   %0 = "tf.LessEqual"(%arg0, %arg1) : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi1>

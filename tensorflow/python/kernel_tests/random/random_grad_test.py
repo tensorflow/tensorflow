@@ -122,7 +122,7 @@ class RandomGammaGradTest(test.TestCase):
     delta = 1e-3
     np_dtype = dtype.as_numpy_dtype
     try:
-      from scipy import misc  # pylint: disable=g-import-not-at-top
+      from scipy import differentiate  # pylint: disable=g-import-not-at-top
       from scipy import special  # pylint: disable=g-import-not-at-top
 
       alpha_val = np.logspace(-2, 3, dtype=np_dtype)
@@ -134,9 +134,14 @@ class RandomGammaGradTest(test.TestCase):
       (sample_val, actual_val) = self.evaluate((sample, actual))
 
       u = special.gammainc(alpha_val, sample_val)
-      expected_val = misc.derivative(
-          lambda alpha_prime: special.gammaincinv(alpha_prime, u),
-          alpha_val, dx=delta * alpha_val)
+      expected_val = differentiate.derivative(
+          special.gammaincinv,
+          alpha_val,
+          args=(u,),
+          initial_step=delta * alpha_val,
+          order=2,
+          preserve_shape=True,
+      ).df
 
       self.assertAllClose(actual_val, expected_val, rtol=1e-3, atol=1e-3)
     except ImportError as e:

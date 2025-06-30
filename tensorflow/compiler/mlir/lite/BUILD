@@ -294,6 +294,57 @@ gentbl_cc_library(
 )
 
 cc_library(
+    name = "register_lite_dialects",
+    testonly = True,
+    srcs = ["register_lite_dialects.cc"],
+    hdrs = ["register_lite_dialects.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+tf_cc_test(
+    name = "register_lite_dialects_test",
+    srcs = ["register_lite_dialects_test.cc"],
+    deps = [
+        ":register_lite_dialects",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+# Don't add dependencies to this binary. It's only a wrapper around litert_mlir_opt_main.
+tf_cc_binary(
+    name = "litert-opt",
+    testonly = True,
+    deps = [
+        ":litert_mlir_opt_main",
+    ],
+)
+
+cc_library(
+    name = "litert_mlir_opt_main",
+    testonly = True,
+    srcs = ["litert_mlir_opt_main.cc"],
+    deps = [
+        ":register_lite_dialects",
+        ":tensorflow_lite",
+        ":tf_tfl_passes",  # buildcleaner:keep
+        "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/compiler/mlir:passes",
+        "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/compiler/mlir/lite:lift_tflite_flex_ops",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:MlirOptLib",
+    ],
+)
+
+cc_library(
     name = "utils",
     hdrs = ["utils/utils.h"],
     deps = [
@@ -1812,13 +1863,13 @@ tf_cc_binary(
     ],
     deps = [
         ":common",
+        ":converter_flags_proto_cc",
         ":flatbuffer_translate_lib",
         ":flatbuffer_translate_registration",
         ":tensorflow_lite",
         ":tf_tfl_translate_cl_options",
         ":tf_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir:init_mlir",
-        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
@@ -1838,6 +1889,7 @@ tf_cc_binary(
         "@llvm-project//mlir:Support",
         "@local_xla//xla/hlo/translate/hlo_to_mhlo:translate",
         "@local_xla//xla/mlir_hlo",
+        "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
     ],
 )

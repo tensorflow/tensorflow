@@ -39,9 +39,11 @@ struct HloInstructionNodeProps {
   int64_t generation = 0;
   int64_t height = 0;
   uint64_t subgraph_fingerprint = 0;
+  // fingerprint is used to determine if two instructions should be matched.
   uint64_t fingerprint = 0;
-  ListPosition sibling_position;
-  ListPosition pre_order_graph_position;
+  // canonical_fingerprint is used to determine if two mapped instructions are
+  // changed.
+  uint64_t canonical_fingerprint = 0;
 };
 
 // Properties of a computation node in a HloGumgraph.

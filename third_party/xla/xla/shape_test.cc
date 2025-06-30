@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "xla/shape.h"
 
+#include <vector>
+
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
+#include "absl/strings/str_cat.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/layout.h"
 #include "xla/shape_util.h"
@@ -37,6 +40,8 @@ class ShapeTest : public ::testing::Test {
   const Shape matrix_ = ShapeUtil::MakeShape(U32, {1, 2});
   const Shape matrix2_ =
       ShapeUtil::MakeShapeWithDenseLayout(S32, {3, 4}, {0, 1});
+  const Shape matrix_buffer_ =
+      ShapeUtil::MakeValidatedBufferShape(S32, {3, 4}).value();
   const Shape tuple_ =
       ShapeUtil::MakeTupleShape({opaque_, scalar_, matrix_, matrix2_});
   const Shape nested_tuple_ =
@@ -47,10 +52,20 @@ class ShapeTest : public ::testing::Test {
       ShapeUtil::MakeShape(F32, {Shape::kUnboundedSize, 784}, {true, false});
 };
 
-// Tests that if the dynamic_dimensions parameter empty in the Shape
+// Tests that if the dynamic_dimensions parameter is empty in the Shape
 // constructor, it's treated as all dimensions are static.
 TEST(Shape, ArrayCtorTreatsEmptyDynamicDimensionsAsAllStatic) {
-  const Shape shape(F32, {1, 2, 3}, {});
+  const Shape shape(F32, {1, 2, 3}, /*dynamic_dimensions=*/{});
+  EXPECT_TRUE(shape.is_static());
+  EXPECT_TRUE(shape.is_static_dimension(0));
+  EXPECT_TRUE(shape.is_static_dimension(1));
+  EXPECT_TRUE(shape.is_static_dimension(2));
+}
+
+// Tests that if the dynamic_dimensions parameter is missing in the Shape
+// constructor, it's treated as all dimensions are static.
+TEST(Shape, ArrayCtorTreatsMissingDynamicDimensionsAsAllStatic) {
+  const Shape shape(F32, {1, 2, 3});
   EXPECT_TRUE(shape.is_static());
   EXPECT_TRUE(shape.is_static_dimension(0));
   EXPECT_TRUE(shape.is_static_dimension(1));
@@ -59,8 +74,8 @@ TEST(Shape, ArrayCtorTreatsEmptyDynamicDimensionsAsAllStatic) {
 
 TEST_F(ShapeTest, ShapeToFromProto) {
   for (const Shape& shape :
-       {opaque_, token_, scalar_, matrix_, matrix2_, tuple_, nested_tuple_,
-        dynamic_matrix_, unbounded_}) {
+       {opaque_, token_, scalar_, matrix_, matrix2_, matrix_buffer_, tuple_,
+        nested_tuple_, dynamic_matrix_, unbounded_}) {
     auto shape_copy = Shape::FromProto(shape.ToProto());
     TF_ASSERT_OK(shape_copy);
     EXPECT_TRUE(ShapeUtil::Equal(shape, *shape_copy))
@@ -84,6 +99,7 @@ TEST_F(ShapeTest, ShapeToString) {
             scalar_with_tile_.ToString(/*print_layout=*/true));
   EXPECT_EQ("u32[1,2]{1,0}", matrix_.ToString(/*print_layout=*/true));
   EXPECT_EQ("s32[3,4]{0,1}", matrix2_.ToString(/*print_layout=*/true));
+  EXPECT_EQ("b(s32[3,4]{1,0})", matrix_buffer_.ToString(/*print_layout=*/true));
   EXPECT_EQ("(opaque[], f32[], u32[1,2]{1,0}, s32[3,4]{0,1})",
             tuple_.ToString(/*print_layout=*/true));
   EXPECT_EQ(
@@ -133,6 +149,14 @@ TEST_F(ShapeTest, EqualityTest) {
   // Equal shapes.
   EXPECT_EQ(ShapeUtil::MakeShapeWithDenseLayout(F32, {23, 44}, {1, 0}),
             ShapeUtil::MakeShapeWithDenseLayout(F32, {23, 44}, {1, 0}));
+
+  // Equal with Buffer shapes.
+  EXPECT_TRUE(Shape::Equal().IgnoreBuffer()(
+      ShapeUtil::MakeValidatedBufferShape(S32, {3, 4}).value(),
+      ShapeUtil::MakeShape(S32, {3, 4})));
+  EXPECT_FALSE(
+      Shape::Equal()(ShapeUtil::MakeValidatedBufferShape(S32, {3, 4}).value(),
+                     ShapeUtil::MakeShape(S32, {3, 4})));
 }
 
 TEST_F(ShapeTest, AreAllLeavesIntegers) {
@@ -301,31 +325,42 @@ TEST_F(ShapeTest, IgnoreSplitsComparison) {
 
 TEST_F(ShapeTest, SupportsAbslHash) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
-      {opaque_, token_, scalar_, scalar_with_tile_, matrix_, matrix2_, tuple_,
-       nested_tuple_, dynamic_matrix_}));
+      {opaque_, token_, scalar_, scalar_with_tile_, matrix_, matrix2_,
+       matrix_buffer_, tuple_, nested_tuple_, dynamic_matrix_}));
 }
 
-void BM_ShapeCopy(::testing::benchmark::State& state) {
-  // Create different shapes based on benchmark parameters:
+static const int kDistinctShapes = 4;
+
+static Shape MakeShapeHelper(int id) {
   Shape shape;
-  switch (state.range(0)) {
+  switch (id % kDistinctShapes) {
     case 0: {
       // Shape()
       break;
     }
     case 1: {
       // f32[1,2,2]{2,1,0}
-      shape = Shape(F32, {1, 2, 2}, {false, false, false});
+      shape = Shape(F32, {1, 2, 2});
       *shape.mutable_layout() = Layout({2, 1, 0});
       break;
     }
     case 2: {
       // f32[1,2,2]{2,1,0:T(2,128)}
-      shape = Shape(F32, {1, 2, 2}, {false, false, false});
-      *shape.mutable_layout() = Layout({2, 1, 0}, {}, {}, {}, {Tile({2, 128})});
+      shape = Shape(F32, {1, 2, 2});
+      *shape.mutable_layout() = Layout({2, 1, 0}, {Tile({2, 128})});
       break;
     }
+    default: {
+      // f32[1,2,2]{2,1,0}
+      shape = Shape(F32, {1024, 1024, 128});
+    }
   }
+  return shape;
+}
+
+void BM_ShapeProtoCopy(::testing::benchmark::State& state) {
+  // Create different shapes based on benchmark parameters:
+  Shape shape = MakeShapeHelper(state.range(0));
   state.SetLabel(shape.ToString(true));
 
   for (auto s : state) {
@@ -334,7 +369,40 @@ void BM_ShapeCopy(::testing::benchmark::State& state) {
     CHECK(ShapeUtil::Equal(shape, *copy));
   }
 }
-BENCHMARK(BM_ShapeCopy)->Arg(0)->Arg(1)->Arg(2);
+BENCHMARK(BM_ShapeProtoCopy)->Arg(0)->Arg(1)->Arg(2);
+
+void BM_ShapeCopy(::testing::benchmark::State& state) {
+  // Create different shapes based on benchmark parameters:
+  const int n_shapes = state.range(0);
+  std::vector<Shape> shapes(n_shapes);
+  bool share = (state.range(1) != 0);
+  for (int i = 0; i < n_shapes; i++) {
+    if (share && (i >= kDistinctShapes)) {
+      shapes[i] = shapes[i % kDistinctShapes];
+    } else {
+      shapes[i] = MakeShapeHelper(i);
+    }
+  }
+  state.SetLabel(absl::StrCat("Working set: ", n_shapes, " shapes",
+                              share ? " shared" : ""));
+
+  int64_t iter = 0;
+  Shape copy;
+  for (auto s : state) {
+    copy = shapes[iter];
+    iter++;
+    if (iter == n_shapes) {
+      iter = 0;
+    }
+  }
+}
+BENCHMARK(BM_ShapeCopy)
+    ->ArgPair(1, 0)
+    ->ArgPair(1, 1)
+    ->ArgPair(1000, 0)
+    ->ArgPair(1000, 1)
+    ->ArgPair(100000, 0)
+    ->ArgPair(100000, 1);
 
 }  // namespace
 }  // namespace xla

@@ -351,7 +351,7 @@ class NearComparator {
     if (error_.low_precision_fp_error_spec.type ==
         PrimitiveType::PRIMITIVE_TYPE_INVALID)
       return -1;
-    return primitive_util::FloatingPointTypeSwitch<int>(
+    return primitive_util::FloatingPointTypeSwitch(
         [&](const auto kType) -> int {
           using NarrowNativeT = primitive_util::NativeTypeOf<kType>;
           // TODO(b/370786669): Once ml_dtypes is updated to include
@@ -938,14 +938,15 @@ absl::Status EmitLiteralsInErrorMessage(const absl::Status& result,
 
 }  // namespace
 
-absl::Status Equal(const LiteralSlice& expected, const LiteralSlice& actual) {
+absl::Status Equal(const LiteralSlice& expected, const LiteralSlice& actual,
+                   const MiscompareCallback& miscompare_callback) {
   if (VLOG_IS_ON(1)) {
     LOG(INFO) << "expected:";
     XLA_LOG_LINES(INFO, expected.ToString());
     LOG(INFO) << "actual:";
     XLA_LOG_LINES(INFO, actual.ToString());
   }
-  absl::Status result = EqualHelper(expected, actual, {}, nullptr);
+  absl::Status result = EqualHelper(expected, actual, {}, miscompare_callback);
   return EmitLiteralsInErrorMessage(result, expected, actual);
 }
 

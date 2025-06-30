@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 
 #include <memory>
-#include <utility>
 
 #include "absl/status/statusor.h"
 #include "xla/service/hlo.pb.h"

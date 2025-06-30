@@ -62,8 +62,6 @@ class GpuCollectivesStub : public GpuCollectives {
     return UnimplementedError();
   }
 
-  absl::Status GroupStart() final { return UnimplementedError(); }
-  absl::Status GroupEnd() final { return UnimplementedError(); }
   absl::StatusOr<void*> Allocate(uint64_t bytes) final {
     return UnimplementedError();
   }
@@ -71,6 +69,10 @@ class GpuCollectivesStub : public GpuCollectives {
   absl::Status Deallocate(void* buffer) final { return UnimplementedError(); }
 
   absl::Status InitializeTopology(Topology topology) final {
+    return UnimplementedError();
+  }
+
+  absl::StatusOr<std::unique_ptr<Communicator>> CreateCommunicator() final {
     return UnimplementedError();
   }
 

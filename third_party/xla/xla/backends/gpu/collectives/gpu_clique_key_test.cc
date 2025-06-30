@@ -43,6 +43,7 @@ static GpuCliqueKey GetBaseCliqueKey() {
                           {GlobalDeviceId(2), GlobalDeviceId(3)}},
                       /*root_device=*/GlobalDeviceId(0));
 }
+
 TEST(GpuCliqueKeyTest, IsSubsetOf) {
   GlobalDeviceId id0 = GlobalDeviceId(0);
   GlobalDeviceId id1 = GlobalDeviceId(1);
@@ -198,7 +199,7 @@ TEST(GpuCliqueKeyGettersTest, StreamId) {
 TEST(GpuCliqueKeyGetterTest, ToString) {
   EXPECT_EQ(GetBaseCliqueKey().ToString(),
             "devices=[0,1]; stream=0; groups=[[0,1],[2,3]]; root_device=0; "
-            "num_local_participants=2");
+            "num_local_participants=2; incarnations=[]");
 }
 
 TEST(GpuCliqueIdGettersTest, Data) {
