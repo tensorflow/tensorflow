@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "xla/debug_options_flags.h"
 #include "xla/parse_flags_from_env.h"
