@@ -74,15 +74,20 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     }
     VLOG(1) << "Cloning HLO and adding to caller: " << hlo->ToString();
     auto new_hlo = hlo->CloneWithNewOperands(hlo->shape(), new_operands);
+    // We found that some users are sticking many megabytes of strings into
+    // op_name. Don't concatenate op names if they are too big.
+    static constexpr int kMaxOpNameSize = 1000;
     if (!call_op_name_.empty()) {
       OpMetadata metadata = new_hlo->metadata();
       if (metadata.op_name().empty()) {
         metadata.set_op_name(call_op_name_);
-      } else {
+        new_hlo->set_metadata(metadata);
+      } else if (call_op_name_.size() + metadata.op_name().size() <
+                 kMaxOpNameSize) {
         metadata.set_op_name(
             absl::StrCat(call_op_name_, "/", metadata.op_name()));
+        new_hlo->set_metadata(metadata);
       }
-      new_hlo->set_metadata(metadata);
     }
     HloInstruction* new_hlo_pointer =
         outer_->AddInstruction(std::move(new_hlo));
