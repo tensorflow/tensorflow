@@ -48,6 +48,10 @@
 * `tf.data`
     * Adds `autotune.min_parallelism` to `tf.data.Options` to enable faster
       input pipeline warm up.
+* `tf.lite`
+    * tf.lite will be deprecated, in favor of the new repo
+      https://github.com/google-ai-edge/LiteRT.
+    * The duplicated source will also be removed from the TF repo.
 
 ### Bug Fixes and Other Changes
 
