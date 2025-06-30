@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/overload.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -419,23 +420,25 @@ absl::StatusOr<std::unique_ptr<HloModule>> CuDnnFusionExtractor(
 
 AutotuneResult FromConfig(const BackendConfig& config) {
   AutotuneResult res;
-  if (std::holds_alternative<GemmFusionAutotunerImpl::CuBlasConfig>(config)) {
-    res.mutable_gemm()->set_algorithm(
-        GemmFusionAutotunerImpl::BLAS_GEMM_DEFAULT);
-  } else if (std::holds_alternative<
-                 GemmFusionAutotunerImpl::CustomKernelFusionConfig>(config)) {
-    res.mutable_custom_kernel_fusion()->set_kernel_index(
-        std::get<GemmFusionAutotunerImpl::CustomKernelFusionConfig>(config)
-            .kernel_index);
-  } else if (std::holds_alternative<GemmFusionAutotunerImpl::CuDnnConfig>(
-                 config)) {
-    res.mutable_algorithm()->set_algo_id(
-        std::get<GemmFusionAutotunerImpl::CuDnnConfig>(config).plan_id);
-  } else if (std::holds_alternative<TritonGemmConfig>(config)) {
-    *res.mutable_triton() = std::get<TritonGemmConfig>(config).ToProto();
-  } else {
-    LOG(FATAL) << "Unsupported config type: " << config.index();
-  }
+  std::visit(
+      absl::Overload(
+          [&](const GemmFusionAutotunerImpl::CuBlasConfig& cublas_config) {
+            res.mutable_gemm()->set_algorithm(
+                GemmFusionAutotunerImpl::BLAS_GEMM_DEFAULT);
+          },
+          [&](const GemmFusionAutotunerImpl::CuDnnConfig& cudnn_config) {
+            res.mutable_algorithm()->set_algo_id(cudnn_config.plan_id);
+          },
+          [&](const GemmFusionAutotunerImpl::CustomKernelFusionConfig&
+                  custom_kernel_fusion_config) {
+            res.mutable_custom_kernel_fusion()->set_kernel_index(
+                custom_kernel_fusion_config.kernel_index);
+          },
+          [&](const TritonGemmConfig& triton_config) {
+            *res.mutable_triton() = triton_config.ToProto();
+          }),
+      config);
+
   return res;
 }
 
@@ -519,18 +522,23 @@ absl::Status DumpAutotunedFusion(const AutotuneConfig& autotune_config,
 }
 
 std::string ConfigToString(const BackendConfig& config) {
-  if (std::holds_alternative<TritonGemmConfig>(config)) {
-    return std::get<TritonGemmConfig>(config).ToString();
-  }
-  if (std::holds_alternative<GemmFusionAutotunerImpl::CuDnnConfig>(config)) {
-    return absl::StrFormat(
-        "cuDNN plan %d",
-        std::get<GemmFusionAutotunerImpl::CuDnnConfig>(config).plan_id);
-  }
-  if (std::holds_alternative<GemmFusionAutotunerImpl::CuBlasConfig>(config)) {
-    return "reference (cublas)";
-  }
-  LOG(FATAL) << "Unsupported config type: " << config.index();
+  return std::visit(
+      absl::Overload(
+          [](const GemmFusionAutotunerImpl::CuBlasConfig& cublas_config)
+              -> std::string { return "reference (cublas)"; },
+          [](const GemmFusionAutotunerImpl::CuDnnConfig& cudnn_config)
+              -> std::string {
+            return absl::StrFormat("cuDNN plan %d", cudnn_config.plan_id);
+          },
+          [](const GemmFusionAutotunerImpl::CustomKernelFusionConfig&
+                 custom_kernel_fusion_config) -> std::string {
+            return absl::StrFormat("custom kernel fusion %d",
+                                   custom_kernel_fusion_config.kernel_index);
+          },
+          [](const TritonGemmConfig& triton_config) -> std::string {
+            return triton_config.ToString();
+          }),
+      config);
 }
 
 std::string Serialize(const BackendConfig& config) {
