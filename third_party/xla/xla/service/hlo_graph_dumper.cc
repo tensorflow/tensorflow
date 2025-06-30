@@ -1506,16 +1506,19 @@ std::string HloDotDumper::GetInstructionNodeExtraInfo(
     const HloInstruction* instr) {
   std::vector<std::string> lines;
 
-  // Inside a kCall op's called computation, annonate each parameter with the
+  // Inside a kCall op's called computation, annotate each parameter with the
   // name of the instruction that produced it.
   std::optional<HloInstruction*> caller =
       instr->parent()->GetUniqueCaller(HloOpcode::kCall);
   if (caller.has_value() && instr->opcode() == HloOpcode::kParameter) {
     const HloInstruction* operand =
         caller.value()->operand(instr->parameter_number());
+    const HloInstruction* producer = GetInterestingProducer(operand);
     lines.push_back(StrFormat(
-        "<i>%s</i>",
-        HtmlLikeStringSanitize(GetInterestingProducer(operand)->name())));
+        "<i>from %s in %s</i>", HtmlLikeStringSanitize(producer->name()),
+        producer->parent()->IsEntryComputation()
+            ? "the ENTRY computation"
+            : HtmlLikeStringSanitize(producer->parent()->name())));
   }
   // Get the instruction's extra attributes excluding the names of its
   // subcomputations, since those are drawn explicitly in the graph.

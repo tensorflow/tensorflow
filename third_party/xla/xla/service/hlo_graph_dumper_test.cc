@@ -280,7 +280,7 @@ TEST_F(HloGraphDumperTest, OverrideColors) {
 
 TEST_F(HloGraphDumperTest, AnnotateCalledComputationsParameters) {
   const char* hlo_string = R"(
-    command_buffer {
+    command_buffer.0 {
       p0 = f32[1024] parameter(0)
       add.123 = f32[1024] add(p0, p0)
       mul.456 = f32[1024] multiply(add.123, p0)
@@ -294,7 +294,7 @@ TEST_F(HloGraphDumperTest, AnnotateCalledComputationsParameters) {
     }
     ENTRY comp {
       p0 = f32[1024] parameter(0)
-      call.0 = (f32[1024], f32[1024]) call(p0), to_apply=command_buffer
+      call.0 = (f32[1024], f32[1024]) call(p0), to_apply=command_buffer.0
       gte.0 = f32[1024] get-tuple-element(call.0), index=0
       gte.1 = f32[1024] get-tuple-element(call.0), index=1
       bitcast = f32[32,32] bitcast(gte.0)
@@ -311,8 +311,10 @@ TEST_F(HloGraphDumperTest, AnnotateCalledComputationsParameters) {
       RenderGraph(*module->entry_computation()->root_instruction()->to_apply(),
                   /*label=*/"command buffer", DebugOptions(),
                   RenderedGraphFormat::kDot));
-  EXPECT_THAT(graph, HasSubstr("<b>Parameter 0</b><br/><i>add.123</i>"));
-  EXPECT_THAT(graph, HasSubstr("<b>Parameter 1</b><br/><i>mul.456</i>"));
+  EXPECT_THAT(graph, HasSubstr("<b>Parameter 0</b><br/>"
+                               "<i>from add.123 in command_buffer.0</i>"));
+  EXPECT_THAT(graph, HasSubstr("<b>Parameter 1</b><br/>"
+                               "<i>from mul.456 in command_buffer.0</i>"));
 }
 
 TEST_F(HloGraphDumperTest, AnnotateCalledComputationsParametersTuple) {
@@ -339,7 +341,8 @@ TEST_F(HloGraphDumperTest, AnnotateCalledComputationsParametersTuple) {
                   RenderedGraphFormat::kDot));
   // Annotate the parameter as `tuple.1`, rather than `add.123` or `mul.456`,
   // because both are being passed at the same time.
-  EXPECT_THAT(graph, HasSubstr("<b>Parameter 0</b><br/><i>tuple.1</i>"));
+  EXPECT_THAT(graph, HasSubstr("<b>Parameter 0</b><br/>"
+                               "<i>from tuple.1 in the ENTRY computation</i>"));
 }
 
 }  // anonymous namespace
