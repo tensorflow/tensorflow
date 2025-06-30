@@ -1212,19 +1212,14 @@ void GenerateDotResultDimensions(
 }
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferSparseDotMetadataShape(
-    const Shape& operand_shape, const DotDimensionNumbers& dimension_numbers,
+    const Shape& operand_shape, absl::Span<const int64_t> contracting_dims,
     const SparsityDescriptor& sparsity, PrimitiveType element_type) {
   CHECK(primitive_util::IsUnsignedIntegralType(element_type));
 
   // Metadata includes contracting and non-contracting dimensions
   // (i.e. excludes batch) of the sparse operand shape. The sparse dimension
   // must be contracting.
-  bool sparse_lhs = sparsity.index() == 0;
-  auto& contracting_dimensions =
-      sparse_lhs ? dimension_numbers.lhs_contracting_dimensions()
-                 : dimension_numbers.rhs_contracting_dimensions();
-  TF_RET_CHECK(
-      absl::c_linear_search(contracting_dimensions, sparsity.dimension()));
+  TF_RET_CHECK(absl::c_linear_search(contracting_dims, sparsity.dimension()));
 
   // Calculate the number of elements needed to encode the sparsity metadata
   // in the sparse dimension.

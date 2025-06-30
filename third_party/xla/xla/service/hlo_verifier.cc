@@ -223,10 +223,14 @@ absl::Status ShapeVerifier::HandleDot(HloInstruction* dot) {
   for (int i = 0; i < sparsity.size(); ++i) {
     const SparsityDescriptor& descriptor = sparsity[i];
     TF_RET_CHECK(descriptor.index() == 0 || descriptor.index() == 1);
+    const auto& contracting_dims =
+        descriptor.index() == 0
+            ? dot->dot_dimension_numbers().lhs_contracting_dimensions()
+            : dot->dot_dimension_numbers().rhs_contracting_dimensions();
     TF_ASSIGN_OR_RETURN(const Shape expected_metadata_shape,
                         ShapeInference::InferSparseDotMetadataShape(
                             dot->operand(descriptor.index())->shape(),
-                            dot->dot_dimension_numbers(), descriptor));
+                            contracting_dims, descriptor));
     const Shape actual_metadata_shape =
         dot->operand(HloDotInstruction::kOperands + i)->shape();
     if (!ShapeUtil::Compatible(actual_metadata_shape,
