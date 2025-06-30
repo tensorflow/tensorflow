@@ -96,6 +96,24 @@ bool IsTypeSupportedBy(PrimitiveType element_type, Thunk::Kind reduction_op) {
   }
 }
 
+int64_t GetNumLocalParticipants(
+    const Thunk::CollectiveExecuteParams& params,
+    const std::vector<GlobalDeviceId>& participants) {
+  if (!params.global_device_id_map) {
+    return participants.size();
+  }
+
+  std::vector<GlobalDeviceId> local_devices;
+  local_devices.reserve(params.global_device_id_map->size());
+  for (const auto& entry : *params.global_device_id_map) {
+    local_devices.push_back(entry.second);
+  }
+
+  return absl::c_count_if(participants, [&](const GlobalDeviceId& device_id) {
+    return absl::c_linear_search(local_devices, device_id);
+  });
+}
+
 }  // namespace
 
 // This file runs collective ops (i.e. ops that communicate between multiple
@@ -214,24 +232,6 @@ CollectiveThunk::CollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync,
       stream_kind_(stream_kind),
       async_events_(is_sync ? nullptr : std::make_shared<AsyncEvents>()) {}
 
-absl::StatusOr<int64_t> GetNumLocalParticipants(
-    const Thunk::CollectiveExecuteParams& params,
-    const std::vector<GlobalDeviceId>& participants) {
-  if (!params.global_device_id_map) {
-    return participants.size();
-  }
-
-  std::vector<GlobalDeviceId> local_devices;
-  local_devices.reserve(params.global_device_id_map->size());
-  for (const auto& entry : *params.global_device_id_map) {
-    local_devices.push_back(entry.second);
-  }
-
-  return absl::c_count_if(participants, [&](const GlobalDeviceId& device_id) {
-    return absl::c_linear_search(local_devices, device_id);
-  });
-}
-
 absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
     GpuCollectives* collectives, const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
@@ -248,7 +248,7 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
     // If splitting is enabled, participating groups must match in order for a
     // clique to be reused from the cache. We can ignore the participating
     // groups otherwise.
-    static const int64_t enable_nccl_comm_splitting =
+    static const bool enable_nccl_comm_splitting =
         xla::GetDebugOptionsFromFlags().xla_gpu_enable_nccl_comm_splitting();
     if (enable_nccl_comm_splitting) {
       TF_ASSIGN_OR_RETURN(participant_groups,
@@ -263,8 +263,8 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
           "environment configuration.");
     }
   }
-  TF_ASSIGN_OR_RETURN(int64_t num_local_participants,
-                      GetNumLocalParticipants(params, participants));
+  int64_t num_local_participants =
+      GetNumLocalParticipants(params, participants);
 
   absl::flat_hash_set<IncarnationId> unique_incarnations;
   if (params.incarnations) {
