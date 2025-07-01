@@ -696,8 +696,17 @@ class PriorityFusionQueue {
   FusionDecision CanFuseTriton(HloInstruction* producer,
                                HloInstruction* consumer,
                                bool use_multi_output_fusion = false) {
-    if (!IsGenericTritonFusion(*producer) &&
-        !IsGenericTritonFusion(*consumer) && !triton_heroless_fusion_enabled_) {
+    if (!IsFusible(*producer)) {
+      return FusionDecision::Forbid("the producer is not fusible");
+    }
+
+    if (!IsFusible(*consumer)) {
+      return FusionDecision::Forbid("the consumer is not fusible");
+    }
+
+    if (!(IsGenericTritonFusion(*producer) ||
+          IsGenericTritonFusion(*consumer) ||
+          triton_heroless_fusion_enabled_)) {
       return FusionDecision::Forbid("triton heroless fusion is not enabled");
     }
 
