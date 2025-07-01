@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <numeric>
@@ -128,7 +129,7 @@ bool CanUseTMA(::xla::EmitterLocOpBuilder& builder, bool tma_enabled,
                const ArrayRef<int64_t>& tile_shape,
                const ArrayRef<int64_t>& tile_strides,
                const TypedValue<RankedTensorType>& tensor,
-               const ArrayRef<int64_t>& layout) {
+               const ArrayRef<int64_t>& minor_to_major_layout) {
   if (!tma_enabled) {
     return false;
   }
@@ -153,19 +154,60 @@ bool CanUseTMA(::xla::EmitterLocOpBuilder& builder, bool tma_enabled,
   }
 
   // Limitations of TMA:
-  // - The minor dimension of the global input must be divisible by 16.
+  // - The global shape must be > 0 and <= 2^32.
+  // - The minor dimension of the tile (in bytes) must be divisible by 16.
   // - The minor dimension must be contiguous. i.e. its tile stride must be 1.
+  // - The global strides (in bytes) must be divisible by 16 and < 2^40.
   // - The block size must be less than 256 in every dimension.
   // See source:
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html
-  if (tensor.getType().getShape()[layout[0]] % 16 != 0) {
+  const uint64_t kMaxGlobalDim = pow(2, 32);
+  const uint64_t kMaxGlobalStride = pow(2, 40) - 1;
+  const uint64_t kByteDivisibilityFactor = 16;
+  const uint64_t kMaxBoxDim = 256;
+
+  RankedTensorType tensor_type = tensor.getType();
+  uint64_t element_byte_size = tensor_type.getElementTypeBitWidth() / 8;
+  ArrayRef<int64_t> global_shape = tensor_type.getShape();
+  // Validate global shape.
+  if (llvm::any_of(global_shape, [&](uint64_t dim) {
+        return dim == 0 || dim > kMaxGlobalDim;
+      })) {
+    return false;
+  }
+  // Validate tile shape.
+  if ((tile_shape[minor_to_major_layout[0]] * element_byte_size) %
+          kByteDivisibilityFactor !=
+      0) {
     return false;
   }
   if (mlir::ShapedType::isDynamicShape(tile_strides) ||
-      tile_strides[layout[0]] != 1) {
+      tile_strides[minor_to_major_layout[0]] != 1) {
     return false;
   }
-  return llvm::none_of(tile_shape, [](int64_t dim) { return dim > 256; });
+  if (llvm::any_of(tile_shape, [&](uint64_t dim) {
+        return dim == 0 || dim > kMaxBoxDim;
+      })) {
+    return false;
+  }
+  // Validate global strides.
+  SmallVector<int64_t, 4> global_strides;
+  if (tensor_type.getRank() >= 2) {
+    global_strides.push_back(global_shape[minor_to_major_layout[0]] *
+                             element_byte_size);
+    if (global_strides[0] % kByteDivisibilityFactor != 0 ||
+        global_strides[0] > kMaxGlobalStride) {
+      return false;
+    }
+    for (int64_t i = 1; i < global_shape.size(); ++i) {
+      global_strides.push_back(global_strides[i - 1] *
+                               global_shape[minor_to_major_layout[i]]);
+      if (global_strides[i] > kMaxGlobalStride) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 SmallVector<int32_t> ComputeBoundaryChecks(

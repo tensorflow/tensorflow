@@ -54,20 +54,21 @@ func.func @non_perfect_tile_shape(
 
 // -----
 
-func.func @incompatible_tma_shapes(%arg0: tensor<1000x1000xbf16>,
-          %arg1: tensor<1024x1024xbf16>) -> tensor<1024x1024xbf16> {
+func.func @incompatible_tma_global_strides(%arg0: tensor<234x234xbf16>,
+          %arg1: tensor<123x123xbf16>) -> tensor<123x123xbf16> {
   %extracted_tensor = triton_xla.extract %arg0 [0, 0] [16, 64] [128, 1]
-    {layout = array<i64:1, 0>} : tensor<1000x1000xbf16> to tensor<512x256xbf16>
+    {layout = array<i64:1, 0>} : tensor<234x234xbf16> to tensor<16x64xbf16>
   %updated_tensor = triton_xla.insert %extracted_tensor into
     %arg1 [0, 0] [16, 64] [128, 1] {layout = array<i64:1, 0>}
-    : tensor<512x256xbf16> into tensor<1024x1024xbf16>
-  func.return %updated_tensor : tensor<1024x1024xbf16>
+    : tensor<16x64xbf16> into tensor<123x123xbf16>
+  func.return %updated_tensor : tensor<123x123xbf16>
 }
 
-// CHECK-TMA:   tt.make_tensor_ptr
-// CHECK-TMA:   tt.load
-// CHECK-TMA:   tt.make_tensor_ptr
-// CHECK-TMA:   tt.store
+// CHECK-TMA-LABEL: tt.func @incompatible_tma_global_strides
+// CHECK-TMA:         tt.make_tensor_ptr
+// CHECK-TMA:         tt.load
+// CHECK-TMA:         tt.make_tensor_ptr
+// CHECK-TMA:         tt.store
 
 // -----
 
@@ -93,7 +94,7 @@ module {
   }
 }
 
-// CHECK-LABEL:   func @slice_with_tiling_that_needs_padding_has_boundary_checks
+// CHECK-LABEL:   tt.func @slice_with_tiling_that_needs_padding_has_boundary_checks
 // CHECK-COUNT-1: tt.load
 // CHECK:         tt.store
 // CHECK-SAME:    boundaryCheck = array<i32: 0>
@@ -124,7 +125,7 @@ module {
   }
 }
 
-// CHECK-LABEL:   func @slice_with_extra_output_that_can_reuse_tile_due_to_padding
+// CHECK-LABEL:   tt.func @slice_with_extra_output_that_can_reuse_tile_due_to_padding
 // CHECK-COUNT-1: tt.load
 // CHECK:         tt.store
 // CHECK-SAME:    boundaryCheck = array<i32: 0>
@@ -143,6 +144,7 @@ func.func @extract_with_non_unit_minor_dim_stride(%arg0: tensor<1024x1024xbf16>,
   func.return %updated_tensor : tensor<256x256xbf16>
 }
 
+// CHECK-LABEL: tt.func @extract_with_non_unit_minor_dim_stride
 // CHECK-TMA:   tt.make_tensor_ptr
 // CHECK-TMA:   tt.load
 // CHECK-TMA:   tt.descriptor_store
@@ -162,6 +164,7 @@ func.func @extract_with_non_static_strides(%arg0: tensor<1024x1024xbf16>,
   func.return %updated_tensor : tensor<256x256xbf16>
 }
 
+// CHECK-LABEL: tt.func @extract_with_non_static_strides
 // CHECK-TMA:   tt.make_tensor_ptr
 // CHECK-TMA:   tt.load
 // CHECK-TMA:   tt.descriptor_store
@@ -198,13 +201,13 @@ func.func @lower_extract_insert_1d(%arg0: tensor<128xbf16>,
 func.func @lower_extract_insert_5d(%arg0: tensor<16x16x16x16x16xbf16>,
           %arg1: tensor<32x32x32x32x32xbf16>) -> tensor<32x32x32x32x32xbf16> {
   %extracted_tensor = triton_xla.extract
-                      %arg0 [0, 0, 0, 0, 0] [4, 4, 4, 4, 4] [1, 1, 1, 1, 1]
+                      %arg0 [0, 0, 0, 0, 0] [8, 8, 8, 8, 8] [1, 1, 1, 1, 1]
                       {layout = array<i64:4, 3, 2, 1, 0>}
-                      : tensor<16x16x16x16x16xbf16> to tensor<4x4x4x4x4xbf16>
+                      : tensor<16x16x16x16x16xbf16> to tensor<8x8x8x8x8xbf16>
   %updated_tensor = triton_xla.insert %extracted_tensor into
-                    %arg1 [0, 0, 0, 0, 0] [4, 4, 4, 4, 4] [1, 1, 1, 1, 1]
+                    %arg1 [0, 0, 0, 0, 0] [8, 8, 8, 8, 8] [1, 1, 1, 1, 1]
                     {layout = array<i64:4, 3, 2, 1, 0>}
-                    : tensor<4x4x4x4x4xbf16> into tensor<32x32x32x32x32xbf16>
+                    : tensor<8x8x8x8x8xbf16> into tensor<32x32x32x32x32xbf16>
   func.return %updated_tensor : tensor<32x32x32x32x32xbf16>
 }
 
@@ -219,8 +222,8 @@ func.func @lower_extract_insert_5d(%arg0: tensor<16x16x16x16x16xbf16>,
 // CHECK:       tt.return
 
 // CHECK-TMA-LABEL: tt.func @lower_extract_insert_5d
-// CHECK-TMA-SAME:  %[[ARG_0:.*]]: !tt.tensordesc<tensor<4x4x4x4x4xbf16>> {tt.nv_tma_desc = 1 : i32, tt.tma_descriptor = #triton_xla.tma_descriptor<global_shape = [16, 16, 16, 16, 16], tile_shape = [4, 4, 4, 4, 4], tile_strides = [1, 1, 1, 1, 1], layout = [4, 3, 2, 1, 0], element_byte_size = 2>},
-// CHECK-TMA-SAME:  %[[ARG_1:.*]]: !tt.tensordesc<tensor<4x4x4x4x4xbf16>> {tt.nv_tma_desc = 1 : i32, tt.tma_descriptor = #triton_xla.tma_descriptor<global_shape = [32, 32, 32, 32, 32], tile_shape = [4, 4, 4, 4, 4], tile_strides = [1, 1, 1, 1, 1], layout = [4, 3, 2, 1, 0], element_byte_size = 2>}
+// CHECK-TMA-SAME:  %[[ARG_0:.*]]: !tt.tensordesc<tensor<8x8x8x8x8xbf16>> {tt.nv_tma_desc = 1 : i32, tt.tma_descriptor = #triton_xla.tma_descriptor<global_shape = [16, 16, 16, 16, 16], tile_shape = [8, 8, 8, 8, 8], tile_strides = [1, 1, 1, 1, 1], layout = [4, 3, 2, 1, 0], element_byte_size = 2>},
+// CHECK-TMA-SAME:  %[[ARG_1:.*]]: !tt.tensordesc<tensor<8x8x8x8x8xbf16>> {tt.nv_tma_desc = 1 : i32, tt.tma_descriptor = #triton_xla.tma_descriptor<global_shape = [32, 32, 32, 32, 32], tile_shape = [8, 8, 8, 8, 8], tile_strides = [1, 1, 1, 1, 1], layout = [4, 3, 2, 1, 0], element_byte_size = 2>}
 // CHECK-TMA:    %[[LOAD:.*]] = tt.descriptor_load %[[ARG_0]]
 // CHECK-TMA:    tt.descriptor_store %[[ARG_1]][{{.*}}], %[[LOAD]]
 // CHECK-TMA:    tt.return
