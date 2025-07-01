@@ -96,6 +96,8 @@ bool XnnGraphFusion::IsOpSupported(const HloInstruction* instr) const {
       }
       return IsBroadcastOpSupportedByXnn(instr);
     }
+    case HloOpcode::kReduce:
+      return IsReduceOpSupportedByXnn(instr);
     default:
       return false;
   }

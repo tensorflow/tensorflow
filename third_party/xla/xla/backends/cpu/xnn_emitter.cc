@@ -244,6 +244,41 @@ static absl::StatusOr<uint32_t> DefineBroadcastOp(xnn_subgraph_t subgraph,
   return xnn_broadcast;
 }
 
+static absl::StatusOr<uint32_t> DefineReduceOp(xnn_subgraph_t subgraph,
+                                               TensorIdMap& tensor_ids,
+                                               const HloInstruction* instr) {
+  VLOG(3) << absl::StreamFormat("Define tensor value for reduce op: %s",
+                                instr->ToString());
+  CHECK_EQ(instr->opcode(), HloOpcode::kReduce);
+  const HloReduceInstruction* reduce_instr = Cast<HloReduceInstruction>(instr);
+  const HloInstruction* input = instr->operand(0);
+  CHECK_EQ(input->shape().element_type(), instr->shape().element_type());
+  xnn_reduce_operator xnn_reduce_op = xnn_reduce_invalid;
+  CHECK_EQ(reduce_instr->to_apply()->num_parameters(), 2);
+  CHECK_EQ(reduce_instr->to_apply()->instruction_count(), 3);
+  switch (reduce_instr->to_apply()->root_instruction()->opcode()) {
+    case HloOpcode::kAdd:
+      xnn_reduce_op = xnn_reduce_sum;
+      break;
+    case HloOpcode::kMaximum:
+      xnn_reduce_op = xnn_reduce_max;
+      break;
+    case HloOpcode::kMinimum:
+      xnn_reduce_op = xnn_reduce_min;
+      break;
+    default:
+      LOG(FATAL) << "Unsupported reduction: " << instr->to_apply()->ToString();
+  }
+  const absl::Span<const int64_t> dims = reduce_instr->dimensions();
+  TF_ASSIGN_OR_RETURN(auto in, FindTensorValue(tensor_ids, input));
+  TF_ASSIGN_OR_RETURN(auto out, DefineTensorValue(subgraph, instr));
+  XNN_RETURN_IF_ERROR(xnn_define_static_reduce(
+      subgraph, xnn_reduce_op, dims.size(),
+      reinterpret_cast<const size_t*>(dims.data()), in, out,
+      /*flags=*/0));
+  return out;
+}
+
 static absl::StatusOr<uint32_t> DefineUnaryOp(xnn_subgraph_t subgraph,
                                               TensorIdMap& tensor_ids,
                                               const HloInstruction* instr) {
@@ -418,6 +453,17 @@ static absl::StatusOr<xnn_subgraph_t> EmitXnnSubgraph(
         }
         TF_ASSIGN_OR_RETURN(tensor_ids[instr],
                             DefineBroadcastOp(subgraph, tensor_ids, instr));
+      } break;
+
+      case HloOpcode::kReduce: {
+        if (!IsReduceOpSupportedByXnn(instr)) {
+          XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
+          return InvalidArgument(
+              "Unsupported reduce instruction in XNN fusion: %s",
+              instr->ToString());
+        }
+        TF_ASSIGN_OR_RETURN(tensor_ids[instr],
+                            DefineReduceOp(subgraph, tensor_ids, instr));
       } break;
 
       case HloOpcode::kDot: {

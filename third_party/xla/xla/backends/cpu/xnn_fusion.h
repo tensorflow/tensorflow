@@ -77,6 +77,9 @@ bool IsBitcastOpSupportedByXnn(const HloInstruction* hlo);
 // Returns true if the broadcast op is supported by XNNPACK.
 bool IsBroadcastOpSupportedByXnn(const HloInstruction* hlo);
 
+// Returns true if the reduce op is supported by XNNPACK.
+bool IsReduceOpSupportedByXnn(const HloInstruction* hlo);
+
 }  // namespace xla::cpu
 
 #endif  // XLA_BACKENDS_CPU_XNN_FUSION_H_
