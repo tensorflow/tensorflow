@@ -389,6 +389,12 @@ absl::StatusOr<bool> ShardyXLA::Run(
     // Nothing to do.
     return false;
   }
+  // The auto-spmd flag is present in both the HLO module and the config. Apply
+  // auto spmd partitioning if either is true.
+  if (hloModule->use_auto_spmd_partitioning() ||
+      hloModule->config().use_auto_spmd_partitioning()) {
+    hloModule->set_use_auto_spmd_partitioning(true);
+  }
 
   // HLO -> StableHLO
   auto mlirContext = std::make_unique<mlir::MLIRContext>();
