@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -387,17 +388,19 @@ class SchedulingContext {
   SchedulingContext(const HloModule* module,
                     std::shared_ptr<const LatencyEstimator> latency_estimator,
                     std::shared_ptr<AsyncTracker> async_tracker,
+                    const AliasInfo* alias_info,
                     const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes =
                         HloCostAnalysis::DefaultShapeSize)
       : latency_estimator_(std::move(latency_estimator)),
         async_tracker_(std::move(async_tracker)),
+        alias_info_(alias_info),
         shape_size_bytes_(shape_size_bytes),
         module_(module) {}
 
   std::shared_ptr<const HloAliasAnalysis> GetAliasAnalysis() const {
     // Lazy initialization of alias analysis on first use.
     if (alias_analysis_ == nullptr) {
-      alias_analysis_ = HloAliasAnalysis::Run(module_).value();
+      alias_analysis_ = HloAliasAnalysis::Run(module_, alias_info_).value();
     }
     return alias_analysis_;
   }
@@ -417,6 +420,7 @@ class SchedulingContext {
   mutable std::shared_ptr<const HloAliasAnalysis> alias_analysis_;
   std::shared_ptr<const LatencyEstimator> latency_estimator_;
   std::shared_ptr<AsyncTracker> async_tracker_;
+  const AliasInfo* alias_info_;
   const HloCostAnalysis::ShapeSizeFunction shape_size_bytes_;
   const HloModule* module_;
 };

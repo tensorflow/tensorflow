@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
@@ -33,8 +34,11 @@ namespace xla::gpu {
 class CollectiveCombinerAnnotator : public HloModulePass {
  public:
   CollectiveCombinerAnnotator(se::DeviceDescription device_info,
+                              const GpuAliasInfo* alias_info,
                               int64_t pointer_size)
-      : device_info_(std::move(device_info)), pointer_size_(pointer_size) {}
+      : device_info_(std::move(device_info)),
+        alias_info_(alias_info),
+        pointer_size_(pointer_size) {}
 
   absl::StatusOr<bool> Run(
       HloModule* module,
@@ -46,6 +50,7 @@ class CollectiveCombinerAnnotator : public HloModulePass {
 
  private:
   const se::DeviceDescription device_info_;
+  const GpuAliasInfo* alias_info_;
   const int64_t pointer_size_;
 };
 

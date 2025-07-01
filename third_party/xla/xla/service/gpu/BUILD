@@ -2198,6 +2198,7 @@ cc_library(
     srcs = ["gpu_hlo_schedule.cc"],
     hdrs = ["gpu_hlo_schedule.h"],
     deps = [
+        ":alias_info",
         ":backend_configs_cc",
         ":flag_utils",
         ":gpu_latency_hiding_scheduler",
@@ -2248,6 +2249,7 @@ xla_test(
     ],
     backends = ["gpu"],
     deps = [
+        ":alias_info",
         ":gpu_compiler",
         ":gpu_hlo_schedule",
         "//xla:shape_util",
@@ -2959,12 +2961,14 @@ xla_cc_test(
     name = "gpu_latency_hiding_scheduler_test",
     srcs = ["gpu_latency_hiding_scheduler_test.cc"],
     deps = [
+        ":alias_info",
+        ":gpu_device_info_for_tests",
         ":gpu_hlo_schedule",
         ":gpu_latency_hiding_scheduler",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:hlo_module_config",
         "//xla/service:profile_guided_latency_estimator",
-        "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/algorithm:container",

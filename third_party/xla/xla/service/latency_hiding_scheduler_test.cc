@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -175,10 +176,11 @@ absl::StatusOr<bool> RunScheduler(
   if (!async_tracker) {
     async_tracker = std::make_unique<AsyncTracker>(sched_config);
   }
+  AliasInfo alias_info;
   std::shared_ptr<const SchedulingContext> scheduling_context =
       std::make_shared<const SchedulingContext>(
           module, std::move(latency_estimator), std::move(async_tracker),
-          shape_size_bytes);
+          &alias_info, shape_size_bytes);
   auto scheduler_core =
       std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
   TF_ASSIGN_OR_RETURN(value, LatencyHidingScheduler(scheduling_context,
@@ -4483,10 +4485,11 @@ absl::StatusOr<std::unique_ptr<LatencyHidingScheduler>> SetupScheduler(
   if (!async_tracker) {
     async_tracker = std::make_unique<AsyncTracker>(sched_config);
   }
+  AliasInfo alias_info;
   std::shared_ptr<const SchedulingContext> scheduling_context =
       std::make_shared<const SchedulingContext>(
           module, std::move(latency_estimator), std::move(async_tracker),
-          ShapeSizeBytes);
+          &alias_info, ShapeSizeBytes);
   auto scheduler_core =
       std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
   return std::make_unique<LatencyHidingScheduler>(scheduling_context,

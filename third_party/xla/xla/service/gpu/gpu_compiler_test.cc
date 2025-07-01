@@ -112,10 +112,12 @@ class GpuCompilerTest : public HloTestBase {
     auto compiler = backend().compiler();
     const se::DeviceDescription& gpu_device_info =
         backend().default_stream_executor()->GetDeviceDescription();
-    TF_RETURN_IF_ERROR(ScheduleGpuModule(module, 4, gpu_device_info).status());
     GpuCompiler* gpu_compiler = tensorflow::down_cast<GpuCompiler*>(compiler);
     std::unique_ptr<GpuAliasInfo> alias_info =
         gpu_compiler->GetAliasInfo(gpu_device_info);
+    TF_RETURN_IF_ERROR(
+        ScheduleGpuModule(module, 4, gpu_device_info, alias_info.get())
+            .status());
     return gpu_compiler->RunPostSchedulingPipelines(
         module, 4 * 1024 * 1024, gpu_device_info, alias_info.get());
   }

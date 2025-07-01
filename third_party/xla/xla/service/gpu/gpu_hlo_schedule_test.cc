@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/backend.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
@@ -79,7 +80,11 @@ class GpuHloScheduleTest : public HloTestBase {
     Backend& test_backend = backend();
     const se::DeviceDescription& gpu_device_info =
         test_backend.default_stream_executor()->GetDeviceDescription();
-    TF_CHECK_OK(ScheduleGpuModule(module, /*pointer_size=*/8, gpu_device_info)
+    std::unique_ptr<GpuAliasInfo> alias_info =
+        dynamic_cast<GpuCompiler*>(backend().compiler())
+            ->GetAliasInfo(gpu_device_info);
+    TF_CHECK_OK(ScheduleGpuModule(module, /*pointer_size=*/8, gpu_device_info,
+                                  alias_info.get())
                     .status());
     return SequentialHloOrdering{module->schedule()};
   }
@@ -617,9 +622,13 @@ TEST_P(GpuHloScheduleParameterizedTest,
   module->set_config(config);
 
   // `dot1` and `ar-start1` are missing from the profile.
-  EXPECT_THAT(ScheduleGpuModule(
-                  module.get(), /*pointer_size=*/8,
-                  backend().default_stream_executor()->GetDeviceDescription())
+  const se::DeviceDescription& device_description =
+      backend().default_stream_executor()->GetDeviceDescription();
+  std::unique_ptr<GpuAliasInfo> alias_info =
+      dynamic_cast<GpuCompiler*>(backend().compiler())
+          ->GetAliasInfo(device_description);
+  EXPECT_THAT(ScheduleGpuModule(module.get(), /*pointer_size=*/8,
+                                device_description, alias_info.get())
                   .status(),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
@@ -673,9 +682,13 @@ TEST_P(
   // pass.
   module->mutable_config().mutable_debug_options().add_xla_disable_hlo_passes(
       "pgle-accuracy-checker");
-  TF_EXPECT_OK(ScheduleGpuModule(
-                   module.get(), /*pointer_size=*/8,
-                   backend().default_stream_executor()->GetDeviceDescription())
+  const se::DeviceDescription& device_description =
+      backend().default_stream_executor()->GetDeviceDescription();
+  std::unique_ptr<GpuAliasInfo> alias_info =
+      dynamic_cast<GpuCompiler*>(backend().compiler())
+          ->GetAliasInfo(device_description);
+  TF_EXPECT_OK(ScheduleGpuModule(module.get(), /*pointer_size=*/8,
+                                 device_description, alias_info.get())
                    .status());
 }
 
@@ -1392,9 +1405,13 @@ ENTRY e {
   ROOT t = (f32[1024,1024]{1,0}, f32[1024,1024]{1,0}) tuple(wrapped_exponential, wrapped_negate)
 })")
                     .value();
-  TF_CHECK_OK(ScheduleGpuModule(
-                  module.get(), /*pointer_size=*/8,
-                  backend().default_stream_executor()->GetDeviceDescription())
+  const se::DeviceDescription& device_description =
+      backend().default_stream_executor()->GetDeviceDescription();
+  std::unique_ptr<GpuAliasInfo> alias_info =
+      dynamic_cast<GpuCompiler*>(backend().compiler())
+          ->GetAliasInfo(device_description);
+  TF_CHECK_OK(ScheduleGpuModule(module.get(), /*pointer_size=*/8,
+                                device_description, alias_info.get())
                   .status());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
 // CHECK: ENTRY
@@ -1731,9 +1748,13 @@ TEST_P(GpuHloScheduleParameterizedTest, CopyStartDoneScheduled) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kHloCopyStartDone,
                                                 GetModuleConfig(test_config)));
-  TF_CHECK_OK(ScheduleGpuModule(
-                  module.get(), /*pointer_size=*/8,
-                  backend().default_stream_executor()->GetDeviceDescription())
+  const se::DeviceDescription& device_description =
+      backend().default_stream_executor()->GetDeviceDescription();
+  std::unique_ptr<GpuAliasInfo> alias_info =
+      dynamic_cast<GpuCompiler*>(backend().compiler())
+          ->GetAliasInfo(device_description);
+  TF_CHECK_OK(ScheduleGpuModule(module.get(), /*pointer_size=*/8,
+                                device_description, alias_info.get())
                   .status());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
 // CHECK: ENTRY
@@ -1800,11 +1821,14 @@ TEST_F(GpuHloScheduleTest, ReturnsValidScheduleMetadata) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kHloText, module_config));
 
+  const se::DeviceDescription& device_description =
+      backend().default_stream_executor()->GetDeviceDescription();
+  std::unique_ptr<GpuAliasInfo> alias_info =
+      dynamic_cast<GpuCompiler*>(backend().compiler())
+          ->GetAliasInfo(device_description);
   TF_ASSERT_OK_AND_ASSIGN(
-      auto metadata,
-      ScheduleGpuModule(
-          module.get(), /*pointer_size=*/8,
-          backend().default_stream_executor()->GetDeviceDescription()));
+      auto metadata, ScheduleGpuModule(module.get(), /*pointer_size=*/8,
+                                       device_description, alias_info.get()));
   EXPECT_GT(metadata.scheduler_mem_limit, 0);
 }
 
@@ -1838,11 +1862,14 @@ TEST_F(GpuHloScheduleTest, LogAnErrorWhenArgumentSizeExceedsMemoryLimit) {
         .Times(1);
   }
   mock_log.StartCapturingLogs();
+  const se::DeviceDescription& device_description =
+      backend().default_stream_executor()->GetDeviceDescription();
+  std::unique_ptr<GpuAliasInfo> alias_info =
+      dynamic_cast<GpuCompiler*>(backend().compiler())
+          ->GetAliasInfo(device_description);
   TF_ASSERT_OK_AND_ASSIGN(
-      auto metadata,
-      ScheduleGpuModule(
-          module.get(), /*pointer_size=*/8,
-          backend().default_stream_executor()->GetDeviceDescription()));
+      auto metadata, ScheduleGpuModule(module.get(), /*pointer_size=*/8,
+                                       device_description, alias_info.get()));
   EXPECT_EQ(metadata.scheduler_mem_limit, 0);
 }
 

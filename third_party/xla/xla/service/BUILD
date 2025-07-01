@@ -1187,6 +1187,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_proto_cc",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/analysis:hlo_reachability",
         "//xla/hlo/ir:hlo",
@@ -1216,6 +1217,7 @@ xla_cc_test(
         ":legalize_scheduling_annotations",
         "//xla:shape_util",
         "//xla:util",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",
@@ -1299,6 +1301,7 @@ xla_cc_test(
     deps = [
         ":latency_hiding_scheduler",
         ":profile_guided_latency_estimator",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tests:xla_internal_test_main",

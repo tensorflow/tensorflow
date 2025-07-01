@@ -70,17 +70,18 @@ class NVPTXCompilerTest : public HloTestBase {
     constexpr uint64_t pointer_size = 4;
     const se::DeviceDescription& gpu_device_info =
         backend().default_stream_executor()->GetDeviceDescription();
-    TF_RETURN_IF_ERROR(
-        ScheduleGpuModule(module, pointer_size, gpu_device_info).status());
+    NVPTXCompiler compiler;
+    std::unique_ptr<GpuAliasInfo> alias_info =
+        compiler.GetAliasInfo(gpu_device_info);
+    TF_RETURN_IF_ERROR(ScheduleGpuModule(module, pointer_size, gpu_device_info,
+                                         alias_info.get())
+                           .status());
 
     auto buffer_size_bytes_function =
         [](const BufferValue& buffer_value) -> int64_t {
       return ShapeSizeBytesFunction(pointer_size)(buffer_value.shape());
     };
 
-    NVPTXCompiler compiler;
-    std::unique_ptr<GpuAliasInfo> alias_info =
-        compiler.GetAliasInfo(gpu_device_info);
     return BufferAssigner::Run(
         module, std::make_unique<SequentialHloOrdering>(module->schedule()),
         buffer_size_bytes_function, alias_info.get(),
