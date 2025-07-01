@@ -366,6 +366,7 @@ class AotCompilationOptions {
   virtual int64_t replica_count() const { return 0; }
   virtual int64_t num_cores() const { return 0; }
   virtual bool use_spmd_partitioning() const { return false; }
+  virtual bool use_shardy_partitioner() const { return false; }
   virtual bool use_auto_spmd_partitioning() const { return false; }
   virtual std::vector<int64_t> auto_spmd_partitioning_mesh_shape() const {
     return {};
