@@ -14,7 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/grappler_item_builder.h"
+
+#include <memory>
+
 #include "google/protobuf/any.pb.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/gradients/grad_testutil.h"
 #include "tensorflow/cc/ops/functional_ops.h"
@@ -23,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
