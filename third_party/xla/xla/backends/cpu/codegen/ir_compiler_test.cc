@@ -190,7 +190,7 @@ TEST(IrCompilerTest, TestAdditionalFeatures) {
 
     llvm::TargetOptions target_options;
     return absl::WrapUnique(target->createTargetMachine(
-        llvm::Triple(triple), cpu_name, features, target_options,
+        llvm::Triple(llvm::Twine(triple)), cpu_name, features, target_options,
         /*RM=*/std::nullopt));
   };
 
