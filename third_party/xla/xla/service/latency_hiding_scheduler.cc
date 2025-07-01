@@ -766,17 +766,17 @@ void ModulePressureState::InitializePressureStates() {
               process_computation(called_computation, tracker.live_buffers());
             }
           }
-          VLOG(10) << "Instruction: " << instruction->ToString();
-          VLOG(10) << "Pressure change: "
+          VLOG(15) << "Instruction: " << instruction->ToString();
+          VLOG(15) << "Pressure change: "
                    << tracker.MemoryPressureDifference(instruction).first;
-          VLOG(10) << "Current usage: " << tracker.memory_usage();
+          VLOG(15) << "Current usage: " << tracker.memory_usage();
           tracker.UpdateBuffers(instruction);
-          VLOG(10) << "Current usage after update: " << tracker.memory_usage();
-          VLOG(10) << "Current peak after update: "
+          VLOG(15) << "Current usage after update: " << tracker.memory_usage();
+          VLOG(15) << "Current peak after update: "
                    << tracker.pressure_state().memory_peak;
         }
-        VLOG(6) << "Pressure peak for " << computation->name() << ": "
-                << tracker.pressure_state().memory_peak;
+        VLOG(15) << "Pressure peak for " << computation->name() << ": "
+                 << tracker.pressure_state().memory_peak;
         UpdatePressureStateForComputation(computation,
                                           tracker.pressure_state());
       };
@@ -1215,6 +1215,13 @@ class ReadySetLt {
         return *value;
       }
     }
+    // Schedule according to ForceDelayAfterTarget when we executed the early
+    // target scheduling rule.
+    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+            !a.node->GetForceDelay(), a, !b.node->GetForceDelay(), b,
+            "kForceDelayAfterTarget")) {
+      return *value;
+    }
     // Some heuristic that try to prioritize unlocking "done" instructions
     // so that we can perform overlap. More fancy heuristics can be used by
     // discovering the closest "done" to every instruction and prioritize
@@ -1544,6 +1551,9 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
       if (ready_chosen.node == nullptr) {
         skipped_nodes_and_reasons.push_back(
             {ready_node, SkipNodeReason::kShouldSkipNodeFunction});
+        VLOG(2) << "Skipped due to kShouldSkipNodeFunction: "
+                << SkipNodeReasonString(skipped_nodes_and_reasons.back().second)
+                << " node: " << ready_node->GetInstr().name();
       }
       continue;
     }
@@ -1555,6 +1565,9 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
       if (ready_chosen.node == nullptr) {
         skipped_nodes_and_reasons.push_back(
             {ready_node, SkipNodeReason::kAnnotationGroupNotReady});
+        VLOG(2) << "Skipped due to kShouldSkipNodeFunction: "
+                << SkipNodeReasonString(skipped_nodes_and_reasons.back().second)
+                << " node: " << ready_node->GetInstr().name();
       }
       continue;
     }
@@ -1565,6 +1578,9 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
       if (ready_chosen.node == nullptr) {
         skipped_nodes_and_reasons.push_back(
             {ready_node, SkipNodeReason::kExceedsOverlapLimit});
+        VLOG(2) << "Skipped due to kShouldSkipNodeFunction: "
+                << SkipNodeReasonString(skipped_nodes_and_reasons.back().second)
+                << " node: " << ready_node->GetInstr().name();
       }
       continue;
     }
@@ -1928,7 +1944,7 @@ absl::Status DefaultSchedulerCore::ScheduleAnnotation(
       ++non_ready_instr;
       node->ClearAnnotation();
       if (config_.aggressive_flexible_annotation_scheduling) {
-        node->SetForceDelay(true);
+        node->SetForceDelayAfterTarget(true);
       }
       sched_state->nodes_holding_annotations.insert(node);
       continue;
