@@ -55,21 +55,21 @@ func.func private @wrap_entry(
 // CHECK-DAG:    %[[TENSOR_GEP:.+]] = llvm.getelementptr inbounds %[[CALL_FRAME]][0, 3]
 // CHECK-DAG:    %[[TENSOR_PTR:.+]] = llvm.load %[[TENSOR_GEP]] invariant
 // CHECK-DAG:    %[[TENSOR_0_GEP:.+]] = llvm.getelementptr inbounds %[[TENSOR_PTR]][0, 0]
-// CHECK-DAG:    %[[TENSOR_0_PTR:.+]] = llvm.load %[[TENSOR_0_GEP]] invariant dereferenceable<bytes = 8> {llvm.align = 32 : index}
+// CHECK-DAG:    %[[TENSOR_0_PTR:.+]] = llvm.load %[[TENSOR_0_GEP]] invariant dereferenceable<bytes = 8>
 // CHECK-DAG:    %[[TENSOR_0:.+]] = builtin.unrealized_conversion_cast %[[TENSOR_0_PTR]]
 // CHECK-DAG:    %[[TENSOR_1_GEP:.+]] = llvm.getelementptr inbounds %[[TENSOR_PTR]][1, 0]
-// CHECK-DAG:    %[[TENSOR_1_PTR:.+]] = llvm.load %[[TENSOR_1_GEP]] invariant dereferenceable<bytes = 1008> {llvm.align = 32 : index}
+// CHECK-DAG:    %[[TENSOR_1_PTR:.+]] = llvm.load %[[TENSOR_1_GEP]] invariant dereferenceable<bytes = 1008>
 // CHECK-DAG:    %[[TENSOR_1:.+]] = builtin.unrealized_conversion_cast %[[TENSOR_1_PTR]]
 // CHECK-DAG:    %[[WORKGROUP_IDS_GEP:.+]] = llvm.getelementptr inbounds %[[CALL_FRAME]][0, 1]
 // CHECK-DAG:    %[[WORK_IDS_PTR:.+]] = llvm.load %[[WORKGROUP_IDS_GEP]]
 // CHECK-DAG:    %[[WORK_ID_0_GEP:.+]] = llvm.getelementptr inbounds %[[WORK_IDS_PTR]][0, 0]
-// CHECK-DAG:    %[[WORK_ID_0_PTR:.+]] = llvm.load %[[WORK_ID_0_GEP]]
+// CHECK-DAG:    %[[WORK_ID_0_PTR:.+]] = llvm.load %[[WORK_ID_0_GEP]] invariant
 // CHECK-DAG:    %[[WORK_ID_0:.+]] = builtin.unrealized_conversion_cast %[[WORK_ID_0_PTR]]
 // CHECK-DAG:    %[[WORK_ID_1_GEP:.+]] = llvm.getelementptr inbounds %[[WORK_IDS_PTR]][0, 1]
-// CHECK-DAG:    %[[WORK_ID_1_PTR:.+]] = llvm.load %[[WORK_ID_1_GEP]]
+// CHECK-DAG:    %[[WORK_ID_1_PTR:.+]] = llvm.load %[[WORK_ID_1_GEP]] invariant
 // CHECK-DAG:    %[[WORK_ID_1:.+]] = builtin.unrealized_conversion_cast %[[WORK_ID_1_PTR]]
 // CHECK-DAG:    %[[WORK_ID_2_GEP:.+]] = llvm.getelementptr inbounds %[[WORK_IDS_PTR]][0, 2]
-// CHECK-DAG:    %[[WORK_ID_2_PTR:.+]] = llvm.load %[[WORK_ID_2_GEP]]
+// CHECK-DAG:    %[[WORK_ID_2_PTR:.+]] = llvm.load %[[WORK_ID_2_GEP]] invariant
 // CHECK-DAG:    %[[WORK_ID_2:.+]] = builtin.unrealized_conversion_cast %[[WORK_ID_2_PTR]]
 // CHECK-DAG:    call @wrap_entry_wrapped(%[[TENSOR_0]],
 // CHECK-DAG                              %[[TENSOR_1]],
