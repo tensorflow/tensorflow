@@ -580,6 +580,7 @@ class UnicodeEncodeOp : public OpKernel {
             code_point = error_options_.subst;
           }
         }
+        // No-op change to test presubmits
         appendable_unicode_string.appendCodePoint(code_point);
       }
       // Encode our string and save in the output.
