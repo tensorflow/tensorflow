@@ -569,18 +569,24 @@ class UnicodeEncodeOp : public OpKernel {
           errors::InvalidArgument("Values in input_splits must be less than or "
                                   "equal to input_tensor length."));
       for (; idx < input_splits_flat(i); ++idx) {
-        int32_t code_point = input_tensor_flat(idx);
-        // Check for invalid code point
-        if (!U_IS_UNICODE_CHAR(code_point)) {
+        const int32_t code_point = input_tensor_flat(idx);
+        // Check for https://www.unicode.org/glossary/#unicode_scalar_value.
+        // TODO(jrosenstock): Use `U_IS_SCALAR_VALUE` when available; proposed
+        // for ICU 78.
+        const bool is_scalar_value = code_point >= UCHAR_MIN_VALUE &&
+                                     code_point <= UCHAR_MAX_VALUE &&
+                                     !U_IS_SURROGATE(code_point);
+        if (is_scalar_value) {
+          appendable_unicode_string.appendCodePoint(code_point);
+        } else {
           if (error_options_.error_on_malformatting) {
             context->CtxFailure(errors::InvalidArgument(
-                "Code point is out of range for Unicode, or a noncharacter."));
+                "Code point is out of range for Unicode, or is a surrogate."));
             return;
           } else if (!error_options_.elide_replacement) {
-            code_point = error_options_.subst;
+            appendable_unicode_string.appendCodePoint(error_options_.subst);
           }
         }
-        appendable_unicode_string.appendCodePoint(code_point);
       }
       // Encode our string and save in the output.
       tstring result;
