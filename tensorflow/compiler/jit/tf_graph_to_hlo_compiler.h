@@ -19,9 +19,12 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/jit/tf_to_hlo_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 
 namespace tensorflow {
 

@@ -21,6 +21,7 @@ limitations under the License.
 #include <set>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"

@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/tf_graph_to_hlo_compiler.h"
 
-#include <vector>
+#include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 
 namespace tensorflow {
 
