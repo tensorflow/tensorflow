@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
@@ -70,29 +71,30 @@ limitations under the License.
 namespace xla::gpu {
 
 // clang-format off
-#define COMMAND_BUFFER_CMD_LIST(V)                       \
-  V(kEmptyCmd, "EmptyCmd")                               \
-  V(kTracedCommandBufferCmd, "TracedCommandBufferCmd")   \
-  V(kComputationIdCmd, "ComputationIdCmd")               \
-  V(kLaunchCmd, "LaunchCmd")                             \
-  V(kCustomKernelLaunchCmd, "CustomKernelLaunchCmd")     \
-  V(kCublasLtCmd, "CublasLtCmd")                         \
-  V(kCuDnnCmd, "CuDnnCmd")                               \
-  V(kGemmCmd, "GemmCmd")                                 \
-  V(kMemcpyDeviceToDeviceCmd, "MemcpyDeviceToDeviceCmd") \
-  V(kMemzeroCmd, "MemzeroCmd")                           \
-  V(kMemset32Cmd, "Memset32Cmd")                         \
-  V(kCaseCmd, "CaseCmd")                                 \
-  V(kWhileCmd, "WhileCmd")                               \
-  V(kCustomCallCmd, "CustomCallCmd")                     \
-  V(kBarrierCmd, "BarrierCmd")                           \
-  V(kCollectiveCmd, "CollectiveCmd")                     \
-  V(kAllReduceCmd, "AllReduceCmd")                       \
-  V(kReduceScatter, "ReduceScatterCmd")                  \
-  V(kAllToAll, "AllToAllCmd")                            \
-  V(kAllGatherCmd, "AllGatherCmd")                       \
-  V(kCollectiveBroadcastCmd, "CollectiveBroadcastCmd")   \
-  V(kDynamicSliceFusionCmd, "DynamicSliceFusionCmd")     \
+#define COMMAND_BUFFER_CMD_LIST(V)                               \
+  V(kEmptyCmd, "EmptyCmd")                                       \
+  V(kTracedCommandBufferCmd, "TracedCommandBufferCmd")           \
+  V(kComputationIdCmd, "ComputationIdCmd")                       \
+  V(kLaunchCmd, "LaunchCmd")                                     \
+  V(kCustomKernelLaunchCmd, "CustomKernelLaunchCmd")             \
+  V(kCublasLtCmd, "CublasLtCmd")                                 \
+  V(kCuDnnCmd, "CuDnnCmd")                                       \
+  V(kGemmCmd, "GemmCmd")                                         \
+  V(kMemcpyDeviceToDeviceCmd, "MemcpyDeviceToDeviceCmd")         \
+  V(kMemzeroCmd, "MemzeroCmd")                                   \
+  V(kMemset32Cmd, "Memset32Cmd")                                 \
+  V(kCaseCmd, "CaseCmd")                                         \
+  V(kWhileCmd, "WhileCmd")                                       \
+  V(kCustomCallCmd, "CustomCallCmd")                             \
+  V(kBarrierCmd, "BarrierCmd")                                   \
+  V(kCollectiveCmd, "CollectiveCmd")                             \
+  V(kAllReduceCmd, "AllReduceCmd")                               \
+  V(kReduceScatter, "ReduceScatterCmd")                          \
+  V(kAllToAll, "AllToAllCmd")                                    \
+  V(kAllGatherCmd, "AllGatherCmd")                               \
+  V(kCollectiveBroadcastCmd, "CollectiveBroadcastCmd")           \
+  V(kDynamicSliceFusionCmd, "DynamicSliceFusionCmd")             \
+  V(kDynamicSliceCopyFusionCmd, "DynamicSliceCopyFusionCmd")     \
   V(kUnknownCmd, "UnknownCmd") \
   // clang-format on
 
@@ -1169,6 +1171,41 @@ class DynamicSliceFusionCmd : public CommandBufferCmd {
   // command sequences.
   absl::flat_hash_map<int64_t, std::optional<BufferAllocation::Slice>>
       embeded_to_origin_slice_map_;
+};
+
+//===----------------------------------------------------------------------===//
+// DynamicSliceCopyFusionCmd
+//===----------------------------------------------------------------------===//
+
+// DynamicSliceCopyFusionCmd is a command that copies a slice from one
+// buffer to another, it is only supported for static slice.
+class DynamicSliceCopyFusionCmd : public CommandBufferCmd {
+ public:
+  DynamicSliceCopyFusionCmd(ExecutionStreamId execution_stream_id,
+                            const BufferAllocation::Slice& source_buffer,
+                            const BufferAllocation::Slice& destination_buffer,
+                            uint64_t mem_size,
+                            DynamicMemcpyThunk::Offsets offsets);
+
+  absl::Status Initialize(const Thunk::InitializeParams& params,
+                          StateManager& state) override;
+
+  absl::Status Prepare(
+      const Thunk::PrepareParams& params,
+      Thunk::ResourceRequestsInterface& resource_requests) final;
+
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
+
+  BufferUseVector buffers() const override;
+
+ private:
+  const BufferAllocation::Slice source_buffer_;
+  const BufferAllocation::Slice destination_buffer_;
+  uint64_t mem_size_;
+  DynamicMemcpyThunk::Offsets offsets_;
 };
 
 }  // namespace xla::gpu

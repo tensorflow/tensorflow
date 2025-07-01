@@ -424,6 +424,65 @@ TEST(CommandBufferCmdTest, LaunchCmdWithPriority) {
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
 }
 
+TEST(CommandBufferCmdTest, DynamicSliceCopyFusionCmd) {
+  se::StreamExecutor* stream_executor = GpuExecutor();
+
+  auto stream = stream_executor->CreateStream().value();
+  int64_t length = 8;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  std::vector<int32_t> a_data = {40, 41, 42, 43, 44, 45, 46, 47};
+
+  // Prepare arguments: a=42, b=0
+  se::DeviceMemory<int32_t> a =
+      stream_executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> b =
+      stream_executor->AllocateArray<int32_t>(length, 0);
+
+  TF_ASSERT_OK(stream->Memcpy(&a, a_data.data(), byte_length));
+  TF_ASSERT_OK(stream->MemZero(&b, byte_length));
+
+  // Prepare buffer allocations for recording command buffer.
+  BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
+  BufferAllocation alloc_b(/*index=*/1, byte_length, /*color=*/0);
+
+  BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
+  BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
+
+  // Prepare commands sequence for constructing command buffer.
+  CommandBufferCmdSequence commands;
+  commands.Emplace<DynamicSliceCopyFusionCmd>(
+      s0, slice_a, slice_b, 16, DynamicMemcpyThunk::Offsets{false, {16}, {16}});
+  TF_ASSERT_OK_AND_ASSIGN(
+      CommandBufferCmdExecutor executor,
+      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+
+  ServiceExecutableRunOptions run_options;
+  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  BufferAllocations allocations({a, b}, 0, &allocator);
+
+  CommandBufferCmd::StateManager state;
+
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+
+  CommandBufferCmd::RecordParams record_params = {state};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      stream_executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
+  TF_ASSERT_OK(executor.Record(params, record_params, command_buffer.get()));
+
+  // Execute command buffer and verify that it copied the memory.
+  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
+
+  // Copy `b` data back to host.
+  std::vector<int32_t> dst(8, 0);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), b, byte_length));
+
+  ASSERT_EQ(dst, std::vector<int32_t>({0, 0, 0, 0, 44, 45, 46, 47}));
+}
+
 TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
   auto run_traced_test = [](int trace_cache_size) {
     se::StreamExecutor* executor = GpuExecutor();
