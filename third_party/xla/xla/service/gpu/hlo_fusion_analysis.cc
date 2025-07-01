@@ -286,10 +286,6 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
   }
 
   if (fusion_root_count() > 1) {
-    if (IsInputFusibleNonStridedSlices(fusion_roots()) &&
-        AllSliceInputsAreCompatible(fusion_roots())) {
-      return EmitterFusionKind::kInputSlices;
-    }
     return EmitterFusionKind::kLoop;
   }
 
