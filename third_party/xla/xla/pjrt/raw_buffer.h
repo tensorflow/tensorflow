@@ -76,6 +76,9 @@ class PjRtRawBuffer : public tsl::ReferenceCounted<PjRtRawBuffer> {
 // events.
 class CommonPjRtRawBuffer : public PjRtRawBuffer {
  public:
+  // Return opaque device memory pointer to the underlying memory.
+  virtual void* OpaqueDeviceMemoryDataPointer() const = 0;
+
   // Transfers the buffer to a sub-range of the on-device representation.
   // offset+transfer_size must be less than GetOnDeviceSizeInBytes. The
   // returned future transitions to ready on error, or after the transfer has

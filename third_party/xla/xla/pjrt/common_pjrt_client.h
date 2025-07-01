@@ -179,6 +179,11 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
       absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
       override;
 
+  absl::StatusOr<tsl::RCReference<PjRtRawBuffer>> CreateRawAliasOfBuffer();
+
+  absl::StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
+      override;
+
  protected:
   // Shared implementation for ToLiteral and LazyToLiteral. If `literal` is
   // null, will call the function in the generator.
