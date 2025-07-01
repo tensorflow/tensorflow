@@ -31,7 +31,6 @@ limitations under the License.
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/TypeSize.h"
-#include "llvm/Support/raw_ostream.h"
 #include "xla/codegen/math/ldexp.h"
 #include "xla/codegen/math/simple_jit_runner.h"
 #include "xla/codegen/math/test_matchers.h"
@@ -53,7 +52,7 @@ JitRunner CreateJitRunnerWithExpF64(
 }
 
 TEST(ExpTest, EmitExpF64) {
-  JitRunner runner = CreateJitRunnerWithExpF64(llvm::Type::getDoubleTy);
+  JitRunner jit = CreateJitRunnerWithExpF64(llvm::Type::getDoubleTy);
   double vals[] = {0,
                    -1,
                    -100,
@@ -62,24 +61,24 @@ TEST(ExpTest, EmitExpF64) {
                    -706,
                    std::numeric_limits<double>::infinity(),
                    std::numeric_limits<double>::quiet_NaN()};
+  auto* fn = jit.GetScalarFn<double(double)>(ExpF64FunctionName(1));
   for (double val : vals) {
-    double actual =
-        runner.RunJitTest<double(double), double>(ExpF64FunctionName(1), val)
-            .get();
+    double actual = fn(val);
     double expected = std::exp(val);
     EXPECT_THAT(actual, NearUlps<double>(expected, 1));
   }
 }
 
 TEST(ExpTest, EmitExpF64_Vector4) {
-  JitRunner runner = CreateJitRunnerWithExpF64([](llvm::LLVMContext& context) {
+  // The jit runner must outlive the compiled function.
+  JitRunner jit = CreateJitRunnerWithExpF64([](llvm::LLVMContext& context) {
     return llvm::VectorType::get(llvm::Type::getDoubleTy(context),
                                  llvm::ElementCount::getFixed(4));
   });
+  auto fn = jit.GetVectorizedFn<4, double, double>(ExpF64FunctionName(4));
   const size_t kN = 4;
   std::array<double, kN> vals = {-100, 100, 708, -706.1};
-  std::array<double, kN> actuals =
-      runner.RunJitUnaryVectorized(ExpF64FunctionName(kN), vals).get();
+  std::array<double, kN> actuals = fn(vals);
 
   for (int i = 0; i < kN; ++i) {
     double expected = std::exp(vals[i]);

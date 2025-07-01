@@ -37,9 +37,7 @@ limitations under the License.
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
-#include "llvm/Support/Error.h"
 #include "llvm/Support/TypeSize.h"
-#include "llvm/Support/raw_ostream.h"
 #include "xla/codegen/math/simple_jit_runner.h"
 #include "xla/codegen/math/test_matchers.h"
 
@@ -61,6 +59,7 @@ JitRunner CreateJitRunnerWithLdexpF64(
 
 TEST(LdexpTest, EmitLdexpF64) {
   JitRunner runner = CreateJitRunnerWithLdexpF64(llvm::Type::getDoubleTy);
+  auto fn = runner.GetScalarFn<double(double, int)>(LdexpF64FunctionName(1));
 
   double test_values[] = {1.0,
                           2.0,
@@ -80,14 +79,7 @@ TEST(LdexpTest, EmitLdexpF64) {
   for (double a_val : test_values) {
     for (int32_t exp_val : exponents) {
       double expected = std::ldexp(a_val, exp_val);
-      llvm::Expected<double> result_or_err =
-          runner.RunJitTest<double(double, int), double>(
-              LdexpF64FunctionName(1), a_val, exp_val);
-      if (auto e = result_or_err.takeError()) {
-        EXPECT_TRUE(false) << "Error: " << toString(std::move(e));
-      }
-      double result = result_or_err.get();
-
+      double result = fn(a_val, exp_val);
       if (std::isnan(expected)) {
         EXPECT_TRUE(std::isnan(result));
       } else {
@@ -99,13 +91,8 @@ TEST(LdexpTest, EmitLdexpF64) {
 
 TEST(LdexpTest, ClampsExponent) {
   JitRunner runner = CreateJitRunnerWithLdexpF64(llvm::Type::getDoubleTy);
+  auto* run = runner.GetScalarFn<double(double, int)>(LdexpF64FunctionName(1));
 
-  auto run = [&runner](double a, int32_t exp) {
-    return runner
-        .RunJitTest<double(double, int), double>(LdexpF64FunctionName(1), a,
-                                                 exp)
-        .get();
-  };
   EXPECT_THAT(run(2.0, 1e9), Eq(std::numeric_limits<double>::infinity()));
   EXPECT_THAT(run(std::numeric_limits<double>::min(), 2100),
               Eq(std::numeric_limits<double>::infinity()));
@@ -118,6 +105,8 @@ TEST(LdexpTest, EmitLdexpF64_Vector4) {
         return llvm::VectorType::get(llvm::Type::getDoubleTy(context),
                                      llvm::ElementCount::getFixed(4));
       });
+  auto run =
+      runner.GetVectorizedFn<4, double, double, int>(LdexpF64FunctionName(4));
 
   using DoubleArray4 = std::array<double, 4>;
   std::vector<DoubleArray4> test_values = {
@@ -131,14 +120,7 @@ TEST(LdexpTest, EmitLdexpF64_Vector4) {
     for (int32_t exp_val : exponents) {
       std::array<int, 4> exp_val_vec = {exp_val, exp_val, exp_val, exp_val};
 
-      llvm::Expected<DoubleArray4> result_or_err =
-          runner.RunJitBinaryVectorized<4>(LdexpF64FunctionName(4),
-                                           input_values, exp_val_vec);
-      if (auto e = result_or_err.takeError()) {
-        EXPECT_TRUE(false) << "Error: " << toString(std::move(e));
-      }
-
-      DoubleArray4 actual_results = result_or_err.get();
+      DoubleArray4 actual_results = run(input_values, exp_val_vec);
       for (int32_t j = 0; j < actual_results.size(); ++j) {
         double expected = std::ldexp(input_values[j], exp_val_vec[j]);
         if (std::isnan(expected)) {

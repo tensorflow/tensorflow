@@ -1,3 +1,4 @@
+#include "xla/primitive_util.h"
 /* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,13 +19,14 @@ limitations under the License.
 
 #include <array>
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/dynamic_annotations.h"
-#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
@@ -37,16 +39,26 @@ limitations under the License.
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
-#include "llvm/Support/Errc.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::codegen::math {
 
+namespace internal {
+// Helper struct to enforce alignment on our stack-allocated arrays.
+// To use with parameter packs and std::apply, we need to wrap each array in a
+// struct that enforces the alignment.
+template <typename T, size_t VectorSize>
+struct alignas(32) AlignedArrayWrapper {
+  std::array<T, VectorSize> array;
+};
+}  // namespace internal
+
+// A simple JIT runner for testing and benchmarking LLVM IR functions.
+// The JitRunner instance must survive any calls to the JITed functions.
 // Implementation note:
 // - We could have used cpu/codegen/jit_compiler here, but we don't need the
 //   ability to compile multiple modules in parallel, and we don't need to
@@ -63,132 +75,71 @@ class JitRunner {
                      std::unique_ptr<llvm::LLVMContext> context);
   ~JitRunner();
 
-  template <typename FnType, typename RetType, typename... ArgTypes>
-  llvm::Expected<RetType> RunJitTest(const std::string& function_name,
-                                     ArgTypes... args) {
+  template <typename FnType>
+  FnType* GetScalarFn(const std::string& function_name) {
     auto function_sym = jit_->lookup(function_name);
     if (!function_sym) {
-      return function_sym.takeError();
+      LOG(FATAL) << "Failed to lookup function: " << function_name << ": "
+                 << llvm::toString(function_sym.takeError());
     }
 
-    auto* function_ptr =
-        tsl::safe_reinterpret_cast<FnType*>(function_sym->getValue());
-    RetType result = (*function_ptr)(args...);
-    return result;
+    return tsl::safe_reinterpret_cast<FnType*>(function_sym->getValue());
   }
 
-  // Run a JITed function that takes a vector of one argument and returns a
-  // vector of results. The function is expected to have the following
-  // prototype:
-  //   void func(ArgType* result, const ArgType* arg)
-  template <size_t VectorSize, typename ArgType>
-  llvm::Expected<std::array<ArgType, VectorSize>> RunJitUnaryVectorized(
-      const std::string& original_function_name,
-      const std::array<ArgType, VectorSize>& arg) {
-    std::string wrapper_function_key =
-        original_function_name + "_wrapper_" + std::to_string(VectorSize);
+  // Compiles a JITted function that operates on vectors.
+  // The original function is expected to have a signature like:
+  //   <VectorSize x RetType> func(<VectorSize x Arg1Type>, <VectorSize x
+  //   Arg2Type>, ...)
+  // This function creates a wrapper that bridges the gap between C++ array
+  // types and LLVM vector types. The returned std::function has a signature
+  // like:
+  //   std::array<RetType, VectorSize> (const std::array<ArgTypes,
+  //   VectorSize>&...)
+  template <size_t VectorSize, typename RetType, typename... ArgTypes>
+  std::function<std::array<RetType, VectorSize>(
+      const std::array<ArgTypes, VectorSize>&...)>
+  GetVectorizedFn(const std::string& original_function_name) {
+    // Define the C++ pointer type for the JIT-compiled wrapper function.
+    using WrapperFnPtrType = void (*)(RetType*, const ArgTypes*...);
 
-    // Define the C++ function pointer type for the wrapper
-    using WrapperFnPtrType = void (*)(ArgType*, const ArgType*);
+    // Create and compile the wrapper function that handles the vector ABI.
+    llvm::Expected<void*> wrapper_ptr_or_err = CreateVectorWrapperFunction(
+        original_function_name, VectorSize,
+        primitive_util::NativeToPrimitiveType<RetType>(),
+        {primitive_util::NativeToPrimitiveType<ArgTypes>()...});
 
-    // Check if the wrapper's function pointer is already cached
-    auto it = wrapper_ptr_cache_.find(wrapper_function_key);
-    WrapperFnPtrType wrapper_ptr = nullptr;
-
-    if (it != wrapper_ptr_cache_.end()) {
-      wrapper_ptr = tsl::safe_reinterpret_cast<WrapperFnPtrType>(it->second);
-    } else {
-      // Wrapper not in cache, need to generate and add it
-      llvm::Expected<void*> created_wrapper_ptr_or_err =
-          CreateVectorWrapperFunction(
-              original_function_name, VectorSize,
-              primitive_util::NativeToPrimitiveType<ArgType>(),
-              {primitive_util::NativeToPrimitiveType<ArgType>()});
-      if (auto e = created_wrapper_ptr_or_err.takeError()) {
-        return llvm::make_error<llvm::StringError>(
-            llvm::errc::not_supported, llvm::toString(std::move(e)));
-      }
-      wrapper_ptr = tsl::safe_reinterpret_cast<WrapperFnPtrType>(
-          created_wrapper_ptr_or_err.get());
-      wrapper_ptr_cache_[wrapper_function_key] =
-          created_wrapper_ptr_or_err.get();  // Store raw address
+    if (auto e = wrapper_ptr_or_err.takeError()) {
+      LOG(FATAL) << "Failed to create wrapper for function '"
+                 << original_function_name
+                 << "': " << llvm::toString(std::move(e));
     }
+    auto wrapper_ptr =
+        tsl::safe_reinterpret_cast<WrapperFnPtrType>(*wrapper_ptr_or_err);
 
-    alignas(32) std::array<ArgType, VectorSize> result_array;
-    // Required to satisfy MSAN, which doesn't instrument the JITed code.
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(result_array.data(),
-                                        result_array.size() * sizeof(ArgType));
-    // Copy the arguments to make sure they are aligned. We could require
-    // callers to pass aligned arrays, but the errors if they don't are hard to
-    // debug, and most input arrays are likely to be small enough that a copy
-    // during test is cheap.
-    alignas(32) std::array<ArgType, VectorSize> arg_aligned = arg;
-    (*wrapper_ptr)(result_array.data(), arg_aligned.data());
-    return result_array;
-  }
+    return [wrapper_ptr](const std::array<ArgTypes, VectorSize>&... args) {
+      alignas(32) std::array<RetType, VectorSize> result_array;
+      // MSAN doesn't instrument JIT-compiled code, so we need to annotate this.
+      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
+          result_array.data(), result_array.size() * sizeof(RetType));
 
-  // Run a JITed function that takes a vector of arguments and returns a vector
-  // of results.
-  // The function is expected to have the following prototype:
-  //   void func(Arg1Type* result, const Arg1Type* arg1, const Arg2Type* arg2)
-  template <int VectorSize, typename Arg1Type, typename Arg2Type>
-  llvm::Expected<std::array<Arg1Type, VectorSize>> RunJitBinaryVectorized(
-      const std::string& original_function_name,
-      const std::array<Arg1Type, VectorSize>& arg1,
-      const std::array<Arg2Type, VectorSize>& arg2) {
-    std::string wrapper_function_key =
-        original_function_name + "_wrapper_" + std::to_string(VectorSize);
+      // Create a tuple of these aligned wrapper structs, copying the arguments.
+      // The compiler will lay out each element of the tuple on the stack with
+      // 32-byte alignment.
+      auto aligned_args_tuple = std::make_tuple(
+          internal::AlignedArrayWrapper<ArgTypes, VectorSize>{args}...);
+      std::apply(
+          [&](const auto&... single_arg_wrapper) {
+            wrapper_ptr(result_array.data(),
+                        single_arg_wrapper.array.data()...);
+          },
+          aligned_args_tuple);
 
-    // Define the C++ function pointer type for the wrapper
-    using WrapperFnPtrType =
-        void (*)(Arg1Type*, const Arg1Type*, const Arg2Type*);
-
-    // Check if the wrapper's function pointer is already cached
-    auto it = wrapper_ptr_cache_.find(wrapper_function_key);
-    WrapperFnPtrType wrapper_ptr = nullptr;
-
-    if (it != wrapper_ptr_cache_.end()) {
-      wrapper_ptr = tsl::safe_reinterpret_cast<WrapperFnPtrType>(it->second);
-    } else {
-      // Wrapper not in cache, need to generate and add it
-      llvm::Expected<void*> created_wrapper_ptr_or_err =
-          CreateVectorWrapperFunction(
-              original_function_name, VectorSize,
-              primitive_util::NativeToPrimitiveType<Arg1Type>(),
-              {primitive_util::NativeToPrimitiveType<Arg1Type>(),
-               primitive_util::NativeToPrimitiveType<Arg2Type>()});
-      if (auto e = created_wrapper_ptr_or_err.takeError()) {
-        return llvm::make_error<llvm::StringError>(
-            llvm::errc::not_supported, llvm::toString(std::move(e)));
-      }
-      wrapper_ptr = tsl::safe_reinterpret_cast<WrapperFnPtrType>(
-          created_wrapper_ptr_or_err.get());
-      wrapper_ptr_cache_[wrapper_function_key] =
-          created_wrapper_ptr_or_err.get();  // Store raw address
-    }
-
-    alignas(32) std::array<Arg1Type, VectorSize> result_array;
-    // Required to satisfy MSAN, which doesn't instrument the JITed code.
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(result_array.data(),
-                                        result_array.size() * sizeof(Arg1Type));
-    // Copy the arguments to make sure they are aligned. We could require
-    // callers to pass aligned arrays, but the errors if they don't are hard to
-    // debug, and most input arrays are likely to be small enough that a copy
-    // during test is cheap.
-    alignas(32) std::array<Arg1Type, VectorSize> arg1_aligned = arg1;
-    alignas(32) std::array<Arg2Type, VectorSize> arg2_aligned = arg2;
-    (*wrapper_ptr)(result_array.data(), arg1_aligned.data(),
-                   arg2_aligned.data());
-
-    return result_array;
+      return result_array;
+    };
   }
 
  private:
   std::unique_ptr<llvm::orc::LLJIT> jit_;
-  // Cache for JITed wrapper function pointers
-  // Key: unique function name (e.g., "xla.ldexp.4xf64_wrapper_4")
-  // Value: raw function pointer (void*)
-  absl::flat_hash_map<std::string, void*> wrapper_ptr_cache_;
 
   // Private helper method to create and JIT the wrapper function
   llvm::Expected<void*> CreateVectorWrapperFunction(
