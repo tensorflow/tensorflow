@@ -444,91 +444,10 @@ node {
 }
 
 node {
-  name: "const_3"
-  op: "Const"
-  attr {
-    key: "_output_shapes"
-    value {
-      list {
-        shape {
-          dim {
-            size: 2
-          }
-        }
-      }
-    }
-  }
+  name: "tpu_dummy_input_1"
+  op: "TPUDummyInput"
   attr {
     key: "dtype"
-    value {
-      type: DT_INT64
-    }
-  }
-  attr {
-    key: "_ici_weight_distribution_mlir_bridge_marker"
-    value {
-      b: true
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_INT64
-        tensor_shape {
-          dim {
-            size: 2
-          }
-        }
-        tensor_content: "\200\000\000\000\000\000\000\000\000\004\000\000\000\000\000\000"
-      }
-    }
-  }
-}
-
-node {
-  name: "const_4"
-  op: "Const"
-  attr {
-    key: "_output_shapes"
-    value {
-      list {
-        shape {
-        }
-      }
-    }
-  }
-  attr {
-    key: "dtype"
-    value {
-      type: DT_FLOAT
-    }
-  }
-  attr {
-    key: "_ici_weight_distribution_mlir_bridge_marker"
-    value {
-      b: true
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_FLOAT
-        tensor_shape {
-        }
-      }
-    }
-  }
-}
-
-node {
-  name: "fill_1"
-  op: "Fill"
-  input: "const_3"
-  input: "const_4"
-  attr {
-    key: "T"
     value {
       type: DT_FLOAT
     }
@@ -554,18 +473,12 @@ node {
       b: true
     }
   }
-  attr {
-    key: "index_type"
-    value {
-      type: DT_INT64
-    }
-  }
 }
 
 node {
   name: "identity_3"
   op: "Identity"
-  input: "fill_1"
+  input: "tpu_dummy_input_1"
   device: "/job:tpu_host_worker/replica:0/task:2/device:CPU:0"
   attr {
     key: "T"
@@ -693,101 +606,10 @@ node {
 }
 
 node {
-  name: "const_5"
-  op: "Const"
-  attr {
-    key: "_output_shapes"
-    value {
-      list {
-        shape {
-          dim {
-            size: 1
-          }
-        }
-      }
-    }
-  }
+  name: "tpu_dummy_input_2"
+  op: "TPUDummyInput"
   attr {
     key: "dtype"
-    value {
-      type: DT_INT64
-    }
-  }
-  attr {
-    key: "_ici_weight_distribution_mlir_bridge_marker"
-    value {
-      b: true
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_INT64
-        tensor_shape {
-          dim {
-            size: 1
-          }
-        }
-        int64_val: 1024
-      }
-    }
-  }
-}
-
-node {
-  name: "const_6"
-  op: "Const"
-  attr {
-    key: "_output_shapes"
-    value {
-      list {
-        shape {
-        }
-      }
-    }
-  }
-  attr {
-    key: "bcast_id"
-    value {
-      i: 4
-    }
-  }
-  attr {
-    key: "dtype"
-    value {
-      type: DT_BFLOAT16
-    }
-  }
-  attr {
-    key: "_ici_weight_distribution_mlir_bridge_marker"
-    value {
-      b: true
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_BFLOAT16
-        tensor_shape {
-        }
-      }
-    }
-  }
-  experimental_debug_info {
-    original_node_names: "Identity"
-    original_func_names: "__inference__train_helper_851"
-  }
-}
-
-node {
-  name: "fill_2"
-  op: "Fill"
-  input: "const_5"
-  input: "const_6"
-  attr {
-    key: "T"
     value {
       type: DT_BFLOAT16
     }
@@ -810,18 +632,12 @@ node {
       b: true
     }
   }
-  attr {
-    key: "index_type"
-    value {
-      type: DT_INT64
-    }
-  }
 }
 
 node {
   name: "identity_4"
   op: "Identity"
-  input: "fill_2"
+  input: "tpu_dummy_input_2"
   device: "/job:tpu_host_worker/replica:0/task:2/device:CPU:0"
   attr {
     key: "T"
