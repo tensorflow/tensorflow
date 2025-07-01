@@ -1928,7 +1928,8 @@ Status BaseGPUDeviceFactory::CreateDevices(
               /*should_stage_host_to_device_transfers=*/true,
               /*gpu_run_options=*/std::move(gpu_run_options),
               /*kv_store=*/nullptr, /*distributed_client=*/nullptr,
-              /*abort_collectives_on_failure=*/false, /*gpu_topology=*/nullptr);
+              /*abort_collectives_on_failure=*/false, /*gpu_topology=*/nullptr,
+              /*num_nodes=*/std::nullopt);
 
       return SetPjRtClientInTFGlobalResourceManager(DeviceType(DEVICE_GPU),
                                                     std::move(pjrt_client));
