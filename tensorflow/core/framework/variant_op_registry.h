@@ -22,6 +22,8 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "absl/debugging/stacktrace.h"
+#include "absl/debugging/symbolize.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/types.h"
@@ -32,6 +34,25 @@ limitations under the License.
 #include "tensorflow/core/platform/abi.h"
 
 namespace tensorflow {
+
+inline void PrintStackTrace() {
+  constexpr int max_depth = 20;      // Maximum number of frames to print.
+  constexpr int frames_to_skip = 1;  // Skip 1 frame: skip this function itself.
+  constexpr int max_symbol_length = 1024;  // Might include file, line, method.
+
+  // Capture the PCs as addresses, e.g "0xffff4c80".
+  void* program_counters[max_depth];
+  int depth = absl::GetStackTrace(program_counters, max_depth, frames_to_skip);
+
+  // Convert to method name symbols. Some binaries support C++ demangling.
+  // With debug builds (or "--fission=yes --strip=never"), these can include
+  // file and line numbers.
+  for (int i = 0; i < depth; i++) {
+    char symbol_name[max_symbol_length];
+    absl::Symbolize(program_counters[i], symbol_name, max_symbol_length);
+    std::cerr << symbol_name << "\n";
+  }
+}
 
 class OpKernelContext;
 // A global UnaryVariantOpRegistry is used to hold callback functions
@@ -112,6 +133,9 @@ class UnaryVariantOpRegistry {
                             const TypeIndex& type_index,
                             const AsyncVariantDeviceCopyFn& device_copy_fn) {
     AsyncVariantDeviceCopyFn* existing = GetDeviceCopyFn(direction, type_index);
+    if (existing != nullptr) {
+      PrintStackTrace();
+    }
     CHECK_EQ(existing, nullptr)
         << "UnaryVariantDeviceCopy for direction: " << direction
         << " and type_index: " << port::MaybeAbiDemangle(type_index.name())
