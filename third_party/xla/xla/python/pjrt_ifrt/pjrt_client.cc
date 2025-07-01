@@ -88,6 +88,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -823,6 +825,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
     }
   }
 
+  client->distributed_client_ = std::move(options.distributed_client);
   client->kv_store_ = std::move(options.kv_store);
   client->cross_host_transfer_timeout_ = options.cross_host_transfer_timeout;
 
@@ -831,6 +834,23 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
     if (attrs.contains("supports_cross_host_transfers")) {
       client->pjrt_supports_cross_host_transfers_ =
           std::get<bool>(attrs.at("supports_cross_host_transfers"));
+    }
+  }
+
+  // Start a background thread to monitor the status of all processes.
+  if (client->distributed_client_) {
+    absl::StatusOr<tsl::CoordinationServiceAgent*> agent =
+        client->distributed_client_->GetCoordinationServiceAgent();
+    if (agent.ok()) {
+      client->global_process_info_thread_.reset(
+          tsl::Env::Default()->StartThread(
+              tsl::ThreadOptions(), "global_process_info",
+              [client = client.get(), agent = *agent]() {
+                absl::Status s = client->PollGlobalProcessInfo(*agent);
+                if (!s.ok()) {
+                  LOG(ERROR) << s;
+                }
+              }));
     }
   }
 
@@ -850,7 +870,7 @@ PjRtClient::PjRtClient(std::shared_ptr<xla::PjRtClient> pjrt_client)
       default_compiler_(this),
       attributes_(MakeAttributeMap(pjrt_client_.get())) {}
 
-PjRtClient::~PjRtClient() = default;
+PjRtClient::~PjRtClient() { shutting_down_.Notify(); }
 
 absl::StatusOr<PjRtCompatibleDevice*> PjRtClient::LookupPjRtDevice(
     xla::PjRtDevice* pjrt_device) const {
@@ -1353,6 +1373,43 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
 }
 
 int64_t PjRtClient::CreateNewTransferKey() { return next_transfer_key_++; }
+
+absl::Status PjRtClient::PollGlobalProcessInfo(
+    tsl::CoordinationServiceAgent& agent) {
+  VLOG(3) << "Polling global process info";
+  TF_ASSIGN_OR_RETURN(tensorflow::CoordinatedTask task, agent.GetOwnTask());
+
+  while (true) {
+    if (shutting_down_.WaitForNotificationWithTimeout(absl::Seconds(1))) {
+      VLOG(3) << "Stopping polling global process info";
+      return absl::CancelledError();
+    }
+
+    // Get the current job state.
+    absl::StatusOr<std::vector<tensorflow::CoordinatedTaskStateInfo>> state =
+        agent.GetJobState(task.job_name());
+    if (!state.ok()) {
+      LOG(ERROR) << state.status();
+      continue;
+    }
+    absl::c_sort(*state,
+                 [](const tensorflow::CoordinatedTaskStateInfo& x,
+                    const tensorflow::CoordinatedTaskStateInfo& y) -> bool {
+                   return x.task().task_id() < y.task().task_id();
+                 });
+
+    // Pretty print the job state, if VLOG is on.
+    if (VLOG_IS_ON(3)) {
+      VLOG(3) << "Job state for job " << task.job_name() << ":";
+      for (const auto& info : *state) {
+        VLOG(3) << "- " << info.DebugString();
+      }
+    }
+
+    // Update the client with the job state.
+    pjrt_client_->UpdateGlobalProcessInfo(absl::MakeSpan(*state));
+  }
+}
 
 absl::Status PjRtClient::CrossHostSendBuffers(
     PjRtBuffers buffers, const std::vector<int64_t>& keys) {

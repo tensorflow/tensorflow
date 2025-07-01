@@ -25,10 +25,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -121,6 +123,9 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 
   std::optional<PjRtPluginAttributes> plugin_attributes() const override;
 
+  void UpdateGlobalProcessInfo(
+      absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) override;
+
   using PjRtStreamExecutorClient::CreateBuffersForAsyncHostToDevice;
   absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(
@@ -178,9 +183,14 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
   GetLatestIncarnations();
 
+  bool abort_collectives_on_failure_ = false;
   xla::StreamExecutorGpuTopologyDescription topology_;
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
   std::shared_ptr<DistributedRuntimeClient> distributed_client_;
+
+  absl::Mutex infos_mu_;
+  std::vector<tensorflow::CoordinatedTaskStateInfo> infos_
+      ABSL_GUARDED_BY(infos_mu_);
 };
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
