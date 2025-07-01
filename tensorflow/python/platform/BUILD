@@ -7,6 +7,7 @@ load(
 )
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_py_build_info_genrule", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 
 visibility = [
     "//tensorflow:__subpackages__",
@@ -37,10 +38,14 @@ py_strict_library(
 py_strict_library(
     name = "self_check",
     srcs = ["self_check.py"],
-    deps = if_oss([
-        ":build_info",
-        ":_pywrap_cpu_feature_guard",
-    ]),
+    deps = if_oss(
+        [
+            ":build_info",
+        ] + if_pywrap(
+            if_false = [":_pywrap_cpu_feature_guard"],
+            if_true = ["//tensorflow/python:_pywrap_tensorflow"],
+        ),
+    ),
 )
 
 py_strict_library(
