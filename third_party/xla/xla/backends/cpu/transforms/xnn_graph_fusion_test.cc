@@ -282,5 +282,31 @@ ENTRY main {
   ASSERT_FALSE(changed);
 }
 
+TEST_F(XnnGraphFusionTest, NoFusionInsideReducer) {
+  std::string hlo_string = R"(
+HloModule NoFusionInsideReducer
+
+reducer {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  mul = f32[] multiply(arg_0, arg_1)
+  ROOT result = f32[] add(arg_0, mul)
+}
+
+ENTRY main {
+  arg_0 = f32[3,2] parameter(0)
+  init = f32[] constant(1.33)
+  ROOT result = f32[] reduce(arg_0, init), dimensions={0,1}, to_apply=reducer
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  SetFusionMode(module.get(),
+                DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla::cpu
