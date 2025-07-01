@@ -17,15 +17,13 @@ limitations under the License.
 #define XLA_SERVICE_COMPUTATION_PLACER_H_
 
 #include <cstdint>
-#include <map>
+#include <functional>
 #include <memory>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "xla/array2d.h"
 #include "xla/service/global_device_id.h"
 #include "xla/stream_executor/platform.h"
@@ -103,13 +101,11 @@ class ComputationPlacer {
   virtual absl::StatusOr<DeviceAssignment> AssignDevices(int replica_count,
                                                          int computation_count);
 
-  using ComputationPlacerCreationFunction =
-      std::unique_ptr<ComputationPlacer> (*)();
+  using CreationFunction = std::function<std::unique_ptr<ComputationPlacer>()>;
 
   // Registers a computation placer creation function for a particular platform.
-  static void RegisterComputationPlacer(
-      se::Platform::Id platform_id,
-      ComputationPlacerCreationFunction creation_function);
+  static void RegisterComputationPlacer(se::Platform::Id platform_id,
+                                        CreationFunction creation_function);
 
   // Returns the computation placer singleton pointer if it is available for the
   // given platform, or an error status if it is not.
@@ -117,20 +113,6 @@ class ComputationPlacer {
       const se::Platform* platform);
 
  private:
-  // The mutex that guards the platform-to-computation placer map.
-  static absl::Mutex platform_computation_placer_mutex_;
-
-  // State kept for each kind of ComputationPlacer. Registration functions set
-  // up creation_function, and then we use that to lazily create "placer" the
-  // first time GetForPlatform is invoked for a particular id.
-  struct State {
-    std::unique_ptr<ComputationPlacer> placer;
-    ComputationPlacerCreationFunction creation_function = nullptr;
-  };
-
-  // Map from platform kind to computation placer singleton.
-  static std::map<se::Platform::Id, State>* GetPlatformComputationPlacers();
-
   ComputationPlacer(const ComputationPlacer&) = delete;
   ComputationPlacer& operator=(const ComputationPlacer&) = delete;
 };

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -162,67 +163,78 @@ absl::StatusOr<DeviceAssignment> ComputationPlacer::AssignDevices(
   return assignment;
 }
 
-/* static */ void ComputationPlacer::RegisterComputationPlacer(
-    se::Platform::Id platform_id,
-    ComputationPlacerCreationFunction creation_function) {
-  absl::MutexLock lock(&ComputationPlacer::platform_computation_placer_mutex_);
-  auto* computation_placers = GetPlatformComputationPlacers();
-  if (computation_placers->find(platform_id) != computation_placers->end()) {
-    // TODO(b/282059652): Consider logging the platform name using
-    // PlatformManager::PlatformWithId(). No doing that for now to avoid
-    // introducing unwanted dependency.
-    LOG(WARNING) << "computation placer already registered. Please check "
-                    "linkage and avoid linking the same target more than once.";
+namespace {
+absl::Mutex placer_mutex(absl::kConstInit);
+
+// State kept for each kind of ComputationPlacer. Registration functions set
+// up creation_function, and then we use that to lazily create "placer" the
+// first time GetForPlatform is invoked for a particular id.
+struct PlacerState {
+  std::unique_ptr<ComputationPlacer> placer;
+  ComputationPlacer::CreationFunction creation_function;
+};
+
+// Platform id (pointer) to ComputationPlacer with creation function.
+using PlacerFactoryMap = absl::flat_hash_map<se::Platform::Id, PlacerState>;
+
+PlacerFactoryMap& GetPlatformComputationPlacers() {
+  static PlacerFactoryMap* const r = new PlacerFactoryMap;
+  return *r;
+}
+}  // namespace
+
+/* static */
+void ComputationPlacer::RegisterComputationPlacer(
+    se::Platform::Id id, CreationFunction creation_function) {
+  absl::MutexLock lock(&placer_mutex);
+  PlacerFactoryMap& placers = GetPlatformComputationPlacers();
+  if (placers.find(id) != placers.end()) {
+    LOG(WARNING) << "Computation placer creation function is already "
+                    "registered for this platform";
   }
-  (*computation_placers)[platform_id].creation_function = creation_function;
+  placers[id].creation_function = creation_function;
 }
 
-/* static */ absl::StatusOr<ComputationPlacer*>
-ComputationPlacer::GetForPlatform(const se::Platform* platform) {
-  absl::MutexLock lock(&ComputationPlacer::platform_computation_placer_mutex_);
-  auto* computation_placers = GetPlatformComputationPlacers();
+/* static */
+absl::StatusOr<ComputationPlacer*> ComputationPlacer::GetForPlatform(
+    const se::Platform* platform) {
+  absl::MutexLock lock(&placer_mutex);
+  PlacerFactoryMap& placers = GetPlatformComputationPlacers();
 
-  auto it = computation_placers->find(platform->id());
-  if (it == computation_placers->end()) {
+  auto it = placers.find(platform->id());
+  if (it == placers.end()) {
     return NotFound(
-        "could not find registered computation placer for platform %s -- check "
-        "target linkage",
+        "Could not find registered computation placer for platform %s",
         platform->Name());
   }
 
-  if (it->second.placer == nullptr) {
+  PlacerState& state = it->second;
+  if (state.placer == nullptr) {
     // Lazily create the computation placer the first time it is needed.
-    it->second.placer = (*it->second.creation_function)();
+    state.placer = state.creation_function();
   }
-
-  return it->second.placer.get();
-}
-
-/* static */ absl::Mutex ComputationPlacer::platform_computation_placer_mutex_(
-    absl::kConstInit);
-
-/* static */ std::map<se::Platform::Id, ComputationPlacer::State>*
-ComputationPlacer::GetPlatformComputationPlacers() {
-  static auto* const r =
-      new std::map<se::Platform::Id, ComputationPlacer::State>;
-  return r;
+  return state.placer.get();
 }
 
 }  // namespace xla
 
-static std::unique_ptr<xla::ComputationPlacer> CreateComputationPlacer() {
+namespace {
+// registering default computation placer factory for common platforms.
+std::unique_ptr<xla::ComputationPlacer> DefaultComputationPlacer() {
   return std::make_unique<xla::ComputationPlacer>();
 }
 
-static bool InitModule() {
+bool InitModule() {
   xla::ComputationPlacer::RegisterComputationPlacer(
-      stream_executor::host::kHostPlatformId, &CreateComputationPlacer);
+      stream_executor::host::kHostPlatformId, DefaultComputationPlacer);
   xla::ComputationPlacer::RegisterComputationPlacer(
-      stream_executor::cuda::kCudaPlatformId, &CreateComputationPlacer);
+      stream_executor::cuda::kCudaPlatformId, DefaultComputationPlacer);
   xla::ComputationPlacer::RegisterComputationPlacer(
-      stream_executor::rocm::kROCmPlatformId, &CreateComputationPlacer);
+      stream_executor::rocm::kROCmPlatformId, DefaultComputationPlacer);
   xla::ComputationPlacer::RegisterComputationPlacer(
-      stream_executor::sycl::kSyclPlatformId, &CreateComputationPlacer);
+      stream_executor::sycl::kSyclPlatformId, DefaultComputationPlacer);
   return true;
 }
-static bool module_initialized = InitModule();
+
+bool module_initialized = InitModule();
+}  // namespace
