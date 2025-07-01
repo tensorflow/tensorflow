@@ -316,6 +316,7 @@ cc_library(
     name = "tf_saved_model_passes",
     srcs = [
         "convert_session_initializer_to_function.cc",
+        "convert_tf_savedmodel_to_emitc.cc",
         "deduplicate_bound_input_bindings.cc",
         "freeze_global_tensors.cc",
         "freeze_saved_model_assets.cc",
