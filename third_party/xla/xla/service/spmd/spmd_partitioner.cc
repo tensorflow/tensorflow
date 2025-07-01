@@ -5598,6 +5598,7 @@ absl::StatusOr<bool> SpmdPartitioner::Run(
   }
 
   TF_RETURN_IF_ERROR(ClearShardingAttributes(module, execution_threads));
+  TF_RETURN_IF_ERROR(PostprocessHlos(module, execution_threads));
   return changed;
 }
 
@@ -5700,6 +5701,13 @@ absl::Status SpmdPartitioner::PreprocessHlos(
     for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
       if (hlo->sharding().IsTileMaximal() || hlo->sharding().IsManual()) {
         // No need to optimize for tile-maximal or manual sharding.
+        continue;
+      }
+      if (hlo->sharding().IsUnreduced()) {
+        // Represent unreduced as a frontend attribute to avoid propagating
+        // the unreduced HLO sharding.
+        hlo->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
+        hlo->set_sharding(HloSharding::Replicate());
         continue;
       }
 
@@ -5893,6 +5901,20 @@ absl::Status SpmdPartitioner::PreprocessHlos(
           TF_RETURN_IF_ERROR(
               computation->RemoveInstructionAndUnusedOperands(hlo));
         }
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status SpmdPartitioner::PostprocessHlos(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
+    for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
+      if (hlo->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+        hlo->erase_frontend_attribute(sdy::kHasUnreducedAxes);
+        hlo->set_sharding(HloSharding::Unreduced());
       }
     }
   }
