@@ -2550,19 +2550,19 @@ CHECK:     triton_xla.insert
 TEST_P(TmaParameterizedTritonEmitterTest, BroadcastWorksCorrectly) {
   constexpr absl::string_view kTritonHloText = R"(
 computation {
-  p0 = s32[256]{0} parameter(0)
-  ROOT broadcast = s32[2,256]{1,0} broadcast(p0), dimensions={1}
+  p0 = s32[234]{0} parameter(0)
+  ROOT broadcast = s32[2,234]{1,0} broadcast(p0), dimensions={1}
 }
 
 ENTRY entry_computation {
-  p0 = s32[256]{0} parameter(0)
-  ROOT fusion = s32[2,256]{1,0} fusion(p0), kind=kCustom,
+  p0 = s32[234]{0} parameter(0)
+  ROOT fusion = s32[2,234]{1,0} fusion(p0), kind=kCustom,
     calls=computation,
     backend_config={
     "fusion_backend_config":{
       "kind":"__triton",
       "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["2","256"]}],
+        "output_tiles":[{"sizes":["2","128"]}],
         "num_warps":"1",
         "num_ctas":"1",
         "num_stages":"1"}}}
@@ -2570,13 +2570,13 @@ ENTRY entry_computation {
 
   constexpr absl::string_view kEmittersHloText = R"(
 computation {
-  p0 = s32[256]{0} parameter(0)
-  ROOT broadcast = s32[2,256]{1,0} broadcast(p0), dimensions={1}
+  p0 = s32[234]{0} parameter(0)
+  ROOT broadcast = s32[2,234]{1,0} broadcast(p0), dimensions={1}
 }
 
 ENTRY entry_computation {
-  p0 = s32[256]{0} parameter(0)
-  ROOT fusion = s32[2,256]{1,0} fusion(p0), kind=kCustom, calls=computation
+  p0 = s32[234]{0} parameter(0)
+  ROOT fusion = s32[2,234]{1,0} fusion(p0), kind=kCustom, calls=computation
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_module,
@@ -2805,26 +2805,26 @@ TEST_P(TmaParameterizedTritonEmitterTest,
        DotWithNestedFusionsIsEmittedCorrectly) {
   const std::string kHloText = R"(
 flhs {
-  flhs.p0 = f32[32,256] parameter(0)
-  ROOT lhs.root = f32[32,256] negate(flhs.p0)
+  flhs.p0 = f32[32,123] parameter(0)
+  ROOT lhs.root = f32[32,123] negate(flhs.p0)
 }
 
 frhs {
-  frhs.p0 = f32[256,512] parameter(0)
-  ROOT frhs.root = f32[256,512] abs(frhs.p0)
+  frhs.p0 = f32[123,512] parameter(0)
+  ROOT frhs.root = f32[123,512] abs(frhs.p0)
 }
 
 fdot {
-  fdot.p0 = f32[32,256] parameter(0)
-  fdot.p1 = f32[256,512] parameter(1)
-  fdot.lhs = f32[32,256] fusion(fdot.p0), kind=kCustom, calls=flhs, backend_config={
+  fdot.p0 = f32[32,123] parameter(0)
+  fdot.p1 = f32[123,512] parameter(1)
+  fdot.lhs = f32[32,123] fusion(fdot.p0), kind=kCustom, calls=flhs, backend_config={
     "fusion_backend_config":{
       "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["16", "32"]}]
       }
     }
   }
-  fdot.rhs = f32[256,512]{1,0} fusion(fdot.p1), kind=kCustom, calls=frhs, backend_config={
+  fdot.rhs = f32[123,512]{1,0} fusion(fdot.p1), kind=kCustom, calls=frhs, backend_config={
     "fusion_backend_config":{
       "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["32", "64"]}]
@@ -2837,8 +2837,8 @@ fdot {
 }
 
 ENTRY entry {
-  entry.p0 = f32[32,256] parameter(0)
-  entry.p1 = f32[256,512] parameter(1)
+  entry.p0 = f32[32,123] parameter(0)
+  entry.p1 = f32[123,512] parameter(1)
   ROOT fusion = f32[32,512] fusion(entry.p0, entry.p1),
     kind=kCustom, calls=fdot, backend_config={
       "fusion_backend_config":{
@@ -2850,13 +2850,13 @@ ENTRY entry {
           "num_stages":"1"}}}
 })";
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "fdot", R"(
-CHECK:      func.func @triton_fn(%[[ARG0:[A-Za-z0-9_]*]]: tensor<32x256xf32>
-CHECK-SAME:                    %[[ARG1:[A-Za-z0-9_]*]]: tensor<256x512xf32>
+CHECK:      func.func @triton_fn(%[[ARG0:[A-Za-z0-9_]*]]: tensor<32x123xf32>
+CHECK-SAME:                    %[[ARG1:[A-Za-z0-9_]*]]: tensor<123x512xf32>
 CHECK-SAME:                    %[[ARG2:[A-Za-z0-9_]*]]: tensor<32x512xf32>
 CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : i64
-CHECK-DAG:  %[[C8:.*]] = arith.constant 8 : i64
+CHECK-DAG:  %[[C4:.*]] = arith.constant 4 : i64
 CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : i64
-CHECK:      {{.*}} = scf.for {{.*}} = %[[C0]] to %[[C8]] step %[[C1]]
+CHECK:      {{.*}} = scf.for {{.*}} = %[[C0]] to %[[C4]] step %[[C1]]
 CHECK-SAME: iter_args({{.*}}) -> (tensor<16x64xf32>)  : i64 {
 CHECK-DAG:  triton_xla.extract %[[ARG0]]
 CHECK-DAG:  triton_xla.extract %[[ARG1]]

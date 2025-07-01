@@ -47,7 +47,7 @@ const int kMinRank = 1;
 const int kMaxRank = 5;
 
 // Maximum global dimension.
-const uint64_t kMaxGlobalDim = pow(2, 32) - 1;
+const uint64_t kMaxGlobalDim = pow(2, 32);
 
 // Maximum global stride.
 const uint64_t kMaxGlobalStide = pow(2, 40) - 1;
@@ -100,7 +100,7 @@ absl::Status ValidateGlobalStrides(absl::Span<const uint64_t> global_dims,
     if (stride % 16 != 0 || stride > kMaxGlobalStide) {
       return absl::InvalidArgumentError(
           absl::StrFormat("global_strides (%s) must be a multiple of 16 and "
-                          "<= 2^40.",
+                          "< 2^40.",
                           absl::StrJoin(global_strides, ",")));
     }
     if (interleave == TmaDescriptor::TmaInterleave::k32B && stride % 32 != 0) {
