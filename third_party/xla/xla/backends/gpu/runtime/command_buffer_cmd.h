@@ -960,13 +960,15 @@ class CollectiveCmd : public CommandBufferCmd {
       absl::FunctionRef<absl::Status(se::Stream*)> trace);
 
   virtual AsyncStreamKind GetAsyncStreamKind() = 0;
+  virtual CollectiveStreamId GetAsyncStreamId() = 0;
 
   bool IsAsync() const {
     return async_from_stream_id_ != execution_stream_id();
   }
 
   CollectiveStreamId nccl_stream_id() {
-    return xla::gpu::GetCollectiveStreamId(IsAsync(), GetAsyncStreamKind());
+    return xla::gpu::GetCollectiveStreamId(IsAsync(), GetAsyncStreamId(),
+                                           GetAsyncStreamKind());
   }
 
   ExecutionStreamId async_from_stream_id() const {
@@ -1003,6 +1005,9 @@ class AllReduceCmd : public CollectiveCmd {
   AsyncStreamKind GetAsyncStreamKind() override {
     return AsyncStreamKind::kCollective;
   };
+  CollectiveStreamId GetAsyncStreamId() override {
+    return CollectiveStreamId(1);
+  };
 
  private:
   ReductionKind reduction_kind_;
@@ -1030,6 +1035,9 @@ class ReduceScatterCmd : public CollectiveCmd {
 
   AsyncStreamKind GetAsyncStreamKind() override {
     return AsyncStreamKind::kCollective;
+  };
+  CollectiveStreamId GetAsyncStreamId() override {
+    return CollectiveStreamId(1);
   };
 
  private:
@@ -1059,6 +1067,9 @@ class AllToAllCmd : public CollectiveCmd {
   AsyncStreamKind GetAsyncStreamKind() override {
     return AsyncStreamKind::kCollective;
   };
+  CollectiveStreamId GetAsyncStreamId() override {
+    return CollectiveStreamId(1);
+  };
 
  private:
   bool has_split_dimension_;
@@ -1085,6 +1096,9 @@ class AllGatherCmd : public CollectiveCmd {
 
   AsyncStreamKind GetAsyncStreamKind() override {
     return AsyncStreamKind::kCollective;
+  };
+  CollectiveStreamId GetAsyncStreamId() override {
+    return CollectiveStreamId(1);
   };
 
  private:

@@ -190,7 +190,8 @@ class CollectiveThunk : public Thunk {
   }
 
   CollectiveStreamId nccl_stream_id() const {
-    return xla::gpu::GetCollectiveStreamId(IsAsync(), GetAsyncStreamKind());
+    return xla::gpu::GetCollectiveStreamId(IsAsync(), GetAsyncStreamId(),
+                                           GetAsyncStreamKind());
   }
 
   ExecutionStreamId nccl_execution_stream_id() const {
@@ -214,10 +215,13 @@ class CollectiveThunk : public Thunk {
                                              CommunicatorHandle comm) = 0;
   virtual const CollectiveConfig& config() const = 0;
   virtual AsyncStreamKind GetAsyncStreamKind() const { return stream_kind_; }
+  virtual CollectiveStreamId GetAsyncStreamId() const { return stream_id_; }
   bool IsAsync() const { return async_events_ != nullptr; }
 
  private:
   const AsyncStreamKind stream_kind_;
+  // NCCL stream id assigned by execution stream assignment.
+  CollectiveStreamId stream_id_ = CollectiveStreamId(0);
 
   std::shared_ptr<AsyncEvents> async_events_;
 
@@ -250,12 +254,15 @@ class CollectiveDoneThunk : public Thunk {
   ExecutionStreamId nccl_execution_stream_id() const {
     return ExecutionStreamId(
         execution_stream_id().value() +
-        xla::gpu::GetCollectiveStreamId(true, async_stream_kind_).value());
+        xla::gpu::GetCollectiveStreamId(true, stream_id_, stream_kind_)
+            .value());
   }
 
  private:
   std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
-  AsyncStreamKind async_stream_kind_ = AsyncStreamKind::kCollective;
+  AsyncStreamKind stream_kind_ = AsyncStreamKind::kCollective;
+  // NCCL stream id assigned by execution stream assignment.
+  CollectiveStreamId stream_id_ = CollectiveStreamId(1);
 };
 
 //===----------------------------------------------------------------------===//

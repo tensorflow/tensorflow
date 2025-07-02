@@ -50,7 +50,8 @@ TSL_LIB_GTL_DEFINE_INT_TYPE(CollectiveStreamId, uint64_t);
 // Assigns a unique ID to a stream for asynchronous or synchronous execution.
 // These IDs can be used, for example, to look up the NCCL communicator.
 CollectiveStreamId GetCollectiveStreamId(
-    bool is_async, AsyncStreamKind stream_kind = AsyncStreamKind::kCollective);
+    bool is_async, CollectiveStreamId stream_id = CollectiveStreamId(1),
+    AsyncStreamKind stream_kind = AsyncStreamKind::kCollective);
 
 // Clique key for identifying a particular collectives clique on a GPU backend.
 class GpuCliqueKey : public CliqueKey {

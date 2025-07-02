@@ -543,7 +543,7 @@ CollectiveDoneThunk::CollectiveDoneThunk(
     AsyncStreamKind async_stream_kind)
     : Thunk(kind, std::move(thunk_info)),
       async_events_(async_events),
-      async_stream_kind_(async_stream_kind) {}
+      stream_kind_(async_stream_kind) {}
 
 absl::Status CollectiveDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
