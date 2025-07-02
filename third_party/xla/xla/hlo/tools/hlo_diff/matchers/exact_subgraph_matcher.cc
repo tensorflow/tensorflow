@@ -15,6 +15,7 @@
 #include "xla/hlo/tools/hlo_diff/matchers/exact_subgraph_matcher.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -33,42 +34,38 @@ namespace xla {
 namespace hlo_diff {
 namespace {
 
-struct NodePairSimilarity {
-  const HloInstructionNode* left;
-  const HloInstructionNode* right;
-  double similarity;
-};
-
 // Maps the two subgraphs starting from the given nodes.
 void MapSubgraph(const HloInstructionNode* absl_nonnull left,
-                 int left_graph_size,
+                 const HloGumgraph& left_graph,
                  const HloInstructionNode* absl_nonnull right,
-                 int right_graph_size, const MatcherType matcher_type,
-                 HloGumgraphMappings& mappings,
-                 absl::flat_hash_set<const HloInstructionNode*>&
-                     exact_mapped_subgraph_roots) {
+                 const HloGumgraph& right_graph, const MatcherType matcher_type,
+                 HloGumgraphMappings& mappings) {
   std::vector<const HloInstructionNode*> left_subgraph;
   HloGumgraphBfs(
       *left,
-      [&left_subgraph](const HloInstructionNode& node) {
+      [&](const HloInstructionNode& node) {
         left_subgraph.push_back(&node);
         return true;
       },
-      BfsTraversalDirection::kForward, left_graph_size,
-      [&exact_mapped_subgraph_roots](const HloInstructionNode& node) {
-        return !exact_mapped_subgraph_roots.contains(&node);
+      BfsTraversalDirection::kForward, left_graph.GetNodeCount(),
+      [&](const HloInstructionNode& node) {
+        // Do not traverse into an already matched subgraph.
+        return !mappings.InstructionMapContainsLeft(&node) || &node == left;
       });
+
   std::vector<const HloInstructionNode*> right_subgraph;
   HloGumgraphBfs(
       *right,
-      [&right_subgraph](const HloInstructionNode& node) {
+      [&](const HloInstructionNode& node) {
         right_subgraph.push_back(&node);
         return true;
       },
-      BfsTraversalDirection::kForward, right_graph_size,
-      [&exact_mapped_subgraph_roots](const HloInstructionNode& node) {
-        return !exact_mapped_subgraph_roots.contains(&node);
+      BfsTraversalDirection::kForward, right_graph.GetNodeCount(),
+      [&](const HloInstructionNode& node) {
+        // Do not traverse into an already matched subgraph.
+        return !mappings.InstructionMapContainsRight(&node) || &node == right;
       });
+
   if (left_subgraph.size() != right_subgraph.size()) {
     LOG(WARNING) << "Subgraph (" << left->instruction->name() << " vs "
                  << right->instruction->name() << ") with same fingerprint "
@@ -77,7 +74,8 @@ void MapSubgraph(const HloInstructionNode* absl_nonnull left,
                  << right_subgraph.size();
     return;
   }
-  for (int i = 0; i < left_subgraph.size(); ++i) {
+
+  for (size_t i = 0; i < left_subgraph.size(); ++i) {
     if (left_subgraph[i]->instruction->opcode() !=
         right_subgraph[i]->instruction->opcode()) {
       LOG(WARNING) << "Subgraph (" << left->instruction->name() << " vs "
@@ -89,15 +87,15 @@ void MapSubgraph(const HloInstructionNode* absl_nonnull left,
       return;
     }
   }
-  for (int i = 0; i < left_subgraph.size(); ++i) {
-    mappings.MapInstructionsIfAbsent(left_subgraph[i], right_subgraph[i],
-                                     matcher_type);
-    exact_mapped_subgraph_roots.insert(left_subgraph[i]);
-    exact_mapped_subgraph_roots.insert(right_subgraph[i]);
-    // Mark all nodes except the root as unchanged.
-    if (i != 0) {
-      mappings.left_to_right_instruction_map.left.find(left_subgraph[i])
-          ->info.unchanged = true;
+
+  for (size_t i = 0; i < left_subgraph.size(); ++i) {
+    if (mappings.MapInstructionsIfAbsent(left_subgraph[i], right_subgraph[i],
+                                         matcher_type)) {
+      // Mark all nodes except the root as unchanged.
+      if (i != 0) {
+        mappings.left_to_right_instruction_map.left.find(left_subgraph[i])
+            ->second.props->unchanged = true;
+      }
     }
   }
 }
@@ -105,99 +103,64 @@ void MapSubgraph(const HloInstructionNode* absl_nonnull left,
 }  // namespace
 
 void GreedySubGraphExactMatcher::Match(HloGumgraphMappings& mappings) const {
-  // Find candidate subgraphs that match exactly.
   LOG(INFO) << "Running GreedySubgraphExactMatcher: matching subgraphs that "
                "match exactly";
   int current_mapping_count = mappings.left_to_right_instruction_map.size();
-  absl::flat_hash_map<const HloInstructionNode*,
-                      std::vector<const HloInstructionNode*>>
-      candidates, candidates_reverse;
+
+  // Cache all nodes at each height.
+  absl::flat_hash_map<int, std::vector<const HloInstructionNode*>>
+      source_nodes_by_height;
+  for (const auto* node : left_.AllNodes()) {
+    source_nodes_by_height[node->props.height].push_back(node);
+  }
+  absl::flat_hash_map<int, std::vector<const HloInstructionNode*>>
+      target_nodes_by_height;
+  for (const auto* node : right_.AllNodes()) {
+    target_nodes_by_height[node->props.height].push_back(node);
+  }
+
   int max_height =
       std::max(left_.GetRoot().props.height, right_.GetRoot().props.height);
-  // Cache all subgraphs at each height.
-  absl::flat_hash_map<int, std::vector<const HloInstructionNode*>>
-      source_subgraphs;
-  HloGumgraphBfs(
-      left_.GetRoot(),
-      [&source_subgraphs](const HloInstructionNode& node) {
-        if (!node.is_root) {
-          source_subgraphs[node.props.height].push_back(&node);
-        }
-        return true;
-      },
-      BfsTraversalDirection::kForward, left_.GetNodeCount());
-  absl::flat_hash_map<int, std::vector<const HloInstructionNode*>>
-      target_subgraphs;
-  HloGumgraphBfs(
-      right_.GetRoot(),
-      [&target_subgraphs](const HloInstructionNode& node) {
-        if (!node.is_root) {
-          target_subgraphs[node.props.height].push_back(&node);
-        }
-        return true;
-      },
-      BfsTraversalDirection::kForward, right_.GetNodeCount());
 
-  absl::flat_hash_set<const HloInstructionNode*> ignored;
-  absl::flat_hash_set<const HloInstructionNode*> exact_mapped_subgraph_roots;
-  // Find exact match left-right subgraphs candidates greedly from high to low
-  // height.
-  for (int height = max_height; height >= 0; --height) {
-    if (!source_subgraphs.contains(height) ||
-        !target_subgraphs.contains(height)) {
+  // Greedily find exact match subgraphs from tallest to shortest.
+  for (int height = max_height; height > 0; --height) {
+    if (!source_nodes_by_height.contains(height) ||
+        !target_nodes_by_height.contains(height)) {
       continue;
     }
-    absl::flat_hash_set<const HloInstructionNode*> found;
-    // Find exact match left-right subgraph candidates at the current height.
-    absl::flat_hash_map<uint64_t,
-                        absl::flat_hash_set<const HloInstructionNode*>>
+
+    absl::flat_hash_map<uint64_t, std::vector<const HloInstructionNode*>>
         source_by_fingerprint;
-    absl::flat_hash_map<uint64_t,
-                        absl::flat_hash_set<const HloInstructionNode*>>
+    for (const HloInstructionNode* source_node :
+         source_nodes_by_height[height]) {
+      if (!mappings.InstructionMapContainsLeft(source_node)) {
+        source_by_fingerprint[source_node->props.subgraph_fingerprint]
+            .push_back(source_node);
+      }
+    }
+
+    absl::flat_hash_map<uint64_t, std::vector<const HloInstructionNode*>>
         target_by_fingerprint;
-    for (const HloInstructionNode* source_node : source_subgraphs[height]) {
-      if (ignored.contains(source_node) ||
-          mappings.InstructionMapContainsLeft(source_node)) {
+    for (const HloInstructionNode* target_node :
+         target_nodes_by_height[height]) {
+      if (!mappings.InstructionMapContainsRight(target_node)) {
+        target_by_fingerprint[target_node->props.subgraph_fingerprint]
+            .push_back(target_node);
+      }
+    }
+
+    for (auto& [fingerprint, source_nodes] : source_by_fingerprint) {
+      auto it = target_by_fingerprint.find(fingerprint);
+      if (it == target_by_fingerprint.end()) {
         continue;
       }
-      source_by_fingerprint[source_node->props.subgraph_fingerprint].insert(
-          source_node);
-    }
-    for (const HloInstructionNode* target_node : target_subgraphs[height]) {
-      if (ignored.contains(target_node) ||
-          mappings.InstructionMapContainsRight(target_node)) {
-        continue;
+
+      auto& target_nodes = it->second;
+      // For now, only map 1:1 candidates to avoid ambiguity.
+      if (source_nodes.size() == 1 && target_nodes.size() == 1) {
+        MapSubgraph(source_nodes[0], left_, target_nodes[0], right_, type_,
+                    mappings);
       }
-      target_by_fingerprint[target_node->props.subgraph_fingerprint].insert(
-          target_node);
-    }
-    for (const auto& [fingerprint, source_nodes] : source_by_fingerprint) {
-      if (auto it = target_by_fingerprint.find(fingerprint);
-          it != target_by_fingerprint.end()) {
-        // Map 1:1 candidates. Check if the source and target subgraphs are
-        // exactly the same, if so, map them.
-        if (source_nodes.size() == 1 && it->second.size() == 1) {
-          MapSubgraph(*source_nodes.begin(), left_.GetNodeCount(),
-                      *it->second.begin(), right_.GetNodeCount(), type_,
-                      mappings, exact_mapped_subgraph_roots);
-        }
-        found.insert(source_nodes.begin(), source_nodes.end());
-        found.insert(it->second.begin(), it->second.end());
-      }
-    }
-    // Ignore all nodes in the subgraphs that matched in later traversals.
-    for (const HloInstructionNode* found_node : found) {
-      HloGumgraphBfs(
-          *found_node, [](const HloInstructionNode& node) { return true; },
-          BfsTraversalDirection::kForward,
-          std::max(left_.GetNodeCount(), right_.GetNodeCount()),
-          [&ignored](const HloInstructionNode& node) {
-            if (ignored.contains(&node)) {
-              return false;
-            }
-            ignored.insert(&node);
-            return true;
-          });
     }
   }
 
