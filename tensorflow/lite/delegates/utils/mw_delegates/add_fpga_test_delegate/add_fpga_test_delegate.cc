@@ -47,8 +47,26 @@ class AddFpgaTestDelegateKernel : public SimpleDelegateKernelInterface {
   }
 
   TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override {
-    return !options_.error_during_prepare ? kTfLiteOk : kTfLiteError;
+  // Check inputs
+  for (int i = 0; i < node->inputs->size; ++i) {
+    TfLiteTensor& tensor = context->tensors[node->inputs->data[i]];
+    if (tensor.allocation_type == kTfLiteDynamic) {
+      TF_LITE_KERNEL_LOG(context, "Prepare failed: dynamic input tensor #%d", node->inputs->data[i]);
+      return kTfLiteError;
+    }
   }
+
+  // Check outputs
+  for (int i = 0; i < node->outputs->size; ++i) {
+    TfLiteTensor& tensor = context->tensors[node->outputs->data[i]];
+    if (tensor.allocation_type == kTfLiteDynamic) {
+      TF_LITE_KERNEL_LOG(context, "Prepare failed: dynamic output tensor #%d", node->outputs->data[i]);
+      return kTfLiteError;
+    }
+  }
+
+  return kTfLiteOk;
+} 
 
   TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override {
     // Evaluate the delegated graph.
