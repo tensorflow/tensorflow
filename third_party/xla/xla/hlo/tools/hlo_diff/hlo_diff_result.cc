@@ -44,7 +44,6 @@ bool IsChangedInstruction(const HloInstructionNode* left_node,
 std::unique_ptr<const DiffResult> ConstructDiffResult(
     const HloGumgraph& left_graph, const HloGumgraph& right_graph,
     const HloGumgraphMappings& mappings) {
-  LOG(INFO) << "Constructing diff result";
   const std::vector<const HloInstructionNode*> left_all_nodes =
       GetAllNodesInBfsOrder(left_graph.GetRoot(),
                             BfsTraversalDirection::kForward,
@@ -119,14 +118,14 @@ DiffResultProto DiffResult::ToProto() const {
   for (const auto& [left_instruction, right_instruction] :
        unchanged_instructions) {
     MatchedInstructionPairProto* pair = proto.add_unchanged_instructions();
-    pair->set_left(std::string(left_instruction->name()));
-    pair->set_right(std::string(right_instruction->name()));
+    pair->set_left(left_instruction->name());
+    pair->set_right(right_instruction->name());
   }
   for (const auto& [left_instruction, right_instruction] :
        changed_instructions) {
     MatchedInstructionPairProto* pair = proto.add_changed_instructions();
-    pair->set_left(std::string(left_instruction->name()));
-    pair->set_right(std::string(right_instruction->name()));
+    pair->set_left(left_instruction->name());
+    pair->set_right(right_instruction->name());
   }
   for (const HloInstruction* instruction : left_module_unmatched_instructions) {
     proto.add_left_unmatched_instructions(std::string(instruction->name()));
@@ -186,7 +185,6 @@ void LogDiffResult(const DiffResult& diff_result) {
             << diff_result.right_module_unmatched_instructions.size();
   LOG(INFO) << "Changed instructions: "
             << diff_result.changed_instructions.size();
-  LOG(INFO) << "Moved instructions: " << diff_result.moved_instructions.size();
   LOG(INFO) << "Unchanged instructions: "
             << diff_result.unchanged_instructions.size();
 }
