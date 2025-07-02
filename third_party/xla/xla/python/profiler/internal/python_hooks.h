@@ -114,6 +114,8 @@ struct PythonTraceEntry {
 struct PerThreadEvents {
   std::deque<PythonTraceEntry> completed;
   std::stack<PythonTraceEntry> active;
+  // Track C Functions call in its own stack.
+  std::stack<PythonTraceEntry> active_c;
 };
 
 class PythonHooks;

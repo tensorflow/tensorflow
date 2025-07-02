@@ -326,18 +326,18 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
       if (PyCFunction_Check(arg)) {
         // Python stack does not have a filename/line_no for native calls.
         auto* func = reinterpret_cast<PyCFunctionObject*>(arg);
-        entries_[thread_id].active.emplace(now, 0, func);
+        entries_[thread_id].active_c.emplace(now, 0, func);
       }
       break;
     }
     case PyTrace_C_RETURN:
     case PyTrace_C_EXCEPTION: {
       if (PyCFunction_Check(arg)) {
-        if (!thread_traces.active.empty()) {
-          auto& entry = thread_traces.active.top();
+        if (!thread_traces.active_c.empty()) {
+          auto& entry = thread_traces.active_c.top();
           entry.end_time_ns = now;
           thread_traces.completed.emplace_back(std::move(entry));
-          thread_traces.active.pop();
+          thread_traces.active_c.pop();
         } else if (options_.include_incomplete_events) {
           // Only the end of the events is recorded, use profiler start as
           // start timestamp of the new event.
