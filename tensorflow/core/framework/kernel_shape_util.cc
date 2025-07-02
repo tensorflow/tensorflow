@@ -16,7 +16,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <cstdint>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
