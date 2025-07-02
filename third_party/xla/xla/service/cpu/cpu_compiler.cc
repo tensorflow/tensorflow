@@ -2557,11 +2557,11 @@ CpuExecutableAotCompilationResult::LoadExecutable(
   VLOG(2) << "Load XLA:CPU executable for module: " << module->name();
 
   // Recreate BufferAssignment from proto.
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<BufferAssignment> buffer_assignment,
-      BufferAssignment::FromProto(proto_.buffer_assignment(), module.get(),
-                                  compiler->BufferSizeBytesFunction(),
-                                  /*can_share_buffer=*/nullptr));
+  AliasInfo alias_info;
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffer_assignment,
+                      BufferAssignment::FromProto(
+                          proto_.buffer_assignment(), module.get(),
+                          compiler->BufferSizeBytesFunction(), &alias_info));
 
   const DebugOptions& debug_options = module->config().debug_options();
   VlogMaxIsa(debug_options.xla_cpu_max_isa());
