@@ -201,8 +201,6 @@ CpuRawBuffer::CopyFromHostBuffer(
     absl::AnyInvocable<void() &&> on_done_with_host_buffer, const Shape& shape,
     AsyncWorkRunner* async_work_runner, absl::Mutex* transpose_mu,
     TransposePlanCache* transpose_cache) {
-  VLOG(0) << "CopyFromHostBuffer: " << shape.ToString(true);
-
   tsl::AsyncValueRef<CpuDeviceMemory> device_buffer = buffer_;
   bool has_default_layout =
       !byte_strides || HasMajorToMinorLayout(type, dims, *byte_strides);
