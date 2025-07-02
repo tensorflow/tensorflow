@@ -18,7 +18,9 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/call_graph.h"
+#include "xla/util.h"
 
 namespace xla::gpu {
 
@@ -27,10 +29,17 @@ namespace xla::gpu {
 // Each entry contains the sliced paths for that user, i.e. the sequence of ops
 // following the dataflow from the user itself to the DUS (included).
 absl::InlinedVector<absl::InlinedVector<HloInstruction*, 2>, 4>
-GetSlicedUserPaths(const HloInstruction& instr, const CallGraph& call_graph);
+GetSlicedUserPaths(const HloInstruction& instr, const CallGraph& call_graph,
+                   HloPredicate is_noop =
+                       HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kTuple,
+                                        HloOpcode::kGetTupleElement>,
+                   bool check_alignment = true);
 
 absl::InlinedVector<HloInstruction*, 8> GetSlicedOperandPaths(
-    const HloInstruction& instr, const CallGraph& call_graph);
+    const HloInstruction& instr, const CallGraph& call_graph,
+    HloPredicate is_noop = HloPredicateIsOp<
+        HloOpcode::kBitcast, HloOpcode::kTuple, HloOpcode::kGetTupleElement>,
+    bool check_alignment = true);
 
 }  // namespace xla::gpu
 

@@ -14,19 +14,25 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/import_tensorflow.h"
 
+#include <complex>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "google/protobuf/map.h"
-#include "google/protobuf/text_format.h"
-#include "absl/memory/memory.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"

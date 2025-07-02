@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 
 namespace xla::gpu {
 
@@ -60,11 +61,6 @@ using DataflowPathView = absl::Span<HloInstruction* const>;
 using DataflowPathsView = absl::Span<DataflowPathView>;
 
 using InstructionSet = absl::flat_hash_set<HloInstruction*>;
-
-bool IsNoOp(const HloInstruction* hlo) {
-  return HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kTuple,
-                          HloOpcode::kGetTupleElement>(hlo);
-}
 
 // Returns true if the slice is 128-byte-aligned. The slice starting
 // address is determined by the product of all non-sliced dimensions and an
@@ -206,7 +202,9 @@ bool HasConstantOrLoopIterationOffsets(const HloDynamicIndexInstruction& instr,
 }  // namespace
 
 UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction& instr,
-                                          const CallGraph& call_graph) {
+                                          const CallGraph& call_graph,
+                                          HloPredicate is_noop,
+                                          bool check_alignment) {
   UseDefDataflowPaths sliced_operand_paths;
 
   // This set is used to avoid duplicates in the matched results. It contains
@@ -248,13 +246,13 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction& instr,
           maybe_sliced_operand_path.push_back(const_cast<HloInstruction*>(cur));
 
           if (IsOpcodeAnyOf<HloOpcode::kDynamicSlice, HloOpcode::kSlice>(cur)) {
-            if (IsAlignedSlice(cur)) {
+            if (IsAlignedSlice(cur) || !check_alignment) {
               slice_found = true;
               return slice_found;
             }
           }
 
-          return !IsNoOp(cur);
+          return !is_noop(cur);
         });
 
     if (maybe_slice_instr == std::nullopt) {
@@ -285,7 +283,9 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction& instr,
 }
 
 DefUseDataflowPaths GetSlicedUserPaths(const HloInstruction& instr,
-                                       const CallGraph& call_graph) {
+                                       const CallGraph& call_graph,
+                                       HloPredicate is_noop,
+                                       bool check_alignment) {
   DefUseDataflowPaths sliced_user_paths;
   // This set is used to avoid duplicates in the matched results. It contains
   // the matched instructions that we have seen so far.
@@ -305,12 +305,12 @@ DefUseDataflowPaths GetSlicedUserPaths(const HloInstruction& instr,
           maybe_sliced_user_path.push_back(const_cast<HloInstruction*>(cur));
           if (const auto slice_instr =
                   DynCast<HloDynamicUpdateSliceInstruction>(cur)) {
-            if (IsAlignedSlice(slice_instr)) {
+            if (IsAlignedSlice(slice_instr) || !check_alignment) {
               dus_found = true;
               return true;
             }
           }
-          return cur->user_count() > 1 || !IsNoOp(cur);
+          return cur->user_count() > 1 || !is_noop(cur);
         },
         /*visit_operands=*/false);
     if (maybe_dus_instr == std::nullopt) {
