@@ -160,6 +160,9 @@ struct SchedulerConfig {
   // If the above flag is also set, force the scheduler to provide maximum delay
   // to nodes at the stat of a scheduling group.
   bool aggressive_flexible_annotation_scheduling = false;
+  // If true, estimate the fragmentation size of the module by running the heap
+  // simulator.
+  bool estimate_fragmentation_size = false;
 };
 
 // Class used estimate latency between instructions and cost of HLOs.
@@ -330,6 +333,8 @@ class AsyncTracker {
   // Resets target defined states after scheduling a computation.
   virtual void ResetTargetDefinedStates() {}
 
+  const SchedulerConfig& GetConfig() const { return config_; }
+
   explicit AsyncTracker(
       const SchedulerConfig& config,
       GetCanonicalAsyncOpFunc func = DefaultGetCanonicalAsyncOp)
@@ -415,6 +420,8 @@ class SchedulingContext {
   const HloCostAnalysis::ShapeSizeFunction& GetShapeSizeBytes() const {
     return shape_size_bytes_;
   }
+
+  const AliasInfo* GetAliasInfo() const { return alias_info_; }
 
  private:
   mutable std::shared_ptr<const HloAliasAnalysis> alias_analysis_;
