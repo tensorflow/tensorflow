@@ -707,10 +707,6 @@ class Delegate {
             TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_SUBGRAPH_RESHAPING) == 0;
   }
 
-  bool enable_slinky() const {
-    return (options_.flags & TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SLINKY) != 0;
-  }
-
   uint32_t runtime_flags() const { return options_.runtime_flags; }
 
   bool support_variable_ops() const {
@@ -1173,11 +1169,6 @@ class Subgraph {
     }
     if (context->profiler) {
       flags |= XNN_FLAG_BASIC_PROFILING;
-    }
-    if (delegate.enable_slinky()) {
-      // TODO: this flag isn't yet part of the public XNNPACK API
-      constexpr uint32_t XNN_FLAG_SLINKY_ENABLED = 0x40000000;
-      flags |= XNN_FLAG_SLINKY_ENABLED;
     }
     flags |= delegate.runtime_flags();
 
