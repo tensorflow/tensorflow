@@ -50,7 +50,7 @@ void completion(const char* buf, linenoiseCompletions* lc) {
   string buf_str = buf;
   if (buf_str.find(' ') == buf_str.npos) {
     for (const char* opt : kCmds) {
-      if (absl::StartsWith(string(opt), buf_str)) {
+      if (absl::StartsWith(opt, buf_str)) {
         linenoiseAddCompletion(lc, opt);
       }
     }
@@ -64,7 +64,7 @@ void completion(const char* buf, linenoiseCompletions* lc) {
     buf_str = buf_str.substr(last_dash + 1, kint32max);
   }
   for (const char* opt : kOptions) {
-    if (absl::StartsWith(string(opt), buf_str)) {
+    if (absl::StartsWith(opt, buf_str)) {
       linenoiseAddCompletion(lc, (prefix + opt).c_str());
     }
   }
