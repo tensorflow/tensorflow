@@ -3157,7 +3157,7 @@ xla_cc_test(
         ":computation_placer",
         "//xla/runtime:device_id",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )
