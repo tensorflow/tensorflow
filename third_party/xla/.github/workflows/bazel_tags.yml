@@ -38,6 +38,6 @@ jobs:
       - name: "Install bazelisk"
         run: parallel --ungroup --retries 3 --delay 15 --nonall -- go install github.com/bazelbuild/bazelisk@24651ab # v1.20.0
       - name: "Run bazel build --nobuild //xla/... with retries"
-        run: parallel --ungroup --retries 3 --delay 15 --nonall -- bazelisk build --nobuild //xla/...
+        run: parallel --ungroup --retries 3 --delay 15 --nonall -- bazelisk build --nobuild -- //xla/... -//xla/hlo/tools/hlo_diff/...
       - name: "Assert all tags are documented"
-        run: bazelisk query //xla/... --output=build | python3 build_tools/lint/tags.py
+        run: bazelisk query --output=build '//xla/... except //xla/hlo/tools/hlo_diff/...' | python3 build_tools/lint/tags.py

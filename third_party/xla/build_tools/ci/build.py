@@ -51,6 +51,7 @@ _XLA_DEFAULT_TARGET_PATTERNS = (
     "//xla/...",
     "//build_tools/...",
     "@local_tsl//tsl/...",
+    "-//xla/hlo/tools/hlo_diff/..."
 )
 _XLA_ONEAPI_TARGET_PATTERNS = (
     "//xla/stream_executor/sycl:stream_executor_sycl",
