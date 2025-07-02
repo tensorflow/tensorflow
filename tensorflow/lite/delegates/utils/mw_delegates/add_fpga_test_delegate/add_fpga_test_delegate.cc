@@ -134,32 +134,21 @@ class AddFpgaTestDelegate : public SimpleDelegateInterface {
     if (registration->builtin_code != kTfLiteBuiltinAdd &&
         registration->builtin_code != kTfLiteBuiltinSub)
       return false;
-    // Only supports int32 type
+
+    // Only supports int32 type and static tensors.
     for (int i = 0; i < node->inputs->size; ++i) {
       auto& tensor = context->tensors[node->inputs->data[i]];
-      if (tensor.type != kTfLiteInt32) {
+      if (tensor.type != kTfLiteInt32 || tensor.allocation_type == kTfLiteDynamic) {
         return false;
       }
     }
     for (int i = 0; i < node->outputs->size; ++i) {
       auto& tensor = context->tensors[node->outputs->data[i]];
-      if (tensor.type != kTfLiteInt32) {
+      if (tensor.type != kTfLiteInt32 || tensor.allocation_type == kTfLiteDynamic) {
         return false;
       }
     }
-    // Only support static int32 tensors
-    for (int i = 0; i < node->inputs->size; ++i) {
-      auto& tensor = context->tensors[node->inputs->data[i]];
-      if (tensor.type != kTfLiteInt32 || IsDynamicTensor(tensor)) {
-        return false;
-      }
-    }
-    for (int i = 0; i < node->outputs->size; ++i) {
-      auto& tensor = context->tensors[node->outputs->data[i]];
-      if (tensor.type != kTfLiteInt32 || IsDynamicTensor(tensor)) {
-        return false;
-      }
-    }
+    
     return true;
   }
   TfLiteStatus Initialize(TfLiteContext* context) override { return kTfLiteOk; }
@@ -184,11 +173,6 @@ class AddFpgaTestDelegate : public SimpleDelegateInterface {
 
  private:
   const AddFpgaTestDelegateOptions options_;
-  
-  // Utility to check for dynamic tensors
-  bool IsDynamicTensor(const TfLiteTensor& tensor) const {
-    return tensor.allocation_type == kTfLiteDynamic;
-}
 
 };
 
