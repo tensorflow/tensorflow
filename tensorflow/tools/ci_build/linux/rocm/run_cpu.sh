@@ -41,6 +41,7 @@ if [ -f /usertools/cpu.bazelrc ]; then
           test \
           --config=sigbuild_local_cache \
           --config=pycpp \
+          --test_tag_filters=-no_cuda_on_cpu_tap,-no-gpu,-optimize.mlir.test,-requires-gpu-nvidia,-tpu,-v1only,-oss_serial,-no_windows,-no_oss \
           --action_env=TF_PYTHON_VERSION=$PYTHON_VERSION \
           --local_test_jobs=${N_BUILD_JOBS} \
          --test_timeout 920,2400,7200,9600 \
