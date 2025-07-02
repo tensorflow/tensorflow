@@ -194,9 +194,9 @@ class HloModule {
     frontend_attributes_ = std::move(frontend_attributes);
   }
 
-  void add_frontend_attributes(FrontendAttributes frontend_attributes) {
-    frontend_attributes_.mutable_map()->insert(
-        frontend_attributes.map().begin(), frontend_attributes.map().end());
+  void add_frontend_attribute(std::string key, std::string value) {
+    frontend_attributes_.mutable_map()->emplace(std::move(key),
+                                                std::move(value));
   }
 
   const FrontendAttributes& frontend_attributes() const {

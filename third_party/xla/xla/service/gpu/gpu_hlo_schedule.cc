@@ -448,9 +448,8 @@ absl::Status RunP2PSchedulePreparation(HloModule* module) {
 std::string TagWithFingerprint(HloModule* module) {
   std::string fingerprint = module->GetFingerprint128(
       HloPrintOptions::Canonical().set_print_backend_config(true));
-  FrontendAttributes attributes;
-  (*attributes.mutable_map())[std::string(kFingerprintBeforeLHS)] = fingerprint;
-  module->add_frontend_attributes(attributes);
+  module->add_frontend_attribute(std::string(kFingerprintBeforeLHS),
+                                 fingerprint);
   VLOG(1) << "Fingerprint before LHS for module " << module->name() << "("
           << module->unique_id() << ") = " << fingerprint;
   return fingerprint;
