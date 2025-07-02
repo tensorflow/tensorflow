@@ -147,6 +147,19 @@ class AddFpgaTestDelegate : public SimpleDelegateInterface {
         return false;
       }
     }
+    // Only support static int32 tensors
+    for (int i = 0; i < node->inputs->size; ++i) {
+      auto& tensor = context->tensors[node->inputs->data[i]];
+      if (tensor.type != kTfLiteInt32 || IsDynamicTensor(tensor)) {
+        return false;
+      }
+    }
+    for (int i = 0; i < node->outputs->size; ++i) {
+      auto& tensor = context->tensors[node->outputs->data[i]];
+      if (tensor.type != kTfLiteInt32 || IsDynamicTensor(tensor)) {
+        return false;
+      }
+    }
     return true;
   }
   TfLiteStatus Initialize(TfLiteContext* context) override { return kTfLiteOk; }
@@ -171,6 +184,12 @@ class AddFpgaTestDelegate : public SimpleDelegateInterface {
 
  private:
   const AddFpgaTestDelegateOptions options_;
+  
+  // Utility to check for dynamic tensors
+  bool IsDynamicTensor(const TfLiteTensor& tensor) const {
+    return tensor.allocation_type == kTfLiteDynamic;
+}
+
 };
 
 }  // namespace add_fpga_test
