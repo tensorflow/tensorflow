@@ -124,6 +124,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:types",
         "//xla:util",
+        "//xla/backends/cpu/runtime:xfeed_manager",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:shaped_buffer",
         "//xla/tsl/platform:statusor",
@@ -152,6 +153,7 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu/runtime:xfeed_manager",
         "//xla/service:compiler",
         "//xla/service:generic_transfer_manager",
         "//xla/service:transfer_manager",
@@ -671,6 +673,7 @@ cc_library(
         "//xla/backends/cpu/runtime:thread_pool_task_runner",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/backends/cpu/runtime:thunk_executor",
+        "//xla/backends/cpu/runtime:xfeed_manager",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:custom_call_status",
@@ -1068,14 +1071,8 @@ cc_library(
 
 cc_library(
     name = "cpu_runtime",
-    srcs = [
-        "cpu_runtime.cc",
-        "xfeed_manager.cc",
-    ],
-    hdrs = [
-        "cpu_runtime.h",
-        "xfeed_manager.h",
-    ],
+    srcs = ["cpu_runtime.cc"],
+    hdrs = ["cpu_runtime.h"],
     copts = runtime_copts(),
     deps = [
         ":cpu_executable_run_options",
@@ -1088,6 +1085,7 @@ cc_library(
         "//xla/backends/cpu/collectives:cpu_cliques",
         "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/backends/cpu/collectives:in_process_collectives",
+        "//xla/backends/cpu/runtime:xfeed_manager",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/hlo/parser:hlo_parser",
@@ -1379,25 +1377,6 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-xla_cc_test(
-    name = "xfeed_manager_test",
-    size = "small",
-    srcs = ["xfeed_manager_test.cc"],
-    deps = [
-        ":cpu_runtime",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:test",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_googletest//:gtest",
     ],
 )
 

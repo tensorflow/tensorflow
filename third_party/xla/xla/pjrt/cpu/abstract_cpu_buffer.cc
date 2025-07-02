@@ -564,6 +564,7 @@ void PackOrCopy(PrimitiveType element_type, const LiteralSlice& literal,
 AbstractCpuBuffer::AllocateTrackedDeviceBuffer(
     const Shape& on_device_shape,
     absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events) {
+  VLOG(0) << "Allocate: " << on_device_shape.ToString();
   if (on_device_shape.IsTuple()) {
     return absl::InvalidArgumentError(
         absl::StrCat("Tuples are not supported for cpu-buffers: ",

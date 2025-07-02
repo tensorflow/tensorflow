@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/cpu/xfeed_manager.h"
+#include "xla/backends/cpu/runtime/xfeed_manager.h"
 
 #include <cstdint>
 #include <utility>

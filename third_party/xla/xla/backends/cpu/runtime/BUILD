@@ -196,6 +196,7 @@ cc_library(
     deps = [
         ":buffer_allocations",
         ":function_library",
+        ":xfeed_manager",
         "//xla:executable_run_options",
         "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/backends/cpu/collectives:in_process_collectives",
@@ -204,7 +205,6 @@ cc_library(
         "//xla/runtime:resource_use",
         "//xla/service:global_device_id",
         "//xla/service/cpu:cpu_executable_run_options",
-        "//xla/service/cpu:cpu_runtime",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/concurrency:async_value",
@@ -805,12 +805,12 @@ cc_library(
     hdrs = ["outfeed_thunk.h"],
     deps = [
         ":thunk",
+        ":xfeed_manager",
         "//xla:shape_util",
         "//xla:util",
         "//xla/runtime:buffer_use",
         "//xla/runtime:resource_use",
         "//xla/service:buffer_assignment",
-        "//xla/service/cpu:cpu_runtime",
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:statusor",
@@ -886,12 +886,12 @@ cc_library(
     hdrs = ["infeed_thunk.h"],
     deps = [
         ":thunk",
+        ":xfeed_manager",
         "//xla:shape_util",
         "//xla:util",
         "//xla/runtime:buffer_use",
         "//xla/runtime:resource_use",
         "//xla/service:buffer_assignment",
-        "//xla/service/cpu:cpu_runtime",
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:statusor",
@@ -1327,5 +1327,39 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:casts",
+    ],
+)
+
+cc_library(
+    name = "xfeed_manager",
+    srcs = ["xfeed_manager.cc"],
+    hdrs = ["xfeed_manager.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "xfeed_manager_test",
+    srcs = ["xfeed_manager_test.cc"],
+    deps = [
+        ":xfeed_manager",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest",
     ],
 )

@@ -28,8 +28,8 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "xla/backends/cpu/runtime/xfeed_manager.h"
 #include "xla/executable_run_options.h"
-#include "xla/service/cpu/xfeed_manager.h"
 
 namespace xla {
 namespace cpu {

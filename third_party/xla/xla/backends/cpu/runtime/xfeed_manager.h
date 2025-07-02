@@ -17,8 +17,8 @@ limitations under the License.
 // is used by the CPU runtime to transfer buffers into an executing
 // CPU computation, e.g., to feed data into a while loop.
 
-#ifndef XLA_SERVICE_CPU_XFEED_MANAGER_H_
-#define XLA_SERVICE_CPU_XFEED_MANAGER_H_
+#ifndef XLA_BACKENDS_CPU_RUNTIME_XFEED_MANAGER_H_
+#define XLA_BACKENDS_CPU_RUNTIME_XFEED_MANAGER_H_
 
 #include <cstdint>
 #include <deque>
@@ -115,4 +115,4 @@ XfeedManager* GetXfeedManager(int device_ordinal);
 
 }  // namespace xla::cpu
 
-#endif  // XLA_SERVICE_CPU_XFEED_MANAGER_H_
+#endif  // XLA_BACKENDS_CPU_RUNTIME_XFEED_MANAGER_H_
