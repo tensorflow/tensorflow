@@ -1,0 +1,141 @@
+diff --git a/BUILD b/BUILD
+index fdf3249ad82..56c05177102 100644
+--- a/BUILD
++++ b/BUILD
+@@ -1,3 +1,5 @@
++load("@rules_cc//cc:defs.bzl", "cc_toolchain_suite")
++
+ exports_files(glob(["requirements*"]) + [
+     "configure",
+     "configure.py",
+@@ -5,3 +7,10 @@ exports_files(glob(["requirements*"]) + [
+     "AUTHORS",
+     "LICENSE",
+ ])
++
++cc_toolchain_suite(
++  name = "crosstool",
++  toolchains = {
++    "k8": "@llvm_toolchain//:cc-toolchain-x86_64-linux",
++  },
++)
+diff --git a/WORKSPACE b/WORKSPACE
+index 43a224e1df9..7c57022f1e7 100644
+--- a/WORKSPACE
++++ b/WORKSPACE
+@@ -73,6 +73,47 @@ load("@pypi//:requirements.bzl", "install_deps")
+ install_deps()
+ # End hermetic Python initialization
+ 
++http_archive(
++  name = "com_googleapis_storage_chrome_linux_amd64_sysroot",
++  build_file = "//:BUILD.sysroot",
++  sha256 = "11647a4b5ba1a49e13fba5de0135a51097a296aba6cfb780f07607a6091628a2",
++  urls = [
++    # features.h defines GLIBC 2.31.
++    "https://storage.googleapis.com/chrome-linux-sysroot/toolchain/692a0bddd6cdb2a96999cd817268d0227c89c731/debian_bullseye_amd64_sysroot.tar.xz",
++  ],
++)
++
++http_archive(
++  name = "toolchains_llvm",
++  sha256 = "e3fb6dc6b77eaf167cb2b0c410df95d09127cbe20547e5a329c771808a816ab4",
++  strip_prefix = "toolchains_llvm-v1.2.0",
++  canonical_id = "v1.2.0",
++  url = "https://github.com/bazel-contrib/toolchains_llvm/releases/download/v1.2.0/toolchains_llvm-v1.2.0.tar.gz",
++)
++
++load("@toolchains_llvm//toolchain:deps.bzl", "bazel_toolchain_dependencies")
++
++bazel_toolchain_dependencies()
++
++load("@toolchains_llvm//toolchain:rules.bzl", "llvm_toolchain")
++
++llvm_toolchain(
++  name = "llvm_toolchain",
++  llvm_version = "18.1.8",
++  sysroot = {
++    "linux-x86_64": "@com_googleapis_storage_chrome_linux_amd64_sysroot//:all_files",
++  },
++  #compile_flags = {
++  #  "linux-x86_64": [
++  #    "--cuda-path=$(location @cuda_nvcc//:nvvm/libdevice/libdevice.10.bc)"
++  #  ],
++  #},
++)
++
++load("@llvm_toolchain//:toolchains.bzl", "llvm_register_toolchains")
++
++llvm_register_toolchains()
++
+ load("@//tensorflow:workspace2.bzl", "tf_workspace2")
+ 
+ tf_workspace2()
+diff --git a/third_party/xla/third_party/gpus/compiler_common_tools.bzl b/third_party/xla/third_party/gpus/compiler_common_tools.bzl
+index b51edce3bb2..2146e6eae05 100644
+--- a/third_party/xla/third_party/gpus/compiler_common_tools.bzl
++++ b/third_party/xla/third_party/gpus/compiler_common_tools.bzl
+@@ -78,7 +78,7 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sys_root):
+         "-no-canonical-prefixes",
+     )
+     no_canonical_prefixes = (["-no-canonical-prefixes"] if no_canonical_prefixes_supported else [])
+-    result = raw_exec(repository_ctx, [cc, "-E", "-x" + lang, "-", "-v"] +
++    result = raw_exec(repository_ctx, [cc, "-E", "-x" + lang, "-stdlib=libc++", "-", "-v"] +
+                                       sysroot + no_canonical_prefixes)
+     stderr = err_out(result)
+     index1 = stderr.find(_INC_DIR_MARKER_BEGIN)
+diff --git a/third_party/xla/third_party/gpus/cuda/build_defs.bzl.tpl b/third_party/xla/third_party/gpus/cuda/build_defs.bzl.tpl
+index b5767abf5be..c0e8dff7ca5 100644
+--- a/third_party/xla/third_party/gpus/cuda/build_defs.bzl.tpl
++++ b/third_party/xla/third_party/gpus/cuda/build_defs.bzl.tpl
+@@ -158,11 +158,19 @@ def cuda_header_library(
+ def cuda_library(copts = [], tags = [], deps = [], **kwargs):
+     """Wrapper over cc_library which adds default CUDA options."""
+     native.cc_library(
+-        copts = cuda_default_copts() + copts,
++        copts = cuda_default_copts() + copts + [
++          "--cuda-path=external/cuda_nvcc",
++          "--cuda-feature=+ptx83",
++        ],
+         tags = tags + ["gpu"],
+         deps = deps + if_cuda_is_configured([
+             "@local_config_cuda//cuda:implicit_cuda_headers_dependency",
+         ]),
++        additional_compiler_inputs = [
++          "@cuda_nvcc//:nvvm",
++          "@cuda_nvcc//:bin",
++          "@cuda_nvcc//:headers",
++        ],
+         **kwargs
+     )
+ 
+diff --git a/third_party/xla/third_party/nccl/build_defs.bzl.tpl b/third_party/xla/third_party/nccl/build_defs.bzl.tpl
+index a0930df34ec..2a1f893010c 100644
+--- a/third_party/xla/third_party/nccl/build_defs.bzl.tpl
++++ b/third_party/xla/third_party/nccl/build_defs.bzl.tpl
+@@ -225,6 +225,7 @@ _merge_archive = rule(
+         #     default = ["@bazel_tools//tools/cpp:crosstool"]
+         # ),
+     },
++    toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],
+     outputs = {"out": "lib%{name}.a"},
+ )
+ """Merges srcs into a single archive."""
+@@ -314,8 +315,16 @@ def cuda_rdc_library(name, hdrs = None, copts = None, linkstatic = True, **kwarg
+     native.cc_library(
+         name = lib,
+         hdrs = hdrs,
+-        copts = _rdc_copts() + copts,
++        copts = _rdc_copts() + copts + [
++          "--cuda-path=external/cuda_nvcc",
++          "--cuda-feature=+ptx83",
++        ],
+         linkstatic = linkstatic,
++        additional_compiler_inputs = [
++          "@cuda_nvcc//:nvvm",
++          "@cuda_nvcc//:bin",
++          "@cuda_nvcc//:headers",
++        ],
+         **kwargs
+     )
+ 

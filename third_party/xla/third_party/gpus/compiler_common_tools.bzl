@@ -78,7 +78,7 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sys_root):
         "-no-canonical-prefixes",
     )
     no_canonical_prefixes = (["-no-canonical-prefixes"] if no_canonical_prefixes_supported else [])
-    result = raw_exec(repository_ctx, [cc, "-E", "-x" + lang, "-", "-v"] +
+    result = raw_exec(repository_ctx, [cc, "-E", "-x" + lang, "-stdlib=libc++", "-", "-v"] +
                                       sysroot + no_canonical_prefixes)
     stderr = err_out(result)
     index1 = stderr.find(_INC_DIR_MARKER_BEGIN)

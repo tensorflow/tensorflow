@@ -66,6 +66,47 @@ load("@pypi//:requirements.bzl", "install_deps")
 install_deps()
 # End hermetic Python initialization
 
+http_archive(
+  name = "com_googleapis_storage_chrome_linux_amd64_sysroot",
+  build_file = "//:BUILD.sysroot",
+  sha256 = "11647a4b5ba1a49e13fba5de0135a51097a296aba6cfb780f07607a6091628a2",
+  urls = [
+    # features.h defines GLIBC 2.31.
+    "https://storage.googleapis.com/chrome-linux-sysroot/toolchain/692a0bddd6cdb2a96999cd817268d0227c89c731/debian_bullseye_amd64_sysroot.tar.xz",
+  ],
+)
+
+http_archive(
+  name = "toolchains_llvm",
+  sha256 = "e3fb6dc6b77eaf167cb2b0c410df95d09127cbe20547e5a329c771808a816ab4",
+  strip_prefix = "toolchains_llvm-v1.2.0",
+  canonical_id = "v1.2.0",
+  url = "https://github.com/bazel-contrib/toolchains_llvm/releases/download/v1.2.0/toolchains_llvm-v1.2.0.tar.gz",
+)
+
+load("@toolchains_llvm//toolchain:deps.bzl", "bazel_toolchain_dependencies")
+
+bazel_toolchain_dependencies()
+
+load("@toolchains_llvm//toolchain:rules.bzl", "llvm_toolchain")
+
+llvm_toolchain(
+  name = "llvm_toolchain",
+  llvm_version = "18.1.8",
+  sysroot = {
+    "linux-x86_64": "@com_googleapis_storage_chrome_linux_amd64_sysroot//:all_files",
+  },
+  #compile_flags = {
+  #  "linux-x86_64": [
+  #    "--cuda-path=$(location @cuda_nvcc//:nvvm/libdevice/libdevice.10.bc)"
+  #  ],
+  #},
+)
+
+load("@llvm_toolchain//:toolchains.bzl", "llvm_register_toolchains")
+
+llvm_register_toolchains()
+
 load("@//tensorflow:workspace2.bzl", "tf_workspace2")
 
 tf_workspace2()

@@ -161,12 +161,20 @@ def cuda_library(copts = [], tags = [], deps = [], **kwargs):
     # This can and should be removed once we migrate on glibc-2.27 or newer.
     local_defines = kwargs.pop("local_defines", []) + ["register="]
     native.cc_library(
-        copts = cuda_default_copts() + copts,
+        copts = cuda_default_copts() + copts + [
+          "--cuda-path=external/cuda_nvcc",
+          "--cuda-feature=+ptx83",
+        ],
         tags = tags + ["gpu"],
         deps = deps + if_cuda_is_configured([
             "@local_config_cuda//cuda:implicit_cuda_headers_dependency",
         ]),
         local_defines = local_defines,
+        additional_compiler_inputs = [
+          "@cuda_nvcc//:nvvm",
+          "@cuda_nvcc//:bin",
+          "@cuda_nvcc//:headers",
+        ],
         **kwargs
     )
 
