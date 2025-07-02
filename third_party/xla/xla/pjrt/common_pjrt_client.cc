@@ -110,16 +110,25 @@ CommonPjRtClient::BufferFromHostLiteral(const LiteralSlice& literal,
   TF_ASSIGN_OR_RETURN(
       auto promise_and_event,
       CreateLinkedEventPromise(memory_space, "BufferFromHostLiteral"));
-  TF_ASSIGN_OR_RETURN(int64_t on_device_bytes_count,
-                      GetOnDeviceBytesCount(memory_space, device_shape));
-  TF_ASSIGN_OR_RETURN(auto raw_buffer,
-                      AllocateRawBuffer(memory_space, on_device_bytes_count,
-                                        /*retry_on_oom=*/true,
-                                        /*allocate_after=*/{}));
-  TF_ASSIGN_OR_RETURN(auto output_buffer,
-                      DefineBuffer(device_shape, raw_buffer,
-                                   {std::move(promise_and_event.second)},
-                                   /*raw_buffer_is_mutable=*/true));
+  tsl::RCReference<CommonPjRtRawBuffer> raw_buffer;
+  std::unique_ptr<PjRtBuffer> output_buffer;
+  absl::Status s = [&]() {
+    TF_ASSIGN_OR_RETURN(int64_t on_device_bytes_count,
+                        GetOnDeviceBytesCount(memory_space, device_shape));
+    TF_ASSIGN_OR_RETURN(raw_buffer,
+                        AllocateRawBuffer(memory_space, on_device_bytes_count,
+                                          /*retry_on_oom=*/true,
+                                          /*allocate_after=*/{}));
+    TF_ASSIGN_OR_RETURN(output_buffer,
+                        DefineBuffer(device_shape, raw_buffer,
+                                     {std::move(promise_and_event.second)},
+                                     /*raw_buffer_is_mutable=*/true));
+    return absl::OkStatus();
+  }();
+  if (!s.ok()) {
+    promise_and_event.first->SetError(s);
+    return s;
+  }
 
   async_work_runner()->Schedule(
       [this, shape, literal, raw_buffer = std::move(raw_buffer),
