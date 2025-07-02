@@ -85,10 +85,6 @@ HloPassPipeline PreSchedulingCopyInsertionPipeline(
       pipeline.AddPass<HloPassPipeline>("horizontal-loop-fusion-for-copy");
   // To fuse the copy.
   sub_pipeline.AddPass<CopyFusion>(device_description);
-  // Make sure to run HorizontalLoopFusion only inside the entry computation.
-  // Fusing copies outside of the entry computation can break buffer assignment!
-  sub_pipeline.AddPass<HorizontalLoopFusion>(device_description, "copy_",
-                                             /*only_entry_computation=*/true);
   sub_pipeline.AddPass<HloDCE>();
   pipeline.AddPass<SanitizeConstantNames>();
   return pipeline;
