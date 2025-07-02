@@ -1,1 +1,50 @@
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h b/stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h
+--- stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h
++++ stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h
+@@ -499,7 +499,7 @@
+   expBitsMask = ((expBitsMask << srcExponentBits) - 1) << srcMantissaBits;
+ 
+   auto createConstant = [&](const APInt &v) {
+-    return b.create<arith::ConstantIntOp>(v.getZExtValue(), intType)
++    return b.create<arith::ConstantIntOp>(intType, v.getZExtValue())
+         .getResult();
+   };
+ 
+@@ -520,7 +520,7 @@
+     APInt baseRoundingBias = lastMantissaBitMask.lshr(1) - 1;
+ 
+     Value mantissaDiff = b.create<arith::ConstantIntOp>(
+-        srcMantissaBits - destMantissaBits, intType);
++        intType, srcMantissaBits - destMantissaBits);
+     Value highestMantissaMaskVal = createConstant(lastMantissaBitMask);
+     Value baseRoundingBiasVal = createConstant(baseRoundingBias);
+     Value xLastMantissaBit = b.create<arith::ShRUIOp>(
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgConvolution.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgConvolution.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgConvolution.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgConvolution.cpp
+@@ -579,8 +579,9 @@
+                 /*bodyBuild=*/
+                 [&](OpBuilder &nestedBuilder, Location nestedLoc, ValueRange) {
+                   ImplicitLocOpBuilder builder(nestedLoc, nestedBuilder);
+-                  linalg::Conv2DOp::regionBuilder(
+-                      builder, *builder.getInsertionBlock(), {});
++                  linalg::Conv2DOp::regionBuilder(builder,
++                                                  *builder.getInsertionBlock(),
++                                                  {}, /*emitError=*/{});
+                 },
+                 linalg::getPrunedAttributeList(op))
+             .getResult(0);
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgDotProduct.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgDotProduct.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgDotProduct.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgDotProduct.cpp
+@@ -299,7 +299,8 @@
+             /*nReduction=*/numContracting),
+         [](OpBuilder &b, Location loc, ValueRange) {
+           ImplicitLocOpBuilder builder(loc, b);
+-          linalg::MatmulOp::regionBuilder(builder, *b.getInsertionBlock(), {});
++          linalg::MatmulOp::regionBuilder(builder, *b.getInsertionBlock(), {},
++                                          /*emitError=*/{});
+         },
+         linalg::getPrunedAttributeList(op));
+ 
 
