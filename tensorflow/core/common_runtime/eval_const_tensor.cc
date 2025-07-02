@@ -14,9 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/eval_const_tensor.h"
 
-#include <algorithm>
 #include <cstdint>
-#include <deque>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -28,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"

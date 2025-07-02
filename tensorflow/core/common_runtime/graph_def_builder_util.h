@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GRAPH_DEF_BUILDER_UTIL_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GRAPH_DEF_BUILDER_UTIL_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status.h"
 
