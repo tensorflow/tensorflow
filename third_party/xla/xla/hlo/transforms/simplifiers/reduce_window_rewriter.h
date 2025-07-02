@@ -70,6 +70,11 @@ class ReduceWindowRewriter : public HloModulePass {
                                            int64_t rank, int64_t scan_dim,
                                            int64_t last_dim);
 
+  // Adds padding (if necessary) to enable further rewrites working properly.
+  int64_t PreparePaddingForRewrite(HloReduceWindowInstruction* reduce_window,
+                                   std::vector<HloInstruction*>& inputs,
+                                   int64_t scan_length, int64_t last_dim);
+
   absl::Status ReplaceReduceWindowWithReshape(
       HloReduceWindowInstruction* reduce_window);
 
