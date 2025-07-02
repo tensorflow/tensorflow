@@ -57,14 +57,17 @@ namespace gpu {
 
 namespace {
 
+bool IsSupportedCollectiveOp(const HloInstruction& instr) {
+  return HloPredicateIsOp<HloOpcode::kAllReduceStart, HloOpcode::kAllReduce,
+                          HloOpcode::kReduceScatter, HloOpcode::kAllGatherStart,
+                          HloOpcode::kAllGather>(&instr);
+}
+
 bool HasOnlySupportedCollectives(const HloModule& module) {
   for (const HloComputation* comp : module.computations()) {
     for (const HloInstruction* instr : comp->instructions()) {
       if (hlo_query::IsCollectiveCommunicationOp(instr->opcode()) &&
-          HloPredicateIsNotOp<HloOpcode::kAllReduceStart, HloOpcode::kAllReduce,
-                              HloOpcode::kReduceScatter,
-                              HloOpcode::kAllGatherStart,
-                              HloOpcode::kAllGather>(instr)) {
+          !IsSupportedCollectiveOp(*instr)) {
         return false;
       }
     }
@@ -352,7 +355,7 @@ LatencyEstimator::TimeCost SolLatencyEstimator::GetLatencyBetween(
     return kLowLatency;
   }
 
-  if (IsAsyncPair(from, target)) {
+  if (IsAsyncPair(from, target) && IsSupportedCollectiveOp(from.GetInstr())) {
     double coll_time = absl::ToDoubleMicroseconds(ComputeCollectiveTime(
         from.GetInstr(), gpu_info_, shape_size_function_, sol_flags_,
         *cost_analysis_, collective_interpolator_.get()));

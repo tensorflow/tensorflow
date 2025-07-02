@@ -1745,6 +1745,7 @@ TEST_P(GpuHloScheduleParameterizedTest, CopyStartDoneScheduled) {
 
   TestConfig test_config;
   test_config.enable_latency_hiding_scheduler = true;
+  test_config.enable_sol_latency_estimator = std::get<1>(GetParam());
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kHloCopyStartDone,
                                                 GetModuleConfig(test_config)));
