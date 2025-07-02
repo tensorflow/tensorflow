@@ -91,7 +91,7 @@ ENTRY entry {
   MatchSameTypeInstructions(*left_gumgraph, *right_gumgraph, left_constants,
                             right_constants, *mappings,
                             MatcherType::kComputationGraphExactSignatureMatcher,
-                            /*map_by_position=*/false);
+                            MapByPositionMode::kNever);
 
   auto matched_params = ExtractMappedInstructionNames(*mappings);
   EXPECT_THAT(matched_params,
@@ -152,7 +152,7 @@ ENTRY entry {
   MatchSameTypeInstructions(*left_gumgraph, *right_gumgraph, left_constants,
                             right_constants, *mappings,
                             MatcherType::kComputationGraphExactSignatureMatcher,
-                            /*map_by_position=*/true);
+                            MapByPositionMode::kOnlyIfSameSize);
 
   auto matched_params = ExtractMappedInstructionNames(*mappings);
   EXPECT_THAT(matched_params,
@@ -162,7 +162,7 @@ ENTRY entry {
                                    Pair("c26", "c26")));
 }
 
-TEST_F(BipartiteMatcherUtilsTest, MatchLeafInstructions) {
+TEST_F(BipartiteMatcherUtilsTest, MatchInstructions) {
   const char* hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -210,10 +210,10 @@ ENTRY entry {
     }
   }
 
-  MatchLeafInstructions(*left_gumgraph, *right_gumgraph, left_instructions,
-                        right_instructions, *mappings,
-                        MatcherType::kComputationGraphExactSignatureMatcher,
-                        /*map_by_position=*/true);
+  MatchInstructions(*left_gumgraph, *right_gumgraph, left_instructions,
+                    right_instructions, *mappings,
+                    MatcherType::kComputationGraphExactSignatureMatcher,
+                    MapByPositionMode::kOnlyIfSameSize);
 
   auto matched_params = ExtractMappedInstructionNames(*mappings);
   EXPECT_THAT(matched_params,
