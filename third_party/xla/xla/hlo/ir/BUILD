@@ -65,6 +65,7 @@ cc_library(
         ":tile_assignment",
         "//xla:array",
         "//xla:comparison_util",
+        "//xla:debug_options_flags",
         "//xla:literal",
         "//xla:literal_pool",
         "//xla:literal_util",

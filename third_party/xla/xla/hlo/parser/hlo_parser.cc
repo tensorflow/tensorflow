@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -328,6 +329,7 @@ class HloParserImpl : public HloParser {
     kCollectiveDeviceList,
     kResultAccuracy,
     kOriginalValue,
+    kOriginalValueRecoveryTable,
   };
 
   struct AttrConfig {
@@ -586,6 +588,8 @@ class HloParserImpl : public HloParser {
   bool ParseUnsignedIntegerType(PrimitiveType* primitive_type);
   bool ParseOriginalArray(OriginalArray& original_array);
   bool ParseOriginalValue(std::shared_ptr<OriginalValue>& original_value);
+  bool ParseOriginalValueRecoveryTable(
+      OriginalValueRecoveryTable& original_value_recovery_table);
 
   using AliasingData =
       absl::flat_hash_map<ShapeIndex, HloInputOutputAliasConfig::Alias>;
@@ -1104,6 +1108,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   std::optional<FrontendAttributes> frontend_attributes;
   BoolList allow_spmd_sharding_propagation_to_parameters;
   BoolList allow_spmd_sharding_propagation_to_output;
+  std::optional<OriginalValueRecoveryTable> original_value_recovery_table;
 
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
   attrs["replica_count"] = {/*required=*/false, AttrTy::kInt64, &replica_count};
@@ -1126,6 +1131,9 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   attrs["allow_spmd_sharding_propagation_to_output"] = {
       /*required=*/false, AttrTy::kBracedBoolListOrBool,
       &allow_spmd_sharding_propagation_to_output};
+  attrs["origin_recovery_table"] = {/*required=*/false,
+                                    AttrTy::kOriginalValueRecoveryTable,
+                                    &original_value_recovery_table};
 
   if (!parse_module_without_header) {
     if (lexer_.GetKind() != TokKind::kw_HloModule) {
@@ -1228,6 +1236,9 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
       }
     }
     module->buffer_donor_config() = buffer_donor_config;
+  }
+  if (original_value_recovery_table) {
+    module->set_original_value_recovery_table(*original_value_recovery_table);
   }
   DeduplicateOriginalValues(module);
 
@@ -5177,6 +5188,16 @@ bool HloParserImpl::ParseAttributeHelper(
             ->emplace(std::move(result));
         return true;
       }
+      case AttrTy::kOriginalValueRecoveryTable: {
+        OriginalValueRecoveryTable result;
+        if (!ParseOriginalValueRecoveryTable(result)) {
+          return false;
+        }
+        static_cast<optional<HloModule::OriginalValueRecoveryTable>*>(
+            attr_out_ptr)
+            ->emplace(std::move(result));
+        return true;
+      }
       case AttrTy::kMetadata: {
         OpMetadata result;
         if (!ParseMetadata(result)) {
@@ -6580,6 +6601,50 @@ bool HloParserImpl::ParseOriginalValue(
   }
 
   lexer_.Lex();
+  return true;
+}
+
+// OriginalValueRecoveryTable ::= '{' OriginalArray ':' OriginalArray ','
+//   HloModule | OriginalValueRecoveryTable '}'
+bool HloParserImpl::ParseOriginalValueRecoveryTable(
+    OriginalValueRecoveryTable& original_value_recovery_table) {
+  VLOG(kDebugLevel) << "ParseOriginalValueRecoveryTable";
+
+  if (!ParseToken(TokKind::kLbrace, "Expects '{'")) {
+    return false;
+  }
+
+  while (lexer_.GetKind() != TokKind::kRbrace) {
+    OriginalArray removed_original_array, remaining_original_array;
+    if (!ParseOriginalArray(removed_original_array)) {
+      return false;
+    }
+    std::string errmsg =
+        "Expected format: <original_array>: <original_array>, "
+        "<HloModule>";
+    if (!ParseToken(TokKind::kColon, errmsg)) {
+      return false;
+    }
+    if (!ParseOriginalArray(remaining_original_array)) {
+      return false;
+    }
+    if (!ParseToken(TokKind::kComma, errmsg)) {
+      return false;
+    }
+    std::string hlo_string;
+    if (!ParseString(&hlo_string)) {
+      return false;
+    }
+    auto recovery_module = ParseAndReturnUnverifiedModule(hlo_string);
+    if (!recovery_module.ok()) {
+      return false;
+    }
+    original_value_recovery_table[removed_original_array] = std::make_pair(
+        remaining_original_array, std::move(recovery_module.value()));
+  }
+
+  lexer_.Lex();
+
   return true;
 }
 

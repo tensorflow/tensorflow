@@ -1546,6 +1546,34 @@ ENTRY %test (v1: f32[], v2: f32[3], v3: f32[2,3]) -> ((f32[], f32[3]), f32[2,3])
 
 )"
 },
+
+{
+"OriginalValueRecoveryTable",
+R"(HloModule test, entry_computation_layout={(f32[192]{0})->f32[1,17,17,192]{3,2,1,0}}, origin_recovery_table={
+  {"broadcast.2340"} : {"reshape.2341"},
+  "
+    ENTRY %recovery_computation.3 (p.1: f32[1,192]) -> f32[1,1,1,192] {
+    %p.1 = f32[1,192]{1,0} parameter(0)
+    ROOT %reshape.2 = f32[1,1,1,192]{3,2,1,0} reshape(%p.1)
+  }
+  "
+  {"reshape.2341"} : {"placeholder_reshape.201"},
+  "
+    ENTRY %recovery_computation.3 (p.1: f32[192]) -> f32[1,192] {
+    %p.1 = f32[192]{0} parameter(0)
+    ROOT %reshape.2 = f32[1,192]{1,0} reshape(%p.1)
+  }
+  "
+}
+
+
+ENTRY %main (Arg_0: f32[192]) -> f32[1,17,17,192] {
+  %Arg_0 = f32[192]{0} parameter(0)
+  ROOT %broadcast.2342 = f32[1,17,17,192]{3,2,1,0} broadcast(f32[192]{0} %Arg_0), dimensions={3}, origin={{"broadcast.2342"}}
+}
+
+)"
+},
 });
   // clang-format on
 }

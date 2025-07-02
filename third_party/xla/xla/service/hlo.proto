@@ -633,6 +633,8 @@ message HloModuleProto {
   // Frontend attributes to pass to the XLA backend.
   xla.FrontendAttributes frontend_attributes = 19;
 
+  xla.OriginalValueRecoveryTableProto original_value_recovery_table = 20;
+
   reserved 9;
   reserved "dynamic_parameter_binding";
 }
@@ -859,4 +861,13 @@ message HloPassMetadata {
 
   // Used to log any number of key, value pair stats per pass.
   repeated KeyValueMetric kv_metrics = 11;
+}
+
+message OriginalValueRecoveryTableProto {
+  message Entry {
+    OriginalArrayProto removed_original_array = 1;
+    OriginalArrayProto remaining_original_array = 2;
+    HloModuleProto recovery_module = 3;
+  }
+  repeated Entry entries = 1;
 }

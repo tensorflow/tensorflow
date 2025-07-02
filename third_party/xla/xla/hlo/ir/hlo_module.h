@@ -818,7 +818,40 @@ class HloModule {
                   HloComputation::NeighborIterator,
                   &HloComputation::callees_begin, &HloComputation::callees_end>
       topological_sort_;
+
+ public:
+  class OriginalValueRecoveryTable
+      : public absl::flat_hash_map<
+            OriginalArray,
+            std::pair<OriginalArray, std::unique_ptr<HloModule>>> {
+   public:
+    std::string ToString(HloPrintOptions options = HloPrintOptions()) const;
+    OriginalValueRecoveryTableProto ToProto() const;
+    static absl::StatusOr<HloModule::OriginalValueRecoveryTable> FromProto(
+        const xla::OriginalValueRecoveryTableProto&
+            original_value_recovery_table);
+  };
+
+  const OriginalValueRecoveryTable& original_value_recovery_table() {
+    return original_value_recovery_table_;
+  }
+  OriginalValueRecoveryTable& mutable_original_value_recovery_table() {
+    return original_value_recovery_table_;
+  }
+
+  void set_original_value_recovery_table(
+      OriginalValueRecoveryTable& original_value_recovery_table) {
+    for (auto& p : original_value_recovery_table) {
+      original_value_recovery_table_[p.first] =
+          std::make_pair(p.second.first, std::move(p.second.second));
+    }
+  }
+
+ private:
+  OriginalValueRecoveryTable original_value_recovery_table_;
 };
+
+using OriginalValueRecoveryTable = HloModule::OriginalValueRecoveryTable;
 
 }  // namespace xla
 
