@@ -1176,8 +1176,7 @@ class Subgraph {
     }
     if (delegate.enable_slinky()) {
       // TODO: this flag isn't yet part of the public XNNPACK API
-      constexpr uint32_t XNN_FLAG_SLINKY_ENABLED = 0x40000000;
-      flags |= XNN_FLAG_SLINKY_ENABLED;
+      flags |= 0x00008000;  // XNN_FLAG_SLINKY_ENABLED
     }
     flags |= delegate.runtime_flags();
 
