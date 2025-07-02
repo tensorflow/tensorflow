@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "llvm/Support/MathExtras.h"
