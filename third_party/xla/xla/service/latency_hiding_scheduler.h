@@ -330,6 +330,11 @@ class AsyncTracker {
   // Resets target defined states after scheduling a computation.
   virtual void ResetTargetDefinedStates() {}
 
+  // Clears the cache of per-computation resource maps. This is needed when,
+  // e.g., we modify the schedule of a computation, which could change the
+  // resource usage of the computation.
+  void InvalidateCache() { async_in_computation_cache_.clear(); }
+
   explicit AsyncTracker(
       const SchedulerConfig& config,
       GetCanonicalAsyncOpFunc func = DefaultGetCanonicalAsyncOp)
@@ -337,6 +342,11 @@ class AsyncTracker {
 
  private:
   const absl::flat_hash_map<int64_t, int64_t>& RecursivelyComputeResourceMap(
+      const HloComputation* computation) const;
+  // Similar as above, but uses scheduling information to obtain more accurate
+  // resource usage. Useful for non-fusion computations.
+  const absl::flat_hash_map<int64_t, int64_t>&
+  RecursivelyComputeResourceMapForScheduledComputation(
       const HloComputation* computation) const;
 
   mutable absl::flat_hash_map<
