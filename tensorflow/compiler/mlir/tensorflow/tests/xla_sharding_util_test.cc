@@ -70,22 +70,6 @@ TEST(ShardingEquivalenceTest, CheckOpShardingNotEquivalent) {
       DecodeShardingAttribute("{devices=[2,1]<=[2]}", sharding2).succeeded());
   EXPECT_FALSE(VerifyShardingEquivalent(sharding1, sharding2).succeeded());
 }
-
-TEST(ShardingEquivalenceTest, CheckShardingAttrEquivalent) {
-  mlir::MLIRContext context;
-  mlir::Builder builder(&context);
-  mlir::Attribute sharding1 = builder.getStringAttr("{devices=[2,1]0,1}");
-  mlir::Attribute sharding2 = builder.getStringAttr("{devices=[2,1]<=[2]}");
-  EXPECT_TRUE(VerifyShardingEquivalent(sharding1, sharding2).succeeded());
-}
-
-TEST(ShardingEquivalenceTest, CheckShardingAttrNotEquivalent) {
-  mlir::MLIRContext context;
-  mlir::Builder builder(&context);
-  mlir::Attribute sharding1 = builder.getStringAttr("{devices=[2,1]1,0}");
-  mlir::Attribute sharding2 = builder.getStringAttr("{devices=[2,1]<=[2]}");
-  EXPECT_FALSE(VerifyShardingEquivalent(sharding1, sharding2).succeeded());
-}
 }  // namespace
 
 }  // namespace tensorflow

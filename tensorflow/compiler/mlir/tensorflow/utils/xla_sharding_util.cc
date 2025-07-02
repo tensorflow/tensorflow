@@ -1289,6 +1289,7 @@ llvm::SmallVector<llvm::SmallVector<int64_t, 4>, 4> GetMetadataArgumentMapping(
   return input_mappings;
 }
 
+namespace {
 mlir::LogicalResult VerifyShardingEquivalent(mlir::Attribute sharding_attr1,
                                              mlir::Attribute sharding_attr2) {
   xla::OpSharding sharding_proto1;
@@ -1302,8 +1303,9 @@ mlir::LogicalResult VerifyShardingEquivalent(mlir::Attribute sharding_attr1,
     return mlir::failure();
   }
 
-  return VerifyShardingEquivalent(sharding_proto1, sharding_proto2);
+  return tensorflow::VerifyShardingEquivalent(sharding_proto1, sharding_proto2);
 }
+}  // namespace
 
 mlir::LogicalResult VerifyShardingEquivalent(
     const xla::OpSharding& sharding_proto1,
@@ -1325,4 +1327,23 @@ mlir::LogicalResult VerifyShardingEquivalent(
 
   return mlir::failure();
 }
+
+absl::StatusOr<mlir::StringAttr> GetXlaShardingAttrFromShardingOp(
+    mlir::TF::XlaShardingOp sharding) {
+  if (!sharding.get_XlaShardingV2Attr()) {
+    return sharding.get_XlaShardingAttr();
+  }
+
+  if (sharding.get_XlaShardingAttr() &&
+      VerifyShardingEquivalent(sharding.get_XlaShardingV2Attr(),
+                               sharding.get_XlaShardingAttr())
+          .failed()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("_XlaShardingV2 is not equivalent to _XlaSharding: ",
+                     sharding.get_XlaShardingV2().value().str(), " vs ",
+                     sharding.get_XlaSharding().value().str()));
+  }
+  return sharding.get_XlaShardingV2Attr();
+}
+
 }  // namespace tensorflow
