@@ -1187,7 +1187,7 @@ class PjRtBuffer {
   ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) = 0;
 
   // True if and only if Delete or Release has previously been called.
-  virtual bool IsDeleted() = 0;
+  virtual bool IsDeleted() const = 0;
 
   // Copies the buffer to memory space `dst_memory_space`.
   //
@@ -1413,7 +1413,7 @@ class PjRtLoadedExecutable {
   virtual void Delete() = 0;
 
   // True if on-device resources associated with the executable are freed.
-  virtual bool IsDeleted() = 0;
+  virtual bool IsDeleted() const = 0;
 
   // These are all forwarding methods for convenience, wrapping the
   // corresponding methods on the wrapped PjRtExecutable.

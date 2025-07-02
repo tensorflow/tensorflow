@@ -789,7 +789,7 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
 
   void Delete() override { executables_.clear(); }
 
-  bool IsDeleted() override { return executables_.empty(); }
+  bool IsDeleted() const override { return executables_.empty(); }
 
   absl::StatusOr<std::string> SerializeExecutable() const override {
     return client_->SerializeExecutable(*this);

@@ -434,7 +434,7 @@ class PjRtCpuExecutable final : public PjRtLoadedExecutable {
 
   void Delete() override;
 
-  bool IsDeleted() override;
+  bool IsDeleted() const override;
 
   absl::StatusOr<std::string> SerializeExecutable() const override;
 

@@ -184,7 +184,7 @@ class CommonPjRtBuffer : public PjRtBuffer {
     std::unique_ptr<AbstractTrackedDeviceBuffer> buffer_;
   };
 
-  bool IsDeleted() override;
+  bool IsDeleted() const override;
 
   absl::Status AcquireScopedRawBuffer(
       absl::AnyInvocable<absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>(
