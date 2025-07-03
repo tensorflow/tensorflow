@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 
+#include <cstddef>
 #include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/hash/hash.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -40,7 +41,6 @@ limitations under the License.
 
 using ::testing::ElementsAre;
 using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 namespace xla {
 
@@ -183,10 +183,9 @@ ENTRY e {
               GmockMatch(match::Concatenate(match::Fusion(), match::Fusion())));
 }
 
-TEST_F(NestGemmFusionTest, UnsupportedComputationsAreRejected) {
-  // Fusions other than kTritonNestedGemmFusionKind are not supported so
-  // we expect that the pass will fail as the resulting computation is not
-  // supported.
+TEST_F(NestGemmFusionTest, UnsupportedComputationsAreNotChanged) {
+  // Fusions other than kTritonNestedGemmFusionKind are not supported.
+  // In this case pass should not make any changes to the module.
   absl::string_view hlo = R"(
 identity {
   ROOT result = f32[128,128]{1,0} parameter(0)
@@ -209,10 +208,13 @@ ENTRY e {
       "block_m":32,"block_n":16,"block_k":128,
       "split_k":1,"num_stages":1,"num_warps":4, "num_ctas":1}}}}
 )";
+
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  absl::StatusOr<bool> result =
-      NestGemmFusion(compute_capability_).Run(module.get());
-  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInternal)) << result.status();
+  size_t hash_before = absl::HashOf(module.get());
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool updated, NestGemmFusion(compute_capability_).Run(module.get()));
+  EXPECT_FALSE(updated);
+  EXPECT_EQ(absl::HashOf(module.get()), hash_before);
 }
 
 class NestGemmFusionReshapeTest

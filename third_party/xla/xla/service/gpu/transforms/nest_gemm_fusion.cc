@@ -1126,6 +1126,21 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
+absl::StatusOr<bool> NestGemmFusion::RunOnModule(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  bool changed = false;
+  auto call_graph = CallGraph::Build(module, execution_threads);
+  mlir::MLIRContext ctx;
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
+    NestGemmFusionVisitor visitor(&ctx, call_graph.get(), compute_capability_);
+    TF_RETURN_IF_ERROR(computation->Accept(&visitor));
+    changed |= visitor.changed();
+  }
+  return changed;
+}
+
 absl::StatusOr<bool> NestGemmFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -1137,16 +1152,29 @@ absl::StatusOr<bool> NestGemmFusion::Run(
                "is not set, do nothing";
     return false;
   }
-  bool changed = false;
-  auto call_graph = CallGraph::Build(module, execution_threads);
-  mlir::MLIRContext ctx;
-  for (HloComputation* computation :
-       module->MakeNonfusionComputations(execution_threads)) {
-    NestGemmFusionVisitor visitor(&ctx, call_graph.get(), compute_capability_);
-    TF_RETURN_IF_ERROR(computation->Accept(&visitor));
-    changed |= visitor.changed();
+  // Symbolic tile analysis and nesting does not support all HLOs yet, but for
+  // the supported cases we use the generic emitter.
+
+  // To avoid corrupting the module with rewrite we first run the pass on a
+  // clone of the module and do nothing on error, allowing the legacy emitter
+  // to handle the module.
+  // TODO(b/393299275): remove once we can handle all HLOs.
+  VLOG(2) << "dry run on cloned module";
+  auto module_clone = module->Clone();
+  absl::StatusOr<bool> dryrun_result =
+      RunOnModule(module_clone.get(), execution_threads);
+  if (!dryrun_result.ok()) {
+    VLOG(1) << "Failed to nest GEMM fusion: " << dryrun_result.status()
+            << ". No changes to the module were made.";
+    return false;
   }
-  return changed;
+  if (!*dryrun_result) {
+    VLOG(1) << "no changes were made during dryrun, exiting";
+    return false;
+  }
+  VLOG(2) << "updating module";
+  TF_ASSIGN_OR_RETURN(bool result, RunOnModule(module, execution_threads));
+  return result;
 }
 
 namespace detail {

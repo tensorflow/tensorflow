@@ -717,13 +717,6 @@ absl::StatusOr<std::vector<ScalarOrTensor>> EmitTiledComputation(
     Value pid,
     absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values);
 
-bool UseGenericTritonEmitterForGemms(const HloInstruction* hlo) {
-  return hlo->GetModule()
-      ->config()
-      .debug_options()
-      .xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms();
-}
-
 // Returns the number of iterations of the loop over the contracting
 // dimension of matrix multiplication.
 absl::StatusOr<int64_t> GetDotLoopIterationCount(
@@ -1837,13 +1830,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 
   SmallVector<Value> insert_results;
   if (fusion_kind == kTritonGemmFusionKind) {
-    // If the generic Triton emitter is enabled, we should never go through the
-    // legacy MatMul emitter.
-    if (UseGenericTritonEmitterForGemms(fusion)) {
-      return absl::FailedPreconditionError(
-          "The generic Triton emitter is enabled, but the legacy MatMul "
-          "emitter is being used.");
-    }
     TF_RETURN_IF_ERROR(EmitMatMul(b, libdevice_path, device_info, fusion, fn,
                                   block_level_parameters));
   } else if (fusion_kind == kTritonFusionKind ||
