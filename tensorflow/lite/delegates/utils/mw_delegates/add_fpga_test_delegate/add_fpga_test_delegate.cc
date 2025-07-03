@@ -106,6 +106,7 @@ class AddFpgaTestDelegateKernel : public SimpleDelegateKernelInterface {
                              TfLiteTensor* output_tensor) {
     if (NumElements(input_tensor_1->dims) != NumElements(input_tensor_2->dims) ||
         NumElements(input_tensor_1->dims) != NumElements(output_tensor->dims)) {
+      TF_LITE_KERNEL_LOG(context, "Input and output tensors must have the same size. In AddFpgaTestDelegateKernel::ComputeResult");   
       return kTfLiteDelegateError;
     }
     // This code assumes no activation, and no broadcasting needed (both inputs
@@ -165,6 +166,10 @@ class AddFpgaTestDelegate : public SimpleDelegateInterface {
       if (tensor.type != kTfLiteInt32 || tensor.allocation_type == kTfLiteDynamic) {
         return false;
       }
+    }
+    if(node->inputs->size != 2 || node->outputs->size != 1) {
+      // This delegate only supports operations with 2 inputs and 1 output.
+      return false;
     }
     
     return true;
