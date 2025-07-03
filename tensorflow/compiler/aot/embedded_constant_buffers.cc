@@ -142,8 +142,12 @@ absl::StatusOr<EmbeddedConstantBuffers> CreateEmbeddedConstantBuffers(
         module_with_serialized_proto.get(), constant_to_embed,
         constant_to_embed.symbol_prefix, constant_array_symbol_name));
 
+    // NOTE: Some targets will prepend an underscore to the symbol name at
+    // compilation time. Using asm allows us to ensure the given symbol name is
+    // always used. https://clang.llvm.org/docs/AttributeReference.html#asm
     std::string cpp_variable_decl =
-        absl::StrCat("extern \"C\" char ", constant_array_symbol_name, "[];");
+        absl::StrCat("extern \"C\" char ", constant_array_symbol_name,
+                     "[] asm(\"", constant_array_symbol_name, "\");");
 
     std::string cpp_access_shim = absl::StrFormat(R"(
     [](char* buffer) -> std::pair<uint64_t, char*> {

@@ -52,7 +52,8 @@ TEST_F(EmbeddedConstantBuffersTest, CreateEmbeddedConstantBuffers) {
   for (const auto& variable_decl : buffers.variable_decls) {
     EXPECT_EQ(variable_decl.variable_name, "_constant_buffer_contents");
     EXPECT_EQ(variable_decl.variable_decl,
-              "extern \"C\" char _constant_buffer_contents[];");
+              "extern \"C\" char _constant_buffer_contents[] "
+              "asm(\"_constant_buffer_contents\");");
     EXPECT_EQ(variable_decl.cpp_access_shim,
               "\n    [](char* buffer) -> std::pair<uint64_t, char*> {\n"
               "      uint64_t buffer_size;\n"
