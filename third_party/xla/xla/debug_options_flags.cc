@@ -330,6 +330,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_unsupported_crash_on_hlo_pass_noop_change(false);
   opts.set_xla_gpu_experimental_enable_split_k_rewrite(false);
   opts.set_xla_gpu_experimental_enable_triton_tma(false);
+  opts.set_xla_gpu_experimental_enable_command_buffer_on_thunks(false);
   return opts;
 }
 
@@ -2362,6 +2363,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_experimental_enable_triton_tma),
       debug_options->xla_gpu_experimental_enable_triton_tma(),
       "Enable Triton's TMA loads/stores for arguments where applicable."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_command_buffer_on_thunks",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_experimental_enable_command_buffer_on_thunks),
+      debug_options->xla_gpu_experimental_enable_command_buffer_on_thunks(),
+      "Enables an experimental feature for command buffer conversion on "
+      "thunks."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

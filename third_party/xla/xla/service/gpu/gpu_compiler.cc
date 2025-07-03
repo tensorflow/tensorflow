@@ -62,6 +62,7 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -201,6 +202,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/collectives/convert_async_collectives_to_sync.h"
 #include "xla/service/gpu/transforms/collectives/gpu_collective_combiner_utils.h"
 #include "xla/service/gpu/transforms/collectives/reduce_scatter_combiner.h"
+#include "xla/service/gpu/transforms/command_buffer_conversion_pass.h"
 #include "xla/service/gpu/transforms/command_buffer_scheduling.h"
 #include "xla/service/gpu/transforms/conv_rewriter.h"
 #include "xla/service/gpu/transforms/cudnn_custom_call_converter.h"
@@ -239,6 +241,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/splitk_rewriter.h"
 #include "xla/service/gpu/transforms/stream_attribute_annotator.h"
 #include "xla/service/gpu/transforms/stream_attribute_async_wrapper.h"
+#include "xla/service/gpu/transforms/thunk_pass_pipeline.h"
 #include "xla/service/gpu/transforms/topk_specializer.h"
 #include "xla/service/gpu/transforms/topk_splitter.h"
 #include "xla/service/gpu/transforms/transpose_dimension_grouper.h"
@@ -2445,6 +2448,19 @@ GpuCompiler::CompileToBackendResult(
                                    std::move(compile_module_results)};
 }
 
+absl::StatusOr<bool> RunThunkPasses(SequentialThunk* root_thunk,
+                                    const DebugOptions& debug_options,
+                                    const se::DeviceDescription& device_info) {
+  ThunkPassPipeline pipeline("thunk-passes");
+  pipeline.AddPass(std::make_unique<CommandBufferConversionPass>());
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      pipeline.Run(root_thunk, debug_options, device_info));
+  if (changed) {
+    LOG(INFO) << "Thunk passes changed the thunk tree.";
+  }
+  return changed;
+}
+
 absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
@@ -2532,6 +2548,20 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     return absl::StrFormat("XlaCreateGpuExecutable:#module=%s#",
                            module->name());
   });
+
+  if (debug_opts.xla_gpu_experimental_enable_command_buffer_on_thunks()) {
+    TF_ASSIGN_OR_RETURN(
+        bool thunk_sequence_changed,
+        RunThunkPasses(res.compile_module_results.executable.get(), debug_opts,
+                       gpu_device_info));
+
+    if (thunk_sequence_changed && DumpingEnabledForHloModule(*module)) {
+      DumpToFileInDirOrStdout(
+          *module, "", "thunk_sequence_after_thunk_passes.txt",
+          res.compile_module_results.executable->ToString(/*indent=*/0));
+    }
+  }
+
   TF_ASSIGN_OR_RETURN(
       auto gpu_executable,
       GpuExecutable::Create(GpuExecutable::Params{
@@ -2825,10 +2855,14 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
 
   // Pipeline with passes which wrap a scheduled module into command buffers.
   {
-    HloPassPipeline& pipeline =
-        main_pipeline.AddPass<HloPassPipeline>("command-buffer-scheduling");
-    pipeline.AddPass<CommandBufferScheduling>(gpu_device_info);
-    pipeline.AddPass<SanitizeConstantNames>();
+    if (!module->config()
+             .debug_options()
+             .xla_gpu_experimental_enable_command_buffer_on_thunks()) {
+      HloPassPipeline& pipeline =
+          main_pipeline.AddPass<HloPassPipeline>("command-buffer-scheduling");
+      pipeline.AddPass<CommandBufferScheduling>(gpu_device_info);
+      pipeline.AddPass<SanitizeConstantNames>();
+    }
   }
 
   if (module->config().debug_options().xla_gpu_pgle_accuracy_checker() ==

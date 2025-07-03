@@ -114,6 +114,7 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
     Thunk::Kind kind) {
   switch (kind) {
     case Thunk::kCopy:
+    case Thunk::kKernel:
       return DebugOptions::FUSION;
     case Thunk::kGemm:
       return DebugOptions::CUBLAS;
