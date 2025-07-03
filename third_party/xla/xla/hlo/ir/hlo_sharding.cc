@@ -39,6 +39,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "hwy/contrib/sort/order.h"
+#include "hwy/contrib/sort/vqsort.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
 #include "xla/overflow_util.h"
