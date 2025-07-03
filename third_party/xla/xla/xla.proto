@@ -546,6 +546,10 @@ message DebugOptions {
   // Pre-existing block-level fusions are left unmodified.
   optional bool xla_gpu_experimental_enable_fusion_block_level_rewriter = 334;
 
+  // If true, enable heuristic based collective combining.
+  optional bool xla_gpu_experimental_enable_heuristic_collective_combining =
+      366;
+
   // Enable NVSHMEM. Must be set via XLA_FLAGS variable before XLA client is
   // initialized and can't be set just through HLO Config->ExecutionOptions.
   optional bool xla_gpu_experimental_enable_nvshmem = 388;
@@ -560,9 +564,6 @@ message DebugOptions {
   // not considered for subchannel dequant fusions.
   optional bool xla_gpu_experimental_enable_subchannel_dequantisation_fusion =
       368;
-
-  // If true, enable synchronous collective combining.
-  optional bool xla_gpu_experimental_enable_sync_collective_combining = 366;
 
   // When enabled, the PriorityFusion pass will try to make Triton fusions first
   // and foremost where it is possible.

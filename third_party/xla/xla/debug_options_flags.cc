@@ -325,7 +325,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_fix_max_iterations(false);
   opts.set_xla_hlo_pass_fix_detect_cycles(false);
-  opts.set_xla_gpu_experimental_enable_sync_collective_combining(false);
+  opts.set_xla_gpu_experimental_enable_heuristic_collective_combining(false);
   opts.set_xla_unsupported_crash_on_hlo_pass_silent_hlo_change(false);
   opts.set_xla_unsupported_crash_on_hlo_pass_noop_change(false);
   opts.set_xla_gpu_experimental_enable_split_k_rewrite(false);
@@ -2304,12 +2304,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_hlo_pass_fix_detect_cycles(),
       "Perform hash-based cycle detection in fixed-point loops."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_enable_sync_collective_combining",
+      "xla_gpu_experimental_enable_heuristic_collective_combining",
       bool_setter_for(
           &DebugOptions::
-              set_xla_gpu_experimental_enable_sync_collective_combining),
-      debug_options->xla_gpu_experimental_enable_sync_collective_combining(),
-      "Enable sync collective combining."));
+              set_xla_gpu_experimental_enable_heuristic_collective_combining),
+      debug_options
+          ->xla_gpu_experimental_enable_heuristic_collective_combining(),
+      "Enable heuristic based collective combining."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_collective_cse_distance_threshold",
       int64_setter_for(

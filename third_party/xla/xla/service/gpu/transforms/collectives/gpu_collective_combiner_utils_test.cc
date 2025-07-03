@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 
 #include <gtest/gtest.h>
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -30,8 +29,6 @@ limitations under the License.
 #include "xla/service/collective_pipeliner.h"
 #include "xla/service/collective_pipeliner_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/hlo_module_config.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -39,64 +36,6 @@ namespace xla::gpu {
 namespace {
 
 using CollectiveCombinerUtilsTest = HloHardwareIndependentTestBase;
-
-TEST_F(CollectiveCombinerUtilsTest,
-       ComputeSuggestedCombinerThresholdReturnsMemoryThresholdForDeviceInfo) {
-  absl::string_view kHloText = R"(
-  HloModule m
-
-  ENTRY ar {
-    p0 = f32[32,32] parameter(0)
-    p1 = f32[32,32] parameter(1)
-
-    ROOT _ = f32[32,32]{1,0} custom-call(p0, p1),
-      custom_call_target="__cublas$gemm"
-  })";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  int pointer_size = 4;
-  stream_executor::DeviceDescription device_info;
-  device_info.set_device_memory_size(20000);
-
-  int64_t suggested_threshold = ComputeSuggestedCombinerThreshold(
-      *module, device_info, HloOpcode::kAllReduce, pointer_size);
-
-  // device size = 20000 bytes
-  // slop factor = 0.95
-  // peak memory = parameters + output = (2*32*32 + 32*32) * 4 bytes = 12288
-  // suggested thresholds = device size * slop factor - peak memory
-  EXPECT_EQ(suggested_threshold, 6712);
-}
-
-TEST_F(CollectiveCombinerUtilsTest,
-       ComputeSuggestedCombinerThresholdReturnsMemoryThresholdForModuleConfig) {
-  absl::string_view kHloText = R"(
-  HloModule m
-
-  ENTRY ar {
-    p0 = f32[32,32] parameter(0)
-    p1 = f32[32,32] parameter(1)
-
-    ROOT _ = f32[32,32]{1,0} custom-call(p0, p1),
-      custom_call_target="__cublas$gemm"
-  })";
-
-  HloModuleConfig config = GetModuleConfigForTest();
-  config.set_device_memory_size(20000);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloText, config));
-  int pointer_size = 4;
-  stream_executor::DeviceDescription device_info;
-
-  int64_t suggested_threshold = ComputeSuggestedCombinerThreshold(
-      *module, device_info, HloOpcode::kAllReduce, pointer_size);
-
-  // device size = 20000 bytes
-  // slop factor = 0.95
-  // peak memory = parameters + output = (2*32*32 + 32*32) * 4 bytes = 12288
-  // suggested thresholds = device size * slop factor - peak memory
-  EXPECT_EQ(suggested_threshold, 6712);
-}
 
 TEST_F(CollectiveCombinerUtilsTest,
        AppendPipelinedInstructionAppendsPipelinedInstructionInfoForward) {

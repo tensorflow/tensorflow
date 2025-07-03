@@ -15,23 +15,25 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/collectives/all_gather_combiner.h"
 
+#include <cstdint>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/collective_utils.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/service/gpu/transforms/collectives/collective_combiner_annotator.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
-using ::stream_executor::DeviceDescription;
 using ::testing::Matcher;
 using ::tsl::testing::IsOkAndHolds;
 
@@ -99,27 +101,25 @@ ENTRY entry {
   ROOT _ = bf16[6,8,128] get-tuple-element(while), index=1
 }
 )";
-  auto config =
-      GetModuleConfigForTest(/*replica_count=*/1, /*num_partitions=*/2);
-  DeviceDescription device_info;
-  // Combine at most 2 collectives.
   int collective_size = 2 * 6 * 8 * 128;
-  int threshold_bytes = 2 * collective_size;
-  int current_peak_mem = 90604;
-  int pointer_size = 4;
-  device_info.set_device_memory_size(current_peak_mem + threshold_bytes * 4);
+  // Combine at most 2 collectives by default
+  int default_threshold_bytes = 2 * collective_size;
+  // Combine at most 4 pipelined collectives.
+  int suggested_threshold_bytes = 4 * collective_size;
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString, config));
-  EXPECT_THAT(
-      GpuAllGatherCombiner(device_info, /*default_combine_threshold_in_bytes=*/
-                           threshold_bytes,
-                           /*combine_threshold_in_bytes=*/threshold_bytes,
-                           /*combine_threshold_count=*/256,
-                           /*combine_by_dim=*/false,
-                           /*combine_different_dtypes=*/true, pointer_size)
-          .Run(module.get()),
-      IsOkAndHolds(true));
+                          ParseAndReturnVerifiedModule(kHloString));
+  AnnotateWithSuggestedCombinerThreshold(module.get(),
+                                         suggested_threshold_bytes);
+  EXPECT_THAT(GpuAllGatherCombiner(/*default_combine_threshold_in_bytes=*/
+                                   default_threshold_bytes,
+                                   /*combine_threshold_in_bytes=*/
+                                   default_threshold_bytes,
+                                   /*combine_threshold_count=*/256,
+                                   /*combine_by_dim=*/false,
+                                   /*combine_different_dtypes=*/true)
+                  .Run(module.get()),
+              IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
   // Pipelined all gathers were combined up to the predefined max available
@@ -198,27 +198,16 @@ ENTRY entry {
   ROOT _ = bf16[6,8,128] get-tuple-element(while), index=1
 }
 )";
-  auto config =
-      GetModuleConfigForTest(/*replica_count=*/1, /*num_partitions=*/2);
-
-  DeviceDescription device_info;
-  // Combine at most 2 collectives.
-  int collective_size = 2 * 6 * 8 * 128;
-  int threshold_bytes = 2 * collective_size;
-  int current_peak_mem = 90604;
-  int pointer_size = 4;
-  device_info.set_device_memory_size(current_peak_mem + threshold_bytes * 4);
-
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString, config));
+                          ParseAndReturnVerifiedModule(kHloString));
   EXPECT_THAT(
       GpuAllGatherCombiner(
-          device_info, /*default_combine_threshold_in_bytes=*/
+          /*default_combine_threshold_in_bytes=*/
           kDefaultAllGatherCombineThreshold,
           /*combine_threshold_in_bytes=*/kDefaultAllGatherCombineThreshold,
           /*combine_threshold_count=*/256,
           /*combine_by_dim=*/false,
-          /*combine_different_dtypes=*/true, pointer_size)
+          /*combine_different_dtypes=*/true)
           .Run(module.get()),
       IsOkAndHolds(true));
 
@@ -300,25 +289,19 @@ ENTRY entry {
   ROOT _ = bf16[6,8,128] get-tuple-element(while), index=1
 }
 )";
-  auto config =
-      GetModuleConfigForTest(/*replica_count=*/1, /*num_partitions=*/2);
-  DeviceDescription device_info;
   // Combine at most 2 collectives.
   int collective_size = 2 * 6 * 8 * 128;
   int threshold_bytes = 2 * collective_size;
-  int current_peak_mem = 90604;
-  int pointer_size = 4;
-  device_info.set_device_memory_size(current_peak_mem + threshold_bytes * 4);
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString, config));
+                          ParseAndReturnVerifiedModule(kHloString));
   EXPECT_THAT(
-      GpuAllGatherCombiner(device_info, /*default_combine_threshold_in_bytes=*/
+      GpuAllGatherCombiner(/*default_combine_threshold_in_bytes=*/
                            kDefaultAllGatherCombineThreshold,
                            /*combine_threshold_in_bytes=*/threshold_bytes,
                            /*combine_threshold_count=*/256,
                            /*combine_by_dim=*/false,
-                           /*combine_different_dtypes=*/true, pointer_size)
+                           /*combine_different_dtypes=*/true)
           .Run(module.get()),
       IsOkAndHolds(true));
 
@@ -345,7 +328,8 @@ ENTRY entry {
                     kExpected));
 }
 
-TEST_F(GpuAllGatherCombinerTest, CombinesSynchronousCollectivesMaximally) {
+TEST_F(GpuAllGatherCombinerTest,
+       CombinesSynchronousCollectivesUpToSuggestedThreshold) {
   absl::string_view kHloText = R"(
     HloModule m
 
@@ -361,17 +345,17 @@ TEST_F(GpuAllGatherCombinerTest, CombinesSynchronousCollectivesMaximally) {
       ROOT result = tuple(ag0, ag1)
     }
   )";
-  DeviceDescription device_info;
-  device_info.set_device_memory_size(10000000000);  // 10GB
-
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  GpuAllGatherCombiner combiner(
-      device_info, /*default_combine_threshold_in_bytes=*/
-      kDefaultAllGatherCombineThreshold,
-      /*combine_threshold_in_bytes=*/kDefaultAllGatherCombineThreshold,
-      /*combine_threshold_count=*/256,
-      /*combine_by_dim=*/false,
-      /*combine_different_dtypes=*/true, /*pointer_size=*/4);
+  int64_t suggested_threshold_bytes = 10000000000;  // 10GB
+  AnnotateWithSuggestedCombinerThreshold(module.get(),
+                                         suggested_threshold_bytes);
+  GpuAllGatherCombiner
+      combiner(/*default_combine_threshold_in_bytes=*/
+               kDefaultAllGatherCombineThreshold,
+               /*combine_threshold_in_bytes=*/kDefaultAllGatherCombineThreshold,
+               /*combine_threshold_count=*/256,
+               /*combine_by_dim=*/false,
+               /*combine_different_dtypes=*/true);
 
   EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(true));
   Matcher<const HloInstruction*> combined_all_gather =
@@ -399,21 +383,20 @@ TEST_F(GpuAllGatherCombinerTest,
       ROOT result = tuple(ag0, ag1)
     }
   )";
-  DeviceDescription device_info;
-  device_info.set_device_memory_size(10000000000);  // 10GB
-
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  int64_t suggested_threshold_bytes = 10000000000;  // 10GB
+  AnnotateWithSuggestedCombinerThreshold(module.get(),
+                                         suggested_threshold_bytes);
   GpuAllGatherCombiner combiner(
-      device_info, /*default_combine_threshold_in_bytes=*/
+      /*default_combine_threshold_in_bytes=*/
       kDefaultAllGatherCombineThreshold,
       /*combine_threshold_in_bytes=*/kDefaultAllGatherCombineThreshold,
       /*combine_threshold_count=*/256,
       /*combine_by_dim=*/false,
-      /*combine_different_dtypes=*/true, /*pointer_size=*/4);
+      /*combine_different_dtypes=*/true);
 
   EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(false));
 }
 
 }  // namespace
-
 }  // namespace xla::gpu

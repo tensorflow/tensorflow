@@ -39,6 +39,7 @@ absl::Status RunAsyncCollectivesConversionPasses(HloModule* module);
 
 struct ScheduleMetadata {
   uint64_t scheduler_mem_limit;
+  int64_t peak_memory_usage;
 };
 
 // Defines the scheduler config to be used by LHS.

@@ -720,9 +720,10 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   // We need to run it anyway because LHS relies on it.
   // See `xla::LatencyHidingScheduler::Run`.
   TF_RETURN_IF_ERROR(RunP2PSchedulePreparation(module));
-  TF_ASSIGN_OR_RETURN(
-      HloSchedule schedule,
-      ScheduleGpuModuleWithMemoryScheduler(module, pointer_size));
+  int64_t peak_memory_bytes;
+  TF_ASSIGN_OR_RETURN(HloSchedule schedule,
+                      ScheduleGpuModuleWithMemoryScheduler(module, pointer_size,
+                                                           &peak_memory_bytes));
   TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
 
   bool enable_latency_hiding_scheduler =
@@ -736,7 +737,7 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
         alias_info));
   }
 
-  return ScheduleMetadata{memory_limit};
+  return ScheduleMetadata{memory_limit, peak_memory_bytes};
 }
 
 absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(

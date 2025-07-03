@@ -1831,6 +1831,7 @@ TEST_F(GpuHloScheduleTest, ReturnsValidScheduleMetadata) {
       auto metadata, ScheduleGpuModule(module.get(), /*pointer_size=*/8,
                                        device_description, alias_info.get()));
   EXPECT_GT(metadata.scheduler_mem_limit, 0);
+  EXPECT_EQ(metadata.peak_memory_usage, 12288);  // 3*32*32 * 4 bytes
 }
 
 // This test verifies that the scheduling logs an error if the size of
@@ -1872,6 +1873,7 @@ TEST_F(GpuHloScheduleTest, LogAnErrorWhenArgumentSizeExceedsMemoryLimit) {
       auto metadata, ScheduleGpuModule(module.get(), /*pointer_size=*/8,
                                        device_description, alias_info.get()));
   EXPECT_EQ(metadata.scheduler_mem_limit, 0);
+  EXPECT_EQ(metadata.peak_memory_usage, 12288);  // 3*32*32 * 4 bytes
 }
 
 INSTANTIATE_TEST_SUITE_P(GpuHloScheduleParameterizedTest,
