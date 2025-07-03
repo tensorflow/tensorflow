@@ -91,8 +91,8 @@ class FormatConverter {
   TfLiteStatus SparseToDense(const T* src_data);
   // Method for sparse to dense conversion with caller provided buffer. No need
   // to call GetData() with this method.
-  TfLiteStatus SparseToDense(const T* src_data, const size_t dest_size,
-                             T* dest_data, TfLiteContext* context = nullptr);
+  TfLiteStatus SparseToDense(const T* src_data, size_t dest_size, T* dest_data,
+                             TfLiteContext* context = nullptr);
 
  private:
   // Helper function for initializing this converter for sparse to dense
@@ -111,7 +111,7 @@ class FormatConverter {
                 int prev_idx, int* src_data_ptr, T* dest_data);
 
   // Check if val is equal to zero.
-  bool IsZero(const T val);
+  bool IsZero(T val);
 
   // Shape of the conceptual dense tensor.
   std::vector<int> dense_shape_;
