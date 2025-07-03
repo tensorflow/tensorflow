@@ -180,6 +180,66 @@ TEST(DotOperandDimsTest, LocalIndex) {
   EXPECT_FALSE(dims.LocalIndex(DotOperandDims::kContracting, 0).ok());
 }
 
+TEST(DotOperandDimsTest, InsertDimensionIntoEmptyCategory) {
+  Shape shape = ParseShape("f32[10,20,30]").value();
+  DotOperandDims dims(shape, /*batch_dims=*/{},
+                      /*non_contracting_dims=*/{0, 1},
+                      /*contracting_dims=*/{2});
+  TF_ASSERT_OK(dims.InsertDimension(DotOperandDims::kBatch, 3, 40));
+  EXPECT_EQ(dims.shape(), ParseShape("f32[10,20,30,40]").value());
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(3));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre(0, 1));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(2));
+}
+
+TEST(DotOperandDimsTest, InsertDimensionIntoNonEmptyCategory) {
+  Shape shape = ParseShape("f32[10,20,30]").value();
+  DotOperandDims dims(shape, /*batch_dims=*/{0},
+                      /*non_contracting_dims=*/{1},
+                      /*contracting_dims=*/{2});
+  TF_ASSERT_OK(dims.InsertDimension(DotOperandDims::kBatch, 3, 40));
+  EXPECT_EQ(dims.shape(), ParseShape("f32[10,20,30,40]").value());
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(0, 3));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre(1));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(2));
+}
+
+TEST(DotOperandDimsTest, InsertDimensionIntoFirstCategory) {
+  Shape shape = ParseShape("f32[10,20,30]").value();
+  DotOperandDims dims(shape, /*batch_dims=*/{0},
+                      /*non_contracting_dims=*/{1},
+                      /*contracting_dims=*/{2});
+  TF_ASSERT_OK(dims.InsertDimension(DotOperandDims::kBatch, 0, 40));
+  EXPECT_EQ(dims.shape(), ParseShape("f32[40,10,20,30]").value());
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(0, 1));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre(2));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(3));
+}
+
+TEST(DotOperandDimsTest, InsertDimensionIntoLastCategory) {
+  Shape shape = ParseShape("f32[10,20,30]").value();
+  DotOperandDims dims(shape, /*batch_dims=*/{0},
+                      /*non_contracting_dims=*/{1},
+                      /*contracting_dims=*/{2});
+  TF_ASSERT_OK(dims.InsertDimension(DotOperandDims::kContracting, 3, 40));
+  EXPECT_EQ(dims.shape(), ParseShape("f32[10,20,30,40]").value());
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(0));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre(1));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(2, 3));
+}
+
+TEST(DotOperandDimsTest, InsertDimensionIntoMiddleCategory) {
+  Shape shape = ParseShape("f32[10,20,30]").value();
+  DotOperandDims dims(shape, /*batch_dims=*/{0},
+                      /*non_contracting_dims=*/{1},
+                      /*contracting_dims=*/{2});
+  TF_ASSERT_OK(dims.InsertDimension(DotOperandDims::kNonContracting, 1, 40));
+  EXPECT_EQ(dims.shape(), ParseShape("f32[10,40,20,30]").value());
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(0));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre(1, 2));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(3));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
