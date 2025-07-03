@@ -65,6 +65,7 @@ cc_library(
         ":dynamic_slice_thunk",
         ":gpublas_lt_matmul_thunk",
         ":thunk",
+        ":while_thunk",
         "//xla:debug_options_flags",
         "//xla:executable_run_options",
         "//xla:shape_util",

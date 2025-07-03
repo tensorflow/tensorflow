@@ -263,6 +263,13 @@ class DynamicMemcpyThunk : public Thunk {
   DynamicMemcpyThunk(const DynamicMemcpyThunk&) = delete;
   DynamicMemcpyThunk& operator=(const DynamicMemcpyThunk&) = delete;
 
+  Offsets offsets() const { return offsets_; }
+  uint64_t mem_size() const { return mem_size_; }
+  const BufferAllocation::Slice& source() const { return source_buffer_; }
+  const BufferAllocation::Slice& destination() const {
+    return destination_buffer_;
+  }
+
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:

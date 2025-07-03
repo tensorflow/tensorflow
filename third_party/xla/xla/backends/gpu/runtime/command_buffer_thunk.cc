@@ -241,7 +241,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   // the last command buffer execution.
   auto updated_allocs = cmd_buffer->UpdateBufferAllocations(commands_, params);
 
-  if (!updated_allocs.empty()) {
+  if (!updated_allocs.empty() || commands_.force_update()) {
     VLOG(3) << "Update command buffer on device #" << executor->device_ordinal()
             << " by recoding command buffer cmd sequence after "
             << cmd_buffer->num_executions << " executions since last update"
