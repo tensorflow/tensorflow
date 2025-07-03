@@ -62,35 +62,47 @@ double DiceSimLimitedSubgraph(const HloInstructionNode* absl_nonnull left,
                               HloGumgraphMappings& mappings,
                               int max_subgraph_size, int min_bfs_distance,
                               int left_graph_size, int right_graph_size) {
-  absl::flat_hash_set<const HloInstructionNode*> left_nodes;
-  absl::flat_hash_set<const HloInstructionNode*> right_nodes;
+  std::vector<const HloInstructionNode*> left_nodes;
+  left_nodes.reserve(max_subgraph_size);
   HloGumgraphBfs(
       *left,
       [&](const HloInstructionNode& node, int distance) {
-        left_nodes.insert(&node);
+        left_nodes.push_back(&node);
         return distance <= min_bfs_distance ||
                left_nodes.size() < max_subgraph_size;
       },
       BfsTraversalDirection::kForward, left_graph_size);
+
+  std::vector<const HloInstructionNode*> right_nodes;
+  right_nodes.reserve(max_subgraph_size);
   HloGumgraphBfs(
       *right,
       [&](const HloInstructionNode& node, int distance) {
-        right_nodes.insert(&node);
+        right_nodes.push_back(&node);
         return distance <= min_bfs_distance ||
                right_nodes.size() < max_subgraph_size;
       },
       BfsTraversalDirection::kForward, right_graph_size);
+
+  absl::flat_hash_set<const HloInstructionNode*> right_nodes_set(
+      right_nodes.begin(), right_nodes.end());
+
   int common = 0;
   for (const HloInstructionNode* left_node : left_nodes) {
     if (auto it = mappings.left_to_right_instruction_map.left.find(left_node);
         it != mappings.left_to_right_instruction_map.left.end() &&
-        right_nodes.contains(it->second.node)) {
+        right_nodes_set.contains(it->second.node)) {
       ++common;
     }
   }
 
-  return 2 * static_cast<double>(common) /
-         static_cast<double>((left_nodes.size() + right_nodes.size()));
+  double denominator =
+      static_cast<double>(left_nodes.size() + right_nodes.size());
+  if (denominator == 0) {
+    return 0.0;
+  }
+
+  return 2.0 * static_cast<double>(common) / denominator;
 }
 
 // Returns all HloValues used by the given instruction.
