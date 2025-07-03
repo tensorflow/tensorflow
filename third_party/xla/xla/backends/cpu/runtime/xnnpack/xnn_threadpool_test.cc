@@ -15,18 +15,25 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/xnnpack/xnn_threadpool.h"
 
+#include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <vector>
 
 #include "xnnpack.h"
 #include "absl/algorithm/container.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "pthreadpool.h"
+#include "third_party/slinky/base/ref_count.h"
+#include "third_party/slinky/base/thread_pool.h"
 #include "xla/backends/cpu/runtime/parallel_loop_runner.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
 
 #define EIGEN_USE_THREADS
@@ -267,6 +274,117 @@ TEST_P(XnnThreadPoolTest, Dot) {
 
 INSTANTIATE_TEST_SUITE_P(XnnThreadPool, XnnThreadPoolTest, testing::Bool(),
                          testing::PrintToStringParamName());
+
+TEST(SlinkyEigenThreadPoolTest, SingleLoop) {
+  static constexpr size_t size = 10000;
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "slinky", 8);
+
+  SlinkyEigenThreadPool thread_pool(threads.AsEigenThreadPool());
+
+  std::vector<int32_t> data(size, 0);
+  auto inc = [&](size_t i) { data[i]++; };
+
+  thread_pool.parallel_for(size, inc);
+
+  std::vector<int32_t> expected(size, 1);
+  EXPECT_EQ(data, expected);
+}
+
+TEST(SlinkyEigenThreadPoolTest, LoopChain) {
+  static constexpr size_t size = 10000;
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "slinky", 8);
+
+  SlinkyEigenThreadPool thread_pool(threads.AsEigenThreadPool());
+
+  std::vector<int32_t> data(size, 0);
+  auto inc = [&](size_t i) { data[i]++; };
+
+  thread_pool.parallel_for(size, inc);
+  thread_pool.parallel_for(size, inc);
+  thread_pool.parallel_for(size, inc);
+  thread_pool.parallel_for(size, inc);
+  thread_pool.parallel_for(size, inc);
+
+  std::vector<int32_t> expected(size, 5);
+  EXPECT_EQ(data, expected);
+}
+
+TEST(SlinkyEigenThreadPoolTest, DeadlockProofEigen) {
+  static constexpr size_t size = 10000;
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "slinky", 8);
+
+  SlinkyEigenThreadPool thread_pool(threads.AsEigenThreadPool());
+
+  std::vector<int32_t> data(10 * size, 0);
+  auto inc = [&](size_t offset, size_t i) { data[offset + i]++; };
+
+  absl::BlockingCounter counter(10);
+
+  // Check that it's safe to wait inside the scheduler thread pool and we don't
+  // deadlock.
+  for (size_t i = 0; i < 10; ++i) {
+    threads.Schedule([&, i] {
+      auto l = thread_pool.enqueue(size, std::bind_front(inc, i * size), 10);
+      thread_pool.wait_for(&*l);
+      counter.DecrementCount();
+    });
+  }
+
+  counter.Wait();
+
+  std::vector<int32_t> expected(10 * size, 1);
+  EXPECT_EQ(data, expected);
+}
+
+TEST(SlinkyEigenThreadPoolTest, NestedLoops) {
+  static constexpr size_t size = 100;
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "slinky", 8);
+
+  SlinkyEigenThreadPool thread_pool(threads.AsEigenThreadPool());
+
+  std::array<std::atomic<int32_t>, size> data = {{0}};
+  auto inc = [&](size_t i) { data[i]++; };
+
+  thread_pool.parallel_for(
+      size, [&](size_t i) { thread_pool.parallel_for(size, inc); });
+
+  for (size_t i = 0; i < size; ++i) {
+    EXPECT_EQ(data[i], size);
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks.
+//===----------------------------------------------------------------------===//
+
+static void BM_EigenLoops(benchmark::State& state) {
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "slinky", 8);
+  size_t num_loops = state.range(0);
+
+  SlinkyEigenThreadPool thread_pool(threads.AsEigenThreadPool());
+
+  auto noop = [](size_t) {};
+
+  for (auto _ : state) {
+    std::vector<slinky::ref_count<slinky::thread_pool::task>> loops(num_loops);
+    for (size_t i = 0; i < num_loops; ++i) {
+      loops[i] = thread_pool.enqueue(100, noop, 10);
+    }
+    for (auto& loop : loops) {
+      thread_pool.wait_for(&*loop);
+    }
+  }
+
+  state.SetItemsProcessed(state.iterations() * num_loops * 100);
+}
+
+BENCHMARK(BM_EigenLoops)
+    ->MeasureProcessCPUTime()
+    ->Arg(1)
+    ->Arg(10)
+    ->Arg(25)
+    ->Arg(50)
+    ->Arg(100);
 
 }  // namespace
 }  // namespace xla::cpu

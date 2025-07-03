@@ -25,6 +25,10 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "pthreadpool.h"
+#include "third_party/slinky/base/function_ref.h"
+#include "third_party/slinky/base/ref_count.h"
+#include "third_party/slinky/base/thread_pool.h"
+#include "third_party/slinky/base/thread_pool_impl.h"
 #include "xla/backends/cpu/runtime/parallel_loop_runner.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
@@ -228,6 +232,57 @@ static void ParallelizeDynamic(pthreadpool_t threadpool, Fn function,
   } else {
     internal::InvokeAll<true>(function, context, std::make_tuple(), dims...);
   }
+}
+
+SlinkyEigenThreadPool::SlinkyEigenThreadPool(
+    Eigen::ThreadPoolInterface* eigen_thread_pool)
+    : thread_pool_(/*workers=*/0), eigen_thread_pool_(eigen_thread_pool) {
+  if (eigen_thread_pool_) {
+    thread_pool_.expect_workers(eigen_thread_pool_->NumThreads());
+  }
+}
+
+SlinkyEigenThreadPool::SlinkyEigenThreadPool(
+    const Eigen::ThreadPoolDevice* eigen_thread_pool)
+    : SlinkyEigenThreadPool(eigen_thread_pool->getPool()) {}
+
+int SlinkyEigenThreadPool::thread_count() const {
+  return eigen_thread_pool_ ? eigen_thread_pool_->NumThreads() : 0;
+}
+
+slinky::ref_count<slinky::thread_pool::task> SlinkyEigenThreadPool::enqueue(
+    size_t n, task_body t, int32_t max_workers) {
+  auto result = thread_pool_.enqueue(n, t, max_workers);
+  if (eigen_thread_pool_) {
+    // Limit the number of workers we enqueue to the most workers we could use,
+    // and the number of threads in the thread pool. Since these workers are
+    // generic, we don't want more live workers than there are threads. This
+    // logic is a bit racy, but it should be harmless.
+    max_workers = std::min<size_t>(max_workers, n);
+    max_workers =
+        std::min(max_workers, eigen_thread_pool_->NumThreads() - worker_count_);
+
+    for (int32_t i = 0; i < max_workers; ++i) {
+      eigen_thread_pool_->Schedule([this, result]() mutable {
+        // This works on any task in the thread pool until there is no work
+        // remaining.
+        ++worker_count_;
+        thread_pool_.work_until_idle();
+        --worker_count_;
+      });
+    }
+  }
+  return result;
+}
+
+void SlinkyEigenThreadPool::wait_for(task* t) { thread_pool_.wait_for(t); }
+
+void SlinkyEigenThreadPool::wait_for(predicate_ref condition) {
+  thread_pool_.wait_for(condition);
+}
+
+void SlinkyEigenThreadPool::atomic_call(slinky::function_ref<void()> t) {
+  thread_pool_.atomic_call(t);
 }
 
 }  // namespace xla::cpu

@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "third_party/XNNPACK/include/experimental.h"
 #include "xnnpack.h"
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
@@ -102,6 +103,7 @@ struct XnnFusionThunk::XnnRuntime {
 
   std::unique_ptr<ParallelLoopRunner> runner;
   pthreadpool_t threadpool = nullptr;
+  std::unique_ptr<SlinkyEigenThreadPool> slinky_thread_pool;
   xnn_workspace_t workspace = nullptr;
 
   xnn_subgraph_t subgraph = nullptr;
@@ -122,6 +124,7 @@ auto XnnFusionThunk::XnnRuntime::operator=(XnnRuntime&& other) -> XnnRuntime& {
   Destroy();
 
   threadpool = other.threadpool;
+  slinky_thread_pool = std::move(other.slinky_thread_pool);
   subgraph = other.subgraph;
   workspace = other.workspace;
   runtime = other.runtime;
@@ -227,11 +230,14 @@ absl::StatusOr<XnnFusionThunk::XnnRuntime> XnnFusionThunk::CreateXnnRuntime(
 
   // Configure XNNPACK runtime thread pool if parallelization is enabled.
   if (parallelization_mode == ParallelizationMode::kParallelLoopRunner) {
-    runtime.runner = std::make_unique<ParallelLoopRunner>(device);
-    runtime.threadpool = CreateCustomPthreadpool(runtime.runner.get());
+    if (options_.use_slinky) {
+      runtime.slinky_thread_pool =
+          std::make_unique<SlinkyEigenThreadPool>(device);
+    } else {
+      runtime.runner = std::make_unique<ParallelLoopRunner>(device);
+      runtime.threadpool = CreateCustomPthreadpool(runtime.runner.get());
+    }
   }
-
-  XNN_RETURN_IF_ERROR(xnn_create_workspace(&runtime.workspace));
 
   if (builder_) {
     TF_ASSIGN_OR_RETURN(runtime.subgraph, builder_(arguments_, results_));
@@ -241,9 +247,16 @@ absl::StatusOr<XnnFusionThunk::XnnRuntime> XnnFusionThunk::CreateXnnRuntime(
         capturing_builder_(arguments_, results_, arguments_buffers));
   }
 
-  XNN_RETURN_IF_ERROR(
-      xnn_create_runtime_v4(runtime.subgraph, nullptr, runtime.workspace,
-                            runtime.threadpool, 0, &runtime.runtime));
+  if (options_.use_slinky) {
+    XNN_RETURN_IF_ERROR(xnn_create_runtime_slinky(
+        runtime.subgraph, /*weights_cache=*/nullptr,
+        runtime.slinky_thread_pool.get(), /*flags=*/0, &runtime.runtime));
+  } else {
+    XNN_RETURN_IF_ERROR(xnn_create_workspace(&runtime.workspace));
+    XNN_RETURN_IF_ERROR(xnn_create_runtime_v4(
+        runtime.subgraph, /*weights_cache=*/nullptr, runtime.workspace,
+        runtime.threadpool, /*flags=*/0, &runtime.runtime));
+  }
 
   XNN_RETURN_IF_ERROR(xnn_reshape_runtime(runtime.runtime));
 

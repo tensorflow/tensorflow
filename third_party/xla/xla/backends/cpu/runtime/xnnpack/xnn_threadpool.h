@@ -16,8 +16,24 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_THREADPOOL_H_
 #define XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_THREADPOOL_H_
 
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+
 #include "pthreadpool.h"
+#include "third_party/slinky/base/function_ref.h"
+#include "third_party/slinky/base/ref_count.h"
+#include "third_party/slinky/base/thread_pool.h"
+#include "third_party/slinky/base/thread_pool_impl.h"
 #include "xla/backends/cpu/runtime/parallel_loop_runner.h"
+
+namespace Eigen {
+
+class ThreadPoolInterface;
+
+}  // namespace Eigen
+
+struct xnn_runtime;
 
 namespace xla::cpu {
 
@@ -33,6 +49,29 @@ void DestroyCustomPthreadpool(pthreadpool_t threadpool);
 //
 // IMPORTANT: Thread pool must be created with `CreateCustomPthreadpool`.
 xla::cpu::ParallelLoopRunner* GetParallelLoopRunner(pthreadpool_t threadpool);
+
+//===----------------------------------------------------------------------===//
+// Slinky Thread pool API.
+//===----------------------------------------------------------------------===//
+
+class SlinkyEigenThreadPool : public slinky::thread_pool {
+ public:
+  explicit SlinkyEigenThreadPool(Eigen::ThreadPoolInterface* eigen_thread_pool);
+  explicit SlinkyEigenThreadPool(
+      const Eigen::ThreadPoolDevice* eigen_thread_pool);
+
+  int thread_count() const override;
+  slinky::ref_count<task> enqueue(size_t n, task_body t,
+                                  int32_t max_workers) override;
+  void wait_for(task* t) override;
+  void wait_for(predicate_ref condition) override;
+  void atomic_call(slinky::function_ref<void()> t) override;
+
+ private:
+  slinky::thread_pool_impl thread_pool_;
+  Eigen::ThreadPoolInterface* eigen_thread_pool_;
+  std::atomic<int> worker_count_{0};
+};
 
 }  // namespace xla::cpu
 
