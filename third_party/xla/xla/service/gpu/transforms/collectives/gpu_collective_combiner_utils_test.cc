@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 
 #include <gtest/gtest.h>
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
