@@ -80,6 +80,22 @@ namespace proxy {
 
 namespace {
 
+// Returns the thread options to use for the global pool.
+tsl::ThreadOptions GetThreadOptions() {
+  tsl::ThreadOptions thread_options;
+  // Ensure the threads' stack is large enough for arbitrary Python code.
+  thread_options.stack_size = 2 * 1024 * 1024;  // 2 MiB
+  return thread_options;
+}
+
+// Returns the global pool used for host callback RPCs and executions.
+tsl::thread::ThreadPool* GetGlobalThreadPool() {
+  static tsl::thread::ThreadPool* global_pool = new tsl::thread::ThreadPool(
+      tsl::Env::Default(), GetThreadOptions(), "XLAIFRTProxy",
+      std::min(16, tsl::port::MaxParallelism()));
+  return global_pool;
+}
+
 // Locally executes the loaded host callback with given operand buffer from the
 // IFRT proxy server and returns a result buffer to be sent back.
 absl::StatusOr<absl::Cord> ExecuteLoadedHostCallback(
@@ -187,6 +203,79 @@ absl::StatusOr<uint64_t> PrepareAndExecuteLoadedHostCallback(
   return result_handle;
 }
 
+// Bundles together the state needed to poll the state of a single host
+// callback.
+struct LoadedHostCallbackPollingState {
+  std::shared_ptr<RpcHelper> rpc_helper;
+  uint64_t handle;
+  tsl::RCReference<xla::ifrt::LoadedHostCallback> loaded_host_callback;
+};
+
+// Handles a single poll response from the server, executes the loaded host
+// callback, and returns the result. Must run in a non-RPC response processing
+// thread and have a sufficient stack size for the host callback execution.
+void OnLoadedHostCallbackPollResponse(
+    const LoadedHostCallbackPollingState& state, uint64_t operand_handle,
+    std::shared_ptr<LoadedHostCallbackPollResponse> response) {
+  auto ret_req = std::make_unique<LoadedHostCallbackReturnRequest>();
+  ret_req->set_host_callback_execution_handle(
+      response->host_callback_execution_handle());
+
+  absl::StatusOr<uint64_t> result_handle = PrepareAndExecuteLoadedHostCallback(
+      state.rpc_helper.get(), state.loaded_host_callback.get(), operand_handle);
+  if (result_handle.ok()) {
+    ret_req->set_result_host_buffer_handle(*result_handle);
+  } else {
+    *ret_req->mutable_error() = tsl::StatusToProto(result_handle.status());
+  }
+
+  state.rpc_helper->LoadedHostCallbackReturn(std::move(ret_req))
+      .OnReady(
+          [](absl::StatusOr<std::shared_ptr<LoadedHostCallbackReturnResponse>>
+                 response) {
+            if (!response.ok()) {
+              LOG(ERROR) << "Failed to return host callback results: "
+                         << response.status();
+            }
+          });
+}
+
+// Polls the state of a single host callback once asynchronously. When the poll
+// response is received, the host callback is executed asynchronously and the
+// polling is scheduled again, unless the host callback is destructed from the
+// server.
+void LoadedHostCallbackPoll(LoadedHostCallbackPollingState state) {
+  const uint64_t operand_handle = state.rpc_helper->NextHandle();
+
+  auto poll_req = std::make_unique<LoadedHostCallbackPollRequest>();
+  poll_req->set_loaded_host_callback_handle(state.handle);
+  poll_req->set_operand_host_buffer_handle(operand_handle);
+
+  auto response_future =
+      state.rpc_helper->LoadedHostCallbackPoll(std::move(poll_req));
+  response_future.OnReady(
+      [state = std::move(state), operand_handle](
+          absl::StatusOr<std::shared_ptr<LoadedHostCallbackPollResponse>>
+              response) mutable {
+        GetGlobalThreadPool()->Schedule(
+            [state = std::move(state), operand_handle,
+             response = std::move(response)]() mutable {
+              if (!response.ok()) {
+                LOG_EVERY_N_SEC(ERROR, 60)
+                    << "Failed to poll host callback execution: "
+                    << response.status();
+              } else if (!(*response)->has_host_callback_execution_handle()) {
+                // The host callback is destructed from the server.
+                return;
+              } else {
+                OnLoadedHostCallbackPollResponse(state, operand_handle,
+                                                 *std::move(response));
+              }
+              LoadedHostCallbackPoll(std::move(state));
+            });
+      });
+};
+
 }  // namespace
 
 // OutputSpecCache caches the output specification of the
@@ -266,9 +355,13 @@ LoadedExecutable::LoadedExecutable(
   // Start host callback pollers.
   CHECK_EQ(loaded_host_callbacks.size(), loaded_host_callback_handles.size());
   if (!loaded_host_callbacks.empty()) {
+    // Note: individual host callbacks may live longer than the executable as
+    // the destruction of an IFRT executable is not required to block until all
+    // in-flight executions are complete.
     for (int i = 0; i < loaded_host_callbacks.size(); ++i) {
-      PollLoadedHostCallback(loaded_host_callback_handles[i],
-                             loaded_host_callbacks[i]);
+      LoadedHostCallbackPoll(LoadedHostCallbackPollingState{
+          rpc_helper_, loaded_host_callback_handles[i],
+          loaded_host_callbacks[i]});
     }
   }
 
@@ -644,77 +737,6 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
 absl::Span<xla::ifrt::Device* const> LoadedExecutable::addressable_devices()
     const {
   return addressable_devices_;
-}
-
-namespace {
-
-static tsl::ThreadOptions GetThreadOptions() {
-  tsl::ThreadOptions thread_options;
-  // Ensure the threads' stack is large enough for arbitrary Python code.
-  thread_options.stack_size = 2 * 1024 * 1024;  // 2 MiB
-  return thread_options;
-}
-
-}  // namespace
-
-void LoadedExecutable::PollLoadedHostCallback(
-    uint64_t handle,
-    tsl::RCReference<xla::ifrt::LoadedHostCallback> loaded_host_callback) {
-  // Note: individual host callbacks may live longer than the executable as the
-  // destruction of an IFRT executable is not required to block until all
-  // in-flight executions are complete. Therefore, the following lambda must not
-  // capture `this` and is scheduled on the default thread pool.
-  auto f = [rpc_helper = rpc_helper_, handle,
-            loaded_host_callback = std::move(loaded_host_callback)]() {
-    while (true) {
-      const uint64_t operand_handle = rpc_helper->NextHandle();
-
-      auto poll_req = std::make_unique<LoadedHostCallbackPollRequest>();
-      poll_req->set_loaded_host_callback_handle(handle);
-      poll_req->set_operand_host_buffer_handle(operand_handle);
-      auto response =
-          rpc_helper->LoadedHostCallbackPoll(std::move(poll_req)).Await();
-
-      if (!response.ok()) {
-        LOG_EVERY_N_SEC(ERROR, 60)
-            << "Failed to poll host callback execution: " << response.status();
-        continue;
-      }
-
-      if (!(*response)->has_host_callback_execution_handle()) {
-        // The host callback is destructed from the server.
-        break;
-      }
-
-      auto ret_req = std::make_unique<LoadedHostCallbackReturnRequest>();
-      ret_req->set_host_callback_execution_handle(
-          (*response)->host_callback_execution_handle());
-
-      absl::StatusOr<uint64_t> result_handle =
-          PrepareAndExecuteLoadedHostCallback(
-              rpc_helper.get(), loaded_host_callback.get(), operand_handle);
-      if (result_handle.ok()) {
-        ret_req->set_result_host_buffer_handle(*result_handle);
-      } else {
-        *ret_req->mutable_error() = tsl::StatusToProto(result_handle.status());
-      }
-
-      rpc_helper->LoadedHostCallbackReturn(std::move(ret_req))
-          .OnReady([](absl::StatusOr<
-                       std::shared_ptr<LoadedHostCallbackReturnResponse>>
-                          response) {
-            if (!response.ok()) {
-              LOG(ERROR) << "Failed to return host callback results: "
-                         << response.status();
-            }
-          });
-    }
-  };
-
-  static auto* const global_pool = new tsl::thread::ThreadPool(
-      tsl::Env::Default(), GetThreadOptions(), "XLAIFRTProxy",
-      std::min(16, tsl::port::MaxParallelism()));
-  global_pool->Schedule(std::move(f));
 }
 
 char LoadedExecutable::ID = 0;  // NOLINT

@@ -127,10 +127,6 @@ class LoadedExecutable final
     std::optional<absl::flat_hash_set<int>> donatable_input_indices_set;
   };
 
-  void PollLoadedHostCallback(
-      uint64_t handle,
-      tsl::RCReference<xla::ifrt::LoadedHostCallback> loaded_host_callback);
-
   xla::ifrt::Client* client_;
   std::shared_ptr<RpcHelper> rpc_helper_;
 
