@@ -535,6 +535,9 @@ message DebugOptions {
   // xla_gpu_multi_streamed_windowed_einsum is set to true.
   optional bool xla_gpu_experimental_enable_alltoall_windowed_einsum = 360;
 
+  // Enables an experimental feature for command buffer conversion on thunks.
+  optional bool xla_gpu_experimental_enable_command_buffer_on_thunks = 394;
+
   // Enabling this flag will attempt to redirect every already-constructed
   // fusion possible to the Triton emitter.
   //
@@ -1229,7 +1232,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 394
+  // Next id: 395
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
