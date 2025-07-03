@@ -149,10 +149,21 @@ class AddFpgaTestDelegate : public SimpleDelegateInterface {
   bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration,
                                  const TfLiteNode* node,
                                  TfLiteContext* context) const override {
+
+    TF_LITE_KERNEL_LOG(context, "Registering op with builtin_code: %d", registration->builtin_code);
+
     // This delegate supports only ADD and SUB operations.
     if (registration->builtin_code != kTfLiteBuiltinAdd &&
         registration->builtin_code != kTfLiteBuiltinSub)
       return false;
+    
+    // This delegate does not support LSTM operations.
+    // LSTM operations are not supported by this delegate.
+    if (registration->builtin_code == kTfLiteBuiltinLstm ||
+    registration->builtin_code == kTfLiteBuiltinUnidirectionalSequenceLstm ||
+    registration->builtin_code == kTfLiteBuiltinBidirectionalSequenceLstm) {
+      return false;
+    }
 
     // Only supports int32 type and static tensors.
     for (int i = 0; i < node->inputs->size; ++i) {
