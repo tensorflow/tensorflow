@@ -194,10 +194,11 @@ CommonPjRtClient::BufferFromHostBuffer(
     HostBufferSemantics host_buffer_semantics,
     absl::AnyInvocable<void() &&> on_done_with_host_buffer,
     PjRtMemorySpace* memory_space, const Layout* device_layout) {
+  TF_ASSIGN_OR_RETURN(const Shape shape,
+                      ShapeUtil::MakeValidatedShape(type, dims));
   TF_ASSIGN_OR_RETURN(
       Shape device_shape,
-      MakeDefaultShapeForMemorySpace(
-          memory_space, ShapeUtil::MakeShape(type, dims), device_layout));
+      MakeDefaultShapeForMemorySpace(memory_space, shape, device_layout));
   if (host_buffer_semantics ==
           PjRtClient::HostBufferSemantics::kImmutableZeroCopy ||
       host_buffer_semantics ==

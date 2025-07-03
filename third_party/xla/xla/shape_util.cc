@@ -340,8 +340,9 @@ static std::vector<bool> MakeDynamicDimensions(
   }
 
   if (any_overflows) {
-    return InvalidArgument("overflow in static extent product: dimes=[%s]",
-                           absl::StrJoin(dimensions, ","));
+    return InvalidArgument(
+        "overflow in static extent product: dimensions=[%s].",
+        absl::StrJoin(dimensions, ", "));
   }
   return shape;
 }
