@@ -103,6 +103,7 @@ namespace {
 AttributeMap MakeAttributeMap(xla::PjRtClient* pjrt_client) {
   absl::flat_hash_map<std::string, PjRtValueType> attributes;
   attributes.insert({"supports_executable_serialization", true});
+  attributes.insert({"serialize_with_sdy", PjRtValueType(true)});
   if (std::optional<PjRtPluginAttributes> plugin_attributes =
           pjrt_client->plugin_attributes();
       plugin_attributes.has_value()) {
