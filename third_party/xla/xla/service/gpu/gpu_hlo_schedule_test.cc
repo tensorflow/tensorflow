@@ -23,7 +23,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <type_traits>
-#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -76,16 +75,19 @@ class GpuHloScheduleTest : public HloTestBase {
   // Pre-canned shapes.
   Shape f32_2x2_ = ShapeUtil::MakeShape(F32, {2, 2});
 
-  SequentialHloOrdering BuildHloOrdering(HloModule* module) {
-    Backend& test_backend = backend();
+  absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(HloModule* module) {
     const se::DeviceDescription& gpu_device_info =
-        test_backend.default_stream_executor()->GetDeviceDescription();
+        backend().default_stream_executor()->GetDeviceDescription();
+    auto* gpu_compiler = dynamic_cast<GpuCompiler*>(backend().compiler());
     std::unique_ptr<GpuAliasInfo> alias_info =
-        dynamic_cast<GpuCompiler*>(backend().compiler())
-            ->GetAliasInfo(gpu_device_info);
-    TF_CHECK_OK(ScheduleGpuModule(module, /*pointer_size=*/8, gpu_device_info,
-                                  alias_info.get())
-                    .status());
+        gpu_compiler->GetAliasInfo(gpu_device_info);
+    int64_t pointer_size = gpu_compiler->GetPointerSize();
+    return xla::gpu::ScheduleGpuModule(module, pointer_size, gpu_device_info,
+                                       alias_info.get());
+  }
+
+  SequentialHloOrdering BuildHloOrdering(HloModule* module) {
+    TF_CHECK_OK(ScheduleGpuModule(module).status());
     return SequentialHloOrdering{module->schedule()};
   }
 
@@ -394,7 +396,7 @@ TEST_P(GpuHloScheduleParameterizedTest, LHSCostModel) {
 }
 
 TEST_P(GpuHloScheduleParameterizedTest,
-       ScheduleGpuModuleWithMemorySchedulerReturnsPeakMemoryBytes) {
+       ScheduleGpuModuleReturnsPeakMemoryBytes) {
   absl::string_view kHloText = R"(
   HloModule m
 
@@ -412,13 +414,8 @@ TEST_P(GpuHloScheduleParameterizedTest,
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(kHloText, GetModuleConfig(test_config)));
-  int64_t pointer_size =
-      dynamic_cast<GpuCompiler*>(backend().compiler())->GetPointerSize();
-  int64_t peak_memory_bytes = -1;
-  TF_ASSERT_OK_AND_ASSIGN(auto schedule,
-                          ScheduleGpuModuleWithMemoryScheduler(
-                              module.get(), pointer_size, &peak_memory_bytes));
-  EXPECT_GT(peak_memory_bytes, 0);
+  TF_ASSERT_OK_AND_ASSIGN(auto metadata, ScheduleGpuModule(module.get()));
+  EXPECT_GT(metadata.peak_memory_usage, 0);
 }
 
 TEST_P(GpuHloScheduleParameterizedTest, LHSCostModelCostlyAR) {
@@ -621,15 +618,8 @@ TEST_P(GpuHloScheduleParameterizedTest,
   config.set_debug_options(dboptions);
   module->set_config(config);
 
-  // `dot1` and `ar-start1` are missing from the profile.
-  const se::DeviceDescription& device_description =
-      backend().default_stream_executor()->GetDeviceDescription();
-  std::unique_ptr<GpuAliasInfo> alias_info =
-      dynamic_cast<GpuCompiler*>(backend().compiler())
-          ->GetAliasInfo(device_description);
-  EXPECT_THAT(ScheduleGpuModule(module.get(), /*pointer_size=*/8,
-                                device_description, alias_info.get())
-                  .status(),
+  // `dot1` and `ar-start1` are missing from the profile.;
+  EXPECT_THAT(ScheduleGpuModule(module.get()),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
@@ -682,14 +672,7 @@ TEST_P(
   // pass.
   module->mutable_config().mutable_debug_options().add_xla_disable_hlo_passes(
       "pgle-accuracy-checker");
-  const se::DeviceDescription& device_description =
-      backend().default_stream_executor()->GetDeviceDescription();
-  std::unique_ptr<GpuAliasInfo> alias_info =
-      dynamic_cast<GpuCompiler*>(backend().compiler())
-          ->GetAliasInfo(device_description);
-  TF_EXPECT_OK(ScheduleGpuModule(module.get(), /*pointer_size=*/8,
-                                 device_description, alias_info.get())
-                   .status());
+  TF_EXPECT_OK(ScheduleGpuModule(module.get()).status());
 }
 
 TEST_P(GpuHloScheduleParameterizedTest, ProfileGuidedCostModelWithRematData) {
@@ -1405,14 +1388,7 @@ ENTRY e {
   ROOT t = (f32[1024,1024]{1,0}, f32[1024,1024]{1,0}) tuple(wrapped_exponential, wrapped_negate)
 })")
                     .value();
-  const se::DeviceDescription& device_description =
-      backend().default_stream_executor()->GetDeviceDescription();
-  std::unique_ptr<GpuAliasInfo> alias_info =
-      dynamic_cast<GpuCompiler*>(backend().compiler())
-          ->GetAliasInfo(device_description);
-  TF_CHECK_OK(ScheduleGpuModule(module.get(), /*pointer_size=*/8,
-                                device_description, alias_info.get())
-                  .status());
+  TF_CHECK_OK(ScheduleGpuModule(module.get()).status());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
 // CHECK: ENTRY
 // CHECK: wrapped_negate = f32[1024,1024]{1,0}
@@ -1749,14 +1725,7 @@ TEST_P(GpuHloScheduleParameterizedTest, CopyStartDoneScheduled) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kHloCopyStartDone,
                                                 GetModuleConfig(test_config)));
-  const se::DeviceDescription& device_description =
-      backend().default_stream_executor()->GetDeviceDescription();
-  std::unique_ptr<GpuAliasInfo> alias_info =
-      dynamic_cast<GpuCompiler*>(backend().compiler())
-          ->GetAliasInfo(device_description);
-  TF_CHECK_OK(ScheduleGpuModule(module.get(), /*pointer_size=*/8,
-                                device_description, alias_info.get())
-                  .status());
+  TF_CHECK_OK(ScheduleGpuModule(module.get()).status());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
 // CHECK: ENTRY
 // CHECK: copy-start.3 = (f32[512,1024]{1,0}, f32[512,1024]{1,0:S(5)}, u32[]) copy-start
@@ -1784,15 +1753,9 @@ TEST_F(GpuHloScheduleTest, DiscountCPUMemoryFromGPUPeakMemoryUsage) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kPeakMemoryUsageWithCpuOffload,
                                                 GetModuleConfig({})));
-  int64_t pointer_size =
-      dynamic_cast<GpuCompiler*>(backend().compiler())->GetPointerSize();
-  int64_t peak_memory_bytes = -1;
-  TF_ASSERT_OK_AND_ASSIGN(auto schedule,
-                          ScheduleGpuModuleWithMemoryScheduler(
-                              module.get(), pointer_size, &peak_memory_bytes));
-  TF_CHECK_OK(module->set_schedule(std::move(schedule)));
+  TF_ASSERT_OK_AND_ASSIGN(auto metadata, ScheduleGpuModule(module.get()));
   // Expected size = 4096 (buffer size) + 24 (tuple size) + 4 (prefetch index)
-  EXPECT_LT(peak_memory_bytes, 4200);
+  EXPECT_LT(metadata.peak_memory_usage, 4200);
 
   // Let's verify that we store one parameter on the CPU first before loading
   // another parameter from the CPU to minimize peak memory usage.
@@ -1821,15 +1784,7 @@ TEST_F(GpuHloScheduleTest, ReturnsValidScheduleMetadata) {
   module_config.set_device_memory_size(kMemoryLimitLarge);
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kHloText, module_config));
-
-  const se::DeviceDescription& device_description =
-      backend().default_stream_executor()->GetDeviceDescription();
-  std::unique_ptr<GpuAliasInfo> alias_info =
-      dynamic_cast<GpuCompiler*>(backend().compiler())
-          ->GetAliasInfo(device_description);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto metadata, ScheduleGpuModule(module.get(), /*pointer_size=*/8,
-                                       device_description, alias_info.get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto metadata, ScheduleGpuModule(module.get()));
   EXPECT_GT(metadata.scheduler_mem_limit, 0);
   EXPECT_EQ(metadata.peak_memory_usage, 12288);  // 3*32*32 * 4 bytes
 }
@@ -1864,14 +1819,7 @@ TEST_F(GpuHloScheduleTest, LogAnErrorWhenArgumentSizeExceedsMemoryLimit) {
         .Times(1);
   }
   mock_log.StartCapturingLogs();
-  const se::DeviceDescription& device_description =
-      backend().default_stream_executor()->GetDeviceDescription();
-  std::unique_ptr<GpuAliasInfo> alias_info =
-      dynamic_cast<GpuCompiler*>(backend().compiler())
-          ->GetAliasInfo(device_description);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto metadata, ScheduleGpuModule(module.get(), /*pointer_size=*/8,
-                                       device_description, alias_info.get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto metadata, ScheduleGpuModule(module.get()));
   EXPECT_EQ(metadata.scheduler_mem_limit, 0);
   EXPECT_EQ(metadata.peak_memory_usage, 12288);  // 3*32*32 * 4 bytes
 }
