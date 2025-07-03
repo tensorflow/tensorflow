@@ -350,12 +350,13 @@ class ShapeUtil {
 
   // Returns a shape with the same dimensions as the original, but with the
   // element type changed to type.
-  static Shape ChangeElementType(const Shape& original, PrimitiveType type);
+  [[nodiscard]] static Shape ChangeElementType(const Shape& original,
+                                               PrimitiveType type);
 
   // Returns a shape with same dimensions but with all dimensions set to static.
   // If the shape has a layout, its dynamic_shape_metadata_prefix_bytes will be
   // set to zero.
-  static Shape MakeStaticShape(const Shape& original);
+  [[nodiscard]] static Shape MakeStaticShape(const Shape& original);
 
   // Creates a tuple shape from a slice of element shapes within the tuple.
   // Crashes if the result is invalid.
@@ -405,10 +406,18 @@ class ShapeUtil {
   static void AppendMajorDimension(int bound, Shape* shape);
 
   // Prepends a major dimension sized `bound` to the shape.
-  static Shape PrependMajorDimension(int64_t bound, Shape shape);
+  [[nodiscard]] static Shape PrependMajorDimension(int64_t bound, Shape shape);
 
   // Appends a minor dimension to the shape with the given bound.
   static void AppendMinorDimension(int bound, Shape* shape);
+
+  // Inserts a dimension at dim_idx. In the layout, the new dimension is
+  // next-major to the existing dimension at that index, or minor if it's
+  // inserted at the end (i.e. with the normalized layout it's inserted at the
+  // "natural" position).
+  [[nodiscard]] static Shape InsertDimensionAtIndex(Shape shape,
+                                                    int64_t dim_idx,
+                                                    int64_t bound);
 
   // Copy the dynamic dimensions property from one shape to another.
   static void CopyDynamicDimensions(Shape* to, const Shape& from);
@@ -527,7 +536,7 @@ class ShapeUtil {
   static Shape MoveDimToMajor(const Shape& shape, int64_t dim);
 
   // Returns the same shape except with all dimensions set to be static.
-  static Shape MakeShapeWithStaticDimensions(const Shape& shape);
+  [[nodiscard]] static Shape MakeShapeWithStaticDimensions(const Shape& shape);
 
   // Constructs a new shape with major-first layout (i.e. {n, n-1, ..., 0}).
   // Crashes if the result is invalid.
