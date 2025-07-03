@@ -87,6 +87,9 @@ absl::StatusOr<Autotuner::Config> Autotuner::GetBestConfig(
     if (executables[i].ok()) {
       valid_configs.push_back(std::move(supported_configs[i]));
       valid_executables.push_back(std::move(executables[i].value()));
+    } else {
+      VLOG(2) << "Failed to compile config " << i << ": "
+              << executables[i].status();
     }
   }
   VLOG(1) << "Successfully compiled " << valid_configs.size()
