@@ -57,14 +57,13 @@ void OverwriteMapInstructions(const HloInstructionNode* left,
     mappings.left_to_right_instruction_map.right.erase(it);
   }
 
-  mappings.left_to_right_instruction_map.insert(
-      InstructionPair(left, right,
-                      {.matcher_type = MatcherType::kManual,
-                       .matcher_debug_info = std::string(matcher_debug_info)}));
+  HloInstructionNodeMappingProps props = {false, MatcherType::kManual,
+                                          std::string(matcher_debug_info)};
+  mappings.left_to_right_instruction_map.Insert(left, right, props);
 
   if (position_unchanged) {
-    mappings.left_to_right_instruction_map.left.find(left)->info.unchanged =
-        true;
+    mappings.left_to_right_instruction_map.left.find(left)
+        ->second.props->unchanged = true;
   }
 }
 
@@ -92,12 +91,14 @@ void MatchAllNodesByName(const HloGumgraph& left, const HloGumgraph& right,
 absl::flat_hash_map<std::string, std::string> ExtractMappedInstructionNames(
     const HloGumgraphMappings& mappings) {
   absl::flat_hash_map<std::string, std::string> mapped_nodes;
-  for (auto it = mappings.left_to_right_instruction_map.begin();
-       it != mappings.left_to_right_instruction_map.end(); ++it) {
+  for (auto it = mappings.left_to_right_instruction_map.left.begin();
+       it != mappings.left_to_right_instruction_map.left.end(); ++it) {
     absl::string_view left_name =
-        it->left->is_root ? "root_L" : it->left->instruction->name();
-    absl::string_view right_name =
-        it->right->is_root ? "root_R" : it->right->instruction->name();
+        it->first->is_root ? "root_L" : it->first->instruction->name();
+
+    absl::string_view right_name = it->second.node->is_root
+                                       ? "root_R"
+                                       : it->second.node->instruction->name();
     mapped_nodes[left_name] = right_name;
   }
 
@@ -110,7 +111,7 @@ absl::flat_hash_map<std::string, std::string> ExtractMappedComputationNames(
   for (auto it = mappings.left_to_right_computation_map.left.begin();
        it != mappings.left_to_right_computation_map.left.end(); ++it) {
     mapped_computations[it->first->computation()->name()] =
-        it->second->computation()->name();
+        it->second.node->computation()->name();
   }
   return mapped_computations;
 }
@@ -121,7 +122,7 @@ ExtractComputationMatchType(const HloGumgraphMappings& mappings) {
   for (auto it = mappings.left_to_right_computation_map.left.begin();
        it != mappings.left_to_right_computation_map.left.end(); ++it) {
     computation_match_type[it->first->computation()->name()] =
-        it->info.computation_match_type;
+        it->second.props->computation_match_type;
   }
   return computation_match_type;
 }

@@ -15,6 +15,7 @@
 #include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -70,17 +71,19 @@ std::unique_ptr<const DiffResult> ConstructDiffResult(
 
     // The node is matched
     const HloInstructionNode* right_node =
-        mappings.left_to_right_instruction_map.left.find(left_node)->second;
-    const HloInstructionNodeMappingProps& mapping_props =
-        mappings.left_to_right_instruction_map.left.find(left_node)->info;
+        mappings.left_to_right_instruction_map.left.find(left_node)
+            ->second.node;
+    const std::optional<HloInstructionNodeMappingProps>& mapping_props =
+        mappings.left_to_right_instruction_map.left.find(left_node)
+            ->second.props;
 
     // Fill in matcher debug info.
     diff_result->map_by[std::make_pair(left_node->instruction,
                                        right_node->instruction)] =
-        mapping_props.matcher_type;
+        mapping_props->matcher_type;
     diff_result->matcher_debug_info[std::make_pair(left_node->instruction,
                                                    right_node->instruction)] =
-        mapping_props.matcher_debug_info;
+        mapping_props->matcher_debug_info;
 
     if (IsChangedInstruction(left_node, right_node)) {
       diff_result->changed_instructions[left_node->instruction] =
@@ -88,7 +91,7 @@ std::unique_ptr<const DiffResult> ConstructDiffResult(
       continue;
     }
     // If node position is unchanged, add to unchanged instructions.
-    if (mapping_props.unchanged) {
+    if (mapping_props->unchanged) {
       diff_result->unchanged_instructions[left_node->instruction] =
           right_node->instruction;
       continue;

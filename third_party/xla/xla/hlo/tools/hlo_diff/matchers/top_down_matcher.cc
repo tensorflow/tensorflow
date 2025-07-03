@@ -72,7 +72,7 @@ void GreedyTopDownMatcher::Match(HloGumgraphMappings& mappings) const {
           return;
         }
 
-        RecursiveTopDownMatcher(&left_node, it->second, type_, mappings,
+        RecursiveTopDownMatcher(&left_node, it->second.node, type_, mappings,
                                 require_same_children_);
       },
       DfsTraversalOrder::kPostOrder, left_.GetNodeCount());

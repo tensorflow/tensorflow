@@ -30,11 +30,12 @@
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "boost/bimap.hpp"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
+#include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
+#include "xla/hlo/tools/hlo_diff/utils/bidirectional_map.h"
 #include "xla/hlo/tools/hlo_diff/utils/connected_components.h"
 #include "tsl/platform/fingerprint.h"
 
@@ -43,15 +44,16 @@ namespace hlo_diff {
 namespace {
 
 using InstructionBimap =
-    boost::bimap<const HloInstruction*, const HloInstruction*>;
+    BidirectionalMap<const HloInstruction*, const HloInstruction*,
+                     HloInstructionNodeMappingProps>;
 
 InstructionBimap ConstructInstructionBimap(const DiffResult& diff_result) {
   InstructionBimap mapping;
   for (const auto& [left, right] : diff_result.unchanged_instructions) {
-    mapping.insert({left, right});
+    mapping.Insert(left, right);
   }
   for (const auto& [left, right] : diff_result.changed_instructions) {
-    mapping.insert({left, right});
+    mapping.Insert(left, right);
   }
   return mapping;
 }
@@ -63,15 +65,14 @@ const HloInstruction* FindMappedInstruction(const InstructionBimap& mapping,
                                             DiffSide side) {
   switch (side) {
     case DiffSide::kLeft: {
-      auto it = mapping.left.find(instruction);
-      if (it != mapping.left.end()) {
-        return it->second;
+      if (auto it = mapping.left.find(instruction); it != mapping.left.end()) {
+        return it->second.node;
       }
       break;
     }
     case DiffSide::kRight: {
-      auto it = mapping.right.find(instruction);
-      if (it != mapping.right.end()) {
+      if (auto it = mapping.right.find(instruction);
+          it != mapping.right.end()) {
         return it->second;
       }
       break;

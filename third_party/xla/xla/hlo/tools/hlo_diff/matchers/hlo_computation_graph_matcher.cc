@@ -154,7 +154,8 @@ void MatchComputationGraphs(const HloGumgraph& left, const HloGumgraph& right,
 
   // If the two computations are exact matches, we can match all
   // instructions in the two computations.
-  if (it->info.computation_match_type == ComputationMatchType::kExact) {
+  if (it->second.props->computation_match_type ==
+      ComputationMatchType::kExact) {
     auto left_instructions =
         left_computation.computation()->MakeInstructionPostOrder();
     auto right_instructions =

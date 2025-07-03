@@ -58,7 +58,8 @@ absl::StatusOr<std::unique_ptr<const HloGumgraphMappings>> FindMappings(
       [&](const CallGraphNode& node) {
         if (auto it = mappings->left_to_right_computation_map.left.find(&node);
             it != mappings->left_to_right_computation_map.left.end()) {
-          MatchComputationGraphs(left, right, node, *it->second, *mappings);
+          MatchComputationGraphs(left, right, node, *it->second.node,
+                                 *mappings);
         }
         return absl::OkStatus();
       },

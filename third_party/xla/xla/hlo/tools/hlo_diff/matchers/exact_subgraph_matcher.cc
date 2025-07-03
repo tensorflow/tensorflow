@@ -90,14 +90,14 @@ void MapSubgraph(const HloInstructionNode* absl_nonnull left,
     }
   }
   for (int i = 0; i < left_subgraph.size(); ++i) {
-    mappings.MapInstructionsIfAbsent(left_subgraph[i], right_subgraph[i],
-                                     matcher_type);
-    exact_mapped_subgraph_roots.insert(left_subgraph[i]);
-    exact_mapped_subgraph_roots.insert(right_subgraph[i]);
-    // Mark all nodes except the root as unchanged.
-    if (i != 0) {
-      mappings.left_to_right_instruction_map.left.find(left_subgraph[i])
-          ->info.unchanged = true;
+    if (mappings.MapInstructionsIfAbsent(left_subgraph[i], right_subgraph[i],
+                                         matcher_type)) {
+      exact_mapped_subgraph_roots.insert(left_subgraph[i]);
+      exact_mapped_subgraph_roots.insert(right_subgraph[i]);
+      if (i != 0) {
+        mappings.left_to_right_instruction_map.left.find(left_subgraph[i])
+            ->second.props->unchanged = true;
+      }
     }
   }
 }

@@ -84,7 +84,7 @@ double DiceSimLimitedSubgraph(const HloInstructionNode* absl_nonnull left,
   for (const HloInstructionNode* left_node : left_nodes) {
     if (auto it = mappings.left_to_right_instruction_map.left.find(left_node);
         it != mappings.left_to_right_instruction_map.left.end() &&
-        right_nodes.contains(it->second)) {
+        right_nodes.contains(it->second.node)) {
       ++common;
     }
   }
@@ -168,7 +168,7 @@ double AllOperandHloValuesMatchedScore(
     if (auto it = mappings.left_to_right_instruction_map.left.find(
             left_hlo_value_node);
         it == mappings.left_to_right_instruction_map.left.end() ||
-        it->second != right_hlo_value_node) {
+        it->second.node != right_hlo_value_node) {
       mappings_matched = false;
     }
     if (left_hlo_value_node->props.fingerprint !=
@@ -219,7 +219,7 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
         [&](const HloInstructionNode& node, int distance) {
           if (auto it = mappings.left_to_right_instruction_map.left.find(&node);
               it != mappings.left_to_right_instruction_map.left.end()) {
-            right_seeds.push_back(it->second);
+            right_seeds.push_back(it->second.node);
           }
           // Don't pursue subgraphs with too many childrens. Allows us to visit
           // deeper subgraphs without getting stuck on a single node with a
