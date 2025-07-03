@@ -28,7 +28,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CallingConv.h"
@@ -61,10 +63,10 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -213,19 +215,18 @@ DotImplementationStrategy GetNonBatchDotImplementationStrategy(
 // Helper class for emitting LLVM IR to perform the dot operation.
 class DotOpEmitter {
  public:
-  explicit DotOpEmitter(DotInfo dot_info, std::string dot_hlo_name,
-                        const llvm_ir::IrArray& target_array,
-                        const llvm_ir::IrArray& lhs_array,
-                        const llvm_ir::IrArray& rhs_array,
-                        const llvm_ir::IrArray* addend_array,
-                        llvm::Value* executable_run_options_value,
-                        llvm::IRBuilderBase* b,
-                        const HloModuleConfig& hlo_module_config,
-                        const TargetMachineFeatures& target_machine_features,
-                        bool allow_runtime_calls);
+  explicit DotOpEmitter(
+      DotInfo dot_info, std::string dot_hlo_name,
+      const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
+      const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
+      llvm::Value* work_group_id_x, llvm::Value* executable_run_options_value,
+      llvm::IRBuilderBase* b, const HloModuleConfig& hlo_module_config,
+      const TargetMachineFeatures& target_machine_features,
+      bool allow_runtime_calls);
 
-  // Emits the IR to perform the dot operation.
-  absl::Status Emit();
+  // Emits the IR to perform the dot operation. Returns the number of workgroups
+  // along the X dimension that can be used to parallelize the dot operation.
+  absl::StatusOr<uint64_t> Emit();
 
   // Emits the IR to perform the batch dot operation.
   absl::Status EmitBatch();
@@ -311,6 +312,7 @@ class DotOpEmitter {
   const llvm_ir::IrArray& lhs_array_;
   const llvm_ir::IrArray& rhs_array_;
   const llvm_ir::IrArray* addend_array_;
+  llvm::Value* work_group_id_x_;
   llvm::Value* executable_run_options_value_;
   llvm::IRBuilderBase* b_;
   const HloModuleConfig& hlo_module_config_;
@@ -319,22 +321,21 @@ class DotOpEmitter {
 };
 }  // namespace
 
-DotOpEmitter::DotOpEmitter(DotInfo dot_info, std::string dot_hlo_name,
-                           const llvm_ir::IrArray& target_array,
-                           const llvm_ir::IrArray& lhs_array,
-                           const llvm_ir::IrArray& rhs_array,
-                           const llvm_ir::IrArray* addend_array,
-                           llvm::Value* executable_run_options_value,
-                           llvm::IRBuilderBase* b,
-                           const HloModuleConfig& hlo_module_config,
-                           const TargetMachineFeatures& target_machine_features,
-                           bool allow_runtime_calls)
+DotOpEmitter::DotOpEmitter(
+    DotInfo dot_info, std::string dot_hlo_name,
+    const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
+    const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
+    llvm::Value* work_group_id_x, llvm::Value* executable_run_options_value,
+    llvm::IRBuilderBase* b, const HloModuleConfig& hlo_module_config,
+    const TargetMachineFeatures& target_machine_features,
+    bool allow_runtime_calls)
     : dot_info_(std::move(dot_info)),
       dot_hlo_name_(std::move(dot_hlo_name)),
       target_array_(target_array),
       lhs_array_(lhs_array),
       rhs_array_(rhs_array),
       addend_array_(addend_array),
+      work_group_id_x_(work_group_id_x),
       executable_run_options_value_(executable_run_options_value),
       b_(b),
       hlo_module_config_(hlo_module_config),
@@ -494,7 +495,7 @@ void DotOpEmitter::EmitTiledLlvmIrGemv() {
   }
 }
 
-absl::Status DotOpEmitter::Emit() {
+absl::StatusOr<uint64_t> DotOpEmitter::Emit() {
   // The dot operation performs a sum of products over dimension 0 of the left
   // hand side operand and dimension 1 of the right hand side operand.
   //
@@ -524,7 +525,8 @@ absl::Status DotOpEmitter::Emit() {
     // If the operands are scalar, don't emit any loops.
     TF_RET_CHECK(ShapeUtil::IsScalar(lhs_shape) &&
                  ShapeUtil::IsScalar(rhs_shape));
-    return EmitScalarDot();
+    TF_RETURN_IF_ERROR(EmitScalarDot());
+    return 1;
   }
 
   switch (GetNonBatchDotImplementationStrategy(hlo_module_config_, dot_info_,
@@ -532,18 +534,19 @@ absl::Status DotOpEmitter::Emit() {
                                                allow_runtime_calls_)) {
     case DotImplementationStrategy::kNaiveLlvmIr:
       EmitNaiveLlvmIrGemm();
-      return absl::OkStatus();
+      return 1;
 
     case DotImplementationStrategy::kTiledLlvmIrGemv:
       EmitTiledLlvmIrGemv();
-      return absl::OkStatus();
+      return 1;
 
     case DotImplementationStrategy::kTiledLlvmIrGemm:
       EmitTiledLlvmIrGemm();
-      return absl::OkStatus();
+      return 1;
 
     case DotImplementationStrategy::kEigen:
-      return EmitCallToRuntime();
+      TF_RETURN_IF_ERROR(EmitCallToRuntime());
+      return 1;
   }
 }
 
@@ -1071,12 +1074,12 @@ std::optional<int64_t> ProfitableToMakeDotOperandColumnMajor(
 
 namespace {
 
-absl::Status EmitNonBatchDotOperation(
+absl::StatusOr<uint64_t> EmitNonBatchDotOperation(
     DotInfo dot_info, std::string hlo_name,
     const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
     const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
-    llvm::Value* executable_run_options_value, llvm::IRBuilderBase* b,
-    const HloModuleConfig& hlo_module_config,
+    llvm::Value* work_group_id_x, llvm::Value* executable_run_options_value,
+    llvm::IRBuilderBase* b, const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features,
     bool allow_runtime_calls) {
   PrimitiveType type = target_array.GetShape().element_type();
@@ -1084,10 +1087,10 @@ absl::Status EmitNonBatchDotOperation(
                U16 == type || S32 == type || U32 == type || S64 == type ||
                U64 == type || F16 == type || F32 == type || F64 == type ||
                C64 == type || C128 == type);
-  DotOpEmitter dot_emitter(std::move(dot_info), std::move(hlo_name),
-                           target_array, lhs_array, rhs_array, addend_array,
-                           executable_run_options_value, b, hlo_module_config,
-                           target_machine_features, allow_runtime_calls);
+  DotOpEmitter dot_emitter(
+      std::move(dot_info), std::move(hlo_name), target_array, lhs_array,
+      rhs_array, addend_array, work_group_id_x, executable_run_options_value, b,
+      hlo_module_config, target_machine_features, allow_runtime_calls);
   return dot_emitter.Emit();
 }
 
@@ -1213,11 +1216,11 @@ bool PotentiallyImplementedAsEigenMatmul(
   return impl_strategy == DotImplementationStrategy::kEigen;
 }
 
-absl::Status EmitBatchDotOperation(
+absl::StatusOr<uint64_t> EmitBatchDotOperation(
     const HloInstruction& dot, const llvm_ir::IrArray& target_array,
     const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
-    llvm::Value* executable_run_options_value, llvm::IRBuilderBase* b,
-    const HloModuleConfig& hlo_module_config,
+    llvm::Value* work_group_id_x, llvm::Value* executable_run_options_value,
+    llvm::IRBuilderBase* b, const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features,
     bool allow_runtime_calls) {
   TF_RETURN_IF_ERROR(ValidateDotDimensionNumbers(dot.dot_dimension_numbers()));
@@ -1230,14 +1233,16 @@ absl::Status EmitBatchDotOperation(
           dot, target_array, lhs_array, rhs_array, executable_run_options_value,
           b, hlo_module_config, target_machine_features, dot_info,
           allow_runtime_calls)) {
-    DotOpEmitter dot_emitter(dot_info, std::string(dot.name()), target_array,
-                             lhs_array, rhs_array, nullptr /*addend_array*/,
-                             executable_run_options_value, b, hlo_module_config,
-                             target_machine_features, allow_runtime_calls);
+    DotOpEmitter dot_emitter(
+        dot_info, std::string(dot.name()), target_array, lhs_array, rhs_array,
+        nullptr /*addend_array*/, work_group_id_x, executable_run_options_value,
+        b, hlo_module_config, target_machine_features, allow_runtime_calls);
 
-    return dot_emitter.EmitBatch();
+    TF_RETURN_IF_ERROR(dot_emitter.EmitBatch());
+    return 1;
+
   } else {
-    // Lower a batch dot into a sequence of non-batch dot operations.
+    // Lower a batch dot into a (parallel) sequence of non-batch dot operations.
 
     int64_t num_batch_dims =
         dot.dot_dimension_numbers().lhs_batch_dimensions_size();
@@ -1258,44 +1263,68 @@ absl::Status EmitBatchDotOperation(
 
     KernelSupportLibrary ksl(b);
 
-    return ksl.ForWithStatus(
-        llvm_ir::IrName(&dot, "bdot"), /*start=*/0, /*end=*/batch_count,
-        /*step=*/1, [&](llvm::Value* indvar) {
-          DotDimensionNumbers adjusted_dim_numbers =
-              dot.dot_dimension_numbers();
-          adjusted_dim_numbers.clear_lhs_batch_dimensions();
-          adjusted_dim_numbers.clear_rhs_batch_dimensions();
+    // Emit the inner non-batch dot operation.
+    auto inner_dot = [&](llvm::Value* batch_index) -> absl::Status {
+      DotDimensionNumbers adjusted_dim_numbers = dot.dot_dimension_numbers();
+      adjusted_dim_numbers.clear_lhs_batch_dimensions();
+      adjusted_dim_numbers.clear_rhs_batch_dimensions();
 
-          // Create a DotInfo representing the "inner" non-batch dot operation.
-          DotInfo dot_info;
-          dot_info.lhs_shape = DropFirstDim(lhs_array_reshaped.GetShape());
-          dot_info.rhs_shape = DropFirstDim(rhs_array_reshaped.GetShape());
-          dot_info.result_shape =
-              DropFirstDim(target_array_reshaped.GetShape());
-          dot_info.dim_nums = dot.dot_dimension_numbers();
-          dot_info.dim_nums.clear_lhs_batch_dimensions();
-          dot_info.dim_nums.clear_rhs_batch_dimensions();
+      // Create a DotInfo representing the "inner" non-batch dot operation.
+      DotInfo dot_info;
+      dot_info.lhs_shape = DropFirstDim(lhs_array_reshaped.GetShape());
+      dot_info.rhs_shape = DropFirstDim(rhs_array_reshaped.GetShape());
+      dot_info.result_shape = DropFirstDim(target_array_reshaped.GetShape());
+      dot_info.dim_nums = dot.dot_dimension_numbers();
+      dot_info.dim_nums.clear_lhs_batch_dimensions();
+      dot_info.dim_nums.clear_rhs_batch_dimensions();
 
-          dot_info.dim_nums.set_lhs_contracting_dimensions(
-              0,
-              dot_info.dim_nums.lhs_contracting_dimensions(0) - num_batch_dims);
-          dot_info.dim_nums.set_rhs_contracting_dimensions(
-              0,
-              dot_info.dim_nums.rhs_contracting_dimensions(0) - num_batch_dims);
+      dot_info.dim_nums.set_lhs_contracting_dimensions(
+          0, dot_info.dim_nums.lhs_contracting_dimensions(0) - num_batch_dims);
+      dot_info.dim_nums.set_rhs_contracting_dimensions(
+          0, dot_info.dim_nums.rhs_contracting_dimensions(0) - num_batch_dims);
 
-          llvm_ir::IrArray lhs_slice =
-              SliceOutInnerArray(lhs_array_reshaped, /*batch_index=*/indvar, b);
-          llvm_ir::IrArray rhs_slice =
-              SliceOutInnerArray(rhs_array_reshaped, /*batch_index=*/indvar, b);
-          llvm_ir::IrArray target_slice = SliceOutInnerArray(
-              target_array_reshaped, /*batch_index=*/indvar, b);
+      llvm_ir::IrArray lhs_slice =
+          SliceOutInnerArray(lhs_array_reshaped, batch_index, b);
+      llvm_ir::IrArray rhs_slice =
+          SliceOutInnerArray(rhs_array_reshaped, batch_index, b);
+      llvm_ir::IrArray target_slice =
+          SliceOutInnerArray(target_array_reshaped, batch_index, b);
 
-          // Emit the inner non-batch dot operation.
-          return EmitNonBatchDotOperation(
+      TF_ASSIGN_OR_RETURN(
+          uint64_t inner_num_workgroups,
+          EmitNonBatchDotOperation(
               dot_info, std::string(dot.name()), target_slice, lhs_slice,
-              rhs_slice, nullptr, executable_run_options_value, b,
-              hlo_module_config, target_machine_features, allow_runtime_calls);
-        });
+              rhs_slice, nullptr, /*work_group_id_x=*/nullptr,
+              executable_run_options_value, b, hlo_module_config,
+              target_machine_features, allow_runtime_calls));
+
+      if (inner_num_workgroups != 1) {
+        return Internal("Nested parallelism is not supported");
+      }
+
+      return absl::OkStatus();
+    };
+
+    int64_t lhs_size =
+        ShapeUtil::ElementsIn(DropFirstDim(lhs_array_reshaped.GetShape()));
+    int64_t rhs_size =
+        ShapeUtil::ElementsIn(DropFirstDim(rhs_array_reshaped.GetShape()));
+
+    // If inner dot is big enough and we have a work group id, use parallel
+    // loop to parallelize the batch dimension. Threshold picked randomly based
+    // on micro-benchmarks and needs more tuning.
+    static constexpr int64_t kParallelLoopThreshold = 32768;
+    if (work_group_id_x && (lhs_size > kParallelLoopThreshold ||
+                            rhs_size > kParallelLoopThreshold)) {
+      TF_RETURN_IF_ERROR(inner_dot(work_group_id_x));
+      return batch_count;
+    }
+
+    // Emit sequential loop over the batch dimension.
+    TF_RETURN_IF_ERROR(ksl.ForWithStatus(
+        llvm_ir::IrName(&dot, "bdot"), /*start=*/0, /*end=*/batch_count,
+        /*step=*/1, [&](llvm::Value* indvar) { return inner_dot(indvar); }));
+    return 1;
   }
 }
 
@@ -1387,10 +1416,10 @@ bool DotOperandsAndResultMustHaveRowMajorLayout(
          impl_strategy == DotImplementationStrategy::kEigen;
 }
 
-absl::Status EmitDotOperation(
+absl::StatusOr<uint64_t> EmitDotOperation(
     const HloInstruction& dot, const llvm_ir::IrArray& target_array,
     const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
-    const llvm_ir::IrArray* addend_array,
+    const llvm_ir::IrArray* addend_array, llvm::Value* work_group_id_x,
     llvm::Value* executable_run_options_value, llvm::IRBuilderBase* b,
     const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features,
@@ -1405,15 +1434,16 @@ absl::Status EmitDotOperation(
 
   if (IsBatchDot(dot)) {
     TF_RET_CHECK(addend_array == nullptr);
-    return EmitBatchDotOperation(
-        dot, target_array, lhs_array, rhs_array, executable_run_options_value,
-        b, hlo_module_config, target_machine_features, allow_runtime_calls);
+    return EmitBatchDotOperation(dot, target_array, lhs_array, rhs_array,
+                                 work_group_id_x, executable_run_options_value,
+                                 b, hlo_module_config, target_machine_features,
+                                 allow_runtime_calls);
   }
 
   return EmitNonBatchDotOperation(
       DotInfo(dot), std::string(dot.name()), target_array, lhs_array, rhs_array,
-      addend_array, executable_run_options_value, b, hlo_module_config,
-      target_machine_features, allow_runtime_calls);
+      addend_array, work_group_id_x, executable_run_options_value, b,
+      hlo_module_config, target_machine_features, allow_runtime_calls);
 }
 
 }  // namespace cpu

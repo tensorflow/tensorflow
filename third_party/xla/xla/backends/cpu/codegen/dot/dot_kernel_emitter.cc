@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -95,15 +97,19 @@ absl::StatusOr<LlvmKernelDefinition> DotKernelEmitter::EmitKernelDefinition() {
   llvm_ir::IrArray rhs_array = kernel_prototype.arguments[1];
   llvm_ir::IrArray target_array = kernel_prototype.results[0];
 
-  TF_RETURN_IF_ERROR(EmitDotOperation(
-      *instr_, target_array, lhs_array, rhs_array,
-      /*addend_array=*/nullptr, /*executable_run_options_value=*/nullptr,
-      &builder, config, *target_machine_,
-      /*allow_runtime_calls=*/false));
+  TF_ASSIGN_OR_RETURN(
+      uint64_t num_workgroups,
+      EmitDotOperation(*instr_, target_array, lhs_array, rhs_array,
+                       /*addend_array=*/nullptr,
+                       kernel_prototype.workgroup_id.x,
+                       /*executable_run_options_value=*/nullptr, &builder,
+                       config, *target_machine_,
+                       /*allow_runtime_calls=*/false));
 
   LlvmIrKernelSource source(std::move(ctx), std::move(llvm_module));
 
-  KernelSpec spec(kernel_prototype.function->getName(), NumWorkGroups(),
+  KernelSpec spec(kernel_prototype.function->getName(),
+                  NumWorkGroups{num_workgroups},
                   std::move(kernel_prototype.argument_buffers),
                   std::move(kernel_prototype.result_buffers),
                   std::move(kernel_prototype.invariant_arguments));

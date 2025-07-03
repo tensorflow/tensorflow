@@ -800,10 +800,16 @@ absl::Status IrEmitter::HandleDot(HloInstruction* dot) {
           << llvm_ir::DumpToString(target_array.GetBasePointer());
 
   // Dot operation is complicated so we delegate to a helper class.
-  return EmitDotOperation(
-      *dot, target_array, lhs_array, rhs_array,
-      /*addend_array=*/nullptr, GetExecutableRunOptionsArgument(), b(),
-      hlo_module_config_, target_machine_features_, allow_runtime_calls_);
+  TF_ASSIGN_OR_RETURN(
+      uint64_t num_workgroups,
+      EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
+                       /*addend_array=*/nullptr, /*work_group_id_x=*/nullptr,
+                       GetExecutableRunOptionsArgument(), b(),
+                       hlo_module_config_, target_machine_features_,
+                       allow_runtime_calls_));
+  DCHECK_EQ(num_workgroups, 1);
+
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
@@ -2240,10 +2246,14 @@ absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     llvm_ir::IrArray addend_array(
         GetIrArrayFor(fusion->operand(addend_param_number)));
 
-    TF_RETURN_IF_ERROR(
+    TF_ASSIGN_OR_RETURN(
+        uint64_t num_workgroups,
         EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
-                         &addend_array, GetExecutableRunOptionsArgument(), b(),
+                         &addend_array, /*work_group_id_x=*/nullptr,
+                         GetExecutableRunOptionsArgument(), b(),
                          hlo_module_config_, target_machine_features_));
+    DCHECK_EQ(num_workgroups, 1);
+
     return absl::OkStatus();
   } else {
     return Unimplemented("Fusion kind not implemented on CPU");
