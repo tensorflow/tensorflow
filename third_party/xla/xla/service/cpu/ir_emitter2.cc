@@ -320,17 +320,17 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotFusionHostKernel(
   llvm_ir::IrArray target_array = kernel_prototype.results[0];
 
   TF_ASSIGN_OR_RETURN(
-      uint64_t num_workgroups,
-      EmitDotOperation(*dot, target_array, lhs_array, rhs_array, &addend_array,
-                       kernel_prototype.workgroup_id.x,
-                       /*executable_run_options_value=*/nullptr, &b,
-                       hlo_module_.config(),
-                       nested_ir_emitter_->target_machine_features(),
-                       /*allow_runtime_calls=*/false));
+      DotOpWorkGroupDim num_workgroups,
+      EmitDotOperation(
+          *dot, target_array, lhs_array, rhs_array, &addend_array,
+          {kernel_prototype.workgroup_id.x, kernel_prototype.workgroup_id.y},
+          /*executable_run_options_value=*/nullptr, &b, hlo_module_.config(),
+          nested_ir_emitter_->target_machine_features(),
+          /*allow_runtime_calls=*/false, /*allow_parallelism=*/false));
 
-  return kernels_.emplace_back(KernelInfo(std::move(kernel_prototype),
-                                          se::BlockDim(num_workgroups),
-                                          se::ThreadDim()));
+  return kernels_.emplace_back(KernelInfo(
+      std::move(kernel_prototype),
+      se::BlockDim(num_workgroups.x, num_workgroups.y), se::ThreadDim()));
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitSliceToDynamicHostKernel(

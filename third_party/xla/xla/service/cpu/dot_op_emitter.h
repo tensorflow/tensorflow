@@ -115,6 +115,21 @@ bool DotImplementationCanHandleTranspose(
 std::optional<int64_t> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo);
 
+// We can choose to parallelize the dot operation using at most two dimensions:
+//
+//   1. Use one dimensions to parallelize the non-batched matmul.
+//   2. Use two dimensions to parallelize batched matmul along the batch
+//      dimensions, and also paralellize the inner marix multiplication.
+struct DotOpWorkGroupId {
+  llvm::Value* x = nullptr;
+  llvm::Value* y = nullptr;
+};
+
+struct DotOpWorkGroupDim {
+  uint64_t x = 1;
+  uint64_t y = 1;
+};
+
 // Emit LLVM IR to perform the dot operation on lhs_array and rhs_array and
 // place the result in target_array. IR is emitted at current insert point of
 // the builder. Upon completion of the method, the insert point is set to the
@@ -130,14 +145,14 @@ std::optional<int64_t> ProfitableToMakeDotOperandColumnMajor(
 //
 // Returns the number of workgroups along the X dimension that can be used to
 // parallelize the dot operation.
-absl::StatusOr<uint64_t> EmitDotOperation(
+absl::StatusOr<DotOpWorkGroupDim> EmitDotOperation(
     const HloInstruction& dot, const llvm_ir::IrArray& target_array,
     const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
-    const llvm_ir::IrArray* addend_array, llvm::Value* work_group_id_x,
+    const llvm_ir::IrArray* addend_array, DotOpWorkGroupId work_group_id,
     llvm::Value* executable_run_options_value, llvm::IRBuilderBase* b,
     const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features,
-    bool allow_runtime_calls = true);
+    bool allow_runtime_calls = true, bool allow_parallelism = true);
 
 }  // namespace xla::cpu
 

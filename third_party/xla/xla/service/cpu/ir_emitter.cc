@@ -801,13 +801,15 @@ absl::Status IrEmitter::HandleDot(HloInstruction* dot) {
 
   // Dot operation is complicated so we delegate to a helper class.
   TF_ASSIGN_OR_RETURN(
-      uint64_t num_workgroups,
+      DotOpWorkGroupDim num_workgroups,
       EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
-                       /*addend_array=*/nullptr, /*work_group_id_x=*/nullptr,
+                       /*addend_array=*/nullptr,
+                       /*work_group_id=*/{b()->getInt64(0), b()->getInt64(0)},
                        GetExecutableRunOptionsArgument(), b(),
                        hlo_module_config_, target_machine_features_,
-                       allow_runtime_calls_));
-  DCHECK_EQ(num_workgroups, 1);
+                       allow_runtime_calls_, false));
+  DCHECK_EQ(num_workgroups.x, 1);
+  DCHECK_EQ(num_workgroups.y, 1);
 
   return absl::OkStatus();
 }
@@ -2247,12 +2249,14 @@ absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
         GetIrArrayFor(fusion->operand(addend_param_number)));
 
     TF_ASSIGN_OR_RETURN(
-        uint64_t num_workgroups,
-        EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
-                         &addend_array, /*work_group_id_x=*/nullptr,
-                         GetExecutableRunOptionsArgument(), b(),
-                         hlo_module_config_, target_machine_features_));
-    DCHECK_EQ(num_workgroups, 1);
+        DotOpWorkGroupDim num_workgroups,
+        EmitDotOperation(
+            *dot, target_array, lhs_array, rhs_array, &addend_array,
+            /*work_group_id=*/{b()->getInt64(0), b()->getInt64(0)},
+            GetExecutableRunOptionsArgument(), b(), hlo_module_config_,
+            target_machine_features_, true, false));
+    DCHECK_EQ(num_workgroups.x, 1);
+    DCHECK_EQ(num_workgroups.y, 1);
 
     return absl::OkStatus();
   } else {
