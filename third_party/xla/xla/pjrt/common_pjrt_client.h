@@ -109,6 +109,16 @@ class CommonPjRtClient : public PjRtClient {
   CreateLinkedUserPromise(PjRtMemorySpace* memory_space,
                           const char* callee_type, const char* callee_method,
                           absl::string_view debug_info);
+  template <typename T, std::enable_if_t<std::is_invocable_v<T>, bool> = true>
+  absl::StatusOr<std::pair<tsl::RCReference<PjRtDeviceEventPromise>,
+                           tsl::RCReference<PjRtDeviceEvent>>>
+  CreateLinkedEventPromise(PjRtMemorySpace* memory_space, T&& debug_info_cb) {
+    if (event_tracking_enabled()) {
+      return CreateLinkedEventPromise(memory_space,
+                                      std::forward<T>(debug_info_cb)());
+    }
+    return CreateLinkedEventPromise(memory_space, "CreateLinkedEventPromise");
+  }
 
   // Registers the necessary debug information for an allocation event.
   // TODO(parkers): Once everything is unified this should be controlled
@@ -168,6 +178,10 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
  public:
   using CommonPjRtBuffer::CommonPjRtBuffer;
 
+  // The implementation of logical_on_device_shape may involve a blocking
+  // device to host transfer to read the metadata of dynamic shape.
+  absl::StatusOr<Shape> logical_on_device_shape() override;
+
   // This behaves like CopyToMemorySpace for memory space pairs which
   // require no layout changes.
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> DirectCopyToMemorySpace(
@@ -183,6 +197,12 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
 
   absl::StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;
+
+  PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
+                             int64_t transfer_size) override;
+
+  PjRtFuture<> CopyRawToHostFuture(PjRtFuture<void*> dst, int64_t offset,
+                                   int64_t transfer_size) override;
 
  protected:
   // Shared implementation for ToLiteral and LazyToLiteral. If `literal` is
