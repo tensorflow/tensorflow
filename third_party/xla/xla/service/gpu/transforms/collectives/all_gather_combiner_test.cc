@@ -41,6 +41,16 @@ namespace op = xla::testing::opcode_matchers;
 
 using GpuAllGatherCombinerTest = HloHardwareIndependentTestBase;
 
+absl::StatusOr<bool> RunCombiner(
+    HloModule* module, int64_t combine_threshold_bytes,
+    int64_t default_threshold_bytes = kDefaultAllGatherCombineThreshold) {
+  return GpuAllGatherCombiner(default_threshold_bytes, combine_threshold_bytes,
+                              /*combine_threshold_count=*/256,
+                              /*combine_by_dim=*/false,
+                              /*combine_different_dtypes=*/true)
+      .Run(module);
+}
+
 TEST_F(GpuAllGatherCombinerTest,
        CombinesPipelinedCollectivesUpToSuggestedThreshold) {
   // The IR is the minimal valid example of a while loop with AG inside. Three
@@ -111,14 +121,8 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(kHloString));
   AnnotateWithSuggestedCombinerThreshold(module.get(),
                                          suggested_threshold_bytes);
-  EXPECT_THAT(GpuAllGatherCombiner(/*default_combine_threshold_in_bytes=*/
-                                   default_threshold_bytes,
-                                   /*combine_threshold_in_bytes=*/
-                                   default_threshold_bytes,
-                                   /*combine_threshold_count=*/256,
-                                   /*combine_by_dim=*/false,
-                                   /*combine_different_dtypes=*/true)
-                  .Run(module.get()),
+  EXPECT_THAT(RunCombiner(module.get(), default_threshold_bytes,
+                          default_threshold_bytes),
               IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
@@ -200,16 +204,8 @@ ENTRY entry {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloString));
-  EXPECT_THAT(
-      GpuAllGatherCombiner(
-          /*default_combine_threshold_in_bytes=*/
-          kDefaultAllGatherCombineThreshold,
-          /*combine_threshold_in_bytes=*/kDefaultAllGatherCombineThreshold,
-          /*combine_threshold_count=*/256,
-          /*combine_by_dim=*/false,
-          /*combine_different_dtypes=*/true)
-          .Run(module.get()),
-      IsOkAndHolds(true));
+  EXPECT_THAT(RunCombiner(module.get(), kDefaultAllGatherCombineThreshold),
+              IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
   const absl::string_view kExpected = R"(
@@ -295,15 +291,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloString));
-  EXPECT_THAT(
-      GpuAllGatherCombiner(/*default_combine_threshold_in_bytes=*/
-                           kDefaultAllGatherCombineThreshold,
-                           /*combine_threshold_in_bytes=*/threshold_bytes,
-                           /*combine_threshold_count=*/256,
-                           /*combine_by_dim=*/false,
-                           /*combine_different_dtypes=*/true)
-          .Run(module.get()),
-      IsOkAndHolds(true));
+  EXPECT_THAT(RunCombiner(module.get(), threshold_bytes), IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
   // Pipelined all gathers were combined up to the predefined max available
@@ -349,15 +337,8 @@ TEST_F(GpuAllGatherCombinerTest,
   int64_t suggested_threshold_bytes = 10000000000;  // 10GB
   AnnotateWithSuggestedCombinerThreshold(module.get(),
                                          suggested_threshold_bytes);
-  GpuAllGatherCombiner
-      combiner(/*default_combine_threshold_in_bytes=*/
-               kDefaultAllGatherCombineThreshold,
-               /*combine_threshold_in_bytes=*/kDefaultAllGatherCombineThreshold,
-               /*combine_threshold_count=*/256,
-               /*combine_by_dim=*/false,
-               /*combine_different_dtypes=*/true);
-
-  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunCombiner(module.get(), kDefaultAllGatherCombineThreshold),
+              IsOkAndHolds(true));
   Matcher<const HloInstruction*> combined_all_gather =
       op::AllGather(op::Parameter(0), op::Parameter(1));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -387,15 +368,9 @@ TEST_F(GpuAllGatherCombinerTest,
   int64_t suggested_threshold_bytes = 10000000000;  // 10GB
   AnnotateWithSuggestedCombinerThreshold(module.get(),
                                          suggested_threshold_bytes);
-  GpuAllGatherCombiner combiner(
-      /*default_combine_threshold_in_bytes=*/
-      kDefaultAllGatherCombineThreshold,
-      /*combine_threshold_in_bytes=*/kDefaultAllGatherCombineThreshold,
-      /*combine_threshold_count=*/256,
-      /*combine_by_dim=*/false,
-      /*combine_different_dtypes=*/true);
 
-  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(RunCombiner(module.get(), kDefaultAllGatherCombineThreshold),
+              IsOkAndHolds(false));
 }
 
 }  // namespace
