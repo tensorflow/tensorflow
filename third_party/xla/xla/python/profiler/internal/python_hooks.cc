@@ -138,7 +138,9 @@ PythonHooks* PythonHooks::GetSingleton() {
 }
 
 void PythonHookContext::Start(const PythonHooksOptions& options) {
-  if (!Py_IsInitialized()) return;
+  if (!Py_IsInitialized()) {
+    return;
+  }
 
 #if PY_MAJOR_VERSION < 3 || (PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 7)
   // Before Python 3.7, the GIL is created on demand by PyEval_InitThreads().
@@ -186,7 +188,9 @@ void PythonHookContext::Start(const PythonHooksOptions& options) {
 }
 
 void PythonHookContext::Stop() {
-  if (!Py_IsInitialized()) return;
+  if (!Py_IsInitialized()) {
+    return;
+  }
   if (options_.enable_python_traceme || options_.enable_trace_python_function) {
     PyGILState_STATE gil_state = PyGILState_Ensure();
     if (options_.enable_trace_python_function) {
