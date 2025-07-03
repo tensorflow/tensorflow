@@ -842,7 +842,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitConvert(
     if (mlir::isa<IntegerType>(operands[0].getType())) {
       Value i1 = builder.create<mlir::arith::CmpIOp>(
           mlir::arith::CmpIPredicate::ne, operands[0],
-          builder.create<mlir::arith::ConstantIntOp>(0, operands[0].getType()));
+          builder.create<mlir::arith::ConstantIntOp>(operands[0].getType(), 0));
       return {{builder.create<mlir::arith::ExtUIOp>(builder.getI8Type(), i1)
                    .getResult()}};
     }
@@ -854,7 +854,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitConvert(
     auto in = operands[0];
     if (auto float_ty = mlir::dyn_cast<FloatType>(in.getType())) {
       auto cst_int = [&](int64_t x) {
-        return builder.create<arith::ConstantIntOp>(x, int_ty);
+        return builder.create<arith::ConstantIntOp>(int_ty, x);
       };
       if (primitive_util::IsUnsignedIntegralType(element_type)) {
         auto cst_float = [&](uint64_t x) {
@@ -1111,7 +1111,7 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
     case HloOpcode::kNot: {
       if (element_type == PRED) {
         auto zero =
-            builder.create<mlir::arith::ConstantIntOp>(0, builder.getI8Type());
+            builder.create<mlir::arith::ConstantIntOp>(builder.getI8Type(), 0);
         Value result = builder.create<mlir::arith::ExtUIOp>(
             builder.getI8Type(),
             builder.create<mlir::arith::CmpIOp>(mlir::arith::CmpIPredicate::eq,
