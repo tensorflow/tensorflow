@@ -41,6 +41,16 @@ namespace op = xla::testing::opcode_matchers;
 
 using GpuReduceScatterCombinerTest = HloHardwareIndependentTestBase;
 
+absl::StatusOr<bool> RunCombiner(
+    HloModule* module, int64_t combine_threshold_bytes,
+    int64_t default_threshold_bytes = kDefaultReduceScatterCombineThreshold) {
+  return GpuReduceScatterCombiner(default_threshold_bytes,
+                                  combine_threshold_bytes,
+                                  /*combine_threshold_count=*/256,
+                                  /*combine_by_dim=*/false)
+      .Run(module);
+}
+
 TEST_F(GpuReduceScatterCombinerTest,
        CombinesPipelinedCollectivesUpToSuggestedThreshold) {
   // The IR is the minimal valid example of a while loop with RS inside. Three
@@ -114,12 +124,8 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(kHloString));
   AnnotateWithSuggestedCombinerThreshold(module.get(),
                                          suggested_threshold_bytes);
-  EXPECT_THAT(GpuReduceScatterCombiner(
-                  default_threshold_bytes,
-                  /*combine_threshold_in_bytes=*/default_threshold_bytes,
-                  /*combine_threshold_count=*/256,
-                  /*combine_by_dim=*/false)
-                  .Run(module.get()),
+  EXPECT_THAT(RunCombiner(module.get(), default_threshold_bytes,
+                          default_threshold_bytes),
               IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
@@ -204,15 +210,8 @@ ENTRY entry {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloString));
-  EXPECT_THAT(
-      GpuReduceScatterCombiner(
-          /*default_combine_threshold_in_bytes=*/
-          kDefaultReduceScatterCombineThreshold,
-          /*combine_threshold_in_bytes=*/kDefaultReduceScatterCombineThreshold,
-          /*combine_threshold_count=*/256,
-          /*combine_by_dim=*/false)
-          .Run(module.get()),
-      IsOkAndHolds(true));
+  EXPECT_THAT(RunCombiner(module.get(), kDefaultReduceScatterCombineThreshold),
+              IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
   const absl::string_view kExpected = R"(
@@ -302,14 +301,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloString));
-  EXPECT_THAT(GpuReduceScatterCombiner(
-                  /*default_combine_threshold_in_bytes=*/
-                  kDefaultReduceScatterCombineThreshold,
-                  /*combine_threshold_in_bytes=*/threshold_bytes,
-                  /*combine_threshold_count=*/256,
-                  /*combine_by_dim=*/false)
-                  .Run(module.get()),
-              IsOkAndHolds(true));
+  EXPECT_THAT(RunCombiner(module.get(), threshold_bytes), IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
   // Pipelined all gathers were combined up to the predefined max available
@@ -361,14 +353,8 @@ TEST_F(GpuReduceScatterCombinerTest,
   int64_t suggested_threshold_bytes = 10000000000;  // 10GB
   AnnotateWithSuggestedCombinerThreshold(module.get(),
                                          suggested_threshold_bytes);
-  GpuReduceScatterCombiner combiner(
-      /*default_combine_threshold_in_bytes=*/
-      kDefaultReduceScatterCombineThreshold,
-      /*combine_threshold_in_bytes=*/kDefaultReduceScatterCombineThreshold,
-      /*combine_threshold_count=*/256,
-      /*combine_by_dim=*/false);
-
-  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunCombiner(module.get(), kDefaultReduceScatterCombineThreshold),
+              IsOkAndHolds(true));
   Matcher<const HloInstruction*> combined_reduce_scatter =
       op::ReduceScatter(op::Parameter(0), op::Parameter(1));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -404,14 +390,8 @@ TEST_F(GpuReduceScatterCombinerTest,
   int64_t suggested_threshold_bytes = 10000000000;  // 10GB
   AnnotateWithSuggestedCombinerThreshold(module.get(),
                                          suggested_threshold_bytes);
-  GpuReduceScatterCombiner combiner(
-      /*default_combine_threshold_in_bytes=*/
-      kDefaultReduceScatterCombineThreshold,
-      /*combine_threshold_in_bytes=*/kDefaultReduceScatterCombineThreshold,
-      /*combine_threshold_count=*/256,
-      /*combine_by_dim=*/false);
-
-  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(RunCombiner(module.get(), kDefaultReduceScatterCombineThreshold),
+              IsOkAndHolds(false));
 }
 
 }  // namespace
