@@ -1096,7 +1096,7 @@ class ConvertToHloModule {
     TF_RET_CHECK(main) << "requires module to have main function";
     TF_ASSIGN_OR_RETURN(xla::XlaComputation computation,
                         module_builder_.Build(lowered_computation_[main]));
-    return computation.proto();
+    return std::move(*computation.mutable_proto());
   }
 
   // Lower a `mlir::Region` to a `XlaComputation`
