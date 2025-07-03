@@ -16,9 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_TRANSFORMS_PASSES_H_
 #define XLA_BACKENDS_GPU_CODEGEN_TRITON_TRANSFORMS_PASSES_H_
 
-#include <cstdint>
 #include <memory>
-#include <string>
 
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "mlir/IR/Operation.h"
@@ -30,8 +28,7 @@ namespace mlir::triton::xla {
 #define GEN_PASS_DECL
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
-std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
-    const std::string& gpu_device_info = "", bool tma_enabled = false);
+std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
     const stream_executor::DeviceDescription& device_description,
     bool tma_enabled);

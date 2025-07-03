@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
-#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -30,6 +29,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -67,13 +67,13 @@ limitations under the License.
 
 namespace mlir::triton::xla {
 
+#define GEN_PASS_DEF_TRITONXLAEXTRACTINSERTTOTRITONPASS
+#include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
+
 namespace xg = ::xla::gpu;
 namespace xgt = xg::triton;
 
 namespace {
-
-#define GEN_PASS_DEF_TRITONXLAEXTRACTINSERTTOTRITONPASS
-#include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
 PointerType GetTensorPtrType(Type type) {
   return PointerType::get(xgt::StorageType(type),
@@ -417,6 +417,7 @@ class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
+ private:
   // Rewrite tensors<> to !tt.ptr<tensor>
   // Remove any returns. i.e. tt.return with no operands.
   mlir::LogicalResult matchAndRewrite(
@@ -517,6 +518,7 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
         tma_enabled_(tma_enabled) {}
   using OpRewritePattern::OpRewritePattern;
 
+ private:
   // Rewriting ExtractOp as:
   // Without TMA:
   // tt.addptr + tt.make_tensor_ptr + tt.load.
@@ -613,6 +615,7 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
         tma_enabled_(tma_enabled) {}
   using OpRewritePattern::OpRewritePattern;
 
+ private:
   // Rewriting InsertOp as:
   // Without TMA:
   // tt.addptr + tt.make_tensor_ptr + tt.store.
@@ -695,6 +698,7 @@ class RewriteScalarInsert : public mlir::OpRewritePattern<tensor::InsertOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
+ private:
   mlir::LogicalResult matchAndRewrite(
       tensor::InsertOp op, mlir::PatternRewriter& rewriter) const override {
     if (op.getDest().getType().getRank() != 0) {
@@ -717,6 +721,7 @@ class RewriteScalarExtract : public mlir::OpRewritePattern<tensor::ExtractOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
+ private:
   // Rewriting ExtractOp as tt.advance + tt.store.
   mlir::LogicalResult matchAndRewrite(
       tensor::ExtractOp op, mlir::PatternRewriter& rewriter) const override {
@@ -737,60 +742,80 @@ class RewriteScalarExtract : public mlir::OpRewritePattern<tensor::ExtractOp> {
   }
 };
 
+class DeviceDescriptionParser
+    : public llvm::cl::parser<stream_executor::DeviceDescription> {
+ public:
+  using parser::parser;
+
+  bool parse(llvm::cl::Option& option, StringRef arg_name, StringRef arg_value,
+             stream_executor::DeviceDescription& value) {
+    if (arg_value.empty()) {
+      value = stream_executor::DeviceDescription();
+      return false;
+    }
+    stream_executor::GpuDeviceInfoProto proto;
+    if (!tsl::protobuf::TextFormat::ParseFromString(arg_value.str(), &proto)) {
+      return option.error("failed to parse GpuDeviceInfoProto from string: " +
+                          arg_value);
+    }
+    value = stream_executor::DeviceDescription(proto);
+    return false;
+  }
+
+  static void print(raw_ostream& os,
+                    const stream_executor::DeviceDescription& value) {
+    os << value.ToString();
+  }
+};
+
 class TritonXLAExtractInsertToTritonPass
     : public impl::TritonXLAExtractInsertToTritonPassBase<
           TritonXLAExtractInsertToTritonPass> {
  public:
-  explicit TritonXLAExtractInsertToTritonPass(
-      const TritonXLAExtractInsertToTritonPassOptions& options)
-      : TritonXLAExtractInsertToTritonPassBase(options) {}
-
+  using Base::Base;
+  TritonXLAExtractInsertToTritonPass(
+      const TritonXLAExtractInsertToTritonPass& other)
+      : Base(other) {}
   explicit TritonXLAExtractInsertToTritonPass(
       const stream_executor::DeviceDescription& device_description,
-      bool tma_enabled)
-      : device_description_(device_description), is_tma_enabled_(tma_enabled) {}
+      bool tma_enabled) {
+    device_description_ = device_description;
+    tma_enabled_ = tma_enabled;
+  }
 
+ private:
   void runOnOperation() override {
-    if (!gpu_device_info_.empty()) {
-      stream_executor::GpuDeviceInfoProto device_info;
-      CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
-                                                       &device_info));
-      device_description_ = stream_executor::DeviceDescription(device_info);
-    }
-    if (tma_enabled_.hasValue()) {
-      is_tma_enabled_ = tma_enabled_.getValue();
-    }
-
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
     patterns.add<RewriteExtract, RewriteInsert>(
-        mlir_context, &device_description_, is_tma_enabled_);
+        mlir_context, &device_description_.getValue(), tma_enabled_.getValue());
     patterns.add<RewriteScalarExtract, RewriteScalarInsert>(mlir_context);
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
     }
 
-    mlir::RewritePatternSet func_pattern(mlir_context);
-    func_pattern.add<RewriteFuncOp>(mlir_context);
-    if (mlir::failed(mlir::applyPatternsGreedily(getOperation(),
-                                                 std::move(func_pattern)))) {
+    if (mlir::failed(mlir::applyPatternsGreedily(
+            getOperation(), mlir::RewritePatternSet(
+                                mlir_context, std::make_unique<RewriteFuncOp>(
+                                                  mlir_context))))) {
       signalPassFailure();
     }
   }
 
-  stream_executor::DeviceDescription device_description_;
-  bool is_tma_enabled_;
+  Option<stream_executor::DeviceDescription, DeviceDescriptionParser>
+      device_description_{
+          *this, "gpu_device_info",
+          ::llvm::cl::desc("Serialized stream_executor::GPUDeviceInfo proto")};
+  Option<bool> tma_enabled_{*this, "tma_enabled",
+                            ::llvm::cl::desc("Flag to enable/disable TMA"),
+                            ::llvm::cl::init(false)};
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
-    const std::string& gpu_device_info, bool tma_enabled) {
-  TritonXLAExtractInsertToTritonPassOptions options;
-  options.gpu_device_info_ = gpu_device_info;
-  options.tma_enabled_ = tma_enabled;
-  return std::make_unique<TritonXLAExtractInsertToTritonPass>(options);
+std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass() {
+  return std::make_unique<TritonXLAExtractInsertToTritonPass>();
 }
 
 std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(

@@ -15,11 +15,12 @@ package_group(
 
 gentbl_cc_library(
     name = "passes_inc_gen",
-    tbl_outs = {"passes.h.inc": [
-        "-gen-pass-decls",
-        "-name=TritonXlaTransforms",
-        "-attrdefs-dialect=triton_xla",
-    ]},
+    tbl_outs = {
+        "passes.h.inc": [
+            "-gen-pass-decls",
+            "-name=TritonXlaTransforms",
+        ],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes.td",
     visibility = ["//visibility:private"],
