@@ -365,21 +365,19 @@ bool areFuncResultShardingsForGspmd(FuncOp func) {
 
 bool hasGspmdAttrsOrOps(mlir::ModuleOp module) {
   for (auto func : module.getOps<mlir::func::FuncOp>()) {
-    if (func.getSymName() == "main") {
-      // The loaded module that could be targeting GSPMD is not the main
-      // function.
-      continue;
-    }
-    for (int64_t argIndex = 0; argIndex < func.getNumArguments(); ++argIndex) {
-      if (func.getArgAttr(argIndex, sdy::kXlaShardingAttr) &&
-          !func.getArgAttr(argIndex, mlir::sdy::kShardingAttr) &&
-          !hasKey(sdy::getFuncArgFrontendAttrs(func, argIndex),
-                  sdy::kShardingRoundTripAttr)) {
+    if (func.getSymName() != "main") {
+      for (int64_t argIndex = 0; argIndex < func.getNumArguments();
+           ++argIndex) {
+        if (func.getArgAttr(argIndex, sdy::kXlaShardingAttr) &&
+            !func.getArgAttr(argIndex, mlir::sdy::kShardingAttr) &&
+            !hasKey(sdy::getFuncArgFrontendAttrs(func, argIndex),
+                    sdy::kShardingRoundTripAttr)) {
+          return true;
+        }
+      }
+      if (areFuncResultShardingsForGspmd(func)) {
         return true;
       }
-    }
-    if (areFuncResultShardingsForGspmd(func)) {
-      return true;
     }
     bool hasGspmd = false;
     // Check the func for a `Sharding` custom call.
