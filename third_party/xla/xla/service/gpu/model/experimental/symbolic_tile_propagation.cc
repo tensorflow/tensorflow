@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/model/experimental/symbolic_tile_propagation.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <sstream>
@@ -23,6 +24,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -75,6 +77,55 @@ TiledOperands PropagateTileToInputForBroadcastOp(
                                         result_tile.rt_vars()};
 
   return TiledOperands{SymbolicTiles{operand_tile},
+                       ConstraintExpression::GetAlwaysSatisfied()};
+}
+
+std::optional<TiledOperands> PropagateTileToInputForConcatenateOp(
+    const HloConcatenateInstruction& concatenate,
+    const ExperimentalSymbolicTile& result_tile) {
+  MLIRContext* ctx = result_tile.mlir_context();
+
+  int64_t num_operands = concatenate.operand_count();
+
+  SymbolicTiles symbolic_tiles;
+  symbolic_tiles.reserve(num_operands);
+
+  // For concatenate, we need to adjust the offsets and the bounds in the
+  // concatenate dimension.
+  int64_t concat_dim = concatenate.concatenate_dimension();
+  auto upper_bound = llvm::dyn_cast<mlir::AffineConstantExpr>(
+      result_tile.upper_bounds()[concat_dim]);
+  if (!upper_bound) {
+    // TODO(b/422677091): Also support non-constant affine expressions for upper
+    // bound.
+    VLOG(2) << "Can't propagate tile to input of concatenate op with "
+               "non-constant upper bound.";
+    return std::nullopt;
+  }
+  int64_t offset = 0;
+  for (const HloInstruction* operand : concatenate.operands()) {
+    SmallVector<AffineExpr, 3> new_offsets(result_tile.offsets().begin(),
+                                           result_tile.offsets().end());
+    new_offsets[concat_dim] = new_offsets[concat_dim] - offset;
+    int64_t operand_dim_size = operand->shape().dimensions(concat_dim);
+    SmallVector<AffineExpr, 3> new_bounds(result_tile.upper_bounds().begin(),
+                                          result_tile.upper_bounds().end());
+    new_bounds[concat_dim] = mlir::getAffineConstantExpr(
+        std::max(int64_t{0},
+                 std::min(upper_bound.getValue() - offset, operand_dim_size)),
+        ctx);
+    ExperimentalSymbolicTile operand_tile{ctx,
+                                          result_tile.num_tile_ids(),
+                                          new_offsets,
+                                          result_tile.sizes(),
+                                          result_tile.strides(),
+                                          new_bounds,
+                                          result_tile.rt_vars()};
+    symbolic_tiles.push_back(operand_tile);
+    offset += operand_dim_size;
+  }
+
+  return TiledOperands{symbolic_tiles,
                        ConstraintExpression::GetAlwaysSatisfied()};
 }
 
@@ -214,6 +265,11 @@ std::optional<TiledOperands> PropagateTileToInput(
   if (hlo.opcode() == HloOpcode::kBroadcast) {
     return PropagateTileToInputForBroadcastOp(
         *Cast<HloBroadcastInstruction>(&hlo), result_tile);
+  }
+
+  if (hlo.opcode() == HloOpcode::kConcatenate) {
+    return PropagateTileToInputForConcatenateOp(
+        *Cast<HloConcatenateInstruction>(&hlo), result_tile);
   }
 
   if (hlo.opcode() == HloOpcode::kPad) {
