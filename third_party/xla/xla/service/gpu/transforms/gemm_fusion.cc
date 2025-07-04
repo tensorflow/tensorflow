@@ -161,7 +161,6 @@ struct HlosAndRequirements {
 HloInstruction& FuseDot(const HloDotInstruction& dot,
                         const HloInstruction& fused_lhs,
                         const HloInstruction& fused_rhs,
-                        std::optional<const HloInstruction*> fused_meta,
                         HloComputation::Builder& builder  // append
 ) {
   VLOG(3) << "Fusing " << dot.ToString();
@@ -169,9 +168,6 @@ HloInstruction& FuseDot(const HloDotInstruction& dot,
   std::vector<HloInstruction*> hlo_new_operands = {
       const_cast<HloInstruction*>(&fused_lhs),
       const_cast<HloInstruction*>(&fused_rhs)};
-  if (fused_meta.has_value()) {
-    hlo_new_operands.push_back(const_cast<HloInstruction*>(fused_meta.value()));
-  }
   return *builder.AddInstruction(
       dot.CloneWithNewOperands(dot.shape(), hlo_new_operands));
 }
@@ -686,16 +682,8 @@ absl::StatusOr<Decision> CreateDotFusion(
   TF_ASSIGN_OR_RETURN(HlosAndRequirements rhs_hlos_and_reqs,
                       FuseDotOperand(dot, /*operand_index=*/1, gpu_version,
                                      builder, fusion_inputs));
-  std::optional<const HloInstruction*> meta_hlo;
-  if (dot.sparse_operands()) {
-    TF_ASSIGN_OR_RETURN(HlosAndRequirements meta_hlos_and_reqs,
-                        FuseDotOperand(dot, /*operand_index=*/2, gpu_version,
-                                       builder, fusion_inputs));
-    meta_hlo.emplace(meta_hlos_and_reqs.fused_hlo);
-  }
-  HloInstruction& fused_dot =
-      FuseDot(dot, *lhs_hlos_and_reqs.fused_hlo, *rhs_hlos_and_reqs.fused_hlo,
-              meta_hlo, builder);
+  HloInstruction& fused_dot = FuseDot(dot, *lhs_hlos_and_reqs.fused_hlo,
+                                      *rhs_hlos_and_reqs.fused_hlo, builder);
   // For now the RHS doesn't support splits, so it also doesn't impose any
   // requirements.
   HlosAndRequirements fused_output_and_reqs =
@@ -738,8 +726,7 @@ absl::StatusOr<Decision> CreateDotFusion(
       algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32 ||
       algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3 ||
       algorithm == PrecisionConfig::ALG_DOT_F32_F32_F32 ||
-      dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any() ||
-      dot.sparse_operands()) {
+      dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any()) {
     return Decision::Allow();
   }
 
