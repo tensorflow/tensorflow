@@ -107,7 +107,6 @@ class GpuConvAlgorithmPicker : public HloModulePass {
   absl::StatusOr<AutotuneResult> PickBestAlgorithmNoCache(
       const HloCustomCallInstruction* instr);
 
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
   // Simple bundle of an algorithm and its output, for comparing results across
   // autotuned algorithms.
   struct ReferenceResult {
@@ -139,7 +138,6 @@ class GpuConvAlgorithmPicker : public HloModulePass {
   // Pick the best algorithm for CUDA platform.
   absl::StatusOr<AutotuneResult> PickBestAlgorithmNoCacheCuda(
       const HloCustomCallInstruction* instr);
-#endif
 
   absl::StatusOr<AutotuneResult> PickBestAlgorithmNoCacheRocm(
       const HloCustomCallInstruction* instr);

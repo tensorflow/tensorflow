@@ -513,7 +513,6 @@ cc_library(
     name = "conv_algorithm_picker",
     srcs = ["conv_algorithm_picker.cc"],
     hdrs = ["conv_algorithm_picker.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = ["gpu"],
     deps = [
         ":autotuner_compile_util",
@@ -528,6 +527,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/runtime:buffer_comparator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:executable",
@@ -551,6 +551,7 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/stream_executor/gpu:redzone_allocator",
         "//xla/stream_executor/rocm:rocm_platform_id",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
@@ -568,12 +569,7 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:numbers",
-    ] + if_cuda_is_configured([
-        # keep sorted
-        "//xla/backends/gpu/runtime:buffer_comparator",
-        "//xla/stream_executor/gpu:redzone_allocator",
-        "@local_config_cuda//cuda:cudnn_header",
-    ]),
+    ],
 )
 
 xla_test(

@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/gpu/runtime/buffer_comparator.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -61,6 +62,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform.h"
@@ -78,18 +80,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/numbers.h"
 
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
-#include "third_party/gpus/cudnn/cudnn.h"  // IWYU pragma: keep
-#include "third_party/gpus/cudnn/cudnn_version.h"
-#if CUDNN_VERSION >= 90000
-#include "third_party/gpus/cudnn/cudnn_ops.h"
-#else
-#include "third_party/gpus/cudnn/cudnn_ops_infer.h"
-#endif  // CUDNN_VERSION >= 90000
-#include "xla/backends/gpu/runtime/buffer_comparator.h"
-#include "xla/stream_executor/gpu/redzone_allocator.h"
-#endif
-
 namespace xla {
 namespace gpu {
 namespace {
@@ -103,9 +93,8 @@ using std::optional;
 Shape MaybeTupleElementShape(Shape shape, int64_t tuple_idx) {
   if (shape.IsTuple()) {
     return shape.tuple_shapes(tuple_idx);
-  } else {
-    return shape;
   }
+  return shape;
 }
 
 class ScratchAllocator : public se::ScratchAllocator {
@@ -434,15 +423,11 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
   if (platform_id == se::rocm::kROCmPlatformId) {
     result_or = PickBestAlgorithmNoCacheRocm(instr);
   } else if (platform_id == se::cuda::kCudaPlatformId) {
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
     result_or = PickBestAlgorithmNoCacheCuda(instr);
-#endif
   }
 
   return result_or;
 }
-
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 
 absl::StatusOr<GpuConvAlgorithmPicker::AutotuneRuntimeArguments>
 GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
@@ -922,7 +907,6 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
                                      runtime_arguments.hlo_module_config));
   return selected_algorithm;
 }
-#endif
 
 absl::StatusOr<AutotuneResult>
 GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
