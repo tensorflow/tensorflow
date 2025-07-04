@@ -311,5 +311,38 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfSliceOp) {
   )")));
 }
 
+TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfDynSliceOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = s32[20,2,258] parameter(0)
+      c4 = s32[] constant(4)
+      p1 = s32[] parameter(1)
+      p2 = s32[] parameter(2)
+      ROOT ds = s32[1,2,32] dynamic-slice(p0, c4, p1, p2),
+        dynamic_slice_sizes={1, 2, 32}
+    }
+  )");
+  MLIRContext mlir_context;
+  std::optional<TiledOperands> tiled_operands = PropagateTileToInput(
+      *root, GetTestSymbolicTile(root->shape().dimensions(), &mlir_context), 0);
+  EXPECT_THAT(tiled_operands, Optional(MatchString(R"(
+    0) (tid_0, tid_1, tid_2)[ts_0, ts_1, ts_2]{rt_0, rt_1}
+      -> offsets [tid_0 * ts_0 + 4, tid_1 * ts_1 + rt_0, tid_2 * ts_2 + rt_1]
+         sizes [ts_0, ts_1, ts_2]
+         strides [1, 2, 3]
+         upper bounds [5, rt_0 + 2, rt_1 + 32]
+         rt_0: %p1 = s32[] parameter(1) in [0, 0]
+         rt_1: %p2 = s32[] parameter(2) in [0, 226]
+
+    1) (tid_0, tid_1, tid_2)[ts_0, ts_1, ts_2]
+      -> offsets [] sizes [] strides [] upper bounds []
+    2) (tid_0, tid_1, tid_2)[ts_0, ts_1, ts_2]
+      -> offsets [] sizes [] strides [] upper bounds []
+    3) (tid_0, tid_1, tid_2)[ts_0, ts_1, ts_2]
+      -> offsets [] sizes [] strides [] upper bounds []
+  )")));
+}
+
 }  // namespace
 }  // namespace xla::gpu

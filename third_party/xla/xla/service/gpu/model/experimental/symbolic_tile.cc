@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -52,7 +53,7 @@ ExperimentalSymbolicTile::ExperimentalSymbolicTile(
     mlir::MLIRContext* mlir_context, int64_t num_tile_ids,
     ArrayRef<AffineExpr> offsets, ArrayRef<AffineExpr> sizes,
     ArrayRef<AffineExpr> strides, ArrayRef<AffineExpr> upper_bounds,
-    ArrayRef<const HloInstruction*> rt_vars)
+    ArrayRef<RTVarInfo> rt_vars)
     : mlir_context_(mlir_context),
       num_tile_ids_(num_tile_ids),
       offsets_(offsets.begin(), offsets.end()),
@@ -60,6 +61,17 @@ ExperimentalSymbolicTile::ExperimentalSymbolicTile(
       strides_(strides.begin(), strides.end()),
       upper_bounds_(upper_bounds.begin(), upper_bounds.end()),
       rt_vars_(rt_vars.begin(), rt_vars.end()) {}
+
+std::string ExperimentalSymbolicTile::RTVarInfo::ToString() const {
+  return absl::StrCat((rt_var ? rt_var->ToString() : "nullptr"), " in ",
+                      bounds.ToString());
+}
+
+llvm::raw_ostream& operator<<(llvm::raw_ostream& out,
+                              ExperimentalSymbolicTile::RTVarInfo rt_var) {
+  out << rt_var.ToString();
+  return out;
+}
 
 std::string ExperimentalSymbolicTile::ToString() const {
   auto tid_names = GetVarNames(num_tile_ids(), "tid_");
@@ -94,9 +106,8 @@ std::string ExperimentalSymbolicTile::ToString() const {
   ss << "] upper bounds [";
   llvm::interleaveComma(upper_bounds_, ss, print_expr);
   ss << ']';
-  for (const auto& [hlo, rt_var_name] : llvm::zip(rt_vars_, rt_names)) {
-    ss << " " << rt_var_name << ": " << (hlo ? hlo->ToString() : "nullptr")
-       << "\n";
+  for (const auto& [rt_var, rt_var_name] : llvm::zip(rt_vars_, rt_names)) {
+    ss << " " << rt_var_name << ": " << rt_var << "\n";
   }
   return s;
 }

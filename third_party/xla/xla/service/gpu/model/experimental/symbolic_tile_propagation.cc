@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
 
 #include "absl/log/log.h"
 #include "llvm/ADT/STLExtras.h"
@@ -27,17 +28,21 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal_util.h"
 #include "xla/service/gpu/model/constraint_expression.h"
 #include "xla/service/gpu/model/experimental/symbolic_tile.h"
+#include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
 
+using ::llvm::ArrayRef;
 using ::llvm::SmallVector;
 using ::mlir::AffineExpr;
 using ::mlir::MLIRContext;
@@ -129,6 +134,119 @@ std::optional<TiledOperands> PropagateTileToInputForConcatenateOp(
                        ConstraintExpression::GetAlwaysSatisfied()};
 }
 
+template <typename T>
+SmallVector<T> Concat(ArrayRef<T> c1, ArrayRef<T> c2) {
+  SmallVector<T> result;
+  result.append(c1.begin(), c1.end());
+  result.append(c2.begin(), c2.end());
+  return result;
+}
+
+ExperimentalSymbolicTile PropagateTileToInputForSliceImpl(
+    ArrayRef<AffineExpr> slice_offsets, ArrayRef<int64_t> slice_strides,
+    const ExperimentalSymbolicTile& result_tile,
+    ArrayRef<ExperimentalSymbolicTile::RTVarInfo> new_rt_vars) {
+  MLIRContext* ctx = result_tile.mlir_context();
+  int64_t num_result_dims = result_tile.num_result_dims();
+
+  SmallVector<AffineExpr, 3> new_offsets(num_result_dims),
+      new_sizes(num_result_dims), new_strides(num_result_dims),
+      new_bounds(num_result_dims);
+
+  for (int64_t dim = 0; dim < num_result_dims; ++dim) {
+    // To compute element r of the result we access input
+    //   in = r * slice_strides[i] + slice_starts[i].
+    // Replacing r with (t * strides[i] + offsets[i]) we get
+    //   t * (strides[i] * slice_strides[i]) +
+    //   (offsets[i] * slice_strides[i] + slice_starts[i]).
+    new_strides[dim] = result_tile.strides()[dim] * slice_strides[dim];
+    new_offsets[dim] =
+        slice_offsets[dim] + result_tile.offsets()[dim] * slice_strides[dim];
+    new_sizes[dim] = result_tile.sizes()[dim];
+    // Upper bound condition is `r < upper_bounds[i](t)`.
+    // By replacing r with `(in - slice_offsets[i]) / slice_strides[i]` we get
+    // in < upper_bounds[i](t) * slice_strides[i] + slice_offsets[i].
+    new_bounds[dim] = result_tile.upper_bounds()[dim] * slice_strides[dim] +
+                      slice_offsets[dim];
+  }
+  return ExperimentalSymbolicTile{
+      ctx,
+      result_tile.num_tile_ids(),
+      new_offsets,
+      new_sizes,
+      new_strides,
+      new_bounds,
+      new_rt_vars.empty() ? result_tile.rt_vars()
+                          : Concat(result_tile.rt_vars(), new_rt_vars)};
+}
+
+TiledOperands PropagateTileToInputForSliceOp(
+    const HloInstruction& slice, const ExperimentalSymbolicTile& result_tile) {
+  MLIRContext* ctx = result_tile.mlir_context();
+
+  SmallVector<AffineExpr, 3> slice_offset_exprs;
+  slice_offset_exprs.reserve(slice.shape().dimensions().size());
+  for (int64_t slice_offset : slice.slice_starts()) {
+    slice_offset_exprs.push_back(
+        mlir::getAffineConstantExpr(slice_offset, ctx));
+  }
+  auto operand_tile = SymbolicTiles{PropagateTileToInputForSliceImpl(
+      slice_offset_exprs, slice.slice_strides(), result_tile,
+      /*new_rt_vars=*/{})};
+
+  return TiledOperands{{operand_tile},
+                       ConstraintExpression::GetAlwaysSatisfied()};
+}
+
+TiledOperands PropagateTileToInputForDynamicSliceOp(
+    const HloDynamicSliceInstruction& dynamic_slice,
+    const ExperimentalSymbolicTile& result_tile) {
+  const int64_t first_index_operand_number =
+      dynamic_slice.first_index_operand_number();
+  CHECK(dynamic_slice.operand(first_index_operand_number)
+            ->shape()
+            .dimensions()
+            .empty())
+      << "b/118437727: Old form, not supported.";
+  MLIRContext* ctx = result_tile.mlir_context();
+  int64_t num_result_dims = result_tile.num_result_dims();
+
+  const Shape& input_shape = dynamic_slice.operand(0)->shape();
+  SmallVector<ExperimentalSymbolicTile::RTVarInfo, 3> new_rt_vars;
+  SmallVector<AffineExpr, 3> slice_offset_exprs(num_result_dims);
+  int64_t num_result_symbols =
+      result_tile.num_tile_ids() + result_tile.num_rt_vars();
+  for (auto [dim, slice_size] :
+       llvm::enumerate(dynamic_slice.dynamic_slice_sizes())) {
+    auto slice_offset = dynamic_slice.operand(dim + first_index_operand_number);
+    if (auto* slice_const = DynCast<HloConstantInstruction>(slice_offset)) {
+      auto const_value_or =
+          LiteralUtil::LiteralAsScalarInt64(slice_const->literal());
+      CHECK(const_value_or.has_value())
+          << "Expected a constant literal for the dynamic slice "
+             "offset.";
+      slice_offset_exprs[dim] =
+          mlir::getAffineConstantExpr(const_value_or.value(), ctx);
+      continue;
+    }
+    slice_offset_exprs[dim] =
+        mlir::getAffineSymbolExpr(num_result_symbols + new_rt_vars.size(), ctx);
+    new_rt_vars.push_back(
+        {slice_offset, Interval{0, input_shape.dimensions(dim) - slice_size}});
+  }
+
+  SymbolicTiles operand_tiles{PropagateTileToInputForSliceImpl(
+      slice_offset_exprs, SmallVector<int64_t>(num_result_dims, 1), result_tile,
+      new_rt_vars)};
+  ExperimentalSymbolicTile scalar_tensor_tile{
+      ctx, result_tile.num_tile_ids(), {}, {}, {}, {}, {}};
+  for (int i = 0; i < num_result_dims; ++i) {
+    operand_tiles.push_back(scalar_tensor_tile);
+  }
+  return TiledOperands{std::move(operand_tiles),
+                       ConstraintExpression::GetAlwaysSatisfied()};
+}
+
 std::optional<TiledOperands> PropagateTileToInputForPadOp(
     const HloPadInstruction& pad, const ExperimentalSymbolicTile& result_tile) {
   MLIRContext* ctx = result_tile.mlir_context();
@@ -202,45 +320,6 @@ TiledOperands PropagateTileToInputForTransposeOp(
                        ConstraintExpression::GetAlwaysSatisfied()};
 }
 
-TiledOperands PropagateTileToInputForSliceOp(
-    const HloInstruction& slice, const ExperimentalSymbolicTile& result_tile) {
-  MLIRContext* ctx = result_tile.mlir_context();
-  int64_t num_result_dims = result_tile.num_result_dims();
-
-  SmallVector<AffineExpr, 3> new_offsets(num_result_dims),
-      new_sizes(num_result_dims), new_strides(num_result_dims),
-      new_bounds(num_result_dims);
-
-  for (int64_t dim = 0; dim < num_result_dims; ++dim) {
-    // To compute element r of the result we access input
-    //   in = r * slice_strides[i] + slice_starts[i].
-    // Replacing r with (t * strides[i] + offsets[i]) we get
-    //   t * (strides[i] * slice_strides[i]) +
-    //   (offsets[i] * slice_strides[i] + slice_starts[i]).
-    new_strides[dim] = result_tile.strides()[dim] * slice.slice_strides(dim);
-    new_offsets[dim] = slice.slice_starts(dim) +
-                       result_tile.offsets()[dim] * slice.slice_strides(dim);
-    new_sizes[dim] = result_tile.sizes()[dim];
-    // Upper bound condition is `r < upper_bounds[i](t)`.
-    // By replacing r with `(in - slice_starts[i]) / slice_strides[i]` we get
-    // in < upper_bounds[i](t) * slice_strides[i] + slice_starts[i].
-    new_bounds[dim] =
-        result_tile.upper_bounds()[dim] * slice.slice_strides(dim) +
-        slice.slice_starts(dim);
-  }
-
-  ExperimentalSymbolicTile operand_tile{ctx,
-                                        result_tile.num_tile_ids(),
-                                        new_offsets,
-                                        new_sizes,
-                                        new_strides,
-                                        new_bounds,
-                                        result_tile.rt_vars()};
-
-  return TiledOperands{SymbolicTiles{operand_tile},
-                       ConstraintExpression::GetAlwaysSatisfied()};
-}
-
 }  // namespace
 
 std::string TiledOperands::ToString() const {
@@ -270,6 +349,11 @@ std::optional<TiledOperands> PropagateTileToInput(
   if (hlo.opcode() == HloOpcode::kConcatenate) {
     return PropagateTileToInputForConcatenateOp(
         *Cast<HloConcatenateInstruction>(&hlo), result_tile);
+  }
+
+  if (hlo.opcode() == HloOpcode::kDynamicSlice) {
+    return PropagateTileToInputForDynamicSliceOp(
+        *Cast<HloDynamicSliceInstruction>(&hlo), result_tile);
   }
 
   if (hlo.opcode() == HloOpcode::kPad) {
