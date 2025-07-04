@@ -905,12 +905,6 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
             std::get<TritonGemmConfig>(config), config_.GetDeviceDescription(),
             fusion, opts, allow_filtering_kernels_spilling_registers);
       });
-      if (!executable_or.ok()) {
-        LOG(WARNING) << "Compilation of TritonGemmAutotuneExtractor result "
-                        "failed and config will be ignored: "
-                     << executable_or.status();
-        return nullptr;
-      }
       return executable_or;
     }
 
