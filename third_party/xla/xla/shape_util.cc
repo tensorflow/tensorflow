@@ -30,6 +30,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/no_destructor.h"
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
@@ -1986,9 +1987,9 @@ struct ParallelState {
   explicit ParallelState(int64_t task_count) {
     // If this method is changed, please remember to change
     // GetForEachIndexParallelThreadCount() as well.
-    static auto* const global_pool = new tsl::thread::ThreadPool(
+    static absl::NoDestructor<tsl::thread::ThreadPool> global_pool(
         tsl::Env::Default(), "foreach", tsl::port::MaxParallelism());
-    pool = global_pool;
+    pool = global_pool.get();
   }
   ~ParallelState() = default;
 

@@ -365,6 +365,7 @@ cc_library(
     srcs = ["fixed_option_set_flag.cc"],
     hdrs = ["fixed_option_set_flag.h"],
     deps = [
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
