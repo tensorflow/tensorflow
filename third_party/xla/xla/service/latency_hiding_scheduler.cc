@@ -1261,8 +1261,8 @@ class ReadySetLt {
     // Schedule according to ForceDelayAfterTarget when we executed the early
     // target scheduling rule.
     if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-            !a.node->GetForceDelay(), a, !b.node->GetForceDelay(), b,
-            "kForceDelayAfterTarget")) {
+            !a.node->GetForceDelayAfterTarget(), a,
+            !b.node->GetForceDelayAfterTarget(), b, "kForceDelayAfterTarget")) {
       return *value;
     }
     // Some heuristic that try to prioritize unlocking "done" instructions
