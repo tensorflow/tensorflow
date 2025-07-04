@@ -110,22 +110,6 @@ cc_library(
 )
 
 cc_library(
-    name = "remove_size_one_axes",
-    srcs = ["remove_size_one_axes.cc"],
-    hdrs = ["remove_size_one_axes.h"],
-    deps = [
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@shardy//shardy/dialect/sdy/ir:dialect",
-        "@shardy//shardy/dialect/sdy/transforms/common:sharding_walker",
-    ],
-)
-
-cc_library(
     name = "dedup_meshes",
     srcs = ["dedup_meshes.cc"],
     hdrs = ["dedup_meshes.h"],
@@ -150,7 +134,6 @@ cc_library(
         ":export_ops",
         ":export_shardy_attrs",
         ":import_shardy_attrs",
-        ":remove_size_one_axes",
         ":shard_map_export",
         ":shard_map_import",
         "//xla/service:hlo_proto_cc",
