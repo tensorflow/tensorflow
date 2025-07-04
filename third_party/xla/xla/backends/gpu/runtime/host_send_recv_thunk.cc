@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -145,6 +146,15 @@ absl::Status HostSendThunk::ExecuteOnStream(const ExecuteParams& params) {
       "SendDeviceMemoryFunction is not available");
 }
 
+std::optional<AsyncEventsUniqueId> HostSendThunk::GetAsyncEventsUniqueId()
+    const {
+  if (!events_) {
+    return std::nullopt;
+  }
+  // We rely on the fact that the pointer to events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(events_.get());
+}
+
 //===----------------------------------------------------------------------===//
 // HostSendDoneThunk
 //===----------------------------------------------------------------------===//
@@ -179,6 +189,15 @@ absl::Status HostSendDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // Once event is recorded we can add a stream dependency.
   return params.stream->WaitFor(done_event.get().get());
+}
+
+std::optional<AsyncEventsUniqueId> HostSendDoneThunk::GetAsyncEventsUniqueId()
+    const {
+  if (!events_) {
+    return std::nullopt;
+  }
+  // We rely on the fact that the pointer to events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(events_.get());
 }
 
 //===----------------------------------------------------------------------===//
@@ -232,6 +251,15 @@ absl::Status HostRecvThunk::ExecuteOnStream(const ExecuteParams& params) {
       "RecvDeviceMemoryFunction is not available");
 }
 
+std::optional<AsyncEventsUniqueId> HostRecvThunk::GetAsyncEventsUniqueId()
+    const {
+  if (!events_) {
+    return std::nullopt;
+  }
+  // We rely on the fact that the pointer to events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(events_.get());
+}
+
 //===----------------------------------------------------------------------===//
 // HostRecvDoneThunk
 //===----------------------------------------------------------------------===//
@@ -265,6 +293,15 @@ absl::Status HostRecvDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // Once event is recorded we can add a stream dependency.
   return params.stream->WaitFor(done_event.get().get());
+}
+
+std::optional<AsyncEventsUniqueId> HostRecvDoneThunk::GetAsyncEventsUniqueId()
+    const {
+  if (!events_) {
+    return std::nullopt;
+  }
+  // We rely on the fact that the pointer to events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(events_.get());
 }
 
 }  // namespace xla::gpu

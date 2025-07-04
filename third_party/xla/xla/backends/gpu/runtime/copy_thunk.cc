@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 
+#include "absl/base/casts.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -237,6 +239,15 @@ DeviceToHostCopyThunk::FromProto(
       /*instr=*/nullptr);
 }
 
+std::optional<AsyncEventsUniqueId>
+DeviceToHostCopyThunk::GetAsyncEventsUniqueId() const {
+  if (!async_events_) {
+    return std::nullopt;
+  }
+  // We rely on the fact that the pointer to async_events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
+}
+
 //===----------------------------------------------------------------------===//
 // HostToDeviceCopyThunk
 //===----------------------------------------------------------------------===//
@@ -309,6 +320,15 @@ HostToDeviceCopyThunk::FromProto(
       /*instr=*/nullptr);
 }
 
+std::optional<AsyncEventsUniqueId>
+HostToDeviceCopyThunk::GetAsyncEventsUniqueId() const {
+  if (!async_events_) {
+    return std::nullopt;
+  }
+  // We rely on the fact that the pointer to async_events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
+}
+
 //===----------------------------------------------------------------------===//
 // CopyDoneThunk
 //===----------------------------------------------------------------------===//
@@ -328,6 +348,15 @@ absl::Status CopyDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Event> event,
                       async_events_->Extract(executor, copy_start_instr_));
   return params.stream->WaitFor(event.get());
+}
+
+std::optional<AsyncEventsUniqueId> CopyDoneThunk::GetAsyncEventsUniqueId()
+    const {
+  if (!async_events_) {
+    return std::nullopt;
+  }
+  // We rely on the fact that the pointer to async_events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
 }
 
 //===----------------------------------------------------------------------===//

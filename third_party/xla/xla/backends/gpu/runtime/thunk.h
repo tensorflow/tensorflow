@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -81,6 +82,11 @@ namespace gpu {
 //     usually by adding a stream wait.
 //
 TSL_LIB_GTL_DEFINE_INT_TYPE(ExecutionStreamId, uint64_t);
+
+// Unique identifier for async events. The same identifier is expected to be
+// shared between a pair of StartThunk and corresponding DoneThunk. It is used
+// to collect async regions for a CommandBufferThunk.
+TSL_LIB_GTL_DEFINE_INT_TYPE(AsyncEventsUniqueId, uint64_t)
 
 // Thunk acts as the bridge between IrEmitter and GpuExecutable. It stores the
 // metadata IrEmitter generates for GpuExecutable to invoke an HloInstruction.
@@ -529,6 +535,14 @@ class Thunk {
   std::vector<const Thunk*> control_predecessors() const {
     return control_predecessors_;
   }
+
+  virtual std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const {
+    return std::nullopt;
+  }
+
+  virtual bool IsAsyncStart() const { return false; }
+
+  virtual bool IsAsyncDone() const { return false; }
 
  protected:
   // Returns a ThunkProto that has the common Thunk fields already set.
