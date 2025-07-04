@@ -207,9 +207,6 @@ absl::Status ConvertStablehloWithManyArgsToHloProto(mlir::ModuleOp module,
                                                     bool use_tuple_args) {
   if (!module) return absl::InvalidArgumentError("Module is null");
 
-  // TODO: Why are we removing attributes.
-  module->removeAttr("mhlo.xla_entry_computation_parameter_layouts");
-  module->removeAttr("mhlo.xla_entry_computation_parameter_tiles");
   return ConvertStablehloToHloProtoInternal(module, hlo_proto, use_tuple_args,
                                             /*return_tuple=*/false,
                                             /*run_canonicalizer=*/false);
