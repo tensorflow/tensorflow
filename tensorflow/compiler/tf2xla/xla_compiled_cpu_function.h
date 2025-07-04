@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/rng_state_lib.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/executable_run_options.h"
-#include "xla/service/cpu/buffer_desc.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "tensorflow/core/platform/types.h"
 
