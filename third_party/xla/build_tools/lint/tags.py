@@ -79,6 +79,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "xla_cpu": "Uses CPU backend.",
     "xla_amdgpu_any": "Uses ROCm backend.",
     "xla_nvgpu_any": "Uses NVIDIA GPU backend.",
+    "xla_intelgpu_any": "Uses Intel GPU backend.",
     # Below tags are emitted alongside `requires-gpu-x` tags, which is what the
     # CI actually follows. So we may not execute on an A100, and instead use an
     # L4. These tags are taken literally internally.
