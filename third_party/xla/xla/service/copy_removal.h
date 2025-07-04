@@ -401,7 +401,6 @@ class CopyRemover {
 
   CopyRemover(const HloModule& module, const HloAliasAnalysis& alias_analysis,
               const AliasInfo* alias_info, HloOrdering* ordering,
-              bool check_live_range_ordering,
               const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Add a list containing the given values to CopyRemover. This

@@ -1421,7 +1421,7 @@ static int64_t GetNumExistingCopies(
 }
 
 absl::Status CopyInsertion::RemoveUnnecessaryCopies(
-    HloModule* module, bool check_live_range_ordering,
+    HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     bool insert_post_scheduling_control_dependencies) {
   XLA_VLOG_LINES(
@@ -1440,8 +1440,7 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, alias_info_));
   CopyRemover copy_remover(*module, *alias_analysis, alias_info_,
-                           ordering.get(), check_live_range_ordering,
-                           execution_threads);
+                           ordering.get(), execution_threads);
   if (VLOG_IS_ON(3)) {
     LOG(INFO) << "Removing unnecessary copies in " << module->name();
     LOG(INFO) << "Buffer values, in dependency order: ";
@@ -1550,9 +1549,7 @@ absl::StatusOr<bool> CopyInsertion::Run(
   DumpHloModuleDuringPassIfEnabled(
       name(), "after adding copies to resolve interference", *module);
 
-  TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(module,
-                                             /*check_live_range_ordering=*/true,
-                                             execution_threads));
+  TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(module, execution_threads));
   DumpHloModuleDuringPassIfEnabled(name(), "after removing unnecessary copies",
                                    *module);
   TF_RETURN_IF_ERROR(
