@@ -1065,7 +1065,7 @@ void GenerateDotResultDimensions(
   enum Mode {
     // Ragged non-contracting (m): [b,m,k], [g,b,k,n], [b,g] -> [b,m,n].
     kNonContracting,
-    // Ragged contracting (k):     [b,m,k], [b,k,n],   [b,g] -> [g,b,m,n].
+    // Ragged contracting (k):     [b,m,k], [b,k,n],   [b,g] -> [b,g,m,n].
     kContracting,
     // Ragged batch (b):           [b,m,k], [b,k,n],   [g]   -> [b,m,n].
     kBatch
