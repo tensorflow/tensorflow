@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/no_op_cost_measurement.h"
 
+#include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/cost_measurement.h"
 #include "tensorflow/core/platform/test.h"
 

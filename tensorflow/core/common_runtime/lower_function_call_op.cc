@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/lower_function_call_op.h"
 
+#include <memory>
 #include <utility>
 
-#include "absl/algorithm/container.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/inline_function_utils.h"
