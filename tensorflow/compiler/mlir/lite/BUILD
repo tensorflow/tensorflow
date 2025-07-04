@@ -762,6 +762,13 @@ cc_library(
 )
 
 cc_library(
+    name = "metadata_utils",
+    hdrs = [
+        "utils/metadata_utils.h",
+    ],
+)
+
+cc_library(
     name = "fake_quant_utils",
     srcs = [
         "utils/fake_quant_utils.cc",
@@ -1587,6 +1594,7 @@ cc_library(
         ":flatbuffer_tflite_operator_lib",
         ":lite_version",
         ":low_bit_utils",
+        ":metadata_utils",
         ":mlir_module_utils",
         ":region_isolation",
         ":stateful_ops_utils",
@@ -1648,6 +1656,7 @@ cc_library(
         ":control_edges",
         ":convert_type",
         ":flatbuffer_tflite_operator_lib",
+        ":metadata_utils",
         ":offset_buffer",
         ":shape_and_size_utils",
         ":tensorflow_lite",
@@ -1686,9 +1695,9 @@ cc_library(
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:status",
+        "@local_xla//xla/tsl/platform:statusor",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:vhlo_ops",
     ],

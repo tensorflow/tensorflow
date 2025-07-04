@@ -103,6 +103,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/control_edges.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/metadata_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/region_isolation.h"
 #include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
@@ -284,6 +285,14 @@ static bool IsTFResourceOp(Operation* op) {
 // Returns whether the current op is not supported by the TF Lite runtime.
 static bool IsUnsupportedFlexOp(const std::string& op_name) {
   return op_name == "PartitionedCall" || op_name == "StatefulPartitionedCall";
+}
+
+// Returns whether the current location is supported by the TF Lite runtime.
+// Refer to "LocationType" in
+// tensorflow/compiler/mlir/lite/schema/debug_metadata.fbs.
+static bool IsUnsupportedLocation(const mlir::Location& loc) {
+  return !mlir::isa<mlir::CallSiteLoc, mlir::FileLineColLoc, mlir::FusedLoc,
+                    mlir::NameLoc, mlir::OpaqueLoc, mlir::UnknownLoc>(loc);
 }
 
 // Create description of operation that could not be converted.
@@ -3548,26 +3557,72 @@ uint32_t CreateLocation(
         debug_metadata::CreateUnknownLoc(builder).Union());
   } else {
     LOG(WARNING) << "Location type not supported";
-    return 0;
+    // Return an index for a placeholder UnknownLoc.
+    // Check if UnknownLoc has been created.
+    if (auto it = location_map.find(
+            mlir::UnknownLoc::get(mlir_location.getContext()));
+        it != location_map.end()) {
+      return it->second;
+    }
+    location = debug_metadata::CreateLocation(
+        builder, debug_metadata::LocationType_UnknownLoc,
+        debug_metadata::CreateUnknownLoc(builder).Union());
   }
 
   // Append to attributes.
   attribute_type_vector.push_back(debug_metadata::Attribute_Location);
   attribute_vector.push_back(location.Union());
 
-  location_map.insert({mlir_location, attribute_type_vector.size() - 1});
-  return attribute_type_vector.size() - 1;
+  uint32_t new_index = attribute_vector.size() - 1;
+  location_map.insert({mlir_location, new_index});
+
+  // Also add a map entry for UnknownLoc if we logged a warning, so we don't
+  // create multiple placeholders.
+  if (IsUnsupportedLocation(mlir_location)) {
+    location_map.insert(
+        {mlir::UnknownLoc::get(mlir_location.getContext()), new_index});
+  }
+
+  return new_index;
 }
 
 // Create debug metadata location for an operation.
+// This function is updated to unwrap the location structure created on import
+// to restore the original location for roundtrip consistency.
 std::vector<uint32_t> CreateOpLocation(
-    flatbuffers::FlatBufferBuilder& builder, Operation* op,
+    flatbuffers::FlatBufferBuilder& builder, mlir::Operation* op,
     std::vector<uint8_t>& attribute_type_vector,
     std::vector<flatbuffers::Offset<void>>& attribute_vector,
     absl::flat_hash_map<const mlir::Location, uint32_t, MlirLocationHasher>&
         location_map) {
+  mlir::Location loc_to_serialize = op->getLoc();
+
+  // The import process via `OpLoc` wraps the original location (`orig_loc`)
+  // to attach tensor names. The structure is either:
+  // 1. For multi-output ops: `FusedLoc([NameLoc(t1, orig_loc), ...])`
+  // 2. For single-output ops (after canonicalization): `NameLoc(t1, orig_loc)`
+  // This logic reverses this wrapping to retrieve `orig_loc` without touching
+  // any nested structures inside `orig_loc`.
+  if (auto fused_loc = mlir::dyn_cast<mlir::FusedLoc>(loc_to_serialize)) {
+    if (auto str_attr =
+            mlir::dyn_cast_or_null<mlir::StringAttr>(fused_loc.getMetadata());
+        str_attr && str_attr.getValue() == mlir::TFL::kImporterWrapper) {
+      // This is our wrapper! It's safe to unwrap.
+      // The original location is the child of the first NameLoc inside.
+      const auto& inner_locs = fused_loc.getLocations();
+      if (!inner_locs.empty()) {
+        if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(inner_locs[0]);
+            name_loc != nullptr) {
+          loc_to_serialize = name_loc.getChildLoc();
+        }
+      }
+    }
+  }
+
+  // If the marker is not found, loc_to_serialize remains unchanged,
+  // preserving the original debug info from earlier conversion steps.
   uint32_t loc_idx =
-      CreateLocation(builder, op->getLoc(), attribute_type_vector,
+      CreateLocation(builder, loc_to_serialize, attribute_type_vector,
                      attribute_vector, location_map);
   return {loc_idx};
 }
@@ -3597,10 +3652,9 @@ std::string Translator::SerializeDebugMetadata(mlir::ModuleOp module) {
         operators_debug_metadata;
 
     auto& first_bb = func.getBody().front();
-    for (const auto& item : llvm::enumerate(first_bb)) {
-      Operation& op = item.value();
+    for (auto& op : first_bb) {
       // Skip terminal op.
-      if (op.hasTrait<mlir::OpTrait::IsTerminator>()) break;
+      if (op.hasTrait<mlir::OpTrait::IsTerminator>()) continue;
 
       operator_debug_metadata_map[&op] = operators_debug_metadata.size();
 
