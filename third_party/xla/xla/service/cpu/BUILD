@@ -91,8 +91,6 @@ filegroup(
 filegroup(
     name = "runtime_hdrs",
     srcs = [
-        # XLA Runtime support.
-        "buffer_desc.h",
         # Single-threaded support.
         "runtime_custom_call_status.h",
         "runtime_fp16.h",
@@ -210,7 +208,6 @@ cc_library(
         ":runtime_symbol_generator",
         ":small_while_loop_hoisting_pass",
         ":thunk_emitter",
-        ":xla_framework",
         "//xla:cpu_function_runtime",
         "//xla:debug_options_flags",
         "//xla:literal",
@@ -559,22 +556,10 @@ tf_proto_library(
     name = "executable_proto",
     srcs = ["executable.proto"],
     protodeps = [
-        ":xla_framework_proto",
         "//xla/service:hlo_proto",
         "//xla:xla_proto",
         "//xla/backends/cpu/runtime:thunk_proto",
     ],
-)
-
-tf_proto_library(
-    name = "xla_framework_proto",
-    srcs = ["xla_framework.proto"],
-)
-
-cc_library(
-    name = "xla_framework",
-    hdrs = ["xla_framework.h"],
-    deps = [":xla_framework_proto_cc"],
 )
 
 cc_library(
@@ -646,11 +631,6 @@ cc_library(
     ],
     copts = runtime_copts(),
     deps = ["@com_google_absl//absl/base:core_headers"],
-)
-
-cc_library(
-    name = "buffer_desc",
-    hdrs = ["buffer_desc.h"],
 )
 
 cc_library(
