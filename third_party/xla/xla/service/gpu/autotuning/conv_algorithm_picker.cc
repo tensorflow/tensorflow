@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/gpu_autotuning.pb.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
@@ -66,6 +68,7 @@ limitations under the License.
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
@@ -522,9 +525,13 @@ static const DisabledAlgorithm kDisabledAlgorithms[] = {
 absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
     GenericConvRunner* const runner,
     std::optional<ReferenceResult>* reference_result,
-    absl::Span<const AlgorithmDesc> disabled_algos, absl::string_view instr_str,
+    absl::Span<const AlgorithmDesc> disabled_algos,
+    const HloCustomCallInstruction& instr,
     const AutotuneRuntimeArguments& runtime_arguments) {
   auto alg = runner->ToAlgorithmDesc();
+
+  std::string instr_str = instr.ToString(
+      HloPrintOptions::Fingerprint().set_print_backend_config(true));
 
   se::StreamExecutor* stream_exec = config_.GetExecutor();
   XLA_SCOPED_LOGGING_TIMER_LEVEL(
@@ -579,6 +586,15 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
 
   se::dnn::ProfileResult profile_result;
   VLOG(4) << "Trying algorithm " << alg.ToString() << " for " << instr_str;
+  VLOG(5) << "If you want to disable this algorithm, copy-paste the following "
+             "to the denylist:";
+  std::string blas_version;
+  if (auto* blas = stream_exec->AsBlas()) {
+    (void)blas->GetVersion(&blas_version);
+  }
+  VLOG(5) << GenerateDenyListEntry(instr, alg,
+                                   GetComputeCapability(stream_exec),
+                                   GetCudnnVersion(stream_exec), blas_version);
 
   SlowOperationAlarm alarm(
       absl::Seconds(1),
@@ -801,14 +817,9 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   }
 
   std::vector<AlgorithmDesc> disabled_algos;
-  TF_ASSIGN_OR_RETURN(
-      AutotuneRuntimeArguments runtime_arguments,
-      AutotuneRuntimeArguments::FromInstruction(instr, config_, debug_options));
-  if (runtime_arguments.canonical_hlo.has_value()) {
-    disabled_algos = GetDisabledConvAlgorithms(
-        GetComputeCapability(stream_exec), GetCudnnVersion(stream_exec),
-        blas_version, runtime_arguments.canonical_hlo.value());
-  }
+  disabled_algos = GetDisabledConvAlgorithms(GetComputeCapability(stream_exec),
+                                             GetCudnnVersion(stream_exec),
+                                             blas_version, *instr);
 
   bool allow_tf32 = true;
   // TODO(b/284371623): Properly set allow_tf32 even if instr==nullptr, which is
@@ -826,6 +837,9 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   // this algorithm considered correct, though.
   std::optional<ReferenceResult> reference_result;
 
+  TF_ASSIGN_OR_RETURN(
+      AutotuneRuntimeArguments runtime_arguments,
+      AutotuneRuntimeArguments::FromInstruction(instr, config_, debug_options));
   TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
   TF_ASSIGN_OR_RETURN(
       std::vector<GenericConvRunner> runners,
@@ -837,7 +851,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     TF_ASSIGN_OR_RETURN(
         auto result,
         AutotuneOneConvRunner(&runner_cache, &reference_result, disabled_algos,
-                              instr->ToString(), runtime_arguments));
+                              *instr, runtime_arguments));
     profile_results.emplace_back(std::move(result));
   }
 
@@ -857,9 +871,9 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
     for (auto& runner_cache : fallback_runners) {
       TF_ASSIGN_OR_RETURN(
-          auto result, AutotuneOneConvRunner(&runner_cache, &reference_result,
-                                             disabled_algos, instr->ToString(),
-                                             runtime_arguments));
+          auto result,
+          AutotuneOneConvRunner(&runner_cache, &reference_result,
+                                disabled_algos, *instr, runtime_arguments));
       profile_results.emplace_back(std::move(result));
     }
   }

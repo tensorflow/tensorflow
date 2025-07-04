@@ -133,7 +133,7 @@ class GpuConvAlgorithmPicker : public HloModulePass {
       GenericConvRunner* runner,
       std::optional<ReferenceResult>* reference_result,
       absl::Span<const stream_executor::dnn::AlgorithmDesc> disabled_algos,
-      absl::string_view instr_str,
+      const HloCustomCallInstruction& instr,
       const AutotuneRuntimeArguments& runtime_arguments);
 
   // Pick the best algorithm for CUDA platform.

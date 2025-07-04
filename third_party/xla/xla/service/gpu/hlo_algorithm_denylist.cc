@@ -22,12 +22,19 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/backend_config.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/service/gpu/autotuning/gpu_autotuning.pb.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
@@ -140,58 +147,74 @@ constexpr char kDefaultDenylist[] = R"pb(
   }
 )pb";
 
+static std::string HloStringWithGpuBackendConfig(const std::string& hlo,
+                                                 GpuBackendConfig config) {
+  BackendConfigWrapper backend_config(config);
+  return absl::StrCat(hlo, ", backend_config=", backend_config.GetRawString());
+}
+
+absl::Status ParseTextFormatDenyList(DenyListMapType& list,
+                                     absl::string_view denylist_text) {
+  AlgorithmDenylist proto;
+  if (!tsl::protobuf::TextFormat::ParseFromString(denylist_text, &proto)) {
+    return absl::InvalidArgumentError("Failed to parse denylist text proto");
+  }
+
+  for (const auto& entry : proto.entries()) {
+    for (const auto& algo : entry.algos()) {
+      list[std::make_tuple(HloStringWithGpuBackendConfig(
+                               entry.hlo(), entry.backend_config()),
+                           entry.cc().major(), entry.cc().minor(),
+                           entry.cudnn_version().major(),
+                           entry.cudnn_version().minor(),
+                           entry.cudnn_version().patch(), entry.blas_version())]
+          .emplace_back(algo.id(), algo.tensor_ops(), std::nullopt);
+    }
+  }
+  return absl::OkStatus();
+}
+
 std::vector<stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
     ComputeCapability cc, CudnnVersion cudnn_version,
-    const std::string& blas_version, const std::string& hlo) {
-  // Key is the tuple of canonicalized hlo, compute capability major/minor,
-  // cudnn version major/minor/patch, blas version.
-  using MapType = absl::flat_hash_map<
-      std::tuple<std::string, int, int, int, int, int, std::string>,
-      std::vector<stream_executor::dnn::AlgorithmDesc>>;
-
-  static MapType* denylist = [] {
-    auto* list = new MapType();
-    AlgorithmDenylist proto;
-    auto process_denylist = [list](const AlgorithmDenylist& proto) {
-      for (const auto& entry : proto.entries()) {
-        for (const auto& algo : entry.algos()) {
-          (*list)[std::make_tuple(HloStringWithGpuBackendConfig(
-                                      entry.hlo(), entry.backend_config()),
-                                  entry.cc().major(), entry.cc().minor(),
-                                  entry.cudnn_version().major(),
-                                  entry.cudnn_version().minor(),
-                                  entry.cudnn_version().patch(),
-                                  entry.blas_version())]
-              .emplace_back(algo.id(), algo.tensor_ops(), std::nullopt);
-        }
-      }
-    };
-
+    absl::string_view blas_version, const HloCustomCallInstruction& instr) {
+  static DenyListMapType* denylist = [] {
+    auto* list = new DenyListMapType();
     std::string file_path =
         GetDebugOptionsFromFlags().xla_gpu_algorithm_denylist_path();
     if (!file_path.empty()) {
-      TF_CHECK_OK(tsl::ReadTextProto(tsl::Env::Default(), file_path, &proto));
-      process_denylist(proto);
+      std::string denylist_text;
+      TF_CHECK_OK(tsl::ReadFileToString(tsl::Env::Default(), file_path,
+                                        &denylist_text));
+      TF_CHECK_OK(ParseTextFormatDenyList(*list, denylist_text));
     }
-    CHECK(tsl::protobuf::TextFormat::ParseFromString(
-        std::string(kDefaultDenylist), &proto));
-    process_denylist(proto);
+    TF_CHECK_OK(ParseTextFormatDenyList(*list, kDefaultDenylist));
     return list;
   }();
 
+  return GetDisabledConvAlgorithms(*denylist, cc, cudnn_version, blas_version,
+                                   instr);
+}
+
+std::vector<stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
+    const DenyListMapType& denylist, ComputeCapability cc,
+    CudnnVersion cudnn_version, absl::string_view blas_version,
+    const HloCustomCallInstruction& instr) {
   std::vector<stream_executor::dnn::AlgorithmDesc> algorithms;
   auto add_matching_disabled_algorithms_to_result = [&](const auto& key) {
-    auto iter = denylist->find(key);
-    if (iter != denylist->end()) {
+    auto iter = denylist.find(key);
+    if (iter != denylist.end()) {
       algorithms.insert(algorithms.end(), iter->second.begin(),
                         iter->second.end());
     }
   };
 
+  std::string hlo = instr.ToString(
+      ::xla::HloPrintOptions::Fingerprint().set_print_backend_config(true));
+
   // Exclude algorithms with explicit BLAS version set
   auto key = std::make_tuple(hlo, cc.major(), cc.minor(), cudnn_version.major(),
                              cudnn_version.minor(), cudnn_version.patch(),
-                             blas_version);
+                             std::string{blas_version});
   add_matching_disabled_algorithms_to_result(key);
 
   // Exclude algorithms with no BLAS version set
@@ -201,10 +224,28 @@ std::vector<stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
   return algorithms;
 }
 
-std::string HloStringWithGpuBackendConfig(const std::string& hlo,
-                                          GpuBackendConfig config) {
-  BackendConfigWrapper backend_config(config);
-  return absl::StrCat(hlo, ", backend_config=", backend_config.GetRawString());
+absl::StatusOr<std::string> GenerateDenyListEntry(
+    const HloCustomCallInstruction& instr,
+    const stream_executor::dnn::AlgorithmDesc& algo,
+    const ComputeCapability& cc, const CudnnVersion& cudnn_version,
+    absl::string_view blas_version) {
+  AlgorithmDenylist list;
+  AlgorithmDenylistEntry* entry = list.add_entries();
+  entry->set_hlo(instr.ToString(::xla::HloPrintOptions::Fingerprint()));
+  TF_ASSIGN_OR_RETURN(*entry->mutable_backend_config(),
+                      instr.backend_config<GpuBackendConfig>());
+
+  *entry->mutable_cc() = cc;
+  *entry->mutable_cudnn_version() = cudnn_version;
+  entry->set_blas_version(blas_version);
+
+  DenylistedAlgorithm* denylisted_algo = entry->add_algos();
+  denylisted_algo->set_id(algo.algo_id());
+  denylisted_algo->set_tensor_ops(algo.tensor_ops_enabled());
+
+  std::string denylist_string;
+  tsl::protobuf::TextFormat::PrintToString(list, &denylist_string);
+  return denylist_string;
 }
 
 }  // namespace gpu
