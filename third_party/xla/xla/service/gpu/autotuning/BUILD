@@ -513,7 +513,6 @@ cc_library(
     name = "conv_algorithm_picker",
     srcs = ["conv_algorithm_picker.cc"],
     hdrs = ["conv_algorithm_picker.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = ["gpu"],
     deps = [
         ":autotuner_compile_util",
@@ -528,6 +527,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/runtime:buffer_comparator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:executable",
@@ -549,8 +549,11 @@ cc_library(
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/stream_executor/gpu:redzone_allocator",
         "//xla/stream_executor/rocm:rocm_platform_id",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
@@ -566,12 +569,7 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:numbers",
-    ] + if_cuda_is_configured([
-        # keep sorted
-        "//xla/backends/gpu/runtime:buffer_comparator",
-        "//xla/stream_executor/gpu:redzone_allocator",
-        "@local_config_cuda//cuda:cudnn_header",
-    ]),
+    ],
 )
 
 xla_test(
@@ -599,18 +597,25 @@ xla_test(
         "//xla/service:pattern_matcher",
         "//xla/service:platform_util",
         "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:gpu_conv_runner",
         "//xla/service/gpu:stream_executor_util",
         "//xla/service/gpu/transforms:conv_rewriter",
         "//xla/service/gpu/transforms:cudnn_fused_conv_rewriter",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:platform",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:duration_cc_proto",
     ],
 )
 

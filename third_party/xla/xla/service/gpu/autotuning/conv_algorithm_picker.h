@@ -98,16 +98,6 @@ class GpuConvAlgorithmPicker : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
- private:
-  absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
-  absl::StatusOr<bool> RunOnInstruction(HloInstruction* instr);
-
-  absl::StatusOr<AutotuneResult> PickBestAlgorithm(
-      const HloCustomCallInstruction* instr);
-  absl::StatusOr<AutotuneResult> PickBestAlgorithmNoCache(
-      const HloCustomCallInstruction* instr);
-
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
   // Simple bundle of an algorithm and its output, for comparing results across
   // autotuned algorithms.
   struct ReferenceResult {
@@ -129,7 +119,16 @@ class GpuConvAlgorithmPicker : public HloModulePass {
         const DebugOptions& debug_options);
   };
 
-  absl::StatusOr<AutotuneResult> AutotuneOneConvRunner(
+ private:
+  absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
+  absl::StatusOr<bool> RunOnInstruction(HloInstruction* instr);
+
+  absl::StatusOr<AutotuneResult> PickBestAlgorithm(
+      const HloCustomCallInstruction* instr);
+  absl::StatusOr<AutotuneResult> PickBestAlgorithmNoCache(
+      const HloCustomCallInstruction* instr);
+
+  virtual absl::StatusOr<AutotuneResult> AutotuneOneConvRunner(
       GenericConvRunner* runner,
       std::optional<ReferenceResult>* reference_result,
       absl::Span<const stream_executor::dnn::AlgorithmDesc> disabled_algos,
@@ -139,12 +138,9 @@ class GpuConvAlgorithmPicker : public HloModulePass {
   // Pick the best algorithm for CUDA platform.
   absl::StatusOr<AutotuneResult> PickBestAlgorithmNoCacheCuda(
       const HloCustomCallInstruction* instr);
-#endif
-
   absl::StatusOr<AutotuneResult> PickBestAlgorithmNoCacheRocm(
       const HloCustomCallInstruction* instr);
 
- private:
   AutotuneConfig config_;
 };
 

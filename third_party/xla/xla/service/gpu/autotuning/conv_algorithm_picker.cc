@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/gpu/runtime/buffer_comparator.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -54,11 +55,13 @@ limitations under the License.
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform.h"
@@ -66,6 +69,7 @@ limitations under the License.
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
@@ -74,18 +78,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/numbers.h"
-
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
-#include "third_party/gpus/cudnn/cudnn.h"  // IWYU pragma: keep
-#include "third_party/gpus/cudnn/cudnn_version.h"
-#if CUDNN_VERSION >= 90000
-#include "third_party/gpus/cudnn/cudnn_ops.h"
-#else
-#include "third_party/gpus/cudnn/cudnn_ops_infer.h"
-#endif  // CUDNN_VERSION >= 90000
-#include "xla/backends/gpu/runtime/buffer_comparator.h"
-#include "xla/stream_executor/gpu/redzone_allocator.h"
-#endif
 
 namespace xla {
 namespace gpu {
@@ -100,9 +92,8 @@ using std::optional;
 Shape MaybeTupleElementShape(Shape shape, int64_t tuple_idx) {
   if (shape.IsTuple()) {
     return shape.tuple_shapes(tuple_idx);
-  } else {
-    return shape;
   }
+  return shape;
 }
 
 class ScratchAllocator : public se::ScratchAllocator {
@@ -431,15 +422,11 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
   if (platform_id == se::rocm::kROCmPlatformId) {
     result_or = PickBestAlgorithmNoCacheRocm(instr);
   } else if (platform_id == se::cuda::kCudaPlatformId) {
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
     result_or = PickBestAlgorithmNoCacheCuda(instr);
-#endif
   }
 
   return result_or;
 }
-
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 
 absl::StatusOr<GpuConvAlgorithmPicker::AutotuneRuntimeArguments>
 GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
@@ -821,24 +808,43 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   const se::NumericOptions numeric_options{
       RequireDeterminism(instr->GetModule()->config()), allow_tf32};
 
-  // Use the first algorithm that's supported as reference. There isn't a
-  // particular reason to use it, as any algorithm suffices. It doesn't make
-  // this algorithm considered correct, though.
-  std::optional<ReferenceResult> reference_result;
-
   TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
   TF_ASSIGN_OR_RETURN(
       std::vector<GenericConvRunner> runners,
       GetAlgorithms(runtime_arguments.gpu_conv_config, stream,
                     /* use_fallback = */ false, numeric_options));
 
+  // The default algorithm (engine ID 0) can be very slow. So we will only try
+  // it if there is no other option.
+  auto default_algorithm = std::find_if(
+      runners.begin(), runners.end(), [](const GenericConvRunner& runner) {
+        return runner.ToAlgorithmDesc().algo_id() == 0;
+      });
+
+  std::optional<GenericConvRunner> default_algorithm_runner;
+  if (default_algorithm != runners.end()) {
+    default_algorithm_runner = std::move(*default_algorithm);
+    runners.erase(default_algorithm);
+  }
+
+  // Use the first algorithm that's supported as reference. There isn't a
+  // particular reason to use it, as any algorithm suffices. It doesn't make
+  // this algorithm considered correct, though.
+  std::optional<ReferenceResult> reference_result;
   std::vector<AutotuneResult> profile_results;
   for (auto& runner_cache : runners) {
     TF_ASSIGN_OR_RETURN(
-        auto result,
+        profile_results.emplace_back(),
         AutotuneOneConvRunner(&runner_cache, &reference_result, disabled_algos,
                               instr->ToString(), runtime_arguments));
-    profile_results.emplace_back(std::move(result));
+  }
+
+  if (!reference_result.has_value() && default_algorithm_runner.has_value()) {
+    TF_ASSIGN_OR_RETURN(
+        profile_results.emplace_back(),
+        AutotuneOneConvRunner(&default_algorithm_runner.value(),
+                              &reference_result, disabled_algos,
+                              instr->ToString(), runtime_arguments));
   }
 
   // If any algorithm has worked, we'll skip the fallback algorithms, since
@@ -908,7 +914,6 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
                                      runtime_arguments.hlo_module_config));
   return selected_algorithm;
 }
-#endif
 
 absl::StatusOr<AutotuneResult>
 GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(

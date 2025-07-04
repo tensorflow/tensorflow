@@ -16,10 +16,16 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/conv_algorithm_picker.h"
 
 #include <cstdint>
+#include <optional>
+#include <utility>
 #include <variant>
 #include <vector>
 
+#include "google/protobuf/duration.pb.h"
+#include <gmock/gmock.h>
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -27,16 +33,19 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/transforms/conv_rewriter.h"
 #include "xla/service/gpu/transforms/cudnn_fused_conv_rewriter.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
@@ -44,8 +53,35 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
+using ::testing::_;
+using ::testing::AtLeast;
+using ::testing::Eq;
+using ::testing::Ne;
+using ::testing::Property;
+using ::tsl::testing::IsOkAndHolds;
 
 namespace m = ::xla::match;
+
+class MockGpuConvAlgorithmPicker : public GpuConvAlgorithmPicker {
+ public:
+  explicit MockGpuConvAlgorithmPicker(AutotuneConfig config)
+      : GpuConvAlgorithmPicker(config) {}
+  // absl::StatusOr<AutotuneResult> AutotuneOneConvRunner(
+  //     GenericConvRunner* runner,
+  //     std::optional<ReferenceResult>* reference_result,
+  //     absl::Span<const stream_executor::dnn::AlgorithmDesc> disabled_algos,
+  //     absl::string_view instr_str,
+  //     const AutotuneRuntimeArguments& runtime_arguments) override;
+
+  MOCK_METHOD(
+      absl::StatusOr<AutotuneResult>, AutotuneOneConvRunner,
+      (GenericConvRunner * runner,
+       std::optional<ReferenceResult>* reference_result,
+       absl::Span<const stream_executor::dnn::AlgorithmDesc> disabled_algos,
+       absl::string_view instr_str,
+       const AutotuneRuntimeArguments& runtime_arguments),
+      (override));
+};
 
 class GpuConvAlgorithmPickerTest : public HloTestBase {
  public:
@@ -206,6 +242,80 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GpuConvAlgorithmPicker(cfg), m.get()));
   ASSERT_TRUE(changed);
+}
+
+TEST_F(GpuConvAlgorithmPickerTest, DoesntTryEngine0IfAlternativeIsAvailable) {
+  if (GetCudaComputeCapability().ToPair() == std::make_pair(0, 0)) {
+    GTEST_SKIP() << "This test only makes sense for cuDNN.";
+  }
+
+  constexpr absl::string_view kHlo = R"(
+HloModule module
+
+ENTRY main {
+  %arg0 = f32[7,2500,3072]{2,1,0} parameter(0)
+  %arg1 = f32[3072,513,512]{2,1,0} parameter(1)
+  %conv = (f32[7,2500,3072]{2,1,0}, u8[0]{0}) custom-call(%arg0, %arg1), window={size=513 pad=256_256}, dim_labels=b0f_o0i->b0f, feature_group_count=6, custom_call_target="__cudnn$convForward", backend_config={"cudnn_conv_backend_config":{"activation_mode":"kNone", "conv_result_scale":1, "leakyrelu_alpha":0, "side_input_scale":0}, "force_earliest_schedule":false, "operation_queue_id":"0", "reification_cost":[], "wait_on_operation_queues":[]}
+  ROOT %conv_result = f32[7,2500,3072]{2,1,0} get-tuple-element(%conv), index=0
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHlo));
+
+  se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                          PlatformUtil::GetStreamExecutors(platform));
+  ASSERT_GT(executors.size(), 0);
+  se::StreamExecutor* stream_exec = executors[0];
+
+  MockGpuConvAlgorithmPicker algorithm_picker(AutotuneConfig::FromDebugOptions(
+      DeviceOrDevicelessConfig{DeviceConfig{stream_exec, nullptr}},
+      DefaultDebugOptionsIgnoringFlags()));
+
+  // We expect that algorithm 0 is not autotuned.
+  EXPECT_CALL(
+      algorithm_picker,
+      AutotuneOneConvRunner(
+          Property(
+              &GenericConvRunner::ToAlgorithmDesc,
+              Property(&stream_executor::dnn::AlgorithmDesc::algo_id, Eq(0))),
+          _, _, _, _))
+      .Times(0);
+
+  AutotuneResult generic_result;
+  generic_result.mutable_run_time()->set_seconds(1);
+
+  // In all other cases (algo_id != 0), we return some generic result.
+  EXPECT_CALL(
+      algorithm_picker,
+      AutotuneOneConvRunner(
+          Property(
+              &GenericConvRunner::ToAlgorithmDesc,
+              Property(&stream_executor::dnn::AlgorithmDesc::algo_id, Ne(0))),
+          _, _, _, _))
+      .Times(AtLeast(1))
+      .WillRepeatedly(
+          [](GenericConvRunner* runner,
+             std::optional<GpuConvAlgorithmPicker::ReferenceResult>*
+                 reference_result,
+             absl::Span<const stream_executor::dnn::AlgorithmDesc>
+                 disabled_algos,
+             absl::string_view instr_str,
+             const GpuConvAlgorithmPicker::AutotuneRuntimeArguments&
+                 runtime_arguments) -> absl::StatusOr<AutotuneResult> {
+            AutotuneResult result;
+            result.mutable_run_time()->set_seconds(1);
+            *result.mutable_algorithm() = runner->ToAlgorithmDesc().ToProto();
+
+            if (!reference_result->has_value()) {
+              reference_result->emplace();
+              reference_result->value().algorithm = runner->ToAlgorithmDesc();
+            }
+            return result;
+          });
+
+  AutotuneConfig cfg = AutotuneConfig::FromDebugOptions(
+      DeviceOrDevicelessConfig{DeviceConfig{stream_exec, nullptr}},
+      DefaultDebugOptionsIgnoringFlags());
+  EXPECT_THAT(RunHloPass(&algorithm_picker, m.get()), IsOkAndHolds(true));
 }
 
 }  // namespace
