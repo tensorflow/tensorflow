@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -118,19 +120,85 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
       return DebugOptions::FUSION;
     case Thunk::kGemm:
       return DebugOptions::CUBLAS;
+    case Thunk::kAllGatherStart:
+    case Thunk::kAllReduceStart:
+    case Thunk::kReduceScatterStart:
+    case Thunk::kAllToAllStart:
+    case Thunk::kCollectiveBroadcastStart:
+    case Thunk::kCollectivePermuteStart:
+    case Thunk::kRaggedAllToAllStart:
+    case Thunk::kRecv:
+    case Thunk::kSend:
+      return DebugOptions::COLLECTIVES;
     default:
       return std::nullopt;
   }
 }
 
-absl::StatusOr<bool> IsConvertible(const Thunk& thunk,
-                                   const CommandBufferConfig& config) {
-  auto cmd_type = GetCommandBufferCmdType(thunk.kind());
+bool IsConvertible(Thunk* thunk, const CommandBufferConfig& config) {
+  if (thunk->IsAsyncDone()) {
+    return true;
+  }
+  auto cmd_type = GetCommandBufferCmdType(thunk->kind());
   if (!cmd_type.has_value()) {
-    return absl::InvalidArgumentError(
-        "Thunk kind is not supported for command buffer conversion.");
+    return false;  // Thunk kind is not supported for command buffer conversion.
   }
   return config.enabled_commands.contains(*cmd_type);
+}
+
+// Collect the sequence of thunks that contains the async start and its
+// corresponding done thunk. If there is another start thunk
+// between the original start and done, we may potentially extend the sequence
+// to include its corresponding done thunk. For example, if we call this
+// function on async-start_a in the following sequence:
+//
+// async_start_a
+// async_start_b
+// async_done_a
+// async_done_b
+//
+// The returned sequence will contain async_done_b. So that all async pairs
+// are captured by the same command buffer.
+
+// Returns the shortest non-empty sequence of thunks that form a valid async
+// region as a span. If no such region is found, an empty span is returned.
+absl::Span<std::unique_ptr<Thunk>> CollectAndCheckAsyncRegion(
+    absl::Span<std::unique_ptr<Thunk>> thunks,
+    const CommandBufferConfig& config) {
+  absl::flat_hash_set<AsyncEventsUniqueId> unpaired_ids_of_async_starts;
+
+  for (size_t i = 0; i < thunks.size(); ++i) {
+    auto& thunk = thunks[i];
+
+    // Check if thunk is convertible
+    if (!IsConvertible(thunk.get(), config)) {
+      return {};  // All thunks in the region must be convertible.
+    }
+
+    // Check if it is async start thunk
+    if (thunk->IsAsyncStart() && thunk->GetAsyncEventsUniqueId().has_value()) {
+      unpaired_ids_of_async_starts.insert(
+          thunk->GetAsyncEventsUniqueId().value());
+    }
+
+    // Check if it is async done thunk
+    if (thunk->IsAsyncDone() && thunk->GetAsyncEventsUniqueId().has_value()) {
+      auto it = unpaired_ids_of_async_starts.find(
+          thunk->GetAsyncEventsUniqueId().value());
+      if (it == unpaired_ids_of_async_starts.end()) {
+        return {};  // We found an async end for an event, whose async
+                    // start is not part of the region
+      }
+      unpaired_ids_of_async_starts.erase(it);
+    }
+
+    if (unpaired_ids_of_async_starts.empty()) {
+      return thunks.subspan(
+          0, i + 1);  // We found pairs to all open async events and all thunks
+                      // in between are convertible
+    }
+  }
+  return {};  // error didn't find an end for some start
 }
 
 }  // namespace
@@ -180,15 +248,38 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
            !cmd_buffer_thunk->thunks()->thunks().empty());
     new_thunks.push_back(std::move(cmd_buffer_thunk));
     changed = true;
+    current_command_buffer_thunks.clear();
     return absl::OkStatus();
   };
 
   // TODO(aliia): use post order here
   auto& original_thunks = root_thunk_ptr->thunks();
 
-  for (auto& thunk : original_thunks) {
-    TF_ASSIGN_OR_RETURN(bool is_convertible, IsConvertible(*thunk, config));
-    if (is_convertible) {
+  for (size_t i = 0; i < original_thunks.size(); ++i) {
+    auto& thunk = original_thunks[i];
+
+    // We always have to capture both corresponding start and done events in the
+    // same command buffer.
+    if (thunk->IsAsyncStart()) {
+      // Collect and check async region
+      absl::Span<std::unique_ptr<Thunk>> region = CollectAndCheckAsyncRegion(
+          absl::MakeSpan(original_thunks).subspan(i), config);
+
+      if (!region.empty()) {
+        // If a valid region is found, add the whole region to the current
+        // sequence and continue processing.
+        current_command_buffer_thunks.insert(
+            current_command_buffer_thunks.end(),
+            std::make_move_iterator(region.begin()),
+            std::make_move_iterator(region.end()));
+        i += region.size() - 1;
+        continue;
+      }
+    } else if (IsConvertible(thunk.get(), config) && !thunk->IsAsyncDone()) {
+      // Check if thunk is convertible and not an async done: async done thunks
+      // can be only added to the current_command_buffer_thunks as part of a
+      // valid async regions.
+
       current_command_buffer_thunks.push_back(std::move(thunk));
       continue;
     }

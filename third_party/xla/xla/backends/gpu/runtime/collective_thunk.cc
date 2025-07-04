@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -537,6 +538,15 @@ std::string CollectiveThunk::GetDeviceString(
                          collective_params.local_device_ordinal);
 }
 
+std::optional<AsyncEventsUniqueId> CollectiveThunk::GetAsyncEventsUniqueId()
+    const {
+  if (!async_events_) {
+    return std::nullopt;
+  }
+  // We rely on the fact that the pointer to async_events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
+}
+
 CollectiveDoneThunk::CollectiveDoneThunk(
     Thunk::Kind kind, ThunkInfo thunk_info,
     std::shared_ptr<CollectiveThunk::AsyncEvents> async_events,
@@ -565,4 +575,12 @@ absl::Status IsValidOperand(Shape shape, Thunk::Kind reduction_op) {
   return absl::OkStatus();
 }
 
+std::optional<AsyncEventsUniqueId> CollectiveDoneThunk::GetAsyncEventsUniqueId()
+    const {
+  if (!async_events_) {
+    return std::nullopt;
+  }
+  // We rely on the fact that the pointer to async_events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
+}
 }  // namespace xla::gpu

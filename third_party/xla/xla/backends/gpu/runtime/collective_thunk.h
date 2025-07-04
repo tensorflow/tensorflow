@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
-#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -181,6 +180,10 @@ class CollectiveThunk : public Thunk {
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
+
+  bool IsAsyncStart() const override { return async_events_ != nullptr; }
+
   absl::StatusOr<std::vector<Communicator*>> GetCommunicators(
       const ExecuteParams& params) const override;
 
@@ -257,6 +260,10 @@ class CollectiveDoneThunk : public Thunk {
         xla::gpu::GetCollectiveStreamId(true, stream_id_, stream_kind_)
             .value());
   }
+
+  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
+
+  bool IsAsyncDone() const override { return async_events_ != nullptr; }
 
  private:
   std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
