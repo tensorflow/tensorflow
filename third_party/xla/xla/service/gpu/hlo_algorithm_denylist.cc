@@ -145,6 +145,37 @@ constexpr char kDefaultDenylist[] = R"pb(
     cudnn_version { major: 9 minor: 1 patch: 1 }
     algos { id: 14 }
   }
+  entries {
+    hlo: "(f32[7,2500,3072]{2,1,0}, u8[0]{0}) custom-call(f32[7,2500,3072]{2,1,0}, f32[3072,513,512]{2,1,0}), window={size=513 pad=256_256}, dim_labels=b0f_o0i->b0f, feature_group_count=6, custom_call_target=\"__cudnn$convForward\""
+    backend_config {
+      force_earliest_schedule: false
+      operation_queue_id: 0
+      wait_on_operation_queues: []
+      cudnn_conv_backend_config: {
+        activation_mode: kNone
+        conv_result_scale: 1
+        leakyrelu_alpha: 0
+        side_input_scale: 0
+      }
+    }
+    cc { major: 9 }
+    cudnn_version { major: 9 minor: 10 }
+    algos { id: 0 }
+  }
+  entries {
+    hlo: "(f32[7,2500,3072]{2,1,0}, u8[0]{0}) custom-call(f32[7,2500,3072]{2,1,0}, f32[3072,257,512]{2,1,0}), window={size=257 pad=128_128}, dim_labels=b0f_o0i->b0f, feature_group_count=6, custom_call_target=\"__cudnn$convForward\""
+    cc { major: 9 }
+    cudnn_version { major: 9 minor: 10 }
+    algos { id: 0 }
+    backend_config { cudnn_conv_backend_config { conv_result_scale: 1 } }
+  }
+  entries {
+    hlo: "(f32[7,2500,3072]{2,1,0}, u8[0]{0}) custom-call(f32[7,2500,3072]{2,1,0}, f32[3072,129,512]{2,1,0}), window={size=129 pad=64_64}, dim_labels=b0f_o0i->b0f, feature_group_count=6, custom_call_target=\"__cudnn$convForward\""
+    cc { major: 9 }
+    cudnn_version { major: 9 minor: 10 }
+    algos { id: 0 }
+    backend_config { cudnn_conv_backend_config { conv_result_scale: 1 } }
+  }
 )pb";
 
 static std::string HloStringWithGpuBackendConfig(const std::string& hlo,
