@@ -1289,3 +1289,4 @@ EXPORTS
   ??1ResourceHandle@tensorflow@@QEAA@XZ
   ??1Variant@tensorflow@@QEAA@XZ
   ?Start@ProfilerSessionWrapper@pywrap@profiler@tensorflow@@QEAA?AVStatus@lts_20240116@absl@@PEBDAEBV?$flat_hash_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$variant@_NHV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@UStringHash@container_internal@lts_20240116@absl@@UStringEq@567@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$variant@_NHV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@@2@@67@@Z
+  ?view@CompactString@xla@@QEBA?AV?$basic_string_view@DU?$char_traits@D@std@@@std@@XZ
