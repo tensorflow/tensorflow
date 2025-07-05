@@ -3,9 +3,9 @@
 // Run optimize pass and then canonicalize pass, and make sure some folding is applied.
 // RUN: litert-opt %s -tfl-optimize | FileCheck --check-prefix=FOLD %s
 // Run legalize pass and then optimize pass, and make sure some fusing is applied.
-// RUN: litert-opt %s -tfl-legalize-tf -tfl-optimize='enable-canonicalization=false' | FileCheck --check-prefix=Fusing %s
+// RUN: litert-opt %s -tfl-legalize-tf='run-tfl-runtime-verification=false' -tfl-optimize='enable-canonicalization=false' | FileCheck --check-prefix=Fusing %s
 // Run legalize pass and then optimize pass, and make sure some fusing is applied, but no mul->fc.
-// RUN: litert-opt %s -tfl-legalize-tf -tfl-optimize='enable-canonicalization=false disable-fuse-mul-and-fc=true'  | FileCheck --check-prefix=NoFusing %s
+// RUN: litert-opt %s -tfl-legalize-tf='run-tfl-runtime-verification=false' -tfl-optimize='enable-canonicalization=false disable-fuse-mul-and-fc=true'  | FileCheck --check-prefix=NoFusing %s
 
 // CHECK-LABEL: fusedConv2dRelu
 func.func @fusedConv2dRelu(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3xf32>, %arg2: tensor<16xf32>) -> tensor<256x32x32x16xf32> {
@@ -170,6 +170,42 @@ func.func @fuseSubIntoTransposeConvNoBias(%arg0: tensor<1x32x42x128xf32>) -> ten
   // CHECK-DAG: %[[SHAPE:.*]] = arith.constant dense<[1, 64, 84, 32]> : tensor<4xi32>
   // CHECK-DAG: %[[WEIGHTS:.*]] = arith.constant dense<1.000000e+00> : tensor<32x4x4x128xf32>
   // CHECK-DAG: %[[BIAS:.*]] = arith.constant dense<-1.500000e+00> : tensor<32xf32>
+  // CHECK: %[[RESULT:.*]] = "tfl.transpose_conv"(%[[SHAPE]], %[[WEIGHTS]], %arg0, %[[BIAS]])
+  // CHECK: return %[[RESULT]]
+}
+
+// CHECK-LABEL: fuseAddIntoTransposeConvNoBiasF16
+func.func @fuseAddIntoTransposeConvNoBiasF16(%arg0: tensor<1x32x42x128xf16>) -> tensor<1x64x84x32xf16> {
+  %cst = arith.constant dense<1.5> : tensor<1x1x1x32xf16>
+  %cst_0 = arith.constant dense<[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]> : tensor<16xf16>
+  %cst_1 = arith.constant dense<[1, 64, 84, 32]> : tensor<4xi32>
+  %cst_2 = arith.constant dense<1.0> : tensor<32x4x4x128xf16>
+  %cst_3 = "tfl.no_value"() {value} : () -> none
+  %0 = "tfl.transpose_conv"(%cst_1, %cst_2, %arg0, %cst_3) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32, fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<32x4x4x128xf16>, tensor<1x32x42x128xf16>, none) -> tensor<1x64x84x32xf16>
+  %1 = "tfl.add"(%0, %cst) {fused_activation_function = "NONE"} : (tensor<1x64x84x32xf16>, tensor<1x1x1x32xf16>) -> tensor<1x64x84x32xf16>
+  func.return %1 : tensor<1x64x84x32xf16>
+
+  // CHECK-DAG: %[[SHAPE:.*]] = arith.constant dense<[1, 64, 84, 32]> : tensor<4xi32>
+  // CHECK-DAG: %[[WEIGHTS:.*]] = arith.constant dense<1.000000e+00> : tensor<32x4x4x128xf16>
+  // CHECK-DAG: %[[BIAS:.*]] = arith.constant dense<1.500000e+00> : tensor<32xf16>
+  // CHECK: %[[RESULT:.*]] = "tfl.transpose_conv"(%[[SHAPE]], %[[WEIGHTS]], %arg0, %[[BIAS]])
+  // CHECK: return %[[RESULT]]
+}
+
+// CHECK-LABEL: fuseSubIntoTransposeConvNoBiasF16
+func.func @fuseSubIntoTransposeConvNoBiasF16(%arg0: tensor<1x32x42x128xf16>) -> tensor<1x64x84x32xf16> {
+  %cst = arith.constant dense<1.5> : tensor<1x1x1x32xf16>
+  %cst_0 = arith.constant dense<[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]> : tensor<16xf16>
+  %cst_1 = arith.constant dense<[1, 64, 84, 32]> : tensor<4xi32>
+  %cst_2 = arith.constant dense<1.0> : tensor<32x4x4x128xf16>
+  %cst_3 = "tfl.no_value"() {value} : () -> none
+  %0 = "tfl.transpose_conv"(%cst_1, %cst_2, %arg0, %cst_3) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32, fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<32x4x4x128xf16>, tensor<1x32x42x128xf16>, none) -> tensor<1x64x84x32xf16>
+  %1 = "tfl.sub"(%0, %cst) {fused_activation_function = "NONE"} : (tensor<1x64x84x32xf16>, tensor<1x1x1x32xf16>) -> tensor<1x64x84x32xf16>
+  func.return %1 : tensor<1x64x84x32xf16>
+
+  // CHECK-DAG: %[[SHAPE:.*]] = arith.constant dense<[1, 64, 84, 32]> : tensor<4xi32>
+  // CHECK-DAG: %[[WEIGHTS:.*]] = arith.constant dense<1.000000e+00> : tensor<32x4x4x128xf16>
+  // CHECK-DAG: %[[BIAS:.*]] = arith.constant dense<-1.500000e+00> : tensor<32xf16>
   // CHECK: %[[RESULT:.*]] = "tfl.transpose_conv"(%[[SHAPE]], %[[WEIGHTS]], %arg0, %[[BIAS]])
   // CHECK: return %[[RESULT]]
 }
