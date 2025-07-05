@@ -72,6 +72,7 @@ tf_kernel_library(
         ":topk_ops",
         ":tpu_compile_op",
         ":tpu_configuration_ops",
+        ":tpu_configuration_ops_fallback",
         ":tpu_dummy_input_op",
         ":tpu_embedding_configuration_ops",
         ":tpu_embedding_enqueue_ops",
@@ -263,6 +264,28 @@ tf_kernel_library(
         "@local_xla//xla/tsl/platform:macros",
         "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ] + if_libtpu_tf_status(),
+    alwayslink = 1,
+)
+
+tf_kernel_library(
+    name = "tpu_configuration_ops_fallback",
+    srcs = ["tpu_configuration_ops_fallback.cc"],
+    hdrs = ["tpu_configuration_ops_fallback.h"],
+    deps = [
+        ":tpu_configuration_ops",
+        ":tpu_pod_state",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/tpu:tpu_defs",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_xla//xla/stream_executor/tpu:tpu_api",
+        "@local_xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_tsl//tsl/platform:tstring",
+    ],
     alwayslink = 1,
 )
 
