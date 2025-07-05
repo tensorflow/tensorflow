@@ -69,6 +69,9 @@ TfLiteOperator* CreateDelegateKernelRegistration(
         SimpleOpaqueDelegateKernelInterface* delegate_kernel =
             reinterpret_cast<SimpleOpaqueDelegateKernelInterface*>(
                 TfLiteOpaqueNodeGetUserData(opaque_node));
+        if (delegate_kernel == nullptr) {
+          return kTfLiteDelegateError;
+        }
         return delegate_kernel->Prepare(context, opaque_node);
       });
   TfLiteOperatorSetInvokeWithData(
@@ -78,7 +81,9 @@ TfLiteOperator* CreateDelegateKernelRegistration(
         SimpleOpaqueDelegateKernelInterface* delegate_kernel =
             reinterpret_cast<SimpleOpaqueDelegateKernelInterface*>(
                 TfLiteOpaqueNodeGetUserData(opaque_node));
-        TFLITE_DCHECK(delegate_kernel != nullptr);
+        if (delegate_kernel == nullptr) {
+          return kTfLiteDelegateError;
+        }
         return delegate_kernel->Eval(context, opaque_node);
       });
 
