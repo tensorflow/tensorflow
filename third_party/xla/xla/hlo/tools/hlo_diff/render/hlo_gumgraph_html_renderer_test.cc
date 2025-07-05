@@ -55,7 +55,7 @@ TEST(HloGumgraphHtmlRendererTest, RenderHtmlWithOpMetrics) {
   std::ostringstream out;
   MockOpMetricGetter op_metrics;
   RenderHtml(diff_result, diff_summary, nullptr, &op_metrics, &op_metrics, out);
-  EXPECT_THAT(out.str(), HasSubstr("Profile Metrics Diff"));
+  EXPECT_THAT(out.str(), HasSubstr("XProf Op Metrics Diff by Instructions"));
 }
 
 TEST(HloGumgraphHtmlRendererTest, RenderHtmlWithoutOpMetrics) {

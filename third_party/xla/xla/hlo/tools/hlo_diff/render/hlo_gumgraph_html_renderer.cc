@@ -26,6 +26,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -50,10 +51,13 @@ namespace {
 std::string PrintCss() {
   return R"html(
     <style>
+    html {
+      font-family: 'Google Sans', sans-serif;
+    }
     .section {
       margin: 10px;
       padding: 10px;
-      border: 1px solid #ccc;
+      border: 1px solid #cccccc;
       border-radius: 5px;
     }
     .section > .header {
@@ -72,9 +76,10 @@ std::string PrintCss() {
     details > summary {
       font-weight: bold;
       cursor: pointer;
+      padding: 3px 5px;
     }
     details > summary:hover {
-      background-color: #eee;
+      background-color: #eeeeee;
     }
     details > summary > .decoration {
       font-weight: normal;
@@ -88,7 +93,7 @@ std::string PrintCss() {
       padding: 0;
     }
     .list > .item:hover {
-      background-color: #eee;
+      background-color: #eeeeee;
     }
 
     .attributes-list {
@@ -103,8 +108,8 @@ std::string PrintCss() {
     }
     .tooltip > .tooltiptext {
       visibility: hidden;
-      background-color: #555;
-      color: #fff;
+      background-color: #555555;
+      color: #ffffff;
       padding: 5px;
       border-radius: 6px;
       position: absolute;
@@ -131,7 +136,7 @@ std::string PrintCss() {
       top: 50%;
       left: 100%;
       margin-top: -5px;
-      border-color: transparent transparent transparent #555;
+      border-color: transparent transparent transparent #555555;
     }
     .tooltip > .tooltiptext-right {
       top: 50%;
@@ -143,7 +148,7 @@ std::string PrintCss() {
       top: 50%;
       right: 100%;
       margin-top: -5px;
-      border-color: transparent #555 transparent transparent;
+      border-color: transparent #555555 transparent transparent;
     }
     .tooltip:hover > .tooltiptext {
       visibility: visible;
@@ -159,31 +164,48 @@ std::string PrintCss() {
     .hlo-textbox {
       flex: 1;
       min-width: 0;
+      display: flex;
+      flex-direction: column;
     }
-
-    .textbox {
+    .hlo-textbox > .textbox {
       position: relative;
       padding: 10px;
-      border: 1px solid #ccc;
+      border: 1px solid #cccccc;
       border-radius: 5px;
+      height: 100%;
+      box-sizing: border-box;
     }
-    .textbox > pre {
+    .hlo-textbox > .textbox > pre {
       width: 100%;
       margin: 0;
       padding: 0;
       overflow: auto;
       white-space: pre-wrap;
+      max-height: 800px;
     }
-    .textbox > .click-to-copy {
+    .hlo-textbox > .textbox > .click-to-copy {
       position: absolute;
       display: inline-block;
       cursor: pointer;
       right: 0px;
-      bottom: 0px;
+      top: 0px;
       z-index: 1;
       padding: 5px;
-      background-color: #ddd;
+      background-color: #dddddd;
       border-radius: 5px;
+    }
+
+    span.yellow {
+      color: #fbbc04;
+    }
+    span.green {
+      color: #34a853;
+    }
+    span.red {
+      color: #ea4335;
+    }
+    span.grey {
+      color: #999999;
     }
     </style>
   )html";
@@ -313,11 +335,13 @@ std::string PrintClickToCopyButton(absl::string_view text,
 }
 
 // Print textbox with click to copy button.
-std::string PrintTextbox(absl::string_view content) {
-  return PrintDiv(
-      absl::StrCat(absl::StrFormat(R"html(<pre>%s</pre>)html", content),
-                   PrintClickToCopyButton("📋", content)),
-      {"textbox"});
+std::string PrintTextbox(absl::string_view title, absl::string_view content) {
+  return absl::StrCat(
+      PrintDiv(title, {"title"}),
+      PrintDiv(
+          absl::StrCat(absl::StrFormat(R"html(<pre>%s</pre>)html", content),
+                       PrintClickToCopyButton("📋", content)),
+          {"textbox"}));
 }
 
 /*** Summary logic ***/
@@ -325,20 +349,37 @@ std::string PrintTextbox(absl::string_view content) {
 // Prints a pair of instructions or computations in a text box.
 template <typename T>
 std::string PrintHloTextboxPair(const T* left_node, const T* right_node) {
-  std::vector<std::string> textareas;
+  std::string left_title = "None", right_title = "None", left_text, right_text;
   if (left_node != nullptr) {
-    textareas.push_back(
-        PrintDiv(PrintTextbox(left_node->ToString()), {"hlo-textbox"}));
+    left_title = left_node->name();
+    left_text = left_node->ToString();
   }
   if (right_node != nullptr) {
-    textareas.push_back(
-        PrintDiv(PrintTextbox(right_node->ToString()), {"hlo-textbox"}));
+    right_title = right_node->name();
+    right_text = right_node->ToString();
   }
-  return PrintDiv(absl::StrJoin(textareas, ""), {"hlo-textbox-pair"});
+  return PrintDiv(
+      absl::StrCat(
+          PrintDiv(PrintTextbox(left_title, left_text), {"hlo-textbox"}),
+          PrintDiv(PrintTextbox(right_title, right_text), {"hlo-textbox"})),
+      {"hlo-textbox-pair"});
 }
 
 template <typename T>
 using DecorationPrinter = std::string(const T*, const T*);
+
+template <typename T>
+std::string PrintNodePairContent(const T* left_node, const T* right_node,
+                                 GraphUrlGenerator* url_generator) {
+  std::string url;
+  if (url_generator != nullptr) {
+    url = url_generator->GenerateWithSelectedNodes(left_node, right_node);
+  }
+  return absl::StrCat(PrintHloTextboxPair(left_node, right_node),
+                      url.empty() ? ""
+                                  : PrintDiv(PrintLink("Model Explorer", url),
+                                             {"model-explorer-url"}));
+}
 
 // Prints a pair of instructions or computations. If url_generator is not
 // null, a link to the pair of instructions or computations in model
@@ -356,10 +397,6 @@ std::string PrintNodePair(const T* left_node, const T* right_node,
     nodes.push_back(std::string(right_node->name()));
   }
   std::string text = absl::StrJoin(nodes, " ↔ ");
-  std::string url;
-  if (url_generator != nullptr) {
-    url = url_generator->GenerateWithSelectedNodes(left_node, right_node);
-  }
   std::string decoration;
   if (decoration_printer.has_value()) {
     decoration =
@@ -367,10 +404,7 @@ std::string PrintNodePair(const T* left_node, const T* right_node,
   }
   return PrintDetails(
       absl::StrCat(text, " ", decoration),
-      absl::StrCat(PrintHloTextboxPair(left_node, right_node),
-                   url.empty() ? ""
-                               : PrintDiv(PrintLink("Model Explorer", url),
-                                          {"model-explorer-url"})));
+      PrintNodePairContent<T>(left_node, right_node, url_generator));
 }
 
 // The location of the instruction in the diff result.
@@ -414,8 +448,7 @@ std::string PrintNodePairsAsList(
 // order of the number of instructions for each opcode.
 std::string PrintUnmatchedInstructions(
     const absl::flat_hash_set<const HloInstruction*>& instructions,
-    InstructionLocation location,
-    const absl::flat_hash_set<HloOpcode>& opcodes_to_ignore, bool name_only,
+    InstructionLocation location, bool name_only,
     GraphUrlGenerator* url_generator) {
   absl::flat_hash_map<HloOpcode, std::vector<const HloInstruction*>>
       instructions_by_opcode = GroupInstructionsByOpcode(instructions);
@@ -427,9 +460,6 @@ std::string PrintUnmatchedInstructions(
             [](const auto& a, const auto& b) { return a.second > b.second; });
   std::stringstream ss;
   for (auto cit = opcode_counts.begin(); cit != opcode_counts.end(); ++cit) {
-    if (opcodes_to_ignore.contains(cit->first)) {
-      continue;
-    }
     ss << PrintDetails(
         absl::StrFormat("%s (%d)", HloOpcodeString(cit->first), cit->second),
         PrintInstructionsAsList(instructions_by_opcode[cit->first], location,
@@ -443,7 +473,6 @@ std::string PrintUnmatchedInstructions(
 std::string PrintInstructionPairsByOpcode(
     const absl::flat_hash_map<const HloInstruction*, const HloInstruction*>&
         instructions,
-    const absl::flat_hash_set<HloOpcode>& opcodes_to_ignore,
     GraphUrlGenerator* url_generator,
     std::optional<absl::FunctionRef<DecorationPrinter<HloInstruction>>>
         decoration_printer = std::nullopt) {
@@ -459,9 +488,6 @@ std::string PrintInstructionPairsByOpcode(
             [](const auto& a, const auto& b) { return a.second > b.second; });
   std::stringstream ss;
   for (auto cit = opcode_counts.begin(); cit != opcode_counts.end(); ++cit) {
-    if (opcodes_to_ignore.contains(cit->first)) {
-      continue;
-    }
     absl::string_view op_name = HloOpcodeString(cit->first);
     ss << PrintDetails(absl::StrFormat("%s (%d)", op_name, cit->second),
                        PrintNodePairsAsList<HloInstruction>(
@@ -523,7 +549,6 @@ std::string PrintChangedInstructionDiffTypeSummary(
 std::string PrintChangedInstructions(
     const absl::flat_hash_map<const HloInstruction*, const HloInstruction*>&
         instructions,
-    const absl::flat_hash_set<HloOpcode>& opcodes_to_ignore,
     GraphUrlGenerator* url_generator) {
   std::function<DecorationPrinter<HloInstruction>> decorated_printer =
       [](const HloInstruction* left_inst,
@@ -548,8 +573,8 @@ std::string PrintChangedInstructions(
               }
             }));
   };
-  return PrintInstructionPairsByOpcode(instructions, opcodes_to_ignore,
-                                       url_generator, decorated_printer);
+  return PrintInstructionPairsByOpcode(instructions, url_generator,
+                                       decorated_printer);
 }
 
 // Prints unchanged instructions grouped by opcode and print in a
@@ -557,10 +582,8 @@ std::string PrintChangedInstructions(
 std::string PrintUnchangedInstructions(
     const absl::flat_hash_map<const HloInstruction*, const HloInstruction*>&
         instructions,
-    const absl::flat_hash_set<HloOpcode>& opcodes_to_ignore,
     GraphUrlGenerator* url_generator) {
-  return PrintInstructionPairsByOpcode(instructions, opcodes_to_ignore,
-                                       url_generator);
+  return PrintInstructionPairsByOpcode(instructions, url_generator);
 }
 
 /* Metrics diff */
@@ -568,7 +591,8 @@ std::string PrintUnchangedInstructions(
 // Prints unmatched instructions sorted by the metrics diff.
 std::string PrintUnmatchedMetricsDiff(
     const absl::flat_hash_set<const HloInstruction*>& instructions,
-    const OpMetricGetter& op_metric_getter, GraphUrlGenerator* url_generator) {
+    const OpMetricGetter& op_metric_getter, GraphUrlGenerator* url_generator,
+    InstructionLocation location) {
   std::vector<std::pair<const HloInstruction*, double>> sorted_metrics_diff;
   for (const HloInstruction* inst : instructions) {
     if (auto time_ps = op_metric_getter.GetOpTimePs(inst->name());
@@ -586,11 +610,17 @@ std::string PrintUnmatchedMetricsDiff(
   for (const auto& entry : sorted_metrics_diff) {
     const HloInstruction* inst = entry.first;
     double metrics_diff = entry.second;
+    const HloInstruction *left_inst = nullptr, *right_inst = nullptr;
+    if (location == InstructionLocation::kLeft) {
+      left_inst = inst;
+    } else {
+      right_inst = inst;
+    }
     metrics_diff_list.push_back(PrintNodePair<HloInstruction>(
-        inst, /*right_node=*/nullptr, url_generator,
+        left_inst, right_inst, url_generator,
         [&metrics_diff](const HloInstruction* inst,
                         const HloInstruction*) -> std::string {
-          return absl::StrFormat("%+.2f (us)", metrics_diff / 1e6);
+          return absl::StrFormat("%.2f (us)", metrics_diff / 1e6);
         }));
   }
   return PrintList(metrics_diff_list);
@@ -637,13 +667,112 @@ std::string PrintMatchedMetricsDiff(
 
 /* Diff pattern */
 
-// Summarize a diff pattern.
-std::string SummarizeDiffPattern(const ComputationDiffPattern& diff_pattern) {
-  if (diff_pattern.computation_groups.size() > 1) {
-    return absl::StrFormat("Summarized %d computations with the same diff",
-                           diff_pattern.computation_groups.size());
+// Prints a text summary of the computation group. At least one of the left or
+// right computations should be non-empty.
+std::string PrintComputationGroupSummary(const ComputationGroup& group) {
+  CHECK(!group.left_computations.empty() || !group.right_computations.empty());
+  std::vector<std::string> left_computation_names(
+      group.left_computations.size()),
+      right_computation_names(group.right_computations.size());
+  for (int i = 0; i < group.left_computations.size(); ++i) {
+    left_computation_names[i] = group.left_computations[i]->name();
   }
-  return "A single computation has unique diff";
+  for (int i = 0; i < group.right_computations.size(); ++i) {
+    right_computation_names[i] = group.right_computations[i]->name();
+  }
+  std::string summary;
+  if (left_computation_names.empty()) {
+    absl::StrAppend(
+        &summary,
+        absl::StrFormat("%s (%s)", absl::StrJoin(right_computation_names, ","),
+                        PrintSpan("Right Unmatched Computation", {"green"})));
+  } else if (right_computation_names.empty()) {
+    absl::StrAppend(
+        &summary,
+        absl::StrFormat("%s (%s)", absl::StrJoin(left_computation_names, ","),
+                        PrintSpan("Left Unmatched Computation", {"red"})));
+  } else {
+    absl::StrAppend(
+        &summary,
+        absl::StrFormat("%s ↔ %s", absl::StrJoin(left_computation_names, ","),
+                        absl::StrJoin(right_computation_names, ",")));
+  }
+  return summary;
+}
+
+std::string PrintDiffMetrics(const DiffMetrics& diff_metrics) {
+  std::vector<std::string> diff_metrics_list;
+  if (diff_metrics.changed_instruction_count > 0) {
+    diff_metrics_list.push_back(PrintSpan(
+        absl::StrFormat("%d changed", diff_metrics.changed_instruction_count),
+        {"yellow"}));
+  }
+  if (diff_metrics.left_unmatched_instruction_count > 0) {
+    diff_metrics_list.push_back(PrintSpan(
+        absl::StrFormat("%d left unmatched",
+                        diff_metrics.left_unmatched_instruction_count),
+        {"red"}));
+  }
+  if (diff_metrics.right_unmatched_instruction_count > 0) {
+    diff_metrics_list.push_back(PrintSpan(
+        absl::StrFormat("%d right unmatched",
+                        diff_metrics.right_unmatched_instruction_count),
+        {"green"}));
+  }
+  return absl::StrCat(absl::StrJoin(diff_metrics_list, ", "),
+                      " instruction(s)");
+}
+
+// Prints the computation summary
+std::string PrintComputationSummary(const ComputationDiffPattern& diff_pattern,
+                                    GraphUrlGenerator* url_generator) {
+  const ComputationGroup& sample = diff_pattern.computation_groups[0];
+  // We only support unmatched computation and one-to-one computation pairs.
+  if (sample.left_computations.size() > 1 ||
+      sample.right_computations.size() > 1) {
+    return "";
+  }
+  std::vector<std::string> computation_pair_list(
+      diff_pattern.computation_groups.size() - 1);
+  for (int i = 1; i < diff_pattern.computation_groups.size(); ++i) {
+    const ComputationGroup& computation_group =
+        diff_pattern.computation_groups[i];
+    const HloComputation* left_computation =
+        computation_group.left_computations.empty()
+            ? nullptr
+            : computation_group.left_computations[0];
+    const HloComputation* right_computation =
+        computation_group.right_computations.empty()
+            ? nullptr
+            : computation_group.right_computations[0];
+    computation_pair_list[i - 1] = PrintNodePair<HloComputation>(
+        left_computation, right_computation, url_generator);
+  }
+  const HloComputation* left_computation =
+      sample.left_computations.empty() ? nullptr : sample.left_computations[0];
+  const HloComputation* right_computation = sample.right_computations.empty()
+                                                ? nullptr
+                                                : sample.right_computations[0];
+  std::vector<std::string> contents;
+  contents.push_back(
+      PrintNodePairContent(left_computation, right_computation, url_generator));
+  if (!computation_pair_list.empty()) {
+    contents.push_back(
+        PrintDetails(absl::StrFormat("%d other similar computations",
+                                     computation_pair_list.size()),
+                     PrintList(computation_pair_list)));
+  }
+  return PrintDetails(
+      absl::StrFormat(
+          "%s (%s) %s", PrintComputationGroupSummary(sample),
+          PrintDiffMetrics(diff_pattern.diff_metrics),
+          computation_pair_list.empty()
+              ? ""
+              : PrintSpan(
+                    absl::StrFormat("(%d more computations has the same diff)",
+                                    computation_pair_list.size()),
+                    {"grey"})),
+      PrintAttributesList(contents));
 }
 
 // Prints the summary of the repetitive diff patterns.
@@ -654,60 +783,28 @@ std::string PrintRepetitiveDiffPatterns(
   // descending order.
   std::vector<ComputationDiffPattern> sorted_diff_patterns;
   for (const ComputationDiffPattern& diff_pattern : diff_patterns) {
+    if (diff_pattern.computation_groups.empty()) {
+      continue;
+    }
     sorted_diff_patterns.push_back(diff_pattern);
   }
   std::sort(
       sorted_diff_patterns.begin(), sorted_diff_patterns.end(),
       [](const ComputationDiffPattern& a, const ComputationDiffPattern& b) {
-        return a.computation_groups.size() > b.computation_groups.size();
+        const uint64_t a_diff_size =
+            a.diff_metrics.changed_instruction_count +
+            a.diff_metrics.left_unmatched_instruction_count +
+            a.diff_metrics.right_unmatched_instruction_count;
+        const uint64_t b_diff_size =
+            b.diff_metrics.changed_instruction_count +
+            b.diff_metrics.left_unmatched_instruction_count +
+            b.diff_metrics.right_unmatched_instruction_count;
+        return a_diff_size > b_diff_size;
       });
   std::string computation_group_list;
-  int i = 0;
-  for (const auto& diff_pattern : sorted_diff_patterns) {
-    if (diff_pattern.computation_groups.empty()) {
-      continue;
-    }
-    const ComputationGroup& sample = diff_pattern.computation_groups[0];
-    // We only print the one-to-one mapping for now.
-    if (sample.left_computations.size() != 1 ||
-        sample.right_computations.size() != 1) {
-      continue;
-    }
-    std::vector<std::string> computation_pair_list;
-    for (const ComputationGroup& computation_group :
-         diff_pattern.computation_groups) {
-      if (computation_group.left_computations.size() != 1 ||
-          computation_group.right_computations.size() != 1) {
-        continue;
-      }
-      const HloComputation* left_computation =
-          computation_group.left_computations[0];
-      const HloComputation* right_computation =
-          computation_group.right_computations[0];
-      computation_pair_list.push_back(PrintNodePair<HloComputation>(
-          left_computation, right_computation, url_generator));
-    }
-    absl::StrAppend(
-        &computation_group_list,
-        PrintDetails(
-            absl::StrFormat("Group %d: %s (Sample: %s → %s)", ++i,
-                            SummarizeDiffPattern(diff_pattern),
-                            sample.left_computations[0]->name(),
-                            sample.right_computations[0]->name()),
-            PrintAttributesList(
-                {absl::StrFormat(
-                     "Instruction count: %d → %d",
-                     sample.left_computations[0]->instruction_count(),
-                     sample.right_computations[0]->instruction_count()),
-                 absl::StrFormat(
-                     "Diff summary: %d changed, %d left unmatched, %d right "
-                     "unmatched",
-                     diff_pattern.diff_metrics.changed_instruction_count,
-                     diff_pattern.diff_metrics.left_unmatched_instruction_count,
-                     diff_pattern.diff_metrics
-                         .right_unmatched_instruction_count),
-                 PrintDetails("Instances",
-                              PrintList(computation_pair_list))})));
+  for (const ComputationDiffPattern& diff_pattern : sorted_diff_patterns) {
+    absl::StrAppend(&computation_group_list,
+                    PrintComputationSummary(diff_pattern, url_generator));
   }
   return computation_group_list;
 }
@@ -721,64 +818,73 @@ void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
                 std::ostringstream& out) {
   const absl::flat_hash_set<HloOpcode> ignored_opcodes(kIgnoredOpcodes.begin(),
                                                        kIgnoredOpcodes.end());
+
+  DiffResult filtered_diff_result =
+      FilterDiffResultByOpcode(diff_result, ignored_opcodes);
+
   out << PrintCss() << PrintJavascript();
+
+  // Print profile metrics diff
+  if (left_op_metric_getter != nullptr && right_op_metric_getter != nullptr) {
+    out << PrintSectionWithHeader(
+        "XProf Op Metrics Diff by Instructions (Ordered by absolute execution "
+        "time difference in descending order)",
+        absl::StrCat(
+            PrintDetails(
+                "Left Module Unmatched Instructions",
+                PrintUnmatchedMetricsDiff(
+                    filtered_diff_result.left_module_unmatched_instructions,
+                    *left_op_metric_getter, url_generator,
+                    InstructionLocation::kLeft)),
+            PrintDetails(
+                "Right Module Unmatched Instructions",
+                PrintUnmatchedMetricsDiff(
+                    filtered_diff_result.right_module_unmatched_instructions,
+                    *right_op_metric_getter, url_generator,
+                    InstructionLocation::kRight)),
+            PrintDetails("Changed Instructions",
+                         PrintMatchedMetricsDiff(
+                             filtered_diff_result.changed_instructions,
+                             *left_op_metric_getter, *right_op_metric_getter,
+                             url_generator)),
+            PrintDetails("Unchanged Instructions",
+                         PrintMatchedMetricsDiff(
+                             filtered_diff_result.unchanged_instructions,
+                             *left_op_metric_getter, *right_op_metric_getter,
+                             url_generator))));
+  }
+
+  // Print repetitive computation groups
+  out << PrintSectionWithHeader(
+      "Diffs grouped by computation (Ordered by # of different instructions)",
+      PrintRepetitiveDiffPatterns(diff_summary.computation_diff_patterns,
+                                  url_generator));
 
   // Print full diff results
   out << PrintSectionWithHeader(
       "Full Diff Results",
       absl::StrCat(
           PrintDetails(
-              absl::StrFormat(
-                  "Unmatched Instructions (left) (%d)",
-                  diff_result.left_module_unmatched_instructions.size()),
+              absl::StrFormat("Left Module Unmatched Instructions (%d)",
+                              filtered_diff_result
+                                  .left_module_unmatched_instructions.size()),
               PrintUnmatchedInstructions(
-                  diff_result.left_module_unmatched_instructions,
-                  InstructionLocation::kLeft, ignored_opcodes,
+                  filtered_diff_result.left_module_unmatched_instructions,
+                  InstructionLocation::kLeft,
                   /*name_only=*/false, url_generator)),
           PrintDetails(
-              absl::StrFormat(
-                  "Unmatched Instructions (right) (%d)",
-                  diff_result.right_module_unmatched_instructions.size()),
+              absl::StrFormat("Right Module Unmatched Instructions (%d)",
+                              filtered_diff_result
+                                  .right_module_unmatched_instructions.size()),
               PrintUnmatchedInstructions(
-                  diff_result.right_module_unmatched_instructions,
-                  InstructionLocation::kRight, ignored_opcodes,
+                  filtered_diff_result.right_module_unmatched_instructions,
+                  InstructionLocation::kRight,
                   /*name_only=*/false, url_generator)),
           PrintDetails(
               absl::StrFormat("Changed Instructions (%d)",
-                              diff_result.changed_instructions.size()),
-              PrintChangedInstructions(diff_result.changed_instructions,
-                                       ignored_opcodes, url_generator))));
-
-  // Print profile metrics diff
-  if (left_op_metric_getter != nullptr && right_op_metric_getter != nullptr) {
-    out << PrintSectionWithHeader(
-        "Profile Metrics Diff",
-        absl::StrCat(
-            PrintDetails("Left Module Unmatched Instructions",
-                         PrintUnmatchedMetricsDiff(
-                             diff_result.left_module_unmatched_instructions,
-                             *left_op_metric_getter, url_generator)),
-            PrintDetails("Right Module Unmatched Instructions",
-                         PrintUnmatchedMetricsDiff(
-                             diff_result.right_module_unmatched_instructions,
-                             *right_op_metric_getter, url_generator)),
-            PrintDetails(
-                "Changed Instructions",
-                PrintMatchedMetricsDiff(
-                    diff_result.changed_instructions, *left_op_metric_getter,
-                    *right_op_metric_getter, url_generator)),
-            PrintDetails(
-                "Unchanged Instructions",
-                PrintMatchedMetricsDiff(
-                    diff_result.unchanged_instructions, *left_op_metric_getter,
-                    *right_op_metric_getter, url_generator))));
-  }
-
-  // Print repetitive computation groups
-  out << PrintSectionWithHeader(
-      "Group of computations with the same diff",
-      PrintRepetitiveDiffPatterns(diff_summary.computation_diff_patterns,
-                                  url_generator));
+                              filtered_diff_result.changed_instructions.size()),
+              PrintChangedInstructions(
+                  filtered_diff_result.changed_instructions, url_generator))));
 }
 
 }  // namespace hlo_diff
