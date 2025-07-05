@@ -545,7 +545,9 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   } else {
     HloPassPipeline sharding_removal_pipeline("sharding-removal");
     AddHloVerifier(&sharding_removal_pipeline);
-    sharding_removal_pipeline.AddPass<FlattenCallGraph>();
+    if (!options::FlattenAfterFusion(module->config())) {
+      sharding_removal_pipeline.AddPass<FlattenCallGraph>();
+    }
     // Remove redundant sharding ops when partition_count == 1.
     sharding_removal_pipeline.AddPass<ShardingRemover>();
     // Run ShardyXLA without propagation, which enforces use-tuple-args.
@@ -805,9 +807,6 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // we can avoid running the loop condition computations.
   pipeline.AddPass<WhileLoopTripCountAnnotator>();
 
-  // Layout assignment uses alias analysis, which requires the call graph to be
-  // flattened.
-  pipeline.AddPass<FlattenCallGraph>();
   ChannelLayoutConstraints layout_constraints;
   pipeline.AddPass<CpuLayoutAssignment>(
       module->mutable_entry_computation_layout(), target_machine_features,
@@ -887,6 +886,10 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pipeline.AddPass<FusionWrapper>();
   }
 
+  if (options::FlattenAfterFusion(module->config())) {
+    pipeline.AddPass<FlattenCallGraph>();
+  }
+
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   // Run this to a fixed point.
@@ -923,6 +926,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pipeline.AddPass<ParallelTaskAssigner>(
         max_parallelism, ShapeSizeBytesFunction(), target_machine_features);
   }
+
   // Copy insertion should be performed immediately before IR emission to
   // avoid inserting unnecessary copies (later pass adds an instruction which
   // materializes the value) or missing a necessary copy (later pass removes
