@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/collective_device_list.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -756,12 +757,18 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.all_reduce_id() > 0) {
         channel_id = proto.all_reduce_id();
       }
+      std::optional<CollectiveOpGroupMode> mode;
+      if (proto.collective_op_group_mode() !=
+          CollectiveOpGroupModeProto::COLLECTIVE_MODE_UNSPECIFIED) {
+        TF_ASSIGN_OR_RETURN(mode, CollectiveOpGroupModeFromProto(
+                                      proto.collective_op_group_mode()));
+      }
       CollectiveDeviceList device_list = CollectiveDeviceList::FromProto(proto);
       if (opcode == HloOpcode::kAllReduce) {
         instruction =
             CreateAllReduce(shape, all_operands(), computations(0), device_list,
                             proto.constrain_layout(), channel_id,
-                            proto.use_global_device_ids());
+                            proto.use_global_device_ids(), mode);
       } else if (opcode == HloOpcode::kReduceScatter) {
         TF_RET_CHECK(proto.dimensions().size() == 1)
             << "ReduceScatter cannot have more than 1 scatter dimensions";
@@ -769,12 +776,12 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         instruction = CreateReduceScatter(
             shape, all_operands(), computations(0), device_list,
             proto.constrain_layout(), channel_id, proto.use_global_device_ids(),
-            scatter_dimension);
+            scatter_dimension, mode);
       } else {
-        instruction =
-            CreateAllReduceStart(shape, all_operands(), computations(0),
-                                 device_list, proto.constrain_layout(),
-                                 channel_id, proto.use_global_device_ids());
+        instruction = CreateAllReduceStart(shape, all_operands(),
+                                           computations(0), device_list,
+                                           proto.constrain_layout(), channel_id,
+                                           proto.use_global_device_ids(), mode);
       }
       break;
     }
@@ -1705,20 +1712,21 @@ HloInstruction::CreateAllGatherStart(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation, const CollectiveDeviceList& device_list,
     bool constrain_layout, const std::optional<int64_t>& channel_id,
-    bool use_global_device_ids) {
+    bool use_global_device_ids, std::optional<CollectiveOpGroupMode> mode) {
   return std::make_unique<HloAllReduceInstruction>(
       HloOpcode::kAllReduce, shape, operands, reduce_computation, device_list,
-      constrain_layout, channel_id, use_global_device_ids);
+      constrain_layout, channel_id, use_global_device_ids, mode);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllReduce(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const std::optional<int64_t>& channel_id, bool use_global_device_ids) {
+    const std::optional<int64_t>& channel_id, bool use_global_device_ids,
+    std::optional<CollectiveOpGroupMode> mode) {
   return CreateAllReduce(shape, operands, reduce_computation,
                          CollectiveDeviceList(replica_groups), constrain_layout,
-                         channel_id, use_global_device_ids);
+                         channel_id, use_global_device_ids, mode);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1726,10 +1734,11 @@ HloInstruction::CreateReduceScatter(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation, const CollectiveDeviceList& device_list,
     bool constrain_layout, const std::optional<int64_t>& channel_id,
-    bool use_global_device_ids, int64_t scatter_dimension) {
+    bool use_global_device_ids, int64_t scatter_dimension,
+    std::optional<CollectiveOpGroupMode> mode) {
   return std::make_unique<HloReduceScatterInstruction>(
       shape, operands, reduce_computation, device_list, constrain_layout,
-      channel_id, use_global_device_ids, scatter_dimension);
+      channel_id, use_global_device_ids, scatter_dimension, mode);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1738,23 +1747,22 @@ HloInstruction::CreateReduceScatter(
     HloComputation* reduce_computation,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const std::optional<int64_t>& channel_id, bool use_global_device_ids,
-    int64_t scatter_dimension) {
-  return CreateReduceScatter(
-      shape, operands, reduce_computation, CollectiveDeviceList(replica_groups),
-      constrain_layout, channel_id, use_global_device_ids, scatter_dimension);
+    int64_t scatter_dimension, std::optional<CollectiveOpGroupMode> mode) {
+  return CreateReduceScatter(shape, operands, reduce_computation,
+                             CollectiveDeviceList(replica_groups),
+                             constrain_layout, channel_id,
+                             use_global_device_ids, scatter_dimension, mode);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
-HloInstruction::CreateAllReduceStart(const Shape& shape,
-                                     absl::Span<HloInstruction* const> operands,
-                                     HloComputation* reduce_computation,
-                                     const CollectiveDeviceList& device_list,
-                                     bool constrain_layout,
-                                     const std::optional<int64_t>& channel_id,
-                                     bool use_global_device_ids) {
+HloInstruction::CreateAllReduceStart(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* reduce_computation, const CollectiveDeviceList& device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
+    bool use_global_device_ids, std::optional<CollectiveOpGroupMode> mode) {
   return std::make_unique<HloAllReduceInstruction>(
       HloOpcode::kAllReduceStart, shape, operands, reduce_computation,
-      device_list, constrain_layout, channel_id, use_global_device_ids);
+      device_list, constrain_layout, channel_id, use_global_device_ids, mode);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1762,7 +1770,8 @@ HloInstruction::CreateAllReduceStart(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const std::optional<int64_t>& channel_id, bool use_global_device_ids) {
+    const std::optional<int64_t>& channel_id, bool use_global_device_ids,
+    std::optional<CollectiveOpGroupMode> mode) {
   return CreateAllReduceStart(
       shape, operands, reduce_computation, CollectiveDeviceList(replica_groups),
       constrain_layout, channel_id, use_global_device_ids);
