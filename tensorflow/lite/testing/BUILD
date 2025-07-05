@@ -196,7 +196,9 @@ py_strict_binary(
         ":generate_examples_lib",
         ":mlir_convert",
         "//tensorflow:tensorflow_py",
-    ],
+    ] + if_pywrap(
+        if_true = ["//tensorflow/python:_pywrap_tensorflow"],
+    ),
 )
 
 py_strict_library(
