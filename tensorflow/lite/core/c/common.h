@@ -1161,6 +1161,11 @@ typedef struct TfLiteRegistration {
   /// NOTE: if the data is already in the desired format, simply implement this
   /// function to return `nullptr` and implement the free function to be a
   /// no-op.
+  ///
+  /// NOTE: For a Delegate kernel, returns `TfLiteKernelInitFailed()` if it
+  /// fails on the initialization. This eventually causes user's API call to
+  /// InterpreterBuilder::operator() or Interpreter::ModifyGraphWithDelegate()
+  /// to return an error.
   void* (*init)(TfLiteContext* context, const char* buffer, size_t length);
 
   /// The pointer `buffer` is the data previously returned by an init
@@ -1636,6 +1641,10 @@ TfLiteStatus TfLiteTensorVariantRealloc(TfLiteTensor* t,
 
 // Returns a copy of the quantization parameters of the tensor.
 TfLiteQuantization TfLiteQuantizationClone(const TfLiteQuantization& src);
+
+// Returns a sentinel value to be used as the user_data field of a TfLiteNode
+// when the kernel initialization fails.
+inline void* TfLiteKernelInitFailed() { return reinterpret_cast<void*>(-1); }
 
 #endif  // __cplusplus
 #endif  // TENSORFLOW_LITE_CORE_C_COMMON_H_

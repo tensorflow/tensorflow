@@ -40,31 +40,37 @@ TfLiteRegistration AddOpRegistration();
 
 class SimpleDelegate {
  public:
+  enum Options {
+    kNone = 0,
+    kFailOnInit = 1 << 0,  // To simulate failure of Delegate node's Init().
+    kFailOnPrepare =
+        1 << 1,  // To simulate failure of Delegate node's Prepare().
+    kFailOnInvoke = 1 << 2,  // To simulate failure of Delegate node's Invoke().
+    kAutomaticShapePropagation =
+        1 << 3,  // This assumes that the runtime will propagate
+                 // shapes using the original execution plan.
+    kNoCustomOp =
+        1 << 4,  // If not set, the graph nodes specified in the 'nodes'
+                 // parameter should be custom ops with name "my_add";
+                 // if set, they should be the builtin ADD operator.
+    kSetOutputTensorDynamic = 1
+                              << 5,  // If set, this delegate sets output tensor
+                                     // to as dynamic during kernel Prepare.
+  };
+
   // Create a simple implementation of a TfLiteDelegate. We use the C++ class
   // SimpleDelegate and it can produce a handle TfLiteDelegate that is
   // value-copyable and compatible with TfLite.
   //
   // Parameters:
   //   nodes: Indices of the graph nodes that the delegate will handle.
-  //   fail_node_prepare: To simulate failure of Delegate node's Prepare().
   //   min_ops_per_subset: If >0, partitioning preview is used to choose only
   //     those subsets with min_ops_per_subset number of nodes.
-  //   fail_node_invoke: To simulate failure of Delegate node's Invoke().
-  //   automatic_shape_propagation: This assumes that the runtime will
-  //     propagate shapes using the original execution plan.
-  //   custom_op: If true, the graph nodes specified in the 'nodes' parameter
-  //     should be custom ops with name "my_add"; if false, they should be
-  //     the builtin ADD operator.
-  //   set_output_tensor_dynamic: If True, this delegate sets output tensor to
-  //     as dynamic during kernel Prepare.
+  //   options: Options to control the behavior of the delegate.
   explicit SimpleDelegate(const std::vector<int>& nodes,
                           int64_t delegate_flags = kTfLiteDelegateFlagsNone,
-                          bool fail_node_prepare = false,
-                          int min_ops_per_subset = 0,
-                          bool fail_node_invoke = false,
-                          bool automatic_shape_propagation = false,
-                          bool custom_op = true,
-                          bool set_output_tensor_dynamic = false);
+                          Options options = Options::kNone,
+                          int min_ops_per_subset = 0);
 
   static std::unique_ptr<SimpleDelegate> DelegateWithRuntimeShapePropagation(
       const std::vector<int>& nodes, int64_t delegate_flags,
@@ -82,13 +88,28 @@ class SimpleDelegate {
  private:
   std::vector<int> nodes_;
   TfLiteDelegate delegate_;
+  bool fail_delegate_node_init_ = false;
   bool fail_delegate_node_prepare_ = false;
-  int min_ops_per_subset_ = 0;
   bool fail_delegate_node_invoke_ = false;
+  int min_ops_per_subset_ = 0;
   bool automatic_shape_propagation_ = false;
   bool custom_op_ = true;
   bool set_output_tensor_dynamic_ = false;
 };
+
+// Overload bitwise AND operator for SimpleDelegate::Options
+inline SimpleDelegate::Options operator&(SimpleDelegate::Options a,
+                                         SimpleDelegate::Options b) {
+  return static_cast<SimpleDelegate::Options>(static_cast<unsigned int>(a) &
+                                              static_cast<unsigned int>(b));
+}
+
+// Overload bitwise OR operator for SimpleDelegate::Options
+inline SimpleDelegate::Options operator|(SimpleDelegate::Options a,
+                                         SimpleDelegate::Options b) {
+  return static_cast<SimpleDelegate::Options>(static_cast<unsigned int>(a) |
+                                              static_cast<unsigned int>(b));
+}
 
 // Base class for single/multiple delegate tests.
 // Friend of Interpreter to access private methods.
