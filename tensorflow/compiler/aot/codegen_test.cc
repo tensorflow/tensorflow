@@ -20,13 +20,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/TargetSelect.h"
 #include "tensorflow/compiler/aot/compile.h"
+#include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
