@@ -16,8 +16,17 @@ limitations under the License.
 #include "tensorflow/core/grappler/graph_analyzer/sig_node.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <ios>
+#include <map>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 
 namespace tensorflow {
 namespace grappler {
