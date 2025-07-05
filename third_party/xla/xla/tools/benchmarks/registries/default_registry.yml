@@ -77,5 +77,21 @@ benchmarks: [
     update_frequency_policy: QUARTERLY
     # TODO(juliagmt): remove this label once the benchmark is stable.
     github_labels: ["blocking_presubmit_test"]
+  },
+  {
+    name: "gpu_hlo_microbenchmark"
+    description: "Microbenchmark for GPU HLO."
+    owner: "juliagmt-google@"
+    input_artifact: {
+      input_format: HLO_TEXT
+      artifact_path: "xla/tools/benchmarks/hlo/gpu_hlo.hlo"
+    }
+    hardware_execution_configs: [{
+      hardware_category: GPU_L4
+      topology: { num_hosts: 1, num_devices_per_host: 1, multi_host: false, multi_device: false }
+      target_metrics: [GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME]
+      workflow_type: [POSTSUBMIT]
+      runtime_flags: ["--num_repeats=5"]
+    }]
   }
 ]
