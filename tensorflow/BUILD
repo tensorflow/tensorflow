@@ -339,10 +339,7 @@ config_setting(
 
 config_setting(
     name = "emscripten",
-    constraint_values = if_google(
-        ["@platforms//os:emscripten"],
-        [],
-    ),
+    constraint_values = ["@platforms//os:emscripten"],
     values = if_oss(
         {"crosstool_top": "//external:android/emscripten"},
         {},
