@@ -153,6 +153,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:tstring",
+        "@local_tsl//tsl/profiler/lib:traceme",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/ir:hlo",
