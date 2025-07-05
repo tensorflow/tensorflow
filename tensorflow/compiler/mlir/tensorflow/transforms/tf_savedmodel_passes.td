@@ -200,3 +200,19 @@ def AssetSinkingPass : Pass<"tf-saved-model-asset-sinking", "mlir::ModuleOp"> {
            "SavedModel directory, which is prepended to asset file names.">,
   ];
 }
+
+def ConvertTFSavedModelToEmitCPass
+    : Pass<"convert-tf-saved-model-attributes-to-emitc-emitc",
+           "mlir::func::FuncOp"> {
+  let summary = "Convert tf_saved_model attributes to emitc attributes";
+  let description =
+      [{
+    This converts
+      func @get_train_step(%arg0: tensor<1xf32> {tf_saved_model.index_path = ["saved_example"]})
+    to
+      func @get_train_step(%arg0: tensor<1xf32> {emitc.hint_name = "saved_example"})
+  }];
+
+  let constructor =
+      "mlir::tf_saved_model::CreateConvertTFSavedModelToEmitCPass()";
+}

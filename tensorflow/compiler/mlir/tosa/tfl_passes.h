@@ -41,6 +41,10 @@ struct TOSATFLLegalizationPipelineOptions
       *this, "dequantize-tfl-softmax",
       llvm::cl::desc("Dequantize the TFLite softmax"), llvm::cl::init(false)};
 
+  PassOptions::Option<bool> convert_attrs_to_emitc{
+      *this, "convert-attrs-to-emitc",
+      llvm::cl::desc("Convert arg attrs to EmitC"), llvm::cl::init(false)};
+
   TOSATFLLegalizationPipelineOptions() {
     disabled_patterns = std::nullopt;
     enabled_patterns = std::nullopt;
