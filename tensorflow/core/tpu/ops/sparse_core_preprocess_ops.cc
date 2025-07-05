@@ -129,6 +129,7 @@ REGISTER_OP("GetMinibatchSplitsWithPhysicalReplica")
     .Attr("num_sc_per_chip: int >= 1")
     .Attr("table_name: string")
     .Attr("mini_batch_splits: string")
+    .Attr("sc_lane_size: int = 8")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->UnknownShapeOfRank(1));
