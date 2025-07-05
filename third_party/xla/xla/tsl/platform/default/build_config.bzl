@@ -463,9 +463,14 @@ def strict_cc_test(
         args = args + ["--gtest_fail_if_no_test_linked"]
 
     if fail_if_no_test_selected:
-        # Fail if no tests are selected. This is to avoid having a test target that does not run any
-        # tests. This can happen if the test has extraneous shards or disables all its test cases.
-        args.append("--gtest_fail_if_no_test_selected")
+        # Fail if no tests are selected in CI. This is to avoid having a test target that does not
+        # run any tests. This can happen if the test has extraneous shards or disables all its test
+        # cases. Local builds are exempt from this enforcement to allow for development with
+        # --gtest_filter.
+        args = args + select({
+            clean_dep("@local_xla//xla/tsl:is_ci_build"): ["--gtest_fail_if_no_test_selected"],
+            "//conditions:default": [],
+        })
 
     native.cc_test(
         name = name,
