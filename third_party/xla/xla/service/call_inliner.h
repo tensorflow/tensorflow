@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_CALL_INLINER_H_
 #define XLA_SERVICE_CALL_INLINER_H_
 
+#include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -48,14 +50,19 @@ class CallInliner : public HloModulePass {
   // are being inlined if necessary.
   // If `uniquify_channel_ids` is true, the channel ids of the resulting
   // computation will be uniquified.
+  // If the callback `should_inline` is provided, only functions callsite for
+  // which it retuns true will be inlined.
   explicit CallInliner(
       bool single_call_site = false, bool update_domain = false,
       absl::flat_hash_set<std::string> composites_to_preserve = {},
-      bool uniquify_channel_ids = false)
+      bool uniquify_channel_ids = false,
+      std::optional<std::function<bool(const CallGraph&, HloInstruction*)>>
+          should_inline = std::nullopt)
       : single_call_site_(single_call_site),
         update_domain_(update_domain),
         uniquify_channel_ids_(uniquify_channel_ids),
-        composites_to_preserve_(std::move(composites_to_preserve)) {}
+        composites_to_preserve_(std::move(composites_to_preserve)),
+        should_inline_(std::move(should_inline)) {}
   ~CallInliner() override = default;
   absl::string_view name() const override { return "call-inliner"; }
 
@@ -73,10 +80,16 @@ class CallInliner : public HloModulePass {
       const CallGraph& call_graph, HloComputation* computation,
       absl::Span<HloInstruction* const> instruction_sequence) const;
 
+  bool ShouldInline(const CallGraph& call_graph,
+                    HloInstruction* instruction) const;
+
   bool single_call_site_;
   bool update_domain_;
   bool uniquify_channel_ids_;
   absl::flat_hash_set<std::string> composites_to_preserve_;
+  std::optional<
+      std::function<bool(const CallGraph& call_graph, HloInstruction*)>>
+      should_inline_;
 };
 
 }  // namespace xla

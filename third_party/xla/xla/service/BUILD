@@ -981,6 +981,7 @@ xla_cc_test(
     size = "small",
     srcs = ["call_inliner_test.cc"],
     deps = [
+        ":call_graph",
         ":call_inliner",
         "//xla:literal_util",
         "//xla:shape_util",
