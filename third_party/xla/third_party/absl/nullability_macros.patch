@@ -6,10 +6,10 @@
 diff --git a/absl/base/nullability.h b/absl/base/nullability.h
 --- a/absl/base/nullability.h
 +++ b/absl/base/nullability.h
-@@ -221,4 +221,15 @@ using NullabilityUnknown = nullability_internal::NullabilityUnknownImpl<T>;
- 
- }  // namespace absl
- 
+@@ -303,4 +303,15 @@
+ #define ABSL_NULLABILITY_UNKNOWN
+ #endif
+
 +#if defined(__clang__) && !defined(__OBJC__) && \
 +ABSL_HAVE_FEATURE(nullability_on_classes)
 +#define absl_nonnull _Nonnull
