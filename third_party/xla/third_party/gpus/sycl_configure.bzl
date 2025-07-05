@@ -29,6 +29,8 @@ load(
 
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
 _GCC_HOST_COMPILER_PREFIX = "GCC_HOST_COMPILER_PREFIX"
+_CLANG_HOST_COMPILER_PATH = "CLANG_COMPILER_PATH"
+_CLANG_HOST_COMPILER_PREFIX = "CLANG_HOST_COMPILER_PATH"
 
 def _mkl_path(sycl_config):
     return sycl_config.sycl_basekit_path + "/mkl/" + sycl_config.sycl_basekit_version_number
@@ -63,7 +65,11 @@ def _sycl_include_path(repository_ctx, sycl_config, bash_bin):
 
 def enable_sycl(repository_ctx):
     """Returns whether to build with SYCL support."""
-    return int(get_host_environ(repository_ctx, "TF_NEED_SYCL", False))
+    return bool(repository_ctx.getenv("TF_NEED_SYCL", "").strip())
+
+def _use_icpx_and_clang(repository_ctx):
+    """Returns whether to use ICPX for SYCL and Clang for C++."""
+    return repository_ctx.getenv("TF_ICPX_CLANG", "").strip()
 
 def auto_configure_fail(msg):
     """Output failure message when auto configuration fails."""
@@ -75,8 +81,12 @@ def find_cc(repository_ctx):
     """Find the C++ compiler."""
 
     # Return a dummy value for GCC detection here to avoid error
-    target_cc_name = "gcc"
-    cc_path_envvar = _GCC_HOST_COMPILER_PATH
+    if _use_icpx_and_clang(repository_ctx):
+        target_cc_name = "clang"
+        cc_path_envvar = _CLANG_HOST_COMPILER_PATH
+    else:
+        target_cc_name = "gcc"
+        cc_path_envvar = _GCC_HOST_COMPILER_PATH
     cc_name = target_cc_name
 
     cc_name_from_env = get_host_environ(repository_ctx, cc_path_envvar)
@@ -98,19 +108,47 @@ def find_sycl_root(repository_ctx, sycl_config):
     fail("Cannot find SYCL compiler, please correct your path")
 
 def find_sycl_include_path(repository_ctx, sycl_config):
+    """Find DPC++ compiler."""
     base_path = find_sycl_root(repository_ctx, sycl_config)
     bin_path = repository_ctx.path(base_path + "/" + "bin" + "/" + "icpx")
     icpx_extra = ""
     if not bin_path.exists:
-        bin_path = repository_ctx.path(base_path + "/" + "bin" + "/" + "clang")
+        bin_path = repository_ctx.path(base_path + "/" + "bin" + "/" + "compiler" + "/" + "clang")
         if not bin_path.exists:
-            fail("Cannot find SYCL compiler, please correct your path")
+            fail("Cannot find DPC++ compiler, please correct your path")
     else:
         icpx_extra = "-fsycl"
-    gcc_path = repository_ctx.which("gcc")
-    gcc_install_dir = repository_ctx.execute([gcc_path, "-print-libgcc-file-name"])
-    gcc_install_dir_opt = "--gcc-install-dir=" + str(repository_ctx.path(gcc_install_dir.stdout.strip()).dirname)
-    cmd_out = repository_ctx.execute([bin_path, icpx_extra, gcc_install_dir_opt, "-xc++", "-E", "-v", "/dev/null", "-o", "/dev/null"])
+    if _use_icpx_and_clang(repository_ctx):
+        clang_path = repository_ctx.which("clang")
+        clang_install_dir = repository_ctx.execute([clang_path, "-print-resource-dir"])
+        clang_install_dir_opt = "--sysroot=" + str(repository_ctx.path(clang_install_dir.stdout.strip()).dirname)
+        cmd_out = repository_ctx.execute([
+            bin_path,
+            icpx_extra,
+            clang_install_dir_opt,
+            "-xc++",
+            "-E",
+            "-v",
+            "/dev/null",
+            "-o",
+            "/dev/null",
+        ])
+    else:
+        gcc_path = repository_ctx.which("gcc")
+        gcc_install_dir = repository_ctx.execute([gcc_path, "-print-libgcc-file-name"])
+        gcc_install_dir_opt = "--gcc-install-dir=" + str(repository_ctx.path(gcc_install_dir.stdout.strip()).dirname)
+        cmd_out = repository_ctx.execute([
+            bin_path,
+            icpx_extra,
+            gcc_install_dir_opt,
+            "-xc++",
+            "-E",
+            "-v",
+            "/dev/null",
+            "-o",
+            "/dev/null",
+        ])
+
     outlist = cmd_out.stderr.split("\n")
     real_base_path = str(repository_ctx.path(base_path).realpath).strip()
     include_dirs = []
@@ -511,17 +549,22 @@ def _create_local_sycl_repository(repository_ctx):
     )
 
     # Set up crosstool/
-
+    is_icpx_and_clang = _use_icpx_and_clang(repository_ctx)
     cc = find_cc(repository_ctx)
 
     host_compiler_includes = get_cxx_inc_directories(repository_ctx, cc)
-
-    host_compiler_prefix = get_host_environ(repository_ctx, _GCC_HOST_COMPILER_PREFIX, "/usr/bin")
+    clang_host_compiler_prefix = get_host_environ(repository_ctx, _CLANG_HOST_COMPILER_PREFIX, "/usr/bin")
+    gcc_host_compiler_prefix = get_host_environ(repository_ctx, _GCC_HOST_COMPILER_PREFIX, "/usr/bin")
 
     sycl_defines = {}
 
-    sycl_defines["%{host_compiler_prefix}"] = host_compiler_prefix
-    sycl_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
+    sycl_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_sycl"
+    if is_icpx_and_clang:
+        sycl_defines["%{extra_no_canonical_prefixes_flags}"] = "\"-no-canonical-prefixes\""
+        sycl_defines["%{host_compiler_prefix}"] = clang_host_compiler_prefix
+    else:
+        sycl_defines["%{extra_no_canonical_prefixes_flags}"] = "\"-fno-canonical-system-headers\""
+        sycl_defines["%{host_compiler_prefix}"] = gcc_host_compiler_prefix
 
     sycl_defines["%{cpu_compiler}"] = str(cc)
     sycl_defines["%{linker_bin_path}"] = "/usr/bin"
@@ -530,7 +573,6 @@ def _create_local_sycl_repository(repository_ctx):
     cxx_builtin_includes_list = sycl_internal_inc_dirs + _sycl_include_path(repository_ctx, sycl_config, bash_bin) + host_compiler_includes
 
     sycl_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(cxx_builtin_includes_list)
-    sycl_defines["%{extra_no_canonical_prefixes_flags}"] = "\"-fno-canonical-system-headers\""
     sycl_defines["%{unfiltered_compile_flags}"] = to_list_of_strings([
         "-DTENSORFLOW_USE_SYCL=1",
         "-DMKL_ILP64",
@@ -558,7 +600,7 @@ def _create_local_sycl_repository(repository_ctx):
     )
 
     repository_ctx.template(
-        "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
+        "crosstool/clang/bin/crosstool_wrapper_driver_sycl",
         tpl_paths["crosstool:clang/bin/crosstool_wrapper_driver_sycl"],
         sycl_defines,
     )

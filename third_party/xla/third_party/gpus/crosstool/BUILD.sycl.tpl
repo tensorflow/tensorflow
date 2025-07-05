@@ -31,12 +31,12 @@ cc_toolchain_suite(
 
 cc_toolchain(
     name = "cc-compiler-local",
-    all_files = ":crosstool_wrapper_driver_is_not_gcc",
-    compiler_files = ":crosstool_wrapper_driver_is_not_gcc",
-    ar_files = ":crosstool_wrapper_driver_is_not_gcc",
-    as_files = ":crosstool_wrapper_driver_is_not_gcc",
+    all_files = ":crosstool_wrapper_driver_sycl",
+    compiler_files = ":crosstool_wrapper_driver_sycl",
+    ar_files = ":crosstool_wrapper_driver_sycl",
+    as_files = ":crosstool_wrapper_driver_sycl",
     dwp_files = ":empty",
-    linker_files = ":crosstool_wrapper_driver_is_not_gcc",
+    linker_files = ":crosstool_wrapper_driver_sycl",
     objcopy_files = ":empty",
     strip_files = ":empty",
     # To support linker flags that need to go to the start of command line
@@ -66,6 +66,6 @@ filegroup(
 )
 
 filegroup(
-    name = "crosstool_wrapper_driver_is_not_gcc",
-    srcs = ["clang/bin/crosstool_wrapper_driver_is_not_gcc"]
+    name = "crosstool_wrapper_driver_sycl",
+    srcs = ["clang/bin/crosstool_wrapper_driver_sycl"]
 )
