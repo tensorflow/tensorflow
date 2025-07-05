@@ -33,11 +33,14 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeRange.h"
+#include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
+#include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/register.h"
 #include "shardy/dialect/sdy/ir/utils.h"
@@ -297,6 +300,72 @@ SmallVector<AxisRefAttr> getOrderedAxisRefs(Attribute shardingOrAxisList,
   }
 
   return axisRefs;
+}
+
+namespace {
+
+bool checkFuncResultsForGspmdSharding(FuncOp func) {
+  for (int64_t resultIndex = 0; resultIndex < func.getNumResults();
+        ++resultIndex) {
+    if (func.getResultAttr(resultIndex, sdy::kXlaShardingAttr)) {
+      if (func.getResultAttr(resultIndex, mlir::sdy::kShardingAttr)) {
+        // Can break and continue to the next function. We know this one is a
+        // Shardy function.
+        break;
+      }
+      // We need to see if there is an `xla.sdy.FuncResultSharding` custom
+      // call. If there is, then we can break and continue to the next
+      // function. If there isn't, then this should be a GSPMD function.
+      Operation* definingOp =
+          mlir::sdy::getBodyTerminatorOperand(func, resultIndex)
+              .getDefiningOp();
+      if (definingOp) {
+        if (auto customCall = mlir::dyn_cast<CustomCallOp>(definingOp)) {
+          if (customCall.getCallTargetName() ==
+              sdy::kFuncResultShardingTargetName) {
+            break;
+          }
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
+bool hasGspmdAttrsOrOps(mlir::ModuleOp module) {
+  for (auto func : module.getOps<mlir::func::FuncOp>()) {
+    for (int64_t argIndex = 0; argIndex < func.getNumArguments(); ++argIndex) {
+      if (func.getArgAttr(argIndex, sdy::kXlaShardingAttr) &&
+          !func.getArgAttr(argIndex, mlir::sdy::kShardingAttr) &&
+          !hasKey(sdy::getFuncArgFrontendAttrs(func, argIndex),
+                  sdy::kShardingRoundTripAttr)) {
+        return true;
+      }
+    }
+    if (checkFuncResultsForGspmdSharding(func)) {
+      return true;
+    }
+  }
+  bool hasGspmd = false;
+  // Check the module for a `Sharding` custom call.
+  module->walk([&hasGspmd](mlir::stablehlo::CustomCallOp customCall) {
+    if (customCall.getCallTargetName() == sdy::kShardingCustomCallTargetName &&
+        customCall->hasAttr(sdy::kXlaShardingAttr) &&
+        !customCall->hasAttr(mlir::sdy::kShardingAttr) &&
+        !hasFrontendAttr(customCall, sdy::kShardingRoundTripAttr)) {
+      hasGspmd = true;
+      return mlir::WalkResult::interrupt();
+    }
+    return mlir::WalkResult::advance();
+  });
+  return hasGspmd;
+}
+
+bool hasShardyMesh(mlir::ModuleOp module) {
+  return !module.getOps<mlir::sdy::MeshOp>().empty();
 }
 
 }  // namespace sdy
