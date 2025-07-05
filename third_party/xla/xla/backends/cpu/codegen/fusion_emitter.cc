@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/alignment.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "xla/runtime/work_dimensions.h"
 #include "xla/runtime/work_group.h"
 #include "xla/runtime/work_item.h"
+#include "xla/runtime/work_tile_size.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/shape.h"
@@ -62,9 +64,7 @@ static emitters::KernelArguments::BufferAlignment GetDefaultBufferAlignment() {
   return buffer_alignment;
 }
 
-static constexpr uint64_t kUnrollFactor = 1;
-
-int64_t GetWorkGroupCount(const HloFusionInstruction& fusion) {
+static int64_t GetWorkGroupCount(const HloFusionInstruction& fusion) {
   auto backend_config_or = fusion.backend_config<BackendConfig>();
   if (!backend_config_or.ok()) {
     return 1;
@@ -80,23 +80,35 @@ int64_t GetWorkGroupCount(const HloFusionInstruction& fusion) {
                             std::multiplies<int64_t>());
 }
 
-WorkDimensions GetWorkDimensions(const Shape& shape, int64_t work_group_count) {
+WorkDimensions GetWorkDimensions(const Shape& shape,
+                                 const HloFusionInstruction& fusion) {
   auto minor_to_major = LayoutUtil::MinorToMajor(shape.layout());
 
   if (minor_to_major.empty()) {
     return WorkDimensions{};
   }
 
-  NumWorkGroups num_work_groups{1, static_cast<uint64_t>(work_group_count)};
+  int64_t work_group_count = GetWorkGroupCount(fusion);
+  NumWorkGroups num_work_groups{static_cast<uint64_t>(work_group_count)};
 
-  int64_t total_elements = ShapeUtil::ElementsIn(shape);
-  int64_t minor_size = ShapeUtil::GetDimension(shape, minor_to_major[0]);
+  WorkTileSize work_tile_size;
+  int64_t folded_dims = 1;
+  for (int64_t dim : llvm::reverse(minor_to_major)) {
+    int64_t dim_size = ShapeUtil::GetDimension(shape, dim);
+    int64_t accumilated_dim_size = folded_dims * dim_size;
+    if (accumilated_dim_size < work_group_count) {
+      folded_dims *= dim_size;
+    } else if (work_group_count != 1) {
+      work_tile_size.dimensions.push_back(
+          CeilOfRatio(accumilated_dim_size, work_group_count));
+      work_group_count = 1;
+    } else {
+      work_tile_size.dimensions.push_back(dim_size);
+    }
+  }
 
-  NumWorkItems num_work_items;
-  num_work_items.x = minor_size;
-  num_work_items.y = CeilOfRatio(total_elements, minor_size * work_group_count);
-
-  return WorkDimensions{NumWorkClusters{}, num_work_groups, num_work_items};
+  return WorkDimensions{NumWorkClusters{}, num_work_groups, NumWorkItems{},
+                        work_tile_size};
 }
 
 // Get the work dimensions for the given fusion.
@@ -106,7 +118,7 @@ static WorkDimensions GetLoopEmitterWorkDims(const HloFusionInstruction& fusion,
   Shape indexing_shape =
       emitters::LoopFusionKernelEmitter::GetIndexingShape(fusion_spec);
 
-  return GetWorkDimensions(indexing_shape, GetWorkGroupCount(fusion));
+  return GetWorkDimensions(indexing_shape, fusion);
 }
 
 static HloFusionSpec GetLoopFusionSpec(const HloFusionInstruction& fusion) {
@@ -137,8 +149,8 @@ absl::StatusOr<MlirKernelDefinition> EmitFusionKernel(
 
     emitters::LoopFusionKernelEmitter loop_fusion_emitter(
         context, fusion, std::move(fusion_spec), buffer_assignment,
-        GetDefaultBufferAlignment(), work_dimensions, kUnrollFactor,
-        fusion.name(), BackendKind::kCpu);
+        GetDefaultBufferAlignment(), work_dimensions, fusion.name(),
+        BackendKind::kCpu);
     TF_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
                         loop_fusion_emitter.EmitKernelDefinition());
 
