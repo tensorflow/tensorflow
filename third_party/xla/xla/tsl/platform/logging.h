@@ -16,14 +16,41 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_LOGGING_H_
 #define XLA_TSL_PLATFORM_LOGGING_H_
 
-#include "tsl/platform/platform.h"
+#include <string>
 
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
-    defined(PLATFORM_GOOGLE_IOS) || defined(GOOGLE_LOGGING) ||      \
-    defined(PLATFORM_PORTABLE_GOOGLE)
-#include "xla/tsl/platform/google/logging.h"  // IWYU pragma: export
-#else
-#include "xla/tsl/platform/default/logging.h"  // IWYU pragma: export
-#endif
+#include "absl/base/log_severity.h"
+#include "absl/log/check.h"       // IWYU pragma: export
+#include "absl/log/log.h"         // IWYU pragma: export
+#include "absl/log/vlog_is_on.h"  // IWYU pragma: export
+
+namespace tsl {
+
+namespace internal {
+inline void LogString(const char* fname, int line, absl::LogSeverity severity,
+                      const std::string& message) {
+  LOG(LEVEL(severity)).AtLocation(fname, line) << message;
+}
+
+#ifndef CHECK_NOTNULL
+template <typename T>
+T&& CheckNotNull(const char* file, int line, const char* exprtext, T&& t) {
+  if (t == nullptr) {
+    LOG(FATAL).AtLocation(file, line) << std::string(exprtext);  // Crash OK
+  }
+  return std::forward<T>(t);
+}
+
+#define CHECK_NOTNULL(val)                          \
+  ::tsl::internal::CheckNotNull(__FILE__, __LINE__, \
+                                "'" #val "' Must be non NULL", (val))
+#endif  // CHECK_NOTNULL
+
+}  // namespace internal
+
+// Change verbose level of pre-defined files if envorionment
+// variable `env_var` is defined. This is currently a no op in OSS.
+void UpdateLogVerbosityIfDefined(const char* env_var);
+
+}  // namespace tsl
 
 #endif  // XLA_TSL_PLATFORM_LOGGING_H_
