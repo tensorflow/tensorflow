@@ -1812,47 +1812,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "horizontal_input_fusion",
-    srcs = ["horizontal_input_fusion.cc"],
-    hdrs = ["horizontal_input_fusion.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/service:hlo_creation_utils",
-        "//xla/service/gpu:gpu_fusible",
-        "//xla/stream_executor:device_description",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-xla_test(
-    name = "horizontal_input_fusion_test",
-    srcs = ["horizontal_input_fusion_test.cc"],
-    backends = ["gpu"],
-    deps = [
-        ":horizontal_input_fusion",
-        "//xla:error_spec",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:pattern_matcher_gmock",
-        "//xla/hlo/testlib:test",
-        "//xla/service:pattern_matcher",
-        "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/service/gpu/tests:gpu_codegen_test",
-        "//xla/stream_executor:device_description",
-        "//xla/tests:xla_internal_test_main",
-    ],
-)
-
-cc_library(
     name = "horizontal_loop_fusion",
     srcs = ["horizontal_loop_fusion.cc"],
     hdrs = ["horizontal_loop_fusion.h"],
