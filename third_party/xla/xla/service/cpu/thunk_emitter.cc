@@ -207,8 +207,11 @@ absl::Status HandleReduceAndReduceWindowElementalKernelCompilationOptions(
 }  // namespace
 
 static FusionCompiler FusionCompilerFactory(const HloModule& hlo_module) {
+  const DebugOptions& debug_options = hlo_module.config().debug_options();
   FusionCompiler::Options options{
-      hlo_module.config().debug_options().xla_cpu_prefer_vector_width()};
+      debug_options.xla_cpu_prefer_vector_width(),
+      debug_options.xla_cpu_emitter_verification_level(),
+      debug_options.xla_cpu_enable_fast_min_max()};
 
   FusionCompiler::CompilationHooks hooks;
   if (DumpingEnabledForHloModule(hlo_module)) {

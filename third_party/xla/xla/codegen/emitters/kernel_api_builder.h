@@ -52,7 +52,7 @@ void SetIndexDataLayout(mlir::ModuleOp module,
 // Get the default indexing map for the given work dimensions, unroll factor,
 // and output shape.
 IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
-                                          int unroll_factor, const Shape& shape,
+                                          const Shape& shape,
                                           mlir::MLIRContext* ctx);
 
 // Emits the work group id ops annotated with the range of each dimension.

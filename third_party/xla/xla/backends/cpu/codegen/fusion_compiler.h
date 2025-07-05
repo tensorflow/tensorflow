@@ -43,6 +43,8 @@ class FusionCompiler {
 
   struct Options {
     int32_t vector_width;
+    int32_t verification_level;
+    bool fast_min_max;
   };
 
   explicit FusionCompiler(Options options, CompilationHooks hooks = {})
