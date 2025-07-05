@@ -44,7 +44,11 @@ void AbslStringify(Sink& sink, AllReduceStrategy strategy) {
 // The maximum number of input pointers that can be passed to the all-reduce
 // kernel.
 inline constexpr int64_t kMaxNumAllReduceInputPtrs = 8;
-inline constexpr int64_t kNumElementsPerThread = 4;
+// Vector operations are 128 bytes wide => 16 bytes.
+inline constexpr int64_t kVectorOpSize = 16;
+// Number of elements that can be processed by a single thread.
+template <typename T>
+inline constexpr int64_t kNumElementsPerThread = kVectorOpSize / sizeof(T);
 
 // A pointer to a buffer that does not alias with other buffers.
 template <typename U>
