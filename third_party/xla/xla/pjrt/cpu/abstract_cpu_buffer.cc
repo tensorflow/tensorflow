@@ -93,12 +93,25 @@ void CopyCpuBufferToLiteral(const Shape& device_shape,
   CHECK(!device_shape.IsTuple());
   const tsl::AsyncValueRef<CpuDeviceMemory>& b = device_buffer->buffer();
   CHECK(b.IsConcrete());
-  if (primitive_util::IsSubByteNonPredType(device_shape.element_type())) {
-    UnpackIntNToLiteral(device_shape.element_type(), *b, literal,
-                        /*shape_index=*/{});
+
+  std::optional<Literal> staged;
+  MutableLiteralBase* l;
+  if (const Shape& host_shape = literal->shape();
+      host_shape.has_layout() &&
+      !LayoutUtil::IsMonotonicWithDim0Major(host_shape.layout())) {
+    l = &staged.emplace(ShapeUtil::MakeShape(host_shape.element_type(),
+                                             host_shape.dimensions()));
   } else {
-    std::memcpy(literal->untyped_data(), b->untyped_data(),
+    l = literal;
+  }
+  if (primitive_util::IsSubByteNonPredType(device_shape.element_type())) {
+    UnpackIntNToLiteral(device_shape.element_type(), *b, l, /*shape_index=*/{});
+  } else {
+    std::memcpy(l->untyped_data(), b->untyped_data(),
                 ShapeUtil::ByteSizeOf(device_shape));
+  }
+  if (staged.has_value()) {
+    CHECK_OK(literal->CopyFrom(*staged));
   }
 }
 
