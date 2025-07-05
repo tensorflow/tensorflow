@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/command_line_flags.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/init_main.h"
 
