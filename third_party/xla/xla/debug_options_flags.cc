@@ -110,6 +110,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_prefer_vector_width(256);
   opts.set_xla_cpu_max_isa(DefaultMaxIsa());
   opts.set_xla_cpu_generate_unique_c_style_kernel_entry_points(false);
+  opts.set_xla_cpu_emitter_verification_level(0);
 
   opts.set_xla_cpu_enable_fast_math(false);
   // Disable forms of fast math that have caused users problems in the past.
@@ -1025,6 +1026,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "use newer instructions. Available values: SSE4_2, AVX, AVX2, AVX512, "
       "AVX512_VNNI, AVX512_BF16, AMX, and AMX_FP16. (`AMX` will enable both "
       "`AMX_BF16` and `AMX_INT8` instructions.)"));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_emitter_verification_level",
+      int32_setter_for(&DebugOptions::set_xla_cpu_emitter_verification_level),
+      debug_options->xla_cpu_emitter_verification_level(),
+      "Sets how often we verify the emitted modules. Higher levels mean more "
+      "frequent verification. Currently supported: 0, 1."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_crash_on_verification_failures",
       bool_setter_for(

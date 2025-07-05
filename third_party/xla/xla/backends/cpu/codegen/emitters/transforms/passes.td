@@ -84,3 +84,24 @@ def AddReductionFastMathFlagsPass : Pass<"xla-cpu-add-reduction-fast-math-flags"
 
   let constructor = "CreateAddReductionFastMathFlagsPass()";
 }
+
+def AddLoopUnrollFlagsPass : Pass<"xla-cpu-add-loop-unroll-flags", "mlir::func::FuncOp"> {
+  let summary = "Add loop unroll flags to large nested loops.";
+
+  let description = [{
+     Disable loop unrolling for loops that have nested loops larger that the given threshold.
+  }];
+
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+    "mlir::LLVM::LLVMDialect",
+    "mlir::scf::SCFDialect",
+  ];
+
+  let options = [
+    Option<"max_nested_bits_", "max_nested_bits", "int32_t", "256",
+           "The maximum number of bits accessed in a nested loop before disabling unrolling">,
+  ];
+
+  let constructor = "CreateAddLoopUnrollFlagsPass()";
+}
