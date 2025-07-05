@@ -59,6 +59,7 @@ cc_library(
         "//xla/pjrt/c:__pkg__",
     ],
     deps = [
+        ":plugin_metadata",
         ":profiler_c_api_hdrs",
         ":profiler_error",
         "//xla/tsl/platform:logging",
@@ -67,6 +68,22 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:profiler_factory_impl",
         "@local_tsl//tsl/profiler/lib:profiler_interface",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "plugin_metadata",
+    srcs = ["plugin_metadata.cc"],
+    hdrs = ["plugin_metadata.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/tsl/profiler/utils:xplane_builder",
+        "//xla/tsl/profiler/utils:xplane_schema",
+        "//xla/tsl/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/base:builddata",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
     alwayslink = True,

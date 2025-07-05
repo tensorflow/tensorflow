@@ -78,9 +78,9 @@ tsl_cc_test(
     deps = [
         ":post_process_single_host_xplane",
         "//xla/tsl/platform:test",
-        "//xla/tsl/profiler/utils:trace_utils",
         "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_schema",
+        "//xla/tsl/profiler/utils:xplane_utils",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
