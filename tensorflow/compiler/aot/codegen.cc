@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/service/cpu/buffer_info_util.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/cpu_executable.h"
+#include "xla/service/cpu/executable.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
