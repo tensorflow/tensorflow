@@ -329,6 +329,10 @@ absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
   std::map<int, std::set<int>> slice_id_to_node_ids;
   std::map<int, int> node_id_to_device_count;
   std::vector<int> device_ids;
+
+  int max_device_id = -1;
+  std::vector<int> global_device_id_to_slice_id;
+
   for (int i = 0; i < global_topology.nodes_size(); ++i) {
     const LocalTopologyProto& local_topology = global_topology.nodes(i);
 
@@ -341,8 +345,17 @@ absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
       slice_id_to_node_ids[device.slice_index()].insert(
           local_topology.node_id());
       device_ids.push_back(device.global_device_id());
+      max_device_id = std::max(max_device_id, device.global_device_id());
+      if (max_device_id >= global_device_id_to_slice_id.size()) {
+        global_device_id_to_slice_id.resize(max_device_id + 1);
+      }
+      global_device_id_to_slice_id[device.global_device_id()] =
+          device.slice_index();
     }
   }
+
+  gpu_topology.mutable_global_device_id_to_slice_id()->Add(
+      global_device_id_to_slice_id.begin(), global_device_id_to_slice_id.end());
 
   if (IsGpuTopologySymmetric(slice_id_to_node_ids, node_id_to_device_count)) {
     gpu_topology.set_num_slices(slice_id_to_node_ids.size());
