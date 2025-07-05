@@ -142,6 +142,9 @@ absl::Status LoadOpenCLOnce() {
   }
 #else
   libopencl = dlopen(kClLibName, RTLD_NOW | RTLD_LOCAL);
+  if (!libopencl) {
+    libopencl = dlopen("libOpenCL.so.1", RTLD_NOW | RTLD_LOCAL);
+  }
 #endif
   if (libopencl) {
     TFLITE_LOG(INFO) << "Loaded OpenCL library with dlopen.";
