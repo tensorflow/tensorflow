@@ -314,7 +314,7 @@ class XlaCompiledCpuFunction {
   // The index remains constant for every instance of XlaCompiledCpuFunction
   // generated from the same static data, and might not be cheap to determine.
   // Recommended usage is to capture this in a variable for re-use.
-  int LookupVariableIndex(const string& name) const;
+  int LookupVariableIndex(absl::string_view name) const;
 
   // Returns the 0-based index for the result with the given `name`.
   // Returns -1 if the name wasn't found, or data isn't available.
