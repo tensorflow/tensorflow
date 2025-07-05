@@ -28,6 +28,10 @@ namespace xla::cpu {
 struct DotLibraryRewriterOptions {
   bool use_onednn = false;
   bool use_xnnpack = false;
+  // Temporarily using the DISABLED option to represent dot fusion mode (fusions
+  // starting with dots).
+  DebugOptions::XnnGraphFusionMode xnn_fusion_mode =
+      DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED;
 };
 
 // Rewrites suitable Dot operations into XNNPACK fusions.

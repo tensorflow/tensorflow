@@ -41,6 +41,10 @@ class LibraryMatcher {
     return false;
   }
 
+  // Returns true if we should start a new fusion containing just the given HLO
+  // instruction.
+  virtual bool ShouldCreateFusion(const HloInstruction* instr) { return false; }
+
   // Returns the output type of the library op, so we can insert a convert node
   // if the op does not support the original HLO output type.
   virtual PrimitiveType LibraryOpOutputType(const HloInstruction* instr) {

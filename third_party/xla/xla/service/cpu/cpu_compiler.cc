@@ -571,7 +571,11 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // calling `DotDecomposer` early is okay.
   DotLibraryRewriterOptions options = {
       /*use_onednn=*/module->config().debug_options().xla_cpu_use_onednn(),
-      /*use_xnnpack=*/module->config().debug_options().xla_cpu_use_xnnpack()};
+      /*use_xnnpack=*/module->config().debug_options().xla_cpu_use_xnnpack(),
+      /*xnn_fusion_mode=*/
+      module->config()
+          .debug_options()
+          .xla_cpu_experimental_xnn_graph_fusion_mode()};
   if (options.use_onednn || options.use_xnnpack) {
     HloPassPipeline lib_pipeline("dot-library-passes");
     lib_pipeline.AddPass<DotDecomposer>();
