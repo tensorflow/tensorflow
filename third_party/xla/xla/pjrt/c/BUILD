@@ -353,6 +353,7 @@ xla_cc_binary(
     linkopts = if_macos(
         [
             "-Wl,-exported_symbol,_GetPjrtApi",
+            "-Wl,-install_name,@rpath/pjrt_c_api_cpu_plugin.dylib",
             "-Wl,-undefined,error",
         ],
         [
