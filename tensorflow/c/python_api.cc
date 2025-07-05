@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/c/python_api.h"
 
+#include <cstddef>
 #include <string>
 
+#include "absl/log/check.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/framework/cpp_shape_inference.pb.h"
 #include "tensorflow/core/framework/full_type.pb.h"
