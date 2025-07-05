@@ -35,10 +35,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/metrics_hook_interface.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -77,7 +77,7 @@ class AotCompilationResult {
     return Unimplemented("LoadExecutable unimplemented.");
   }
 
-  virtual absl::StatusOr<std::unique_ptr<BufferAssignment>> buffer_assignment()
+  virtual absl::StatusOr<const BufferAssignmentProto*> buffer_assignment_proto()
       const {
     return Unimplemented("buffer_assignment unimplemented.");
   }
