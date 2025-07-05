@@ -47,7 +47,7 @@ final class Model {
   ///   - modelData: Binary data representing a TensorFlow Lite model.
   init?(modelData: Data) {
     self.data = modelData
-    self.cModel = modelData.withUnsafeBytes { TfLiteModelCreate($0, modelData.count) }
+    self.cModel = modelData.withUnsafeBytes { TfLiteModelCreate($0.baseAddress, modelData.count) }
   }
 
   deinit {
