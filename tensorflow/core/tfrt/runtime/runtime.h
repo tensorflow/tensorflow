@@ -27,10 +27,13 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/common_runtime/cost_util.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/request_cost_accessor.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -217,7 +220,18 @@ class Runtime {
       return create_request_queue_fn_(request_id);
     }
 
-    return work_queue_->InitializeRequest(request_id);
+    const uint64_t start_t = tensorflow::EnvTime::NowMicros();
+    absl::StatusOr<std::unique_ptr<WorkQueueInterface>> work_queue =
+        work_queue_->InitializeRequest(request_id);
+    const uint64_t end_t = tensorflow::EnvTime::NowMicros();
+    std::unique_ptr<tensorflow::RequestCostAccessor> cost_accessor =
+        tensorflow::CreateRequestCostAccessor();
+    if (cost_accessor != nullptr &&
+        cost_accessor->GetRequestCost() != nullptr) {
+      cost_accessor->GetRequestCost()->RecordMetrics(
+          {{"get_work_queue_delay_usecs", end_t - start_t}});
+    }
+    return work_queue;
   }
 
  private:
