@@ -172,6 +172,10 @@ void ImportEntryComputationResultLayoutAndTiles(
           result_layouts.push_back(layout_attrs.first);
           result_tiles.push_back(layout_attrs.second);
         });
+    module->setAttr(kEntryComputationResultLayout,
+                    builder.getArrayAttr(result_layouts));
+    module->setAttr(kEntryComputationResultTiles,
+                    builder.getArrayAttr(result_tiles));
     return;
   }
 
