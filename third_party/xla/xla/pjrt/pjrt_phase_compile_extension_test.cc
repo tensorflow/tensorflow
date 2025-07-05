@@ -13,9 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+#include <string>
+#include <vector>
+
 #include <gtest/gtest.h>
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_phase_compile_internal.h"
 #include "xla/pjrt/pjrt_phase_compile_sample_plugin.h"
 
 namespace pjrt {
@@ -57,6 +62,31 @@ TEST(PhaseCompileExtensionTest,
   destroy_compiler_args.phase_compiler = get_compiler_args.phase_compiler;
   phase_compile_extension.phase_compile_destroy_compiler(
       &destroy_compiler_args);
+}
+
+TEST(PhaseCompileExtensionTest, TestPhaseCompileExtensionForCBuffersDestroy) {
+  // Create a phase compile extension.
+  PJRT_PhaseCompile_Extension phase_compile_extension =
+      pjrt::phase_compile_sample_plugin::CreateSamplePhaseCompileExtension();
+
+  // Create a C-style buffer.
+  std::vector<std::string> strings = {"string1", "string2"};
+  const char** char_buffers;
+  const size_t* char_buffer_sizes;
+  size_t num_strings;
+  pjrt::ConvertCppStringsToCharBuffer(strings, &char_buffers,
+                                      &char_buffer_sizes, &num_strings);
+
+  // Destroy the C-style buffer.
+  PJRT_PhaseCompile_C_Buffers_Destroy_Args destroy_c_buffers_args;
+  destroy_c_buffers_args.struct_size =
+      sizeof(PJRT_PhaseCompile_C_Buffers_Destroy_Args);
+  destroy_c_buffers_args.extension_start = &phase_compile_extension.base;
+  destroy_c_buffers_args.char_buffers = char_buffers;
+  destroy_c_buffers_args.char_buffer_sizes = char_buffer_sizes;
+  destroy_c_buffers_args.num_char_buffers = num_strings;
+  phase_compile_extension.phase_compile_c_buffers_destroy(
+      &destroy_c_buffers_args);
 }
 
 }  // namespace
