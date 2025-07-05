@@ -179,7 +179,7 @@ void MatchInstructionsByPosition(
 
 }  // namespace
 
-void MatchSameTypeInstructions(
+void MatchSameOpcodeInstructions(
     const HloGumgraph& left_graph, const HloGumgraph& right_graph,
     const std::vector<const HloInstructionNode*>& left_instructions,
     const std::vector<const HloInstructionNode*>& right_instructions,
@@ -228,8 +228,8 @@ void MatchSameTypeInstructions(
 // from the two computations being mapped, or two parents being mapped.
 void MatchLeafInstructions(
     const HloGumgraph& left_graph, const HloGumgraph& right_graph,
-    const std::vector<HloInstructionNode*>& left_instructions,
-    const std::vector<HloInstructionNode*>& right_instructions,
+    const std::vector<const HloInstructionNode*>& left_instructions,
+    const std::vector<const HloInstructionNode*>& right_instructions,
     HloGumgraphMappings& mappings, const MatcherType& matcher_type,
     bool map_by_position) {
   absl::flat_hash_map<const HloOpcode,
@@ -243,9 +243,9 @@ void MatchLeafInstructions(
     instructions_by_opcode[r->instruction->opcode()].second.push_back(r);
   }
   for (const auto& [opcode, instructions] : instructions_by_opcode) {
-    MatchSameTypeInstructions(left_graph, right_graph, instructions.first,
-                              instructions.second, mappings, matcher_type,
-                              map_by_position);
+    MatchSameOpcodeInstructions(left_graph, right_graph, instructions.first,
+                                instructions.second, mappings, matcher_type,
+                                map_by_position);
   }
 }
 

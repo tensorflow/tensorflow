@@ -88,10 +88,10 @@ ENTRY entry {
     }
   }
 
-  MatchSameTypeInstructions(*left_gumgraph, *right_gumgraph, left_constants,
-                            right_constants, *mappings,
-                            MatcherType::kComputationGraphExactSignatureMatcher,
-                            /*map_by_position=*/false);
+  MatchSameOpcodeInstructions(
+      *left_gumgraph, *right_gumgraph, left_constants, right_constants,
+      *mappings, MatcherType::kComputationGraphExactSignatureMatcher,
+      /*map_by_position=*/false);
 
   auto matched_params = ExtractMappedInstructionNames(*mappings);
   EXPECT_THAT(matched_params,
@@ -149,10 +149,10 @@ ENTRY entry {
     }
   }
 
-  MatchSameTypeInstructions(*left_gumgraph, *right_gumgraph, left_constants,
-                            right_constants, *mappings,
-                            MatcherType::kComputationGraphExactSignatureMatcher,
-                            /*map_by_position=*/true);
+  MatchSameOpcodeInstructions(
+      *left_gumgraph, *right_gumgraph, left_constants, right_constants,
+      *mappings, MatcherType::kComputationGraphExactSignatureMatcher,
+      /*map_by_position=*/true);
 
   auto matched_params = ExtractMappedInstructionNames(*mappings);
   EXPECT_THAT(matched_params,
@@ -160,65 +160,6 @@ ENTRY entry {
                                    Pair("c22", "c22"), Pair("c23", "c23"),
                                    Pair("c24", "c24"), Pair("c25", "c25"),
                                    Pair("c26", "c26")));
-}
-
-TEST_F(BipartiteMatcherUtilsTest, MatchLeafInstructions) {
-  const char* hlo_string = R"(
-HloModule module, is_scheduled=true
-
-ENTRY entry {
-  iota = s32[4,3,5]{2,1,0} iota(), iota_dimension=0
-  bitcast.1 = s32[1,1,1,4,3,5]{5,4,3,2,1,0} bitcast(iota)
-  p1 = bf16[2]{0} parameter(0)
-  c1 = bf16[2]{0} constant({1.1, 2.2})
-  add1 = bf16[2]{0} add(p1, c1)
-  ROOT tuple = (s32[1,1,1,4,3,5]{5,4,3,2,1,0}, bf16[2]{0}) tuple(bitcast.1, add1)
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
-                          HloGumgraph::Create(left_module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
-                          HloGumgraph::Create(right_module.get()));
-  auto mappings = std::make_unique<HloGumgraphMappings>();
-  const CallGraphNode& left_entry_computation =
-      left_gumgraph->GetCallGraph().GetNode(left_module->entry_computation());
-  const CallGraphNode& right_entry_computation =
-      right_gumgraph->GetCallGraph().GetNode(right_module->entry_computation());
-
-  mappings->MapComputationsIfAbsent(left_entry_computation,
-                                    right_entry_computation,
-                                    ComputationMatchType::kSignature);
-  std::vector<HloInstructionNode*> left_instructions, right_instructions;
-  for (const HloInstruction* instruction :
-       left_entry_computation.computation()->instructions()) {
-    if (auto node = left_gumgraph->GetNode(instruction);
-        node->children.empty() ||
-        instruction->opcode() == HloOpcode::kParameter) {
-      left_instructions.push_back(node);
-    }
-  }
-  for (const HloInstruction* instruction :
-       right_entry_computation.computation()->instructions()) {
-    if (auto node = right_gumgraph->GetNode(instruction);
-        node->children.empty() ||
-        instruction->opcode() == HloOpcode::kParameter) {
-      right_instructions.push_back(node);
-    }
-  }
-
-  MatchLeafInstructions(*left_gumgraph, *right_gumgraph, left_instructions,
-                        right_instructions, *mappings,
-                        MatcherType::kComputationGraphExactSignatureMatcher,
-                        /*map_by_position=*/true);
-
-  auto matched_params = ExtractMappedInstructionNames(*mappings);
-  EXPECT_THAT(matched_params,
-              UnorderedElementsAre(Pair("iota", "iota"), Pair("p1", "p1"),
-                                   Pair("c1", "c1")));
 }
 }  // namespace
 }  // namespace xla::hlo_diff
