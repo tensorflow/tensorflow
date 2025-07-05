@@ -59,6 +59,8 @@ class LoopFusion final : public EmitterBase {
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const override;
 
+  WorkDimensions GetWorkDimensions() const;
+
  private:
   const HloFusionAnalysis& analysis_;
   LaunchDimensionsConfig config_;
