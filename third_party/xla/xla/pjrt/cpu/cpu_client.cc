@@ -1319,7 +1319,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     const RunId& run_id, const ExecuteOptions& options,
     PjRtCpuClient::CollectiveLaunchEvent last_collective_launch_event,
-    bool fill_future, PjRtCpuDevice* device) {
+    bool fill_future, PjRtCpuDevice* device) const {
   tsl::profiler::TraceMe traceme("PjRtCpuExecutable::ExecuteHelper");
 
   std::shared_ptr<DeviceAssignment> device_assignment;
@@ -1851,7 +1851,7 @@ absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 PjRtCpuExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    std::optional<std::vector<PjRtFuture<>>>& returned_futures) {
+    std::optional<std::vector<PjRtFuture<>>>& returned_futures) const {
   RunId run_id(options.launch_id);
   tsl::profiler::TraceMeProducer activity("PjRtCpuExecutable::Execute",
                                           tsl::profiler::ContextType::kPjRt,
@@ -1977,7 +1977,7 @@ absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCpuExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
-    bool fill_future) {
+    bool fill_future) const {
   RunId run_id(options.launch_id);
   tsl::profiler::TraceMeProducer activity("PjRtCpuExecutable::ExecuteSharded",
                                           tsl::profiler::ContextType::kPjRt,
@@ -2018,7 +2018,7 @@ absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCpuExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
-    bool fill_future) {
+    bool fill_future) const {
   RunId run_id(options.launch_id);
   tsl::profiler::TraceMeProducer activity("PjRtCpuExecutable::ExecutePortable",
                                           tsl::profiler::ContextType::kPjRt,
