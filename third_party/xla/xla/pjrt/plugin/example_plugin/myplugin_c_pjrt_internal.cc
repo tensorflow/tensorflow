@@ -19,10 +19,13 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/base/no_destructor.h"
 #include "absl/status/status.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "xla/pjrt/extensions/example/example_extension.h"
+#include "xla/pjrt/extensions/example/example_extension_cpp.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/example_plugin/myplugin_cpp_pjrt.h"
 
@@ -54,11 +57,18 @@ const PJRT_Api* GetMyPluginPjrtApi() {
   static PJRT_Layouts_Extension layouts_extension =
       pjrt::CreateLayoutsExtension(nullptr);
 
+  static absl::NoDestructor<xla::ExampleExtensionCpp> example_extension_cpp(
+      "MyPlugin:");
+
+  static PJRT_Example_Extension example_extension =
+      pjrt::CreateExampleExtension(&layouts_extension.base,
+                                   example_extension_cpp.get());
+
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       myplugin_pjrt::PJRT_MypluginClient_Create,
       myplugin_pjrt::PJRT_MypluginExecuteContext_Create,
       myplugin_pjrt::PJRT_MypluginDeviceTopology_Create,
-      pjrt::PJRT_Plugin_Initialize_NoOp, &layouts_extension.base,
+      pjrt::PJRT_Plugin_Initialize_NoOp, &example_extension.base,
       pjrt::PJRT_Plugin_Attributes_Xla);
 
   printf("MyPlugin called GetPjrtApi\n");
