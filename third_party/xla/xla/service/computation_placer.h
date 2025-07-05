@@ -54,6 +54,9 @@ class DeviceAssignment : public Array2D<int64_t> {
     int computation_id;
   };
 
+  int64_t DeviceId(int replica, int computation) const {
+    return (*this)(replica, computation);
+  }
   // Finds the (replica ID, computation ID) pair for the given device.
   absl::StatusOr<LogicalID> LogicalIdForDevice(GlobalDeviceId device_id) const;
   // Finds the replica ID for the given device.
@@ -88,13 +91,6 @@ class ComputationPlacer {
  public:
   ComputationPlacer() = default;
   virtual ~ComputationPlacer() = default;
-
-  // Returns the device id assigned to the given replica and computation
-  // instance for [replica_count x computation_count] setup. The returned device
-  // id must match the assignment from PlaceReplicatedComputation().
-  virtual absl::StatusOr<int> DeviceId(int replica, int computation,
-                                       int replica_count,
-                                       int computation_count);
 
   // Returns the device ids assigned to a set of replicated computations, given
   // the number of replicas and the number of computations.

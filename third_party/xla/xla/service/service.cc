@@ -16,16 +16,23 @@ limitations under the License.
 #include "xla/service/service.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <numeric>
+#include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -61,6 +68,9 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -1128,15 +1138,15 @@ DeviceHandle Service::SingleComputationDeviceHandle() const {
 
 absl::StatusOr<std::vector<se::StreamExecutor*>> Service::Replicas(
     const Backend& backend, const DeviceHandle& device_handle) const {
+  TF_ASSIGN_OR_RETURN(
+      DeviceAssignment da,
+      backend.computation_placer()->AssignDevices(
+          options_.number_of_replicas(), device_handle.device_count()));
   std::vector<se::StreamExecutor*> replicas;
   for (int replica = 0; replica < options_.number_of_replicas(); ++replica) {
     // From the computation placer, find out the device ids of the replicas for
     // the given device handle.
-    TF_ASSIGN_OR_RETURN(
-        int device_ordinal,
-        backend.computation_placer()->DeviceId(replica, device_handle.handle(),
-                                               options_.number_of_replicas(),
-                                               device_handle.device_count()));
+    int64_t device_ordinal = da.DeviceId(replica, device_handle.handle());
     TF_ASSIGN_OR_RETURN(auto executor, backend.stream_executor(device_ordinal));
     replicas.push_back(executor);
   }

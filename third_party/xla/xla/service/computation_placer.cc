@@ -25,6 +25,8 @@ limitations under the License.
 
 #include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -144,23 +146,12 @@ std::string DeviceAssignment::ToString() const {
   return output;
 }
 
-absl::StatusOr<int> ComputationPlacer::DeviceId(int replica, int computation,
-                                                int replica_count,
-                                                int computation_count) {
-  TF_RET_CHECK(replica < replica_count);
-  TF_RET_CHECK(computation < computation_count);
-  return computation * replica_count + replica;
-}
-
 absl::StatusOr<DeviceAssignment> ComputationPlacer::AssignDevices(
     int replica_count, int computation_count) {
   DeviceAssignment assignment(replica_count, computation_count);
   for (int replica = 0; replica < replica_count; ++replica) {
     for (int computation = 0; computation < computation_count; ++computation) {
-      TF_ASSIGN_OR_RETURN(
-          int device_id,
-          DeviceId(replica, computation, replica_count, computation_count));
-      assignment(replica, computation) = device_id;
+      assignment(replica, computation) = computation * replica_count + replica;
     }
   }
   return assignment;
