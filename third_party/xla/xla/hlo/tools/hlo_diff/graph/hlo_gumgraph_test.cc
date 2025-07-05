@@ -25,6 +25,7 @@
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_value.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -33,6 +34,7 @@ namespace {
 
 using ::testing::Field;
 using ::testing::FieldsAre;
+using ::testing::IsEmpty;
 using ::testing::Pair;
 using ::testing::Pointee;
 using ::testing::Property;
@@ -410,6 +412,66 @@ ENTRY entry {
   //           graph_r->GetRoot().props.subgraph_fingerprint);
   EXPECT_EQ(graph_l->GetRoot().props.subgraph_fingerprint,
             graph_r->GetRoot().props.subgraph_fingerprint);
+}
+
+TEST_F(HloGumgraphTest, PrecomputeInstructionDependenciesWorks) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  foo = f32[8,2048]{1,0:T(8,128)} parameter(0)
+  bar = f32[8,2048]{1,0:T(8,128)} constant(0)
+  baz = f32[8,2048]{1,0:T(8,128)} parameter(1)
+  add_1 = f32[8,2048]{1,0:T(8,128)} add(foo, bar)
+  add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz)
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                          HloGumgraph::Create(module.get()));
+
+  const auto* foo_node = SelectNodeByName(*graph, "foo");
+  const auto* bar_node = SelectNodeByName(*graph, "bar");
+  const auto* baz_node = SelectNodeByName(*graph, "baz");
+  const auto* add_1_node = SelectNodeByName(*graph, "add_1");
+  const auto* add_0_node = SelectNodeByName(*graph, "add_0");
+
+  EXPECT_THAT(foo_node->used_values, IsEmpty());
+  EXPECT_THAT(
+      foo_node->value_uses,
+      ElementsAre(AllOf(Field(&HloUse::instruction, add_1_node->instruction),
+                        Field(&HloUse::operand_number, 0))));
+
+  EXPECT_THAT(bar_node->used_values, IsEmpty());
+  EXPECT_THAT(
+      bar_node->value_uses,
+      ElementsAre(AllOf(Field(&HloUse::instruction, add_1_node->instruction),
+                        Field(&HloUse::operand_number, 1))));
+
+  EXPECT_THAT(baz_node->used_values, IsEmpty());
+  EXPECT_THAT(
+      baz_node->value_uses,
+      ElementsAre(AllOf(Field(&HloUse::instruction, add_0_node->instruction),
+                        Field(&HloUse::operand_number, 1))));
+
+  EXPECT_THAT(
+      add_1_node->used_values,
+      UnorderedElementsAre(Pointee(Property(&HloValue::defining_instruction,
+                                            foo_node->instruction)),
+                           Pointee(Property(&HloValue::defining_instruction,
+                                            bar_node->instruction))));
+  EXPECT_THAT(
+      add_1_node->value_uses,
+      ElementsAre(AllOf(Field(&HloUse::instruction, add_0_node->instruction),
+                        Field(&HloUse::operand_number, 0))));
+
+  EXPECT_THAT(
+      add_0_node->used_values,
+      UnorderedElementsAre(Pointee(Property(&HloValue::defining_instruction,
+                                            add_1_node->instruction)),
+                           Pointee(Property(&HloValue::defining_instruction,
+                                            baz_node->instruction))));
+  EXPECT_THAT(add_0_node->value_uses, IsEmpty());
 }
 
 TEST_F(HloGumgraphTest, CalledComputationWithMultipleCallsitesAreNotInlined) {
