@@ -134,8 +134,7 @@ ENTRY entry {
 
 TEST_F(BottomUpMatcherTest,
        GreedyLimitedCandidatesBottomUpMatcherAmbiguousMatch) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
-                          ParseAndReturnVerifiedModule(R"(
+  const char* hlo_string = R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -146,23 +145,14 @@ ENTRY entry {
   add.2 = f32[] add(add.0, constant.0)
   subtract.1 = f32[] subtract(add.1, add.2)
 }
-)"));
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                          ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
                           HloGumgraph::Create(module_l.get()));
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
-                          ParseAndReturnVerifiedModule(R"(
-HloModule module, is_scheduled=true
-
-ENTRY entry {
-  constant.0 = f32[] constant(0)
-  constant.1 = f32[] constant(0)
-  add.10 = f32[] add(constant.0, constant.1)
-  add.11 = f32[] add(constant.0, constant.1)
-  add.12 = f32[] add(add.10, constant.0)
-  subtract.1 = f32[] subtract(add.11, add.12)
-}
-)"));
+                          ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
                           HloGumgraph::Create(module_r.get()));
   auto mappings = std::make_unique<HloGumgraphMappings>();
@@ -183,8 +173,8 @@ ENTRY entry {
   EXPECT_THAT(mapped_nodes,
               UnorderedElementsAre(
                   Pair("constant.0", "constant.0"),
-                  Pair("constant.1", "constant.1"), Pair("add.0", "add.10"),
-                  Pair("add.1", "add.11"), Pair("add.2", "add.12"),
+                  Pair("constant.1", "constant.1"), Pair("add.0", "add.0"),
+                  Pair("add.1", "add.1"), Pair("add.2", "add.2"),
                   Pair("subtract.1", "subtract.1"), Pair("root_L", "root_R")));
 }
 
