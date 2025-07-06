@@ -43,8 +43,8 @@ Controller::Controller(PathConfig path_config, Env* env)
 }
 Controller::~Controller() { delete api_def_map_; }
 
-const void Controller::WriteFile(const string& file_path,
-                                 const SourceCode& code) const {
+void Controller::WriteFile(const string& file_path,
+                           const SourceCode& code) const {
   TF_CHECK_OK(WriteStringToFile(env_, file_path, code.Render())) << file_path;
 }
 
