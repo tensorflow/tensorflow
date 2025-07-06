@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_CHANNEL_TRACKER_H_
 #define XLA_SERVICE_CHANNEL_TRACKER_H_
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
