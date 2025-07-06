@@ -298,6 +298,27 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
          InlineComposites(instruction, composites_to_preserve_);
 }
 
+bool CallInliner::ShouldInline(const CallGraph& call_graph,
+                               HloInstruction* instruction) const {
+  if (!IsInlineableCallOp(instruction)) {
+    return false;
+  }
+
+  if (should_inline_.has_value()) {
+    if (!(*should_inline_)(call_graph, instruction)) {
+      return false;
+    }
+  }
+
+  if (single_call_site_) {
+    return call_graph.GetNode(instruction->to_apply())
+               .caller_callsites()
+               .size() == 1;
+  }
+
+  return true;
+}
+
 absl::StatusOr<bool> CallInliner::InlineAndLegalize(
     const CallGraph& call_graph, HloComputation* computation,
     absl::Span<HloInstruction* const> instruction_sequence) const {
@@ -309,10 +330,7 @@ absl::StatusOr<bool> CallInliner::InlineAndLegalize(
     // used for parallel device computation.
     // TODO(b/229887502): update the inliner to ignore only parallel
     // device type async call instead of all.
-    if (IsInlineableCallOp(instruction) &&
-        (!single_call_site_ || call_graph.GetNode(instruction->to_apply())
-                                       .caller_callsites()
-                                       .size() == 1)) {
+    if (ShouldInline(call_graph, instruction)) {
       // The caller instruction will get removed after inlining. Record the
       // callee computation beforehand, so we can find its schedule.
       HloComputation* callee = instruction->to_apply();
