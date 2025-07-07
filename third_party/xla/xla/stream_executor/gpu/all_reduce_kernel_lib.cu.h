@@ -158,7 +158,9 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
     const AllReduceKernelParams<T>& args) {
   const int64_t offset = blockIdx.x * args.num_elements_per_block +
                          threadIdx.x * kNumElementsPerThread;
-  const int64_t offset_end = (blockIdx.x + 1) * args.num_elements_per_block;
+  const int64_t offset_end =
+      std::min((blockIdx.x + 1) * args.num_elements_per_block,
+               args.num_elements_per_rank);
 
   const int64_t block_stride = kNumElementsPerThread * blockDim.x;
   // Responsibility for accumulation for this rank.
@@ -167,14 +169,18 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
   // Step1: Copy data from input buffer to the local shared buffer.
   // Each GPU will copy data from its local input buffer to its own local shared
   // buffer from where it will be read by participating devices (PULLed).
-  // We use a grid stride loop for simplicity.
-  {
-    const int64_t grid_offset =
-        kNumElementsPerThread * (blockIdx.x * blockDim.x + threadIdx.x);
-    const int64_t grid_stride = kNumElementsPerThread * blockDim.x * gridDim.x;
-    for (int i = grid_offset; i < args.num_elements; i += grid_stride) {
-      VecStore(args.remote_input_buffers[args.rank] + i,
-               VecLoad(args.input_buffer + i));
+  for (int i = offset; i < offset_end; i += block_stride) {
+#pragma unroll
+    for (int j = 0; j < kMaxNumAllReduceInputPtrs; ++j) {
+      if (j >= args.num_ranks) {
+        continue;
+      }
+      const int64_t offset_i = j * args.num_elements_per_rank + i;
+      if (offset_i >= args.num_elements) {
+        continue;
+      }
+      VecStore(args.remote_input_buffers[args.rank] + offset_i,
+               VecLoad(args.input_buffer + offset_i));
     }
   }
 
@@ -189,6 +195,9 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
     // Each rank is only responsible for accumulating num_elements_per_rank
     // elements.
     const int64_t offset_i = rank_offset + i;
+    if (offset_i >= args.num_elements) {
+      continue;
+    }
     Vec<T> acc = VecLoad(args.remote_input_buffers[0] + offset_i);
 
     // Since `remote_input_ptrs` are provided in rank order, we get stable
