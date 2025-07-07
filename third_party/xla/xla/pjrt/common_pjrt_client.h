@@ -171,6 +171,14 @@ class CommonPjRtClient : public PjRtClient {
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer) {
     return absl::UnimplementedError("LinearizeHostBufferInto is not supported");
   }
+
+  virtual void ScheduleRemoteSend(
+      PjRtMemorySpace* memory_space,
+      tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
+      std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events,
+      tsl::RCReference<PjRtDeviceEventPromise> usage_event_promise,
+      PjRtFuture<std::string> serialized_descriptor,
+      PjRtBuffer::RemoteSendCallback on_done);
 };
 
 // TODO(parkers): Merge everything here into CommonPjRtBuffer.
@@ -181,6 +189,9 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
   // The implementation of logical_on_device_shape may involve a blocking
   // device to host transfer to read the metadata of dynamic shape.
   absl::StatusOr<Shape> logical_on_device_shape() override;
+
+  void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
+                          RemoteSendCallback on_done) override;
 
   // This behaves like CopyToMemorySpace for memory space pairs which
   // require no layout changes.

@@ -283,6 +283,66 @@ absl::StatusOr<xla::Shape> CommonPjRtClient::MakeDefaultShapeForMemorySpace(
   return shape;
 }
 
+void CommonPjRtBufferImpl::CopyToRemoteDevice(
+    PjRtFuture<std::string> serialized_descriptor, RemoteSendCallback on_done) {
+  auto* common_client = tensorflow::down_cast<CommonPjRtClient*>(client());
+  std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events;
+  tsl::RCReference<PjRtDeviceEventPromise> usage_event_promise;
+  tsl::RCReference<CommonPjRtRawBuffer> raw_buffer;
+  auto hold_status = AcquireScopedRawBuffer(
+      [&](tsl::RCReference<CommonPjRtRawBuffer> buf_raw_buffer,
+          std::vector<tsl::RCReference<tsl::AsyncValue>> buf_definition_events)
+          -> absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> {
+        raw_buffer = std::move(buf_raw_buffer);
+        definition_events = std::move(buf_definition_events);
+        tsl::RCReference<PjRtDeviceEvent> usage_event;
+        if (common_client->event_tracking_enabled()) {
+          // Dependencies are added later either to the src_buffer_ptr's
+          // definition events if they are not yet available, and to a boxcar's
+          // ready event once the send is added to a boxcar.
+          const auto& current_anno =
+              tsl::profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
+          std::string op_name =
+              !current_anno.pending_op_name.empty()
+                  ? absl::StrCat(" Op:", current_anno.pending_op_name)
+                  : "";
+          TF_ASSIGN_OR_RETURN(
+              std::tie(usage_event_promise, usage_event),
+              common_client->CreateLinkedEventPromise(
+                  memory_space(), absl::StrCat("RemoteSend", op_name)));
+        } else {
+          TF_ASSIGN_OR_RETURN(std::tie(usage_event_promise, usage_event),
+                              common_client->CreateLinkedEventPromise(
+                                  memory_space(), "CopyToRemoteDevice"));
+        }
+        return usage_event;
+      },
+      "CopyToRemoteDevice()");
+  if (!hold_status.ok()) {
+    on_done(hold_status, /*sends_were_enqueued=*/false);
+    return;
+  }
+
+  common_client->ScheduleRemoteSend(
+      memory_space(), std::move(raw_buffer), std::move(definition_events),
+      std::move(usage_event_promise), std::move(serialized_descriptor),
+      std::move(on_done));
+}
+
+void CommonPjRtClient::ScheduleRemoteSend(
+    PjRtMemorySpace* memory_space,
+    tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
+    std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events,
+    tsl::RCReference<PjRtDeviceEventPromise> usage_event_promise,
+    PjRtFuture<std::string> serialized_descriptor,
+    PjRtBuffer::RemoteSendCallback on_done) {
+  auto error = absl::UnimplementedError(
+      absl::StrCat("ScheduleRemoteSend is not implemented for %s",
+                   memory_space->DebugString()));
+  on_done(error, /*sends_were_enqueued=*/false);
+  usage_event_promise->SetError(error);
+}
+
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtBufferImpl::DirectCopyToMemorySpace(
     PjRtMemorySpace* dst_memory_space) {
