@@ -42,6 +42,7 @@ py_strict_library(
     ],
 )
 
+# THIS IS A TEST
 py_strict_binary(
     name = "mobilenet",
     srcs = ["mobilenet.py"],
