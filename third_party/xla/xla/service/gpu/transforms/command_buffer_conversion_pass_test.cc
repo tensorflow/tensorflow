@@ -502,6 +502,32 @@ TEST(CommandBufferConversionPassTest, ConvertsAsyncPairsMixedWithOtherThunks) {
   EXPECT_EQ(thunks_in_command_buffer[4]->kind(), Thunk::kAllGatherDone);
 }
 
+TEST(CommandBufferConversionPassTest, DontConvertIfNotMinGraphSize) {
+  std::vector<std::unique_ptr<Thunk>> thunks;
+  Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo();
+
+  thunks.push_back(CreateCopyThunk());
+
+  auto root_thunk =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
+  DebugOptions debug_options;
+  debug_options.clear_xla_gpu_enable_command_buffer();
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+  debug_options.set_xla_gpu_graph_min_graph_size(2);
+
+  se::DeviceDescription device_info;
+
+  EXPECT_EQ(root_thunk->thunks().size(), 1);
+
+  CommandBufferConversionPass pass;
+
+  // The size of the sequence is less than the min graph size, so it should not
+  // be converted to a command buffer.
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, pass.Run(root_thunk.get(), debug_options, device_info));
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

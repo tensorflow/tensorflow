@@ -1950,6 +1950,7 @@ ENTRY main {
   debug_options.set_xla_gpu_experimental_enable_command_buffer_on_thunks(true);
   debug_options.clear_xla_gpu_enable_command_buffer();
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
 
   hlo_module->mutable_config().set_debug_options(debug_options);
 

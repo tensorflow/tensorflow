@@ -236,7 +236,15 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
   std::vector<std::unique_ptr<Thunk>> new_thunks;
 
   auto flush_command_buffer = [&]() -> absl::Status {
-    if (current_command_buffer_thunks.empty()) {
+    // If we don't have enough thunks to form a command buffer, we just add
+    // them to the new thunks sequence as is.
+    if (current_command_buffer_thunks.size() <
+        std::max(1, debug_options.xla_gpu_graph_min_graph_size())) {
+      new_thunks.insert(
+          new_thunks.end(),
+          std::make_move_iterator(current_command_buffer_thunks.begin()),
+          std::make_move_iterator(current_command_buffer_thunks.end()));
+      current_command_buffer_thunks.clear();
       return absl::OkStatus();
     }
 
