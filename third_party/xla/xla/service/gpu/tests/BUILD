@@ -553,6 +553,20 @@ xla_test(
 )
 
 xla_test(
+    name = "ragged_dot_test",
+    srcs = ["ragged_dot_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":gpu_codegen_test",
+        "//xla:error_spec",
+        "//xla:literal_util",
+        "//xla/tests:test_utils",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
     name = "sorting_test",
     srcs = ["sorting_test.cc"],
     backends = ["gpu"],
