@@ -14,7 +14,11 @@ FullyConnectedBRAMDriver::FullyConnectedBRAMDriver() : bram_dev_mem_fd(-1),
     bram_mapped_weight_block(nullptr), 
     bram_mapped_bias_block(nullptr), 
     bram_mapped_output_block(nullptr), 
-    bram_size(4096) {
+    bram_size_other_than_weight(32 * sizeof(uint32_t)), // Size for input, output, and bias BRAMs
+    bram_size_weight(32 * sizeof(uint32_t)) { // Size for weight BRAM
+
+        std::cout << "Size of bram_size_other_than_weight: " << sizeof(bram_size_other_than_weight) << std::endl;
+        std::cout << "Size of bram_size_weight: " << sizeof(bram_size_weight) << std::endl;
 
         bram_input_base_address = 0x80020000;
         bram_weight_base_address = 0x80022000;
@@ -26,16 +30,16 @@ FullyConnectedBRAMDriver::FullyConnectedBRAMDriver() : bram_dev_mem_fd(-1),
 
 FullyConnectedBRAMDriver::~FullyConnectedBRAMDriver() {
     if (bram_mapped_input_block != MAP_FAILED && bram_mapped_input_block != nullptr) {
-        munmap(bram_mapped_input_block, bram_size);
+        munmap(bram_mapped_input_block, bram_size_other_than_weight);
     }
     if (bram_mapped_weight_block != MAP_FAILED && bram_mapped_weight_block != nullptr) {
-        munmap(bram_mapped_weight_block, bram_size);
+        munmap(bram_mapped_weight_block, bram_size_weight);
     }
     if (bram_mapped_bias_block != MAP_FAILED && bram_mapped_bias_block != nullptr) {
-        munmap(bram_mapped_bias_block, bram_size);
+        munmap(bram_mapped_bias_block, bram_size_other_than_weight);
     }
     if (bram_mapped_output_block != MAP_FAILED && bram_mapped_output_block != nullptr) {
-        munmap(bram_mapped_output_block, bram_size);
+        munmap(bram_mapped_output_block, bram_size_other_than_weight);
     }
     if (bram_dev_mem_fd >= 0) {
         close(bram_dev_mem_fd);
@@ -50,32 +54,32 @@ void FullyConnectedBRAMDriver::initialize_bram() {
         throw std::runtime_error("Failed to open /dev/mem");
     }
 
-    bram_mapped_input_block = mmap(nullptr, bram_size, PROT_READ | PROT_WRITE, MAP_SHARED, bram_dev_mem_fd, bram_input_base_address);
+    bram_mapped_input_block = mmap(nullptr, bram_size_other_than_weight, PROT_READ | PROT_WRITE, MAP_SHARED, bram_dev_mem_fd, bram_input_base_address);
     if (bram_mapped_input_block == MAP_FAILED) {
         close(bram_dev_mem_fd);
         throw std::runtime_error("Failed to memory map input BRAM");
     }
 
-    bram_mapped_weight_block = mmap(nullptr, bram_size, PROT_READ | PROT_WRITE, MAP_SHARED, bram_dev_mem_fd, bram_weight_base_address);
+    bram_mapped_weight_block = mmap(nullptr, bram_size_weight, PROT_READ | PROT_WRITE, MAP_SHARED, bram_dev_mem_fd, bram_weight_base_address);
     if (bram_mapped_weight_block == MAP_FAILED) {
-        munmap(bram_mapped_input_block, bram_size);
+        munmap(bram_mapped_input_block, bram_size_other_than_weight);
         close(bram_dev_mem_fd);
         throw std::runtime_error("Failed to memory map weight BRAM");
     }
 
-    bram_mapped_bias_block = mmap(nullptr, bram_size, PROT_READ | PROT_WRITE, MAP_SHARED, bram_dev_mem_fd, bram_bias_base_address);
+    bram_mapped_bias_block = mmap(nullptr, bram_size_other_than_weight, PROT_READ | PROT_WRITE, MAP_SHARED, bram_dev_mem_fd, bram_bias_base_address);
     if (bram_mapped_bias_block == MAP_FAILED) {
-        munmap(bram_mapped_input_block, bram_size);
-        munmap(bram_mapped_weight_block, bram_size);
+        munmap(bram_mapped_input_block, bram_size_other_than_weight);
+        munmap(bram_mapped_weight_block, bram_size_weight);
         close(bram_dev_mem_fd);
         throw std::runtime_error("Failed to memory map bias BRAM");
     }
 
-    bram_mapped_output_block = mmap(nullptr, bram_size, PROT_READ | PROT_WRITE, MAP_SHARED, bram_dev_mem_fd, bram_output_base_address);
+    bram_mapped_output_block = mmap(nullptr, bram_size_other_than_weight, PROT_READ | PROT_WRITE, MAP_SHARED, bram_dev_mem_fd, bram_output_base_address);
     if (bram_mapped_output_block == MAP_FAILED) {
-        munmap(bram_mapped_input_block, bram_size);
-        munmap(bram_mapped_weight_block, bram_size);
-        munmap(bram_mapped_bias_block, bram_size);
+        munmap(bram_mapped_input_block, bram_size_other_than_weight);
+        munmap(bram_mapped_weight_block, bram_size_weight);
+        munmap(bram_mapped_bias_block, bram_size_other_than_weight);
         close(bram_dev_mem_fd);
         throw std::runtime_error("Failed to memory map output BRAM");
     }
@@ -86,11 +90,16 @@ void FullyConnectedBRAMDriver::initialize_bram() {
     bram_address["bias_bram"] = bram_mapped_bias_block;
     bram_address["output_bram"] = bram_mapped_output_block;
 
-    // //clear initial values in BRAM
-    // std::memset(bram_mapped_input_block, 0, bram_size);
-    // std::memset(bram_mapped_weight_block, 0, bram_size);
-    // std::memset(bram_mapped_bias_block, 0, bram_size);
-    // std::memset(bram_mapped_output_block, 0, bram_size);
+    //clear initial values in BRAM
+    std::memset(bram_mapped_input_block, 0, bram_size_other_than_weight);
+    std::cout << "input_bram cleared." << std::endl;
+    std::memset(bram_mapped_bias_block, 0, bram_size_other_than_weight);
+    std::cout << "bias_bram cleared." << std::endl;
+    std::memset(bram_mapped_output_block, 0, bram_size_other_than_weight);
+    std::cout << "output_bram cleared." << std::endl;
+    std::memset(bram_mapped_weight_block, 0, bram_size_weight);
+    std::cout << "weight_bram cleared." << std::endl;
+    
 
     std::cout << "BRAM initialization complete." << std::endl;
 }
@@ -110,7 +119,15 @@ void FullyConnectedBRAMDriver::write_to_bram(const std::string& bram_name, uint3
     }
 
     // Write data to BRAM
-    std::memcpy(bram_ptr, ptr, bram_size);
+    if (bram_name == "weight_bram") {
+        // For weight BRAM, we write the full size
+        std::memcpy(bram_ptr, ptr, bram_size_weight);
+    } else {
+        // For other BRAMs, we write only the size defined for them
+        std::cout << "Writing to non-weight BRAM: " << bram_name << std::endl;
+        std::memcpy(bram_ptr, ptr, bram_size_other_than_weight);
+    }
+    
 }
 uint32_t* FullyConnectedBRAMDriver::read_from_bram(const std::string& bram_name) {
     std::cout << "Reading from BRAM: " << bram_name << std::endl;
@@ -136,12 +153,14 @@ int main() {
     // Test BRAM write and read
     uint32_t test_data[32] = {0};
     uint32_t test_data_weight[1024] = {0};
+
     for (int i = 0; i < 32; ++i) {
         test_data[i] = i;
     }
     for (int i = 0; i < 1024; ++i) {
         test_data_weight[i] = i + 100; // Different data for weights
     }
+
     bram_driver.write_to_bram("input_bram", test_data);
     uint32_t* read_data = bram_driver.read_from_bram("input_bram");
     if (read_data) {

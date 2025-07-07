@@ -12,7 +12,8 @@ private:
     void* bram_mapped_weight_block;
     void* bram_mapped_bias_block;
     void* bram_mapped_output_block;
-    size_t bram_size;
+    size_t bram_size_other_than_weight;
+    size_t bram_size_weight;
 
     uint32_t bram_input_base_address;
     uint32_t bram_weight_base_address;
@@ -20,7 +21,6 @@ private:
     uint32_t bram_output_base_address;
 
     std::map<std::string, void*> bram_address;
-
 
     void initialize_bram();
 
