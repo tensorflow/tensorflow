@@ -643,19 +643,27 @@ std::string PrintRepetitiveDiffPatterns(
   // descending order.
   std::vector<ComputationDiffPattern> sorted_diff_patterns;
   for (const ComputationDiffPattern& diff_pattern : diff_patterns) {
+    if (diff_pattern.computation_groups.empty()) {
+      continue;
+    }
     sorted_diff_patterns.push_back(diff_pattern);
   }
   std::sort(
       sorted_diff_patterns.begin(), sorted_diff_patterns.end(),
       [](const ComputationDiffPattern& a, const ComputationDiffPattern& b) {
-        return a.computation_groups.size() > b.computation_groups.size();
+        const uint64_t a_diff_size =
+            a.diff_metrics.changed_instruction_count +
+            a.diff_metrics.left_unmatched_instruction_count +
+            a.diff_metrics.right_unmatched_instruction_count;
+        const uint64_t b_diff_size =
+            b.diff_metrics.changed_instruction_count +
+            b.diff_metrics.left_unmatched_instruction_count +
+            b.diff_metrics.right_unmatched_instruction_count;
+        return a_diff_size > b_diff_size;
       });
   std::string computation_group_list;
   int i = 0;
   for (const auto& diff_pattern : sorted_diff_patterns) {
-    if (diff_pattern.computation_groups.empty()) {
-      continue;
-    }
     const ComputationGroup& sample = diff_pattern.computation_groups[0];
     // We only print the one-to-one mapping for now.
     if (sample.left_computations.size() != 1 ||
