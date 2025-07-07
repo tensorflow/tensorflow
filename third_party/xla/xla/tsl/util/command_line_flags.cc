@@ -105,12 +105,11 @@ bool ParseBoolFlag(absl::string_view arg, absl::string_view flag,
     if (absl::EqualsIgnoreCase(arg, "false") || arg == "0") {
       *value_parsing_ok = hook(false);
       return true;
-    } else {
-      LOG(ERROR) << "Couldn't interpret value " << arg << " for flag " << flag
-                 << ".";
-      *value_parsing_ok = false;
-      return true;
     }
+    LOG(ERROR) << "Couldn't interpret value " << arg << " for flag " << flag
+               << ".";
+    *value_parsing_ok = false;
+    return true;
   }
 
   return false;

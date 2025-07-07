@@ -33,7 +33,8 @@ absl::Status ByteSwapArray(char* array, size_t bytes_per_elem, int array_len) {
       array_16[i] = BYTE_SWAP_16(array_16[i]);
     }
     return absl::OkStatus();
-  } else if (bytes_per_elem == 4) {
+  }
+  if (bytes_per_elem == 4) {
     auto array_32 = safe_reinterpret_cast<uint32_t*>(array);
     for (int i = 0; i < array_len; i++) {
       array_32[i] = BYTE_SWAP_32(array_32[i]);
