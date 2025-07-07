@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/shape.h"
 
 namespace xla {
 
@@ -74,6 +75,13 @@ class ReduceWindowRewriter : public HloModulePass {
   int64_t PreparePaddingForRewrite(HloReduceWindowInstruction* reduce_window,
                                    std::vector<HloInstruction*>& inputs,
                                    int64_t scan_length, int64_t last_dim);
+
+  // [x, y] -> [x, y/128, 128]
+  int64_t ExpandToNewMajorDimension(HloComputation* hlo_computation,
+                                    std::vector<HloInstruction*>& inputs,
+                                    std::vector<HloInstruction*>& tiled_inputs,
+                                    std::vector<Shape>& tiled_shapes,
+                                    int64_t padded_length, int64_t last_dim);
 
   absl::Status ReplaceReduceWindowWithReshape(
       HloReduceWindowInstruction* reduce_window);

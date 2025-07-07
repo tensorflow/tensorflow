@@ -37,6 +37,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -210,6 +212,26 @@ int64_t ReduceWindowRewriter::PreparePaddingForRewrite(
   return padded_length;
 }
 
+// [x, y] -> [x, y/base_length_, base_length_]
+int64_t ReduceWindowRewriter::ExpandToNewMajorDimension(
+    HloComputation* hlo_computation, std::vector<HloInstruction*>& inputs,
+    std::vector<HloInstruction*>& tiled_inputs,
+    std::vector<Shape>& tiled_shapes, int64_t padded_length, int64_t last_dim) {
+  const int64_t num_columns = padded_length / base_length_;
+  for (auto* input : inputs) {
+    Shape tiled_shape = input->shape();
+    tiled_shape.set_dimensions(last_dim, num_columns);
+
+    UpdateLayout(&tiled_shape);
+    ShapeUtil::AppendMajorDimension(base_length_, &tiled_shape);
+    tiled_shapes.push_back(tiled_shape);
+    tiled_inputs.push_back(hlo_computation->AddInstruction(
+        HloInstruction::CreateReshape(tiled_shape, input)));
+  }
+
+  return num_columns;
+}
+
 absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
     HloReduceWindowInstruction* reduce_window) {
   const Shape& operand_shape = reduce_window->inputs().front()->shape();
@@ -291,63 +313,34 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
   // 7) Add up the results of (3) and (6).
   // 8) Reshape back into {K}
   // 9) Slice off the padding.
-  //
-  // For example, consider a cumulative sum over an R1 of length 9, with a base
-  // case of 3 instead of 128. Let the input be:
-  // [0 1 2 3 4 5 6 7 8]
-  //
-  // We need no padding, so we go directly to (2):
-  // [0 1 2
-  //  3 4 5
-  //  6 7 8]
-  //
-  // The result of the scan in (3) is:
-  // [0  1  3
-  //  3  7 12
-  //  6 13 21]
-  //
-  // Slicing out the last column we get (4):
-  // [ 3
-  //  12
-  //  21]
-  //
-  // And after scanning and broadcasting (5 and 6):
-  // [ 0  0  0
-  //   3  3  3
-  //  15 15 15]
-  //
-  // Finally, we add up the two scans (3) and (6), getting (7):
-  // [ 0  1  3
-  //   6 10 15
-  //  21 28 36]
-  //
-  // And reshape back into [0 1 3 6 10 15 21 28 36].
-  //
   // For reverse scans, we perform the same as forward scans, except: we perform
   // a reverse scan at (3), slice out the first column at (4), and perform an
   // exclusive reverse scan of the first column at (5).
 
-  // Pad.
+  // For example, consider a cumulative sum over an R1 of length 9, with a base
+  // case of 3 instead of 128. Let the input be: [0 1 2 3 4 5 6 7 8]
+
+  // 1) If necessary, pad input from {N} to {K}, where K is a multiple of 128.
   const int64_t padded_length =
       PreparePaddingForRewrite(reduce_window, sources, scan_length, last_dim);
 
-  // Reshape to R(k+1).
-  const int64_t num_columns = padded_length / base_length_;
+  // 2) Reshape to R(k+1).
+  // [x, y] -> [x, y/128, 128]
+  // In the example above
+  // [0 1 2 3 4 5 6 7 8] -> [0 1 2
+  //                         3 4 5
+  //                         6 7 8]
   std::vector<HloInstruction*> tiled_sources;
   std::vector<Shape> tiled_shapes;
-  for (size_t i = 0; i < sources.size(); ++i) {
-    auto* source = sources[i];
-    Shape tiled_shape = source->shape();
-    tiled_shape.set_dimensions(last_dim, num_columns);
+  const int64_t num_columns = ExpandToNewMajorDimension(
+      parent, sources, tiled_sources, tiled_shapes, padded_length, last_dim);
 
-    UpdateLayout(&tiled_shape);
-    ShapeUtil::AppendMajorDimension(base_length_, &tiled_shape);
-    tiled_shapes.push_back(tiled_shape);
-    tiled_sources.push_back(parent->AddInstruction(
-        HloInstruction::CreateReshape(tiled_shape, source)));
-  }
-
-  // Outer scan.
+  // 3) Outer scan - Scan each 128 dimension.
+  // reduce_window ( [x, y/128, 128] window [1, 1, 128] )
+  // scan for each window of {1, 128}
+  // [0 1 2     [0  1  3
+  //  3 4 5  ->  3  7 12
+  //  6 7 8]     6 13 21]
   absl::Span<HloInstruction* const> init_values = reduce_window->init_values();
   Window outer_window =
       window_util::MakeWindow(std::vector<int64_t>(rank + 1, 1));
@@ -364,7 +357,11 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
               : tiled_shapes[0],
           tiled_sources, init_values, outer_window, reduce_window->to_apply()));
 
+  // 4) Slice out the last column.
   // Slice out the last (first if reverse scan) column.
+  // [0  1  3     [ 3
+  //  3  7 12  ->  12
+  //  6 13 21]     21]
   std::vector<Shape> column_shapes;
   std::vector<HloInstruction*> last_cols;
   ShapeUtil::ForEachSubshape(
@@ -400,7 +397,10 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
         column_shapes.push_back(column_shape);
       });
 
-  // Inner scan
+  // 5) Inner scan - Exclusive scan for the last column.
+  //  [ 3       [ 0
+  //   12   ->    3
+  //   21]       15]
   Window inner_window = window_util::MakeWindow(std::vector<int64_t>(rank, 1));
   inner_window.mutable_dimensions(last_dim)->set_size(num_columns);
   if (forward_scan) {
@@ -423,6 +423,11 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
     exclusive_slice_starts[last_dim] = 1;
     exclusive_slice_limits[last_dim] = num_columns + 1;
   }
+
+  // 6) Broadcast it back into {K / 128, 128}
+  // [ 0      [ 0  0  0
+  //   3  ->    3  3  3
+  //  15]      15 15 15]
   std::vector<HloInstruction*> inner_scan_components;
   ShapeUtil::ForEachSubshape(
       inner_reduce_window->shape(),
@@ -460,8 +465,15 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
   map_operands.insert(map_operands.end(), inner_scan_components.begin(),
                       inner_scan_components.end());
 
-  // Reshape back to Rk and slice out the padding.
+  // Finally, we add up the two scans (3) and (6), getting (7):
+  // [ 0  1  3
+  //   6 10 15
+  //  21 28 36]
+  //
+  // And reshape back into [0 1 3 6 10 15 21 28 36].
   std::vector<HloInstruction*> scans;
+
+  // Reshape back to Rk and slice out the padding.
   auto status = ShapeUtil::ForEachSubshapeWithStatus(
       outer_reduce_window->shape(),
       [&](const Shape& subshape,
@@ -478,6 +490,11 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
         if (reduce_function_root->shape().IsTuple()) {
           // This corresponds to step 7: combining the inner scan with the outer
           // scan using a map function.
+          // We add (apply map function) up the two scans (3) and (6), getting
+          // (7):
+          //      ( [0  1  3    [ 0  0  0  )     [ 0  1  3
+          // map  (  3  7 12      3  3  3  )  ->   6 10 15
+          // (+)  (  6 13 21]    15 15 15] )      21 28 36]
           auto* map_computation_root = reduce_function_root->operand(idx);
           absl::flat_hash_map<const HloInstruction*,
                               std::unique_ptr<HloInstruction>>
