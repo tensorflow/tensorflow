@@ -335,13 +335,35 @@ class AsyncTracker {
 
   const SchedulerConfig& GetConfig() const { return config_; }
 
+  // Clears the cache of per-computation resource maps. This is needed when,
+  // e.g., we modify the schedule of a computation, which could change the
+  // resource usage of the computation.
+  void InvalidateCache() { async_in_computation_cache_.clear(); }
+
+  // Similar to InvalidateCache(), but only invalidates the cache for the given
+  // computation.
+  void InvalidateCache(const HloComputation* computation) {
+    async_in_computation_cache_.erase(computation);
+  }
+
   explicit AsyncTracker(
       const SchedulerConfig& config,
       GetCanonicalAsyncOpFunc func = DefaultGetCanonicalAsyncOp)
       : get_canonical_async_op_(std::move(func)), config_(config) {}
 
  private:
+  // Returns the number of "occupy" type of resources used by the instructions
+  // in the given computation. Uses the scheduling information if available to
+  // obtain more accurate resource usage. If an instruction uses multiple
+  // instances of the same "occupy" type of resource, that number is respected
+  // and returned in the resulting map.
   const absl::flat_hash_map<int64_t, int64_t>& RecursivelyComputeResourceMap(
+      const HloComputation* computation) const;
+  // Similar as above, but uses scheduling information to obtain more accurate
+  // resource usage. Useful for non-fusion computations.
+  // REQUIRES: The computation must be scheduled.
+  const absl::flat_hash_map<int64_t, int64_t>&
+  RecursivelyComputeResourceMapForScheduledComputation(
       const HloComputation* computation) const;
 
   mutable absl::flat_hash_map<
