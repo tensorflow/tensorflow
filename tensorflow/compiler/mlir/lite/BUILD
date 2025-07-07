@@ -24,11 +24,11 @@ package_group(
     packages = [
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/mlir/...",
+        "//tensorflow/compiler/mlir/...",
+        "//tensorflow/lite/...",
         "//third_party/iree/...",
         "//third_party/odml/infra/...",
         "//third_party/odml/litert/...",
-        "//tensorflow/compiler/mlir/...",
-        "//tensorflow/lite/...",
         "//waymo/accelerator/alpine/tools/...",
         "//waymo/ml/compiler/mlir/...",
         # Allow visibility from the mlir language server.
