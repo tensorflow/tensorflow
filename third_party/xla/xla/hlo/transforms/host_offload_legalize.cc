@@ -308,7 +308,8 @@ absl::StatusOr<std::vector<InstructionAndIndex>> WalkDownMemoryOffload(
           // For move copy phase, we need to handle the copy even though we
           // never move the tensor to device yet. For now just throw an error.
           CHECK(!for_move_copy_phase)
-              << "Transpose copy going into host call is not supported yet.";
+              << "Transpose copy going into host call is should not be moved. "
+              << user->name();
 
           // For first phase to collect copies to move, it's ok to ignore this
           // path since we don't see copies along the path yet and it's ok to
@@ -638,6 +639,13 @@ bool ShouldMoveCopyDown(InstructionAndIndex copy_to_move) {
       if (successor.instruction->IsCustomCall(
               memory_annotations::kMoveToDeviceCustomCallTarget)) {
         continue;
+      }
+      if (successor.instruction->opcode() == HloOpcode::kParameter &&
+          successor.instruction->parent()->execution_thread() ==
+              HloInstruction::kHostThread) {
+        // If it hits a host-call before being brought back to device, we cannot
+        // move the copy.
+        return false;
       }
       queue.push(successor);
     }
