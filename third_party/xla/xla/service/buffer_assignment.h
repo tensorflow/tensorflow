@@ -515,7 +515,8 @@ class BufferAssignment {
                                 int64_t more_than_k = 50) const;
   // Verbose string tailored to debugging OOMs, includes the Hlo op metadata for
   // every buffer associated with each allocation.
-  std::string ToVerboseString(size_t max_buffers_to_show) const;
+  std::string ToVerboseString(const AliasInfo* alias_info,
+                              size_t max_buffers_to_show) const;
 
   // Is in use by tpu compiler to dump the buffer info.
   std::string BufferInfoString() const;
@@ -528,9 +529,8 @@ class BufferAssignment {
       HloDataflowAnalysis::CanShareBuffer can_share_buffer);
 
   // Returns string representation of buffer assignment statistics. Also
-  // calculates and returns the total fragmentation if
-  // report_total_fragmentation is true.
-  std::string StatsString(bool report_total_fragmentation = false) const;
+  // calculates and returns the total fragmentation.
+  std::string StatsString(const AliasInfo* alias_info) const;
 
   // Statistics for the assignment.  Values initialized to -1 are not always
   // collected; fragmentation is only collected for instructions that have a
@@ -617,7 +617,8 @@ class BufferAssignment {
   void ComputeSummaryStats();
 
   // Calculates and returns the total fragmentation in bytes.
-  absl::StatusOr<int64_t> ComputeTotalFragmentationBytes() const;
+  absl::StatusOr<int64_t> ComputeTotalFragmentationBytes(
+      const AliasInfo* alias_info) const;
 
   // The vector of buffer allocations. Indexed by BufferAllocation::Index.
   std::vector<BufferAllocation> allocations_;

@@ -205,28 +205,23 @@ std::ostream& operator<<(std::ostream& stream,
 
 /*static*/
 absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForModule(
-    const HloSchedule& schedule,
+    const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
+    const AliasInfo* alias_info,
     const LogicalBuffer::SizeFunction& size_function) {
   if (schedule.empty()) {
     return 0;
   }
   const HloModule* module = schedule.module();
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module));
-
   // The absolute minimum memory required for a given sequence of instructions
   // is determined by the sequence of Alloc and Free calls on a simulated heap,
   // ignoring fragmentation. We run the heap simulation on the whole module,
   // rather than summing each computation, since it gives us a better lower
   // bound, by minimizing the liveness of sub-computations.
-  // TODO(b/424109294): Callers should pass the right backend-specific AliasInfo
-  // to MinimumMemoryForModule().
-  AliasInfo alias_info;
   TF_ASSIGN_OR_RETURN(
       HeapSimulator::Result<HloValue> result,
       HeapSimulator::Run(std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
-                         *module, schedule, *alias_analysis, &alias_info,
+                         *module, schedule, alias_analysis, alias_info,
                          size_function));
   return result.heap_size;
 }

@@ -504,6 +504,8 @@ GpuThunkAotCompilationResult::LoadExecutable(
 
   {
     tsl::profiler::TraceMe traceme("CreateGpuExecutable");
+    std::unique_ptr<GpuAliasInfo> alias_info =
+        gpu_compiler->GetAliasInfo(gpu_device_info);
     return GpuExecutable::Create(GpuExecutable::Params{
         /*asm_text=*/proto_.asm_text(),
         /*binary=*/binary,
@@ -518,6 +520,7 @@ GpuThunkAotCompilationResult::LoadExecutable(
         /*output_shape=*/std::move(output_shape),
         /*mlir_allocations=*/std::nullopt,
         /*buffer_assignment=*/std::move(buffer_assignment),
+        /*alias_info=*/std::move(alias_info),
         /*debug_buffer_assignment_show_max=*/debug_buffer_assignment_show_max,
         /*debug_module=*/std::move(hlo_module),
         /*enable_debug_info_manager=*/true});
@@ -2562,6 +2565,8 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     }
   }
 
+  std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(gpu_device_info);
+  const GpuAliasInfo* alias_info_ptr = alias_info.get();
   TF_ASSIGN_OR_RETURN(
       auto gpu_executable,
       GpuExecutable::Create(GpuExecutable::Params{
@@ -2584,6 +2589,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
                : std::move(res.compile_module_results.allocations)),
           /*buffer_assignment=*/
           std::move(res.compile_module_results.buffer_assignment),
+          /*alias_info=*/std::move(alias_info),
           /*debug_buffer_assignment_show_max=*/
           debug_buffer_assignment_show_max,
           /*debug_module=*/options.is_autotuning_compilation
@@ -2608,8 +2614,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
         gpu_executable->buffer_assignment()->ToProto();
     gpu_executable->set_hlo_proto(std::move(hlo_proto));
     gpu_executable->set_debug_info(
-        gpu_executable->buffer_assignment()->StatsString(
-            /*report_total_fragmentation=*/true));
+        gpu_executable->buffer_assignment()->StatsString(alias_info_ptr));
   }
 
   return static_cast<std::unique_ptr<Executable>>(std::move(gpu_executable));

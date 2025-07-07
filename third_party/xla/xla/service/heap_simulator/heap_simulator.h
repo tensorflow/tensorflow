@@ -143,7 +143,8 @@ class HeapSimulator {
   // computations have been scheduled (represented by the given
   // schedule), assuming no fragmentation.
   static absl::StatusOr<int64_t> MinimumMemoryForModule(
-      const HloSchedule& schedule,
+      const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
+      const AliasInfo* alias_info,
       const LogicalBuffer::SizeFunction& size_function);
 
   // Returns the minimum memory required to compute the given computation,

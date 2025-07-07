@@ -120,8 +120,11 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
   schedule.set_sequence(entry_computation, {iter, data, tuple, while_op});
   TF_ASSERT_OK(schedule.Verify());
 
-  EXPECT_EQ(25,
-            HeapSimulator::MinimumMemoryForModule(schedule, size_fn).value());
+  std::unique_ptr<HloAliasAnalysis> alias_analysis =
+      HloAliasAnalysis::Run(module.get()).value();
+  EXPECT_EQ(25, HeapSimulator::MinimumMemoryForModule(schedule, *alias_analysis,
+                                                      &alias_info_, size_fn)
+                    .value());
 }
 
 TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {

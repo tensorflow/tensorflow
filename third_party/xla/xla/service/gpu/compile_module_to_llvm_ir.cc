@@ -279,8 +279,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
           /*isolation_options*/ std::nullopt, color));
 
   VLOG(1) << "Buffer Assignment Stats for " << module->name() << "\n"
-          << buffer_assignment->StatsString(
-                 /*report_total_fragmentation=*/true);
+          << buffer_assignment->StatsString(alias_info);
   return buffer_assignment;
 }
 

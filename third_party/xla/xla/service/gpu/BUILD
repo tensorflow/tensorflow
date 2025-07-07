@@ -582,6 +582,7 @@ cc_library(
         "gpu_executable.h",
     ],
     deps = [
+        ":alias_info",
         ":backend_configs_cc",
         ":buffer_allocations",
         ":gpu_constants",
@@ -626,7 +627,6 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

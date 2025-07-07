@@ -1841,9 +1841,9 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   std::unique_ptr<CpuExecutable> cpu_executable;
   TF_ASSIGN_OR_RETURN(cpu_executable, CompileCpuExecutable(std::move(module)));
 
+  AliasInfo alias_info;
   cpu_executable->set_debug_info(
-      cpu_executable->buffer_assignment().StatsString(
-          /*report_total_fragmentation=*/true));
+      cpu_executable->buffer_assignment().StatsString(&alias_info));
   VLOG(1) << "Compilation finished";
   return std::unique_ptr<Executable>(std::move(cpu_executable));
 }

@@ -91,9 +91,9 @@ class GpuOptProvider : public CompiledOptProvider {
     } else if (s == "buffer-assignment") {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                           GetExecutable(std::move(module)));
-      return static_cast<gpu::GpuExecutable*>(executable.get())
-          ->buffer_assignment()
-          ->ToVerboseString(9999);
+      auto gpu_executable = static_cast<gpu::GpuExecutable*>(executable.get());
+      return gpu_executable->buffer_assignment()->ToVerboseString(
+          gpu_executable->alias_info(), 9999);
     } else {
       // Delegate to base class.
       TF_ASSIGN_OR_RETURN(
