@@ -177,11 +177,13 @@ cc_library(
     srcs = ["top_down_matcher.cc"],
     hdrs = ["top_down_matcher.h"],
     deps = [
+        ":bipartite_matching",
         ":gumgraph_matcher",
         "//xla/hlo/tools/hlo_diff:hlo_gumgraph_mappings",
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph",
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
         "//xla/hlo/tools/hlo_diff/graph/utils:hlo_gumgraph_dfs",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:die_if_null",
     ],

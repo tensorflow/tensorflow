@@ -14,49 +14,49 @@
 
 #include "xla/hlo/tools/hlo_diff/matchers/top_down_matcher.h"
 
+#include <vector>
+
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
 #include "xla/hlo/tools/hlo_diff/graph/utils/hlo_gumgraph_dfs.h"
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
+#include "xla/hlo/tools/hlo_diff/matchers/bipartite_matching.h"
 
 namespace xla::hlo_diff {
-
 namespace {
 
-// Recursively matches the two nodes top down when the opcodes and the
-// position of the nodes in their parents' children list match.
-void RecursiveTopDownMatcher(const HloInstructionNode* left,
-                             const HloInstructionNode* right,
-                             const MatcherType matcher_type,
-                             HloGumgraphMappings& mappings,
-                             bool require_same_children) {
-  if (require_same_children) {
-    if (left->children.size() != right->children.size()) {
-      return;
-    }
-    for (auto i = 0; i < left->children.size(); ++i) {
-      if (left->children[i]->instruction->opcode() !=
-          right->children[i]->instruction->opcode()) {
-        return;
-      }
+// Returns true if the left and right nodes have different number of children or
+// different child opcodes. This is called for Strict TopDownMatcher.
+bool ShouldSkipMatching(const HloInstructionNode& left_node,
+                        const HloInstructionNode& right_node) {
+  if (left_node.children.size() != right_node.children.size()) {
+    return true;
+  }
+  for (auto i = 0; i < left_node.children.size(); ++i) {
+    if (left_node.children[i]->instruction->opcode() !=
+        right_node.children[i]->instruction->opcode()) {
+      return true;
     }
   }
-  for (auto i = 0; i < left->children.size() && i < right->children.size();
-       ++i) {
-    const HloInstructionNode* left_child = left->children[i];
-    const HloInstructionNode* right_child = right->children[i];
-    // TODO(b/360878130) - Use fingerprint to compare nodes.
-    if (left_child->instruction->opcode() !=
-            right_child->instruction->opcode() ||
-        !(mappings.MapInstructionsIfAbsent(left_child, right_child,
-                                           matcher_type))) {
-      // Stop recursive matching if the nodes are not matched, or
-      // non-overwriting mapping failed.
-      continue;
+  return false;
+}
+
+// Returns the unmatched children of the given node. The returned children are
+// ensured to be deduplicated.
+std::vector<HloInstructionNode*> GetUnmatchedChildren(
+    const std::vector<HloInstructionNode*>& children,
+    const HloGumgraphMappings& mappings) {
+  std::vector<HloInstructionNode*> unmatched_children;
+  absl::flat_hash_set<const HloInstructionNode*> visited;
+  for (HloInstructionNode* child : children) {
+    if (!mappings.InstructionMapContainsLeft(child) &&
+        !visited.contains(child)) {
+      unmatched_children.push_back(child);
+      visited.insert(child);
     }
-    RecursiveTopDownMatcher(left_child, right_child, matcher_type, mappings,
-                            require_same_children);
   }
+  return unmatched_children;
 }
 
 }  // namespace
@@ -72,10 +72,20 @@ void GreedyTopDownMatcher::Match(HloGumgraphMappings& mappings) const {
           return;
         }
 
-        RecursiveTopDownMatcher(&left_node, it->second.node, type_, mappings,
-                                require_same_children_);
+        if (require_same_children_ &&
+            ShouldSkipMatching(left_node, *it->second.node)) {
+          return;
+        }
+
+        std::vector<HloInstructionNode*> left_children =
+            GetUnmatchedChildren(left_node.children, mappings);
+        std::vector<HloInstructionNode*> right_children =
+            GetUnmatchedChildren(it->second.node->children, mappings);
+
+        MatchInstructions(left_, right_, left_children, right_children,
+                          mappings, type_, MapByPositionMode::kAlways);
       },
-      DfsTraversalOrder::kPostOrder, left_.GetNodeCount());
+      DfsTraversalOrder::kPreOrder, left_.GetNodeCount());
   LOG(INFO) << "Finished GreedyTopDownMatcher. Total left to right mappings: "
             << mappings.left_to_right_instruction_map.size() -
                    current_mapping_count;

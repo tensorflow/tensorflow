@@ -25,28 +25,35 @@ limitations under the License.
 namespace xla {
 namespace hlo_diff {
 
-// Find optimal matches between the left and right instruction set.
+// Enums to define the mapping by position behavior
+enum class MapByPositionMode {
+  kNever,           // Never map by position
+  kAlways,          // Always attempt to map by position
+  kOnlyIfSameSize,  // Map by position only if sets are of the same size
+};
+
+// Find optimal matches between the left and right instruction lists.
 // The goal is to establish a mapping between corresponding instructions from
-// the 'left_instructions' and 'right_instructions' sets, all of the same type.
+// the 'left_instructions' and 'right_instructions' lists, all of the same type.
 // The instructions are first matched by node properties like shape, metadata,
 // etc. If 'map_by_position' is set to true, the left unmatched instructions
-// will try to be matched by position one by one if they share the same size.
+// will try to be matched by position one by one.
 void MatchSameTypeInstructions(
     const HloGumgraph& left_graph, const HloGumgraph& right_graph,
     const std::vector<const HloInstructionNode*>& left_instructions,
     const std::vector<const HloInstructionNode*>& right_instructions,
     HloGumgraphMappings& mappings, const MatcherType& matcher_type,
-    bool map_by_position = false);
+    MapByPositionMode map_by_position = MapByPositionMode::kNever);
 
-// Find optimal matches between the left and right instruction set.
+// Find optimal matches between the left and right instruction lists.
 // Sort the instructions by opcode and call MatchSameTypeInstructions for each
 // opcode.
-void MatchLeafInstructions(
+void MatchInstructions(
     const HloGumgraph& left_graph, const HloGumgraph& right_graph,
     const std::vector<HloInstructionNode*>& left_instructions,
     const std::vector<HloInstructionNode*>& right_instructions,
     HloGumgraphMappings& mappings, const MatcherType& matcher_type,
-    bool map_by_position = false);
+    MapByPositionMode map_by_position = MapByPositionMode::kNever);
 
 }  // namespace hlo_diff
 }  // namespace xla

@@ -46,9 +46,12 @@ void MatchComputationParams(const HloGumgraph& left_graph,
        right_computation.computation()->parameter_instructions()) {
     right_params.push_back(right_graph.GetNode(param));
   }
-  bool map_by_position = !left_computation.computation()->IsEntryComputation();
+  MapByPositionMode map_by_position_mode =
+      left_computation.computation()->IsEntryComputation()
+          ? MapByPositionMode::kNever
+          : MapByPositionMode::kOnlyIfSameSize;
   MatchSameTypeInstructions(left_graph, right_graph, left_params, right_params,
-                            mappings, matcher_type, map_by_position);
+                            mappings, matcher_type, map_by_position_mode);
 }
 
 // Match constant instructions between the left and right computations.
@@ -71,10 +74,13 @@ void MatchComputationConstants(const HloGumgraph& left_graph,
       right_constants.push_back(right_graph.GetNode(instruction));
     }
   }
-  bool map_by_position = !left_computation.computation()->IsEntryComputation();
+  MapByPositionMode map_by_position_mode =
+      left_computation.computation()->IsEntryComputation()
+          ? MapByPositionMode::kNever
+          : MapByPositionMode::kOnlyIfSameSize;
   MatchSameTypeInstructions(left_graph, right_graph, left_constants,
                             right_constants, mappings, matcher_type,
-                            map_by_position);
+                            map_by_position_mode);
 }
 
 // Match non-parameter and non-constant leaf instructions between the left and
@@ -108,7 +114,7 @@ void MatchOtherLeafInstructions(const HloGumgraph& left_graph,
     if (right_leafs.contains(opcode)) {
       MatchSameTypeInstructions(left_graph, right_graph, left_instructions,
                                 right_leafs[opcode], mappings, matcher_type,
-                                /*map_by_position=*/true);
+                                MapByPositionMode::kOnlyIfSameSize);
     }
   }
 }
