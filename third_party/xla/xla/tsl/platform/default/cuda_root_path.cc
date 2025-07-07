@@ -40,31 +40,6 @@ namespace tsl {
 std::vector<std::string> CandidateCudaRoots() {
 #if !defined(PLATFORM_GOOGLE)
   auto roots = std::vector<std::string>{};
-  std::string runfiles_suffix = "runfiles";
-  std::vector<std::string> cuda_dir_names = {"cuda_nvcc", "cuda_nvdisasm",
-                                             "nvidia_nvshmem"};
-
-  // The CUDA candidate root for c++ targets.
-  std::string executable_path = tsl::Env::Default()->GetExecutablePath();
-  for (const std::string& cuda_dir_name : cuda_dir_names) {
-    std::string cuda_dir =
-        io::JoinPath(executable_path + "." + runfiles_suffix, cuda_dir_name);
-    roots.push_back(cuda_dir);
-  }
-
-  // The CUDA candidate root for python targets.
-  std::string runfiles_dir = tsl::Env::Default()->GetRunfilesDir();
-  std::size_t runfiles_ind = runfiles_dir.rfind(runfiles_suffix);
-  for (const std::string& cuda_dir_name : cuda_dir_names) {
-    std::string cuda_dir = io::JoinPath(
-        runfiles_dir.substr(0, runfiles_ind + runfiles_suffix.length()),
-        cuda_dir_name);
-    roots.push_back(cuda_dir);
-  }
-
-  roots.push_back(TF_CUDA_TOOLKIT_PATH);
-  roots.emplace_back(std::string("/usr/local/cuda"));
-  roots.emplace_back(std::string("/opt/cuda"));
 
 #if defined(PLATFORM_POSIX) && !defined(__APPLE__)
   Dl_info info;
@@ -95,6 +70,32 @@ std::vector<std::string> CandidateCudaRoots() {
       roots.emplace_back(io::JoinPath(dir, path));
   }
 #endif  // defined(PLATFORM_POSIX) && !defined(__APPLE__)
+
+  std::string runfiles_suffix = "runfiles";
+  std::vector<std::string> cuda_dir_names = {"cuda_nvcc", "cuda_nvdisasm",
+                                             "nvidia_nvshmem"};
+
+  // The CUDA candidate root for c++ targets.
+  std::string executable_path = tsl::Env::Default()->GetExecutablePath();
+  for (const std::string& cuda_dir_name : cuda_dir_names) {
+    std::string cuda_dir =
+        io::JoinPath(executable_path + "." + runfiles_suffix, cuda_dir_name);
+    roots.push_back(cuda_dir);
+  }
+
+  // The CUDA candidate root for python targets.
+  std::string runfiles_dir = tsl::Env::Default()->GetRunfilesDir();
+  std::size_t runfiles_ind = runfiles_dir.rfind(runfiles_suffix);
+  for (const std::string& cuda_dir_name : cuda_dir_names) {
+    std::string cuda_dir = io::JoinPath(
+        runfiles_dir.substr(0, runfiles_ind + runfiles_suffix.length()),
+        cuda_dir_name);
+    roots.push_back(cuda_dir);
+  }
+
+  roots.push_back(TF_CUDA_TOOLKIT_PATH);
+  roots.emplace_back("/usr/local/cuda");
+  roots.emplace_back("/opt/cuda");
 
   for (auto root : roots) VLOG(3) << "CUDA root = " << root;
   return roots;
