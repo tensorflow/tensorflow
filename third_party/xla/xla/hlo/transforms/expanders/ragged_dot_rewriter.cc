@@ -274,16 +274,12 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> RaggedToGeneral(
     return absl::UnimplementedError("lhs_ragged_dimensions must have size 1");
   }
   int lhs_ragged_dim = ragged_dims.lhs_ragged_dimensions(0);
-  // Unsure about this new_dim_index. It's similar to the way jax does it, but
-  // it comes with an assumption that batch dimensions always come first. They
-  // then also do a transpose to move the group dimension to the front, which
-  // I haven't implemented here.
-  int new_dim_index = dot_dims.rhs_batch_dimensions().size();
 
   auto* computation = ragged_dot->parent();
   auto lhs = ragged_dot->mutable_operand(0);
   auto rhs = ragged_dot->mutable_operand(1);
   auto group_sizes = ragged_dot->mutable_operand(2);
+  int new_dim_index = group_sizes->shape().dimensions().size() - 1;
   DotDimensionNumbers new_dot_dims;
 
   RaggedDotMode mode =
