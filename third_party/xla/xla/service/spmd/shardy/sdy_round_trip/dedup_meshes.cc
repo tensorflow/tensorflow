@@ -118,35 +118,6 @@ struct MeshDeviceIdentifierInfo : public DenseMapInfo<MeshDeviceIdentifier> {
   }
 };
 
-class AddAxisOrMergeInserter {
- public:
-  using iterator_category = std::output_iterator_tag;
-  using value_type = void;
-  using difference_type = void;
-  using pointer = void;
-  using reference = void;
-
-  explicit AddAxisOrMergeInserter(AxisRefVector* newAxisRefs,
-                                  const MeshAttr* mesh)
-      : axisRefs(newAxisRefs), mesh(mesh) {}
-
-  AddAxisOrMergeInserter& operator=(ArrayRef<AxisRefAttr> values) {
-    for (AxisRefAttr value : values) {
-      sdy::addAxisOrMerge(*axisRefs, value, *mesh);
-    }
-    return *this;
-  }
-
-  AddAxisOrMergeInserter& operator*() { return *this; }
-  AddAxisOrMergeInserter& operator++() { return *this; }
-  AddAxisOrMergeInserter& operator++(int) { return *this; }
-
- private:
-  // Use a pointer so that callers like `llvm::transform` can copy the inserter.
-  AxisRefVector* axisRefs;
-  const MeshAttr* mesh;
-};
-
 // Try to map the axes of `targetMesh` to the (sub)axes of `mainMesh`. If
 // successful, `targetToMainAxisMap` will be populated.
 bool mapTargetAxesToMainAxes(MeshOp targetMesh, MeshOp mainMesh,
@@ -397,7 +368,7 @@ void replaceManualAxes(sdy::ManualComputationOp manualComputation,
   AxisRefVector newAxisRefs;
   newAxisRefs.reserve(manualComputation.getManualAxes().size());
   llvm::transform(manualComputation.getManualAxes(),
-                  AddAxisOrMergeInserter(&newAxisRefs, &mainMesh),
+                  mlir::sdy::AddAxisOrMergeInserter(&newAxisRefs, &mainMesh),
                   [&axisMap = axisMap](StringAttr manualAxis) -> AxisRefVector {
                     if (!axisMap.contains(manualAxis.getValue())) {
                       return {};
