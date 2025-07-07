@@ -1125,6 +1125,32 @@ TEST(ShapeUtilTest, InsertDimensionAtIndex) {
       ShapeUtil::MakeShapeWithDenseLayout(F32, {40, 10, 20, 30}, {3, 2, 1, 0}));
 }
 
+TEST(ShapeUtilTest, InsertDimensionsAtIndex) {
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  EXPECT_EQ(ShapeUtil::InsertDimensionsAtIndex(shape, 0, {10, 20}),
+            ShapeUtil::MakeShape(F32, {10, 20}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0});
+  EXPECT_EQ(ShapeUtil::InsertDimensionsAtIndex(shape, 3, {40, 50}),
+            ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30, 40, 50},
+                                                {4, 3, 2, 1, 0}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0});
+  EXPECT_EQ(ShapeUtil::InsertDimensionsAtIndex(shape, 1, {40, 50}),
+            ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 40, 50, 20, 30},
+                                                {4, 3, 2, 1, 0}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {0, 2, 1});
+  EXPECT_EQ(ShapeUtil::InsertDimensionsAtIndex(shape, 1, {40, 50}),
+            ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 40, 50, 20, 30},
+                                                {0, 4, 3, 2, 1}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0});
+  EXPECT_EQ(ShapeUtil::InsertDimensionsAtIndex(shape, 0, {40, 50}),
+            ShapeUtil::MakeShapeWithDenseLayout(F32, {40, 50, 10, 20, 30},
+                                                {4, 3, 2, 1, 0}));
+}
+
 TEST(ShapeUtilTest, MoveDimToMajor) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10, 10});  // implicit {2, 1, 0}
   Shape new_shape = ShapeUtil::MoveDimToMajor(shape, 0);

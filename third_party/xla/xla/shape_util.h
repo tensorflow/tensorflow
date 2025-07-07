@@ -419,6 +419,13 @@ class ShapeUtil {
                                                     int64_t dim_idx,
                                                     int64_t bound);
 
+  // Inserts a list of dimensions at dim_idx. In the layout, the new dimensions
+  // are next-major to the existing dimension at that index, or minor if it's
+  // inserted at the end (i.e. with the normalized layout it's inserted at the
+  // "natural" position).
+  [[nodiscard]] static Shape InsertDimensionsAtIndex(
+      Shape shape, int64_t dim_idx, absl::Span<const int64_t> bounds);
+
   // Copy the dynamic dimensions property from one shape to another.
   static void CopyDynamicDimensions(Shape* to, const Shape& from);
 
