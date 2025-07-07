@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/Support/LogicalResult.h"
@@ -300,17 +301,36 @@ absl::StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
   }
 }
 
+namespace {
+
+template <typename OutputOperandAliasAttrType>
+std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>> GetAliasInfo(
+    OutputOperandAliasAttrType aliasAttr) {
+  ShapeIndex outputShapeIndex(aliasAttr.getOutputTupleIndices());
+  ShapeIndex operandShapeIndex(aliasAttr.getOperandTupleIndices());
+  return std::make_pair(
+      outputShapeIndex,
+      std::make_pair(aliasAttr.getOperandIndex(), operandShapeIndex));
+}
+
+}  // namespace
+
 absl::StatusOr<
     std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
 ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr) {
   std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>> aliasInfo;
   for (auto attr : aliasArrayAttr.getValue()) {
-    auto alias = mlir::cast<mlir::mhlo::OutputOperandAliasAttr>(attr);
-    ShapeIndex outputShapeIndex(alias.getOutputTupleIndices());
-    ShapeIndex operandShapeIndex(alias.getOperandTupleIndices());
-    aliasInfo.push_back(std::make_pair(
-        outputShapeIndex,
-        std::make_pair(alias.getOperandIndex(), operandShapeIndex)));
+    if (auto aliasAttr =
+            mlir::dyn_cast<mlir::stablehlo::OutputOperandAliasAttr>(attr)) {
+      aliasInfo.push_back(GetAliasInfo(aliasAttr));
+    } else if (auto aliasAttr =
+                   mlir::dyn_cast<mlir::mhlo::OutputOperandAliasAttr>(attr)) {
+      aliasInfo.push_back(GetAliasInfo(aliasAttr));
+    } else {
+      return absl::InternalError(
+          "Failed to cast attribute to "
+          "`mlir::{stablehlo, mhlo}::OutputOperandAliasAttr`.");
+    }
   }
   return aliasInfo;
 }
