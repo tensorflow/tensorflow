@@ -68,11 +68,10 @@ class AllReduceKernelTest
   absl::StatusOr<std::vector<Array<T>>> RunKernel(
       const std::vector<se::StreamExecutor*>& executors,
       const std::vector<Array<T>>& input_data, ReductionKind reduction_kind) {
-    constexpr LaunchDimensions kLaunchDimensions{
-        /*block_x_count=*/8,
-        /*thread_x_count_per_block=*/512};
+    const int64_t num_ranks = input_data.size();
+    const LaunchDimensions launch_dimensions = AllReduceLaunchDimensions(
+        input_data[0].num_elements(), num_ranks, all_reduce_strategy_);
 
-    int64_t num_ranks = input_data.size();
     int64_t num_elements = input_data[0].num_elements();
 
     TF_RETURN_IF_ERROR(executors[0]->EnablePeerAccessTo(executors[1]));
@@ -99,7 +98,7 @@ class AllReduceKernelTest
 
       signal_flags_buffers.emplace_back(
           executor, executor->AllocateArray<uint32_t>(
-                        num_ranks * kLaunchDimensions.num_blocks()));
+                        num_ranks * launch_dimensions.num_blocks()));
       TF_RET_CHECK(!signal_flags_buffers[i].memory().is_null());
 
       TF_RETURN_IF_ERROR(executor->SynchronousMemZero(
@@ -121,7 +120,7 @@ class AllReduceKernelTest
     for (int i = 0; i < num_ranks; ++i) {
       auto active_context = executors[i]->Activate();
       TF_RETURN_IF_ERROR(RunAllReduceKernel(
-          streams[i].get(), kLaunchDimensions,
+          streams[i].get(), launch_dimensions,
           primitive_util::NativeToPrimitiveType<T>(),
           /*reduction_kind=*/reduction_kind,
           /*all_reduce_strategy=*/all_reduce_strategy_,
