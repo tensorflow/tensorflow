@@ -187,6 +187,69 @@ TEST_F(CoalescingTest, Transpose) {
   EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true));
 }
 
+TEST_F(CoalescingTest, ConcatenateInLoopEmitter) {
+  absl::string_view ir = R"(
+    HloModule module
+
+    fusion {
+      p0 = bf16[42] parameter(0)
+      p1 = bf16[42] parameter(1)
+      p2 = bf16[42] parameter(2)
+      p3 = bf16[42] parameter(3)
+      p4 = bf16[44] parameter(4)
+      p5 = bf16[44] parameter(5)
+      concatenate = bf16[256] concatenate(p0, p1, p2, p3, p4, p5), dimensions={0}
+      broadcast = bf16[256] parameter(6)
+      ROOT multiply = bf16[256] multiply(concatenate, broadcast)
+    }
+
+    ENTRY entry_computation {
+      p0 = bf16[42] parameter(0)
+      p1 = bf16[42] parameter(1)
+      p2 = bf16[42] parameter(2)
+      p3 = bf16[42] parameter(3)
+      p4 = bf16[44] parameter(4)
+      p5 = bf16[44] parameter(5)
+      p6 = bf16[256] parameter(6)
+      ROOT fusion = bf16[256] fusion(p0, p1, p2, p3, p4, p5, p6), kind=kLoop, calls=fusion
+  })";
+
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir),
+              ElementsAre(true, true, true, true, true, true, true));
+}
+
+TEST_F(CoalescingTest, ConcatenateWitBitcastInLoopEmitter) {
+  absl::string_view ir = R"(
+    HloModule module
+
+    fusion {
+      p0 = bf16[42] parameter(0)
+      p1 = bf16[42] parameter(1)
+      p2 = bf16[42] parameter(2)
+      p3 = bf16[42] parameter(3)
+      p4 = bf16[44] parameter(4)
+      p5 = bf16[44] parameter(5)
+      concatenate = bf16[256] concatenate(p0, p1, p2, p3, p4, p5), dimensions={0}
+      broadcast = bf16[256] parameter(6)
+      multiply = bf16[256] multiply(concatenate, broadcast)
+      ROOT bitcast = bf16[16,16] bitcast(multiply)
+    }
+
+    ENTRY entry_computation {
+      p0 = bf16[42] parameter(0)
+      p1 = bf16[42] parameter(1)
+      p2 = bf16[42] parameter(2)
+      p3 = bf16[42] parameter(3)
+      p4 = bf16[44] parameter(4)
+      p5 = bf16[44] parameter(5)
+      p6 = bf16[256] parameter(6)
+      ROOT fusion = bf16[16, 16] fusion(p0, p1, p2, p3, p4, p5, p6), kind=kLoop, calls=fusion
+  })";
+
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir),
+              ElementsAre(true, true, true, true, true, true, true));
+}
+
 TEST_F(CoalescingTest, TransposeOfBroadcastHeuristic) {
   absl::string_view ir = R"(
     HloModule module

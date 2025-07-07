@@ -69,19 +69,34 @@ std::optional<IndexingMap> LoopFusion::ComputeThreadIdToInputIndexing(
   if (!thread_id_to_output_indexing.has_value()) {
     return std::nullopt;
   }
-  const HloInstruction* fusion_root =
-      &analysis_.fusion_root(root_index).instruction();
-  auto output_to_input_indexing =
-      ComputeOutputToInputIndexing(fusion_root, /*output_id=*/0, ctx);
-  IndexingMapSet output_to_input_indexing_set = ToIndexingMapSet(
-      output_to_input_indexing.indexing_maps[hero_operand_index]);
+
+  GroupedByOpIndexing instr_indexing_keyed_by_operands =
+      ComputeGroupedOutputToInputIndexing(
+          analysis_.fusion(), analysis_.fusion_root(root_index), ctx);
+
+  OperandIndexingSet hero_indexing = instr_indexing_keyed_by_operands.at(
+      &analysis_.fusion_hero(root_index).instruction());
+  CHECK_EQ(hero_indexing.size(), 1);
+
+  IndexingMap thread_id_to_hero_output_indexing = ComposeIndexingMaps(
+      *thread_id_to_output_indexing, hero_indexing.begin()->map());
+
+  HloInstructionIndexing hero_output_to_input_indexing =
+      ComputeOutputToInputIndexing(
+          &analysis_.fusion_hero(root_index).instruction(),
+          /*output_id=*/0, ctx);
+
+  OperandIndexingSet hero_operand_indexing_set =
+      hero_output_to_input_indexing.indexing_maps[hero_operand_index];
   // Since we are computing the indexing for a non-fusion op, there is only one
   // indexing map per operand.
-  CHECK_EQ(output_to_input_indexing_set.size(), 1);
-  IndexingMap thread_id_to_input_indexing_map = ComposeIndexingMaps(
-      *thread_id_to_output_indexing, *output_to_input_indexing_set.begin());
-  thread_id_to_input_indexing_map.Simplify();
-  return thread_id_to_input_indexing_map;
+  CHECK_EQ(hero_operand_indexing_set.size(), 1);
+
+  IndexingMap thread_id_to_input_indexing =
+      ComposeIndexingMaps(thread_id_to_hero_output_indexing,
+                          hero_operand_indexing_set.begin()->map());
+  thread_id_to_input_indexing.Simplify();
+  return thread_id_to_input_indexing;
 }
 
 LaunchDimensions LoopFusion::launch_dimensions() const {
