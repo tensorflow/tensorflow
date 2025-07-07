@@ -470,7 +470,7 @@ TEST_F(GpuCompilerTest, AnnotatesPipelinedInstructions) {
       }
 
       ENTRY entry {
-        c0 = s32[] constant(0)
+        c0 = s32[] constant(1)
         p0 = bf16[3,8,128] parameter(0)
         tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
         while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple),
@@ -827,7 +827,6 @@ ENTRY main {
     EXPECT_TRUE(filecheck_matched);
   }
 }
-
 
 class KernelCacheTest : public HloTestBase {
  public:

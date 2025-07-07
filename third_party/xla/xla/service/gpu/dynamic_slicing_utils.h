@@ -33,7 +33,8 @@ GetSlicedUserPaths(const HloInstruction& instr, const CallGraph& call_graph,
                    HloPredicate is_noop =
                        HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kTuple,
                                         HloOpcode::kGetTupleElement>,
-                   bool check_alignment = true);
+                   bool check_alignment = true,
+                   bool allow_multiple_callers = false);
 
 absl::InlinedVector<HloInstruction*, 8> GetSlicedOperandPaths(
     const HloInstruction& instr, const CallGraph& call_graph,

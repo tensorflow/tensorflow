@@ -301,6 +301,17 @@ HloInstruction* GetUniqueGteInstruction(const HloInstruction* operand,
   return gte;
 }
 
+int64_t CountGteInstructionsWithIndex(const HloComputation* computation,
+                                      int64_t index) {
+  int64_t count = 0;
+  for (const HloInstruction* instr : computation->instructions()) {
+    if (DynCast<HloGetTupleElementInstruction>(instr)) {
+      count += instr->tuple_index() == index;
+    }
+  }
+  return count;
+}
+
 HloComputation* FindComputation(HloModule* module, absl::string_view name) {
   auto computations = module->computations();
   auto it = absl::c_find_if(
