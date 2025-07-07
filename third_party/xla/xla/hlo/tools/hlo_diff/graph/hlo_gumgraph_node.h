@@ -61,7 +61,9 @@ struct HloInstructionNode {
   const HloInstruction* instruction;
   int unique_node_index = 0;
   std::vector<HloInstructionNode*> children;
+  std::vector<int> i_th_parents;
   std::vector<HloInstructionNode*> parents;
+  std::vector<int> i_th_children;
   HloInstructionNodeProps props;
   bool is_root = false;
   absl::string_view GetName() const {

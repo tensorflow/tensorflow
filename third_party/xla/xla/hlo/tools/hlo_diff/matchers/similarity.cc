@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
-#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
@@ -48,37 +47,37 @@ bool AllInstructionUsersAreMatched(const HloInstructionNode* left,
   return true;
 }
 
+bool InSameChildPositionOfEachParent(const HloInstructionNode* left,
+                                     const HloInstructionNode* right) {
+  if (left->i_th_children.size() != right->i_th_children.size()) {
+    return false;
+  }
+  for (int i = 0; i < left->i_th_children.size(); ++i) {
+    if (left->i_th_children[i] != right->i_th_children[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool InSameParentPositionOfEachChild(const HloInstructionNode* left,
+                                     const HloInstructionNode* right) {
+  if (left->i_th_parents.size() != right->i_th_parents.size()) {
+    return false;
+  }
+  for (int i = 0; i < left->i_th_parents.size(); ++i) {
+    if (left->i_th_parents[i] != right->i_th_parents[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 constexpr double kFingerprintMatchScore = 0.5;
 constexpr double kUnitMatchScore = 0.1;
-
-double NodeAttributesSimilarity(const HloInstructionNode* absl_nonnull left,
-                                const HloInstructionNode* absl_nonnull right) {
-  double sim_score = 0.0;
-
-  if (right->props.fingerprint == left->props.fingerprint) {
-    sim_score += kFingerprintMatchScore;
-  }
-
-  if (!left->instruction->metadata().op_name().empty() &&
-      left->instruction->metadata().op_name() ==
-          right->instruction->metadata().op_name()) {
-    sim_score += kUnitMatchScore;
-  }
-  if (!left->instruction->metadata().source_file().empty() &&
-      left->instruction->metadata().source_file() ==
-          right->instruction->metadata().source_file()) {
-    sim_score += kUnitMatchScore;
-  }
-  if (left->instruction->metadata().source_line() != 0 &&
-      left->instruction->metadata().source_line() ==
-          right->instruction->metadata().source_line()) {
-    sim_score += kUnitMatchScore;
-  }
-
-  return sim_score;
-}
+constexpr double kPositionMatchBonus = 0.01;
 
 double AncestorSubGraphLcsSimilarity(const HloInstructionNode* left,
                                      const HloInstructionNode* right,
@@ -171,10 +170,36 @@ double NodePropertySimilarity(const HloInstructionNode* left,
     sim_score += kUnitMatchScore;
   }
 
-  sim_score += NodeAttributesSimilarity(left, right);
+  if (right->props.fingerprint == left->props.fingerprint) {
+    sim_score += kFingerprintMatchScore;
+  }
+
+  if (!left->instruction->metadata().op_name().empty() &&
+      left->instruction->metadata().op_name() ==
+          right->instruction->metadata().op_name()) {
+    sim_score += kUnitMatchScore;
+  }
+  if (!left->instruction->metadata().source_file().empty() &&
+      left->instruction->metadata().source_file() ==
+          right->instruction->metadata().source_file()) {
+    sim_score += kUnitMatchScore;
+  }
+  if (left->instruction->metadata().source_line() != 0 &&
+      left->instruction->metadata().source_line() ==
+          right->instruction->metadata().source_line()) {
+    sim_score += kUnitMatchScore;
+  }
 
   if (AllInstructionUsersAreMatched(left, right)) {
     sim_score += kUnitMatchScore;
+  }
+
+  if (InSameChildPositionOfEachParent(left, right)) {
+    sim_score += kPositionMatchBonus;
+  }
+
+  if (InSameParentPositionOfEachChild(left, right)) {
+    sim_score += kPositionMatchBonus;
   }
 
   return sim_score;

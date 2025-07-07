@@ -30,13 +30,6 @@ namespace hlo_diff {
 using InstructionSimilarityFn = absl::FunctionRef<double(
     const HloInstructionNode*, const HloInstructionNode*)>;
 
-// A heuristic score based on the node attributes. Calculated by comparing the
-// fingerprint, name and generation of the nodes. This set of parameters
-// together with min_similarity threshold = 0.75 works the best so far, and
-// might need to be tuned later.
-double NodeAttributesSimilarity(const HloInstructionNode* absl_nonnull left,
-                                const HloInstructionNode* absl_nonnull right);
-
 // A heuristic score based on the ancestor subgraphs of the given nodes.
 // Calculated by the longest common subsequence of the fingerprints of the
 // ancestors of the nodes in BFS order.
@@ -46,7 +39,7 @@ double AncestorSubGraphLcsSimilarity(const HloInstructionNode* left,
                                      int min_bfs_distance, int left_graph_size,
                                      int right_graph_size);
 
-// Returns similarity of properties between two instructions.
+// A heuristic score based on the node properties.
 double NodePropertySimilarity(const HloInstructionNode* left,
                               const HloInstructionNode* right);
 

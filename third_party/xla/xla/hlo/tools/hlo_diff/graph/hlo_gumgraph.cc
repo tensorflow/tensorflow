@@ -50,7 +50,9 @@ namespace {
 
 // Adds an edge between the given parent and child nodes.
 void AddEdge(HloInstructionNode* parent, HloInstructionNode* child) {
+  parent->i_th_parents.push_back(parent->children.size());
   parent->children.push_back(child);
+  child->i_th_children.push_back(child->parents.size());
   child->parents.push_back(parent);
 }
 
