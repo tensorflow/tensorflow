@@ -149,3 +149,14 @@
  }
  
  void createSyncWarp(Location loc, OpBuilder &rewriter) {
+--- a/python/src/llvm.cc	2025-07-02 05:29:46.000000000 -0700
++++ b/python/src/llvm.cc	2025-07-04 00:15:45.000000000 -0700
+@@ -318,7 +318,7 @@
+         ModuleAnalysisManager mam;
+ 
+         if (arch.empty()) {
+-          llvm::TargetLibraryInfoImpl TLII;
++          llvm::TargetLibraryInfoImpl TLII(mod->getTargetTriple());
+           TLII.disableAllFunctions();
+           fam.registerPass([TLII = std::move(TLII)] {
+             return llvm::TargetLibraryAnalysis(TLII);
