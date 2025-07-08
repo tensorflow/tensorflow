@@ -319,10 +319,8 @@ ENTRY ReplicaAndPartitionId {
       auto execute_options = NanoRtExecutable::ExecuteOptions();
       execute_options.set_device_assignment(&device_assignment);
 
-      TF_ASSERT_OK_AND_ASSIGN(
-          auto device_id,
-          computation_placer.DeviceId(i, j, kReplicaCount, kComputationCount));
-      execute_options.set_global_device_id(GlobalDeviceId(device_id));
+      execute_options.set_global_device_id(
+          GlobalDeviceId(device_assignment.DeviceId(i, j)));
 
       auto event = executable->Execute({}, results, {}, execute_options);
       tsl::BlockUntilReady(event);
