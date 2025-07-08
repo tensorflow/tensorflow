@@ -14,16 +14,18 @@ FullyConnectedBRAMDriver::FullyConnectedBRAMDriver() : bram_dev_mem_fd(-1),
     bram_mapped_weight_block(nullptr), 
     bram_mapped_bias_block(nullptr), 
     bram_mapped_output_block(nullptr), 
-    bram_size_other_than_weight(32 * sizeof(uint32_t)), // Size for input, output, and bias BRAMs
-    bram_size_weight(32 * sizeof(uint32_t)) { // Size for weight BRAM
+    bram_size_other_than_weight(256), // Size for input, output, and bias BRAMs
+    bram_size_weight(1024) { // Size for weight BRAM
+
+        std::cout << "Size of int32_t: " << sizeof(int32_t) << std::endl;
 
         std::cout << "Size of bram_size_other_than_weight: " << sizeof(bram_size_other_than_weight) << std::endl;
         std::cout << "Size of bram_size_weight: " << sizeof(bram_size_weight) << std::endl;
 
-        bram_input_base_address = 0x80020000;
-        bram_weight_base_address = 0x80022000;
-        bram_bias_base_address = 0x80024000;
-        bram_output_base_address = 0x80026000;
+        bram_input_base_address = 0x80010000;
+        bram_weight_base_address = 0x80100000;
+        bram_bias_base_address = 0x80011000;
+        bram_output_base_address = 0x80012000;
 
         initialize_bram();
 }
@@ -90,12 +92,20 @@ void FullyConnectedBRAMDriver::initialize_bram() {
     bram_address["bias_bram"] = bram_mapped_bias_block;
     bram_address["output_bram"] = bram_mapped_output_block;
 
+    std::cout << "Do you want to clear the BRAMs? (y/n): ";
+    char choice;
+    std::cin >> choice;
+
+    if (choice != 'y' && choice != 'Y') {
+        std::cout << "Skipping BRAM clearing." << std::endl;
+        return;
+    }
     //clear initial values in BRAM
-    std::memset(bram_mapped_input_block, 0, bram_size_other_than_weight);
+    std::memset(bram_mapped_input_block, 0, 32);
     std::cout << "input_bram cleared." << std::endl;
-    std::memset(bram_mapped_bias_block, 0, bram_size_other_than_weight);
+    std::memset(bram_mapped_bias_block, 0, 32);
     std::cout << "bias_bram cleared." << std::endl;
-    std::memset(bram_mapped_output_block, 0, bram_size_other_than_weight);
+    std::memset(bram_mapped_output_block, 0, 32);
     std::cout << "output_bram cleared." << std::endl;
     std::memset(bram_mapped_weight_block, 0, bram_size_weight);
     std::cout << "weight_bram cleared." << std::endl;
@@ -104,7 +114,7 @@ void FullyConnectedBRAMDriver::initialize_bram() {
     std::cout << "BRAM initialization complete." << std::endl;
 }
 
-void FullyConnectedBRAMDriver::write_to_bram(const std::string& bram_name, uint32_t* ptr) {
+void FullyConnectedBRAMDriver::write_to_bram(const std::string& bram_name, int32_t* ptr) {
     std::cout << "Writing to BRAM: " << bram_name << std::endl;
 
     if (bram_address.find(bram_name) == bram_address.end()) {
@@ -129,7 +139,7 @@ void FullyConnectedBRAMDriver::write_to_bram(const std::string& bram_name, uint3
     }
     
 }
-uint32_t* FullyConnectedBRAMDriver::read_from_bram(const std::string& bram_name) {
+int32_t* FullyConnectedBRAMDriver::read_from_bram(const std::string& bram_name) {
     std::cout << "Reading from BRAM: " << bram_name << std::endl;
 
     if (bram_address.find(bram_name) == bram_address.end()) {
@@ -143,7 +153,7 @@ uint32_t* FullyConnectedBRAMDriver::read_from_bram(const std::string& bram_name)
         return nullptr;
     }
 
-    return static_cast<uint32_t*>(bram_ptr);
+    return static_cast<int32_t*>(bram_ptr);
 }
 
 #ifdef TEST_MAIN
@@ -151,18 +161,23 @@ int main() {
     FullyConnectedBRAMDriver bram_driver;
 
     // Test BRAM write and read
-    uint32_t test_data[32] = {0};
-    uint32_t test_data_weight[1024] = {0};
+    int32_t test_data_input[32] = {0};
+    int32_t test_data_weight[1024] = {0};
+    int32_t test_data_bias[32] = {0};
+    int32_t test_data_output[32] = {0};
 
     for (int i = 0; i < 32; ++i) {
-        test_data[i] = i;
+        test_data_input[i] = i;
+    }
+    for (int i = 0; i < 32; ++i) {
+        test_data_bias[i] = i; // Different data for bias
     }
     for (int i = 0; i < 1024; ++i) {
-        test_data_weight[i] = i + 100; // Different data for weights
+        test_data_weight[i] = i+100 ; // Different data for weights
     }
 
-    bram_driver.write_to_bram("input_bram", test_data);
-    uint32_t* read_data = bram_driver.read_from_bram("input_bram");
+    bram_driver.write_to_bram("input_bram", test_data_input);
+    int32_t* read_data = bram_driver.read_from_bram("input_bram");
     if (read_data) {
         for (int i = 0; i < 32; ++i) {
             std::cout << "Read data[" << i << "] = " << read_data[i] << std::endl;
@@ -175,14 +190,14 @@ int main() {
             std::cout << "Read data[" << i << "] = " << read_data[i] << std::endl;
         }
     }
-    bram_driver.write_to_bram("bias_bram", test_data);
+    bram_driver.write_to_bram("bias_bram", test_data_bias);
     read_data = bram_driver.read_from_bram("bias_bram");
     if (read_data) {
         for (int i = 0; i < 32; ++i) {
             std::cout << "Read data[" << i << "] = " << read_data[i] << std::endl;
         }
     }
-    bram_driver.write_to_bram("output_bram", test_data);
+    // bram_driver.write_to_bram("output_bram", test_data);
     read_data = bram_driver.read_from_bram("output_bram");
     if (read_data) {
         for (int i = 0; i < 32; ++i) {

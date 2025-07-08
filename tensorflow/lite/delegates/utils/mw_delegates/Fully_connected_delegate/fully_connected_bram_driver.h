@@ -30,8 +30,8 @@ public:
     ~FullyConnectedBRAMDriver();
 
     // Add methods for reading/writing to BRAMs if needed
-    void write_to_bram(const std::string& bram_name, uint32_t* ptr);
-    uint32_t* read_from_bram(const std::string& bram_name);
+    void write_to_bram(const std::string& bram_name, int32_t* ptr);
+    int32_t* read_from_bram(const std::string& bram_name);
 };
 
 #endif // FULLY_CONNECTED_BRAM_DRIVER_H
