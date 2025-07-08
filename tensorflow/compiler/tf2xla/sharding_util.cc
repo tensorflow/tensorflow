@@ -187,9 +187,16 @@ absl::StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDef(
                           GetShardingFromNodeDefInternal(node_def, add_metadata,
                                                          kShardingAttributeV2));
       if (shardingv2.has_value()) {
-        if (tensorflow::VerifyShardingEquivalent(sharding.value(),
-                                                 shardingv2.value())
-                .failed()) {
+        // kShardingOpAttribute in the MLIR op is a required attribute and empty
+        // string represents no sharding. This is reflected in the NodeDef. So,
+        // we avoid comparing the two attributes when kShardingOpAttribute is
+        // empty.
+        string v1_attr_value;
+        TF_RETURN_IF_ERROR(
+            GetNodeAttr(node_def, kShardingOpAttribute, &v1_attr_value));
+        if (!v1_attr_value.empty() && tensorflow::VerifyShardingEquivalent(
+                                          sharding.value(), shardingv2.value())
+                                          .failed()) {
           return absl::InvalidArgumentError(absl::StrCat(
               "XlaSharding attribute was not equivalent to XlaShardingV2 "
               "attribute: ",

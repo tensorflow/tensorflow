@@ -109,6 +109,20 @@ TEST(CoreUtilTest, ShardingMetadataAttributes) {
       sharding3.status().message(),
       ::testing::HasSubstr(
           "Sharding attribute was not equivalent to XlaShardingV2 attribute"));
+
+  AttrValue empty_sharding;
+  empty_sharding.set_s("");
+  NodeDef node4;
+  node4.set_op("XlaSharding");
+  node4.set_name("with_XlaShardingV2_and_empty_sharding");
+  node4.mutable_attr()->insert({{"sharding", empty_sharding},
+                                {"_XlaShardingV2", xla_sharding_v2},
+                                {"index", index},
+                                {"T", type}});
+  auto sharding4 = GetShardingFromNodeDef(node4, /*add_metadata=*/false);
+  TF_ASSERT_OK(sharding4.status());
+  EXPECT_TRUE(sharding4->has_value());
+  EXPECT_EQ(sharding4->value().tile_assignment_devices_size(), 0);
 }
 
 class ShardingWithMetadataTest
