@@ -71,3 +71,37 @@ xla_cc_test(
         "@llvm-project//mlir:IR",
     ],
 )
+
+cc_library(
+    name = "tiling_space",
+    srcs = ["tiling_space.cc"],
+    hdrs = ["tiling_space.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_traversal",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "tiling_space_test",
+    srcs = ["tiling_space_test.cc"],
+    deps = [
+        ":tiling_space",
+        "//xla/hlo/analysis:indexing_test_utils",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/hlo/utils:hlo_traversal",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
