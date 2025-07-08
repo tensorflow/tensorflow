@@ -163,7 +163,7 @@ Value ExpressionEvaluator::EvaluateAddMul(AffineExpr expr) {
     Value arg_evaluated = EvaluateExpression(arg);
     if (result) {
       result = builder.create<Op>(result, arg_evaluated,
-                                  arith::IntegerOverflowFlags::nuw);
+                                  arith::IntegerOverflowFlags::nsw);
     } else {
       result = arg_evaluated;
     }
