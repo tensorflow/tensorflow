@@ -16,6 +16,18 @@ package_group(
 )
 
 cc_library(
+    name = "host_offloading_allocator",
+    hdrs = ["host_offloading_allocator.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    deps = [
+        "//xla/tsl/util:safe_reinterpret_cast",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "host_offloading_buffer",
     hdrs = ["host_offloading_buffer.h"],
     compatible_with = get_compatible_with_libtpu_portable(),
