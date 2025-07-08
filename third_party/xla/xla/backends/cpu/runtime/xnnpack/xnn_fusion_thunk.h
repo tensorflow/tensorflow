@@ -60,6 +60,7 @@ class XnnFusionThunk : public Thunk {
 
   struct Options {
     bool use_threadpool = true;
+    bool use_slinky = false;
   };
 
   struct Argument {
