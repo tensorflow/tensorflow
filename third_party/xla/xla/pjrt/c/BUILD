@@ -88,7 +88,15 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_helpers",
         ":pjrt_c_api_phase_compile_extension_hdrs",
+        ":pjrt_c_api_wrapper_impl",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt/proto:pjrt_partial_program_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
     ],
     alwayslink = True,
 )

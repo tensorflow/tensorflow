@@ -119,6 +119,21 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_PhaseCompile_Get_PhaseNames_Args,
 typedef PJRT_Error* PJRT_PhaseCompile_Get_PhaseNames(
     PJRT_PhaseCompile_Get_PhaseNames_Args* args);
 
+// Arguments for destroying buffers allocated during PJRT_PhaseCompile_Run_Phase
+// and PJRT_PhaseCompile_Get_PhaseNames.
+struct PJRT_PhaseCompile_C_Buffers_Destroy_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const char** char_buffers;        // Input: Buffers to be freed by the plugin.
+  const size_t* char_buffer_sizes;  // Input: Buffer sizes to be freed by the
+                                    // plugin.
+  size_t num_char_buffers;          // Input: Number of buffers.
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_PhaseCompile_C_Buffers_Destroy_Args,
+                          num_char_buffers);
+typedef void PJRT_PhaseCompile_C_Buffers_Destroy(
+    PJRT_PhaseCompile_C_Buffers_Destroy_Args* args);
+
 // --------------------------- Extension entrypoint ----------------------------
 
 // This struct serves as the entry point for accessing the phase compilation
@@ -129,10 +144,11 @@ typedef struct PJRT_PhaseCompile_Extension {
   PJRT_PhaseCompile_Destroy_Compiler* phase_compile_destroy_compiler;
   PJRT_PhaseCompile_Run_Phase* phase_compile_run_phases;
   PJRT_PhaseCompile_Get_PhaseNames* phase_compile_get_phase_names;
+  PJRT_PhaseCompile_C_Buffers_Destroy* phase_compile_c_buffers_destroy;
 } PJRT_PhaseCompile_Extension;
 
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_PhaseCompile_Extension,
-                          phase_compile_get_phase_names);
+                          phase_compile_c_buffers_destroy);
 
 #ifdef __cplusplus
 }

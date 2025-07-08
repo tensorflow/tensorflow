@@ -16,10 +16,26 @@ limitations under the License.
 #ifndef XLA_PJRT_C_PJRT_C_API_PHASE_COMPILE_INTERNAL_H_
 #define XLA_PJRT_C_PJRT_C_API_PHASE_COMPILE_INTERNAL_H_
 
+#include <cstddef>
+#include <string>
+#include <vector>
+
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
 
 namespace pjrt {
+
+// Converts an array of C-style character buffers along with their sizes to a
+// vector of C++ strings.
+std::vector<std::string> ConvertCharBuffersToCppStrings(
+    const char** char_buffers, const size_t* char_buffer_sizes,
+    size_t num_strings);
+
+// Converts a vector of C++ strings to an array of C-style character buffers and
+// their sizes. This function allocates memory for the character buffers, the
+// individual C-strings, and `char_buffer_sizes`.
+const char** ConvertCppStringsToCharBuffers(
+    const std::vector<std::string>& strings, const size_t*& char_buffer_sizes);
 
 // Creates and initializes a PJRT_PhaseCompile_Extension struct. This function
 // is used by plugins to create and chain the phase compilation extension
