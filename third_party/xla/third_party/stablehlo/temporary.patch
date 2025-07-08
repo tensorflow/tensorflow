@@ -1,15 +1,3 @@
-diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.cpp b/stablehlo/stablehlo/dialect/AssemblyFormat.cpp
---- stablehlo/stablehlo/dialect/AssemblyFormat.cpp
-+++ stablehlo/stablehlo/dialect/AssemblyFormat.cpp
-@@ -655,7 +655,7 @@
-   }
-   p.printOptionalAttrDictWithKeyword(op->getAttrs());
-   p.printNewline();
--  p << " cond ";
-+  p << "cond ";
-   p.printRegion(cond, /*printEntryBlockArgs=*/false);
-   p << " do ";
-   p.printRegion(body, /*printEntryBlockArgs=*/false);
 diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h b/stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h
 --- stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h
 +++ stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h
@@ -58,4 +46,29 @@ diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalg
 +                                          /*emitError=*/{});
          },
          linalg::getPrunedAttributeList(op));
+ 
+diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.cpp b/stablehlo/stablehlo/dialect/AssemblyFormat.cpp
+--- stablehlo/stablehlo/dialect/AssemblyFormat.cpp
++++ stablehlo/stablehlo/dialect/AssemblyFormat.cpp
+@@ -655,7 +655,7 @@
+   }
+   p.printOptionalAttrDictWithKeyword(op->getAttrs());
+   p.printNewline();
+-  p << " cond ";
++  p << "cond ";
+   p.printRegion(cond, /*printEntryBlockArgs=*/false);
+   p << " do ";
+   p.printRegion(body, /*printEntryBlockArgs=*/false);
+diff --ruN a/stablehlo/stablehlo/dialect/Version.cpp b/stablehlo/stablehlo/dialect/Version.cpp
+--- stablehlo/stablehlo/dialect/Version.cpp
++++ stablehlo/stablehlo/dialect/Version.cpp
+@@ -83,7 +83,7 @@
+     case CompatibilityRequirement::NONE:
+       return Version::getCurrentVersion();
+     case CompatibilityRequirement::WEEK_4:
+-      return Version(1, 10, 9);  // WEEK_4 ANCHOR: DO NOT MODIFY
++      return Version(1, 11, 0);  // WEEK_4 ANCHOR: DO NOT MODIFY
+     case CompatibilityRequirement::WEEK_12:
+       return Version(1, 10, 3);  // WEEK_12 ANCHOR: DO NOT MODIFY
+     case CompatibilityRequirement::MAX:
 
