@@ -134,7 +134,7 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
     config.keep_large_split = GetMaxContractingSplit(max_out_tile_) < split;
     VLOG(5) << "Forcing split_k, config = " << config.ToString();
     if (config.keep_large_split) {
-      LOG(WARNING)
+      VLOG(1)
           << "split_k is larger than what we would have found automatically. "
              "Skipping split and output tile compatibility checks. Should we "
              "expand the split_k search space?";
@@ -202,10 +202,10 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::OptimizeConfigSet(
   };
 
   if (result_configs.empty()) {
-    LOG(WARNING) << "All configs were filtered out because none of them "
-                    "sufficiently match the hints. Maybe the hints set does "
-                    "not contain a good representative set of valid configs?"
-                    "Working around this by using the full hints set instead.";
+    VLOG(1) << "All configs were filtered out because none of them "
+               "sufficiently match the hints. Maybe the hints set does "
+               "not contain a good representative set of valid configs?"
+               "Working around this by using the full hints set instead.";
     return hints;
   }
   return result_configs;
