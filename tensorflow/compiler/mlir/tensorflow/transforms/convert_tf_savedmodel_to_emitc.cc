@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2025 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,16 +35,16 @@ namespace tf_saved_model {
 
 namespace {
 
-#define GEN_PASS_DEF_CONVERTTFSAVEDMODELTOEMITCPASS
+#define GEN_PASS_DEF_CONVERTTFSAVEDMODELATTRTOEMITCATTRPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
 
-class ConvertTFSavedModelToEmitCPass
-    : public impl::ConvertTFSavedModelToEmitCPassBase<
-          ConvertTFSavedModelToEmitCPass> {
+class ConvertTFSavedModelAttrToEmitCAttrPass
+    : public impl::ConvertTFSavedModelAttrToEmitCAttrPassBase<
+          ConvertTFSavedModelAttrToEmitCAttrPass> {
   void runOnOperation() final;
 };
 
-void ConvertTFSavedModelToEmitCPass::runOnOperation() {
+void ConvertTFSavedModelAttrToEmitCAttrPass::runOnOperation() {
   func::FuncOp funcOp = getOperation();
   OpBuilder builder(funcOp);
 
@@ -55,18 +55,21 @@ void ConvertTFSavedModelToEmitCPass::runOnOperation() {
 
     mlir::Attribute namedAttribute =
         dictAttr.getNamed("tf_saved_model.index_path")->getValue();
-    auto hintNameAttr =
-        cast<mlir::StringAttr>(cast<mlir::ArrayAttr>(namedAttribute)[0]);
-    funcOp.setArgAttrs(idx, builder.getDictionaryAttr(builder.getNamedAttr(
-                                "emitc.hint_name", hintNameAttr)));
+    auto arrayAttr = cast<mlir::ArrayAttr>(namedAttribute);
+    StringAttr hintNameAttr;
+    for (const auto attr : arrayAttr) {
+      hintNameAttr = cast<mlir::StringAttr>(attr);
+      funcOp.setArgAttrs(idx, builder.getDictionaryAttr(builder.getNamedAttr(
+                                  "emitc.field_ref", hintNameAttr)));
+    }
   }
 }
 
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>>
-CreateConvertTFSavedModelToEmitCPass() {
-  return std::make_unique<ConvertTFSavedModelToEmitCPass>();
+CreateConvertTFSavedModelAttrToEmitCAttrPass() {
+  return std::make_unique<ConvertTFSavedModelAttrToEmitCAttrPass>();
 }
 
 }  // namespace tf_saved_model

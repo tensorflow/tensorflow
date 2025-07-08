@@ -22,7 +22,6 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"               // from @llvm-project
 #include "mlir/Transforms/Passes.h"               // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 
 namespace mlir {
@@ -52,11 +51,6 @@ void createTFLtoTOSALegalizationPipeline(
 
   pm.addPass(mlir::affine::createLoopFusionPass());
   pm.addPass(mlir::affine::createAffineScalarReplacementPass());
-
-  if (opts.convert_attrs_to_emitc) {
-    pm.nest<func::FuncOp>().addPass(
-        tf_saved_model::CreateConvertTFSavedModelToEmitCPass());
-  }
 
   //----------------------------------------------------------------------------
   // Perform main conversion.

@@ -201,10 +201,10 @@ def AssetSinkingPass : Pass<"tf-saved-model-asset-sinking", "mlir::ModuleOp"> {
   ];
 }
 
-def ConvertTFSavedModelToEmitCPass
-    : Pass<"convert-tf-saved-model-attributes-to-emitc-emitc",
-           "mlir::func::FuncOp"> {
-  let summary = "Convert tf_saved_model attributes to emitc attributes";
+def ConvertTFSavedModelAttrToEmitCAttrPass
+    : Pass<"convert-tf-savedmodel-attrs-to-emitc-attrs", "mlir::func::FuncOp"> {
+  let summary =
+      "Convert tf_saved_model argument attributes to emitc attributes";
   let description =
       [{
     This converts
@@ -214,5 +214,5 @@ def ConvertTFSavedModelToEmitCPass
   }];
 
   let constructor =
-      "mlir::tf_saved_model::CreateConvertTFSavedModelToEmitCPass()";
+      "mlir::tf_saved_model::CreateConvertTFSavedModelAttrToEmitCAttrPass()";
 }

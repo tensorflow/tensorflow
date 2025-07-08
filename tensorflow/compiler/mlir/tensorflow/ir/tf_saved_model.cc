@@ -400,7 +400,6 @@ LogicalResult VerifyExportedFunc(func::FuncOp func) {
       return func.emitError() << "'tf.resource_name' attribute is not allowed "
                                  "unless it is being under construction";
     }
-    if (func.getArgAttr(i, "emitc.hint_name")) continue;
     return func.emitError()
            << "all arguments should have '" << kTfSavedModelIndexPathAttr
            << "', 'tf_saved_model.bound_input' or 'tf.resource_name' "

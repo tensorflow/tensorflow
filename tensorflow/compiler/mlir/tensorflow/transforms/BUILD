@@ -77,6 +77,25 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "emitc",
+    srcs = [
+        "emitc.cc",
+    ],
+    hdrs = [
+        "emitc.h",
+    ],
+    deps = [
+        ":tensorflow_passes",
+        ":tf_saved_model_passes",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
 gentbl_cc_library(
     name = "decompose_resource_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
