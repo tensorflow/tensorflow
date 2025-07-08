@@ -599,12 +599,22 @@ void TritonDotFusionSearchSpace::AddPipeliningParameter(
 
 void TritonDotFusionSearchSpace::EliminateLowOccupancyConfigs(
     std::vector<ConfigWithNotes>& configs) const {
+  CHECK(!configs.empty());
+
   if (exhaustive_tiling_search_) {
     VLOG(10) << "Exhaustive tiling search is enabled, skipping occupancy "
                 "optimization.";
     return;
   }
-  CHECK(!configs.empty());
+
+  constexpr int kMinConfigsForOccupancyOptimization = 24;
+  if (configs.size() < kMinConfigsForOccupancyOptimization) {
+    VLOG(10) << "Skipping occupancy optimization for small search spaces. "
+                "Configs size: "
+             << configs.size() << " < " << kMinConfigsForOccupancyOptimization;
+    return;
+  }
+
   ConfigWithNotes last_config = configs.back();  // Largest split.
   auto has_too_few_tiles = [](const ConfigWithNotes& config) {
     if (config.not_enough_tiles) {
