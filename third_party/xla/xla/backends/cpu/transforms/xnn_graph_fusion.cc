@@ -95,7 +95,7 @@ std::vector<HloComputation*> XnnGraphFusion::GetNonFusionComputations(
   return non_fusion_computations;
 }
 
-bool XnnGraphFusion::IsOpSupported(const HloInstruction* instr) const {
+bool XnnGraphFusion::IsOpSupported(const HloInstruction* instr) {
   if (!IsLayoutSupportedByXnn(instr->shape())) {
     return false;
   }
@@ -129,7 +129,7 @@ bool XnnGraphFusion::IsOpSupported(const HloInstruction* instr) const {
   }
 }
 
-bool XnnGraphFusion::IsXnnGraphFusion(const HloInstruction* instr) const {
+bool XnnGraphFusion::IsXnnGraphFusion(const HloInstruction* instr) {
   if (instr->opcode() != HloOpcode::kFusion) {
     return false;
   }

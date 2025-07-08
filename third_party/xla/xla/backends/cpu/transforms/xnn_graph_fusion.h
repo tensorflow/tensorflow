@@ -44,9 +44,9 @@ class XnnGraphFusion : public InstructionFusion {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
-  bool IsOpSupported(const HloInstruction* instr) const;
+  static bool IsOpSupported(const HloInstruction* instr);
 
-  bool IsXnnGraphFusion(const HloInstruction* instr) const;
+  static bool IsXnnGraphFusion(const HloInstruction* instr);
 };
 
 }  // namespace cpu
