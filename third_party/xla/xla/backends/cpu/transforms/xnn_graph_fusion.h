@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/instruction_fusion.h"
 
