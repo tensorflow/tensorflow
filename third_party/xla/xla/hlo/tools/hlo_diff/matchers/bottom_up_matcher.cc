@@ -21,20 +21,17 @@
 #include <vector>
 
 #include "absl/base/nullability.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
 #include "xla/hlo/tools/hlo_diff/graph/utils/hlo_gumgraph_bfs.h"
 #include "xla/hlo/tools/hlo_diff/graph/utils/hlo_gumgraph_dfs.h"
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
 #include "xla/hlo/tools/hlo_diff/matchers/similarity.h"
-#include "xla/service/hlo_value.h"
 
 namespace xla::hlo_diff {
 
@@ -105,61 +102,14 @@ double DiceSimLimitedSubgraph(const HloInstructionNode* absl_nonnull left,
   return 2.0 * static_cast<double>(common) / denominator;
 }
 
-// Returns all HloValues used by the given instruction.
-std::vector<const HloValue*> GetAllValuesUsedByInstruction(
-    const HloInstruction* instruction, const HloGumgraph& gumgraph) {
-  if (instruction->opcode() == HloOpcode::kParameter) {
-    if (instruction->parent()->IsEntryComputation() ||
-        gumgraph.GetHloValueTracing().ValueIsDefinedAt(instruction)) {
-      return std::vector<const HloValue*>();
-    }
-
-    return gumgraph.GetHloValueTracing()
-        .GetFlattenedValueSet(instruction)
-        .values();
-  }
-
-  std::vector<const HloValue*> values_used_by_instruction;
-  for (const HloInstruction* operand : instruction->operands()) {
-    const HloValueSet operand_value_set =
-        gumgraph.GetHloValueTracing().GetFlattenedValueSet(operand);
-    for (const HloValue* value : operand_value_set.values()) {
-      absl::Span<const HloUse> uses = value->GetUses();
-      for (const HloUse& use : uses) {
-        if (use.instruction == instruction) {
-          values_used_by_instruction.push_back(value);
-          break;
-        }
-      }
-    }
-  }
-
-  return values_used_by_instruction;
-}
-
 // Returns true if all HloValues used by the left and right nodes have their
 // defining instructions matched.
 double AllOperandHloValuesMatchedScore(
     const HloInstructionNode* left_node, const HloInstructionNode* right_node,
     const HloGumgraph& left, const HloGumgraph& right,
-    absl::flat_hash_map<const HloInstruction*,
-                        const std::vector<const HloValue*>>&
-        instruction_used_values_cache,
     HloGumgraphMappings& mappings) {
-  if (!instruction_used_values_cache.contains(left_node->instruction)) {
-    instruction_used_values_cache.emplace(
-        left_node->instruction,
-        GetAllValuesUsedByInstruction(left_node->instruction, left));
-  }
-  if (!instruction_used_values_cache.contains(right_node->instruction)) {
-    instruction_used_values_cache.emplace(
-        right_node->instruction,
-        GetAllValuesUsedByInstruction(right_node->instruction, right));
-  }
-  auto& left_hlo_values = instruction_used_values_cache[left_node->instruction];
-  auto& right_hlo_values =
-      instruction_used_values_cache[right_node->instruction];
-
+  const auto& left_hlo_values = left_node->used_values;
+  const auto& right_hlo_values = right_node->used_values;
   if (left_hlo_values.empty() || right_hlo_values.empty() ||
       (left_hlo_values.size() != right_hlo_values.size())) {
     return 0.0;
@@ -204,8 +154,6 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
     HloGumgraphMappings& mappings) const {
   LOG(INFO) << "Running GreedyLimitedCandidatesBottomUpMatcher: matching "
                "subgraphs that match based on Dice similarity";
-  absl::flat_hash_map<const HloInstruction*, const std::vector<const HloValue*>>
-      instruction_used_values_cache;
   int current_mapping_count = mappings.left_to_right_instruction_map.size();
   std::vector<const HloInstructionNode*> left_postorder = GetAllNodesInDfsOrder(
       left_.GetRoot(), DfsTraversalOrder::kPostOrder, left_.GetNodeCount());
@@ -262,8 +210,7 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
               node.instruction->opcode() == left_node->instruction->opcode()) {
             // Found candidate. Calculate similarity.
             double operands_match_similarity = AllOperandHloValuesMatchedScore(
-                left_node, &node, left_, right_, instruction_used_values_cache,
-                mappings);
+                left_node, &node, left_, right_, mappings);
             double dice_sim = DiceSimLimitedSubgraph(
                 left_node, &node, mappings, max_dice_subgraph_size_,
                 min_bfs_distance_, left_.GetNodeCount(), right_.GetNodeCount());

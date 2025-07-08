@@ -28,6 +28,7 @@
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -39,6 +40,7 @@
 #include "xla/hlo/tools/hlo_diff/graph/utils/hlo_gumgraph_dfs.h"
 #include "xla/hlo/tools/hlo_diff/utils/hlo_diff_util.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/hlo_value.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -314,6 +316,48 @@ absl::Status HloGumgraph::PrecomputeComputationFingerprint() {
   return absl::OkStatus();
 }
 
+void HloGumgraph::PrecomputeInstructionDependencies() {
+  LOG(INFO) << "Precomputing instruction dependencies";
+  for (auto* computation : hlo_module_.MakeComputationPostOrder()) {
+    for (auto* instruction : computation->MakeInstructionPostOrder()) {
+      HloInstructionNode* node = GetNode(instruction);
+      CHECK(node != nullptr);
+
+      // Cache all HloValues used by the instruction.
+      if (instruction->opcode() == HloOpcode::kParameter) {
+        if (!instruction->parent()->IsEntryComputation() &&
+            !hlo_value_tracing_->ValueIsDefinedAt(instruction)) {
+          node->used_values =
+              hlo_value_tracing_->GetFlattenedValueSet(instruction).values();
+        }
+      } else {
+        for (const HloInstruction* operand : instruction->operands()) {
+          const HloValueSet& operand_value_set =
+              hlo_value_tracing_->GetFlattenedValueSet(operand);
+          for (const HloValue* value : operand_value_set.values()) {
+            absl::Span<const HloUse> uses = value->GetUses();
+            for (const HloUse& use : uses) {
+              if (use.instruction == instruction) {
+                node->used_values.push_back(value);
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      // Cache all uses of HloValues present at the instruction's output.
+      const HloValueSet& value_set =
+          hlo_value_tracing_->GetFlattenedValueSet(instruction);
+      for (const HloValue* value : value_set.values()) {
+        node->value_uses.insert(node->value_uses.end(),
+                                value->GetUses().begin(),
+                                value->GetUses().end());
+      }
+    }
+  }
+}
+
 absl::StatusOr<std::unique_ptr<const HloGumgraph>> HloGumgraph::Create(
     const HloModule* absl_nonnull hlo_module,
     const HloGumgraphFingerprintOptions& fingerprint_options) {
@@ -336,6 +380,7 @@ absl::StatusOr<std::unique_ptr<const HloGumgraph>> HloGumgraph::Create(
   }
   graph->PrecomputeSizeAndHeight();
   TF_RETURN_IF_ERROR(graph->PrecomputeComputationFingerprint());
+  graph->PrecomputeInstructionDependencies();
 
   return graph;
 };

@@ -24,6 +24,7 @@
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/hlo_value.h"
 
 namespace xla {
 namespace hlo_diff {
@@ -66,6 +67,10 @@ struct HloInstructionNode {
   std::vector<int> i_th_children;
   HloInstructionNodeProps props;
   bool is_root = false;
+  // All HloValues that this instruction consumes as input.
+  std::vector<const HloValue*> used_values;
+  // All uses of the HloValues that are present in this instruction's output.
+  std::vector<HloUse> value_uses;
   absl::string_view GetName() const {
     return is_root ? "root" : instruction->name();
   }
