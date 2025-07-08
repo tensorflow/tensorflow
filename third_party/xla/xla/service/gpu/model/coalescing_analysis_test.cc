@@ -64,9 +64,9 @@ class CoalescingTest : public HloHardwareIndependentTestBase {
     auto fusion = dynamic_cast<KernelFusionInterface*>(emitter.get());
     EXPECT_NE(fusion, nullptr);
 
-    CoalescingAnalysis coalescing_analysis(root, root->operands(), analysis,
-                                           fusion, &mlir_context_,
-                                           /*use_heuristic=*/false);
+    CoalescingAnalysis coalescing_analysis =
+        CoalescingAnalysis::Create(root, root->operands(), analysis,
+                                   &mlir_context_, /*use_heuristic=*/false);
 
     std::vector<bool> results;
     for (const HloInstruction* operand : root->operands()) {
