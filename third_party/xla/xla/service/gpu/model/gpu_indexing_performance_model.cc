@@ -360,7 +360,7 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForInstruction(
   auto fusion_analysis = HloFusionAnalysis::Create(*producer, *device_info_);
 
   bool is_coalesced = IsReadCoalescedHeuristic(
-      fusion_analysis.GetEmitterFusionKind(), *device_info_, producer);
+      fusion_analysis.emitter_fusion_kind(), *device_info_, producer);
   return EstimateRunTimeForFusion(fusion_analysis, is_coalesced);
 }
 
@@ -370,9 +370,8 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForProducerConsumer(
   auto fusion_analysis =
       HloFusionAnalysis::Create(*producer, *consumer, *device_info_);
 
-  bool is_coalesced =
-      IsReadCoalescedHeuristic(fusion_analysis.GetEmitterFusionKind(),
-                               *device_info_, producer, consumer);
+  bool is_coalesced = IsReadCoalescedHeuristic(
+      fusion_analysis.emitter_fusion_kind(), *device_info_, producer, consumer);
   return EstimateRunTimeForFusion(fusion_analysis, is_coalesced);
 }
 

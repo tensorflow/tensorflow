@@ -630,7 +630,7 @@ CoalescingAnalysis::CoalescingAnalysis(
   }
   // If ComputeCoalescingForAllOperands fails, fallback to using the heuristic.
   is_coalesced_computed_by_heuristic_ =
-      IsReadCoalescedHeuristic(fusion_analysis.GetEmitterFusionKind(),
+      IsReadCoalescedHeuristic(fusion_analysis.emitter_fusion_kind(),
                                fusion_analysis.device_info(), instr);
 }
 
@@ -649,7 +649,7 @@ CoalescingAnalysis::CoalescingAnalysis(
   }
   // If ComputeCoalescingForAllOperands fails, fallback to using the heuristic.
   is_coalesced_computed_by_heuristic_ = IsReadCoalescedHeuristic(
-      fusion_analysis.GetEmitterFusionKind(), fusion_analysis.device_info(),
+      fusion_analysis.emitter_fusion_kind(), fusion_analysis.device_info(),
       producer, consumer);
 }
 

@@ -96,17 +96,17 @@ TEST_F(FusionAnalysisCacheTest, CachesAndInvalidatesProducerConsumerFusions) {
   auto* computation = module->GetComputationWithName("f");
   auto* constant = computation->GetInstructionWithName("c0");
 
-  EXPECT_EQ(cache_.Get(*fusion, *neg).GetEmitterFusionKind(),
+  EXPECT_EQ(cache_.Get(*fusion, *neg).emitter_fusion_kind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction);
 
   computation->set_root_instruction(constant);
 
-  EXPECT_EQ(cache_.Get(*fusion, *neg).GetEmitterFusionKind(),
+  EXPECT_EQ(cache_.Get(*fusion, *neg).emitter_fusion_kind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction)
       << "Analysis should be cached.";
 
   cache_.Invalidate(*fusion);
-  EXPECT_EQ(cache_.Get(*fusion, *neg).GetEmitterFusionKind(),
+  EXPECT_EQ(cache_.Get(*fusion, *neg).emitter_fusion_kind(),
             HloFusionAnalysis::EmitterFusionKind::kLoop)
       << "Analysis should have been recomputed";
 }

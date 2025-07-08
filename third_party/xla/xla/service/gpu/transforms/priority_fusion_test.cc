@@ -67,7 +67,7 @@ class PriorityFusionTest : public HloHardwareIndependentTestBase {
 
       auto analysis = HloFusionAnalysis::Create(
           *computation->FusionInstruction(), device_info_);
-      kinds.push_back(analysis.GetEmitterFusionKind());
+      kinds.push_back(analysis.emitter_fusion_kind());
     }
     return kinds;
   }

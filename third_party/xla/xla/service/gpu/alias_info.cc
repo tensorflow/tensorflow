@@ -72,10 +72,8 @@ std::optional<bool> FusionCanShareBufferHint(
   // This only works for the reduction emitter, as it calculates the reduction
   // first, i.e. before processing other outputs (that may overwrite the input).
   auto analysis = HloFusionAnalysis::Create(*user, device_description);
-  bool is_reduction_emitter = analysis.GetEmitterFusionKind() ==
-                              HloFusionAnalysis::EmitterFusionKind::kReduction;
-  const HloInstruction* reduction_hero =
-      is_reduction_emitter ? analysis.FindHeroReduction() : nullptr;
+  // Can be nullptr if the fusion is not using the reduction emitter.
+  const HloInstruction* reduction_hero = analysis.FindHeroReduction();
 
   // We need to make sure that the fusion parameter is accessed in the same
   // iteration order as the fusion output. Also, there should not be any other
