@@ -781,6 +781,7 @@ cc_library(
     ],
     deps = [
         ":rocm_executor",
+        ":roctracer_if_static",  # buildcleaner: keep
         "//xla/tsl/platform:env",
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform",
