@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "experimental.h"  // xnnpack
 #include "xnnpack.h"
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
@@ -241,9 +242,9 @@ absl::StatusOr<XnnFusionThunk::XnnRuntime> XnnFusionThunk::CreateXnnRuntime(
         capturing_builder_(arguments_, results_, arguments_buffers));
   }
 
-  XNN_RETURN_IF_ERROR(
-      xnn_create_runtime_v4(runtime.subgraph, nullptr, runtime.workspace,
-                            runtime.threadpool, 0, &runtime.runtime));
+  XNN_RETURN_IF_ERROR(xnn_create_runtime_v4(
+      runtime.subgraph, nullptr, runtime.workspace, runtime.threadpool,
+      XNN_FLAG_SLINKY_STATIC_BOUNDS, &runtime.runtime));
 
   XNN_RETURN_IF_ERROR(xnn_reshape_runtime(runtime.runtime));
 
@@ -276,9 +277,9 @@ absl::Status XnnFusionThunk::UpdateXnnRuntime(
 
   TF_ASSIGN_OR_RETURN(runtime.subgraph, capturing_builder_(arguments_, results_,
                                                            arguments_buffers));
-  XNN_RETURN_IF_ERROR(
-      xnn_create_runtime_v4(runtime.subgraph, nullptr, runtime.workspace,
-                            runtime.threadpool, 0, &runtime.runtime));
+  XNN_RETURN_IF_ERROR(xnn_create_runtime_v4(
+      runtime.subgraph, nullptr, runtime.workspace, runtime.threadpool,
+      XNN_FLAG_SLINKY_STATIC_BOUNDS, &runtime.runtime));
 
   XNN_RETURN_IF_ERROR(xnn_reshape_runtime(runtime.runtime));
 
