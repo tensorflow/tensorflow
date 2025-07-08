@@ -851,21 +851,6 @@ LiveRangeRegions CopyRemover::ComputeLiveRangeRegions(const ValueNode* head) {
   return live_range;
 }
 
-bool CopyRemover::IsCopyToFromHost(const HloInstruction* copy) {
-  if (copy->shape().has_layout() && copy->operand(0)->shape().has_layout()) {
-    if (copy->shape().layout().memory_space() == Layout::kHostMemorySpace &&
-        copy->operand(0)->shape().layout().memory_space() !=
-            Layout::kHostMemorySpace) {
-      return true;
-    }
-    if (copy->shape().layout().memory_space() != Layout::kHostMemorySpace &&
-        copy->operand(0)->shape().layout().memory_space() ==
-            Layout::kHostMemorySpace) {
-      return true;
-    }
-  }
-  return false;
-}
 // Try to elide the given copy. Elision of a copy is possible only if no
 // live range interference is introduced by the copy's elimination. If
 // elision is possible, then the internal state (value lists) are updated,
@@ -876,18 +861,14 @@ bool CopyRemover::TryElideCopy(
   VLOG(3) << "TryElideCopy starting for: " << copy->name();
   CHECK_NE(region_analysis_limit, nullptr);
 
-  // Don't elide copies to/from the host.
-  if (IsCopyToFromHost(copy)) {
-    return false;
-  }
-
   // Don't elide copies that are not in the copy map.
   if (!ContainsKey(copy_map_, copy)) {
     VLOG(2) << copy->name() << " is not removable";
     return false;
   }
 
-  // Don't elide copies with different shapes.
+  // Don't elide copies with different shapes. This includes checking that
+  // memory spaces are the same, so we don't elide copies to/from the host.
   if (!ShapeUtil::Equal(copy->shape(), copy->operand(0)->shape())) {
     VLOG(2) << copy->name() << " is not removable (shape mismatch)";
     return false;
