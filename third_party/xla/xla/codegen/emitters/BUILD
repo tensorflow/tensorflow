@@ -238,6 +238,25 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "kernel_api_builder_test",
+    srcs = ["kernel_api_builder_test.cc"],
+    deps = [
+        ":kernel_api_builder",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/analysis:indexing_analysis",
+        "//xla/runtime:work_cluster",
+        "//xla/runtime:work_dimensions",
+        "//xla/runtime:work_group",
+        "//xla/runtime:work_item",
+        "//xla/runtime:work_tile_size",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
 cc_library(
     name = "loop_kernel_emitter",
     srcs = ["loop_kernel_emitter.cc"],

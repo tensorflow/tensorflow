@@ -627,6 +627,7 @@ cc_library(
         "//xla/runtime:work_dimensions",
         "//xla/runtime:work_group",
         "//xla/runtime:work_item",
+        "//xla/runtime:work_tile_size",
         "//xla/service:buffer_assignment",
         "//xla/service/cpu:backend_config_proto_cc",
         "//xla/tsl/platform:statusor",
@@ -637,6 +638,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
 )

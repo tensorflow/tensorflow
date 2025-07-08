@@ -238,6 +238,7 @@ cc_library(
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
+        "//xla/runtime:work_dimensions",
         "//xla/service/gpu:ir_emitter_context",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:target_util",
