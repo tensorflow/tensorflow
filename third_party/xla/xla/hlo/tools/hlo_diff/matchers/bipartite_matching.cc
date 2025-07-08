@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/tools/hlo_diff/matchers/bipartite_matching.h"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -173,8 +174,8 @@ void MatchInstructionsByPosition(
                                unmatched_right_instructions.size()) {
     return;
   }
-  for (int i = 0; i < MIN(unmatched_left_instructions.size(),
-                          unmatched_right_instructions.size());
+  for (int i = 0; i < std::min(unmatched_left_instructions.size(),
+                               unmatched_right_instructions.size());
        ++i) {
     mappings.MapInstructionsIfAbsent(unmatched_left_instructions[i],
                                      unmatched_right_instructions[i],
