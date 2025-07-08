@@ -38,7 +38,7 @@ enum class MapByPositionMode {
 // The instructions are first matched by node properties like shape, metadata,
 // etc. If 'map_by_position' is set to true, the left unmatched instructions
 // will try to be matched by position one by one.
-void MatchSameTypeInstructions(
+void MatchSameOpcodeInstructions(
     const HloGumgraph& left_graph, const HloGumgraph& right_graph,
     const std::vector<const HloInstructionNode*>& left_instructions,
     const std::vector<const HloInstructionNode*>& right_instructions,
@@ -46,7 +46,7 @@ void MatchSameTypeInstructions(
     MapByPositionMode map_by_position = MapByPositionMode::kNever);
 
 // Find optimal matches between the left and right instruction lists.
-// Sort the instructions by opcode and call MatchSameTypeInstructions for each
+// Sort the instructions by opcode and call MatchSameOpcodeInstructions for each
 // opcode.
 void MatchInstructions(
     const HloGumgraph& left_graph, const HloGumgraph& right_graph,

@@ -88,10 +88,10 @@ ENTRY entry {
     }
   }
 
-  MatchSameTypeInstructions(*left_gumgraph, *right_gumgraph, left_constants,
-                            right_constants, *mappings,
-                            MatcherType::kComputationGraphExactSignatureMatcher,
-                            MapByPositionMode::kNever);
+  MatchSameOpcodeInstructions(
+      *left_gumgraph, *right_gumgraph, left_constants, right_constants,
+      *mappings, MatcherType::kComputationGraphExactSignatureMatcher,
+      MapByPositionMode::kNever);
 
   auto matched_params = ExtractMappedInstructionNames(*mappings);
   EXPECT_THAT(matched_params,
@@ -149,10 +149,10 @@ ENTRY entry {
     }
   }
 
-  MatchSameTypeInstructions(*left_gumgraph, *right_gumgraph, left_constants,
-                            right_constants, *mappings,
-                            MatcherType::kComputationGraphExactSignatureMatcher,
-                            MapByPositionMode::kOnlyIfSameSize);
+  MatchSameOpcodeInstructions(
+      *left_gumgraph, *right_gumgraph, left_constants, right_constants,
+      *mappings, MatcherType::kComputationGraphExactSignatureMatcher,
+      MapByPositionMode::kOnlyIfSameSize);
 
   auto matched_params = ExtractMappedInstructionNames(*mappings);
   EXPECT_THAT(matched_params,
@@ -220,5 +220,6 @@ ENTRY entry {
               UnorderedElementsAre(Pair("iota", "iota"), Pair("p1", "p1"),
                                    Pair("c1", "c1")));
 }
+
 }  // namespace
 }  // namespace xla::hlo_diff

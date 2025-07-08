@@ -181,7 +181,8 @@ ENTRY entry {
 
   auto matched_params = ExtractMappedInstructionNames(*mappings);
   EXPECT_THAT(matched_params,
-              UnorderedElementsAre(Pair("c22", "c22"), Pair("c23", "c23"),
+              UnorderedElementsAre(Pair("c20", "c20"), Pair("c21", "c21"),
+                                   Pair("c22", "c22"), Pair("c23", "c23"),
                                    Pair("c24", "c24"), Pair("c25", "c25"),
                                    Pair("c26", "c26"), Pair("add23", "add23")));
 }

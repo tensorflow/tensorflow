@@ -185,7 +185,7 @@ void MatchInstructionsByPosition(
 
 }  // namespace
 
-void MatchSameTypeInstructions(
+void MatchSameOpcodeInstructions(
     const HloGumgraph& left_graph, const HloGumgraph& right_graph,
     const std::vector<const HloInstructionNode*>& left_instructions,
     const std::vector<const HloInstructionNode*>& right_instructions,
@@ -250,9 +250,9 @@ void MatchInstructions(
     instructions_by_opcode[r->instruction->opcode()].second.push_back(r);
   }
   for (const auto& [opcode, instructions] : instructions_by_opcode) {
-    MatchSameTypeInstructions(left_graph, right_graph, instructions.first,
-                              instructions.second, mappings, matcher_type,
-                              map_by_position_mode);
+    MatchSameOpcodeInstructions(left_graph, right_graph, instructions.first,
+                                instructions.second, mappings, matcher_type,
+                                map_by_position_mode);
   }
 }
 

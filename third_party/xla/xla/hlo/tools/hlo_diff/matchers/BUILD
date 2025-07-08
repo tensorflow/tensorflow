@@ -54,7 +54,6 @@ cc_library(
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph",
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
         "//xla/service:call_graph",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
     ],
 )
