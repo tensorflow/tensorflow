@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 
@@ -35,7 +36,9 @@ namespace xla {
 // Platform-independent provider of `hlo-opt` functionality.
 class OptProvider {
  public:
-  OptProvider() : pass_registry_() { RegisterAllHardwareIndependentPasses(); }
+  OptProvider() : pass_registry_(), alias_info_(std::make_unique<AliasInfo>()) {
+    RegisterAllHardwareIndependentPasses();
+  }
 
   virtual ~OptProvider() = default;
 
@@ -72,6 +75,10 @@ class OptProvider {
   // function takes a HloPassPipeline and adds the corresponding pass to it.
   absl::flat_hash_map<std::string, std::function<void(HloPassPipeline&)>>
       pass_registry_;
+
+  // Backend specific aliasing information. May be reset by the backend when
+  // calling RegisterProviderPasses().
+  std::unique_ptr<AliasInfo> alias_info_;
 
   // Adds an entry of pass name vs pass registration function to registry.
   template <typename T, typename... Args>

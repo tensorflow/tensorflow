@@ -76,7 +76,7 @@ class GpuCopyInsertionTest : public HloHardwareIndependentTestBase {
  private:
   const se::DeviceDescription device_description_{
       xla::gpu::TestGpuDeviceInfo::CudaOrRocmDeviceInfo()};
-  GpuAliasInfo alias_info_{&device_description_};
+  GpuAliasInfo alias_info_{device_description_};
 };
 
 // This is some kind of end-to-end test for FusionCanShareBufferHint.
@@ -150,7 +150,7 @@ class FusionCanShareBufferHintTest : public HloHardwareIndependentTestBase {
  private:
   const se::DeviceDescription device_description_{
       xla::gpu::TestGpuDeviceInfo::CudaOrRocmDeviceInfo()};
-  GpuAliasInfo alias_info_{&device_description_};
+  GpuAliasInfo alias_info_{device_description_};
 };
 
 TEST_F(FusionCanShareBufferHintTest, BufferCanBeSharedSameShape) {

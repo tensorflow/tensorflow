@@ -112,7 +112,7 @@ class GpuCompiler : public LLVMCompiler {
 
   virtual std::unique_ptr<GpuAliasInfo> GetAliasInfo(
       const se::DeviceDescription& device_description) const {
-    return std::make_unique<GpuAliasInfo>(&device_description);
+    return std::make_unique<GpuAliasInfo>(device_description);
   }
 
   virtual absl::StatusOr<bool> CanUseLinkModules(

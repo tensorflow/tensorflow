@@ -530,7 +530,7 @@ NVPTXCompiler::NVPTXCompiler()
 
 std::unique_ptr<GpuAliasInfo> NVPTXCompiler::GetAliasInfo(
     const se::DeviceDescription& device_description) const {
-  return std::make_unique<NVPTXAliasInfo>(&device_description);
+  return std::make_unique<NVPTXAliasInfo>(device_description);
 }
 
 absl::StatusOr<GpuCompiler::BackendCompileResult>

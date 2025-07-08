@@ -18,6 +18,7 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
+#include "xla/service/copy_insertion.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
@@ -33,6 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
+#include "xla/service/gpu/nvptx_alias_info.h"
 #include "xla/service/gpu/transforms/collectives/all_gather_optimizer.h"
 #include "xla/service/gpu/transforms/cudnn_custom_call_converter.h"
 #include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
@@ -125,6 +128,13 @@ class GpuOptProvider : public CompiledOptProvider {
     se::GpuComputeCapability gpu_compute_capability;
     if (device_description.ok()) {
       gpu_compute_capability = device_description->gpu_compute_capability();
+      if (std::holds_alternative<se::CudaComputeCapability>(
+              gpu_compute_capability)) {
+        alias_info_ =
+            std::make_unique<gpu::NVPTXAliasInfo>(*device_description);
+      } else {
+        alias_info_ = std::make_unique<gpu::GpuAliasInfo>(*device_description);
+      }
     } else {
       LOG(WARNING)
           << "No compute capability specified, defaulting to Hopper. Use "
@@ -132,6 +142,7 @@ class GpuOptProvider : public CompiledOptProvider {
       gpu_compute_capability = stream_executor::CudaComputeCapability::Hopper();
     }
     // go/keep-sorted start
+    RegisterPass<CopyInsertion>(alias_info_.get());
     RegisterPass<gpu::AllGatherOptimizer>();
     RegisterPass<gpu::CuDnnCustomCallConverter>();
     RegisterPass<gpu::DotAlgorithmRewriter>();

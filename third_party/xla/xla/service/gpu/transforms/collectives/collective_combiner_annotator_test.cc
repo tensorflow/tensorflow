@@ -43,7 +43,7 @@ class CollectiveCombinerAnnotatorTest : public HloHardwareIndependentTestBase {
     int pointer_size = 4;
     stream_executor::DeviceDescription device_info;
     device_info.set_device_memory_size(device_memory_size);
-    GpuAliasInfo alias_info(&device_info);
+    GpuAliasInfo alias_info(device_info);
     return RunHloPass(CollectiveCombinerAnnotator(std::move(device_info),
                                                   &alias_info, pointer_size),
                       module);

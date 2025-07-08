@@ -218,7 +218,7 @@ std::optional<bool> GpuAliasInfo::MayAlias(const HloInstruction* operand,
   const HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(user);
   if (fusion != nullptr) {
     return FusionCanShareBufferHint(operand, fusion, user_index,
-                                    *device_description_);
+                                    device_description_);
   }
   return std::nullopt;
 }

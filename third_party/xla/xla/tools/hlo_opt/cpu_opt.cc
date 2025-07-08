@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/service/batchnorm_expander.h"
 #include "xla/service/change_op_data_type.h"
+#include "xla/service/copy_insertion.h"
 #include "xla/service/cpu/conv_canonicalization.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/cpu_executable.h"
@@ -171,6 +172,7 @@ class CpuOptProvider : public CompiledOptProvider {
                                             cpu::CpuExecutable::ShapeSizeBytes,
                                             &target_machine_features);
     RegisterPass<cpu::CpuInstructionFusion>();
+    RegisterPass<CopyInsertion>(alias_info_.get());
   }
 
  private:
