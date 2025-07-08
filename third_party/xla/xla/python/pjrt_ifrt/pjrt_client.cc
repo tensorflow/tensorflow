@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
-#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -30,8 +29,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
-#include "absl/container/btree_map.h"
-#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
@@ -87,11 +84,6 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/pjrt_ifrt/pjrt_tuple.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
-#include "xla/python/transfer/event_loop.h"
-#include "xla/python/transfer/socket-server.h"
-#include "xla/python/transfer/socket_bulk_transport.h"
-#include "xla/python/transfer/streaming.h"
-#include "xla/python/transfer/streaming_ifrt.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -707,36 +699,7 @@ absl::StatusOr<ArrayRef> AssembleStringArrayFromSingleDeviceStringArrays(
                                   std::move(on_done_with_buffer));
 }
 
-absl::StatusOr<xla::PjRtMemorySpace*> GetMemorySpace(
-    std::optional<MemoryKind> memory_kind, xla::ifrt::Device* device) {
-  if (memory_kind.has_value()) {
-    xla::ifrt::MemoryKind canonical_memory_kind =
-        CanonicalizeMemoryKind(*memory_kind, device);
-    xla::ifrt::Memory* memory = nullptr;
-    for (xla::ifrt::Memory* ms : device->Memories()) {
-      if (ms->Kind() == canonical_memory_kind) {
-        memory = ms;
-        break;
-      }
-    }
-    if (memory == nullptr) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "Invalid memory kind: %s; available memory kinds: %s",
-          *canonical_memory_kind.memory_kind(),
-          absl::StrJoin(device->Memories(), ", ",
-                        [](std::string* out, xla::ifrt::Memory* ms) {
-                          absl::StrAppend(out, *ms->Kind().memory_kind());
-                        })));
-    }
-    return tensorflow::down_cast<xla::ifrt::PjRtMemory*>(memory)->pjrt_memory();
-  }
-  return tensorflow::down_cast<xla::ifrt::PjRtDevice*>(device)
-      ->pjrt_device()
-      ->default_memory_space();
-}
-
 const char kKeyPrefix[] = "ifrt_cross_host_transfer_";
-const char kKeyPrefixSocketAddress[] = "ifrt_cross_host_socket_address_";
 
 }  // namespace
 
@@ -863,20 +826,6 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
 
   client->kv_store_ = std::move(options.kv_store);
   client->cross_host_transfer_timeout_ = options.cross_host_transfer_timeout;
-  client->cross_host_dcn_transfer_size_ = options.cross_host_dcn_transfer_size;
-  client->cross_host_dcn_max_num_parallel_copies_ =
-      client->addressable_devices_.size() * 2;
-  client->socket_address_ = options.socket_address;
-  client->transport_addresses_ = options.transport_addresses;
-  if (client->transport_addresses_.empty()) {
-    TF_ASSIGN_OR_RETURN(aux::SocketAddress socket_address,
-                        aux::SocketAddress::Parse("0.0.0.0:0"));
-    // TODO(emilyaf, parkers): Remove this once defaults are set per device
-    // platform.
-    for (int i = 0; i < 4; ++i) {
-      client->transport_addresses_.push_back(socket_address);
-    }
-  }
 
   if (client->pjrt_client()->plugin_attributes().has_value()) {
     auto attrs = client->pjrt_client()->plugin_attributes()->attributes;
@@ -1276,9 +1225,9 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::CopyArrays(
     }
   }
 
+  std::vector<ArrayRef> new_arrays;
+  new_arrays.reserve(arrays.size());
   if (all_host_local_transfers) {
-    std::vector<ArrayRef> new_arrays;
-    new_arrays.reserve(arrays.size());
     for (const ArrayRef& array : arrays) {
       if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get())) {
         TF_ASSIGN_OR_RETURN(new_arrays.emplace_back(),
@@ -1295,17 +1244,11 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::CopyArrays(
     }
     return new_arrays;
   }
-  if (kv_store_ == nullptr) {
-    return absl::FailedPreconditionError(
-        "KV store must be present for cross-host device transfers in "
-        "PjRtClient::CopyArrays.");
+  if (!pjrt_supports_cross_host_transfers_) {
+    return absl::UnimplementedError(
+        "Cross-host transfers are not supported by this backend.");
   }
-  if (pjrt_supports_cross_host_transfers_) {
-    return CopyArraysForCrossHost(arrays, src_devices, dst_devices,
-                                  memory_kind);
-  }
-  return CopyArraysForCrossHostFallback(arrays, src_devices, dst_devices,
-                                        memory_kind);
+  return CopyArraysForCrossHost(arrays, src_devices, dst_devices, memory_kind);
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
@@ -1313,6 +1256,11 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
                                    DeviceListRef src_devices,
                                    DeviceListRef dst_devices,
                                    std::optional<MemoryKind> memory_kind) {
+  if (kv_store_ == nullptr) {
+    return absl::FailedPreconditionError(
+        "KV store must be present for cross-host device transfers in "
+        "PjRtClient::CopyArraysForCrossHost.");
+  }
   std::vector<ArrayRef> new_arrays;
   new_arrays.reserve(arrays.size());
   std::vector<PjRtBuffers> recv_buffers;
@@ -1401,212 +1349,6 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
         PjRtArray::Create(this, arrays[i]->dtype(), arrays[i]->shape(),
                           std::move(new_sharding), std::move(new_buffers),
                           std::move(new_layout)));
-  }
-  return new_arrays;
-}
-
-absl::Status PjRtClient::StartTransferServerIfNotStarted() {
-  if (socket_server_.has_value()) {
-    return absl::OkStatus();
-  }
-  if (!socket_address_.has_value()) {
-    return absl::FailedPreconditionError(
-        "Cross-host transfer socket address and transport addresses need to be "
-        "set with the 'jax_cross_host_transfer_socket_address' and "
-        "'jax_cross_host_transport_addresses' flags.");
-  }
-  // Populate the KV store with this process's socket address.
-  TF_RETURN_IF_ERROR(
-      kv_store_->Set(absl::StrCat(kKeyPrefixSocketAddress, process_index()),
-                     (*socket_address_).ToString()));
-
-  size_t total_size =
-      cross_host_dcn_transfer_size_ * cross_host_dcn_max_num_parallel_copies_;
-  TF_ASSIGN_OR_RETURN(auto tmp, aux::AllocateAlignedMemory(total_size));
-  TF_ASSIGN_OR_RETURN(auto map, aux::MapPjrtMemory(pjrt_client_, tmp->data(),
-                                                   tmp->size(), tmp));
-  aux::SlabAllocator uallocator(map, cross_host_dcn_transfer_size_);
-  TF_ASSIGN_OR_RETURN(auto factory, aux::CreateSocketBulkTransportFactory(
-                                        transport_addresses_, std::nullopt,
-                                        std::move(uallocator)));
-
-  socket_server_ = std::make_shared<aux::SocketServer>();
-  TF_ASSIGN_OR_RETURN(
-      auto mem, aux::AllocateAndMapPjrtMemory(pjrt_client_, total_size * 2));
-  premapped_copier_ = std::make_shared<aux::PremappedCopierState>(
-      mem, cross_host_dcn_max_num_parallel_copies_,
-      cross_host_dcn_transfer_size_);
-  return (*socket_server_)->Start(*socket_address_, factory);
-}
-
-absl::Status PjRtClient::CrossHostAwaitPull(
-    int64_t uuid, absl::Span<xla::ifrt::ArrayRef> arrays,
-    const std::vector<int>& buffer_idxs) {
-  if (!socket_server_.has_value()) {
-    return absl::InternalError("Socket server is not initialized.");
-  }
-  std::vector<aux::PjRtBufferEntry::BufferRef> refs;
-  refs.reserve(buffer_idxs.size() * arrays.size());
-  for (xla::ifrt::ArrayRef& arr : arrays) {
-    auto* pjrt_arr = llvm::dyn_cast_or_null<xla::ifrt::PjRtArray>(arr.get());
-    if (pjrt_arr == nullptr) {
-      return absl::InvalidArgumentError(
-          "Cannot remote transfer non-pjrt arrays.");
-    }
-    if (pjrt_arr->pjrt_buffers().size() != buffer_idxs.size()) {
-      return absl::InvalidArgumentError(
-          "PjRtArray has different number of buffers than buffer_idxs.");
-    }
-    if (pjrt_arr->pjrt_buffers().empty()) {
-      return absl::InvalidArgumentError("PjRtArray has no buffers.");
-    }
-    TF_ASSIGN_OR_RETURN(size_t buf_size,
-                        pjrt_arr->pjrt_buffers()[0]->GetOnDeviceSizeInBytes());
-    for (int j : buffer_idxs) {
-      auto& pjrt_buf = pjrt_arr->pjrt_buffers()[j];
-      refs.push_back({pjrt_buf, buf_size});
-    }
-  }
-  auto state = tsl::MakeRef<aux::PjRtBufferEntry>(
-      std::move(refs), *premapped_copier_, cross_host_dcn_transfer_size_);
-  (*socket_server_)->AwaitPull(uuid, state);
-  return absl::OkStatus();
-}
-
-absl::Status PjRtClient::CrossHostPull(
-    int64_t uuid, absl::Span<xla::ifrt::ArrayRef> arrays,
-    std::vector<int>& dst_device_idxs, xla::ifrt::DeviceListRef dst_devices,
-    std::optional<MemoryKind> memory_kind, int remote_pid,
-    absl::btree_map<int, PjRtBuffers>& buffer_list) {
-  if (!socket_server_.has_value()) {
-    return absl::InternalError("Socket server is not initialized.");
-  }
-  TF_ASSIGN_OR_RETURN(
-      std::string address_str,
-      kv_store_->Get(absl::StrCat(kKeyPrefixSocketAddress, remote_pid),
-                     cross_host_transfer_timeout_));
-  TF_ASSIGN_OR_RETURN(auto addr, aux::SocketAddress::Parse(address_str));
-  auto connection = (*socket_server_)->Connect(addr);
-
-  std::vector<xla::PjRtClient::ShapeSpec> shape_specs;
-  std::vector<std::optional<xla::Layout>> layouts;
-  shape_specs.reserve(arrays.size());
-  layouts.reserve(arrays.size());
-  for (int i = 0; i < arrays.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(xla::PrimitiveType prim_type,
-                        xla::ifrt::ToPrimitiveType(arrays[i]->dtype()));
-    TF_ASSIGN_OR_RETURN(
-        Shape shape, arrays[i]->sharding().GetShardShape(arrays[i]->shape()));
-    xla::PjRtClient::ShapeSpec shape_spec = {
-        prim_type,
-        xla::DimensionVector(shape.dims().begin(), shape.dims().end())};
-    shape_specs.push_back(shape_spec);
-
-    auto pjrt_layout = arrays[i]->layout();
-    std::optional<xla::Layout> layout;
-    if (pjrt_layout.ok()) {
-      layout = (*pjrt_layout)->xla_layout();
-    }
-    layouts.push_back(layout);
-  }
-
-  for (int j = 0; j < dst_device_idxs.size(); ++j) {
-    int device_index = dst_device_idxs[j];
-    TF_ASSIGN_OR_RETURN(
-        xla::PjRtMemorySpace * mem_space,
-        GetMemorySpace(memory_kind, dst_devices->devices()[device_index]));
-    TF_ASSIGN_OR_RETURN(
-        std::shared_ptr<xla::PjRtClient::AsyncHostToDeviceTransferManager> atm,
-        pjrt_client_->CreateBuffersForAsyncHostToDevice(shape_specs, layouts,
-                                                        mem_space));
-    buffer_list[device_index].reserve(arrays.size());
-    for (int i = 0; i < arrays.size(); ++i) {
-      const int buffer_id = dst_device_idxs.size() * i + j;
-      auto chunk_dest = aux::MakeDmaDestination(atm, i, atm->buffer_size(i));
-      connection->Pull(uuid, buffer_id, std::move(chunk_dest));
-      buffer_list[device_index].push_back(atm->RetrieveBuffer(i));
-    }
-  }
-  return absl::OkStatus();
-}
-
-absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
-PjRtClient::CopyArraysForCrossHostFallback(
-    absl::Span<ArrayRef> arrays, DeviceListRef src_devices,
-    DeviceListRef dst_devices, std::optional<MemoryKind> memory_kind) {
-  {
-    absl::MutexLock lock(&socket_server_mu_);
-    TF_RETURN_IF_ERROR(StartTransferServerIfNotStarted());
-  }
-  // Maps dst pid to src pids.
-  absl::btree_map<int, absl::btree_set<int>> process_index_map;
-  // Maps src pid to addressable destination device inds.
-  absl::btree_map<int, std::vector<int>> pull_to_device_idxs;
-  // Maps dst pid to source buffer inds.
-  absl::btree_map<int, std::vector<int>> await_pull_buffer_idxs;
-  int j = 0;
-  for (int i = 0; i < src_devices->devices().size(); ++i) {
-    if (dst_devices->devices()[i]->IsAddressable()) {
-      if (src_devices->devices()[i]->IsAddressable()) {
-        // TODO(emilyaf): Support host-local transfers alongside cross-host
-        // transfers.
-        return absl::UnimplementedError(absl::StrFormat(
-            "Cross-host transfers are currently supported only if every "
-            "shard requires a cross-host transfer. A host-local transfer "
-            "was requested from device %s to device %s.",
-            src_devices->devices()[i]->DebugString(),
-            dst_devices->devices()[i]->DebugString()));
-      }
-      pull_to_device_idxs[src_devices->devices()[i]->ProcessIndex()].push_back(
-          i);
-    }
-    if (src_devices->devices()[i]->IsAddressable()) {
-      await_pull_buffer_idxs[dst_devices->devices()[i]->ProcessIndex()]
-          .push_back(j++);
-    }
-    process_index_map[dst_devices->devices()[i]->ProcessIndex()].emplace(
-        src_devices->devices()[i]->ProcessIndex());
-  }
-
-  absl::btree_map<int, PjRtBuffers> buffers_by_device;
-  for (auto& [dst_process_index, src_process_indices] : process_index_map) {
-    for (auto& src_process_index : src_process_indices) {
-      // The transfer key must be incremented in all processes, regardless of
-      // whether they participate in the transfer.
-      int64_t uuid = CreateNewTransferKey();
-      if ((src_process_index != process_index()) &&
-          (dst_process_index != process_index())) {
-        continue;
-      }
-      if (src_process_index == process_index()) {
-        TF_RETURN_IF_ERROR(CrossHostAwaitPull(
-            uuid, arrays, await_pull_buffer_idxs[dst_process_index]));
-      } else {
-        TF_RETURN_IF_ERROR(CrossHostPull(
-            uuid, arrays, pull_to_device_idxs[src_process_index], dst_devices,
-            memory_kind, src_process_index, buffers_by_device));
-      }
-    }
-  }
-
-  std::vector<xla::ifrt::ArrayRef> new_arrays;
-  new_arrays.reserve(arrays.size());
-  for (size_t i = 0; i < arrays.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(auto new_sharding,
-                        arrays[i]->shared_ptr_sharding()->WithDeviceAssignment(
-                            dst_devices, memory_kind));
-    TF_ASSIGN_OR_RETURN(auto new_layout, arrays[i]->layout());
-    PjRtArray::PjRtBuffers array_buffers;
-    array_buffers.reserve(buffers_by_device.size());
-    for (auto& [_, bufs] : buffers_by_device) {
-      array_buffers.push_back(std::move(bufs[i]));
-    }
-    TF_ASSIGN_OR_RETURN(
-        auto arr,
-        PjRtArray::Create(this, arrays[i]->dtype(), arrays[i]->shape(),
-                          std::move(new_sharding), std::move(array_buffers),
-                          std::move(new_layout)));
-    new_arrays.push_back(std::move(arr));
   }
   return new_arrays;
 }
