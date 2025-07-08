@@ -17,16 +17,14 @@ limitations under the License.
 #define XLA_PYTHON_PJRT_IFRT_PJRT_CLIENT_H_
 
 #include <atomic>
-#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/base/nullability.h"
-#include "absl/base/thread_annotations.h"
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -34,7 +32,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -62,9 +59,6 @@ limitations under the License.
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_compiler.h"
-#include "xla/python/transfer/event_loop.h"
-#include "xla/python/transfer/socket-server.h"
-#include "xla/python/transfer/streaming_ifrt.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
@@ -130,13 +124,6 @@ class PjRtClient final
     absl::Duration get_local_topology_timeout = absl::Minutes(2);
     absl::Duration get_global_topology_timeout = absl::Minutes(5);
     absl::Duration cross_host_transfer_timeout = absl::Minutes(1);
-
-    // Maximum size of a chunk to be transferred (bytes).
-    size_t cross_host_dcn_transfer_size = 1024 * 1024;
-    // Maximum number of parallel transfers.
-    size_t cross_host_dcn_max_num_parallel_copies = 0;
-    std::optional<aux::SocketAddress> socket_address;
-    std::vector<aux::SocketAddress> transport_addresses;
 
     // Device mapping to construct a global view consisting of both addressable
     // and non-addressable devices.
@@ -367,32 +354,6 @@ class PjRtClient final
       absl::Span<const xla::Shape> shapes, xla::PjRtDevice* device,
       const std::vector<int64_t>& keys);
 
-  // Copies arrays from source to destination devices when at least one of the
-  // (source, destination) pairs is cross-host using an experimental DCN
-  // transfer library. Called when the PjRt backend does not support
-  // `CopyArraysForCrossHost`.
-  absl::StatusOr<std::vector<ArrayRef>> CopyArraysForCrossHostFallback(
-      absl::Span<ArrayRef> arrays, DeviceListRef src_devices,
-      DeviceListRef dst_devices, std::optional<MemoryKind> memory_kind);
-
-  // Awaits a pull from a remote process (DCN transfers).
-  absl::Status CrossHostAwaitPull(int64_t uuid,
-                                  absl::Span<xla::ifrt::ArrayRef> arrays,
-                                  const std::vector<int>& buffer_idxs);
-
-  // Pulls buffers from a remote process (DCN transfers).
-  absl::Status CrossHostPull(int64_t uuid,
-                             absl::Span<xla::ifrt::ArrayRef> arrays,
-                             std::vector<int>& dst_device_idxs,
-                             xla::ifrt::DeviceListRef dst_devices,
-                             std::optional<MemoryKind> memory_kind,
-                             int remote_pid,
-                             absl::btree_map<int, PjRtBuffers>& buffer_list);
-
-  // Starts a DCN transfer server.
-  absl::Status StartTransferServerIfNotStarted()
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(socket_server_mu_);
-
   // Creates a unique identifier for each cross-host transfer. Every process
   // must call it, regardless of whether it participates in the cross-host
   // transfer, so that the returned value must be the same in all processes.
@@ -404,13 +365,6 @@ class PjRtClient final
   std::atomic<int64_t> next_transfer_key_ = 0;
   std::shared_ptr<xla::KeyValueStoreInterface> kv_store_;
   absl::Duration cross_host_transfer_timeout_;
-  std::optional<aux::SocketAddress> socket_address_;
-  std::vector<aux::SocketAddress> transport_addresses_;
-  absl::Mutex socket_server_mu_;
-  std::optional<std::shared_ptr<aux::SocketServer>> socket_server_;
-  std::optional<std::shared_ptr<aux::PremappedCopierState>> premapped_copier_;
-  int cross_host_dcn_transfer_size_;
-  int cross_host_dcn_max_num_parallel_copies_;
 
   friend class PjRtClientPeer;
 };
