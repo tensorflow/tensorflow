@@ -684,6 +684,11 @@ void MemorySpaceAssignment::RemoveAssignmentForInstruction(
 
 absl::Status MemorySpaceAssignment::SimplifyGraph() {
   VLOG(1) << "Simplifying graph...";
+
+  // Note, it is safe to keep pointers to removed instructions because they are
+  // removed from module, but their C++ objects have not yet been deleted.
+  absl::flat_hash_set<HloInstruction*> removed_instructions;
+
   for (HloComputation* computation : module_->MakeNonfusionComputations()) {
     // Parallel computations aren't in the schedule and don't need to be
     // modified.
@@ -730,6 +735,7 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
             *instruction_it = nullptr;
           }
           TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+          removed_instructions.insert(instruction);
           computation_modified = true;
         } else if (instruction->opcode() == HloOpcode::kGetTupleElement) {
           HloInstruction* operand = instruction->mutable_operand(0);
@@ -778,6 +784,30 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
       }
     }
   }
+
+  // Remove the scoped allocations associated with the removed instructions from
+  // allocations_.
+  AllocationSequence kept_allocations;
+  kept_allocations.reserve(allocations_.size());
+  for (auto& allocation : allocations_) {
+    if (allocation->is_scoped_allocation() &&
+        removed_instructions.contains(
+            allocation->defining_position().instruction)) {
+      continue;
+    }
+    kept_allocations.push_back(std::move(allocation));
+  }
+  allocations_ = std::move(kept_allocations);
+  std::vector<std::pair<ScopedMemorySource, HeapSimulator::Chunk>>
+      kept_scoped_memory_assignments;
+  kept_scoped_memory_assignments.reserve(scoped_memory_assignments_.size());
+  for (const auto& [scoped_memory_source, chunk] : scoped_memory_assignments_) {
+    if (removed_instructions.contains(scoped_memory_source.instruction)) {
+      continue;
+    }
+    kept_scoped_memory_assignments.push_back({scoped_memory_source, chunk});
+  }
+  scoped_memory_assignments_ = std::move(kept_scoped_memory_assignments);
 
   return absl::OkStatus();
 }
