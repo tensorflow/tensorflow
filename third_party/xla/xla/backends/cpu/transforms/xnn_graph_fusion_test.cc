@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace op = xla::testing::opcode_matchers;
