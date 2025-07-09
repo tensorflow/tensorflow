@@ -1970,7 +1970,7 @@ absl::Status MsaAlgorithm::ProcessColoredBuffers() {
                           /*colocations=*/{},
                           /*need_allocation=*/true};
     Chunk chunk_candidate = FindChunkCandidate(interval);
-    if (chunk_candidate.chunk_end() > available_heap_size()) {
+    if (chunk_candidate.chunk_end() > options_.max_size_in_bytes) {
       if (use_colored) {
         return FailedPrecondition(
             "%s",
@@ -5673,7 +5673,7 @@ AllocationResult MsaAlgorithm::ForceAlternateMemoryAllocationForMinTime(
 
   Chunk chunk_candidate = FindChunkCandidate(alternate_mem_interval);
 
-  if (chunk_candidate.chunk_end() > available_heap_size()) {
+  if (chunk_candidate.chunk_end() > options_.max_size_in_bytes) {
     return AllocationResult::kFailOutOfMemory;
   }
 
@@ -6093,7 +6093,7 @@ AllocationResult MsaAlgorithm::Prefetch(
 
   Chunk chunk_candidate = FindChunkCandidate(alternate_mem_interval);
 
-  if (chunk_candidate.chunk_end() > available_heap_size()) {
+  if (chunk_candidate.chunk_end() > options_.max_size_in_bytes) {
     return AllocationResult::kFailOutOfMemory;
   }
   AddToPendingChunks(alternate_mem_interval, chunk_candidate);
