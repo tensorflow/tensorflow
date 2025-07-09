@@ -1344,8 +1344,9 @@ class HloInstruction {
                              /*ignore_commutative_operand_order=*/true);
   }
 
-  // Same as Identical() but ignores channel ID value mismatches, as long as
-  // both have channel IDs or neither has a channel ID.
+  // Same as IdenticalIgnoringCommutativeOperandOrder() but ignores channel ID
+  // value mismatches, as long as both have channel IDs or neither has a channel
+  // ID.
   bool IdenticalIgnoringChannelIdValues(
       const HloInstruction& other,
       absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
