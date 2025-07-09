@@ -6,6 +6,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
@@ -1847,9 +1848,11 @@ cc_library(
 cc_library(
     name = "nvptx_compiler_impl",
     srcs = [
+        "custom_nvptx_compiler.cc",
         "nvptx_compiler.cc",
     ],
     hdrs = [
+        "custom_nvptx_compiler.h",
         "nvptx_compiler.h",
     ],
     tags = [
@@ -1859,7 +1862,9 @@ cc_library(
     ],
     deps = [
         ":cublas_padding_requirements",
+        ":fusion_pipeline",
         ":gpu_compiler",
+        ":hlo_fusion_stats",
         ":ir_emission_utils",
         ":metrics",
         ":ptx_compile_options_from_debug_options",
@@ -1882,8 +1887,10 @@ cc_library(
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/service:call_inliner",
+        "//xla/service:compiler",
         "//xla/service:dump",
         "//xla/service:float_support",
+        "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_cse",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_verifier",
@@ -1895,6 +1902,7 @@ cc_library(
         "//xla/service/gpu/autotuning:gemm_fusion_autotuner",
         "//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
         "//xla/service/gpu/llvm_gpu_backend:nvptx_utils",
+        "//xla/service/gpu/transforms:add_tracking_suffix_to_instruction_names",
         "//xla/service/gpu/transforms:algebraic_simplifier",
         "//xla/service/gpu/transforms:block_scaling_rewriter",
         "//xla/service/gpu/transforms:conv_padding_legalization",
@@ -1924,6 +1932,7 @@ cc_library(
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/cuda:cuda_solver_context",
         "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
@@ -3104,4 +3113,11 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
     ],
+)
+
+cc_library(
+    name = "custom_nvptx_compiler",
+    srcs = ["custom_nvptx_compiler.cc"],
+    hdrs = ["custom_nvptx_compiler.h"],
+    deps = [":nvptx_compiler_impl"],
 )
