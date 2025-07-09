@@ -272,6 +272,7 @@ cc_library(
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "@local_xla//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
         "@local_xla//xla/tsl/python/lib/core:numpy",
     ],
