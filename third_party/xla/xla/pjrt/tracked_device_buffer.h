@@ -309,6 +309,10 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
     LOG(FATAL) << "Implement";
   }
 
+  void Delete(PjRtMemorySpace* memory_space) override {
+    LOG(FATAL) << "Implement";
+  }
+
  private:
   PjRtDevice* device_;
 

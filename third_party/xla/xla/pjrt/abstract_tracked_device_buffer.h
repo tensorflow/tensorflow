@@ -51,6 +51,9 @@ class AbstractTrackedDeviceBuffer {
 
   // Only to be called by ScopedHold to mark a successful donation.
   virtual void ConfirmDonation() = 0;
+
+  // Asynchronously frees all memory.
+  virtual void Delete(PjRtMemorySpace* memory_space) = 0;
 };
 
 class CommonPjRtBuffer : public PjRtBuffer {

@@ -233,27 +233,9 @@ AbstractCpuBuffer::ReleaseDeviceMemoryOwnership(
 }
 
 void AbstractCpuBuffer::Delete() {
-  std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer(
-      static_cast<TrackedCpuDeviceBuffer*>(ReleaseBuffer().release()));
-  if (device_buffer == nullptr) return;
-
-  // Now that all holds have completed and no more can be added, we can get
-  // the final set of usage events.
-  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> usage_events =
-      device_buffer->LockUseAndTransferUsageEvents();
-
-  std::vector<tsl::AsyncValue*> event_avs;
-  event_avs.reserve(usage_events.size() + 1);
-  for (auto& event : usage_events) {
-    event_avs.push_back(event.GetAsyncValue());
+  if (auto device_buffer = ReleaseBuffer()) {
+    device_buffer.release()->Delete(memory_space_);
   }
-
-  // We should also wait for the definition event.
-  event_avs.push_back(device_buffer->definition_event().GetAsyncValue());
-
-  RunWhenReady(event_avs, [device_buffer = std::move(device_buffer)]() mutable {
-    device_buffer.reset();
-  });
 }
 
 absl::StatusOr<std::unique_ptr<TrackedCpuDeviceBuffer>>

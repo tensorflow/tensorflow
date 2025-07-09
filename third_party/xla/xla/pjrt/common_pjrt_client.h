@@ -215,6 +215,8 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
   PjRtFuture<> CopyRawToHostFuture(PjRtFuture<void*> dst, int64_t offset,
                                    int64_t transfer_size) override;
 
+  void Delete() override;
+
  protected:
   // Shared implementation for ToLiteral and LazyToLiteral. If `literal` is
   // null, will call the function in the generator.

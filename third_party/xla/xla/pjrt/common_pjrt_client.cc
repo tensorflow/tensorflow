@@ -767,4 +767,13 @@ absl::StatusOr<Shape> CommonPjRtBufferImpl::logical_on_device_shape() {
   return output_shape.get();
 }
 
+void CommonPjRtBufferImpl::Delete() {
+  VLOG(2) << "CommonPjRtBuffer::Delete (" << this << ") with shape "
+          << on_device_shape().ToString(true) << " and size "
+          << GetOnDeviceSizeInBytes().value_or(0);
+  if (auto device_buffer = ReleaseBuffer()) {
+    device_buffer.release()->Delete(memory_space_);
+  }
+}
+
 }  // namespace xla
