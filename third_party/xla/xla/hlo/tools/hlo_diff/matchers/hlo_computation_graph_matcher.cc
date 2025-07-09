@@ -113,9 +113,13 @@ void MatchComputationGraphs(const HloGumgraph& left, const HloGumgraph& right,
       }
     }
 
+    MapByPositionMode map_by_position_mode =
+        left_computation.computation()->IsEntryComputation()
+            ? MapByPositionMode::kNever
+            : MapByPositionMode::kOnlyIfSameSize;
     MatchInstructions(left, right, left_leafs, right_leafs, mappings,
                       MatcherType::kComputationGraphExactSignatureMatcher,
-                      MapByPositionMode::kOnlyIfSameSize);
+                      map_by_position_mode);
 
     if (left_computation.computation()->root_instruction()->opcode() ==
         right_computation.computation()->root_instruction()->opcode()) {
