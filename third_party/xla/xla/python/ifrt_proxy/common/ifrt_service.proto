@@ -17,6 +17,7 @@ syntax = "proto3";
 package xla.ifrt.proxy;
 
 import "google/protobuf/any.proto";
+import "xla/pjrt/proto/executable_metadata.proto";
 import "xla/python/ifrt/array_spec.proto";
 import "xla/python/ifrt/attribute_map.proto";
 import "xla/python/ifrt/dtype.proto";
@@ -489,6 +490,13 @@ message LoadedExecutableMetadataResponse {
     DonatedInputIndices donated_input_indices = 8;
     tensorflow.StatusProto donated_input_indices_error = 9;
   }
+
+  oneof compiled_memory_stats_oneof {
+    xla.CompiledMemoryStatsProto compiled_memory_stats = 10;
+    tensorflow.StatusProto compiled_memory_stats_error = 11;
+  }
+
+  int64 size_of_generated_code_in_bytes = 12;
 }
 
 // Mirrors `LoadedExecutable::Execute`. Returns output array handles and a

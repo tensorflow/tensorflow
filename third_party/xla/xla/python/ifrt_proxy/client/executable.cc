@@ -433,6 +433,20 @@ LoadedExecutable::LoadedExecutable(
           "IFRT Proxy server did not return output layouts");
     }
 
+    if (response.value()->has_compiled_memory_stats()) {
+      info->compiled_memory_stats = xla::CompiledMemoryStats::FromProto(
+          response.value()->compiled_memory_stats());
+    } else if (response.value()->has_compiled_memory_stats_error()) {
+      info->compiled_memory_stats =
+          tsl::StatusFromProto(response.value()->compiled_memory_stats_error());
+    } else {
+      info->compiled_memory_stats = absl::UnimplementedError(
+          "IFRT Proxy server did not return compiled memory stats");
+    }
+
+    info->size_of_generated_code_in_bytes =
+        response.value()->size_of_generated_code_in_bytes();
+
     if (const absl::Status s = tsl::StatusFromProto(
             response.value()->output_memory_kinds().status());
         !s.ok()) {
@@ -517,12 +531,25 @@ Future<> LoadedExecutable::GetReadyFuture() const { return ready_future_; }
 int LoadedExecutable::num_devices() const { return num_devices_; }
 
 int64_t LoadedExecutable::SizeOfGeneratedCodeInBytes() const {
-  LOG(FATAL) << "Unimplemented";
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointLoadedExecutableSizeOfGeneratedCodeInBytes");
+  auto info = metadata_future_.Await();
+  if (!info.ok()) {
+    LOG(ERROR) << "SizeOfGeneratedCodeInBytes: " << info.status();
+    return 0;
+  }
+  return (*info)->size_of_generated_code_in_bytes;
 }
 
 absl::StatusOr<CompiledMemoryStats> LoadedExecutable::GetCompiledMemoryStats()
     const {
-  return absl::UnimplementedError("Unimplemented");
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointLoadedExecutableGetCompiledMemoryStats");
+  auto info = metadata_future_.Await();
+  if (!info.ok()) {
+    return info.status();
+  }
+  return (*info)->compiled_memory_stats;
 }
 
 std::optional<std::vector<OpSharding>> LoadedExecutable::GetParameterShardings()

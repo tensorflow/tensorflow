@@ -125,6 +125,10 @@ class LoadedExecutable final
     absl::StatusOr<std::vector<int>> donatable_input_indices;
 
     std::optional<absl::flat_hash_set<int>> donatable_input_indices_set;
+
+    absl::StatusOr<CompiledMemoryStats> compiled_memory_stats;
+
+    int64_t size_of_generated_code_in_bytes;
   };
 
   xla::ifrt::Client* client_;
