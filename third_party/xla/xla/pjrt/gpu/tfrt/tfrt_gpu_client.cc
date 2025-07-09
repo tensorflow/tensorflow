@@ -1388,6 +1388,8 @@ absl::Span<PjRtMemorySpace* const> TfrtGpuClient::memory_spaces() const {
 std::optional<PjRtPluginAttributes> TfrtGpuClient::plugin_attributes() const {
   PjRtPluginAttributes attributes =
       PjRtClient::plugin_attributes().value_or(PjRtPluginAttributes());
+  attributes.pjrt_c_api_major_version = 0;
+  attributes.pjrt_c_api_minor_version = 0;
   attributes.attributes["serialize_with_sdy"] = PjRtValueType(true);
   attributes.attributes["supports_cross_host_transfers"] = PjRtValueType(true);
   return attributes;
