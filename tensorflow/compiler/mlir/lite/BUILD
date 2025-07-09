@@ -24,6 +24,9 @@ package_group(
     packages = [
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/mlir/...",
+        "//learning/brain/mlir/mlir_lsp_server/...",
+        "//learning/brain/research/babelfish/inference/speech_tflite/mlir/...",
+        "//research/language_modeling/sentence_explorer/ondevice/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/lite/...",
         "//third_party/iree/...",
@@ -31,10 +34,6 @@ package_group(
         "//third_party/odml/litert/...",
         "//waymo/accelerator/alpine/tools/...",
         "//waymo/ml/compiler/mlir/...",
-        # Allow visibility from the mlir language server.
-        "//learning/brain/mlir/mlir_lsp_server/...",
-        "//research/language_modeling/sentence_explorer/ondevice/...",
-        "//learning/brain/research/babelfish/inference/speech_tflite/mlir/...",
     ],
 )
 
