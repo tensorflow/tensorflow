@@ -388,6 +388,7 @@ cc_library(
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
         "@local_xla//xla:util",
+        "@local_xla//xla/backends/cpu:alignment",
         "@local_xla//xla/service/llvm_ir:llvm_type_conversion_util",
     ],
 )

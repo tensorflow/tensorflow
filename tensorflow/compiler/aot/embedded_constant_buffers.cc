@@ -45,6 +45,7 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Triple.h"
+#include "xla/backends/cpu/alignment.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -53,19 +54,12 @@ limitations under the License.
 namespace tensorflow {
 namespace tfcompile {
 
-namespace {
-
-// TODO(basioli): use xla::cpu::Align() this is a quick hack to land the CL.
-constexpr size_t kAlignment = 64;
-
-}  // end namespace
-
 using xla::llvm_ir::AsStringRef;
 
 void ConstantToEmbed::SerializeIntoBuffer(absl::Span<const uint8_t> buffer) {
   // The header has to be padded to 64 bytes so that the pointer to the
   // constant is always 64-byte aligned.
-  const size_t header_size = kAlignment;
+  const size_t header_size = xla::cpu::Align();
   const size_t padding_size = header_size - sizeof(uint64_t);
 
   const uint64_t buffer_size = buffer.size();
@@ -99,7 +93,7 @@ static absl::Status AddBufferToLlvmModule(
       /*isConstant=*/true, llvm::GlobalValue::ExternalLinkage,
       buffer_initializer, AsStringRef(constant_array_symbol_name));
 
-  global_variable->setAlignment(llvm::Align(kAlignment));
+  global_variable->setAlignment(llvm::Align(xla::cpu::Align()));
 
   return absl::OkStatus();
 }
@@ -175,7 +169,7 @@ absl::StatusOr<EmbeddedConstantBuffers> CreateEmbeddedConstantBuffers(
       return {buffer_size, buffer + %d};
     }(%s)
     )",
-        kAlignment, constant_array_symbol_name);
+        xla::cpu::Align(), constant_array_symbol_name);
     result.variable_decls.push_back(
         {constant_array_symbol_name, cpp_variable_decl, cpp_access_shim});
   }
