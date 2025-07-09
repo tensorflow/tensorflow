@@ -52,19 +52,6 @@ namespace xla {
 // Analysis which identifies all HLO values and their uses in an HLO module.
 class HloDataflowAnalysis {
  public:
-  // Infrastructure for passing may-alias hints: HLO passes can populate the
-  // may-alias table. If an empty optional is returned, default rules are used.
-  //
-  // Must-alias rules (as defined by GetInPlaceInputOutputPairs) cannot be
-  // overridden using backend-specific overrides.
-  //
-  // The first parameter of the function should be the instruction, the
-  // second parameter should be an operand of the instruction. The third
-  // parameter should be the output index of the instruction.
-  using CanShareBuffer = std::function<std::optional<bool>(
-      const HloInstruction* instr, const HloInstruction* operand,
-      const ShapeIndex& user_index)>;
-
   // Runs dataflow analysis on the given module. Parameters:
   //
   //   ssa_form : If true then new values are defined at the merge points of
@@ -83,11 +70,9 @@ class HloDataflowAnalysis {
   //   bitcast_defines_value : If true then the Bitcast HLO instruction defines
   //     a new HLO value in the analysis. If false then Bitcast forwards the
   //     value of its operand.
-  // TODO(b/424109294): Remove `can_share_buffer` parameter.
   static absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> Run(
       const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false,
-      const CanShareBuffer& can_share_buffer = nullptr,
       absl::flat_hash_set<absl::string_view> execution_threads = {});
 
   // Returns true if 'instruction' defines an HLO value at the given shape index
@@ -204,7 +189,6 @@ class HloDataflowAnalysis {
 
   HloDataflowAnalysis(const HloModule& module, bool ssa_form,
                       bool bitcast_defines_value,
-                      const CanShareBuffer& can_share_buffer,
                       absl::flat_hash_set<absl::string_view> execution_threads);
 
   // Runs dataflow analysis on the module attached to this HloDataflowAnalysis.
@@ -333,11 +317,6 @@ class HloDataflowAnalysis {
 
   // An explicit graph holding phi values and edges.
   PhiGraph phi_graph_;
-
-  // Backend specific function that decides whether an instruction can share
-  // a buffer with its operand.
-  // TODO(b/424109294): Remove this.
-  CanShareBuffer can_share_buffer_ = nullptr;
 };
 
 // Removes layers of tuple indirection introduced via 'tuple' and

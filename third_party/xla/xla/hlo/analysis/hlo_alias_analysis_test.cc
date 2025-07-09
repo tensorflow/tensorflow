@@ -57,9 +57,7 @@ class HloAliasAnalysisTest : public HloHardwareIndependentTestBase {
   // Run alias analysis on the member module. For convenience returns a
   // reference to the generated analysis stored in analysis_.
   HloAliasAnalysis& RunAnalysis() {
-    analysis_ = HloAliasAnalysis::Run(module_.get(),
-                                      /*can_share_buffer=*/nullptr)
-                    .value();
+    analysis_ = HloAliasAnalysis::Run(module_.get(), &alias_info_).value();
     return *analysis_;
   }
 

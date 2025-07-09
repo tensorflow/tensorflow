@@ -105,14 +105,12 @@ using absl::StrCat;
 
 HloDataflowAnalysis::HloDataflowAnalysis(
     const HloModule& module, bool ssa_form, bool bitcast_defines_value,
-    const CanShareBuffer& can_share_buffer,
     absl::flat_hash_set<absl::string_view> execution_threads)
     : module_(module),
       execution_threads_(std::move(execution_threads)),
       ssa_form_(ssa_form),
       bitcast_defines_value_(bitcast_defines_value),
-      call_graph_(CallGraph::Build(&module)),
-      can_share_buffer_(can_share_buffer) {}
+      call_graph_(CallGraph::Build(&module)) {}
 
 bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
     const HloInstruction* inst) {
@@ -1636,14 +1634,12 @@ void HloDataflowAnalysis::OptimizePhiValues() {
 /* static */
 absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
     const HloModule& module, bool ssa_form, bool bitcast_defines_value,
-    const CanShareBuffer& can_share_buffer,
     absl::flat_hash_set<absl::string_view> execution_threads) {
   VLOG(1) << "HloDataflowAnalysis::Run on module " << module.name();
   XLA_VLOG_LINES(2, module.ToString());
 
-  auto dataflow_analysis = absl::WrapUnique(
-      new HloDataflowAnalysis(module, ssa_form, bitcast_defines_value,
-                              can_share_buffer, execution_threads));
+  auto dataflow_analysis = absl::WrapUnique(new HloDataflowAnalysis(
+      module, ssa_form, bitcast_defines_value, execution_threads));
   TF_RETURN_IF_ERROR(dataflow_analysis->RunImpl());
   return dataflow_analysis;
 }
@@ -2035,13 +2031,6 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     }
   }
 
-  // TODO(b/424109294): remove this block.
-  if (can_share_buffer_ != nullptr) {
-    if (std::optional<bool> hint =
-            can_share_buffer_(user, operand, user_index)) {
-      return *hint;
-    }
-  }
   if (std::optional<bool> hint =
           alias_info->MayAlias(operand, operand_index, user, user_index)) {
     return *hint;
