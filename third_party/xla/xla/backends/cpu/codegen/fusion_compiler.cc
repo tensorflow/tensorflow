@@ -105,7 +105,8 @@ static void AddXlaOpsOptimizationPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createCSEPass());
 }
 
-static void AddLoopTransformationPasses(mlir::OpPassManager& pm) {
+static void AddLoopTransformationPasses(mlir::OpPassManager& pm,
+                                        int32_t vector_width) {
   pm.addNestedPass<mlir::func::FuncOp>(CreateLowerXlaSharedPass());
   pm.addNestedPass<mlir::func::FuncOp>(emitters::CreateLowerXlaToScfPass());
   pm.addPass(mlir::createInlinerPass({}, [&](mlir::OpPassManager& pm) {
@@ -132,6 +133,8 @@ static void AddLoopTransformationPasses(mlir::OpPassManager& pm) {
       emitters::CreateVectorizeLoadsAndStoresPass(/*target_type=*/"cpu"));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      cpu::CreateAddLoopUnrollFlagsPass(vector_width));
 }
 
 static void AddLoweringPasses(mlir::OpPassManager& pm, int32_t vector_width,
@@ -196,7 +199,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
   }
 
   AddXlaOpsOptimizationPasses(optimization_pass_manager);
-  AddLoopTransformationPasses(optimization_pass_manager);
+  AddLoopTransformationPasses(optimization_pass_manager, options_.vector_width);
 
   TF_RETURN_IF_ERROR(RunPassPipeline(mlir_module, optimization_pass_manager,
                                      nullptr, options_.verification_level));
