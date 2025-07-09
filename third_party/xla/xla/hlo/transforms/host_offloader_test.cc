@@ -4439,6 +4439,29 @@ ENTRY %main.44_spmd (param.4: f32[1,128], param.5: f32[1,128], param.3: f32[1,12
       });
 }
 
+TEST_F(HostOffloaderTest, PallasKernel) {
+  const absl::string_view hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(f32[8,128]{1,0:T(8,128)})->f32[8,128]{1,0:T(8,128)S(5)}}, allow_spmd_sharding_propagation_to_parameters={true}
+
+ENTRY %main.6 (Arg_0.1: f32[8,128]) -> f32[8,128] {
+  %Arg_0.1 = f32[8,128]{1,0:T(8,128)} parameter(0), metadata={op_name="x"}
+  %pallas_call = f32[8,128]{1,0:T(8,128)} custom-call(%Arg_0.1), custom_call_target="tpu_custom_call", operand_layout_constraints={f32[8,128]{1,0}}, metadata={op_name="jit(f)/pallas_call" source_file="third_party/py/jax/tests/pallas/tpu_pallas_test.py" source_line=1321}, backend_config={"custom_call_config": {"body": "TUzvUgFNTElSZ29vZ2xlMy10cnVuawABIQcBAwUBAwcDDwkLDQ8RExUD478RAbkHCwsPC4UPCw8PDw8PDw8LDw8LCw8bCw8LMwsLCwsLCwsPCw8LHw8LJw8LHw8LHw8LJw8LHw8LHw8LHw8LHw8fVRtzCw8PCw8LDw8fDw8PDw8PDxNjDwsPCw8PHwUHXWGFAQ8PDyMHIxcXBQNNAmYIHwUXBRkdQUMFG2FmZmluZV9tYXA8KGQwLCBkMSkgLT4gKGQwLCBkMSk+ABEDAQUdHUlLHU9RHVVXHVtdHWFjHWdpHW1vBR8dc3UdeXsFIQUjFRGZAwUtLwkxBSURAx0FJwMLNTc5Oz0NPw0JDwUpAQEFKw0LBS0FLwUxHUVHBTMVEU0FNS0DB3oUDWUVE1MFNy0DCaYUG8YUFRUVWQU5LQMHyhQRGRUXXwU7LQUHUi0ncRUZZQU9LQUJ4i1H6i0HFRtrBT8tBQc6Jg1FFR1xBUEtHwcyBxsvFSF3BUMtHwdyCA03FSN9BUUtBQdCJgk/HQ9/LQUHaiQFTWFmZmluZV9tYXA8KCkgLT4gKCk+AAMFJYWHiSMBDTEBAAAAAAAAAAEAAAABAAAAAAAAAAAAAAAFRxEBAR2NjwVJHZGTBUsVlSkdJ5ctAwdyFBFpFRObFRWdFRefFRmhFRujFR2lFSEjAwMlqSMBCykBAAAAAQAAAAEAAAAAAAAAAAAAAB2trwVNHbGzBU8VtSkdJ7ctAwdyFBF3I3RwdS5tZW1vcnlfc3BhY2U8YW55PgAjdHB1Lm1lbW9yeV9zcGFjZTxob3N0PgAjdHB1Lm1lbW9yeV9zcGFjZTxzZW1hcGhvcmVfbWVtPgABAgIBAgQXuQUhAgQHCwsXuwUhAgQHCwUFBQkBF70BD4EhdHB1LmRtYV9zZW1hcGhvcmUABHEFAREBKwcDAQUDEQEzBwMFCwUFAQkBBRAHBQMDEQkCBwMNCwWLgwcBAwUNBaunBwUBAw8ABwcAAQYDAQUBAB4NURMVFRcTGQkVRxU1Z32HFxkjIR0pDy2jKTcLE1FnFR0hHRkXFQ8JHRFidWlsdGluAHN0YWJsZV9tb3NhaWMAdHB1AG1vZHVsZQBmdW5jLmZ1bmMAdHB1LnJlZ2lvbgBmdW5jLnJldHVybgB0cHUuc2VtX2FsbG9jAHRwdS5lbnF1ZXVlX2RtYQB0cHUud2FpdF9kbWEyAHRwdS55aWVsZAB0aGlyZF9wYXJ0eS9weS9qYXgvdGVzdHMvcGFsbGFzL3RwdV9wYWxsYXNfdGVzdC5weQB0aGlyZF9wYXJ0eS9weS9hYnNsL3Rlc3RpbmcvYWJzbHRlc3QucHkAc3ltX25hbWUAbWFpbgB0aGlyZF9wYXJ0eS9weS9hYnNsL2FwcC5weQBvcGVyYW5kU2VnbWVudFNpemVzAFBhbGxhc0NhbGxETUFUZXN0LnRlc3RfaGJtX3RvX2hvc3RfaG9zdF9vdXRwdXRfZG1hLjxsb2NhbHM+Lmtlcm5lbC48bG9jYWxzPi5ib2R5AHN0YWJsZV9tb3NhaWMudmVyc2lvbgBrZXJuZWwAZGltZW5zaW9uX3NlbWFudGljcwBmdW5jdGlvbl90eXBlAHNjYWxhcl9wcmVmZXRjaABzY3JhdGNoX29wZXJhbmRzAHJ1bl9zY29wZWQ6AHJ1bl9zY29wZWQAUGFsbGFzQ2FsbERNQVRlc3QudGVzdF9oYm1fdG9faG9zdF9ob3N0X291dHB1dF9kbWEuPGxvY2Fscz4ua2VybmVsAFBhbGxhc0NhbGxETUFUZXN0LnRlc3RfaGJtX3RvX2hvc3RfaG9zdF9vdXRwdXRfZG1hLjxsb2NhbHM+LmYAUGFsbGFzQ2FsbERNQVRlc3QudGVzdF9oYm1fdG9faG9zdF9ob3N0X291dHB1dF9kbWEAX3J1bl9hbmRfZ2V0X3Rlc3RzX3Jlc3VsdABydW5fdGVzdHMAX3J1bl9pbl9hcHAuPGxvY2Fscz4ubWFpbl9mdW5jdGlvbgBfcnVuX21haW4AcnVuAF9ydW5faW5fYXBwAHByaW9yaXR5AGRtYV9zdGFydDoAZG1hX3N0YXJ0AGRtYV93YWl0OgBkbWFfd2FpdAA=", "serialization_format": 1, "needs_layout_passes": true, "output_memory_colors": [5]}}
+  ROOT %custom-call = f32[8,128]{1,0:T(8,128)} custom-call(%pallas_call), custom_call_target="MoveToHost", sharding={replicated}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+
+  HloInstruction* pallas_call = FindInstruction(module.get(), "pallas_call");
+  EXPECT_EQ(pallas_call->shape().layout().memory_space(),
+            Layout::kHostMemorySpace);
+  EXPECT_TRUE(pallas_call->IsRoot());
+}
+
 }  // namespace
 
 }  // namespace xla

@@ -16,10 +16,13 @@ limitations under the License.
 #include "xla/hlo/transforms/host_offloader.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <iomanip>
 #include <memory>
+#include <optional>
 #include <queue>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -1210,6 +1213,59 @@ absl::StatusOr<bool> HostOffloader::HandleDynamicUpdateSlices() {
   return changed;
 }
 
+std::optional<int64_t> GetPallasCustomCallOutputMemorySpace(
+    HloInstruction* instruction) {
+  const std::string& backend_config_string =
+      instruction->raw_backend_config_string();
+  absl::string_view search_target = "output_memory_colors\": [";
+  std::size_t index = backend_config_string.find(search_target);
+  if (index == std::string::npos) {
+    // Did not find target text
+    return {};
+  }
+  int64_t memory_space_color;
+  absl::string_view num_str = absl::string_view(backend_config_string)
+                                  .substr(index + search_target.size());
+  // Find the end of the integer
+  std::size_t end_index = num_str.find_first_not_of("0123456789");
+  if (end_index != std::string::npos) {
+    num_str = num_str.substr(0, end_index);
+  }
+
+  if (!absl::SimpleAtoi(num_str, &memory_space_color)) {
+    // Failed to parse int
+    return {};
+  }
+  return memory_space_color;
+}
+
+absl::StatusOr<bool> HostOffloader::HandlePallasKernels(HloModule* module) {
+  bool changed = false;
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (!instruction->IsCustomCall("tpu_custom_call")) {
+        // Is not a pallas kernel; skip.
+        continue;
+      }
+      std::optional<int64_t> memory_space_color =
+          GetPallasCustomCallOutputMemorySpace(instruction);
+      if (!memory_space_color.has_value() ||
+          *memory_space_color != Layout::kHostMemorySpace) {
+        // Does not output to host memory; skip.
+        continue;
+      }
+      TF_ASSIGN_OR_RETURN(bool result,
+                          WalkDownHostMemoryOffloadPaths(
+                              InstructionAndShapeIndex(instruction, {}),
+                              /*insert_copy_before=*/false));
+      if (result) {
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
 absl::StatusOr<bool> HostOffloader::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -1237,6 +1293,11 @@ absl::StatusOr<bool> HostOffloader::Run(
   TF_ASSIGN_OR_RETURN(const bool input_streaming_changed_module,
                       HandleInputStreaming(module->entry_computation()));
   changed = changed || input_streaming_changed_module;
+
+  TF_ASSIGN_OR_RETURN(const bool handled_mosaic, HandlePallasKernels(module));
+  LOG(INFO) << "handled_mosaic: " << handled_mosaic;
+  changed = changed || handled_mosaic;
+  LOG(INFO) << "changed: " << changed;
 
   // Since we're modifying the graph as we iterate over it, any time we change
   // it, we need to re-run the loop.
