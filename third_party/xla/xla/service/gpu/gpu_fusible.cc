@@ -232,10 +232,14 @@ FusionDecision FusionHeroesAreCompatible(
       IsReductionFromOrToContiguousDimensions(*hero1, device_info);
   auto tiled_transpose_hero1 = GetDescriptionForTiledTransposeEmitter(*hero1);
   bool hero1_is_unnested_transpose = tiled_transpose_hero1.has_value();
+  bool hero1_is_nested_transpose =
+      hero1->opcode() == HloOpcode::kTranspose && !hero1_is_unnested_transpose;
   bool hero2_is_unnested_reduce =
       IsReductionFromOrToContiguousDimensions(*hero2, device_info);
   auto tiled_transpose_hero2 = GetDescriptionForTiledTransposeEmitter(*hero2);
   bool hero2_is_unnested_transpose = tiled_transpose_hero2.has_value();
+  bool hero2_is_nested_transpose =
+      hero2->opcode() == HloOpcode::kTranspose && !hero2_is_unnested_transpose;
 
   if (hero1_is_unnested_reduce && hero2_is_unnested_reduce &&
       !AreReductionsMultiOutputFusionCompatible(hero2, hero1)) {
@@ -245,6 +249,14 @@ FusionDecision FusionHeroesAreCompatible(
              // same shape and permute the same dimensions.
              !tiled_transpose_hero1->IsEquivalent(*tiled_transpose_hero2)) {
     return FusionDecision::Forbid("tiled transposes with different shapes");
+  } else if ((hero1_is_unnested_transpose && hero2_is_nested_transpose) ||
+             (hero1_is_nested_transpose && hero2_is_unnested_transpose)) {
+    // A elemental (aka nested) transpose has a different read pattern than an
+    // unnested transpose (tiled transpose using shared memory). Do not fuse
+    // them, because they won't be able to share the reads. What is worse,
+    // increased register pressure can impact performance.
+    return FusionDecision::Forbid(
+        "multi-output fusion of a nested and an unnested transpose");
   } else if ((hero1_is_unnested_transpose && hero2_is_unnested_reduce) ||
              (hero1_is_unnested_reduce && hero2_is_unnested_transpose)) {
     return FusionDecision::Forbid("MOF-fusion of a transpose and a reduction");

@@ -2172,5 +2172,36 @@ TEST_F(ReduceMultiOutputFusionTest, GetTupleElementMakeTupleSequence) {
   ASSERT_FALSE(mof_.Run(module.get()).value());
 }
 
+TEST_F(ReduceMultiOutputFusionTest, NestedAndUnnestedTranspose) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+fused_computation.0 {
+  p.0 = bf16[2048,16,128] parameter(0)
+  p.1 = bf16[2048,16,128] parameter(1)
+  concatenate.0 = bf16[2048,16,256] concatenate(p.0, p.1), dimensions={2}
+  bitcast.0 = bf16[32,64,16,256] bitcast(concatenate.0)
+  ROOT transpose = bf16[32,16,64,256] transpose(bitcast.0),
+      dimensions={0,2,1,3}  // Does not transpose the most minor dimension.
+}
+
+fused_computation.1 {
+  p.0 = bf16[2048,16,128] parameter(0)
+  p.1 = bf16[2048,16,128] parameter(1)
+  concatenate.0 = bf16[2048,16,256] concatenate(p.0, p.1), dimensions={2}
+  bitcast.0 = bf16[32,64,4096] bitcast(concatenate.0)
+  ROOT transpose = bf16[32,4096,64] transpose(bitcast.0),
+      dimensions={0,2,1}  // Does transpose the most minor dimension.
+}
+
+ENTRY computation {
+  p.0 = bf16[2048,16,128] parameter(0)
+  p.1 = bf16[2048,16,128] parameter(1)
+  fusion.0 = bf16[32,16,64,256] fusion(p.0, p.1), kind=kLoop, calls=fused_computation.0
+  fusion.1 = bf16[32,4096,64] fusion(p.0, p.1), kind=kInput, calls=fused_computation.1
+  ROOT tuple = (bf16[32,16,64,256], bf16[32,4096,64]) tuple(fusion.0, fusion.1)
+})")
+                    .value();
+  ASSERT_FALSE(mof_.Run(module.get()).value()) << module->ToString();
+}
+
 }  // namespace gpu
 }  // namespace xla
