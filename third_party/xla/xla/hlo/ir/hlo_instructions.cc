@@ -2049,9 +2049,6 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
   }
 
   if (clone != instruction_to_append) {
-    // Copy over the original value to the clone of a fused instruction.
-    clone->CopyOriginalValue(instruction_to_append,
-                             /*clone=*/false);
     VLOG(2) << "New clone:\n" << clone->ToString();
   }
 
@@ -2425,11 +2422,6 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
     auto cloned_instruction =
         parent()->AddInstruction(fused_instruction->CloneWithNewOperands(
             fused_instruction->shape(), new_operands, /*suffix=*/"clone"));
-    // Copy over the original value to the clone of a fused instruction.
-    // This is necessary as the clone will be cloned again when the clone is
-    // fused in FuseInstructionIntoMultiOutput(). This can be skipped if we
-    // improve the code to only clone once as stated in the preceding comment.
-    cloned_instruction->CopyOriginalValue(fused_instruction, /*clone=*/true);
     unfused_instructions.push_back(cloned_instruction);
     InsertOrDie(&old_to_new, fused_instruction, cloned_instruction);
   }

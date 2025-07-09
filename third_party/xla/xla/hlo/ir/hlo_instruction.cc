@@ -2827,6 +2827,9 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   if (!suffix.empty()) {
     clone->AddSuffixToInstructionName(suffix);
   }
+  if (shape == this->shape()) {
+    clone->CopyOriginalValue(this, /*clone=*/false);
+  }
   return clone;
 }
 
