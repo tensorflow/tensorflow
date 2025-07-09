@@ -122,10 +122,11 @@ bool IsOnlyDependentOn(const HloInstruction* consumer,
 // Returns true if the value is a function of the induction variable within a
 // while loop.
 bool IsValueFunctionOfLoopInductionVariable(const HloInstruction& value,
-                                            const CallGraph* call_graph) {
+                                            const CallGraph* call_graph,
+                                            bool allow_multiple_callers) {
   std::vector<HloInstruction*> callers =
       call_graph->GetComputationCallers(value.parent());
-  if (callers.size() != 1) {
+  if (callers.size() != 1 && !allow_multiple_callers) {
     VLOG(2) << "Computation has multiple callers: "
             << absl::StrJoin(callers, ",",
                              [](std::string* out, const HloInstruction* instr) {
@@ -191,10 +192,13 @@ bool IsHandledConstantForDynamicSliceFusion(const HloInstruction& offset) {
 // This checks whether a dynamic index operation has all offsets that are either
 // constant or loop iteration offsets.
 bool HasConstantOrLoopIterationOffsets(const HloDynamicIndexInstruction& instr,
-                                       const CallGraph* call_graph) {
+                                       const CallGraph* call_graph,
+                                       bool allow_multiple_callers) {
   return absl::c_all_of(
-      instr.index_operands(), [call_graph](const HloInstruction* offset) {
-        return IsValueFunctionOfLoopInductionVariable(*offset, call_graph) ||
+      instr.index_operands(),
+      [call_graph, allow_multiple_callers](const HloInstruction* offset) {
+        return IsValueFunctionOfLoopInductionVariable(*offset, call_graph,
+                                                      allow_multiple_callers) ||
                IsHandledConstantForDynamicSliceFusion(*offset);
       });
 }
@@ -261,10 +265,11 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction& instr,
     auto dynamic_index_operation =
         DynCast<HloDynamicIndexInstruction>(maybe_slice_instr.value());
     bool valid_slice_found =
-        slice_found && ((dynamic_index_operation &&
-                         HasConstantOrLoopIterationOffsets(
-                             *dynamic_index_operation, &call_graph)) ||
-                        (*maybe_slice_instr)->opcode() == HloOpcode::kSlice);
+        slice_found &&
+        ((dynamic_index_operation && HasConstantOrLoopIterationOffsets(
+                                         *dynamic_index_operation, &call_graph,
+                                         /*allow_multiple_callers=*/false)) ||
+         (*maybe_slice_instr)->opcode() == HloOpcode::kSlice);
     if (valid_slice_found ||
         processed_instrs.contains(maybe_slice_instr.value())) {
       // Even in the case of stopping at a match that has been processed, we
@@ -285,7 +290,8 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction& instr,
 DefUseDataflowPaths GetSlicedUserPaths(const HloInstruction& instr,
                                        const CallGraph& call_graph,
                                        HloPredicate is_noop,
-                                       bool check_alignment) {
+                                       bool check_alignment,
+                                       bool allow_multiple_callers) {
   DefUseDataflowPaths sliced_user_paths;
   // This set is used to avoid duplicates in the matched results. It contains
   // the matched instructions that we have seen so far.
@@ -318,9 +324,10 @@ DefUseDataflowPaths GetSlicedUserPaths(const HloInstruction& instr,
     }
     auto dynamic_index_operation =
         DynCast<HloDynamicIndexInstruction>(maybe_dus_instr.value());
-    bool valid_dus_found = dus_found && dynamic_index_operation &&
-                           HasConstantOrLoopIterationOffsets(
-                               *dynamic_index_operation, &call_graph);
+    bool valid_dus_found =
+        dus_found && dynamic_index_operation &&
+        HasConstantOrLoopIterationOffsets(*dynamic_index_operation, &call_graph,
+                                          allow_multiple_callers);
     if (valid_dus_found || processed_instrs.contains(maybe_dus_instr.value())) {
       // Even in the case of stopping at a match that has been processed, we
       // still need to add instructions encountered in the sliced user path

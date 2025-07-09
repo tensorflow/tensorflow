@@ -29,10 +29,12 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_verifier.h"
@@ -47,6 +49,7 @@ using ::testing::Ne;
 using ::testing::NotNull;
 using ::testing::Property;
 using ::testing::SizeIs;
+using ::tsl::testing::IsOkAndHolds;
 
 class WhileLoopAllReduceCodeMotionTest : public HloHardwareIndependentTestBase {
  public:
@@ -1611,6 +1614,608 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, AllReduceConvertAccumulateUse) {
   ASSERT_THAT(new_root->operand(0), op::GetTupleElement());
   ASSERT_THAT(new_root->operand(0)->operand(0), op::Tuple());
   EXPECT_THAT(new_root->operand(0)->operand(0)->operand(3), op::Add());
+}
+
+// Test single all reduce and single dynamic update slice.
+TEST_F(WhileLoopAllReduceCodeMotionTest, SingleAllReduceDUS) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule single_all_reduce_dus
+
+    %reduction {
+      ROOT %max = f32[] maximum(f32[] parameter(0), f32[] parameter(1))
+    }
+
+    %while_condition {
+      %param = (s32[], f32[256,256], f32[16]) parameter(0)
+      %indvar = s32[] get-tuple-element(%param), index=0
+      ROOT %result = pred[] compare(%indvar, s32[] constant(16)), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], f32[256,256], f32[16]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[256,256] get-tuple-element(%param), index=1
+      %gte.2 = f32[16] get-tuple-element(%param), index=2
+      %next = s32[] add(%gte.0, s32[] constant(1))
+      %dot = f32[256,256] dot(%gte.1, %gte.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %max.local = f32[] reduce(%dot, f32[] constant(0)), dimensions={0,1}, to_apply=%reduction
+      %max.global = f32[] all-reduce(%max.local), channel_id=1, replica_groups=[1,4]<=[4], use_global_device_ids=true, to_apply=%reduction
+      %update = f32[1] reshape(%max.global)
+      %dus = f32[16] dynamic-update-slice(%gte.2, %update, %gte.0)
+      ROOT %loop_result = (s32[], f32[256,256], f32[16]) tuple(%next, %dot, %dus)
+    }
+
+    ENTRY %main {
+      %while_init = (s32[], f32[256,256], f32[16]) tuple(s32[] constant(0), f32[256,256] parameter(0), f32[16] parameter(1))
+      ROOT %while = (s32[], f32[256,256], f32[16]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  WhileLoopAllReduceCodeMotion pass;
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
+  EXPECT_THAT(transformed_while->while_body()->instructions(),
+              Each(Not(op::AllReduce())));
+  EXPECT_THAT(RunFileCheck(entry->ToString(), R"(
+    CHECK: %[[while:.+]] = ({{.+}}) while({{.+}})
+    CHECK: %[[gte:.+]] = f32[16]{0} get-tuple-element(%[[while]]), index=2
+    CHECK: %[[ar:.+]] = f32[16]{0} all-reduce(%[[gte]]){{.*}}, to_apply=%reduction
+    CHECK: tuple({{.+}}, {{.+}}, %[[ar]])
+  )"),
+              IsOkAndHolds(true));
+}
+
+// Test single all reduce with convert and multiple dynamic update slices.
+TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleDUSAndConvert) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule multiple_dus_and_convert
+
+    %reduction {
+      ROOT %min = f16[] minimum(f16[] parameter(0), f16[] parameter(1))
+    }
+
+    %while_condition {
+      %param = (s32[], f16[256,256], f32[1,64], f32[16,64]) parameter(0)
+      %indvar = s32[] get-tuple-element(%param), index=0
+      ROOT %result = pred[] compare(%indvar, s32[] constant(16)), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], f16[256,256], f32[1,64], f32[16,64]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f16[256,256] get-tuple-element(%param), index=1
+      %gte.2 = f32[1,64] get-tuple-element(%param), index=2
+      %gte.3 = f32[16,64] get-tuple-element(%param), index=3
+      %next = s32[] add(%gte.0, s32[] constant(1))
+      %dot = f16[256,256] dot(%gte.1, %gte.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %slice.0 = f32[1,1] slice(%gte.2), slice={[0:1],[0:1]}
+      %slice.1 = f32[1,63] slice(%gte.2), slice={[0:1],[1:64]}
+      %concat = f32[1,64] concatenate(%slice.1, %slice.0), dimensions={1}
+      %min.local = f16[] reduce(%dot, f32[] constant(0)), dimensions={0,1}, to_apply=%reduction
+      %min.global = f16[] all-reduce(%min.local), channel_id=1, replica_groups=[1,4]<=[4], use_global_device_ids=true, to_apply=%reduction
+      %convert = f32[] convert(%min.global)
+      %update = f32[1,1] reshape(%convert)
+      %zero = s32[] constant(0)
+      %dus1 = f32[1,64] dynamic-update-slice(%concat, %update, %zero, %zero)
+      %dus2 = f32[16,64] dynamic-update-slice(%gte.3, %dus1, %gte.0, %zero)
+      ROOT %loop_result = (s32[], f16[256,256], f32[1,64], f32[16,64]) tuple(%next, %dot, %gte.2, %dus2)
+    }
+
+    ENTRY %main {
+      %param.0 = f16[256,256] parameter(0)
+      %param.1 = f32[1,64] parameter(1)
+      %param.2 = f32[16,64] parameter(2)
+      %while_init = (s32[], f16[256,256], f32[1,64], f32[16,64]) tuple(s32[] constant(0), %param.0, %param.1, %param.2)
+      ROOT %while = (s32[], f16[256,256], f32[1,64], f32[16,64]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  WhileLoopAllReduceCodeMotion pass;
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
+  EXPECT_THAT(transformed_while->while_body()->instructions(),
+              Each(Not(op::AllReduce())));
+  EXPECT_THAT(RunFileCheck(entry->ToString(), R"(
+    CHECK: %[[while:.+]] = ({{.+}}) while({{.+}})
+    CHECK: %[[gte:.+]] = f32[16,64]{1,0} get-tuple-element(%[[while]]), index=3
+    CHECK: %[[slice:.+]] = f32[16,1]{1,0} slice(%[[gte]]), slice={[0:16], [0:1]}
+    CHECK: %[[conv:.+]] = f16[16,1]{1,0} convert(%[[slice]])
+    CHECK: %[[ar:.+]] = f16[16,1]{1,0} all-reduce(%[[conv]]){{.*}}, to_apply=%reduction
+    CHECK: %[[update:.+]] = f32[16,1]{1,0} convert(%[[ar]])
+    CHECK: %[[zero:.+]] = s64[] constant(0)
+    CHECK: %[[dus:.+]] = f32[16,64]{1,0} dynamic-update-slice(%[[gte]], %[[update]], %[[zero]], %[[zero]])
+    CHECK: tuple({{.+}}, {{.+}}, {{.+}}, %[[dus]])
+  )"),
+              IsOkAndHolds(true));
+}
+
+// Test multiple all-reduce ops with different types.
+TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleAllReduceDifferentTypes) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule multiple_all_reduce_different_types
+
+    %reduction_add {
+      ROOT %add = f32[] add(f32[] parameter(0), f32[] parameter(1))
+    }
+    %reduction_mul {
+      ROOT %mul = f32[] multiply(f32[] parameter(0), f32[] parameter(1))
+    }
+
+    %while_condition {
+      %param = (s32[], f32[256,256], f32[16], f32[16]) parameter(0)
+      %indvar = s32[] get-tuple-element(%param), index=0
+      ROOT %result = pred[] compare(%indvar, s32[] constant(16)), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], f32[256,256], f32[16], f32[16]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[256,256] get-tuple-element(%param), index=1
+      %gte.2 = f32[16] get-tuple-element(%param), index=2
+      %gte.3 = f32[16] get-tuple-element(%param), index=3
+      %next = s32[] add(%gte.0, s32[] constant(1))
+      %dot = f32[256,256] dot(%gte.1, %gte.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %add.local = f32[] reduce(%dot, f32[] constant(0)), dimensions={0,1}, to_apply=%reduction_add
+      %add.global = f32[] all-reduce(%add.local), channel_id=1, replica_groups=[1,4]<=[4], use_global_device_ids=true, to_apply=%reduction_add
+      %add.update = f32[1] reshape(%add.global)
+      %dus1 = f32[16] dynamic-update-slice(%gte.2, %add.update, %gte.0)
+      %mul.local = f32[] reduce(%dot, f32[] constant(1)), dimensions={0,1}, to_apply=%reduction_mul
+      %mul.global = f32[] all-reduce(%mul.local), channel_id=1, replica_groups=[1,4]<=[4], use_global_device_ids=true, to_apply=%reduction_mul
+      %mul.update = f32[1] reshape(%mul.global)
+      %dus2 = f32[16] dynamic-update-slice(%gte.3, %mul.update, %gte.0)
+      ROOT %loop_result = (s32[], f32[256,256], f32[16], f32[16]) tuple(%next, %dot, %dus1, %dus2)
+    }
+
+    ENTRY %main {
+      %param.0 = f32[256,256] parameter(0)
+      %param.1 = f32[16] parameter(1)
+      %while_init = (s32[], f32[256,256], f32[16], f32[16]) tuple(s32[] constant(0), %param.0, %param.1, %param.1)
+      ROOT %while = (s32[], f32[256,256], f32[16], f32[16]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  WhileLoopAllReduceCodeMotion pass;
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
+  EXPECT_THAT(transformed_while->while_body()->instructions(),
+              Each(Not(op::AllReduce())));
+  EXPECT_THAT(RunFileCheck(entry->ToString(), R"(
+    CHECK: %[[while:.+]] = ({{.+}}) while({{.+}})
+    CHECK: %[[gte2:.+]] = f32[16]{0} get-tuple-element(%[[while]]), index=2
+    CHECK: %[[ar2:.+]] = f32[16]{0} all-reduce(%[[gte2]]){{.*}}, to_apply=%reduction_add
+    CHECK: %[[gte3:.+]] = f32[16]{0} get-tuple-element(%[[while]]), index=3
+    CHECK: %[[ar3:.+]] = f32[16]{0} all-reduce(%[[gte3]]){{.*}}, to_apply=%reduction_mul
+    CHECK: tuple({{.+}}, {{.+}}, %[[ar2]], %[[ar3]])
+  )"),
+              IsOkAndHolds(true));
+}
+
+// Test multiple while ops calling the same computation.
+TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleWhileOps) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule multiple_while_ops
+
+    %reduction {
+      ROOT %max = f32[] maximum(f32[] parameter(0), f32[] parameter(1))
+    }
+
+    %while_condition {
+      %param = (s32[], f32[256,256], f32[16]) parameter(0)
+      %indvar = s32[] get-tuple-element(%param), index=0
+      ROOT %result = pred[] compare(%indvar, s32[] constant(16)), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], f32[256,256], f32[16]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[256,256] get-tuple-element(%param), index=1
+      %gte.2 = f32[16] get-tuple-element(%param), index=2
+      %next = s32[] add(%gte.0, s32[] constant(1))
+      %dot = f32[256,256] dot(%gte.1, %gte.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %max.local = f32[] reduce(%dot, f32[] constant(0)), dimensions={0,1}, to_apply=%reduction
+      %max.global = f32[] all-reduce(%max.local), channel_id=1, replica_groups=[1,4]<=[4], use_global_device_ids=true, to_apply=%reduction
+      %update = f32[1] reshape(%max.global)
+      %dus = f32[16] dynamic-update-slice(%gte.2, %update, %gte.0)
+      ROOT %loop_result = (s32[], f32[256,256], f32[16]) tuple(%next, %dot, %dus)
+    }
+
+    ENTRY %main {
+      %while_init = (s32[], f32[256,256], f32[16]) tuple(s32[] constant(0), f32[256,256] parameter(0), f32[16] parameter(1))
+      %while.0 = (s32[], f32[256,256], f32[16]) while(%while_init), condition=%while_condition, body=%while_body
+      %res.0 = f32[16] get-tuple-element(%while.0), index=2
+      %while.1 = (s32[], f32[256,256], f32[16]) while(%while_init), condition=%while_condition, body=%while_body
+      %res.1 = f32[16] get-tuple-element(%while.1), index=2
+      ROOT %out = (f32[16], f32[16]) tuple(%res.0, %res.1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  WhileLoopAllReduceCodeMotion pass;
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
+  EXPECT_THAT(transformed_while->while_body()->instructions(),
+              Each(Not(op::AllReduce())));
+  EXPECT_THAT(RunFileCheck(entry->ToString(), R"(
+    CHECK: %[[while0:.+]] = ({{.+}}) while({{.+}})
+    CHECK: %[[res0:.+]] = f32[16]{0} get-tuple-element(%[[while0]]), index=2
+    CHECK: %[[ar0:.+]] = f32[16]{0} all-reduce(%[[res0]]){{.*}}, to_apply=%reduction
+    CHECK: tuple({{.+}}, {{.+}}, %[[ar0]])
+    CHECK: %[[while1:.+]] = ({{.+}}) while({{.+}})
+    CHECK: %[[res1:.+]] = f32[16]{0} get-tuple-element(%[[while1]]), index=2
+    CHECK: %[[ar1:.+]] = f32[16]{0} all-reduce(%[[res1]]){{.*}}, to_apply=%reduction
+    CHECK: tuple({{.+}}, {{.+}}, %[[ar1]])
+  )"),
+              IsOkAndHolds(true));
+}
+
+// Test single all reduce with reverse indexing.
+TEST_F(WhileLoopAllReduceCodeMotionTest, ReverseIndexing) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule reverse_indexing
+
+    %reduction {
+      ROOT %max = f32[] maximum(f32[] parameter(0), f32[] parameter(1))
+    }
+
+    %while_condition {
+      %param = (s32[], f32[256,256], f32[16]) parameter(0)
+      %indvar = s32[] get-tuple-element(%param), index=0
+      ROOT %result = pred[] compare(%indvar, s32[] constant(16)), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], f32[256,256], f32[16]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[256,256] get-tuple-element(%param), index=1
+      %gte.2 = f32[16] get-tuple-element(%param), index=2
+      %next = s32[] add(%gte.0, s32[] constant(1))
+      %dot = f32[256,256] dot(%gte.1, %gte.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %max.local = f32[] reduce(%dot, f32[] constant(0)), dimensions={0,1}, to_apply=%reduction
+      %max.global = f32[] all-reduce(%max.local), channel_id=1, replica_groups=[1,4]<=[4], use_global_device_ids=true, to_apply=%reduction
+      %update = f32[1] reshape(%max.global)
+      %index = s32[] subtract(s32[] constant(15), %gte.0)
+      %dus = f32[16] dynamic-update-slice(%gte.2, %update, %index)
+      ROOT %loop_result = (s32[], f32[256,256], f32[16]) tuple(%next, %dot, %dus)
+    }
+
+    ENTRY %main {
+      %while_init = (s32[], f32[256,256], f32[16]) tuple(s32[] constant(0), f32[256,256] parameter(0), f32[16] parameter(1))
+      ROOT %while = (s32[], f32[256,256], f32[16]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  WhileLoopAllReduceCodeMotion pass;
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
+  EXPECT_THAT(transformed_while->while_body()->instructions(),
+              Each(Not(op::AllReduce())));
+  EXPECT_THAT(RunFileCheck(entry->ToString(), R"(
+    CHECK: %[[while:.+]] = ({{.+}}) while({{.+}})
+    CHECK: %[[gte:.+]] = f32[16]{0} get-tuple-element(%[[while]]), index=2
+    CHECK: %[[ar:.+]] = f32[16]{0} all-reduce(%[[gte]]){{.*}}, to_apply=%reduction
+    CHECK: tuple({{.+}}, {{.+}}, %[[ar]])
+  )"),
+              IsOkAndHolds(true));
+}
+
+// Test that only the loop induction variable may be used for indexing.
+TEST_F(WhileLoopAllReduceCodeMotionTest, InvalidIndexing) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule invalid_indexing
+
+    %reduction {
+      ROOT %max = f32[] maximum(f32[] parameter(0), f32[] parameter(1))
+    }
+
+    %while_condition {
+      %param = (s32[], f32[256,256], f32[16], s32[]) parameter(0)
+      %indvar = s32[] get-tuple-element(%param), index=0
+      ROOT %result = pred[] compare(%indvar, s32[] constant(16)), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], f32[256,256], f32[16], s32[]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[256,256] get-tuple-element(%param), index=1
+      %gte.2 = f32[16] get-tuple-element(%param), index=2
+      %gte.3 = s32[] get-tuple-element(%param), index=3
+      %next = s32[] add(%gte.0, s32[] constant(1))
+      %dot = f32[256,256] dot(%gte.1, %gte.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %max.local = f32[] reduce(%dot, f32[] constant(0)), dimensions={0,1}, to_apply=%reduction
+      %max.global = f32[] all-reduce(%max.local), channel_id=1, replica_groups=[1,4]<=[4], use_global_device_ids=true, to_apply=%reduction
+      %update = f32[1] reshape(%max.global)
+      %dus = f32[16] dynamic-update-slice(%gte.2, %update, %gte.3)
+      ROOT %loop_result = (s32[], f32[256,256], f32[16], s32[]) tuple(%next, %dot, %dus, %gte.3)
+    }
+
+    ENTRY %main {
+      %param.0 = f32[256,256] parameter(0)
+      %param.1 = f32[16] parameter(1)
+      %while_init = (s32[], f32[256,256], f32[16], s32[]) tuple(s32[] constant(0), %param.0, %param.1, s32[] parameter(2))
+      ROOT %while = (s32[], f32[256,256], f32[16], s32[]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  WhileLoopAllReduceCodeMotion pass;
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
+}
+
+// Test that updates do not overlap (update size is 1).
+TEST_F(WhileLoopAllReduceCodeMotionTest, OverlappingUpdates) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule overlapping_updates
+
+    %reduction {
+      ROOT %max = f32[] maximum(f32[] parameter(0), f32[] parameter(1))
+    }
+
+    %while_condition {
+      %param = (s32[], f32[2,256], f32[17]) parameter(0)
+      %indvar = s32[] get-tuple-element(%param), index=0
+      ROOT %result = pred[] compare(%indvar, s32[] constant(16)), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], f32[2,256], f32[17]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[2,256] get-tuple-element(%param), index=1
+      %gte.2 = f32[17] get-tuple-element(%param), index=2
+      %next = s32[] add(%gte.0, s32[] constant(1))
+      %transform = f32[2,256] add(%gte.1, %gte.1)
+      %max.local = f32[2] reduce(%transform, f32[] constant(0)), dimensions={1}, to_apply=%reduction
+      %max.global = f32[2] all-reduce(%max.local), channel_id=1, replica_groups=[1,4]<=[4], use_global_device_ids=true, to_apply=%reduction
+      %dus = f32[17] dynamic-update-slice(%gte.2, %max.global, %gte.0)
+      ROOT %loop_result = (s32[], f32[2,256], f32[17]) tuple(%next, %transform, %dus)
+    }
+
+    ENTRY %main {
+      %param.0 = f32[2,256] parameter(0)
+      %param.1 = f32[17] parameter(1)
+      %while_init = (s32[], f32[2,256], f32[17]) tuple(s32[] constant(0), %param.0, %param.1)
+      ROOT %while = (s32[], f32[2,256], f32[17]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  WhileLoopAllReduceCodeMotion pass;
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
+}
+
+// Test that only simple range loops are supported (start=0, step=1).
+class AllReduceCodeMotionLoopTest
+    : public WhileLoopAllReduceCodeMotionTest,
+      public ::testing::WithParamInterface<std::tuple<int, int>> {};
+
+TEST_P(AllReduceCodeMotionLoopTest, InvalidLoop) {
+  const auto& [start, step] = GetParam();
+  std::string hlo_module = absl::Substitute(R"(
+    HloModule invalid_loop
+
+    %reduction {
+      ROOT %max = f32[] maximum(f32[] parameter(0), f32[] parameter(1))
+    }
+
+    %while_condition {
+      %param = (s32[], f32[256,256], f32[16]) parameter(0)
+      %indvar = s32[] get-tuple-element(%param), index=0
+      ROOT %result = pred[] compare(%indvar, s32[] constant(16)), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], f32[256,256], f32[16]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[256,256] get-tuple-element(%param), index=1
+      %gte.2 = f32[16] get-tuple-element(%param), index=2
+      %next = s32[] add(%gte.0, s32[] constant($1))
+      %dot = f32[256,256] dot(%gte.1, %gte.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %max.local = f32[] reduce(%dot, f32[] constant(0)), dimensions={0,1}, to_apply=%reduction
+      %max.global = f32[] all-reduce(%max.local), channel_id=1, replica_groups=[1,4]<=[4], use_global_device_ids=true, to_apply=%reduction
+      %update = f32[1] reshape(%max.global)
+      %dus = f32[16] dynamic-update-slice(%gte.2, %update, %gte.0)
+      ROOT %loop_result = (s32[], f32[256,256], f32[16]) tuple(%next, %dot, %dus)
+    }
+
+    ENTRY %main {
+      %while_init = (s32[], f32[256,256], f32[16]) tuple(s32[] constant($0), f32[256,256] parameter(0), f32[16] parameter(1))
+      ROOT %while = (s32[], f32[256,256], f32[16]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )",
+                                            start, step);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_module));
+  WhileLoopAllReduceCodeMotion pass;
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    AllReduceCodeMotionLoopTestInputs, AllReduceCodeMotionLoopTest,
+    ::testing::Values(std::make_tuple(/*start=*/1, /*step=*/1),
+                      std::make_tuple(/*start=*/0, /*step=*/2)));
+
+// Test that users of all-reduce prevent code motion.
+class AllReduceCodeMotionUserTest
+    : public WhileLoopAllReduceCodeMotionTest,
+      public ::testing::WithParamInterface<std::string> {};
+
+TEST_P(AllReduceCodeMotionUserTest, UserPreventsCodeMotion) {
+  // Extract shape, op and optional init.
+  std::vector<std::string> shape_and_op =
+      absl::StrSplit(GetParam(), absl::MaxSplits(' ', 1));
+  absl::string_view shape = shape_and_op[0];
+  std::vector<std::string> op_and_init =
+      absl::StrSplit(shape_and_op[1], absl::MaxSplits(" = ", 1));
+  absl::string_view op = op_and_init[0];
+  std::string init;
+  if (op_and_init.size() > 1) {
+    init = absl::Substitute("$0 = $1 $2", op, shape, op_and_init[1]);
+  }
+
+  std::string hlo_module = absl::Substitute(R"(
+    HloModule user_prevents_code_motion
+
+    %reduction {
+      ROOT %max = f32[] maximum(f32[] parameter(0), f32[] parameter(1))
+    }
+
+    %while_condition {
+      %param = (s32[], f32[256,256], f32[16], $0) parameter(0)
+      %indvar = s32[] get-tuple-element(%param), index=0
+      ROOT %result = pred[] compare(%indvar, s32[] constant(16)), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], f32[256,256], f32[16], $0) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[256,256] get-tuple-element(%param), index=1
+      %gte.2 = f32[16] get-tuple-element(%param), index=2
+      %next = s32[] add(%gte.0, s32[] constant(1))
+      %dot = f32[256,256] dot(%gte.1, %gte.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %max.local = f32[] reduce(%dot, f32[] constant(0)), dimensions={0,1}, to_apply=%reduction
+      %max.global = f32[] all-reduce(%max.local), channel_id=1, replica_groups=[1,4]<=[4], use_global_device_ids=true, to_apply=%reduction
+      %update = f32[1] reshape(%max.global)
+      %dus = f32[16] dynamic-update-slice(%gte.2, %update, %gte.0)
+      $2  // optional user init
+      ROOT %loop_result = (s32[], f32[256,256], f32[16], $0) tuple(%next, %dot, %dus, $1)  // add user to the result tuple
+    }
+
+    ENTRY %main {
+      %param.0 = f32[256,256] parameter(0)
+      %param.1 = f32[16] parameter(1)
+      %while_init = (s32[], f32[256,256], f32[16], $0) tuple(s32[] constant(0), %param.0, %param.1, $0 parameter(2))
+      ROOT %while = (s32[], f32[256,256], f32[16], $0) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )",
+                                            shape, op, init);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_module));
+  WhileLoopAllReduceCodeMotion pass;
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    AllReduceCodeMotionUserTestInputs, AllReduceCodeMotionUserTest,
+    ::testing::Values("f32[] %max.global", "f32[1] %update", "f32[16] %dus",
+                      "f32[16] %gte.2",
+                      "f32[16] %other = get-tuple-element(%param), index=2"));
+
+// Test that users of all-reduce in the loop condition prevent code motion.
+TEST_F(WhileLoopAllReduceCodeMotionTest, LoopConditionUserPreventsCodeMotion) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule loop_condition_user_prevents_code_motion
+
+    %reduction {
+      ROOT %max = f32[] maximum(f32[] parameter(0), f32[] parameter(1))
+    }
+
+    %while_condition {
+      %param = (s32[], f32[256,256], f32[16]) parameter(0)
+      %indvar = s32[] get-tuple-element(%param), index=0
+      %bad.user = f32[16] get-tuple-element(%param), index=2
+      ROOT %result = pred[] compare(%indvar, s32[] constant(16)), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], f32[256,256], f32[16]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[256,256] get-tuple-element(%param), index=1
+      %gte.2 = f32[16] get-tuple-element(%param), index=2
+      %next = s32[] add(%gte.0, s32[] constant(1))
+      %dot = f32[256,256] dot(%gte.1, %gte.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %max.local = f32[] reduce(%dot, f32[] constant(0)), dimensions={0,1}, to_apply=%reduction
+      %max.global = f32[] all-reduce(%max.local), channel_id=1, replica_groups=[1,4]<=[4], use_global_device_ids=true, to_apply=%reduction
+      %update = f32[1] reshape(%max.global)
+      %dus = f32[16] dynamic-update-slice(%gte.2, %update, %gte.0)
+      ROOT %loop_result = (s32[], f32[256,256], f32[16]) tuple(%next, %dot, %dus)
+    }
+
+    ENTRY %main {
+      %while_init = (s32[], f32[256,256], f32[16]) tuple(s32[] constant(0), f32[256,256] parameter(0), f32[16] parameter(1))
+      ROOT %while = (s32[], f32[256,256], f32[16]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  WhileLoopAllReduceCodeMotion pass;
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
+}
+
+// Test that both dynamic update slice and accumulation are supported.
+TEST_F(WhileLoopAllReduceCodeMotionTest, ComputationWithDUSAndAccumulation) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule computation_with_dus_and_accumulation
+
+    %reduction {
+      ROOT %add = f32[] add(f32[] parameter(0), f32[] parameter(1))
+    }
+
+    %while_condition {
+      %param = (s32[], f32[256,256], f32[16], f32[256]) parameter(0)
+      %indvar = s32[] get-tuple-element(%param), index=0
+      ROOT %result = pred[] compare(%indvar, s32[] constant(16)), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], f32[256,256], f32[16], f32[256]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[256,256] get-tuple-element(%param), index=1
+      %gte.2 = f32[16] get-tuple-element(%param), index=2
+      %gte.3 = f32[256] get-tuple-element(%param), index=3
+      %next = s32[] add(%gte.0, s32[] constant(1))
+      %dot = f32[256,256] dot(%gte.1, %gte.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %add.local = f32[] reduce(%dot, f32[] constant(0)), dimensions={0,1}, to_apply=%reduction
+      %add.global = f32[] all-reduce(%add.local), channel_id=1, replica_groups=[1,4]<=[4], use_global_device_ids=true, to_apply=%reduction
+      %update = f32[1] reshape(%add.global)
+      %dus = f32[16] dynamic-update-slice(%gte.2, %update, %gte.0)
+      %acc.local = f32[256] reduce(%dot, f32[] constant(0)), dimensions={1}, to_apply=%reduction
+      %acc.global = f32[256] all-reduce(%acc.local), channel_id=2, replica_groups=[1,4]<=[4], use_global_device_ids=true, to_apply=%reduction
+      %acc.loop = f32[256] add(%gte.3, %acc.global)
+      ROOT %loop_result = (s32[], f32[256,256], f32[16], f32[256]) tuple(%next, %dot, %dus, %acc.loop)
+    }
+
+    ENTRY %main {
+      %param.0 = f32[256,256] parameter(0)
+      %param.1 = f32[16] parameter(1)
+      %accumulator = f32[256] parameter(2)
+      %while_init = (s32[], f32[256,256], f32[16], f32[256]) tuple(s32[] constant(0), %param.0, %param.1, %accumulator)
+      ROOT %while = (s32[], f32[256,256], f32[16], f32[256]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  WhileLoopAllReduceCodeMotion pass;
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
+  EXPECT_THAT(transformed_while->while_body()->instructions(),
+              Each(Not(op::AllReduce())));
+  EXPECT_THAT(RunFileCheck(entry->ToString(), R"(
+    CHECK: %[[while:.+]] = ({{.+}}) while({{.+}})
+    CHECK: %[[acc:.+]] = f32[256]{0} parameter(2)
+    CHECK: %[[gte3:.+]] = f32[256]{0} get-tuple-element(%[[while]]), index=3
+    CHECK: %[[ar3:.+]] = f32[256]{0} all-reduce(%[[gte3]]){{.*}}, to_apply=%reduction
+    CHECK: %[[add:.+]] = f32[256]{0} add(%[[acc]], %[[ar3]])
+    CHECK: %[[out:.+]] = ({{.+}}) tuple({{.+}}, {{.+}}, {{.+}}, %[[add]])
+    CHECK: %[[gte2:.+]] = f32[16]{0} get-tuple-element(%[[out]]), index=2
+    CHECK: %[[ar2:.+]] = f32[16]{0} all-reduce(%[[gte2]]){{.*}}, to_apply=%reduction
+    CHECK: tuple({{.+}}, {{.+}}, %[[ar2]], {{.+}})
+  )"),
+              IsOkAndHolds(true));
 }
 
 }  // namespace

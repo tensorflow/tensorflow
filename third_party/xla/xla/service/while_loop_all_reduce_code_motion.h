@@ -42,6 +42,20 @@ namespace xla {
 //   d += b
 // e = all-reduce(d)
 // a += e
+//
+// Additionally sinks all-reduces that are scattered into the loop output,
+// without being used in the loop body.
+// Supported reduction operations: add, mul, min, max.
+//
+// Pattern before this pass:
+// a = while:
+//   b = dynamic-update-slice(output, all-reduce(...), loop_induction_variable)
+// c = get-tuple-element(a, tuple_index)
+//
+// Pattern after this pass:
+// a = while:
+//   b = dynamic-update-slice(output, ..., loop_induction_variable)
+// c = all-reduce(get-tuple-element(a, tuple_index))
 class WhileLoopAllReduceCodeMotion : public HloModulePass {
  public:
   explicit WhileLoopAllReduceCodeMotion(bool enable_reduce_scatter = false,

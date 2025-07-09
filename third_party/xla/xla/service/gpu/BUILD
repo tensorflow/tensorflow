@@ -97,6 +97,7 @@ cc_library(
 cc_library(
     name = "gpu_constants",
     hdrs = ["gpu_constants.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = ["//xla/codegen/emitters:kernel_arguments"],
 )
 
@@ -799,6 +800,7 @@ cc_library(
     name = "dynamic_slicing_utils",
     srcs = ["dynamic_slicing_utils.cc"],
     hdrs = ["dynamic_slicing_utils.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     tags = ["gpu"],
     deps = [
         ":gpu_constants",
