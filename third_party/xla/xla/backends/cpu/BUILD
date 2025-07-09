@@ -30,6 +30,7 @@ filegroup(
 cc_library(
     name = "alignment",
     hdrs = ["alignment.h"],
+    visibility = internal_visibility([":friends"]),
     deps = ["@eigen_archive//:eigen3"],
 )
 
