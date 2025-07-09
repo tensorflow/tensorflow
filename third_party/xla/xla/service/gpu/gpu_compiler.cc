@@ -1720,7 +1720,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   TF_RETURN_IF_ERROR(AddGemmFusionAutotuningPasses(
       &pipeline, hlo_module, autotune_config, thread_pool,
       options.key_value_store,
-      gpu_target_config.device_description.runtime_version()));
+      gpu_target_config.device_description.runtime_version(), stream_exec));
 
   // Inline back the calls which have better performance with cuBLAS.
   pipeline.AddPass<CallInliner>(

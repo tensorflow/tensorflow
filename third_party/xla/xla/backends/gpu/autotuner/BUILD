@@ -4,7 +4,10 @@ load("//xla/tests:build_defs.bzl", "xla_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//xla/backends/autotuner:__subpackages__"],
+    default_visibility = [
+        "//xla/backends/autotuner:__subpackages__",
+        "//xla/service/gpu:__subpackages__",
+    ],
     licenses = ["notice"],
 )
 

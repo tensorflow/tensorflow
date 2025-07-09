@@ -323,6 +323,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_unsupported_use_all_reduce_one_shot_kernel(false);
   opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(true);
   opts.set_xla_gpu_unsupported_enable_all_reduce_decomposer(false);
+  opts.set_xla_gpu_experimental_use_autotuner_pass(false);
   opts.set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_fix_max_iterations(false);
   opts.set_xla_hlo_pass_fix_detect_cycles(false);
@@ -2378,6 +2379,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_enable_command_buffer_on_thunks(),
       "Enables an experimental feature for command buffer conversion on "
       "thunks."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_use_autotuner_pass",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_use_autotuner_pass),
+      debug_options->xla_gpu_experimental_use_autotuner_pass(),
+      "If true, use the AutotunerPass to autotune fusions, instead of the "
+      "gemm_fusion_autotuner."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

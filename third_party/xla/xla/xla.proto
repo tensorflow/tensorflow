@@ -607,6 +607,10 @@ message DebugOptions {
 
   optional bool xla_gpu_experimental_stream_annotation = 342;
 
+  // If true, use the AutotunerPass to autotune fusions, instead of the
+  // gemm_fusion_autotuner.
+  optional bool xla_gpu_experimental_use_autotuner_pass = 396;
+
   // If true, PTX compilation will fail if a kernel spills registers.
   // This is meant for debugging and only applies to CUDA PTX compilation.
   optional bool xla_gpu_fail_ptx_compilation_on_register_spilling = 353;
@@ -1237,7 +1241,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 396
+  // Next id: 397
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
