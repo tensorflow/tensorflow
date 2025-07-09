@@ -40,6 +40,7 @@
 #include "xla/hlo/tools/hlo_diff/render/graph_url_generator.h"
 #include "xla/hlo/tools/hlo_diff/render/hlo_gumgraph_renderer_util.h"
 #include "xla/hlo/tools/hlo_diff/render/op_metric_getter.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla {
 namespace hlo_diff {
@@ -214,7 +215,7 @@ std::string PrintCss() {
 // Prints javascript for the HTML output.
 std::string PrintJavascript() {
   return R"html(
-  <script>
+  <script defer>
   function CopyToClipboard(text) {
     navigator.clipboard.writeText(text);
     const tooltip = event.srcElement.querySelector('.tooltiptext');
@@ -222,6 +223,16 @@ std::string PrintJavascript() {
     setTimeout(() => {
       tooltip.textContent = 'Click to copy';
     }, 2000);
+  }
+
+  function TextboxOnScroll(event) {
+    const textbox = event.target;
+    const idParts = textbox.id.split('-');
+    const id = idParts[0];
+    const isLeft = idParts[1] == 'left';
+    const sibling = document.getElementById(id + '-' + (isLeft ? 'right' : 'left'));
+    sibling.scrollTop = textbox.scrollTop;
+    sibling.scrollLeft = textbox.scrollLeft;
   }
   </script>
   )html";
@@ -335,12 +346,16 @@ std::string PrintClickToCopyButton(absl::string_view text,
 }
 
 // Print textbox with click to copy button.
-std::string PrintTextbox(absl::string_view title, absl::string_view content) {
+std::string PrintTextbox(absl::string_view title, absl::string_view content,
+                         absl::string_view id = "") {
   return absl::StrCat(
       PrintDiv(title, {"title"}),
       PrintDiv(
-          absl::StrCat(absl::StrFormat(R"html(<pre>%s</pre>)html", content),
-                       PrintClickToCopyButton("📋", content)),
+          absl::StrCat(
+              absl::StrFormat(
+                  R"html(<pre onscroll="TextboxOnScroll(event)" id="%s">%s</pre>)html",
+                  id, content),
+              PrintClickToCopyButton("📋", content)),
           {"textbox"}));
 }
 
@@ -358,10 +373,18 @@ std::string PrintHloTextboxPair(const T* left_node, const T* right_node) {
     right_title = right_node->name();
     right_text = right_node->ToString();
   }
+  uint64_t fingerprint =
+      tsl::Fingerprint64(absl::StrCat(left_text, right_text));
   return PrintDiv(
       absl::StrCat(
-          PrintDiv(PrintTextbox(left_title, left_text), {"hlo-textbox"}),
-          PrintDiv(PrintTextbox(right_title, right_text), {"hlo-textbox"})),
+          PrintDiv(PrintTextbox(left_title, left_text,
+                                absl::StrFormat("%016x-left", fingerprint)),
+
+                   {"hlo-textbox"}),
+          PrintDiv(PrintTextbox(right_title, right_text,
+                                absl::StrFormat("%016x-right", fingerprint)),
+
+                   {"hlo-textbox"})),
       {"hlo-textbox-pair"});
 }
 

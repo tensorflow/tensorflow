@@ -46,7 +46,7 @@ TEST(HloGumgraphHtmlRendererTest, RenderHtml) {
   std::ostringstream out;
   RenderHtml(diff_result, diff_summary, out);
   EXPECT_THAT(out.str(), HasSubstr("<style>"));
-  EXPECT_THAT(out.str(), HasSubstr("<script>"));
+  EXPECT_THAT(out.str(), HasSubstr("<script defer>"));
 }
 
 TEST(HloGumgraphHtmlRendererTest, RenderHtmlWithOpMetrics) {
