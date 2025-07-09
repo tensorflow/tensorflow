@@ -39,6 +39,7 @@ limitations under the License.
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/MC/TargetRegistry.h"
+#include "llvm/Support/Alignment.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
@@ -52,15 +53,27 @@ limitations under the License.
 namespace tensorflow {
 namespace tfcompile {
 
+namespace {
+
+// TODO(basioli): use xla::cpu::Align() this is a quick hack to land the CL.
+constexpr size_t kAlignment = 64;
+
+}  // end namespace
+
 using xla::llvm_ir::AsStringRef;
 
 void ConstantToEmbed::SerializeIntoBuffer(absl::Span<const uint8_t> buffer) {
-  // Allocate memory for the size of the buffer and the buffer itself.
+  // The header has to be padded to 64 bytes so that the pointer to the
+  // constant is always 64-byte aligned.
+  const size_t header_size = kAlignment;
+  const size_t padding_size = header_size - sizeof(uint64_t);
+
   const uint64_t buffer_size = buffer.size();
-  data_buffer.resize(sizeof(uint64_t) + buffer_size);
+  data_buffer.resize(header_size + buffer_size);
+
   std::memcpy(data_buffer.data(), &buffer_size, sizeof(uint64_t));
-  std::memcpy(data_buffer.data() + sizeof(uint64_t), buffer.data(),
-              buffer.size());
+  std::memset(data_buffer.data() + sizeof(uint64_t), 0, padding_size);
+  std::memcpy(data_buffer.data() + header_size, buffer.data(), buffer.size());
 }
 
 static absl::Status AddBufferToLlvmModule(
@@ -81,10 +94,12 @@ static absl::Status AddBufferToLlvmModule(
 
   constant_array_symbol_name =
       absl::StrCat(unique_identifier, "_constant_buffer_contents");
-  new llvm::GlobalVariable(
+  llvm::GlobalVariable* global_variable = new llvm::GlobalVariable(
       *module, buffer_initializer->getType(),
       /*isConstant=*/true, llvm::GlobalValue::ExternalLinkage,
       buffer_initializer, AsStringRef(constant_array_symbol_name));
+
+  global_variable->setAlignment(llvm::Align(kAlignment));
 
   return absl::OkStatus();
 }
@@ -149,14 +164,18 @@ absl::StatusOr<EmbeddedConstantBuffers> CreateEmbeddedConstantBuffers(
         absl::StrCat("extern \"C\" char ", constant_array_symbol_name,
                      "[] asm(\"", constant_array_symbol_name, "\");");
 
-    std::string cpp_access_shim = absl::StrFormat(R"(
+    // NOTE: The actual constant is located after the header which consists of
+    // an 8 bit size and padding to 64 bytes so that the pointer to the constant
+    // is always 64-byte aligned.
+    std::string cpp_access_shim = absl::StrFormat(
+        R"(
     [](char* buffer) -> std::pair<uint64_t, char*> {
       uint64_t buffer_size;
       std::memcpy(&buffer_size, buffer, sizeof(uint64_t));
-      return {buffer_size, buffer + sizeof(uint64_t)};
+      return {buffer_size, buffer + %d};
     }(%s)
     )",
-                                                  constant_array_symbol_name);
+        kAlignment, constant_array_symbol_name);
     result.variable_decls.push_back(
         {constant_array_symbol_name, cpp_variable_decl, cpp_access_shim});
   }

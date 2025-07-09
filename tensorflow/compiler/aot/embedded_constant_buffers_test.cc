@@ -58,7 +58,7 @@ TEST_F(EmbeddedConstantBuffersTest, CreateEmbeddedConstantBuffers) {
               "\n    [](char* buffer) -> std::pair<uint64_t, char*> {\n"
               "      uint64_t buffer_size;\n"
               "      std::memcpy(&buffer_size, buffer, sizeof(uint64_t));\n"
-              "      return {buffer_size, buffer + sizeof(uint64_t)};\n"
+              "      return {buffer_size, buffer + 64};\n"
               "    }(_constant_buffer_contents)\n    ");
   }
 }

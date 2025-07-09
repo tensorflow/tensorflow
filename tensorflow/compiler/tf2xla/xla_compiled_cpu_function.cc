@@ -47,7 +47,7 @@ int32 GetResultIndex(const int32* result_index_table, int32 num_results) {
 
 XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
                                                AllocMode alloc_mode)
-    : function_library_symbol_map_(static_data.function_library_symbol_map_),
+    : function_library_symbol_map_(&static_data.function_library_symbol_map_),
       temp_allocation_index_(static_data.temp_allocation_index_),
       raw_function_(static_data.raw_function_),
       thunk_run_impl_(static_data.thunk_run_impl_),
@@ -97,8 +97,8 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
               .embedded_constant_buffers_[embedded_constant_buffers_idx++];
 
       CHECK(buffer_size == buffer_infos()[i].size());
-      std::memcpy(static_cast<char*>(buffer_table()[i]), buffer_data,
-                  buffer_infos()[i].size());
+
+      buffer_table()[i] = buffer_data;
     }
 
     CHECK(embedded_constant_buffers_idx ==
