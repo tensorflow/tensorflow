@@ -53,6 +53,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "xla/codegen/math/fptrunc.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -1288,6 +1289,15 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
   }
 }
 
+static llvm::Function* GetOrCreateDeclaration(llvm::Module* module,
+                                              llvm::StringRef name,
+                                              llvm::Type* return_type,
+                                              llvm::Type* arg_type) {
+  auto* function_type = llvm::FunctionType::get(return_type, {arg_type}, false);
+  return llvm::cast<llvm::Function>(
+      module->getOrInsertFunction(name, function_type).getCallee());
+}
+
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
     const HloInstruction* op, llvm::Value* operand_value) {
   switch (op->opcode()) {
@@ -1305,33 +1315,13 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       // This is enabled explicitly by a flag only for XLA:CPU backend.
       if (options_.xla_cpu_use_truncate_f32_to_bf16_conversion) {
         if (from_type == F32 && to_type == BF16) {
-          // This implementation is based on Eigen `float_to_bfloat16_rtne` with
-          // a special case for nans.
-          auto* i32 = b_->CreateBitCast(operand_value, b_->getInt32Ty());
+          llvm::Type* from = b_->getFloatTy();
+          llvm::Type* to = b_->getBFloatTy();
+          llvm::Function* fptrunc = GetOrCreateDeclaration(
+              module_, codegen::math::FptruncFunctionName(1, F32, BF16, false),
+              to, from);
 
-          // Rounding bias for non-nan values.
-          auto* lsb =
-              b_->CreateAnd(b_->CreateLShr(i32, 16),
-                            llvm::ConstantInt::get(b_->getInt32Ty(), 1));
-          auto* rounding_bias = b_->CreateAdd(
-              llvm::ConstantInt::get(b_->getInt32Ty(), 0x7fff), lsb);
-
-          // For NaNs, we set all of them to quiet NaNs by masking the mantissa
-          // so that only the MSB is 1, then simply truncate the original value
-          // to retain the sign.
-          auto* is_nan =
-              b_->createIsFPClass(operand_value, llvm::FPClassTest::fcNan);
-          auto* nan_mask = llvm::ConstantInt::get(b_->getInt32Ty(), 0xFFC00000);
-          auto* msb = llvm::ConstantInt::get(b_->getInt32Ty(), 0x00400000);
-          auto* quiet_nan = b_->CreateOr(b_->CreateAnd(i32, nan_mask), msb);
-          auto* i16 = b_->CreateTrunc(
-              b_->CreateLShr(
-                  b_->CreateSelect(is_nan, quiet_nan,
-                                   b_->CreateAdd(i32, rounding_bias)),
-                  16),
-              b_->getInt16Ty());
-
-          return b_->CreateBitCast(i16, b_->getBFloatTy());
+          return b_->CreateCall(fptrunc, {operand_value});
         }
         if (from_type == BF16 && to_type == F32) {
           auto* i16 = b_->CreateBitCast(operand_value, b_->getInt16Ty());

@@ -22,6 +22,21 @@ package_group(
 )
 
 cc_library(
+    name = "fptrunc",
+    srcs = ["fptrunc.cc"],
+    hdrs = ["fptrunc.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Core",  # buildcleaner: keep
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+cc_library(
     name = "ldexp",
     srcs = ["ldexp.cc"],
     hdrs = ["ldexp.h"],

@@ -49,6 +49,7 @@ class MathFunction {
     PrimitiveType dtype;
     size_t width;
   };
+
   // Returns the vector types supported well by this approximation.
   virtual std::vector<VectorType> SupportedVectorTypes() const = 0;
 

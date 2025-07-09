@@ -60,6 +60,7 @@ limitations under the License.
 #include "llvm/Transforms/Scalar/SCCP.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 #include "xla/codegen/math/exp.h"
+#include "xla/codegen/math/fptrunc.h"
 #include "xla/codegen/math/ldexp.h"
 #include "xla/codegen/math/string_interner.h"
 #include "xla/codegen/math/vec_name_mangler.h"
@@ -179,9 +180,53 @@ class ExpF64MathFunction final : public MathFunction {
   }
 };
 
+class FpextF32ToBf16MathFunction final : public MathFunction {
+ public:
+  absl::string_view FunctionName() const override {
+    return "xla.fptrunc.f32.to.bf16";
+  }
+
+  std::vector<std::string> TargetFunctions() const override {
+    return {"xla.fptrunc.f32.to.bf16"};
+  }
+
+  std::vector<VectorType> SupportedVectorTypes() const override {
+    return {
+        {xla::F32, 1},
+        {xla::F32, 2},
+        {xla::F32, 4},
+        {xla::F32, 8},
+    };
+  }
+
+  std::string GenerateVectorizedFunctionName(
+      VectorType vector_type) const override {
+    return math::FptruncFunctionName(vector_type.width, F32, BF16,
+                                     vector_type.width > 1);
+  }
+
+  std::string GenerateMangledSimdName(VectorType vector_type) const override {
+    return math::GetMangledNamePrefix(/*is_masked=*/false, vector_type.width,
+                                      {math::VecParamCardinality::kVector});
+  }
+
+  llvm::Function* CreateDefinition(llvm::Module& module, absl::string_view name,
+                                   VectorType vector_type) const override {
+    llvm::Type* float_type =
+        llvm_ir::PrimitiveTypeToIrType(vector_type.dtype, module.getContext());
+    llvm::Type* vec_type = float_type;
+    if (vector_type.width > 1) {
+      vec_type = llvm::VectorType::get(float_type, vector_type.width, false);
+    }
+    return math::CreateFptruncF32ToBf16(&module, vec_type,
+                                        vector_type.width > 1);
+  }
+};
+
 MathFunctionLib::MathFunctionLib() {
   math_functions_.push_back(std::make_unique<LdexpF64MathFunction>());
   math_functions_.push_back(std::make_unique<ExpF64MathFunction>());
+  math_functions_.push_back(std::make_unique<FpextF32ToBf16MathFunction>());
 }
 
 std::vector<llvm::VecDesc> MathFunctionLib::Vectorizations() {
