@@ -17,10 +17,11 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <cassert>
+#include <cstdlib>
 #include <deque>
-#include <functional>
-#include <memory>
-#include <ostream>
+#include <initializer_list>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -28,24 +29,25 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/base/log_severity.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
-#include "absl/strings/escaping.h"
-#include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/stack_frame.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
-#include "tsl/platform/stacktrace.h"
-#include "tsl/platform/str_util.h"
-#include "tsl/platform/strcat.h"
-#include "tsl/platform/stringprintf.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
@@ -138,7 +140,7 @@ void SetStackTrace(absl::Status& status, std::vector<StackFrame> stack_trace) {
 
 std::vector<StackFrame> GetStackTrace(const absl::Status& status) {
   std::vector<StackFrame> stack_trace;
-  absl::optional<absl::Cord> maybe_serialized_payload =
+  std::optional<absl::Cord> maybe_serialized_payload =
       status.GetPayload(kStackTraceProtoUrl);
   if (maybe_serialized_payload.has_value()) {
     std::vector<std::string> split =
@@ -187,14 +189,13 @@ static constexpr const char kDerivedStatusProtoUrl[] =
 absl::Status StatusGroup::MakeDerived(const absl::Status& s) {
   if (IsDerived(s)) {
     return s;
-  } else {
-    absl::Status derived(s);
-    // TODO(b/200167936): Serialize an instance of DerivedStatus proto instead
-    // of using the string directly. The string is never used so it is not
-    // causing any issues at the moment.
-    derived.SetPayload(kDerivedStatusProtoUrl, absl::Cord(""));
-    return derived;
   }
+  absl::Status derived(s);
+  // TODO(b/200167936): Serialize an instance of DerivedStatus proto instead
+  // of using the string directly. The string is never used so it is not
+  // causing any issues at the moment.
+  derived.SetPayload(kDerivedStatusProtoUrl, absl::Cord(""));
+  return derived;
 }
 
 bool StatusGroup::IsDerived(const absl::Status& s) {
@@ -266,24 +267,23 @@ absl::Status StatusGroup::as_summary_status() const {
 
   // Gather recent logs as a string
   auto get_recent_logs = [this]() -> std::string {
-    if (!recent_logs_.empty()) {
-      std::vector<std::string> fmt;
-      fmt.push_back("\nRecent warning and error logs:");
-      for (auto& log : recent_logs_) {
-        // Add an indentation to make it look nicer.
-        fmt.push_back("  " + log.substr(0, kMaxAttachedLogMessageSize));
-      }
-      return absl::StrJoin(fmt, "\n");
-    } else {
+    if (recent_logs_.empty()) {
       return "";
     }
+    std::vector<std::string> fmt;
+    fmt.push_back("\nRecent warning and error logs:");
+    for (auto& log : recent_logs_) {
+      // Add an indentation to make it look nicer.
+      fmt.push_back("  " + log.substr(0, kMaxAttachedLogMessageSize));
+    }
+    return absl::StrJoin(fmt, "\n");
   };
 
   // If only one root status is found, do not add summary header and footer.
   if (non_derived_.size() == 1) {
     return MakeStatus(
         non_derived_.begin()->code(),
-        strings::StrCat(non_derived_.begin()->message(), get_recent_logs()),
+        absl::StrCat(non_derived_.begin()->message(), get_recent_logs()),
         GetPayloads());
   }
 
@@ -291,7 +291,7 @@ absl::Status StatusGroup::as_summary_status() const {
     std::vector<std::string> fmt;
 
     fmt.push_back(
-        strings::Printf("%zu root error(s) found.", non_derived_.size()));
+        absl::StrFormat("%zu root error(s) found.", non_derived_.size()));
 
     int index = 0;
     auto code = absl::StatusCode::kCancelled;
@@ -302,24 +302,23 @@ absl::Status StatusGroup::as_summary_status() const {
           s.code() != absl::StatusCode::kCancelled) {
         code = s.code();
       }
-      fmt.emplace_back(strings::StrCat("  (", index, ") ", MakeString(s)));
+      fmt.emplace_back(absl::StrCat("  (", index, ") ", MakeString(s)));
       ++index;
     }
 
-    fmt.push_back(strings::Printf("%zu successful operations.", num_ok_));
+    fmt.push_back(absl::StrFormat("%zu successful operations.", num_ok_));
     fmt.push_back(
-        strings::Printf("%zu derived errors ignored.", derived_.size()));
+        absl::StrFormat("%zu derived errors ignored.", derived_.size()));
 
     std::string error_msg =
         absl::StrJoin(fmt, "\n").substr(0, kMaxAggregatedStatusMessageSize);
 
-    return MakeStatus(code, strings::StrCat(error_msg, get_recent_logs()),
+    return MakeStatus(code, absl::StrCat(error_msg, get_recent_logs()),
                       GetPayloads());
-  } else {
-    // All statuses are derived. Pick the first available status to return.
-    return MakeDerived(MakeStatus(derived_.begin()->code(),
-                                  derived_.begin()->message(), GetPayloads()));
   }
+  // All statuses are derived. Pick the first available status to return.
+  return MakeDerived(MakeStatus(derived_.begin()->code(),
+                                derived_.begin()->message(), GetPayloads()));
 }
 
 // Concatenate all the status objects in the StatusGroup. This is used when
@@ -346,12 +345,11 @@ absl::Status StatusGroup::as_concatenated_status() const {
         non_derived_.begin()->code(),
         absl::StrJoin(fmt, "\n").substr(0, kMaxAggregatedStatusMessageSize),
         GetPayloads());
-  } else {
-    // All statuses are derived. Pick the first available status to return.
-    // This should not happen in normal execution.
-    return MakeDerived(MakeStatus(derived_.begin()->code(),
-                                  derived_.begin()->message(), GetPayloads()));
   }
+  // All statuses are derived. Pick the first available status to return.
+  // This should not happen in normal execution.
+  return MakeDerived(MakeStatus(derived_.begin()->code(),
+                                derived_.begin()->message(), GetPayloads()));
 }
 
 void StatusGroup::AttachLogMessages() {
