@@ -450,7 +450,6 @@ GpuThunkAotCompilationResult::LoadExecutable(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProtoWithConfig(proto_.hlo_module_with_config()));
 
-
   ExecutionStreamAssignment execution_stream_assignment(hlo_module.get());
 
   std::vector<uint8_t> binary(proto_.binary().begin(), proto_.binary().end());
@@ -593,47 +592,6 @@ void LogDebugOptions(HloModule* hlo_module) {
                         hlo_module->name(),
                         PrintAllFields(hlo_module->config().debug_options())));
   }
-}
-
-AlgebraicSimplifierOptions LayoutInsensitiveAlgebraicSimplifierOptions(
-    const HloModuleConfig& hlo_module_config,
-    const Compiler::TargetConfig& gpu_target_config,
-    AlgebraicSimplifierOptions opts_from_compiler) {
-  AlgebraicSimplifierOptions layout_insensitive_algsimp_opts =
-      opts_from_compiler;
-  layout_insensitive_algsimp_opts.set_conv_is_lowerable_callback(
-      ConvRewriter::ConvIsLowerable);
-  layout_insensitive_algsimp_opts.set_enable_dot_strength_reduction(true);
-
-  // GPU only supports canonical convolutions.
-  layout_insensitive_algsimp_opts.set_supports_non_canonical_dots(false);
-
-  // On GPU it helps to reorder them so that the fused cuDNN kernel can be
-  // used.
-  layout_insensitive_algsimp_opts.set_enable_conv_add_multiply_reorder(true);
-
-  // "slow" minmax means we propagate nan.
-  layout_insensitive_algsimp_opts.set_minmax_propagate_nan(
-      !hlo_module_config.debug_options().xla_gpu_enable_fast_min_max());
-
-  // Always simplify reduce(transpose(x)) and reduce(reshape(x)), even when
-  // the transpose/reshape has multiple users.  This helps int8 models, which
-  // tend to have lots of transpose+reshape's (converting between NCHW and
-  // NCHW_VECT_C).  Without this, those reshape+transposes can get materialized
-  // out, which is really bad for perf.
-  layout_insensitive_algsimp_opts
-      .set_unconditionally_simplify_reduce_of_transpose_or_reshape(true);
-
-  if (gpu_target_config.platform_name == "ROCM") {
-    layout_insensitive_algsimp_opts.set_enable_conv_operand_swap(false);
-  }
-  layout_insensitive_algsimp_opts
-      .set_enable_unconditional_reduce_of_concat_replacement(false);
-  // GPU pipeline handles transposes better than slice+concatenate, so keep
-  // the transpose.
-  layout_insensitive_algsimp_opts
-      .set_rewrite_reshape_transpose_as_slice_concatenate(false);
-  return layout_insensitive_algsimp_opts;
 }
 
 absl::Status RunPreSPMDPartitionerPasses(HloModule* hlo_module) {
@@ -1252,14 +1210,11 @@ absl::Status RunPostFusionPasses(
 }
 
 absl::Status RunPostFusionSimplificationPasses(
-    HloModule* hlo_module,
-    const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
+    HloModule* hlo_module, const AlgebraicSimplifierOptions& algsimp_options,
     se::GpuComputeCapability gpu_version,
     const Compiler::TargetConfig& gpu_target_config) {
   HloPassPipeline pipeline("post-fusion-simplification-pipeline optimization");
-  AlgebraicSimplifierOptions options = layout_insensitive_algsimp_opts;
-  options.set_is_layout_sensitive(true);
-  pipeline.AddPass<GpuAlgebraicSimplifier>(options, gpu_version);
+  pipeline.AddPass<GpuAlgebraicSimplifier>(algsimp_options, gpu_version);
 
   // This invocation is used to populate deduplicated_name for fusions that
   // are considered duplicates according to the comparator in this pass.
@@ -1303,19 +1258,9 @@ absl::Status RunPostFusionVerificationPasses(
 }
 
 absl::Status RunLayoutNormalizationPasses(
-    HloModule* hlo_module, const se::GpuComputeCapability& gpu_version) {
+    HloModule* hlo_module, const AlgebraicSimplifierOptions& algsimp_options,
+    const se::GpuComputeCapability& gpu_version) {
   HloPassPipeline layout_normalization_pipeline("layout normalization");
-  const DebugOptions& debug_options = hlo_module->config().debug_options();
-  AlgebraicSimplifierOptions opts =
-      GpuCompiler::GetAlgebraicSimplifierOptions(hlo_module->config());
-  opts.set_supports_non_canonical_dots(false);
-  opts.set_is_layout_sensitive(true);
-  opts.set_enable_conv_operand_swap(false);
-  opts.set_enable_conv_add_multiply_reorder(true);
-  // "slow" minmax means we propagate nan.
-  opts.set_minmax_propagate_nan(!debug_options.xla_gpu_enable_fast_min_max());
-  opts.set_enable_unconditional_reduce_of_concat_replacement(false);
-
   layout_normalization_pipeline.AddPass<ReshapeDecomposer>();
   layout_normalization_pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
   layout_normalization_pipeline.AddPass<LayoutNormalization>(
@@ -1323,7 +1268,7 @@ absl::Status RunLayoutNormalizationPasses(
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   layout_normalization_pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(
-      opts, gpu_version);
+      algsimp_options, gpu_version);
   // Layout normalization will create broadcasts that are not canonical.
   layout_normalization_pipeline.AddPass<BroadcastCanonicalizer>();
   // Layout normalization will create scatters that are not simplified and
@@ -1385,6 +1330,62 @@ absl::Status RunDynamicSliceFusionPasses(HloModule* hlo_module,
 }
 }  // namespace
 
+AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
+    AlgebraicSimplifierMode mode, const DebugOptions& debug_options,
+    bool is_rocm) {
+  AlgebraicSimplifierOptions opts;
+
+  opts.set_enable_dot_strength_reduction(true);
+  // On GPU it helps to reorder them so that the fused cuDNN kernel can be
+  // used.
+  opts.set_enable_conv_add_multiply_reorder(true);
+  // GPU only supports canonical convolutions.
+  opts.set_supports_non_canonical_dots(false);
+  opts.set_enable_unconditional_reduce_of_concat_replacement(false);
+
+  switch (mode) {
+    case AlgebraicSimplifierMode::kPostFusionSimplification:
+    case AlgebraicSimplifierMode::kLayoutInsensitive:
+      opts.set_conv_is_lowerable_callback(ConvRewriter::ConvIsLowerable);
+      // Always simplify reduce(transpose(x)) and reduce(reshape(x)), even when
+      // the transpose/reshape has multiple users.  This helps int8 models,
+      // which tend to have lots of transpose+reshape's (converting between NCHW
+      // and NCHW_VECT_C).  Without this, those reshape+transposes can get
+      // materialized out, which is really bad for perf.
+      opts.set_unconditionally_simplify_reduce_of_transpose_or_reshape(true);
+      // GPU pipeline handles transposes better than slice+concatenate, so keep
+      // the transpose.
+      opts.set_rewrite_reshape_transpose_as_slice_concatenate(false);
+      if (is_rocm) {
+        opts.set_enable_conv_operand_swap(false);
+      }
+      break;
+    default:
+      opts.set_enable_conv_operand_swap(false);
+  }
+
+  switch (mode) {
+    case AlgebraicSimplifierMode::kPostFusionSimplification:
+    case AlgebraicSimplifierMode::kLayoutNormalization:
+    case AlgebraicSimplifierMode::kPostLayoutAssignment:
+      opts.set_is_layout_sensitive(true);
+      break;
+    default:
+      break;
+  }
+
+  if (mode != AlgebraicSimplifierMode::kGpuConvoluationCanonicalization) {
+    // "slow" minmax means we propagate nan.
+    opts.set_minmax_propagate_nan(!debug_options.xla_gpu_enable_fast_min_max());
+  }
+
+  if (mode == AlgebraicSimplifierMode::kAfterSimplifyFPConversions) {
+    opts.set_enable_remove_no_op_reduce_precision(true);
+  }
+
+  return opts;
+}
+
 absl::Status GpuCompiler::RunCollectiveScheduleLinearizerPasses(
     HloModule* hlo_module, se::StreamExecutor* stream_exec) {
   HloPassPipeline pipeline("collective-schedule-linearizer");
@@ -1415,9 +1416,9 @@ absl::Status GpuCompiler::OptimizeHloModule(
       /*default_parallelism=*/tsl::port::MaxParallelism());
 
   AlgebraicSimplifierOptions layout_insensitive_algsimp_opts =
-      LayoutInsensitiveAlgebraicSimplifierOptions(
-          hlo_module->config(), gpu_target_config,
-          GetAlgebraicSimplifierOptions(hlo_module->config()));
+      GetAlgebraicSimplifierOptions(AlgebraicSimplifierMode::kLayoutInsensitive,
+                                    hlo_module->config().debug_options(),
+                                    gpu_target_config.platform_name == "ROCM");
 
   TF_RETURN_IF_ERROR(RunPreSPMDPartitionerPasses(hlo_module));
   TF_RETURN_IF_ERROR(RunSPMDPasses(hlo_module, gpu_target_config,
@@ -1454,7 +1455,13 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(RunLayoutAssignmentPasses(
       hlo_module, gpu_version, dnn_version, device_description));
 
-  TF_RETURN_IF_ERROR(RunLayoutNormalizationPasses(hlo_module, gpu_version));
+  TF_RETURN_IF_ERROR(RunLayoutNormalizationPasses(
+      hlo_module,
+      GetAlgebraicSimplifierOptions(
+          AlgebraicSimplifierMode::kLayoutNormalization,
+          hlo_module->config().debug_options(),
+          gpu_target_config.platform_name == "ROCM"),
+      gpu_version));
 
   // Run target-specific HLO optimization passes after layout assignment.
   TF_RETURN_IF_ERROR(OptimizeHloPostLayoutAssignment(
@@ -1472,8 +1479,12 @@ absl::Status GpuCompiler::OptimizeHloModule(
                                          alias_info, pointer_size_));
   TF_RETURN_IF_ERROR(RunAsyncCollectivesConversionPasses(hlo_module));
   TF_RETURN_IF_ERROR(RunPostFusionSimplificationPasses(
-      hlo_module, layout_insensitive_algsimp_opts, gpu_version,
-      gpu_target_config));
+      hlo_module,
+      GetAlgebraicSimplifierOptions(
+          AlgebraicSimplifierMode::kPostFusionSimplification,
+          hlo_module->config().debug_options(),
+          gpu_target_config.platform_name == "ROCM"),
+      gpu_version, gpu_target_config));
 
   TF_RETURN_IF_ERROR(RunPostFusionVerificationPasses(
       hlo_module, stream_exec, options, gpu_target_config));
@@ -1485,13 +1496,6 @@ absl::Status GpuCompiler::OptimizeHloModule(
 
   return absl::OkStatus();
 }  // NOLINT(readability/fn_size)
-
-AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
-    const HloModuleConfig& config) {
-  AlgebraicSimplifierOptions opts;
-  opts.set_enable_dot_strength_reduction(true);
-  return opts;
-}
 
 absl::Status GpuCompiler::RunPreSchedulingCopyInsertion(
     HloModule& hlo_module, const se::DeviceDescription& device_description,
@@ -1540,18 +1544,11 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   const DebugOptions& debug_options = hlo_module->config().debug_options();
   const se::GpuComputeCapability gpu_version =
       gpu_target_config.device_description.gpu_compute_capability();
-  const AlgebraicSimplifierOptions simplifier_options = [&] {
-    AlgebraicSimplifierOptions opts =
-        GetAlgebraicSimplifierOptions(hlo_module->config());
-    opts.set_supports_non_canonical_dots(false);
-    opts.set_is_layout_sensitive(true);
-    opts.set_enable_conv_operand_swap(false);
-    opts.set_enable_conv_add_multiply_reorder(true);
-    // "slow" minmax means we propagate nan.
-    opts.set_minmax_propagate_nan(!debug_options.xla_gpu_enable_fast_min_max());
-    opts.set_enable_unconditional_reduce_of_concat_replacement(false);
-    return opts;
-  }();
+  const AlgebraicSimplifierOptions simplifier_options =
+      GetAlgebraicSimplifierOptions(
+          AlgebraicSimplifierMode::kPostLayoutAssignment,
+          hlo_module->config().debug_options(),
+          gpu_target_config.platform_name == "ROCM");
   DeviceOrDevicelessConfig device_config =
       GetDeviceConfig(stream_exec, options, gpu_target_config);
   AutotuneConfig autotune_config =
@@ -1791,8 +1788,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     HloPassPipeline& remove_no_op_reduce_precision_pipeline =
         pipeline.AddPass<HloPassPipeline>(
             "remove-no-op-reduce-precision-algebraic-simplifier");
-    AlgebraicSimplifierOptions options{simplifier_options};
-    options.set_enable_remove_no_op_reduce_precision(true);
+    AlgebraicSimplifierOptions options = GetAlgebraicSimplifierOptions(
+        AlgebraicSimplifierMode::kPostFusionSimplification, debug_options,
+        gpu_target_config.platform_name == "ROCM");
     remove_no_op_reduce_precision_pipeline
         .AddPass<HloPassFix<GpuAlgebraicSimplifier>>(options, gpu_version);
   }

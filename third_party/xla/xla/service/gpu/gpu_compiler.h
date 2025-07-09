@@ -121,8 +121,18 @@ class GpuCompiler : public LLVMCompiler {
     return false;
   }
 
+  enum class AlgebraicSimplifierMode {
+    kLayoutInsensitive,
+    kPostFusionSimplification,
+    kLayoutNormalization,
+    kPostLayoutAssignment,
+    kAfterSimplifyFPConversions,
+    kGpuConvoluationCanonicalization,
+  };
+
   static AlgebraicSimplifierOptions GetAlgebraicSimplifierOptions(
-      const HloModuleConfig& config);
+      AlgebraicSimplifierMode mode, const DebugOptions& debug_options,
+      bool is_rocm);
 
  protected:
   struct BackendCompileResult {
