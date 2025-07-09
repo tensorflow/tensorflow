@@ -18,9 +18,11 @@
 #include <iomanip>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
@@ -52,37 +54,48 @@ void PrintProgress(int percentage) {
             << std::string(rpad, kProgressBarEmpty) << "]" << std::flush;
 }
 
+absl::flat_hash_set<const HloInstructionNode*> GetSubgraphForDiceSim(
+    const HloInstructionNode* start_node, int graph_size, int max_subgraph_size,
+    int min_bfs_distance) {
+  absl::flat_hash_set<const HloInstructionNode*> nodes;
+  nodes.reserve(max_subgraph_size);
+  HloGumgraphBfs(
+      *start_node,
+      [&](const HloInstructionNode& node, int distance) {
+        nodes.insert(&node);
+        return distance <= min_bfs_distance || nodes.size() < max_subgraph_size;
+      },
+      BfsTraversalDirection::kForward, graph_size);
+  return nodes;
+}
+
 // DiceSim similarity score between two subgraphs. Subgraphs are limited to
 // first max_subgraph_size nodes of BFS starting from the given nodes.
-double DiceSimLimitedSubgraph(const HloInstructionNode* absl_nonnull left,
-                              const HloInstructionNode* absl_nonnull right,
-                              HloGumgraphMappings& mappings,
-                              int max_subgraph_size, int min_bfs_distance,
-                              int left_graph_size, int right_graph_size) {
-  std::vector<const HloInstructionNode*> left_nodes;
-  left_nodes.reserve(max_subgraph_size);
-  HloGumgraphBfs(
-      *left,
-      [&](const HloInstructionNode& node, int distance) {
-        left_nodes.push_back(&node);
-        return distance <= min_bfs_distance ||
-               left_nodes.size() < max_subgraph_size;
-      },
-      BfsTraversalDirection::kForward, left_graph_size);
+double DiceSimLimitedSubgraph(
+    const HloInstructionNode* absl_nonnull left,
+    const HloInstructionNode* absl_nonnull right, HloGumgraphMappings& mappings,
+    int max_subgraph_size, int min_bfs_distance, int right_graph_size,
+    absl::flat_hash_set<const HloInstructionNode*>& left_nodes,
+    absl::flat_hash_map<const HloInstructionNode*,
+                        absl::flat_hash_set<const HloInstructionNode*>>&
+        right_bfs_set_cache) {
+  auto get_right_subgraph_set = [&](const HloInstructionNode* start_node,
+                                    int graph_size)
+      -> const absl::flat_hash_set<const HloInstructionNode*>& {
+    if (right_bfs_set_cache.contains(start_node)) {
+      return right_bfs_set_cache.at(start_node);
+    }
 
-  std::vector<const HloInstructionNode*> right_nodes;
-  right_nodes.reserve(max_subgraph_size);
-  HloGumgraphBfs(
-      *right,
-      [&](const HloInstructionNode& node, int distance) {
-        right_nodes.push_back(&node);
-        return distance <= min_bfs_distance ||
-               right_nodes.size() < max_subgraph_size;
-      },
-      BfsTraversalDirection::kForward, right_graph_size);
+    absl::flat_hash_set<const HloInstructionNode*> nodes =
+        GetSubgraphForDiceSim(start_node, graph_size, max_subgraph_size,
+                              min_bfs_distance);
+    auto [it, inserted] =
+        right_bfs_set_cache.try_emplace(start_node, std::move(nodes));
+    return it->second;
+  };
 
-  absl::flat_hash_set<const HloInstructionNode*> right_nodes_set(
-      right_nodes.begin(), right_nodes.end());
+  const absl::flat_hash_set<const HloInstructionNode*>& right_nodes_set =
+      get_right_subgraph_set(right, right_graph_size);
 
   int common = 0;
   for (const HloInstructionNode* left_node : left_nodes) {
@@ -94,7 +107,7 @@ double DiceSimLimitedSubgraph(const HloInstructionNode* absl_nonnull left,
   }
 
   double denominator =
-      static_cast<double>(left_nodes.size() + right_nodes.size());
+      static_cast<double>(left_nodes.size() + right_nodes_set.size());
   if (denominator == 0) {
     return 0.0;
   }
@@ -153,6 +166,10 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
     HloGumgraphMappings& mappings) const {
   LOG(INFO) << "Running GreedyLimitedCandidatesBottomUpMatcher: matching "
                "subgraphs that match based on Dice similarity";
+  absl::flat_hash_map<const HloInstructionNode*,
+                      absl::flat_hash_set<const HloInstructionNode*>>
+      right_bfs_set_cache;
+
   int current_mapping_count = mappings.left_to_right_instruction_map.size();
   std::vector<const HloInstructionNode*> left_postorder = GetAllNodesInDfsOrder(
       left_.GetRoot(), DfsTraversalOrder::kPostOrder, left_.GetNodeCount());
@@ -170,6 +187,11 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
         left_node->children.empty()) {
       continue;
     }
+
+    // Pre-compute the left_node's subgraph once for this iteration.
+    absl::flat_hash_set<const HloInstructionNode*> left_nodes_for_dice_sim =
+        GetSubgraphForDiceSim(left_node, left_.GetNodeCount(),
+                              max_dice_subgraph_size_, min_bfs_distance_);
 
     std::vector<const HloInstructionNode*> right_seeds;
     int count = 0;
@@ -213,7 +235,8 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
                 left_node, &node, left_, right_, mappings);
             double dice_sim = DiceSimLimitedSubgraph(
                 left_node, &node, mappings, max_dice_subgraph_size_,
-                min_bfs_distance_, left_.GetNodeCount(), right_.GetNodeCount());
+                min_bfs_distance_, right_.GetNodeCount(),
+                left_nodes_for_dice_sim, right_bfs_set_cache);
             double node_property_similarity =
                 NodePropertySimilarity(left_node, &node);
             double ancestor_similarity = AncestorSubGraphLcsSimilarity(
