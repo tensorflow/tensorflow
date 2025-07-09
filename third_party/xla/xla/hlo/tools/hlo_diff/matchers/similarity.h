@@ -52,7 +52,7 @@ double ParamPropertySimilarity(const HloInstructionNode* left,
 double ConstantPropertySimilarity(const HloInstructionNode* left,
                                   const HloInstructionNode* right);
 
-inline InstructionSimilarityFn MatchFnForOpcode(HloOpcode opcode) {
+inline InstructionSimilarityFn PropertySimilarityFnForOpcode(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kParameter:
       return ParamPropertySimilarity;

@@ -44,8 +44,11 @@ void MatchInstructionsWithMultipleCandidates(
     double max_match_score = 0.0;
     std::vector<const HloInstructionNode*> right_candidates;
     for (const HloInstructionNode* right : right_instructions) {
-      double similarity =
-          MatchFnForOpcode(left->instruction->opcode())(left, right);
+      double similarity = PropertySimilarityFnForOpcode(
+                              left->instruction->opcode())(left, right) +
+                          AncestorSubGraphLcsSimilarity(
+                              left, right, 20, 1, left_graph.GetNodeCount(),
+                              right_graph.GetNodeCount());
       if (similarity > max_match_score) {
         max_match_score = similarity;
         right_candidates.clear();
