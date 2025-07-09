@@ -63,6 +63,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -430,9 +431,14 @@ GpuThunkAotCompilationResult::buffer_assignment() const {
       };
 
   // Recreate BufferAssignment from proto.
+  // Technically, we should pass the proper GpuAliasInfo, but the FromProto()
+  // method does not actually make use of the MayAlias function. And for now, we
+  // don't have backend-specific MustAlias rules.
+  // TODO(b/424109294): This needs to be fixed when we implement
+  // backend-specific MustAlias rules.
+  AliasInfo alias_info;
   return BufferAssignment::FromProto(proto_.buffer_assignment(), module_.get(),
-                                     buffer_size_bytes_function,
-                                     /*can_share_buffer=*/nullptr);
+                                     buffer_size_bytes_function, &alias_info);
 }
 
 absl::StatusOr<std::unique_ptr<Executable>>
@@ -444,12 +450,6 @@ GpuThunkAotCompilationResult::LoadExecutable(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProtoWithConfig(proto_.hlo_module_with_config()));
 
-  // Recreate BufferAssignment from proto.
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<BufferAssignment> buffer_assignment,
-      BufferAssignment::FromProto(proto_.buffer_assignment(), hlo_module.get(),
-                                  compiler->BufferSizeBytesFunction(),
-                                  /*can_share_buffer=*/nullptr));
 
   ExecutionStreamAssignment execution_stream_assignment(hlo_module.get());
 
@@ -472,6 +472,16 @@ GpuThunkAotCompilationResult::LoadExecutable(
   auto llvm_module = std::make_unique<llvm::Module>("", llvm_context);
   llvm_module->setTargetTriple(llvm::Triple(gpu_compiler->target_triple()));
   llvm_module->setDataLayout(gpu_compiler->data_layout());
+
+  // Recreate BufferAssignment from proto.
+  std::unique_ptr<GpuAliasInfo> alias_info =
+      gpu_compiler->GetAliasInfo(gpu_device_info);
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<BufferAssignment> buffer_assignment,
+      BufferAssignment::FromProto(proto_.buffer_assignment(), hlo_module.get(),
+                                  compiler->BufferSizeBytesFunction(),
+                                  alias_info.get()));
+
   IrEmitterContext ir_emitter_context(
       hlo_module.get(), buffer_assignment.get(), &execution_stream_assignment,
       platform_name, gpu_device_info, mlir_context.get(), llvm_module.get(),

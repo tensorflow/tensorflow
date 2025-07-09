@@ -97,7 +97,7 @@ BuildIdToLogicalBufferMap(
     const BufferAssignmentProto& proto,
     const absl::flat_hash_map<int64_t, const HloInstruction*>&
         id_to_hlo_instruction,
-    const std::unique_ptr<HloAliasAnalysis>& alias_analysis) {
+    HloDataflowAnalysis& dataflow_analysis) {
   absl::flat_hash_map<int64_t, const HloValue*> id_to_logical_buffer;
   // Process each logical buffer in the proto.
   for (const LogicalBufferProto& logical_buffer_proto :
@@ -122,8 +122,8 @@ BuildIdToLogicalBufferMap(
     ShapeIndex proto_shape_index(shape_idx_vals);
 
     // Look up logical buffer by hlo instruction and shape index.
-    auto& logical_buffer = alias_analysis->dataflow_analysis().GetUniqueValueAt(
-        hlo_instruction, proto_shape_index);
+    auto& logical_buffer =
+        dataflow_analysis.GetUniqueValueAt(hlo_instruction, proto_shape_index);
 
     // Assign color to a logical buffer from the proto.
     logical_buffer.set_color(logical_buffer_proto.color());
@@ -1221,11 +1221,10 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
 /* static */
 absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
     const BufferAssignmentProto& proto, const HloModule* module,
-    BufferValue::SizeFunction buffer_size,
-    HloDataflowAnalysis::CanShareBuffer can_share_buffer) {
+    BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info) {
   // Create alias and dataflow analysis.
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, can_share_buffer));
+                      HloAliasAnalysis::Run(module, alias_info));
 
   // Build a map from a unique_id to corresponding HloInstruction in the module.
   auto id_to_hlo_instruction = BuildIdToHloInstructionMap(module);
@@ -1235,7 +1234,8 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
   absl::flat_hash_map<int64_t, const HloValue*> id_to_logical_buffer;
   TF_ASSIGN_OR_RETURN(
       id_to_logical_buffer,
-      BuildIdToLogicalBufferMap(proto, id_to_hlo_instruction, alias_analysis));
+      BuildIdToLogicalBufferMap(proto, id_to_hlo_instruction,
+                                alias_analysis->dataflow_analysis()));
 
   std::unique_ptr<BufferAssignment> buffer_assignment =
       absl::WrapUnique(new BufferAssignment(

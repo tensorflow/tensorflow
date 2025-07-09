@@ -132,7 +132,7 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
     auto proto = buffers->ToProto();
     // Recreate buffer assignment from proto.
     return BufferAssignment::FromProto(proto, module, &BufferSizeBytes,
-                                       /*can_share_buffer=*/nullptr);
+                                       &alias_info_);
   }
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentWithSequentialOrdering(

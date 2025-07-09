@@ -525,8 +525,7 @@ class BufferAssignment {
   BufferAssignmentProto ToProto() const;
   static absl::StatusOr<std::unique_ptr<BufferAssignment>> FromProto(
       const BufferAssignmentProto& proto, const HloModule* module,
-      BufferValue::SizeFunction buffer_size,
-      HloDataflowAnalysis::CanShareBuffer can_share_buffer);
+      BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info);
 
   // Returns string representation of buffer assignment statistics. Also
   // calculates and returns the total fragmentation.

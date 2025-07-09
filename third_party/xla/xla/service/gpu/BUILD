@@ -1465,6 +1465,7 @@ cc_library(
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/backends/gpu/runtime:sequential_thunk",
         "//xla/backends/gpu/runtime:thunk",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",
