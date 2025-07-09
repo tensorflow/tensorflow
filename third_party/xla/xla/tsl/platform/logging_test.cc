@@ -119,13 +119,6 @@ TEST(LoggingDeathTest, FailedChecks) {
 #endif
 }
 
-TEST(InternalLogString, Basic) {
-  // Just make sure that this code compiles (we don't actually verify
-  // the output)
-  internal::LogString(__FILE__, __LINE__, absl::LogSeverity::kInfo,
-                      "Hello there");
-}
-
 class TestSink : public TFLogSink {
  public:
   void Send(const TFLogEntry& entry) override {
