@@ -31,7 +31,7 @@ portpicker == 1.6.0
 scipy >= 1.13.0, < 1.15.0
 requests >= 2.31.0
 packaging==23.2
-setuptools==70.0.0
+setuptools==78.1.1
 jax==0.4.7
 zstandard==0.23.0
 # NVIDIA CUDA dependencies
