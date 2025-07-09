@@ -59,6 +59,77 @@ diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.cpp b/stablehlo/stablehl
    p.printRegion(cond, /*printEntryBlockArgs=*/false);
    p << " do ";
    p.printRegion(body, /*printEntryBlockArgs=*/false);
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -2248,6 +2248,22 @@
+   return success();
+ }
+ 
++namespace {
++
++// Infer dim sizes with bounds accounted for
++void pushDimensionAndBoundSize(SmallVector<int64_t>& inferredSizes,
++                               SmallVector<int64_t>& inferredBounds,
++                               int64_t dimension, ShapedType type,
++                               ArrayRef<int64_t> bounds) {
++  inferredSizes.push_back(type.getDimSize(dimension));
++
++  // Has bounds and is bounded
++  auto bound = bounds.empty() ? ShapedType::kDynamic : bounds[dimension];
++  inferredBounds.push_back(bound);
++}
++
++}  // namespace
++
+ LogicalResult inferDotOp(
+     std::optional<Location> location, RankedTensorType lhsType,
+     RankedTensorType rhsType, std::optional<ArrayAttr> precisionConfig,
+@@ -2256,6 +2272,9 @@
+     return failure();
+ 
+   SmallVector<int64_t> dimensions;
++  SmallVector<int64_t> bounds;
++  auto lhsBounds = to_vector(encodingToBounds(lhsType.getEncoding()));
++  auto rhsBounds = to_vector(encodingToBounds(rhsType.getEncoding()));
+   if (1 == lhsType.getRank() && 1 == rhsType.getRank() &&
+       // vector dot vector
+       verifyCompatibleDims(lhsType.getDimSize(0), rhsType.getDimSize(0))) {
+@@ -2263,25 +2282,29 @@
+              verifyCompatibleDims(lhsType.getDimSize(1),
+                                   rhsType.getDimSize(0))) {
+     // matrix dot vector
+-    dimensions.push_back(lhsType.getDimSize(0));
++    pushDimensionAndBoundSize(dimensions, bounds, 0, lhsType, lhsBounds);
+   } else if (1 == lhsType.getRank() && 2 == rhsType.getRank() &&
+              verifyCompatibleDims(lhsType.getDimSize(0),
+                                   rhsType.getDimSize(0))) {
+     // vector dot matrix
+-    dimensions.push_back(rhsType.getDimSize(1));
++    pushDimensionAndBoundSize(dimensions, bounds, 1, rhsType, rhsBounds);
+   } else if (2 == lhsType.getRank() && 2 == rhsType.getRank() &&
+              verifyCompatibleDims(lhsType.getDimSize(1),
+                                   rhsType.getDimSize(0))) {
+     // matrix dot matrix
+-    dimensions.push_back(lhsType.getDimSize(0));
+-    dimensions.push_back(rhsType.getDimSize(1));
++    pushDimensionAndBoundSize(dimensions, bounds, 0, lhsType, lhsBounds);
++    pushDimensionAndBoundSize(dimensions, bounds, 1, rhsType, rhsBounds);
+   } else {
+     return emitOptionalError(location,
+                              "expected both lhs/rhs ranks to be "
+                              "either 1 or 2");
+   }
+ 
+-  inferredReturnShapes.emplace_back(dimensions);
++  auto encoding =
++      lhsType.getEncoding() ? lhsType.getEncoding() : rhsType.getEncoding();
++  auto boundsAttr = boundsToEncoding(encoding, bounds);
++  inferredReturnShapes.emplace_back(dimensions, /*elementType=*/nullptr,
++                                    boundsAttr);
+   return success();
+ }
+ 
 diff --ruN a/stablehlo/stablehlo/dialect/Version.cpp b/stablehlo/stablehlo/dialect/Version.cpp
 --- stablehlo/stablehlo/dialect/Version.cpp
 +++ stablehlo/stablehlo/dialect/Version.cpp
@@ -71,4 +142,23 @@ diff --ruN a/stablehlo/stablehlo/dialect/Version.cpp b/stablehlo/stablehlo/diale
      case CompatibilityRequirement::WEEK_12:
        return Version(1, 10, 3);  // WEEK_12 ANCHOR: DO NOT MODIFY
      case CompatibilityRequirement::MAX:
+diff --ruN a/stablehlo/stablehlo/tests/infer_stablehlo.mlir b/stablehlo/stablehlo/tests/infer_stablehlo.mlir
+--- stablehlo/stablehlo/tests/infer_stablehlo.mlir
++++ stablehlo/stablehlo/tests/infer_stablehlo.mlir
+@@ -1804,6 +1804,15 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: func @dot_bounds
++func.func @dot_bounds(%arg0: tensor<?x12xf32, #stablehlo.bounds<64, ?>>, %arg1: tensor<12x?xf32, #stablehlo.bounds<?, 64>>) -> tensor<?x?xf32, #stablehlo.bounds<64, 64>> {
++  %0 = stablehlo.dot %arg0, %arg1, precision = [HIGHEST, HIGHEST] : (tensor<?x12xf32, #stablehlo.bounds<64, ?>>, tensor<12x?xf32, #stablehlo.bounds<?, 64>>) -> tensor<?x?xf32, #stablehlo.bounds<64, 64>>
++  // CHECK: return {{.*}} : tensor<?x?xf32, #stablehlo.bounds<64, 64>>
++  return %0 : tensor<?x?xf32, #stablehlo.bounds<64, 64>>
++}
++
++// -----
++
+ // CHECK-LABEL: func @dot_general_c12
+ // CHECK-SAME: (%[[ARG0:.*]]: tensor<?x?x?xf32>, %[[ARG1:.*]]: tensor<?x?x?xf32>
+ func.func @dot_general_c12(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) -> tensor<3xindex> {
 
