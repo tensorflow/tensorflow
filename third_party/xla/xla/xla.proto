@@ -155,6 +155,10 @@ message DebugOptions {
   // Use region analysis in copy insertion pass.
   optional bool xla_cpu_copy_insertion_use_region_analysis = 337;
 
+  // Sets how often we verify the emitted modules. Higher "levels mean
+  // more frequent verification. Currently supported: 0, 1.
+  optional int32 xla_cpu_emitter_verification_level = 395;
+
   // When true, XLA:CPU uses HLO module scheduler that is optimized for
   // extracting concurrency at the cost of extra memory: we extend the live
   // ranges of temporaries to allow XLA runtime to schedule independent
@@ -1233,7 +1237,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 395
+  // Next id: 396
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
