@@ -84,9 +84,11 @@ struct OriginalValuePointer {
     // Compares nodes.
     for (auto& leaf : lhs.original_value->leaves()) {
       xla::ShapeIndex index = leaf.first;
-      std::optional<xla::OriginalArray> lhs_original_array = leaf.second;
-      std::optional<xla::OriginalArray> rhs_original_array =
+      std::optional<const xla::OriginalArray> lhs_original_array = leaf.second;
+      std::optional<const xla::OriginalArray> rhs_original_array =
           rhs.original_value->element(index);
+      // TODO: b/430064396 - Use OriginalArray::operator== to compare the
+      // original arrays.
       if (!lhs_original_array.has_value() || !rhs_original_array.has_value() ||
           (lhs_original_array->instruction_name !=
            rhs_original_array->instruction_name) ||
