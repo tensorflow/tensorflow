@@ -810,7 +810,8 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
 
   return TritonGemmConfig(proto.block_m(), proto.block_n(), proto.block_k(),
                           proto.split_k(), proto.num_stages(),
-                          proto.num_warps(), proto.num_ctas());
+                          proto.num_warps(), proto.num_ctas(),
+                          proto.is_tma_allowed());
 }
 
 AutotuneResult::TritonGemmKey TritonGemmConfig::ToProto() const {
@@ -822,6 +823,7 @@ AutotuneResult::TritonGemmKey TritonGemmConfig::ToProto() const {
   key.set_num_stages(num_stages);
   key.set_num_warps(num_warps);
   key.set_num_ctas(num_ctas);
+  key.set_is_tma_allowed(is_tma_allowed);
   return key;
 }
 
@@ -829,7 +831,8 @@ std::string TritonGemmConfig::ToString() const {
   return absl::StrCat("{block_m:", block_m, ",block_n:", block_n,
                       ",block_k:", block_k, ",split_k:", split_k,
                       ",num_stages:", num_stages, ",num_warps:", num_warps,
-                      ",num_ctas:", num_ctas, "}");
+                      ",num_ctas:", num_ctas,
+                      ",is_tma_allowed:", is_tma_allowed, "}");
 }
 
 absl::StatusOr<bool> IsMatrixMultiplicationTooSmallForRewriting(

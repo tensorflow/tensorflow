@@ -88,6 +88,7 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
@@ -840,6 +841,18 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
       supports_contracting_split &&
       debug_options_.xla_gpu_enable_split_k_autotuning();
 
+  // Allow TMA tuning for Hopper+ devices when TMA flag is passed.
+  auto is_tma_enabled_for_device =
+      [](const stream_executor::DeviceDescription& device_info) {
+        bool is_cuda =
+            std::holds_alternative<stream_executor::CudaComputeCapability>(
+                device_info.gpu_compute_capability());
+        return is_cuda &&
+               device_info.cuda_compute_capability().IsAtLeastHopper();
+      };
+  bool autotune_tma = debug_options_.xla_gpu_experimental_enable_triton_tma() &&
+                      is_tma_enabled_for_device(config_.GetDeviceDescription());
+
   TritonDotFusionSearchSpace search_space(config_.GetDeviceDescription(), &dot);
   VLOG(1) << "Generating configs from search space: "
           << search_space.ToString();
@@ -848,7 +861,9 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
   std::vector<TritonGemmConfig> configs = search_space.GenerateConfigs(
       /*force_contracting_split=*/autotune_contracting_split
           ? std::nullopt
-          : std::make_optional(1));
+          : std::make_optional(1),
+      /*autotune_tma=*/autotune_tma);
+
   if (!debug_options_.xla_gpu_exhaustive_tiling_search()) {
     VLOG(1) << "Restricting configs to the default set.";
     configs = search_space.OptimizeConfigSet(

@@ -121,7 +121,7 @@ TritonDotFusionSearchSpace::TritonDotFusionSearchSpace(
 }
 
 std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
-    std::optional<int64_t> force_contracting_split) const {
+    std::optional<int64_t> force_contracting_split, bool autotune_tma) const {
   std::vector<ConfigWithNotes> configs;
   if (force_contracting_split.has_value()) {
     ConfigWithNotes config;
@@ -149,6 +149,9 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
   ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddCtaSizeParameter);
   ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddContractingTiling);
   ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddPipeliningParameter);
+  if (autotune_tma) {
+    ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddTmaParameter);
+  }
 
   std::vector<TritonGemmConfig> result;
   result.reserve(configs.size());
@@ -595,6 +598,20 @@ void TritonDotFusionSearchSpace::AddPipeliningParameter(
              << new_config.ToString();
     updated_configs.push_back(new_config);
   }
+}
+
+void TritonDotFusionSearchSpace::AddTmaParameter(
+    const ConfigWithNotes& config,
+    std::vector<ConfigWithNotes>& updated_configs) const {
+  ConfigWithNotes new_config = config;
+  new_config.config.is_tma_allowed = false;
+  VLOG(10) << "Adding TMA (disabled) parameter: config = "
+           << new_config.ToString();
+  updated_configs.push_back(new_config);
+  new_config.config.is_tma_allowed = true;
+  VLOG(10) << "Adding TMA (enabled) parameter: config = "
+           << new_config.ToString();
+  updated_configs.push_back(new_config);
 }
 
 void TritonDotFusionSearchSpace::EliminateLowOccupancyConfigs(

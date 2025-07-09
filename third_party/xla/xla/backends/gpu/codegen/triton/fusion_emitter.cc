@@ -1999,8 +1999,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   }
 
   pm.addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass(
-      device_info,
-      hlo_config.debug_options().xla_gpu_experimental_enable_triton_tma()));
+      device_info, block_level_parameters.is_tma_allowed));
 
   // Lower affine expressions into arithmetic ops.
   pm.addPass(mlir::createLowerAffinePass());
