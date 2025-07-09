@@ -14,16 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle_data.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/distributed_runtime/eager/destroy_tensor_handle_node.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/protobuf/eager_service.pb.h"
 
 namespace tensorflow {
 
