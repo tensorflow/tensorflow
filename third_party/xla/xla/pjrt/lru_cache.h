@@ -180,13 +180,18 @@ Value LRUCache<Key, Value, Hash, Eq>::GetOrCreateIfAbsent(
   // Evict an LRU entry if we are over capacity.
   if (lru_list_->size_ > lru_list_->capacity_) {
     Entry* to_remove = static_cast<Entry*>(lru_head.next);
-    to_remove->next->prev = &lru_head;
-    lru_head.next = to_remove->next;
     // Extract instead of erase in case the kv pair contains python objects
     // whose destruction could call back into this code. Extract causes the
     // dtor to be delayed until the kv pair is fully removed from the map.
-    to_remove->container->entries_.extract(*to_remove->key);
-    --lru_list_->size_;
+    Key key_to_remove = *to_remove->key;
+    LRUCache* container = to_remove->container;
+    auto node = container->entries_.extract(key_to_remove);
+    if (!node.empty()) {
+      LRUListEntry* l = &node.mapped();
+      l->prev->next = l->next;
+      l->next->prev = l->prev;
+      --lru_list_->size_;
+    }
   }
   return v;
 }
