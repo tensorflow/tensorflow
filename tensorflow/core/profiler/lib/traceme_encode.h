@@ -26,9 +26,6 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-using TraceMeArg ABSL_DEPRECATE_AND_INLINE() =
-    tsl::profiler::TraceMeArg;  // NOLINT
-
 ABSL_DEPRECATE_AND_INLINE()
 inline std::string TraceMeEncode(
     std::string name, std::initializer_list<tsl::profiler::TraceMeArg> args) {
