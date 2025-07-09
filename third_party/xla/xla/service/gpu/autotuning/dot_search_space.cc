@@ -202,10 +202,10 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::OptimizeConfigSet(
   };
 
   if (result_configs.empty()) {
-    LOG(WARNING) << "All configs were filtered out because none of them "
-                    "sufficiently match the hints. Maybe the hints set does "
-                    "not contain a good representative set of valid configs?"
-                    "Working around this by using the full hints set instead.";
+    LOG(INFO) << "All configs were filtered out because none of them "
+                 "sufficiently match the hints. Maybe the hints set does "
+                 "not contain a good representative set of valid configs? "
+                 "Working around this by using the full hints set instead.";
     return hints;
   }
   return result_configs;
