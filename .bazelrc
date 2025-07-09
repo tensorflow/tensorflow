@@ -578,7 +578,6 @@ build:rbe_base --config=resultstore
 build:rbe_base --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 build:rbe_base --define=EXECUTOR=remote
 build:rbe_base --jobs=800
-build:rbe_base --remote_executor=grpcs://remotebuildexecution.googleapis.com
 build:rbe_base --remote_timeout=3600
 build:rbe_base --spawn_strategy=remote,worker,standalone,local
 # Attempt to minimize the amount of data transfer between bazel and the remote
