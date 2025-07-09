@@ -260,6 +260,11 @@ def SimplifyArithPass : Pass<"xla-simplify-arith", "mlir::func::FuncOp"> {
     "mlir::func::FuncDialect",
   ];
 
+  let options = [
+    Option<"fast_min_max_", "fast_min_max", "bool", /*default=*/"false",
+           "Use fast min/max (does not propagate nan).">,
+  ];
+
   let constructor = "CreateSimplifyArithPass()";
 }
 

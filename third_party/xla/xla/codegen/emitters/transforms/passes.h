@@ -51,7 +51,7 @@ std::unique_ptr<mlir::Pass> CreateLowerXlaLoopsToScfPass();
 std::unique_ptr<mlir::Pass> CreateMergePointersToSameSlicePass();
 std::unique_ptr<mlir::Pass> CreatePropagateSliceIndicesPass();
 std::unique_ptr<mlir::Pass> CreateSimplifyAffinePass();
-std::unique_ptr<mlir::Pass> CreateSimplifyArithPass();
+std::unique_ptr<mlir::Pass> CreateSimplifyArithPass(bool fast_min_max = false);
 std::unique_ptr<mlir::Pass> CreateUnswitchLoopsPass();
 std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(
     const std::string& target_type = "gpu",

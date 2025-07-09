@@ -134,7 +134,8 @@ static void AddLoopTransformationPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createCSEPass());
 }
 
-static void AddLoweringPasses(mlir::OpPassManager& pm, int32_t vector_width) {
+static void AddLoweringPasses(mlir::OpPassManager& pm, int32_t vector_width,
+                              bool fast_min_max) {
   pm.addNestedPass<mlir::func::FuncOp>(
       emitters::CreateConvertPureCallOpsPass());
   pm.addPass(cpu::createLowerToLLVMPass(
@@ -147,7 +148,8 @@ static void AddLoweringPasses(mlir::OpPassManager& pm, int32_t vector_width) {
   // simplify-affine has maximally folded expressions to work with.
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addNestedPass<mlir::func::FuncOp>(emitters::CreateSimplifyArithPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      emitters::CreateSimplifyArithPass(fast_min_max));
   pm.addPass(emitters::CreateSimplifyAffinePass());
   pm.addPass(mlir::createCanonicalizerPass());
 
@@ -205,7 +207,8 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
 
   mlir::PassManager lowering_pass_manager(mlir_module.getContext());
 
-  AddLoweringPasses(lowering_pass_manager, options_.vector_width);
+  AddLoweringPasses(lowering_pass_manager, options_.vector_width,
+                    options_.fast_min_max);
 
   TF_RETURN_IF_ERROR(RunPassPipeline(mlir_module, lowering_pass_manager,
                                      nullptr, options_.verification_level));
