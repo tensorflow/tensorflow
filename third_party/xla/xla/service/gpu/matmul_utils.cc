@@ -73,8 +73,9 @@ absl::StatusOr<Shape> GetBatchRowColumnShape(
         [&](absl::Span<const int64_t> dims) -> absl::Status {
       for (auto it = dims.rbegin(); it != dims.rend(); ++it) {
         // NOTE: `i` is incremented as we check the dimensions.
-        if (*it != shape.layout().minor_to_major()[i++])
+        if (*it != shape.layout().minor_to_major()[i++]) {
           return InvalidArgument("dims not physically_sequential");
+        }
       }
       return absl::OkStatus();
     };
@@ -94,9 +95,15 @@ absl::StatusOr<Shape> GetBatchRowColumnShape(
     }
   }
 
-  if (col_dims.empty()) minor_to_major.push_back(2);
-  if (row_dims.empty()) minor_to_major.push_back(1);
-  if (batch_dims.empty()) minor_to_major.push_back(0);
+  if (col_dims.empty()) {
+    minor_to_major.push_back(2);
+  }
+  if (row_dims.empty()) {
+    minor_to_major.push_back(1);
+  }
+  if (batch_dims.empty()) {
+    minor_to_major.push_back(0);
+  }
 
   auto dim_size = [&](absl::Span<const int64_t> dims) {
     return absl::c_accumulate(dims, 1, [&](int64_t size, int64_t dim) {
@@ -557,13 +564,12 @@ absl::Status DoGemmWithAlgorithm(const se::gpu::MatrixDescriptor& lhs,
         &output_data, output.leading_dim_stride, output.batch_stride,
         output.batch_size, computation_type, algorithm, numeric_options,
         profile_result, context);
-  } else {
-    return blas->BlasGemmWithAlgorithm(
-        stream, lhs.transpose, rhs.transpose, output.m, output.n, output.k,
-        alpha, lhs.cast<Input>(), lhs.leading_dim_stride, rhs.cast<Input>(),
-        rhs.leading_dim_stride, beta, &output_data, output.leading_dim_stride,
-        computation_type, algorithm, numeric_options, profile_result, context);
   }
+  return blas->BlasGemmWithAlgorithm(
+      stream, lhs.transpose, rhs.transpose, output.m, output.n, output.k, alpha,
+      lhs.cast<Input>(), lhs.leading_dim_stride, rhs.cast<Input>(),
+      rhs.leading_dim_stride, beta, &output_data, output.leading_dim_stride,
+      computation_type, algorithm, numeric_options, profile_result, context);
 }
 
 template <typename Scale, typename Input, typename Output>
@@ -631,7 +637,9 @@ absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
       /*allow_tf32=*/IsTf32Allowed(config.precision_algorithm,
                                    config.compute_precision)};
 
-  if (!algorithm) algorithm = config.algorithm;
+  if (!algorithm) {
+    algorithm = config.algorithm;
+  }
 
   se::blas::CallContext context = se::blas::CallContext::kNone;
   if (config.grad_x) {
@@ -685,7 +693,9 @@ absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
   }
 
   if (config.output_layout.dtype == S32) {
-    if (!algorithm) algorithm = se::blas::kDefaultGemmAlgo;
+    if (!algorithm) {
+      algorithm = se::blas::kDefaultGemmAlgo;
+    }
     // TODO(tdanyluk): Investigate why don't we use the actual precision (and
     // algorithm) here? Why do we use the default?
     return DoGemmWithAlgorithm<int32_t, int8_t, int32_t>(
