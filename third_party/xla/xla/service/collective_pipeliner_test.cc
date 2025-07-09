@@ -4582,6 +4582,7 @@ ENTRY entry {
                    /*reuse_pipelined_op_buffer=*/HloPredicateTrue)
           .value());
   XLA_VLOG_LINES(1, module->ToString());
+  // Pipelined instructions are cleared. Cloned instructions are updated.
   for (HloInstruction* instr : module->entry_computation()->instructions()) {
     if (instr->opcode() == HloOpcode::kMultiply) {
       TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
@@ -4590,11 +4591,11 @@ ENTRY entry {
     } else if (instr->opcode() == HloOpcode::kAllReduce) {
       TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
                               GetSchedulingAnnotationGroupId(instr));
-      EXPECT_EQ(id, 5);
+      EXPECT_FALSE(id.has_value());
     } else if (instr->opcode() == HloOpcode::kAllGather) {
       TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
                               GetSchedulingAnnotationGroupId(instr));
-      EXPECT_EQ(id, 6);
+      EXPECT_FALSE(id.has_value());
     }
   }
 }
@@ -4665,15 +4666,15 @@ ENTRY entry {
     if (instr->opcode() == HloOpcode::kReshape) {
       TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
                               GetSchedulingAnnotationGroupId(instr));
-      EXPECT_TRUE(id == 6 || id == 4);
+      EXPECT_TRUE(!id.has_value() || id.value() == 4);
     } else if (instr->opcode() == HloOpcode::kAllGather) {
       TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
                               GetSchedulingAnnotationGroupId(instr));
-      EXPECT_EQ(id, 5);
+      EXPECT_FALSE(id.has_value());
     } else if (instr->opcode() == HloOpcode::kAllReduce) {
       TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
                               GetSchedulingAnnotationGroupId(instr));
-      EXPECT_EQ(id, 7);
+      EXPECT_EQ(id, 5);
     }
   }
 }
@@ -5171,6 +5172,113 @@ ENTRY entry {
   const HloInstruction* select_instr_loop =
       root_loop->control_predecessors()[0];
   EXPECT_EQ(select_instr_loop->opcode(), HloOpcode::kSelect);
+}
+
+TEST_F(CollectivePipelinerTest, PipelineSinkInstructions) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+%region_335.17058.clone {
+  %Arg_0.8638 = s32[] parameter(0)
+  %Arg_1.7151 = s32[] parameter(1)
+  ROOT %add.137899 = s32[] add(%Arg_0.8638, %Arg_1.7151)
+}
+
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128], token[], token[]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(8)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+%fusion_stuff {
+  %stuff_param.2498 = bf16[1,128]{1,0} parameter(0)
+  %all-reduce.5832 = bf16[1,128] {1,0} all-reduce(%stuff_param.2498), channel_id=3718, replica_groups=[1,8]<=[8], use_global_device_ids=true, to_apply=%region_335.17058.clone
+  %stuff_param.2499 = token[] parameter(1)
+  %constant.109206 = s32[] constant(0)
+  ROOT %custom-call.45422 = token[] custom-call(%all-reduce.5832, %stuff_param.2499, %constant.109206), custom_call_target="kstuff"
+}
+
+%fusion_stuff.1 {
+  %stuff_param.2498 = bf16[1,8,128]{2,1,0} parameter(0)
+  %all-reduce.5832 = bf16[1,8,128] {2,1,0} all-reduce(%stuff_param.2498), channel_id=3718, replica_groups=[1,8]<=[8], use_global_device_ids=true, to_apply=%region_335.17058.clone
+  %stuff_param.2499 = token[] parameter(1)
+  %constant.109206 = s32[] constant(0)
+  ROOT %custom-call.45422 = token[] custom-call(%all-reduce.5832, %stuff_param.2499, %constant.109206), custom_call_target="kstuff"
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128], token[], token[]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.5 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.7 = bf16[3,8,128] get-tuple-element(param), index=2
+  get-tuple-element.6 = token[] get-tuple-element(param), index=3
+  get-tuple-element.8 = token[] get-tuple-element(param), index=4
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.5, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  dynamic-slice.100 = bf16[1,8,128] dynamic-slice(get-tuple-element.7, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  rs.1 = bf16[1,1,128] reduce-scatter(mul), replica_groups={}, to_apply=add, channel_id=1, dimensions={1}
+  cc0 = bf16[1,1,128] custom-call(rs.1), custom_call_target="kSinkAnchor"
+  cc1 = bf16[1,1,128] custom-call(cc0), custom_call_target="kSinkThisPlease2"
+  cc2 = bf16[1,8,128] custom-call(dynamic-slice.100), custom_call_target="kSinkAnchor"
+  rsh = bf16[1,128] reshape(cc1)
+  %fusion.1730 = token[] fusion(rsh, %get-tuple-element.6), kind=kCustom, calls=%fusion_stuff
+  %fusion.1731 = token[] fusion(cc2, %get-tuple-element.6), kind=kCustom, calls=%fusion_stuff.1
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128], token[], token[]) tuple(add.230, get-tuple-element.5, get-tuple-element.7, fusion.1730, fusion.1731)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  p1 = bf16[3,8,128] parameter(1)
+  cc = bf16[] constant(0)
+  tok = token[] after-all()
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128], token[], token[]) tuple(c0, p0, p1, tok, tok)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128], token[], token[]) while(tuple), condition=while_cond, body=while_body
+  gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+  gte2 = token[] get-tuple-element(while), index=3
+  gte3 = token[] get-tuple-element(while), index=4
+  ad = bf16[3,8,128] add(gte1, gte1)
+  ROOT t = (bf16[3,8,128], token[], token[]) tuple(ad, gte2, gte3)
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  auto direction = collective_pipeliner_utils::PipeliningDirection::kForward;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto changed, RunOptimizer(module.get(), /*last_run=*/true, 0,
+                                 /*pipeline_use_tree=*/true,
+                                 /*process_different_sized_ops=*/true,
+                                 direction, [](const HloInstruction* instr) {
+                                   return instr->IsCustomCall("kSinkAnchor");
+                                 }));
+  EXPECT_TRUE(changed);
+  int64_t fusion_count = 0;
+  for (auto* comp : module->computations()) {
+    for (auto* instr : comp->instructions()) {
+      if (instr->opcode() == HloOpcode::kFusion) {
+        fusion_count++;
+      }
+    }
+  }
+  EXPECT_EQ(fusion_count, 4);
 }
 
 }  // namespace
