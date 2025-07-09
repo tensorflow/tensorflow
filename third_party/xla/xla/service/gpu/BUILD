@@ -2511,8 +2511,27 @@ cc_library(
         "//xla/stream_executor:device_description_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "alias_info_test",
+    srcs = ["alias_info_test.cc"],
+    deps = [
+        ":alias_info",
+        ":gpu_device_info_for_tests",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:test",
+        "//xla/hlo/testlib:test_helpers",
+        "//xla/service:copy_insertion",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

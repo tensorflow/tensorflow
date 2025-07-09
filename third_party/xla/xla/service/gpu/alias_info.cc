@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/log/check.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -87,11 +86,12 @@ std::optional<bool> FusionCanShareBufferHint(
   HloInstruction* fusion_param =
       user->fused_parameter(user->operand_index(operand));
   HloInstruction* output = user->fused_expression_root();
-  if (output->opcode() == HloOpcode::kTuple) {
-    CHECK(!user_index.empty());
-    output = output->mutable_operand(user_index[0]);
+  for (int64_t index : user_index) {
+    if (output->opcode() != HloOpcode::kTuple) {
+      break;
+    }
+    output = output->mutable_operand(index);
   }
-  CHECK_NE(output->opcode(), HloOpcode::kTuple);
   const HloInstruction* non_bitcast_root = output;
   if (non_bitcast_root->opcode() == HloOpcode::kBitcast) {
     non_bitcast_root = non_bitcast_root->operand(0);
