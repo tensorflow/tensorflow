@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/constraint_expression.h"
 #include "xla/service/gpu/model/experimental/symbolic_tile.h"
+#include "xla/service/gpu/model/experimental/tiling_space.h"
 
 namespace xla::gpu {
 
@@ -44,8 +45,8 @@ struct TiledOperands {
 };
 
 std::optional<TiledOperands> PropagateTileToInput(
-    const HloInstruction& hlo, const ExperimentalSymbolicTile& result_tile,
-    int64_t result_index);
+    const TilingSpace& tiling_space, const HloInstruction& hlo,
+    const ExperimentalSymbolicTile& result_tile, int64_t result_index);
 
 }  // namespace xla::gpu
 

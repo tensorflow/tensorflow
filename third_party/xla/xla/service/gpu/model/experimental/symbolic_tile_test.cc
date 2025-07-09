@@ -39,15 +39,13 @@ TEST_F(SymbolicTileTest, StringFormat) {
   auto c16 = mlir::getAffineConstantExpr(16, &mlir_context);
   auto c32 = mlir::getAffineConstantExpr(32, &mlir_context);
 
-  ExperimentalSymbolicTile tile{
-      &mlir_context,
-      /*num_tile_ids=*/2,
-      /*offsets=*/{tid0 * ts0, rt + tid1 * ts1},
-      /*sizes=*/{ts0, ts1},
-      /*strides=*/{c1, c1},
-      /*upper_bounds=*/{c16, c32},
-      /*rt_vars=*/
-      {ExperimentalSymbolicTile::RTVarInfo{nullptr, /*bounds=*/{0, 4}}}};
+  ExperimentalSymbolicTile tile{&mlir_context,
+                                /*num_tile_ids=*/2,
+                                /*num_rt_vars=*/1,
+                                /*offsets=*/{tid0 * ts0, rt + tid1 * ts1},
+                                /*sizes=*/{ts0, ts1},
+                                /*strides=*/{c1, c1},
+                                /*upper_bounds=*/{c16, c32}};
 
   EXPECT_THAT(tile.ToString(), MatchIndexingString(R"(
     (tid_0, tid_1)[ts_0, ts_1]{rt_0} ->
@@ -55,7 +53,6 @@ TEST_F(SymbolicTileTest, StringFormat) {
       sizes [ts_0, ts_1]
       strides [1, 1]
       upper bounds [16, 32]
-      rt_0: nullptr in [0, 4]
   )"));
 }
 

@@ -24,7 +24,6 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
-#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla::gpu {
@@ -61,22 +60,12 @@ namespace xla::gpu {
 //              upper bounds [17 * tid0]
 class ExperimentalSymbolicTile {
  public:
-  struct RTVarInfo {
-    // HLO instruction that represents the runtime variable.
-    const HloInstruction* rt_var = nullptr;
-    // The closed bounds of the runtime variable used for clamping.
-    Interval bounds;
-
-    std::string ToString() const;
-  };
-
   ExperimentalSymbolicTile(mlir::MLIRContext* mlir_context,
-                           int64_t num_tile_ids,
+                           int64_t num_tile_ids, int64_t num_rt_vars,
                            llvm::ArrayRef<mlir::AffineExpr> offsets,
                            llvm::ArrayRef<mlir::AffineExpr> sizes,
                            llvm::ArrayRef<mlir::AffineExpr> strides,
-                           llvm::ArrayRef<mlir::AffineExpr> upper_bounds,
-                           llvm::ArrayRef<RTVarInfo> rt_vars);
+                           llvm::ArrayRef<mlir::AffineExpr> upper_bounds);
 
   std::string ToString() const;
 
@@ -89,9 +78,7 @@ class ExperimentalSymbolicTile {
 
   int64_t num_tile_ids() const { return num_tile_ids_; }
   int64_t num_result_dims() const { return offsets().size(); }
-
-  llvm::ArrayRef<RTVarInfo> rt_vars() const { return rt_vars_; }
-  int64_t num_rt_vars() const { return rt_vars_.size(); }
+  int64_t num_rt_vars() const { return num_rt_vars_; }
 
   mlir::MLIRContext* mlir_context() const { return mlir_context_; }
 
@@ -104,15 +91,12 @@ class ExperimentalSymbolicTile {
  private:
   mlir::MLIRContext* mlir_context_;
   int64_t num_tile_ids_;
+  int64_t num_rt_vars_;
   llvm::SmallVector<mlir::AffineExpr> offsets_;
   llvm::SmallVector<mlir::AffineExpr> sizes_;
   llvm::SmallVector<mlir::AffineExpr> strides_;
   llvm::SmallVector<mlir::AffineExpr> upper_bounds_;
-  llvm::SmallVector<RTVarInfo> rt_vars_;
 };
-
-llvm::raw_ostream& operator<<(llvm::raw_ostream& out,
-                              ExperimentalSymbolicTile::RTVarInfo rt_var);
 
 }  // namespace xla::gpu
 

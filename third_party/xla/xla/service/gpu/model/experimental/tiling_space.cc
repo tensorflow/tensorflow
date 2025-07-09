@@ -41,7 +41,7 @@ void TilingSpace::AppendDimension(const HloInstruction& hlo,
   hlo_to_dimension_[std::make_pair(&hlo, dim_position)] = &dimensions_.back();
 }
 
-void TilingSpace::AppendRTVar(const HloInstruction& hlo,
+void TilingSpace::AppendRTVar(const HloInstruction& hlo, int64_t operand_id,
                               const HloInstruction& rt_var,
                               int64_t upper_bound) {
   rt_vars_.push_back(RTVarInfo{
@@ -49,7 +49,7 @@ void TilingSpace::AppendRTVar(const HloInstruction& hlo,
       Interval{0, upper_bound},
       &rt_var,
   });
-  hlo_to_rt_var_[&hlo] = &rt_vars_.back();
+  hlo_to_rt_var_[std::make_pair(&hlo, operand_id)] = &rt_vars_.back();
 }
 
 // Add dot contraction dimensions in the order of contracting dimensions.
@@ -87,7 +87,7 @@ void TilingSpace::ProcessDynamicSlice(const HloInstruction& hlo) {
 
   const Shape& input_shape = ds->operand(0)->shape();
   for (auto [dim, slice_size] : llvm::enumerate(ds->dynamic_slice_sizes())) {
-    AppendRTVar(hlo, *ds->operand(dim + first_index_num),
+    AppendRTVar(hlo, dim + first_index_num, *ds->operand(dim + first_index_num),
                 input_shape.dimensions(dim) - slice_size);
   }
 }
@@ -121,8 +121,8 @@ const TilingSpace::DimensionInfo& TilingSpace::GetDimensionInfo(
 }
 
 const TilingSpace::RTVarInfo& TilingSpace::GetRTVarInfo(
-    const HloInstruction& hlo) const {
-  auto it = hlo_to_rt_var_.find(&hlo);
+    const HloInstruction& hlo, int64_t operand_id) const {
+  auto it = hlo_to_rt_var_.find(std::make_pair(&hlo, operand_id));
   CHECK(it != hlo_to_rt_var_.end())
       << "Runtime variable not found: " << hlo.ToString();
   return *it->second;

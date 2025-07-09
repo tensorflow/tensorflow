@@ -50,28 +50,16 @@ SmallVector<std::string> GetVarNames(int64_t num_vars, llvm::StringRef prefix) {
 }  // namespace
 
 ExperimentalSymbolicTile::ExperimentalSymbolicTile(
-    mlir::MLIRContext* mlir_context, int64_t num_tile_ids,
+    mlir::MLIRContext* mlir_context, int64_t num_tile_ids, int64_t num_rt_vars,
     ArrayRef<AffineExpr> offsets, ArrayRef<AffineExpr> sizes,
-    ArrayRef<AffineExpr> strides, ArrayRef<AffineExpr> upper_bounds,
-    ArrayRef<RTVarInfo> rt_vars)
+    ArrayRef<AffineExpr> strides, ArrayRef<AffineExpr> upper_bounds)
     : mlir_context_(mlir_context),
       num_tile_ids_(num_tile_ids),
+      num_rt_vars_(num_rt_vars),
       offsets_(offsets.begin(), offsets.end()),
       sizes_(sizes.begin(), sizes.end()),
       strides_(strides.begin(), strides.end()),
-      upper_bounds_(upper_bounds.begin(), upper_bounds.end()),
-      rt_vars_(rt_vars.begin(), rt_vars.end()) {}
-
-std::string ExperimentalSymbolicTile::RTVarInfo::ToString() const {
-  return absl::StrCat((rt_var ? rt_var->ToString() : "nullptr"), " in ",
-                      bounds.ToString());
-}
-
-llvm::raw_ostream& operator<<(llvm::raw_ostream& out,
-                              ExperimentalSymbolicTile::RTVarInfo rt_var) {
-  out << rt_var.ToString();
-  return out;
-}
+      upper_bounds_(upper_bounds.begin(), upper_bounds.end()) {}
 
 std::string ExperimentalSymbolicTile::ToString() const {
   auto tid_names = GetVarNames(num_tile_ids(), "tid_");
@@ -106,9 +94,6 @@ std::string ExperimentalSymbolicTile::ToString() const {
   ss << "] upper bounds [";
   llvm::interleaveComma(upper_bounds_, ss, print_expr);
   ss << ']';
-  for (const auto& [rt_var, rt_var_name] : llvm::zip(rt_vars_, rt_names)) {
-    ss << " " << rt_var_name << ": " << rt_var << "\n";
-  }
   return s;
 }
 

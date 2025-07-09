@@ -84,13 +84,14 @@ class TilingSpace {
   const DimensionInfo& GetDimensionInfo(const HloInstruction& hlo,
                                         int64_t dim_position) const;
 
-  const RTVarInfo& GetRTVarInfo(const HloInstruction& hlo) const;
+  const RTVarInfo& GetRTVarInfo(const HloInstruction& hlo,
+                                int64_t operand_id) const;
 
  private:
   void AppendDimension(const HloInstruction& hlo, int64_t dim_position,
                        int64_t dim_size, DimensionSemantics dim_type);
-  void AppendRTVar(const HloInstruction& hlo, const HloInstruction& rt_var,
-                   int64_t upper_bound);
+  void AppendRTVar(const HloInstruction& hlo, int64_t operand_id,
+                   const HloInstruction& rt_var, int64_t upper_bound);
 
   void ProcessDot(const HloInstruction& hlo);
   void ProcessReduce(const HloInstruction& hlo);
@@ -103,8 +104,10 @@ class TilingSpace {
   // The deque is used to guarantee the pointer stability.
   std::deque<DimensionInfo> dimensions_;
 
-  // Maps from hlo to the runtime variable info.
-  absl::flat_hash_map<const HloInstruction*, const RTVarInfo*> hlo_to_rt_var_;
+  // Maps from (hlo, operand_id) to the runtime variable info.
+  absl::flat_hash_map<std::pair<const HloInstruction*, int64_t>,
+                      const RTVarInfo*>
+      hlo_to_rt_var_;
   // The deque is used to guarantee the pointer stability.
   std::deque<RTVarInfo> rt_vars_;
 };
