@@ -2273,12 +2273,9 @@ INSTANTIATE_TEST_SUITE_P(HloDataflowAnalysisInstantiation,
                          HloDataflowAnalysisTest,
                          ::testing::Values(false, true));
 
-std::unique_ptr<HloDataflowAnalysis> RunAnalysis(
-    const HloModule& module,
-    const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr) {
+std::unique_ptr<HloDataflowAnalysis> RunAnalysis(const HloModule& module) {
   return HloDataflowAnalysis::Run(module, /*ssa_form=*/false,
-                                  /*bitcast_defines_value=*/false,
-                                  can_share_buffer)
+                                  /*bitcast_defines_value=*/false)
       .value();
 }
 
@@ -2949,36 +2946,6 @@ TEST_F(CanShareOperandBufferWithUserTest, OutputFusionCantAliasOperandBuffer) {
   auto dataflow_analysis = RunAnalysis(*module);
 
   // Output fused operand->reverse->add cannot alias operand buffer 'operand'.
-  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
-      operand, {}, fusion, {}, &alias_info_));
-}
-
-TEST_F(CanShareOperandBufferWithUserTest, FusionCanShareBufferCustomized) {
-  auto builder = HloComputation::Builder(TestName());
-  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
-
-  auto one = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto operand = builder.AddInstruction(
-      HloInstruction::CreateBroadcast(data_shape, one, {}));
-  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
-      data_shape, HloOpcode::kMultiply, operand, operand));
-  auto two = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
-  auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(data_shape, HloOpcode::kAdd, mul, two));
-
-  auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
-  auto fusion = computation->CreateFusionInstruction(
-      {add, two, mul}, HloInstruction::FusionKind::kInput);
-  auto dataflow_analysis = RunAnalysis(
-      *module,
-      /*can_share_buffer=*/[](const HloInstruction* fusion,
-                              const HloInstruction*, const ShapeIndex&) {
-        return fusion->IsLoopFusion();
-      });
-
   EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
       operand, {}, fusion, {}, &alias_info_));
 }

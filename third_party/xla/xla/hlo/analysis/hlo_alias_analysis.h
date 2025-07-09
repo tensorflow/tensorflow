@@ -44,8 +44,7 @@ class HloAliasAnalysis {
   // (xla::FlattenCallGraph) prior to running the analysis.
   // TODO(b/424109294): Replace users of this function with the one below.
   static absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> Run(
-      const HloModule* module,
-      const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr);
+      const HloModule* module);
 
   // Same as above, but with AliasInfo instead of CanShareBuffer hook.
   static absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> Run(
