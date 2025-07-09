@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -60,25 +61,21 @@ InstructionBimap ConstructInstructionBimap(const DiffResult& diff_result) {
 
 // Returns the mapped instruction node of the given instruction in the given
 // direction. Returns nullptr if the instruction is not mapped.
-const HloInstruction* FindMappedInstruction(const InstructionBimap& mapping,
-                                            const HloInstruction* instruction,
-                                            DiffSide side) {
+std::optional<const HloInstruction*> FindMappedInstruction(
+    const InstructionBimap& mapping, const HloInstruction* instruction,
+    DiffSide side) {
   switch (side) {
     case DiffSide::kLeft: {
-      if (auto it = mapping.left.find(instruction); it != mapping.left.end()) {
-        return it->second.node;
-      }
+      return mapping.GetRight(instruction);
       break;
     }
     case DiffSide::kRight: {
-      if (auto it = mapping.right.find(instruction);
-          it != mapping.right.end()) {
-        return it->second;
-      }
+      return mapping.GetLeft(instruction);
       break;
     }
   }
-  return nullptr;
+
+  return std::nullopt;
 }
 
 // Result of finding the main matched computation.
@@ -99,11 +96,11 @@ MainMatchedComputationResult FindMainMatchedComputation(
   int mapped_instruction_count = 0;
   const HloComputation* main_matched_computation = nullptr;
   for (const HloInstruction* instruction : computation->instructions()) {
-    if (const HloInstruction* const mapped_instruction =
+    if (std::optional<const HloInstruction*> mapped_instruction =
             FindMappedInstruction(mapping, instruction, side);
-        mapped_instruction != nullptr) {
+        mapped_instruction.has_value()) {
       ++mapped_instruction_count;
-      const HloComputation* right_computation = mapped_instruction->parent();
+      const HloComputation* right_computation = (*mapped_instruction)->parent();
       const int count = ++matched_instruction_count[right_computation];
       if (count > max_count) {
         max_count = count;

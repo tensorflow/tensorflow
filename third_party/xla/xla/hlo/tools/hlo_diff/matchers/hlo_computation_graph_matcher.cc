@@ -61,8 +61,7 @@ void MatchComputationGraphs(const HloGumgraph& left, const HloGumgraph& right,
                             const CallGraphNode& left_computation,
                             const CallGraphNode& right_computation,
                             HloGumgraphMappings& mappings) {
-  auto it = mappings.left_to_right_computation_map.left.find(&left_computation);
-  if (it == mappings.left_to_right_computation_map.left.end()) {
+  if (!mappings.left_to_right_computation_map.ContainsLeft(&left_computation)) {
     return;
   }
 
@@ -70,8 +69,8 @@ void MatchComputationGraphs(const HloGumgraph& left, const HloGumgraph& right,
 
   // If the two computations are exact matches, we can match all
   // instructions in the two computations.
-  if (it->second.props->computation_match_type ==
-      ComputationMatchType::kExact) {
+  if (mappings.left_to_right_computation_map.GetPropsByLeft(&left_computation)
+          ->computation_match_type == ComputationMatchType::kExact) {
     auto left_instructions =
         left_computation.computation()->MakeInstructionPostOrder();
     auto right_instructions =

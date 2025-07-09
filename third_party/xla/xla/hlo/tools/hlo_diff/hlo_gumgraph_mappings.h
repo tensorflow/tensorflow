@@ -94,13 +94,13 @@ struct HloGumgraphMappings {
   // Returns true if the left node is mapped to a right node.
   inline bool InstructionMapContainsLeft(
       const HloInstructionNode* left_node) const {
-    return left_to_right_instruction_map.left.contains(left_node);
+    return left_to_right_instruction_map.ContainsLeft(left_node);
   }
 
   // Returns true if the right node is mapped to a left node.
   inline bool InstructionMapContainsRight(
       const HloInstructionNode* right_node) const {
-    return left_to_right_instruction_map.right.contains(right_node);
+    return left_to_right_instruction_map.ContainsRight(right_node);
   }
 };
 

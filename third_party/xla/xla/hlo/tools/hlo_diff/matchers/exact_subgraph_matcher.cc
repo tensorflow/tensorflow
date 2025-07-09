@@ -95,8 +95,11 @@ void MapSubgraph(const HloInstructionNode* absl_nonnull left,
       exact_mapped_subgraph_roots.insert(left_subgraph[i]);
       exact_mapped_subgraph_roots.insert(right_subgraph[i]);
       if (i != 0) {
-        mappings.left_to_right_instruction_map.left.find(left_subgraph[i])
-            ->second.props->unchanged = true;
+        auto props = mappings.left_to_right_instruction_map.GetPropsByLeft(
+            left_subgraph[i]);
+        props->unchanged = true;
+        mappings.left_to_right_instruction_map.SetPropsByLeft(left_subgraph[i],
+                                                              *props);
       }
     }
   }

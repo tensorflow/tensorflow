@@ -71,11 +71,9 @@ std::unique_ptr<const DiffResult> ConstructDiffResult(
 
     // The node is matched
     const HloInstructionNode* right_node =
-        mappings.left_to_right_instruction_map.left.find(left_node)
-            ->second.node;
-    const std::optional<HloInstructionNodeMappingProps>& mapping_props =
-        mappings.left_to_right_instruction_map.left.find(left_node)
-            ->second.props;
+        *mappings.left_to_right_instruction_map.GetRight(left_node);
+    const std::optional<HloInstructionNodeMappingProps> mapping_props =
+        mappings.left_to_right_instruction_map.GetPropsByLeft(left_node);
 
     // Fill in matcher debug info.
     diff_result->map_by[std::make_pair(left_node->instruction,

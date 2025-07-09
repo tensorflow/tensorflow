@@ -67,20 +67,21 @@ void GreedyTopDownMatcher::Match(HloGumgraphMappings& mappings) const {
   HloGumgraphDfs(
       left_.GetRoot(),
       [&](const HloInstructionNode& left_node) {
-        auto it = mappings.left_to_right_instruction_map.left.find(&left_node);
-        if (it == mappings.left_to_right_instruction_map.left.end()) {
+        auto right_node =
+            mappings.left_to_right_instruction_map.GetRight(&left_node);
+        if (!right_node) {
           return;
         }
 
         if (require_same_children_ &&
-            ShouldSkipMatching(left_node, *it->second.node)) {
+            ShouldSkipMatching(left_node, **right_node)) {
           return;
         }
 
         std::vector<HloInstructionNode*> left_children =
             GetUnmatchedChildren(left_node.children, mappings);
         std::vector<HloInstructionNode*> right_children =
-            GetUnmatchedChildren(it->second.node->children, mappings);
+            GetUnmatchedChildren((*right_node)->children, mappings);
 
         MatchInstructions(left_, right_, left_children, right_children,
                           mappings, type_, MapByPositionMode::kAlways);
