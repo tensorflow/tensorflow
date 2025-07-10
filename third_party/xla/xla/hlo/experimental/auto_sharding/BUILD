@@ -588,6 +588,10 @@ xla_cc_test(
     srcs = [
         "auto_sharding_stablehlo_pass_test.cc",
     ],
+    tags = [
+        # Disabled until autosharding is fully supported for CPU and x86 GPU
+        "no_oss",
+    ],
     deps = [
         ":auto_sharding_stablehlo_pass",
         "//xla/hlo/testlib:filecheck",
