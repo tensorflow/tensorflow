@@ -1983,12 +1983,13 @@ CpuCompiler::CompileAheadOfTimeLegacy(
     const CpuAotCompilationOptions& aot_options, const llvm::Triple& triple,
     const llvm::PICLevel::Level& pic_level,
     const llvm::PIELevel::Level& pie_level) {
-  TF_ASSIGN_OR_RETURN(HloSchedule schedule,
-                      ScheduleModule(module.get(), BufferSizeBytesFunction()));
+  AliasInfo alias_info;
+  TF_ASSIGN_OR_RETURN(
+      HloSchedule schedule,
+      ScheduleModule(module.get(), &alias_info, BufferSizeBytesFunction()));
 
   // Run buffer analysis on the HLO graph. This analysis figures out which
   // temporary buffers are required to run the computation.
-  AliasInfo alias_info;
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(
@@ -2715,14 +2716,16 @@ CpuCompiler::LoadAotCompilationResult(
 
 absl::StatusOr<HloSchedule> CpuCompiler::CreateHloSchedule(
     const HloModule& hlo_module) const {
+  AliasInfo alias_info;
   // Select a memory scheduler optimized for concurrency vs minimal memory.
-  auto scheduler =
-      hlo_module.config()
-              .debug_options()
-              .xla_cpu_enable_concurrency_optimized_scheduler()
-          ? std::unique_ptr<ModuleSchedulerAlgorithm>(
-                std::make_unique<BFScheduler>(BufferSizeBytesFunction()))
-          : std::make_unique<DFSMemoryScheduler>(BufferSizeBytesFunction());
+  auto scheduler = hlo_module.config()
+                           .debug_options()
+                           .xla_cpu_enable_concurrency_optimized_scheduler()
+                       ? std::unique_ptr<ModuleSchedulerAlgorithm>(
+                             std::make_unique<BFScheduler>(
+                                 &alias_info, BufferSizeBytesFunction()))
+                       : std::make_unique<DFSMemoryScheduler>(
+                             &alias_info, BufferSizeBytesFunction());
 
   // Select an order for emitting the HLO instructions for each
   // computation. Using this sequence enables tighter buffer liveness analysis

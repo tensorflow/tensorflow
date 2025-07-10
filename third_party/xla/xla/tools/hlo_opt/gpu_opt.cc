@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <set>
@@ -25,6 +26,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/compiler.h"
 #include "xla/service/copy_insertion.h"
 #include "xla/service/dump.h"
@@ -57,6 +60,8 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/spmd/schedule_aware_collective_ops_cse.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
@@ -141,8 +146,17 @@ class GpuOptProvider : public CompiledOptProvider {
              "--xla_gpu_target_config_filename= to specify a target config.";
       gpu_compute_capability = stream_executor::CudaComputeCapability::Hopper();
     }
+    BufferValue::SizeFunction size_func = [](const BufferValue& buffer) {
+      const Shape& shape = buffer.shape();
+      if (shape.has_layout() &&
+          shape.layout().memory_space() == Layout::kHostMemorySpace) {
+        return static_cast<int64_t>(0);
+      }
+      return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
+    };
     // go/keep-sorted start
     RegisterPass<CopyInsertion>(alias_info_.get());
+    RegisterPass<HloMemoryScheduler>(alias_info_.get(), size_func);
     RegisterPass<gpu::AllGatherOptimizer>();
     RegisterPass<gpu::CuDnnCustomCallConverter>();
     RegisterPass<gpu::DotAlgorithmRewriter>();

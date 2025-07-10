@@ -227,9 +227,6 @@ std::string OptProvider::GetRegisteredPassNamesHelper(
 void OptProvider::RegisterAllHardwareIndependentPasses() {
   // Dummy pass configs necessary for pass registration.
   FloatSupport* bfloat16_support = new FloatSupport(BF16, F32);
-  auto size_fn = [](const BufferValue& buffer) {
-    return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
-  };
   LiteralPool* literal_pool = new LiteralPool();
 
   // Hardware-independent HLO passes
@@ -294,7 +291,6 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<HloDescheduler>();
   RegisterPass<HloElementTypeConverter>(/*eliminate_type=*/BF16,
                                         /*replace_with_type=*/F32);
-  RegisterPass<HloMemoryScheduler>(/*size_fn*/ size_fn);
   RegisterPass<HloTrivialScheduler>();
   RegisterPass<HostMemoryTransferAsyncifier>(/*host_memory_space_color=*/5);
   RegisterPass<HostOffloadLegalize>();

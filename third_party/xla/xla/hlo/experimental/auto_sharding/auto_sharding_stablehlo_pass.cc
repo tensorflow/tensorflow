@@ -45,6 +45,7 @@ limitations under the License.
 #include "stablehlo/dialect/ChloOps.h"
 #include "stablehlo/dialect/Register.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/stablehlo_utils.h"
@@ -131,7 +132,10 @@ class AutoShardingWrapperPass
     option.allow_mixed_mesh_shape = false;
     // TODO(hanruobing): Add an option to control whether to keep the original
     // sharding or not. The current behavior is to keep the original sharding.
-    if (!AutoSharding(option).Run(hlo_module.get()).ok()) {
+    // TODO(b/424109294): Figure out whether we need to pass backend-specific
+    // AliasInfo here.
+    AliasInfo alias_info;
+    if (!AutoSharding(option, &alias_info).Run(hlo_module.get()).ok()) {
       signalPassFailure();
     }
 
