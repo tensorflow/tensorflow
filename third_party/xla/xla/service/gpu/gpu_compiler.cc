@@ -198,6 +198,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/collectives/all_reduce_splitter.h"
 #include "xla/service/gpu/transforms/collectives/collective_backend_assigner.h"
 #include "xla/service/gpu/transforms/collectives/collective_combiner_annotator.h"
+#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/gpu/transforms/collectives/collective_permute_cycle_decomposer.h"
 #include "xla/service/gpu/transforms/collectives/collective_pipelining_analyzer.h"
 #include "xla/service/gpu/transforms/collectives/convert_async_collectives_to_sync.h"
@@ -1164,7 +1165,12 @@ void AddCollectiveCombinerPasses(
     const GpuAliasInfo* alias_info, int pointer_size) {
   const DebugOptions& opts = module.config().debug_options();
 
-  if (opts.xla_gpu_experimental_enable_heuristic_collective_combining()) {
+  bool enable_heuristic_collective_combining =
+      opts.xla_gpu_experimental_enable_heuristic_collective_combining() &&
+      GetTopologyType(module.config(), device_description) ==
+          GPUTopologyType::MULTI_HOST;
+
+  if (enable_heuristic_collective_combining) {
     pipeline.AddPass<CollectiveCombinerAnnotator>(device_description,
                                                   alias_info, pointer_size);
   }
