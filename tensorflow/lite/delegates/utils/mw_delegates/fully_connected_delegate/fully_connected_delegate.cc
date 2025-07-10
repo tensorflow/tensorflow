@@ -1,5 +1,6 @@
 #include "tensorflow/lite/delegates/utils/mw_delegates/fully_connected_delegate/fully_connected_delegate.h"
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -119,7 +120,7 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
       return kTfLiteError;
     }
   } else {
-    TF_LITE_KERNEL_LOG(context, "Prepare failed: only INT32 weights supported.");
+    TF_LITE_KERNEL_LOG(context, "Prepare failed: only INT32 weights supported. Detected type: %d", weights_tensor.type);
     return kTfLiteError;
   }
 
@@ -131,8 +132,14 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
       return kTfLiteError;
     }
 
-    if (fpga_bram_driver_->write_bias_to_bram(bias_tensor.data.i32, NumElements(bias_tensor.dims))) {
-      TF_LITE_KERNEL_LOG(context, "Prepare failed: failed to write bias to BRAM.");
+    // Handle INT32 bias tensors only
+    if (bias_tensor.type == kTfLiteInt32) {
+      if (fpga_bram_driver_->write_bias_to_bram(bias_tensor.data.i32, NumElements(bias_tensor.dims))) {
+        TF_LITE_KERNEL_LOG(context, "Prepare failed: failed to write INT32 bias to BRAM.");
+        return kTfLiteError;
+      }
+    } else {
+      TF_LITE_KERNEL_LOG(context, "Prepare failed: only INT32 bias supported. Detected type: %d", bias_tensor.type);
       return kTfLiteError;
     }
 
@@ -195,7 +202,7 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
         return kTfLiteError;
       }
     } else {
-      TF_LITE_KERNEL_LOG(context, "Eval failed: only INT32 input supported.");
+      TF_LITE_KERNEL_LOG(context, "Eval failed: only INT32 input supported. Detected type: %d", input_tensor.type);
       return kTfLiteError;
     }
 
@@ -212,7 +219,7 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
         return kTfLiteError;
       }
     } else {
-      TF_LITE_KERNEL_LOG(context, "Eval failed: only INT32 output supported.");
+      TF_LITE_KERNEL_LOG(context, "Eval failed: only INT32 output supported. Detected type: %d", output_tensor.type);
       return kTfLiteError;
     }
 
@@ -389,6 +396,7 @@ class FullyConnectedDelegate : public SimpleDelegateInterface {
     } else {
       TF_LITE_KERNEL_LOG(context, "Tensor types: Only INT32 tensors supported. Detected types - Input: %d, Weights: %d, Bias: %d, Output: %d",
                          input->type, weights->type, bias ? bias->type : -1, output->type);
+      TF_LITE_KERNEL_LOG(context, "  INT8 support will be added later when low-level drivers are ready.");
     }
     
     if (!type_check) {
@@ -419,8 +427,15 @@ class FullyConnectedDelegate : public SimpleDelegateInterface {
   }
 
   SimpleDelegateInterface::Options DelegateOptions() const override {
-    // Use default options.
-    return SimpleDelegateInterface::Options();
+    // Configure delegate options to handle mixed graphs with dynamic tensors
+    SimpleDelegateInterface::Options options;
+    
+    // Allow this delegate to work with graphs that contain dynamic tensors
+    // The delegate will only handle the specific nodes it supports (fully connected)
+    // and ignore the dynamic tensors from other operations (like LSTM)
+    options.max_delegated_partitions = 10;  // Allow multiple partitions
+    
+    return options;
   }
 
  private:
