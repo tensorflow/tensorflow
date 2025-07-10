@@ -85,9 +85,8 @@ tflite_plugin_create_delegate(const char* const* options_keys,
 
 TFL_EXTERNAL_DELEGATE_EXPORT void tflite_plugin_destroy_delegate(
     TfLiteDelegate* delegate) {
-  TfLiteAddFpgaTestDelegateDelete(delegate);
+  TfLiteFullyConnectedDelegateDelete(delegate);
 }
 
 }  // extern "C"
 
-            
