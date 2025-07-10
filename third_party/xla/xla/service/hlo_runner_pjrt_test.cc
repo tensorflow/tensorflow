@@ -127,7 +127,7 @@ ENTRY %constant_s32 () -> s32[] {
 }
 
 constexpr absl::string_view kModuleSerializedName =
-    "4f22972e3e39d4470dc57f236347ca2d.bin";
+    "7a8f4b1ac78966508b85e1d9a0bc8f21.bin";
 
 class ArtifactDirTest : public ::testing::Test {
  public:
