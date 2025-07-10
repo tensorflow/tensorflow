@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/IR/Function.h"
 #include "xla/primitive_util.h"
@@ -100,6 +101,14 @@ class Intrinsic {
                                                 PrimitiveType t0,
                                                 PrimitiveType t1) {
     return Intrinsic::GetOrInsertDeclaration(module, t0, t1);
+  }
+
+  // Creates the definition of the vector intrinsic for the given data types.s
+  template <typename Intrinsic>
+  static absl::StatusOr<llvm::Function*> CreateDefinition(
+      llvm::Module* module, PrimitiveType from, PrimitiveType to,
+      int64_t vector_width) {
+    return Intrinsic::CreateDefinition(module, from, to, vector_width);
   }
 
  private:
