@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -26,12 +27,14 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
+#include "xla/backends/cpu/codegen/symbol_name_util.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/emitters/loop_kernel_emitter.h"
@@ -54,6 +57,16 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla::cpu {
+
+static absl::StatusOr<std::string> GetName(const HloFusionInstruction& fusion,
+                                           bool use_unique_c_name) {
+  if (!use_unique_c_name) {
+    return std::string(fusion.name());
+  }
+
+  return ConvertToCName(
+      absl::StrCat(fusion.GetModule()->name(), "_", fusion.name()));
+}
 
 static emitters::KernelArguments::BufferAlignment GetDefaultBufferAlignment() {
   emitters::KernelArguments::BufferAlignment buffer_alignment;
@@ -141,16 +154,16 @@ static HloFusionSpec GetLoopFusionSpec(const HloFusionInstruction& fusion) {
 
 absl::StatusOr<MlirKernelDefinition> EmitFusionKernel(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
-    const BufferAssignment* buffer_assignment) {
+    const BufferAssignment* buffer_assignment, bool use_unique_c_name) {
   if (fusion.fusion_kind() == HloFusionInstruction::FusionKind::kLoop) {
-    VLOG(2) << "Emitting loop fusion kernel: " << fusion.name();
+    TF_ASSIGN_OR_RETURN(std::string name, GetName(fusion, use_unique_c_name));
+    VLOG(2) << "Emitting loop fusion kernel: " << name;
     HloFusionSpec fusion_spec = GetLoopFusionSpec(fusion);
     auto work_dimensions = GetLoopEmitterWorkDims(fusion, fusion_spec);
 
     emitters::LoopFusionKernelEmitter loop_fusion_emitter(
         context, fusion, std::move(fusion_spec), buffer_assignment,
-        GetDefaultBufferAlignment(), work_dimensions, fusion.name(),
-        BackendKind::kCpu);
+        GetDefaultBufferAlignment(), work_dimensions, name, BackendKind::kCpu);
     TF_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
                         loop_fusion_emitter.EmitKernelDefinition());
 

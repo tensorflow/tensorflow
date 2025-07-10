@@ -613,6 +613,7 @@ cc_library(
     hdrs = ["fusion_emitter.h"],
     deps = [
         ":kernel_api_ir_builder",
+        ":symbol_name_util",
         "//xla:shape_util",
         "//xla:util",
         "//xla/backends/cpu:alignment",
@@ -637,6 +638,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

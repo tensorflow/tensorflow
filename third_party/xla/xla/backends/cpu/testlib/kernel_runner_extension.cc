@@ -203,7 +203,7 @@ NB_MODULE(_extension, kernel_runner_module) {
       [](mlir::MLIRContext& context, const HloFusionInstruction& fusion,
          const BufferAssignment* buffer_assignment) {
         absl::StatusOr<MlirKernelDefinition> kernel_definition =
-            EmitFusionKernel(context, fusion, buffer_assignment);
+            EmitFusionKernel(context, fusion, buffer_assignment, false);
         if (!kernel_definition.ok()) {
           throw std::runtime_error(kernel_definition.status().ToString());
         }
