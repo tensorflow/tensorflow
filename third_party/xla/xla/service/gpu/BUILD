@@ -1376,6 +1376,7 @@ cc_library(
     hdrs = ["fusion_pipeline.h"],
     deps = [
         "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
