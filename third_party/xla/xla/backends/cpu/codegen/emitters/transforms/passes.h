@@ -32,6 +32,7 @@ std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass();
 std::unique_ptr<mlir::Pass> CreateAddReductionFastMathFlagsPass();
 std::unique_ptr<mlir::Pass> CreateAddLoopUnrollFlagsPass(
     int32_t max_nested_bits = 256);
+std::unique_ptr<mlir::Pass> CreatePeelWorkgroupLoopPass();
 
 #define GEN_PASS_REGISTRATION
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h.inc"
