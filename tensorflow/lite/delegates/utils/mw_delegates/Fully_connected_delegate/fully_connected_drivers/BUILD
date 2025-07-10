@@ -26,7 +26,7 @@ cc_binary(
     srcs = ["main_bram_test.cpp"],
     deps = [":fully_connected_drivers"],
     linkopts = ["-lrt", "-lpthread"],
-    copts = tflite_copts(),
+    copts = tflite_copts() + ["-fexceptions"],
 )
 
 cc_binary(
@@ -34,5 +34,5 @@ cc_binary(
     srcs = ["main_ip_test.cpp"],
     deps = [":fully_connected_drivers"],
     linkopts = ["-lrt", "-lpthread"],
-    copts = tflite_copts(),
+    copts = tflite_copts() + ["-fexceptions"],
 )
