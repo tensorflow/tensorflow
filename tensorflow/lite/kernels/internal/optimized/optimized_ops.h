@@ -2481,10 +2481,10 @@ inline void BroadcastDivSlow(const ArithmeticParams& params,
                  &output_desc);
 
   TFLITE_DCHECK_GT(params.input1_offset, -128);
-  TFLITE_DCHECK_LT(params.input1_offset, 128);
+  TFLITE_DCHECK_LE(params.input1_offset, 128);
   TFLITE_DCHECK_GT(params.input2_offset, -128);
-  TFLITE_DCHECK_LT(params.input2_offset, 128);
-  TFLITE_DCHECK_GT(params.output_offset, -128);
+  TFLITE_DCHECK_LE(params.input2_offset, 128);
+  TFLITE_DCHECK_GE(params.output_offset, -128);
   TFLITE_DCHECK_LT(params.output_offset, 128);
 
   auto div_func = [&](int indexes[N]) {
