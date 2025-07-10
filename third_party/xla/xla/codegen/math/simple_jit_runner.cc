@@ -21,10 +21,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
+#include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
+#include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
+#include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
@@ -39,7 +43,6 @@ limitations under the License.
 #include "llvm/Support/Errc.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/TypeSize.h"
 #include "llvm/Support/raw_ostream.h"
@@ -47,39 +50,60 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::codegen::math {
+
 JitRunner::JitRunner(std::unique_ptr<llvm::Module> module,
                      std::unique_ptr<llvm::LLVMContext> context) {
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
   llvm::InitializeNativeTargetAsmParser();
-  auto jit_or_err = llvm::orc::LLJITBuilder().create();
+
+  tsc_ = std::make_unique<llvm::orc::ThreadSafeContext>(std::move(context));
+  perf_listener_ = llvm::JITEventListener::createPerfJITEventListener();
+  auto jit_builder = llvm::orc::LLJITBuilder();
+  if (perf_listener_ != nullptr) {
+    jit_builder = std::move(jit_builder.setObjectLinkingLayerCreator(
+        [&](llvm::orc::ExecutionSession& ES) {
+          auto obj_layer =
+              std::make_unique<llvm::orc::RTDyldObjectLinkingLayer>(
+                  ES, [](const llvm::MemoryBuffer& _) {
+                    return std::make_unique<llvm::SectionMemoryManager>();
+                  });
+          obj_layer->registerJITEventListener(*perf_listener_);
+          return obj_layer;
+        }));
+  }
+  auto jit_or_err = jit_builder.create();
   if (!jit_or_err) {
     llvm::report_fatal_error(
         llvm::Twine(llvm::toString(jit_or_err.takeError())));
   }
   jit_ = std::move(jit_or_err.get());
+  llvm::orc::ThreadSafeModule tsm(std::move(module), *tsc_);
   llvm::ExitOnError exit_on_err;
-  llvm::orc::ThreadSafeModule tsm(std::move(module), std::move(context));
   exit_on_err(jit_->addIRModule(std::move(tsm)));
 }
 
-JitRunner::~JitRunner() { llvm::llvm_shutdown(); }
-
-llvm::Expected<void*> JitRunner::CreateVectorWrapperFunction(
+// Returns a JITed function that loops over a vectorized function.
+// The original function is expected to have a signature like:
+//   <VectorSize x RetType> func(<VectorSize x Arg1Type>, <VectorSize x
+//   Arg2Type>, ...)
+// This function creates a wrapper that bridges the gap between C++ array
+// types and LLVM vector types. The returned std::function has a signature like:
+// void fn(std:::array<ArgTypes, VectorSize>& return_array,
+//   size_t iteration_count, size_t source_array_length, const
+//   std::array<ArgTypes, VectorSize>&...)
+llvm::Expected<void*> JitRunner::CreateVectorWrapperWithLoop(
     const std::string& original_function_name, size_t vector_size,
     PrimitiveType ret_type, std::vector<PrimitiveType> arg_types) {
-  // Create a new LLVMContext and Module for the wrapper function.
-  // LLJIT takes ownership of these when added.
-  auto context_owner = std::make_unique<llvm::LLVMContext>();
-  llvm::LLVMContext* context = context_owner.get();
   auto wrapper_module_owner = std::make_unique<llvm::Module>(
-      original_function_name + "_wrapper_module", *context);
+      original_function_name + "_wrapper_module", *tsc_->getContext());
   llvm::Module* wrapper_module = wrapper_module_owner.get();
-  llvm::IRBuilder<> builder(*context);
+  llvm::IRBuilder<> builder(*tsc_->getContext());
 
-  auto vec_type = [=](PrimitiveType type) {
-    return llvm::VectorType::get(llvm_ir::PrimitiveTypeToIrType(type, *context),
-                                 llvm::ElementCount::getFixed(vector_size));
+  auto vec_type = [&](PrimitiveType type) {
+    return llvm::VectorType::get(
+        llvm_ir::PrimitiveTypeToIrType(type, *tsc_->getContext()),
+        llvm::ElementCount::getFixed(vector_size));
   };
 
   llvm::Type* ret_vec_type = vec_type(ret_type);
@@ -91,55 +115,86 @@ llvm::Expected<void*> JitRunner::CreateVectorWrapperFunction(
 
   llvm::FunctionType* original_func_type =
       llvm::FunctionType::get(ret_vec_type, arg_vec_types, false);
-
-  // Declare the original function in the new wrapper module.
-  // The JIT's symbol resolution will find the actual definition.
   llvm::Function* original_func = llvm::Function::Create(
       original_func_type, llvm::Function::ExternalLinkage,
       original_function_name, *wrapper_module);
 
-  std::vector<llvm::Type*> ptr_types;
-  ptr_types.push_back(ret_vec_type->getScalarType()->getPointerTo());
+  std::vector<llvm::Type*> wrapper_arg_types;
+  // 1. Pointer to write the return data
+  wrapper_arg_types.push_back(ret_vec_type->getScalarType()->getPointerTo());
+  // 2. Iteration count, passed by value
+  wrapper_arg_types.push_back(builder.getInt32Ty());
+  // 3. Data length (number of elements in source arrays), by value
+  wrapper_arg_types.push_back(builder.getInt32Ty());
+  // 4. Pointers for each input data array
   for (llvm::Type* arg_vec_type : arg_vec_types) {
-    ptr_types.push_back(arg_vec_type->getPointerTo());
+    wrapper_arg_types.push_back(arg_vec_type->getScalarType()->getPointerTo());
   }
 
   llvm::FunctionType* wrapper_llvm_func_type =
-      llvm::FunctionType::get(builder.getVoidTy(), ptr_types, false);
-
+      llvm::FunctionType::get(builder.getVoidTy(), wrapper_arg_types, false);
   std::string wrapper_function_name = original_function_name + "_wrapper";
   llvm::Function* wrapper_llvm_func = llvm::Function::Create(
       wrapper_llvm_func_type, llvm::Function::ExternalLinkage,
       wrapper_function_name, *wrapper_module);
 
   llvm::BasicBlock* entry_block =
-      llvm::BasicBlock::Create(*context, "entry", wrapper_llvm_func);
+      llvm::BasicBlock::Create(*tsc_->getContext(), "entry", wrapper_llvm_func);
+  llvm::BasicBlock* loop_header = llvm::BasicBlock::Create(
+      *tsc_->getContext(), "loop.header", wrapper_llvm_func);
+  llvm::BasicBlock* loop_body = llvm::BasicBlock::Create(
+      *tsc_->getContext(), "loop.body", wrapper_llvm_func);
+  llvm::BasicBlock* loop_exit = llvm::BasicBlock::Create(
+      *tsc_->getContext(), "loop.exit", wrapper_llvm_func);
   builder.SetInsertPoint(entry_block);
+  // Use a pointer here to make the loop difficult to optimize away.
+  llvm::AllocaInst* counter =
+      builder.CreateAlloca(builder.getInt32Ty(), nullptr, "counter");
+  builder.CreateStore(builder.getInt32(0), counter);
+  builder.CreateBr(loop_header);
 
-  llvm::Value* ret_ptr_arg = wrapper_llvm_func->getArg(0);
-  llvm::Value* ret_vec_ptr =
-      builder.CreateBitCast(ret_ptr_arg, ret_vec_type->getPointerTo());
+  builder.SetInsertPoint(loop_header);
+  llvm::Value* loop_iterations = wrapper_llvm_func->getArg(1);
+  llvm::Value* current_count =
+      builder.CreateLoad(builder.getInt32Ty(), counter, "current_count");
+  llvm::Value* condition =
+      builder.CreateICmpSLT(current_count, loop_iterations, "loop_cond");
+  builder.CreateCondBr(condition, loop_body, loop_exit);
 
+  builder.SetInsertPoint(loop_body);
+  llvm::Value* data_length = wrapper_llvm_func->getArg(2);
+
+  // Calculate the number of vectors in the data array
+  llvm::Value* num_vectors = builder.CreateUDiv(
+      data_length, builder.getInt32(vector_size), "num_vectors");
+  // Calculate the index for this iteration: current_count % num_vectors
+  llvm::Value* index = builder.CreateURem(current_count, num_vectors, "index");
+
+  // Load input vectors using the calculated index
   std::vector<llvm::Value*> arg_vecs;
-  for (int i = 1; i < wrapper_llvm_func->arg_size(); ++i) {
-    llvm::Value* ptr_arg = wrapper_llvm_func->getArg(i);
-    llvm::Type* type = arg_vec_types[i - 1];
-    llvm::Value* vec_ptr = builder.CreateBitCast(ptr_arg, type->getPointerTo());
-    llvm::LoadInst* arg_vec = builder.CreateLoad(arg_vec_types[i - 1], vec_ptr);
+  for (int i = 0; i < arg_types.size(); ++i) {
+    llvm::Value* base_ptr = wrapper_llvm_func->getArg(i + 3);
+    llvm::Value* vec_ptr =
+        builder.CreateGEP(arg_vec_types[i], base_ptr, index, "vec_ptr");
+    llvm::LoadInst* arg_vec =
+        builder.CreateLoad(arg_vec_types[i], vec_ptr, "arg_vec");
     arg_vec->setAlignment(llvm::Align(32));
     arg_vecs.push_back(arg_vec);
   }
-
-  // Call the original vectorized function
   llvm::CallInst* result_vec = builder.CreateCall(original_func, arg_vecs);
-
-  // Store the result back to the output pointer
+  llvm::Value* ret_base_ptr = wrapper_llvm_func->getArg(0);
+  llvm::Value* ret_vec_ptr =
+      builder.CreateGEP(ret_vec_type, ret_base_ptr, index, "ret_vec_ptr");
   llvm::StoreInst* store_result = builder.CreateStore(result_vec, ret_vec_ptr);
   store_result->setAlignment(llvm::Align(32));
 
-  builder.CreateRetVoid();  // Wrapper returns void
+  llvm::Value* next_count =
+      builder.CreateAdd(current_count, builder.getInt32(1), "next_count");
+  builder.CreateStore(next_count, counter);
+  builder.CreateBr(loop_header);
+  builder.SetInsertPoint(loop_exit);
+  builder.CreateRetVoid();
 
-  // Verify the wrapper function
   std::string error_str;
   llvm::raw_string_ostream os(error_str);
   if (llvm::verifyFunction(*wrapper_llvm_func, &os)) {
@@ -147,14 +202,9 @@ llvm::Expected<void*> JitRunner::CreateVectorWrapperFunction(
         llvm::errc::invalid_argument,
         "Error in wrapper function IR: " + os.str());
   }
-
-  // Add the wrapper module to the JIT.
-  // LLJIT now owns wrapper_module_owner and context_owner.
   llvm::ExitOnError exit_on_err;
-  exit_on_err(jit_->addIRModule(llvm::orc::ThreadSafeModule(
-      std::move(wrapper_module_owner), std::move(context_owner))));
-
-  // Look up the JITed function pointer and return it
+  exit_on_err(jit_->addIRModule(
+      llvm::orc::ThreadSafeModule(std::move(wrapper_module_owner), *tsc_)));
   auto function_sym = jit_->lookup(wrapper_function_name);
   if (!function_sym) {
     return function_sym.takeError();
