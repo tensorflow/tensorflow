@@ -104,9 +104,6 @@ class HloDataflowAnalysis {
   const HloValueSet& GetValueSet(const HloInstruction* instruction,
                                  const ShapeIndex& index = {}) const;
   const HloValueSet& GetValueSet(const HloPosition& position) const;
-  HloValueSet& GetValueSet(const HloPosition& position);
-  HloValueSet& GetValueSet(const HloInstruction* instruction,
-                           const ShapeIndex& index = {});
 
   // Returns the unique value in the HloValueSet at the given instruction and
   // shape index. CHECKs if the value set does not contain a exactly one value.
@@ -226,6 +223,10 @@ class HloDataflowAnalysis {
   // Updates the value set of the given instruction based on the values flowing
   // into the instruction (operands and cross-computation dataflow).
   bool UpdateInstructionValueSet(HloInstruction* instruction);
+
+  // Returns the HloValueSet for the given instruction at the given index.
+  HloValueSet& GetMutableValueSet(const HloInstruction* instruction,
+                                  const ShapeIndex& index = {});
 
   // Updates the value set for a particular instruction type. Returns whether
   // the instruction value set changed.

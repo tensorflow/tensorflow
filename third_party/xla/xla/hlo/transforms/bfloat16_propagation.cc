@@ -306,7 +306,7 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
     return false;
   }
 
-  auto& value_set = dataflow_->GetValueSet(&hlo, index);
+  const auto& value_set = dataflow_->GetValueSet(&hlo, index);
   for (const HloValue* value : value_set.values()) {
     if (ContainsKey(values_that_must_be_kept_as_f32_, value)) {
       return false;
