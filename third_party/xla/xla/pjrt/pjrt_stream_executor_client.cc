@@ -81,7 +81,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
-#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -102,6 +101,7 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -111,6 +111,7 @@ limitations under the License.
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/host_memory_spaces.h"
+#include "xla/pjrt/layout_mode.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/metrics.h"
 #include "xla/pjrt/mlir_to_hlo.h"
@@ -145,6 +146,11 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -3446,7 +3452,15 @@ PjRtStreamExecutorClient::CompileInternal(
       client()->Compile(computation, argument_layout_pointers,
                         options.executable_build_options));
 
-  return BuildPjRtExecutable(std::move(local_executables), input_options);
+  const bool xla_gpu_dump_hlo_unoptimized_snapshots =
+      options.executable_build_options.has_debug_options() &&
+      options.executable_build_options.debug_options()
+          .xla_gpu_dump_hlo_unoptimized_snapshots();
+
+  return BuildPjRtExecutable(xla_gpu_dump_hlo_unoptimized_snapshots
+                                 ? std::make_optional(computation.proto())
+                                 : std::nullopt,
+                             std::move(local_executables), input_options);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
@@ -3611,6 +3625,7 @@ absl::StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 PjRtStreamExecutorClient::BuildPjRtExecutable(
+    std::optional<HloModuleProto> unoptimized_hlo_module_proto,
     std::vector<std::unique_ptr<LocalExecutable>> local_executables,
     CompileOptions compile_options) {
   if (local_executables.empty()) {
@@ -3631,9 +3646,9 @@ PjRtStreamExecutorClient::BuildPjRtExecutable(
   const std::string fingerprint = hlo_module.GetFingerprint128();
 
   return std::make_unique<StreamExecutorExecutable>(
-      std::move(compile_options), std::move(local_executables), client_,
-      num_replicas, num_partitions, name, fingerprint,
-      memory_spaces()[0]->kind());
+      std::move(compile_options), std::move(unoptimized_hlo_module_proto),
+      std::move(local_executables), client_, num_replicas, num_partitions, name,
+      fingerprint, memory_spaces()[0]->kind());
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
@@ -3644,7 +3659,8 @@ PjRtStreamExecutorClient::DeserializeExecutable(
       auto local_executables_and_options,
       DeserializeToLocalExecutable(serialized, compile_options));
 
-  return BuildPjRtExecutable(std::move(local_executables_and_options.first),
+  return BuildPjRtExecutable(std::nullopt,
+                             std::move(local_executables_and_options.first),
                              local_executables_and_options.second);
 }
 
@@ -3696,12 +3712,14 @@ PjRtStreamExecutorClient::LoadSerializedExecutable(
     const LoadOptions& load_options) {
   TF_ASSIGN_OR_RETURN(auto local_executables_and_options,
                       DeserializeToLocalExecutable(serialized, options));
-  return LoadInternal(std::move(local_executables_and_options.first),
+  return LoadInternal(/*unoptimized_hlo_module_proto=*/std::nullopt,
+                      std::move(local_executables_and_options.first),
                       local_executables_and_options.second);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtStreamExecutorClient::LoadInternal(
+    std::optional<HloModuleProto> unoptimized_hlo_module_proto,
     std::vector<std::unique_ptr<LocalExecutable>> local_executables,
     CompileOptions compile_options) {
   auto input_options = compile_options;
@@ -3721,10 +3739,6 @@ PjRtStreamExecutorClient::LoadInternal(
   const bool xla_gpu_dump_hlo_unoptimized_snapshots =
       ex_options.has_debug_options() &&
       ex_options.debug_options().xla_gpu_dump_hlo_unoptimized_snapshots();
-  HloModuleProto hlo_module_proto;
-  if (xla_gpu_dump_hlo_unoptimized_snapshots) {
-    hlo_module_proto = local_executables[0]->executable()->module().ToProto();
-  }
 
   auto executable = std::make_unique<PjRtStreamExecutorLoadedExecutable>(
       std::move(local_executables),
@@ -3735,9 +3749,10 @@ PjRtStreamExecutorClient::LoadInternal(
 
   TF_RETURN_IF_ERROR(
       executable->SetUpDonation(compile_options.parameter_is_tupled_arguments));
-  if (xla_gpu_dump_hlo_unoptimized_snapshots) {
+  if (xla_gpu_dump_hlo_unoptimized_snapshots &&
+      unoptimized_hlo_module_proto.has_value()) {
     executable->SetInputHloSnapshotBits(
-        std::move(hlo_module_proto),
+        std::move(*unoptimized_hlo_module_proto),
         compile_options.executable_build_options.debug_options());
   }
   return std::unique_ptr<PjRtLoadedExecutable>(std::move(executable));
@@ -3755,7 +3770,8 @@ PjRtStreamExecutorClient::Load(std::unique_ptr<PjRtExecutable> executable,
 
   TF_ASSIGN_OR_RETURN(auto local_executables, se_executable->ConsumeExecutable(
                                                   client(), compile_options));
-  return LoadInternal(std::move(local_executables), compile_options);
+  return LoadInternal(se_executable->unoptimized_hlo_module_proto(),
+                      std::move(local_executables), compile_options);
 }
 
 bool PjRtStreamExecutorClient::IsDmaMapped(const void* data_start,
