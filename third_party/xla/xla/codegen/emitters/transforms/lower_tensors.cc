@@ -580,7 +580,10 @@ struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
     auto llvm_type = converter.convertType(vector_value.getType());
     vector_value = b.create<UnrealizedConversionCastOp>(llvm_type, vector_value)
                        .getResult(0);
-    b.create<ml::StoreOp>(vector_value, gep);
+    auto store = b.create<ml::StoreOp>(vector_value, gep);
+    if (auto alignment = GetAlignmentFromArg(op.getSource(), op.getIndices())) {
+      store.setAlignment(*alignment);
+    }
 
     rewriter.replaceOp(op, mlir::ValueRange{op.getSource()});
     return success();
