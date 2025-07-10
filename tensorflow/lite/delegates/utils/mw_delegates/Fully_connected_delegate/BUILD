@@ -13,10 +13,10 @@ package(
 cc_library(
     name = "full_connected_delegate",
     srcs = [
-        "full_connected_delegate.cc",
+        "fully_connected_delegate.cc",
     ],
     hdrs = [
-        "full_connected_delegate.h",
+        "fully_connected_delegate.h",
     ],
     deps = [
         "//tensorflow/lite/delegates/utils/mw_delegates/fully_connected_delegate/fully_connected_drivers:fully_connected_drivers",
