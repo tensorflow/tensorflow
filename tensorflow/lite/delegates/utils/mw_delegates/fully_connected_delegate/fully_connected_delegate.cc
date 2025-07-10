@@ -29,7 +29,7 @@ namespace fully_connected {
 class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
  public:
   explicit FullyConnectedDelegateKernel(const FullyConnectedDelegateOptions& options)
-      : options_(options), fpga_ip_driver_(std::make_unique<FullyConnectedIpDriver>()), fpga_bram_driver_(std::make_unique<FullyConnectedBRAMDriver>()) {}
+      : options_(options), fpga_ip_driver_(std::make_unique<FpgaIpDriver>()), fpga_bram_driver_(std::make_unique<FullyConnectedBRAMDriver>()) {}
 
 
   // Lifecycle methods for the delegate kernel.
@@ -161,7 +161,7 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
 
   std::vector<std::vector<int>> inputs_, outputs_;
   std::vector<int> builtin_code_;
-  std::unique_ptr<FullyConnectedIpDriver> fpga_ip_driver_;  // FPGA driver instance
+  std::unique_ptr<FpgaIpDriver> fpga_ip_driver_;  // FPGA driver instance
   std::unique_ptr<FpgaBramDriver> fpga_bram_driver_;  // BRAM driver instance
 
   int NumElements(const TfLiteIntArray* dims) {

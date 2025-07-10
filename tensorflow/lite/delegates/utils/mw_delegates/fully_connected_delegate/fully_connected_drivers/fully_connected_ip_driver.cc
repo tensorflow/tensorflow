@@ -9,7 +9,7 @@
 
 #define FULLY_CONNECTED_IP_DRIVER_TEST_MAIN
 
-FullyConnectedIpDriver::FullyConnectedIpDriver() : dev_mem_fd(-1), mapped_fpga_ip(nullptr), size(4096) {//one page size
+FpgaIpDriver::FpgaIpDriver() : dev_mem_fd(-1), mapped_fpga_ip(nullptr), size(4096) {//one page size
     // Initialize member variables
     ip_base_address = 0x80000000;
     ip_input_size_offset = 0x10;
@@ -19,7 +19,7 @@ FullyConnectedIpDriver::FullyConnectedIpDriver() : dev_mem_fd(-1), mapped_fpga_i
     initialize_fpga(); // Initialize FPGA on construction
 }
 
-FullyConnectedIpDriver::~FullyConnectedIpDriver() {
+FpgaIpDriver::~FpgaIpDriver() {
     if (mapped_fpga_ip != MAP_FAILED && mapped_fpga_ip != nullptr) {
         munmap(mapped_fpga_ip, size);
     }
@@ -28,7 +28,7 @@ FullyConnectedIpDriver::~FullyConnectedIpDriver() {
     }
 }
 
-void FullyConnectedIpDriver::initialize_fpga() {
+void FpgaIpDriver::initialize_fpga() {
     std::cout << "Initializing FPGA..." << std::endl;
 
     dev_mem_fd = open("/dev/mem", O_RDWR | O_SYNC);
@@ -52,7 +52,7 @@ void FullyConnectedIpDriver::initialize_fpga() {
     std::cout << "FPGA initialization complete." << std::endl;
 }
 
-void FullyConnectedIpDriver::write_to_fpga(const std::string& reg_name, uint32_t value) {
+void FpgaIpDriver::write_to_fpga(const std::string& reg_name, uint32_t value) {
     if (!mapped_fpga_ip || mapped_fpga_ip == MAP_FAILED) {
         std::cerr << "Memory not mapped" << std::endl;
         return;
@@ -72,7 +72,7 @@ void FullyConnectedIpDriver::write_to_fpga(const std::string& reg_name, uint32_t
               << offset << std::endl;
 }
 
-int32_t FullyConnectedIpDriver::read_from_fpga(const std::string& reg_name) {
+int32_t FpgaIpDriver::read_from_fpga(const std::string& reg_name) {
     if (!mapped_fpga_ip || ip_address.find(reg_name) == ip_address.end()) return 0;
 
     uint32_t offset = ip_address[reg_name];
@@ -81,7 +81,7 @@ int32_t FullyConnectedIpDriver::read_from_fpga(const std::string& reg_name) {
     return *ptr;
 }
 
-int FullyConnectedIpDriver::fpga_compute(int32_t input_size, int32_t output_size) {
+int FpgaIpDriver::fpga_compute(int32_t input_size, int32_t output_size) {
     write_to_fpga("input_size", input_size);
     write_to_fpga("output_size", output_size);
     

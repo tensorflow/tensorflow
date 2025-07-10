@@ -4,7 +4,7 @@
 
 int main() {
     
-        FullyConnectedIpDriver driver;
+        FpgaIpDriver driver;
         int32_t input_size;
         int32_t output_size;
 
@@ -12,7 +12,7 @@ int main() {
         std::cin >> input_size;
         std::cout << "Enter output size: ";
         std::cin >> output_size;
-        
+
         std::cout << "Testing FPGA compute with input_size = " << input_size
                   << ", output_size = " << output_size << std::endl;
         try{

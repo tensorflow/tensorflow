@@ -5,7 +5,7 @@
 #include <string>
 #include <map>
 
-class FullyConnectedIpDriver {
+class FpgaIpDriver {
 private:
     int dev_mem_fd;
     void* mapped_fpga_ip;
@@ -29,8 +29,8 @@ private:
     int32_t read_from_fpga(const std::string& reg_name);
 
 public:
-    FullyConnectedIpDriver();
-    ~FullyConnectedIpDriver();
+    FpgaIpDriver();
+    ~FpgaIpDriver();
 
     int fpga_compute(int32_t input_size, int32_t output_size);
 };
