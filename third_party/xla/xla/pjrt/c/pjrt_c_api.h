@@ -63,6 +63,8 @@ typedef enum {
   PJRT_Extension_Type_Triton,
   PJRT_Extension_Type_RawBuffer,     // Experimental.
   PJRT_Extension_Type_PhaseCompile,  // Experimental.
+  PJRT_Extension_Type_Example,
+  PJRT_Extension_Type_Unknown,
 } PJRT_Extension_Type;
 
 // PJRT_Extension_Base contains a type and a pointer to next
