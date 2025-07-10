@@ -147,17 +147,17 @@ void TestTwoDelegates::TearDown() {
 }
 
 SimpleDelegate::SimpleDelegate(const std::vector<int>& nodes,
-                               int64_t delegate_flags, bool fail_node_prepare,
-                               int min_ops_per_subset, bool fail_node_invoke,
-                               bool automatic_shape_propagation, bool custom_op,
-                               bool set_output_tensor_dynamic)
+                               int64_t delegate_flags, Options options,
+                               int min_ops_per_subset)
     : nodes_(nodes),
-      fail_delegate_node_prepare_(fail_node_prepare),
+      fail_delegate_node_init_(options & Options::kFailOnInit),
+      fail_delegate_node_prepare_(options & Options::kFailOnPrepare),
+      fail_delegate_node_invoke_(options & Options::kFailOnInvoke),
       min_ops_per_subset_(min_ops_per_subset),
-      fail_delegate_node_invoke_(fail_node_invoke),
-      automatic_shape_propagation_(automatic_shape_propagation),
-      custom_op_(custom_op),
-      set_output_tensor_dynamic_(set_output_tensor_dynamic) {
+      automatic_shape_propagation_(options ==
+                                   Options::kAutomaticShapePropagation),
+      custom_op_(!(options & Options::kNoCustomOp)),
+      set_output_tensor_dynamic_(options & Options::kSetOutputTensorDynamic) {
   delegate_ = TfLiteDelegateCreate();
   delegate_.Prepare = [](TfLiteContext* context,
                          TfLiteDelegate* delegate) -> TfLiteStatus {
@@ -232,10 +232,10 @@ SimpleDelegate::SimpleDelegate(const std::vector<int>& nodes,
                                              &params_array, &num_partitions),
         kTfLiteOk);
 
-    context->ReplaceNodeSubsetsWithDelegateKernels(
+    TfLiteStatus res = context->ReplaceNodeSubsetsWithDelegateKernels(
         context, simple->FakeFusedRegistration(), nodes_to_separate, delegate);
     TfLiteIntArrayFree(nodes_to_separate);
-    return kTfLiteOk;
+    return res;
   };
   delegate_.CopyToBufferHandle = [](TfLiteContext* context,
                                     TfLiteDelegate* delegate,
@@ -269,6 +269,11 @@ SimpleDelegate::SimpleDelegate(const std::vector<int>& nodes,
 TfLiteRegistration SimpleDelegate::FakeFusedRegistration() {
   TfLiteRegistration reg = {nullptr};
   reg.custom_name = "fake_fused_op";
+
+  if (fail_delegate_node_init_) {
+    reg.init = [](TfLiteContext* context, const char* buffer,
+                  size_t length) -> void* { return TfLiteKernelInitFailed(); };
+  }
 
   // Different flavors of the delegate kernel's Invoke(), dependent on
   // testing parameters.
@@ -365,9 +370,9 @@ SimpleDelegate::DelegateWithRuntimeShapePropagation(
     const std::vector<int>& nodes, int64_t delegate_flags,
     int min_ops_per_subset) {
   return std::make_unique<SimpleDelegate>(
-      nodes, delegate_flags, false /**fail_node_prepare**/,
-      min_ops_per_subset /**min_ops_per_subset**/, false /**fail_node_invoke**/,
-      true /**automatic_shape_propagation**/);
+      nodes, delegate_flags,
+      SimpleDelegate::Options::kAutomaticShapePropagation,
+      /*min_ops_per_subset=*/min_ops_per_subset);
 }
 
 std::unique_ptr<SimpleDelegate> SimpleDelegate::DelegateWithDynamicOutput(
@@ -375,9 +380,7 @@ std::unique_ptr<SimpleDelegate> SimpleDelegate::DelegateWithDynamicOutput(
   // All params default except nodes & set_output_tensor_dynamic.
   return std::make_unique<SimpleDelegate>(
       nodes, kTfLiteDelegateFlagsAllowDynamicTensors,
-      false /**fail_node_prepare**/, 0 /**min_ops_per_subset**/,
-      false /**fail_node_invoke**/, false /**automatic_shape_propagation**/,
-      true /**custom_op**/, true /**set_output_tensor_dynamic**/);
+      SimpleDelegate::Options::kSetOutputTensorDynamic);
 }
 
 void TestFP16Delegation::SetUp() {
