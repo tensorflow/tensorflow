@@ -60,13 +60,12 @@ class ConvolutionTest : public ClientLibraryTestRunnerMixin<
   }
 
  protected:
-#if XLA_TEST_BACKEND_GPU
   // XLA:GPU sometimes uses FFT convolution which isn't as precise as spatial
   // convolution. So relax the absolute error threshold.
-  ErrorSpec error_spec_ = ErrorSpec(1e-2, 1e-3);
-#else
-  ErrorSpec error_spec_ = ErrorSpec(1e-4, 1e-3);
-#endif
+  ErrorSpec ErrorSpecForPlatform() {
+    return test::DeviceTypeIs(test::kGpu) ? ErrorSpec(1e-2, 1e-3)
+                                          : ErrorSpec(1e-4, 1e-3);
+  }
 };
 
 using TestTypes = ::testing::Types<
@@ -120,7 +119,7 @@ class ForwardPassConvolution_3x3x256_256_OutputZ_Iota : public ConvolutionTest {
     Conv(lhs, rhs, {1, 1}, Padding::kValid, /*feature_group_count=*/1,
          /*batch_group_count=*/1, &precision);
 
-    ComputeAndCompare(&builder, {}, error_spec_);
+    ComputeAndCompare(&builder, {}, ErrorSpecForPlatform());
   }
 };
 
@@ -152,7 +151,7 @@ class Convolve_1x1x1x2_1x1x1x2_Valid : public ConvolutionTest {
     Literal filter_data_literal = LiteralUtil::CreateFromArray(filter_data);
 
     ComputeAndCompare(&builder, {&input_data_literal, &filter_data_literal},
-                      error_spec_);
+                      ErrorSpecForPlatform());
   }
 };
 
@@ -190,7 +189,7 @@ class Convolve_1x1x4x4_1x1x2x2_Valid : public ConvolutionTest {
     }));
     Literal filter_data_literal = LiteralUtil::CreateFromArray(filter_data);
     ComputeAndCompare(&builder, {&input_data_literal, &filter_data_literal},
-                      error_spec_);
+                      ErrorSpecForPlatform());
   }
 };
 
@@ -229,7 +228,7 @@ class Convolve_1x1x4x4_1x1x2x2_Same : public ConvolutionTest {
     Literal filter_data_literal = LiteralUtil::CreateFromArray(filter_data);
 
     ComputeAndCompare(&builder, {&input_data_literal, &filter_data_literal},
-                      error_spec_);
+                      ErrorSpecForPlatform());
   }
 };
 
@@ -269,7 +268,7 @@ class Convolve_1x1x4x4_1x1x3x3_Same : public ConvolutionTest {
     Literal filter_data_literal = LiteralUtil::CreateFromArray(filter_data);
     // clang-format on
     ComputeAndCompare(&builder, {&input_data_literal, &filter_data_literal},
-                      error_spec_);
+                      ErrorSpecForPlatform());
   }
 };
 
@@ -323,7 +322,7 @@ TEST_F(ConvolutionTest, Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid) {
   auto expected_r5 = expected_r1.Reshape({1, 3, 1, 2, 3}).value();
 
   ComputeAndCompareLiteral(&builder, expected_r5, {&input_r5, &filter_r5},
-                           error_spec_);
+                           ErrorSpecForPlatform());
 }
 
 // std::iota doesn't work when init_value has a type Eigen::half in some build
@@ -380,7 +379,7 @@ class Convolve2D_1x3x3x5_3x3x5x3_Valid : public ConvolutionTest {
     auto expected_r4 = expected_r1.Reshape({1, 1, 1, 3}).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
-                             error_spec_);
+                             ErrorSpecForPlatform());
   }
 };
 
@@ -448,7 +447,7 @@ class Convolve2D_1x6x6x1_6x2x1x1_Same : public ConvolutionTest {
     auto expected_r4 = expected_r1.Reshape({1, 6, 6, 1}).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
-                             error_spec_);
+                             ErrorSpecForPlatform());
   }
 };
 
@@ -499,7 +498,7 @@ class Convolve1D_1x3x5_3x5x3_Valid : public ConvolutionTest {
     auto expected_r3 = expected_r1.Reshape({1, 1, 3}).value();
 
     ComputeAndCompareLiteral(&builder, expected_r3, {&input_r3, &filter_r3},
-                             error_spec_);
+                             ErrorSpecForPlatform());
   }
 };
 
@@ -557,7 +556,7 @@ class Convolve2D_1x3x3x5_3x3x1x15_Depthwise_Valid : public ConvolutionTest {
     auto expected_r4 = expected_r1.Reshape({1, 1, 1, 15}).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
-                             error_spec_);
+                             ErrorSpecForPlatform());
   }
 };
 
@@ -619,7 +618,7 @@ class Convolve2D_1x4x4x5_3x3x1x5_Depthwise_Valid : public ConvolutionTest {
     auto expected_r4 = expected_r1.Reshape({1, 2, 2, 5}).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
-                             error_spec_);
+                             ErrorSpecForPlatform());
 
     auto filter_r = filter_r1.Reshape(filter_dims);
   }
@@ -678,7 +677,7 @@ class Convolve2D_1x4x4x512_3x3x1x512_Depthwise_Valid : public ConvolutionTest {
     auto expected_r4 = expected_r1.Reshape({1, 2, 2, 512}).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
-                             error_spec_);
+                             ErrorSpecForPlatform());
   }
 };
 
@@ -738,7 +737,7 @@ class Convolve2D_1x4x4x512_3x3x1x512_Depthwise_Valid_Output_Batch_In_Lanes
         expected_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
     ComputeAndCompareLiteral(&builder, expected_r4_relaid,
-                             {&input_r4, &filter_r4}, error_spec_);
+                             {&input_r4, &filter_r4}, ErrorSpecForPlatform());
   }
 };
 
@@ -799,7 +798,7 @@ class Convolve2D_256x4x4x512_3x3x1x512_Depthwise_Input_Batch_in_Lanes
     auto expected_r4 = expected_r1.Reshape({256, 2, 2, 512}).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
-                             error_spec_);
+                             ErrorSpecForPlatform());
   }
 };
 
@@ -861,7 +860,7 @@ class Convolve2D_256x4x4x512_3x3x1x512_Depthwise_Both_Batch_in_Lanes
         expected_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
     ComputeAndCompareLiteral(&builder, expected_r4_relaid,
-                             {&input_r4, &filter_r4}, error_spec_);
+                             {&input_r4, &filter_r4}, ErrorSpecForPlatform());
   }
 };
 
@@ -928,7 +927,7 @@ class Convolve2D_1x4x4x5_3x3x1x5_Depthwise_Valid_Output_Batch_In_Lanes
         expected_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
     ComputeAndCompareLiteral(&builder, expected_r4_relaid,
-                             {&input_r4, &filter_r4}, error_spec_);
+                             {&input_r4, &filter_r4}, ErrorSpecForPlatform());
   }
 };
 
@@ -988,7 +987,7 @@ class Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Valid : public ConvolutionTest {
     auto expected_r4 = expected_r1.Reshape({1, 2, 2, 160}).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
-                             error_spec_);
+                             ErrorSpecForPlatform());
   }
 };
 
@@ -1048,7 +1047,7 @@ class Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Input_Batch_In_Lanes
         expected_r4.Relayout(LayoutUtil::MakeLayout({3, 0, 2, 1}));
 
     ComputeAndCompareLiteral(&builder, expected_r4_relaid,
-                             {&input_r4, &filter_r4}, error_spec_);
+                             {&input_r4, &filter_r4}, ErrorSpecForPlatform());
   }
 };
 
@@ -1110,7 +1109,7 @@ class Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Both_Batch_In_Lanes
         expected_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
     ComputeAndCompareLiteral(&builder, expected_r4_relaid,
-                             {&input_r4, &filter_r4}, error_spec_);
+                             {&input_r4, &filter_r4}, ErrorSpecForPlatform());
   }
 };
 
@@ -1170,7 +1169,7 @@ class Convolve2D_1x4x4x1024_3x3x1x1024_Depthwise_Valid
     auto expected_r4 = expected_r1.Reshape({1, 2, 2, 1024}).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
-                             error_spec_);
+                             ErrorSpecForPlatform());
   }
 };
 
@@ -1229,7 +1228,7 @@ class Convolve2D_1x2x2x6_2x2x2x12_Grouped_Valid : public ConvolutionTest {
     auto expected_r4 = expected_r1.Reshape({1, 1, 1, 12}).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
-                             error_spec_);
+                             ErrorSpecForPlatform());
   }
 };
 
@@ -1287,7 +1286,7 @@ class Convolve2D_1x2x2x1024_2x2x128x512_Grouped_Valid : public ConvolutionTest {
     auto expected_r4 = expected_r1.Reshape({1, 1, 1, 512}).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
-                             error_spec_);
+                             ErrorSpecForPlatform());
   }
 };
 
@@ -1345,7 +1344,7 @@ class Convolve2D_1x2x2x1024_2x2x128x8_Grouped_Valid : public ConvolutionTest {
     auto expected_r4 = expected_r1.Reshape({1, 1, 1, 8}).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
-                             error_spec_);
+                             ErrorSpecForPlatform());
   }
 };
 
@@ -1402,7 +1401,7 @@ class Convolve2D_1x2x2x12_2x2x3x4_Grouped_Valid : public ConvolutionTest {
     auto expected_r4 = expected_r1.Reshape({1, 1, 1, 4}).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
-                             error_spec_);
+                             ErrorSpecForPlatform());
   }
 };
 
@@ -1461,7 +1460,8 @@ class Convolve2D_1x2x2x12_2x2x3x4_Grouped_Valid_Filter_OF_In_Sublanes
     auto expected_r4 = expected_r1.Reshape({1, 1, 1, 4}).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4,
-                             {&input_r4, &filter_r4_relaid}, error_spec_);
+                             {&input_r4, &filter_r4_relaid},
+                             ErrorSpecForPlatform());
   }
 };
 
@@ -1520,7 +1520,7 @@ class Convolve2D_1x1x1x12_1x1x3x4_Grouped_Valid : public ConvolutionTest {
     auto expected_r4 = expected_r1.Reshape({1, 1, 1, 4}).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4, {&input_r4, &filter_r4},
-                             error_spec_);
+                             ErrorSpecForPlatform());
   }
 };
 
@@ -1567,7 +1567,8 @@ TEST_P(ConvolveWithAndWithoutCanonicalization, Convolve2D_NoSpatialDims) {
   Array2D<float> expected_result(29, 10);
   expected_result.Fill(0);
 
-  ComputeAndCompare(&builder, {&param0_literal, &param1_literal}, error_spec_);
+  ComputeAndCompare(&builder, {&param0_literal, &param1_literal},
+                    ErrorSpecForPlatform());
 }
 
 INSTANTIATE_TEST_CASE_P(ConvolveWithAndWithoutCanonicalization_Instantiation,
@@ -1593,7 +1594,7 @@ TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
   }));
   Literal filter_data_literal = LiteralUtil::CreateFromArray(filter_data);
   ComputeAndCompare(&builder, {&input_data_literal, &filter_data_literal},
-                    error_spec_);
+                    ErrorSpecForPlatform());
 }
 
 // Check that GPU convs still work if the CudnnAlgorithmPicker pass is disabled.
@@ -1655,7 +1656,7 @@ TEST_F(ConvolutionTest, ConvolveF32BackwardInputGroupedConvolution) {
               /*padding=*/{{3, 3}, {3, 3}}, /*dimension_numbers=*/dnums,
               /*feature_group_count=*/64);
 
-  ComputeAndCompare(&builder, {&input_data_literal}, error_spec_);
+  ComputeAndCompare(&builder, {&input_data_literal}, ErrorSpecForPlatform());
 }
 
 class ConvolutionHloTest
