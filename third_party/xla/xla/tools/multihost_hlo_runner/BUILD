@@ -233,6 +233,7 @@ xla_test(
     deps = [
         ":create_client",
         ":functional_hlo_runner",
+        ":hlo_input_output_format",
         "//xla:debug_options_flags",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",

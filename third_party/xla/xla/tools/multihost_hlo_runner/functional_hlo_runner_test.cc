@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
+#include "xla/tools/multihost_hlo_runner/hlo_input_output_format.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -814,6 +815,60 @@ TEST(FunctionalHloRunnerTest, RespectUseSpmdPartitioning) {
                                                 /*kv_store=*/nullptr));
   EXPECT_FALSE(
       compile_options.executable_build_options.use_spmd_partitioning());
+}
+
+TEST_F(FunctionalHloRunnerTest, DumpsUnoptimizedHLOInUnoptimizedSnapshot) {
+  // Unoptimized snapshots are only supported in the GPU PjRt plugins.
+  if (IsTestingCpu()) {
+    GTEST_SKIP() << "GPU-only test";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
+
+  DebugOptions debug_options = xla::DefaultDebugOptionsIgnoringFlags();
+  debug_options.set_xla_dump_to(std::getenv("TEST_UNDECLARED_OUTPUTS_DIR"));
+  debug_options.set_xla_dump_hlo_as_proto(true);
+  debug_options.set_xla_gpu_dump_hlo_unoptimized_snapshots(true);
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  FunctionalHloRunner::RunningOptions running_options;
+  CompileOptions compile_options;
+  *compile_options.executable_build_options.mutable_debug_options() =
+      debug_options;
+
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRun(
+      *client, debug_options, preproc_options, compile_options, running_options,
+      {GetHloPath("single_device.hlo")}, InputFormat::kText));
+
+  tsl::Env* env = tsl::Env::Default();
+
+  std::vector<std::string> output_files;
+  TF_ASSERT_OK(env->GetChildren(std::getenv("TEST_UNDECLARED_OUTPUTS_DIR"),
+                                &output_files));
+
+  std::vector<std::string> matching_files;
+  for (const auto& filename : output_files) {
+    if (absl::EndsWith(filename, ".hlo_unoptimized_snapshot.pb")) {
+      matching_files.push_back(tsl::io::JoinPath(
+          std::getenv("TEST_UNDECLARED_OUTPUTS_DIR"), filename));
+    }
+  }
+
+  // There should be exactly one hlo_unoptimized_snapshot.pb file.
+  ASSERT_THAT(matching_files, SizeIs(1));
+
+  std::string output;
+  TF_ASSERT_OK(ReadFileToString(env, matching_files[0], &output));
+
+  tsl::protobuf::io::ArrayInputStream input_stream(output.data(),
+                                                   output.size());
+
+  TF_ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot snapshot,
+                          DeserializeHloUnoptimizedSnapshot(&input_stream));
+
+  // The HLO module should be unoptimized, therefore it should not have a
+  // schedule.
+  EXPECT_FALSE(snapshot.hlo_module().has_schedule());
 }
 
 }  // namespace
