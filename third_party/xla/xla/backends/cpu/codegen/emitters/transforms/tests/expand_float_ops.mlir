@@ -32,3 +32,20 @@ module {
 // CHECK-NOT: math.erf
 // CHECK: %[[ERF_CALL:.*]] = call @erf
 // CHECK: return %[[ERF_CALL]]
+
+// -----
+
+module {
+  func.func @cbrt(%arg0: f64) -> f64 {
+    %ret = math.cbrt %arg0 fastmath<reassoc> : f64 
+    return %ret : f64
+  }
+}
+
+// CHECK: @cbrt(%[[ARG:.*]]: f64) -> f64
+// CHECK-NOT: math.cbrt
+// CHECK-DAG: %[[CONSTANT:.*]] = arith.constant 0.3333333
+// CHECK: %[[ABS:.*]] = math.absf %[[ARG]] fastmath<reassoc> : f64
+// CHECK: %[[CBRT_ABS:.*]] = math.powf %[[ABS]], %[[CONSTANT]] fastmath<reassoc> : f64
+// CHECK: %[[CBRT_SIGNED:.*]] = math.copysign %[[CBRT_ABS]], %[[ARG]] fastmath<reassoc> : f64
+// CHECK: return %[[CBRT_SIGNED]]
