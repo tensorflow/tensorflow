@@ -407,7 +407,7 @@ absl::Status HeapSimulator::RunComputation(
         // We don't support sharing an aliased buffer
         // (hlo_buffer->values().size() > 1) with its operand.
         for (const HloInstruction* operand : value->instruction()->operands()) {
-          const HloValueSet operand_value_set =
+          const HloValueSet& operand_value_set =
               dataflow_analysis.GetValueSet(operand);
           for (const HloValue* operand_value : operand_value_set.values()) {
             const HloBuffer* operand_buffer =
