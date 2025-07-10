@@ -206,6 +206,16 @@ class FullyConnectedDelegate : public SimpleDelegateInterface {
     const TfLiteTensor* bias = node->inputs->size > 2 ? GetInput(context, node, 2) : nullptr;
     const TfLiteTensor* output = GetOutput(context, node, 0);
     
+    // Reject dynamic tensors
+    if (input->allocation_type == kTfLiteDynamic ||
+        weights->allocation_type == kTfLiteDynamic ||
+        output->allocation_type == kTfLiteDynamic ||
+        (bias && bias->allocation_type == kTfLiteDynamic)) {
+      TF_LITE_KERNEL_LOG(context, " Dynamic tensor detected — rejecting.");
+      return false;
+    }
+
+
     // Debug logging to show the shapes of input, weights, and output tensors.
     TF_LITE_KERNEL_LOG(context, 
     "FullyConnectedDelegate: Input shape = [%d x %d], Weights shape = [%d x %d], Output shape = [%d x %d]",
