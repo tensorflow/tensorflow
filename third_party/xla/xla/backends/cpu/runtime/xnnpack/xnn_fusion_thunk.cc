@@ -247,8 +247,10 @@ absl::StatusOr<XnnFusionThunk::XnnRuntime> XnnFusionThunk::CreateXnnRuntime(
   }
 
   if (options_.use_slinky) {
-    const uint32_t flags =
-        XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS;
+    uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS;
+#ifndef NDEBUG
+    flags |= XNN_FLAG_SLINKY_NO_CHECKS;
+#endif
     XNN_RETURN_IF_ERROR(xnn_create_runtime_with_scheduler(
         runtime.subgraph, /*weights_cache=*/nullptr, runtime.scheduler.get(),
         flags, &runtime.runtime));
@@ -292,8 +294,10 @@ absl::Status XnnFusionThunk::UpdateXnnRuntime(
                                                            arguments_buffers));
 
   if (options_.use_slinky) {
-    const uint32_t flags =
-        XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS;
+    uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS;
+#ifndef NDEBUG
+    flags |= XNN_FLAG_SLINKY_NO_CHECKS;
+#endif
     XNN_RETURN_IF_ERROR(xnn_create_runtime_with_scheduler(
         runtime.subgraph, /*weights_cache=*/nullptr, runtime.scheduler.get(),
         flags, &runtime.runtime));
