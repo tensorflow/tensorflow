@@ -48,14 +48,14 @@ TfLiteRegistration GetDelegateKernelRegistration(
         reinterpret_cast<const TfLiteDelegateParams*>(buffer);
     if (params == nullptr) {
       TF_LITE_KERNEL_LOG(context, "NULL TfLiteDelegateParams passed.");
-      return TfLiteKernelInitFailed();
+      return nullptr;
     }
     auto* delegate =
         reinterpret_cast<SimpleDelegateInterface*>(params->delegate->data_);
     std::unique_ptr<SimpleDelegateKernelInterface> delegate_kernel(
         delegate->CreateDelegateKernelInterface());
     if (delegate_kernel->Init(context, params) != kTfLiteOk) {
-      return TfLiteKernelInitFailed();
+      return nullptr;
     }
     return delegate_kernel.release();
   };

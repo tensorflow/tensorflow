@@ -1130,19 +1130,6 @@ TfLiteStatus Subgraph::AddNodeWithParameters(
   auto& node_and_reg = nodes_and_registration_.back();
   TfLiteNode& node = node_and_reg.first;
 
-  if (init_data) {
-    node.user_data = OpInit(*registration, init_data, init_data_size);
-  } else {
-    node.user_data = OpInit(
-        *registration, static_cast<const char*>(builtin_data_deleter.get()), 0);
-  }
-  if (node.user_data == TfLiteKernelInitFailed()) {
-    // Delegate kernels may fail to initialize. Return an error to the caller in
-    // this case.
-    node.user_data = nullptr;
-    ReportError("Failed to initialize kernel.");
-    return kTfLiteError;
-  }
   // NOTE, here we are not using move semantics yet, since our internal
   // representation isn't std::vector, but in the future we would like to avoid
   // copies, so we want the interface to take r-value references now.
@@ -1150,6 +1137,13 @@ TfLiteStatus Subgraph::AddNodeWithParameters(
   node.outputs = ConvertVectorToTfLiteIntArray(outputs);
   node.intermediates = ConvertVectorToTfLiteIntArray(intermediates);
   node.temporaries = TfLiteIntArrayCreate(0);
+  if (init_data) {
+    node.user_data = OpInit(*registration, init_data, init_data_size);
+  } else {
+    node.user_data = OpInit(
+        *registration, static_cast<const char*>(builtin_data_deleter.get()), 0);
+  }
+
   node.builtin_data = builtin_data_deleter.release();
 
   if (registration->builtin_code == BuiltinOperator_CUSTOM) {
@@ -2344,11 +2338,11 @@ TfLiteStatus Subgraph::ReplaceNodeWithSubgraph(
     int cloned_node_index = -1;
     // Note: it is safe to pass &decom_reg because it will be **copied**
     // into the new node.
-    TF_LITE_ENSURE_STATUS(AddNodeWithParameters(
-        node_inputs, node_outputs, node_intermediates,
-        (const char*)decomp_node.custom_initial_data,
-        decomp_node.custom_initial_data_size, cloned_node_builtin_data,
-        &decom_reg, &cloned_node_index));
+    AddNodeWithParameters(node_inputs, node_outputs, node_intermediates,
+                          (const char*)decomp_node.custom_initial_data,
+                          decomp_node.custom_initial_data_size,
+                          cloned_node_builtin_data, &decom_reg,
+                          &cloned_node_index);
     // AddNodeWithParameter adds the node to the execution plan which we
     // don't want.
     execution_plan_.pop_back();
