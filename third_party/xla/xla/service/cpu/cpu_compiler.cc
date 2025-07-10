@@ -517,6 +517,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       module->config().debug_options().xla_cpu_use_fusion_emitters();
   bool use_shardy_partitioner = module->config().use_shardy_partitioner();
   bool is_onednn_compatible = false;
+  bool flatten_before_fusion = !options::FlattenAfterFusion(module->config());
+
   if (num_partitions > 1) {
     if (!module->config().use_spmd_partitioning()) {
       return InvalidArgument(
@@ -545,7 +547,9 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   } else {
     HloPassPipeline sharding_removal_pipeline("sharding-removal");
     AddHloVerifier(&sharding_removal_pipeline);
-    sharding_removal_pipeline.AddPass<FlattenCallGraph>();
+    if (flatten_before_fusion) {
+      sharding_removal_pipeline.AddPass<FlattenCallGraph>();
+    }
     // Remove redundant sharding ops when partition_count == 1.
     sharding_removal_pipeline.AddPass<ShardingRemover>();
     // Run ShardyXLA without propagation, which enforces use-tuple-args.
@@ -805,9 +809,10 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // we can avoid running the loop condition computations.
   pipeline.AddPass<WhileLoopTripCountAnnotator>();
 
-  // Layout assignment uses alias analysis, which requires the call graph to be
-  // flattened.
-  pipeline.AddPass<FlattenCallGraph>();
+  if (flatten_before_fusion) {
+    pipeline.AddPass<FlattenCallGraph>();
+  }
+
   ChannelLayoutConstraints layout_constraints;
   pipeline.AddPass<CpuLayoutAssignment>(
       module->mutable_entry_computation_layout(), target_machine_features,
@@ -834,6 +839,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   const bool is_fusion_emitters =
       is_thunk_runtime && debug_options.xla_cpu_use_fusion_emitters();
   bool is_onednn_compatible = false;
+  bool flatten_after_fusion = options::FlattenAfterFusion(module->config());
   HloPassPipeline pipeline("HLO passes after layout assignment");
 
   {
@@ -887,6 +893,11 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pipeline.AddPass<FusionWrapper>();
   }
 
+  if (flatten_after_fusion) {
+    pipeline.AddPass<FlattenCallGraph>();
+    pipeline.AddPass<CallInliner>(/*single_call_site=*/true);
+  }
+
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   // Run this to a fixed point.
@@ -923,6 +934,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pipeline.AddPass<ParallelTaskAssigner>(
         max_parallelism, ShapeSizeBytesFunction(), target_machine_features);
   }
+
   // Copy insertion should be performed immediately before IR emission to
   // avoid inserting unnecessary copies (later pass adds an instruction which
   // materializes the value) or missing a necessary copy (later pass removes
