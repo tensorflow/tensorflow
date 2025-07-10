@@ -36,6 +36,7 @@ cc_library(
         "expand_float_ops.cc",
         "lower_to_llvm.cc",
         "lower_xla_shared.cc",
+        "peel_workgroup_loop.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
@@ -44,6 +45,9 @@ cc_library(
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/codegen/emitters:implicit_arith_op_builder",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/hlo/analysis:indexing_analysis",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:DataLayoutInterfaces",
