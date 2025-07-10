@@ -30,6 +30,25 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+// Table lookup is a specific HLO pattern used to retrieve a value from
+// a constant array (the "table") using a dynamic index, which is often derived
+// from a device's partition-id/replica-id/flattened-id.
+// This mechanism allows for flexible, non-arithmetic mappings from a device ID
+// to a specific value, such as a memory offset.
+
+// A table lookup consists of:
+//  - The "Table": A 1-dimensional constant array (HloOpcode::kConstant)
+//    or an HloOpcode::kIota instruction. This array holds the values to
+//    be looked up.
+//  - The "Lookup": An HloOpcode::kDynamicSlice instruction that extracts
+//    an element from the table. The start index for the slice is computed
+//    dynamically, often based on a device identifier.
+
+// The compiler can identify this pattern even if it's wrapped by operations
+// that don't change the data representation, e.g. kBitcast/kReshape/kCopy.
+
+// Returns true if the given HLO instruction is a table lookup.
 bool IsTableLookup(const HloInstruction* hlo) {
   while (hlo->opcode() == HloOpcode::kBitcast ||
          hlo->opcode() == HloOpcode::kReshape ||
@@ -59,6 +78,10 @@ std::optional<int64_t> GetScalarInt64Value(const HloInstruction* constant) {
 using MapIdToTableOffset =
     std::function<int64_t(const HloInstruction*, int64_t)>;
 
+// Computes an index into a lookup table for a given device
+// ID (partition-id/replica-id/flattened-id) recursively.
+// This function resolves an index value that may be computed directly from a
+// device ID or indirectly through one or more table lookups.
 int64_t GetIndexForId(const HloInstruction* index, int64_t id,
                       const MapIdToTableOffset& map_id) {
   // ID itself.
@@ -143,7 +166,12 @@ bool IsPerIdOffsets(absl::Span<const HloInstruction*> offsets,
   return true;
 }
 
-// Returns if `offset` == shard_size * id.
+// Checks that `offset` used in dynamic-slice matches the sequential sharding
+// across devices within the same replica group.
+// Specifically, it checks if the offset for j-th device in a replica group
+// is exactly equal to shard_size * j.
+// `shard_size` is the dynamic_slice_sizes on split dimension.
+// `group_size` is the number of devices in a replica group.
 bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
                    const MapIdToTableOffset& map_id, int64_t group_size,
                    const HloInstruction* instruction, bool is_cross_module,
