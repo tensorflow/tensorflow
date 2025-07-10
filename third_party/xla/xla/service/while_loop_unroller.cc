@@ -1223,8 +1223,18 @@ std::optional<int64_t> AdvancedMatchShapeCoveringDynamicIndexInstruction(
   bool changed = false;
   TF_ASSIGN_OR_RETURN(
       bool applied_cse,
-      HloCSE(/*is_layout_sensitive=*/true, /*only_fusion_computations=*/false,
-             /*ignore_control_dependencies=*/false, /*only_scalars=*/true)
+      HloCSE(/*is_layout_sensitive=*/true,
+             /*ignore_control_dependencies=*/false,
+             /*should_eliminate_computation=*/nullptr,
+             /*should_eliminate_instruction=*/
+             [](const HloInstruction* instruction) {
+               return HloCSE::ShouldEliminateInstruction(instruction) &&
+                      ShapeUtil::IsScalar(instruction->shape());
+             },
+             /*should_combine_constant=*/
+             [](const HloInstruction* instruction) {
+               return ShapeUtil::IsScalar(instruction->shape());
+             })
           .Run(module, execution_threads));
   if (applied_cse) {
     changed = true;
