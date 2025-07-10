@@ -1,3 +1,8 @@
+#include <cstdint>
+
+#include "llvm/ExecutionEngine/JITEventListener.h"
+#include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "xla/primitive_util.h"
 /* Copyright 2025 The OpenXLA Authors.
 
@@ -73,7 +78,6 @@ class JitRunner {
  public:
   explicit JitRunner(std::unique_ptr<llvm::Module> module,
                      std::unique_ptr<llvm::LLVMContext> context);
-  ~JitRunner();
 
   template <typename FnType>
   FnType* GetScalarFn(const std::string& function_name) {
@@ -83,27 +87,25 @@ class JitRunner {
                  << llvm::toString(function_sym.takeError());
     }
 
-    return tsl::safe_reinterpret_cast<FnType*>(function_sym->getValue());
+    FnType* fn = reinterpret_cast<FnType*>(function_sym->getValue());
+    return fn;
   }
 
   // Compiles a JITted function that operates on vectors.
   // The original function is expected to have a signature like:
   //   <VectorSize x RetType> func(<VectorSize x Arg1Type>, <VectorSize x
   //   Arg2Type>, ...)
-  // This function creates a wrapper that bridges the gap between C++ array
-  // types and LLVM vector types. The returned std::function has a signature
-  // like:
-  //   std::array<RetType, VectorSize> (const std::array<ArgTypes,
-  //   VectorSize>&...)
   template <size_t VectorSize, typename RetType, typename... ArgTypes>
   std::function<std::array<RetType, VectorSize>(
       const std::array<ArgTypes, VectorSize>&...)>
-  GetVectorizedFn(const std::string& original_function_name) {
+  GetVectorizedFn(const std::string& original_function_name,
+                  size_t iteration_count = 1) {
     // Define the C++ pointer type for the JIT-compiled wrapper function.
-    using WrapperFnPtrType = void (*)(RetType*, const ArgTypes*...);
+    using WrapperFnPtrType =
+        void (*)(RetType*, size_t, size_t, const ArgTypes*...);
 
     // Create and compile the wrapper function that handles the vector ABI.
-    llvm::Expected<void*> wrapper_ptr_or_err = CreateVectorWrapperFunction(
+    llvm::Expected<void*> wrapper_ptr_or_err = CreateVectorWrapperWithLoop(
         original_function_name, VectorSize,
         primitive_util::NativeToPrimitiveType<RetType>(),
         {primitive_util::NativeToPrimitiveType<ArgTypes>()...});
@@ -113,10 +115,10 @@ class JitRunner {
                  << original_function_name
                  << "': " << llvm::toString(std::move(e));
     }
-    auto wrapper_ptr =
-        tsl::safe_reinterpret_cast<WrapperFnPtrType>(*wrapper_ptr_or_err);
+    auto wrapper_ptr = reinterpret_cast<WrapperFnPtrType>(*wrapper_ptr_or_err);
 
-    return [wrapper_ptr](const std::array<ArgTypes, VectorSize>&... args) {
+    return [wrapper_ptr,
+            iteration_count](const std::array<ArgTypes, VectorSize>&... args) {
       alignas(32) std::array<RetType, VectorSize> result_array;
       // MSAN doesn't instrument JIT-compiled code, so we need to annotate this.
       ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
@@ -129,7 +131,7 @@ class JitRunner {
           internal::AlignedArrayWrapper<ArgTypes, VectorSize>{args}...);
       std::apply(
           [&](const auto&... single_arg_wrapper) {
-            wrapper_ptr(result_array.data(),
+            wrapper_ptr(result_array.data(), iteration_count, VectorSize,
                         single_arg_wrapper.array.data()...);
           },
           aligned_args_tuple);
@@ -140,9 +142,11 @@ class JitRunner {
 
  private:
   std::unique_ptr<llvm::orc::LLJIT> jit_;
+  std::unique_ptr<llvm::orc::ThreadSafeContext> tsc_;
+  std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer> object_layer_;
+  llvm::JITEventListener* perf_listener_ = nullptr;
 
-  // Private helper method to create and JIT the wrapper function
-  llvm::Expected<void*> CreateVectorWrapperFunction(
+  llvm::Expected<void*> CreateVectorWrapperWithLoop(
       const std::string& original_function_name, size_t vector_size,
       PrimitiveType ret_type, std::vector<PrimitiveType> arg_types);
 };
