@@ -229,6 +229,7 @@ enum StatType {
   kElementId,
   kParentId,
   kCoreType,
+  kInputPipelineStageName,
   // XPlane semantics related.
   kProducerType,
   kConsumerType,
