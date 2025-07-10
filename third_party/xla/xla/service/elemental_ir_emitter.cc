@@ -54,6 +54,7 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "xla/codegen/math/fptrunc.h"
+#include "xla/codegen/math/intrinsic.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -82,6 +83,8 @@ using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
 using xla::float8_fnuz_ir_emitter::EmitF8fnuzToFloating;
 using xla::float8_fnuz_ir_emitter::EmitFloatingToF8fnuz;
+
+using Intrinsic = xla::codegen::Intrinsic;
 
 absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
     PrimitiveType src_ty, llvm::Value* x, int64_t dest_exponent_bits,
@@ -1289,15 +1292,6 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
   }
 }
 
-static llvm::Function* GetOrCreateDeclaration(llvm::Module* module,
-                                              llvm::StringRef name,
-                                              llvm::Type* return_type,
-                                              llvm::Type* arg_type) {
-  auto* function_type = llvm::FunctionType::get(return_type, {arg_type}, false);
-  return llvm::cast<llvm::Function>(
-      module->getOrInsertFunction(name, function_type).getCallee());
-}
-
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
     const HloInstruction* op, llvm::Value* operand_value) {
   switch (op->opcode()) {
@@ -1315,12 +1309,9 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       // This is enabled explicitly by a flag only for XLA:CPU backend.
       if (options_.xla_cpu_use_truncate_f32_to_bf16_conversion) {
         if (from_type == F32 && to_type == BF16) {
-          llvm::Type* from = b_->getFloatTy();
-          llvm::Type* to = b_->getBFloatTy();
-          llvm::Function* fptrunc = GetOrCreateDeclaration(
-              module_, codegen::math::FptruncFunctionName(1, F32, BF16, false),
-              to, from);
-
+          llvm::Function* fptrunc =
+              Intrinsic::GetOrInsertDeclaration<Intrinsic::FpTrunc>(module_,
+                                                                    F32, BF16);
           return b_->CreateCall(fptrunc, {operand_value});
         }
         if (from_type == BF16 && to_type == F32) {

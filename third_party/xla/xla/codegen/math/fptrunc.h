@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
-#include "absl/strings/str_cat.h"
 #include "llvm/IR/Function.h"
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/xla_data.pb.h"
@@ -29,15 +28,13 @@ namespace xla::codegen {
 
 class Intrinsic::FpTrunc {
  public:
-  static std::string Name(PrimitiveType t0, PrimitiveType t1) {
-    return absl::StrCat("xla.fptrunc.", ScalarName(t0), ".to.", ScalarName(t1));
-  }
-
+  static std::string Name(PrimitiveType t0, PrimitiveType t1);
   static std::string Name(PrimitiveType t0, PrimitiveType t1,
-                          int64_t vector_width) {
-    return absl::StrCat("xla.fptrunc.", VectorName(t0, vector_width), ".to.",
-                        VectorName(t1, vector_width));
-  }
+                          int64_t vector_width);
+
+  static llvm::Function* GetOrInsertDeclaration(llvm::Module* module,
+                                                PrimitiveType t0,
+                                                PrimitiveType t1);
 };
 
 namespace math {

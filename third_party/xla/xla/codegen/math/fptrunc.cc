@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/codegen/math/fptrunc.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 
 #include "absl/log/check.h"
@@ -30,9 +31,33 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Casting.h"
+#include "xla/codegen/math/intrinsic.h"
 #include "xla/primitive_util.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 
-namespace xla::codegen::math {
+namespace xla::codegen {
+
+std::string Intrinsic::FpTrunc::Name(PrimitiveType t0, PrimitiveType t1) {
+  return absl::StrCat("xla.fptrunc.", ScalarName(t0), ".to.", ScalarName(t1));
+}
+
+std::string Intrinsic::FpTrunc::Name(PrimitiveType t0, PrimitiveType t1,
+                                     int64_t vector_width) {
+  return absl::StrCat("xla.fptrunc.", VectorName(t0, vector_width), ".to.",
+                      VectorName(t1, vector_width));
+}
+
+llvm::Function* Intrinsic::FpTrunc::GetOrInsertDeclaration(llvm::Module* module,
+                                                           PrimitiveType t0,
+                                                           PrimitiveType t1) {
+  auto* from_type = llvm_ir::PrimitiveTypeToIrType(t0, module->getContext());
+  auto* to_type = llvm_ir::PrimitiveTypeToIrType(t1, module->getContext());
+  auto* function_type = llvm::FunctionType::get(to_type, {from_type}, false);
+  return llvm::cast<llvm::Function>(
+      module->getOrInsertFunction(Name(t0, t1), function_type).getCallee());
+}
+
+namespace math {
 
 std::string FptruncFunctionName(size_t num_elements, PrimitiveType from,
                                 PrimitiveType to, bool add_suffix) {
@@ -130,4 +155,5 @@ llvm::Function* CreateFptruncF32ToBf16(llvm::Module* module,
   return func;
 }
 
-}  // namespace xla::codegen::math
+}  // namespace math
+}  // namespace xla::codegen

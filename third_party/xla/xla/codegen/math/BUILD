@@ -28,6 +28,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Core",
     ],
 )
 
@@ -39,6 +40,7 @@ cc_library(
         ":intrinsic",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Core",  # buildcleaner: keep

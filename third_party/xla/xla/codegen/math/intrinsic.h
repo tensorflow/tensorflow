@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "llvm/IR/Function.h"
 #include "xla/primitive_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -84,6 +85,21 @@ class Intrinsic {
   static std::string Name(PrimitiveType t0, PrimitiveType t1,
                           int64_t vector_width) {
     return Intrinsic::Name(t0, t1, vector_width);
+  }
+
+  // Returns the declaration of the scalar intrinsic for the given data type.
+  template <typename Intrinsic>
+  static llvm::Function* GetOrInsertDeclaration(llvm::Module* module,
+                                                PrimitiveType t0) {
+    return Intrinsic::GetOrInsertDeclaration(module, t0);
+  }
+
+  // Returns the declaration of the scalar intrinsic for the given data types.
+  template <typename Intrinsic>
+  static llvm::Function* GetOrInsertDeclaration(llvm::Module* module,
+                                                PrimitiveType t0,
+                                                PrimitiveType t1) {
+    return Intrinsic::GetOrInsertDeclaration(module, t0, t1);
   }
 
  private:
