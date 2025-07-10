@@ -653,13 +653,21 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesInternal(
   TF_RETURN_IF_ERROR(verifier().Run(module_0.get()).status());
   TF_RETURN_IF_ERROR(verifier().Run(module_1.get()).status());
 
-  // Execute the two modules.
+  // Compile and execute the two modules. We compile both before running either
+  // to allow caching to work better.
   TF_ASSIGN_OR_RETURN(
-      const Literal test_0,
-      test_runner_->Execute(std::move(module_0), arguments, run_hlo_passes));
+      const std::unique_ptr<OpaqueExecutable> executable_0,
+      test_runner_->CreateExecutable(std::move(module_0), run_hlo_passes));
   TF_ASSIGN_OR_RETURN(
-      const Literal test_1,
-      test_runner_->Execute(std::move(module_1), arguments, run_hlo_passes));
+      const std::unique_ptr<OpaqueExecutable> executable_1,
+      test_runner_->CreateExecutable(std::move(module_1), run_hlo_passes));
+
+  TF_ASSIGN_OR_RETURN(const Literal test_0, test_runner_->ExecuteWithExecutable(
+                                                executable_0.get(), arguments,
+                                                /*profile=*/nullptr));
+  TF_ASSIGN_OR_RETURN(const Literal test_1, test_runner_->ExecuteWithExecutable(
+                                                executable_1.get(), arguments,
+                                                /*profile=*/nullptr));
 
   return LiteralTestUtil::NearOrEqual(/*expected=*/test_0, /*actual=*/test_1,
                                       error);
