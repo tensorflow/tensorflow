@@ -427,14 +427,15 @@ class FullyConnectedDelegate : public SimpleDelegateInterface {
   }
 
   SimpleDelegateInterface::Options DelegateOptions() const override {
-    // Configure delegate options to handle mixed graphs with dynamic tensors
+    // Configure delegate to handle graphs with dynamic tensors
+    // This allows the delegate to be applied even when the graph contains
+    // dynamic tensors (e.g., from LSTM operations), enabling selective
+    // node support for static fully connected layers
     SimpleDelegateInterface::Options options;
-    
-    // Allow this delegate to work with graphs that contain dynamic tensors
-    // The delegate will only handle the specific nodes it supports (fully connected)
-    // and ignore the dynamic tensors from other operations (like LSTM)
-    options.max_delegated_partitions = 10;  // Allow multiple partitions
-    
+    options.max_delegated_partitions = 100;  // Allow multiple partitions
+    options.min_nodes_per_partition = 1;     // Allow single-node partitions
+    // This is the key setting - allow dynamic tensors
+    options.allow_dynamic_tensors = true;
     return options;
   }
 
