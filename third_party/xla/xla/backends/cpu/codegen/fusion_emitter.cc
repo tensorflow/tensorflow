@@ -71,8 +71,8 @@ static absl::StatusOr<std::string> GetName(const HloFusionInstruction& fusion,
 static emitters::KernelArguments::BufferAlignment GetDefaultBufferAlignment() {
   emitters::KernelArguments::BufferAlignment buffer_alignment;
   buffer_alignment.entry_parameter_align_bytes = MinAlign();
-  buffer_alignment.xla_allocated_buffer_align_bytes = Align();
-  buffer_alignment.constant_buffer_align_bytes = Align();
+  buffer_alignment.xla_allocated_buffer_align_bytes = MinAlign();
+  buffer_alignment.constant_buffer_align_bytes = MinAlign();
 
   return buffer_alignment;
 }
