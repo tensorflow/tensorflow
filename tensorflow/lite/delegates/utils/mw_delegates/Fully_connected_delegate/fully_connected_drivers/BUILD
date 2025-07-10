@@ -23,7 +23,7 @@ cc_library(
 
 cc_binary(
     name = "fully_connected_fpga_test_bram",
-    srcs = ["main.cpp"],
+    srcs = ["main_bram_test.cpp"],
     deps = [":fully_connected_drivers"],
     linkopts = ["-lrt", "-lpthread"],
     copts = tflite_copts(),
