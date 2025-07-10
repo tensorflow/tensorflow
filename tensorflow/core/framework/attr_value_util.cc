@@ -15,21 +15,41 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value_util.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <functional>
+#include <initializer_list>
+#include <map>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/strip.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/attr_value.pb_text.h"
-#include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/hash.h"
+#include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
@@ -190,9 +210,9 @@ string SummarizeString(const string& str) {
     absl::string_view suffix = prefix;
     prefix.remove_suffix(escaped.size() - 10);
     suffix.remove_prefix(escaped.size() - 10);
-    return strings::StrCat("\"", prefix, "...", suffix, "\"");
+    return absl::StrCat("\"", prefix, "...", suffix, "\"");
   } else {
-    return strings::StrCat("\"", escaped, "\"");
+    return absl::StrCat("\"", escaped, "\"");
   }
 }
 
@@ -205,10 +225,9 @@ string SummarizeTensor(const TensorProto& tensor_proto) {
   ) {
     // Do not load large or unknown-shape Tensor to compute detailed
     // DebugString()
-    return strings::StrCat("<TensorProto: ", tensor_proto.ShortDebugString(),
-                           ">");
+    return absl::StrCat("<TensorProto: ", tensor_proto.ShortDebugString(), ">");
   } else if (!t.FromProto(tensor_proto)) {
-    return strings::StrCat(
+    return absl::StrCat(
         "<Invalid TensorProto: ", tensor_proto.ShortDebugString(), ">");
   }
   return t.DebugString();
@@ -217,11 +236,10 @@ string SummarizeTensor(const TensorProto& tensor_proto) {
 string SummarizeFunc(const NameAttrList& func) {
   std::vector<string> entries;
   for (const auto& p : func.attr()) {
-    entries.push_back(
-        strings::StrCat(p.first, "=", SummarizeAttrValue(p.second)));
+    entries.push_back(absl::StrCat(p.first, "=", SummarizeAttrValue(p.second)));
   }
   std::sort(entries.begin(), entries.end());
-  return strings::StrCat(func.name(), "[", absl::StrJoin(entries, ", "), "]");
+  return absl::StrCat(func.name(), "[", absl::StrJoin(entries, ", "), "]");
 }
 
 bool ParseAttrValueHelper_TensorNestsUnderLimit(int limit, string to_parse) {
@@ -279,9 +297,9 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
     case AttrValue::kS:
       return SummarizeString(attr_value.s());
     case AttrValue::kI:
-      return strings::StrCat(attr_value.i());
+      return absl::StrCat(attr_value.i());
     case AttrValue::kF:
-      return strings::StrCat(attr_value.f());
+      return absl::StrCat(strings::LegacyPrecision(attr_value.f()));
     case AttrValue::kB:
       return attr_value.b() ? "true" : "false";
     case AttrValue::kType:
@@ -298,11 +316,12 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
         }
       } else if (attr_value.list().i_size() > 0) {
         for (int i = 0; i < attr_value.list().i_size(); ++i) {
-          pieces.push_back(strings::StrCat(attr_value.list().i(i)));
+          pieces.push_back(absl::StrCat(attr_value.list().i(i)));
         }
       } else if (attr_value.list().f_size() > 0) {
         for (int i = 0; i < attr_value.list().f_size(); ++i) {
-          pieces.push_back(strings::StrCat(attr_value.list().f(i)));
+          pieces.push_back(
+              absl::StrCat(strings::LegacyPrecision(attr_value.list().f(i))));
         }
       } else if (attr_value.list().b_size() > 0) {
         for (int i = 0; i < attr_value.list().b_size(); ++i) {
@@ -334,17 +353,17 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
             Fingerprint64(absl::StrJoin(pieces.begin(), pieces.end(), ","));
         pieces.erase(pieces.begin() + 5, pieces.end() - 6);
         pieces[5] = "...";
-        return strings::StrCat("[", absl::StrJoin(pieces, ", "),
-                               "]{attr_hash=", fingerprint, "}");
+        return absl::StrCat("[", absl::StrJoin(pieces, ", "),
+                            "]{attr_hash=", fingerprint, "}");
       } else {
-        return strings::StrCat("[", absl::StrJoin(pieces, ", "), "]");
+        return absl::StrCat("[", absl::StrJoin(pieces, ", "), "]");
       }
     }
     case AttrValue::kFunc: {
       return SummarizeFunc(attr_value.func());
     }
     case AttrValue::kPlaceholder:
-      return strings::StrCat("$", attr_value.placeholder());
+      return absl::StrCat("$", attr_value.placeholder());
     case AttrValue::VALUE_NOT_SET:
       return "<Unknown AttrValue type>";
   }
@@ -501,9 +520,9 @@ bool ParseAttrValue(absl::string_view type, absl::string_view text,
       out->mutable_list();
       return true;
     }
-    to_parse = strings::StrCat("list { ", field_name, ": ", text, " }");
+    to_parse = absl::StrCat("list { ", field_name, ": ", text, " }");
   } else {
-    to_parse = strings::StrCat(field_name, ": ", text);
+    to_parse = absl::StrCat(field_name, ": ", text);
   }
   if (field_name == "tensor") {
     if (!ParseAttrValueHelper_TensorNestsUnderLimit(kMaxTensorNestDepth,
