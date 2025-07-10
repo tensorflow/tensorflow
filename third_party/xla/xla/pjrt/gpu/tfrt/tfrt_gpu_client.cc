@@ -3228,8 +3228,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
           return;
         }
 
-        // TODO: Use the destination device stream for D2D copies.
-        auto stream = src_device->stream();
+        auto stream = dst_device->stream();
+
         se::DeviceMemoryBase dst(allocated_dst_buffer->buffer());
         VLOG(3) << "D2D copy: " << src_buffer->buffer().opaque() << " -> "
                 << dst.opaque() << " (" << src_buffer->buffer().size()
@@ -3255,7 +3255,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
       };
 
   EnqueueWorkWhenReady(client_->blocking_thread_pool(),
-                       {src_device_buffer->definition_event().CopyRCRef()},
+                       {src_device_buffer->ready_event().CopyRCRef()},
                        std::move(transfer_d2d));
   return output_buffer;
 }
