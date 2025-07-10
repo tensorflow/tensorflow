@@ -81,7 +81,7 @@ int32_t FullyConnectedIpDriver::read_from_fpga(const std::string& reg_name) {
     return *ptr;
 }
 
-void FullyConnectedIpDriver::fpga_compute(int32_t input_size, int32_t output_size) {
+int FullyConnectedIpDriver::fpga_compute(int32_t input_size, int32_t output_size) {
     write_to_fpga("input_size", input_size);
     write_to_fpga("output_size", output_size);
     
@@ -98,8 +98,9 @@ void FullyConnectedIpDriver::fpga_compute(int32_t input_size, int32_t output_siz
         }
     } while ((ctrl_val & (1 << 1)) == 0); // check for done bit.
 
-    write_to_fpga("control_register", CONTROL_CONTINUE); // Continue computation
+    write_to_fpga("control_register", CONTROL_CONTINUE); // Clear done bit by writing CONTROL_CONTINUE
 
+    return 0; // Success
 }
 
 

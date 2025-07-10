@@ -29,50 +29,88 @@ namespace fully_connected {
 class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
  public:
   explicit FullyConnectedDelegateKernel(const FullyConnectedDelegateOptions& options)
-      : options_(options), fpga_ip_driver_(std::make_unique<FpgaIpDriver>()), fpga_bram_driver_(std::make_unique<FullyConnectedBRAMDriver>()) {}
+      : options_(options), fpga_ip_driver_(std::make_unique<FullyConnectedIpDriver>()), fpga_bram_driver_(std::make_unique<FullyConnectedBRAMDriver>()) {}
 
+
+  // Lifecycle methods for the delegate kernel.
+  // Init is called once per delegate, and is used to initialize the delegate
+  // with the parameters provided in TfLiteDelegateParams.
+  // It is called during model initialization and delegate planning.
+  // It should not be used for any heavy computation or resource allocation.
   TfLiteStatus Init(TfLiteContext* context,
                     const TfLiteDelegateParams* params) override {
-    // Save index to all nodes which are part of this delegate.
-    inputs_.resize(params->nodes_to_replace->size);
-    outputs_.resize(params->nodes_to_replace->size);
-    builtin_code_.resize(params->nodes_to_replace->size);
-    for (int i = 0; i < params->nodes_to_replace->size; ++i) {
-      const int node_index = params->nodes_to_replace->data[i];
-      // Get this node information.
-      TfLiteNode* delegated_node = nullptr;
-      TfLiteRegistration* delegated_node_registration = nullptr;
-      TF_LITE_ENSURE_EQ(
-          context,
-          context->GetNodeAndRegistration(context, node_index, &delegated_node,
-                                          &delegated_node_registration),
-          kTfLiteOk);
-      inputs_[i].push_back(delegated_node->inputs->data[0]);
-      inputs_[i].push_back(delegated_node->inputs->data[1]);
-      outputs_[i].push_back(delegated_node->outputs->data[0]);
-      builtin_code_[i] = delegated_node_registration->builtin_code;
-    }
-    return !options_.error_during_init ? kTfLiteOk : kTfLiteError;
+
+  // Currently assuming one node per delegate. So only one FullyConnected node
+  // is replaced by the delegate. 
+  //TODO: Support multiple nodes in the future. By looping over params->nodes_to_replace->data
+  const int node_index = params->nodes_to_replace->data[0];
+
+  TfLiteNode* node = nullptr;
+  TfLiteRegistration* registration = nullptr;
+  TF_LITE_ENSURE_EQ(context,
+                    context->GetNodeAndRegistration(context, node_index, &node, &registration),
+                    kTfLiteOk);
+
+  input_index_ = node->inputs->data[0];
+  weights_index_ = node->inputs->data[1];
+  has_bias_ = node->inputs->size > 2;
+  if (has_bias_) bias_index_ = node->inputs->data[2];
+  output_index_ = node->outputs->data[0];
+
+  activation_type_ =
+      reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data)->activation;
+
+  try {
+    bool clear_bram = false;
+      fpga_bram_driver_->initialize_bram(clear_bram);
+  } catch (const std::exception& e) {
+      TF_LITE_KERNEL_LOG(context, "BRAM initialization failed: %s", e.what());
+      return kTfLiteError;
   }
 
+  return kTfLiteOk;
+}
+
+  // Prepare is called before the delegate is invoked.
+  // It is called once per node(one instance of the delegate, i.e one FullyConnected operation).
+  // Used to validate input and output memory, Allocate BRAMS and Pre-load weights and biases as they are static for the given node.
   TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override {
-  // Check inputs
-  for (int i = 0; i < node->inputs->size; ++i) {
-    TfLiteTensor& tensor = context->tensors[node->inputs->data[i]];
-    if (tensor.allocation_type == kTfLiteDynamic) {
-      TF_LITE_KERNEL_LOG(context, "Prepare failed: dynamic input tensor #%d", node->inputs->data[i]);
-      return kTfLiteError;
-    }
+  const TfLiteTensor& input_tensor = context->tensors[input_index_];
+  const TfLiteTensor& weights_tensor = context->tensors[weights_index_];
+  const TfLiteTensor& output_tensor = context->tensors[output_index_];
+
+  if (input_tensor.allocation_type == kTfLiteDynamic ||
+      weights_tensor.allocation_type == kTfLiteDynamic ||
+      output_tensor.allocation_type == kTfLiteDynamic) {
+    TF_LITE_KERNEL_LOG(context, "Prepare failed: dynamic tensors are not supported.");
+    return kTfLiteError;
   }
 
-  // Check outputs
-  for (int i = 0; i < node->outputs->size; ++i) {
-    TfLiteTensor& tensor = context->tensors[node->outputs->data[i]];
-    if (tensor.allocation_type == kTfLiteDynamic) {
-      TF_LITE_KERNEL_LOG(context, "Prepare failed: dynamic output tensor #%d", node->outputs->data[i]);
+  // Write weights to BRAM
+  if (fpga_bram_driver_->write_weights_to_bram(weights_tensor.data.i32, NumElements(weights_tensor.dims))) {
+    TF_LITE_KERNEL_LOG(context, "Prepare failed: failed to write weights to BRAM.");
+    return kTfLiteError;
+  }
+
+  // Write bias if available
+  if (has_bias_) {
+    const TfLiteTensor& bias_tensor = context->tensors[bias_index_];
+    if (bias_tensor.allocation_type == kTfLiteDynamic) {
+      TF_LITE_KERNEL_LOG(context, "Prepare failed: dynamic bias tensor.");
       return kTfLiteError;
     }
+
+    if (fpga_bram_driver_->write_bias_to_bram(bias_tensor.data.i32, NumElements(bias_tensor.dims))) {
+      TF_LITE_KERNEL_LOG(context, "Prepare failed: failed to write bias to BRAM.");
+      return kTfLiteError;
+    }
+
+    TF_LITE_KERNEL_LOG(context, "Weights and bias successfully written to BRAM.");
+
   }
+
+  // // Optional: clear output BRAM
+  // fpga_driver_->clear_output_bram();
 
   return kTfLiteOk;
 } 
@@ -87,59 +125,44 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
     // ''i''. Note, that it is intentional we have simple implementation as this
     // is for demonstration.
 
-    for (int i = 0; i < inputs_.size(); ++i) {
-      // Get the node input tensors.
-      // Add/Sub operation accepts 2 inputs.
-      auto& input_tensor_1 = context->tensors[inputs_[i][0]];
-      auto& input_tensor_2 = context->tensors[inputs_[i][1]];
-      auto& output_tensor = context->tensors[outputs_[i][0]];
-      TF_LITE_ENSURE_EQ(
-          context,
-          ComputeResult(context, builtin_code_[i], &input_tensor_1,
-                        &input_tensor_2, &output_tensor),
-          kTfLiteOk);
+    const TfLiteTensor& input_tensor = context->tensors[input_index_];
+    TfLiteTensor& output_tensor = context->tensors[output_index_];
+
+    const int input_size = NumElements(input_tensor.dims);
+    const int output_size = NumElements(output_tensor.dims);
+
+    // Write input tensor to input BRAM
+    if (fpga_bram_driver_->write_input_to_bram(input_tensor.data.i32, input_size)) {
+      TF_LITE_KERNEL_LOG(context, "Eval failed: failed to write input to BRAM.");
+      return kTfLiteError;
     }
 
-    return !options_.error_during_invoke ? kTfLiteOk : kTfLiteError;
-  }
+    // Trigger FPGA execution
+    if (fpga_ip_driver_->fpga_compute(input_size, output_size)) {
+      TF_LITE_KERNEL_LOG(context, "Eval failed: FPGA inference trigger failed.");
+      return kTfLiteError;
+    }
+
+    // Read output from output BRAM into output tensor
+    if (fpga_bram_driver_->read_output_from_bram(output_tensor.data.i32, output_size)) {
+      TF_LITE_KERNEL_LOG(context, "Eval failed: failed to read output from BRAM.");
+      return kTfLiteError;
+    }
+
+    return kTfLiteOk;
+}
 
  private:
   const FullyConnectedDelegateOptions options_;
+  int input_index_, weights_index_, bias_index_, output_index_;
+  bool has_bias_ = false;
+  TfLiteFusedActivation activation_type_ = kTfLiteActNone;
+
+
   std::vector<std::vector<int>> inputs_, outputs_;
   std::vector<int> builtin_code_;
-  std::unique_ptr<FpgaIpDriver> fpga_driver_;  // FPGA driver instance
-
-  TfLiteStatus ComputeResult(TfLiteContext* context, int builtin_code,
-                             const TfLiteTensor* input_tensor_1,
-                             const TfLiteTensor* input_tensor_2,
-                             TfLiteTensor* output_tensor) {
-    if (NumElements(input_tensor_1->dims) != NumElements(input_tensor_2->dims) ||
-        NumElements(input_tensor_1->dims) != NumElements(output_tensor->dims)) {
-      TF_LITE_KERNEL_LOG(context, "Input and output tensors must have the same size. In FullyConnectedDelegateKernel::ComputeResult");   
-      return kTfLiteDelegateError;
-    }
-    // This code assumes no activation, and no broadcasting needed (both inputs
-    // have the same size).
-  
-    auto* input_1 = GetTensorData<int32>(input_tensor_1);
-    auto* input_2 = GetTensorData<int32>(input_tensor_2);
-    auto* output = GetTensorData<int32>(output_tensor);
-    
-    if (!fpga_driver_) {
-      return kTfLiteDelegateError;
-    }
-    
-    int num_elements = NumElements(input_tensor_1->dims);
-    
-    // Simple example assumes 1 element per call; 
-    // You may need to extend this for batch processing by looping or modifying your FPGA IP.
-    for (int i = 0; i < num_elements; ++i) {
-      bool add_flag = (builtin_code == kTfLiteBuiltinAdd);
-      int32_t result = fpga_driver_->fpga_compute(input_1[i], input_2[i], add_flag);
-      output[i] = result;
-    }
-    return kTfLiteOk;
-  }
+  std::unique_ptr<FullyConnectedIpDriver> fpga_ip_driver_;  // FPGA driver instance
+  std::unique_ptr<FpgaBramDriver> fpga_bram_driver_;  // BRAM driver instance
 
   int NumElements(const TfLiteIntArray* dims) {
     int count = 1;

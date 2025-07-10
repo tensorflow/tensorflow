@@ -9,7 +9,7 @@
 
 #define TEST_MAIN
 
-FullyConnectedBRAMDriver::FullyConnectedBRAMDriver() : bram_dev_mem_fd(-1), 
+FpgaBramDriver::FpgaBramDriver() : bram_dev_mem_fd(-1), 
     bram_mapped_input_block(nullptr), 
     bram_mapped_weight_block(nullptr), 
     bram_mapped_bias_block(nullptr), 
@@ -27,10 +27,9 @@ FullyConnectedBRAMDriver::FullyConnectedBRAMDriver() : bram_dev_mem_fd(-1),
         bram_bias_base_address = 0x80011000;
         bram_output_base_address = 0x80012000;
 
-        initialize_bram();
 }
 
-FullyConnectedBRAMDriver::~FullyConnectedBRAMDriver() {
+FpgaBramDriver::~FpgaBramDriver() {
     if (bram_mapped_input_block != MAP_FAILED && bram_mapped_input_block != nullptr) {
         munmap(bram_mapped_input_block, bram_size_other_than_weight);
     }
@@ -48,7 +47,7 @@ FullyConnectedBRAMDriver::~FullyConnectedBRAMDriver() {
     }
 }
 
-void FullyConnectedBRAMDriver::initialize_bram() {
+void FpgaBramDriver::initialize_bram(bool clear_bram = false) {
     std::cout << "Initializing BRAM..." << std::endl;
 
     bram_dev_mem_fd = open("/dev/mem", O_RDWR | O_SYNC);
@@ -92,29 +91,18 @@ void FullyConnectedBRAMDriver::initialize_bram() {
     bram_address["bias_bram"] = bram_mapped_bias_block;
     bram_address["output_bram"] = bram_mapped_output_block;
 
-    std::cout << "Do you want to clear the BRAMs? (y/n): ";
-    char choice;
-    std::cin >> choice;
-
-    if (choice != 'y' && choice != 'Y') {
-        std::cout << "Skipping BRAM clearing." << std::endl;
-        return;
+    if (clear_bram){
+        std::cout << "Clearing BRAM..." << std::endl;
+        // Clear initial values in BRAMs
+        std::memset(bram_mapped_input_block, 0, bram_size_other_than_weight);
+        std::memset(bram_mapped_weight_block, 0, bram_size_weight);
+        std::memset(bram_mapped_bias_block, 0, bram_size_other_than_weight);
+        std::memset(bram_mapped_output_block, 0, bram_size_other_than_weight);
     }
-    //clear initial values in BRAM
-    std::memset(bram_mapped_input_block, 0, 32);
-    std::cout << "input_bram cleared." << std::endl;
-    std::memset(bram_mapped_bias_block, 0, 32);
-    std::cout << "bias_bram cleared." << std::endl;
-    std::memset(bram_mapped_output_block, 0, 32);
-    std::cout << "output_bram cleared." << std::endl;
-    std::memset(bram_mapped_weight_block, 0, bram_size_weight);
-    std::cout << "weight_bram cleared." << std::endl;
-    
-
     std::cout << "BRAM initialization complete." << std::endl;
 }
 
-void FullyConnectedBRAMDriver::write_to_bram(const std::string& bram_name, int32_t* ptr) {
+void FpgaBramDriver::write_to_bram(const std::string& bram_name, int32_t* ptr) {
     std::cout << "Writing to BRAM: " << bram_name << std::endl;
 
     if (bram_address.find(bram_name) == bram_address.end()) {
@@ -139,7 +127,7 @@ void FullyConnectedBRAMDriver::write_to_bram(const std::string& bram_name, int32
     }
     
 }
-int32_t* FullyConnectedBRAMDriver::read_from_bram(const std::string& bram_name) {
+int32_t* FpgaBramDriver::read_from_bram(const std::string& bram_name) {
     std::cout << "Reading from BRAM: " << bram_name << std::endl;
 
     if (bram_address.find(bram_name) == bram_address.end()) {
@@ -156,55 +144,57 @@ int32_t* FullyConnectedBRAMDriver::read_from_bram(const std::string& bram_name) 
     return static_cast<int32_t*>(bram_ptr);
 }
 
-#ifdef TEST_MAIN
-int main() {
-    FullyConnectedBRAMDriver bram_driver;
-
-    // Test BRAM write and read
-    int32_t test_data_input[32] = {0};
-    int32_t test_data_weight[1024] = {0};
-    int32_t test_data_bias[32] = {0};
-    int32_t test_data_output[32] = {0};
-
-    for (int i = 0; i < 32; ++i) {
-        test_data_input[i] = i;
+int FpgaBramDriver::write_weights_to_bram(const int32_t* weights, const int size) {
+    if (size > bram_size_weight / sizeof(int32_t)) {
+        std::cerr << "Error: Size exceeds weight BRAM capacity." << std::endl;
+        return -1;
     }
-    for (int i = 0; i < 32; ++i) {
-        test_data_bias[i] = i; // Different data for bias
-    }
-    for (int i = 0; i < 1024; ++i) {
-        test_data_weight[i] = i+100 ; // Different data for weights
-    }
-
-    bram_driver.write_to_bram("input_bram", test_data_input);
-    int32_t* read_data = bram_driver.read_from_bram("input_bram");
-    if (read_data) {
-        for (int i = 0; i < 32; ++i) {
-            std::cout << "Read data[" << i << "] = " << read_data[i] << std::endl;
-        }
-    }
-    bram_driver.write_to_bram("weight_bram", test_data_weight);
-    read_data = bram_driver.read_from_bram("weight_bram");
-    if (read_data) {
-        for (int i = 0; i < 1024; ++i) {
-            std::cout << "Read data[" << i << "] = " << read_data[i] << std::endl;
-        }
-    }
-    bram_driver.write_to_bram("bias_bram", test_data_bias);
-    read_data = bram_driver.read_from_bram("bias_bram");
-    if (read_data) {
-        for (int i = 0; i < 32; ++i) {
-            std::cout << "Read data[" << i << "] = " << read_data[i] << std::endl;
-        }
-    }
-    // bram_driver.write_to_bram("output_bram", test_data);
-    read_data = bram_driver.read_from_bram("output_bram");
-    if (read_data) {
-        for (int i = 0; i < 32; ++i) {
-            std::cout << "Read data[" << i << "] = " << read_data[i] << std::endl;
-        }
-    }
-
+    write_to_bram("weight_bram", const_cast<int32_t*>(weights));
     return 0;
 }
-#endif
+int FpgaBramDriver::write_bias_to_bram(const int32_t* bias, const int size) {
+    if (size > bram_size_other_than_weight / sizeof(int32_t)) {
+        std::cerr << "Error: Size exceeds bias BRAM capacity." << std::endl;
+        return -1;
+    }
+    write_to_bram("bias_bram", const_cast<int32_t*>(bias));
+    return 0;
+}
+int FpgaBramDriver::clear_output_bram() {
+    std::cout << "Clearing output BRAM..." << std::endl;
+    if (bram_address.find("output_bram") == bram_address.end()) {
+        std::cerr << "Invalid BRAM name: output_bram" << std::endl;
+        return -1;
+    }
+    void* bram_ptr = bram_address["output_bram"];
+    if (bram_ptr == nullptr) {
+        std::cerr << "BRAM pointer is null for: output_bram" << std::endl;
+        return -1;
+    }
+    std::memset(bram_ptr, 0, bram_size_other_than_weight);
+    std::cout << "Output BRAM cleared." << std::endl;
+    return 0;
+}
+
+int FpgaBramDriver::write_input_to_bram(const int32_t* input, const int size) {
+    if (size > bram_size_other_than_weight / sizeof(int32_t)) {
+        std::cerr << "Error: Size exceeds input BRAM capacity." << std::endl;
+        return -1;
+    }
+    write_to_bram("input_bram", const_cast<int32_t*>(input));
+    return 0;
+}
+
+int FpgaBramDriver::read_output_from_bram(int32_t* output, const int size) {
+    if (size > bram_size_other_than_weight / sizeof(int32_t)) {
+        std::cerr << "Error: Size exceeds output BRAM capacity." << std::endl;
+        return -1;
+    }
+    int32_t* bram_output = read_from_bram("output_bram");
+    if (bram_output) {
+        std::memcpy(output, bram_output, size * sizeof(int32_t));
+        return 0;
+    }
+    return -1;
+}
+
