@@ -16,7 +16,7 @@ cc_library(
         "fully_connected_bram_driver.h",
         "fully_connected_ip_driver.h",
     ],
-    copts = tflite_copts(),
+    copts = tflite_copts() + ["-fexceptions"],
     alwayslink = 1,
     visibility = ["//visibility:public"],
 )
