@@ -2060,5 +2060,65 @@ ENTRY main {
                   .status());
 }
 
+TEST_F(LayoutAssignmentTest, HloBufferLayoutUnconstrained) {
+  const char* module_str = R"(
+  HloModule test
+  ENTRY test_computation {
+    c1 = s32[] constant(1)
+    init = s32[2,8] broadcast(c1), dimensions={}
+    b0 = b(s32[2,8]) custom-call(init), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})}
+    b1 = b(s32[2,8]) custom-call(b0), custom_call_target="CallBack_AddOne",
+      output_to_operand_aliasing={{}: (0, {})}
+    ROOT v = s32[2,8] custom-call(b1), custom_call_target="Unpin",
+      output_to_operand_aliasing={{}: (0, {})}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnVerifiedModule(
+          module_str, /*config=*/{},
+          HloParserOptions().set_fill_missing_layouts(false)));
+
+  ComputationLayout computation_layout = m->entry_computation_layout();
+  AssignLayouts(m.get(), &computation_layout);
+
+  // Verify that the computation result gets the default layout.
+  const HloInstruction* custom_call =
+      m->entry_computation()->root_instruction();
+  ExpectLayoutIs(custom_call->shape(), {1, 0});
+  ExpectLayoutIs(custom_call->operand(0)->shape(), {1, 0});
+}
+
+TEST_F(LayoutAssignmentTest, HloBufferLayoutConstrainedComputationOutput) {
+  const char* module_str = R"(
+  HloModule test
+  ENTRY test_computation {
+    c1 = s32[] constant(1)
+    init = s32[2,8] broadcast(c1), dimensions={}
+    b0 = b(s32[2,8]) custom-call(init), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})}
+    b1 = b(s32[2,8]) custom-call(b0), custom_call_target="CallBack_AddOne",
+      output_to_operand_aliasing={{}: (0, {})}
+    ROOT v = s32[2,8] custom-call(b1), custom_call_target="Unpin",
+      output_to_operand_aliasing={{}: (0, {})}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnVerifiedModule(
+          module_str, /*config=*/{},
+          HloParserOptions().set_fill_missing_layouts(false)));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  *computation_layout.mutable_result_layout() =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(S32, {2, 8}, {0, 1}));
+  AssignLayouts(m.get(), &computation_layout);
+
+  // Verify that the computation result gets the layout set by
+  // `computation_layout`.
+  const HloInstruction* custom_call =
+      m->entry_computation()->root_instruction();
+  ExpectLayoutIs(custom_call->shape(), {0, 1});
+  ExpectLayoutIs(custom_call->operand(0)->shape(), {0, 1});
+}
 }  // namespace
 }  // namespace xla
