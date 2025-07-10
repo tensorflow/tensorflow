@@ -19,10 +19,14 @@ limitations under the License.
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
@@ -108,6 +112,55 @@ struct RewriteExtFPattern : public mlir::OpRewritePattern<ma::ExtFOp> {
   }
 };
 
+class RewriteErf64Pattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
+ public:
+  RewriteErf64Pattern(mlir::MLIRContext* context, mlir::ModuleOp& module_op)
+      : OpRewritePattern(context), module_op_(module_op) {}
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::math::ErfOp op, mlir::PatternRewriter& rewriter) const override {
+    mlir::Type type = op.getType();
+
+    if (!type.isF64()) {
+      return rewriter.notifyMatchFailure(op, "not an 64 erf");
+    }
+
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    auto erf_decl = GetOrInsertDeclaration(rewriter);
+    auto call_op = b.create<mlir::func::CallOp>(erf_decl, op.getOperand());
+    rewriter.replaceOp(op, call_op->getResults());
+    return mlir::success();
+  }
+
+ private:
+  mlir::func::FuncOp GetOrInsertDeclaration(
+      mlir::PatternRewriter& rewriter) const {
+    mlir::Type f64_type = rewriter.getF64Type();
+    mlir::FunctionType func_type = rewriter.getFunctionType(f64_type, f64_type);
+
+    // Check if the function already exists
+    if (auto func = module_op_.lookupSymbol<mlir::func::FuncOp>("erf")) {
+      // Ensure the existing function has the correct type
+      if (func.getFunctionType() == func_type) {
+        return func;
+      }
+    }
+
+    // If not found or type mismatch, create the declaration
+    mlir::PatternRewriter::InsertionGuard insertGuard(rewriter);
+    rewriter.setInsertionPointToStart(module_op_.getBody());
+
+    auto func_decl = rewriter.create<mlir::func::FuncOp>(module_op_.getLoc(),
+                                                         "erf", func_type);
+    func_decl.setPrivate();
+    return func_decl;
+  }
+
+ private:
+  mlir::ModuleOp& module_op_;
+};
+
 class ExpandFloatOpsPass
     : public impl::ExpandFloatOpsPassBase<ExpandFloatOpsPass> {
  public:
@@ -115,9 +168,11 @@ class ExpandFloatOpsPass
 
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
+    mlir::ModuleOp module_op = getOperation();
     patterns.add<RewriteTruncFPattern, RewriteExtFPattern>(&getContext());
+    patterns.add<RewriteErf64Pattern>(&getContext(), module_op);
     if (mlir::failed(
-            mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
+            mlir::applyPatternsGreedily(module_op, std::move(patterns)))) {
       signalPassFailure();
     }
   }
