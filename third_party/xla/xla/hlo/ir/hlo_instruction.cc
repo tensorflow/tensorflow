@@ -4895,9 +4895,11 @@ const Shape& HloInstruction::shape() const { return shape_; }
 
 absl::InlinedVector<int64_t, 4> HloInstruction::OperandIndices(
     const HloInstruction* operand) const {
+  const size_t num_operands = operand_count();
+  const HloInstruction* const* operand_ptr = operands_.data();
   absl::InlinedVector<int64_t, 4> result;
-  for (int64_t i = 0; i < operand_count(); ++i) {
-    if (this->operand(i) == operand) {
+  for (size_t i = 0; i < num_operands; ++i) {
+    if (operand_ptr[i] == operand) {
       result.push_back(i);
     }
   }
