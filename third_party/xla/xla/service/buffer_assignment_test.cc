@@ -2329,7 +2329,8 @@ class WhileBufferAssignmentTest : public HloHardwareIndependentTestBase {
 
   std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
                                                         int64_t alignment = 1) {
-    HloSchedule schedule = ScheduleModule(module, ByteSizeOf).value();
+    HloSchedule schedule =
+        ScheduleModule(module, &alias_info_, ByteSizeOf).value();
     return BufferAssigner::Run(
                module, std::make_unique<SequentialHloOrdering>(schedule),
                ByteSizeOf, &alias_info_,
@@ -2643,7 +2644,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
   // nodes are traversed during BufferAssignment.
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(module.get(), [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), &alias_info_, [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape(),
                                      /*pointer_size=*/sizeof(void*));
       }));
@@ -3371,7 +3372,8 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
 
   RunCopyInsertion(module.get());
 
-  HloSchedule schedule = ScheduleModule(module.get(), ByteSizeOf).value();
+  HloSchedule schedule =
+      ScheduleModule(module.get(), &alias_info_, ByteSizeOf).value();
 
   // To trigger b/38494731, we want a specific Hlo schedule for the
   // root computation, so we overwrite that entry with a manually

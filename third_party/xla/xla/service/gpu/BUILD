@@ -1791,6 +1791,7 @@ xla_test(
         "//xla:error_spec",
         "//xla:shape_util",
         "//xla:util",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
         "//xla/hlo/transforms/simplifiers:hlo_rematerialization",

@@ -411,11 +411,8 @@ absl::StatusOr<HloSchedule> ComputationSchedulerAlgorithm::Run(
     }
   }
   if (peak_memory) {
-    // TODO(b/424109294): Pass the correct backend-specific aliasing
-    // information.
-    AliasInfo alias_info;
     TF_ASSIGN_OR_RETURN(*peak_memory, HeapSimulator::MinimumMemoryForModule(
-                                          schedule, alias_analysis, &alias_info,
+                                          schedule, alias_analysis, alias_info_,
                                           size_function_));
   }
   return schedule;
@@ -641,10 +638,12 @@ absl::StatusOr<HloSchedule> ScheduleModule(
 }
 
 absl::StatusOr<HloSchedule> ScheduleModule(
-    const HloModule* module, const BufferValue::SizeFunction& size_function,
+    const HloModule* module, const AliasInfo* alias_info,
+    const BufferValue::SizeFunction& size_function,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     int64_t* peak_memory) {
-  return ScheduleModule(module, DefaultMemoryScheduler(size_function),
+  return ScheduleModule(module,
+                        DefaultMemoryScheduler(alias_info, size_function),
                         execution_threads, peak_memory);
 }
 

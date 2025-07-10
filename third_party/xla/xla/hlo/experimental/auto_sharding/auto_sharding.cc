@@ -48,6 +48,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
@@ -3510,8 +3511,8 @@ absl::flat_hash_set<const HloInstruction*> ComputeInstructionsToShard(
 }
 
 AutoShardingImplementation::AutoShardingImplementation(
-    const AutoShardingOption& option)
-    : option_(option) {}
+    const AutoShardingOption& option, const AliasInfo* alias_info)
+    : option_(option), alias_info_(alias_info) {}
 
 std::pair<int64_t, int64_t> ReduceMemoryTerms(
     int64_t num_primitives,
@@ -3583,10 +3584,11 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
   };
   TF_ASSIGN_OR_RETURN(
       HloSchedule schedule,
-      ScheduleModule(module, DFSMemoryScheduler(size_fn), execution_threads));
+      ScheduleModule(module, DFSMemoryScheduler(alias_info_, size_fn),
+                     execution_threads));
   const HloComputation* entry_computation = module->entry_computation();
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
-      HloAliasAnalysis::Run(module).value();
+      HloAliasAnalysis::Run(module, alias_info_).value();
 
   // Handle donated args by resolving them into input-output aliases. While we
   // want to perform this resolution, we do not want to modify the module, which
@@ -3907,8 +3909,9 @@ absl::Status MoveComputationsFromModuleToModule(HloModule* from_module,
   return absl::OkStatus();
 }
 
-AutoSharding::AutoSharding(const AutoShardingOption& option)
-    : option_(option) {}
+AutoSharding::AutoSharding(const AutoShardingOption& option,
+                           const AliasInfo* alias_info)
+    : option_(option), alias_info_(alias_info) {}
 
 absl::Time DumpModuleAndRecordPassStart(const HloModule* module) {
   XLA_VLOG_LINES(6,
@@ -4120,7 +4123,8 @@ absl::StatusOr<bool> AutoSharding::Run(
       }
     }
 
-    auto pass = std::make_unique<AutoShardingImplementation>(this_option);
+    auto pass =
+        std::make_unique<AutoShardingImplementation>(this_option, alias_info_);
     std::unique_ptr<HloModule> module_clone = CloneModule(module);
     absl::StatusOr<bool> pass_result =
         pass->RunAutoSharding(module_clone.get(), replicated_small_tensors,
