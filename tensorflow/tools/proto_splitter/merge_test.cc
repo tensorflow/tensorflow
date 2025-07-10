@@ -288,7 +288,7 @@ TEST(MergeTest, TestReadChunkedFromString) {
   ASSERT_THAT(merged_saved_model, EqualsProto(test_saved_model));
 }
 
-TEST(MergeTest, ProcessFieldReturnsErrorOnInvalidFieldNumber) {
+TEST(MergeTest, TestProcessFieldReturnsErrorOnInvalidFieldNumber) {
 
   ::tensorflow::proto_splitter::ChunkedMessage chunked_message;
 
