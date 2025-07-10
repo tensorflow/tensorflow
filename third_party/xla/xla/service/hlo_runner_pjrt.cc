@@ -874,7 +874,7 @@ std::string MakeFilename(const HloModule& module, const bool run_hlo_passes) {
   // within PjRt itself since the environment is not easily accessed at this
   // level of abstraction.
   const tsl::Fprint128 module_fingerprint =
-      tsl::Fingerprint128(module.ToString(HloPrintOptions::Fingerprint()));
+      tsl::Fingerprint128(module.ToString(HloPrintOptions::Default()));
   const tsl::Fprint128 run_hlo_passes_fingerprint =
       tsl::Fingerprint128(run_hlo_passes ? "true" : "false");
   const tsl::Fprint128 fingerprint =
