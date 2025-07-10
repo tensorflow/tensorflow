@@ -37,7 +37,10 @@ public:
     int write_input_to_bram(const int32_t* input, const int size);
     int read_output_from_bram(int32_t* output, const int size);
     int clear_output_bram();
-        
+
+    int test_read_input_bram(int32_t* output, const int size);
+    int test_read_weights_bram(int32_t* output, const int size);
+    int test_read_bias_bram(int32_t* output, const int size);
 };
 
 #endif // FULLY_CONNECTED_BRAM_DRIVER_H

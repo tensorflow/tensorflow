@@ -14,13 +14,16 @@ FpgaBramDriver::FpgaBramDriver() : bram_dev_mem_fd(-1),
     bram_mapped_weight_block(nullptr), 
     bram_mapped_bias_block(nullptr), 
     bram_mapped_output_block(nullptr), 
-    bram_size_other_than_weight(256), // Size for input, output, and bias BRAMs
-    bram_size_weight(1024) { // Size for weight BRAM
+    bram_size_other_than_weight(64 * sizeof(int32_t)), // Size for input, output, and bias BRAMs
+    bram_size_weight(4096 * sizeof(int32_t)) { // Size for weight BRAM
 
         std::cout << "Size of int32_t: " << sizeof(int32_t) << std::endl;
 
         std::cout << "Size of bram_size_other_than_weight: " << sizeof(bram_size_other_than_weight) << std::endl;
         std::cout << "Size of bram_size_weight: " << sizeof(bram_size_weight) << std::endl;
+
+        std::cout << "BRAM size other than weight: " << bram_size_other_than_weight << " bytes" << std::endl;
+        std::cout << "BRAM size weight: " << bram_size_weight << " bytes" << std::endl;
 
         bram_input_base_address = 0x80010000;
         bram_weight_base_address = 0x80100000;
@@ -117,13 +120,12 @@ void FpgaBramDriver::write_to_bram(const std::string& bram_name, int32_t* ptr) {
     }
 
     // Write data to BRAM
-    if (bram_name == "weight_bram") {
-        // For weight BRAM, we write the full size
-        std::memcpy(bram_ptr, ptr, bram_size_weight);
-    } else {
-        // For other BRAMs, we write only the size defined for them
-        std::cout << "Writing to non-weight BRAM: " << bram_name << std::endl;
-        std::memcpy(bram_ptr, ptr, bram_size_other_than_weight);
+    size_t size_to_write = (bram_name == "weight_bram") ? bram_size_weight : bram_size_other_than_weight;
+    size_t actual_bytes = size_to_write;
+
+    if (ptr != nullptr) {
+
+        std::memcpy(bram_ptr, ptr, actual_bytes);
     }
     
 }
@@ -145,6 +147,8 @@ int32_t* FpgaBramDriver::read_from_bram(const std::string& bram_name) {
 }
 
 int FpgaBramDriver::write_weights_to_bram(const int32_t* weights, const int size) {
+    std::cout << "size of weights: " << size << std::endl;
+    std::cout << "bram_size_weight / sizeof(int32_t): " << bram_size_weight / sizeof(int32_t) << std::endl;
     if (size > bram_size_weight / sizeof(int32_t)) {
         std::cerr << "Error: Size exceeds weight BRAM capacity." << std::endl;
         return -1;
@@ -153,6 +157,9 @@ int FpgaBramDriver::write_weights_to_bram(const int32_t* weights, const int size
     return 0;
 }
 int FpgaBramDriver::write_bias_to_bram(const int32_t* bias, const int size) {
+
+    std::cout << "size of bias: " << size << std::endl;
+    std::cout << "bram_size_other_than_weight / sizeof(int32_t): " << bram_size_other_than_weight / sizeof(int32_t) << std::endl;
     if (size > bram_size_other_than_weight / sizeof(int32_t)) {
         std::cerr << "Error: Size exceeds bias BRAM capacity." << std::endl;
         return -1;
@@ -177,6 +184,8 @@ int FpgaBramDriver::clear_output_bram() {
 }
 
 int FpgaBramDriver::write_input_to_bram(const int32_t* input, const int size) {
+    std::cout << "size of input: " << size << std::endl;
+    std::cout << "bram_size_other_than_weight / sizeof(int32_t): " << bram_size_other_than_weight / sizeof(int32_t) << std::endl;
     if (size > bram_size_other_than_weight / sizeof(int32_t)) {
         std::cerr << "Error: Size exceeds input BRAM capacity." << std::endl;
         return -1;
@@ -198,3 +207,46 @@ int FpgaBramDriver::read_output_from_bram(int32_t* output, const int size) {
     return -1;
 }
 
+int FpgaBramDriver::test_read_input_bram(int32_t* output, const int size) {
+    if (size > bram_size_other_than_weight / sizeof(int32_t)) {
+        std::cerr << "Error: Size exceeds input BRAM capacity." << std::endl;
+        return -1;
+    }
+    int32_t* bram_input = read_from_bram("input_bram");
+    if (bram_input) {
+        std::memcpy(output, bram_input, size * sizeof(int32_t));
+        return 0;
+    }
+    return -1;
+}
+
+int FpgaBramDriver::test_read_weights_bram(int32_t* output, const int size) {
+    if (size > bram_size_weight / sizeof(int32_t)) {
+        std::cerr << "Error: Size exceeds weight BRAM capacity." << std::endl;
+        return -1;
+    }
+    int32_t* bram_weights = read_from_bram("weight_bram");
+    if (bram_weights) {
+        std::memcpy(output, bram_weights, size * sizeof(int32_t));
+        return 0;
+    }
+    return -1;
+}
+
+int FpgaBramDriver::test_read_bias_bram(int32_t* output, const int size) {
+    std::cout << "Reading from BRAM: bias_bram (size = " << size << ")" << std::endl;
+
+    if (size > bram_size_other_than_weight / sizeof(int32_t)) {
+        std::cerr << "Error: Size exceeds bias BRAM capacity." << std::endl;
+        return -1;
+    }
+
+    int32_t* bram_bias = read_from_bram("bias_bram");
+    if (bram_bias == nullptr) {
+        std::cerr << "BRAM pointer is null for bias_bram" << std::endl;
+        return -1;
+    }
+
+    std::memcpy(output, bram_bias, size * sizeof(int32_t));
+    return 0;
+}

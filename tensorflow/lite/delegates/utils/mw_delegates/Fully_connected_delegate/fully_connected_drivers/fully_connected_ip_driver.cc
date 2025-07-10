@@ -104,22 +104,3 @@ int FullyConnectedIpDriver::fpga_compute(int32_t input_size, int32_t output_size
 }
 
 
-#ifdef FULLY_CONNECTED_IP_DRIVER_TEST_MAIN
-int main() {
-    FullyConnectedIpDriver driver;
-
-
-    std::cout << "Enter input size: ";
-    int32_t input_size;
-    std::cin >> input_size;
-
-    std::cout << "Enter output size: ";
-    int32_t output_size;
-    std::cin >> output_size;
-
-    // Test FPGA write and read
-    driver.fpga_compute(input_size, output_size);
-
-    return 0;
-}
-#endif

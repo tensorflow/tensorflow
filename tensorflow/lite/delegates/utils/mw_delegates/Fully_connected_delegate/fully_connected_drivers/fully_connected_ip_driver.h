@@ -32,7 +32,7 @@ public:
     FullyConnectedIpDriver();
     ~FullyConnectedIpDriver();
 
-    void fpga_compute(int32_t input_size, int32_t output_size);
+    int fpga_compute(int32_t input_size, int32_t output_size);
 };
 
 #endif // FULLY_CONNECTED_IP_DRIVER_H
