@@ -64,5 +64,15 @@
       "baseline_ms": 0.05,
       "threshold": 0.30 # Allow 30% regression max
     }
+  },
+  "gpu_hlo_microbenchmark_l4_1h1d_postsubmit": {
+    "GPU_DEVICE_TIME": {
+      "baseline_ms": 25,
+      "threshold": 0.30 # Allow 30% regression max
+    },
+    "GPU_DEVICE_MEMCPY_TIME": {
+      "baseline_ms": 20,
+      "threshold": 0.30 # Allow 30% regression max
+    }
   }
 }
