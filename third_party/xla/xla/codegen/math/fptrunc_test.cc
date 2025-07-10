@@ -13,37 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_CODEGEN_MATH_EXP_H_
-#define XLA_CODEGEN_MATH_EXP_H_
+#include "xla/codegen/math/fptrunc.h"
 
-#include <cstddef>
-#include <cstdint>
-#include <string>
-
-#include "absl/strings/str_cat.h"
-#include "llvm/IR/Function.h"
-#include "llvm/IR/Module.h"
+#include <gtest/gtest.h>
 #include "xla/codegen/math/intrinsic.h"
 
 namespace xla::codegen {
+namespace {
 
-class Intrinsic::Exp {
- public:
-  static std::string Name(PrimitiveType type) {
-    return absl::StrCat("xla.exp.", ScalarName(type));
-  }
+TEST(ExpTest, SclarIninsic) {
+  EXPECT_EQ(Intrinsic::Name<Intrinsic::FpTrunc>(F32, BF16),
+            "xla.fptrunc.f32.to.bf16");
+}
 
-  static std::string Name(PrimitiveType type, int64_t vector_width) {
-    return absl::StrCat("xla.exp.", VectorName(type, vector_width));
-  }
-};
+TEST(ExpTest, VectorIninsic) {
+  EXPECT_EQ(Intrinsic::Name<Intrinsic::FpTrunc>(F32, BF16, 4),
+            "xla.fptrunc.v4f32.to.v4bf16");
+}
 
-namespace math {
-
-llvm::Function* CreateExpF64(llvm::Module* module, llvm::Type* input_type);
-std::string ExpF64FunctionName(size_t num_elements);
-
-}  // namespace math
+}  // namespace
 }  // namespace xla::codegen
-
-#endif  // XLA_CODEGEN_MATH_EXP_H_

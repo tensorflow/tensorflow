@@ -17,12 +17,30 @@ limitations under the License.
 #define XLA_CODEGEN_MATH_FPTRUNC_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "llvm/IR/Function.h"
+#include "xla/codegen/math/intrinsic.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::codegen::math {
+namespace xla::codegen {
+
+class Intrinsic::FpTrunc {
+ public:
+  static std::string Name(PrimitiveType t0, PrimitiveType t1) {
+    return absl::StrCat("xla.fptrunc.", ScalarName(t0), ".to.", ScalarName(t1));
+  }
+
+  static std::string Name(PrimitiveType t0, PrimitiveType t1,
+                          int64_t vector_width) {
+    return absl::StrCat("xla.fptrunc.", VectorName(t0, vector_width), ".to.",
+                        VectorName(t1, vector_width));
+  }
+};
+
+namespace math {
 
 // Return the XLA intrinsic name for the fptrunc function:
 //
@@ -34,6 +52,7 @@ llvm::Function* CreateFptruncF32ToBf16(llvm::Module* module,
                                        llvm::Type* input_type,
                                        bool add_suffix = true);
 
-}  // namespace xla::codegen::math
+}  // namespace math
+}  // namespace xla::codegen
 
 #endif  // XLA_CODEGEN_MATH_FPTRUNC_H_
