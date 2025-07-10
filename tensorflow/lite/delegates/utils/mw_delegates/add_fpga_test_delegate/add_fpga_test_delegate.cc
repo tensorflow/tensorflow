@@ -47,8 +47,26 @@ class AddFpgaTestDelegateKernel : public SimpleDelegateKernelInterface {
   }
 
   TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override {
-    return !options_.error_during_prepare ? kTfLiteOk : kTfLiteError;
+  // Check inputs
+  for (int i = 0; i < node->inputs->size; ++i) {
+    TfLiteTensor& tensor = context->tensors[node->inputs->data[i]];
+    if (tensor.allocation_type == kTfLiteDynamic) {
+      TF_LITE_KERNEL_LOG(context, "Prepare failed: dynamic input tensor #%d", node->inputs->data[i]);
+      return kTfLiteError;
+    }
   }
+
+  // Check outputs
+  for (int i = 0; i < node->outputs->size; ++i) {
+    TfLiteTensor& tensor = context->tensors[node->outputs->data[i]];
+    if (tensor.allocation_type == kTfLiteDynamic) {
+      TF_LITE_KERNEL_LOG(context, "Prepare failed: dynamic output tensor #%d", node->outputs->data[i]);
+      return kTfLiteError;
+    }
+  }
+
+  return kTfLiteOk;
+} 
 
   TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override {
     // Evaluate the delegated graph.
@@ -88,6 +106,7 @@ class AddFpgaTestDelegateKernel : public SimpleDelegateKernelInterface {
                              TfLiteTensor* output_tensor) {
     if (NumElements(input_tensor_1->dims) != NumElements(input_tensor_2->dims) ||
         NumElements(input_tensor_1->dims) != NumElements(output_tensor->dims)) {
+      TF_LITE_KERNEL_LOG(context, "Input and output tensors must have the same size. In AddFpgaTestDelegateKernel::ComputeResult");   
       return kTfLiteDelegateError;
     }
     // This code assumes no activation, and no broadcasting needed (both inputs
@@ -130,36 +149,40 @@ class AddFpgaTestDelegate : public SimpleDelegateInterface {
   bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration,
                                  const TfLiteNode* node,
                                  TfLiteContext* context) const override {
+
+    TF_LITE_KERNEL_LOG(context, "Registering op with builtin_code: %d", registration->builtin_code);
+
     // This delegate supports only ADD and SUB operations.
     if (registration->builtin_code != kTfLiteBuiltinAdd &&
         registration->builtin_code != kTfLiteBuiltinSub)
       return false;
-    // Only supports int32 type
+    
+    // This delegate does not support LSTM operations.
+    // LSTM operations are not supported by this delegate.
+    if (registration->builtin_code == kTfLiteBuiltinLstm ||
+    registration->builtin_code == kTfLiteBuiltinUnidirectionalSequenceLstm ||
+    registration->builtin_code == kTfLiteBuiltinBidirectionalSequenceLstm) {
+      return false;
+    }
+
+    // Only supports int32 type and static tensors.
     for (int i = 0; i < node->inputs->size; ++i) {
       auto& tensor = context->tensors[node->inputs->data[i]];
-      if (tensor.type != kTfLiteInt32) {
+      if (tensor.type != kTfLiteInt32 || tensor.allocation_type == kTfLiteDynamic) {
         return false;
       }
     }
     for (int i = 0; i < node->outputs->size; ++i) {
       auto& tensor = context->tensors[node->outputs->data[i]];
-      if (tensor.type != kTfLiteInt32) {
+      if (tensor.type != kTfLiteInt32 || tensor.allocation_type == kTfLiteDynamic) {
         return false;
       }
     }
-    // Only support static int32 tensors
-    for (int i = 0; i < node->inputs->size; ++i) {
-      auto& tensor = context->tensors[node->inputs->data[i]];
-      if (tensor.type != kTfLiteInt32 || IsDynamicTensor(tensor)) {
-        return false;
-      }
+    if(node->inputs->size != 2 || node->outputs->size != 1) {
+      // This delegate only supports operations with 2 inputs and 1 output.
+      return false;
     }
-    for (int i = 0; i < node->outputs->size; ++i) {
-      auto& tensor = context->tensors[node->outputs->data[i]];
-      if (tensor.type != kTfLiteInt32 || IsDynamicTensor(tensor)) {
-        return false;
-      }
-    }
+    
     return true;
   }
   TfLiteStatus Initialize(TfLiteContext* context) override { return kTfLiteOk; }
@@ -184,11 +207,6 @@ class AddFpgaTestDelegate : public SimpleDelegateInterface {
 
  private:
   const AddFpgaTestDelegateOptions options_;
-  
-  // Utility to check for dynamic tensors
-  bool IsDynamicTensor(const TfLiteTensor& tensor) const {
-    return tensor.allocation_type == kTfLiteDynamic;
-}
 
 };
 
