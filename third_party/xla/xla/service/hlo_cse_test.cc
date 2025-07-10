@@ -1076,6 +1076,85 @@ ENTRY main {
   EXPECT_EQ(root->operands()[0]->unique_id(), root->operands()[1]->unique_id());
 }
 
+TEST_F(HloCseTest, AllGatherNoChannelId) {
+  const char* const hlo_string = R"(
+HloModule m
+ENTRY main {
+  p0 = s32[4,4096] parameter(0)
+  all-gather.0 = s32[4,32768] all-gather(p0), replica_groups=[8,8]<=[8,8]T(1,0), dimensions={1}
+  all-gather.1 = s32[4,32768] all-gather(p0), replica_groups=[8,8]<=[8,8]T(1,0), dimensions={1}
+  ROOT add = s32[4,32768] add(all-gather.0, all-gather.1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto m, ParseAndReturnVerifiedModule(hlo_string, /*replica_count=*/1,
+                                           /*num_partitions=*/64));
+  HloCSE cse(/*is_layout_sensitive=*/true);
+  EXPECT_THAT(cse.Run(m.get()), IsOkAndHolds(true));
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  ASSERT_EQ(root->operand_count(), 2);
+  EXPECT_EQ(root->operand(0), root->operand(1));
+}
+
+TEST_F(HloCseTest, AllGatherSameChannelId) {
+  const char* const hlo_string = R"(
+HloModule m
+ENTRY main {
+  p0 = s32[4,4096] parameter(0)
+  all-gather.0 = s32[4,32768] all-gather(p0), channel_id=0, replica_groups=[8,8]<=[8,8]T(1,0), dimensions={1}, use_global_device_ids=true
+  all-gather.1 = s32[4,32768] all-gather(p0), channel_id=0, replica_groups=[8,8]<=[8,8]T(1,0), dimensions={1}, use_global_device_ids=true
+  ROOT add = s32[4,32768] add(all-gather.0, all-gather.1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto m, ParseAndReturnVerifiedModule(hlo_string, /*replica_count=*/1,
+                                           /*num_partitions=*/64));
+  m->mutable_config().set_use_spmd_partitioning(true);
+  HloCSE cse(/*is_layout_sensitive=*/true);
+  EXPECT_THAT(cse.Run(m.get()), IsOkAndHolds(true));
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  ASSERT_EQ(root->operand_count(), 2);
+  EXPECT_EQ(root->operand(0), root->operand(1));
+}
+
+TEST_F(HloCseTest, AllGatherDifferentChannelIdSPMD) {
+  const char* const hlo_string = R"(
+HloModule m
+ENTRY main {
+  p0 = s32[4,4096] parameter(0)
+  all-gather.0 = s32[4,32768] all-gather(p0), channel_id=0, replica_groups=[8,8]<=[8,8]T(1,0), dimensions={1}, use_global_device_ids=true
+  all-gather.1 = s32[4,32768] all-gather(p0), channel_id=1, replica_groups=[8,8]<=[8,8]T(1,0), dimensions={1}, use_global_device_ids=true
+  ROOT add = s32[4,32768] add(all-gather.0, all-gather.1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto m, ParseAndReturnVerifiedModule(hlo_string, /*replica_count=*/1,
+                                           /*num_partitions=*/64));
+  m->mutable_config().set_use_spmd_partitioning(true);
+  HloCSE cse(/*is_layout_sensitive=*/true);
+  EXPECT_THAT(cse.Run(m.get()), IsOkAndHolds(true));
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  ASSERT_EQ(root->operand_count(), 2);
+  EXPECT_EQ(root->operand(0), root->operand(1));
+}
+
+TEST_F(HloCseTest, AllGatherDifferentChannelIdMPMD) {
+  const char* const hlo_string = R"(
+HloModule m
+ENTRY main {
+  p0 = s32[4,4096] parameter(0)
+  all-gather.0 = s32[4,32768] all-gather(p0), channel_id=0, replica_groups=[8,8]<=[8,8]T(1,0), dimensions={1}, use_global_device_ids=true
+  all-gather.1 = s32[4,32768] all-gather(p0), channel_id=1, replica_groups=[8,8]<=[8,8]T(1,0), dimensions={1}, use_global_device_ids=true
+  ROOT add = s32[4,32768] add(all-gather.0, all-gather.1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto m, ParseAndReturnVerifiedModule(hlo_string, /*replica_count=*/64,
+                                           /*num_partitions=*/1));
+  HloCSE cse(/*is_layout_sensitive=*/true);
+  EXPECT_THAT(cse.Run(m.get()), IsOkAndHolds(false));
+}
+
 class HloCseCommutativeOpTest
     : public HloCseTest,
       public ::testing::WithParamInterface<std::string /*op*/> {};
