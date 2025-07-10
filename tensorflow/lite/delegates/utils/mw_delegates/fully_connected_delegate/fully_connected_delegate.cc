@@ -236,7 +236,9 @@ class FullyConnectedDelegate : public SimpleDelegateInterface {
                                  const TfLiteNode* node,
                                  TfLiteContext* context) const override {
 
-    TF_LITE_KERNEL_LOG(context, "Checking node support - builtin_code: %d", registration->builtin_code);
+    TF_LITE_KERNEL_LOG(context, "=== FullyConnectedDelegate: Checking node support ===");
+    TF_LITE_KERNEL_LOG(context, "Node builtin_code: %d (kTfLiteBuiltinFullyConnected = %d)", 
+                       registration->builtin_code, kTfLiteBuiltinFullyConnected);
 
     // This delegate supports only FULLY_CONNECTED operations.
     if (registration->builtin_code != kTfLiteBuiltinFullyConnected) {
@@ -267,6 +269,18 @@ class FullyConnectedDelegate : public SimpleDelegateInterface {
       TF_LITE_KERNEL_LOG(context, "Node rejected: null tensor pointers detected.");
       return false;
     }
+
+    // Log tensor information for debugging
+    TF_LITE_KERNEL_LOG(context, "Tensor info - Input: dims=%p, allocation=%d", 
+                       input->dims, input->allocation_type);
+    TF_LITE_KERNEL_LOG(context, "Tensor info - Weights: dims=%p, allocation=%d", 
+                       weights->dims, weights->allocation_type);
+    TF_LITE_KERNEL_LOG(context, "Tensor info - Output: dims=%p, allocation=%d", 
+                       output->dims, output->allocation_type);
+    if (bias) {
+      TF_LITE_KERNEL_LOG(context, "Tensor info - Bias: dims=%p, allocation=%d", 
+                         bias->dims, bias->allocation_type);
+    }
     
     // Reject dynamic tensors - check for unknown dimensions
     if (input->dims == nullptr || weights->dims == nullptr || output->dims == nullptr ||
@@ -276,31 +290,41 @@ class FullyConnectedDelegate : public SimpleDelegateInterface {
     }
 
     // Check for dynamic dimensions (negative values indicate dynamic dimensions)
+    bool has_dynamic_dims = false;
     for (int i = 0; i < input->dims->size; ++i) {
       if (input->dims->data[i] < 0) {
-        TF_LITE_KERNEL_LOG(context, "Dynamic input tensor dimension detected — rejecting.");
-        return false;
+        TF_LITE_KERNEL_LOG(context, "Dynamic input tensor dimension detected at index %d: %d", 
+                           i, input->dims->data[i]);
+        has_dynamic_dims = true;
       }
     }
     for (int i = 0; i < weights->dims->size; ++i) {
       if (weights->dims->data[i] < 0) {
-        TF_LITE_KERNEL_LOG(context, "Dynamic weights tensor dimension detected — rejecting.");
-        return false;
+        TF_LITE_KERNEL_LOG(context, "Dynamic weights tensor dimension detected at index %d: %d", 
+                           i, weights->dims->data[i]);
+        has_dynamic_dims = true;
       }
     }
     for (int i = 0; i < output->dims->size; ++i) {
       if (output->dims->data[i] < 0) {
-        TF_LITE_KERNEL_LOG(context, "Dynamic output tensor dimension detected — rejecting.");
-        return false;
+        TF_LITE_KERNEL_LOG(context, "Dynamic output tensor dimension detected at index %d: %d", 
+                           i, output->dims->data[i]);
+        has_dynamic_dims = true;
       }
     }
     if (bias) {
       for (int i = 0; i < bias->dims->size; ++i) {
         if (bias->dims->data[i] < 0) {
-          TF_LITE_KERNEL_LOG(context, "Dynamic bias tensor dimension detected — rejecting.");
-          return false;
+          TF_LITE_KERNEL_LOG(context, "Dynamic bias tensor dimension detected at index %d: %d", 
+                             i, bias->dims->data[i]);
+          has_dynamic_dims = true;
         }
       }
+    }
+
+    if (has_dynamic_dims) {
+      TF_LITE_KERNEL_LOG(context, "Node rejected: dynamic tensor dimensions detected.");
+      return false;
     }
 
     // Also check allocation types as additional safety
@@ -341,8 +365,18 @@ class FullyConnectedDelegate : public SimpleDelegateInterface {
     input->type, weights->type, bias ? bias->type : -1, output->type);
     
     // Check if input, weights, and output tensors are of type int32.
-    bool type_check = input->type == kTfLiteInt32 && weights->type == kTfLiteInt32 &&
-         (!bias || bias->type == kTfLiteInt32) && output->type == kTfLiteInt32;
+    // Note: Your model might be using int8 quantization, so let's check for that too
+    bool type_check = false;
+    if (input->type == kTfLiteInt32 && weights->type == kTfLiteInt32 &&
+        (!bias || bias->type == kTfLiteInt32) && output->type == kTfLiteInt32) {
+      type_check = true;
+      TF_LITE_KERNEL_LOG(context, "Tensor types: INT32 (supported)");
+    } else if (input->type == kTfLiteInt8 && weights->type == kTfLiteInt8 &&
+               (!bias || bias->type == kTfLiteInt32) && output->type == kTfLiteInt8) {
+      TF_LITE_KERNEL_LOG(context, "Tensor types: INT8 detected - this delegate only supports INT32");
+    } else {
+      TF_LITE_KERNEL_LOG(context, "Tensor types: Unsupported combination detected");
+    }
     
     if (!type_check) {
       TF_LITE_KERNEL_LOG(context, "Node rejected: unsupported tensor types.");
@@ -350,6 +384,7 @@ class FullyConnectedDelegate : public SimpleDelegateInterface {
     }
     
     TF_LITE_KERNEL_LOG(context, "Node accepted: fully connected operation meets all requirements.");
+    TF_LITE_KERNEL_LOG(context, "=== FullyConnectedDelegate: Node support check complete ===");
     return true;
 }
 
