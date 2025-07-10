@@ -420,8 +420,12 @@ ShapeUtil::MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
     }
     dims[i] = shape.dimensions(dim);
   }
-  TF_ASSIGN_OR_RETURN(Shape new_shape, MakeValidatedShapeWithDescendingLayout(
-                                           shape.element_type(), dims));
+  TF_ASSIGN_OR_RETURN(Shape new_shape,
+                      MakeValidatedShapeWithDescendingLayout(
+                          shape.array_or_buffer_element_type(), dims));
+  if (shape.IsBuffer()) {
+    TF_ASSIGN_OR_RETURN(new_shape, MakeValidatedBufferShape(new_shape));
+  }
   // Since the physical layout is kept the same, the tiles and element size are
   // the same also.
   if (shape.has_layout()) {
@@ -881,10 +885,13 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
       .IgnoreLayout()(lhs, rhs);
 }
 
-/* static */ bool ShapeUtil::CompatibleKind(const Shape& lhs,
-                                            const Shape& rhs) {
-  return Shape::Equal()
-      .IgnoreElementType()
+/* static */ bool ShapeUtil::CompatibleKind(const Shape& lhs, const Shape& rhs,
+                                            bool ignore_buffer) {
+  Shape::Equal equal;
+  if (ignore_buffer) {
+    equal.IgnoreBuffer();
+  }
+  return equal.IgnoreElementType()
       .IgnoreLayout()
       .IgnoreDimensions()
       .IgnoreDynamicDimension()(lhs, rhs);
@@ -934,11 +941,17 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   TF_DCHECK_OK(ValidateShapeWithOptionalLayout(shape));
   if (shape.element_type() == TUPLE) {
     return ByteSizeOfTupleIndexTable(shape, pointer_size);
-  } else if (shape.IsArray()) {
+  }
+  if (shape.IsBuffer()) {
+    return ByteSizeOfElements(shape.buffer_shape());
+  }
+  if (shape.IsArray()) {
     return ByteSizeOfElements(shape);
-  } else if (shape.element_type() == TOKEN) {
+  }
+  if (shape.element_type() == TOKEN) {
     return 0;
-  } else if (shape.element_type() == OPAQUE_TYPE) {
+  }
+  if (shape.element_type() == OPAQUE_TYPE) {
     CHECK_GT(pointer_size, 0);
     return pointer_size;
   }

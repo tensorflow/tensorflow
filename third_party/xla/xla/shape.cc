@@ -160,6 +160,26 @@ ShapeProto Shape::ToProto() const {
   return proto;
 }
 
+// Returns the array state of the array state of the buffer shape, assuming
+// that the shape is an array or a buffer shape.
+const Shape::ArrayState& Shape::array_state_maybe_underneath_buffer() const {
+  if (auto* const state = if_array_state()) {
+    return *state;
+  }
+  auto* const state = if_buffer_state();
+  CHECK_NE(state, nullptr);
+  return *state->buffer_shape->if_array_state();
+}
+
+Shape::ArrayState& Shape::array_state_maybe_underneath_buffer() {
+  if (auto* state = if_array_state()) {
+    return *state;
+  }
+  BufferState* state = if_buffer_state();
+  CHECK_NE(state, nullptr);
+  return *state->buffer_shape->if_array_state();
+}
+
 const Shape::ArrayState& Shape::array_state() const {
   const auto* const state = if_array_state();
   CHECK(state) << "Expected an array shape. Got " << ToString()
@@ -263,7 +283,7 @@ void Shape::add_dimensions(int64_t value, bool is_dynamic) {
 }
 
 void Shape::set_dynamic_dimension(int dimension, bool is_dynamic) {
-  auto& state = array_state();
+  auto& state = array_state_maybe_underneath_buffer();
   // Ensure that the dimension size is valid for the new dynamic-ness.
   CheckDimensionSize(dimension, state.dimensions[dimension], is_dynamic);
   state.dynamic_dimensions[dimension] = is_dynamic;
@@ -271,7 +291,7 @@ void Shape::set_dynamic_dimension(int dimension, bool is_dynamic) {
 
 void Shape::set_dimensions(int index, int64_t size,
                            std::optional<bool> is_dynamic) {
-  auto& state = array_state();
+  auto& state = array_state_maybe_underneath_buffer();
   const bool dynamic =
       is_dynamic.has_value() ? *is_dynamic : state.dynamic_dimensions[index];
   CheckDimensionSize(index, size, dynamic);
@@ -299,7 +319,7 @@ void Shape::CheckDimensionSize(int dim_index, int64_t size, bool is_dynamic) {
 }
 
 void Shape::UnsafeAddDimension(int64_t value, bool is_dynamic) {
-  auto& state = array_state();
+  auto& state = array_state_maybe_underneath_buffer();
   CHECK_EQ(state.dimensions.size(), state.dynamic_dimensions.size())
       << "where the shape is " << ToString();
   state.dimensions.push_back(value);
@@ -311,10 +331,11 @@ bool Shape::is_static() const {
     return absl::c_all_of(state->tuple_shapes,
                           [](const Shape& s) { return s.is_static(); });
   }
-  if (const auto* const state = if_array_state()) {
-    return !absl::c_any_of(state->dynamic_dimensions, [](bool b) { return b; });
+  if (!if_array_state() && !if_buffer_state()) {
+    return true;
   }
-  return true;
+  const auto& state = array_state_maybe_underneath_buffer();
+  return !absl::c_any_of(state.dynamic_dimensions, [](bool b) { return b; });
 }
 
 bool Shape::is_unbounded_dynamic() const {
@@ -323,11 +344,12 @@ bool Shape::is_unbounded_dynamic() const {
       return subshape.is_unbounded_dynamic();
     });
   }
-  if (const auto* const state = if_array_state()) {
-    return absl::c_any_of(state->dimensions,
-                          [](int64_t dim) { return dim == kUnboundedSize; });
+  if (!if_array_state() && !if_buffer_state()) {
+    return false;
   }
-  return false;
+  const auto& state = array_state_maybe_underneath_buffer();
+  return absl::c_any_of(state.dimensions,
+                        [](int64_t dim) { return dim == kUnboundedSize; });
 }
 
 bool Shape::is_bounded_dynamic() const {
@@ -336,17 +358,20 @@ bool Shape::is_bounded_dynamic() const {
       return subshape.is_bounded_dynamic();
     });
   }
-  if (const auto* const state = if_array_state()) {
-    for (auto i = 0; i < state->dimensions.size(); ++i) {
-      if (is_bounded_dynamic_dimension(i)) return true;
-    }
+  if (!if_array_state() && !if_buffer_state()) {
     return false;
+  }
+  const auto& state = array_state_maybe_underneath_buffer();
+  for (auto i = 0; i < state.dimensions.size(); ++i) {
+    if (is_bounded_dynamic_dimension(i)) {
+      return true;
+    }
   }
   return false;
 }
 
 void Shape::DeleteDimension(int64_t dim_to_delete) {
-  auto& state = array_state();
+  auto& state = array_state_maybe_underneath_buffer();
   CHECK_GE(dim_to_delete, 0);
   CHECK_LT(dim_to_delete, state.dimensions.size());
   state.dimensions.erase(state.dimensions.begin() + dim_to_delete);
@@ -358,7 +383,7 @@ void Shape::DeleteDimension(int64_t dim_to_delete) {
 }
 
 void Shape::DeleteDimensions(absl::Span<const int64_t> dims_to_delete) {
-  auto& state = array_state();
+  auto& state = array_state_maybe_underneath_buffer();
   std::vector<int64_t> sorted_dims_to_delete(dims_to_delete.begin(),
                                              dims_to_delete.end());
   absl::c_sort(sorted_dims_to_delete);
@@ -374,10 +399,11 @@ void Shape::DeleteDimensions(absl::Span<const int64_t> dims_to_delete) {
 }
 
 void Shape::CheckStateIsEmpty() const {
-  if (const auto* const state = if_array_state()) {
-    CHECK(state->dimensions.empty()) << ToString();
-    CHECK(state->dynamic_dimensions.empty()) << ToString();
-    CHECK(!state->layout.has_value()) << ToString();
+  if (if_array_state() || if_buffer_state()) {
+    const auto& state = array_state_maybe_underneath_buffer();
+    CHECK(state.dimensions.empty()) << ToString();
+    CHECK(state.dynamic_dimensions.empty()) << ToString();
+    CHECK(!state.layout.has_value()) << ToString();
   } else if (const auto* const state = if_tuple_state()) {
     CHECK(state->tuple_shapes.empty()) << ToString();
   }
@@ -399,6 +425,8 @@ void Shape::Clear() {
     *state = ArrayState();
   } else if (auto* const state = if_tuple_state()) {
     *state = TupleState();
+  } else if (auto* const state = if_buffer_state()) {
+    *state = BufferState();
   }
   set_element_type(PRIMITIVE_TYPE_INVALID);
 }
