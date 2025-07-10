@@ -112,19 +112,14 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
     return kTfLiteError;
   }
 
-  // Write weights to BRAM
+  // Write weights to BRAM (INT32 only)
   if (weights_tensor.type == kTfLiteInt32) {
     if (fpga_bram_driver_->write_weights_to_bram(weights_tensor.data.i32, NumElements(weights_tensor.dims))) {
       TF_LITE_KERNEL_LOG(context, "Prepare failed: failed to write INT32 weights to BRAM.");
       return kTfLiteError;
     }
-  } else if (weights_tensor.type == kTfLiteInt8) {
-    if (fpga_bram_driver_->write_weights_to_bram(weights_tensor.data.int8, NumElements(weights_tensor.dims))) {
-      TF_LITE_KERNEL_LOG(context, "Prepare failed: failed to write INT8 weights to BRAM.");
-      return kTfLiteError;
-    }
   } else {
-    TF_LITE_KERNEL_LOG(context, "Prepare failed: unsupported weights tensor type.");
+    TF_LITE_KERNEL_LOG(context, "Prepare failed: only INT32 weights supported.");
     return kTfLiteError;
   }
 
@@ -193,19 +188,14 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
       return kTfLiteError;
     }
 
-    // Write input tensor to input BRAM
+    // Write input tensor to input BRAM (INT32 only)
     if (input_tensor.type == kTfLiteInt32) {
       if (fpga_bram_driver_->write_input_to_bram(input_tensor.data.i32, input_size)) {
         TF_LITE_KERNEL_LOG(context, "Eval failed: failed to write INT32 input to BRAM.");
         return kTfLiteError;
       }
-    } else if (input_tensor.type == kTfLiteInt8) {
-      if (fpga_bram_driver_->write_input_to_bram(input_tensor.data.int8, input_size)) {
-        TF_LITE_KERNEL_LOG(context, "Eval failed: failed to write INT8 input to BRAM.");
-        return kTfLiteError;
-      }
     } else {
-      TF_LITE_KERNEL_LOG(context, "Eval failed: unsupported input tensor type.");
+      TF_LITE_KERNEL_LOG(context, "Eval failed: only INT32 input supported.");
       return kTfLiteError;
     }
 
@@ -215,19 +205,14 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
       return kTfLiteError;
     }
 
-    // Read output from output BRAM into output tensor
+    // Read output from output BRAM into output tensor (INT32 only)
     if (output_tensor.type == kTfLiteInt32) {
       if (fpga_bram_driver_->read_output_from_bram(output_tensor.data.i32, output_size)) {
         TF_LITE_KERNEL_LOG(context, "Eval failed: failed to read INT32 output from BRAM.");
         return kTfLiteError;
       }
-    } else if (output_tensor.type == kTfLiteInt8) {
-      if (fpga_bram_driver_->read_output_from_bram(output_tensor.data.int8, output_size)) {
-        TF_LITE_KERNEL_LOG(context, "Eval failed: failed to read INT8 output from BRAM.");
-        return kTfLiteError;
-      }
     } else {
-      TF_LITE_KERNEL_LOG(context, "Eval failed: unsupported output tensor type.");
+      TF_LITE_KERNEL_LOG(context, "Eval failed: only INT32 output supported.");
       return kTfLiteError;
     }
 
@@ -394,20 +379,16 @@ class FullyConnectedDelegate : public SimpleDelegateInterface {
     "Input type: %d, Weights type: %d, Bias type: %d, Output type: %d",
     input->type, weights->type, bias ? bias->type : -1, output->type);
     
-    // Check if input, weights, and output tensors are of type int32.
-    // Note: Your model might be using int8 quantization, so let's check for that too
-    bool type_check = false;
-    if (input->type == kTfLiteInt32 && weights->type == kTfLiteInt32 &&
-        (!bias || bias->type == kTfLiteInt32) && output->type == kTfLiteInt32) {
-      type_check = true;
+    // Check if input, weights, and output tensors are of type INT32 only.
+    // This delegate only supports INT32 tensors for now.
+    bool type_check = (input->type == kTfLiteInt32 && weights->type == kTfLiteInt32 &&
+                       (!bias || bias->type == kTfLiteInt32) && output->type == kTfLiteInt32);
+    
+    if (type_check) {
       TF_LITE_KERNEL_LOG(context, "Tensor types: INT32 (supported)");
-    } else if (input->type == kTfLiteInt8 && weights->type == kTfLiteInt8 &&
-               (!bias || bias->type == kTfLiteInt32) && output->type == kTfLiteInt8) {
-      // Support INT8 quantized models
-      type_check = true;
-      TF_LITE_KERNEL_LOG(context, "Tensor types: INT8 quantized (supported)");
     } else {
-      TF_LITE_KERNEL_LOG(context, "Tensor types: Unsupported combination detected");
+      TF_LITE_KERNEL_LOG(context, "Tensor types: Only INT32 tensors supported. Detected types - Input: %d, Weights: %d, Bias: %d, Output: %d",
+                         input->type, weights->type, bias ? bias->type : -1, output->type);
     }
     
     if (!type_check) {
