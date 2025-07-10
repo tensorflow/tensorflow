@@ -637,18 +637,18 @@ absl::Status RunSPMDPasses(
   const int64_t num_partitions = hlo_module->config().num_partitions();
   if (num_partitions > 1 && hlo_module->config().use_spmd_partitioning()) {
     HloPassPipeline spmd_pipeline("spmd-partitioner");
-    AddSPMDPasses(hlo_module, layout_insensitive_algsimp_opts,
-                  gpu_target_config.device_description.gpu_compute_capability(),
-                  spmd_pipeline,
+    AddSPMDPasses(
+        hlo_module, layout_insensitive_algsimp_opts,
+        gpu_target_config.device_description.gpu_compute_capability(),
+        spmd_pipeline,
 #ifdef PLATFORM_GOOGLE
-                  [&](HloPassPipeline& pipeline) {
-                    if (auto_sharding) {
-                      spmd_pipeline.AddPass<AutoSharding>(
-                          DefaultAutoShardingOptionFromModuleConfig(
-                              hlo_module->config()),
-                          alias_info);
-                    }
-                  });
+        [&](HloPassPipeline& pipeline) {
+          if (auto_sharding) {
+            spmd_pipeline.AddPass<AutoSharding>(
+                DefaultAutoShardingOptionFromModuleConfig(hlo_module->config()),
+                alias_info);
+          }
+        });
 #else
         std::nullopt);
 #endif  // PLATFORM_GOOGLE
