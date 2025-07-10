@@ -2120,5 +2120,54 @@ TEST_F(LayoutAssignmentTest, HloBufferLayoutConstrainedComputationOutput) {
   ExpectLayoutIs(custom_call->shape(), {0, 1});
   ExpectLayoutIs(custom_call->operand(0)->shape(), {0, 1});
 }
+
+TEST_F(LayoutAssignmentTest, CustomCallAliasingOperandToSimpleResult) {
+  const char* module_str = R"(
+  HloModule test
+  ENTRY test_computation {
+    param = s32[2,8] parameter(0)
+    ROOT b0 = s32[2,8] custom-call(param),
+      custom_call_target="something", output_to_operand_aliasing={{}: (0, {})}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnVerifiedModule(
+          module_str, /*config=*/{},
+          HloParserOptions().set_fill_missing_layouts(false)));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  *computation_layout->mutable_parameter_layout(0) =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(S32, {2, 8}, {0, 1}));
+  AssignLayouts(m.get(), computation_layout);
+  // Verify that the computation result gets the parameterlayout.
+  const HloInstruction* custom_call =
+      m->entry_computation()->root_instruction();
+  ExpectLayoutIs(custom_call->shape(), {0, 1});
+  ExpectLayoutIs(custom_call->operand(0)->shape(), {0, 1});
+}
+
+TEST_F(LayoutAssignmentTest, CustomCallAliasingOperandToTupleResult) {
+  const char* module_str = R"(
+  HloModule test
+  ENTRY test_computation {
+    param = s32[2,8] parameter(0)
+    ROOT b0 = (s32[2,8], s32[2,8]) custom-call(param),
+      custom_call_target="something", output_to_operand_aliasing={{0}: (0, {})}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnVerifiedModule(
+          module_str, /*config=*/{},
+          HloParserOptions().set_fill_missing_layouts(false)));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  *computation_layout->mutable_parameter_layout(0) =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(S32, {2, 8}, {0, 1}));
+  AssignLayouts(m.get(), computation_layout);
+  // Verify that result-0 gets the parameter layout, and result-1 gets the
+  // default layout.
+  const HloInstruction* custom_call =
+      m->entry_computation()->root_instruction();
+  ExpectLayoutIs(custom_call->shape().tuple_shapes(0), {0, 1});
+  ExpectLayoutIs(custom_call->shape().tuple_shapes(1), {1, 0});
+}
 }  // namespace
 }  // namespace xla

@@ -1711,6 +1711,33 @@ bool InstructionShouldPropagateDepthFirst(const HloInstruction& hlo) {
 
 }  // namespace
 
+absl::Status LayoutAssignment::PropagateOperandConstraintToResultForCustomCall(
+    const HloInstruction* user,
+    const OperandLayoutConstraint& operand_constraint) {
+  int64_t operand_no = operand_constraint.operand_no();
+  for (const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>&
+           output_operand_pair : user->output_operand_aliasing()) {
+    if (output_operand_pair.second.first != operand_no) {
+      continue;
+    }
+    ShapeIndex shape_index = output_operand_pair.first;
+    if (!points_to_analysis_->InstructionDefinesBufferAtIndex(user,
+                                                              shape_index)) {
+      return absl::OkStatus();
+    }
+    TF_ASSIGN_OR_RETURN(
+        const LogicalBuffer* buffer,
+        points_to_analysis_->GetBufferDefinedAt(user, shape_index));
+
+    return SetBufferLayout(
+        operand_constraint.shape_layout().layout(), *buffer,
+        /*mandatory=*/OperandLayoutAlwaysPropagateForward(user),
+        /*dfs=*/InstructionShouldPropagateDepthFirst(*user),
+        operand_constraint.priority());
+  }
+  return absl::OkStatus();
+}
+
 absl::Status LayoutAssignment::PropagateOperandConstraint(
     const OperandLayoutConstraint& operand_constraint,
     LayoutConstraints* constraints) {
@@ -1727,6 +1754,13 @@ absl::Status LayoutAssignment::PropagateOperandConstraint(
       constraints, operand_constraint.priority(),
       operand_constraint.instruction()));
 
+  const HloInstruction* user = operand_constraint.instruction();
+  if (user->opcode() == HloOpcode::kCustomCall) {
+    TF_RETURN_IF_ERROR(PropagateOperandConstraintToResultForCustomCall(
+        user, operand_constraint));
+  }
+  // CustomCall that can't change layout, such as TopK, are handled below.
+
   // For array-shaped operands and user instructions try to pick a minimum cost
   // layout. For example, if the operand of an elementwise instruction is
   // constrained to a certain layout we want the output of the instruction to
@@ -1737,7 +1771,6 @@ absl::Status LayoutAssignment::PropagateOperandConstraint(
   // the information that non-layout-changing instructions should have the same
   // layout for the operands with the same ranks.
   const HloInstruction* operand = operand_constraint.operand();
-  const HloInstruction* user = operand_constraint.instruction();
   if (!operand->shape().IsArrayOrBuffer() ||
       IsLayoutConstrainedCollective(user)) {
     return absl::OkStatus();
