@@ -1650,6 +1650,7 @@ cc_library(
         "//xla/service/gpu/transforms/collectives:async_collective_annotator",
         "//xla/service/gpu/transforms/collectives:collective_backend_assigner",
         "//xla/service/gpu/transforms/collectives:collective_combiner_annotator",
+        "//xla/service/gpu/transforms/collectives:collective_ops_utils",
         "//xla/service/gpu/transforms/collectives:collective_permute_cycle_decomposer",
         "//xla/service/gpu/transforms/collectives:collective_pipelining_analyzer",
         "//xla/service/gpu/transforms/collectives:collective_select_folder",
