@@ -1238,10 +1238,14 @@ message DebugOptions {
   // Path to experimental collective perf tables.
   optional string xla_gpu_experimental_matmul_perf_table_path = 383;
 
+  // Exits the compilation after layout assignment and returns only the
+  // layouts.
+  optional bool xla_early_exit_with_layouts = 397;
+
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 397
+  // Next id: 398
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
