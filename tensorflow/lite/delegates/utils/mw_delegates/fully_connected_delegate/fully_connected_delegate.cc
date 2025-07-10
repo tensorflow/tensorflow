@@ -113,8 +113,18 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
   }
 
   // Write weights to BRAM
-  if (fpga_bram_driver_->write_weights_to_bram(weights_tensor.data.i32, NumElements(weights_tensor.dims))) {
-    TF_LITE_KERNEL_LOG(context, "Prepare failed: failed to write weights to BRAM.");
+  if (weights_tensor.type == kTfLiteInt32) {
+    if (fpga_bram_driver_->write_weights_to_bram(weights_tensor.data.i32, NumElements(weights_tensor.dims))) {
+      TF_LITE_KERNEL_LOG(context, "Prepare failed: failed to write INT32 weights to BRAM.");
+      return kTfLiteError;
+    }
+  } else if (weights_tensor.type == kTfLiteInt8) {
+    if (fpga_bram_driver_->write_weights_to_bram(weights_tensor.data.int8, NumElements(weights_tensor.dims))) {
+      TF_LITE_KERNEL_LOG(context, "Prepare failed: failed to write INT8 weights to BRAM.");
+      return kTfLiteError;
+    }
+  } else {
+    TF_LITE_KERNEL_LOG(context, "Prepare failed: unsupported weights tensor type.");
     return kTfLiteError;
   }
 
@@ -184,8 +194,18 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
     }
 
     // Write input tensor to input BRAM
-    if (fpga_bram_driver_->write_input_to_bram(input_tensor.data.i32, input_size)) {
-      TF_LITE_KERNEL_LOG(context, "Eval failed: failed to write input to BRAM.");
+    if (input_tensor.type == kTfLiteInt32) {
+      if (fpga_bram_driver_->write_input_to_bram(input_tensor.data.i32, input_size)) {
+        TF_LITE_KERNEL_LOG(context, "Eval failed: failed to write INT32 input to BRAM.");
+        return kTfLiteError;
+      }
+    } else if (input_tensor.type == kTfLiteInt8) {
+      if (fpga_bram_driver_->write_input_to_bram(input_tensor.data.int8, input_size)) {
+        TF_LITE_KERNEL_LOG(context, "Eval failed: failed to write INT8 input to BRAM.");
+        return kTfLiteError;
+      }
+    } else {
+      TF_LITE_KERNEL_LOG(context, "Eval failed: unsupported input tensor type.");
       return kTfLiteError;
     }
 
@@ -196,8 +216,18 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
     }
 
     // Read output from output BRAM into output tensor
-    if (fpga_bram_driver_->read_output_from_bram(output_tensor.data.i32, output_size)) {
-      TF_LITE_KERNEL_LOG(context, "Eval failed: failed to read output from BRAM.");
+    if (output_tensor.type == kTfLiteInt32) {
+      if (fpga_bram_driver_->read_output_from_bram(output_tensor.data.i32, output_size)) {
+        TF_LITE_KERNEL_LOG(context, "Eval failed: failed to read INT32 output from BRAM.");
+        return kTfLiteError;
+      }
+    } else if (output_tensor.type == kTfLiteInt8) {
+      if (fpga_bram_driver_->read_output_from_bram(output_tensor.data.int8, output_size)) {
+        TF_LITE_KERNEL_LOG(context, "Eval failed: failed to read INT8 output from BRAM.");
+        return kTfLiteError;
+      }
+    } else {
+      TF_LITE_KERNEL_LOG(context, "Eval failed: unsupported output tensor type.");
       return kTfLiteError;
     }
 
@@ -373,7 +403,9 @@ class FullyConnectedDelegate : public SimpleDelegateInterface {
       TF_LITE_KERNEL_LOG(context, "Tensor types: INT32 (supported)");
     } else if (input->type == kTfLiteInt8 && weights->type == kTfLiteInt8 &&
                (!bias || bias->type == kTfLiteInt32) && output->type == kTfLiteInt8) {
-      TF_LITE_KERNEL_LOG(context, "Tensor types: INT8 detected - this delegate only supports INT32");
+      // Support INT8 quantized models
+      type_check = true;
+      TF_LITE_KERNEL_LOG(context, "Tensor types: INT8 quantized (supported)");
     } else {
       TF_LITE_KERNEL_LOG(context, "Tensor types: Unsupported combination detected");
     }
