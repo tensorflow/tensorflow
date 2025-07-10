@@ -23,7 +23,11 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "xla/pjrt/extensions/example/example_extension.h"
+#include "xla/pjrt/extensions/example/example_extension_cpp.h"
+#include "xla/pjrt/extensions/example/example_extension_private.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/plugin/example_plugin/example_extension_impl.h"
 #include "xla/pjrt/plugin/example_plugin/myplugin_cpp_pjrt.h"
 
 namespace myplugin_pjrt {
@@ -49,16 +53,39 @@ PJRT_Error* PJRT_MypluginDeviceTopology_Create(
       "Topology not supported for MyPlugin compilation.")};
 }
 
+PJRT_Error* PJRT_MyPlugin_CreateExampleExtensionCpp(
+    PJRT_ExampleExtension_CreateExampleExtensionCpp_Args* args) {
+  xla::ExampleExtensionCpp* example_extension_cpp =
+      new xla::ExampleExtensionImpl("standard_prefix: ", "myplugin_prefix: ");
+  PJRT_ExampleExtensionCpp* opaque_extension_cpp = new PJRT_ExampleExtensionCpp{
+      example_extension_cpp,
+  };
+  args->extension_cpp = opaque_extension_cpp;
+  return nullptr;
+}
+
+PJRT_Error* PJRT_MyPlugin_DestroyExampleExtensionCpp(
+    PJRT_ExampleExtension_DestroyExampleExtensionCpp_Args* args) {
+  delete args->extension_cpp->extension_cpp;
+  delete args->extension_cpp;
+  return nullptr;
+}
+
 const PJRT_Api* GetMyPluginPjrtApi() {
   printf("C++ Calling GetPjrtApi");
   static PJRT_Layouts_Extension layouts_extension =
       pjrt::CreateLayoutsExtension(nullptr);
 
+  static PJRT_Example_Extension example_extension =
+      pjrt::CreateExampleExtension(&layouts_extension.base,
+                                   PJRT_MyPlugin_CreateExampleExtensionCpp,
+                                   PJRT_MyPlugin_DestroyExampleExtensionCpp);
+
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       myplugin_pjrt::PJRT_MypluginClient_Create,
       myplugin_pjrt::PJRT_MypluginExecuteContext_Create,
       myplugin_pjrt::PJRT_MypluginDeviceTopology_Create,
-      pjrt::PJRT_Plugin_Initialize_NoOp, &layouts_extension.base,
+      pjrt::PJRT_Plugin_Initialize_NoOp, &example_extension.base,
       pjrt::PJRT_Plugin_Attributes_Xla);
 
   printf("MyPlugin called GetPjrtApi\n");
