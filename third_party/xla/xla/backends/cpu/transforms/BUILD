@@ -103,6 +103,7 @@ cc_library(
     srcs = ["xnn_graph_fusion.cc"],
     hdrs = ["xnn_graph_fusion.h"],
     deps = [
+        "//xla:shape_util",
         "//xla:xla_proto_cc",
         "//xla/backends/cpu:xnn_fusion",
         "//xla/hlo/ir:hlo",

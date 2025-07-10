@@ -183,6 +183,26 @@ ENTRY entry {
   ASSERT_FALSE(changed);
 }
 
+TEST_F(XnnGraphFusionTest, SkipRootWideningConvert) {
+  std::string hlo_string = R"(
+HloModule SkipRootWideningConvert
+
+ENTRY entry {
+  %param.0 = f32[4] parameter(0)
+  %to_bf16.0 = bf16[4] convert(f32[4] %param.0)
+  ROOT result = f32[4] convert(bf16[4] %to_bf16.0)
+}
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  SetFusionMode(module.get(),
+                DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_FALSE(changed);
+}
+
 TEST_F(XnnGraphFusionTest, BasicFusionUnsupportedOperandType) {
   std::string hlo_string = R"(
 HloModule BasicFusionUnsupportedOperandType
