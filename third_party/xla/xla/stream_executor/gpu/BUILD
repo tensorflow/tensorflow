@@ -898,3 +898,29 @@ xla_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "elf_section_extraction",
+    srcs = ["elf_section_extraction.cc"],
+    hdrs = ["elf_section_extraction.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "elf_section_extraction_test",
+    srcs = ["elf_section_extraction_test.cc"],
+    deps = [
+        ":elf_section_extraction",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
