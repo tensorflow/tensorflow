@@ -59,19 +59,6 @@ llvm::Function* Intrinsic::FpTrunc::GetOrInsertDeclaration(llvm::Module* module,
 
 namespace math {
 
-std::string FptruncFunctionName(size_t num_elements, PrimitiveType from,
-                                PrimitiveType to, bool add_suffix) {
-  if (add_suffix) {
-    return absl::StrCat("xla.fptrunc.",
-                        primitive_util::LowercasePrimitiveTypeName(from),
-                        ".to.", primitive_util::LowercasePrimitiveTypeName(to),
-                        ".v", num_elements);
-  }
-  return absl::StrCat("xla.fptrunc.",
-                      primitive_util::LowercasePrimitiveTypeName(from), ".to.",
-                      primitive_util::LowercasePrimitiveTypeName(to));
-}
-
 llvm::Function* CreateFptruncF32ToBf16(llvm::Module* module,
                                        llvm::Type* input_type,
                                        bool add_suffix) {
@@ -99,7 +86,9 @@ llvm::Function* CreateFptruncF32ToBf16(llvm::Module* module,
   llvm::Function* func = llvm::dyn_cast<llvm::Function>(
       module
           ->getOrInsertFunction(
-              FptruncFunctionName(num_elements, F32, BF16, add_suffix),
+              num_elements == 1
+                  ? Intrinsic::FpTrunc::Name(F32, BF16)
+                  : Intrinsic::FpTrunc::Name(F32, BF16, num_elements),
               function_type)
           .getCallee());
 

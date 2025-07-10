@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_CODEGEN_MATH_FPTRUNC_H_
 #define XLA_CODEGEN_MATH_FPTRUNC_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -26,6 +25,7 @@ limitations under the License.
 
 namespace xla::codegen {
 
+// XLA intrinsic for truncating floating point values (scalars and vectors).
 class Intrinsic::FpTrunc {
  public:
   static std::string Name(PrimitiveType t0, PrimitiveType t1);
@@ -38,12 +38,6 @@ class Intrinsic::FpTrunc {
 };
 
 namespace math {
-
-// Return the XLA intrinsic name for the fptrunc function:
-//
-// `xla.fptrunc.v<num_elements><from_type>.v<num_elements><to_type>`
-std::string FptruncFunctionName(size_t num_elements, PrimitiveType from,
-                                PrimitiveType to, bool add_suffix = true);
 
 llvm::Function* CreateFptruncF32ToBf16(llvm::Module* module,
                                        llvm::Type* input_type,
