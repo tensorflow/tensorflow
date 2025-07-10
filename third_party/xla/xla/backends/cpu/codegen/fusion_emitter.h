@@ -26,7 +26,7 @@ namespace xla::cpu {
 
 absl::StatusOr<MlirKernelDefinition> EmitFusionKernel(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
-    const BufferAssignment* buffer_assignment);
+    const BufferAssignment* buffer_assignment, bool use_unique_c_name);
 
 }  // namespace xla::cpu
 
