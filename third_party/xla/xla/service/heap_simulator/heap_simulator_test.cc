@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -1044,6 +1045,8 @@ class HeapAlgorithmTestBase : public ::testing::Test {
   const HloValue* buffer_i_;
 
  private:
+  friend class GlobalDecreasingSizeBestFitHeapBenchmark;
+
   // Create a dummy HloValue to pass to the heap algorithm.
   const HloValue* DummyBufferValue() {
     const HloValue::Id id = buffers_.size();
@@ -3822,6 +3825,37 @@ TEST_F(BreadthFirstMidpointIteratorTest, General1) {
 TEST_F(BreadthFirstMidpointIteratorTest, General2) {
   RunTest(0, 10, {5, 2, 8, 1, 4, 7, 10, 0, 3, 6, 9});
 }
+
+class GlobalDecreasingSizeBestFitHeapBenchmark : public HeapAlgorithmTestBase {
+ public:
+  void TestBody() override {}
+
+  void RunBenchmark(::testing::benchmark::State& state) {
+    const int n = state.range(0);
+    std::vector<const HloValue*> buffers;
+    for (int i = 0; i < n; i++) {
+      buffers.push_back(DummyBufferValue());
+    }
+    for (auto s : state) {
+      GlobalDecreasingSizeBestFitHeap<HloValue> heap(/*alignment=*/1);
+      for (int i = 0; i < n; i++) {
+        heap.Alloc(buffers[i], i * 20);
+      }
+      for (int i = 0; i < n; i++) {
+        heap.Free(buffers[i], i * 20);
+      }
+      TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> result,
+                              heap.Finish());
+    }
+  }
+};
+
+static void BM_GlobalDecreasingSizeBestFitHeap(
+    ::testing::benchmark::State& state) {
+  GlobalDecreasingSizeBestFitHeapBenchmark bm;
+  bm.RunBenchmark(state);
+}
+BENCHMARK(BM_GlobalDecreasingSizeBestFitHeap)->Arg(1)->Arg(4)->Arg(16)->Arg(64);
 
 }  // namespace
 }  // namespace xla
