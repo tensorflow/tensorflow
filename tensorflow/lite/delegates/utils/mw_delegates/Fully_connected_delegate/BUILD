@@ -11,7 +11,7 @@ package(
 )
 
 cc_library(
-    name = "full_connected_delegate",
+    name = "fully_connected_delegate",
     srcs = [
         "fully_connected_delegate.cc",
     ],
@@ -36,12 +36,12 @@ cc_library(
 
 
 cc_binary(
-    name = "full_connected_external_delegate.so",
+    name = "fully_connected_external_delegate.so",
     srcs = [
         "external_delegate_adaptor.cc",
     ],
     deps = [
-        ":full_connected_delegate",
+        ":fully_connected_delegate",
         "//tensorflow/lite/delegates/external:external_delegate_interface",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
