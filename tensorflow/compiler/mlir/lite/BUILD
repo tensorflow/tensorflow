@@ -54,9 +54,14 @@ filegroup(
 td_library(
     name = "tensorflow_lite_ops_td_files",
     srcs = [
+        "ir/tf_generated_ops.td",
+        "ir/tf_op_base.td",
+        "ir/tf_op_interfaces.td",
+        "ir/tf_ops.td",
         "ir/tfl_op_enums.td",
         "ir/tfl_op_interfaces.td",
         "ir/tfl_ops.td",
+        "transforms/optimize.td",
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
@@ -2227,3 +2232,9 @@ tf_proto_library(
 #     deps = [":converter_flags_proto"],
 # )
 # copybara:uncomment_end
+
+filegroup(
+    name = "litfiles",
+    srcs = glob(["runlit*py"]),
+    visibility = ["//tensorflow/compiler/mlir/lite:__subpackages__"],
+)

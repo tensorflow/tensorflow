@@ -24,7 +24,7 @@ include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
 
 // A string attribute whose value are one of the values in `cases`.
-// Referred TF_AnyStrAttrOf in tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td
+// Referred TF_AnyStrAttrOf in tensorflow/compiler/mlir/lite/ir/tf_op_base.td
 class TFL_AnyStrAttrOf<list<string> cases> : StringBasedAttr<
   CPred<!foldl(
       "llvm::cast<StringAttr>($_self).getValue() == \"" # !head(cases) # "\"",

@@ -18,7 +18,7 @@ include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
-include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
+include "tensorflow/compiler/mlir/lite/ir/tf_ops.td"
 
 // Basically x - y => x + y * -1
 def SubToAdd : Pat<(TFL_SubOp $lhs, $rhs, $act),

@@ -502,7 +502,7 @@ gentbl_cc_library(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/legalize_hlo_patterns.td",
     deps = [
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncTdFiles",
         "@local_xla//xla/mlir_hlo:hlo_ops_td_files",
