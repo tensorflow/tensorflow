@@ -387,30 +387,18 @@ xla::ifrt::Future<> Client::GetReadyFuture(
   });
   absl::InlinedVector<Future<>, 1> futures;
 
+  // Since we batch requests in RpcHelper, repeatedly calling
+  // ifrt::proxy::Array's `GetReadyFuture()` should not result in
+  // order-of-magnitude overhead compared to a single `CheckValueReady` request
+  // with many handles.
+  //
+  // OTOH, since ifrt::proxy::Array's `GetReadyFuture()` attempts to cache the
+  // returned future, calling it might result in much better performance than
+  // generating a single uncached CheckValueReadyRequest here.
   auto req = std::make_unique<CheckValueReadyRequest>();
   for (const auto& value : values) {
-    // TODO(b/261991179): IFRT Proxy currently supports Arrays as the only value
-    // type, but this may be extended later to other types such as Tuples.
-    if (auto proxy_array =
-            llvm::dyn_cast<xla::ifrt::proxy::Array>(value.get())) {
-      absl::StatusOr<ArrayHandle> handle =
-          proxy_array->GetHandle(ArrayCopySemantics::kAlwaysCopy);
-      if (!handle.ok()) {
-        futures.push_back(Future<>(handle.status()));
-      } else {
-        req->add_value_handles(handle->handle);
-      }
-    } else {
-      futures.push_back(value->GetReadyFuture());
-    }
+    futures.push_back(value->GetReadyFuture());
   }
-
-  auto promise = Future<>::CreatePromise();
-  rpc_helper_->CheckValueReady(std::move(req))
-      .OnReady(
-          [promise](absl::StatusOr<std::shared_ptr<CheckValueReadyResponse>>
-                        resp) mutable { promise.Set(resp.status()); });
-  futures.push_back(Future<>(std::move(promise)));
 
   return JoinFutures(futures);
 }
