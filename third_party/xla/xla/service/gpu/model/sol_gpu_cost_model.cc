@@ -22,11 +22,14 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/collective_utils.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -152,11 +155,11 @@ absl::Duration SolGPUCostModel::TransferDuration(
   return absl::Microseconds(ret * (1 + kHeaderOverhead));
 }
 
-absl::Duration SolGPUCostModel::RingLatency(const int64_t buff_size_bytes,
-                                            const int num_nodes,
-                                            const CollectiveType& coll_type,
-                                            const int num_communicators) const {
-  int num_gpus = NumGpusPerComm(num_nodes, coll_type, num_communicators);
+absl::StatusOr<absl::Duration> SolGPUCostModel::RingLatency(
+    const int64_t buff_size_bytes, const int num_nodes,
+    const CollectiveType& coll_type, const int num_communicators) const {
+  TF_ASSIGN_OR_RETURN(int num_gpus,
+                      NumGpusPerComm(num_nodes, coll_type, num_communicators));
 
   int64_t per_gpu_msg_size_bytes;
   if (coll_type == CollectiveType::kSendRecv) {
@@ -201,20 +204,19 @@ absl::Duration SolGPUCostModel::RingLatency(const int64_t buff_size_bytes,
 }
 
 // Helper functions
-int SolGPUCostModel::NumGpusPerComm(int num_nodes,
-                                    const CollectiveType& coll_type,
-                                    const int num_comms) const {
+absl::StatusOr<int> SolGPUCostModel::NumGpusPerComm(
+    int num_nodes, const CollectiveType& coll_type,
+    const int num_communicators) const {
   if (coll_type == CollectiveType::kSendRecv) {
     return 2;
   }
-  CHECK_EQ(xla_flag_config_.gpus_per_node % num_comms, 0)
-      << "GPU_PER_NODE must be divisible by the number of communicators. "
-         "GPU_PER_NODE: "
-      << xla_flag_config_.gpus_per_node
-      << " Number of communicators: " << num_comms
-      << ". Adjust the number of GPUs per node with the flag "
-         "gpus_per_node in xla_gpu_analytical_latency_estimator_options.";
-  return num_nodes * xla_flag_config_.gpus_per_node / num_comms;
+  if (xla_flag_config_.gpus_per_node % num_communicators != 0) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unexpected number of communicators: ", num_communicators,
+                     ". Does not divide gpus_per_node w/o a remainder: ",
+                     xla_flag_config_.gpus_per_node));
+  }
+  return num_nodes * xla_flag_config_.gpus_per_node / num_communicators;
 }
 
 }  // namespace gpu

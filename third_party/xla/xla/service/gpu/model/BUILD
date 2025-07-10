@@ -75,7 +75,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
     ],
 )
@@ -84,6 +83,7 @@ xla_cc_test(
     name = "sol_latency_estimator_test",
     srcs = ["sol_latency_estimator_test.cc"],
     deps = [
+        ":collective_interpolator",
         ":gpu_performance_model_base",
         ":sol_gpu_cost_model",
         ":sol_latency_estimator",
@@ -117,10 +117,12 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:collective_utils",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ],
@@ -131,7 +133,6 @@ xla_cc_test(
     srcs = ["sol_gpu_cost_model_test.cc"],
     deps = [
         ":sol_gpu_cost_model",
-        "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",
