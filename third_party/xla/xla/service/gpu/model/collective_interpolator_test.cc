@@ -131,10 +131,10 @@ class CollectiveInterpolationTest : public TestWithParam<ParametrizedTestCase> {
     return profile;
   }
 
-  std::optional<absl::Duration> EstimateRuntime(HloOpcode opcode,
-                                                GPUCommunicationType comm,
-                                                int64_t tensor_size,
-                                                int num_hosts) {
+  absl::StatusOr<absl::Duration> EstimateRuntime(HloOpcode opcode,
+                                                 GPUCommunicationType comm,
+                                                 int64_t tensor_size,
+                                                 int num_hosts) {
     auto instr = CollectiveInstruction(opcode, comm, tensor_size, num_hosts);
     auto module = CollectiveInterpolator::ConstructModule(instr);
     auto* eval = Cast<HloCollectiveInstruction>(
@@ -446,9 +446,9 @@ class CollectiveInterpolationTest : public TestWithParam<ParametrizedTestCase> {
 
 TEST_P(CollectiveInterpolationTest, NextNeighbourInterpolation) {
   const auto& [_, spec, expected_duration] = GetParam();
-  EXPECT_EQ(
-      EstimateRuntime(spec.opcode, spec.comm, spec.tensor_size, spec.num_nodes),
-      expected_duration);
+  EXPECT_EQ(*EstimateRuntime(spec.opcode, spec.comm, spec.tensor_size,
+                             spec.num_nodes),
+            expected_duration);
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -1048,7 +1048,7 @@ TEST(CollectiveInterpolatorTest, LoadsDefaultProfile) {
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
 
-  EXPECT_TRUE(interpolator->EstimatedRuntime(*instr).has_value());
+  EXPECT_TRUE(interpolator->EstimatedRuntime(*instr).ok());
 }
 
 }  // namespace

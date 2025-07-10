@@ -84,8 +84,9 @@ absl::StatusOr<bool> CollectivePerfTableStatsCollection::Run(
         HloCollectiveInstruction* coll_instr =
             Cast<HloCollectiveInstruction>(instr);
         auto estimation = interpolator->EstimatedRuntime(*coll_instr);
-        if (!estimation.has_value()) {
-          LOG(WARNING) << "No estimation for: " << coll_instr->ToString();
+        if (!estimation.ok()) {
+          LOG(WARNING) << "No estimation for: " << coll_instr->ToString()
+                       << ". Reason: " << estimation.status();
           return;
         }
         absl::Duration exec_time = *estimation;

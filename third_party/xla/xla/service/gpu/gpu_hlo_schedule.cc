@@ -501,10 +501,9 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
     if (absl::Status status =
             module.entry_computation()->Accept(cost_analysis.get());
         !status.ok()) {
-      LOG(WARNING)
-          << "Cannot construct unified latency estimator, falling back "
-             "to T-shirt sizes. Reason: "
-          << status;
+      VLOG(1) << "Cannot construct unified latency estimator, falling back "
+                 "to T-shirt sizes. Reason: "
+              << status;
       return std::make_unique<GpuLatencyEstimator>(pointer_size);
     }
     auto sol_latency_estimator = SolLatencyEstimator::Create(
@@ -514,9 +513,9 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
     if (sol_latency_estimator.ok()) {
       return std::move(*sol_latency_estimator);
     }
-    LOG(WARNING) << "Cannot construct unified latency estimator, falling back "
-                    "to T-shirt sizes. Reason: "
-                 << sol_latency_estimator.status();
+    VLOG(1) << "Cannot construct unified latency estimator, falling back "
+               "to T-shirt sizes. Reason: "
+            << sol_latency_estimator.status();
     return std::make_unique<GpuLatencyEstimator>(pointer_size);
   }
   return gpu_latency_estimator;
@@ -624,10 +623,9 @@ bool IsLHSEnabled(const HloModule& module, absl::string_view fingerprint,
     return true;
   }
   if (HasValidPGLEProfile(module, fingerprint)) {
-    LOG(WARNING)
-        << "Profile data detected but "
-           "`xla_gpu_enable_latency_hiding_scheduler` unset. To use it "
-           "compiler will run Latency Hiding Scheduler anyway.";
+    VLOG(1) << "Profile data detected but "
+               "`xla_gpu_enable_latency_hiding_scheduler` unset. To use it "
+               "compiler will run Latency Hiding Scheduler anyway.";
     return true;
   }
   return false;
