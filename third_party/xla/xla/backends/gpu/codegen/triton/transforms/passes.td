@@ -42,18 +42,6 @@ def GeneralizeKernelSignaturePass
   let constructor = "CreateGeneralizeKernelSignaturePass()";
 }
 
-def PreventMmaV3LoopUnrollingPass
-    : Pass<"prevent-mmav3-loop-unrolling", "mlir::ModuleOp"> {
-  let summary = "Prevent MMAv3 loop unrolling.";
-  let description = [{
-    This pass is a result of b/344841434:
-    PTX sometimes unrolls wgmma loops that can cause a 1000x slow down in
-    compilation time. Most unrolling has already been done before PTX,
-    this pragma prevents ptxas from doing more.
-  }];
-  let constructor = "CreatePreventMmaV3LoopUnrollingPass()";
-}
-
 def ExtractTmaInfoPass
     : Pass<"extract-tma-info", "mlir::ModuleOp"> {
   let summary = "Extract TMA info during Triton lowering.";
