@@ -13,19 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "nanobind/nanobind.h"
-#include "shardy/dialect/sdy/transforms/propagation/auto_partitioner_registry.h"
-#include "xla/hlo/experimental/auto_sharding/auto_sharding_stablehlo_pass.h"
+#ifndef XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_STABLEHLO_PASS_H_
+#define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_STABLEHLO_PASS_H_
+
+#include "mlir/IR/DialectRegistry.h"
+#include "mlir/Pass/PassManager.h"
 
 namespace xla {
 namespace spmd {
-
-NB_MODULE(auto_sharding_python_extension, m) {
-  m.doc() = "AutoSharding Python extension";
-  m.def("register", &RegisterAutoSharding);
-  m.def("clear", &mlir::sdy::AutoPartitionerRegistry::clear);
-  m.def("is_registered", &mlir::sdy::AutoPartitionerRegistry::isRegistered);
-}
-
+void RegisterDialectDependencies(mlir::DialectRegistry& registry);
+void AddAutoShardingToPipeline(mlir::OpPassManager& pm);
+void RegisterAutoSharding();
 }  // namespace spmd
 }  // namespace xla
+
+#endif  // XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_STABLEHLO_PASS_H_

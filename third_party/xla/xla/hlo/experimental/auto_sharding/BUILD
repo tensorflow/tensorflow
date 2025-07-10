@@ -543,12 +543,64 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "auto_sharding_stablehlo_pass",
+    srcs = ["auto_sharding_stablehlo_pass.cc"],
+    hdrs = ["auto_sharding_stablehlo_pass.h"],
+    deps = [
+        ":auto_sharding",
+        ":auto_sharding_option",
+        ":stablehlo_utils",
+        "//xla/hlo/ir:hlo",
+        "//xla/mlir_hlo",
+        "//xla/mlir_hlo:hlo_dialect_registration",
+        "//xla/service/spmd/shardy/sdy_round_trip:dedup_meshes",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:UBDialect",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@shardy//shardy/dialect/sdy/transforms/propagation:auto_partitioner_registry",
+        "@stablehlo//:chlo_ops",
+        "@stablehlo//:register",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+xla_cc_test(
+    name = "auto_sharding_stablehlo_pass_test",
+    srcs = [
+        "auto_sharding_stablehlo_pass_test.cc",
+    ],
+    deps = [
+        ":auto_sharding_stablehlo_pass",
+        "//xla/hlo/testlib:filecheck",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
 tsl_pybind_extension(
     name = "auto_sharding_python_extension",
     srcs = ["auto_sharding_python_extension.cc"],
     deps = [
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
+        ":auto_sharding_stablehlo_pass",
         "@nanobind",
         "@shardy//shardy/dialect/sdy/transforms/propagation:auto_partitioner_registry",
     ],
