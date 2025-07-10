@@ -33,7 +33,6 @@ cc_library(
         "extract_tma_info_pass.cc",
         "generalize_kernel_signature.cc",
         "int4_passes.cc",
-        "prevent_mmav3_loop_unrolling_pass.cc",
         "round_f32_to_tf32_for_tf32_dot_pass.cc",
         "triton_xla_extract_insert_to_triton_pass.cc",
     ],
