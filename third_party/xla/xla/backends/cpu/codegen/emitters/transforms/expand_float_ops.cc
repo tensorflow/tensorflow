@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -161,6 +162,33 @@ class RewriteErf64Pattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
   mlir::ModuleOp& module_op_;
 };
 
+class RewriteCbrtPattern : public mlir::OpRewritePattern<mlir::math::CbrtOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::math::CbrtOp op, mlir::PatternRewriter& rewriter) const override {
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    mlir::Value input_abs =
+        b.create<mlir::math::AbsFOp>(op.getOperand(), op.getFastmathAttr())
+            .getResult();
+
+    mlir::Value one_third = b.create<mlir::arith::ConstantOp>(
+        b.getFloatAttr(op.getType(), 1.0 / 3.0));
+    mlir::Value cbrt_abs = b.create<mlir::math::PowFOp>(input_abs, one_third,
+                                                        op.getFastmathAttr());
+
+    mlir::Value cbrt_signed =
+        b.create<mlir::math::CopySignOp>(cbrt_abs, op.getOperand(),
+                                         op.getFastmathAttr())
+            .getResult();
+
+    rewriter.replaceOp(op, cbrt_signed);
+    return mlir::success();
+  }
+};
+
 class ExpandFloatOpsPass
     : public impl::ExpandFloatOpsPassBase<ExpandFloatOpsPass> {
  public:
@@ -169,7 +197,8 @@ class ExpandFloatOpsPass
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
     mlir::ModuleOp module_op = getOperation();
-    patterns.add<RewriteTruncFPattern, RewriteExtFPattern>(&getContext());
+    patterns.add<RewriteTruncFPattern, RewriteExtFPattern, RewriteCbrtPattern>(
+        &getContext());
     patterns.add<RewriteErf64Pattern>(&getContext(), module_op);
     if (mlir::failed(
             mlir::applyPatternsGreedily(module_op, std::move(patterns)))) {
