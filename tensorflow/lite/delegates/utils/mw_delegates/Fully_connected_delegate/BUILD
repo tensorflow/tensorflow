@@ -9,28 +9,17 @@ package(
     ],
     licenses = ["notice"],
 )
-cc_library(
-     name = "fpga_ip_driver",
-     srcs = [
-         "fpga_ip_driver.cc",
-     ],
-     hdrs = [
-         "fpga_ip_driver.h",
-     ],
-     alwayslink = 1,
-     visibility = ["//visibility:public"],
-)
 
 cc_library(
-    name = "add_fpga_test_delegate",
+    name = "full_connected_delegate",
     srcs = [
-        "add_fpga_test_delegate.cc",
+        "full_connected_delegate.cc",
     ],
     hdrs = [
-        "add_fpga_test_delegate.h",
+        "full_connected_delegate.h",
     ],
     deps = [
-        ":fpga_ip_driver",
+        "//tensorflow/lite/delegates/utils/mw_delegates/fully_connected_delegate/fully_connected_drivers:fully_connected_drivers",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
@@ -47,13 +36,12 @@ cc_library(
 
 
 cc_binary(
-    name = "add_fpga_test_external_delegate.so",
+    name = "full_connected_external_delegate.so",
     srcs = [
         "external_delegate_adaptor.cc",
     ],
     deps = [
-        ":add_fpga_test_delegate",
-        ":fpga_ip_driver",
+        ":full_connected_delegate",
         "//tensorflow/lite/delegates/external:external_delegate_interface",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
