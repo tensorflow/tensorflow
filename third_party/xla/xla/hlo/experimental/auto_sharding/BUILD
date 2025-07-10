@@ -512,13 +512,17 @@ cc_library(
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate:stablehlo",
+        "//xla/mlir/utils:error_util",
         "//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_export",
         "//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_import",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@shardy//shardy/dialect/sdy/transforms/export:passes",
     ],
 )
 
