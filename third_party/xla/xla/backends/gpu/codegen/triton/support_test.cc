@@ -265,11 +265,12 @@ class TritonSupportTest : public TritonSupportTestBase {
     };
 
     if (IsTritonSupportedInstruction(ti.Instruction(), cc)) {
-      EXPECT_THAT(run_triton_codegen(), IsOk()) << ti.Module()->ToString();
+      EXPECT_THAT(run_triton_codegen(), absl_testing::IsOk())
+          << ti.Module()->ToString();
       return;
     }
     if (failure_mode == ExpectedFailMode::kFail) {
-      EXPECT_THAT(run_triton_codegen(), Not(IsOk()));
+      EXPECT_THAT(run_triton_codegen(), Not(absl_testing::IsOk()));
       return;
     }
     EXPECT_DEATH(

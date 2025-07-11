@@ -52,7 +52,7 @@ TEST_F(CollectivePermuteUtilsTest, FromString) {
   EXPECT_EQ(SourceTargetPairs::FromString("{{0,1},{1,2},{2,3},{3,0}}").value(),
             fwd4_);
   EXPECT_THAT(SourceTargetPairs::FromString("{{0,1},{1}}"),
-              ::tsl::testing::StatusIs(absl::StatusCode::kInternal));
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(CollectivePermuteUtilsTest, AbslStringify) {

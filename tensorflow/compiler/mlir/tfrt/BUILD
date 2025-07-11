@@ -1,4 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary", "tf_cc_test")
 
 # Note: keep the following lines separate due to the way copybara works

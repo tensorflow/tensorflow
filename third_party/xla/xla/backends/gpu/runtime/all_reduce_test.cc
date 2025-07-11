@@ -285,7 +285,7 @@ TEST_P(AllReduceKernelTest, KernelTestAddPred_Unsupported) {
 
   auto results = RunKernel<bool>(executors, inputs, ReductionKind::SUM);
   EXPECT_THAT(results.status(),
-              ::tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(results.status().message(),
               ::testing::HasSubstr("AllReduce kernel is not supported"));
 }
@@ -331,7 +331,7 @@ TEST_F(AllReduceHloTest, NullDeviceAssnWithHloRunner) {
 
   EXPECT_THAT(
       runner.Execute(std::move(module), {std::move(input)}),
-      StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
           HasSubstr("Device assignment is null, but must be specified when "
                     "running a collective thunk.")));
