@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/hlo_cse.h"
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -281,8 +280,6 @@ absl::StatusOr<bool> HloCSE::Run(
 absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
   if (should_eliminate_computation_ &&
       !should_eliminate_computation_(computation)) {
-    VLOG(10) << "Skipping computation that should not be eliminated: "
-             << computation->name();
     return false;
   }
 
@@ -312,21 +309,11 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
     return *lhs == *rhs;
   };
 
-  std::function<bool(const CseKey&, const CseKey&)> cse_equal_with_channel_id =
-      [&](const CseKey& lhs, const CseKey& rhs) {
-        return lhs.hlo->IdenticalIgnoringCommutativeOperandOrder(
-            *rhs.hlo, eq_instructions, eq_computations, is_layout_sensitive_,
-            /*sharding_sensitive=*/true);
-      };
-  std::function<bool(const CseKey&, const CseKey&)> cse_equal_no_channel_id =
-      [&](const CseKey& lhs, const CseKey& rhs) {
-        return lhs.hlo->IdenticalIgnoringChannelIdValues(
-            *rhs.hlo, eq_instructions, eq_computations, is_layout_sensitive_,
-            /*sharding_sensitive=*/true);
-      };
-  auto cse_equal = computation->parent()->config().ChannelIdSensitive()
-                       ? cse_equal_with_channel_id
-                       : cse_equal_no_channel_id;
+  auto cse_equal = [&](const CseKey& lhs, const CseKey& rhs) {
+    return lhs.hlo->IdenticalIgnoringCommutativeOperandOrder(
+        *rhs.hlo, eq_instructions, eq_computations, is_layout_sensitive_,
+        /*sharding_sensitive=*/true);
+  };
 
   // HLO instructions are grouped into equivalency classes by using the
   // cse_equal predicate defined above. This set holds a representative
@@ -338,8 +325,6 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
     if (should_eliminate_instruction_ != nullptr
             ? !should_eliminate_instruction_(instruction)
             : !ShouldEliminateInstruction(instruction)) {
-      VLOG(10) << "Skipping instruction that should not be eliminated: "
-               << instruction->name();
       continue;
     }
 
@@ -347,15 +332,10 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
     // requested to be removed or not.
     if (!computation->IsSafelyRemovable(instruction,
                                         ignore_control_dependencies_)) {
-      VLOG(10) << "Skipping instruction that cannot be safely removed: "
-               << instruction->name();
       continue;
     }
 
-    auto cse_key = CseKey{instruction};
-    VLOG(10) << "Adding instruction " << instruction->name() << " with CSE key "
-             << absl::Hash<CseKey>{}(cse_key);
-    auto pair = representatives.insert(cse_key);
+    auto pair = representatives.insert(CseKey{instruction});
     if (!pair.second) {
       HloInstruction* equivalent_instruction = pair.first->hlo;
       TF_RETURN_IF_ERROR(
