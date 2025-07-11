@@ -17,28 +17,31 @@ limitations under the License.
 #define XLA_CODEGEN_MATH_RSQRT_H_
 
 #include <cstddef>
-#include <string>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
-#include "llvm/IR/Type.h"
+#include "xla/codegen/math/intrinsic.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::codegen::math {
+namespace xla::codegen {
 
-// Returns the function name for the reciprocal square root function based on
-// the type and number of elements.
-std::string RsqrtFunctionName(size_t num_elements, PrimitiveType type);
+// XLA intrinsic for computing the reciprocal square root (1/sqrt(x)).
+class Intrinsic::Rsqrt : public intrinsics::UnaryIntrinsic<Intrinsic::Rsqrt> {
+ public:
+  static constexpr absl::string_view kName = "rsqrt";
 
-// Creates an LLVM function that computes the reciprocal square root (1/sqrt(x))
-// with high precision (within 1 ULP).
-// Uses the hardware rsqrt intrinsic as initial guess followed by some
-// Newton-Raphson iterations.
-// Based on Eigen's implementations, with some modifications:
-// https://eigen.tuxfamily.org/dox-devel/arch_2AVX512_2MathFunctions_8h_source.html
-// Assumes AVX512 is available for F64 and <16 x float> inputs.
-llvm::Function* CreateRsqrtX86(llvm::Module* module, llvm::Type* input_type);
+  // Creates an LLVM function that computes the reciprocal square root
+  // (1/sqrt(x)) with high precision (within 1 ULP). Uses the hardware rsqrt
+  // intrinsic as initial guess followed by some Newton-Raphson iterations.
+  // Based on Eigen's implementations, with some modifications:
+  // https://eigen.tuxfamily.org/dox-devel/arch_2AVX512_2MathFunctions_8h_source.html
+  // Assumes AVX512 is available for F64 and <16 x float> inputs.
+  static absl::StatusOr<llvm::Function*> CreateDefinition(
+      llvm::Module* module, PrimitiveType prim_type, size_t vector_width);
+};
 
-}  // namespace xla::codegen::math
+}  // namespace xla::codegen
 
 #endif  // XLA_CODEGEN_MATH_RSQRT_H_
