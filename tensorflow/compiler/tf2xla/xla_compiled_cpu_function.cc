@@ -19,17 +19,40 @@ limitations under the License.
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <memory>
 
+#include "absl/base/dynamic_annotations.h"
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/runtime/rng_state_lib.h"
 #include "xla/cpu_function_runtime.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+static size_t AlignTo(size_t n, size_t align) {
+  return (((n - 1) / align) + 1) * align;
+}
+
+size_t AlignedBufferBytes(
+    const xla::cpu_function_runtime::BufferInfo* buffer_infos, size_t n,
+    bool allocate_entry_params) {
+  size_t total = 0;
+  for (size_t i = 0; i < n; ++i) {
+    bool should_allocate =
+        buffer_infos[i].is_temp_buffer() ||
+        (buffer_infos[i].is_entry_parameter() && allocate_entry_params);
+
+    if (should_allocate) {
+      total += AlignTo(buffer_infos[i].size(), xla::cpu::Align());
+    }
+  }
+  return total;
+}
 
 namespace {
 
@@ -44,6 +67,41 @@ int32 GetResultIndex(const int32* result_index_table, int32 num_results) {
 }
 
 }  // namespace
+
+void* MallocContiguousBuffers(
+    const xla::cpu_function_runtime::BufferInfo* buffer_infos, size_t n,
+    bool allocate_entry_params, void** bufs, bool annotate_initialized) {
+  const size_t total =
+      tensorflow::AlignedBufferBytes(buffer_infos, n, allocate_entry_params);
+  void* contiguous = nullptr;
+  if (total > 0) {
+    contiguous = std::aligned_alloc(xla::cpu::Align(), total);
+    if (annotate_initialized) {
+      // Since the memory for temp buffers is written to by JITed code, msan has
+      // no way of knowing the memory was initialized, so explicitly mark it.
+      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(contiguous, total);
+    }
+  }
+  uintptr_t pos = reinterpret_cast<uintptr_t>(contiguous);
+  for (size_t i = 0; i < n; ++i) {
+    bool should_allocate =
+        buffer_infos[i].is_temp_buffer() ||
+        (buffer_infos[i].is_entry_parameter() && allocate_entry_params);
+    if (should_allocate) {
+      bufs[i] = reinterpret_cast<void*>(pos);
+      pos += AlignTo(buffer_infos[i].size(), xla::cpu::Align());
+    } else {
+      bufs[i] = nullptr;
+    }
+  }
+  return contiguous;
+}
+
+void FreeContiguous(void* contiguous) {
+  if (contiguous != nullptr) {
+    std::free(contiguous);
+  }
+}
 
 XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
                                                AllocMode alloc_mode)
@@ -71,7 +129,7 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
   bool allocate_entry_params =
       alloc_mode == AllocMode::ARGS_VARIABLES_RESULTS_PROFILES_AND_TEMPS;
   // Allocate arg and temp buffers.
-  alloc_buffer_table_ = xla::cpu_function_runtime::MallocContiguousBuffers(
+  alloc_buffer_table_ = tensorflow::MallocContiguousBuffers(
       static_data.buffer_infos_, static_data.num_buffers_,
       /*allocate_entry_params=*/allocate_entry_params, buffer_table_,
       /*annotate_initialized=*/true);
@@ -126,7 +184,7 @@ bool XlaCompiledCpuFunction::Run() {
 }
 
 XlaCompiledCpuFunction::~XlaCompiledCpuFunction() {
-  xla::cpu_function_runtime::FreeContiguous(alloc_buffer_table_);
+  FreeContiguous(alloc_buffer_table_);
   delete[] buffer_table_;
   delete[] profile_counters_;
 }
