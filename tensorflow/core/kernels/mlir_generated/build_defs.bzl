@@ -11,6 +11,7 @@ load(
     "if_gpu_is_configured",
 )
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 
 def _lookup_file(filegroup, path):
     """Extracts file at (relative) path in filegroup."""
@@ -426,8 +427,7 @@ def _gen_kernel_library(
         )
         for (type, output_type, jit, jit_i64_indexed_for_large_tensors) in all_kernels
     ] + ["//tensorflow/compiler/mlir/tools/kernel_gen:tf_framework_c_interface"]
-
-    native.cc_library(
+    cc_library(
         name = name,
         deps = if_gpu_is_configured(kernel_deps + [
             "//tensorflow/compiler/mlir/tools/kernel_gen:tf_gpu_runtime_wrappers",
