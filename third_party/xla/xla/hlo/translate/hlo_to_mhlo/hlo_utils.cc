@@ -20,6 +20,7 @@ limitations under the License.
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -60,11 +61,19 @@ using mlir::ShapedType;
 template <typename CppType>
 ::mlir::DenseElementsAttr CreateDenseAttrFromLiteral(
     const ShapedType& type, const LiteralBase& literal) {
+  std::unique_ptr<Literal> literal_lifespan;
+  auto data_span = literal.data<CppType>();
+  if (auto default_layout = LayoutUtil::GetDefaultLayoutForRank(type.getRank());
+      default_layout != literal.shape().layout()) {
+    literal_lifespan =
+        std::make_unique<Literal>(literal.Relayout(default_layout));
+    data_span = literal_lifespan->data<CppType>();
+  }
+
   if constexpr (is_intN_v<CppType>) {
     // DenseElementsAttr::get() does not support being passed an i4 array.
     // Instead, create buffer of padded, packed values and call
     // DenseElementsAttr::getFromRawBuffer()
-    auto data_span = literal.data<CppType>();
     std::vector<char> packed_padded_data;
     packed_padded_data.reserve(literal.element_count());
     for (size_t i = 0; i < literal.element_count(); i++) {
@@ -75,7 +84,6 @@ template <typename CppType>
   } else if constexpr (std::is_same_v<CppType, tsl::float4_e2m1fn>) {
     // DenseElementsAttr::get() does not support being passed an array of
     // tsl::float4_e2m1fn. So convert each element to APFloat first.
-    auto data_span = literal.data<CppType>();
     std::vector<llvm::APFloat> apfloats;
     apfloats.reserve(literal.element_count());
     for (size_t i = 0; i < literal.element_count(); i++) {
@@ -92,7 +100,6 @@ template <typename CppType>
     }
     return ::mlir::DenseElementsAttr::get(type, apfloats);
   } else {
-    auto data_span = literal.data<CppType>();
     return ::mlir::DenseElementsAttr::get(
         type, llvm::ArrayRef(data_span.data(), data_span.size()));
   }
