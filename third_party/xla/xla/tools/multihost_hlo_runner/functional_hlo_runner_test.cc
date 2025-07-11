@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "xla/tests/xla_test_backend_predicates.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
@@ -66,13 +65,20 @@ using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 using HloModuleAndArguments = ::xla::FunctionalHloRunner::HloModuleAndArguments;
 
+bool IsTestingCpu() {
+#ifdef XLA_TEST_BACKEND_CPU
+  return true;
+#endif
+  return false;
+}
+
 std::string GetHloPath(std::string file_name) {
   return tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
                            "multihost_hlo_runner", "data", file_name);
 }
 
 absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient() {
-  if (test::DeviceTypeIs(test::kCpu)) {
+  if (IsTestingCpu()) {
     return CreateHostClient();
   }
   return CreateGpuClient({});
@@ -135,7 +141,7 @@ TEST_F(FunctionalHloRunnerTest, SingleDeviceHloWithExecutionProfile) {
 }
 
 TEST_F(FunctionalHloRunnerTest, GPUProfilerWithEmptyDumpPathReturnsError) {
-  if (test::DeviceTypeIs(test::kCpu)) {
+  if (IsTestingCpu()) {
     GTEST_SKIP() << "GPU-only test";
   }
   std::string empty_profile_dump_path = "";
@@ -145,7 +151,7 @@ TEST_F(FunctionalHloRunnerTest, GPUProfilerWithEmptyDumpPathReturnsError) {
 }
 
 TEST_F(FunctionalHloRunnerTest, GPUProfilerKeepXSpaceReturnsNonNullXSpace) {
-  if (test::DeviceTypeIs(test::kCpu)) {
+  if (IsTestingCpu()) {
     GTEST_SKIP() << "GPU-only test";
   }
   std::string profile_dump_path =
@@ -375,7 +381,7 @@ void CompileAndFilecheck(
   }
 
   // Check that the LLVM IR has been generated.
-  if (!test::DeviceTypeIs(test::kCpu)) {
+  if (!IsTestingCpu()) {
     std::vector<std::string> ir_paths;
     TF_ASSERT_OK(fs->GetMatchingPaths(fs->JoinPath(dump_dir, "*ir-no-opt.ll"),
                                       &ir_paths));
@@ -400,9 +406,7 @@ TEST_F(FunctionalHloRunnerTest, KeepLayoutsFromHloModule) {
 }
 
 TEST_F(FunctionalHloRunnerTest, AutoLayoutAssignsNonDefaultLayout) {
-  if (test::DeviceTypeIs(test::kCpu)) {
-    GTEST_SKIP() << "CPU doesn't support auto-layout yet.";
-  }
+  if (IsTestingCpu()) GTEST_SKIP() << "CPU doesn't support auto-layout yet.";
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   preproc_options.use_layouts_from_hlo_module = true;
   CompileAndFilecheck(GetHloPath("auto_layout.hlo"),
@@ -414,7 +418,7 @@ TEST_F(FunctionalHloRunnerTest, AutoLayoutAssignsNonDefaultLayout) {
 }
 
 TEST_F(FunctionalHloRunnerTest, FixedLayoutAssignsNonDefaultLayout) {
-  if (test::DeviceTypeIs(test::kCpu)) {
+  if (IsTestingCpu()) {
     GTEST_SKIP() << "CPU doesn't support auto-layout yet.";
   }
   FunctionalHloRunner::PreprocessingOptions preproc_options;
@@ -457,7 +461,7 @@ static const char* binary_name;
 constexpr int kNumNodes = 2;
 
 TEST_F(FunctionalHloRunnerTest, ShardedAutotuningWorks) {
-  if (test::DeviceTypeIs(test::kCpu)) {
+  if (IsTestingCpu()) {
     GTEST_SKIP() << "GPU-only test.";
   }
 
@@ -562,7 +566,7 @@ TEST_F(FunctionalHloRunnerTest, PreservesAutoLayout) {
 }
 
 TEST_F(FunctionalHloRunnerTest, MakeFakeLiteralWithSameValue) {
-  if (test::DeviceTypeIs(test::kCpu)) {
+  if (IsTestingCpu()) {
     GTEST_SKIP() << "GPU-only test";
   }
 
@@ -598,7 +602,7 @@ TEST_F(FunctionalHloRunnerTest, MakeFakeLiteralWithSameValue) {
 }
 
 TEST_F(FunctionalHloRunnerTest, CanRunWithMockCollectives) {
-  if (test::DeviceTypeIs(test::kCpu)) {
+  if (IsTestingCpu()) {
     GTEST_SKIP() << "GPU-only test";
   }
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
@@ -610,7 +614,7 @@ TEST_F(FunctionalHloRunnerTest, CanRunWithMockCollectives) {
 TEST_F(FunctionalHloRunnerTest, CanCreateMockClientInPjRtEnv) {
   // Tests that the GPU options are propagated correctly to initialize a mock
   // client.
-  if (test::DeviceTypeIs(test::kCpu)) {
+  if (IsTestingCpu()) {
     GTEST_SKIP() << "GPU-only test";
   }
 
@@ -815,7 +819,7 @@ TEST(FunctionalHloRunnerTest, RespectUseSpmdPartitioning) {
 
 TEST_F(FunctionalHloRunnerTest, DumpsUnoptimizedHLOInUnoptimizedSnapshot) {
   // Unoptimized snapshots are only supported in the GPU PjRt plugins.
-  if (test::DeviceTypeIs(test::kCpu)) {
+  if (IsTestingCpu()) {
     GTEST_SKIP() << "GPU-only test";
   }
 
