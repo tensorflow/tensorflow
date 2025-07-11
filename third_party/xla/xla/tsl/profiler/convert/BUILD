@@ -37,7 +37,12 @@ cc_library(
         "//xla/python:__pkg__",
     ]),
     deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/tsl/platform:macros",
+        "@com_github_nlohmann_json//:json",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
     ],
