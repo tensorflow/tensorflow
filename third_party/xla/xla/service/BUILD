@@ -4093,6 +4093,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/codegen/math:fptrunc",
         "//xla/codegen/math:intrinsic",
+        "//xla/codegen/math:log1p",
         "//xla/hlo/ir:hlo",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:ir_builder_mixin",

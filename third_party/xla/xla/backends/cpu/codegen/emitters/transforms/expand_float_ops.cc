@@ -37,6 +37,8 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/codegen/emitters/implicit_arith_op_builder.h"
 #include "xla/codegen/math/fptrunc.h"
+#include "xla/codegen/math/log1p.h"
+#include "xla/mlir/utils/type_util.h"
 
 namespace xla::cpu {
 
@@ -77,44 +79,6 @@ mlir::Value EmitBF16ToF32(mlir::Value in, mlir::ImplicitLocOpBuilder& b) {
   return b.create<ma::BitcastOp>(b.getType<mlir::Float32Type>(), i32 << 16);
 }
 
-class RewriteTruncFPattern : public mlir::OpRewritePattern<ma::TruncFOp> {
- public:
-  RewriteTruncFPattern(mlir::MLIRContext* context, mlir::ModuleOp& module_op)
-      : OpRewritePattern(context), module_op_(module_op) {}
-
-  mlir::LogicalResult matchAndRewrite(
-      ma::TruncFOp op, mlir::PatternRewriter& rewriter) const override {
-    auto src = op.getOperand();
-    auto dst_ty = mlir::cast<mlir::FloatType>(op.getType());
-
-    if (!mlir::isa<mlir::Float32Type>(src.getType()) ||
-        !mlir::isa<mlir::BFloat16Type>(dst_ty)) {
-      return rewriter.notifyMatchFailure(op, "Not f32 -> bf16");
-    }
-
-    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    auto f32_to_bf16_decl = GetF32ToBF16Declaration(rewriter);
-    auto call_op =
-        b.create<mlir::func::CallOp>(f32_to_bf16_decl, op.getOperand());
-    rewriter.replaceOp(op, call_op->getResults());
-    return mlir::success();
-  }
-
- private:
-  mlir::func::FuncOp GetF32ToBF16Declaration(
-      mlir::PatternRewriter& rewriter) const {
-    mlir::Type f32_type = rewriter.getF32Type();
-    mlir::Type bf16_type = rewriter.getBF16Type();
-    return GetOrInsertDeclaration(
-        rewriter, module_op_, codegen::Intrinsic::FpTrunc::Name(F32, BF16),
-        rewriter.getFunctionType(f32_type, bf16_type));
-  }
-
- private:
-  mlir::ModuleOp& module_op_;
-};
-
 struct RewriteExtFPattern : public mlir::OpRewritePattern<ma::ExtFOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -133,39 +97,6 @@ struct RewriteExtFPattern : public mlir::OpRewritePattern<ma::ExtFOp> {
 
     return rewriter.notifyMatchFailure(op, "Not bf16 -> f32");
   }
-};
-
-class RewriteErf64Pattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
- public:
-  RewriteErf64Pattern(mlir::MLIRContext* context, mlir::ModuleOp& module_op)
-      : OpRewritePattern(context), module_op_(module_op) {}
-
-  mlir::LogicalResult matchAndRewrite(
-      mlir::math::ErfOp op, mlir::PatternRewriter& rewriter) const override {
-    mlir::Type type = op.getType();
-
-    if (!type.isF64()) {
-      return rewriter.notifyMatchFailure(op, "not an 64 erf");
-    }
-
-    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    auto erf_decl = GetErf64Declaration(rewriter);
-    auto call_op = b.create<mlir::func::CallOp>(erf_decl, op.getOperand());
-    rewriter.replaceOp(op, call_op->getResults());
-    return mlir::success();
-  }
-
- private:
-  mlir::func::FuncOp GetErf64Declaration(
-      mlir::PatternRewriter& rewriter) const {
-    mlir::Type f64_type = rewriter.getF64Type();
-    return GetOrInsertDeclaration(rewriter, module_op_, "erf",
-                                  rewriter.getFunctionType(f64_type, f64_type));
-  }
-
- private:
-  mlir::ModuleOp& module_op_;
 };
 
 class RewriteCbrtPattern : public mlir::OpRewritePattern<mlir::math::CbrtOp> {
@@ -202,13 +133,10 @@ class ExpandFloatOpsPass
 
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
-    mlir::ModuleOp module_op = getOperation();
     patterns.add<RewriteExtFPattern, RewriteCbrtPattern>(&getContext());
-    patterns.add<RewriteTruncFPattern, RewriteErf64Pattern>(&getContext(),
-                                                            module_op);
 
     if (mlir::failed(
-            mlir::applyPatternsGreedily(module_op, std::move(patterns)))) {
+            mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
     }
   }
