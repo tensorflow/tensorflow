@@ -23,6 +23,7 @@ package(
     default_visibility = [
         ":internal_visibility_allowlist_package",
         "//tensorflow:__pkg__",
+        "//third_party/py/orbax:__subpackages__",
     ],
     licenses = ["notice"],
 )

@@ -55,6 +55,7 @@ package_group(
         "//third_party/mlperf/submissions/training/v0_7/models/...",
         "//third_party/py/ai_edge_torch/...",
         "//third_party/py/keras_cv/...",
+        "//third_party/py/orbax/...",
         "//third_party/py/tf_keras/...",
         "//third_party/sparse_conv/ops/...",
         "//waymo/ml/deploy/benchmark/...",
