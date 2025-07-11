@@ -1830,6 +1830,14 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 
   SmallVector<Value> insert_results;
   if (fusion_kind == kTritonGemmFusionKind) {
+    if (absl::c_contains(
+            fusion->GetModule()
+                ->config()
+                .debug_options()
+                .xla_gpu_unsupported_generic_triton_emitter_features(),
+            DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM)) {
+      return Internal("Legacy GEMM emitter is disabled.");
+    }
     TF_RETURN_IF_ERROR(EmitMatMul(b, libdevice_path, device_info, fusion, fn,
                                   block_level_parameters));
   } else if (fusion_kind == kTritonFusionKind ||
