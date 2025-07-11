@@ -6,7 +6,10 @@ module {
     func.return %truncated : bf16
   }
 }
-// CHECK-NOT: arith.truncf
+// CHECK-LABEL: @trunc
+// CHECK-SAME: (%[[ARG:.*]]: f32) -> bf16
+// CHECK: %[[TRUNC_CALL:.*]] = call @local_xla.fptrunc.f32.to.bf16(%[[ARG]])
+// CHECK: return %[[TRUNC_CALL]]
 
 // -----
 
