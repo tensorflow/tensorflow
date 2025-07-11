@@ -60,6 +60,7 @@ class Intrinsic {
   // go/keep-sorted start
   class Exp;
   class FpTrunc;
+  class Log1p;
   // go/keep-sorted end
 
   // Returns the name of the scalar intrinsic for the given data type.
