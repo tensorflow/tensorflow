@@ -1667,8 +1667,8 @@ class GemmFusionAutotunerEnableTma : public GemmFusionAutotunerTest {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
         GemmFusionAutotunerTest::GetDebugOptionsForTest();
-    debug_options
-        .set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(true);
+    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
+        DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
     debug_options.set_xla_gpu_experimental_enable_triton_tma(true);
     return debug_options;
   }

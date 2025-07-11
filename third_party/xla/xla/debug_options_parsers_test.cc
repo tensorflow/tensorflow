@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "xla/debug_options_flags.h"
@@ -34,6 +35,13 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+using ::testing::ElementsAre;
+using ::testing::IsEmpty;
+using ::testing::status::IsOkAndHolds;
+using ::testing::status::StatusIs;
+using ::xla::details::parseRepeatedEnumModifiers;
+using ::xla::details::RepeatedFlagModifier;
 
 // Test that the xla_backend_extra_options flag is parsed correctly.
 TEST(DebugOptionsFlags, ParseXlaBackendExtraOptions) {
@@ -319,6 +327,58 @@ TEST(ParsingDebugOptionsTest, EnvOverwritesDebugOptionsFile) {
   EXPECT_EQ(
       parsed_debug_options.xla_gpu_experimental_collective_perf_table_path(),
       "/path/to/collective/perf/table/from/command/line/flags");
+}
+
+TEST(ParseRepeatedEnumModifiersTest, Replace) {
+  EXPECT_THAT(parseRepeatedEnumModifiers("a,b"),
+              IsOkAndHolds(ElementsAre(
+                  RepeatedFlagModifier{RepeatedFlagModifier::Op::kClear, ""},
+                  RepeatedFlagModifier{RepeatedFlagModifier::Op::kAdd, "A"},
+                  RepeatedFlagModifier{RepeatedFlagModifier::Op::kAdd, "B"})));
+}
+
+TEST(ParseRepeatedEnumModifiersTest, Empty) {
+  EXPECT_THAT(parseRepeatedEnumModifiers(" "), IsOkAndHolds(IsEmpty()));
+}
+
+TEST(ParseRepeatedEnumModifiersTest, ReplaceWithPrefix) {
+  EXPECT_THAT(
+      parseRepeatedEnumModifiers("a,b", "PRE_"),
+      IsOkAndHolds(ElementsAre(
+          RepeatedFlagModifier{RepeatedFlagModifier::Op::kClear, ""},
+          RepeatedFlagModifier{RepeatedFlagModifier::Op::kAdd, "PRE_A"},
+          RepeatedFlagModifier{RepeatedFlagModifier::Op::kAdd, "PRE_B"})));
+}
+
+TEST(ParseRepeatedEnumModifiersTest, ReplaceWithPrefixAlreadyPresent) {
+  EXPECT_THAT(
+      parseRepeatedEnumModifiers("PRE_A,b", "pre_"),
+      IsOkAndHolds(ElementsAre(
+          RepeatedFlagModifier{RepeatedFlagModifier::Op::kClear, ""},
+          RepeatedFlagModifier{RepeatedFlagModifier::Op::kAdd, "PRE_A"},
+          RepeatedFlagModifier{RepeatedFlagModifier::Op::kAdd, "PRE_B"})));
+}
+
+TEST(ParseRepeatedEnumModifiersTest, AddRemove) {
+  EXPECT_THAT(parseRepeatedEnumModifiers("+a,-b,+c"),
+              IsOkAndHolds(ElementsAre(
+                  RepeatedFlagModifier{RepeatedFlagModifier::Op::kAdd, "A"},
+                  RepeatedFlagModifier{RepeatedFlagModifier::Op::kRemove, "B"},
+                  RepeatedFlagModifier{RepeatedFlagModifier::Op::kAdd, "C"})));
+}
+
+TEST(ParseRepeatedEnumModifiersTest, AddRemoveWithPrefix) {
+  EXPECT_THAT(
+      parseRepeatedEnumModifiers("+a,-b,+c", "pre_"),
+      IsOkAndHolds(ElementsAre(
+          RepeatedFlagModifier{RepeatedFlagModifier::Op::kAdd, "PRE_A"},
+          RepeatedFlagModifier{RepeatedFlagModifier::Op::kRemove, "PRE_B"},
+          RepeatedFlagModifier{RepeatedFlagModifier::Op::kAdd, "PRE_C"})));
+}
+
+TEST(ParseRepeatedEnumModifiersTest, Invalid) {
+  EXPECT_THAT(parseRepeatedEnumModifiers("+a,b"),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

@@ -89,10 +89,14 @@ class TritonTest : public GpuCodegenTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    debug_options
-        .set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(true);
-    // Disable autotuning by default, re-enable it on a per-test basis in order
-    // to avoid unnecessary slowness.
+    auto* emitter_opts =
+        debug_options
+            .mutable_xla_gpu_unsupported_generic_triton_emitter_features();
+    emitter_opts->Add(DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
+    emitter_opts->Add(
+        DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION);
+    emitter_opts->Add(
+        DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES);
     debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;
   }

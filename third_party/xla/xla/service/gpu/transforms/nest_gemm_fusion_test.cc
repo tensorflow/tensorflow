@@ -80,8 +80,13 @@ class NestGemmFusionTest : public HloHardwareIndependentTestBase {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions options =
         HloHardwareIndependentTestBase::GetDebugOptionsForTest();
-    options.set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(
-        true);
+    auto* emitter_opts =
+        options.mutable_xla_gpu_unsupported_generic_triton_emitter_features();
+    emitter_opts->Add(DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
+    emitter_opts->Add(
+        DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION);
+    emitter_opts->Add(
+        DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES);
     return options;
   }
 };
