@@ -24,8 +24,8 @@ namespace optimize {
 namespace operator_property {
 
 namespace {
-const OpVariant GetOperatorVariant(const ModelT* model, int subgraph_index,
-                                   int op_index) {
+OpVariant GetOperatorVariant(const ModelT* model, int subgraph_index,
+                             int op_index) {
   OpVariant op_variant;
   OperatorT* op =
       model->subgraphs.at(subgraph_index)->operators[op_index].get();
