@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
@@ -52,6 +53,67 @@ limitations under the License.
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
+
+namespace details {
+
+absl::StatusOr<std::vector<RepeatedFlagModifier>> parseRepeatedEnumModifiers(
+    const absl::string_view flag_value, const absl::string_view add_prefix) {
+  std::vector<absl::string_view> values = absl::StrSplit(flag_value, ',');
+  std::string prefix = absl::AsciiStrToUpper(add_prefix);
+  std::vector<RepeatedFlagModifier> modifiers;
+  modifiers.reserve(values.size());
+  int incremental_modifiers_count = 0;
+  for (absl::string_view value : values) {
+    RepeatedFlagModifier modifier;
+    value = absl::StripAsciiWhitespace(value);
+    if (value.empty()) {
+      continue;
+    }
+    modifier.op = RepeatedFlagModifier::Op::kAdd;
+    if (absl::StartsWith(value, "+") || absl::StartsWith(value, "-")) {
+      incremental_modifiers_count++;
+      if (absl::StartsWith(value, "-")) {
+        modifier.op = RepeatedFlagModifier::Op::kRemove;
+      }
+      value = value.substr(1);
+    } else if (modifiers.empty()) {
+      modifiers.push_back(
+          RepeatedFlagModifier{RepeatedFlagModifier::Op::kClear, ""});
+    }
+    modifier.value = absl::AsciiStrToUpper(value);
+    if (!prefix.empty() && !absl::StartsWith(modifier.value, prefix)) {
+      modifier.value = absl::StrCat(prefix, modifier.value);
+    }
+    modifiers.push_back(modifier);
+  }
+  // If we have at least one incremental then we all values are to be
+  // incremental.
+  if (incremental_modifiers_count > 0 &&
+      incremental_modifiers_count != values.size()) {
+    return absl::InvalidArgumentError(
+        "All values must be incremental or none of them.");
+  }
+  return modifiers;
+}
+
+}  // namespace details
+
+namespace {
+
+template <typename T>
+void RemoveRepeatedFieldValue(tsl::protobuf::RepeatedField<int>* values,
+                              T remove) {
+  auto it = values->begin();
+  while (it != values->end()) {
+    if (*it == remove) {
+      it = values->erase(it);
+    } else {
+      it++;
+    }
+  }
+}
+
+}  // namespace
 
 inline std::string DefaultMaxIsa() {
   // There are many missing SVE lowerings in LLVM. Limit features to NEON for
@@ -212,7 +274,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       DebugOptions::PARTITIONING_ALGORITHM_NOOP);
 
   opts.set_xla_gpu_enable_triton_gemm(true);
-  opts.set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(false);
+  opts.clear_xla_gpu_unsupported_generic_triton_emitter_features();
   opts.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(true);
@@ -587,18 +649,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           return cmd_type;
         };
 
-        auto erase_command_type = [](tsl::protobuf::RepeatedField<int>* enabled,
-                                     DebugOptions::CommandBufferCmdType type) {
-          auto it = enabled->begin();
-          while (it != enabled->end()) {
-            if (*it == type) {
-              it = enabled->erase(it);
-            } else {
-              it++;
-            }
-          }
-        };
-
         // Disable command buffers by clearing a set of supported commands.
         if (input.empty()) {
           debug_options->clear_xla_gpu_enable_command_buffer();
@@ -625,10 +675,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
             if (absl::StartsWith(value, "+")) {
               debug_options->add_xla_gpu_enable_command_buffer(cmd_type);
             } else if (absl::StartsWith(value, "-")) {
-              tsl::protobuf::RepeatedField<int>* enabled =
-                  debug_options->mutable_xla_gpu_enable_command_buffer();
-              erase_command_type(enabled, cmd_type);
+              RemoveRepeatedFieldValue(
+                  debug_options->mutable_xla_gpu_enable_command_buffer(),
+                  cmd_type);
             }
+            // TODO(goncharov): That looks like a bug, we should return after
+            // the loop.
             return true;
           }
         }
@@ -791,6 +843,48 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           return false;
         }
         debug_options->set_xla_gpu_pgle_accuracy_checker(strictness_level);
+        return true;
+      };
+
+  auto setter_for_xla_gpu_unsupported_generic_triton_emitter_features =
+      [debug_options](std::string input) {
+        auto value_modifiers = details::parseRepeatedEnumModifiers(
+            input, "GENERIC_TRITON_EMITTER_");
+        if (!value_modifiers.ok()) {
+          LOG(ERROR) << absl::StreamFormat(
+              "Illegal value for "
+              "--xla_gpu_unsupported_generic_triton_emitter_features "
+              "'%s': %s",
+              input, value_modifiers.status().message());
+          return false;
+        }
+        for (const auto& mod : *value_modifiers) {
+          if (mod.op == details::RepeatedFlagModifier::Op::kClear) {
+            debug_options
+                ->clear_xla_gpu_unsupported_generic_triton_emitter_features();
+            continue;
+          }
+          DebugOptions::GenericTritonEmitterFeature feature;
+          if (!DebugOptions::GenericTritonEmitterFeature_Parse(mod.value,
+                                                               &feature)) {
+            LOG(ERROR) << absl::StreamFormat(
+                "Illegal value for "
+                "--xla_gpu_unsupported_generic_triton_emitter_features "
+                "'%s'",
+                mod.value);
+            return false;
+          }
+          if (mod.op == details::RepeatedFlagModifier::Op::kAdd) {
+            debug_options
+                ->add_xla_gpu_unsupported_generic_triton_emitter_features(
+                    feature);
+          } else if (mod.op == details::RepeatedFlagModifier::Op::kRemove) {
+            RemoveRepeatedFieldValue(
+                debug_options
+                    ->mutable_xla_gpu_unsupported_generic_triton_emitter_features(),  // NOLINT
+                feature);
+          }
+        }
         return true;
       };
 
@@ -1756,14 +1850,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_enable_triton_gemm(),
                 "Use Triton-based matrix multiplication."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms",
-      bool_setter_for(
-          &DebugOptions::
-              set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms),
-      debug_options
-          ->xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(),
-      "Enable lowering Triton GEMM fusions through the generic Triton "
-      "emitter."));
+      "xla_gpu_unsupported_generic_triton_emitter_features",
+      setter_for_xla_gpu_unsupported_generic_triton_emitter_features, "",
+      "Comma-separated list of individual features of generic Triton emitter. "
+      "Use +/- prefix to modify the default list, or list features to enable "
+      "explicitly - that will override the defaults."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_unsupported_enable_triton_multi_output_fusion",
       bool_setter_for(
