@@ -101,6 +101,7 @@ test_suite(
 cc_library_with_tflite_with_c_headers_test(
     name = "stable_delegate",
     hdrs = ["stable_delegate.h"],
+    compatible_with = get_compatible_with_portable(),
     generate_opaque_delegate_target = True,
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/lite/core/acceleration/configuration/c:stable_delegate"],
