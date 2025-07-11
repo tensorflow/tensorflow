@@ -424,7 +424,8 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     auto status_or_alias_analysis = HloAliasAnalysis::Run(module);
     TF_CHECK_OK(status_or_alias_analysis.status());
     auto alias_analysis = std::move(status_or_alias_analysis.value());
-    HloBuffer& buffer = alias_analysis->GetUniqueBufferAt(instruction, index);
+    const HloBuffer& buffer =
+        alias_analysis->GetUniqueBufferAt(instruction, index);
     for (auto& pos_and_chunk : preset_assignments.chunks()) {
       for (auto& value : buffer.values()) {
         if (pos_and_chunk.first == value->defining_position()) {

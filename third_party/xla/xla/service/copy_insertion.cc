@@ -1272,7 +1272,7 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
   // cannot be done in place. Such aliasing can be created when some copies are
   // removed too aggressively by CopyRemoval.
   for (const HloValue* value : alias_analysis->dataflow_analysis().values()) {
-    HloBuffer& buffer = alias_analysis->GetBufferContainingValue(*value);
+    const HloBuffer& buffer = alias_analysis->GetBufferContainingValue(*value);
     if (buffer.values().size() > 1 && ValueIsReadOnly(*value)) {
       VLOG(2) << "Value " << value->ToShortString()
               << " is read only, but its buffer contains more than one value. "
