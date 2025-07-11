@@ -2973,6 +2973,11 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
                                                 int64_t offset,
                                                 int64_t transfer_size) {
   VLOG(3) << "TfrtGpuBuffer::CopyRawToHostFuture";
+  if (transfer_size < 0 || offset < 0) {
+    return PjRtFuture<>(InvalidArgument(
+        "ToLiteral() called with invalid offset %lld or transfer size %lld",
+        offset, transfer_size));
+  }
   tsl::profiler::TraceMe traceme("TfrtGpuBuffer::CopyRawToHostFuture");
   auto promise = PjRtFuture<>::CreatePromise();
   auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
@@ -2993,8 +2998,7 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
       return;
     }
     se::DeviceMemoryBase device_memory = device_buffer->buffer()->buffer();
-    if (offset < 0 || offset > device_memory.size() ||
-        device_memory.size() - offset < transfer_size) {
+    if (offset + transfer_size > device_memory.size()) {
       LOG(ERROR) << "Copy raw buffer called on buffer size "
                  << device_memory.size() << " with invalid offset " << offset
                  << ", transfer size " << transfer_size;
@@ -3006,11 +3010,11 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
     }
 
     std::unique_ptr<se::DeviceMemoryBase> sub_buffer;
-    if (transfer_size < device_memory.size()) {
+    if (offset == 0 && transfer_size == device_memory.size()) {
+      sub_buffer = std::make_unique<se::DeviceMemoryBase>(device_memory);
+    } else {
       sub_buffer = std::make_unique<se::DeviceMemoryBase>(
           device_memory.GetByteSlice(offset, transfer_size));
-    } else {
-      sub_buffer = std::make_unique<se::DeviceMemoryBase>(device_memory);
     }
 
     HostMemoryAllocator::OwnedPtr staging_buffer;
