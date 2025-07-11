@@ -498,6 +498,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:logical_buffer",
         "//xla/tsl/lib/gtl:compactptrset",
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -509,8 +510,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
     ],
 )
