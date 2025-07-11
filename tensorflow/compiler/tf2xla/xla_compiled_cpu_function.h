@@ -586,6 +586,16 @@ class XlaCompiledCpuFunction {
   friend class XlaJitCompiledCpuFunction;
 };
 
+size_t AlignedBufferBytes(
+    const xla::cpu_function_runtime::BufferInfo* buffer_infos, size_t n,
+    bool allocate_entry_params);
+
+void* MallocContiguousBuffers(
+    const xla::cpu_function_runtime::BufferInfo* buffer_infos, size_t n,
+    bool allocate_entry_params, void** bufs, bool annotate_initialized);
+
+void FreeContiguous(void* contiguous);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_XLA_COMPILED_CPU_FUNCTION_H_

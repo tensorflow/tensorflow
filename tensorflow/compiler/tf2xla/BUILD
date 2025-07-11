@@ -406,15 +406,29 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/base:dynamic_annotations",
         "@local_xla//xla/service:custom_call_status_internal",
         # Keep dependencies to a minimum here; this library is used in every AOT
         # binary produced by tfcompile.
         "@local_xla//xla/backends/cpu/runtime:rng_state_lib",
+        "@local_xla//xla/backends/cpu:alignment",
         "@local_xla//xla:cpu_function_runtime",
         "@local_xla//xla:executable_run_options",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_compiled_cpu_function_test",
+    srcs = ["xla_compiled_cpu_function_test.cc"],
+    deps = [
+        ":xla_compiled_cpu_function",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@local_xla//xla:cpu_function_runtime",
     ],
 )
 
@@ -464,17 +478,6 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function_thunks",
     ],
     alwayslink = 1,
-)
-
-tf_cc_test(
-    name = "cpu_function_runtime_test",
-    srcs = ["cpu_function_runtime_test.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@local_xla//xla:cpu_function_runtime",
-    ],
 )
 
 cc_library(
