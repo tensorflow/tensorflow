@@ -63,6 +63,7 @@ class Intrinsic {
   // go/keep-sorted start
   class Exp;
   class FpTrunc;
+  class Ldexp;
   class Log1p;
   class Rsqrt;
   // go/keep-sorted end

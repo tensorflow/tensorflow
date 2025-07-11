@@ -126,7 +126,10 @@ class LdexpF64MathFunction final : public MathFunction {
 
   std::string GenerateVectorizedFunctionName(
       VectorType vector_type) const override {
-    return math::LdexpF64FunctionName(vector_type.width);
+    if (vector_type.width == 1) {
+      return Intrinsic::Name<Intrinsic::Ldexp>(F64);
+    }
+    return Intrinsic::Name<Intrinsic::Ldexp>(F64, vector_type.width);
   }
 
   std::string GenerateMangledSimdName(VectorType vector_type) const override {
