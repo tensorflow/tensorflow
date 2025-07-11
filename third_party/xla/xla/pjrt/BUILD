@@ -1284,6 +1284,29 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_phase_compile",
+    srcs = ["pjrt_phase_compile.cc"],
+    hdrs = ["pjrt_phase_compile.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_client",
+        ":pjrt_compiler",
+        ":pjrt_executable",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_helpers",
+        "//xla/pjrt/c:pjrt_c_api_phase_compile_extension_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_phase_compile_internal",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:casts",
+    ],
+)
+
+cc_library(
     name = "pjrt_phase_compile_sample_plugin",
     srcs = ["pjrt_phase_compile_sample_plugin.cc"],
     hdrs = ["pjrt_phase_compile_sample_plugin.h"],
@@ -1345,10 +1368,27 @@ xla_cc_test(
     name = "pjrt_phase_compile_extension_test",
     srcs = ["pjrt_phase_compile_extension_test.cc"],
     deps = [
+        ":pjrt_api",
+        ":pjrt_c_api_client",
+        ":pjrt_compiler",
+        ":pjrt_executable",
+        ":pjrt_phase_compile",
         ":pjrt_phase_compile_sample_plugin",
+        "//xla/pjrt/c:pjrt_c_api_cpu_internal",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_helpers",
         "//xla/pjrt/c:pjrt_c_api_phase_compile_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_phase_compile_internal",
+        "//xla/pjrt/proto:pjrt_partial_program_proto_cc",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:status_matchers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:reference_api",
     ],
 )
