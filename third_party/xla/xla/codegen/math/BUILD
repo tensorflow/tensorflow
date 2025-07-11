@@ -225,6 +225,37 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "log1p",
+    srcs = ["log1p.cc"],
+    hdrs = ["log1p.h"],
+    deps = [
+        ":intrinsic",
+        "//xla:xla_data_proto_cc",
+        "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+xla_cc_test(
+    name = "log1p_test",
+    srcs = ["log1p_test.cc"],
+    deps = [
+        ":ldexp",
+        ":log1p",
+        ":simple_jit_runner",
+        ":test_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
 xla_cc_test(
     name = "exp_test",
     srcs = ["exp_test.cc"],
