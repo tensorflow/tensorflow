@@ -11,6 +11,7 @@ load(
     "tf_additional_cuda_platform_deps",
     "tf_additional_cudnn_plugin_copts",
 )
+load("//xla/stream_executor/gpu:build_defs.bzl", "cc_embed_cuda_library")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
@@ -2189,4 +2190,27 @@ cuda_library(
         "@com_google_absl//absl/base",
     ],
     alwayslink = 1,
+)
+
+cc_embed_cuda_library(
+    name = "gpu_test_kernels_cuda_embedded",
+    testonly = 1,
+    cuda_library_target = ":gpu_test_kernels_cuda",
+)
+
+xla_test(
+    name = "gpu_test_kernels_cuda_embedded_test",
+    srcs = ["gpu_test_kernels_cuda_embedded_test.cc"],
+    backends = ["nvgpu_any"],
+    deps = [
+        ":cuda_platform_id",
+        ":gpu_test_kernels_cuda_embedded",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
