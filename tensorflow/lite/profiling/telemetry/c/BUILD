@@ -4,6 +4,7 @@ load(
     "tflite_cc_library_with_c_headers_test",
     "tflite_copts",
 )
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
