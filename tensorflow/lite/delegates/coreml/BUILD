@@ -14,6 +14,8 @@
 # ==============================================================================
 
 load("//tensorflow/lite:build_def.bzl", "CXX17_BAZEL_ONLY_COPTS")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
+load("//third_party/bazel_rules/rules_cc/cc:objc_library.bzl", "objc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
