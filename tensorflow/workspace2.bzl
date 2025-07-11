@@ -24,6 +24,7 @@ load("@local_xla//third_party/gpus:sycl_configure.bzl", "sycl_configure")
 load("@local_xla//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("@local_xla//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("@local_xla//third_party/implib_so:workspace.bzl", implib_so = "repo")
+load("@local_xla//third_party/llvm:workspace.bzl", llvm = "repo")
 load("@local_xla//third_party/nanobind:workspace.bzl", nanobind = "repo")
 load("@local_xla//third_party/nasm:workspace.bzl", nasm = "repo")
 load("@local_xla//third_party/nvshmem:workspace.bzl", nvshmem = "repo")
@@ -52,7 +53,6 @@ load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
 load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
 load("//third_party/libprotobuf_mutator:workspace.bzl", libprotobuf_mutator = "repo")
 load("//third_party/libwebp:workspace.bzl", libwebp = "repo")
-load("//third_party/llvm:setup.bzl", "llvm_setup")
 load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
 load("//third_party/pasta:workspace.bzl", pasta = "repo")
 load("//third_party/py:python_configure.bzl", "python_configure")
@@ -471,7 +471,9 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/antirez/linenoise/archive/4ce393a66b10903a0ef52edf9775ed526a17395f.tar.gz"),
     )
 
-    llvm_setup(name = "llvm-project")
+    # Load the raw llvm-project.  llvm does not have build rules set up by default,
+    # but provides a script for setting up build rules via overlays.
+    llvm("llvm-raw")
 
     # Intel openMP that is part of LLVM sources.
     tf_http_archive(

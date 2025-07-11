@@ -121,6 +121,7 @@ xla/third_party/hwloc/BUILD.system:
 xla/third_party/hwloc/static-components.h:
 xla/third_party/implib_so/get_symbols.py:
 xla/third_party/implib_so/make_stub.py:
+xla/third_party/llvm/run_lit.sh:
 xla/third_party/llvm_openmp/cmake_vars.bzl:
 xla/third_party/llvm_openmp/expand_cmake_vars.py:
 xla/third_party/llvm_openmp/openmp.bzl:
