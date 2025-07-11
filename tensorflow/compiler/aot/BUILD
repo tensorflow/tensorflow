@@ -97,7 +97,6 @@ cc_library(
         "//tensorflow/compiler/tf2xla:mlir_tf2xla",  # fixdeps: keep
         "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
-        "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
