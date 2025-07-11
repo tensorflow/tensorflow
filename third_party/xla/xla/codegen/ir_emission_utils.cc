@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/codegen/ir_emission_utils.h"
 
 #include "xla/primitive_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
