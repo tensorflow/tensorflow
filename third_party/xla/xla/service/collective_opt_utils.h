@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 
@@ -33,6 +34,14 @@ struct ReduceScatterSpec {
   std::vector<int64_t> original_split_dims;
   HloInstruction* dynamic_slice;
 };
+
+struct SplitDimSpec {
+  int64_t split_dim = -1;
+  std::vector<int64_t> split_dims = {};
+};
+
+// A map from a slice offset to its corresponding partition ID(flattened-id).
+using IndicesSpec = absl::flat_hash_map<int64_t, int64_t>;
 
 // Matches the given all-reduce operation to a reduce-scatter pattern.
 std::optional<ReduceScatterSpec> MatchReduceScatter(
@@ -52,6 +61,18 @@ std::optional<ReduceScatterSpec> AllGatherDynamicSliceCancellation(
     HloPredicate match_replica_id = HloPredicateIsOp<HloOpcode::kReplicaId>,
     bool allow_intervening_bitcast = false, bool allow_multiple_users = false);
 
+// Checks whether the replica groups in the given channel instruction are
+// uniform.
+bool CheckUniformReplicaGroups(const HloChannelInstruction* instruction);
+
+// Extracts the dynamic-slice user from a collective instruction, potentially
+// looking through reshapes and bitcasts.
+void ExtractDynamicSliceFromCollectiveUser(
+    const HloChannelInstruction* instruction, bool allow_multiple_users,
+    bool allow_intervening_reshape, bool allow_intervening_bitcast,
+    HloInstruction** dynamic_slice_user, HloInstruction** bitcast,
+    HloInstruction** reshape);
+
 // Check if a given instruction (AllReduce or AllGather) matches a DynamicSlice;
 // the DynamicSlice has to be the user of the given instruction.
 std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
@@ -63,6 +84,28 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
     bool is_constrain_layout = false, bool use_global_device_ids = false,
     bool is_cross_module = false, bool allow_intervening_bitcast = false,
     bool allow_multiple_users = false);
+
+// Extracts the split dimension spec from a `DynamicSlice` instruction. This
+// spec identifies the dimension(s) being operated on by a collective
+// operation that is fused with the slice.
+//
+// The function first attempts a fast path by finding a single dimension where
+// the input and output shapes of the `DynamicSlice` differ.
+//
+// If more than one dimension differs, it re-computes the split dimension by
+// examining the slice's offsets. It identifies non-trivial dimensions being
+// sliced. A dimension is considered trivial and skipped if its size is 1, or
+// if the slice offset along it is a constant zero. This prevents
+// misidentifying a dimension that isn't actually being scattered as the split
+// dimension.
+std::optional<SplitDimSpec> ExtractSplitDimSpec(
+    const HloInstruction& dynamic_slice, bool allow_multiple_split_dims);
+
+// Extracts the mapping from partition IDs to slice offsets from a dynamic-slice
+// instruction that is fed by an all-gather.
+std::optional<IndicesSpec> GetIndicesSpecForDynamicSlice(
+    const HloAllGatherInstruction* ag_instr, const HloInstruction* offset_hlo,
+    const std::function<int64_t(const HloInstruction*, int64_t)>& map_id);
 
 }  // namespace xla
 
