@@ -792,14 +792,14 @@ class TritonXLAExtractInsertToTritonPass
     patterns.add<RewriteScalarExtract, RewriteScalarInsert>(mlir_context);
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
-      signalPassFailure();
+      return signalPassFailure();
     }
 
     if (mlir::failed(mlir::applyPatternsGreedily(
             getOperation(), mlir::RewritePatternSet(
                                 mlir_context, std::make_unique<RewriteFuncOp>(
                                                   mlir_context))))) {
-      signalPassFailure();
+      return signalPassFailure();
     }
   }
 

@@ -32,6 +32,27 @@ def TritonXLAExtractInsertToTritonPass : Pass<"triton-xla-extract-insert-to-trit
   let constructor = "CreateTritonXLAExtractInsertToTritonPass()";
 }
 
+def TritonXLASqueezeDimsPass : Pass<"triton-xla-squeeze-dims", "mlir::ModuleOp"> {
+  let summary = "Remove superfluous size-1 dimensions.";
+  let description = [{
+    This pass tries to remove size-1 dimensions from tensors.
+  }];
+  let dependentDialects = [
+    "::mlir::triton::xla::XlaTritonDialect"
+  ];
+  let options = [
+    // TODO((b/430874182): Enabling squeeze-store would allow more
+    // optimizations, but the extracted squeeze_dims don't all disappear for
+    // softmax-like code (see the diamond_may_duplicate_code test), and end up
+    // crashing Triton.
+    Option<"squeeze_store_", "squeeze-store", "bool", "false",
+           "Enable squeezing tt.store. Enable for testing only.">,
+    Option<"finalize_", "finalize", "bool", "true",
+           "Convert squeeze_dims back to reshape. Disable for testing only.">,
+  ];
+  let constructor = "CreateTritonXLASqueezeDimsPass()";
+}
+
 def GeneralizeKernelSignaturePass
     : Pass<"generalize-kernel-signature"> {
   let summary = "Rewrite kernels to use generic data pointer arguments.";
