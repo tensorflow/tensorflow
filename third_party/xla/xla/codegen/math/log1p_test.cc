@@ -41,6 +41,13 @@ limitations under the License.
 namespace xla::codegen::math {
 namespace {
 
+TEST(Log1pTest, Log1pFunctionName) {
+  EXPECT_EQ(Log1pFunctionName(1, F32), "xla.log1p.f32");
+  EXPECT_EQ(Log1pFunctionName(2, F32), "xla.log1p.v2f32");
+  EXPECT_EQ(Log1pFunctionName(1, F64), "xla.log1p.f64");
+  EXPECT_EQ(Log1pFunctionName(2, F64), "xla.log1p.v2f64");
+}
+
 JitRunner CreateJitRunnerWithLog1p(
     std::function<llvm::Type*(llvm::LLVMContext&)> make_type) {
   auto context = std::make_unique<llvm::LLVMContext>();
