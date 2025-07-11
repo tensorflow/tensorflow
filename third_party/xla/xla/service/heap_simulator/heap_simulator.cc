@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -935,11 +936,11 @@ bool BufferIntervalTree::Remove(int64_t start, int64_t end,
   return true;
 }
 
-int BufferIntervalTree::NumChunksOverlappingInTime(int64_t start,
-                                                   int64_t end) const {
-  int result = 0;
+void BufferIntervalTree::ApplyToNodesOverlappingInTime(
+    int64_t start, int64_t end,
+    absl::FunctionRef<void(const BufferIntervalTreeNode*)> fn) const {
   if (root_ == nullptr) {
-    return result;
+    return;
   }
   std::vector<const BufferIntervalTreeNode*> visiting_stack;
   visiting_stack.push_back(root_);
@@ -949,59 +950,47 @@ int BufferIntervalTree::NumChunksOverlappingInTime(int64_t start,
     if (start > top->subtree_end) {
       continue;
     }
-    if (top->left != nullptr) {
-      visiting_stack.push_back(top->left);
+    if (const BufferIntervalTreeNode* left = top->left; left != nullptr) {
+      visiting_stack.push_back(left);
     }
-    if (top->start <= end && top->end >= start) {
-      ++result;
+    const int64_t top_start = top->start;
+    if (top_start <= end && top->end >= start) {
+      fn(top);
     }
-    if (end < top->start) {
+    if (end < top_start) {
       continue;
     }
-    if (top->right != nullptr) {
-      visiting_stack.push_back(top->right);
+    if (const BufferIntervalTreeNode* right = top->right; right != nullptr) {
+      visiting_stack.push_back(right);
     }
   }
+}
+
+int BufferIntervalTree::NumChunksOverlappingInTime(int64_t start,
+                                                   int64_t end) const {
+  int result = 0;
+  ApplyToNodesOverlappingInTime(
+      start, end, [&result](const BufferIntervalTreeNode* node) { ++result; });
   return result;
 }
 
 std::vector<Chunk> BufferIntervalTree::ChunksOverlappingInTime(
     int64_t start, int64_t end) const {
   std::vector<Chunk> result;
-  for (const BufferIntervalTreeNode* node :
-       NodesOverlappingInTime(start, end)) {
-    result.push_back(node->chunk);
-  }
+  ApplyToNodesOverlappingInTime(start, end,
+                                [&result](const BufferIntervalTreeNode* node) {
+                                  result.push_back(node->chunk);
+                                });
   return result;
 }
 
 std::vector<const BufferIntervalTreeNode*>
 BufferIntervalTree::NodesOverlappingInTime(int64_t start, int64_t end) const {
   std::vector<const BufferIntervalTreeNode*> result;
-  if (root_ == nullptr) {
-    return result;
-  }
-  std::vector<const BufferIntervalTreeNode*> visiting_stack;
-  visiting_stack.push_back(root_);
-  while (!visiting_stack.empty()) {
-    const BufferIntervalTreeNode* top = visiting_stack.back();
-    visiting_stack.pop_back();
-    if (start > top->subtree_end) {
-      continue;
-    }
-    if (top->left != nullptr) {
-      visiting_stack.push_back(top->left);
-    }
-    if (top->start <= end && top->end >= start) {
-      result.push_back(top);
-    }
-    if (end < top->start) {
-      continue;
-    }
-    if (top->right != nullptr) {
-      visiting_stack.push_back(top->right);
-    }
-  }
+  ApplyToNodesOverlappingInTime(start, end,
+                                [&result](const BufferIntervalTreeNode* node) {
+                                  result.push_back(node);
+                                });
   return result;
 }
 
@@ -2374,42 +2363,43 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
       {0, INT64_MAX}};  // Initialize with "infinite" free memory.
 
   // Subtract chunks that are in use from the free chunks.
-  auto subtract_used_chunks = [&](const std::vector<Chunk>& used_chunks) {
-    for (const Chunk& used_chunk : used_chunks) {
-      // Find the free chunks containing the start and end of the used chunk.
-      auto it_end = free_chunks.lower_bound(used_chunk.chunk_end());
-      if (it_end == free_chunks.end()) continue;
-      auto it_start = free_chunks.lower_bound(used_chunk.offset);
+  auto subtract_used_chunk = [&](const BufferIntervalTreeNode* node) {
+    const Chunk& used_chunk = node->chunk;
+    // Find the free chunks containing the start and end of the used chunk.
+    auto it_end = free_chunks.lower_bound(used_chunk.chunk_end());
+    if (it_end == free_chunks.end()) {
+      return;
+    }
+    auto it_start = free_chunks.lower_bound(used_chunk.offset);
 
-      // Store original free chunk end, in case `it_start == it_end`.
-      int64_t free_chunk_end = it_end->second;
+    // Store original free chunk end, in case `it_start == it_end`.
+    int64_t free_chunk_end = it_end->second;
 
-      // Subtract from free chunk containing start of used range, removing if it
-      // becomes too small for the buffer.
-      if (it_start != free_chunks.end()) {
-        if (used_chunk.offset - it_start->first >= buffer_interval.size) {
-          it_start->second = std::min(it_start->second, used_chunk.offset);
-        } else {
-          ++it_start;  // Increment iterator so that this entry is erased
-                       // below.
-        }
+    // Subtract from free chunk containing start of used range, removing if it
+    // becomes too small for the buffer.
+    if (it_start != free_chunks.end()) {
+      if (used_chunk.offset - it_start->first >= buffer_interval.size) {
+        it_start->second = std::min(it_start->second, used_chunk.offset);
+      } else {
+        ++it_start;  // Increment iterator so that this entry is erased
+                     // below.
       }
+    }
 
-      // Erase from the start chunk (possibly inclusive) to the end chunk
-      // (always inclusive). We iterate from end to start, as the map is in
-      // reverse order.
-      free_chunks.erase(it_end, it_start);
+    // Erase from the start chunk (possibly inclusive) to the end chunk
+    // (always inclusive). We iterate from end to start, as the map is in
+    // reverse order.
+    free_chunks.erase(it_end, it_start);
 
-      // Create a new free chunk after the used chunk, if it is large enough.
-      int64_t chunk_end_aligned = RoundUpTo(used_chunk.chunk_end(), alignment_);
-      if (free_chunk_end - chunk_end_aligned >= max_colocation_size) {
-        CHECK(free_chunks.insert({chunk_end_aligned, free_chunk_end}).second);
-      }
+    // Create a new free chunk after the used chunk, if it is large enough.
+    int64_t chunk_end_aligned = RoundUpTo(used_chunk.chunk_end(), alignment_);
+    if (free_chunk_end - chunk_end_aligned >= max_colocation_size) {
+      CHECK(free_chunks.insert({chunk_end_aligned, free_chunk_end}).second);
     }
   };
 
-  subtract_used_chunks(interval_tree_.ChunksOverlappingInTime(
-      buffer_interval.start, buffer_interval.end));
+  interval_tree_.ApplyToNodesOverlappingInTime(
+      buffer_interval.start, buffer_interval.end, subtract_used_chunk);
 
   for (const BufferType* colocation :
        GetTransitiveColocations(buffer_interval)) {
@@ -2417,8 +2407,8 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
     VLOG(1) << "  Alias size " << interval.size << ", start " << interval.start
             << ", end " << interval.end << " " << interval.buffer->ToString();
 
-    subtract_used_chunks(
-        interval_tree_.ChunksOverlappingInTime(interval.start, interval.end));
+    interval_tree_.ApplyToNodesOverlappingInTime(interval.start, interval.end,
+                                                 subtract_used_chunk);
   }
 
   return free_chunks;
