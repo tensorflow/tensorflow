@@ -96,6 +96,12 @@ static absl::Status RunPassPipeline(
   return diagnostic_handler.consumeStatus(pm.run(module));
 }
 
+static std::unique_ptr<::mlir::Pass> CreateConvertMathToLLVMPass() {
+  mlir::ConvertMathToLLVMPassOptions options;
+  options.approximateLog1p = false;
+  return mlir::createConvertMathToLLVMPass(options);
+}
+
 static void AddXlaOpsOptimizationPasses(mlir::OpPassManager& pm) {
   pm.addNestedPass<mlir::func::FuncOp>(emitters::CreateSimplifyArithPass());
   pm.addPass(CreateAddReductionFastMathFlagsPass());
@@ -172,7 +178,7 @@ static void AddLoweringPasses(mlir::OpPassManager& pm, int32_t vector_width,
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createSCFToControlFlowPass());
   pm.addPass(emitters::CreateLowerXlaMathLibPass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertMathToLLVMPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreateConvertMathToLLVMPass());
   pm.addPass(emitters::CreateLowerToLLVMPass(/*target_type=*/"cpu"));
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addPass(mlir::createInlinerPass());
