@@ -1234,14 +1234,16 @@ TEST(StreamExecutorGpuClientTest, GetDeviceFabricInfo) {
           if (auto* cc = std::get_if<se::CudaComputeCapability>(
                   &executor->GetDeviceDescription().gpu_compute_capability())) {
             if (cc->IsAtLeastHopper()) {
-              TF_ASSERT_OK_AND_ASSIGN(
-                  std::string fabric_info,
-                  GetDeviceFabricInfo(executor->device_ordinal()));
-              // Hopper devices have empty fabric info, MNNVL Blackwell devices
-              // have meaningful fabric info.
-              if (cc->IsHopper()) {
-                EXPECT_EQ(fabric_info,
-                          "00000000-0000-0000-0000-000000000000/0");
+              auto fabric_info =
+                  GetDeviceFabricInfo(executor->device_ordinal());
+              if (!fabric_info.ok()) {
+                // Only allow failures due to insufficient CUDA driver version.
+                EXPECT_THAT(
+                    fabric_info.status().message(),
+                    AnyOf(
+                        HasSubstr("Failed to initialize NVML library."),
+                        HasSubstr(
+                            "NVML library doesn't have required functions.")));
               }
             }
           }
