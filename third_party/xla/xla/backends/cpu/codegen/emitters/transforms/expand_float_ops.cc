@@ -37,6 +37,8 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/codegen/emitters/implicit_arith_op_builder.h"
 #include "xla/codegen/math/fptrunc.h"
+#include "xla/codegen/math/log1p.h"
+#include "xla/mlir/utils/type_util.h"
 
 namespace xla::cpu {
 
@@ -195,6 +197,31 @@ class RewriteCbrtPattern : public mlir::OpRewritePattern<mlir::math::CbrtOp> {
   }
 };
 
+class RewriteLog1pPattern : public mlir::OpRewritePattern<mlir::math::Log1pOp> {
+ public:
+  RewriteLog1pPattern(mlir::MLIRContext* context, mlir::ModuleOp& module_op)
+      : OpRewritePattern(context), module_op_(module_op) {}
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::math::Log1pOp op, mlir::PatternRewriter& rewriter) const override {
+    mlir::Type type = op.getType();
+    PrimitiveType primitive_type = ConvertMlirTypeToPrimitiveType(type);
+
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    auto log1p_decl = GetOrInsertDeclaration(
+        rewriter, module_op_,
+        codegen::math::Log1pFunctionName(1, primitive_type),
+        rewriter.getFunctionType(type, type));
+    auto call_op = b.create<mlir::func::CallOp>(log1p_decl, op.getOperand());
+    rewriter.replaceOp(op, call_op->getResults());
+    return mlir::success();
+  }
+
+ private:
+  mlir::ModuleOp& module_op_;
+};
+
 class ExpandFloatOpsPass
     : public impl::ExpandFloatOpsPassBase<ExpandFloatOpsPass> {
  public:
@@ -204,8 +231,9 @@ class ExpandFloatOpsPass
     mlir::RewritePatternSet patterns(&getContext());
     mlir::ModuleOp module_op = getOperation();
     patterns.add<RewriteExtFPattern, RewriteCbrtPattern>(&getContext());
-    patterns.add<RewriteTruncFPattern, RewriteErf64Pattern>(&getContext(),
-                                                            module_op);
+    patterns
+        .add<RewriteTruncFPattern, RewriteErf64Pattern, RewriteLog1pPattern>(
+            &getContext(), module_op);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(module_op, std::move(patterns)))) {
