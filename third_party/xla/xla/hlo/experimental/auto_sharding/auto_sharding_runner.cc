@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <iostream>
+#include <memory>
 #include <ostream>
 #include <string>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
