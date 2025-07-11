@@ -17,11 +17,9 @@ limitations under the License.
 
 #include <array>
 #include <cstddef>
-#include <cstdint>
 #include <string>
 
 #include "absl/log/check.h"
-#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/BasicBlock.h"
@@ -37,23 +35,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 
 namespace xla::codegen {
-
-std::string Intrinsic::Log1p::Name(PrimitiveType type) {
-  return absl::StrCat("xla.log1p.", ScalarName(type));
-}
-
-std::string Intrinsic::Log1p::Name(PrimitiveType type, int64_t vector_width) {
-  return absl::StrCat(Name(type), ".v", vector_width);
-}
-
-llvm::Function* Intrinsic::Log1p::GetOrInsertDeclaration(llvm::Module* module,
-                                                         PrimitiveType type) {
-  auto* llvm_type = llvm_ir::PrimitiveTypeToIrType(type, module->getContext());
-  auto* function_type = llvm::FunctionType::get(llvm_type, {llvm_type}, false);
-  return llvm::cast<llvm::Function>(
-      module->getOrInsertFunction(Name(type), function_type).getCallee());
-}
-
 namespace math {
 
 static llvm::Value* EvaluatePolynomial(llvm::Type* type, llvm::Value* x,
@@ -156,6 +137,15 @@ llvm::Function* CreateLog1p(llvm::Module* module, llvm::Type* type) {
 
   return func;
 }
-
 }  // namespace math
+
+absl::StatusOr<llvm::Function*> Intrinsic::Log1p::CreateDefinition(
+    llvm::Module* module, PrimitiveType prim_type, size_t vector_width) {
+  llvm::Type* type =
+      llvm_ir::PrimitiveTypeToIrType(prim_type, module->getContext());
+  if (vector_width > 1) {
+    type = llvm::VectorType::get(type, vector_width, false);
+  }
+  return math::CreateLog1p(module, type);
+}
 }  // namespace xla::codegen
