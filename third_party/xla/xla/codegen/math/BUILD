@@ -68,6 +68,7 @@ cc_library(
     srcs = ["ldexp.cc"],
     hdrs = ["ldexp.h"],
     deps = [
+        ":intrinsic",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Core",  # buildcleaner: keep
@@ -80,6 +81,7 @@ xla_cc_test(
     name = "ldexp_test",
     srcs = ["ldexp_test.cc"],
     deps = [
+        ":intrinsic",
         ":ldexp",
         ":simple_jit_runner",
         ":test_matchers",

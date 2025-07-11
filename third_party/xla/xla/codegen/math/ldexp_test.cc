@@ -38,6 +38,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/TypeSize.h"
+#include "xla/codegen/math/intrinsic.h"
 #include "xla/codegen/math/simple_jit_runner.h"
 #include "xla/codegen/math/test_matchers.h"
 
@@ -57,9 +58,18 @@ JitRunner CreateJitRunnerWithLdexpF64(
   return JitRunner(std::move(module), std::move(context));
 }
 
+TEST(LdexpTest, SclarIninsic) {
+  EXPECT_EQ(Intrinsic::Name<Intrinsic::Ldexp>(F64), "xla.ldexp.f64.i32");
+}
+
+TEST(LdexpTest, VectorIninsic) {
+  EXPECT_EQ(Intrinsic::Name<Intrinsic::Ldexp>(F64, 4), "xla.ldexp.v4f64.i32");
+}
+
 TEST(LdexpTest, EmitLdexpF64) {
   JitRunner runner = CreateJitRunnerWithLdexpF64(llvm::Type::getDoubleTy);
-  auto fn = runner.GetScalarFn<double(double, int)>(LdexpF64FunctionName(1));
+  auto fn =
+      runner.GetScalarFn<double(double, int)>(Intrinsic::Ldexp::Name(F64));
 
   double test_values[] = {1.0,
                           2.0,
@@ -91,7 +101,8 @@ TEST(LdexpTest, EmitLdexpF64) {
 
 TEST(LdexpTest, ClampsExponent) {
   JitRunner runner = CreateJitRunnerWithLdexpF64(llvm::Type::getDoubleTy);
-  auto* run = runner.GetScalarFn<double(double, int)>(LdexpF64FunctionName(1));
+  auto* run =
+      runner.GetScalarFn<double(double, int)>(Intrinsic::Ldexp::Name(F64));
 
   EXPECT_THAT(run(2.0, 1e9), Eq(std::numeric_limits<double>::infinity()));
   EXPECT_THAT(run(std::numeric_limits<double>::min(), 2100),
@@ -105,8 +116,8 @@ TEST(LdexpTest, EmitLdexpF64_Vector4) {
         return llvm::VectorType::get(llvm::Type::getDoubleTy(context),
                                      llvm::ElementCount::getFixed(4));
       });
-  auto run =
-      runner.GetVectorizedFn<4, double, double, int>(LdexpF64FunctionName(4));
+  auto run = runner.GetVectorizedFn<4, double, double, int>(
+      Intrinsic::Ldexp::Name(F64, 4));
 
   using DoubleArray4 = std::array<double, 4>;
   std::vector<DoubleArray4> test_values = {

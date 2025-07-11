@@ -34,8 +34,19 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/TypeSize.h"
+#include "xla/codegen/math/intrinsic.h"
 
-namespace xla::codegen::math {
+namespace xla::codegen {
+
+std::string Intrinsic::Ldexp::Name(PrimitiveType type) {
+  return absl::StrCat("xla.ldexp.", ScalarName(type), ".i32");
+}
+
+std::string Intrinsic::Ldexp::Name(PrimitiveType type, size_t vector_width) {
+  return absl::StrCat("xla.ldexp.", VectorName(type, vector_width), ".i32");
+}
+
+namespace math {
 
 namespace {
 llvm::Value* IntMax(llvm::IRBuilderBase& builder, llvm::Value* v1,
@@ -50,14 +61,6 @@ llvm::Value* IntMin(llvm::IRBuilderBase& builder, llvm::Value* v1,
   return builder.CreateSelect(cmp, v1, v2);
 }
 }  // namespace
-
-std::string LdexpF64FunctionName(size_t num_elements) {
-  if (num_elements == 1) {
-    return "xla.ldexp.f64.i32";
-  }
-  return absl::StrCat("xla.ldexp.v", num_elements, "f64.v", num_elements,
-                      "i32");
-}
 
 llvm::Function* CreateLdexpF64(llvm::Module* module, llvm::Type* vector_type) {
   // This implementation closely follows Eigen's ldexp implementation:
@@ -84,9 +87,11 @@ llvm::Function* CreateLdexpF64(llvm::Module* module, llvm::Type* vector_type) {
 
   llvm::FunctionType* ldexp_func_type = llvm::FunctionType::get(
       vector_type, {vector_type, input_int_type}, false);
-  llvm::Function* ldexp_func =
-      llvm::Function::Create(ldexp_func_type, llvm::Function::InternalLinkage,
-                             LdexpF64FunctionName(num_elements), module);
+  llvm::Function* ldexp_func = llvm::Function::Create(
+      ldexp_func_type, llvm::Function::InternalLinkage,
+      num_elements == 1 ? Intrinsic::Ldexp::Name(F64)
+                        : Intrinsic::Ldexp::Name(F64, num_elements),
+      module);
   ldexp_func->addFnAttr(llvm::Attribute::AlwaysInline);
   llvm::Argument* a = ldexp_func->getArg(0);
   a->setName("a");
@@ -152,4 +157,5 @@ llvm::Function* CreateLdexpF64(llvm::Module* module, llvm::Type* vector_type) {
   return ldexp_func;
 }
 
-}  // namespace xla::codegen::math
+}  // namespace math
+}  // namespace xla::codegen
