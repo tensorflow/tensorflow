@@ -27,7 +27,7 @@ load("//third_party/gpus:sycl_configure.bzl", "sycl_configure")
 load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("//third_party/implib_so:workspace.bzl", implib_so = "repo")
-load("//third_party/llvm:setup.bzl", "llvm_setup")
+load("//third_party/llvm:workspace.bzl", llvm = "repo")
 load("//third_party/mpitrampoline:workspace.bzl", mpitrampoline = "repo")
 load("//third_party/nanobind:workspace.bzl", nanobind = "repo")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
@@ -374,7 +374,9 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.68.2.tar.gz"),
     )
 
-    llvm_setup(name = "llvm-project")
+    # Load the raw llvm-project.  llvm does not have build rules set up by default,
+    # but provides a script for setting up build rules via overlays.
+    llvm("llvm-raw")
 
     # Intel openMP that is part of LLVM sources.
     tf_http_archive(

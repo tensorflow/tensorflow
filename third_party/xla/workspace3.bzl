@@ -1,7 +1,6 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-load("//third_party/llvm:workspace.bzl", llvm = "repo")
 
 # buildifier: disable=function-docstring
 # buildifier: disable=unnamed-macro
@@ -60,10 +59,6 @@ def workspace():
         ],
         sha256 = "29742e87275809b5e598dc2f04d86960cc7a55b3067d97221c9abbc9926bff0f",
     )
-
-    # Load the raw llvm-project.  llvm does not have build rules set up by default,
-    # but provides a script for setting up build rules via overlays.
-    llvm("llvm-raw")
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.
