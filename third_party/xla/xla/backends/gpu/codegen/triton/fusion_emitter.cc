@@ -1983,8 +1983,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
                             /*shouldPrintAfterPass=*/print_always,
                             /*printModuleScope=*/true,
                             /*printAfterOnlyOnChange=*/false,
-                            /*printAfterOnlyOnFailure=*/true, *log_stream,
-                            /*opPrintingFlags=*/{});
+                            /*printAfterOnlyOnFailure=*/true, *log_stream);
       }
     } else {
       LOG(ERROR)
@@ -2000,6 +1999,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
 
   pm.addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass(
       device_info, block_level_parameters.is_tma_allowed));
+
+  pm.addPass(mlir::triton::xla::CreateTritonXLASqueezeDimsPass());
 
   // Lower affine expressions into arithmetic ops.
   pm.addPass(mlir::createLowerAffinePass());

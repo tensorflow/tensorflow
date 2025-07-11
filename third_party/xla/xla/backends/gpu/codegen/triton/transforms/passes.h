@@ -32,6 +32,7 @@ std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
     const stream_executor::DeviceDescription& device_description,
     bool tma_enabled);
+std::unique_ptr<mlir::Pass> CreateTritonXLASqueezeDimsPass();
 std::unique_ptr<mlir::Pass> CreateGeneralizeKernelSignaturePass();
 std::unique_ptr<mlir::Pass> CreateInt4ToPackedInt4RewritePass();
 std::unique_ptr<mlir::Pass> CreateRoundF32ToTF32ForTf32DotRewritePass();
