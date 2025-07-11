@@ -1,460 +1,799 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/test/Sema/deep_recursion.c b/clang/test/Sema/deep_recursion.c
---- a/clang/test/Sema/deep_recursion.c
-+++ b/clang/test/Sema/deep_recursion.c
-@@ -205,207 +205,5 @@
-   3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
-   1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
-   9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,\
--  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,\
--  5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,\
--  3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,\
--  1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,0;
-+  7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4;
- }
-diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
---- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
-+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
-@@ -18096,8 +18096,7 @@
- 
-   // FIXME: use fast math flags instead of Options.UnsafeFPMath
-   // TODO: Finally migrate away from global TargetOptions.
--  if (Options.AllowFPOpFusion == FPOpFusion::Fast ||
--      (Options.NoNaNsFPMath && Options.NoInfsFPMath) ||
-+  if ((Options.NoNaNsFPMath && Options.NoInfsFPMath) ||
-       (N->getFlags().hasNoNaNs() && N->getFlags().hasNoInfs())) {
-     if (Options.NoSignedZerosFPMath || N->getFlags().hasNoSignedZeros() ||
-         (N2CFP && !N2CFP->isExactlyValue(-0.0))) {
-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/IPO/EmbedBitcodePass.cpp b/llvm/lib/Transforms/IPO/EmbedBitcodePass.cpp
---- a/llvm/lib/Transforms/IPO/EmbedBitcodePass.cpp
-+++ b/llvm/lib/Transforms/IPO/EmbedBitcodePass.cpp
-@@ -16,7 +16,6 @@
- #include "llvm/Support/raw_ostream.h"
- #include "llvm/TargetParser/Triple.h"
- #include "llvm/Transforms/IPO/ThinLTOBitcodeWriter.h"
--#include "llvm/Transforms/Utils/Cloning.h"
- #include "llvm/Transforms/Utils/ModuleUtils.h"
- 
- #include <string>
-@@ -34,11 +33,8 @@
- 
-   std::string Data;
-   raw_string_ostream OS(Data);
--  // Clone the module with Thin LTO, since ThinLTOBitcodeWriterPass changes
--  // vtable linkage that would break the non-lto object code for FatLTO.
-   if (IsThinLTO)
--    ThinLTOBitcodeWriterPass(OS, /*ThinLinkOS=*/nullptr)
--        .run(*llvm::CloneModule(M), AM);
-+    ThinLTOBitcodeWriterPass(OS, /*ThinLinkOS=*/nullptr).run(M, AM);
-   else
-     BitcodeWriterPass(OS, /*ShouldPreserveUseListOrder=*/false, EmitLTOSummary)
-         .run(M, AM);
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/dag-combiner-fma-folding.ll b/llvm/test/CodeGen/X86/dag-combiner-fma-folding.ll
---- a/llvm/test/CodeGen/X86/dag-combiner-fma-folding.ll
-+++ b/llvm/test/CodeGen/X86/dag-combiner-fma-folding.ll
-@@ -1,5 +1,6 @@
- ; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
- ; RUN: llc -mtriple=x86_64-- --start-before=x86-isel -mattr=+avx,+fma %s -o - | FileCheck %s
-+; RUN: llc -mtriple=x86_64-- --start-before=x86-isel -mattr=+avx,+fma %s -o - -fp-contract=fast | FileCheck %s
- 
- define double @fma_folding(double %x) {
- ; CHECK-LABEL: fma_folding:
-@@ -20,3 +21,14 @@
-   %fused = call contract nnan ninf double @llvm.fma.f64(double %x, double 0.0, double -0.0)
-   ret double %fused
- }
-+
-+define double @fma_no_fold_potential_nan(double %x) {
-+; CHECK-LABEL: fma_no_fold_potential_nan:
-+; CHECK:       # %bb.0:
-+; CHECK-NEXT:    vxorpd %xmm1, %xmm1, %xmm1
-+; CHECK-NEXT:    vfmadd213sd {{.*#+}} xmm0 = (xmm1 * xmm0) + mem
-+; CHECK-NEXT:    retq
-+ %fused = call contract double @llvm.fma.f64(double %x, double 0.0, double 1.0)
-+ ret double %fused
-+}
-+
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/EmbedBitcode/embed-wpd.ll b/llvm/test/Transforms/EmbedBitcode/embed-wpd.ll
---- a/llvm/test/Transforms/EmbedBitcode/embed-wpd.ll
-+++ b/llvm/test/Transforms/EmbedBitcode/embed-wpd.ll
-@@ -1,13 +1,12 @@
- ; RUN: opt --mtriple x86_64-unknown-linux-gnu < %s -passes="embed-bitcode<thinlto>" -S | FileCheck %s
- 
--; CHECK: $_ZTV3Foo = comdat any
-+; CHECK-NOT: $_ZTV3Foo = comdat any
- $_ZTV3Foo = comdat any
- 
- $_ZTI3Foo = comdat any
- 
--;; ThinLTOBitcodeWriter will remove the vtable for Foo, and make it an external symbol
--; CHECK: @_ZTV3Foo = linkonce_odr hidden unnamed_addr constant { [5 x ptr] } { [5 x ptr] [ptr null, ptr @_ZTI3Foo, ptr @_ZN3FooD2Ev, ptr @_ZN3FooD0Ev, ptr @_ZNKSt13runtime_error4whatEv] }, comdat, align 8, !type !0, !type !1, !type !2, !type !3, !type !4, !type !5
--; CHECK-NOT: @foo = external unnamed_addr constant { [5 x ptr] }, align 8
-+; CHECK: @_ZTV3Foo = external hidden unnamed_addr constant { [5 x ptr] }, align 8
-+; CHECK: @_ZTI3Foo = linkonce_odr hidden constant { ptr, ptr, ptr } { ptr getelementptr inbounds (ptr, ptr @_ZTVN10__cxxabiv120__si_class_type_infoE, i64 2), ptr @_ZTS3Foo, ptr @_ZTISt13runtime_error }, comdat, align 8
- ; CHECK: @llvm.embedded.object = private constant {{.*}}, section ".llvm.lto", align 1
- ; CHECK: @llvm.compiler.used = appending global [1 x ptr] [ptr @llvm.embedded.object], section "llvm.metadata"
- @_ZTV3Foo = linkonce_odr hidden unnamed_addr constant { [5 x ptr] } { [5 x ptr] [ptr null, ptr @_ZTI3Foo, ptr @_ZN3FooD2Ev, ptr @_ZN3FooD0Ev, ptr @_ZNKSt13runtime_error4whatEv] }, comdat, align 8, !type !0, !type !1, !type !2, !type !3, !type !4, !type !5
-diff -ruN --strip-trailing-cr a/mlir/include/mlir/Dialect/XeGPU/IR/XeGPUTargetInfo.h b/mlir/include/mlir/Dialect/XeGPU/IR/XeGPUTargetInfo.h
---- a/mlir/include/mlir/Dialect/XeGPU/IR/XeGPUTargetInfo.h
-+++ b/mlir/include/mlir/Dialect/XeGPU/IR/XeGPUTargetInfo.h
-@@ -0,0 +1,30 @@
-+//===- XeGPUTargetInfo.h - Target constants ---------------------*- C++ -*-===//
-+//
-+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-+// See https://llvm.org/LICENSE.txt for license information.
-+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-+//
-+//===----------------------------------------------------------------------===//
-+
-+#ifndef MLIR_DIALECT_XEGPU_IR_XEGPUTARGETINFO_H_
-+#define MLIR_DIALECT_XEGPU_IR_XEGPUTARGETINFO_H_
-+
-+namespace mlir {
-+namespace xegpu {
-+/// HW dependent constants.
-+/// TODO: These constants should be queried from the target information.
-+namespace targetinfo {
-+constexpr unsigned subgroupSize = 16; // How many lanes in a subgroup.
-+/// If DPAS A or B operands have low precision element types they must be packed
-+/// according to the following sizes.
-+constexpr unsigned packedSizeInBitsForDefault =
-+    16; // Minimum packing size per register for DPAS A.
-+constexpr unsigned packedSizeInBitsForDpasB =
-+    32; // Minimum packing size per register for DPAS B.
-+constexpr unsigned packedSizeInBitsForGatherScatter =
-+    32; // Minimum packing size per register for Gather and Scatter ops.
-+} // namespace targetinfo
-+} // namespace xegpu
-+} // namespace mlir
-+
-+#endif // MLIR_DIALECT_XEGPU_IR_XEGPUTARGETINFO_H_
-diff -ruN --strip-trailing-cr a/mlir/include/mlir/Dialect/XeGPU/Utils/XeGPUUtils.h b/mlir/include/mlir/Dialect/XeGPU/Utils/XeGPUUtils.h
---- a/mlir/include/mlir/Dialect/XeGPU/Utils/XeGPUUtils.h
-+++ b/mlir/include/mlir/Dialect/XeGPU/Utils/XeGPUUtils.h
-@@ -25,22 +25,6 @@
- } // namespace xegpu
- 
- namespace xegpu {
--/// HW dependent constants.
--/// TODO: These constants should be queried from the target information.
--namespace targetinfo {
--constexpr unsigned subgroupSize = 16; // How many lanes in a subgroup.
--/// If DPAS A or B operands have low precision element types they must be packed
--/// according to the following sizes.
--constexpr unsigned packedSizeInBitsForDefault =
--    16; // Minimum packing size per register for DPAS A.
--constexpr unsigned packedSizeInBitsForDpasB =
--    32; // Minimum packing size per register for DPAS B.
--constexpr unsigned packedSizeInBitsForGatherScatter =
--    32; // Minimum packing size per register for Gather and Scatter ops.
--} // namespace targetinfo
--} // namespace xegpu
--
--namespace xegpu {
- 
- /// Flatten a set of ValueRange into a single SmallVector<Value>
- SmallVector<Value> flattenValues(ArrayRef<ValueRange> values);
-diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/XeGPU/IR/XeGPUDialect.cpp b/mlir/lib/Dialect/XeGPU/IR/XeGPUDialect.cpp
---- a/mlir/lib/Dialect/XeGPU/IR/XeGPUDialect.cpp
-+++ b/mlir/lib/Dialect/XeGPU/IR/XeGPUDialect.cpp
-@@ -8,7 +8,7 @@
- 
- #include "mlir/Dialect/Utils/IndexingUtils.h"
- #include "mlir/Dialect/XeGPU/IR/XeGPU.h"
--#include "mlir/Dialect/XeGPU/Utils/XeGPUUtils.h"
-+#include "mlir/Dialect/XeGPU/IR/XeGPUTargetInfo.h"
- #include "mlir/IR/Builders.h"
- #include "mlir/IR/DialectImplementation.h"
- #include "llvm/ADT/TypeSwitch.h"
-diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/XeGPU/Transforms/XeGPUPropagateLayout.cpp b/mlir/lib/Dialect/XeGPU/Transforms/XeGPUPropagateLayout.cpp
---- a/mlir/lib/Dialect/XeGPU/Transforms/XeGPUPropagateLayout.cpp
-+++ b/mlir/lib/Dialect/XeGPU/Transforms/XeGPUPropagateLayout.cpp
-@@ -15,6 +15,7 @@
- #include "mlir/Dialect/MemRef/IR/MemRef.h"
- #include "mlir/Dialect/Vector/IR/VectorOps.h"
- #include "mlir/Dialect/XeGPU/IR/XeGPU.h"
-+#include "mlir/Dialect/XeGPU/IR/XeGPUTargetInfo.h"
- #include "mlir/Dialect/XeGPU/Transforms/Passes.h"
- #include "mlir/Dialect/XeGPU/Utils/XeGPUUtils.h"
- #include "mlir/IR/Attributes.h"
-diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/XeGPU/Transforms/XeGPUSubgroupDistribute.cpp b/mlir/lib/Dialect/XeGPU/Transforms/XeGPUSubgroupDistribute.cpp
---- a/mlir/lib/Dialect/XeGPU/Transforms/XeGPUSubgroupDistribute.cpp
-+++ b/mlir/lib/Dialect/XeGPU/Transforms/XeGPUSubgroupDistribute.cpp
-@@ -11,6 +11,7 @@
- #include "mlir/Dialect/Vector/IR/VectorOps.h"
- #include "mlir/Dialect/Vector/Transforms/VectorDistribution.h"
- #include "mlir/Dialect/XeGPU/IR/XeGPU.h"
-+#include "mlir/Dialect/XeGPU/IR/XeGPUTargetInfo.h"
- #include "mlir/Dialect/XeGPU/Transforms/Passes.h"
- #include "mlir/Dialect/XeGPU/Transforms/Transforms.h"
- #include "mlir/Dialect/XeGPU/Utils/XeGPUUtils.h"
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-@@ -3519,11 +3519,8 @@
- 
- cc_library(
-     name = "XeGPUDialect",
--    srcs = [
--        "lib/Dialect/XeGPU/IR/XeGPUDialect.cpp",
--        "lib/Dialect/XeGPU/IR/XeGPUOps.cpp",
--    ],
--    hdrs = ["include/mlir/Dialect/XeGPU/IR/XeGPU.h"],
-+    srcs = glob(["lib/Dialect/XeGPU/IR/*.cpp"]),
-+    hdrs = glob(["include/mlir/Dialect/XeGPU/IR/*.h"]),
-     includes = ["include"],
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp b/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
+--- a/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
++++ b/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
+@@ -10061,8 +10061,7 @@
+   // Get user vectorization factor and interleave count.
+   ElementCount UserVF = Hints.getWidth();
+   unsigned UserIC = Hints.getInterleave();
+-  if (LVL.hasUncountableEarlyExit() && UserIC != 1 &&
+-      !VectorizerParams::isInterleaveForced()) {
++  if (LVL.hasUncountableEarlyExit() && UserIC != 1) {
+     UserIC = 1;
+     reportVectorizationInfo("Interleaving not supported for loops "
+                             "with uncountable early exits",
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/AArch64/single-early-exit-interleave.ll b/llvm/test/Transforms/LoopVectorize/AArch64/single-early-exit-interleave.ll
+--- a/llvm/test/Transforms/LoopVectorize/AArch64/single-early-exit-interleave.ll
++++ b/llvm/test/Transforms/LoopVectorize/AArch64/single-early-exit-interleave.ll
+@@ -14,16 +14,15 @@
+ ; CHECK-NEXT:    call void @init_mem(ptr [[P1]], i64 1024)
+ ; CHECK-NEXT:    call void @init_mem(ptr [[P2]], i64 1024)
+ ; CHECK-NEXT:    [[TMP0:%.*]] = call i64 @llvm.vscale.i64()
+-; CHECK-NEXT:    [[TMP1:%.*]] = mul nuw i64 [[TMP0]], 64
+-; CHECK-NEXT:    [[MIN_ITERS_CHECK:%.*]] = icmp ult i64 510, [[TMP1]]
+-; CHECK-NEXT:    br i1 [[MIN_ITERS_CHECK]], label [[SCALAR_PH:%.*]], label [[VECTOR_PH:%.*]]
++; CHECK-NEXT:    [[TMP1:%.*]] = mul nuw i64 [[TMP0]], 16
++; CHECK-NEXT:    br i1 false, label [[SCALAR_PH:%.*]], label [[VECTOR_PH:%.*]]
+ ; CHECK:       vector.ph:
+ ; CHECK-NEXT:    [[TMP2:%.*]] = call i64 @llvm.vscale.i64()
+-; CHECK-NEXT:    [[TMP3:%.*]] = mul nuw i64 [[TMP2]], 64
++; CHECK-NEXT:    [[TMP3:%.*]] = mul nuw i64 [[TMP2]], 16
+ ; CHECK-NEXT:    [[N_MOD_VF:%.*]] = urem i64 510, [[TMP3]]
+ ; CHECK-NEXT:    [[N_VEC:%.*]] = sub i64 510, [[N_MOD_VF]]
+ ; CHECK-NEXT:    [[TMP4:%.*]] = call i64 @llvm.vscale.i64()
+-; CHECK-NEXT:    [[TMP5:%.*]] = mul nuw i64 [[TMP4]], 64
++; CHECK-NEXT:    [[TMP5:%.*]] = mul nuw i64 [[TMP4]], 16
+ ; CHECK-NEXT:    [[INDEX_NEXT:%.*]] = add i64 3, [[N_VEC]]
+ ; CHECK-NEXT:    br label [[LOOP:%.*]]
+ ; CHECK:       vector.body:
+@@ -31,43 +30,13 @@
+ ; CHECK-NEXT:    [[OFFSET_IDX:%.*]] = add i64 3, [[INDEX1]]
+ ; CHECK-NEXT:    [[TMP7:%.*]] = getelementptr inbounds i8, ptr [[P1]], i64 [[OFFSET_IDX]]
+ ; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr inbounds i8, ptr [[TMP7]], i32 0
+-; CHECK-NEXT:    [[TMP18:%.*]] = call i64 @llvm.vscale.i64()
+-; CHECK-NEXT:    [[TMP19:%.*]] = mul nuw i64 [[TMP18]], 16
+-; CHECK-NEXT:    [[TMP29:%.*]] = getelementptr inbounds i8, ptr [[TMP7]], i64 [[TMP19]]
+-; CHECK-NEXT:    [[TMP36:%.*]] = call i64 @llvm.vscale.i64()
+-; CHECK-NEXT:    [[TMP37:%.*]] = mul nuw i64 [[TMP36]], 32
+-; CHECK-NEXT:    [[TMP38:%.*]] = getelementptr inbounds i8, ptr [[TMP7]], i64 [[TMP37]]
+-; CHECK-NEXT:    [[TMP39:%.*]] = call i64 @llvm.vscale.i64()
+-; CHECK-NEXT:    [[TMP40:%.*]] = mul nuw i64 [[TMP39]], 48
+-; CHECK-NEXT:    [[TMP41:%.*]] = getelementptr inbounds i8, ptr [[TMP7]], i64 [[TMP40]]
+-; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = load <vscale x 16 x i8>, ptr [[TMP8]], align 1
+-; CHECK-NEXT:    [[WIDE_LOAD5:%.*]] = load <vscale x 16 x i8>, ptr [[TMP29]], align 1
+-; CHECK-NEXT:    [[WIDE_LOAD3:%.*]] = load <vscale x 16 x i8>, ptr [[TMP38]], align 1
+-; CHECK-NEXT:    [[WIDE_LOAD4:%.*]] = load <vscale x 16 x i8>, ptr [[TMP41]], align 1
++; CHECK-NEXT:    [[WIDE_LOAD4:%.*]] = load <vscale x 16 x i8>, ptr [[TMP8]], align 1
+ ; CHECK-NEXT:    [[TMP9:%.*]] = getelementptr inbounds i8, ptr [[P2]], i64 [[OFFSET_IDX]]
+ ; CHECK-NEXT:    [[TMP10:%.*]] = getelementptr inbounds i8, ptr [[TMP9]], i32 0
+-; CHECK-NEXT:    [[TMP20:%.*]] = call i64 @llvm.vscale.i64()
+-; CHECK-NEXT:    [[TMP21:%.*]] = mul nuw i64 [[TMP20]], 16
+-; CHECK-NEXT:    [[TMP22:%.*]] = getelementptr inbounds i8, ptr [[TMP9]], i64 [[TMP21]]
+-; CHECK-NEXT:    [[TMP23:%.*]] = call i64 @llvm.vscale.i64()
+-; CHECK-NEXT:    [[TMP24:%.*]] = mul nuw i64 [[TMP23]], 32
+-; CHECK-NEXT:    [[TMP25:%.*]] = getelementptr inbounds i8, ptr [[TMP9]], i64 [[TMP24]]
+-; CHECK-NEXT:    [[TMP26:%.*]] = call i64 @llvm.vscale.i64()
+-; CHECK-NEXT:    [[TMP27:%.*]] = mul nuw i64 [[TMP26]], 48
+-; CHECK-NEXT:    [[TMP28:%.*]] = getelementptr inbounds i8, ptr [[TMP9]], i64 [[TMP27]]
+-; CHECK-NEXT:    [[WIDE_LOAD2:%.*]] = load <vscale x 16 x i8>, ptr [[TMP10]], align 1
+-; CHECK-NEXT:    [[WIDE_LOAD6:%.*]] = load <vscale x 16 x i8>, ptr [[TMP22]], align 1
+-; CHECK-NEXT:    [[WIDE_LOAD7:%.*]] = load <vscale x 16 x i8>, ptr [[TMP25]], align 1
+-; CHECK-NEXT:    [[WIDE_LOAD8:%.*]] = load <vscale x 16 x i8>, ptr [[TMP28]], align 1
+-; CHECK-NEXT:    [[TMP11:%.*]] = icmp ne <vscale x 16 x i8> [[WIDE_LOAD]], [[WIDE_LOAD2]]
+-; CHECK-NEXT:    [[TMP30:%.*]] = icmp ne <vscale x 16 x i8> [[WIDE_LOAD5]], [[WIDE_LOAD6]]
+-; CHECK-NEXT:    [[TMP31:%.*]] = icmp ne <vscale x 16 x i8> [[WIDE_LOAD3]], [[WIDE_LOAD7]]
++; CHECK-NEXT:    [[WIDE_LOAD8:%.*]] = load <vscale x 16 x i8>, ptr [[TMP10]], align 1
+ ; CHECK-NEXT:    [[TMP32:%.*]] = icmp ne <vscale x 16 x i8> [[WIDE_LOAD4]], [[WIDE_LOAD8]]
+ ; CHECK-NEXT:    [[INDEX_NEXT3]] = add nuw i64 [[INDEX1]], [[TMP5]]
+-; CHECK-NEXT:    [[TMP33:%.*]] = or <vscale x 16 x i1> [[TMP11]], [[TMP30]]
+-; CHECK-NEXT:    [[TMP34:%.*]] = or <vscale x 16 x i1> [[TMP33]], [[TMP31]]
+-; CHECK-NEXT:    [[TMP35:%.*]] = or <vscale x 16 x i1> [[TMP34]], [[TMP32]]
+-; CHECK-NEXT:    [[TMP12:%.*]] = call i1 @llvm.vector.reduce.or.nxv16i1(<vscale x 16 x i1> [[TMP35]])
++; CHECK-NEXT:    [[TMP12:%.*]] = call i1 @llvm.vector.reduce.or.nxv16i1(<vscale x 16 x i1> [[TMP32]])
+ ; CHECK-NEXT:    [[TMP13:%.*]] = icmp eq i64 [[INDEX_NEXT3]], [[N_VEC]]
+ ; CHECK-NEXT:    [[TMP14:%.*]] = or i1 [[TMP12]], [[TMP13]]
+ ; CHECK-NEXT:    br i1 [[TMP14]], label [[MIDDLE_SPLIT:%.*]], label [[LOOP]], !llvm.loop [[LOOP0:![0-9]+]]
+@@ -77,26 +46,7 @@
+ ; CHECK-NEXT:    [[CMP_N:%.*]] = icmp eq i64 510, [[N_VEC]]
+ ; CHECK-NEXT:    br i1 [[CMP_N]], label [[LOOP_END:%.*]], label [[SCALAR_PH]]
+ ; CHECK:       vector.early.exit:
+-; CHECK-NEXT:    [[TMP63:%.*]] = call i64 @llvm.vscale.i64()
+-; CHECK-NEXT:    [[TMP42:%.*]] = mul nuw i64 [[TMP63]], 16
+-; CHECK-NEXT:    [[TMP44:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.nxv16i1(<vscale x 16 x i1> [[TMP32]], i1 true)
+-; CHECK-NEXT:    [[TMP62:%.*]] = mul i64 [[TMP42]], 3
+-; CHECK-NEXT:    [[TMP45:%.*]] = add i64 [[TMP62]], [[TMP44]]
+-; CHECK-NEXT:    [[TMP46:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.nxv16i1(<vscale x 16 x i1> [[TMP31]], i1 true)
+-; CHECK-NEXT:    [[TMP58:%.*]] = mul i64 [[TMP42]], 2
+-; CHECK-NEXT:    [[TMP50:%.*]] = add i64 [[TMP58]], [[TMP46]]
+-; CHECK-NEXT:    [[TMP47:%.*]] = icmp ne i64 [[TMP46]], [[TMP42]]
+-; CHECK-NEXT:    [[TMP51:%.*]] = select i1 [[TMP47]], i64 [[TMP50]], i64 [[TMP45]]
+-; CHECK-NEXT:    [[TMP52:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.nxv16i1(<vscale x 16 x i1> [[TMP30]], i1 true)
+-; CHECK-NEXT:    [[TMP64:%.*]] = mul i64 [[TMP42]], 1
+-; CHECK-NEXT:    [[TMP56:%.*]] = add i64 [[TMP64]], [[TMP52]]
+-; CHECK-NEXT:    [[TMP53:%.*]] = icmp ne i64 [[TMP52]], [[TMP42]]
+-; CHECK-NEXT:    [[TMP57:%.*]] = select i1 [[TMP53]], i64 [[TMP56]], i64 [[TMP51]]
+-; CHECK-NEXT:    [[TMP15:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.nxv16i1(<vscale x 16 x i1> [[TMP11]], i1 true)
+-; CHECK-NEXT:    [[TMP65:%.*]] = mul i64 [[TMP42]], 0
+-; CHECK-NEXT:    [[TMP60:%.*]] = add i64 [[TMP65]], [[TMP15]]
+-; CHECK-NEXT:    [[TMP59:%.*]] = icmp ne i64 [[TMP15]], [[TMP42]]
+-; CHECK-NEXT:    [[TMP61:%.*]] = select i1 [[TMP59]], i64 [[TMP60]], i64 [[TMP57]]
++; CHECK-NEXT:    [[TMP61:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.nxv16i1(<vscale x 16 x i1> [[TMP32]], i1 true)
+ ; CHECK-NEXT:    [[TMP16:%.*]] = add i64 [[INDEX1]], [[TMP61]]
+ ; CHECK-NEXT:    [[TMP17:%.*]] = add i64 3, [[TMP16]]
+ ; CHECK-NEXT:    br label [[LOOP_END]]
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/single-early-exit-interleave.ll b/llvm/test/Transforms/LoopVectorize/single-early-exit-interleave.ll
+--- a/llvm/test/Transforms/LoopVectorize/single-early-exit-interleave.ll
++++ b/llvm/test/Transforms/LoopVectorize/single-early-exit-interleave.ll
+@@ -15,22 +15,10 @@
+ ; VF4IC4-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
+ ; VF4IC4-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i32, ptr [[SRC]], i64 [[INDEX]]
+ ; VF4IC4-NEXT:    [[TMP1:%.*]] = getelementptr inbounds i32, ptr [[TMP0]], i32 0
+-; VF4IC4-NEXT:    [[TMP12:%.*]] = getelementptr inbounds i32, ptr [[TMP0]], i32 4
+-; VF4IC4-NEXT:    [[TMP13:%.*]] = getelementptr inbounds i32, ptr [[TMP0]], i32 8
+-; VF4IC4-NEXT:    [[TMP14:%.*]] = getelementptr inbounds i32, ptr [[TMP0]], i32 12
+-; VF4IC4-NEXT:    [[WIDE_LOAD:%.*]] = load <4 x i32>, ptr [[TMP1]], align 4
+-; VF4IC4-NEXT:    [[WIDE_LOAD1:%.*]] = load <4 x i32>, ptr [[TMP12]], align 4
+-; VF4IC4-NEXT:    [[WIDE_LOAD2:%.*]] = load <4 x i32>, ptr [[TMP13]], align 4
+-; VF4IC4-NEXT:    [[WIDE_LOAD3:%.*]] = load <4 x i32>, ptr [[TMP14]], align 4
+-; VF4IC4-NEXT:    [[TMP2:%.*]] = icmp eq <4 x i32> [[WIDE_LOAD]], splat (i32 10)
+-; VF4IC4-NEXT:    [[TMP6:%.*]] = icmp eq <4 x i32> [[WIDE_LOAD1]], splat (i32 10)
+-; VF4IC4-NEXT:    [[TMP7:%.*]] = icmp eq <4 x i32> [[WIDE_LOAD2]], splat (i32 10)
++; VF4IC4-NEXT:    [[WIDE_LOAD3:%.*]] = load <4 x i32>, ptr [[TMP1]], align 4
+ ; VF4IC4-NEXT:    [[TMP8:%.*]] = icmp eq <4 x i32> [[WIDE_LOAD3]], splat (i32 10)
+-; VF4IC4-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 16
+-; VF4IC4-NEXT:    [[TMP9:%.*]] = or <4 x i1> [[TMP2]], [[TMP6]]
+-; VF4IC4-NEXT:    [[TMP10:%.*]] = or <4 x i1> [[TMP9]], [[TMP7]]
+-; VF4IC4-NEXT:    [[TMP11:%.*]] = or <4 x i1> [[TMP10]], [[TMP8]]
+-; VF4IC4-NEXT:    [[TMP3:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP11]])
++; VF4IC4-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
++; VF4IC4-NEXT:    [[TMP3:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP8]])
+ ; VF4IC4-NEXT:    [[TMP4:%.*]] = icmp eq i64 [[INDEX_NEXT]], 128
+ ; VF4IC4-NEXT:    [[TMP5:%.*]] = or i1 [[TMP3]], [[TMP4]]
+ ; VF4IC4-NEXT:    br i1 [[TMP5]], label [[MIDDLE_SPLIT:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP0:![0-9]+]]
+@@ -101,31 +89,13 @@
+ ; VF4IC4-NEXT:    [[OFFSET_IDX:%.*]] = add i64 3, [[INDEX]]
+ ; VF4IC4-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr [[P1]], i64 [[OFFSET_IDX]]
+ ; VF4IC4-NEXT:    [[TMP1:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 0
+-; VF4IC4-NEXT:    [[TMP2:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 4
+-; VF4IC4-NEXT:    [[TMP3:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 8
+-; VF4IC4-NEXT:    [[TMP17:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 12
+-; VF4IC4-NEXT:    [[WIDE_LOAD:%.*]] = load <4 x i8>, ptr [[TMP1]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD4:%.*]] = load <4 x i8>, ptr [[TMP2]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD2:%.*]] = load <4 x i8>, ptr [[TMP3]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD3:%.*]] = load <4 x i8>, ptr [[TMP17]], align 1
++; VF4IC4-NEXT:    [[WIDE_LOAD3:%.*]] = load <4 x i8>, ptr [[TMP1]], align 1
+ ; VF4IC4-NEXT:    [[TMP18:%.*]] = getelementptr inbounds i8, ptr [[P2]], i64 [[OFFSET_IDX]]
+ ; VF4IC4-NEXT:    [[TMP19:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 0
+-; VF4IC4-NEXT:    [[TMP20:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 4
+-; VF4IC4-NEXT:    [[TMP21:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 8
+-; VF4IC4-NEXT:    [[TMP22:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 12
+-; VF4IC4-NEXT:    [[WIDE_LOAD1:%.*]] = load <4 x i8>, ptr [[TMP19]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD5:%.*]] = load <4 x i8>, ptr [[TMP20]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD6:%.*]] = load <4 x i8>, ptr [[TMP21]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD7:%.*]] = load <4 x i8>, ptr [[TMP22]], align 1
+-; VF4IC4-NEXT:    [[TMP4:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD]], [[WIDE_LOAD1]]
+-; VF4IC4-NEXT:    [[TMP11:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD4]], [[WIDE_LOAD5]]
+-; VF4IC4-NEXT:    [[TMP12:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD2]], [[WIDE_LOAD6]]
++; VF4IC4-NEXT:    [[WIDE_LOAD7:%.*]] = load <4 x i8>, ptr [[TMP19]], align 1
+ ; VF4IC4-NEXT:    [[TMP13:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD3]], [[WIDE_LOAD7]]
+-; VF4IC4-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 16
+-; VF4IC4-NEXT:    [[TMP14:%.*]] = or <4 x i1> [[TMP4]], [[TMP11]]
+-; VF4IC4-NEXT:    [[TMP15:%.*]] = or <4 x i1> [[TMP14]], [[TMP12]]
+-; VF4IC4-NEXT:    [[TMP16:%.*]] = or <4 x i1> [[TMP15]], [[TMP13]]
+-; VF4IC4-NEXT:    [[TMP5:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP16]])
++; VF4IC4-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
++; VF4IC4-NEXT:    [[TMP5:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP13]])
+ ; VF4IC4-NEXT:    [[TMP6:%.*]] = icmp eq i64 [[INDEX_NEXT]], 64
+ ; VF4IC4-NEXT:    [[TMP7:%.*]] = or i1 [[TMP5]], [[TMP6]]
+ ; VF4IC4-NEXT:    br i1 [[TMP7]], label [[MIDDLE_SPLIT:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP4:![0-9]+]]
+@@ -134,20 +104,7 @@
+ ; VF4IC4:       middle.block:
+ ; VF4IC4-NEXT:    br i1 true, label [[LOOP_END:%.*]], label [[SCALAR_PH]]
+ ; VF4IC4:       vector.early.exit:
+-; VF4IC4-NEXT:    [[TMP33:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP13]], i1 true)
+-; VF4IC4-NEXT:    [[TMP34:%.*]] = add i64 12, [[TMP33]]
+-; VF4IC4-NEXT:    [[TMP35:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP12]], i1 true)
+-; VF4IC4-NEXT:    [[TMP24:%.*]] = add i64 8, [[TMP35]]
+-; VF4IC4-NEXT:    [[TMP23:%.*]] = icmp ne i64 [[TMP35]], 4
+-; VF4IC4-NEXT:    [[TMP25:%.*]] = select i1 [[TMP23]], i64 [[TMP24]], i64 [[TMP34]]
+-; VF4IC4-NEXT:    [[TMP26:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP11]], i1 true)
+-; VF4IC4-NEXT:    [[TMP28:%.*]] = add i64 4, [[TMP26]]
+-; VF4IC4-NEXT:    [[TMP27:%.*]] = icmp ne i64 [[TMP26]], 4
+-; VF4IC4-NEXT:    [[TMP29:%.*]] = select i1 [[TMP27]], i64 [[TMP28]], i64 [[TMP25]]
+-; VF4IC4-NEXT:    [[TMP30:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP4]], i1 true)
+-; VF4IC4-NEXT:    [[TMP32:%.*]] = add i64 0, [[TMP30]]
+-; VF4IC4-NEXT:    [[TMP31:%.*]] = icmp ne i64 [[TMP30]], 4
+-; VF4IC4-NEXT:    [[TMP8:%.*]] = select i1 [[TMP31]], i64 [[TMP32]], i64 [[TMP29]]
++; VF4IC4-NEXT:    [[TMP8:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP13]], i1 true)
+ ; VF4IC4-NEXT:    [[TMP9:%.*]] = add i64 [[INDEX]], [[TMP8]]
+ ; VF4IC4-NEXT:    [[TMP10:%.*]] = add i64 3, [[TMP9]]
+ ; VF4IC4-NEXT:    br label [[LOOP_END]]
+@@ -210,22 +167,10 @@
+ ; VF4IC4-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
+ ; VF4IC4-NEXT:    [[NEXT_GEP:%.*]] = getelementptr i8, ptr [[P1]], i64 [[INDEX]]
+ ; VF4IC4-NEXT:    [[TMP1:%.*]] = getelementptr i8, ptr [[NEXT_GEP]], i32 0
+-; VF4IC4-NEXT:    [[TMP12:%.*]] = getelementptr i8, ptr [[NEXT_GEP]], i32 4
+-; VF4IC4-NEXT:    [[TMP13:%.*]] = getelementptr i8, ptr [[NEXT_GEP]], i32 8
+-; VF4IC4-NEXT:    [[TMP14:%.*]] = getelementptr i8, ptr [[NEXT_GEP]], i32 12
+-; VF4IC4-NEXT:    [[WIDE_LOAD:%.*]] = load <4 x i8>, ptr [[TMP1]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD1:%.*]] = load <4 x i8>, ptr [[TMP12]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD2:%.*]] = load <4 x i8>, ptr [[TMP13]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD3:%.*]] = load <4 x i8>, ptr [[TMP14]], align 1
+-; VF4IC4-NEXT:    [[TMP2:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD]], splat (i8 72)
+-; VF4IC4-NEXT:    [[TMP15:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD1]], splat (i8 72)
+-; VF4IC4-NEXT:    [[TMP16:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD2]], splat (i8 72)
++; VF4IC4-NEXT:    [[WIDE_LOAD3:%.*]] = load <4 x i8>, ptr [[TMP1]], align 1
+ ; VF4IC4-NEXT:    [[TMP17:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD3]], splat (i8 72)
+-; VF4IC4-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 16
+-; VF4IC4-NEXT:    [[TMP9:%.*]] = or <4 x i1> [[TMP2]], [[TMP15]]
+-; VF4IC4-NEXT:    [[TMP10:%.*]] = or <4 x i1> [[TMP9]], [[TMP16]]
+-; VF4IC4-NEXT:    [[TMP11:%.*]] = or <4 x i1> [[TMP10]], [[TMP17]]
+-; VF4IC4-NEXT:    [[TMP3:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP11]])
++; VF4IC4-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
++; VF4IC4-NEXT:    [[TMP3:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP17]])
+ ; VF4IC4-NEXT:    [[TMP4:%.*]] = icmp eq i64 [[INDEX_NEXT]], 1024
+ ; VF4IC4-NEXT:    [[TMP5:%.*]] = or i1 [[TMP3]], [[TMP4]]
+ ; VF4IC4-NEXT:    br i1 [[TMP5]], label [[MIDDLE_SPLIT:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP6:![0-9]+]]
+@@ -234,20 +179,7 @@
+ ; VF4IC4:       middle.block:
+ ; VF4IC4-NEXT:    br i1 true, label [[LOOP_END:%.*]], label [[SCALAR_PH]]
+ ; VF4IC4:       vector.early.exit:
+-; VF4IC4-NEXT:    [[TMP28:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP17]], i1 true)
+-; VF4IC4-NEXT:    [[TMP29:%.*]] = add i64 12, [[TMP28]]
+-; VF4IC4-NEXT:    [[TMP30:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP16]], i1 true)
+-; VF4IC4-NEXT:    [[TMP19:%.*]] = add i64 8, [[TMP30]]
+-; VF4IC4-NEXT:    [[TMP18:%.*]] = icmp ne i64 [[TMP30]], 4
+-; VF4IC4-NEXT:    [[TMP20:%.*]] = select i1 [[TMP18]], i64 [[TMP19]], i64 [[TMP29]]
+-; VF4IC4-NEXT:    [[TMP21:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP15]], i1 true)
+-; VF4IC4-NEXT:    [[TMP23:%.*]] = add i64 4, [[TMP21]]
+-; VF4IC4-NEXT:    [[TMP22:%.*]] = icmp ne i64 [[TMP21]], 4
+-; VF4IC4-NEXT:    [[TMP24:%.*]] = select i1 [[TMP22]], i64 [[TMP23]], i64 [[TMP20]]
+-; VF4IC4-NEXT:    [[TMP25:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP2]], i1 true)
+-; VF4IC4-NEXT:    [[TMP27:%.*]] = add i64 0, [[TMP25]]
+-; VF4IC4-NEXT:    [[TMP26:%.*]] = icmp ne i64 [[TMP25]], 4
+-; VF4IC4-NEXT:    [[TMP6:%.*]] = select i1 [[TMP26]], i64 [[TMP27]], i64 [[TMP24]]
++; VF4IC4-NEXT:    [[TMP6:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP17]], i1 true)
+ ; VF4IC4-NEXT:    [[TMP7:%.*]] = add i64 [[INDEX]], [[TMP6]]
+ ; VF4IC4-NEXT:    [[TMP8:%.*]] = getelementptr i8, ptr [[P1]], i64 [[TMP7]]
+ ; VF4IC4-NEXT:    br label [[LOOP_END]]
+@@ -304,31 +236,13 @@
+ ; VF4IC4-NEXT:    [[OFFSET_IDX:%.*]] = add i64 3, [[INDEX]]
+ ; VF4IC4-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr [[P1]], i64 [[OFFSET_IDX]]
+ ; VF4IC4-NEXT:    [[TMP1:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 0
+-; VF4IC4-NEXT:    [[TMP2:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 4
+-; VF4IC4-NEXT:    [[TMP3:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 8
+-; VF4IC4-NEXT:    [[TMP17:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 12
+-; VF4IC4-NEXT:    [[WIDE_LOAD:%.*]] = load <4 x i8>, ptr [[TMP1]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD4:%.*]] = load <4 x i8>, ptr [[TMP2]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD2:%.*]] = load <4 x i8>, ptr [[TMP3]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD3:%.*]] = load <4 x i8>, ptr [[TMP17]], align 1
++; VF4IC4-NEXT:    [[WIDE_LOAD3:%.*]] = load <4 x i8>, ptr [[TMP1]], align 1
+ ; VF4IC4-NEXT:    [[TMP18:%.*]] = getelementptr inbounds i8, ptr [[P2]], i64 [[OFFSET_IDX]]
+ ; VF4IC4-NEXT:    [[TMP19:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 0
+-; VF4IC4-NEXT:    [[TMP20:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 4
+-; VF4IC4-NEXT:    [[TMP21:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 8
+-; VF4IC4-NEXT:    [[TMP22:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 12
+-; VF4IC4-NEXT:    [[WIDE_LOAD1:%.*]] = load <4 x i8>, ptr [[TMP19]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD5:%.*]] = load <4 x i8>, ptr [[TMP20]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD6:%.*]] = load <4 x i8>, ptr [[TMP21]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD7:%.*]] = load <4 x i8>, ptr [[TMP22]], align 1
+-; VF4IC4-NEXT:    [[TMP4:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD]], [[WIDE_LOAD1]]
+-; VF4IC4-NEXT:    [[TMP11:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD4]], [[WIDE_LOAD5]]
+-; VF4IC4-NEXT:    [[TMP12:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD2]], [[WIDE_LOAD6]]
++; VF4IC4-NEXT:    [[WIDE_LOAD7:%.*]] = load <4 x i8>, ptr [[TMP19]], align 1
+ ; VF4IC4-NEXT:    [[TMP13:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD3]], [[WIDE_LOAD7]]
+-; VF4IC4-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 16
+-; VF4IC4-NEXT:    [[TMP14:%.*]] = or <4 x i1> [[TMP4]], [[TMP11]]
+-; VF4IC4-NEXT:    [[TMP15:%.*]] = or <4 x i1> [[TMP14]], [[TMP12]]
+-; VF4IC4-NEXT:    [[TMP16:%.*]] = or <4 x i1> [[TMP15]], [[TMP13]]
+-; VF4IC4-NEXT:    [[TMP5:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP16]])
++; VF4IC4-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
++; VF4IC4-NEXT:    [[TMP5:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP13]])
+ ; VF4IC4-NEXT:    [[TMP6:%.*]] = icmp eq i64 [[INDEX_NEXT]], 64
+ ; VF4IC4-NEXT:    [[TMP7:%.*]] = or i1 [[TMP5]], [[TMP6]]
+ ; VF4IC4-NEXT:    br i1 [[TMP7]], label [[MIDDLE_SPLIT:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP8:![0-9]+]]
+@@ -337,20 +251,7 @@
+ ; VF4IC4:       middle.block:
+ ; VF4IC4-NEXT:    br i1 true, label [[LOOP_END:%.*]], label [[SCALAR_PH]]
+ ; VF4IC4:       vector.early.exit:
+-; VF4IC4-NEXT:    [[TMP33:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP13]], i1 true)
+-; VF4IC4-NEXT:    [[TMP34:%.*]] = add i64 12, [[TMP33]]
+-; VF4IC4-NEXT:    [[TMP35:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP12]], i1 true)
+-; VF4IC4-NEXT:    [[TMP24:%.*]] = add i64 8, [[TMP35]]
+-; VF4IC4-NEXT:    [[TMP23:%.*]] = icmp ne i64 [[TMP35]], 4
+-; VF4IC4-NEXT:    [[TMP25:%.*]] = select i1 [[TMP23]], i64 [[TMP24]], i64 [[TMP34]]
+-; VF4IC4-NEXT:    [[TMP26:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP11]], i1 true)
+-; VF4IC4-NEXT:    [[TMP28:%.*]] = add i64 4, [[TMP26]]
+-; VF4IC4-NEXT:    [[TMP27:%.*]] = icmp ne i64 [[TMP26]], 4
+-; VF4IC4-NEXT:    [[TMP29:%.*]] = select i1 [[TMP27]], i64 [[TMP28]], i64 [[TMP25]]
+-; VF4IC4-NEXT:    [[TMP30:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP4]], i1 true)
+-; VF4IC4-NEXT:    [[TMP32:%.*]] = add i64 0, [[TMP30]]
+-; VF4IC4-NEXT:    [[TMP31:%.*]] = icmp ne i64 [[TMP30]], 4
+-; VF4IC4-NEXT:    [[TMP8:%.*]] = select i1 [[TMP31]], i64 [[TMP32]], i64 [[TMP29]]
++; VF4IC4-NEXT:    [[TMP8:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP13]], i1 true)
+ ; VF4IC4-NEXT:    [[TMP9:%.*]] = add i64 [[INDEX]], [[TMP8]]
+ ; VF4IC4-NEXT:    [[TMP10:%.*]] = add i64 3, [[TMP9]]
+ ; VF4IC4-NEXT:    br label [[LOOP_END]]
+@@ -414,31 +315,13 @@
+ ; VF4IC4-NEXT:    [[OFFSET_IDX:%.*]] = add i64 3, [[INDEX]]
+ ; VF4IC4-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr [[P1]], i64 [[OFFSET_IDX]]
+ ; VF4IC4-NEXT:    [[TMP1:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 0
+-; VF4IC4-NEXT:    [[TMP2:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 4
+-; VF4IC4-NEXT:    [[TMP3:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 8
+-; VF4IC4-NEXT:    [[TMP17:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 12
+-; VF4IC4-NEXT:    [[WIDE_LOAD:%.*]] = load <4 x i8>, ptr [[TMP1]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD4:%.*]] = load <4 x i8>, ptr [[TMP2]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD2:%.*]] = load <4 x i8>, ptr [[TMP3]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD3:%.*]] = load <4 x i8>, ptr [[TMP17]], align 1
++; VF4IC4-NEXT:    [[WIDE_LOAD3:%.*]] = load <4 x i8>, ptr [[TMP1]], align 1
+ ; VF4IC4-NEXT:    [[TMP18:%.*]] = getelementptr inbounds i8, ptr [[P2]], i64 [[OFFSET_IDX]]
+ ; VF4IC4-NEXT:    [[TMP19:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 0
+-; VF4IC4-NEXT:    [[TMP20:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 4
+-; VF4IC4-NEXT:    [[TMP21:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 8
+-; VF4IC4-NEXT:    [[TMP22:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 12
+-; VF4IC4-NEXT:    [[WIDE_LOAD1:%.*]] = load <4 x i8>, ptr [[TMP19]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD5:%.*]] = load <4 x i8>, ptr [[TMP20]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD6:%.*]] = load <4 x i8>, ptr [[TMP21]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD7:%.*]] = load <4 x i8>, ptr [[TMP22]], align 1
+-; VF4IC4-NEXT:    [[TMP4:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD]], [[WIDE_LOAD1]]
+-; VF4IC4-NEXT:    [[TMP11:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD4]], [[WIDE_LOAD5]]
+-; VF4IC4-NEXT:    [[TMP12:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD2]], [[WIDE_LOAD6]]
++; VF4IC4-NEXT:    [[WIDE_LOAD7:%.*]] = load <4 x i8>, ptr [[TMP19]], align 1
+ ; VF4IC4-NEXT:    [[TMP13:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD3]], [[WIDE_LOAD7]]
+-; VF4IC4-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 16
+-; VF4IC4-NEXT:    [[TMP14:%.*]] = or <4 x i1> [[TMP4]], [[TMP11]]
+-; VF4IC4-NEXT:    [[TMP15:%.*]] = or <4 x i1> [[TMP14]], [[TMP12]]
+-; VF4IC4-NEXT:    [[TMP16:%.*]] = or <4 x i1> [[TMP15]], [[TMP13]]
+-; VF4IC4-NEXT:    [[TMP5:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP16]])
++; VF4IC4-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
++; VF4IC4-NEXT:    [[TMP5:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP13]])
+ ; VF4IC4-NEXT:    [[TMP6:%.*]] = icmp eq i64 [[INDEX_NEXT]], 64
+ ; VF4IC4-NEXT:    [[TMP7:%.*]] = or i1 [[TMP5]], [[TMP6]]
+ ; VF4IC4-NEXT:    br i1 [[TMP7]], label [[MIDDLE_SPLIT:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP10:![0-9]+]]
+@@ -447,20 +330,7 @@
+ ; VF4IC4:       middle.block:
+ ; VF4IC4-NEXT:    br i1 true, label [[LOOP_END:%.*]], label [[SCALAR_PH]]
+ ; VF4IC4:       vector.early.exit:
+-; VF4IC4-NEXT:    [[TMP33:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP13]], i1 true)
+-; VF4IC4-NEXT:    [[TMP34:%.*]] = add i64 12, [[TMP33]]
+-; VF4IC4-NEXT:    [[TMP35:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP12]], i1 true)
+-; VF4IC4-NEXT:    [[TMP24:%.*]] = add i64 8, [[TMP35]]
+-; VF4IC4-NEXT:    [[TMP23:%.*]] = icmp ne i64 [[TMP35]], 4
+-; VF4IC4-NEXT:    [[TMP25:%.*]] = select i1 [[TMP23]], i64 [[TMP24]], i64 [[TMP34]]
+-; VF4IC4-NEXT:    [[TMP26:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP11]], i1 true)
+-; VF4IC4-NEXT:    [[TMP28:%.*]] = add i64 4, [[TMP26]]
+-; VF4IC4-NEXT:    [[TMP27:%.*]] = icmp ne i64 [[TMP26]], 4
+-; VF4IC4-NEXT:    [[TMP29:%.*]] = select i1 [[TMP27]], i64 [[TMP28]], i64 [[TMP25]]
+-; VF4IC4-NEXT:    [[TMP30:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP4]], i1 true)
+-; VF4IC4-NEXT:    [[TMP32:%.*]] = add i64 0, [[TMP30]]
+-; VF4IC4-NEXT:    [[TMP31:%.*]] = icmp ne i64 [[TMP30]], 4
+-; VF4IC4-NEXT:    [[TMP8:%.*]] = select i1 [[TMP31]], i64 [[TMP32]], i64 [[TMP29]]
++; VF4IC4-NEXT:    [[TMP8:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP13]], i1 true)
+ ; VF4IC4-NEXT:    [[TMP9:%.*]] = add i64 [[INDEX]], [[TMP8]]
+ ; VF4IC4-NEXT:    [[TMP10:%.*]] = add i64 3, [[TMP9]]
+ ; VF4IC4-NEXT:    br label [[LOOP_EARLY_EXIT:%.*]]
+@@ -531,31 +401,13 @@
+ ; VF4IC4-NEXT:    [[OFFSET_IDX:%.*]] = add i64 3, [[INDEX]]
+ ; VF4IC4-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr [[P1]], i64 [[OFFSET_IDX]]
+ ; VF4IC4-NEXT:    [[TMP1:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 0
+-; VF4IC4-NEXT:    [[TMP2:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 4
+-; VF4IC4-NEXT:    [[TMP3:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 8
+-; VF4IC4-NEXT:    [[TMP17:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 12
+-; VF4IC4-NEXT:    [[WIDE_LOAD:%.*]] = load <4 x i8>, ptr [[TMP1]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD4:%.*]] = load <4 x i8>, ptr [[TMP2]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD2:%.*]] = load <4 x i8>, ptr [[TMP3]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD3:%.*]] = load <4 x i8>, ptr [[TMP17]], align 1
++; VF4IC4-NEXT:    [[WIDE_LOAD3:%.*]] = load <4 x i8>, ptr [[TMP1]], align 1
+ ; VF4IC4-NEXT:    [[TMP18:%.*]] = getelementptr inbounds i8, ptr [[P2]], i64 [[OFFSET_IDX]]
+ ; VF4IC4-NEXT:    [[TMP19:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 0
+-; VF4IC4-NEXT:    [[TMP20:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 4
+-; VF4IC4-NEXT:    [[TMP21:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 8
+-; VF4IC4-NEXT:    [[TMP22:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 12
+-; VF4IC4-NEXT:    [[WIDE_LOAD1:%.*]] = load <4 x i8>, ptr [[TMP19]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD5:%.*]] = load <4 x i8>, ptr [[TMP20]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD6:%.*]] = load <4 x i8>, ptr [[TMP21]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD7:%.*]] = load <4 x i8>, ptr [[TMP22]], align 1
+-; VF4IC4-NEXT:    [[TMP4:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD]], [[WIDE_LOAD1]]
+-; VF4IC4-NEXT:    [[TMP11:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD4]], [[WIDE_LOAD5]]
+-; VF4IC4-NEXT:    [[TMP12:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD2]], [[WIDE_LOAD6]]
++; VF4IC4-NEXT:    [[WIDE_LOAD7:%.*]] = load <4 x i8>, ptr [[TMP19]], align 1
+ ; VF4IC4-NEXT:    [[TMP13:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD3]], [[WIDE_LOAD7]]
+-; VF4IC4-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 16
+-; VF4IC4-NEXT:    [[TMP14:%.*]] = or <4 x i1> [[TMP4]], [[TMP11]]
+-; VF4IC4-NEXT:    [[TMP15:%.*]] = or <4 x i1> [[TMP14]], [[TMP12]]
+-; VF4IC4-NEXT:    [[TMP16:%.*]] = or <4 x i1> [[TMP15]], [[TMP13]]
+-; VF4IC4-NEXT:    [[TMP5:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP16]])
++; VF4IC4-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
++; VF4IC4-NEXT:    [[TMP5:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP13]])
+ ; VF4IC4-NEXT:    [[TMP6:%.*]] = icmp eq i64 [[INDEX_NEXT]], 64
+ ; VF4IC4-NEXT:    [[TMP7:%.*]] = or i1 [[TMP5]], [[TMP6]]
+ ; VF4IC4-NEXT:    br i1 [[TMP7]], label [[MIDDLE_SPLIT:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP12:![0-9]+]]
+@@ -564,20 +416,7 @@
+ ; VF4IC4:       middle.block:
+ ; VF4IC4-NEXT:    br i1 true, label [[LOOP_END:%.*]], label [[SCALAR_PH]]
+ ; VF4IC4:       vector.early.exit:
+-; VF4IC4-NEXT:    [[TMP33:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP13]], i1 true)
+-; VF4IC4-NEXT:    [[TMP34:%.*]] = add i64 12, [[TMP33]]
+-; VF4IC4-NEXT:    [[TMP35:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP12]], i1 true)
+-; VF4IC4-NEXT:    [[TMP24:%.*]] = add i64 8, [[TMP35]]
+-; VF4IC4-NEXT:    [[TMP23:%.*]] = icmp ne i64 [[TMP35]], 4
+-; VF4IC4-NEXT:    [[TMP25:%.*]] = select i1 [[TMP23]], i64 [[TMP24]], i64 [[TMP34]]
+-; VF4IC4-NEXT:    [[TMP26:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP11]], i1 true)
+-; VF4IC4-NEXT:    [[TMP28:%.*]] = add i64 4, [[TMP26]]
+-; VF4IC4-NEXT:    [[TMP27:%.*]] = icmp ne i64 [[TMP26]], 4
+-; VF4IC4-NEXT:    [[TMP29:%.*]] = select i1 [[TMP27]], i64 [[TMP28]], i64 [[TMP25]]
+-; VF4IC4-NEXT:    [[TMP30:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP4]], i1 true)
+-; VF4IC4-NEXT:    [[TMP32:%.*]] = add i64 0, [[TMP30]]
+-; VF4IC4-NEXT:    [[TMP31:%.*]] = icmp ne i64 [[TMP30]], 4
+-; VF4IC4-NEXT:    [[TMP8:%.*]] = select i1 [[TMP31]], i64 [[TMP32]], i64 [[TMP29]]
++; VF4IC4-NEXT:    [[TMP8:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP13]], i1 true)
+ ; VF4IC4-NEXT:    [[TMP9:%.*]] = add i64 [[INDEX]], [[TMP8]]
+ ; VF4IC4-NEXT:    [[TMP10:%.*]] = add i64 3, [[TMP9]]
+ ; VF4IC4-NEXT:    br label [[LOOP_EARLY_EXIT:%.*]]
+@@ -648,48 +487,18 @@
+ ; VF4IC4-NEXT:    [[OFFSET_IDX:%.*]] = sub i64 1023, [[INDEX]]
+ ; VF4IC4-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr [[P1]], i64 [[OFFSET_IDX]]
+ ; VF4IC4-NEXT:    [[TMP1:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 0
+-; VF4IC4-NEXT:    [[TMP2:%.*]] = getelementptr inbounds i8, ptr [[TMP1]], i32 -3
+-; VF4IC4-NEXT:    [[TMP18:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 -4
+-; VF4IC4-NEXT:    [[TMP13:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 -3
+-; VF4IC4-NEXT:    [[TMP14:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 -8
+-; VF4IC4-NEXT:    [[TMP15:%.*]] = getelementptr inbounds i8, ptr [[TMP14]], i32 -3
+-; VF4IC4-NEXT:    [[TMP16:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 -12
+-; VF4IC4-NEXT:    [[TMP17:%.*]] = getelementptr inbounds i8, ptr [[TMP16]], i32 -3
+-; VF4IC4-NEXT:    [[WIDE_LOAD1:%.*]] = load <4 x i8>, ptr [[TMP2]], align 1
+-; VF4IC4-NEXT:    [[REVERSE2:%.*]] = shufflevector <4 x i8> [[WIDE_LOAD1]], <4 x i8> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
+-; VF4IC4-NEXT:    [[WIDE_LOAD9:%.*]] = load <4 x i8>, ptr [[TMP13]], align 1
+-; VF4IC4-NEXT:    [[REVERSE10:%.*]] = shufflevector <4 x i8> [[WIDE_LOAD9]], <4 x i8> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
+-; VF4IC4-NEXT:    [[WIDE_LOAD11:%.*]] = load <4 x i8>, ptr [[TMP15]], align 1
+-; VF4IC4-NEXT:    [[REVERSE12:%.*]] = shufflevector <4 x i8> [[WIDE_LOAD11]], <4 x i8> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
++; VF4IC4-NEXT:    [[TMP17:%.*]] = getelementptr inbounds i8, ptr [[TMP1]], i32 -3
+ ; VF4IC4-NEXT:    [[WIDE_LOAD13:%.*]] = load <4 x i8>, ptr [[TMP17]], align 1
+ ; VF4IC4-NEXT:    [[REVERSE14:%.*]] = shufflevector <4 x i8> [[WIDE_LOAD13]], <4 x i8> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
+ ; VF4IC4-NEXT:    [[TMP25:%.*]] = getelementptr inbounds i8, ptr [[P2]], i64 [[OFFSET_IDX]]
+ ; VF4IC4-NEXT:    [[TMP26:%.*]] = getelementptr inbounds i8, ptr [[TMP25]], i32 0
+-; VF4IC4-NEXT:    [[TMP27:%.*]] = getelementptr inbounds i8, ptr [[TMP26]], i32 -3
+-; VF4IC4-NEXT:    [[TMP28:%.*]] = getelementptr inbounds i8, ptr [[TMP25]], i32 -4
+-; VF4IC4-NEXT:    [[TMP29:%.*]] = getelementptr inbounds i8, ptr [[TMP28]], i32 -3
+-; VF4IC4-NEXT:    [[TMP30:%.*]] = getelementptr inbounds i8, ptr [[TMP25]], i32 -8
+-; VF4IC4-NEXT:    [[TMP44:%.*]] = getelementptr inbounds i8, ptr [[TMP30]], i32 -3
+-; VF4IC4-NEXT:    [[TMP45:%.*]] = getelementptr inbounds i8, ptr [[TMP25]], i32 -12
+-; VF4IC4-NEXT:    [[TMP46:%.*]] = getelementptr inbounds i8, ptr [[TMP45]], i32 -3
+-; VF4IC4-NEXT:    [[WIDE_LOAD7:%.*]] = load <4 x i8>, ptr [[TMP27]], align 1
+-; VF4IC4-NEXT:    [[REVERSE8:%.*]] = shufflevector <4 x i8> [[WIDE_LOAD7]], <4 x i8> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
+-; VF4IC4-NEXT:    [[WIDE_LOAD10:%.*]] = load <4 x i8>, ptr [[TMP29]], align 1
+-; VF4IC4-NEXT:    [[REVERSE11:%.*]] = shufflevector <4 x i8> [[WIDE_LOAD10]], <4 x i8> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
+-; VF4IC4-NEXT:    [[WIDE_LOAD12:%.*]] = load <4 x i8>, ptr [[TMP44]], align 1
+-; VF4IC4-NEXT:    [[REVERSE13:%.*]] = shufflevector <4 x i8> [[WIDE_LOAD12]], <4 x i8> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
++; VF4IC4-NEXT:    [[TMP46:%.*]] = getelementptr inbounds i8, ptr [[TMP26]], i32 -3
+ ; VF4IC4-NEXT:    [[WIDE_LOAD14:%.*]] = load <4 x i8>, ptr [[TMP46]], align 1
+ ; VF4IC4-NEXT:    [[REVERSE15:%.*]] = shufflevector <4 x i8> [[WIDE_LOAD14]], <4 x i8> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
+-; VF4IC4-NEXT:    [[TMP6:%.*]] = icmp ne <4 x i8> [[REVERSE2]], [[REVERSE8]]
+-; VF4IC4-NEXT:    [[TMP19:%.*]] = icmp ne <4 x i8> [[REVERSE10]], [[REVERSE11]]
+-; VF4IC4-NEXT:    [[TMP20:%.*]] = icmp ne <4 x i8> [[REVERSE12]], [[REVERSE13]]
+ ; VF4IC4-NEXT:    [[TMP21:%.*]] = icmp ne <4 x i8> [[REVERSE14]], [[REVERSE15]]
+-; VF4IC4-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 16
+-; VF4IC4-NEXT:    [[TMP22:%.*]] = or <4 x i1> [[TMP6]], [[TMP19]]
+-; VF4IC4-NEXT:    [[TMP23:%.*]] = or <4 x i1> [[TMP22]], [[TMP20]]
+-; VF4IC4-NEXT:    [[TMP24:%.*]] = or <4 x i1> [[TMP23]], [[TMP21]]
+-; VF4IC4-NEXT:    [[TMP7:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP24]])
+-; VF4IC4-NEXT:    [[TMP8:%.*]] = icmp eq i64 [[INDEX_NEXT]], 1008
++; VF4IC4-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
++; VF4IC4-NEXT:    [[TMP7:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP21]])
++; VF4IC4-NEXT:    [[TMP8:%.*]] = icmp eq i64 [[INDEX_NEXT]], 1020
+ ; VF4IC4-NEXT:    [[TMP9:%.*]] = or i1 [[TMP7]], [[TMP8]]
+ ; VF4IC4-NEXT:    br i1 [[TMP9]], label [[MIDDLE_SPLIT:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP14:![0-9]+]]
+ ; VF4IC4:       middle.split:
+@@ -697,25 +506,12 @@
+ ; VF4IC4:       middle.block:
+ ; VF4IC4-NEXT:    br i1 false, label [[LOOP_END:%.*]], label [[SCALAR_PH]]
+ ; VF4IC4:       vector.early.exit:
+-; VF4IC4-NEXT:    [[TMP41:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP21]], i1 true)
+-; VF4IC4-NEXT:    [[TMP42:%.*]] = add i64 12, [[TMP41]]
+-; VF4IC4-NEXT:    [[TMP43:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP20]], i1 true)
+-; VF4IC4-NEXT:    [[TMP32:%.*]] = add i64 8, [[TMP43]]
+-; VF4IC4-NEXT:    [[TMP31:%.*]] = icmp ne i64 [[TMP43]], 4
+-; VF4IC4-NEXT:    [[TMP33:%.*]] = select i1 [[TMP31]], i64 [[TMP32]], i64 [[TMP42]]
+-; VF4IC4-NEXT:    [[TMP34:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP19]], i1 true)
+-; VF4IC4-NEXT:    [[TMP36:%.*]] = add i64 4, [[TMP34]]
+-; VF4IC4-NEXT:    [[TMP35:%.*]] = icmp ne i64 [[TMP34]], 4
+-; VF4IC4-NEXT:    [[TMP37:%.*]] = select i1 [[TMP35]], i64 [[TMP36]], i64 [[TMP33]]
+-; VF4IC4-NEXT:    [[TMP38:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP6]], i1 true)
+-; VF4IC4-NEXT:    [[TMP40:%.*]] = add i64 0, [[TMP38]]
+-; VF4IC4-NEXT:    [[TMP39:%.*]] = icmp ne i64 [[TMP38]], 4
+-; VF4IC4-NEXT:    [[TMP10:%.*]] = select i1 [[TMP39]], i64 [[TMP40]], i64 [[TMP37]]
++; VF4IC4-NEXT:    [[TMP10:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP21]], i1 true)
+ ; VF4IC4-NEXT:    [[TMP11:%.*]] = add i64 [[INDEX]], [[TMP10]]
+ ; VF4IC4-NEXT:    [[TMP12:%.*]] = sub i64 1023, [[TMP11]]
+ ; VF4IC4-NEXT:    br label [[LOOP_END]]
+ ; VF4IC4:       scalar.ph:
+-; VF4IC4-NEXT:    [[BC_RESUME_VAL:%.*]] = phi i64 [ 15, [[MIDDLE_BLOCK]] ], [ 1023, [[ENTRY:%.*]] ]
++; VF4IC4-NEXT:    [[BC_RESUME_VAL:%.*]] = phi i64 [ 3, [[MIDDLE_BLOCK]] ], [ 1023, [[ENTRY:%.*]] ]
+ ; VF4IC4-NEXT:    br label [[LOOP:%.*]]
+ ; VF4IC4:       loop:
+ ; VF4IC4-NEXT:    [[IV:%.*]] = phi i64 [ [[IV_NEXT:%.*]], [[LOOP_INC:%.*]] ], [ [[BC_RESUME_VAL]], [[SCALAR_PH]] ]
+@@ -774,31 +570,13 @@
+ ; VF4IC4-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
+ ; VF4IC4-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr [[P1]], i64 [[INDEX]]
+ ; VF4IC4-NEXT:    [[TMP1:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 0
+-; VF4IC4-NEXT:    [[TMP10:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 4
+-; VF4IC4-NEXT:    [[TMP3:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 8
+-; VF4IC4-NEXT:    [[TMP17:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 12
+-; VF4IC4-NEXT:    [[WIDE_LOAD:%.*]] = load <4 x i8>, ptr [[TMP1]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD1:%.*]] = load <4 x i8>, ptr [[TMP10]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD2:%.*]] = load <4 x i8>, ptr [[TMP3]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD3:%.*]] = load <4 x i8>, ptr [[TMP17]], align 1
++; VF4IC4-NEXT:    [[WIDE_LOAD3:%.*]] = load <4 x i8>, ptr [[TMP1]], align 1
+ ; VF4IC4-NEXT:    [[TMP18:%.*]] = getelementptr inbounds i8, ptr [[P2]], i64 [[INDEX]]
+ ; VF4IC4-NEXT:    [[TMP19:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 0
+-; VF4IC4-NEXT:    [[TMP29:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 4
+-; VF4IC4-NEXT:    [[TMP8:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 8
+-; VF4IC4-NEXT:    [[TMP9:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 12
+-; VF4IC4-NEXT:    [[WIDE_LOAD4:%.*]] = load <4 x i8>, ptr [[TMP19]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD5:%.*]] = load <4 x i8>, ptr [[TMP29]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD6:%.*]] = load <4 x i8>, ptr [[TMP8]], align 1
+-; VF4IC4-NEXT:    [[WIDE_LOAD7:%.*]] = load <4 x i8>, ptr [[TMP9]], align 1
+-; VF4IC4-NEXT:    [[TMP4:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD]], [[WIDE_LOAD4]]
+-; VF4IC4-NEXT:    [[TMP11:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD1]], [[WIDE_LOAD5]]
+-; VF4IC4-NEXT:    [[TMP12:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD2]], [[WIDE_LOAD6]]
++; VF4IC4-NEXT:    [[WIDE_LOAD7:%.*]] = load <4 x i8>, ptr [[TMP19]], align 1
+ ; VF4IC4-NEXT:    [[TMP13:%.*]] = icmp ne <4 x i8> [[WIDE_LOAD3]], [[WIDE_LOAD7]]
+-; VF4IC4-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 16
+-; VF4IC4-NEXT:    [[TMP14:%.*]] = or <4 x i1> [[TMP4]], [[TMP11]]
+-; VF4IC4-NEXT:    [[TMP15:%.*]] = or <4 x i1> [[TMP14]], [[TMP12]]
+-; VF4IC4-NEXT:    [[TMP16:%.*]] = or <4 x i1> [[TMP15]], [[TMP13]]
+-; VF4IC4-NEXT:    [[TMP5:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP16]])
++; VF4IC4-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
++; VF4IC4-NEXT:    [[TMP5:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP13]])
+ ; VF4IC4-NEXT:    [[TMP6:%.*]] = icmp eq i64 [[INDEX_NEXT]], 1024
+ ; VF4IC4-NEXT:    [[TMP7:%.*]] = or i1 [[TMP5]], [[TMP6]]
+ ; VF4IC4-NEXT:    br i1 [[TMP7]], label [[MIDDLE_SPLIT:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP16:![0-9]+]]
+@@ -808,20 +586,7 @@
+ ; VF4IC4-NEXT:    br i1 true, label [[LOOP_END:%.*]], label [[SCALAR_PH]]
+ ; VF4IC4:       vector.early.exit:
+ ; VF4IC4-NEXT:    [[FIRST_ACTIVE_LANE1:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP13]], i1 true)
+-; VF4IC4-NEXT:    [[TMP20:%.*]] = add i64 12, [[FIRST_ACTIVE_LANE1]]
+-; VF4IC4-NEXT:    [[FIRST_ACTIVE_LANE8:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP12]], i1 true)
+-; VF4IC4-NEXT:    [[TMP22:%.*]] = add i64 8, [[FIRST_ACTIVE_LANE8]]
+-; VF4IC4-NEXT:    [[TMP21:%.*]] = icmp ne i64 [[FIRST_ACTIVE_LANE8]], 4
+-; VF4IC4-NEXT:    [[TMP23:%.*]] = select i1 [[TMP21]], i64 [[TMP22]], i64 [[TMP20]]
+-; VF4IC4-NEXT:    [[FIRST_ACTIVE_LANE9:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP11]], i1 true)
+-; VF4IC4-NEXT:    [[TMP25:%.*]] = add i64 4, [[FIRST_ACTIVE_LANE9]]
+-; VF4IC4-NEXT:    [[TMP24:%.*]] = icmp ne i64 [[FIRST_ACTIVE_LANE9]], 4
+-; VF4IC4-NEXT:    [[TMP26:%.*]] = select i1 [[TMP24]], i64 [[TMP25]], i64 [[TMP23]]
+-; VF4IC4-NEXT:    [[FIRST_ACTIVE_LANE10:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP4]], i1 true)
+-; VF4IC4-NEXT:    [[TMP28:%.*]] = add i64 0, [[FIRST_ACTIVE_LANE10]]
+-; VF4IC4-NEXT:    [[TMP27:%.*]] = icmp ne i64 [[FIRST_ACTIVE_LANE10]], 4
+-; VF4IC4-NEXT:    [[FIRST_ACTIVE_LANE:%.*]] = select i1 [[TMP27]], i64 [[TMP28]], i64 [[TMP26]]
+-; VF4IC4-NEXT:    [[EARLY_EXIT_VALUE:%.*]] = extractelement <4 x i8> [[WIDE_LOAD]], i64 [[FIRST_ACTIVE_LANE]]
++; VF4IC4-NEXT:    [[EARLY_EXIT_VALUE:%.*]] = extractelement <4 x i8> [[WIDE_LOAD3]], i64 [[FIRST_ACTIVE_LANE1]]
+ ; VF4IC4-NEXT:    br label [[LOOP_END]]
+ ; VF4IC4:       scalar.ph:
+ ; VF4IC4-NEXT:    [[BC_RESUME_VAL:%.*]] = phi i64 [ 1024, [[MIDDLE_BLOCK]] ], [ 0, [[ENTRY:%.*]] ]
+@@ -884,48 +649,18 @@
+ ; VF4IC4-NEXT:    [[OFFSET_IDX:%.*]] = sub i64 1023, [[INDEX]]
+ ; VF4IC4-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr [[P1]], i64 [[OFFSET_IDX]]
+ ; VF4IC4-NEXT:    [[TMP1:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 0
+-; VF4IC4-NEXT:    [[TMP2:%.*]] = getelementptr inbounds i8, ptr [[TMP1]], i32 -3
+-; VF4IC4-NEXT:    [[TMP10:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 -4
+-; VF4IC4-NEXT:    [[TMP11:%.*]] = getelementptr inbounds i8, ptr [[TMP10]], i32 -3
+-; VF4IC4-NEXT:    [[TMP18:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 -8
+-; VF4IC4-NEXT:    [[TMP37:%.*]] = getelementptr inbounds i8, ptr [[TMP18]], i32 -3
+-; VF4IC4-NEXT:    [[TMP7:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 -12
+-; VF4IC4-NEXT:    [[TMP8:%.*]] = getelementptr inbounds i8, ptr [[TMP7]], i32 -3
+-; VF4IC4-NEXT:    [[WIDE_LOAD:%.*]] = load <4 x i8>, ptr [[TMP2]], align 1
+-; VF4IC4-NEXT:    [[REVERSE:%.*]] = shufflevector <4 x i8> [[WIDE_LOAD]], <4 x i8> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
+-; VF4IC4-NEXT:    [[WIDE_LOAD1:%.*]] = load <4 x i8>, ptr [[TMP11]], align 1
+-; VF4IC4-NEXT:    [[REVERSE2:%.*]] = shufflevector <4 x i8> [[WIDE_LOAD1]], <4 x i8> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
+-; VF4IC4-NEXT:    [[WIDE_LOAD3:%.*]] = load <4 x i8>, ptr [[TMP37]], align 1
+-; VF4IC4-NEXT:    [[REVERSE4:%.*]] = shufflevector <4 x i8> [[WIDE_LOAD3]], <4 x i8> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
++; VF4IC4-NEXT:    [[TMP8:%.*]] = getelementptr inbounds i8, ptr [[TMP1]], i32 -3
+ ; VF4IC4-NEXT:    [[WIDE_LOAD5:%.*]] = load <4 x i8>, ptr [[TMP8]], align 1
+ ; VF4IC4-NEXT:    [[REVERSE6:%.*]] = shufflevector <4 x i8> [[WIDE_LOAD5]], <4 x i8> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
+ ; VF4IC4-NEXT:    [[TMP9:%.*]] = getelementptr inbounds i8, ptr [[P2]], i64 [[OFFSET_IDX]]
+ ; VF4IC4-NEXT:    [[TMP38:%.*]] = getelementptr inbounds i8, ptr [[TMP9]], i32 0
+-; VF4IC4-NEXT:    [[TMP39:%.*]] = getelementptr inbounds i8, ptr [[TMP38]], i32 -3
+-; VF4IC4-NEXT:    [[TMP12:%.*]] = getelementptr inbounds i8, ptr [[TMP9]], i32 -4
+-; VF4IC4-NEXT:    [[TMP13:%.*]] = getelementptr inbounds i8, ptr [[TMP12]], i32 -3
+-; VF4IC4-NEXT:    [[TMP14:%.*]] = getelementptr inbounds i8, ptr [[TMP9]], i32 -8
+-; VF4IC4-NEXT:    [[TMP15:%.*]] = getelementptr inbounds i8, ptr [[TMP14]], i32 -3
+-; VF4IC4-NEXT:    [[TMP16:%.*]] = getelementptr inbounds i8, ptr [[TMP9]], i32 -12
+-; VF4IC4-NEXT:    [[TMP17:%.*]] = getelementptr inbounds i8, ptr [[TMP16]], i32 -3
+-; VF4IC4-NEXT:    [[WIDE_LOAD7:%.*]] = load <4 x i8>, ptr [[TMP39]], align 1
+-; VF4IC4-NEXT:    [[REVERSE8:%.*]] = shufflevector <4 x i8> [[WIDE_LOAD7]], <4 x i8> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
+-; VF4IC4-NEXT:    [[WIDE_LOAD9:%.*]] = load <4 x i8>, ptr [[TMP13]], align 1
+-; VF4IC4-NEXT:    [[REVERSE10:%.*]] = shufflevector <4 x i8> [[WIDE_LOAD9]], <4 x i8> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
+-; VF4IC4-NEXT:    [[WIDE_LOAD11:%.*]] = load <4 x i8>, ptr [[TMP15]], align 1
+-; VF4IC4-NEXT:    [[REVERSE12:%.*]] = shufflevector <4 x i8> [[WIDE_LOAD11]], <4 x i8> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
++; VF4IC4-NEXT:    [[TMP17:%.*]] = getelementptr inbounds i8, ptr [[TMP38]], i32 -3
+ ; VF4IC4-NEXT:    [[WIDE_LOAD13:%.*]] = load <4 x i8>, ptr [[TMP17]], align 1
+ ; VF4IC4-NEXT:    [[REVERSE14:%.*]] = shufflevector <4 x i8> [[WIDE_LOAD13]], <4 x i8> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
+-; VF4IC4-NEXT:    [[TMP6:%.*]] = icmp ne <4 x i8> [[REVERSE]], [[REVERSE8]]
+-; VF4IC4-NEXT:    [[TMP19:%.*]] = icmp ne <4 x i8> [[REVERSE2]], [[REVERSE10]]
+-; VF4IC4-NEXT:    [[TMP20:%.*]] = icmp ne <4 x i8> [[REVERSE4]], [[REVERSE12]]
+ ; VF4IC4-NEXT:    [[TMP21:%.*]] = icmp ne <4 x i8> [[REVERSE6]], [[REVERSE14]]
+-; VF4IC4-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 16
+-; VF4IC4-NEXT:    [[TMP22:%.*]] = or <4 x i1> [[TMP6]], [[TMP19]]
+-; VF4IC4-NEXT:    [[TMP23:%.*]] = or <4 x i1> [[TMP22]], [[TMP20]]
+-; VF4IC4-NEXT:    [[TMP24:%.*]] = or <4 x i1> [[TMP23]], [[TMP21]]
+-; VF4IC4-NEXT:    [[TMP25:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP24]])
+-; VF4IC4-NEXT:    [[TMP26:%.*]] = icmp eq i64 [[INDEX_NEXT]], 1008
++; VF4IC4-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
++; VF4IC4-NEXT:    [[TMP25:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP21]])
++; VF4IC4-NEXT:    [[TMP26:%.*]] = icmp eq i64 [[INDEX_NEXT]], 1020
+ ; VF4IC4-NEXT:    [[TMP27:%.*]] = or i1 [[TMP25]], [[TMP26]]
+ ; VF4IC4-NEXT:    br i1 [[TMP27]], label [[MIDDLE_SPLIT:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP18:![0-9]+]]
+ ; VF4IC4:       middle.split:
+@@ -934,23 +669,10 @@
+ ; VF4IC4-NEXT:    br i1 false, label [[LOOP_END:%.*]], label [[SCALAR_PH]]
+ ; VF4IC4:       vector.early.exit:
+ ; VF4IC4-NEXT:    [[FIRST_ACTIVE_LANE1:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP21]], i1 true)
+-; VF4IC4-NEXT:    [[TMP28:%.*]] = add i64 12, [[FIRST_ACTIVE_LANE1]]
+-; VF4IC4-NEXT:    [[FIRST_ACTIVE_LANE15:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP20]], i1 true)
+-; VF4IC4-NEXT:    [[TMP30:%.*]] = add i64 8, [[FIRST_ACTIVE_LANE15]]
+-; VF4IC4-NEXT:    [[TMP29:%.*]] = icmp ne i64 [[FIRST_ACTIVE_LANE15]], 4
+-; VF4IC4-NEXT:    [[TMP31:%.*]] = select i1 [[TMP29]], i64 [[TMP30]], i64 [[TMP28]]
+-; VF4IC4-NEXT:    [[FIRST_ACTIVE_LANE16:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP19]], i1 true)
+-; VF4IC4-NEXT:    [[TMP33:%.*]] = add i64 4, [[FIRST_ACTIVE_LANE16]]
+-; VF4IC4-NEXT:    [[TMP32:%.*]] = icmp ne i64 [[FIRST_ACTIVE_LANE16]], 4
+-; VF4IC4-NEXT:    [[TMP34:%.*]] = select i1 [[TMP32]], i64 [[TMP33]], i64 [[TMP31]]
+-; VF4IC4-NEXT:    [[FIRST_ACTIVE_LANE17:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v4i1(<4 x i1> [[TMP6]], i1 true)
+-; VF4IC4-NEXT:    [[TMP36:%.*]] = add i64 0, [[FIRST_ACTIVE_LANE17]]
+-; VF4IC4-NEXT:    [[TMP35:%.*]] = icmp ne i64 [[FIRST_ACTIVE_LANE17]], 4
+-; VF4IC4-NEXT:    [[FIRST_ACTIVE_LANE:%.*]] = select i1 [[TMP35]], i64 [[TMP36]], i64 [[TMP34]]
+-; VF4IC4-NEXT:    [[EARLY_EXIT_VALUE:%.*]] = extractelement <4 x i8> [[REVERSE]], i64 [[FIRST_ACTIVE_LANE]]
++; VF4IC4-NEXT:    [[EARLY_EXIT_VALUE:%.*]] = extractelement <4 x i8> [[REVERSE6]], i64 [[FIRST_ACTIVE_LANE1]]
+ ; VF4IC4-NEXT:    br label [[LOOP_END]]
+ ; VF4IC4:       scalar.ph:
+-; VF4IC4-NEXT:    [[BC_RESUME_VAL:%.*]] = phi i64 [ 15, [[MIDDLE_BLOCK]] ], [ 1023, [[ENTRY:%.*]] ]
++; VF4IC4-NEXT:    [[BC_RESUME_VAL:%.*]] = phi i64 [ 3, [[MIDDLE_BLOCK]] ], [ 1023, [[ENTRY:%.*]] ]
+ ; VF4IC4-NEXT:    br label [[LOOP:%.*]]
+ ; VF4IC4:       loop:
+ ; VF4IC4-NEXT:    [[IV:%.*]] = phi i64 [ [[IV_NEXT:%.*]], [[LOOP_INC:%.*]] ], [ [[BC_RESUME_VAL]], [[SCALAR_PH]] ]
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/vector-loop-backedge-elimination-early-exit.ll b/llvm/test/Transforms/LoopVectorize/vector-loop-backedge-elimination-early-exit.ll
+--- a/llvm/test/Transforms/LoopVectorize/vector-loop-backedge-elimination-early-exit.ll
++++ b/llvm/test/Transforms/LoopVectorize/vector-loop-backedge-elimination-early-exit.ll
+@@ -55,17 +55,18 @@
+ ; VF8UF2:       [[VECTOR_PH]]:
+ ; VF8UF2-NEXT:    br label %[[VECTOR_BODY:.*]]
+ ; VF8UF2:       [[VECTOR_BODY]]:
+-; VF8UF2-NEXT:    [[TMP2:%.*]] = getelementptr inbounds i8, ptr [[A]], i32 0
+-; VF8UF2-NEXT:    [[TMP1:%.*]] = getelementptr inbounds i8, ptr [[A]], i32 8
+-; VF8UF2-NEXT:    [[WIDE_LOAD:%.*]] = load <8 x i8>, ptr [[TMP2]], align 1
++; VF8UF2-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
++; VF8UF2-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr [[A]], i64 [[INDEX]]
++; VF8UF2-NEXT:    [[TMP1:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 0
+ ; VF8UF2-NEXT:    [[WIDE_LOAD1:%.*]] = load <8 x i8>, ptr [[TMP1]], align 1
+-; VF8UF2-NEXT:    [[TMP3:%.*]] = icmp eq <8 x i8> [[WIDE_LOAD]], zeroinitializer
+ ; VF8UF2-NEXT:    [[TMP6:%.*]] = icmp eq <8 x i8> [[WIDE_LOAD1]], zeroinitializer
+-; VF8UF2-NEXT:    [[TMP4:%.*]] = or <8 x i1> [[TMP3]], [[TMP6]]
+-; VF8UF2-NEXT:    [[TMP5:%.*]] = call i1 @llvm.vector.reduce.or.v8i1(<8 x i1> [[TMP4]])
+-; VF8UF2-NEXT:    br label %[[MIDDLE_SPLIT:.*]]
++; VF8UF2-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 8
++; VF8UF2-NEXT:    [[TMP3:%.*]] = call i1 @llvm.vector.reduce.or.v8i1(<8 x i1> [[TMP6]])
++; VF8UF2-NEXT:    [[TMP4:%.*]] = icmp eq i64 [[INDEX_NEXT]], 16
++; VF8UF2-NEXT:    [[TMP5:%.*]] = or i1 [[TMP3]], [[TMP4]]
++; VF8UF2-NEXT:    br i1 [[TMP5]], label %[[MIDDLE_SPLIT:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP0:![0-9]+]]
+ ; VF8UF2:       [[MIDDLE_SPLIT]]:
+-; VF8UF2-NEXT:    br i1 [[TMP5]], label %[[VECTOR_EARLY_EXIT:.*]], label %[[MIDDLE_BLOCK:.*]]
++; VF8UF2-NEXT:    br i1 [[TMP3]], label %[[VECTOR_EARLY_EXIT:.*]], label %[[MIDDLE_BLOCK:.*]]
+ ; VF8UF2:       [[MIDDLE_BLOCK]]:
+ ; VF8UF2-NEXT:    br i1 true, label %[[EXIT:.*]], label %[[SCALAR_PH]]
+ ; VF8UF2:       [[VECTOR_EARLY_EXIT]]:
+@@ -82,7 +83,7 @@
+ ; VF8UF2:       [[LOOP_LATCH]]:
+ ; VF8UF2-NEXT:    [[IV_NEXT]] = add nsw i64 [[IV1]], 1
+ ; VF8UF2-NEXT:    [[CMP:%.*]] = icmp eq i64 [[IV_NEXT]], 16
+-; VF8UF2-NEXT:    br i1 [[CMP]], label %[[EXIT]], label %[[LOOP_HEADER]], !llvm.loop [[LOOP0:![0-9]+]]
++; VF8UF2-NEXT:    br i1 [[CMP]], label %[[EXIT]], label %[[LOOP_HEADER]], !llvm.loop [[LOOP3:![0-9]+]]
+ ; VF8UF2:       [[EXIT]]:
+ ; VF8UF2-NEXT:    [[RES:%.*]] = phi i8 [ 0, %[[LOOP_HEADER]] ], [ 1, %[[LOOP_LATCH]] ], [ 1, %[[MIDDLE_BLOCK]] ], [ 0, %[[VECTOR_EARLY_EXIT]] ]
+ ; VF8UF2-NEXT:    ret i8 [[RES]]
+@@ -192,27 +193,23 @@
+ ; VF8UF2:       [[VECTOR_PH]]:
+ ; VF8UF2-NEXT:    br label %[[VECTOR_BODY:.*]]
+ ; VF8UF2:       [[VECTOR_BODY]]:
+-; VF8UF2-NEXT:    [[TMP2:%.*]] = getelementptr inbounds i8, ptr [[A]], i32 0
+-; VF8UF2-NEXT:    [[TMP1:%.*]] = getelementptr inbounds i8, ptr [[A]], i32 8
+-; VF8UF2-NEXT:    [[WIDE_LOAD:%.*]] = load <8 x i8>, ptr [[TMP2]], align 1
++; VF8UF2-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
++; VF8UF2-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr [[A]], i64 [[INDEX]]
++; VF8UF2-NEXT:    [[TMP1:%.*]] = getelementptr inbounds i8, ptr [[TMP0]], i32 0
+ ; VF8UF2-NEXT:    [[WIDE_LOAD1:%.*]] = load <8 x i8>, ptr [[TMP1]], align 1
+-; VF8UF2-NEXT:    [[TMP3:%.*]] = icmp eq <8 x i8> [[WIDE_LOAD]], zeroinitializer
+ ; VF8UF2-NEXT:    [[TMP6:%.*]] = icmp eq <8 x i8> [[WIDE_LOAD1]], zeroinitializer
+-; VF8UF2-NEXT:    [[TMP4:%.*]] = or <8 x i1> [[TMP3]], [[TMP6]]
+-; VF8UF2-NEXT:    [[TMP7:%.*]] = call i1 @llvm.vector.reduce.or.v8i1(<8 x i1> [[TMP4]])
+-; VF8UF2-NEXT:    br label %[[MIDDLE_SPLIT:.*]]
++; VF8UF2-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 8
++; VF8UF2-NEXT:    [[TMP3:%.*]] = call i1 @llvm.vector.reduce.or.v8i1(<8 x i1> [[TMP6]])
++; VF8UF2-NEXT:    [[TMP4:%.*]] = icmp eq i64 [[INDEX_NEXT]], 16
++; VF8UF2-NEXT:    [[TMP5:%.*]] = or i1 [[TMP3]], [[TMP4]]
++; VF8UF2-NEXT:    br i1 [[TMP5]], label %[[MIDDLE_SPLIT:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP4:![0-9]+]]
+ ; VF8UF2:       [[MIDDLE_SPLIT]]:
+-; VF8UF2-NEXT:    br i1 [[TMP7]], label %[[VECTOR_EARLY_EXIT:.*]], label %[[MIDDLE_BLOCK:.*]]
++; VF8UF2-NEXT:    br i1 [[TMP3]], label %[[VECTOR_EARLY_EXIT:.*]], label %[[MIDDLE_BLOCK:.*]]
+ ; VF8UF2:       [[MIDDLE_BLOCK]]:
+ ; VF8UF2-NEXT:    br i1 true, label %[[EXIT:.*]], label %[[SCALAR_PH]]
+ ; VF8UF2:       [[VECTOR_EARLY_EXIT]]:
+ ; VF8UF2-NEXT:    [[TMP8:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v8i1(<8 x i1> [[TMP6]], i1 true)
+-; VF8UF2-NEXT:    [[TMP10:%.*]] = add i64 8, [[TMP8]]
+-; VF8UF2-NEXT:    [[FIRST_ACTIVE_LANE:%.*]] = call i64 @llvm.experimental.cttz.elts.i64.v8i1(<8 x i1> [[TMP3]], i1 true)
+-; VF8UF2-NEXT:    [[TMP5:%.*]] = add i64 0, [[FIRST_ACTIVE_LANE]]
+-; VF8UF2-NEXT:    [[TMP9:%.*]] = icmp ne i64 [[FIRST_ACTIVE_LANE]], 8
+-; VF8UF2-NEXT:    [[TMP11:%.*]] = select i1 [[TMP9]], i64 [[TMP5]], i64 [[TMP10]]
+-; VF8UF2-NEXT:    [[TMP12:%.*]] = add i64 0, [[TMP11]]
++; VF8UF2-NEXT:    [[TMP7:%.*]] = add i64 [[INDEX]], [[TMP8]]
+ ; VF8UF2-NEXT:    br label %[[EXIT]]
+ ; VF8UF2:       [[SCALAR_PH]]:
+ ; VF8UF2-NEXT:    [[BC_RESUME_VAL:%.*]] = phi i64 [ 16, %[[MIDDLE_BLOCK]] ], [ 0, %[[ENTRY]] ]
+@@ -226,9 +223,9 @@
+ ; VF8UF2:       [[LOOP_LATCH]]:
+ ; VF8UF2-NEXT:    [[IV_NEXT]] = add nsw i64 [[IV1]], 1
+ ; VF8UF2-NEXT:    [[CMP:%.*]] = icmp eq i64 [[IV_NEXT]], 16
+-; VF8UF2-NEXT:    br i1 [[CMP]], label %[[EXIT]], label %[[LOOP_HEADER]], !llvm.loop [[LOOP3:![0-9]+]]
++; VF8UF2-NEXT:    br i1 [[CMP]], label %[[EXIT]], label %[[LOOP_HEADER]], !llvm.loop [[LOOP5:![0-9]+]]
+ ; VF8UF2:       [[EXIT]]:
+-; VF8UF2-NEXT:    [[RES:%.*]] = phi i64 [ [[IV1]], %[[LOOP_HEADER]] ], [ 1, %[[LOOP_LATCH]] ], [ 1, %[[MIDDLE_BLOCK]] ], [ [[TMP12]], %[[VECTOR_EARLY_EXIT]] ]
++; VF8UF2-NEXT:    [[RES:%.*]] = phi i64 [ [[IV1]], %[[LOOP_HEADER]] ], [ 1, %[[LOOP_LATCH]] ], [ 1, %[[MIDDLE_BLOCK]] ], [ [[TMP7]], %[[VECTOR_EARLY_EXIT]] ]
+ ; VF8UF2-NEXT:    ret i64 [[RES]]
+ ;
+ ; VF16UF1-LABEL: define i64 @test_early_exit_max_tc_less_than_16_with_iv_used_outside(
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -492,6 +492,7 @@
+     name = "__support_macros_properties_types",
+     hdrs = ["src/__support/macros/properties/types.h"],
      deps = [
-         ":ArithDialect",
-@@ -4845,7 +4842,8 @@
-     ]),
-     hdrs = glob(["include/mlir/Support/*.h"]),
-     includes = ["include"],
--    deps = ["//llvm:Support"],)
-+    deps = ["//llvm:Support"],
-+)
- 
- cc_library(
-     name = "Debug",
-@@ -10478,6 +10476,7 @@
-         ":DestinationStyleOpInterface",
-         ":DialectUtils",
-         ":IR",
-+        ":IndexingMapOpInterface",
-         ":InferTypeOpInterface",
-         ":LinalgInterfacesIncGen",
-         ":LinalgStructuredOpsIncGen",
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
-@@ -675,6 +675,32 @@
++        ":__support_macros_config",
+         ":__support_macros_properties_architectures",
+         ":__support_macros_properties_compiler",
+         ":__support_macros_properties_cpu_features",
+@@ -1078,6 +1079,24 @@
  )
  
- ##---------------------------------------------------------------------------##
-+# Debug dialect.
-+##---------------------------------------------------------------------------##
-+
-+gentbl_filegroup(
-+    name = "DebugTransformOpsPyGen",
-+    tbl_outs = {"mlir/dialects/_transform_debug_extension_ops_gen.py": [
-+        "-gen-python-op-bindings",
-+        "-bind-dialect=transform",
-+        "-dialect-extension=transform_debug_extension",
-+    ]},
-+    tblgen = "//mlir:mlir-tblgen",
-+    td_file = "mlir/dialects/TransformDebugExtensionOps.td",
+ libc_support_library(
++    name = "__support_fputil_bfloat16",
++    hdrs = ["src/__support/FPUtil/bfloat16.h"],
 +    deps = [
-+        "//mlir:TransformDebugExtensionTdFiles",
++        ":__support_cpp_bit",
++        ":__support_cpp_type_traits",
++        ":__support_fputil_cast",
++        ":__support_fputil_dyadic_float",
++        ":__support_macros_config",
++        ":__support_macros_properties_types",
 +    ],
 +)
 +
-+filegroup(
-+    name = "DebugPyFiles",
-+    srcs = [
-+        "mlir/dialects/transform/debug.py",
-+        ":DebugTransformOpsPyGen",
-+    ],
++alias(
++    name = "bfloat16",  # Alias for test/src/math:bfloat16_test.
++    actual = ":__support_fputil_bfloat16",
 +)
 +
-+##---------------------------------------------------------------------------##
- # PythonTest dialect.
- ##---------------------------------------------------------------------------##
++libc_support_library(
+     name = "__support_fputil_cast",
+     hdrs = ["src/__support/FPUtil/cast.h"],
+     deps = [
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/__support/FPUtil/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/src/__support/FPUtil/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/test/src/__support/FPUtil/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/test/src/__support/FPUtil/BUILD.bazel
+@@ -24,6 +24,17 @@
+ )
  
+ libc_test(
++    name = "bfloat16_test",
++    srcs = ["bfloat16_test.cpp"],
++    deps = [
++        "//libc:__support_fputil_bfloat16",
++        "//libc/test/UnitTest:fp_test_helpers",
++        "//libc/utils/MPFRWrapper:mp_common",
++        "//libc/utils/MPFRWrapper:mpfr_wrapper",
++    ],
++)
++
++libc_test(
+     name = "dyadic_float_test",
+     srcs = ["dyadic_float_test.cpp"],
+     copts = ["-frounding-math"],
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/utils/MPFRWrapper/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/utils/MPFRWrapper/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/utils/MPFRWrapper/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/utils/MPFRWrapper/BUILD.bazel
+@@ -42,6 +42,7 @@
+         "//libc:__support_cpp_string",
+         "//libc:__support_cpp_string_view",
+         "//libc:__support_cpp_type_traits",
++        "//libc:__support_fputil_bfloat16",
+         "//libc:__support_fputil_cast",
+         "//libc:__support_fputil_fp_bits",
+         "//libc:__support_macros_config",

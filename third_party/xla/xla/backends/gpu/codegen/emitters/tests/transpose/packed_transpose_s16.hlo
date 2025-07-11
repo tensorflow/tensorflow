@@ -10,7 +10,6 @@ fusion {
 // CHECK-SAME:      %[[INPUT:.*]]: tensor<2x4x64x10x6xi16>
 // CHECK-SAME:      %[[OUTPU:.*]]: tensor<4x2x6x10x64xi16>
 
-// CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : i16
 // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG:  %[[VC0:.*]] = arith.constant dense<0> : vector<2x2xi16>
 
