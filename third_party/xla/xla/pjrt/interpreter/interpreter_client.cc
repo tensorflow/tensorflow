@@ -188,7 +188,7 @@ absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 InterpreterLoadedExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    std::optional<std::vector<PjRtFuture<>>>& returned_futures) {
+    std::optional<std::vector<PjRtFuture<>>>& returned_futures) const {
   if (device_assignment_ == nullptr) {
     return absl::InvalidArgumentError(
         "Execute expects a non-null device_assignment");
@@ -227,7 +227,7 @@ absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 InterpreterLoadedExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
-    bool fill_future) {
+    bool fill_future) const {
   if (device_assignment_ == nullptr) {
     return absl::InvalidArgumentError(
         "ExecuteSharded expects a non-null device_assignment");
@@ -307,13 +307,13 @@ absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 InterpreterLoadedExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
-    bool fill_future) {
+    bool fill_future) const {
   return absl::UnimplementedError("ExecutePortable is not implemented");
 }
 
 absl::StatusOr<Literal> InterpreterLoadedExecutable::Evaluate(
     const HloComputation& computation,
-    absl::Span<const Literal* const> arg_literals) {
+    absl::Span<const Literal* const> arg_literals) const {
   absl::MutexLock lock(&hlo_evaluator_lock_);
   hlo_evaluator_->ResetVisitStates();
   return hlo_evaluator_->Evaluate(computation, arg_literals);
