@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -72,8 +73,7 @@ PJRT_ClientDeleter MakeClientDeleter(const PJRT_Api* api) {
     destroy_args.extension_start = nullptr;
     destroy_args.client = client;
 
-    PJRT_Error* error = api->PJRT_Client_Destroy(&destroy_args);
-    CHECK(error == nullptr);
+    pjrt::LogFatalIfPjrtError(api->PJRT_Client_Destroy(&destroy_args), api);
   };
 }
 
