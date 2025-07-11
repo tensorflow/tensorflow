@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_future.h"
 
 namespace xla {
 
@@ -56,7 +57,7 @@ absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 TfPjRtExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    std::optional<std::vector<PjRtFuture<>>>& returned_futures) {
+    std::optional<std::vector<PjRtFuture<>>>& returned_futures) const {
   std::vector<std::vector<PjRtBuffer*>> unwrapped_argument_handles;
   unwrapped_argument_handles.reserve(argument_handles.size());
   for (auto& handles : argument_handles) {
@@ -83,7 +84,7 @@ TfPjRtExecutable::ExecuteSharded(absl::Span<PjRtBuffer* const> argument_handles,
                                  PjRtDevice* device,
                                  const ExecuteOptions& options,
                                  std::optional<PjRtFuture<>>& returned_future,
-                                 bool fill_future) {
+                                 bool fill_future) const {
   std::vector<PjRtBuffer*> unwrapped_argument_handles;
   unwrapped_argument_handles.reserve(argument_handles.size());
   for (PjRtBuffer* buffer : argument_handles) {
@@ -102,7 +103,7 @@ absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 TfPjRtExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
-    bool fill_future) {
+    bool fill_future) const {
   std::vector<PjRtBuffer*> unwrapped_argument_handles;
   unwrapped_argument_handles.reserve(argument_handles.size());
   for (PjRtBuffer* buffer : argument_handles) {

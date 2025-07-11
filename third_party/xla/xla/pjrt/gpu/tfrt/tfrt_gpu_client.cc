@@ -3416,7 +3416,8 @@ TfrtGpuExecutable::TfrtGpuExecutable(
 
 absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
-    const ExecuteOptions& options, bool fill_future, TfrtGpuDevice* device) {
+    const ExecuteOptions& options, bool fill_future,
+    TfrtGpuDevice* device) const {
   std::shared_ptr<DeviceAssignment> device_assignment;
   if (device == nullptr) {
     CHECK(device_assignment_ != nullptr);
@@ -3971,7 +3972,7 @@ absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 TfrtGpuExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    std::optional<std::vector<PjRtFuture<>>>& returned_futures) {
+    std::optional<std::vector<PjRtFuture<>>>& returned_futures) const {
   tsl::profiler::TraceMeProducer activity("TfrtGpuExecutable::Execute",
                                           tsl::profiler::ContextType::kPjRt,
                                           options.launch_id);
@@ -4099,7 +4100,7 @@ absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 TfrtGpuExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
-    bool fill_future) {
+    bool fill_future) const {
   tsl::profiler::TraceMeProducer activity("TfrtGpuExecutable::ExecuteSharded",
                                           tsl::profiler::ContextType::kPjRt,
                                           options.launch_id);
@@ -4131,7 +4132,7 @@ absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 TfrtGpuExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
-    bool fill_future) {
+    bool fill_future) const {
   tsl::profiler::TraceMeProducer activity("TfrtGpuExecutable::ExecutePortable",
                                           tsl::profiler::ContextType::kPjRt,
                                           options.launch_id);
