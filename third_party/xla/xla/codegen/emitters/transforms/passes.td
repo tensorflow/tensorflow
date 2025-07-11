@@ -18,7 +18,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def LowerXlaMathLibPass : Pass<"xla-lower-xla-math-lib", "mlir::func::FuncOp"> {
+def LowerXlaMathLibPass : Pass<"xla-lower-xla-math-lib", "mlir::ModuleOp"> {
   let summary = "Lowers XLA math function calls to xla.* math lib calls.";
   let description = [{
     Lowers XLA math function calls to xla.* math lib calls. This enables LLVM to
