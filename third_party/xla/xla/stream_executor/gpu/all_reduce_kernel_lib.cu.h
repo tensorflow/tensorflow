@@ -20,12 +20,16 @@ limitations under the License.
 #include <cstdint>
 #include <type_traits>
 
-#include "third_party/gpus/cuda/include/cuda/atomic"
-#include "third_party/gpus/cuda/include/cuda_bf16.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 
 namespace stream_executor::gpu {
+
+enum class PlatformType : uint32_t {
+  ROCM,
+  CUDA,
+  NOGPU,  // place holder for compiling header only without errors
+};
 
 template <typename T>
 union Vec;
@@ -35,14 +39,6 @@ union alignas(16) Vec<float> {
   using PackedType = int4;
 
   float data[4];
-  PackedType packed;
-};
-
-template <>
-union alignas(8) Vec<__nv_bfloat16> {
-  using PackedType = int2;
-
-  __nv_bfloat16 data[4];
   PackedType packed;
 };
 
@@ -88,38 +84,31 @@ __device__ __forceinline__ void VecOp(Vec<T>& res, const Vec<T>& vec) {
   res.data[3] = ApplyBinaryOp<T, ReductionKindT>(res.data[3], vec.data[3]);
 }
 
-__device__ __forceinline__ void PutSignalFlag(uint32_t* addr, uint32_t val) {
-  ::cuda::atomic_ref<uint32_t, ::cuda::thread_scope_system> ref(*addr);
-  // During signaling release semantics are used to ensure that writes
-  // by the current thread are visible to the waiting thread.
-  ref.store(val, ::cuda::memory_order_release);
-}
+template <PlatformType T = PlatformType::NOGPU>
+__device__ __forceinline__ void PutSignalFlag(uint32_t* addr, uint32_t val) {}
 
+template <PlatformType T = PlatformType::NOGPU>
 __device__ __forceinline__ void WaitSignalFlag(uint32_t* addr,
-                                               uint32_t expected) {
-  ::cuda::atomic_ref<uint32_t, ::cuda::thread_scope_system> ref(*addr);
-  // During waiting we use acquire semantics to ensure all memory writes by the
-  // remote thread are visible to the current thread.
-  // If the flag is greater it means that the other GPU has already signaled
-  // the next sync point.
-  while (ref.load(::cuda::memory_order_acquire) < expected) {
-  }
-}
+                                               uint32_t expected) {}
 
+template <PlatformType T = PlatformType::NOGPU>
 __device__ __forceinline__ void SyncRemoteBlocks(
     std::array<RestrictedPtr<uint32_t>, kMaxNumAllReduceInputPtrs>
         signal_pad_ptrs,
     int64_t rank, int64_t num_ranks, uint32_t signal_value) {
   if (threadIdx.x < num_ranks) {
     auto target_rank = threadIdx.x;
-    PutSignalFlag(signal_pad_ptrs[target_rank] + blockIdx.x * num_ranks + rank,
-                  signal_value);
-    WaitSignalFlag(signal_pad_ptrs[rank] + blockIdx.x * num_ranks + target_rank,
-                   signal_value);
+    PutSignalFlag<T>(
+        signal_pad_ptrs[target_rank] + blockIdx.x * num_ranks + rank,
+        signal_value);
+    WaitSignalFlag<T>(
+        signal_pad_ptrs[rank] + blockIdx.x * num_ranks + target_rank,
+        signal_value);
   }
 }
 
-template <typename T, xla::ReductionKind ReductionKindT>
+template <typename T, xla::ReductionKind ReductionKindT,
+          PlatformType PlatformT = PlatformType::NOGPU>
 __device__ __forceinline__ void OneShotAllReduceKernelImpl(
     const AllReduceKernelParams<T>& args) {
   int64_t offset =
@@ -132,8 +121,8 @@ __device__ __forceinline__ void OneShotAllReduceKernelImpl(
              VecLoad(args.input_buffer + i));
   }
 
-  SyncRemoteBlocks(args.signal_flags_buffers, args.rank, args.num_ranks,
-                   args.signal_value);
+  SyncRemoteBlocks<PlatformT>(args.signal_flags_buffers, args.rank,
+                              args.num_ranks, args.signal_value);
   __syncthreads();
 
   for (int i = offset; i < args.num_elements; i += stride) {
@@ -153,7 +142,8 @@ __device__ __forceinline__ void OneShotAllReduceKernelImpl(
   }
 }
 
-template <typename T, xla::ReductionKind ReductionKindT>
+template <typename T, xla::ReductionKind ReductionKindT,
+          PlatformType PlatformT = PlatformType::NOGPU>
 __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
     const AllReduceKernelParams<T>& args) {
   const int64_t offset = blockIdx.x * args.num_elements_per_block +
@@ -186,8 +176,8 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
 
   // Shot1: Wait for all participating devices to finish copying data to their
   // shared buffer.
-  SyncRemoteBlocks(args.signal_flags_buffers, args.rank, args.num_ranks,
-                   args.signal_value);
+  SyncRemoteBlocks<PlatformT>(args.signal_flags_buffers, args.rank,
+                              args.num_ranks, args.signal_value);
   __syncthreads();
 
   // Step2: Accumulate data for the responsible indices in the shared buffers.
@@ -216,8 +206,8 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
   // Shot2: Wait for all participating devices to finish accumulating data in
   // the shared buffer. Note that signal_value + 1 is used to ensure that the
   // synchronization is different from the one used above.
-  SyncRemoteBlocks(args.signal_flags_buffers, args.rank, args.num_ranks,
-                   args.signal_value + 1);
+  SyncRemoteBlocks<PlatformT>(args.signal_flags_buffers, args.rank,
+                              args.num_ranks, args.signal_value + 1);
   __syncthreads();
 
   // Step3: Copy data from the shared buffers to the output buffer.
@@ -241,12 +231,13 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
 }
 
 template <typename T, xla::ReductionKind ReductionKindT,
-          AllReduceStrategy kAllReduceStrategy>
+          AllReduceStrategy kAllReduceStrategy,
+          PlatformType PlatformT = PlatformType::NOGPU>
 __global__ void AllReduceKernelImpl(AllReduceKernelParams<T> args) {
   if constexpr (kAllReduceStrategy == AllReduceStrategy::kOneShot) {
-    OneShotAllReduceKernelImpl<T, ReductionKindT>(args);
+    OneShotAllReduceKernelImpl<T, ReductionKindT, PlatformT>(args);
   } else if constexpr (kAllReduceStrategy == AllReduceStrategy::kTwoShot) {
-    TwoShotAllReduceKernelImpl<T, ReductionKindT>(args);
+    TwoShotAllReduceKernelImpl<T, ReductionKindT, PlatformT>(args);
   } else {
     assert(false && "Unsupported all-reduce strategy");
   }
