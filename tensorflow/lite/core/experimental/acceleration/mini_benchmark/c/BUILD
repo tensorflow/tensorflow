@@ -14,6 +14,8 @@
 # ==============================================================================
 load("//tensorflow/lite/experimental/acceleration/mini_benchmark:build_defs.bzl", "cc_library_with_forced_in_process_benchmark_variant")
 load("//tensorflow/lite/experimental/acceleration/mini_benchmark:special_rules.bzl", "libjpeg_handle_deps", "minibenchmark_visibility_allowlist")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
+load("//third_party/bazel_rules/rules_cc/cc:cc_test.bzl", "cc_test")
 
 default_visibility_group = [
     "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",

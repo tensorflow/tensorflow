@@ -2,6 +2,8 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "nnapi_plugin_impl_visibility_allowlist", "xnnpack_plugin_impl_visibility_allowlist")
 load("//tensorflow/lite/core:special_rules.bzl", "delegate_registry_visibility_allowlist")
 load("//tensorflow/lite/core/c:special_rules.bzl", "experimental_acceleration_api_allowlist")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
+load("//third_party/bazel_rules/rules_cc/cc:cc_test.bzl", "cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
