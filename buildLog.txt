@@ -1,0 +1,22 @@
+alessio@alessio-VirtualBox:~/tensorflow$ bazel build //tensorflow/tools/pip_package:wheel --repo_env=USE_PYWRAP_RULES=1 --repo_env=WHEEL_NAME=tensorflow_cpu
+INFO: Reading 'startup' options from /home/alessio/tensorflow/.bazelrc: --windows_enable_symlinks
+INFO: Options provided by the client:
+  Inherited 'common' options: --isatty=1 --terminal_columns=120
+INFO: Reading rc options for 'build' from /home/alessio/tensorflow/.bazelrc:
+  Inherited 'common' options: --announce_rc --experimental_cc_shared_library --experimental_link_static_libraries_once=false --incompatible_enforce_config_setting_visibility --noenable_bzlmod --noincompatible_enable_cc_toolchain_resolution --noincompatible_enable_android_toolchain_resolution --experimental_repo_remote_exec --java_runtime_version=remotejdk_21
+INFO: Reading rc options for 'build' from /home/alessio/tensorflow/.bazelrc:
+  'build' options: --repo_env=ML_WHEEL_TYPE=snapshot --repo_env=ML_WHEEL_BUILD_DATE= --repo_env=ML_WHEEL_VERSION_SUFFIX= --define framework_shared_object=true --define tsl_protobuf_header_only=true --define=allow_oversize_protos=true --spawn_strategy=standalone -c opt --repo_env=USE_PYWRAP_RULES=True --copt=-DGRPC_BAZEL_BUILD --host_copt=-DGRPC_BAZEL_BUILD --action_env=GRPC_BAZEL_RUNTIME=1 --repo_env=PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=upb --action_env=PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=upb --repo_env=RULES_PYTHON_ENABLE_PYSTAR=0 --define=grpc_no_ares=true --noincompatible_remove_legacy_whole_archive --features=-force_no_whole_archive --host_features=-force_no_whole_archive --enable_platform_specific_config --define=with_xla_support=true --config=short_logs --config=v2 --@rules_python//python/config_settings:precompile=force_disabled
+INFO: Reading rc options for 'build' from /home/alessio/tensorflow/.tf_configure.bazelrc:
+  'build' options: --action_env PYTHON_BIN_PATH=/usr/bin/python3 --action_env PYTHON_LIB_PATH=/usr/lib/python3/dist-packages --python_path=/usr/bin/python3 --action_env CLANG_COMPILER_PATH=/usr/lib/llvm-18/bin/clang --repo_env=CC=/usr/lib/llvm-18/bin/clang --repo_env=BAZEL_COMPILER=/usr/lib/llvm-18/bin/clang
+INFO: Found applicable config definition build:short_logs in file /home/alessio/tensorflow/.bazelrc: --output_filter=DONT_MATCH_ANYTHING
+INFO: Found applicable config definition build:v2 in file /home/alessio/tensorflow/.bazelrc: --define=tf_api_version=2 --action_env=TF2_BEHAVIOR=1
+INFO: Found applicable config definition build:linux in file /home/alessio/tensorflow/.bazelrc: --host_copt=-w --copt=-Wno-all --copt=-Wno-extra --copt=-Wno-deprecated --copt=-Wno-deprecated-declarations --copt=-Wno-ignored-attributes --copt=-Wno-array-bounds --copt=-Wunused-result --copt=-Werror=unused-result --copt=-Wswitch --copt=-Werror=switch --define=PREFIX=/usr --define=PROTOBUF_INCLUDE_PATH=$(PREFIX)/include --cxxopt=-std=c++17 --host_cxxopt=-std=c++17 --config=dynamic_kernels --experimental_guard_against_concurrent_changes
+INFO: Found applicable config definition build:dynamic_kernels in file /home/alessio/tensorflow/.bazelrc: --define=dynamic_loaded_kernels=true --copt=-DAUTOLOAD_DYNAMIC_KERNELS
+INFO: Analyzed target //tensorflow/tools/pip_package:wheel (0 packages loaded, 0 targets configured).
+INFO: Found 1 target...
+Target //tensorflow/tools/pip_package:wheel up-to-date:
+  bazel-bin/tensorflow/tools/pip_package/wheel_house/tensorflow_cpu-2.20.0.dev0+selfbuilt-cp312-cp312-linux_x86_64.whl
+INFO: Elapsed time: 26497.352s, Critical Path: 4338.28s
+INFO: 19174 processes: 121 internal, 19053 local.
+INFO: Build completed successfully, 19174 total actions
+
