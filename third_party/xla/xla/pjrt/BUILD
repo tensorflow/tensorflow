@@ -141,6 +141,8 @@ cc_library(
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/random:distributions",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -1234,15 +1236,18 @@ cc_library(
     srcs = ["raw_buffer.cc"],
     hdrs = ["raw_buffer.h"],
     deps = [
+        ":async_work_runner",
         ":device_event",
         ":pjrt_client",
         ":pjrt_future",
         "//xla:literal",
         "//xla:shape_util",
+        "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
