@@ -3,6 +3,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 
 # OSS only: This target is header-only. Link `debug_options_proto_cc_impl` only to
 # `libtensorflow_framework.so` via `lib_internal_impl`. Do NOT link `debug_options_proto_cc_impl`

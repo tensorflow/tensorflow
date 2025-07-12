@@ -6,6 +6,7 @@ load(
     "//tensorflow/cc/framework/fuzzing:op_fuzzing.bzl",
     "tf_gen_op_wrappers_fuzz",
 )
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
