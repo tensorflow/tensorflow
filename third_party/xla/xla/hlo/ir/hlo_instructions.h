@@ -278,6 +278,10 @@ class HloAsyncInstruction : public HloInstruction {
                       absl::Span<HloInstruction* const> operands,
                       HloOpcode async_wrapped_opcode);
 
+  // Updates all future instructions in the async chain to match the shape of
+  // the current instruction.
+  void UpdateChainShapes();
+
  private:
   // async-{update,done} inherit all their attributes from async-start,
   // so they shouldn't print any.
@@ -302,6 +306,9 @@ class HloAsyncStartInstruction : public HloAsyncInstruction {
       absl::Span<HloInstruction* const> operands,
       HloComputation* async_computation,
       absl::string_view async_execution_thread = kMainExecutionThread);
+
+  // Adds a new operand to the async-start instruction.
+  HloInstruction* AddCallOperand(HloInstruction* new_operand);
 
   absl::string_view async_execution_thread() const override {
     return async_execution_thread_;
