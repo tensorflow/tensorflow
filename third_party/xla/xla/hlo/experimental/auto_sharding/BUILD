@@ -611,6 +611,7 @@ xla_cc_test(
 tsl_pybind_extension(
     name = "auto_sharding_python_extension",
     srcs = ["auto_sharding_python_extension.cc"],
+    visibility = ["//third_party/py/jax:__subpackages__"],
     deps = [
         ":auto_sharding_stablehlo_pass",
         "@nanobind",
