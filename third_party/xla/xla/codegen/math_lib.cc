@@ -209,9 +209,10 @@ class FpextF32ToBf16MathFunction final : public MathFunction {
   std::string GenerateVectorizedFunctionName(
       VectorType vector_type) const override {
     if (vector_type.width == 1) {
-      return Intrinsic::Name<Intrinsic::FpTrunc>(F32, BF16);
+      return Intrinsic::FpTrunc::Name(Intrinsic::S(F32), Intrinsic::S(BF16));
     }
-    return Intrinsic::Name<Intrinsic::FpTrunc>(F32, BF16, vector_type.width);
+    return Intrinsic::FpTrunc::Name(Intrinsic::V(F32, vector_type.width),
+                                    Intrinsic::V(BF16, vector_type.width));
   }
 
   std::string GenerateMangledSimdName(VectorType vector_type) const override {
