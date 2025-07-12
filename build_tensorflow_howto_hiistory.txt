@@ -76,4 +76,27 @@
    
    N.B. use pipx not pip !!
    
+   alessio@alessio-VirtualBox:~/tensorflow/bazel-bin/tensorflow/tools/pip_package/wheel_house$ sudo pipx install tensorflow_cpu-2.20.0.dev0+selfbuilt-cp312-cp312-linux_x86_64.whl
+  installed package tensorflow_cpu 2.20.0.dev0+selfbuilt, installed using Python 3.12.3
+  These apps are now globally available
+    - import_pb_to_tensorboard
+    - saved_model_cli
+    - tensorboard
+    - tf_upgrade_v2
+    - tflite_convert
+    - toco
+⚠️  Note: '/root/.local/bin' is not on your PATH environment variable. These apps will not be globally accessible
+    until your PATH is updated. Run `pipx ensurepath` to automatically add it, or manually modify your PATH in your
+    shell's config file (i.e. ~/.bashrc).
+done! ✨ 🌟 ✨
+
+Success! Added /home/alessio/.local/bin to the PATH environment variable.
+
+Consider adding shell completions for pipx. Run 'pipx completions' for instructions.
+
+You will need to open a new terminal or re-login for the PATH changes to take effect.
+
+Otherwise pipx is ready to go! ✨ 🌟 ✨
+
+   
 
