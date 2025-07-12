@@ -1235,9 +1235,9 @@ absl::Status GemmFusionAutotunerImpl::Autotune(
     }
 
     const HloInstruction* root = fusion->called_computation_root();
-    TF_ASSIGN_OR_RETURN(
-        AutotuneResult best,
-        PickBestResult(results, root->ToString(), root->GetModule()->config()));
+    TF_ASSIGN_OR_RETURN(AutotuneResult best,
+                        PickBestResult(results, fusion->ToString(),
+                                       root->GetModule()->config()));
     VLOG(2) << "Best time: "
             << tsl::proto_utils::FromDurationProto(best.run_time());
 
