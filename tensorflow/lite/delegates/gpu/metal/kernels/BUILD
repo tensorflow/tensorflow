@@ -9,6 +9,7 @@ load(
     "tflite_ios_per_kernel_test",
     "tflite_portable_test_suite",
 )
+load("//third_party/bazel_rules/rules_cc/cc:objc_library.bzl", "objc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
