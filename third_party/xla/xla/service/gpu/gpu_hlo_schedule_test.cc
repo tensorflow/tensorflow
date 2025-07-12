@@ -1512,7 +1512,7 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncAllReduce) {
           /*device_list=*/
           CollectiveDeviceList(IotaReplicaGroupList(8, 1024)),
           /*constrain_layout=*/false,
-          /*channel_id=*/std::nullopt, /*use_global_device_ids=*/true));
+          /*channel_id=*/1, /*use_global_device_ids=*/true));
   // In addition, add control_dependency: add1->nonblocking_call.
   TF_CHECK_OK(add1->AddControlDependencyTo(all_reduce_start));
   // Blocking call, which only add4 depends on.

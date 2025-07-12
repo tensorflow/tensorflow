@@ -231,7 +231,7 @@ func.func private @main(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> tuple<tenso
   // CHECK-NEXT: %[[TUPLE:.*]] = (f32[8], f32[]) tuple
   // CHECK-NEXT: %[[TUPLE_ARG0:.*]] = f32[8] get-tuple-element(%[[TUPLE]]), index=0
   // CHECK-NEXT: %[[TUPLE_ARG1:.*]] = f32[] get-tuple-element(%[[TUPLE]]), index=1
-  // CHECK-NEXT: (f32[8], f32[]) all-reduce(%[[TUPLE_ARG0]], %[[TUPLE_ARG1]]), replica_groups={}, to_apply={{.*}}
+  // CHECK-NEXT: (f32[8], f32[]) all-reduce(%[[TUPLE_ARG0]], %[[TUPLE_ARG1]]), mode=cross_replica, replica_groups={}, to_apply={{.*}}
   %0:2 = "mhlo.all_reduce"(%arg0, %arg1) ({
   ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %2 = mhlo.add %arg2, %arg3 : tensor<f32>
