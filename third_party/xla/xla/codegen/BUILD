@@ -28,10 +28,7 @@ cc_library(
     name = "emitter_loc_op_builder",
     srcs = ["emitter_loc_op_builder.cc"],
     hdrs = ["emitter_loc_op_builder.h"],
-    visibility = [
-        "//xla/backends:__subpackages__",
-        "//xla/codegen/emitters/transforms:__pkg__",
-    ],
+    visibility = ["//xla/backends:__subpackages__"],
     deps = [
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
