@@ -17,6 +17,7 @@ package_group(
     packages = xla_internal(["..."]) + [
         "//xla/hlo/experimental/auto_sharding/...",
         "//xla/service/gpu/...",
+        "//xla/service/spmd/...",
     ],
 )
 
@@ -554,6 +555,7 @@ cc_library(
     name = "auto_sharding_stablehlo_pass",
     srcs = ["auto_sharding_stablehlo_pass.cc"],
     hdrs = ["auto_sharding_stablehlo_pass.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding",
         ":auto_sharding_option",

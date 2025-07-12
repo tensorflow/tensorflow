@@ -24,6 +24,10 @@ namespace spmd {
 void RegisterDialectDependencies(mlir::DialectRegistry& registry);
 void AddAutoShardingToPipeline(mlir::OpPassManager& pm);
 void RegisterAutoSharding();
+// Register Alpa auto partitioner in case no other auto partitioner is already
+// registered.
+// TODO(b/431368844): Remove when there is a way for users to register Alpa.
+void RegisterAutoShardingIfRegistryEmpty();
 }  // namespace spmd
 }  // namespace xla
 

@@ -90,6 +90,10 @@ void AddSPMDPasses(
   const HloModuleConfig& config = hlo_module->config();
 
   if (config.use_shardy_partitioner()) {
+    // This will make sure an auto partitioner is registered.
+    if (auto_sharding_func.has_value()) {
+      (*auto_sharding_func)(spmd_pipeline);
+    }
     spmd_pipeline.AddPass<sdy::ShardyXLA>();
   } else {
     spmd_pipeline.AddPass<HloConstantSplitter>();
