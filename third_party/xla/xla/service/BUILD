@@ -3779,8 +3779,10 @@ cc_library(
     hdrs = ["hlo_verifier.h"],
     deps = [
         ":collective_ops_utils",
+        ":collective_permute_cycle",
         ":hlo_module_config",
         ":shape_inference",
+        ":source_target_pairs",
         "//xla:comparison_util",
         "//xla:permutation_util",
         "//xla:shape_layout",

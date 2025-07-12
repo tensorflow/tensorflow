@@ -82,7 +82,8 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   explicit HloHardwareIndependentTestBase(
       bool verifier_layout_sensitive = false,
       bool allow_mixed_precision_in_hlo_verifier = true,
-      HloPredicate instruction_can_change_layout_func = {});
+      HloPredicate instruction_can_change_layout_func = {},
+      bool verify_no_collective_deadlocks = false);
 
   // Creates a new HLO module for a test. The module created will have
   // TestName() for its name; it will also automatically populate its debug
