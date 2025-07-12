@@ -12,6 +12,7 @@ load(
     "tf_custom_op_library",
     "tf_java_test",
 )
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 load(":build_defs.bzl", "JAVACOPTS")
 load(":src/gen/gen_ops.bzl", "tf_java_op_gen_srcjar")
 
