@@ -1585,12 +1585,25 @@ TEST_F(SmallDotGemmRewriteTest, RewriteForALG_BF16_BF16_F32) {
         rhs_contracting_dims={0}
     }
   )";
+  /*
 
+   ENTRY %DotFunc (x: f32[1024,1024], y: f32[1024,1024]) -> f32[1024,1024] {
+                 %x = f32[1024,1024]{1,0} parameter(0)
+                 %convert.2 = bf16[1024,1024]{1,0} convert(%x)
+                 %y = f32[1024,1024]{1,0} parameter(1)
+                 %convert.1.0 = bf16[1024,1024]{1,0} convert(%y)
+                 %custom-call.1 = (f32[1024,1024]{1,0}, s8[4194304]{0})
+   custom-call(%convert.2, %convert.1.0), custom_call_target="__cublas$gemm",
+   backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","lhs_stride":"1048576","rhs_stride":"1048576","grad_x":false,"grad_y":false,"damax_output":false},"force_earliest_schedule":false,"reification_cost":[]}
+                 ROOT %get-tuple-element.1 = f32[1024,1024]{1,0}
+   get-tuple-element(%custom-call.1), index=0
+               }
+               */
   MatchOptimizedHlo(hlo_text,
                     R"(
 ; CHECK-LABEL: ENTRY %DotFunc ({{.*}}: f32[1024,1024], {{.*}}: f32[1024,1024]) -> f32[1024,1024] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[1024,1024]{1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[1024,1024]{1,0} parameter(1)
+; CHECK:         [[P1:%[^ ]+]] = f32[1024,1024]{1,0} parameter(1)
 ; CHECK:        [[GEMM:%[^ ]+]] = {{.*}} custom-call({{.*}}), custom_call_target="__cublas$gemm", {{.*}},"algorithm":"ALG_UNSET"
 )");
 }
