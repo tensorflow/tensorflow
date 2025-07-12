@@ -87,10 +87,12 @@ void MergeHostPlanesAndSortLines(tensorflow::profiler::XSpace* space) {
     RemovePlanes(space, {nvtx_plane});
   }
 
+  // Merge planes with identical names
+  MergePlanesWithSameNames(space);
+
   // Sort the lines by name.
   SortXLinesBy(host_plane, XLinesComparatorByName());
 }
-
 }  // namespace
 
 void PostProcessSingleHostXSpace(tensorflow::profiler::XSpace* space,
@@ -107,6 +109,30 @@ void PostProcessSingleHostXSpace(tensorflow::profiler::XSpace* space,
   SetSessionTimestamps(start_time_ns, stop_time_ns, *space);
   // 4. Sort each plane of the XSpace
   SortXSpace(space);
+}
+
+void MergePlanesWithSameNames(tensorflow::profiler::XSpace* space) {
+  absl::flat_hash_set<std::string> plane_names;
+  for (const XPlane& plane : space->planes()) {
+    plane_names.insert(plane.name());
+  }
+  for (const std::string& name : plane_names) {
+    std::vector<const XPlane*> planes_with_name;
+    for (const XPlane& plane : space->planes()) {
+      if (plane.name() == name) {
+        planes_with_name.push_back(&plane);
+      }
+    }
+    if (planes_with_name.size() > 1) {
+      XPlane* target_plane = space->mutable_planes(planes_with_name.size() - 1);
+      for (int i = 0; i < planes_with_name.size() - 1; ++i) {
+        MergePlanes({planes_with_name[i]}, target_plane);
+      }
+      for (int i = 0; i < planes_with_name.size() - 1; ++i) {
+        RemovePlanes(space, {planes_with_name[i]});
+      }
+    }
+  }
 }
 
 }  // namespace profiler
