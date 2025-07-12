@@ -1730,6 +1730,7 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:types",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/core/collectives:rank_id",
         "//xla/service:collective_ops_utils",
