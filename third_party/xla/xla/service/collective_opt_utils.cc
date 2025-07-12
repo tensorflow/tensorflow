@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -373,6 +374,52 @@ std::optional<ReduceScatterSpec> AllGatherDynamicSliceCancellation(
   return spec;
 }
 
+std::optional<SplitDimSpec> ExtractSplitDimSpec(
+    const HloInstruction& dynamic_slice, bool allow_multiple_split_dims) {
+  SplitDimSpec spec;
+  // First find a single dimension where the input and output of dynamic slice
+  // differ.
+  int num_dims = 0;
+  for (int64_t dim = 0;
+       dim < dynamic_slice.operand(0)->shape().dimensions().size(); ++dim) {
+    if (dynamic_slice.operand(0)->shape().dimensions(dim) ==
+        dynamic_slice.shape().dimensions(dim)) {
+      continue;
+    }
+    num_dims++;
+    VLOG(2) << "select dim: " << dim;
+    spec.split_dim = dim;
+  }
+  if (spec.split_dim != -1 && num_dims == 1) {
+    // No recomputation needed if dynamic-slice has unique dimension to slice.
+    spec.split_dims.push_back(spec.split_dim);
+    return spec;
+  }
+  // Recompute split dim if dynamic-slice has multiple dimensions to slice.
+  spec.split_dim = -1;
+  const Shape& shape = dynamic_slice.operand(0)->shape();
+  for (int64_t dim = 0; dim < shape.dimensions().size(); ++dim) {
+    auto offset = dynamic_slice.operand(dim + 1);
+    // Skip trivial (1) dimensions or if the index is a constant 0.
+    if (shape.dimensions(dim) == 1 ||
+        (offset->opcode() == HloOpcode::kConstant &&
+         offset->literal().IsZero({}))) {
+      continue;
+    }
+    spec.split_dims.push_back(dim);
+    if (spec.split_dim != -1) {
+      if (!allow_multiple_split_dims || spec.split_dim != (dim - 1)) {
+        VLOG(2) << "Only support split on consecutive dims "
+                << dynamic_slice.ToString();
+        return std::nullopt;
+      }
+      continue;
+    }
+    spec.split_dim = dim;
+  }
+  return spec;
+}
+
 std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
     const HloChannelInstruction* instruction, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims,
@@ -536,51 +583,14 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
     return std::nullopt;
   }
   spec.group_size = group_size;
-  spec.split_dim = -1;
-  std::vector<int64_t> split_dims;
-  // First find a single dimension where the input and output of dynamic slice
-  // differ.
-  int num_dims = 0;
-  for (int64_t dim = 0; dim < user->operand(0)->shape().dimensions().size();
-       ++dim) {
-    if (user->operand(0)->shape().dimensions(dim) ==
-        user->shape().dimensions(dim)) {
-      continue;
-    }
-    num_dims++;
-    VLOG(2) << "select dim: " << dim;
-    spec.split_dim = dim;
+  CHECK_NE(user, nullptr);
+  std::optional<SplitDimSpec> split_dim_spec =
+      ExtractSplitDimSpec(*user, allow_multiple_split_dims);
+  if (!split_dim_spec) {
+    return std::nullopt;
   }
-  if (spec.split_dim != -1) {
-    if (num_dims == 1) {
-      split_dims.push_back(spec.split_dim);
-    } else {
-      // Recompute split dim.
-      spec.split_dim = -1;
-    }
-  }
-  const Shape& shape = user->operand(0)->shape();
-  if (spec.split_dim == -1) {
-    for (int64_t dim = 0; dim < shape.dimensions().size(); ++dim) {
-      auto offset = user->operand(dim + 1);
-      // Skip trivial (1) dimensions or if the index is a constant 0.
-      if (shape.dimensions(dim) == 1 ||
-          (offset->opcode() == HloOpcode::kConstant &&
-           offset->literal().IsZero({}))) {
-        continue;
-      }
-      split_dims.push_back(dim);
-      if (spec.split_dim != -1) {
-        if (!allow_multiple_split_dims || spec.split_dim != (dim - 1)) {
-          VLOG(2) << "Only support split on consecutive dims "
-                  << user->ToString();
-          return std::nullopt;
-        }
-        continue;
-      }
-      spec.split_dim = dim;
-    }
-  }
+  spec.split_dim = split_dim_spec->split_dim;
+  std::vector<int64_t> split_dims = std::move(split_dim_spec->split_dims);
   std::vector<int64_t> group_sizes;
   group_sizes.reserve(split_dims.size());
   for (auto dim : split_dims) {
