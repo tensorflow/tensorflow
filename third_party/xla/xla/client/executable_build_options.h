@@ -300,6 +300,15 @@ class ExecutableBuildOptions {
     key_value_store_ = kv_store;
   }
 
+  const std::vector<int32_t>& global_device_id_to_slice_id() const {
+    return global_device_id_to_slice_id_;
+  }
+
+  void set_global_device_id_to_slice_id(
+      const std::vector<int32_t>& global_device_id_to_slice_id) {
+    global_device_id_to_slice_id_ = global_device_id_to_slice_id;
+  }
+
  private:
   int device_ordinal_ = -1;
   Shape result_layout_;
@@ -336,6 +345,7 @@ class ExecutableBuildOptions {
   int process_index_ = 0;
   int process_count_ = 1;
   std::shared_ptr<KeyValueStoreInterface> key_value_store_;
+  std::vector<int32_t> global_device_id_to_slice_id_;
 };
 
 absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
