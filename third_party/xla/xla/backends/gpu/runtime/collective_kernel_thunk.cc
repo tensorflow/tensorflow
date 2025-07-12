@@ -33,6 +33,7 @@ limitations under the License.*/
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/rendezvous.h"
@@ -53,11 +54,6 @@ static constexpr int64_t kMaxOneShotAllReduceSizeBytes = 256 * 1024;  // 256 KB
 static constexpr int64_t kMaxTwoShotAllReduceSizeBytes =
     2 * 1024 * 1024;  // 2 MB
 
-// Number of blocks to launch the kernel in X dimension.
-constexpr int64_t kLaunchBlockCountX = 8;
-constexpr LaunchDimensions kLaunchDimensions(
-    /*block_x_count=*/kLaunchBlockCountX,
-    /*thread_x_count_per_block=*/512);
 // Helper for allocating memory on the device.
 absl::StatusOr<se::DeviceMemoryHandle> AllocateMemory(
     se::StreamExecutor* executor, int64_t size,
@@ -102,10 +98,6 @@ absl::StatusOr<bool> CollectiveKernelThunk::IsSupported(
   const int64_t num_elements = buffers_[0].element_count;
   const int64_t input_size_bytes = GetInputSizeBytes();
   const AllReduceStrategy strategy = GetAllReduceStrategy(input_size_bytes);
-  // Comment the next two lines for testing out two-shot.
-  if (strategy != AllReduceStrategy::kOneShot) {
-    return false;
-  }
   // Custom all-reduce strategy is only supported for small inputs.
   if (input_size_bytes > GetMaxSupportedAllReduceSizeBytes(strategy)) {
     return false;
@@ -203,6 +195,9 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
   TF_RET_CHECK(rank.has_value())
       << "Device " << params.collective_params->global_device_id
       << "is not in the clique.";
+  const LaunchDimensions launch_dimensions = AllReduceLaunchDimensions(
+      buffers_[0].element_count, clique_key.num_local_participants(),
+      GetAllReduceStrategy(GetInputSizeBytes()));
   StreamState* state = nullptr;
   {
     absl::MutexLock lock(&mutex_);
@@ -217,7 +212,7 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
       // Step2: Allocate signal buffer
       // We needs 1 atomic flag per block per device on each device.
       const int64_t kNumSignalFlags =
-          clique_key.num_local_participants() * kLaunchBlockCountX;
+          clique_key.num_local_participants() * launch_dimensions.num_blocks();
       TF_ASSIGN_OR_RETURN(
           se::DeviceMemoryHandle signal_flags_alloc,
           AllocateMemory(params.executor,
@@ -288,6 +283,8 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
   }
   const uint32_t buffer_index = state->invocation_count % kNumBuffers;
   auto const strategy = GetAllReduceStrategy(GetInputSizeBytes());
+  const LaunchDimensions launch_dimensions =
+      AllReduceLaunchDimensions(buffer.element_count, kNumRanks, strategy);
   // In case of two-shot we want to increment in multiples of 2.
   state->invocation_count += 1 + static_cast<uint32_t>(strategy);
   VLOG(3) << "Performing one-shot all-reduce from device ordinal: "
@@ -295,7 +292,7 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
   // TODO(b/407736956): Change this to emitted kernel.
   return RunAllReduceKernel(
       /*stream=*/stream,
-      /*launch_dimensions=*/kLaunchDimensions,
+      /*launch_dimensions=*/launch_dimensions,
       /*element_type=*/element_type,
       /*reduction_kind=*/reduction_kind_,
       /*all_reduce_strategy=*/strategy,
