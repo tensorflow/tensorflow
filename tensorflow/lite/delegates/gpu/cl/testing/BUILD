@@ -1,4 +1,6 @@
 load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gtest_main_no_heapcheck_deps")
+load("//third_party/bazel_rules/rules_cc/cc:cc_binary.bzl", "cc_binary")
+load("//third_party/bazel_rules/rules_cc/cc:cc_test.bzl", "cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
