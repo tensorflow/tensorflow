@@ -43,32 +43,31 @@ jobs:
       - name: "Install bazelisk"
         run: parallel --ungroup --retries 3 --delay 15 --nonall -- go install github.com/bazelbuild/bazelisk@24651ab # v1.20.0
       - name: "Run bazel build --nobuild //xla/... with retries"
-        run: parallel --ungroup --retries 3 --delay 15 --nonall -- bazelisk build --nobuild -- //xla/... -//xla/hlo/tools/hlo_diff/...
-      # TODO(b/429017661): Re-enable this step once the bug is fixed.
-      # - name: "Run bazel cquery ... //xla/..."
-      #   run: |
-      #     set -euo pipefail
-      #     TAG_WITH_UNDERSCORES="${{ matrix.tag }}"
-      #     TAG_WITH_UNDERSCORES="${TAG_WITH_UNDERSCORES/-/_}"
-      #     if ! OUTPUT=$(bazelisk cquery --aspects build_tools/dependencies/aspects.bzl%validate_${TAG_WITH_UNDERSCORES}_tag //xla/... 2>&1); then
-      #       echo "Failed to run bazel cquery. Output:"
-      #       echo "$OUTPUT"
-      #       exit 1
-      #     fi
-      #     if echo "$OUTPUT" | grep 'Violation' >/dev/null; then
-      #       echo "The following dependency violations were found:"
-      #       echo "$OUTPUT" | grep 'Violation' | sed -e 's/^.*\[Violation\]/ -/'
-      #       echo ""
-      #       echo ""
-      #       echo "There are a couple of potential solutions for this/these violation(s):"
-      #       echo ""
-      #       echo "1. Tag the dependent target with the same tag as the dependee."
-      #       echo ""
-      #       echo "2. If unavoidable make the dependency selective using the"
-      #       echo "   'if_{gpu|cuda|rocm}_is_configured' macro. This is discouraged"
-      #       echo "   outside of stream_executor."
-      #       echo ""
-      #       exit 1
-      #     fi
+        run: parallel --ungroup --retries 3 --delay 15 --nonall -- bazelisk build --nobuild //xla/...
+      - name: "Run bazel cquery ... //xla/..."
+        run: |
+          set -euo pipefail
+          TAG_WITH_UNDERSCORES="${{ matrix.tag }}"
+          TAG_WITH_UNDERSCORES="${TAG_WITH_UNDERSCORES/-/_}"
+          if ! OUTPUT=$(bazelisk cquery --aspects build_tools/dependencies/aspects.bzl%validate_${TAG_WITH_UNDERSCORES}_tag //xla/... 2>&1); then
+            echo "Failed to run bazel cquery. Output:"
+            echo "$OUTPUT"
+            exit 1
+          fi
+          if echo "$OUTPUT" | grep 'Violation' >/dev/null; then
+            echo "The following dependency violations were found:"
+            echo "$OUTPUT" | grep 'Violation' | sed -e 's/^.*\[Violation\]/ -/'
+            echo ""
+            echo ""
+            echo "There are a couple of potential solutions for this/these violation(s):"
+            echo ""
+            echo "1. Tag the dependent target with the same tag as the dependee."
+            echo ""
+            echo "2. If unavoidable make the dependency selective using the"
+            echo "   'if_{gpu|cuda|rocm}_is_configured' macro. This is discouraged"
+            echo "   outside of stream_executor."
+            echo ""
+            exit 1
+          fi
 
-      #     echo "No dependency violations found for tag '${{ matrix.tag }}'."
+          echo "No dependency violations found for tag '${{ matrix.tag }}'."
