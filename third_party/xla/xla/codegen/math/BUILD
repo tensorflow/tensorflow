@@ -27,11 +27,25 @@ cc_library(
     hdrs = ["intrinsic.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/functional:overload",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Core",
+    ],
+)
+
+xla_cc_test(
+    name = "intrinsic_test",
+    srcs = ["intrinsic_test.cc"],
+    deps = [
+        ":intrinsic",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:status_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -20,34 +20,95 @@ limitations under the License.
 #include <string>
 #include <variant>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/primitive_util.h"
+#include "xla/util.h"
 
 namespace xla::codegen {
 
-std::string Intrinsic::Name(Type type) {
-  if (auto* scalar = std::get_if<Scalar>(&type)) {
-    return primitive_util::LowercasePrimitiveTypeName(scalar->type);
+template <typename R, typename Scalar, typename Vector>
+static R Visit(Scalar scalar, Vector vector, const Intrinsic::Type* type) {
+  if (auto* s = std::get_if<Intrinsic::Scalar>(type)) {
+    return scalar(*s);
   }
-  auto& vec = std::get<Vec>(type);
-  return absl::StrCat("v", vec.width,
-                      primitive_util::LowercasePrimitiveTypeName(vec.type));
+  return vector(std::get<Intrinsic::Vec>(*type));
 }
 
-PrimitiveType Intrinsic::ElementType(Type type) {
-  if (auto* scalar = std::get_if<Scalar>(&type)) {
-    return scalar->type;
-  }
-  auto& vec = std::get<Vec>(type);
-  return vec.type;
+std::string Intrinsic::Type::name() const {
+  return Visit<std::string>(
+      [](const Scalar& scalar) {
+        return primitive_util::LowercasePrimitiveTypeName(scalar.type);
+      },
+      [](const Vec& vec) {
+        return absl::StrCat(
+            "v", vec.width,
+            primitive_util::LowercasePrimitiveTypeName(vec.type));
+      },
+      this);
 }
 
-std::optional<size_t> Intrinsic::Width(Type type) {
-  if (auto* scalar = std::get_if<Scalar>(&type)) {
-    return std::nullopt;
+PrimitiveType Intrinsic::Type::element_type() const {
+  return Visit<PrimitiveType>([](const Scalar& scalar) { return scalar.type; },
+                              [](const Vec& vec) { return vec.type; }, this);
+}
+
+std::optional<size_t> Intrinsic::Type::width() const {
+  return Visit<std::optional<size_t>>(
+      [](const Scalar& scalar) { return std::nullopt; },
+      [](const Vec& vec) { return vec.width; }, this);
+}
+
+template <typename Scalar, typename Vector>
+static absl::Status VerifyTypes(Scalar scalar, Vector vector,
+                                const Intrinsic::Type& a,
+                                const Intrinsic::Type& b) {
+  // A pair of scalar types.
+  auto* sa = std::get_if<Intrinsic::Scalar>(&a);
+  auto* sb = std::get_if<Intrinsic::Scalar>(&b);
+  if (sa && sb) {
+    return scalar(*sa, *sb);
   }
-  auto& vec = std::get<Vec>(type);
-  return vec.width;
+
+  // A pair of vector types.
+  auto* va = std::get_if<Intrinsic::Vec>(&a);
+  auto* vb = std::get_if<Intrinsic::Vec>(&b);
+  if (va && vb) {
+    return vector(*va, *vb);
+  }
+
+  return InvalidArgument("Expected types of the same kind, but got %s and %s",
+                         a.name(), b.name());
+}
+
+absl::Status Intrinsic::VerifySameWidth(const Type& a, const Type& b) {
+  return VerifyTypes(
+      [&](const Scalar&, const Scalar&) { return absl::OkStatus(); },
+      [&](const Vec& va, const Vec& vb) -> absl::Status {
+        if (va.width != vb.width) {
+          return InvalidArgument(
+              "Expected vector types with the same width, but got %s and %s",
+              a.name(), b.name());
+        }
+        return absl::OkStatus();
+      },
+      a, b);
+}
+
+absl::Status Intrinsic::VerifySameWidthAndElementType(const Type& a,
+                                                      const Type& b) {
+  return VerifyTypes(
+      [&](const Scalar&, const Scalar&) { return absl::OkStatus(); },
+      [&](const Vec& va, const Vec& vb) -> absl::Status {
+        if (va.width != vb.width || va.type != vb.type) {
+          return InvalidArgument(
+              "Expected vector types with the same width and element type, but "
+              "got %s and %s",
+              a.name(), b.name());
+        }
+        return absl::OkStatus();
+      },
+      a, b);
 }
 
 }  // namespace xla::codegen
