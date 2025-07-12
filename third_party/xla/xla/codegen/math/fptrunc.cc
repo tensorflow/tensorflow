@@ -31,7 +31,6 @@ limitations under the License.
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Casting.h"
 #include "xla/codegen/math/intrinsic.h"
-#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/util.h"
 
 namespace xla::codegen {
@@ -41,14 +40,12 @@ std::string Intrinsic::FpTrunc::Name(Type from, Type to) {
 }
 
 llvm::Function* Intrinsic::FpTrunc::GetOrInsertDeclaration(llvm::Module* module,
-                                                           PrimitiveType from,
-                                                           PrimitiveType to) {
-  auto* from_type = llvm_ir::PrimitiveTypeToIrType(from, module->getContext());
-  auto* to_type = llvm_ir::PrimitiveTypeToIrType(to, module->getContext());
+                                                           Type from, Type to) {
+  auto* from_type = TypeToIrType(from, module->getContext());
+  auto* to_type = TypeToIrType(to, module->getContext());
   auto* function_type = llvm::FunctionType::get(to_type, {from_type}, false);
   return llvm::cast<llvm::Function>(
-      module->getOrInsertFunction(Name(Scalar{from}, Scalar{to}), function_type)
-          .getCallee());
+      module->getOrInsertFunction(Name(from, to), function_type).getCallee());
 }
 
 // Truncates an f32 value (scalar or vector) to bf16 with correct rounding.
