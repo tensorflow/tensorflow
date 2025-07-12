@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
@@ -74,6 +75,68 @@ constexpr int64_t GetTileSize(int64_t dim, int max_tile_size) {
     return max_tile_size;
   }
   return 1LL << static_cast<int64_t>(std::ceil(std::log2(dim)));
+}
+
+// Generates all multi-dimensional integer combinations for a given shape.
+//
+// For each dimension `i` in `input`:
+// - If input[i] >= 0: that index ranges from 0 to input[i], inclusive.
+// - If input[i] < 0: the index is fixed to input[i] in all combinations.
+//
+// For example, given input = {2, MIN_INT, 3}, the function returns:
+// {
+//   {0, MIN_INT, 0}, {0, MIN_INT, 1}, {0, MIN_INT, 2}, {0, MIN_INT, 3},
+//   {1, MIN_INT, 0}, {1, MIN_INT, 1}, {1, MIN_INT, 2}, {1, MIN_INT, 3},
+//   {2, MIN_INT, 0}, {2, MIN_INT, 1}, {2, MIN_INT, 2}, {2, MIN_INT, 3}
+// }
+//
+// Parameters:
+// - input: a vector of integers representing upper bounds (inclusive) for each
+//          dimension. A negative value indicates that the dimension is fixed to
+//          that value.
+//
+// Returns:
+// - A vector of integer vectors, where each inner vector is a unique
+// combination.
+//
+// Notes:
+// - The number of combinations is the product of all (input[i] + 1) where
+// input[i] >= 0.
+// - Each combination has the same length as `input`.
+// - For dimensions with input[i] < 0, that value is used directly in all
+//   outputs.
+std::vector<std::vector<int64_t>> GenerateCombinations(
+    const std::vector<int64_t>& input) {
+  std::vector<std::vector<int64_t>> result;
+  if (input.empty()) {
+    return result;
+  }
+  int64_t dims = input.size();
+  std::vector<int64_t> current(dims);
+
+  // Initialize each dimension: 0 for variable, input[i] if fixed
+  for (int64_t i = 0; i < dims; ++i) {
+    current[i] = (input[i] < 0) ? input[i] : 0;
+  }
+  while (true) {
+    result.push_back(current);
+    // Increment from the last dimension backward
+    int64_t i = dims - 1;
+    for (; i >= 0; --i) {
+      if (input[i] <= 0) {
+        continue;
+      }
+      current[i]++;
+      if (current[i] <= input[i]) {
+        break;
+      }
+      current[i] = 0;
+    }
+    if (i < 0) {
+      break;  // Done when we've looped through all dimensions
+    }
+  }
+  return result;
 }
 
 // Recursively traverses a Shape object in depth-first order,
@@ -123,7 +186,59 @@ std::vector<absl::Span<const int64_t>> FlatListOfShapes(
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 BlockLevelEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
-  return absl::UnimplementedError("GetSupportedConfigs is not implemented yet");
+  if (!IsSupported(instr)) {
+    return std::vector<std::unique_ptr<BackendConfig>>();
+  }
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  // This backend only supports array shapes (not tuples, etc.)
+  if (!instr.shape().IsArray()) {
+    return absl::InvalidArgumentError(
+        "Only array shapes are supported in block-level emitter "
+        "GetSupportedConfigs.");
+  }
+  // Compute the base-2 logarithm (rounded down) of each dimension size.
+  // This determines the range of tile sizes to explore in log2 space.
+  std::vector<int64_t> log2_dims;
+  for (const int64_t dim : instr.shape().dimensions()) {
+    // Exclude zero-sized dimensions from tiling configuration.
+    if (dim == 0) {
+      // Use INT64_MIN as a sentinel to mark zero-sized dimensions.
+      // These will be handled specially later.
+      log2_dims.push_back(INT64_MIN);
+    } else {
+      // ceil(log2(dim))
+      log2_dims.push_back(static_cast<int64_t>(std::ceil(std::log2(dim))));
+    }
+  }
+  // Generate all possible combinations of tile sizes across dimensions,
+  // by iterating over the space of log2(tile size) values.
+  //
+  // For example, if one dimension has log2 = 2 (i.e., dim=4),
+  // this will generate tile sizes of 1, 2, and 4 for that dim.
+  std::vector<std::vector<int64_t>> tile_log2_combinations =
+      GenerateCombinations(log2_dims);
+  // For each valid tile size combination, construct a corresponding config.
+  for (const std::vector<int64_t>& tile_log2_dims : tile_log2_combinations) {
+    BlockLevelFusionConfig config;
+    Tile* output_tile = config.add_output_tiles();
+    for (const int64_t log2_dim : tile_log2_dims) {
+      if (log2_dim == INT64_MIN) {
+        // Preserve 0-sized dimensions in the tile configuration.
+        output_tile->add_sizes(0);
+      } else {
+        // Convert log2 size back to actual tile size (1 << log2).
+        output_tile->add_sizes(1LL << log2_dim);
+      }
+    }
+    // Set default kernel execution parameters.
+    config.set_num_warps(1);   // Number of warps per block.
+    config.set_num_ctas(1);    // Number of thread blocks (CTAs).
+    config.set_num_stages(1);  // Number of pipeline stages.
+    // Store the config (as a polymorphic BackendConfig).
+    configs.push_back(
+        std::make_unique<BlockLevelFusionConfig>(std::move(config)));
+  }
+  return configs;
 }
 
 absl::StatusOr<std::unique_ptr<BackendConfig>>
@@ -172,7 +287,36 @@ BlockLevelEmitterBackend::GetDefaultConfig(const HloInstruction& instr) {
 
 absl::Status BlockLevelEmitterBackend::ApplyConfig(
     HloInstruction& instr, const BackendConfig& config) {
-  return absl::UnimplementedError("ApplyConfig is not implemented yet");
+  if (!IsSupported(instr)) {
+    return absl::InvalidArgumentError(
+        "BlockLevelEmitterBackend does not support this instruction.");
+  }
+  // Object nesting structure:
+  // HloInstruction
+  // └── GpuBackendConfig
+  //     └── FusionBackendConfig
+  //         └── BlockLevelFusionConfig
+  // Ensure the provided config is of type BlockLevelFusionConfig.
+  if (config.GetDescriptor() != BlockLevelFusionConfig::GetDescriptor()) {
+    return absl::InvalidArgumentError(
+        "Invalid backend config type for BlockLevelFusionConfig.");
+  }
+  // Safe to cast now since we've checked the descriptor above.
+  const BlockLevelFusionConfig& block_level_fusion_config =
+      static_cast<const BlockLevelFusionConfig&>(config);
+  // Extract the current GPU backend config from the instruction.
+  // This contains the nested FusionBackendConfig we want to modify.
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+                      instr.backend_config<GpuBackendConfig>());
+  // Get a mutable reference to the nested FusionBackendConfig.
+  FusionBackendConfig& backend_config =
+      *gpu_backend_config.mutable_fusion_backend_config();
+  // Overwrite the block-level fusion config with the new one provided.
+  *backend_config.mutable_block_level_fusion_config() =
+      block_level_fusion_config;
+  // Re-attach the modified GPU config back to the instruction.
+  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_backend_config)));
+  return absl::OkStatus();
 }
 
 bool BlockLevelEmitterBackend::IsSupported(const HloInstruction& instr) {
