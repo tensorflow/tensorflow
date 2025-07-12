@@ -193,5 +193,11 @@ void RegisterAutoSharding() {
       /*dialectsDependenciesCallback=*/&RegisterDialectDependencies);
 }
 
+void RegisterAutoShardingIfRegistryEmpty() {
+  if (!sdy::AutoPartitionerRegistry::isRegistered()) {
+    RegisterAutoSharding();
+  }
+}
+
 }  // namespace spmd
 }  // namespace xla

@@ -1717,6 +1717,7 @@ cc_library(
     ] + xla_internal(["service:export_hlo"]) + if_google([
         "//xla/hlo/experimental/auto_sharding",
         "//xla/hlo/experimental/auto_sharding:auto_sharding_option",
+        "//xla/hlo/experimental/auto_sharding:auto_sharding_stablehlo_pass",
     ]),
 )
 

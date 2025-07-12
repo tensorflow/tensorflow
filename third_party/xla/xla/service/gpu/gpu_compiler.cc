@@ -303,6 +303,7 @@ limitations under the License.
 #ifdef PLATFORM_GOOGLE
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_stablehlo_pass.h"
 #endif  // PLATFORM_GOOGLE
 
 namespace xla {
@@ -644,7 +645,13 @@ absl::Status RunSPMDPasses(
         spmd_pipeline,
 #ifdef PLATFORM_GOOGLE
         [&](HloPassPipeline& pipeline) {
-          if (auto_sharding) {
+          if (!auto_sharding) {
+            return;
+          }
+          if (hlo_module->config().use_shardy_partitioner()) {
+            // Register Alpa auto partitioner if registry is empty.
+            spmd::RegisterAutoShardingIfRegistryEmpty();
+          } else {
             spmd_pipeline.AddPass<AutoSharding>(
                 DefaultAutoShardingOptionFromModuleConfig(hlo_module->config()),
                 alias_info);
