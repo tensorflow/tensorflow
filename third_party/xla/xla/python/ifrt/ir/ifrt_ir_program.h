@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_IR_IFRT_IR_PROGRAM_H_
 #define XLA_PYTHON_IFRT_IR_IFRT_IR_PROGRAM_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -158,6 +159,10 @@ struct IfrtIRCompileOptions
   std::string mlir_dump_pass_re;
   std::string mlir_dump_func_re;
   bool mlir_enable_timing;
+  std::string dot_graph_dump_to;
+  int64_t dot_graph_min_executable_peak_memory_bytes;
+  float dot_graph_min_executable_flops;
+  int64_t dot_graph_min_per_device_transfer_size_bytes;
 
   static char ID;  // NOLINT
 };

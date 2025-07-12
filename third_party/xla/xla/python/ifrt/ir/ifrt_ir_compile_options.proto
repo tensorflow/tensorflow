@@ -41,4 +41,16 @@ message IfrtIrCompileOptionsProto {
   optional string mlir_dump_func_re = 7;
   // If true, report the execution time of each mlir pass.
   optional bool mlir_enable_timing = 8;
+  // If not empty, dump dot graph representation of the IFRT IR program to the
+  // specified directory.
+  optional string dot_graph_dump_to = 9;
+  // Executable nodes with peak memory less than this value will not be
+  // included in the dot graph.
+  optional int64 dot_graph_min_executable_peak_memory_bytes = 10;
+  // Executable nodes with flops less than this value will not be included in
+  // the dot graph.
+  optional float dot_graph_min_executable_flops = 11;
+  // No edges between executables passing arrays with a per device size
+  // (in bytes) less than this value will be included in the dot graph.
+  optional int64 dot_graph_min_per_device_transfer_size_bytes = 12;
 }
