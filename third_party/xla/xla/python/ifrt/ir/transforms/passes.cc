@@ -35,65 +35,65 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-void CreateIfrtToOutlinedAtomProgramsPipeline(
+void createIfrtToOutlinedAtomProgramsPipeline(
     mlir::OpPassManager& pm,
     const IfrtToOutlinedAtomProgramsPipelineOptions& options) {
   // Passes that verify the correctness of the module.
-  pm.addPass(CreateSpmdExpandableInterfaceVerificationPass(
+  pm.addPass(createSpmdExpandableInterfaceVerificationPass(
       {{mlir::mhlo::MhloDialect::getDialectNamespace().str(),
         mlir::stablehlo::StablehloDialect::getDialectNamespace().str(),
         mlir::sdy::SdyDialect::getDialectNamespace().str()}}));
-  pm.addNestedPass<mlir::func::FuncOp>(CreateIfrtVerifyDonationPass());
+  pm.addNestedPass<mlir::func::FuncOp>(createIfrtVerifyDonationPass());
 
-  pm.addPass(CreateIfrtOutlineAtomProgramToModulePass());
+  pm.addPass(createIfrtOutlineAtomProgramToModulePass());
 
   if (!options.propagate_shardings) {
-    pm.addPass(CreateIfrtVerifyShardingSpecifiedPass());
+    pm.addPass(createIfrtVerifyShardingSpecifiedPass());
     pm.addNestedPass<mlir::func::FuncOp>(
-        xla::ifrt::CreateIfrtMergeReshardsPass());
+        xla::ifrt::createIfrtMergeReshardsPass());
     // We can split ifrt.Reshard to ifrt.CopyArrays because all the shardings
     // are specified.
-    pm.addPass(CreateIfrtReshardToCopyArraysPass());
+    pm.addPass(createIfrtReshardToCopyArraysPass());
   }
 }
 
-void CreateIfrtPopulateAtomProgramMetadataPipeline(mlir::OpPassManager& pm) {
-  pm.addPass(CreateIfrtPopulateAtomProgramMetadataPass());
-  pm.addPass(CreateIfrtDuplicatedCalleeEliminationPass());
+void createIfrtPopulateAtomProgramMetadataPipeline(mlir::OpPassManager& pm) {
+  pm.addPass(createIfrtPopulateAtomProgramMetadataPass());
+  pm.addPass(createIfrtDuplicatedCalleeEliminationPass());
   pm.addPass(mlir::createSymbolDCEPass());
 }
 
-void CreateIfrtCompileXlaPreprocessingPipeline(mlir::OpPassManager& pm) {
-  pm.addPass(CreateIfrtLowerAtomProgramMetadataToXlaPass());
-  pm.addPass(CreateIfrtRemoveIfrtAttrsPass());
+void createIfrtCompileXlaPreprocessingPipeline(mlir::OpPassManager& pm) {
+  pm.addPass(createIfrtLowerAtomProgramMetadataToXlaPass());
+  pm.addPass(createIfrtRemoveIfrtAttrsPass());
 }
 
-void CreateIfrtToVersionedPipeline(mlir::OpPassManager& pm,
+void createIfrtToVersionedPipeline(mlir::OpPassManager& pm,
                                    std::string ifrt_target_version,
                                    std::string vhlo_target_version,
                                    IfrtIrProgramProto& ifrt_ir_program) {
-  pm.addPass(CreateIfrtRemoveAttrsFromOtherDialectsPass());
-  pm.addPass(CreateIfrtAtomProgramsToVhloPass(
+  pm.addPass(createIfrtRemoveAttrsFromOtherDialectsPass());
+  pm.addPass(createIfrtAtomProgramsToVhloPass(
       ifrt_ir_program.mutable_atom_programs(), std::move(vhlo_target_version)));
   pm.addPass(createIfrtLegalizeToVifrtPass());
   // Run symbol DCE to remove atom programs that have been legalized to VHLO.
   pm.addPass(mlir::createSymbolDCEPass());
 }
 
-void CreateIfrtFromVersionedPipeline(
+void createIfrtFromVersionedPipeline(
     mlir::OpPassManager& pm, const IfrtIrProgramProto& ifrt_ir_program) {
   // Converts from given VIFRT version to the current VIFRT version.
   pm.addPass(
-      CreateVifrtToVersionPass({Version::getCurrentVersion().toString()}));
+      createVifrtToVersionPass({Version::getCurrentVersion().toString()}));
   // Deserializes atom programs (including VHLO serialized version to VHLO
   // current conversion), and inserts them to the IFRT IR program ModuleOp.
   pm.addPass(
-      CreateIfrtAtomProgramsFromVhloPass(ifrt_ir_program.atom_programs()));
+      createIfrtAtomProgramsFromVhloPass(ifrt_ir_program.atom_programs()));
   // Converts VIFRT current to IFRT.
   pm.addPass(createVifrtLegalizeToIfrtPass());
 }
 
-void RegisterIfrtPassesAndPipelines(
+void registerIfrtPassesAndPipelines(
     std::shared_ptr<AtomProgramCompiler> compiler,
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
@@ -101,23 +101,23 @@ void RegisterIfrtPassesAndPipelines(
     std::shared_ptr<AtomExecutableMap> atom_executable_map,
     std::shared_ptr<AtomExecutableMap> bound_executable_map) {
   registerIfrtIrPasses();
-  RegisterIfrtCompileAtomProgramPass(compiler, compile_options_overrides,
+  registerIfrtCompileAtomProgramPass(compiler, compile_options_overrides,
                                      atom_executable_map);
-  RegisterIfrtCompileAndPropagateShardingsPass(
+  registerIfrtCompileAndPropagateShardingsPass(
       compiler, compile_options_overrides, atom_executable_map);
-  RegisterIfrtVerifyBoundExternalLoadedExecutablePass(bound_executable_map);
+  registerIfrtVerifyBoundExternalLoadedExecutablePass(bound_executable_map);
   mlir::PassPipelineRegistration<IfrtToOutlinedAtomProgramsPipelineOptions>(
       "ifrt-to-outlined-atom-programs-pipeline",
       "Runs passes that do not require compilation-time information",
-      CreateIfrtToOutlinedAtomProgramsPipeline);
+      createIfrtToOutlinedAtomProgramsPipeline);
   mlir::PassPipelineRegistration<>(
       "ifrt-populate-atom-program-metadata-pipeline",
       "Run passes to populate atom program metadata with IFRT info",
-      CreateIfrtPopulateAtomProgramMetadataPipeline);
+      createIfrtPopulateAtomProgramMetadataPipeline);
   mlir::PassPipelineRegistration<>(
       "ifrt-compile-xla-preprocessing-pipeline",
       "Run passes to lower an IFRT XLA program for XLA compilation",
-      CreateIfrtCompileXlaPreprocessingPipeline);
+      createIfrtCompileXlaPreprocessingPipeline);
 }
 
 }  // namespace ifrt

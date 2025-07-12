@@ -625,7 +625,7 @@ void IfrtCompileAndPropagateShardingsPass::ReplaceCallOpWithCallLoadedOp(
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtCompileAndPropagateShardingsPass(
+createIfrtCompileAndPropagateShardingsPass(
     std::shared_ptr<AtomProgramCompiler> compiler,
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
@@ -637,7 +637,7 @@ CreateIfrtCompileAndPropagateShardingsPass(
       std::move(atom_executable_map));
 }
 
-void RegisterIfrtCompileAndPropagateShardingsPass(
+void registerIfrtCompileAndPropagateShardingsPass(
     std::shared_ptr<AtomProgramCompiler> compiler,
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
@@ -648,7 +648,7 @@ void RegisterIfrtCompileAndPropagateShardingsPass(
        compile_options_overrides = std::move(compile_options_overrides),
        atom_executable_map =
            std::move(atom_executable_map)]() -> std::unique_ptr<mlir::Pass> {
-        return CreateIfrtCompileAndPropagateShardingsPass(
+        return createIfrtCompileAndPropagateShardingsPass(
             std::move(compiler), std::move(compile_options_overrides),
             std::move(atom_executable_map));
       });

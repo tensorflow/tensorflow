@@ -91,7 +91,7 @@ void IfrtAtomProgramsFromVhloPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtAtomProgramsFromVhloPass(
+createIfrtAtomProgramsFromVhloPass(
     const tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>&
         atom_programs) {
   return std::make_unique<IfrtAtomProgramsFromVhloPass>(atom_programs);
