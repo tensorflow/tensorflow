@@ -456,6 +456,34 @@ def IfrtDumpAtomProgramsPass
   ];
 }
 
+def IfrtToDotPass :
+   Pass<"ifrt-to-dot", "mlir::ModuleOp"> {
+  let summary = "Extracts a dot graph representation of an IFRT IR program.";
+  let description = [{
+    The pass dumps a dot graph graph of a module. `ifrt.LoadedExecutableOp`s are
+    represented as nodes. An edge is added between a source and destination node
+    if the destination node has a control dependency to execute after the source
+    node or uses an output of the source node directly, or indirectly via a
+    `ifrt.CopyArraysOp`.
+  }];
+  let options = [
+    Option<"dot_graph_dump_to", "dot_graph_dump_to", "std::string", "",
+           "The directory to dump the dot graph to.">,
+    Option<"dot_graph_min_executable_peak_memory_bytes",
+           "dot_graph_min_executable_peak_memory_bytes", "int64_t", "0",
+           "The minimum peak memory (in bytes) an executable node must have to "
+           "be included in the dot graph.">,
+    Option<"dot_graph_min_executable_flops", "dot_graph_min_executable_flops",
+           "float", "0.0",
+           "The minimum flops an executable node must have to be included in the "
+           "dot graph.">,
+    Option<"dot_graph_min_per_device_transfer_size_bytes",
+           "dot_graph_min_per_device_transfer_size_bytes", "int64_t", "0",
+           "The minimum per device transfer size (in bytes) an edge between "
+           "executables must have to be included in the dot graph.">,
+  ];
+}
+
 def IfrtLegalizeToVifrtPass : Pass<"ifrt-legalize-to-vifrt", "mlir::ModuleOp"> {
   let summary = "Legalize IFRT to VIFRT.";
   let dependentDialects = ["xla::ifrt::VifrtDialect"];
