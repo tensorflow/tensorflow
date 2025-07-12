@@ -28,7 +28,6 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -56,8 +55,6 @@ limitations under the License.
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/spmd/shardy/constants.h"
-#include "xla/service/spmd/shardy/utils.h"
 
 namespace xla {
 namespace ifrt {
@@ -116,9 +113,6 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
   llvm::DenseMap<CallOp, CompileFuture, IfrtCallOpInfo> call_to_compile_futures;
   mlir::ModuleOp module_op = getOperation();
 
-  mlir::Attribute sdy_meshes_round_trip_attr =
-      module_op->getAttr(kIfrtSdyMeshesRoundTripAttr);
-
   // Stash the errors in a MapVector, which maintains the order in which they
   // are encountered. We do not emit an error within the walk because atom
   // programs share a context and their compilations are dispatched in parallel.
@@ -147,22 +141,6 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
                     callee.getSymName().str(), ". Actual callee parent: ",
                     callee->getParentOp()->getName().getStringRef().str()));
             return mlir::WalkResult::advance();
-          }
-
-          if (call_op->hasAttr(kIsSdyPartitioned)) {
-            // Add the meshes roundtrip attribute to the callee module if the
-            // atom program was partitioned with sdy.
-            if (!sdy_meshes_round_trip_attr) {
-              call_op_to_error.try_emplace(
-                  call_op,
-                  "requires meshes roundtrip attribute to be set on the "
-                  "program module if the atom program was partitioned with "
-                  "sdy.");
-              return mlir::WalkResult::advance();
-            }
-            xla::sdy::setFrontendAttribute(callee_module,
-                                           xla::sdy::kMeshesRoundTripAttr,
-                                           sdy_meshes_round_trip_attr);
           }
 
           absl::StatusOr<CompileFuture> compile_future =

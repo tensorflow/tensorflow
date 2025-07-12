@@ -35,11 +35,14 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"
 #include "stablehlo/dialect/Register.h"
 #include "stablehlo/dialect/Serialization.h"
+#include "stablehlo/dialect/Version.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
 #include "tsl/platform/protobuf.h"
+
+namespace vhlo = ::mlir::vhlo;
 
 namespace xla {
 namespace ifrt {
@@ -137,8 +140,14 @@ void IfrtAtomProgramsToVhloPass::runOnOperation() {
     atom_program_proto->set_name(atom_program_name);
     atom_program_proto->set_version(vhlo_target_version_);
     llvm::raw_string_ostream os(*atom_program_proto->mutable_program());
+    // We need to pass `allowOtherDialects=true` if
+    // `stablehlo_version >= 1.11.0`, since the lowered module from JAX can
+    // have a mix of StableHLO and Shardy dialects.
+    vhlo::Version mixed_serialization_ok = vhlo::Version(1, 11, 0);
+    bool allow_other_dialects = mixed_serialization_ok <=
+                                vhlo::Version::fromString(vhlo_target_version_);
     if (mlir::failed(mlir::stablehlo::serializePortableArtifact(
-            tmp_module, vhlo_target_version_, os))) {
+            tmp_module, vhlo_target_version_, os, allow_other_dialects))) {
       return stablehlo_module->emitOpError() << "failed to serialize to VHLO";
     }
     return mlir::WalkResult::advance();
