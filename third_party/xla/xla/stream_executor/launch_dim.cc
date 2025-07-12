@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/stream_executor/launch_dim.pb.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
