@@ -3,6 +3,7 @@ load("//tensorflow:pytype.default.bzl", "pytype_strict_binary")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 load(":gen_saved_model.bzl", "gen_saved_model")
 
 package(
