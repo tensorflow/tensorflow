@@ -37,8 +37,7 @@ limitations under the License.
 namespace xla::codegen {
 
 std::string Intrinsic::FpTrunc::Name(Type from, Type to) {
-  return absl::StrCat("xla.fptrunc.", Intrinsic::Name(from), ".to.",
-                      Intrinsic::Name(to));
+  return absl::StrCat("xla.fptrunc.", from.name(), ".to.", to.name());
 }
 
 llvm::Function* Intrinsic::FpTrunc::GetOrInsertDeclaration(llvm::Module* module,

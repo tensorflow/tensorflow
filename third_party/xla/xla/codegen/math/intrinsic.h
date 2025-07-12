@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <variant>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/IR/Function.h"
@@ -58,24 +59,6 @@ namespace xla::codegen {
 // and vector width(s) of the argument and result.
 class Intrinsic {
  public:
-  // A scalar argument or result.
-  struct Scalar {
-    PrimitiveType type;
-  };
-
-  // A vector argument or result.
-  struct Vec {
-    PrimitiveType type;
-    size_t width;
-  };
-
-  // Intrinsics take multiple arguments and always return a single result.
-  using Type = std::variant<Scalar, Vec>;
-
-  // Shortened builders for the scalar and vector types defined above.
-  static Type S(PrimitiveType type) { return Scalar{type}; }
-  static Type V(PrimitiveType type, size_t width) { return Vec{type, width}; }
-
   // Forward declare supported XLA intrinsics. Individual intrinsics are
   // implemented in separate headers, and this class simply defines templates
   // that get forwarded to the concrete implementation.
@@ -87,6 +70,37 @@ class Intrinsic {
   class Log1p;
   class Rsqrt;
   // go/keep-sorted end
+
+  // A scalar argument or result.
+  struct Scalar {
+    PrimitiveType type;
+  };
+
+  // A vector argument or result.
+  struct Vec {
+    PrimitiveType type;
+    size_t width;
+  };
+
+  // Intrinsics overloaded on the arguments and result types.
+  struct Type : public std::variant<Scalar, Vec> {
+    using std::variant<Scalar, Vec>::variant;
+
+    std::string name() const;
+    PrimitiveType element_type() const;
+    std::optional<size_t> width() const;
+  };
+
+  // Shortened builders for the scalar and vector types defined above.
+  static Type S(PrimitiveType type) { return Scalar{type}; }
+  static Type V(PrimitiveType type, size_t width) { return Vec{type, width}; }
+
+  // Verifies that the two types have the same width.
+  static absl::Status VerifySameWidth(const Type& a, const Type& b);
+
+  // Verifies that the two types have the same width and element type.
+  static absl::Status VerifySameWidthAndElementType(const Type& a,
+                                                    const Type& b);
 
   // Returns the name of the scalar intrinsic for the given data type.
   template <typename Intrinsic>
@@ -153,15 +167,6 @@ class Intrinsic {
   static std::string VectorName(PrimitiveType type, int64_t vector_width) {
     return absl::StrCat("v", vector_width, ScalarName(type));
   }
-
-  // Returns the lowercase name of the type.
-  static std::string Name(Type type);
-
-  // Returns the underlying primitive type of the type.
-  static PrimitiveType ElementType(Type type);
-
-  // Returns the width of the type, or std::nullopt if the type is not a vector.
-  static std::optional<size_t> Width(Type type);
 };
 
 namespace intrinsics {
