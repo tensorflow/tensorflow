@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -23,18 +21,18 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Visitors.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Support/WalkResult.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 
 namespace xla {
 namespace ifrt {
 
-namespace {
-
 #define GEN_PASS_DEF_IFRTVERIFYSHARDINGSPECIFIEDPASS
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"
+
+namespace {
 
 bool IsArrayWithUnspecifiedSharding(mlir::Type type) {
   auto array_type = llvm::dyn_cast_or_null<xla::ifrt::IfrtArrayType>(type);
@@ -47,6 +45,9 @@ bool IsArrayWithUnspecifiedSharding(mlir::Type type) {
 class IfrtVerifyShardingSpecifiedPass
     : public impl::IfrtVerifyShardingSpecifiedPassBase<
           IfrtVerifyShardingSpecifiedPass> {
+  using IfrtVerifyShardingSpecifiedPassBase::
+      IfrtVerifyShardingSpecifiedPassBase;
+
  public:
   void runOnOperation() override;
 };
@@ -97,11 +98,5 @@ void IfrtVerifyShardingSpecifiedPass::runOnOperation() {
 }
 
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtVerifyShardingSpecifiedPass() {
-  return std::make_unique<IfrtVerifyShardingSpecifiedPass>();
-}
-
 }  // namespace ifrt
 }  // namespace xla

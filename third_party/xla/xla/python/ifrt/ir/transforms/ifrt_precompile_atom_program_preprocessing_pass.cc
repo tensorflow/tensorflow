@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -32,7 +31,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Visitors.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -44,10 +42,11 @@ limitations under the License.
 
 namespace xla {
 namespace ifrt {
-namespace {
 
 #define GEN_PASS_DEF_IFRTPRECOMPILEATOMPROGRAMPREPROCESSINGPASS
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"
+
+namespace {
 
 class IfrtPrecompileAtomProgramPreprocessingPass
     : public impl::IfrtPrecompileAtomProgramPreprocessingPassBase<
@@ -84,10 +83,9 @@ mlir::FailureOr<llvm::StringRef> GetModuleType(
   if (platform_name == xla::TpuName() || platform_name == xla::CudaName() ||
       platform_name == xla::CpuName()) {
     return kIfrtModuleTypeXla;
-  } else {
-    return call_op->emitOpError()
-           << "Unsupported platform for call op: " << platform_name;
   }
+  return call_op->emitOpError()
+         << "Unsupported platform for call op: " << platform_name;
 }
 
 mlir::LogicalResult IfrtPrecompileAtomProgramPreprocessingPass::initialize(
@@ -179,7 +177,7 @@ void IfrtPrecompileAtomProgramPreprocessingPass::runOnOperation() {
     auto callee_module = llvm::dyn_cast<mlir::ModuleOp>(callee->getParentOp());
     mlir::OpPassManager pm(mlir::ModuleOp::getOperationName());
     if (module_type_attr == kIfrtModuleTypeXla) {
-      CreateIfrtCompileXlaPreprocessingPipeline(pm);
+      createIfrtCompileXlaPreprocessingPipeline(pm);
     } else if (module_type_attr != kIfrtModuleTypeMpmdReshard) {
       return call_op.emitOpError()
              << "module type " << module_type_attr << " is not supported";
@@ -196,12 +194,5 @@ void IfrtPrecompileAtomProgramPreprocessingPass::runOnOperation() {
 }
 
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtPrecompileAtomProgramPreprocessingPass(
-    IfrtPrecompileAtomProgramPreprocessingPassOptions options) {
-  return std::make_unique<IfrtPrecompileAtomProgramPreprocessingPass>(options);
-}
-
 }  // namespace ifrt
 }  // namespace xla

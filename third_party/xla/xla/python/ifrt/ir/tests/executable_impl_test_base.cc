@@ -99,7 +99,7 @@ IfrtIrExecutableImplTestBase::SerDeRoundTrip(
   mlir::PassManager pm(program->mlir_module.getContext());
   xla::ifrt::IfrtToOutlinedAtomProgramsPipelineOptions outline_pipeline_options;
   outline_pipeline_options.propagate_shardings = propagate_shardings;
-  xla::ifrt::CreateIfrtToOutlinedAtomProgramsPipeline(pm,
+  xla::ifrt::createIfrtToOutlinedAtomProgramsPipeline(pm,
                                                       outline_pipeline_options);
   mlir::BaseScopedDiagnosticHandler diag_handler(
       program->mlir_module.getContext());
