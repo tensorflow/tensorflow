@@ -4,6 +4,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/compiler/mlir/quantization/stablehlo:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 
 package_group(
     name = "internal_visibility_allowlist_package",
