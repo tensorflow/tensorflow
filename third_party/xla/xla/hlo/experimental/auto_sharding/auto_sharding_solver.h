@@ -79,7 +79,8 @@ absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
     const AutoShardingSolverRequest& request, const std::string& algorithm);
 
 absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
-    const iopddl::Problem& problem, const std::string& algorithm);
+    const iopddl::Problem& problem, const std::string& algorithm,
+    bool improve_by_cpsat, AutoShardingSolverParams& params);
 
 enum AutoShardingViolationCode {
   kAliasViolationCode,     // Some node's strategy does not match its alias
