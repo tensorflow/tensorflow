@@ -23,6 +23,7 @@ package_group(
 
 cc_library(
     name = "intrinsic",
+    srcs = ["intrinsic.cc"],
     hdrs = ["intrinsic.h"],
     deps = [
         "//xla:shape_util",
