@@ -1387,7 +1387,6 @@ cc_library(
         "//xla/service:hlo_verifier",
         "//xla/service:layout_assignment",
         "//xla/service/gpu/model:gpu_hlo_cost_analysis",
-        "//xla/service/gpu/transforms:horizontal_input_fusion",
         "//xla/service/gpu/transforms:horizontal_loop_fusion",
         "//xla/service/gpu/transforms:multi_output_fusion",
         "//xla/service/gpu/transforms:priority_fusion",
