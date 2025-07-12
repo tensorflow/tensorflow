@@ -555,3 +555,18 @@ xla_cc_test(
 #     visibility = ["//visibility:private"],
 # )
 # copybara:uncomment_end
+
+cc_library(
+    name = "transfer_server_interface",
+    hdrs = ["transfer_server_interface.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla/pjrt:pjrt_client",
+        "//xla/python/ifrt",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
