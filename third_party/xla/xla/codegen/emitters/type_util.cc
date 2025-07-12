@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/mlir/utils/type_util.h"
 #include "xla/primitive_util.h"
@@ -30,6 +31,17 @@ limitations under the License.
 
 namespace xla {
 namespace emitters {
+
+mlir::Attribute GetTensorEncoding(const Layout& layout, mlir::OpBuilder& b) {
+  // Default layouts create a lot of clutter in the IR, so only add an
+  // encoding when needed.
+  if (LayoutUtil::IsMonotonicWithDim0Major(layout)) {
+    return {};
+  }
+
+  return CreateDenseIntElementsAttrFromVector(
+      llvm::to_vector(layout.minor_to_major()), b);
+}
 
 mlir::Type PrimitiveTypeToMlirType(PrimitiveType type, mlir::OpBuilder& b) {
   if (primitive_util::IsIntegralType(type)) {
@@ -51,13 +63,8 @@ mlir::Type PrimitiveTypeToMlirTypeWithSign(PrimitiveType type,
 mlir::Type TensorShapeToMlirType(const Shape& shape, mlir::OpBuilder& b) {
   CHECK(shape.IsArray());
 
-  // Default layouts create a lot of clutter in the IR, so only add an
-  // encoding when needed.
-  mlir::Attribute layout = {};
-  if (!LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
-    layout = CreateDenseIntElementsAttrFromVector(
-        llvm::to_vector(shape.layout().minor_to_major()), b);
-  }
+  mlir::Attribute layout = GetTensorEncoding(shape.layout(), b);
+
   return mlir::RankedTensorType::get(
       llvm::to_vector(shape.dimensions()),
       PrimitiveTypeToMlirType(shape.element_type(), b), layout);

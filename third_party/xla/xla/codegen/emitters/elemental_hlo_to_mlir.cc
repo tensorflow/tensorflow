@@ -73,12 +73,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
+#include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -772,6 +775,16 @@ absl::StatusOr<SmallVector<Value, 1>> EmitConstant(
         mlir::cast<mlir::TypedAttr>(value_attr.getValues<mlir::Attribute>()[0]);
     return {{builder.create<ConstantOp>(val).getResult()}};
   }
+
+  if (!LayoutUtil::IsMonotonicWithDim0Major(instr->shape().layout())) {
+    if (auto tensor_type =
+            mlir::dyn_cast<mlir::RankedTensorType>(value_attr.getType())) {
+      auto new_type = tensor_type.cloneWithEncoding(
+          GetTensorEncoding(instr->shape().layout(), builder));
+      value_attr = value_attr.reshape(new_type);
+    }
+  }
+
   auto constant = builder.create<ConstantOp>(value_attr).getResult();
   return {{builder.create<mlir::tensor::ExtractOp>(constant, indices)}};
 }

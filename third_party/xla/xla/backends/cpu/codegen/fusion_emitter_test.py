@@ -193,6 +193,47 @@ class LoopFusionTest(parameterized.TestCase):
     self.assertTrue(np.isnan(np_result[1]))
     self.assertTrue(np.isnan(np_result[2]))
 
+  # Check that a constant with a layout is respected.
+  def test_constant_with_layout(self):
+    dtype = np.dtype(np.float32)
+
+    hlo = """
+      HloModule test_module
+
+      fusion_computation {
+        %constant = f32[2, 2]{0, 1} constant({{0, 1}, {2, 3}})
+        ROOT %result = f32[2, 2]{1, 0} copy(%constant)
+      }
+
+      ENTRY main {
+        ROOT %wrapped_fusion =
+          f32[2, 2] fusion(), kind=kLoop, calls=%fusion_computation
+      }
+    """
+
+    hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
+    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
+    mlir_context = testlib_cpu.MLIRContext()
+    kernel_definition = testlib_cpu.emit_fusion_kernel(
+        mlir_context, hlo_module.get_root_instruction(), buffer_assignment
+    )
+
+    kernel_runner = testlib_cpu.KernelRunner.create(
+        kernel_definition, jit_compiler
+    )
+    shape = (2, 2)
+
+    result = base_utilities.create_literal_from_np(np.zeros(shape, dtype))
+
+    kernel_runner.call([result])
+
+    np_result = np.asarray(result)
+
+    self.assertEqual(np_result[0, 0], 0)
+    self.assertEqual(np_result[0, 1], 1)
+    self.assertEqual(np_result[1, 0], 2)
+    self.assertEqual(np_result[1, 1], 3)
+
 
 class FusionEmitterTest(parameterized.TestCase):
 

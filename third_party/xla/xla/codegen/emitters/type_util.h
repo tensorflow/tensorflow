@@ -17,8 +17,10 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Types.h"
+#include "xla/layout.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
@@ -26,6 +28,9 @@ namespace xla {
 namespace emitters {
 
 inline constexpr absl::string_view kHasNoCompute = "no_compute";
+
+// Get the encoding (dense layout) attribute for a tensor.
+mlir::Attribute GetTensorEncoding(const Layout& layout, mlir::OpBuilder& b);
 
 // Converts an XLA tensor to an MLIR ranked tensor. The layout is stored in the
 // encoding attribute, if it is not the default layout. `shape` must be an
