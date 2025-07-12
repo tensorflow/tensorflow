@@ -185,18 +185,18 @@ static std::pair<mlir::Attribute, mlir::ArrayAttr> GetLayoutAttribute(
                           b.getArrayAttr(tile_attrs));
   }
 
-  Layout layout = maybe_layout.value_or(
-      shape.has_layout() ? shape.layout()
-                         : LayoutUtil::GetDefaultLayoutForShape(shape));
-
   llvm::SmallVector<mlir::Attribute> vec_of_tiles;
-  for (const Tile& tile : layout.tiles()) {
-    llvm::SmallVector<int64_t> tile_vec = {tile.dimensions().begin(),
-                                           tile.dimensions().end()};
-    vec_of_tiles.push_back(b.getIndexTensorAttr(tile_vec));
+  llvm::SmallVector<int64_t> layout_vec;
+  if (maybe_layout.has_value() || shape.has_layout()) {
+    Layout layout = maybe_layout.value_or(shape.layout());
+    for (const Tile& tile : layout.tiles()) {
+      llvm::SmallVector<int64_t> tile_vec = {tile.dimensions().begin(),
+                                             tile.dimensions().end()};
+      vec_of_tiles.push_back(b.getIndexTensorAttr(tile_vec));
+    }
+    layout_vec = {layout.minor_to_major().begin(),
+                  layout.minor_to_major().end()};
   }
-  llvm::SmallVector<int64_t> layout_vec = {layout.minor_to_major().begin(),
-                                           layout.minor_to_major().end()};
   return std::make_pair(b.getIndexTensorAttr(layout_vec),
                         b.getArrayAttr(vec_of_tiles));
 }

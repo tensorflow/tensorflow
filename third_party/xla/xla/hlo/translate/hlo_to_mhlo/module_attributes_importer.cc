@@ -172,6 +172,10 @@ void ImportEntryComputationResultLayoutAndTiles(
           result_layouts.push_back(layout_attrs.first);
           result_tiles.push_back(layout_attrs.second);
         });
+    module->setAttr(kEntryComputationResultLayout,
+                    builder.getArrayAttr(result_layouts));
+    module->setAttr(kEntryComputationResultTiles,
+                    builder.getArrayAttr(result_tiles));
     return;
   }
 
@@ -218,7 +222,11 @@ void ImportEntryComputationLayoutAndTiles(const HloModule& hlo_module,
                                           bool flatten_computation_args_result,
                                           mlir::Builder builder) {
   const auto& computation_layout = hlo_module.entry_computation_layout();
-  if (!computation_layout.LayoutIsSet()) return;
+  // need to check any layout is set, otherwise LayoutIsSet() will check
+  // that layout is set for every leaf of input and output.
+  if (!computation_layout.AnyLayoutSet()) {
+    return;
+  }
 
   // The MLIR CPU pipeline assumes default layouts throughout the program. At
   // the boundaries, this may not be the case, so layout information needs to

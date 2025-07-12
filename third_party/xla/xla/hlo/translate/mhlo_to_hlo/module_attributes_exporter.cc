@@ -214,25 +214,39 @@ absl::Status ExportModuleEntryComputationParameterTiles(
 absl::Status ExportModuleEntryComputationResultLayout(
     const mlir::ArrayAttr& xla_entry_computation_result_layout,
     xla::HloModuleProto& hlo_module) {
-  // Assume only one result is allowed.
+  auto entry_computation = FindEntryComputation(hlo_module);
+  if (!entry_computation.ok()) {
+    return entry_computation.status();
+  }
+  if (xla_entry_computation_result_layout.size() == 1) {
+    return AddLayoutToShapeProto(
+        xla_entry_computation_result_layout[0],
+        hlo_module.mutable_host_program_shape()->mutable_result(),
+        entry_computation.value()->mutable_program_shape()->mutable_result());
+  }
   return AddLayoutToShapeProto(
-      xla_entry_computation_result_layout[0],
+      xla_entry_computation_result_layout,
       hlo_module.mutable_host_program_shape()->mutable_result(),
-      hlo_module.mutable_computations(0)
-          ->mutable_program_shape()
-          ->mutable_result());
+      entry_computation.value()->mutable_program_shape()->mutable_result());
 }
 
 absl::Status ExportModuleEntryComputationResultTiles(
     const mlir::ArrayAttr& xla_entry_computation_result_tiles,
     xla::HloModuleProto& hlo_module) {
-  // Assume only one result is allowed.
+  auto entry_computation = FindEntryComputation(hlo_module);
+  if (!entry_computation.ok()) {
+    return entry_computation.status();
+  }
+  if (xla_entry_computation_result_tiles.size() == 1) {
+    return AddTileToShapeProto(
+        xla_entry_computation_result_tiles[0],
+        hlo_module.mutable_host_program_shape()->mutable_result(),
+        entry_computation.value()->mutable_program_shape()->mutable_result());
+  }
   return AddTileToShapeProto(
-      xla_entry_computation_result_tiles[0],
+      xla_entry_computation_result_tiles,
       hlo_module.mutable_host_program_shape()->mutable_result(),
-      hlo_module.mutable_computations(0)
-          ->mutable_program_shape()
-          ->mutable_result());
+      entry_computation.value()->mutable_program_shape()->mutable_result());
 }
 
 }  // namespace mhlo
