@@ -82,6 +82,10 @@ createIfrtCompileAndPropagateShardingsPass(
         compile_options,
     std::shared_ptr<AtomExecutableMap> atom_executable_map);
 
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createIfrtToDotPass(
+    IfrtToDotPassOptions options,
+    std::shared_ptr<AtomExecutableMap> atom_executable_map);
+
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createIfrtAtomProgramsToVhloPass(
     tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>* atom_programs,
@@ -123,6 +127,11 @@ void registerIfrtCompileAndPropagateShardingsPass(
 // Registers IfrtVerifyBoundExternalLoadedExecutablePass to ifrt-opt.
 void registerIfrtVerifyBoundExternalLoadedExecutablePass(
     std::shared_ptr<AtomExecutableMap> bound_executable_map);
+
+// Registers IfrtToDotPass to ifrt-opt.
+void registerIfrtToDotPass(
+    IfrtToDotPassOptions options,
+    std::shared_ptr<AtomExecutableMap> atom_executable_map);
 
 struct IfrtToOutlinedAtomProgramsPipelineOptions
     : mlir::PassPipelineOptions<IfrtToOutlinedAtomProgramsPipelineOptions> {
