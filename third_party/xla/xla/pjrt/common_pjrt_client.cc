@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/common_pjrt_client.h"
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -28,6 +29,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/random/random.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -371,6 +373,12 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(
     }
   }
 
+  static std::atomic<uint64_t> start_transfer_id = []() {
+    absl::BitGen bits;
+    return absl::Uniform<uint64_t>(bits);
+  }();
+  uint64_t transfer_id = start_transfer_id.fetch_add(1);
+
   auto allocation_event = dst_client->CreateAllocationEventForTransfers(
       dst_memory_space, debug_info);
   tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise;
@@ -379,8 +387,9 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(
     TF_ASSIGN_OR_RETURN(
         std::tie(definition_event_promise, definition_event),
         dst_client->CreateLinkedEventPromise(
-            dst_memory_space, absl::StrCat("CopyToMemorySpace_H2D Op:",
-                                           debug_info.value_or(""))));
+            dst_memory_space,
+            absl::StrCat("CopyToMemorySpace CrossDeviceSink: ", transfer_id,
+                         " Op:", debug_info.value_or(""))));
   } else {
     TF_ASSIGN_OR_RETURN(
         std::tie(definition_event_promise, definition_event),
@@ -413,8 +422,10 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(
             TF_ASSIGN_OR_RETURN(
                 std::tie(src_usage_event_promise, usage_event),
                 dst_client->CreateLinkedEventPromise(
-                    src_memory_space, absl::StrCat("CopyToMemorySpace_D2H Op:",
-                                                   debug_info.value_or(""))));
+                    src_memory_space,
+                    absl::StrCat(
+                        "CopyToMemorySpace CrossDeviceSrc: ", transfer_id,
+                        " Op:", debug_info.value_or(""))));
           } else {
             TF_ASSIGN_OR_RETURN(
                 std::tie(src_usage_event_promise, usage_event),
@@ -425,36 +436,46 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(
     return absl::OkStatus();
   }();
   if (!status.ok()) {
+    if (allocation_event) {
+      allocation_event.SetError(status);
+    }
     definition_event_promise->SetError(status);
     return status;
   }
 
-  absl::Span<const tsl::RCReference<tsl::AsyncValue>> definition_events_span =
-      definition_events;
-  src_client->async_work_runner()->ScheduleWhenReady(
-      definition_events_span,
-      [src_raw_buffer = std::move(src_raw_buffer),
-       dst_raw_buffer = std::move(dst_raw_buffer),
-       definition_events = std::move(definition_events),
-       definition_event_promise = std::move(definition_event_promise),
-       src_usage_event_promise = std::move(src_usage_event_promise),
-       allocation_event = std::move(allocation_event)]() {
-        for (const auto& av : definition_events) {
-          if (auto* error = av->GetErrorIfPresent()) {
-            auto status = *error;
+  if (src_raw_buffer) {
+    src_raw_buffer->ScheduleCopyTo(
+        src_client->async_work_runner(), std::move(definition_events),
+        std::move(dst_raw_buffer), std::move(definition_event_promise),
+        std::move(src_usage_event_promise), std::move(allocation_event));
+  } else {
+    absl::Span<const tsl::RCReference<tsl::AsyncValue>> definition_events_span =
+        definition_events;
+    src_client->async_work_runner()->ScheduleWhenReady(
+        definition_events_span,
+        [dst_raw_buffer = std::move(dst_raw_buffer),
+         definition_events = std::move(definition_events),
+         definition_event_promise = std::move(definition_event_promise),
+         src_usage_event_promise = std::move(src_usage_event_promise),
+         allocation_event = std::move(allocation_event)]() {
+          auto set_error = [&](absl::Status status) {
             if (allocation_event) {
               allocation_event.SetError(status);
             }
             definition_event_promise->SetError(status);
             src_usage_event_promise->SetError(status);
-            return;
+          };
+          for (const auto& av : definition_events) {
+            if (auto* error = av->GetErrorIfPresent()) {
+              set_error(*error);
+              return;
+            }
           }
-        }
-
-        src_raw_buffer->CopyTo(
-            std::move(dst_raw_buffer), std::move(definition_event_promise),
-            std::move(src_usage_event_promise), std::move(allocation_event));
-      });
+          set_error(
+              absl::InternalError("src_raw_buffer is nullptr for copy but no "
+                                  "definition events were errors."));
+        });
+  }
 
   return dst_buffer;
 }
