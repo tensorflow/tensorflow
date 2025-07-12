@@ -248,7 +248,7 @@ absl::StatusOr<XnnFusionThunk::XnnRuntime> XnnFusionThunk::CreateXnnRuntime(
 
   if (options_.use_slinky) {
     uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS;
-#ifndef NDEBUG
+#ifdef NDEBUG
     flags |= XNN_FLAG_SLINKY_NO_CHECKS;
 #endif
     XNN_RETURN_IF_ERROR(xnn_create_runtime_with_scheduler(
@@ -295,7 +295,7 @@ absl::Status XnnFusionThunk::UpdateXnnRuntime(
 
   if (options_.use_slinky) {
     uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS;
-#ifndef NDEBUG
+#ifdef NDEBUG
     flags |= XNN_FLAG_SLINKY_NO_CHECKS;
 #endif
     XNN_RETURN_IF_ERROR(xnn_create_runtime_with_scheduler(
