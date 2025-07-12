@@ -803,7 +803,6 @@ cc_library(
     srcs = ["dynamic_slicing_utils.cc"],
     hdrs = ["dynamic_slicing_utils.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    tags = ["gpu"],
     deps = [
         ":gpu_constants",
         ":ir_emission_utils",
