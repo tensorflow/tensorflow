@@ -2,6 +2,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 load("//xla:py_strict.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("//xla:xla.default.bzl", "xla_cc_binary")
 load(
