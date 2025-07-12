@@ -19,10 +19,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -71,6 +73,16 @@ absl::StatusOr<Literal> HloRunnerInterface::ExecuteWithExecutable(
   // Construct a vector of plain pointers for the arguments.
   auto argument_pointers = MakePointerVector<const Literal>(arguments);
   return ExecuteWithExecutable(executable, argument_pointers, profile);
+}
+
+absl::StatusOr<Literal> HloRunnerInterface::ExecuteWithExecutable(
+    OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
+    ExecutionProfile* profile) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<absl::StatusOr<Literal>> results,
+      ExecuteWithExecutable(executable, arguments, /*num_repeats=*/1, profile));
+  CHECK_EQ(results.size(), 1);
+  return std::move(results[0]);
 }
 
 }  // namespace xla

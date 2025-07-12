@@ -94,9 +94,9 @@ class HloRunner : public HloRunnerInterface {
 
   using HloRunnerInterface::ExecuteWithExecutable;
 
-  absl::StatusOr<Literal> ExecuteWithExecutable(
+  absl::StatusOr<std::vector<absl::StatusOr<Literal>>> ExecuteWithExecutable(
       OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
-      ExecutionProfile* profile) override;
+      int64_t num_repeats, ExecutionProfile* profile) override;
 
   // As Execute(), but accepts and returns device buffers instead of host
   // buffers.

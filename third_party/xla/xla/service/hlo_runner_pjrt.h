@@ -87,9 +87,9 @@ class HloRunnerPjRt : public HloRunnerInterface {
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> DeserializeExecutable(
       absl::string_view serialized) const override;
 
-  absl::StatusOr<Literal> ExecuteWithExecutable(
+  absl::StatusOr<std::vector<absl::StatusOr<Literal>>> ExecuteWithExecutable(
       OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
-      ExecutionProfile* profile) override;
+      int64_t num_repeats, ExecutionProfile* profile) override;
 
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
@@ -162,9 +162,9 @@ class CompilePhaseHloRunnerPjRt : public HloRunnerPjRt {
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
       std::unique_ptr<HloModule> module, bool run_hlo_passes) override;
 
-  absl::StatusOr<Literal> ExecuteWithExecutable(
+  absl::StatusOr<std::vector<absl::StatusOr<Literal>>> ExecuteWithExecutable(
       OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
-      ExecutionProfile* profile) override {
+      int64_t num_repeats, ExecutionProfile* profile) override {
     return absl::UnimplementedError(
         "CompilePhaseHloRunnerPjRt does not support execution. This is "
         "expected.");
