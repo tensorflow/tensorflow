@@ -1,0 +1,72 @@
+    1 
+    2  sudo apt install git
+    3  sudo apt install git git-gui gitk gitweb
+    4  apt update
+    5  sudo apt update
+    6  sudo apt install git git-gui gitk gitweb
+
+
+    9  sudo apt list python*
+   10  sudo apt install python* 
+   11  sudo apt install python3
+   12  sudo apt install python3-dev python3-pip
+
+   14  sudo pip install -U --user pip
+   15  sudo apt install clang
+   22  pwd
+   23  ls
+   18  git clone https://github.com/mynickmynick/tensorflow.git
+   19  sudo apt install kdiff3
+   20  sudo apt install mono-complete
+   21  mono --version
+   22  pwd
+   23  ls
+   24  cd GitExtensions-2.51.05-Mono/GitExtensions/
+   25  ls
+
+   30  cd ..
+   31  cd GitExtensions/
+   32  sh gitext.sh 
+
+   34  cd ..
+
+   36  cd tensorflow
+   48  sudo apt install npm
+   49  npm install -g @bazel/bazelisk
+   50  sudo npm install -g @bazel/bazelisk
+
+   52  sudo apt update && sudo apt install bazel-7.4.1
+   53  sudo apt install bazel-7*
+   54  ./configure
+   55  bazel build //tensorflow/tools/pip_package:wheel --repo_env=USE_PYWRAP_RULES=1 --repo_env=WHEEL_NAME=tensorflow_cpu
+
+   57  bazel build //tensorflow/tools/pip_package:wheel --repo_env=USE_PYWRAP_RULES=1 --repo_env=WHEEL_NAME=tensorflow_cpu
+   58  sudo apt remove bazel*
+   59  sudo apt autoremove
+   60  sudo apt install apt-transport-https curl gnupg -y
+   61  curl -fsSL https://bazel.build/bazel-release.pub.gpg | gpg --dearmor >bazel-archive-keyring.gpg
+   62  sudo mv bazel-archive-keyring.gpg /usr/share/keyrings
+   63  echo "deb [arch=amd64 signed-by=/usr/share/keyrings/bazel-archive-keyring.gpg] https://storage.googleapis.com/bazel-apt stable jdk1.8" | sudo tee /etc/apt/sources.list.d/bazel.list
+   64  sudo apt list bazel-*
+   65  sudo apt update && sudo apt install bazel
+   66  ./configure
+   67  bazel build //tensorflow/tools/pip_package:wheel --repo_env=USE_PYWRAP_RULES=1 --repo_env=WHEEL_NAME=tensorflow_cpu
+   68  bazel
+   69  cd /home/alessio/tensorflow
+   70  ls
+   71  ls -l
+   72  cat .bazelversion
+   73  edit
+   74  gedit
+   75  sudo apt 
+   76  apt-get
+   77  apt list
+   78  apt list | grep bazel
+   79  apt list --installed
+   80  apt list --installed | bazel
+   81  apt list --installed
+   82  apt list | grep bazel
+   83  bazel build //tensorflow/tools/pip_package:wheel --repo_env=USE_PYWRAP_RULES=1 --repo_env=WHEEL_NAME=tensorflow_cpu
+   84  sudo apt update && sudo apt install bazel-7.4.1
+   85  bazel build //tensorflow/tools/pip_package:wheel --repo_env=USE_PYWRAP_RULES=1 --repo_env=WHEEL_NAME=tensorflow_cpu
+
