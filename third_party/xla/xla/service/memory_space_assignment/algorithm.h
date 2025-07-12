@@ -1138,6 +1138,9 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   HloModule* module_ = nullptr;
   AllocationSequence* allocations_;
+  // Edge time indices store start and end times allocations in alternate
+  // memory. We can use this to skip redundant calls to FindChunkCandidate.
+  absl::flat_hash_set<int64_t> edge_time_indices_;
   const Options& options_;
   const HloAliasAnalysis& alias_analysis_;
   const HloLiveRange& hlo_live_range_;
