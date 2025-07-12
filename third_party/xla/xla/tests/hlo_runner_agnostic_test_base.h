@@ -184,7 +184,6 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   // or loaded from a file.
   ::testing::AssertionResult Run(
       absl::string_view hlo_string, bool run_hlo_passes = true,
-      ExecutionProfile* profile = nullptr,
       const tsl::protobuf::Message* backend_config = nullptr,
       bool use_random_data = true);
 
@@ -258,8 +257,7 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   // If assert_determinism is true, the assertion will fail unless all runs
   // produce exactly the same output.
   ::testing::AssertionResult RunMultipleTimes(
-      absl::string_view hlo_string, bool run_hlo_passes,
-      std::vector<ExecutionProfile>* profiles,
+      absl::string_view hlo_string, bool run_hlo_passes, int64_t num_runs,
       const tsl::protobuf::Message* backend_config = nullptr,
       bool assert_determinism = false);
 
@@ -277,7 +275,7 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   HloRunnerInterface& test_runner() const { return *test_runner_; }
 
  private:
-  // Runs the two module with or without running hlo passes and compares
+  // Runs the two module with or without running hlo oasses and compares
   // the results. Returns whether the results are near or equal. If any
   // error happens before the results are computed, returns the error status.
   absl::StatusOr<::testing::AssertionResult>
