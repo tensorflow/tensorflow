@@ -22,13 +22,14 @@ namespace xla::codegen {
 namespace {
 
 TEST(ExpTest, SclarIninsic) {
-  EXPECT_EQ(Intrinsic::Name<Intrinsic::FpTrunc>(F32, BF16),
+  EXPECT_EQ(Intrinsic::FpTrunc::Name(Intrinsic::S(F32), Intrinsic::S(BF16)),
             "xla.fptrunc.f32.to.bf16");
 }
 
 TEST(ExpTest, VectorIninsic) {
-  EXPECT_EQ(Intrinsic::Name<Intrinsic::FpTrunc>(F32, BF16, 4),
-            "xla.fptrunc.v4f32.to.v4bf16");
+  EXPECT_EQ(
+      Intrinsic::FpTrunc::Name(Intrinsic::V(F32, 4), Intrinsic::V(BF16, 4)),
+      "xla.fptrunc.v4f32.to.v4bf16");
 }
 
 }  // namespace

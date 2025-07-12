@@ -109,7 +109,9 @@ class RewriteTruncFPattern : public mlir::OpRewritePattern<ma::TruncFOp> {
     mlir::Type f32_type = rewriter.getF32Type();
     mlir::Type bf16_type = rewriter.getBF16Type();
     return GetOrInsertDeclaration(
-        rewriter, module_op_, codegen::Intrinsic::FpTrunc::Name(F32, BF16),
+        rewriter, module_op_,
+        codegen::Intrinsic::FpTrunc::Name(codegen::Intrinsic::S(F32),
+                                          codegen::Intrinsic::S(BF16)),
         rewriter.getFunctionType(f32_type, bf16_type));
   }
 

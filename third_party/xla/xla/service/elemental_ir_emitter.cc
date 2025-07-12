@@ -1311,8 +1311,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       if (options_.xla_cpu_use_truncate_f32_to_bf16_conversion) {
         if (from_type == F32 && to_type == BF16) {
           llvm::Function* fptrunc =
-              Intrinsic::GetOrInsertDeclaration<Intrinsic::FpTrunc>(module_,
-                                                                    F32, BF16);
+              Intrinsic::FpTrunc::GetOrInsertDeclaration(module_, F32, BF16);
           return b_->CreateCall(fptrunc, {operand_value});
         }
         if (from_type == BF16 && to_type == F32) {
