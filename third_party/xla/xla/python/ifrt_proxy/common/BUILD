@@ -252,7 +252,10 @@ cc_library(
 #     srcs = ["ifrt_proxy.bzl"],
 #     parse_tests = False,
 #     visibility = ["//visibility:private"],
-#     deps = ["//xla/tsl:package_groups_bzl"],
+#     deps = [
+#         "//third_party/bazel_rules/rules_cc/cc:core_rules",
+#         "//xla/tsl:package_groups_bzl",
+#     ],
 # )
 #
 # bzl_library(
@@ -262,6 +265,7 @@ cc_library(
 #     visibility = ["//visibility:private"],
 #     deps = [
 #         "//devtools/build_cleaner/skylark:build_defs_lib",
+#         "//third_party/bazel_rules/rules_cc/cc:core_rules",
 #         "//xla:xla_bzl",
 #     ],
 # )
