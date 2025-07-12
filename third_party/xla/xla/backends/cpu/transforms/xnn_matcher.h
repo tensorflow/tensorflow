@@ -26,13 +26,15 @@ limitations under the License.
 #include "xla/backends/cpu/xnn_fusion.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/xla.pb.h"
 
 namespace xla::cpu {
 
 class XnnMatcher : public LibraryMatcher {
  public:
-  explicit XnnMatcher(const TargetMachineFeatures* target_machine_features)
-      : LibraryMatcher(target_machine_features) {}
+  explicit XnnMatcher(const TargetMachineFeatures* target_machine_features,
+                      DebugOptions::XnnGraphFusionMode fusion_mode)
+      : LibraryMatcher(target_machine_features), fusion_mode_(fusion_mode) {}
   ~XnnMatcher() override = default;
 
   // Returns the set of supported HLO instructions.
@@ -64,6 +66,21 @@ class XnnMatcher : public LibraryMatcher {
     return false;
   }
 
+  // Returns true if we should start a new fusion containing just the given HLO
+  // instruction.
+  bool ShouldCreateFusion(const HloInstruction* instr) override {
+    // Policy:
+    //   1. Dot can always start a fusion.
+    //   2. Element-wise ops can start a fusion with "greedy" mode.
+    if (instr->opcode() == HloOpcode::kDot) {
+      return true;
+    }
+    bool greedy_mode =
+        fusion_mode_ == DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY ||
+        fusion_mode_ == DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY;
+    return instr->IsElementwise() && greedy_mode;
+  }
+
   // Returns the output type of the XNN op, so we can insert a convert node if
   // the op does not support the original HLO output type.
   PrimitiveType LibraryOpOutputType(const HloInstruction* instr) override {
@@ -79,6 +96,9 @@ class XnnMatcher : public LibraryMatcher {
 
   // Returns a string for FusionBackendConfig's fusion kind.
   absl::string_view fusion_kind() const override { return kXnnFusionKind; }
+
+ private:
+  DebugOptions::XnnGraphFusionMode fusion_mode_;
 };
 
 }  // namespace xla::cpu
