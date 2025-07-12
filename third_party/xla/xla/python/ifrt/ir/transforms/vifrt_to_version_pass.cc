@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -22,7 +21,6 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinDialect.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
@@ -77,9 +75,10 @@ mlir::FailureOr<Version> validateTargetVersion(llvm::StringRef version_ref,
                                                mlir::Operation* op) {
   auto version_or = Version::fromString(version_ref);
   if (mlir::failed(version_or)) {
-    if (version_ref.empty())
+    if (version_ref.empty()) {
       return emitError(op->getLoc())
              << "No target version specified; must be of the form `#.#.#`";
+    }
     return emitError(op->getLoc())
            << "Invalid target version argument '" << version_ref
            << "'; version must be of the form `#.#.#`.";
@@ -122,7 +121,8 @@ bool isLegalType(mlir::Type type, const Version& version) {
   }
   if (auto array_type = llvm::dyn_cast<VifrtArrayV1Type>(type)) {
     return isLegalAttribute(array_type.getShardingAttr(), version);
-  } else if (auto func_type = llvm::dyn_cast<VifrtFunctionV1Type>(type)) {
+  }
+  if (auto func_type = llvm::dyn_cast<VifrtFunctionV1Type>(type)) {
     auto is_legal_type_fn = [&](mlir::Type type) {
       return isLegalType(type, version);
     };
@@ -138,10 +138,11 @@ bool isLegalAttribute(mlir::Attribute attr, const Version& version) {
     return llvm::all_of(array_attr.getValue(), [&](mlir::Attribute entry) {
       return isLegalAttribute(entry, version);
     });
-  } else if (auto dense_array_attr =
-                 llvm::dyn_cast<mlir::DenseArrayAttr>(attr)) {
+  }
+  if (auto dense_array_attr = llvm::dyn_cast<mlir::DenseArrayAttr>(attr)) {
     return isLegalType(dense_array_attr.getElementType(), version);
-  } else if (auto dict_attr = llvm::dyn_cast<mlir::DictionaryAttr>(attr)) {
+  }
+  if (auto dict_attr = llvm::dyn_cast<mlir::DictionaryAttr>(attr)) {
     return llvm::all_of(dict_attr.getValue(), [&](const auto& entry) {
       return isLegalAttribute(entry.getValue(), version);
     });
@@ -161,8 +162,8 @@ bool isLegalAttribute(mlir::Attribute attr, const Version& version) {
   }
   if (auto type_attr = llvm::dyn_cast<VifrtTypeV1Attr>(attr)) {
     return isLegalType(type_attr.getValue(), version);
-  } else if (auto array_mapping_attr =
-                 llvm::dyn_cast<VifrtArrayMappingV1Attr>(attr)) {
+  }
+  if (auto array_mapping_attr = llvm::dyn_cast<VifrtArrayMappingV1Attr>(attr)) {
     return llvm::all_of(array_mapping_attr.getMappings().getValue(),
                         [&](const auto& mapping) {
                           return isLegalAttribute(mapping, version);
@@ -242,11 +243,6 @@ void populateVifrtToVersionPatterns(mlir::RewritePatternSet* patterns,
                                     mlir::MLIRContext* context) {
   // This is where conversion patterns between op versions will be added when
   // needed.
-}
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateVifrtToVersionPass(
-    VifrtToVersionPassOptions options) {
-  return std::make_unique<VifrtToVersionPass>(options);
 }
 
 }  // namespace ifrt
