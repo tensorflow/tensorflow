@@ -274,6 +274,8 @@ PJRT_Error* PJRT_Client_AddressableDevices(
 PJRT_Error* PJRT_Client_LookupDevice(PJRT_Client_LookupDevice_Args* args);
 PJRT_Error* PJRT_Client_LookupAddressableDevice(
     PJRT_Client_LookupAddressableDevice_Args* args);
+PJRT_Error* PJRT_Client_UpdateGlobalProcessInfo(
+    PJRT_Client_UpdateGlobalProcessInfo_Args* args);
 PJRT_Error* PJRT_Client_AddressableMemories(
     PJRT_Client_AddressableMemories_Args* args);
 PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args);
