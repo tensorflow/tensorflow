@@ -180,7 +180,7 @@ def _is_map(desc: descriptor.Descriptor) -> bool:
 
 
 def is_repeated(field_desc: descriptor.FieldDescriptor) -> bool:
-  return field_desc.label == descriptor.FieldDescriptor.LABEL_REPEATED
+  return field_desc.is_repeated
 
 
 _FIELD_DESC = descriptor.FieldDescriptor
