@@ -100,7 +100,7 @@ class tstring {
   tstring(const char* str, size_t len);
   tstring(const char* str);  // NOLINT TODO(b/147740521): Make explicit.
   tstring(size_t n, char c);
-  explicit tstring(const absl::string_view str);
+  explicit tstring(absl::string_view str);
 #ifdef PLATFORM_GOOGLE
   explicit tstring(const absl::Cord& cord);
 #endif  // PLATFORM_GOOGLE
@@ -119,7 +119,7 @@ class tstring {
   tstring& operator=(const std::string& str);
   tstring& operator=(const char* str);
   tstring& operator=(char ch);
-  tstring& operator=(const absl::string_view str);
+  tstring& operator=(absl::string_view str);
 #ifdef PLATFORM_GOOGLE
   tstring& operator=(const absl::Cord& cord);
 #endif  // PLATFORM_GOOGLE
@@ -185,7 +185,7 @@ class tstring {
   // View Assignment
   tstring& assign_as_view(const tstring& str);
   tstring& assign_as_view(const std::string& str);
-  tstring& assign_as_view(const absl::string_view str);
+  tstring& assign_as_view(absl::string_view str);
   tstring& assign_as_view(const char* str, size_t len);
   tstring& assign_as_view(const char* str);
 

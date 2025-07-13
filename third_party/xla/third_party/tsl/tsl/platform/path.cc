@@ -327,7 +327,7 @@ string GetTempFilename(const string& extension) {
       // the problem.
       string tmp_filepath;
       int fd;
-      if (extension.length()) {
+      if (!extension.empty()) {
         tmp_filepath = io::JoinPath(
             dir, strings::StrCat("tmp_file_tensorflow_", UniqueId(), "_XXXXXX.",
                                  extension));

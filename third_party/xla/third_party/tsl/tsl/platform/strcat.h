@@ -108,7 +108,7 @@ class AlphaNum {
   AlphaNum(Hex hex);  // NOLINT(runtime/explicit)
 
   AlphaNum(const char *c_str) : piece_(c_str) {}  // NOLINT(runtime/explicit)
-  AlphaNum(const absl::string_view &pc)
+  AlphaNum(const absl::string_view pc)
       : piece_(pc) {}               // NOLINT(runtime/explicit)
   AlphaNum(const std::string &str)  // NOLINT(runtime/explicit)
       : piece_(str) {}
