@@ -22,7 +22,11 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Type.h"
 #include "xla/primitive_util.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/util.h"
 
 namespace xla::codegen {
@@ -48,12 +52,20 @@ std::string Intrinsic::Type::name() const {
       this);
 }
 
+bool Intrinsic::Type::is_scalar() const {
+  return std::holds_alternative<Scalar>(*this);
+}
+
+bool Intrinsic::Type::is_vector() const {
+  return std::holds_alternative<Vec>(*this);
+}
+
 PrimitiveType Intrinsic::Type::element_type() const {
   return Visit<PrimitiveType>([](const Scalar& scalar) { return scalar.type; },
                               [](const Vec& vec) { return vec.type; }, this);
 }
 
-std::optional<size_t> Intrinsic::Type::width() const {
+std::optional<size_t> Intrinsic::Type::vector_width() const {
   return Visit<std::optional<size_t>>(
       [](const Scalar& scalar) { return std::nullopt; },
       [](const Vec& vec) { return vec.width; }, this);
@@ -109,6 +121,14 @@ absl::Status Intrinsic::VerifySameWidthAndElementType(const Type& a,
         return absl::OkStatus();
       },
       a, b);
+}
+
+llvm::Type* Intrinsic::TypeToIrType(Type type, llvm::LLVMContext& context) {
+  auto* elt_type = llvm_ir::PrimitiveTypeToIrType(type.element_type(), context);
+  if (auto width = type.vector_width()) {
+    return llvm::VectorType::get(elt_type, *width, false);
+  }
+  return elt_type;
 }
 
 }  // namespace xla::codegen
