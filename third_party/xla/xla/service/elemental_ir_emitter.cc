@@ -1310,8 +1310,8 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       // This is enabled explicitly by a flag only for XLA:CPU backend.
       if (options_.xla_cpu_use_truncate_f32_to_bf16_conversion) {
         if (from_type == F32 && to_type == BF16) {
-          llvm::Function* fptrunc =
-              Intrinsic::FpTrunc::GetOrInsertDeclaration(module_, F32, BF16);
+          llvm::Function* fptrunc = Intrinsic::FpTrunc::GetOrInsertDeclaration(
+              module_, Intrinsic::S(F32), Intrinsic::S(BF16));
           return b_->CreateCall(fptrunc, {operand_value});
         }
         if (from_type == BF16 && to_type == F32) {

@@ -39,9 +39,9 @@ TEST(IntrinsicTest, TypeElementType) {
   EXPECT_EQ(Intrinsic::V(F32, 4).element_type(), F32);
 }
 
-TEST(IntrinsicTest, TypeWidth) {
-  EXPECT_EQ(Intrinsic::S(F32).width(), std::nullopt);
-  EXPECT_EQ(Intrinsic::V(F32, 4).width(), 4);
+TEST(IntrinsicTest, TypeVectorWidth) {
+  EXPECT_EQ(Intrinsic::S(F32).vector_width(), std::nullopt);
+  EXPECT_EQ(Intrinsic::V(F32, 4).vector_width(), 4);
 }
 
 TEST(IntrinsicTest, VerifySameWidth) {
