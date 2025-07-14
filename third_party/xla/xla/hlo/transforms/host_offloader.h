@@ -25,6 +25,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
@@ -59,7 +60,8 @@ class HloCostAnalysis;
 // pass.
 class HostOffloader : public HloModulePass {
  public:
-  HostOffloader() = default;
+  explicit HostOffloader(const AliasInfo* alias_info)
+      : alias_info_(alias_info) {}
   ~HostOffloader() override = default;
 
   absl::string_view name() const override { return "host-offloader"; }
@@ -83,6 +85,7 @@ class HostOffloader : public HloModulePass {
   absl::flat_hash_set<HloInstruction*> move_to_device_custom_calls_to_remove_;
   absl::flat_hash_set<host_offload_utils::InstructionAndShapeIndex>
       already_inserted_copy_before_;
+  const AliasInfo* alias_info_;
 
   // DynamicUpdateSlices are a bit special because they are the only op which
   // has multiple operands that host memory offloading supports. As a result,

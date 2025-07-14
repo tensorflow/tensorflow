@@ -148,7 +148,7 @@ class GpuCompiler : public LLVMCompiler {
   virtual absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const TargetConfig& gpu_target_config,
-      tsl::thread::ThreadPool* thread_pool);
+      const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool);
 
   // CollectivesScheduleLinearizer enforces a total ordering between collectives
   // to work around divergence in executables introduced due to auto tuning,
