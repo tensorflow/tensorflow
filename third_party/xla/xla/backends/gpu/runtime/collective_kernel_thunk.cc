@@ -98,10 +98,6 @@ absl::StatusOr<bool> CollectiveKernelThunk::IsSupported(
   const int64_t num_elements = buffers_[0].element_count;
   const int64_t input_size_bytes = GetInputSizeBytes();
   const AllReduceStrategy strategy = GetAllReduceStrategy(input_size_bytes);
-  // Comment the next two lines for testing out two-shot.
-  if (strategy != AllReduceStrategy::kOneShot) {
-    return false;
-  }
   // Custom all-reduce strategy is only supported for small inputs.
   if (input_size_bytes > GetMaxSupportedAllReduceSizeBytes(strategy)) {
     return false;
