@@ -11,6 +11,10 @@ COPY runtime.packages.txt /runtime.packages.txt
 COPY sles.runtime.packages.txt /sles.runtime.packages.txt
 RUN /setup.packages.sh /runtime.packages.txt
 
+ARG GPU_DEVICE_TARGETS="gfx908,gfx90a,gfx942,gfx950,gfx1030,gfx1100,gfx1101,gfx1102,gfx1200,gfx1201"
+ENV GPU_DEVICE_TARGETS=${GPU_DEVICE_TARGETS}
+ENV TF_ROCM_AMDGPU_TARGETS=${GPU_DEVICE_TARGETS}
+
 # Install ROCM
 ARG TF_PKGS_DIR=tmp/packages
 ARG TENSORFLOW_PACKAGE=tf_nightly_rocm
