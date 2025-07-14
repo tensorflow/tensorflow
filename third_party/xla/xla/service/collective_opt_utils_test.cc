@@ -21,13 +21,64 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
+
+class CheckUniformReplicaGroupsTest : public HloHardwareIndependentTestBase {};
+TEST_F(CheckUniformReplicaGroupsTest, CheckUniformReplicaGroupsUniform) {
+  absl::string_view hlo_string = R"(
+    HloModule test
+    ENTRY main {
+      param = f32[16,10] parameter(0)
+      ROOT ag = f32[16,10] all-gather(param), dimensions={0},
+          replica_groups={{0,1},{2,3}}
+    }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  const auto* ag = Cast<HloAllGatherInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_TRUE(CheckUniformReplicaGroups(ag));
+}
+
+TEST_F(CheckUniformReplicaGroupsTest, CheckUniformReplicaGroupsNonUniform) {
+  absl::string_view hlo_string = R"(
+    HloModule test
+    ENTRY main {
+      param = f32[16,10] parameter(0)
+      ROOT ag = f32[16,10] all-gather(param), dimensions={0},
+          replica_groups={{0,1},{2}}
+    }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  const auto* ag = Cast<HloAllGatherInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_FALSE(CheckUniformReplicaGroups(ag));
+}
+
+TEST_F(CheckUniformReplicaGroupsTest, CheckUniformReplicaGroupsSingleGroup) {
+  absl::string_view hlo_string = R"(
+    HloModule test
+    ENTRY main {
+      param = f32[16,10] parameter(0)
+      ROOT ag = f32[16,10] all-gather(param), dimensions={0},
+        replica_groups={{0,1,2,3}}
+    }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  const auto* ag = Cast<HloAllGatherInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_TRUE(CheckUniformReplicaGroups(ag));
+}
 
 class ExtractSplitDimSpecTest : public HloHardwareIndependentTestBase {};
 

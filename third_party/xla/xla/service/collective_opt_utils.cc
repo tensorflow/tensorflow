@@ -420,6 +420,18 @@ std::optional<SplitDimSpec> ExtractSplitDimSpec(
   return spec;
 }
 
+bool CheckUniformReplicaGroups(const HloChannelInstruction* instruction) {
+  CHECK_NE(instruction, nullptr);
+  if (instruction->replica_groups().size() <= 1) {
+    return true;
+  }
+  const int64_t size = instruction->replica_groups().front().replica_ids_size();
+  absl::Span<const ReplicaGroup> rgs = instruction->replica_groups();
+  return absl::c_all_of(rgs.subspan(1), [size](const ReplicaGroup& group) {
+    return group.replica_ids_size() == size;
+  });
+}
+
 std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
     const HloChannelInstruction* instruction, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims,
@@ -444,19 +456,11 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
     VLOG(2) << "All-gather user_count != 1 " << instruction->ToString();
     return std::nullopt;
   }
-  if (instruction->replica_groups().size() > 1) {
-    const int64_t size = instruction->replica_groups()[0].replica_ids_size();
-    absl::Span<const ReplicaGroup> rgs = instruction->replica_groups();
-    const bool has_uniform_size = absl::c_all_of(
-        rgs.subspan(1, size - 1), [size](const ReplicaGroup& group) {
-          return group.replica_ids_size() == size;
-        });
-    if (!has_uniform_size) {
-      VLOG(2) << "Unsupported non-uniform replica group size "
-              << instruction->ToString();
-      return std::nullopt;
-    }
+  if (!CheckUniformReplicaGroups(instruction)) {
+    VLOG(2) << "Non-uniform replica groups " << instruction->ToString();
+    return std::nullopt;
   }
+
   // Always assume first user to start.
   HloInstruction* user = instruction->users()[0];
   if (allow_multiple_users) {

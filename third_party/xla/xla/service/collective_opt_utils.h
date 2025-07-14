@@ -57,6 +57,10 @@ std::optional<ReduceScatterSpec> AllGatherDynamicSliceCancellation(
     HloPredicate match_replica_id = HloPredicateIsOp<HloOpcode::kReplicaId>,
     bool allow_intervening_bitcast = false, bool allow_multiple_users = false);
 
+// Checks whether the replica groups in the given channel instruction are
+// of the same size.
+bool CheckUniformReplicaGroups(const HloChannelInstruction* instruction);
+
 // Check if a given instruction (AllReduce or AllGather) matches a DynamicSlice;
 // the DynamicSlice has to be the user of the given instruction.
 std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
