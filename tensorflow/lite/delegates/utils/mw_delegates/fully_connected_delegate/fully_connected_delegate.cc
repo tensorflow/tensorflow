@@ -1,8 +1,3 @@
-// Ensure TF_LITE_KERNEL_LOG messages are not stripped out
-#ifdef TF_LITE_STRIP_ERROR_STRINGS
-#undef TF_LITE_STRIP_ERROR_STRINGS
-#endif
-
 #include "tensorflow/lite/delegates/utils/mw_delegates/fully_connected_delegate/fully_connected_delegate.h"
 
 #include <algorithm>
