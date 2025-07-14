@@ -832,7 +832,6 @@ xla_test(
 xla_test(
     name = "scalar_computations_test",
     srcs = ["scalar_computations_test.cc"],
-    precompile_test = False,
     shard_count = 32,
     tags = [
         "test_migrated_to_hlo_runner_pjrt",
@@ -897,7 +896,6 @@ xla_test(
 xla_test(
     name = "array_elementwise_ops_test",
     srcs = ["array_elementwise_ops_test.cc"],
-    precompile_test = False,
     shard_count = 25,
     tags = [
         "test_migrated_to_hlo_runner_pjrt",
@@ -1275,7 +1273,6 @@ xla_test(
 xla_test(
     name = "transpose_test",
     srcs = ["transpose_test.cc"],
-    precompile_test = False,
     tags = [
         "test_migrated_to_hlo_runner_pjrt",
     ],
@@ -1573,7 +1570,6 @@ xla_test(
         # TODO(b/31436974): Fix msan failure. Failed on 2016-09-12.
         "cpu": ["nomsan"],
     },
-    precompile_test = False,
     shard_count = 30,
     tags = [
         "test_migrated_to_hlo_runner_pjrt",
@@ -1821,7 +1817,6 @@ xla_test(
     name = "dynamic_ops_test",
     timeout = "moderate",
     srcs = ["dynamic_ops_test.cc"],
-    precompile_test = False,
     shard_count = 4,
     tags = [
         "test_migrated_to_hlo_runner_pjrt",
@@ -2567,7 +2562,6 @@ xla_test(
 xla_test(
     name = "convert_test",
     srcs = ["convert_test.cc"],
-    precompile_test = False,
     tags = [
         "test_migrated_to_hlo_runner_pjrt",
     ],
@@ -2857,7 +2851,6 @@ xla_test(
 xla_test(
     name = "floor_ceil_test",
     srcs = ["floor_ceil_test.cc"],
-    precompile_test = False,
     tags = [
         "test_migrated_to_hlo_runner_pjrt",
     ],
