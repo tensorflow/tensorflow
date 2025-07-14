@@ -879,6 +879,46 @@ ENTRY e {
 // TODO(b/281489442): Write a testcase called
 // `SkipConfigsProducingDeviantResults` or similar.
 
+// TODO(b/393299275): remove when the legacy GEMM emitter is removed.
+class GemmFusionAutotunerLevelLegacyEmitterTest
+    : public StatelessAutotunerTest,
+      public ::testing::WithParamInterface<int> {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        StatelessAutotunerTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_autotune_level(GetParam());
+    debug_options.set_xla_gpu_cublas_fallback(false);
+    debug_options.clear_xla_gpu_unsupported_generic_triton_emitter_features();
+    return debug_options;
+  }
+};
+
+TEST_P(GemmFusionAutotunerLevelLegacyEmitterTest,
+       AllAutotuningLevelsWorkCorrectly) {
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+  p0 = pred[64,10] parameter(0)
+  p0c = f32[64,10] convert(p0)
+  p1 = f32[10,128] parameter(1)
+  ROOT r = f32[64,128] dot(p0c, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  MatchOptimizedHlo(kHloText, R"(
+; CHECK: kind=kCustom
+; CHECK-SAME: __triton_gemm
+      )");
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+INSTANTIATE_TEST_SUITE_P(GemmFusionAutotunerLevelSweep,
+                         GemmFusionAutotunerLevelLegacyEmitterTest,
+                         ::testing::Range(0, 5));
+
 class GemmFusionAutotunerLevelTest : public StatelessAutotunerTest,
                                      public ::testing::WithParamInterface<int> {
  public:
@@ -887,6 +927,10 @@ class GemmFusionAutotunerLevelTest : public StatelessAutotunerTest,
         StatelessAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(GetParam());
     debug_options.set_xla_gpu_cublas_fallback(false);
+    // TODO(b/393299275): remove when the flag is enabled by default.
+    debug_options.clear_xla_gpu_unsupported_generic_triton_emitter_features();
+    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
+        DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
     return debug_options;
   }
 };
@@ -905,7 +949,7 @@ ENTRY e {
 
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: kind=kCustom
-; CHECK-SAME: block_m
+; CHECK-SAME: __triton_nested_gemm_fusion
       )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
