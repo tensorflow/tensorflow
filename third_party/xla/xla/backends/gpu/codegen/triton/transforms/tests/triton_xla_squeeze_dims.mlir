@@ -154,13 +154,11 @@ tt.func @diamond(%arg0: tensor<4x1x8xf32>) -> tensor<4x8xf32> {
   tt.return %2 : tensor<4x8xf32>
 }
 
-// CHECK-LABEL: func @diamond_may_duplicate_code
-// Not really a test, but rather an example where we may duplicate code when we
-// can't push squeeze_dims up through both branches. This only happens for pure
-// ops though, which should be optimized away eventually.
-tt.func @diamond_may_duplicate_code(%arg0: tensor<4x1xf32>) -> tensor<4xf32> {
-  // CHECK-DAG: arith.negf {{.*}} : tensor<4xf32>
-  // CHECK-DAG: arith.negf {{.*}} : tensor<4x1xf32>
+// CHECK-LABEL: func @insert_expand_dims
+tt.func @insert_expand_dims(%arg0: tensor<4x1xf32>) -> tensor<4xf32> {
+  // CHECK: %[[NEGF:.*]] = arith.negf {{.*}} : tensor<4xf32>
+  // CHECK-NOT: arith.negf
+  // CHECK: tt.expand_dims %[[NEGF]] {axis = 1 : i32} : tensor<4xf32> -> tensor<4x1xf32>
   %0 = arith.negf %arg0 : tensor<4x1xf32>
   %1 = "tt.reduce"(%0) <{axis = 1 : i32}> ({
   ^bb0(%arg1: f32, %arg2: f32):
