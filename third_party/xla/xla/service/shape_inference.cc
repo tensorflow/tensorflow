@@ -2590,7 +2590,7 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
         a.ToString());
   }
   if (!CompatibleDimensionSizes(
-          a.dimensions(a.dimensions_size() - 1),
+          a.dimensions(a.dimensions().size() - 1),
           b.dimensions(b.dimensions_size() - (options.left_side() ? 2 : 1)))) {
     return InvalidArgument(
         "The shared dimension of 'a' and 'b' does not match, got shapes %s and "
