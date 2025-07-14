@@ -231,6 +231,12 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
     const int input_features = input_tensor.dims->data[1];  // Features dimension
     const int output_features = output_tensor.dims->data[1]; // Output features dimension
     
+    // DEBUG: Force print to console to see what's happening
+    printf("[DELEGATE-DEBUG] Input tensor shape: [%d, %d]\n", input_tensor.dims->data[0], input_tensor.dims->data[1]);
+    printf("[DELEGATE-DEBUG] Output tensor shape: [%d, %d]\n", output_tensor.dims->data[0], output_tensor.dims->data[1]);
+    printf("[DELEGATE-DEBUG] Feature dimensions - Input: %d, Output: %d\n", input_features, output_features);
+    fflush(stdout);
+    
     TF_LITE_KERNEL_LOG(context, "Feature dimensions - Input: %d, Output: %d", input_features, output_features);
 
     // Write input tensor to input BRAM (FLOAT32 only)
@@ -254,6 +260,11 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
         TF_LITE_KERNEL_LOG(context, "Eval failed: failed to write FLOAT32 input to BRAM.");
         return kTfLiteError;
       }
+      
+      // DEBUG: Print what we're passing to BRAM
+      printf("[DELEGATE-DEBUG] Calling write_input_to_bram with input_features: %d\n", input_features);
+      fflush(stdout);
+      
       TF_LITE_KERNEL_LOG(context, "Successfully wrote input to BRAM (features: %d)", input_features);
     } else {
       TF_LITE_KERNEL_LOG(context, "Eval failed: unsupported input tensor type: %d. Only FLOAT32 supported.", input_tensor.type);
@@ -261,6 +272,9 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
     }
 
     // Trigger FPGA execution
+    printf("[DELEGATE-DEBUG] Calling fpga_compute with input_features: %d, output_features: %d\n", input_features, output_features);
+    fflush(stdout);
+    
     if (fpga_ip_driver_->fpga_compute(input_features, output_features)) {
       TF_LITE_KERNEL_LOG(context, "Eval failed: FPGA inference trigger failed.");
       return kTfLiteError;
@@ -276,6 +290,10 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
       }
       
       TF_LITE_KERNEL_LOG(context, "Output tensor data address: %p", output_tensor.data.f);
+      
+      // DEBUG: Print what we're passing to BRAM for output
+      printf("[DELEGATE-DEBUG] Calling read_output_from_bram with output_features: %d\n", output_features);
+      fflush(stdout);
       
       if (fpga_bram_driver_->read_output_from_bram(output_tensor.data.f, output_features)) {
         TF_LITE_KERNEL_LOG(context, "Eval failed: failed to read FLOAT32 output from BRAM.");
