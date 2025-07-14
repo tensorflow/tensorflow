@@ -115,7 +115,27 @@ absl::Status LaunchTypedKernel(
       [](se::DeviceMemoryBase buffer) {
         return tsl::safe_reinterpret_cast<uint32_t*>(buffer.opaque());
       });
+  params.rank_offset =
+      kIsTwoShot ? params.rank * params.num_elements_per_rank : 0;
+  for (int i = 0; i < params.num_ranks; ++i) {
+    params.rotated_ranks[i] = (i + rank) % params.num_ranks;
+  }
   params.signal_value = signal_value;
+
+  VLOG(3) << "Launching all-reduce kernel with params: " << "strategy: "
+          << absl::StrFormat("%v", TagType::kAllReduceStrategy)
+          << ", rank: " << params.rank << ", num_ranks: " << params.num_ranks
+          << ", num_elements: " << params.num_elements
+          << ", num_elements_per_rank: " << params.num_elements_per_rank
+          << ", num_elements_per_block: " << params.num_elements_per_block
+          << ", num_threads_per_block: "
+          << launch_dimensions.num_threads_per_block()
+          << ", num_blocks_per_grid: " << launch_dimensions.num_blocks()
+          << ", rank_offset: {" << params.rank_offset << ", rotated_ranks: "
+          << absl::StrJoin(
+                 absl::MakeSpan(params.rotated_ranks.data(), params.num_ranks),
+                 ", ")
+          << "}, signal_value: " << params.signal_value;
 
   return kernel.Launch(launch_dimensions.thread_counts_per_block(),
                        launch_dimensions.block_counts(), stream,
