@@ -54,6 +54,20 @@ module {
 // -----
 
 module {
+  func.func @erf32(%arg0: f32) -> f32 {
+    %ret = math.erf %arg0 : f32
+    return %ret : f32
+  }
+}
+
+// CHECK-LABEL: @erf32
+// CHECK-NOT: math.erf
+// CHECK: %[[ERF_CALL:.*]] = call @local_xla.erf.f32
+// CHECK: return %[[ERF_CALL]]
+
+// -----
+
+module {
   func.func @erf64(%arg0: f64) -> f64 {
     %ret = math.erf %arg0 : f64
     return %ret : f64

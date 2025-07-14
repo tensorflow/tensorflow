@@ -696,6 +696,8 @@ cc_library(
     hdrs = ["elemental_math_emitter.h"],
     deps = [
         "//xla:xla_data_proto_cc",
+        "//xla/codegen/math:erf",
+        "//xla/codegen/math:intrinsic",
         "//xla/service/llvm_ir:math_ops",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

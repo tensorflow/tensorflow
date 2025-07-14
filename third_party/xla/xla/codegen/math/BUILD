@@ -308,6 +308,34 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "erf",
+    srcs = ["erf.cc"],
+    hdrs = ["erf.h"],
+    deps = [
+        ":intrinsic",
+        "//xla:xla_data_proto_cc",
+        "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+xla_cc_test(
+    name = "erf_test",
+    srcs = ["erf_test.cc"],
+    deps = [
+        ":erf",
+        ":simple_jit_runner",
+        ":test_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
 xla_cc_test(
     name = "rsqrt_test",
     srcs = ["rsqrt_test.cc"],
