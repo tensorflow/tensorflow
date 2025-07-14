@@ -471,7 +471,8 @@ def listdiff(x, y, out_idx=None, name=None):
   return gen_array_ops.list_diff(x, y, out_idx, name)
 
 
-listdiff.__doc__ = gen_array_ops.list_diff.__doc__ + "\n" + listdiff.__doc__
+if gen_array_ops.list_diff.__doc__ is not None:
+  listdiff.__doc__ = gen_array_ops.list_diff.__doc__ + "\n" + listdiff.__doc__
 
 # pylint: enable=protected-access
 
