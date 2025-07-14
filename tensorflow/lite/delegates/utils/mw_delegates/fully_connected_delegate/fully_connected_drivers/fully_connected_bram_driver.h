@@ -23,8 +23,8 @@ private:
     std::map<std::string, void*> bram_address;
 
     
-    void write_to_bram(const std::string& bram_name, int32_t* ptr);
-    int32_t* read_from_bram(const std::string& bram_name);
+    void write_to_bram(const std::string& bram_name, float* ptr);
+    float* read_from_bram(const std::string& bram_name);
 
 
 public:
@@ -32,15 +32,15 @@ public:
     ~FpgaBramDriver();
     
     void initialize_bram(bool clear_bram);
-    int write_weights_to_bram(const int32_t* weights, const int size);
-    int write_bias_to_bram(const int32_t* bias, const int size);
-    int write_input_to_bram(const int32_t* input, const int size);
-    int read_output_from_bram(int32_t* output, const int size);
+    int write_weights_to_bram(const float* weights, const int size);
+    int write_bias_to_bram(const float* bias, const int size);
+    int write_input_to_bram(const float* input, const int size);
+    int read_output_from_bram(float* output, const int size);
     int clear_output_bram();
 
-    int test_read_input_bram(int32_t* output, const int size);
-    int test_read_weights_bram(int32_t* output, const int size);
-    int test_read_bias_bram(int32_t* output, const int size);
+    int test_read_input_bram(float* output, const int size);
+    int test_read_weights_bram(float* output, const int size);
+    int test_read_bias_bram(float* output, const int size);
 };
 
 #endif // FULLY_CONNECTED_BRAM_DRIVER_H

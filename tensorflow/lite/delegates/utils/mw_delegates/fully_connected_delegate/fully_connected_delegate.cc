@@ -113,14 +113,15 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
     return kTfLiteError;
   }
 
-  // Write weights to BRAM (INT32 only)
-  if (weights_tensor.type == kTfLiteInt32) {
-    if (fpga_bram_driver_->write_weights_to_bram(weights_tensor.data.i32, NumElements(weights_tensor.dims))) {
-      TF_LITE_KERNEL_LOG(context, "Prepare failed: failed to write INT32 weights to BRAM.");
+  // Write weights to BRAM (FLOAT32 only)
+  if (weights_tensor.type == kTfLiteFloat32) {
+    if (fpga_bram_driver_->write_weights_to_bram(weights_tensor.data.f, NumElements(weights_tensor.dims))) {
+      TF_LITE_KERNEL_LOG(context, "Prepare failed: failed to write FLOAT32 weights to BRAM.");
       return kTfLiteError;
     }
+    TF_LITE_KERNEL_LOG(context, "FLOAT32 weights written to BRAM.");
   } else {
-    TF_LITE_KERNEL_LOG(context, "Prepare failed: only INT32 weights supported. Detected type: %d", weights_tensor.type);
+    TF_LITE_KERNEL_LOG(context, "Prepare failed: unsupported weights tensor type: %d. Only FLOAT32 supported.", weights_tensor.type);
     return kTfLiteError;
   }
 
@@ -132,14 +133,15 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
       return kTfLiteError;
     }
 
-    // Handle INT32 bias tensors only
-    if (bias_tensor.type == kTfLiteInt32) {
-      if (fpga_bram_driver_->write_bias_to_bram(bias_tensor.data.i32, NumElements(bias_tensor.dims))) {
-        TF_LITE_KERNEL_LOG(context, "Prepare failed: failed to write INT32 bias to BRAM.");
+    // Handle bias tensors (FLOAT32 only)
+    if (bias_tensor.type == kTfLiteFloat32) {
+      if (fpga_bram_driver_->write_bias_to_bram(bias_tensor.data.f, NumElements(bias_tensor.dims))) {
+        TF_LITE_KERNEL_LOG(context, "Prepare failed: failed to write FLOAT32 bias to BRAM.");
         return kTfLiteError;
       }
+      TF_LITE_KERNEL_LOG(context, "FLOAT32 bias written to BRAM.");
     } else {
-      TF_LITE_KERNEL_LOG(context, "Prepare failed: only INT32 bias supported. Detected type: %d", bias_tensor.type);
+      TF_LITE_KERNEL_LOG(context, "Prepare failed: unsupported bias tensor type: %d. Only FLOAT32 supported.", bias_tensor.type);
       return kTfLiteError;
     }
 
@@ -195,14 +197,14 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
       return kTfLiteError;
     }
 
-    // Write input tensor to input BRAM (INT32 only)
-    if (input_tensor.type == kTfLiteInt32) {
-      if (fpga_bram_driver_->write_input_to_bram(input_tensor.data.i32, input_size)) {
-        TF_LITE_KERNEL_LOG(context, "Eval failed: failed to write INT32 input to BRAM.");
+    // Write input tensor to input BRAM (FLOAT32 only)
+    if (input_tensor.type == kTfLiteFloat32) {
+      if (fpga_bram_driver_->write_input_to_bram(input_tensor.data.f, input_size)) {
+        TF_LITE_KERNEL_LOG(context, "Eval failed: failed to write FLOAT32 input to BRAM.");
         return kTfLiteError;
       }
     } else {
-      TF_LITE_KERNEL_LOG(context, "Eval failed: only INT32 input supported. Detected type: %d", input_tensor.type);
+      TF_LITE_KERNEL_LOG(context, "Eval failed: unsupported input tensor type: %d. Only FLOAT32 supported.", input_tensor.type);
       return kTfLiteError;
     }
 
@@ -212,14 +214,14 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
       return kTfLiteError;
     }
 
-    // Read output from output BRAM into output tensor (INT32 only)
-    if (output_tensor.type == kTfLiteInt32) {
-      if (fpga_bram_driver_->read_output_from_bram(output_tensor.data.i32, output_size)) {
-        TF_LITE_KERNEL_LOG(context, "Eval failed: failed to read INT32 output from BRAM.");
+    // Read output from output BRAM into output tensor (FLOAT32 only)
+    if (output_tensor.type == kTfLiteFloat32) {
+      if (fpga_bram_driver_->read_output_from_bram(output_tensor.data.f, output_size)) {
+        TF_LITE_KERNEL_LOG(context, "Eval failed: failed to read FLOAT32 output from BRAM.");
         return kTfLiteError;
       }
     } else {
-      TF_LITE_KERNEL_LOG(context, "Eval failed: only INT32 output supported. Detected type: %d", output_tensor.type);
+      TF_LITE_KERNEL_LOG(context, "Eval failed: unsupported output tensor type: %d. Only FLOAT32 supported.", output_tensor.type);
       return kTfLiteError;
     }
 
@@ -386,17 +388,19 @@ class FullyConnectedDelegate : public SimpleDelegateInterface {
     "Input type: %d, Weights type: %d, Bias type: %d, Output type: %d",
     input->type, weights->type, bias ? bias->type : -1, output->type);
     
-    // Check if input, weights, and output tensors are of type INT32 only.
-    // This delegate only supports INT32 tensors for now.
-    bool type_check = (input->type == kTfLiteInt32 && weights->type == kTfLiteInt32 &&
-                       (!bias || bias->type == kTfLiteInt32) && output->type == kTfLiteInt32);
+    // Check if input, weights, and output tensors are of supported types.
+    // This delegate supports only FLOAT32 tensors.
+    bool type_check = (input->type == kTfLiteFloat32 && 
+                       weights->type == kTfLiteFloat32 &&
+                       (!bias || bias->type == kTfLiteFloat32) && 
+                       output->type == kTfLiteFloat32);
     
     if (type_check) {
-      TF_LITE_KERNEL_LOG(context, "Tensor types: INT32 (supported)");
+      TF_LITE_KERNEL_LOG(context, "Tensor types: FLOAT32 (supported)");
     } else {
-      TF_LITE_KERNEL_LOG(context, "Tensor types: Only INT32 tensors supported. Detected types - Input: %d, Weights: %d, Bias: %d, Output: %d",
+      TF_LITE_KERNEL_LOG(context, "Tensor types: Only FLOAT32 tensors supported. Detected types - Input: %d, Weights: %d, Bias: %d, Output: %d",
                          input->type, weights->type, bias ? bias->type : -1, output->type);
-      TF_LITE_KERNEL_LOG(context, "  INT8 support will be added later when low-level drivers are ready.");
+      TF_LITE_KERNEL_LOG(context, "  INT8 and INT32 support will be added later when low-level drivers are ready.");
     }
     
     if (!type_check) {
