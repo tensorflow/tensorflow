@@ -99,8 +99,8 @@ void FpgaBramDriver::initialize_bram(bool clear_bram = false) {
     std::cout << "BRAM initialization complete." << std::endl;
 }
 
-void FpgaBramDriver::write_to_bram(const std::string& bram_name, float* ptr) {
-    std::cout << "Writing to BRAM: " << bram_name << std::endl;
+void FpgaBramDriver::write_to_bram(const std::string& bram_name, float* ptr, size_t num_elements) {
+    std::cout << "Writing to BRAM: " << bram_name << " (elements: " << num_elements << ")" << std::endl;
 
     if (bram_address.find(bram_name) == bram_address.end()) {
         std::cerr << "Invalid BRAM name: " << bram_name << std::endl;
@@ -113,15 +113,19 @@ void FpgaBramDriver::write_to_bram(const std::string& bram_name, float* ptr) {
         return;
     }
 
-    // Write data to BRAM
-    size_t size_to_write = (bram_name == "weight_bram") ? bram_size_weight : bram_size_other_than_weight;
-    size_t actual_bytes = size_to_write;
+    // Calculate the size in bytes
+    size_t bytes_to_write = num_elements * sizeof(float);
+    
+    // Check capacity
+    size_t bram_capacity = (bram_name == "weight_bram") ? bram_size_weight : bram_size_other_than_weight;
+    if (bytes_to_write > bram_capacity) {
+        std::cerr << "Error: Data size (" << bytes_to_write << " bytes) exceeds BRAM capacity (" << bram_capacity << " bytes)" << std::endl;
+        return;
+    }
 
     if (ptr != nullptr) {
-
-        std::memcpy(bram_ptr, ptr, actual_bytes);
+        std::memcpy(bram_ptr, ptr, bytes_to_write);
     }
-    
 }
 float* FpgaBramDriver::read_from_bram(const std::string& bram_name) {
     std::cout << "Reading from BRAM: " << bram_name << std::endl;
@@ -146,7 +150,7 @@ int FpgaBramDriver::write_weights_to_bram(const float* weights, const int size) 
         std::cerr << "Error: Size exceeds weight BRAM capacity." << std::endl;
         return -1;
     }
-    write_to_bram("weight_bram", const_cast<float*>(weights));
+    write_to_bram("weight_bram", const_cast<float*>(weights), size);
     return 0;
 }
 int FpgaBramDriver::write_bias_to_bram(const float* bias, const int size) {
@@ -156,7 +160,7 @@ int FpgaBramDriver::write_bias_to_bram(const float* bias, const int size) {
         std::cerr << "Error: Size exceeds bias BRAM capacity." << std::endl;
         return -1;
     }
-    write_to_bram("bias_bram", const_cast<float*>(bias));
+    write_to_bram("bias_bram", const_cast<float*>(bias), size);
     return 0;
 }
 int FpgaBramDriver::clear_output_bram() {
@@ -182,7 +186,7 @@ int FpgaBramDriver::write_input_to_bram(const float* input, const int size) {
         std::cerr << "Error: Size exceeds input BRAM capacity." << std::endl;
         return -1;
     }
-    write_to_bram("input_bram", const_cast<float*>(input));
+    write_to_bram("input_bram", const_cast<float*>(input), size);
     return 0;
 }
 

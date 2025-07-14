@@ -23,7 +23,7 @@ private:
     std::map<std::string, void*> bram_address;
 
     
-    void write_to_bram(const std::string& bram_name, float* ptr);
+    void write_to_bram(const std::string& bram_name, float* ptr, size_t num_elements);
     float* read_from_bram(const std::string& bram_name);
 
 

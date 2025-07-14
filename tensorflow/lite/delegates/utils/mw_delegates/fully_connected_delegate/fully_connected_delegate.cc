@@ -197,20 +197,38 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
       return kTfLiteError;
     }
 
+    // Debug logging for tensor sizes
+    TF_LITE_KERNEL_LOG(context, "Tensor sizes - Input: %d, Output: %d", input_size, output_size);
+    TF_LITE_KERNEL_LOG(context, "Input tensor shape: [%d, %d]", input_tensor.dims->data[0], input_tensor.dims->data[1]);
+    TF_LITE_KERNEL_LOG(context, "Output tensor shape: [%d, %d]", output_tensor.dims->data[0], output_tensor.dims->data[1]);
+
+    // Extract the actual feature dimensions (ignore batch dimension)
+    const int input_features = input_tensor.dims->data[1];  // Features dimension
+    const int output_features = output_tensor.dims->data[1]; // Output features dimension
+    
+    TF_LITE_KERNEL_LOG(context, "Feature dimensions - Input: %d, Output: %d", input_features, output_features);
+
     // Write input tensor to input BRAM (FLOAT32 only)
     if (input_tensor.type == kTfLiteFloat32) {
-      if (fpga_bram_driver_->write_input_to_bram(input_tensor.data.f, input_size)) {
+      // For batched input, we need to handle each sample in the batch
+      const int batch_size = input_tensor.dims->data[0];
+      if (batch_size != 1) {
+        TF_LITE_KERNEL_LOG(context, "Eval failed: batch size %d not supported. Only batch size 1 supported.", batch_size);
+        return kTfLiteError;
+      }
+      
+      if (fpga_bram_driver_->write_input_to_bram(input_tensor.data.f, input_features)) {
         TF_LITE_KERNEL_LOG(context, "Eval failed: failed to write FLOAT32 input to BRAM.");
         return kTfLiteError;
       }
-      TF_LITE_KERNEL_LOG(context, "Successfully wrote input to BRAM (size: %d)", input_size);
+      TF_LITE_KERNEL_LOG(context, "Successfully wrote input to BRAM (features: %d)", input_features);
     } else {
       TF_LITE_KERNEL_LOG(context, "Eval failed: unsupported input tensor type: %d. Only FLOAT32 supported.", input_tensor.type);
       return kTfLiteError;
     }
 
     // Trigger FPGA execution
-    if (fpga_ip_driver_->fpga_compute(input_size, output_size)) {
+    if (fpga_ip_driver_->fpga_compute(input_features, output_features)) {
       TF_LITE_KERNEL_LOG(context, "Eval failed: FPGA inference trigger failed.");
       return kTfLiteError;
     }
@@ -218,11 +236,11 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
 
     // Read output from output BRAM into output tensor (FLOAT32 only)
     if (output_tensor.type == kTfLiteFloat32) {
-      if (fpga_bram_driver_->read_output_from_bram(output_tensor.data.f, output_size)) {
+      if (fpga_bram_driver_->read_output_from_bram(output_tensor.data.f, output_features)) {
         TF_LITE_KERNEL_LOG(context, "Eval failed: failed to read FLOAT32 output from BRAM.");
         return kTfLiteError;
       }
-      TF_LITE_KERNEL_LOG(context, "Successfully read output from BRAM (size: %d)", output_size);
+      TF_LITE_KERNEL_LOG(context, "Successfully read output from BRAM (features: %d)", output_features);
     } else {
       TF_LITE_KERNEL_LOG(context, "Eval failed: unsupported output tensor type: %d. Only FLOAT32 supported.", output_tensor.type);
       return kTfLiteError;
