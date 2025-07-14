@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
 #include "tsl/platform/protobuf.h"
 
@@ -153,6 +155,28 @@ void createIfrtPopulateAtomProgramMetadataPipeline(mlir::OpPassManager& pm);
 // Creates pipeline to lower an IFRT XLA program to be ready for compilation.
 void createIfrtCompileXlaPreprocessingPipeline(mlir::OpPassManager& pm);
 
+struct OutlinedAtomProgramsToCompiledPipelineOptions
+    : mlir::PassPipelineOptions<OutlinedAtomProgramsToCompiledPipelineOptions> {
+  ListOption<std::string> platform_names{
+      *this, "platform_names",
+      llvm::cl::desc("A list to represent a mapping from logical device IDs to "
+                     "platform name (e.g., tpu, cuda).")};
+
+  Option<bool> propagate_shardings{
+      *this, "propagate_shardings",
+      llvm::cl::desc("Whether to propagate shardings from executables for "
+                     "unspecified shardings.")};
+};
+
+// Creates pipeline of all the IFRT IR passes that require compilation-time
+// information (e.g., device assignments).
+absl::Status createOutlinedAtomProgramsToCompiledPipeline(
+    mlir::OpPassManager& pm, std::shared_ptr<AtomProgramCompiler> compiler,
+    const OutlinedAtomProgramsToCompiledPipelineOptions& options,
+    std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options,
+    std::shared_ptr<AtomExecutableMap> atom_executable_map,
+    std::shared_ptr<AtomExecutableMap> bound_executable_map);
+
 // Creates a pipeline that converts an IFRT IR program to a versioned IFRT IR
 // program, and a versioned VHLO programs populated within `IfrtIrProgramProto`.
 void createIfrtToVersionedPipeline(mlir::OpPassManager& pm,
@@ -173,9 +197,7 @@ void createIfrtFromVersionedPipeline(mlir::OpPassManager& pm,
 // Registers passes and pipelines to ifrt-opt.
 void registerIfrtPassesAndPipelines(
     std::shared_ptr<AtomProgramCompiler> compiler,
-    std::shared_ptr<
-        absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
-        compile_options_overrides,
+    std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options,
     std::shared_ptr<AtomExecutableMap> atom_executable_map,
     std::shared_ptr<AtomExecutableMap> bound_executable_map);
 

@@ -117,7 +117,10 @@ struct IfrtIRCompileOptions
           compile_options_overrides = {},
       bool propagate_shardings = false, std::string mlir_dump_to = "",
       std::string mlir_dump_pass_re = "", std::string mlir_dump_func_re = ".*",
-      bool mlir_enable_timing = false, std::string dot_graph_dump_to = "")
+      bool mlir_enable_timing = false, std::string dot_graph_dump_to = "",
+      int64_t dot_graph_min_executable_peak_memory_bytes = 0,
+      float dot_graph_min_executable_flops = 0.0,
+      int64_t dot_graph_min_per_device_transfer_size_bytes = 0)
       : device_assignments(std::move(device_assignments)),
         loaded_exec_binding(std::move(loaded_exec_binding)),
         compile_options_overrides(std::move(compile_options_overrides)),
@@ -125,7 +128,13 @@ struct IfrtIRCompileOptions
         mlir_dump_to(std::move(mlir_dump_to)),
         mlir_dump_pass_re(std::move(mlir_dump_pass_re)),
         mlir_dump_func_re(std::move(mlir_dump_func_re)),
-        mlir_enable_timing(mlir_enable_timing) {}
+        mlir_enable_timing(mlir_enable_timing),
+        dot_graph_dump_to(std::move(dot_graph_dump_to)),
+        dot_graph_min_executable_peak_memory_bytes(
+            dot_graph_min_executable_peak_memory_bytes),
+        dot_graph_min_executable_flops(dot_graph_min_executable_flops),
+        dot_graph_min_per_device_transfer_size_bytes(
+            dot_graph_min_per_device_transfer_size_bytes) {}
 
   // Mapping from logical device ids in IFRT IR MLIR module to runtime device
   // ids obtained from IFRT client.

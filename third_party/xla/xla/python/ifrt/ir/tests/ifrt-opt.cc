@@ -20,7 +20,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -32,14 +31,15 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/support/module_parsing.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
 
@@ -120,24 +120,29 @@ class TestChildExecutableCompiler : public AtomProgramCompiler {
 }  // namespace xla
 
 int main(int argc, char** argv) {
-  // Allow passing ABSL flags to mlir_opt. For convenience (since we don't need
-  // ABSL flags in most cases), this is in effect only if '--' is present in the
-  // argument list.
+  // Allow passing ABSL flags to ifrt-opt.
+  int absl_flags_end = 1;
   bool has_absl_flags = false;
   for (int i = 1; i < argc; ++i) {
     if (absl::string_view(argv[i]) == "--") {
+      absl_flags_end = i;
+      argc -= (i + 1);
       has_absl_flags = true;
+      break;
     }
   }
+  tsl::port::InitMain((argc >= 1 ? argv[0] : ""), &absl_flags_end, &argv);
   if (has_absl_flags) {
-    // Parses ABSL flags.
-    tsl::port::InitMain((argc >= 1 ? argv[0] : ""), &argc, &argv);
+    argc += absl_flags_end;
+    argv[1] = argv[0];
+    ++argv;
   }
 
   std::shared_ptr<xla::ifrt::AtomProgramCompiler> compiler =
       std::make_shared<xla::ifrt::TestChildExecutableCompiler>();
-  auto compile_options = std::make_shared<absl::flat_hash_map<
-      std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>();
+  std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options =
+      std::make_shared<xla::ifrt::IfrtIRCompileOptions>();
+  compile_options->dot_graph_dump_to = "sponge";
   std::shared_ptr<xla::ifrt::AtomExecutableMap> atom_executable_map =
       std::make_shared<xla::ifrt::AtomExecutableMap>();
   std::shared_ptr<xla::ifrt::AtomExecutableMap> bound_executable_map =
