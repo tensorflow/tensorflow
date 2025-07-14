@@ -170,7 +170,7 @@ int FpgaBramDriver::clear_output_bram() {
         std::cerr << "BRAM pointer is null for: output_bram" << std::endl;
         return -1;
     }
-    std::memset(bram_ptr, 0, bram_size_other_than_weight);
+    std::memset(bram_ptr, 0, bram_size_other_than_weight / sizeof(float) );
     std::cout << "Output BRAM cleared." << std::endl;
     return 0;
 }
