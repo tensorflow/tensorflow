@@ -84,6 +84,17 @@ TEST_F(TestDelegate, BasicDelegate) {
   EXPECT_EQ(params->output_tensors->data[1], 4);
 }
 
+TEST_F(TestDelegate, DelegateNodeInitFailure) {
+  delegate_ = std::make_unique<SimpleDelegate>(
+      std::vector<int>{0, 1, 2}, kTfLiteDelegateFlagsNone,
+      SimpleDelegate::Options::kFailOnInit);
+  // ModifyGraphWithDelegate fails, since the Init() method in the node's
+  // TfLiteRegistration returns an error status.
+  ASSERT_EQ(
+      interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
+      kTfLiteDelegateError);
+}
+
 TEST_F(TestDelegate, DelegateNodePrepareFailure) {
   delegate_ = std::make_unique<SimpleDelegate>(
       std::vector<int>{0, 1, 2}, kTfLiteDelegateFlagsNone,
