@@ -77,25 +77,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "emitc",
-    srcs = [
-        "emitc.cc",
-    ],
-    hdrs = [
-        "emitc.h",
-    ],
-    deps = [
-        ":tensorflow_passes",
-        ":tf_saved_model_passes",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-    ],
-)
-
 gentbl_cc_library(
     name = "decompose_resource_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
@@ -335,7 +316,6 @@ cc_library(
     name = "tf_saved_model_passes",
     srcs = [
         "convert_session_initializer_to_function.cc",
-        "convert_tf_savedmodel_to_emitc.cc",
         "deduplicate_bound_input_bindings.cc",
         "freeze_global_tensors.cc",
         "freeze_saved_model_assets.cc",

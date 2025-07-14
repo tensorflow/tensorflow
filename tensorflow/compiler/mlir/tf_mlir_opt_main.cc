@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/InitAllPasses.h"               // from @llvm-project
-#include "mlir/Support/LogicalResult.h"       // from @llvm-project
+#include "mlir/InitAllPasses.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"           // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow//compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
@@ -59,8 +59,6 @@ int main(int argc, char** argv) {
   tensorflow::RegisterMlProgramPasses();
   mlir::TFTPU::registerRuntimeLoweringPasses();
   mlir::TFDevice::registerSparseCorePasses();
-
-  tensorflow::registerLowerToEmitcAttrPipeline();
 
   tensorflow::tfrt_compiler::RegisterTPULowerClusterToRuntimeOpsPassPipeline();
   tensorflow::tfrt_compiler::
