@@ -23,6 +23,8 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Casting.h"
+#include "xla/codegen/math/erf.h"
+#include "xla/codegen/math/intrinsic.h"
 #include "xla/service/llvm_ir/math_ops.h"
 #include "xla/xla_data.pb.h"
 
@@ -126,7 +128,10 @@ absl::StatusOr<llvm::Value*> EmitErf(llvm::Module* module,
   llvm::Type* type = prim_type == F16 ? b.getFloatTy() : value->getType();
   if (type == b.getFloatTy()) {
     llvm::Value* x = b.CreateFPCast(value, type);
-    auto* result = llvm_ir::EmitErfF32(&b, x);
+    llvm::Function* erf =
+        codegen::Intrinsic::GetOrInsertDeclaration<codegen::Intrinsic::Erf>(
+            module, F32);
+    llvm::Value* result = b.CreateCall(erf, {x});
     return b.CreateFPCast(result, value->getType());
   }
   return absl::UnimplementedError("erf");

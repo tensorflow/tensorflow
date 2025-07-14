@@ -74,6 +74,7 @@ cc_library(
         "//xla/codegen/emitters:elemental_hlo_to_mlir",
         "//xla/codegen/emitters:implicit_arith_op_builder",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/math:erf",
         "//xla/codegen/math:fptrunc",
         "//xla/codegen/math:intrinsic",
         "//xla/codegen/math:log1p",
