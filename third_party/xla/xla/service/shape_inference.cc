@@ -2499,14 +2499,14 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
       RET_CHECK_RANK(in);
       for (int i = 0; i < fft_rank; i++) {
         if (!IsUnboundedDynamicSize(
-                in.dimensions(in.dimensions_size() - fft_rank + i)) &&
-            in.dimensions(in.dimensions_size() - fft_rank + i) !=
+                in.dimensions(in.dimensions().size() - fft_rank + i)) &&
+            in.dimensions(in.dimensions().size() - fft_rank + i) !=
                 fft_length[i]) {
           return InvalidArgument(
               "RFFT requires innermost dimensions match fft_length but "
               "dimension %d is %d and should be %d.",
-              in.dimensions_size() - fft_rank + i,
-              in.dimensions(in.dimensions_size() - fft_rank + i),
+              in.dimensions().size() - fft_rank + i,
+              in.dimensions(in.dimensions().size() - fft_rank + i),
               fft_length[i]);
         }
       }
@@ -2530,25 +2530,26 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
       RET_CHECK_RANK(in);
       Shape result = ShapeUtil::ComplexComponentShape(in);
       for (int i = 0; i < fft_rank - 1; i++) {
-        if (in.dimensions(in.dimensions_size() - fft_rank + i) !=
+        if (in.dimensions(in.dimensions().size() - fft_rank + i) !=
             fft_length[i]) {
           return InvalidArgument(
               "IRFFT requires all but one innermost dimensions match "
               "fft_length, but dimension %d is %d and should be %d.",
-              in.dimensions_size() - fft_rank + i,
-              in.dimensions(in.dimensions_size() - fft_rank + i),
+              in.dimensions().size() - fft_rank + i,
+              in.dimensions(in.dimensions().size() - fft_rank + i),
               fft_length[i]);
         }
       }
       // The size of zero-sized dimensions is preserved.
-      int64_t last_in_dimension_size = in.dimensions(in.dimensions_size() - 1);
+      int64_t last_in_dimension_size =
+          in.dimensions(in.dimensions().size() - 1);
       if ((last_in_dimension_size != 0 || fft_length[fft_rank - 1] != 0) &&
           !IsUnboundedDynamicSize(last_in_dimension_size) &&
           last_in_dimension_size != fft_length[fft_rank - 1] / 2 + 1) {
         return InvalidArgument(
             "IRFFT requires innermost dimension matches fft_length/2+1, but "
             "dimension %d is %d and should be %d.",
-            in.dimensions_size() - 1, last_in_dimension_size,
+            in.dimensions().size() - 1, last_in_dimension_size,
             fft_length[fft_rank - 1] / 2 + 1);
       }
       const int dim = static_cast<int>(result.dimensions().size()) - 1;
@@ -2573,25 +2574,25 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
         PrimitiveType_Name(a.element_type()),
         PrimitiveType_Name(b.element_type()));
   }
-  if (a.dimensions_size() < 2) {
+  if (a.dimensions().size() < 2) {
     return InvalidArgument(
         "The 'a' argument to TriangularSolve must have rank >= 2, got shape %s",
         a.ToString());
   }
-  if (b.dimensions_size() != a.dimensions_size()) {
+  if (b.dimensions().size() != a.dimensions().size()) {
     return InvalidArgument(
         "Arguments to triangular solve must have equal rank; got %s and %s.",
         b.ToString(), a.ToString());
   }
-  if (!CompatibleDimensionSizes(a.dimensions(a.dimensions_size() - 2),
-                                a.dimensions(a.dimensions_size() - 1))) {
+  if (!CompatibleDimensionSizes(a.dimensions(a.dimensions().size() - 2),
+                                a.dimensions(a.dimensions().size() - 1))) {
     return InvalidArgument(
         "The two minor dimensions of 'a' must have equal size, got %s.",
         a.ToString());
   }
-  if (!CompatibleDimensionSizes(
-          a.dimensions(a.dimensions_size() - 1),
-          b.dimensions(b.dimensions_size() - (options.left_side() ? 2 : 1)))) {
+  if (!CompatibleDimensionSizes(a.dimensions(a.dimensions().size() - 1),
+                                b.dimensions(b.dimensions().size() -
+                                             (options.left_side() ? 2 : 1)))) {
     return InvalidArgument(
         "The shared dimension of 'a' and 'b' does not match, got shapes %s and "
         "%s",
@@ -2624,13 +2625,13 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
         "Cholesky; got %s.",
         PrimitiveType_Name(a.element_type()));
   }
-  if (a.dimensions_size() < 2) {
+  if (a.dimensions().size() < 2) {
     return InvalidArgument(
         "The 'a' argument to Cholesky must have rank >= 2, got shape %s",
         a.ToString());
   }
-  if (!CompatibleDimensionSizes(a.dimensions(a.dimensions_size() - 2),
-                                a.dimensions(a.dimensions_size() - 1))) {
+  if (!CompatibleDimensionSizes(a.dimensions(a.dimensions().size() - 2),
+                                a.dimensions(a.dimensions().size() - 1))) {
     return InvalidArgument(
         "The two minor dimensions of 'a' must have compatible size, got %s.",
         a.ToString());
@@ -2907,7 +2908,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   // doesn't matter which one we choose.
   const Shape& arg = *reduced_args[0];
   for (int64_t dimension : dimensions_to_reduce) {
-    if (dimension >= arg.dimensions_size() || dimension < 0) {
+    if (dimension >= arg.dimensions().size() || dimension < 0) {
       return InvalidArgument("Reducing out-of-bounds dimension %d in shape %s.",
                              dimension, ShapeUtil::HumanString(arg));
     }
@@ -2932,7 +2933,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 
   std::vector<int64_t> new_dimensions;
   std::vector<bool> new_is_dynamic;
-  for (int i = 0; i < arg.dimensions_size(); ++i) {
+  for (int i = 0; i < arg.dimensions().size(); ++i) {
     if (dimensions_to_reduce_set.find(i) == dimensions_to_reduce_set.end()) {
       new_dimensions.push_back(arg.dimensions(i));
       new_is_dynamic.push_back(arg.is_dynamic_dimension(i));
@@ -3204,10 +3205,10 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
                            starts.size(), strides.size()));
   }
 
-  if (starts.size() != arg.dimensions_size()) {
+  if (starts.size() != arg.dimensions().size()) {
     return InvalidArgument(
         "Slice index count does not match argument rank: %u vs %d.",
-        starts.size(), arg.dimensions_size());
+        starts.size(), arg.dimensions().size());
   }
 
   std::vector<int64_t> sizes;
@@ -3242,8 +3243,8 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
     sizes.push_back((limit_index - start_index + stride - 1) / stride);
   }
 
-  std::vector<bool> is_dynamic(arg.dimensions_size());
-  for (int64_t i = 0; i < arg.dimensions_size(); ++i) {
+  std::vector<bool> is_dynamic(arg.dimensions().size());
+  for (int64_t i = 0; i < arg.dimensions().size(); ++i) {
     // Slicing 1 out of a dynamic dimension eliminates the dynamic dimension.
     if (sizes[i] == 1) {
       continue;
@@ -3260,8 +3261,9 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of dynamic slice"));
   auto number_of_indices = start_index_shapes.size();
   // TODO(b/118437727): Remove this path.
-  if (!allow_scalar_indices || (number_of_indices >= 1 &&
-                                start_index_shapes[0].dimensions_size() == 1)) {
+  if (!allow_scalar_indices ||
+      (number_of_indices >= 1 &&
+       start_index_shapes[0].dimensions().size() == 1)) {
     if (number_of_indices != 1) {
       return InvalidArgument(
           "Dynamic slice should have exactly 1 index operand, has %d.",
@@ -3380,8 +3382,9 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 
   auto number_of_indices = start_index_shapes.size();
   // TODO(b/118437727): Remove this path.
-  if (!allow_scalar_indices || (number_of_indices >= 1 &&
-                                start_index_shapes[0].dimensions_size() == 1)) {
+  if (!allow_scalar_indices ||
+      (number_of_indices >= 1 &&
+       start_index_shapes[0].dimensions().size() == 1)) {
     if (number_of_indices != 1) {
       return InvalidArgument(
           "Dynamic update slice should have exactly 1 index operand, has %d.",
@@ -3532,11 +3535,11 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
         ShapeUtil::HumanString(arg));
   }
 
-  if (index < 0 || index >= arg.tuple_shapes_size()) {
+  if (index < 0 || index >= arg.tuple_shapes().size()) {
     return InvalidArgument(
         "Cannot infer shape: attempt to index out of tuple bounds: %d "
         ">= %d in shape %s.",
-        index, arg.tuple_shapes_size(), ShapeUtil::HumanString(arg));
+        index, arg.tuple_shapes().size(), ShapeUtil::HumanString(arg));
   }
 
   return arg.tuple_shapes(index);
@@ -3669,7 +3672,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
     }
   }
 
-  std::vector<int64_t> dimensions(operand.dimensions_size() +
+  std::vector<int64_t> dimensions(operand.dimensions().size() +
                                   broadcast_sizes.size());
   std::copy(broadcast_sizes.begin(), broadcast_sizes.end(), dimensions.begin());
   std::copy(operand.dimensions().begin(), operand.dimensions().end(),
@@ -3677,7 +3680,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 
   TF_ASSIGN_OR_RETURN(Shape result, ShapeUtil::MakeValidatedShape(
                                         operand.element_type(), dimensions));
-  for (int64_t i = 0; i < operand.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < operand.dimensions().size(); ++i) {
     result.set_dynamic_dimension(broadcast_sizes.size() + i,
                                  operand.is_dynamic_dimension(i));
   }
@@ -3800,12 +3803,12 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
         ShapeUtil::HumanString(inferred_shape));
   }
 
-  std::vector<int64_t> indices(operand.dimensions_size());
+  std::vector<int64_t> indices(operand.dimensions().size());
   std::iota(indices.begin(), indices.end(), 0);
 
   // Propagate dynamic dimension.
   auto common_factors = CommonFactors(operand.dimensions(), dimensions);
-  for (int64_t input_dim = 0; input_dim < operand.dimensions_size();
+  for (int64_t input_dim = 0; input_dim < operand.dimensions().size();
        ++input_dim) {
     if (!operand.is_dynamic_dimension(input_dim)) {
       continue;
@@ -3883,7 +3886,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
       if (input_dim == 0) {
         output_dynamic_dimension = 0;
       }
-      if (input_dim == operand.dimensions_size() - 1) {
+      if (input_dim == operand.dimensions().size() - 1) {
         output_dynamic_dimension = dimensions.size() - 1;
       }
 
@@ -3930,7 +3933,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
     const Shape& operand, absl::Span<const int64_t> dimensions) {
   TF_RETURN_IF_ERROR(ExpectArray(operand, "transpose"));
 
-  if (dimensions.size() != operand.dimensions_size() ||
+  if (dimensions.size() != operand.dimensions().size() ||
       !IsPermutation(dimensions)) {
     return InvalidArgument(
         "Transpose dimensions [%s] are not a permutation of the operand "

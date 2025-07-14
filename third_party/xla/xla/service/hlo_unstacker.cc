@@ -484,7 +484,7 @@ void UnstackWhileInput(const UnstackerTransformer& unstacker,
   // If the input is an AllocateBuffer, we simply break it down into a tuple of
   // AllocateBuffer instructions, one per slice.
   if (old_while_input->IsCustomCall("AllocateBuffer")) {
-    for (int64_t i = 0; i < new_shape->tuple_shapes_size(); ++i) {
+    for (int64_t i = 0; i < new_shape->tuple_shapes().size(); ++i) {
       slices.push_back(while_instr->AddInstruction(
           HloInstruction::CreateCustomCall(slice_shape, {}, "AllocateBuffer")));
     }
@@ -495,7 +495,7 @@ void UnstackWhileInput(const UnstackerTransformer& unstacker,
     //
     // Hoist the unstacking computation outside the while_instr and create a
     // tuple of slices.
-    for (int64_t i = 0; i < new_shape->tuple_shapes_size(); ++i) {
+    for (int64_t i = 0; i < new_shape->tuple_shapes().size(); ++i) {
       HloInstruction* root_instr = unstacking_computation->root_instruction();
       // TODO: b/352400145 - After unifying patterns and handlers, instead of
       // using the pattern type to determine the unstacked input, we should use
@@ -1449,7 +1449,7 @@ absl::StatusOr<bool> HloUnstacker::Run(
   bool unstacked = false;
   std::vector<const HloInstruction*> unstacked_instructions;
   for (HloInstruction* loop : entry_loops) {
-    for (int64_t i = 0; i < loop->shape().tuple_shapes_size(); ++i) {
+    for (int64_t i = 0; i < loop->shape().tuple_shapes().size(); ++i) {
       // We don't handle tuples and if we see then we assume they come from a
       // previous unstacking attempt.
       if (loop->while_init()->operand(i)->shape().IsTuple()) {
