@@ -17,13 +17,7 @@ FpgaBramDriver::FpgaBramDriver() : bram_dev_mem_fd(-1),
     bram_size_other_than_weight(64 * sizeof(float)), // Size for input, output, and bias BRAMs
     bram_size_weight(4096 * sizeof(float)) { // Size for weight BRAM
 
-        std::cout << "Size of float: " << sizeof(float) << std::endl;
-
-        std::cout << "Size of bram_size_other_than_weight: " << sizeof(bram_size_other_than_weight) << std::endl;
-        std::cout << "Size of bram_size_weight: " << sizeof(bram_size_weight) << std::endl;
-
-        std::cout << "BRAM size other than weight: " << bram_size_other_than_weight << " bytes" << std::endl;
-        std::cout << "BRAM size weight: " << bram_size_weight << " bytes" << std::endl;
+        std::cout << "Size of float: " << sizeof(float) <<" bytes" << std::endl;
 
         bram_input_base_address = 0x80010000;
         bram_weight_base_address = 0x80100000;
@@ -148,7 +142,6 @@ float* FpgaBramDriver::read_from_bram(const std::string& bram_name) {
 
 int FpgaBramDriver::write_weights_to_bram(const float* weights, const int size) {
     std::cout << "size of weights: " << size << std::endl;
-    std::cout << "bram_size_weight / sizeof(float): " << bram_size_weight / sizeof(float) << std::endl;
     if (size > bram_size_weight / sizeof(float)) {
         std::cerr << "Error: Size exceeds weight BRAM capacity." << std::endl;
         return -1;
@@ -159,7 +152,6 @@ int FpgaBramDriver::write_weights_to_bram(const float* weights, const int size) 
 int FpgaBramDriver::write_bias_to_bram(const float* bias, const int size) {
 
     std::cout << "size of bias: " << size << std::endl;
-    std::cout << "bram_size_other_than_weight / sizeof(float): " << bram_size_other_than_weight / sizeof(float) << std::endl;
     if (size > bram_size_other_than_weight / sizeof(float)) {
         std::cerr << "Error: Size exceeds bias BRAM capacity." << std::endl;
         return -1;
@@ -185,7 +177,7 @@ int FpgaBramDriver::clear_output_bram() {
 
 int FpgaBramDriver::write_input_to_bram(const float* input, const int size) {
     std::cout << "size of input: " << size << std::endl;
-    std::cout << "bram_size_other_than_weight / sizeof(float): " << bram_size_other_than_weight / sizeof(float) << std::endl;
+    
     if (size > bram_size_other_than_weight / sizeof(float)) {
         std::cerr << "Error: Size exceeds input BRAM capacity." << std::endl;
         return -1;
