@@ -3014,8 +3014,10 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
     }
 
     HostMemoryAllocator::OwnedPtr staging_buffer;
-    if (client->should_stage_host_to_device_transfers() &&
-        !client->IsDmaMapped(dst, transfer_size)) {
+    // TODO(b/430389024): Add back the premapped buffer support once we fully
+    // understand host memory corruption issue. For now, we always use staging
+    // buffer for device to host transfer.
+    if (client->should_stage_host_to_device_transfers()) {
       staging_buffer = client->host_memory_allocator()->Allocate(transfer_size);
     }
 
