@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
 
-#include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <utility>
 
