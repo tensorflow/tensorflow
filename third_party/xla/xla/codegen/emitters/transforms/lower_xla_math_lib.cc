@@ -25,12 +25,14 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/math/erf.h"
 #include "xla/codegen/math/fptrunc.h"
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/codegen/math/log1p.h"
@@ -127,25 +129,46 @@ class LowerLog1pPattern : public mlir::OpRewritePattern<mlir::math::Log1pOp> {
   mlir::ModuleOp& module_op_;
 };
 
-class LowerErf64Pattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
+class LowerErfPattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
  public:
-  LowerErf64Pattern(mlir::MLIRContext* context, mlir::ModuleOp& module_op)
+  LowerErfPattern(mlir::MLIRContext* context, mlir::ModuleOp& module_op)
       : OpRewritePattern(context), module_op_(module_op) {}
 
   mlir::LogicalResult matchAndRewrite(
       mlir::math::ErfOp op, mlir::PatternRewriter& rewriter) const override {
     mlir::Type type = op.getType();
 
-    if (!type.isF64()) {
-      return rewriter.notifyMatchFailure(op, "not an 64 erf");
+    // Extend the argument to f32 and truncate the result back unconditionally
+    // as these will be cleaned up later if they are already f32.
+    if (type.isF16() || type.isF32()) {
+      mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+      mlir::Type f32_type = b.getF32Type();
+
+      mlir::Value input_value =
+          b.create<mlir::arith::ExtFOp>(f32_type, op.getOperand());
+
+      auto erf_decl = GetOrInsertDeclaration(
+          rewriter, module_op_, codegen::math::ErfFunctionName(1, F32),
+          rewriter.getFunctionType(f32_type, f32_type));
+      auto call_op = b.create<mlir::func::CallOp>(erf_decl, input_value);
+
+      mlir::Value f32_result = call_op.getResult(0);
+      mlir::Value result = b.create<mlir::arith::TruncFOp>(type, f32_result);
+
+      rewriter.replaceOp(op, result);
+      return mlir::success();
     }
 
-    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    if (type.isF64()) {
+      mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
-    auto erf_decl = GetErf64Declaration(rewriter);
-    auto call_op = b.create<mlir::func::CallOp>(erf_decl, op.getOperand());
-    rewriter.replaceOp(op, call_op->getResults());
-    return mlir::success();
+      auto erf_decl = GetErf64Declaration(rewriter);
+      auto call_op = b.create<mlir::func::CallOp>(erf_decl, op.getOperand());
+      rewriter.replaceOp(op, call_op->getResults());
+      return mlir::success();
+    }
+
+    return rewriter.notifyMatchFailure(op, "Argument is not f32 or f64.");
   }
 
  private:
@@ -210,7 +233,7 @@ class LowerXlaMathLibPass
   void runOnOperation() override {
     mlir::ModuleOp module_op = getOperation();
     mlir::RewritePatternSet patterns(&getContext());
-    patterns.add<LowerExpOpPattern, LowerLog1pPattern, LowerErf64Pattern,
+    patterns.add<LowerExpOpPattern, LowerLog1pPattern, LowerErfPattern,
                  LowerTruncF32BF16FPattern>(&getContext(), module_op);
 
     if (mlir::failed(

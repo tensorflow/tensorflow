@@ -184,6 +184,7 @@ cc_library(
     hdrs = ["math_lib.h"],
     deps = [
         "//xla:xla_data_proto_cc",
+        "//xla/codegen/math:erf",
         "//xla/codegen/math:exp",
         "//xla/codegen/math:fptrunc",
         "//xla/codegen/math:intrinsic",

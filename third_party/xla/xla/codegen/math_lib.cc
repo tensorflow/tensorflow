@@ -60,6 +60,7 @@ limitations under the License.
 #include "llvm/Transforms/Scalar/EarlyCSE.h"
 #include "llvm/Transforms/Scalar/SCCP.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
+#include "xla/codegen/math/erf.h"
 #include "xla/codegen/math/exp.h"
 #include "xla/codegen/math/fptrunc.h"
 #include "xla/codegen/math/intrinsic.h"
@@ -267,6 +268,44 @@ class Log1pMathFunction final : public MathFunction {
   }
 };
 
+class ErfF32MathFunction final : public MathFunction {
+ public:
+  absl::string_view FunctionName() const override { return "xla.erf"; }
+
+  std::vector<std::string> TargetFunctions() const override {
+    return {Intrinsic::Erf::Name(F32)};
+  }
+
+  std::vector<VectorType> SupportedVectorTypes() const override {
+    std::vector<VectorType> vector_types;
+    for (size_t width : {1, 2, 4, 8}) {
+      vector_types.push_back({F32, width});
+    }
+    return vector_types;
+  }
+
+  std::string GenerateVectorizedFunctionName(
+      VectorType vector_type) const override {
+    return math::ErfFunctionName(vector_type.width, vector_type.dtype);
+  }
+
+  std::string GenerateMangledSimdName(VectorType vector_type) const override {
+    return math::GetMangledNamePrefix(/*is_masked=*/false, vector_type.width,
+                                      {math::VecParamCardinality::kVector});
+  }
+
+  llvm::Function* CreateDefinition(llvm::Module& module, absl::string_view name,
+                                   VectorType vector_type) const override {
+    llvm::Type* float_type =
+        llvm_ir::PrimitiveTypeToIrType(vector_type.dtype, module.getContext());
+    llvm::Type* vec_type = float_type;
+    if (vector_type.width > 1) {
+      vec_type = llvm::VectorType::get(float_type, vector_type.width, false);
+    }
+    return math::CreateErf(&module, vec_type);
+  }
+};
+
 MathFunctionLib::MathFunctionLib() {
   math_functions_.push_back(std::make_unique<LdexpF64MathFunction>());
   math_functions_.push_back(std::make_unique<ExpF64MathFunction>());
@@ -274,6 +313,7 @@ MathFunctionLib::MathFunctionLib() {
   math_functions_.push_back(std::make_unique<Log1pMathFunction<F16>>());
   math_functions_.push_back(std::make_unique<Log1pMathFunction<F32>>());
   math_functions_.push_back(std::make_unique<Log1pMathFunction<F64>>());
+  math_functions_.push_back(std::make_unique<ErfF32MathFunction>());
 }
 
 std::vector<llvm::VecDesc> MathFunctionLib::Vectorizations() {
