@@ -49,7 +49,6 @@ cc_library(
         "//xla/hlo/transforms:defuser",
         "//xla/hlo/transforms:despecializer",
         "//xla/hlo/transforms:host_offload_legalize",
-        "//xla/hlo/transforms:host_offloader",
         "//xla/hlo/transforms:host_offloading_prepare",
         "//xla/hlo/transforms:literal_canonicalizer",
         "//xla/hlo/transforms:memory_space_propagation",

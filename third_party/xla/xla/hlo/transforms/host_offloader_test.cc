@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -61,7 +62,7 @@ class HostOffloaderTest : public HloHardwareIndependentTestBase {
     HostOffloadLegalize host_offload_legalize;
     TF_ASSIGN_OR_RETURN(bool legal_changed, host_offload_legalize.Run(module));
     changed |= legal_changed;
-    HostOffloader host_offloader;
+    HostOffloader host_offloader(&alias_info_);
     TF_ASSIGN_OR_RETURN(bool offload_changed, host_offloader.Run(module));
     changed |= offload_changed;
     return changed;
@@ -84,6 +85,8 @@ class HostOffloaderTest : public HloHardwareIndependentTestBase {
     }
     return false;
   }
+
+  AliasInfo alias_info_;
 };
 
 absl::flat_hash_set<const HloInstruction*>

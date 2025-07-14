@@ -1480,7 +1480,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
 
   // Run target-specific HLO optimization passes after layout assignment.
   TF_RETURN_IF_ERROR(OptimizeHloPostLayoutAssignment(
-      hlo_module, stream_exec, options, gpu_target_config,
+      hlo_module, stream_exec, options, gpu_target_config, alias_info,
       thread_pool.get_mutable()));
 
   // This is a "low effort, high impact" fusion that should be run first.
@@ -1554,7 +1554,7 @@ void AddGemmRewriterPasses(HloPassPipeline& pipeline,
 absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const TargetConfig& gpu_target_config,
-    tsl::thread::ThreadPool* thread_pool) {
+    const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool) {
   // Constants:
   const DebugOptions& debug_options = hlo_module->config().debug_options();
   const se::GpuComputeCapability gpu_version =
@@ -1763,7 +1763,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
           HloVerifierOpts{}.VerifyNoHostMemorySpace());
   pipeline.AddPass<HloVerifier>(std::move(verifier_metadata));
 
-  pipeline.AddPass<HostOffloader>();
+  pipeline.AddPass<HostOffloader>(alias_info);
 
   TF_RETURN_IF_ERROR(
       AddConvAndGemmAutotuningPasses(&pipeline, gpu_version, options,
