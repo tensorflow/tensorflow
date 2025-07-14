@@ -22,6 +22,13 @@ ENTRY %tfcompile.1 {
   // CHECK-NEXT: %[[VAL_5:.*]] = mhlo.constant dense<1> : tensor<i64>
   %constant.5 = s64[] constant(1)
 
+  // CHECK-NEXT: %[[VAL_7:.*]] = mhlo.constant dense<"0xFF00F00F00FF00F00F00F00F00FF00F00F00FF"> : tensor<2x4x19xi1>
+  %constant.107 = pred[2,4,19]{2,1,0} constant({ { { 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, { 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, { 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, { 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0 } }, { { 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0 }, { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0 }, { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1 } } })
+
+  // CHECK-NEXT: %[[VAL_8:.*]] = mhlo.constant {result_layout = dense<[0, 2, 1]> : tensor<3xindex>, xla_shape = "pred[19,2,4]{0,2,1}"} dense<"0x0103070F0F0F0F0F1E3C78F0F0F0F0F0E0C080"> : tensor<19x2x4xi1>
+  // the raw data buffer content is same as above, but in MHLO only default layout is allowed, so constant value must be different.
+  %constant.588 = pred[19,2,4]{0,2,1} constant({ { { 1, 0, 0, 0 }, { 0, 0, 0, 0 } }, { { 1, 1, 0, 0 }, { 0, 0, 0, 0 } }, { { 1, 1, 1, 0 }, { 0, 0, 0, 0 } }, { { 1, 1, 1, 1 }, { 0, 0, 0, 0 } }, { { 1, 1, 1, 1 }, { 0, 0, 0, 0 } }, { { 1, 1, 1, 1 }, { 0, 0, 0, 0 } }, { { 1, 1, 1, 1 }, { 0, 0, 0, 0 } }, { { 1, 1, 1, 1 }, { 0, 0, 0, 0 } }, { { 0, 1, 1, 1 }, { 1, 0, 0, 0 } }, { { 0, 0, 1, 1 }, { 1, 1, 0, 0 } }, { { 0, 0, 0, 1 }, { 1, 1, 1, 0 } }, { { 0, 0, 0, 0 }, { 1, 1, 1, 1 } }, { { 0, 0, 0, 0 }, { 1, 1, 1, 1 } }, { { 0, 0, 0, 0 }, { 1, 1, 1, 1 } }, { { 0, 0, 0, 0 }, { 1, 1, 1, 1 } }, { { 0, 0, 0, 0 }, { 1, 1, 1, 1 } }, { { 0, 0, 0, 0 }, { 0, 1, 1, 1 } }, { { 0, 0, 0, 0 }, { 0, 0, 1, 1 } }, { { 0, 0, 0, 0 }, { 0, 0, 0, 1 } } })
+
   // CHECK-NEXT: %[[VAL_6:.*]] = mhlo.constant dense<true> : tensor<i1>
   // CHECK-NEXT: return %[[VAL_6]] : tensor<i1>
   ROOT %constant.6 = pred[] constant(1)
