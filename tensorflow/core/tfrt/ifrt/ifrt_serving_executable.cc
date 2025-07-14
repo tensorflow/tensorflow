@@ -869,7 +869,7 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
                        inputs[i].dtype(), " and shape ",
                        inputs[i].shape().DebugString(), " at index ", i));
     }
-    std::string runtime_name = inputs[i].scalar<tsl::tstring>()();
+    std::string tensor_name = inputs[i].scalar<tsl::tstring>()();
     // TODO(b/339521818): Add test cases for OpSharding on variables.
     TF_ASSIGN_OR_RETURN(
         xla::HloSharding hlo_sharding,
@@ -884,7 +884,7 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
 
     TF_RETURN_IF_ERROR(
         ifrt_serving::AsyncLoadRestoredTensorAsIfrtLoadedVariable(
-            runtime_name, ifrt_client_, thread_pool_,
+            tensor_name, ifrt_client_, thread_pool_,
             ifrt_restore_tensor_registry_, ifrt_loaded_variable_registry_,
             checkpoint_loader_queue_, sharding_config));
   }
