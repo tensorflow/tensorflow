@@ -53,7 +53,7 @@ def LowerXlaSharedPass :
   let constructor = "CreateLowerXlaSharedPass()";
 }
 
-def ExpandFloatOpsPass : Pass<"xla-cpu-expand-float-ops", "mlir::ModuleOp"> {
+def ExpandFloatOpsPass : Pass<"xla-cpu-expand-float-ops", "mlir::func::FuncOp"> {
   let summary = "Expands float ops that are not natively supported on cpu.";
 
   let description = [{
