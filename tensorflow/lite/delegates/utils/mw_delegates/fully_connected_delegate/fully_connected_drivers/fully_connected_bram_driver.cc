@@ -205,6 +205,7 @@ int FpgaBramDriver::read_output_from_bram(float* output, const int size) {
     float* bram_output = read_from_bram("output_bram");
     std::cout << "Entering If : going to memcpy" << std::endl;
     if (bram_output) {
+        std::cout << "output address: 0x"<<std::hex << output << " bram_output address: 0x"<<std::hex << bram_output << std::endl;
         std::memcpy(output, bram_output, size * sizeof(float));
         std::cout << "memcpy successful" << std::endl;
         return 0;
