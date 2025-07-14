@@ -20,6 +20,8 @@
 #include "tensorflow/lite/delegates/utils/mw_delegates/fully_connected_delegate/fully_connected_drivers/fully_connected_bram_driver.h"
 #include "tensorflow/lite/delegates/utils/mw_delegates/fully_connected_delegate/fully_connected_drivers/fully_connected_ip_driver.h"
 
+#define TF_LITE_KERNEL_LOG
+
 
 
 namespace tflite {
@@ -149,6 +151,29 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
 
   }
 
+  // Ensure output tensor is properly allocated
+  TfLiteTensor& output_tensor_mutable = context->tensors[output_index_];
+  if (output_tensor_mutable.data.raw == nullptr) {
+    TF_LITE_KERNEL_LOG(context, "Output tensor data is null, attempting to allocate...");
+    
+    // Request tensor resize to trigger allocation
+    TfLiteIntArray* output_shape = TfLiteIntArrayCopy(output_tensor_mutable.dims);
+    if (output_shape == nullptr) {
+      TF_LITE_KERNEL_LOG(context, "Failed to copy output tensor shape");
+      return kTfLiteError;
+    }
+    
+    TfLiteStatus resize_status = context->ResizeTensor(context, &output_tensor_mutable, output_shape);
+    if (resize_status != kTfLiteOk) {
+      TF_LITE_KERNEL_LOG(context, "Failed to resize output tensor");
+      return kTfLiteError;
+    }
+    
+    TF_LITE_KERNEL_LOG(context, "Output tensor allocated successfully at address: %p", output_tensor_mutable.data.raw);
+  } else {
+    TF_LITE_KERNEL_LOG(context, "Output tensor already allocated at address: %p", output_tensor_mutable.data.raw);
+  }
+
   // // Optional: clear output BRAM
   // fpga_driver_->clear_output_bram();
 
@@ -210,12 +235,20 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
 
     // Write input tensor to input BRAM (FLOAT32 only)
     if (input_tensor.type == kTfLiteFloat32) {
+      // Safety check: ensure input tensor data is allocated
+      if (input_tensor.data.f == nullptr) {
+        TF_LITE_KERNEL_LOG(context, "Eval failed: input tensor data is null");
+        return kTfLiteError;
+      }
+      
       // For batched input, we need to handle each sample in the batch
       const int batch_size = input_tensor.dims->data[0];
       if (batch_size != 1) {
         TF_LITE_KERNEL_LOG(context, "Eval failed: batch size %d not supported. Only batch size 1 supported.", batch_size);
         return kTfLiteError;
       }
+      
+      TF_LITE_KERNEL_LOG(context, "Input tensor data address: %p", input_tensor.data.f);
       
       if (fpga_bram_driver_->write_input_to_bram(input_tensor.data.f, input_features)) {
         TF_LITE_KERNEL_LOG(context, "Eval failed: failed to write FLOAT32 input to BRAM.");
@@ -236,6 +269,14 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
 
     // Read output from output BRAM into output tensor (FLOAT32 only)
     if (output_tensor.type == kTfLiteFloat32) {
+      // Safety check: ensure output tensor data is allocated
+      if (output_tensor.data.f == nullptr) {
+        TF_LITE_KERNEL_LOG(context, "Eval failed: output tensor data is null");
+        return kTfLiteError;
+      }
+      
+      TF_LITE_KERNEL_LOG(context, "Output tensor data address: %p", output_tensor.data.f);
+      
       if (fpga_bram_driver_->read_output_from_bram(output_tensor.data.f, output_features)) {
         TF_LITE_KERNEL_LOG(context, "Eval failed: failed to read FLOAT32 output from BRAM.");
         return kTfLiteError;

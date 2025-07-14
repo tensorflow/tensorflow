@@ -203,10 +203,7 @@ int FpgaBramDriver::read_output_from_bram(float* output, const int size) {
         std::cerr << "Error: Size exceeds output BRAM capacity." << std::endl;
         return -1;
     }
-    //TODO: REMOVE THIS LINE
-
-    output = reinterpret_cast<float*>(bram_mapped_input_block);
-    ////////////////////////////////////
+    
     float* bram_output = read_from_bram("output_bram");
     std::cout << "Entering If : going to memcpy" << std::endl;
     if (bram_output) {
