@@ -1883,6 +1883,14 @@ bool IsDefaultInPlaceOperation(const HloInstruction* hlo) {
 /*static*/ std::vector<std::pair<HloOperandIndex, ShapeIndex>>
 HloDataflowAnalysis::GetInPlaceInputOutputPairs(
     const HloInstruction* instruction) {
+  // TODO tixxx: nvshmem default one-shot allreduce algo requires
+  // separate buffers for IO, remove this once nvshmem is upgraded to 3.3
+  if (instruction->opcode() == HloOpcode::kAllReduceStart) {
+    if (absl::StrContainsIgnoreCase(instruction->raw_backend_config_string(),
+                                    "nvshmem")) {
+      return {};
+    }
+  }
   if (IsDefaultInPlaceOperation(instruction)) {
     int64_t num_in_place_operands = instruction->operand_count();
     const HloScatterInstruction* scatter =

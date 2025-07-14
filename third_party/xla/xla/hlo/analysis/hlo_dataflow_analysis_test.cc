@@ -3733,5 +3733,32 @@ TEST_P(HloDataflowAnalysisTest, b409756077) {
   EXPECT_THAT(defining_instructions, UnorderedElementsAre(param2, add0));
 }
 
+TEST_F(GetInPlaceInputOutputPairsTest, nvshmem_ar) {
+  const char* kModule = R"(
+    HloModule test_ar
+    region_add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT ret = f32[] add(lhs, rhs)
+    }
+
+    ENTRY test {
+      p0 = f32[10] parameter(0)
+      ar = f32[10] all-reduce-start(p0), replica_groups={}, to_apply=region_add, backend_config={"collective_backend_config":{"backend":"NVSHMEM"}}
+      ROOT ar.done = f32[10] all-reduce-done(ar)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  const HloInstruction* ar_start =
+      module->entry_computation()->root_instruction()->operand(0);
+
+  auto in_place_pairs =
+      HloDataflowAnalysis::GetInPlaceInputOutputPairs(ar_start);
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
+  // For nvshmem allreduce, we expect no aliasing for input and output buffers
+  // therefore empty inplace pairs.
+  EXPECT_EQ(in_place_pairs, expected_pairs);
+}
+
 }  // namespace
 }  // namespace xla
