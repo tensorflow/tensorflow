@@ -512,9 +512,7 @@ xla_test(
     name = "pjrt_c_api_gpu_test",
     srcs = ["pjrt_c_api_gpu_test.cc"],
     backends = ["gpu"],
-    tags = if_google([
-        "config-cuda-only",
-    ]),
+    tags = if_google(["cuda-only"]),
     deps = [
         ":pjrt_c_api_ffi_extension_hdrs",
         ":pjrt_c_api_gpu",
@@ -535,6 +533,7 @@ xla_test(
         "//xla/ffi:ffi_api",
         "//xla/ffi:type_id_registry",
         "//xla/ffi/api:ffi",
+        "//xla/pjrt:pjrt_c_api_client",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_future",
