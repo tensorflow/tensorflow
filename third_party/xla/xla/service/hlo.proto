@@ -113,7 +113,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 92
+// Next ID: 93
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -395,6 +395,10 @@ message HloInstructionProto {
 
   // Accuracy for unary functions with multiple implementations.
   xla.ResultAccuracy result_accuracy = 91;
+
+  // Specifies how IDs in replica_groups and collective_device_list should be
+  // interpreted.
+  CollectiveOpGroupModeProto collective_op_group_mode = 92;
 }
 
 // Serialization of HloComputation.

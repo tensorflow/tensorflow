@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/array.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/collective_device_list.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -330,6 +331,7 @@ class HloParserImpl : public HloParser {
     kResultAccuracy,
     kOriginalValue,
     kOriginalValueRecoveryTable,
+    kMode,
   };
 
   struct AttrConfig {
@@ -590,6 +592,7 @@ class HloParserImpl : public HloParser {
   bool ParseOriginalValue(std::shared_ptr<OriginalValue>& original_value);
   bool ParseOriginalValueRecoveryTable(
       OriginalValueRecoveryTable& original_value_recovery_table);
+  bool ParseCollectiveOpGroupMode(CollectiveOpGroupMode* result);
 
   using AliasingData =
       absl::flat_hash_map<ShapeIndex, HloInputOutputAliasConfig::Alias>;
@@ -1811,6 +1814,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       optional<bool> constrain_layout;
       optional<bool> use_global_device_ids;
       optional<std::vector<int64_t>> dimensions;
+      optional<CollectiveOpGroupMode> collective_op_group_mode;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
       attrs["replica_groups"] = {/*required=*/false,
@@ -1820,19 +1824,33 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
                                    &constrain_layout};
       attrs["use_global_device_ids"] = {/*required=*/false, AttrTy::kBool,
                                         &use_global_device_ids};
+      attrs["mode"] = {/*required=*/false, AttrTy::kMode,
+                       &collective_op_group_mode};
       if (opcode == HloOpcode::kReduceScatter) {
         attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                                &dimensions};
       }
+      const LocTy loc = lexer_.GetLoc();
       if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes, shape)) {
         return nullptr;
+      }
+      if (!collective_op_group_mode.has_value()) {
+        auto mode_or_status = GetCollectiveOpGroupMode(
+            /*has_channel_id=*/channel_id.has_value(),
+            use_global_device_ids.value_or(false));
+        if (!mode_or_status.ok()) {
+          Error(loc, mode_or_status.status().message());
+          return nullptr;
+        }
+        collective_op_group_mode = mode_or_status.value();
       }
       if (opcode == HloOpcode::kAllReduce) {
         return builder->AddInstruction(HloInstruction::CreateAllReduce(
             *shape, operands, *to_apply, device_list,
             constrain_layout ? *constrain_layout : false, channel_id,
-            use_global_device_ids ? *use_global_device_ids : false));
+            use_global_device_ids ? *use_global_device_ids : false,
+            collective_op_group_mode.value()));
       } else if (opcode == HloOpcode::kReduceScatter) {
         return builder->AddInstruction(HloInstruction::CreateReduceScatter(
             *shape, operands, *to_apply, device_list,
@@ -5356,6 +5374,15 @@ bool HloParserImpl::ParseAttributeHelper(
         static_cast<optional<ResultAccuracy>*>(attr_out_ptr)->emplace(result);
         return true;
       }
+      case AttrTy::kMode: {
+        CollectiveOpGroupMode mode;
+        if (!ParseCollectiveOpGroupMode(&mode)) {
+          return false;
+        }
+        static_cast<optional<CollectiveOpGroupMode>*>(attr_out_ptr)
+            ->emplace(mode);
+        return true;
+      }
     }
   }();
   if (!success) {
@@ -6887,6 +6914,23 @@ bool HloParserImpl::ParseRandomDistribution(RandomDistribution* result) {
     return TokenError(
         StrFormat("expects random distribution but sees: %s, error: %s", val,
                   status_or_result.status().message()));
+  }
+  *result = status_or_result.value();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParserImpl::ParseCollectiveOpGroupMode(CollectiveOpGroupMode* result) {
+  VLOG(kDebugLevel) << "ParseCollectiveOpGroupMode";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects collective op group mode");
+  }
+  std::string val = lexer_.GetStrVal();
+  auto status_or_result = StringToCollectiveOpGroupMode(val);
+  if (!status_or_result.ok()) {
+    return TokenError(
+        StrFormat("expects collective op group mode but sees: %s, error: %s",
+                  val, status_or_result.status().message()));
   }
   *result = status_or_result.value();
   lexer_.Lex();

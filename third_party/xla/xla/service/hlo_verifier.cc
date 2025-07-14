@@ -42,6 +42,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -389,6 +390,21 @@ static absl::Status CheckReplicaGroups(HloInstruction* hlo,
   return absl::OkStatus();
 }
 
+static absl::Status CheckCollectiveOpGroupMode(HloInstruction* hlo) {
+  HloAllReduceInstructionBase* ar = Cast<HloAllReduceInstructionBase>(hlo);
+  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                      GetCollectiveOpGroupMode(ar->channel_id().has_value(),
+                                               ar->use_global_device_ids()));
+  TF_RET_CHECK(ar->collective_op_group_mode() == group_mode)
+      << "Instruction has mode="
+      << CollectiveOpGroupModeToString(ar->collective_op_group_mode())
+      << " but should be " << CollectiveOpGroupModeToString(group_mode)
+      << " because use_global_device_ids=" << ar->use_global_device_ids()
+      << " and channel_id is "
+      << (ar->channel_id().has_value() ? "present" : "absent");
+  return absl::OkStatus();
+}
+
 static absl::Status CheckCommonAllGatherInvariants(
     HloInstruction* hlo, int64_t* computed_shard_count) {
   auto ag = Cast<HloAllGatherInstruction>(hlo);
@@ -469,11 +485,10 @@ absl::Status ShapeVerifier::HandleAllGatherDone(HloInstruction* hlo) {
 
 absl::Status ShapeVerifier::HandleAllReduce(HloInstruction* hlo) {
   auto ar = Cast<HloAllReduceInstruction>(hlo);
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
-                      GetCollectiveOpGroupMode(ar->channel_id().has_value(),
-                                               ar->use_global_device_ids()));
-  TF_RETURN_IF_ERROR(
-      CheckReplicaGroups(ar, group_mode, /*uniform_replica_group_size=*/false));
+  TF_RETURN_IF_ERROR(CheckCollectiveOpGroupMode(ar));
+
+  TF_RETURN_IF_ERROR(CheckReplicaGroups(ar, ar->collective_op_group_mode(),
+                                        /*uniform_replica_group_size=*/false));
 
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : hlo->operands()) {
@@ -484,10 +499,8 @@ absl::Status ShapeVerifier::HandleAllReduce(HloInstruction* hlo) {
 
 absl::Status ShapeVerifier::HandleReduceScatter(HloInstruction* hlo) {
   auto ars = Cast<HloReduceScatterInstruction>(hlo);
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
-                      GetCollectiveOpGroupMode(ars->channel_id().has_value(),
-                                               ars->use_global_device_ids()));
-  TF_RETURN_IF_ERROR(CheckReplicaGroups(ars, group_mode));
+  TF_RETURN_IF_ERROR(CheckCollectiveOpGroupMode(ars));
+  TF_RETURN_IF_ERROR(CheckReplicaGroups(ars, ars->collective_op_group_mode()));
   TF_RET_CHECK(ars->scatter_dimension() >= 0);
   TF_RET_CHECK(ars->operand_count() >= 1);
 
@@ -508,7 +521,7 @@ absl::Status ShapeVerifier::HandleReduceScatter(HloInstruction* hlo) {
   int64_t shard_count =
       CeilOfRatio(ars->operand(0)->shape().dimensions(ars->scatter_dimension()),
                   output0_shape.dimensions(ars->scatter_dimension()));
-  int64_t subgroup_size = GetSubgroupSize(ars, group_mode);
+  int64_t subgroup_size = GetSubgroupSize(ars, ars->collective_op_group_mode());
   // If replica and partition count is not explicitly set, it will have a
   // default value of 1, in which case the subgroup_size will be 1 as well. Skip
   // these verification checks in that case.
@@ -527,11 +540,9 @@ absl::Status ShapeVerifier::HandleReduceScatter(HloInstruction* hlo) {
 
 absl::Status ShapeVerifier::HandleAllReduceStart(HloInstruction* hlo) {
   auto ar = Cast<HloAllReduceInstruction>(hlo);
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
-                      GetCollectiveOpGroupMode(ar->channel_id().has_value(),
-                                               ar->use_global_device_ids()));
-  TF_RETURN_IF_ERROR(
-      CheckReplicaGroups(ar, group_mode, /*uniform_replica_group_size=*/false));
+  TF_RETURN_IF_ERROR(CheckCollectiveOpGroupMode(ar));
+  TF_RETURN_IF_ERROR(CheckReplicaGroups(ar, ar->collective_op_group_mode(),
+                                        /*uniform_replica_group_size=*/false));
 
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : hlo->operands()) {
