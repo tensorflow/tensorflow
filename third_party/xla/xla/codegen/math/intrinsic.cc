@@ -31,6 +31,14 @@ limitations under the License.
 
 namespace xla::codegen {
 
+Intrinsic::Type::Type(PrimitiveType type, std::optional<size_t> vector_width) {
+  if (vector_width) {
+    emplace<1>(Vec{type, *vector_width});
+  } else {
+    emplace<0>(Scalar{type});
+  }
+}
+
 template <typename R, typename Scalar, typename Vector>
 static R Visit(Scalar scalar, Vector vector, const Intrinsic::Type* type) {
   if (auto* s = std::get_if<Intrinsic::Scalar>(type)) {
