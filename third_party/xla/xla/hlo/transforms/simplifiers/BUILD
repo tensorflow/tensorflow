@@ -300,6 +300,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:buffer_value",
+        "//xla/service:hlo_value",
         "//xla/service:logical_buffer",
         "//xla/service/heap_simulator",
         "//xla/tsl/platform:errors",
