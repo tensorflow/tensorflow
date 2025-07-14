@@ -1161,6 +1161,11 @@ typedef struct TfLiteRegistration {
   /// NOTE: if the data is already in the desired format, simply implement this
   /// function to return `nullptr` and implement the free function to be a
   /// no-op.
+  ///
+  /// NOTE: For a Delegate kernel, returns `TfLiteKernelInitFailed()` if it
+  /// fails on the initialization. This eventually causes user's API call to
+  /// InterpreterBuilder::operator() or Interpreter::ModifyGraphWithDelegate()
+  /// to return an error.
   void* (*init)(TfLiteContext* context, const char* buffer, size_t length);
 
   /// The pointer `buffer` is the data previously returned by an init
@@ -1498,6 +1503,10 @@ TfLiteRunStep TfLiteTensorGetDataKnownStep(const TfLiteTensor* t);
 /// evaluation step. This makes the shape available earlier for subsequent
 /// operations.
 TfLiteRunStep TfLiteTensorGetShapeKnownStep(const TfLiteTensor* t);
+
+/// Returns a sentinel value to be used as the user_data field of a TfLiteNode
+/// when the kernel initialization fails.
+void* TfLiteKernelInitFailed();
 
 /** @} */
 // Ends `\addtogroup`, it's important for the doc generator that this doesn't
