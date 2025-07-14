@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/emitc.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/lower_cluster_to_runtime_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/runtime_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
