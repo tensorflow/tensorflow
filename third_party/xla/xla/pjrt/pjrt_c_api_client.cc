@@ -466,6 +466,7 @@ PjRtCApiClient::CreateUninitializedBuffer(const Shape& shape,
   args.struct_size = PJRT_Client_CreateUninitializedBuffer_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.client = c_client_.get();
+  args.device = nullptr;
 
   args.shape_dims = shape.dimensions().data();
   args.shape_num_dims = shape.dimensions().size();
