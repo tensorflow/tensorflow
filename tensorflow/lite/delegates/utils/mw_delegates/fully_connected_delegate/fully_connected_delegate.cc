@@ -203,6 +203,7 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
         TF_LITE_KERNEL_LOG(context, "Eval failed: failed to write FLOAT32 input to BRAM.");
         return kTfLiteError;
       }
+      TF_LITE_KERNEL_LOG(context, "Successfully wrote input to BRAM (size: %d)", input_size);
     } else {
       TF_LITE_KERNEL_LOG(context, "Eval failed: unsupported input tensor type: %d. Only FLOAT32 supported.", input_tensor.type);
       return kTfLiteError;
@@ -213,6 +214,7 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
       TF_LITE_KERNEL_LOG(context, "Eval failed: FPGA inference trigger failed.");
       return kTfLiteError;
     }
+    TF_LITE_KERNEL_LOG(context, "FPGA computation completed successfully");
 
     // Read output from output BRAM into output tensor (FLOAT32 only)
     if (output_tensor.type == kTfLiteFloat32) {
@@ -220,6 +222,7 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
         TF_LITE_KERNEL_LOG(context, "Eval failed: failed to read FLOAT32 output from BRAM.");
         return kTfLiteError;
       }
+      TF_LITE_KERNEL_LOG(context, "Successfully read output from BRAM (size: %d)", output_size);
     } else {
       TF_LITE_KERNEL_LOG(context, "Eval failed: unsupported output tensor type: %d. Only FLOAT32 supported.", output_tensor.type);
       return kTfLiteError;
