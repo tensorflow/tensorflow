@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/codegen/math/fptrunc.h"
 
-#include <cstdint>
+#include <optional>
 #include <string>
 
 #include "absl/log/check.h"
@@ -31,12 +31,13 @@ limitations under the License.
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Casting.h"
 #include "xla/codegen/math/intrinsic.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 
 namespace xla::codegen {
 
 std::string Intrinsic::FpTrunc::Name(Type from, Type to) {
-  return absl::StrCat("xla.fptrunc.", from.name(), ".to.", to.name());
+  return absl::StrCat("xla.fptrunc.", from, ".to.", to);
 }
 
 llvm::Function* Intrinsic::FpTrunc::GetOrInsertDeclaration(llvm::Module* module,
@@ -50,14 +51,18 @@ llvm::Function* Intrinsic::FpTrunc::GetOrInsertDeclaration(llvm::Module* module,
 
 // Truncates an f32 value (scalar or vector) to bf16 with correct rounding.
 static llvm::Function* TruncateF32ToBf16(llvm::Module* module,
-                                         int64_t vector_width) {
+                                         Intrinsic::Type from,
+                                         Intrinsic::Type to) {
   llvm::LLVMContext& context = module->getContext();
   llvm::IRBuilder<> builder(context);
+  DCHECK_EQ(from.element_type(), F32);
+  DCHECK_EQ(to.element_type(), BF16);
 
-  // Wraps a scalar type into a vector type if vector_width > 1.
+  // Wraps a scalar type into a vector type if we are building a vector
+  // intrinsic declaration.
   auto vec = [&](llvm::Type* scalar_type) -> llvm::Type* {
-    if (vector_width > 1) {
-      return llvm::VectorType::get(scalar_type, vector_width, false);
+    if (from.vector_width()) {
+      return llvm::VectorType::get(scalar_type, *from.vector_width(), false);
     }
     return scalar_type;
   };
@@ -69,11 +74,6 @@ static llvm::Function* TruncateF32ToBf16(llvm::Module* module,
 
   llvm::FunctionType* function_type =
       llvm::FunctionType::get(bf16_type, {f32_type}, false);
-
-  Intrinsic::Type from =
-      vector_width > 1 ? Intrinsic::V(F32, vector_width) : Intrinsic::S(F32);
-  Intrinsic::Type to =
-      vector_width > 1 ? Intrinsic::V(BF16, vector_width) : Intrinsic::S(BF16);
   llvm::Function* func = llvm::dyn_cast<llvm::Function>(
       module
           ->getOrInsertFunction(Intrinsic::FpTrunc::Name(from, to),
@@ -115,14 +115,14 @@ static llvm::Function* TruncateF32ToBf16(llvm::Module* module,
 }
 
 absl::StatusOr<llvm::Function*> Intrinsic::FpTrunc::CreateDefinition(
-    llvm::Module* module, PrimitiveType from, PrimitiveType to,
-    int64_t vector_width) {
-  if (from == F32 && to == BF16) {
-    return TruncateF32ToBf16(module, vector_width);
+    llvm::Module* module, Type from, Type to) {
+  TF_RETURN_IF_ERROR(VerifySameWidth(from, to));
+
+  if (from.element_type() == F32 && to.element_type() == BF16) {
+    return TruncateF32ToBf16(module, from, to);
   }
 
-  return Internal("Unsupported fptrunc conversion: from=%s to=%s",
-                  ScalarName(from), ScalarName(to));
+  return Internal("Unsupported fptrunc conversion: from=%v to=%v", from, to);
 }
 
 }  // namespace xla::codegen

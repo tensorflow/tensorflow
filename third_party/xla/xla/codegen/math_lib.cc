@@ -223,8 +223,14 @@ class FpextF32ToBf16MathFunction final : public MathFunction {
 
   llvm::Function* CreateDefinition(llvm::Module& module, absl::string_view name,
                                    VectorType vector_type) const override {
-    return Intrinsic::CreateDefinition<Intrinsic::FpTrunc>(&module, F32, BF16,
-                                                           vector_type.width)
+    if (vector_type.width == 1) {
+      return Intrinsic::FpTrunc::CreateDefinition(&module, Intrinsic::S(F32),
+                                                  Intrinsic::S(BF16))
+          .value();
+    }
+    return Intrinsic::FpTrunc::CreateDefinition(
+               &module, Intrinsic::V(F32, vector_type.width),
+               Intrinsic::V(BF16, vector_type.width))
         .value();
   }
 };

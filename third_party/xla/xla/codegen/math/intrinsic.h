@@ -84,14 +84,22 @@ class Intrinsic {
   };
 
   // Intrinsics overloaded on the arguments and result types.
-  struct Type : public std::variant<Scalar, Vec> {
+  class Type : public std::variant<Scalar, Vec> {
+   public:
     using std::variant<Scalar, Vec>::variant;
+
+    Type(PrimitiveType type, std::optional<size_t> vector_width);
 
     std::string name() const;
     bool is_scalar() const;
     bool is_vector() const;
     PrimitiveType element_type() const;
     std::optional<size_t> vector_width() const;
+
+    template <typename Sink>
+    friend void AbslStringify(Sink& sink, const Type& type) {
+      absl::Format(&sink, "%s", type.name());
+    }
   };
 
   // Shortened builders for the scalar and vector types defined above.
