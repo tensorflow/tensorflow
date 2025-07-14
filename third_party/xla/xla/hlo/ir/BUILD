@@ -59,6 +59,7 @@ cc_library(
     ],
     deps = [
         ":backend_config",
+        ":collective_op_group_mode",
         ":hlo_op_metadata",
         ":hlo_sharding",
         ":ptrvec",
@@ -371,6 +372,31 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/tsl/platform:test_main",
         "@com_google_benchmark//:benchmark",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "collective_op_group_mode",
+    srcs = ["collective_op_group_mode.cc"],
+    hdrs = ["collective_op_group_mode.h"],
+    deps = [
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "collective_op_group_mode_test",
+    srcs = ["collective_op_group_mode_test.cc"],
+    deps = [
+        ":collective_op_group_mode",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
     ],
 )
