@@ -54,6 +54,14 @@ class AbstractTrackedDeviceBuffer {
 
   // Asynchronously frees all memory.
   virtual void Delete(PjRtMemorySpace* memory_space) = 0;
+
+  // Clones an abstract buffer with an additional control dependency.
+  virtual absl::StatusOr<std::unique_ptr<AbstractTrackedDeviceBuffer>>
+  CloneWithControlDependency(PjRtMemorySpace* memory_space,
+                             PjRtFuture<> dependency) {
+    return absl::UnimplementedError(
+        "DonateWithControlDependency is not supported.");
+  }
 };
 
 class CommonPjRtBuffer : public PjRtBuffer {
