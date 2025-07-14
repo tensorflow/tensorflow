@@ -126,6 +126,58 @@ class RewriteCbrtPattern : public mlir::OpRewritePattern<mlir::math::CbrtOp> {
   }
 };
 
+// Use a more numerically stable implementation of expm1(x).
+// |x| > 0.5: exp(x) - 1
+// |x| < 0.5: tanh(x/2) * (exp(x)+1)
+class RewriteExpm1Pattern : public mlir::OpRewritePattern<mlir::math::ExpM1Op> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::math::ExpM1Op op, mlir::PatternRewriter& rewriter) const override {
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    mlir::Type type = op.getType();
+    mlir::Value one =
+        b.create<mlir::arith::ConstantOp>(b.getFloatAttr(type, 1.0));
+    mlir::Value half =
+        b.create<mlir::arith::ConstantOp>(b.getFloatAttr(type, 0.5));
+    mlir::Value zero =
+        b.create<mlir::arith::ConstantOp>(b.getFloatAttr(type, 0.0));
+    mlir::Value x = op.getOperand();
+
+    mlir::Value exp_x = b.create<mlir::math::ExpOp>(x, op.getFastmathAttr());
+
+    mlir::Value exp_x_minus_1 =
+        b.create<mlir::arith::SubFOp>(exp_x, one, op.getFastmathAttr());
+
+    mlir::Value half_x =
+        b.create<mlir::arith::MulFOp>(x, half, op.getFastmathAttr());
+    mlir::Value tanh_half_x =
+        b.create<mlir::math::TanhOp>(half_x, op.getFastmathAttr());
+    mlir::Value exp_x_plus_1 =
+        b.create<mlir::arith::AddFOp>(exp_x, one, op.getFastmathAttr());
+    mlir::Value small_result = b.create<mlir::arith::MulFOp>(
+        tanh_half_x, exp_x_plus_1, op.getFastmathAttr());
+
+    mlir::Value abs_x = b.create<mlir::math::AbsFOp>(x, op.getFastmathAttr());
+    mlir::Value x_is_large = b.create<mlir::arith::CmpFOp>(
+        mlir::arith::CmpFPredicate::OGT, abs_x, half);
+    mlir::Value normal_result = b.create<mlir::arith::SelectOp>(
+        x_is_large, exp_x_minus_1, small_result);
+
+    // half_x can underflow resulting in zero.
+    // TODO(willfroom): Do we actually need this check? tanh(0) == 0.
+    mlir::Value half_x_is_zero = b.create<mlir::arith::CmpFOp>(
+        mlir::arith::CmpFPredicate::OEQ, half_x, zero);
+    mlir::Value result =
+        b.create<mlir::arith::SelectOp>(half_x_is_zero, x, normal_result);
+
+    rewriter.replaceOp(op, result);
+    return mlir::success();
+  }
+};
+
 class ExpandFloatOpsPass
     : public impl::ExpandFloatOpsPassBase<ExpandFloatOpsPass> {
  public:
@@ -133,7 +185,8 @@ class ExpandFloatOpsPass
 
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
-    patterns.add<RewriteExtFPattern, RewriteCbrtPattern>(&getContext());
+    patterns.add<RewriteExtFPattern, RewriteCbrtPattern, RewriteExpm1Pattern>(
+        &getContext());
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
