@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/lru_cache.h"
 
+#include <cstdint>
 #include <random>
 
 #include "xla/hlo/testlib/test.h"
@@ -112,6 +113,52 @@ TEST(LRUCache, RandomInsertions) {
     });
     EXPECT_TRUE(k == -1 || k == key);
     EXPECT_EQ(v, key * 37);
+  }
+}
+
+struct Int {
+  int val;
+};
+
+struct IntHash {
+  uint64_t operator()(Int*) const { return 0; }
+};
+
+struct IntEq {
+  bool operator()(Int* x, Int* y) const { return x->val == y->val; }
+};
+
+TEST(LRUCache, ChangingKeys) {
+  // This test checks the behavior of LRUCache in the face of changing keys.
+  // Technically, changing keys leads to undefined behavior, but practically, we
+  // are checking that this does not crash. The workload itself is written
+  // pathologically to trigger a previous bug.
+  //
+  // The following two blocks differ only in whether they assign b.val to a.val
+  // or vice versa. One of the two used to crash.
+
+  {
+    LRUCache<Int*, int, IntHash, IntEq>::LRUList list(2);
+    LRUCache<Int*, int, IntHash, IntEq> cache(&list);
+    Int a{1};
+    Int b{2};
+    Int c{3};
+    cache.GetOrCreateIfAbsent(&a, [](Int*) { return 1; });
+    cache.GetOrCreateIfAbsent(&b, [](Int*) { return 2; });
+    a.val = b.val;
+    cache.GetOrCreateIfAbsent(&c, [](Int*) { return 3; });
+  }
+
+  {
+    LRUCache<Int*, int, IntHash, IntEq>::LRUList list(2);
+    LRUCache<Int*, int, IntHash, IntEq> cache(&list);
+    Int a{1};
+    Int b{2};
+    Int c{3};
+    cache.GetOrCreateIfAbsent(&a, [](Int*) { return 1; });
+    cache.GetOrCreateIfAbsent(&b, [](Int*) { return 2; });
+    b.val = a.val;
+    cache.GetOrCreateIfAbsent(&c, [](Int*) { return 3; });
   }
 }
 
