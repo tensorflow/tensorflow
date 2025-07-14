@@ -23,13 +23,18 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
+#include "absl/base/attributes.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/grappler/costs/cost_estimator.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/costs/op_context.h"
+#include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
