@@ -20,9 +20,9 @@ args = parser.parse_args()
 # Enable logging if requested
 if args.enable_logging:
     os.environ['TFLITE_LOG_LEVEL'] = '1'
-    print("🔍 TensorFlow Lite logging enabled")
+    print(" TensorFlow Lite logging enabled")
 else:
-    print("💡 Use --enable-logging to see detailed delegate logs")
+    print(" Use --enable-logging to see detailed delegate logs")
 
 print(f"Using delegate: {args.delegate_path}")
 print(f"Using model: {args.model_path}")
@@ -41,9 +41,9 @@ if not os.path.exists(args.delegate_path):
 print("Loading delegate...")
 try:
     delegate = tf.lite.experimental.load_delegate(args.delegate_path)
-    print(f"✅ Successfully loaded delegate from {args.delegate_path}")
+    print(f" Successfully loaded delegate from {args.delegate_path}")
 except Exception as e:
-    print(f"❌ Failed to load delegate: {e}")
+    print(f" Failed to load delegate: {e}")
     sys.exit(1)
 
 # Load TFLite model with delegate
@@ -51,15 +51,15 @@ print("Loading TFLite model...")
 try:
     interpreter = tf.lite.Interpreter(model_path=args.model_path, experimental_delegates=[delegate])
     interpreter.allocate_tensors()
-    print("✅ Successfully loaded model with delegate")
+    print(" Successfully loaded model with delegate")
 except Exception as e:
-    print(f"❌ Failed to load model with delegate: {e}")
+    print(f" Failed to load model with delegate: {e}")
     sys.exit(1)
 
 input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 
-print(f"\n📊 Model Information:")
+print(f"\n Model Information:")
 print(f"Input details: {input_details}")
 print(f"Output details: {output_details}")
 
@@ -72,12 +72,12 @@ print(f"  Output: {output_shape}")
 
 # Check if shapes are compatible with FPGA (max 32x32)
 if len(input_shape) > 2 or len(output_shape) > 2:
-    print(f"⚠️  WARNING: Tensor rank > 2 may not be supported by FPGA")
+    print(f"  WARNING: Tensor rank > 2 may not be supported by FPGA")
 if input_shape[1] > 32 or output_shape[1] > 32:
-    print(f"⚠️  WARNING: Tensor dimensions > 32 may not be supported by FPGA")
+    print(f"  WARNING: Tensor dimensions > 32 may not be supported by FPGA")
 
 # Run inference on synthetic data
-print(f"\n🚀 Running {args.num_samples} inference samples...")
+print(f"\n Running {args.num_samples} inference samples...")
 try:
     for i in range(args.num_samples):
         input_shape = input_details[0]['shape']

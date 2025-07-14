@@ -132,6 +132,7 @@ void FpgaBramDriver::write_to_bram(const std::string& bram_name, float* ptr, siz
     if (ptr != nullptr) {
         std::memcpy(bram_ptr, ptr, bytes_to_write);
     }
+    std::cout << "Data written to BRAM: " << bram_name << " successfully." << std::endl;
 }
 float* FpgaBramDriver::read_from_bram(const std::string& bram_name) {
     std::cout << "Reading from BRAM: " << bram_name << std::endl;
@@ -202,8 +203,10 @@ int FpgaBramDriver::read_output_from_bram(float* output, const int size) {
         return -1;
     }
     float* bram_output = read_from_bram("output_bram");
+    std::cout << "Entering If : going to memcpy" << std::endl;
     if (bram_output) {
         std::memcpy(output, bram_output, size * sizeof(float));
+        std::cout << "memcpy successful" << std::endl;
         return 0;
     }
     return -1;
