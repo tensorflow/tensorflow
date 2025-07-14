@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/tools/hlo_opt/opt_lib.h"
+#include "xla/hlo/transforms/host_offloader.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/service/batchnorm_expander.h"
@@ -168,6 +169,7 @@ class CpuOptProvider : public CompiledOptProvider {
         TransposeFolding::NeverFoldTranspose);
     RegisterPass<cpu::ConvCanonicalization>(&target_machine_features);
     RegisterPass<HloMemoryScheduler>(alias_info_.get(), size_func);
+    RegisterPass<HostOffloader>(alias_info_.get());
 
     // Fails to register if module does not have entry computation layout
     if (module.config().has_entry_computation_layout()) {

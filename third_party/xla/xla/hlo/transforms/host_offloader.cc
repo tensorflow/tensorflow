@@ -854,7 +854,7 @@ absl::StatusOr<bool> HostOffloader::ApplySchedulingFix(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module));
+                      HloAliasAnalysis::Run(module, alias_info_));
   auto uses_parameter_buffer = [&](HloInstruction* hlo) {
     for (const HloBuffer* buffer : alias_analysis->ComputeBuffersAt(hlo)) {
       for (const HloValue* value : buffer->values()) {

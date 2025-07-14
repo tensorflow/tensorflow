@@ -2118,6 +2118,7 @@ cc_library(
         "rocm-only",
     ],
     deps = [
+        ":alias_info",
         ":cublas_padding_requirements",
         ":gpu_compiler",
         ":target_constants",
