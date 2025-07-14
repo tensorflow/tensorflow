@@ -71,6 +71,12 @@ struct AllReduceKernelParams {
   int64_t num_elements_per_rank;
   // Elements to be processed by each block.
   int64_t num_elements_per_block;
+  // Start offset of the rank responsible for accumulating the elements.
+  // This is equal to `rank * num_elements_per_rank`.
+  int64_t rank_offset;
+  // Ranks rotated by `rank` % `num_ranks` to circumvent all GPUs reading from
+  // the same location simultaneously. Index 0 is the rank itself.
+  std::array<int64_t, kMaxNumAllReduceInputPtrs> rotated_ranks;
   // Signal flags buffers of all devices ordered by rank.
   std::array<RestrictedPtr<uint32_t>, kMaxNumAllReduceInputPtrs>
       signal_flags_buffers;
