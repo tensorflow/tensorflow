@@ -33,10 +33,6 @@ HloPassPipeline FusionPipeline(
     tsl::thread::ThreadPool* thread_pool,
     const se::DeviceDescription& gpu_device_info);
 
-// Function wrapper around the horizontal XLA GPU fusion pipeline.
-HloPassPipeline HorizontalFusionPipeline(
-    const se::DeviceDescription& gpu_device_info);
-
 }  // namespace gpu
 }  // namespace xla
 
