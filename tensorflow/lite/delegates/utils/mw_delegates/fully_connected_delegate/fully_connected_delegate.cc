@@ -236,6 +236,7 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
 
     // Read output from output BRAM into output tensor (FLOAT32 only)
     if (output_tensor.type == kTfLiteFloat32) {
+      std::cout << "output_tensor.data.f address: 0x" << std::hex << output_tensor.data.f << std::endl;
       if (fpga_bram_driver_->read_output_from_bram(output_tensor.data.f, output_features)) {
         TF_LITE_KERNEL_LOG(context, "Eval failed: failed to read FLOAT32 output from BRAM.");
         return kTfLiteError;
