@@ -19,7 +19,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
@@ -27,13 +29,44 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
 #include "xla/python/ifrt/ir/version.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace ifrt {
+
+namespace {
+
+std::string GetDotDumpDir(std::string dot_graph_dump_to) {
+  if (dot_graph_dump_to == "sponge") {
+    if (!tsl::io::GetTestUndeclaredOutputsDir(&dot_graph_dump_to)) {
+      LOG(ERROR) << "compile option `dot_graph_dump_to=sponge` is specified "
+                    "outside of a test; ignoring the value";
+      return "";
+    }
+  }
+  return dot_graph_dump_to;
+}
+
+IfrtToDotPassOptions GetIfrtToDotPassOptions(
+    const IfrtIRCompileOptions& compile_options) {
+  return IfrtToDotPassOptions{
+      /*dot_graph_dump_to=*/GetDotDumpDir(compile_options.dot_graph_dump_to),
+      /*dot_graph_min_executable_peak_memory_bytes=*/
+      compile_options.dot_graph_min_executable_peak_memory_bytes,
+      /*dot_graph_min_executable_flops=*/
+      compile_options.dot_graph_min_executable_flops,
+      /*dot_graph_min_per_device_transfer_size_bytes=*/
+      compile_options.dot_graph_min_per_device_transfer_size_bytes};
+}
+
+}  // namespace
 
 void createIfrtToOutlinedAtomProgramsPipeline(
     mlir::OpPassManager& pm,
@@ -68,6 +101,59 @@ void createIfrtCompileXlaPreprocessingPipeline(mlir::OpPassManager& pm) {
   pm.addPass(createIfrtRemoveIfrtAttrsPass());
 }
 
+absl::Status createOutlinedAtomProgramsToCompiledPipeline(
+    mlir::OpPassManager& pm, std::shared_ptr<AtomProgramCompiler> compiler,
+    const OutlinedAtomProgramsToCompiledPipelineOptions& options,
+    std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options,
+    std::shared_ptr<AtomExecutableMap> atom_executable_map,
+    std::shared_ptr<AtomExecutableMap> bound_executable_map) {
+  IfrtToDotPassOptions ifrt_to_dot_pass_options =
+      GetIfrtToDotPassOptions(*compile_options);
+  std::shared_ptr<AtomExecutableMap> atom_executable_map_copy;
+  if (!ifrt_to_dot_pass_options.dot_graph_dump_to.empty()) {
+    // We make a shallow copy here to avoid making a shallow copy of the map if
+    // dot dumping is not enabled.
+    atom_executable_map_copy = atom_executable_map;
+  }
+  pm.addPass(createIfrtVerifyDeviceTypeConsistencyPass(
+      {/*platform_names=*/llvm::to_vector(options.platform_names)}));
+  if (!options.propagate_shardings) {
+    pm.addPass(createIfrtLowerMpmdReshardToCallPass());
+  }
+  pm.addPass(createIfrtPrecompileAtomProgramPreprocessingPass(
+      {/*platform_names=*/llvm::to_vector(options.platform_names)}));
+  if (options.propagate_shardings) {
+    pm.addPass(createIfrtCompileAndPropagateShardingsPass(
+        compiler, compile_options->compile_options_overrides,
+        atom_executable_map));
+    pm.addNestedPass<mlir::func::FuncOp>(createIfrtMergeReshardsPass());
+    pm.addPass(createIfrtReshardToCopyArraysPass());
+    pm.addPass(createIfrtLowerMpmdReshardToCallPass());
+    // Run again the compilation pass so that reshards that were converted to
+    // programs are compiled as well. The pass will be a no-op for the other
+    // atom programs because they have already dispatched for compilation.
+    pm.addPass(createIfrtCompileAndPropagateShardingsPass(
+        std::move(compiler), compile_options->compile_options_overrides,
+        std::move(atom_executable_map)));
+  } else {
+    pm.addPass(createIfrtCompileAtomProgramPass(
+        std::move(compiler), compile_options->compile_options_overrides,
+        std::move(atom_executable_map)));
+  }
+  pm.addPass(mlir::createSymbolDCEPass());
+
+  pm.addPass(createIfrtVerifyBoundExternalLoadedExecutablePass(
+      std::move(bound_executable_map)));
+
+  if (!ifrt_to_dot_pass_options.dot_graph_dump_to.empty()) {
+    TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(
+        ifrt_to_dot_pass_options.dot_graph_dump_to));
+    pm.addPass(createIfrtToDotPass(std::move(ifrt_to_dot_pass_options),
+                                   std::move(atom_executable_map_copy)));
+  }
+  return absl::OkStatus();
+}
+
 void createIfrtToVersionedPipeline(mlir::OpPassManager& pm,
                                    std::string ifrt_target_version,
                                    std::string vhlo_target_version,
@@ -95,17 +181,19 @@ void createIfrtFromVersionedPipeline(
 
 void registerIfrtPassesAndPipelines(
     std::shared_ptr<AtomProgramCompiler> compiler,
-    std::shared_ptr<
-        absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
-        compile_options_overrides,
+    std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options,
     std::shared_ptr<AtomExecutableMap> atom_executable_map,
     std::shared_ptr<AtomExecutableMap> bound_executable_map) {
   registerIfrtIrPasses();
-  registerIfrtCompileAtomProgramPass(compiler, compile_options_overrides,
+  registerIfrtCompileAtomProgramPass(compiler,
+                                     compile_options->compile_options_overrides,
                                      atom_executable_map);
   registerIfrtCompileAndPropagateShardingsPass(
-      compiler, compile_options_overrides, atom_executable_map);
+      compiler, compile_options->compile_options_overrides,
+      atom_executable_map);
   registerIfrtVerifyBoundExternalLoadedExecutablePass(bound_executable_map);
+  registerIfrtToDotPass(GetIfrtToDotPassOptions(*compile_options),
+                        atom_executable_map);
   mlir::PassPipelineRegistration<IfrtToOutlinedAtomProgramsPipelineOptions>(
       "ifrt-to-outlined-atom-programs-pipeline",
       "Runs passes that do not require compilation-time information",
@@ -118,6 +206,19 @@ void registerIfrtPassesAndPipelines(
       "ifrt-compile-xla-preprocessing-pipeline",
       "Run passes to lower an IFRT XLA program for XLA compilation",
       createIfrtCompileXlaPreprocessingPipeline);
+  // Do not move to lambda captures because the pass pipeline registration is
+  // invoked for each module in a test file.
+  mlir::PassPipelineRegistration<OutlinedAtomProgramsToCompiledPipelineOptions>(
+      "ifrt-outlined-atom-programs-to-compiled-pipeline",
+      "Runs passes to compile IFRT IR programs with outlined atom programs",
+      [compiler, compile_options, atom_executable_map, bound_executable_map](
+          mlir::OpPassManager& pm,
+          const OutlinedAtomProgramsToCompiledPipelineOptions&
+              options) mutable {
+        TF_CHECK_OK(createOutlinedAtomProgramsToCompiledPipeline(
+            pm, compiler, options, compile_options, atom_executable_map,
+            bound_executable_map));
+      });
 }
 
 }  // namespace ifrt
