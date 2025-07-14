@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Transforms/WalkPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -68,17 +69,30 @@ SmallVector<uint32_t> GetDimsToSqueeze(RankedTensorType type) {
   return result;
 }
 
-// If all users of an op are squeeze_dims with the same axis, return it.
-std::optional<uint32_t> GetSingleSqueezeUserAxis(Operation* op) {
-  std::optional<uint32_t> axis;
+// Returns the axis of first squeeze_dims user.
+std::optional<uint32_t> GetSqueezeDimsUserAxis(Operation* op) {
   for (Operation* user : op->getUsers()) {
-    auto op = dyn_cast<SqueezeDimsOp>(user);
-    if (!op || op.getAxis() != axis.value_or(op.getAxis())) {
-      return std::nullopt;
+    if (auto op = dyn_cast<SqueezeDimsOp>(user); op) {
+      return op.getAxis();
     }
-    axis = op.getAxis();
   }
-  return axis;
+  return std::nullopt;
+}
+
+// Replaces 'op' with 'value', which is the op result squeezed along 'axis'.
+void ReplaceOpWithExpandDimsOf(PatternRewriter& rewriter, Operation* op,
+                               Value value, uint32_t axis) {
+  // Replace all squeeze_dims users with the new value.
+  for (Operation* user : make_early_inc_range(op->getUsers())) {
+    if (auto op = dyn_cast<SqueezeDimsOp>(user); op && op.getAxis() == axis) {
+      rewriter.replaceOp(user, value);
+    }
+  }
+  // If any users remain, replace the op with expand_dims.
+  if (!op->use_empty()) {
+    rewriter.replaceOpWithNewOp<ExpandDimsOp>(op, op->getResult(0).getType(),
+                                              value, axis);
+  }
 }
 
 // Sets the insertion point at the given op and returns the guard.
@@ -177,10 +191,9 @@ Value SqueezeMakeTensorPtr(PatternRewriter& rewriter, MakeTensorPtrOp op,
 // Folds squeeze_dims into tt.load(tt.make_tensor_ptr).
 // TODO(csigg): Add support for tt.load(tt.make_tensor_descriptor).
 LogicalResult FoldSqueezeDimsOfLoad(LoadOp op, PatternRewriter& rewriter) {
-  std::optional<uint32_t> axis = GetSingleSqueezeUserAxis(op);
+  std::optional<uint32_t> axis = GetSqueezeDimsUserAxis(op);
   if (!axis) {
-    return rewriter.notifyMatchFailure(
-        op, "Not all users are equivalent squeeze_dims.");
+    return rewriter.notifyMatchFailure(op, "No squeeze_dims users.");
   }
   auto make_tensor_ptr = op.getPtr().getDefiningOp<MakeTensorPtrOp>();
   if (!make_tensor_ptr) {
@@ -193,10 +206,7 @@ LogicalResult FoldSqueezeDimsOfLoad(LoadOp op, PatternRewriter& rewriter) {
   Value new_load = rewriter.create<LoadOp>(
       op.getLoc(), pointer, SqueezeBoundaryCheck(op.getBoundaryCheck(), *axis),
       op.getPadding(), op.getCache(), op.getEvict(), op.getIsVolatile());
-
-  for (Operation* user : make_early_inc_range(op->getUsers())) {
-    rewriter.replaceOp(user, new_load);
-  }
+  ReplaceOpWithExpandDimsOf(rewriter, op, new_load, *axis);
   return success();
 }
 
@@ -260,31 +270,16 @@ class PushSqueezeDimsUpThroughElementwise final
       return rewriter.notifyMatchFailure(op, "Expected single result.");
     }
 
-    uint32_t axis;
-    if (isPure(op)) {
-      auto range = map_range(op->getUsers(), [](const Operation* user) {
-        return dyn_cast<SqueezeDimsOp>(user);
-      });
-      auto it = std::find_if(range.begin(), range.end(),
-                             [](Operation* user) { return user; });
-      if (it == range.end()) {
-        return rewriter.notifyMatchFailure(op, "Expected squeeze_dims user.");
-      }
-      axis = (*it).getAxis();
-    } else {
-      auto axis_or = GetSingleSqueezeUserAxis(op);
-      if (!axis_or) {
-        return rewriter.notifyMatchFailure(
-            op, "Not all users are equivalent squeeze_dims.");
-      }
-      axis = *axis_or;
+    std::optional<uint32_t> axis = GetSqueezeDimsUserAxis(op);
+    if (!axis) {
+      return rewriter.notifyMatchFailure(op, "No squeeze_dims users.");
     }
 
     SmallVector<Value> operands;
     operands.reserve(op->getOperands().size());
     for (Value operand : op->getOperands()) {
       if (isa<RankedTensorType>(operand.getType())) {
-        operand = SqueezeTensorValue(rewriter, operand, axis);
+        operand = SqueezeTensorValue(rewriter, operand, *axis);
       }
       operands.push_back(operand);
     }
@@ -293,14 +288,9 @@ class PushSqueezeDimsUpThroughElementwise final
     state.addOperands(operands);
     state.addAttributes(op->getAttrs());
     auto type = cast<RankedTensorType>(op->getResult(0).getType());
-    state.addTypes(SqueezeTensorType(type, axis));
+    state.addTypes(SqueezeTensorType(type, *axis));
     Operation* new_op = rewriter.create(state);
-    for (Operation* user : make_early_inc_range(op->getUsers())) {
-      if (auto op = dyn_cast<SqueezeDimsOp>(user); op && op.getAxis() == axis) {
-        rewriter.replaceOp(user, new_op->getResults());
-      }
-    }
-
+    ReplaceOpWithExpandDimsOf(rewriter, op, new_op->getResult(0), *axis);
     return success();
   }
 };
@@ -321,7 +311,9 @@ LogicalResult PushSqueezeDimsUpThroughBroadcast(SqueezeDimsOp op,
 
   OpBuilder::InsertionGuard guard = SetInsertionPoint(rewriter, broadcast);
   Value value = SqueezeTensorValue(rewriter, broadcast.getSrc(), op.getAxis());
-  rewriter.replaceOpWithNewOp<BroadcastOp>(op, op.getType(), value);
+  Value new_broadcast =
+      rewriter.create<BroadcastOp>(broadcast.getLoc(), op.getType(), value);
+  ReplaceOpWithExpandDimsOf(rewriter, broadcast, new_broadcast, op.getAxis());
   return success();
 }
 
@@ -351,7 +343,8 @@ LogicalResult PushSqueezeDimsUpThroughTrans(SqueezeDimsOp op,
 
   OpBuilder::InsertionGuard guard = SetInsertionPoint(rewriter, trans);
   Value value = SqueezeTensorValue(rewriter, trans.getSrc(), src_axis);
-  rewriter.replaceOpWithNewOp<TransOp>(op, value, new_order);
+  Value new_trans = rewriter.create<TransOp>(trans.getLoc(), value, new_order);
+  ReplaceOpWithExpandDimsOf(rewriter, trans, new_trans, dst_axis);
   return success();
 }
 
@@ -377,7 +370,9 @@ LogicalResult PushSqueezeDimsUpThroughJoin(SqueezeDimsOp op,
     operands.push_back(SqueezeTensorValue(rewriter, operand, op.getAxis()));
   }
 
-  rewriter.replaceOpWithNewOp<JoinOp>(op, op.getType(), operands);
+  Value new_join =
+      rewriter.create<JoinOp>(join.getLoc(), op.getType(), operands);
+  ReplaceOpWithExpandDimsOf(rewriter, join, new_join, op.getAxis());
   return success();
 }
 
@@ -406,10 +401,12 @@ LogicalResult PushSqueezeDimsUpThroughReduce(SqueezeDimsOp op,
     operands.push_back(SqueezeTensorValue(rewriter, operand, squeeze_axis));
   }
 
-  auto new_reduce = rewriter.replaceOpWithNewOp<ReduceOp>(
-      op, op.getType(), operands, reduce_axis);
+  auto new_reduce = rewriter.create<ReduceOp>(reduce.getLoc(), op.getType(),
+                                              operands, reduce_axis);
   rewriter.cloneRegionBefore(reduce->getRegion(0), new_reduce->getRegion(0),
                              new_reduce->getRegion(0).begin());
+  ReplaceOpWithExpandDimsOf(rewriter, reduce, new_reduce->getResult(0),
+                            op.getAxis());
   return success();
 }
 
@@ -517,9 +514,7 @@ class TritonXLASqueezeDimsPass
     if (finalize_) {
       RewritePatternSet patterns(&getContext());
       patterns.add(SqueezeDimsToReshape);
-      if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
-        return signalPassFailure();
-      }
+      walkAndApplyPatterns(getOperation(), std::move(patterns));
     }
   }
 };
