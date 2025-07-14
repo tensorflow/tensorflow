@@ -50,7 +50,7 @@ TfLiteOperator* CreateDelegateKernelRegistration(
         const TfLiteOpaqueDelegateParams* params =
             reinterpret_cast<const TfLiteOpaqueDelegateParams*>(buffer);
         if (params == nullptr) {
-          return nullptr;
+          return TfLiteKernelInitFailed();
         }
         auto* delegate_data = reinterpret_cast<SimpleOpaqueDelegateInterface*>(
             params->delegate_data);
@@ -58,7 +58,7 @@ TfLiteOperator* CreateDelegateKernelRegistration(
             delegate_data->CreateDelegateKernelInterface());
         if (delegate_kernel &&
             delegate_kernel->Init(context, params) != kTfLiteOk) {
-          return nullptr;
+          return TfLiteKernelInitFailed();
         }
         return delegate_kernel.release();
       });
