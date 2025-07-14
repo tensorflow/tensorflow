@@ -130,6 +130,7 @@ void FpgaBramDriver::write_to_bram(const std::string& bram_name, float* ptr, siz
     }
 
     if (ptr != nullptr) {
+        std::cout << "bram_ptr address: 0x" << std::hex << bram_ptr << " ptr address: 0x" << std::hex << ptr << std::endl;
         std::memcpy(bram_ptr, ptr, bytes_to_write);
     }
     std::cout << "Data written to BRAM: " << bram_name << " successfully." << std::endl;
