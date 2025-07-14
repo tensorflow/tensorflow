@@ -15,8 +15,14 @@ limitations under the License.
 
 #include "xla/tsl/platform/default/logging.h"
 
+#include <atomic>
+#include <cassert>
+#include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <limits>
+#include <ostream>
+#include <vector>
 
 // TODO(b/142492876): Avoid depending on absl internal.
 #include "absl/base/internal/cycleclock.h"
@@ -29,7 +35,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env_time.h"
-#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 
 #if defined(PLATFORM_POSIX_ANDROID)
 #include <android/log.h>
@@ -44,7 +50,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <queue>
-#include <unordered_map>
 
 namespace tsl {
 
@@ -303,7 +308,7 @@ int MaxVLogLevelFromEnv() {
 LogMessage::LogMessage(const char* fname, int line, absl::LogSeverity severity)
     : fname_(fname), line_(line), severity_(severity) {}
 
-LogMessage& LogMessage::AtLocation(const char* fname, int line) {
+LogMessage& LogMessage::AtLocation(absl::string_view fname, int line) {
   fname_ = fname;
   line_ = line;
   return *this;
