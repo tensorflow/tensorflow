@@ -72,11 +72,11 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
   }
   // Initialize FPGA drivers once for all nodes
   try {
-    fpga_ip_driver_->initialize_fpga();
+    // Note: FPGA IP driver is already initialized in constructor
     bool clear_bram = false;
     fpga_bram_driver_->initialize_bram(clear_bram);
   } catch (const std::exception& e) {
-    TF_LITE_KERNEL_LOG(context, "FPGA/BRAM initialization failed: %s\n", e.what());
+    TF_LITE_KERNEL_LOG(context, "BRAM initialization failed: %s\n", e.what());
     return kTfLiteError;
   }
   
