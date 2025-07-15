@@ -74,12 +74,6 @@ class NvshmemCollectiveThunk : public Thunk {
  private:
   bool IsAsync() const { return async_events_ != nullptr; }
   std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
-
-  // The nvshmem barrier needs to be called by the very first nvshmem collective
-  // of each iteration of running an executable to make sure the buffers are
-  // ready. We will call barrier in thunk init and set it back to false after
-  // execution.
-  bool barrier_called_;
 };
 
 //===----------------------------------------------------------------------===//
