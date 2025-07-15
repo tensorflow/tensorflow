@@ -86,6 +86,15 @@ class KernelArguments {
 
   const std::vector<KernelArgument>& args() const { return args_; }
 
+  std::vector<BufferAllocation::Slice> GetArgumentBufferSlices() const {
+    std::vector<BufferAllocation::Slice> arg_slices;
+    arg_slices.reserve(args_.size());
+    for (const KernelArgument& arg : args_) {
+      arg_slices.push_back(arg.slice());
+    }
+    return arg_slices;
+  }
+
  private:
   explicit KernelArguments(std::vector<KernelArgument> args,
                            const BufferAlignment& buffer_alignment,
