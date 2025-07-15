@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 
 #include <gtest/gtest.h>
-#include "absl/log/log.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/hlo_cse.h"
