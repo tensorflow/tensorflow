@@ -46,7 +46,7 @@ absl::Status ReplicaOrPartitionIdThunk::ExecuteOnStream(
 
 absl::StatusOr<ThunkProto> ReplicaIdThunk::ToProto() const {
   ThunkProto proto;
-  TF_ASSIGN_OR_RETURN(*proto.mutable_thunk_info(), GetThunkInfoProto());
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   auto* replica_id_thunk_proto = proto.mutable_replica_id_thunk();
   TF_ASSIGN_OR_RETURN(*replica_id_thunk_proto->mutable_dest_buffer(),
@@ -65,7 +65,7 @@ absl::StatusOr<std::unique_ptr<ReplicaIdThunk>> ReplicaIdThunk::FromProto(
 
 absl::StatusOr<ThunkProto> PartitionIdThunk::ToProto() const {
   ThunkProto proto;
-  TF_ASSIGN_OR_RETURN(*proto.mutable_thunk_info(), GetThunkInfoProto());
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   auto* partition_id_thunk_proto = proto.mutable_partition_id_thunk();
   TF_ASSIGN_OR_RETURN(*partition_id_thunk_proto->mutable_dest_buffer(),

@@ -108,7 +108,7 @@ TriangularSolveThunk::FromProto(
 
 absl::StatusOr<ThunkProto> TriangularSolveThunk::ToProto() const {
   ThunkProto proto;
-  TF_ASSIGN_OR_RETURN(*proto.mutable_thunk_info(), GetThunkInfoProto());
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   TriangularSolveThunkProto* triangular_solve_thunk_proto =
       proto.mutable_triangular_solve_thunk();

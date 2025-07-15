@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {

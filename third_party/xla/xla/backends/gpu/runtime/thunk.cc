@@ -408,19 +408,19 @@ absl::StatusOr<ThunkProto> Thunk::ToProto() const {
       typeid(*this).name()));
 }
 
-absl::StatusOr<ThunkInfoProto> Thunk::GetThunkInfoProto() const {
-  ThunkInfoProto proto;
-  proto.set_execution_stream_id(execution_stream_id_.value());
-  proto.set_profile_annotation(profile_annotation_);
-  return proto;
-}
-
 absl::StatusOr<GpuCollectives* absl_nonnull> Thunk::GetGpuCollectives(
     CollectiveExecuteParams const& params) {
   if (params.collectives == nullptr) {
     return Internal("Collectives API is not provided");
   }
   return params.collectives;
+}
+
+ThunkInfoProto Thunk::ThunkInfo::ToProto() const {
+  ThunkInfoProto proto;
+  proto.set_profile_annotation(profile_annotation);
+  proto.set_execution_stream_id(execution_stream_id.value());
+  return proto;
 }
 }  // namespace gpu
 }  // namespace xla
