@@ -447,8 +447,8 @@ std::optional<Range> IdentifyRangeAsFunctionOfInductionVar(
 absl::StatusOr<std::vector<int64_t>> FindDynamicIndices(
     const HloInstruction* instr, int64_t start_indices_offset,
     const Shape& slice_shape, const Shape& input_shape) {
-  const int64_t num_indices = slice_shape.dimensions_size();
-  TF_RET_CHECK(num_indices == input_shape.dimensions_size());
+  const int64_t num_indices = slice_shape.dimensions().size();
+  TF_RET_CHECK(num_indices == input_shape.dimensions().size());
   std::vector<int64_t> dynamic_indices;
   for (int64_t index = 0; index < num_indices; ++index) {
     int64_t operand_index = start_indices_offset + index;
