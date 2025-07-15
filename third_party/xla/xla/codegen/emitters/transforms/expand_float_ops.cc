@@ -185,7 +185,7 @@ Value EmitReducePrecision(Value value, int exponent_bits, int mantissa_bits,
       mlir::mhlo::ReducePrecisionOp>(
       b.getLoc(), value.getType(), {value.getType()},
       mlir::mhlo::ReducePrecisionOp::Adaptor(value, nullptr, properties),
-      /*attributes=*/std::nullopt, &b);
+      /*attributes=*/{}, &b);
 }
 
 Value EmitF16ToF8e5m2(Value in, mlir::ImplicitLocOpBuilder& b) {
