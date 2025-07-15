@@ -141,10 +141,14 @@ message DebugOptions {
   // XLA:CPU options.
   //--------------------------------------------------------------------------//
   // clang-format off
-  // go/keep-sorted start newline_separated=yes skip_lines=1 ignore_prefixes=["optional bool","optional int32","optional string", "optional"]
+  // go/keep-sorted start newline_separated=yes skip_lines=1 ignore_prefixes=["optional bool","optional int32","optional string", "optional XnnGraphFusionMode", "repeated LibraryFusionType"]
   // clang-format on
-  // Controls XnnGraphFusion HLO pass.
-  optional XnnGraphFusionMode xla_cpu_experimental_xnn_graph_fusion_mode = 365;
+  enum LibraryFusionType {
+    LIBRARY_FUSION_TYPE_INVALID = 0;
+    LIBRARY_FUSION_TYPE_DOT = 1;  // Dot and any eltwise ops around it.
+    LIBRARY_FUSION_TYPE_ELTWISE = 2;
+    LIBRARY_FUSION_TYPE_REDUCE = 3;
+  }
 
   enum XnnGraphFusionMode {
     XNN_GRAPH_FUSION_MODE_DISABLED = 0;
@@ -182,6 +186,15 @@ message DebugOptions {
   // Note, this does not correspond to the exact same behavior as the gpu flag
   // below!
   optional bool xla_cpu_enable_fast_min_max = 140;
+
+  // Stores the fusion types enabled for oneDNN in DotLibraryRewriter pass.
+  repeated LibraryFusionType xla_cpu_experimental_onednn_fusion_type = 399;
+
+  // Stores the fusion types enabled for XNNPACK in DotLibraryRewriter pass.
+  repeated LibraryFusionType xla_cpu_experimental_xnn_fusion_type = 400;
+
+  // Controls XnnGraphFusion HLO pass.
+  optional XnnGraphFusionMode xla_cpu_experimental_xnn_graph_fusion_mode = 365;
 
   // When xla_cpu_enable_fast_math is true then this controls whether we forbid
   // to use the reciprocal of an argument instead of division. Ignored when
@@ -1269,7 +1282,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 399
+  // Next id: 401
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
