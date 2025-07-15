@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_export.h"
 
-#include <functional>
 
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Pass/PassOptions.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/service/spmd/shardy/round_trip_common/export_named_computations.h"
@@ -30,13 +31,14 @@ limitations under the License.
 namespace xla {
 namespace sdy {
 
-void addStablehloExportPipeline(mlir::OpPassManager& pm) {
+void addStablehloExportPipeline(
+    mlir::OpPassManager& pm, bool exportShardingConstraintsToMhloCopy) {
   pm.addPass(createStablehloExportManualReductionCollectivesPass());
   // This pass converts `sdy.constant` (which isn't foldable) into
   // `stablehlo.constant` (which is foldable), therefore greedy pattern
   // rewriters shouldn't be applied before converting to HLO as they apply
   // folding.
-  pm.addPass(createExportOpsPass());
+  pm.addPass(createExportOpsPass(exportShardingConstraintsToMhloCopy));
   pm.addPass(createStablehloRoundTripShardMapExportPass());
   pm.addPass(createExportNamedComputationsPass());
   // If we don't add a sharding to a control flow op without one,
@@ -48,12 +50,30 @@ void addStablehloExportPipeline(mlir::OpPassManager& pm) {
   pm.addPass(createStablehloRoundTripExportCallbackCustomCallsPass());
 }
 
+namespace {
+
+struct StablehloExportPipelineOptions
+    : public mlir::PassPipelineOptions<StablehloExportPipelineOptions> {
+  Option<bool> exportShardingConstraintsToMhloCopy{
+    *this, "export-sharding-constraints-to-mhlo-copy",
+    llvm::cl::desc("Export sharding constraints to MHLO copy. "
+                   "Else export them to StableHLO @Sharding custom calls."),
+    llvm::cl::init(true)};
+};
+
+void stablehloExportPipeline(
+    mlir::OpPassManager& pm, const StablehloExportPipelineOptions& options) {
+  addStablehloExportPipeline(pm, options.exportShardingConstraintsToMhloCopy);
+}
+
+}  // namespace
+
 void registerStablehloExportPipeline() {
-  mlir::PassPipelineRegistration<> exportPipeline(
+  mlir::PassPipelineRegistration<StablehloExportPipelineOptions> exportPipeline(
       "xla-sdy-stablehlo-export-pipeline",
       "Run passes to export the SDY (Shardy) dialect into an StableHLO module, "
       "which is ready for StableHLO -> HLO conversion.",
-      addStablehloExportPipeline);
+      stablehloExportPipeline);
 }
 
 }  // namespace sdy

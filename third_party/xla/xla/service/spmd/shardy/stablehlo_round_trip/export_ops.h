@@ -26,7 +26,11 @@ namespace sdy {
 
 // Creates a pass that converts Shardy ops to StableHLO ops (except
 // sdy::ManualComputationOp).
-std::unique_ptr<mlir::Pass> createExportOpsPass();
+// If `exportShardingConstraintsToMhloCopy` is true, the pipeline will export
+// sharding constraints to MHLO copy ops. Else, they will be exported to
+// StableHLO @Sharding custom calls.
+std::unique_ptr<mlir::Pass> createExportOpsPass(
+        bool exportShardingConstraintsToMhloCopy = true);
 
 // Register the xla-sdy-export-ops pass.
 void registerExportOpsPass();
