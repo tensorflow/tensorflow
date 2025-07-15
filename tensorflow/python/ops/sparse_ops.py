@@ -3660,6 +3660,8 @@ class _UnaryMapValueDispatcher(dispatch.OpDispatcher):
     func_name = get_canonical_name_for_symbol(original_func)
     arg_names = tf_inspect.getfullargspec(original_func)[0]
     self._x = arg_names[0]
+    if original_func.__doc__ is None:
+      return
     original_func.__doc__ = (
         original_func.__doc__.rstrip() + "\n\n" +
         ("    If `{x}` is a `SparseTensor`, returns\n"

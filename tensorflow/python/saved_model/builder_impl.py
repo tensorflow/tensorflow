@@ -473,8 +473,9 @@ class _SavedModelBuilder(object):
 
 @tf_export(v1=["saved_model.Builder", "saved_model.builder.SavedModelBuilder"])  # pylint: disable=missing-docstring
 class SavedModelBuilder(_SavedModelBuilder):
-  __doc__ = _SavedModelBuilder.__doc__.replace("assets_list",
-                                               "assets_collection")
+  __doc__ = (_SavedModelBuilder.__doc__ or "").replace(
+      "assets_list", "assets_collection"
+  )
 
   def __init__(self, export_dir):
     super(SavedModelBuilder, self).__init__(export_dir=export_dir)
@@ -659,11 +660,12 @@ class SavedModelBuilder(_SavedModelBuilder):
     # subsequent attempts to save variables will fail.
     self._has_saved_variables = True
 
-  add_meta_graph.__doc__ = _SavedModelBuilder.add_meta_graph.__doc__.replace(
-      "assets_list", "assets_collection")
-  add_meta_graph_and_variables.__doc__ = \
-      _SavedModelBuilder.add_meta_graph_and_variables.__doc__.replace(
-          "assets_list", "assets_collection")
+  add_meta_graph.__doc__ = (
+      _SavedModelBuilder.add_meta_graph.__doc__ or ""
+  ).replace("assets_list", "assets_collection")
+  add_meta_graph_and_variables.__doc__ = (
+      _SavedModelBuilder.add_meta_graph_and_variables.__doc__ or ""
+  ).replace("assets_list", "assets_collection")
 
 
 def _maybe_save_assets(write_fn, assets_to_add=None):

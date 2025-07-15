@@ -246,11 +246,14 @@ def _set_doc(doc):
 # pylint: disable=redefined-builtin
 @tf_export(v1=["math.argmax", "argmax"])
 @dispatch.add_dispatch_support
-@deprecation.deprecated_args(None, "Use the `axis` argument instead",
-                             "dimension")
+@deprecation.deprecated_args(
+    None, "Use the `axis` argument instead", "dimension"
+)
 @_set_doc(
-    gen_math_ops.arg_max.__doc__.replace("dimensions",
-                                         "axes").replace("dimension", "axis"))
+    (gen_math_ops.arg_max.__doc__ or "")
+    .replace("dimensions", "axes")
+    .replace("dimension", "axis")
+)
 def argmax(input,
            axis=None,
            name=None,
@@ -300,11 +303,14 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
 
 @tf_export(v1=["math.argmin", "argmin"])
 @dispatch.add_dispatch_support
-@deprecation.deprecated_args(None, "Use the `axis` argument instead",
-                             "dimension")
+@deprecation.deprecated_args(
+    None, "Use the `axis` argument instead", "dimension"
+)
 @_set_doc(
-    gen_math_ops.arg_min.__doc__.replace("dimensions",
-                                         "axes").replace("dimension", "axis"))
+    (gen_math_ops.arg_min.__doc__ or "")
+    .replace("dimensions", "axes")
+    .replace("dimension", "axis")
+)
 def argmin(input,
            axis=None,
            name=None,
@@ -534,8 +540,10 @@ def _mul(x, y, name=None):
   return gen_math_ops.mul(x, y, name)
 
 
-_mul.__doc__ = (
-    gen_math_ops.mul.__doc__ + ("" if _mul.__doc__ is None else _mul.__doc__))
+if gen_math_ops.mul.__doc__ is not None:
+  _mul.__doc__ = gen_math_ops.mul.__doc__ + (
+      "" if _mul.__doc__ is None else _mul.__doc__
+  )
 
 
 @tf_export("math.subtract", "subtract")
@@ -556,8 +564,10 @@ def _sub(x, y, name=None):
   return gen_math_ops.sub(x, y, name)
 
 
-_sub.__doc__ = (
-    gen_math_ops.sub.__doc__ + ("" if _sub.__doc__ is None else _sub.__doc__))
+if gen_math_ops.sub.__doc__ is not None:
+  _sub.__doc__ = gen_math_ops.sub.__doc__ + (
+      "" if _sub.__doc__ is None else _sub.__doc__
+  )
 
 negative = gen_math_ops.neg
 
