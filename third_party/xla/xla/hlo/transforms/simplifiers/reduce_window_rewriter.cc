@@ -212,7 +212,7 @@ int64_t ReduceWindowRewriter::PreparePaddingForRewrite(
   return padded_length;
 }
 
-// [x, y] -> [x, y/base_length_, base_length_]
+// [x, y] -> [x, y/base, base]
 int64_t ReduceWindowRewriter::ExpandToNewMajorDimension(
     HloComputation* hlo_computation, std::vector<HloInstruction*>& inputs,
     std::vector<HloInstruction*>& tiled_inputs,
@@ -230,6 +230,32 @@ int64_t ReduceWindowRewriter::ExpandToNewMajorDimension(
   }
 
   return num_columns;
+}
+
+// reduce_window ( [x, y/base, base] window [1, 1, base] )
+HloInstruction* ReduceWindowRewriter::GenerateNewReduceWindowWithTiledInputs(
+    HloReduceWindowInstruction* reduce_window,
+    std::vector<HloInstruction*>& tiled_inputs,
+    std::vector<Shape>& tiled_shapes, bool forward_scan) {
+  const int64_t rank =
+      reduce_window->inputs().front()->shape().dimensions().size();
+  HloComputation* hlo_computation = reduce_window->parent();
+
+  Window outer_window =
+      window_util::MakeWindow(std::vector<int64_t>(rank + 1, 1));
+  outer_window.mutable_dimensions(rank)->set_size(base_length_);
+
+  if (forward_scan) {
+    outer_window.mutable_dimensions(rank)->set_padding_low(base_length_ - 1);
+  } else {
+    outer_window.mutable_dimensions(rank)->set_padding_high(base_length_ - 1);
+  }
+
+  return hlo_computation->AddInstruction(HloInstruction::CreateReduceWindow(
+      reduce_window->shape().IsTuple() ? ShapeUtil::MakeTupleShape(tiled_shapes)
+                                       : tiled_shapes[0],
+      tiled_inputs, reduce_window->init_values(), outer_window,
+      reduce_window->to_apply()));
 }
 
 absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
@@ -341,21 +367,8 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
   // [0 1 2     [0  1  3
   //  3 4 5  ->  3  7 12
   //  6 7 8]     6 13 21]
-  absl::Span<HloInstruction* const> init_values = reduce_window->init_values();
-  Window outer_window =
-      window_util::MakeWindow(std::vector<int64_t>(rank + 1, 1));
-  outer_window.mutable_dimensions(rank)->set_size(base_length_);
-  if (forward_scan) {
-    outer_window.mutable_dimensions(rank)->set_padding_low(base_length_ - 1);
-  } else {
-    outer_window.mutable_dimensions(rank)->set_padding_high(base_length_ - 1);
-  }
-  auto outer_reduce_window =
-      parent->AddInstruction(HloInstruction::CreateReduceWindow(
-          reduce_window->shape().IsTuple()
-              ? ShapeUtil::MakeTupleShape(tiled_shapes)
-              : tiled_shapes[0],
-          tiled_sources, init_values, outer_window, reduce_window->to_apply()));
+  HloInstruction* outer_reduce_window = GenerateNewReduceWindowWithTiledInputs(
+      reduce_window, tiled_sources, tiled_shapes, forward_scan);
 
   // 4) Slice out the last column.
   // Slice out the last (first if reverse scan) column.
@@ -401,6 +414,7 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
   //  [ 3       [ 0
   //   12   ->    3
   //   21]       15]
+  absl::Span<HloInstruction* const> init_values = reduce_window->init_values();
   Window inner_window = window_util::MakeWindow(std::vector<int64_t>(rank, 1));
   inner_window.mutable_dimensions(last_dim)->set_size(num_columns);
   if (forward_scan) {

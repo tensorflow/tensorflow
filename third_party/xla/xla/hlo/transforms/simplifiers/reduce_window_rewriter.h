@@ -76,12 +76,18 @@ class ReduceWindowRewriter : public HloModulePass {
                                    std::vector<HloInstruction*>& inputs,
                                    int64_t scan_length, int64_t last_dim);
 
-  // [x, y] -> [x, y/128, 128]
+  // [x, y] -> [x, y/base, base]
   int64_t ExpandToNewMajorDimension(HloComputation* hlo_computation,
                                     std::vector<HloInstruction*>& inputs,
                                     std::vector<HloInstruction*>& tiled_inputs,
                                     std::vector<Shape>& tiled_shapes,
                                     int64_t padded_length, int64_t last_dim);
+
+  // reduce_window ( [x, y/base, base] window [1, 1, base] )
+  HloInstruction* GenerateNewReduceWindowWithTiledInputs(
+      HloReduceWindowInstruction* reduce_window,
+      std::vector<HloInstruction*>& tiled_inputs,
+      std::vector<Shape>& tiled_shapes, bool forward_scan);
 
   absl::Status ReplaceReduceWindowWithReshape(
       HloReduceWindowInstruction* reduce_window);
