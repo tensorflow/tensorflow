@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/hlo/transforms/simplifiers/hlo_rematerialization_test_utils.h"
@@ -52,6 +54,9 @@ namespace {
 namespace op = xla::testing::opcode_matchers;
 
 using ::testing::_;
+using ::testing::Contains;
+using ::testing::Eq;
+using ::testing::Not;
 using tsl::testing::IsOkAndHolds;
 
 class AsyncRematerializationTest : public RematerializationTestBase {
@@ -141,9 +146,10 @@ ENTRY %main {
 class RecomputeAndCompressHloRematerializationTest
     : public RematerializationTestBase {
  protected:
-  absl::StatusOr<bool> RunHloRematerialization(int64_t memory_limit_bytes,
-                                               HloModule* module,
-                                               int64_t min_remat_size = 0) {
+  absl::StatusOr<bool> RunHloRematerialization(
+      int64_t memory_limit_bytes, HloModule* module, int64_t min_remat_size = 0,
+      HloRematerialization::RematAlgorithm remat_algorithm =
+          HloRematerialization::RematAlgorithm::kAlwaysRemat) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (!module->has_schedule()) {
       HloMemoryScheduler scheduler(&alias_info_, [](const BufferValue& buffer) {
@@ -170,7 +176,8 @@ class RecomputeAndCompressHloRematerializationTest
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
         min_remat_size, /*compact_shape_function=*/nullptr,
         /*host_memory_offload_config=*/std::nullopt,
-        /*async_computation_parallelism=*/{});
+        /*async_computation_parallelism=*/{},
+        /*remat_algorithm=*/remat_algorithm);
     HloRematerialization::RematerializationSizes sizes;
     HloRematerialization remat(options, sizes);
     absl::StatusOr<bool> result = remat.Run(module);
@@ -1692,6 +1699,75 @@ e {
   EXPECT_THAT(remat.Run(module.get(), {HloInstruction::kMainExecutionThread}),
               IsOkAndHolds(true));
   EXPECT_THAT(HloDCE().Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       PeakFirstRematerializationWorks) {
+  const std::string& hlo_string = R"(
+HloModule MyModule, is_scheduled=true, entry_computation_layout={(f32[1024]{0}, f32[1024]{0})->f32[1024]{0}}
+
+ENTRY MyModule {
+  param_0 = f32[1024]{0} parameter(0)
+  param_1 = f32[1024]{0} parameter(1)
+  constant_0 = f32[16384]{0} broadcast(f32[] constant(1)), dimensions={}
+  constant_1 = f32[16384]{0} broadcast(f32[] constant(2)), dimensions={}
+  constant_source_8 = f32[] constant(8)
+  constant_mega_8 = f32[262144]{0} broadcast(f32[] constant_source_8), dimensions={}
+  constant_mega_8_slice_x = f32[1024]{0} slice(constant_mega_8), slice={[0:1024]}
+  constant_1_slice_x = f32[1024]{0} slice(constant_1), slice={[0:1024]}
+  constant_x = f32[1024]{0} add(constant_mega_8_slice_x, constant_1_slice_x)
+  constant_mega_8_slice_0 = f32[1024]{0} slice(constant_mega_8), slice={[0:1024]}
+  constant_mega_8_slice_1 = f32[1024]{0} slice(constant_mega_8), slice={[1024:2048]}
+  res_param_add = f32[1024]{0} add(param_0, param_1)
+  constant_x_and_res_param_add = f32[1024]{0} add(constant_x, res_param_add)
+  constant_mega_add = f32[1024]{0} add(constant_mega_8_slice_0, constant_mega_8_slice_1)
+  op_1 = f32[16384]{0} tanh(constant_0)
+  op_2 = f32[16384]{0} tanh(op_1)
+  op_3 = f32[16384]{0} tanh(op_2)
+  op_4 = f32[16384]{0} tanh(op_3)
+  tan_res = f32[1024]{0} slice(op_4), slice={[0:1024]}
+  res_1 = f32[1024]{0} add(res_param_add, tan_res)
+  constant_source_8_user = f32[1024]{0} broadcast(constant_source_8), dimensions={}
+  res_2 = f32[1024]{0} add(constant_source_8_user, res_1)
+  ROOT res = f32[1024]{0} add(res_2, constant_x_and_res_param_add)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  // Rematerialize with a low memory limit.
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, RunHloRematerialization(
+                        /*memory_limit_bytes=*/100 * 1024, module.get(),
+                        /*min_remat_size=*/0,
+                        HloRematerialization::RematAlgorithm::kPeakPriority));
+
+  EXPECT_TRUE(changed);
+
+  std::vector<absl::string_view> instruction_names_in_order;
+  for (auto* instruction : module->schedule()
+                               .sequence(module->entry_computation())
+                               .instructions()) {
+    instruction_names_in_order.push_back(instruction->name());
+  }
+
+  // Should remat largest instruction.
+  EXPECT_THAT(instruction_names_in_order, Not(Contains("constant_0")));
+
+  // Should not remat after a peak
+  EXPECT_THAT(instruction_names_in_order, Not(Contains("res_param_add.remat")));
+  EXPECT_THAT(instruction_names_in_order, Not(Contains("constant_1.remat2")));
+
+  // Should place constant_0.remat right before user op_1 to
+  // minimize peak memory.
+  EXPECT_THAT(instruction_names_in_order, Contains("constant_0.remat"));
+  EXPECT_THAT(instruction_names_in_order, Contains("op_1"));
+
+  EXPECT_THAT(std::find(instruction_names_in_order.begin(),
+                        instruction_names_in_order.end(), "constant_0.remat") +
+                  1,
+              Eq(std::find(instruction_names_in_order.begin(),
+                           instruction_names_in_order.end(), "op_1")));
 }
 
 }  // namespace
