@@ -438,6 +438,13 @@ struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
     auto load = b.create<ml::LoadOp>(llvm_vector_type, gep);
     if (auto alignment = GetAlignmentFromArg(op.getSource(), op.getIndices())) {
       load.setAlignment(*alignment);
+    } else {
+      auto data_layout = mlir::DataLayout::closest(op);
+      // TODO(willfroom): We should really just use getTypeABIAlignment here,
+      // but this requires passing through the full data layout for the target
+      // machine.
+      load.setAlignment(
+          data_layout.getTypePreferredAlignment(gep_element_type));
     }
     auto loaded = load.getResult();
 
@@ -583,6 +590,13 @@ struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
     auto store = b.create<ml::StoreOp>(vector_value, gep);
     if (auto alignment = GetAlignmentFromArg(op.getSource(), op.getIndices())) {
       store.setAlignment(*alignment);
+    } else {
+      auto data_layout = mlir::DataLayout::closest(op);
+      // TODO(willfroom): We should really just use getTypeABIAlignment here,
+      // but this requires passing through the full data layout for the target
+      // machine.
+      store.setAlignment(
+          data_layout.getTypePreferredAlignment(vector_element_type));
     }
 
     rewriter.replaceOp(op, mlir::ValueRange{op.getSource()});
