@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
@@ -205,6 +206,19 @@ absl::Status PjRtTransferServer::CrossHostAwaitPull(
   return absl::OkStatus();
 }
 
+absl::StatusOr<tsl::RCReference<aux::SocketServer::Connection>>
+PjRtTransferServer::GetConnection(int remote_pid) {
+  if (!connections_.contains(remote_pid)) {
+    TF_ASSIGN_OR_RETURN(
+        std::string address,
+        kv_store_->Get(absl::StrCat(kKeyPrefixSocketAddress, remote_pid),
+                       cross_host_transfer_timeout_));
+    TF_ASSIGN_OR_RETURN(auto addr, aux::SocketAddress::Parse(address));
+    connections_[remote_pid] = (*socket_server_)->Connect(addr);
+  }
+  return connections_[remote_pid];
+}
+
 absl::Status PjRtTransferServer::CrossHostPull(
     int64_t uuid, absl::Span<xla::ifrt::ArrayRef> arrays,
     std::vector<int>& dst_device_idxs, xla::ifrt::DeviceListRef dst_devices,
@@ -213,12 +227,11 @@ absl::Status PjRtTransferServer::CrossHostPull(
   if (!socket_server_.has_value()) {
     return absl::InternalError("Socket server is not initialized.");
   }
-  TF_ASSIGN_OR_RETURN(
-      std::string address_str,
-      kv_store_->Get(absl::StrCat(kKeyPrefixSocketAddress, remote_pid),
-                     cross_host_transfer_timeout_));
-  TF_ASSIGN_OR_RETURN(auto addr, aux::SocketAddress::Parse(address_str));
-  auto connection = (*socket_server_)->Connect(addr);
+  tsl::RCReference<aux::SocketServer::Connection> connection;
+  {
+    absl::MutexLock lock(&connections_mu_);
+    TF_ASSIGN_OR_RETURN(connection, GetConnection(remote_pid));
+  }
 
   std::vector<xla::PjRtClient::ShapeSpec> shape_specs;
   std::vector<std::optional<xla::Layout>> layouts;
