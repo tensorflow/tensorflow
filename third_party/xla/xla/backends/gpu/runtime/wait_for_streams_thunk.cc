@@ -39,7 +39,7 @@ absl::Status WaitForStreamsThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 absl::StatusOr<ThunkProto> WaitForStreamsThunk::ToProto() const {
   ThunkProto proto;
-  TF_ASSIGN_OR_RETURN(*proto.mutable_thunk_info(), GetThunkInfoProto());
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   WaitForStreamsThunkProto* wait_for_streams_thunk_proto =
       proto.mutable_wait_for_streams_thunk();
