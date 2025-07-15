@@ -3,11 +3,8 @@
 `rocm_configure` depends on the following environment variables:
 
   * `TF_NEED_ROCM`: Whether to enable building with ROCm.
-  * `GCC_HOST_COMPILER_PATH`: The GCC host compiler path.
-  * `TF_ROCM_CLANG`: Whether to use clang for C++ and HIPCC for ROCm compilation.
   * `TF_SYSROOT`: The sysroot to use when compiling.
   * `CLANG_COMPILER_PATH`: The clang compiler path that will be used for
-    host code compilation if TF_ROCM_CLANG is 1.
   * `ROCM_PATH`: The path to the ROCm toolkit. Default is `/opt/rocm`.
   * `TF_ROCM_AMDGPU_TARGETS`: The AMDGPU targets.
 """
@@ -44,8 +41,6 @@ load(
     "enable_sycl",
 )
 
-_GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
-_GCC_HOST_COMPILER_PREFIX = "GCC_HOST_COMPILER_PREFIX"
 _CLANG_COMPILER_PATH = "CLANG_COMPILER_PATH"
 _TF_SYSROOT = "TF_SYSROOT"
 _ROCM_TOOLKIT_PATH = "ROCM_PATH"
@@ -58,9 +53,6 @@ _ROCM_VERSION = "ROCM_VERSION"
 _DEFAULT_ROCM_TOOLKIT_PATH = "/opt/rocm"
 _TF_ROCM_MULTIPLE_PATHS = "TF_ROCM_MULTIPLE_PATHS"
 _LLVM_PATH = "LLVM_PATH"
-
-def _is_clang_enabled(repository_ctx):
-    return get_host_environ(repository_ctx, "TF_ROCM_CLANG") == "1"
 
 def verify_build_defines(params):
     """Verify all variables that crosstool/BUILD.rocm.tpl expects are substituted.
@@ -699,7 +691,7 @@ def _create_local_rocm_repository(repository_ctx):
     rocm_defines = {}
     rocm_defines["%{builtin_sysroot}"] = tf_sysroot
     rocm_defines["%{compiler}"] = "clang"
-    host_compiler_prefix = get_host_environ(repository_ctx, _GCC_HOST_COMPILER_PREFIX, "/usr/bin")
+    host_compiler_prefix = "/usr/bin"
     rocm_defines["%{host_compiler_prefix}"] = host_compiler_prefix
     rocm_defines["%{linker_bin_path}"] = rocm_config.rocm_toolkit_path + host_compiler_prefix
     rocm_defines["%{extra_no_canonical_prefixes_flags}"] = ""
@@ -715,7 +707,7 @@ def _create_local_rocm_repository(repository_ctx):
     ])
 
     rocm_defines["%{link_flags}"] = to_list_of_strings([
-        "-fuse-ld={}".format("lld" if _is_clang_enabled(repository_ctx) else "gold"),
+        "-fuse-ld={}".format("lld"),
     ])
 
     rocm_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
@@ -754,7 +746,7 @@ def _create_local_rocm_repository(repository_ctx):
             "%{hip_runtime_library}": "amdhip64",
             "%{crosstool_verbose}": _crosstool_verbose(repository_ctx),
             "%{gcc_host_compiler_path}": str(cc),
-            "%{crosstool_clang}": "1" if _is_clang_enabled(repository_ctx) else "0",
+            "%{crosstool_clang}": "1",
             "%{rocm_amdgpu_targets}": ",".join(
                 ["\"%s\"" % c for c in rocm_config.amdgpu_targets],
             ),
@@ -874,8 +866,6 @@ def _rocm_autoconf_impl(repository_ctx):
         _create_local_rocm_repository(repository_ctx)
 
 _ENVIRONS = [
-    _GCC_HOST_COMPILER_PATH,
-    _GCC_HOST_COMPILER_PREFIX,
     "TF_NEED_ROCM",
     "TF_ROCM_CLANG",
     "TF_NEED_CUDA",  # Needed by the `if_gpu_is_configured` macro
