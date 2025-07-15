@@ -25,8 +25,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/primitive_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/xla_data.pb.h"
@@ -116,6 +122,9 @@ class Intrinsic {
   // Returns the LLVM IR type for the given intrinsic type.
   static llvm::Type* TypeToIrType(Type type, llvm::LLVMContext& context);
 
+  // Returns the MLIR type for the given intrinsic type.
+  static mlir::Type TypeToIrType(Type type, mlir::MLIRContext& context);
+
   // Returns the name of the scalar intrinsic for the given data type.
   template <typename Intrinsic>
   static std::string Name(PrimitiveType t0) {
@@ -181,6 +190,12 @@ class Intrinsic {
   static std::string VectorName(PrimitiveType type, int64_t vector_width) {
     return absl::StrCat("v", vector_width, ScalarName(type));
   }
+
+ private:
+  static mlir::func::FuncOp GetOrInsertDeclaration(mlir::OpBuilder& b,
+                                                   mlir::ModuleOp& module,
+                                                   absl::string_view name,
+                                                   mlir::FunctionType type);
 };
 
 namespace intrinsics {

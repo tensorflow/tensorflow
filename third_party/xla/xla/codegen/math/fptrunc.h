@@ -21,6 +21,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Value.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/xla_data.pb.h"
 
@@ -33,6 +36,10 @@ class Intrinsic::FpTrunc {
 
   static llvm::Function* GetOrInsertDeclaration(llvm::Module* module, Type from,
                                                 Type to);
+
+  static mlir::func::FuncOp GetOrInsertDeclaration(mlir::OpBuilder& b,
+                                                   mlir::ModuleOp module,
+                                                   Type from, Type to);
 
   static absl::StatusOr<llvm::Function*> CreateDefinition(llvm::Module* module,
                                                           Type from, Type to);
