@@ -312,7 +312,7 @@ struct IfrtBackend::LoadedExecutableWithInfo {
       ABSL_GUARDED_BY(mu);
   const xla::ifrt::LoadedExecutableRef executable;
 
-  absl::flat_hash_set<int> donatable_indices ABSL_GUARDED_BY(mu);
+  std::optional<absl::flat_hash_set<int>> donatable_indices ABSL_GUARDED_BY(mu);
 };
 
 class IfrtBackend::InOrderRequestsProcessor {
@@ -1673,7 +1673,8 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
       // sequence, so this assumption is satisfied.
       for (int i = 0; i < args.size(); ++i) {
         if (execute_options.non_donatable_input_indices.contains(i) ||
-            !executable_info->donatable_indices.contains(i)) {
+            (executable_info->donatable_indices.has_value() &&
+             !executable_info->donatable_indices->contains(i))) {
           CHECK(!args[i]->IsDeleted());
         }
       }
@@ -1686,15 +1687,17 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
             ArraySpec{/*dtype=*/output->dtype(), /*shape=*/output->shape(),
                       /*sharding=*/output->shared_ptr_sharding()});
       }
-      executable_info->donatable_indices = [&] {
-        absl::flat_hash_set<int> result;
+      executable_info->donatable_indices =
+          [&]() -> std::optional<absl::flat_hash_set<int>> {
         absl::StatusOr<absl::Span<const int>> donatable_input_indices =
             executable_info->executable->GetDonatableInputIndices();
         if (donatable_input_indices.ok()) {
+          absl::flat_hash_set<int> result;
           result.insert(donatable_input_indices->begin(),
                         donatable_input_indices->end());
+          return result;
         }
-        return result;
+        return std::nullopt;
       }();
     }
   }
