@@ -147,10 +147,9 @@ class ABSL_DEPRECATED(
   absl::StatusOr<std::vector<Literal>> ExecuteReplicatedWithHloRunner(
       OpaqueExecutable* executable,
       const HloRunnerInterface::ReplicatedExecuteOptions& options,
-      DeviceAssignment* device_assignment,
-      ExecutionProfile* profile = nullptr) {
+      DeviceAssignment* device_assignment) {
     return test_runner_as_hlo_runner().ExecuteReplicated(
-        executable, options, device_assignment, profile);
+        executable, options, device_assignment, nullptr);
   }
 
   [[nodiscard]] ::testing::AssertionResult RunAndCompareFromFile(

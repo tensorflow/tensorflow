@@ -1861,9 +1861,10 @@ TEST_P(PrecisionTests, PrecisionCheck) {
   std::vector<uint64_t> profile_times;
   profile_times.reserve(100);
   for (int i = 0; i < 100; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(Literal test_result,
-                            test_runner().ExecuteWithExecutable(
-                                executable.get(), fake_arguments, &profile));
+    TF_ASSERT_OK_AND_ASSIGN(
+        Literal test_result,
+        test_runner_as_hlo_runner().ExecuteWithExecutableAndProfile(
+            executable.get(), fake_argument_ptrs, &profile));
     profile_times.push_back(profile.compute_time_ns());
   }
   auto min_time = *std::min_element(profile_times.begin(), profile_times.end());
