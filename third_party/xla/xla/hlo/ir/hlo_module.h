@@ -18,13 +18,11 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <random>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -40,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module_metadata.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/iterator_util.h"
@@ -826,10 +825,22 @@ class HloModule {
             std::pair<OriginalArray, std::unique_ptr<HloModule>>> {
    public:
     std::string ToString(HloPrintOptions options = HloPrintOptions()) const;
+
     OriginalValueRecoveryTableProto ToProto() const;
+
     static absl::StatusOr<HloModule::OriginalValueRecoveryTable> FromProto(
         const xla::OriginalValueRecoveryTableProto&
             original_value_recovery_table);
+
+    // Adds an entry to the original value recovery table.
+    // XLA may replace some instructions in the HLO graph to improve
+    // performance. This adds an entry to the recovery table to record the
+    // computation that can be used to recover the removed original value due to
+    // the replacement from the replacing instruction.
+    void AddRecoveryComputation(
+        const std::shared_ptr<OriginalValue>& removed_original_value,
+        HloInstruction* replacing_inst,
+        std::unique_ptr<HloModule> recovery_module);
   };
 
   const OriginalValueRecoveryTable& original_value_recovery_table() {
