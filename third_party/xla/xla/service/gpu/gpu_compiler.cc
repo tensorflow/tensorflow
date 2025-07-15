@@ -552,6 +552,7 @@ void AddHloVerifier(HloPassPipeline* pipeline,
                     bool verify_unique_channel_ids = false,
                     HloVerifierOpts&& opts = {}, bool debug_only = false) {
   opts.verify_unique_channel_ids = verify_unique_channel_ids;
+  opts.verify_no_collective_deadlocks = true;
   std::unique_ptr<TargetVerifierMetadata> verifier_metadata =
       std::make_unique<CpuGpuVerifierMetadata>(std::move(opts));
   if (debug_only) {
