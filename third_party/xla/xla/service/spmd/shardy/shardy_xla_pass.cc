@@ -426,6 +426,13 @@ absl::StatusOr<bool> ShardyXLA::Run(
                                               defaultOptions, name()));
   }
 
+  // TODO(b/431836696): Remove once issue is fixed.
+  if (useTupleArgs) {
+    mlirModule.get()->removeAttr(
+        "mhlo.xla_entry_computation_parameter_layouts");
+    mlirModule.get()->removeAttr("mhlo.xla_entry_computation_parameter_tiles");
+  }
+
   // StableHlo -> HLO
   HloProto hloProto;
   TF_RETURN_IF_ERROR(ConvertStablehloWithManyArgsToHloProto(
