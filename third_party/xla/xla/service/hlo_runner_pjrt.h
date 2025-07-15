@@ -65,8 +65,7 @@ class HloRunnerPjRt : public HloRunnerInterface {
   // result as a Literal.
   absl::StatusOr<Literal> Execute(std::unique_ptr<HloModule> module,
                                   absl::Span<const Literal* const> arguments,
-                                  bool run_hlo_passes,
-                                  ExecutionProfile* profile) override;
+                                  bool run_hlo_passes) override;
 
   // Like Execute(), but accepts and returns pjrt buffers instead of literals.
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
@@ -88,8 +87,8 @@ class HloRunnerPjRt : public HloRunnerInterface {
       absl::string_view serialized) const override;
 
   absl::StatusOr<Literal> ExecuteWithExecutable(
-      OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
-      ExecutionProfile* profile) override;
+      OpaqueExecutable* executable,
+      absl::Span<const Literal* const> arguments) override;
 
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
@@ -111,7 +110,7 @@ class HloRunnerPjRt : public HloRunnerInterface {
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       OpaqueExecutable* executable,
       const HloRunnerInterface::ReplicatedExecuteOptions& options,
-      DeviceAssignment* device_assignment, ExecutionProfile* profile = nullptr);
+      DeviceAssignment* device_assignment);
 
   absl::string_view Name() const override;
 
@@ -163,8 +162,8 @@ class CompilePhaseHloRunnerPjRt : public HloRunnerPjRt {
       std::unique_ptr<HloModule> module, bool run_hlo_passes) override;
 
   absl::StatusOr<Literal> ExecuteWithExecutable(
-      OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
-      ExecutionProfile* profile) override {
+      OpaqueExecutable* executable,
+      absl::Span<const Literal* const> arguments) override {
     return absl::UnimplementedError(
         "CompilePhaseHloRunnerPjRt does not support execution. This is "
         "expected.");

@@ -796,7 +796,8 @@ TEST_F(GatherOperationWithoutReferenceTest, Basic) {
   Literal indices_arg = LiteralUtil::CreateR1<int32_t>({0, 2});
   TF_ASSERT_OK_AND_ASSIGN(
       const Literal result_literal,
-      test_runner().Execute(std::move(module), {&operand_arg, &indices_arg}));
+      test_runner().Execute(std::move(module), {&operand_arg, &indices_arg},
+                            /*run_hlo_passes=*/true));
 
   std::vector<int32_t> expected = {};
   LiteralTestUtil::ExpectR2Equal<int32_t>({{1, 2, 3}, {7, 8, 9}},
