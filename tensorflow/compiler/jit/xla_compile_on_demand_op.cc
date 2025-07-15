@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
 #include "tensorflow/compiler/jit/device_compilation_profiler.h"
 #include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -102,6 +103,12 @@ absl::Status GetAndLockVariablesAndBuildXlaCompilerArguments(
   return absl::OkStatus();
 }
 }  // namespace
+
+XlaCompileOnDemandOp::XlaCompileOnDemandOp(OpKernelConstruction* ctx)
+    : OpKernel(ctx),
+      platform_info_(XlaPlatformInfoFromDevice(ctx->device())),
+      function_(GetDeviceCompilerFunction(ctx->def())),
+      canonical_function_(Canonicalize(function_)) {}
 
 absl::Status XlaCompileOnDemandOp::Run(
     const ResourceVarsSnapshot& variable_args,
@@ -185,8 +192,9 @@ absl::Status XlaCompileOnDemandOp::Compile(
   XlaCompiler::CompileOptions compile_options = GetCompileOptions(true);
 
   return (*pjrt_device_compiler)
-      ->CompileSingleOpIfNeeded(options, args, compile_options, ctx, *profiler,
-                                result, executable);
+      ->CompileSingleOpIfNeeded(options, function_, canonical_function_, args,
+                                compile_options, ctx, *profiler, result,
+                                executable);
 }
 
 absl::Status XlaCompileOnDemandOp::Compile(
@@ -227,8 +235,9 @@ absl::Status XlaCompileOnDemandOp::Compile(
   XlaCompiler::CompileOptions compile_options = GetCompileOptions();
 
   return (*xla_device_compiler)
-      ->CompileSingleOpIfNeeded(options, args, compile_options, ctx, *profiler,
-                                result, executable);
+      ->CompileSingleOpIfNeeded(options, function_, canonical_function_, args,
+                                compile_options, ctx, *profiler, result,
+                                executable);
 }
 
 void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {
