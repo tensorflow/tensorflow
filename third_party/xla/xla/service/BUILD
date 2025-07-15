@@ -3779,8 +3779,10 @@ cc_library(
     hdrs = ["hlo_verifier.h"],
     deps = [
         ":collective_ops_utils",
+        ":collective_permute_cycle",
         ":hlo_module_config",
         ":shape_inference",
+        ":source_target_pairs",
         "//xla:comparison_util",
         "//xla:permutation_util",
         "//xla:shape_layout",
@@ -3824,6 +3826,7 @@ xla_cc_test(
         "//xla/hlo/testlib:test_helpers",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/log:scoped_mock_log",
