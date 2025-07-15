@@ -262,17 +262,19 @@ class ThunkExecutor {
   // edges, and pending nodes counter was incremented, and must be dropped when
   // `node` is completed.
   template <typename ReadyQueue>
-  bool ProcessOutEdges(ExecuteState* state, ExecuteState::Node& node,
-                       ReadyQueue& ready_queue);
+  bool ProcessScheduledOutEdges(ExecuteState* state, ExecuteState::Node& node,
+                                ReadyQueue& ready_queue);
 
   // Processes out edges of a completed `node` and updates `ready_queue` with
   // nodes that are ready to execute. If `node_event` is in error state, aborts
-  // the execution and records the error status to forward it to the caller.
+  // the execution and records the error status to forward it to the caller. We
+  // can combine processing of scheduling edges with processing of completed
+  // edges, if thunk completes execution in the caller thread.
   template <bool process_scheduling_edges, typename ReadyQueue>
-  void ProcessOutEdges(ExecuteState* state,
-                       tsl::AsyncValuePtr<Thunk::ExecuteEvent> node_event,
-                       ExecuteState::Node& node, ReadyQueue& ready_queue,
-                       bool drop_pending_nodes);
+  void ProcessCompletedOutEdges(
+      ExecuteState* state, tsl::AsyncValuePtr<Thunk::ExecuteEvent> node_event,
+      ExecuteState::Node& node, ReadyQueue& ready_queue,
+      bool drop_pending_nodes);
 
   ThunkSequence thunk_sequence_;
   ExecutionGraph execution_graph_;
