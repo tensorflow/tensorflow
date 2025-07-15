@@ -123,8 +123,8 @@ Literal HloRunnerAgnosticTestBase::ExecuteAndTransfer(
     std::unique_ptr<HloModule> module,
     absl::Span<const Literal* const> arguments) {
   CHECK_OK(PreprocessModuleForTestRunner(module.get()));
-  absl::StatusOr<Literal> result =
-      test_runner_->Execute(std::move(module), arguments, true, nullptr);
+  absl::StatusOr<Literal> result = test_runner_->Execute(
+      std::move(module), arguments, /*run_hlo_passes=*/true);
   CHECK_OK(result.status());
   return *std::move(result);
 }
@@ -440,7 +440,6 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
 
 ::testing::AssertionResult HloRunnerAgnosticTestBase::Run(
     const absl::string_view hlo_string, const bool run_hlo_passes,
-    ExecutionProfile* const profile,
     const tsl::protobuf::Message* backend_config, const bool use_random_data) {
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module =
       ParseAndReturnVerifiedModule(hlo_string);
@@ -455,16 +454,6 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
   absl::c_transform(
       fake_arguments, std::back_inserter(fake_argument_ptrs),
       [](const Literal& literal) { return const_cast<Literal*>(&literal); });
-
-  if (profile != nullptr) {
-    // We have to enable HLO profiling since otherwise currently the
-    // ExecutionProfile is not correct.
-    HloModuleConfig config = (*module)->config();
-    DebugOptions debug_options = config.debug_options();
-    debug_options.set_xla_hlo_profile(true);
-    config.set_debug_options(debug_options);
-    (*module)->set_config(config);
-  }
 
   if (backend_config) {
     // Set backend configuration if it is given.
@@ -481,8 +470,7 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
            << "Error while preprocessing module: " << status;
   }
   auto output = test_runner_->Execute(*std::move(module), fake_argument_ptrs,
-                                      /*run_hlo_passes=*/run_hlo_passes,
-                                      /*profile=*/profile);
+                                      /*run_hlo_passes=*/run_hlo_passes);
 
   return output.ok()
              ? ::testing::AssertionSuccess()
@@ -538,15 +526,13 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
 
 ::testing::AssertionResult HloRunnerAgnosticTestBase::RunMultipleTimes(
     const absl::string_view hlo_string, const bool run_hlo_passes,
-    std::vector<ExecutionProfile>* const profiles,
-    const tsl::protobuf::Message* const backend_config,
+    const int64_t num_runs, const tsl::protobuf::Message* const backend_config,
     const bool assert_determinism) {
-  const int n = profiles->size();
-  std::vector<std::vector<Literal*>> fake_argument_ptrs(n);
-  std::vector<std::vector<Literal>> fake_arguments(n);
-  std::vector<std::unique_ptr<OpaqueExecutable>> executables(n);
+  std::vector<std::vector<Literal*>> fake_argument_ptrs(num_runs);
+  std::vector<std::vector<Literal>> fake_arguments(num_runs);
+  std::vector<std::unique_ptr<OpaqueExecutable>> executables(num_runs);
 
-  for (int i = 0; i < n; ++i) {
+  for (int i = 0; i < num_runs; ++i) {
     absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module =
         ParseAndReturnVerifiedModule(hlo_string);
     if (!module.ok()) {
@@ -556,16 +542,6 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
     }
 
     fake_arguments[i] = MakeFakeArguments(module->get()).value();
-
-    if (profiles != nullptr) {
-      // We have to enable HLO profiling since otherwise currently the
-      // ExecutionProfile is not correct.
-      HloModuleConfig config = (*module)->config();
-      DebugOptions debug_options = config.debug_options();
-      debug_options.set_xla_hlo_profile(true);
-      config.set_debug_options(debug_options);
-      (*module)->set_config(config);
-    }
 
     if (backend_config) {
       // Set backend configuration if it is given.
@@ -591,10 +567,9 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
   }
 
   std::optional<Literal> canonical_output;
-  for (int i = 0; i < n; ++i) {
+  for (int i = 0; i < num_runs; ++i) {
     absl::StatusOr<Literal> output = test_runner_->ExecuteWithExecutable(
-        executables[i].get(), fake_arguments[i],
-        /*profile=*/&((*profiles)[i]));
+        executables[i].get(), fake_arguments[i]);
     if (!output.ok()) {
       return ::testing::AssertionFailure() << output.status().message();
     }
@@ -663,11 +638,9 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesInternal(
       test_runner_->CreateExecutable(std::move(module_1), run_hlo_passes));
 
   TF_ASSIGN_OR_RETURN(const Literal test_0, test_runner_->ExecuteWithExecutable(
-                                                executable_0.get(), arguments,
-                                                /*profile=*/nullptr));
+                                                executable_0.get(), arguments));
   TF_ASSIGN_OR_RETURN(const Literal test_1, test_runner_->ExecuteWithExecutable(
-                                                executable_1.get(), arguments,
-                                                /*profile=*/nullptr));
+                                                executable_1.get(), arguments));
 
   return LiteralTestUtil::NearOrEqual(/*expected=*/test_0, /*actual=*/test_1,
                                       error);

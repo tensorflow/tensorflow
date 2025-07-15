@@ -81,22 +81,24 @@ class HloRunner : public HloRunnerInterface {
 
   absl::StatusOr<Literal> Execute(std::unique_ptr<HloModule> module,
                                   absl::Span<const Literal* const> arguments,
-                                  bool run_hlo_passes,
-                                  ExecutionProfile* profile) override;
+                                  bool run_hlo_passes) override;
 
   using HloRunnerInterface::ExecuteWithBufferAssignment;
 
   absl::StatusOr<Literal> ExecuteWithBufferAssignment(
       std::unique_ptr<HloModule> module,
       const BufferAssignmentProto* buffer_assignment_proto,
-      absl::Span<const Literal* const> arguments, bool run_hlo_passes,
-      ExecutionProfile* profile) override;
+      absl::Span<const Literal* const> arguments, bool run_hlo_passes) override;
 
   using HloRunnerInterface::ExecuteWithExecutable;
 
   absl::StatusOr<Literal> ExecuteWithExecutable(
+      OpaqueExecutable* executable,
+      absl::Span<const Literal* const> arguments) override;
+
+  absl::StatusOr<Literal> ExecuteWithExecutableAndProfile(
       OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
-      ExecutionProfile* profile) override;
+      ExecutionProfile* profile);
 
   // As Execute(), but accepts and returns device buffers instead of host
   // buffers.
@@ -108,13 +110,13 @@ class HloRunner : public HloRunnerInterface {
   // aliasing.
   absl::StatusOr<ExecutionOutput> ExecuteWithDeviceBuffers(
       std::unique_ptr<HloModule> module,
-      absl::Span<ScopedShapedBuffer const> arguments,
-      bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
+      absl::Span<ScopedShapedBuffer const> arguments, bool run_hlo_passes,
+      ExecutionProfile* profile);
 
   absl::StatusOr<ExecutionOutput> ExecuteWithDeviceBuffers(
       OpaqueExecutable* executable,
       absl::Span<ScopedShapedBuffer const> arguments,
-      ExecutionProfile* profile = nullptr);
+      ExecutionProfile* profile);
 
   // As Execute(), but accepts and returns device buffers instead of host
   // buffers.
@@ -123,19 +125,19 @@ class HloRunner : public HloRunnerInterface {
   // the arguments.
   absl::StatusOr<ExecutionOutput> ExecuteWithMovedDeviceBuffers(
       std::unique_ptr<HloModule> module,
-      std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes = true,
-      ExecutionProfile* profile = nullptr);
+      std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes,
+      ExecutionProfile* profile);
 
   absl::StatusOr<ExecutionOutput>
   ExecuteWithMovedDeviceBuffersAndBufferAssignment(
       std::unique_ptr<HloModule> module,
       const BufferAssignmentProto* buffer_assignment_proto,
-      std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes = true,
-      ExecutionProfile* profile = nullptr);
+      std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes,
+      ExecutionProfile* profile);
 
   absl::StatusOr<ExecutionOutput> ExecuteWithMovedDeviceBuffers(
       Executable* executable, std::vector<ScopedShapedBuffer> arguments,
-      ExecutionProfile* profile = nullptr);
+      ExecutionProfile* profile);
 
   // Creates an executable object given an HLO module. If run_hlo_passes is
   // true, the HLO passes will be run as part of compilation.
@@ -175,7 +177,7 @@ class HloRunner : public HloRunnerInterface {
   // since we've already compiled the Executable.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       OpaqueExecutable* executable, const ReplicatedExecuteOptions& options,
-      DeviceAssignment* device_assignment, ExecutionProfile* profile = nullptr);
+      DeviceAssignment* device_assignment, ExecutionProfile* profile);
 
   // Same as above, but with different reusable Executables. This may update the
   // profile information in *executables.
