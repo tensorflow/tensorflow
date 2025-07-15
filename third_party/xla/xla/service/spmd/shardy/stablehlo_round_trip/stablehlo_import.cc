@@ -626,7 +626,7 @@ class ImportShardingsPass
       std::string meshName = absl::StrCat("maximal_mesh_", deviceId);
       auto meshOp = opBuilder.create<MeshOp>(
           moduleOp.getLoc(), meshName,
-          MeshAttr::get(moduleOp.getContext(), deviceId));
+          MeshAttr::get(moduleOp.getContext(), {}, deviceId));
       symbolTable.insert(meshOp);
       deviceIdToMaximalMeshName[deviceId] = meshOp.getSymName();
     }
