@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
+#include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/model/constraint_expression.h"
 #include "xla/service/gpu/model/experimental/symbolic_tile.h"
 #include "xla/service/gpu/model/experimental/tiling_space.h"
@@ -317,6 +319,107 @@ TiledOperands PropagateTileToInputForTransposeOp(
                        ConstraintExpression::GetAlwaysSatisfied()};
 }
 
+TiledOperands PropagateTileToInputForDotOp(
+    const TilingSpace& tiling_space, const HloDotInstruction& dot,
+    const ExperimentalSymbolicTile& result_tile) {
+  MLIRContext* ctx = result_tile.mlir_context();
+  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
+  absl::Span<const int64_t> lhs_contracting_dims(
+      dim_numbers.lhs_contracting_dimensions());
+  absl::Span<const int64_t> rhs_contracting_dims =
+      dim_numbers.rhs_contracting_dimensions();
+
+  absl::Span<const int64_t> lhs_batch_dims = dim_numbers.lhs_batch_dimensions();
+  absl::Span<const int64_t> rhs_batch_dims = dim_numbers.rhs_batch_dimensions();
+
+  const Shape& lhs_shape = dot.operand(0)->shape();
+  const int64_t lhs_rank = lhs_shape.dimensions().size();
+  SmallVector<AffineExpr, 3> lhs_offsets(lhs_rank), lhs_sizes(lhs_rank),
+      lhs_strides(lhs_rank), lhs_bounds(lhs_rank);
+
+  const Shape& rhs_shape = dot.operand(1)->shape();
+  const int64_t rhs_rank = rhs_shape.dimensions().size();
+  SmallVector<AffineExpr, 3> rhs_offsets(rhs_rank), rhs_sizes(rhs_rank),
+      rhs_strides(rhs_rank), rhs_bounds(rhs_rank);
+
+  // According to the StableHLO specification, the dimensions of the output
+  // shape are ordered as follows:
+  //   lhs_batch_dims | lhs_non_contracting_dims | rhs_non_contracting_dims
+
+  // Populate lhs and rhs batch dimensions.
+  for (auto [output_dim_id, batch_dims] :
+       llvm::enumerate(llvm::zip(lhs_batch_dims, rhs_batch_dims))) {
+    auto [lhs_batch_dim, rhs_batch_dim] = batch_dims;
+    rhs_offsets[rhs_batch_dim] = lhs_offsets[lhs_batch_dim] =
+        result_tile.offsets()[output_dim_id];
+    rhs_sizes[rhs_batch_dim] = lhs_sizes[lhs_batch_dim] =
+        result_tile.sizes()[output_dim_id];
+    rhs_strides[rhs_batch_dim] = lhs_strides[lhs_batch_dim] =
+        result_tile.strides()[output_dim_id];
+    rhs_bounds[rhs_batch_dim] = lhs_bounds[lhs_batch_dim] =
+        result_tile.upper_bounds()[output_dim_id];
+  }
+
+  // lhs_non_contracting_dims
+  int64_t output_dim_id = lhs_batch_dims.size();
+  auto lhs_non_contracting_dims =
+      GetNonContractingDims(lhs_shape, lhs_batch_dims, lhs_contracting_dims);
+  CHECK_OK(lhs_non_contracting_dims);
+  for (int64_t lhs_non_contracting_dim : lhs_non_contracting_dims.value()) {
+    lhs_offsets[lhs_non_contracting_dim] = result_tile.offsets()[output_dim_id];
+    lhs_sizes[lhs_non_contracting_dim] = result_tile.sizes()[output_dim_id];
+    lhs_strides[lhs_non_contracting_dim] = result_tile.strides()[output_dim_id];
+    lhs_bounds[lhs_non_contracting_dim] =
+        result_tile.upper_bounds()[output_dim_id];
+    ++output_dim_id;
+  }
+
+  // rhs_non_contracting_dims
+  auto rhs_non_contracting_dims =
+      GetNonContractingDims(rhs_shape, rhs_batch_dims, rhs_contracting_dims);
+  CHECK_OK(rhs_non_contracting_dims);
+  for (int64_t rhs_non_contracting_dim : rhs_non_contracting_dims.value()) {
+    rhs_offsets[rhs_non_contracting_dim] = result_tile.offsets()[output_dim_id];
+    rhs_sizes[rhs_non_contracting_dim] = result_tile.sizes()[output_dim_id];
+    rhs_strides[rhs_non_contracting_dim] = result_tile.strides()[output_dim_id];
+    rhs_bounds[rhs_non_contracting_dim] =
+        result_tile.upper_bounds()[output_dim_id];
+    ++output_dim_id;
+  }
+
+  // lhs and rhs contracting dims
+  for (auto [contracting_dim_id, contracting_dims] :
+       llvm::enumerate(llvm::zip(lhs_contracting_dims, rhs_contracting_dims))) {
+    auto [lhs_contracting_dim, rhs_contracting_dim] = contracting_dims;
+    const TilingSpace::DimensionInfo& contracting_dim_info =
+        tiling_space.GetDimensionInfo(dot, output_dim_id++);
+    CHECK(contracting_dim_info.type ==
+          TilingSpace::DimensionSemantics::kSequential)
+        << "Expected a sequential dimension info for contracting dimension "
+        << lhs_contracting_dim << " in dot op " << dot.ToString();
+    AffineExpr tile_id = getAffineDimExpr(contracting_dim_info.id, ctx);
+    AffineExpr tile_size = getAffineSymbolExpr(contracting_dim_info.id, ctx);
+    AffineExpr c1 = getAffineConstantExpr(1, ctx);
+
+    lhs_offsets[lhs_contracting_dim] = rhs_offsets[rhs_contracting_dim] =
+        tile_id * tile_size;
+    lhs_sizes[lhs_contracting_dim] = rhs_sizes[rhs_contracting_dim] = tile_size;
+    lhs_strides[lhs_contracting_dim] = rhs_strides[rhs_contracting_dim] = c1;
+    lhs_bounds[lhs_contracting_dim] = rhs_bounds[rhs_contracting_dim] =
+        getAffineConstantExpr(rhs_shape.dimensions(rhs_contracting_dim), ctx);
+  }
+
+  return TiledOperands{
+      SymbolicTiles{
+          ExperimentalSymbolicTile{ctx, result_tile.num_tile_ids(),
+                                   result_tile.num_rt_vars(), lhs_offsets,
+                                   lhs_sizes, lhs_strides, lhs_bounds},
+          ExperimentalSymbolicTile{ctx, result_tile.num_tile_ids(),
+                                   result_tile.num_rt_vars(), rhs_offsets,
+                                   rhs_sizes, rhs_strides, rhs_bounds}},
+      ConstraintExpression::GetAlwaysSatisfied()};
+}
+
 }  // namespace
 
 std::string TiledOperands::ToString() const {
@@ -351,6 +454,11 @@ std::optional<TiledOperands> PropagateTileToInput(
   if (hlo.opcode() == HloOpcode::kDynamicSlice) {
     return PropagateTileToInputForDynamicSliceOp(
         tiling_space, *Cast<HloDynamicSliceInstruction>(&hlo), result_tile);
+  }
+
+  if (hlo.opcode() == HloOpcode::kDot) {
+    return PropagateTileToInputForDotOp(
+        tiling_space, *Cast<HloDotInstruction>(&hlo), result_tile);
   }
 
   if (hlo.opcode() == HloOpcode::kPad) {

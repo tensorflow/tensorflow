@@ -31,6 +31,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:matmul_indexing_utils",
         "//xla/service/gpu/model:constraint_expression",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
