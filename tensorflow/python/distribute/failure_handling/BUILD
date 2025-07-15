@@ -69,6 +69,7 @@ tf_py_strict_test(
     srcs = ["failure_handler_test.py"],
     shard_count = 8,
     tags = [
+        "no_mac",
         "no_pip",  # TODO(b/266520226)
         "no_windows",  # TODO(b/197981388)
     ],
