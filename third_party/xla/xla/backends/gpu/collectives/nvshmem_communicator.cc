@@ -25,6 +25,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_fp16.h"
 #include "third_party/nvshmem/nvshmem.h"   // IWYU pragma: keep
 #include "third_party/nvshmem/nvshmemx.h"  // IWYU pragma: keep
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/nvshmem_collectives.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/primitive_util.h"
@@ -109,17 +110,17 @@ size_t ToRealCount(PrimitiveType dtype, size_t count) {
   }
 
 #define CALL_NVSHMEM_REDUCTION_DATATYPE(TYPENAME, TYPE, team, gpu_stream,     \
-                                        reduction_kind, dest_ptr, source_ptr, \
+                                        reduction_kind, source_ptr, dest_ptr, \
                                         count)                                \
-  NVSHMEM_REDUCTION_DATATYPE(reduce, TYPENAME, TYPE, NVSHMEM_TEAM_WORLD,      \
-                             (TYPE*)source_ptr, (TYPE*)dest_ptr, count,       \
-                             gpu_stream, reduction_kind);
-#define CALL_NVSHMEM_BITWISE_REDUCTION_DATATYPE(TYPENAME, TYPE, team,        \
-                                                gpu_stream, reduction_kind,  \
-                                                dest_ptr, source_ptr, count) \
-  NVSHMEM_BITWISE_REDUCTION_BITWISE_DATATYPE(                                \
-      reduce, TYPENAME, TYPE, NVSHMEM_TEAM_WORLD, (TYPE*)source_ptr,         \
-      (TYPE*)dest_ptr, count, gpu_stream, reduction_kind);
+  NVSHMEM_REDUCTION_DATATYPE(reduce, TYPENAME, TYPE, team, (TYPE*)source_ptr, \
+                             (TYPE*)dest_ptr, count, gpu_stream,              \
+                             reduction_kind);
+#define CALL_NVSHMEM_BITWISE_REDUCTION_DATATYPE(TYPENAME, TYPE, team,          \
+                                                gpu_stream, reduction_kind,    \
+                                                source_ptr, dest_ptr, count)   \
+  NVSHMEM_BITWISE_REDUCTION_BITWISE_DATATYPE(                                  \
+      reduce, TYPENAME, TYPE, team, (TYPE*)source_ptr, (TYPE*)dest_ptr, count, \
+      gpu_stream, reduction_kind);
 
 #define CALL_NVSHMEM_P2P(op, TYPENAME, TYPE, pe, source_ptr, dest_ptr,    \
                          num_elements, stream)                            \
@@ -220,8 +221,8 @@ tsl::AsyncValueRef<NvshmemCommunicator::Event> NvshmemCommunicator::AllReduce(
 
   TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
-  void* dest_ptr = send_buffer.opaque();
-  void* source_ptr = recv_buffer.opaque();
+  void* source_ptr = send_buffer.opaque();
+  void* dest_ptr = recv_buffer.opaque();
   count = ToRealCount(dtype, count);
   VLOG(3) << absl::StreamFormat(
       "Launch NVSHMEM AllReduce operation on device #%d; send_buffer=%p; "
@@ -236,52 +237,52 @@ tsl::AsyncValueRef<NvshmemCommunicator::Event> NvshmemCommunicator::AllReduce(
     case PrimitiveType::F64: {
       CALL_NVSHMEM_REDUCTION_DATATYPE(
           double, double, NVSHMEMX_TEAM_NODE, se::gpu::AsGpuStreamValue(stream),
-          reduction_kind, dest_ptr, source_ptr, count);
+          reduction_kind, source_ptr, dest_ptr, count);
       break;
     }
     case PrimitiveType::F16: {
       CALL_NVSHMEM_REDUCTION_DATATYPE(
           half, __half, NVSHMEMX_TEAM_NODE, se::gpu::AsGpuStreamValue(stream),
-          reduction_kind, dest_ptr, source_ptr, count);
+          reduction_kind, source_ptr, dest_ptr, count);
       break;
     }
     case PrimitiveType::F32: {
       CALL_NVSHMEM_REDUCTION_DATATYPE(
           float, float, NVSHMEMX_TEAM_NODE, se::gpu::AsGpuStreamValue(stream),
-          reduction_kind, dest_ptr, source_ptr, count);
+          reduction_kind, source_ptr, dest_ptr, count);
       break;
     }
     case PrimitiveType::BF16: {
       CALL_NVSHMEM_REDUCTION_DATATYPE(
           bfloat16, __nv_bfloat16, NVSHMEMX_TEAM_NODE,
-          se::gpu::AsGpuStreamValue(stream), reduction_kind, dest_ptr,
-          source_ptr, count);
+          se::gpu::AsGpuStreamValue(stream), reduction_kind, source_ptr,
+          dest_ptr, count);
       break;
     }
     case PrimitiveType::S32: {
       CALL_NVSHMEM_BITWISE_REDUCTION_DATATYPE(
           int32, int32_t, NVSHMEMX_TEAM_NODE, se::gpu::AsGpuStreamValue(stream),
-          reduction_kind, dest_ptr, source_ptr, count);
+          reduction_kind, source_ptr, dest_ptr, count);
       break;
     }
     case PrimitiveType::S64: {
       CALL_NVSHMEM_BITWISE_REDUCTION_DATATYPE(
           int64, int64_t, NVSHMEMX_TEAM_NODE, se::gpu::AsGpuStreamValue(stream),
-          reduction_kind, dest_ptr, source_ptr, count);
+          reduction_kind, source_ptr, dest_ptr, count);
       break;
     }
     case PrimitiveType::U32: {
       CALL_NVSHMEM_BITWISE_REDUCTION_DATATYPE(
           uint32, uint32_t, NVSHMEMX_TEAM_NODE,
-          se::gpu::AsGpuStreamValue(stream), reduction_kind, dest_ptr,
-          source_ptr, count);
+          se::gpu::AsGpuStreamValue(stream), reduction_kind, source_ptr,
+          dest_ptr, count);
       break;
     }
     case PrimitiveType::U64: {
       CALL_NVSHMEM_BITWISE_REDUCTION_DATATYPE(
           uint64, uint64_t, NVSHMEMX_TEAM_NODE,
-          se::gpu::AsGpuStreamValue(stream), reduction_kind, dest_ptr,
-          source_ptr, count);
+          se::gpu::AsGpuStreamValue(stream), reduction_kind, source_ptr,
+          dest_ptr, count);
       break;
     }
     default:

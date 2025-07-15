@@ -1965,7 +1965,6 @@ cc_library(
     name = "nvshmem_collective_thunk",
     srcs = ["nvshmem_collective_thunk.cc"],
     hdrs = ["nvshmem_collective_thunk.h"],
-    tags = ["gpu"],
     deps = [
         ":collective_thunk",
         ":thunk",
@@ -2091,5 +2090,32 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
+    name = "nvshmem_all_reduce_thunk",
+    srcs = ["nvshmem_all_reduce_thunk.cc"],
+    hdrs = ["nvshmem_all_reduce_thunk.h"],
+    deps = [
+        ":all_reduce_thunk",
+        ":collective_thunk",
+        ":nvshmem_collective_thunk",
+        ":thunk",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/collectives:gpu_collectives",
+        "//xla/core/collectives:communicator",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:computation_placer",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu/transforms/collectives:collective_ops_utils",
+        "//xla/stream_executor:stream",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
     ],
 )
