@@ -703,6 +703,14 @@ class Delegate {
   }
 
   bool enable_subgraph_reshaping() const {
+    if (options_.flags &
+        TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING) {
+      TFLITE_LOG_PROD_ONCE(
+          tflite::TFLITE_LOG_ERROR,
+          "Subgraph reshaping is enabled by default, "
+          "TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING is "
+          "deprecated and will be removed in the future.");
+    }
     return (options_.flags &
             TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_SUBGRAPH_RESHAPING) == 0;
   }
