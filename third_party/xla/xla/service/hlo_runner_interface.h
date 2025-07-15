@@ -258,9 +258,21 @@ class HloRunnerInterface {
   absl::StatusOr<Literal> ExecuteWithExecutable(
       OpaqueExecutable* executable, absl::Span<const Literal> arguments);
 
-  virtual absl::StatusOr<Literal> ExecuteWithExecutable(
-      OpaqueExecutable* executable,
-      absl::Span<const Literal* const> arguments) = 0;
+  absl::StatusOr<Literal> ExecuteWithExecutable(
+      OpaqueExecutable* executable, absl::Span<const Literal* const> arguments);
+
+  // Execute the given executable with the given argument literals. The
+  // executable is executed num_repeats times with the same inputs and the
+  // outputs are concatenated.
+  //
+  // The outer StatusOr captures any setup errors. The inner vector of StatusOrs
+  // captures any execution errors for each of the num_repeats executions.
+  //
+  // You may assume that the size of the vector is num_repeats.
+  virtual absl::StatusOr<std::vector<absl::StatusOr<Literal>>>
+  ExecuteWithExecutable(OpaqueExecutable* executable,
+                        absl::Span<const Literal* const> arguments,
+                        int64_t num_repeats) = 0;
 
   // Executes a given HLO module into a set of replicas, and returns a map
   // with the replica number as key, and the corresponding returned literal as

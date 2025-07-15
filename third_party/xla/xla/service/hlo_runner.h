@@ -92,9 +92,9 @@ class HloRunner : public HloRunnerInterface {
 
   using HloRunnerInterface::ExecuteWithExecutable;
 
-  absl::StatusOr<Literal> ExecuteWithExecutable(
-      OpaqueExecutable* executable,
-      absl::Span<const Literal* const> arguments) override;
+  absl::StatusOr<std::vector<absl::StatusOr<Literal>>> ExecuteWithExecutable(
+      OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
+      int64_t num_repeats) override;
 
   absl::StatusOr<Literal> ExecuteWithExecutableAndProfile(
       OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
