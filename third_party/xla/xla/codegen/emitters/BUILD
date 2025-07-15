@@ -204,6 +204,26 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "kernel_arguments_test",
+    srcs = ["kernel_arguments_test.cc"],
+    deps = [
+        ":kernel_arguments",
+        "//xla:shape_util",
+        "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/analysis:hlo_ordering",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:buffer_assignment",
+        "//xla/service:buffer_value",
+        "//xla/service:logical_buffer",
+        "//xla/service/gpu:gpu_constants",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "kernel_api_builder",
     srcs = ["kernel_api_builder.cc"],
