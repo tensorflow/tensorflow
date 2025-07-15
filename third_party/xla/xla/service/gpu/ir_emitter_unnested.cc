@@ -983,7 +983,7 @@ absl::Status IrEmitterUnnested::EmitCuDnnThunk(
   }
   AddThunkToThunkSequence(std::make_unique<CuDnnThunk>(
       fingerprint, Thunk::ThunkInfo::WithProfileAnnotation(instr),
-      kernel_arguments.args(), dropout_seed));
+      kernel_arguments.GetArgumentBufferSlices(), dropout_seed));
   return absl::OkStatus();
 }
 

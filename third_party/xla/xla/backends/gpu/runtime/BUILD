@@ -1602,7 +1602,6 @@ cc_library(
     hdrs = ["cudnn_thunk.h"],
     deps = [
         ":thunk",
-        "//xla/codegen/emitters:kernel_arguments",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:dnn",
