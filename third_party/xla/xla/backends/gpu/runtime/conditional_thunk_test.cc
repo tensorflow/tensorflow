@@ -58,7 +58,7 @@ struct DummyThunk : public Thunk {
 
   absl::StatusOr<ThunkProto> ToProto() const override {
     ThunkProto proto;
-    TF_ASSIGN_OR_RETURN(*proto.mutable_thunk_info(), GetThunkInfoProto());
+    *proto.mutable_thunk_info() = thunk_info().ToProto();
     return proto;
   }
 };

@@ -156,7 +156,7 @@ void ConditionalThunk::ForAllThunks(
 
 absl::StatusOr<ThunkProto> ConditionalThunk::ToProto() const {
   ThunkProto proto;
-  TF_ASSIGN_OR_RETURN(*proto.mutable_thunk_info(), GetThunkInfoProto());
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   auto* conditional_thunk_proto = proto.mutable_conditional_thunk();
   TF_ASSIGN_OR_RETURN(*conditional_thunk_proto->mutable_branch_index_buffer(),
