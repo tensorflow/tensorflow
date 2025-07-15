@@ -61,13 +61,14 @@ limitations under the License.
 
 namespace xla {
 
-std::pair<PjRtFuture<>::Promise, PjRtFuture<>>
-CommonPjRtClient::CreateLinkedUserPromise(PjRtMemorySpace* memory_space,
-                                          const char* callee_type,
-                                          const char* callee_method,
-                                          absl::string_view debug_info) {
-  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
-  auto result = PjRtFuture<>(
+PjRtFuture<>::Promise CommonPjRtClient::CreateUserPromise(
+    PjRtMemorySpace* memory_space, absl::string_view debug_info) {
+  return PjRtFuture<>::CreatePromise();
+}
+PjRtFuture<> CommonPjRtClient::CreateFutureFromUserPromise(
+    PjRtMemorySpace* memory_space, const char* callee_type,
+    const char* callee_method, PjRtFuture<>::Promise promise) {
+  return PjRtFuture<>(
       promise,
       /*on_block_start=*/
       [ready_event = FormRef(promise.async_value()), callee_type,
@@ -85,6 +86,16 @@ CommonPjRtClient::CreateLinkedUserPromise(PjRtMemorySpace* memory_space,
             [&] { return absl::StrCat(callee_type, "::", callee_method); },
             keys.traceme_context_id);
       });
+}
+
+std::pair<PjRtFuture<>::Promise, PjRtFuture<>>
+CommonPjRtClient::CreateLinkedUserPromise(PjRtMemorySpace* memory_space,
+                                          const char* callee_type,
+                                          const char* callee_method,
+                                          absl::string_view debug_info) {
+  PjRtFuture<>::Promise promise = CreateUserPromise(memory_space, debug_info);
+  auto result = CreateFutureFromUserPromise(memory_space, callee_type,
+                                            callee_method, promise);
   return std::make_pair(std::move(promise), std::move(result));
 }
 
