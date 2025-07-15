@@ -44,19 +44,17 @@ limitations under the License.
 #include "xla/service/collective_utils.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
-#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/cpu_info.h"  // NOLINT
-#include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
 
 namespace details {
 
-absl::StatusOr<std::vector<RepeatedFlagModifier>> parseRepeatedEnumModifiers(
+absl::StatusOr<std::vector<RepeatedFlagModifier>> ParseRepeatedEnumModifiers(
     const absl::string_view flag_value, const absl::string_view add_prefix) {
   std::vector<absl::string_view> values = absl::StrSplit(flag_value, ',');
   std::string prefix = absl::AsciiStrToUpper(add_prefix);
@@ -86,8 +84,7 @@ absl::StatusOr<std::vector<RepeatedFlagModifier>> parseRepeatedEnumModifiers(
     }
     modifiers.push_back(modifier);
   }
-  // If we have at least one incremental then we all values are to be
-  // incremental.
+  // If we have at least one incremental then all values are to be incremental.
   if (incremental_modifiers_count > 0 &&
       incremental_modifiers_count != values.size()) {
     return absl::InvalidArgumentError(
@@ -101,17 +98,64 @@ absl::StatusOr<std::vector<RepeatedFlagModifier>> parseRepeatedEnumModifiers(
 namespace {
 
 template <typename T>
-void RemoveRepeatedFieldValue(tsl::protobuf::RepeatedField<int>* values,
-                              T remove) {
-  auto it = values->begin();
-  while (it != values->end()) {
-    if (*it == remove) {
-      it = values->erase(it);
-    } else {
-      it++;
+static auto FindRepeatedFieldValue(tsl::protobuf::RepeatedField<int>* list,
+                                   T value) {
+  for (auto it = list->begin(); it != list->end(); ++it) {
+    if (*it == value) {
+      return it;
     }
   }
+  return list->end();
 }
+
+// Returns a `DebugOptions` setter for repeated enum flag of type `T`.
+// NOLINTBEGIN(readability-function-cognitive-complexity)
+// We disable the cognitive complexity check here because we need to return a
+// lambda function.
+template <typename T>
+static auto SetterForRepeatedEnum(
+    absl::string_view flag_name, absl::string_view enum_prefix,
+    bool (*enum_parser)(absl::string_view string_value, T* value),
+    tsl::protobuf::RepeatedField<int>* mutable_array) {
+  return [flag_name, enum_prefix, enum_parser,
+          mutable_array](const std::string& input) {
+    if (input.empty()) {  // Disable all values.
+      mutable_array->Clear();
+      return true;
+    }
+
+    auto value_modifiers =
+        details::ParseRepeatedEnumModifiers(input, enum_prefix);
+    if (!value_modifiers.ok()) {
+      LOG(ERROR) << absl::StreamFormat("Illegal value for %s '%s': %s",
+                                       flag_name, input,
+                                       value_modifiers.status().message());
+      return false;
+    }
+    for (const auto& mod : *value_modifiers) {
+      if (mod.op == details::RepeatedFlagModifier::Op::kClear) {
+        mutable_array->Clear();
+        continue;
+      }
+      T value;
+      if (!enum_parser(mod.value, &value)) {
+        LOG(ERROR) << absl::StreamFormat("Illegal value for --%s '%s'",
+                                         flag_name, mod.value);
+        return false;
+      }
+      auto it = FindRepeatedFieldValue(mutable_array, value);
+      if (mod.op == details::RepeatedFlagModifier::Op::kAdd &&
+          it == mutable_array->end()) {  // Do not add duplicates.
+        mutable_array->Add(value);
+      } else if (mod.op == details::RepeatedFlagModifier::Op::kRemove &&
+                 it != mutable_array->end()) {
+        mutable_array->erase(it);
+      }
+    }
+    return true;
+  };
+}
+// NOLINTEND(readability-function-cognitive-complexity)
 
 }  // namespace
 
@@ -626,70 +670,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
     return absl::StrJoin(command_types, ", ", Formatter());
   };
 
-  // Custom "sub-parser" lambda for xla_gpu_enable_command_buffer.
-  auto setter_for_xla_gpu_enable_command_buffer =
-      [debug_options](const std::string& input) {
-        auto is_command_type = [](absl::string_view value) {
-          DebugOptions::CommandBufferCmdType cmd_type;
-          return DebugOptions::CommandBufferCmdType_Parse(
-              absl::AsciiStrToUpper(value), &cmd_type);
-        };
-
-        auto is_add_or_remove_command_type = [&](absl::string_view value) {
-          if (absl::StartsWith(value, "+") || absl::StartsWith(value, "-")) {
-            return (is_command_type(value.substr(1)));
-          }
-          return false;
-        };
-
-        auto parse_command_type = [](absl::string_view value) {
-          DebugOptions::CommandBufferCmdType cmd_type;
-          DebugOptions::CommandBufferCmdType_Parse(absl::AsciiStrToUpper(value),
-                                                   &cmd_type);
-          return cmd_type;
-        };
-
-        // Disable command buffers by clearing a set of supported commands.
-        if (input.empty()) {
-          debug_options->clear_xla_gpu_enable_command_buffer();
-          return true;
-        }
-
-        std::vector<absl::string_view> values = absl::StrSplit(input, ',');
-
-        // Overwrite a set of supported commands with a flag.
-        if (absl::c_all_of(values, is_command_type)) {
-          debug_options->clear_xla_gpu_enable_command_buffer();
-          for (const absl::string_view value : values) {
-            debug_options->add_xla_gpu_enable_command_buffer(
-                parse_command_type(value));
-          }
-          return true;
-        }
-
-        // Add or remove a commands from a default set.
-        if (absl::c_all_of(values, is_add_or_remove_command_type)) {
-          for (const absl::string_view value : values) {
-            DebugOptions::CommandBufferCmdType cmd_type =
-                parse_command_type(value.substr(1));
-            if (absl::StartsWith(value, "+")) {
-              debug_options->add_xla_gpu_enable_command_buffer(cmd_type);
-            } else if (absl::StartsWith(value, "-")) {
-              RemoveRepeatedFieldValue(
-                  debug_options->mutable_xla_gpu_enable_command_buffer(),
-                  cmd_type);
-            }
-            // TODO(goncharov): That looks like a bug, we should return after
-            // the loop.
-            return true;
-          }
-        }
-
-        // Return an error if flag value was not recognized as one of the
-        // supported modes.
-        return false;
-      };
-
   // Custom "sub-parser" for xla_fuel.  Note that ConsumeFuel does not do any
   // locking on the fuel global variables.  This means that it's
   // illegal/undefined behavior to modify this flag value while the compiler is
@@ -843,48 +823,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           return false;
         }
         debug_options->set_xla_gpu_pgle_accuracy_checker(strictness_level);
-        return true;
-      };
-
-  auto setter_for_xla_gpu_unsupported_generic_triton_emitter_features =
-      [debug_options](std::string input) {
-        auto value_modifiers = details::parseRepeatedEnumModifiers(
-            input, "GENERIC_TRITON_EMITTER_");
-        if (!value_modifiers.ok()) {
-          LOG(ERROR) << absl::StreamFormat(
-              "Illegal value for "
-              "--xla_gpu_unsupported_generic_triton_emitter_features "
-              "'%s': %s",
-              input, value_modifiers.status().message());
-          return false;
-        }
-        for (const auto& mod : *value_modifiers) {
-          if (mod.op == details::RepeatedFlagModifier::Op::kClear) {
-            debug_options
-                ->clear_xla_gpu_unsupported_generic_triton_emitter_features();
-            continue;
-          }
-          DebugOptions::GenericTritonEmitterFeature feature;
-          if (!DebugOptions::GenericTritonEmitterFeature_Parse(mod.value,
-                                                               &feature)) {
-            LOG(ERROR) << absl::StreamFormat(
-                "Illegal value for "
-                "--xla_gpu_unsupported_generic_triton_emitter_features "
-                "'%s'",
-                mod.value);
-            return false;
-          }
-          if (mod.op == details::RepeatedFlagModifier::Op::kAdd) {
-            debug_options
-                ->add_xla_gpu_unsupported_generic_triton_emitter_features(
-                    feature);
-          } else if (mod.op == details::RepeatedFlagModifier::Op::kRemove) {
-            RemoveRepeatedFieldValue(
-                debug_options
-                    ->mutable_xla_gpu_unsupported_generic_triton_emitter_features(),  // NOLINT
-                feature);
-          }
-        }
         return true;
       };
 
@@ -1061,6 +999,22 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 "Call oneDNN thunks for matmul and convolution fusions in the "
                 "CPU backend."));
   flag_list->push_back(tsl::Flag(
+      "xla_cpu_experimental_onednn_fusion_type",
+      SetterForRepeatedEnum<DebugOptions::LibraryFusionType>(
+          "xla_cpu_experimental_onednn_fusion_type",
+          /*enum_prefix=*/"LIBRARY_FUSION_TYPE_",
+          &DebugOptions::LibraryFusionType_Parse,
+          debug_options->mutable_xla_cpu_experimental_onednn_fusion_type()),
+      "",
+      "Comma-separated list of oneDNN fusion types to be enabled; "
+      "no whitespace around commas. Two ways to pass values:\n"
+      "  1. Exact type names. This overwrites the default setting.\n"
+      "  2. '+' or '-' prefix: This adds or removes a fusion type "
+      "from the default list. Cannot be mixed with the overwrite "
+      "mode. Every item must have the sign prefix.\n"
+      "Available fusion types: dot, eltwise, and reduce.\n"
+      "The default list is currently empty."));
+  flag_list->push_back(tsl::Flag(
       "xla_cpu_use_acl", bool_setter_for(&DebugOptions::set_xla_cpu_use_acl),
       debug_options->xla_cpu_use_acl(),
       "Generate calls to ACL (Arm Compute Library) in the CPU backend."));
@@ -1081,14 +1035,32 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_cpu_use_xnnpack(),
                 "Use XNNPACK for supported operations."));
   flag_list->push_back(tsl::Flag(
+      "xla_cpu_experimental_xnn_fusion_type",
+      SetterForRepeatedEnum<DebugOptions::LibraryFusionType>(
+          "xla_cpu_experimental_xnn_fusion_type",
+          /*enum_prefix=*/"LIBRARY_FUSION_TYPE_",
+          &DebugOptions::LibraryFusionType_Parse,
+          debug_options->mutable_xla_cpu_experimental_xnn_fusion_type()),
+      "",
+      "Comma-separated list of XNN fusion types to be enabled.; "
+      "no whitespace around commas. Two ways to pass values:\n"
+      "  1. Exact type names. This overwrites the default setting.\n"
+      "  2. '+' or '-' prefix: This adds or removes a fusion type "
+      "from the default list. Cannot be mixed with the overwrite "
+      "mode. Every item must have the sign prefix.\n"
+      "Available fusion types: dot, eltwise, and reduce.\n"
+      "The default list is currently empty."));
+  flag_list->push_back(tsl::Flag(
       "xla_cpu_experimental_xnn_graph_fusion_mode",
       setter_for_xla_cpu_experimental_xnn_graph_fusion_mode,
       DebugOptions::XnnGraphFusionMode_Name(
           debug_options->xla_cpu_experimental_xnn_graph_fusion_mode()),
       "Controls XnnGraphFusion pass. "
-      "`XNN_GRAPH_FUSION_MODE_DISABLED` - default value, "
-      "`XNN_GRAPH_FUSION_MODE_GREEDY` - greedy extraction of "
-      "XNNPACK-compatible subgraphs starting from root instructions."));
+      "  `XNN_GRAPH_FUSION_MODE_DISABLED` - default value,\n"
+      "  `XNN_GRAPH_FUSION_MODE_GREEDY` - greedy extraction of "
+      "XNNPACK-compatible subgraphs starting from root instructions,\n"
+      "  `XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY` - same as GREEDY plus "
+      "operations that are only supported with slinky."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_parallel_codegen_split_count",
       int32_setter_for(&DebugOptions::set_xla_cpu_parallel_codegen_split_count),
@@ -1574,7 +1546,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_gpu_enable_command_buffer in new use cases. 0 = off; 1 = capture "
       "fusions and memcpys; 2 = capture gemms; 3 = capture convolutions."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_command_buffer", setter_for_xla_gpu_enable_command_buffer,
+      "xla_gpu_enable_command_buffer",
+      SetterForRepeatedEnum<DebugOptions::CommandBufferCmdType>(
+          "xla_gpu_enable_command_buffer",
+          /*enum_prefix=*/"", &DebugOptions::CommandBufferCmdType_Parse,
+          debug_options->mutable_xla_gpu_enable_command_buffer()),
       command_types_to_string(debug_options->xla_gpu_enable_command_buffer()),
       "The types of the commands that are recorded into command buffers. It"
       " can either be a list of command types or a list of command types with"
@@ -1851,7 +1827,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 "Use Triton-based matrix multiplication."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_unsupported_generic_triton_emitter_features",
-      setter_for_xla_gpu_unsupported_generic_triton_emitter_features, "",
+      SetterForRepeatedEnum<DebugOptions::GenericTritonEmitterFeature>(
+          "xla_gpu_unsupported_generic_triton_emitter_features",
+          /*enum_prefix=*/"GENERIC_TRITON_EMITTER_",
+          &DebugOptions::GenericTritonEmitterFeature_Parse,
+          debug_options
+              ->mutable_xla_gpu_unsupported_generic_triton_emitter_features()),
+      "",
       "Comma-separated list of individual features of generic Triton emitter. "
       "Use +/- prefix to modify the default list, or list features to enable "
       "explicitly - that will override the defaults."));
