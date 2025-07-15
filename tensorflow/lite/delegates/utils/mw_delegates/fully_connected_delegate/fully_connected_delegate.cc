@@ -20,14 +20,6 @@
 #include "tensorflow/lite/delegates/utils/mw_delegates/fully_connected_delegate/fully_connected_drivers/fully_connected_bram_driver.h"
 #include "tensorflow/lite/delegates/utils/mw_delegates/fully_connected_delegate/fully_connected_drivers/fully_connected_ip_driver.h"
 
-#define TF_LITE_KERNEL_LOG  (context, ...) \
-  do { \
-    if (context->GetLogMessage) { \
-      context->GetLogMessage(context, __FILE__, __LINE__, __VA_ARGS__); \
-    } \
-  } while (0)
-
-
 namespace tflite {
 namespace fully_connected {
 
