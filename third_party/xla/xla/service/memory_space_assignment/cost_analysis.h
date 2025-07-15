@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
@@ -96,7 +97,7 @@ class CostAnalysis {
 
   static absl::StatusOr<std::unique_ptr<CostAnalysis>> Create(
       OpCostManager& op_cost_manager, const CostAnalysisOptions& options,
-      const HloModule& module);
+      const AliasInfo* alias_info, const HloModule& module);
 
   int64_t GetShapeSizeBytes(const Shape& shape) const;
 
