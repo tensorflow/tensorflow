@@ -22,9 +22,15 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "xla/mlir/utils/type_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/util.h"
@@ -137,6 +143,34 @@ llvm::Type* Intrinsic::TypeToIrType(Type type, llvm::LLVMContext& context) {
     return llvm::VectorType::get(elt_type, *width, false);
   }
   return elt_type;
+}
+
+mlir::Type Intrinsic::TypeToIrType(Type type, mlir::MLIRContext& context) {
+  auto elt_type = ConvertPrimitiveTypeToMlirType(type.element_type(),
+                                                 mlir::Builder(&context));
+  if (auto width = type.vector_width()) {
+    return mlir::VectorType::get(*width, elt_type.value());
+  }
+  return elt_type.value();
+}
+
+mlir::func::FuncOp Intrinsic::GetOrInsertDeclaration(mlir::OpBuilder& b,
+                                                     mlir::ModuleOp& module,
+                                                     absl::string_view name,
+                                                     mlir::FunctionType type) {
+  // Check if the function already exists, and has the correct type.
+  if (auto func = module.lookupSymbol<mlir::func::FuncOp>(name);
+      func && func.getFunctionType() == type) {
+    return func;
+  }
+
+  // If not found or type mismatch, create the declaration.
+  mlir::OpBuilder::InsertionGuard guard(b);
+  b.setInsertionPointToStart(module.getBody());
+
+  auto decl = b.create<mlir::func::FuncOp>(module.getLoc(), name, type);
+  decl.setPrivate();
+  return decl;
 }
 
 }  // namespace xla::codegen

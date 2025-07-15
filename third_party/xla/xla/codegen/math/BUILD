@@ -29,12 +29,17 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/mlir/utils:type_util",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/functional:overload",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -63,9 +68,11 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Core",  # buildcleaner: keep
+        "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
     ],
 )
 

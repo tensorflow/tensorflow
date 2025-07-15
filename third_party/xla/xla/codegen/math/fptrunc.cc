@@ -30,6 +30,9 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
@@ -47,6 +50,14 @@ llvm::Function* Intrinsic::FpTrunc::GetOrInsertDeclaration(llvm::Module* module,
   auto* function_type = llvm::FunctionType::get(to_type, {from_type}, false);
   return llvm::cast<llvm::Function>(
       module->getOrInsertFunction(Name(from, to), function_type).getCallee());
+}
+
+mlir::func::FuncOp Intrinsic::FpTrunc::GetOrInsertDeclaration(
+    mlir::OpBuilder& b, mlir::ModuleOp module, Type from, Type to) {
+  auto from_type = TypeToIrType(from, *module.getContext());
+  auto to_type = TypeToIrType(to, *module.getContext());
+  return Intrinsic::GetOrInsertDeclaration(
+      b, module, Name(from, to), b.getFunctionType(from_type, to_type));
 }
 
 // Truncates an f32 value (scalar or vector) to bf16 with correct rounding.
