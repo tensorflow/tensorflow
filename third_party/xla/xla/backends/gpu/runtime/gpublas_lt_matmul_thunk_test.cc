@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/cublas_cudnn.h"
@@ -93,7 +94,8 @@ class GpuBlasLtMatmulThunkTest : public HloTestBase {
                                   absl::string_view hlo_string);
 };
 
-struct GpuBlasLtThunkBuilder {
+class GpuBlasLtThunkBuilder {
+ public:
   GpuBlasLtThunkBuilder(se::StreamExecutor* exec,
                         const se::GpuComputeCapability& gpu_comp)
       : exec_(exec), allocator_(exec), gpu_comp_(gpu_comp) {}
@@ -140,8 +142,13 @@ struct GpuBlasLtThunkBuilder {
       bias = slices[has_matrix_bias ? 3 : 2];
     }
 
+    Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(gemm);
+    std::string canonical_hlo = gemm->ToString(
+        HloPrintOptions::Fingerprint().set_print_backend_config(true));
+
     return std::make_unique<CublasLtMatmulThunk>(
-        gemm, std::move(gemm_config), epilogue,
+        std::move(thunk_info), std::move(canonical_hlo), std::move(gemm_config),
+        epilogue,
         /*algorithm_idx*/ 0, slices[0], slices[1],
         has_matrix_bias ? slices[2] : slices.back(), slices.back(), bias,
         BufferAllocation::Slice{} /* aux */,
