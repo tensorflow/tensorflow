@@ -74,6 +74,35 @@ limitations under the License.
 
 namespace xla {
 
+static absl::Mutex mu(absl::kConstInit);
+
+// Maps a module's unique ID to a counter indicating how many times we've dumped
+// this module during the compilation pipeline.  This lets us keep the filenames
+// ordered nicely.
+//
+// Entries added here leak forever; we have no way to GC them when a module
+// dies.  But we only add an entry if dumping is enabled for this module, and
+// dumping a module leaks buffer space in stdout or bytes on disk *way* faster
+// than this hashtable leaks memory.
+static auto& module_id_to_step_number ABSL_GUARDED_BY(mu) =
+    *new absl::flat_hash_map<int64_t, int64_t>();
+
+// Maps a module's unique ID to a timestamp indicating when we've first dumped
+// this module during the compilation pipeline and when we first started
+// compiling this module.  This lets us keep the filenames ordered nicely.
+//
+// Entries added here leak forever; we have no way to GC them when a module
+// dies.  But we only add an entry if dumping is enabled for this module, and
+// dumping a module leaks buffer space in stdout or bytes on disk *way* faster
+// than this hashtable leaks memory.
+static auto& module_id_to_timestamp ABSL_GUARDED_BY(mu) =
+    *new absl::flat_hash_map<int64_t, uint64_t>();
+
+int64_t StepNumberForModule(const HloModule& module) {
+  absl::MutexLock lock(&mu);
+  return module_id_to_step_number[module.unique_id()]++;
+}
+
 absl::Status CreateDirIfNeeded(const std::string& dir, tsl::Env* env) {
   if (!env->IsDirectory(dir).ok()) {
     absl::Status status = env->RecursivelyCreateDir(dir);
@@ -337,30 +366,12 @@ static std::optional<std::string> GetDumpFilePath(
 
   // Make sure we are not going to dump more modules than the user has asked.
   if (opts.dump_max_hlo_modules > 0) {
-    std::vector<std::string> matches;
-    auto pattern = tsl::io::JoinPath(dir, "*module_*.*");
-    auto status = env->GetMatchingPaths(pattern, &matches);
-    if (!status.ok()) {
-      LOG(ERROR) << "Could not get matching paths for pattern " << pattern
-                 << ": " << status;
-    }
-    static const LazyRE2 module_id_regex = {R"(.*module_(\d+)\..*)"};
-    absl::flat_hash_set<int64_t> dumped_module_ids;
-    for (const std::string& match : matches) {
-      int64_t dumped_module_id;
-      if (RE2::FullMatch(match, *module_id_regex, &dumped_module_id)) {
-        dumped_module_ids.insert(dumped_module_id);
-      }
-    }
-    if (dumped_module_ids.size() >= opts.dump_max_hlo_modules) {
-      int64_t module_id;
-      if (RE2::FullMatch(filename, *module_id_regex, &module_id) &&
-          !dumped_module_ids.contains(module_id)) {
-        LOG(ERROR) << "Have already dumped " << dumped_module_ids.size()
-                   << " modules, more than the limit of "
-                   << opts.dump_max_hlo_modules;
-        return std::nullopt;
-      }
+    absl::MutexLock lock(&mu);
+    if (module_id_to_timestamp.size() >= opts.dump_max_hlo_modules) {
+      LOG(ERROR) << "Have already dumped " << module_id_to_timestamp.size()
+                 << " modules, more than the limit of "
+                 << opts.dump_max_hlo_modules;
+      return std::nullopt;
     }
   }
 
@@ -561,6 +572,13 @@ static std::vector<std::string> DumpHloModuleImpl(
   if (!dumped_file_paths.empty()) {
     LOG_FIRST_N(INFO, 1) << "HloModule dump enabled with path prefix: "
                          << prefix << ", suffix: " << suffix;
+    if (opts.dump_max_hlo_modules > 0) {
+      absl::MutexLock lock(&mu);
+      // Try to record the time we dumped this module to keep track of total
+      // module count.
+      module_id_to_timestamp.try_emplace(module.unique_id(),
+                                         tsl::Env::Default()->NowMicros());
+    }
   }
   return dumped_file_paths;
 }
@@ -580,35 +598,6 @@ static void DumpHloModuleMetadata(
   } else {
     LOG(ERROR) << "Failed to convert HloModuleMetadataProto to text.";
   }
-}
-
-static absl::Mutex mu(absl::kConstInit);
-
-// Maps a module's unique ID to a counter indicating how many times we've dumped
-// this module during the compilation pipeline.  This lets us keep the filenames
-// ordered nicely.
-//
-// Entries added here leak forever; we have no way to GC them when a module
-// dies.  But we only add an entry if dumping is enabled for this module, and
-// dumping a module leaks buffer space in stdout or bytes on disk *way* faster
-// than this hashtable leaks memory.
-static auto& module_id_to_step_number ABSL_GUARDED_BY(mu) =
-    *new absl::flat_hash_map<int64_t, int64_t>();
-
-// Maps a module's unique ID to a timestamp indicating when we've first dumped
-// this module during the compilation pipeline and when we first started
-// compiling this module.  This lets us keep the filenames ordered nicely.
-//
-// Entries added here leak forever; we have no way to GC them when a module
-// dies.  But we only add an entry if dumping is enabled for this module, and
-// dumping a module leaks buffer space in stdout or bytes on disk *way* faster
-// than this hashtable leaks memory.
-static auto& module_id_to_timestamp ABSL_GUARDED_BY(mu) =
-    *new absl::flat_hash_map<int64_t, uint64_t>();
-
-int64_t StepNumberForModule(const HloModule& module) {
-  absl::MutexLock lock(&mu);
-  return module_id_to_step_number[module.unique_id()]++;
 }
 
 std::vector<std::string> DumpHloModuleIfEnabledImpl(

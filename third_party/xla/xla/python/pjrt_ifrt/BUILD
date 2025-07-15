@@ -209,6 +209,7 @@ cc_library(
         ":basic_string_array",
         ":pjrt_attribute_map_util",
         ":pjrt_dtype",
+        ":transfer_server_interface",
         ":xla_ifrt",
         "//xla:literal",
         "//xla:shape_util",
@@ -246,7 +247,6 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -555,3 +555,18 @@ xla_cc_test(
 #     visibility = ["//visibility:private"],
 # )
 # copybara:uncomment_end
+
+cc_library(
+    name = "transfer_server_interface",
+    hdrs = ["transfer_server_interface.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla/pjrt:pjrt_client",
+        "//xla/python/ifrt",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)

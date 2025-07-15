@@ -102,6 +102,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
 #include "tsl/platform/tstring.h"
+#include "tsl/profiler/lib/traceme.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -669,6 +670,7 @@ bool IfrtServingExecutable::UsePortableExecution(
 absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     absl::Span<const tensorflow::Tensor> inputs,
     absl::Span<const int> variable_arg_indices) {
+  tsl::profiler::TraceMe traceme("IfrtServingExecutable::Execute");
   for (int i = 1; i < variable_arg_indices.size(); i++) {
     if (variable_arg_indices[i] <= variable_arg_indices[i - 1]) {
       return absl::FailedPreconditionError(absl::StrCat(
@@ -737,6 +739,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   }
 
   {
+    tsl::profiler::TraceMe traceme("AsyncRestoreVariables");
     absl::ReaderMutexLock lock(&mutex_);
     if (!is_frozen_) {
       // Asynchronously load the restored variable tensors to Ifrt array.
@@ -804,27 +807,31 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   if (UsePortableExecution(compile_metadata)) {
     execution_device_list = device_list;
   }
-  TF_ASSIGN_OR_RETURN(
-      auto execution_result,
-      executable_bundle->ifrt_executable->Execute(
-          absl::MakeSpan(args), /*options=*/{.fill_status = true},
-          std::move(execution_device_list)));
 
-  auto status = execution_result.status.Await();
+  absl::StatusOr<xla::ifrt::LoadedExecutable::ExecuteResult> execution_result;
+  {
+    tsl::profiler::TraceMe traceme("Execute");
+    execution_result = executable_bundle->ifrt_executable->Execute(
+        absl::MakeSpan(args), /*options=*/{.fill_status = true},
+        std::move(execution_device_list));
+    TF_RETURN_IF_ERROR(execution_result.status());
+  }
+
+  auto status = execution_result->status.Await();
   TF_RETURN_IF_ERROR(status);
 
   if (executable_bundle->compile_metadata.retvals().size() !=
-      execution_result.outputs.size()) {
+      execution_result->outputs.size()) {
     return absl::InternalError(absl::StrCat(
         "Expect ", executable_bundle->compile_metadata.retvals().size(),
-        " but got ", execution_result.outputs.size(), " outputs"));
+        " but got ", execution_result->outputs.size(), " outputs"));
   }
 
   std::vector<xla::ifrt::Future<tensorflow::Tensor>> output_futures;
-  output_futures.reserve(execution_result.outputs.size());
-  for (int i = 0; i < execution_result.outputs.size(); ++i) {
+  output_futures.reserve(execution_result->outputs.size());
+  for (int i = 0; i < execution_result->outputs.size(); ++i) {
     tensorflow::TensorShape tensor_shape;
-    const xla::ifrt::ArrayRef& array_for_copy = execution_result.outputs[i];
+    const xla::ifrt::ArrayRef& array_for_copy = execution_result->outputs[i];
     const tpu::TPUCompileMetadataProto::Retval& metadata_retval =
         executable_bundle->compile_metadata.retvals()[i];
 
@@ -862,7 +869,7 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
                        inputs[i].dtype(), " and shape ",
                        inputs[i].shape().DebugString(), " at index ", i));
     }
-    std::string runtime_name = inputs[i].scalar<tsl::tstring>()();
+    std::string tensor_name = inputs[i].scalar<tsl::tstring>()();
     // TODO(b/339521818): Add test cases for OpSharding on variables.
     TF_ASSIGN_OR_RETURN(
         xla::HloSharding hlo_sharding,
@@ -877,7 +884,7 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
 
     TF_RETURN_IF_ERROR(
         ifrt_serving::AsyncLoadRestoredTensorAsIfrtLoadedVariable(
-            runtime_name, ifrt_client_, thread_pool_,
+            tensor_name, ifrt_client_, thread_pool_,
             ifrt_restore_tensor_registry_, ifrt_loaded_variable_registry_,
             checkpoint_loader_queue_, sharding_config));
   }

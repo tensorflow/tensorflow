@@ -91,8 +91,6 @@ filegroup(
 filegroup(
     name = "runtime_hdrs",
     srcs = [
-        # XLA Runtime support.
-        "buffer_desc.h",
         # Single-threaded support.
         "runtime_custom_call_status.h",
         "runtime_fp16.h",
@@ -124,6 +122,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:types",
         "//xla:util",
+        "//xla/backends/cpu/runtime:xfeed_manager",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:shaped_buffer",
         "//xla/tsl/platform:statusor",
@@ -152,6 +151,7 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu/runtime:xfeed_manager",
         "//xla/service:compiler",
         "//xla/service:generic_transfer_manager",
         "//xla/service:transfer_manager",
@@ -208,7 +208,6 @@ cc_library(
         ":runtime_symbol_generator",
         ":small_while_loop_hoisting_pass",
         ":thunk_emitter",
-        ":xla_framework",
         "//xla:cpu_function_runtime",
         "//xla:debug_options_flags",
         "//xla:literal",
@@ -426,6 +425,7 @@ cc_library(
         "//xla/backends/cpu/runtime:thunk",
         "//xla/backends/cpu/runtime:thunk_proto_cc",
         "//xla/backends/cpu/runtime:thunk_proto_serdes",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:buffer_value",
@@ -557,22 +557,10 @@ tf_proto_library(
     name = "executable_proto",
     srcs = ["executable.proto"],
     protodeps = [
-        ":xla_framework_proto",
         "//xla/service:hlo_proto",
         "//xla:xla_proto",
         "//xla/backends/cpu/runtime:thunk_proto",
     ],
-)
-
-tf_proto_library(
-    name = "xla_framework_proto",
-    srcs = ["xla_framework.proto"],
-)
-
-cc_library(
-    name = "xla_framework",
-    hdrs = ["xla_framework.h"],
-    deps = [":xla_framework_proto_cc"],
 )
 
 cc_library(
@@ -647,11 +635,6 @@ cc_library(
 )
 
 cc_library(
-    name = "buffer_desc",
-    hdrs = ["buffer_desc.h"],
-)
-
-cc_library(
     name = "cpu_executable",
     srcs = ["cpu_executable.cc"],
     hdrs = ["cpu_executable.h"],
@@ -671,6 +654,7 @@ cc_library(
         "//xla/backends/cpu/runtime:thread_pool_task_runner",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/backends/cpu/runtime:thunk_executor",
+        "//xla/backends/cpu/runtime:xfeed_manager",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:custom_call_status",
@@ -712,6 +696,8 @@ cc_library(
     hdrs = ["elemental_math_emitter.h"],
     deps = [
         "//xla:xla_data_proto_cc",
+        "//xla/codegen/math:erf",
+        "//xla/codegen/math:intrinsic",
         "//xla/service/llvm_ir:math_ops",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -1022,10 +1008,12 @@ cc_library(
     srcs = ["tiled_dot_emitter.cc"],
     hdrs = ["tiled_dot_emitter.h"],
     deps = [
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/codegen:vector_ir_builder",
         "//xla/service:hlo_module_config",
         "//xla/service/llvm_ir:kernel_support_library",
+        "//xla/tsl/lib/math:math_util",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/strings",
@@ -1056,26 +1044,24 @@ cc_library(
         "//xla/service/llvm_ir:kernel_support_library",
         "//xla/service/llvm_ir:llvm_loop",
         "//xla/service/llvm_ir:llvm_util",
+        "//xla/tsl/lib/math:math_util",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
 cc_library(
     name = "cpu_runtime",
-    srcs = [
-        "cpu_runtime.cc",
-        "xfeed_manager.cc",
-    ],
-    hdrs = [
-        "cpu_runtime.h",
-        "xfeed_manager.h",
-    ],
+    srcs = ["cpu_runtime.cc"],
+    hdrs = ["cpu_runtime.h"],
     copts = runtime_copts(),
     deps = [
         ":cpu_executable_run_options",
@@ -1088,6 +1074,7 @@ cc_library(
         "//xla/backends/cpu/collectives:cpu_cliques",
         "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/backends/cpu/collectives:in_process_collectives",
+        "//xla/backends/cpu/runtime:xfeed_manager",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/hlo/parser:hlo_parser",
@@ -1379,25 +1366,6 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-xla_cc_test(
-    name = "xfeed_manager_test",
-    size = "small",
-    srcs = ["xfeed_manager_test.cc"],
-    deps = [
-        ":cpu_runtime",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:test",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_googletest//:gtest",
     ],
 )
 

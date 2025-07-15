@@ -651,7 +651,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(const Shape& shape,
 // 'use_large_range' indicates the sampled data is from the full range of the
 // floating point format. (floating point format only)
 // 'max_bits_of_precision' sets the data to have the given number of bits or
-// less (integer or floating point formats only).
+// less and are not NaNs (integer or floating point formats only).
 absl::StatusOr<Literal> MakeFakeLiteral(
     const Shape& shape, std::minstd_rand0* engine,
     std::optional<std::pair<int64_t, int64_t>> limit, bool is_sorted,

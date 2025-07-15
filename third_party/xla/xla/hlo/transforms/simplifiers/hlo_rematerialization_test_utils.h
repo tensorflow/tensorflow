@@ -22,6 +22,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -143,6 +144,7 @@ class RematerializationTestBase : public HloHardwareIndependentTestBase {
   const Shape scalar_shape_ = ShapeUtil::MakeShape(xla::F32, {});
   const Shape vec1_shape_ = ShapeUtil::MakeShape(xla::F32, {1});
   const Shape vec1024_shape_ = ShapeUtil::MakeShape(xla::F32, {1024});
+  AliasInfo alias_info_;
 };
 
 }  // namespace xla

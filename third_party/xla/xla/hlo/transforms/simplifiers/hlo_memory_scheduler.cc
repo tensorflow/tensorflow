@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/tuple_points_to_analysis.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
+#include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -380,12 +382,13 @@ class ListScheduler {
   absl::flat_hash_set<const HloInstruction*> scheduled_instructions_;
 };
 
-int64_t SumLogicalBufferSizes(
-    const TuplePointsToAnalysis::BufferDefinitionVector& buffers,
-    const BufferValue::SizeFunction& size_function) {
+int64_t SumBufferSizes(const HloInstruction* hlo, const HloValueSet& value_set,
+                       const BufferValue::SizeFunction& size_function) {
   int64_t size = 0;
-  for (const LogicalBuffer* buffer : buffers) {
-    size += size_function(*buffer);
+  for (const HloValue* value : value_set.values()) {
+    if (value->instruction() == hlo) {
+      size += size_function(*value);
+    }
   }
   return size;
 }
@@ -411,7 +414,8 @@ absl::StatusOr<HloSchedule> ComputationSchedulerAlgorithm::Run(
   }
   if (peak_memory) {
     TF_ASSIGN_OR_RETURN(*peak_memory, HeapSimulator::MinimumMemoryForModule(
-                                          schedule, size_function_));
+                                          schedule, alias_analysis, alias_info_,
+                                          size_function_));
   }
   return schedule;
 }
@@ -443,8 +447,10 @@ absl::StatusOr<HloInstructionSequence> DFSMemoryScheduler::Run(
     // saying that instructions with no users or a single user don't count;
     // instructions with lots of fan-out will be visited earlier.
     stats.extra_users = hlo->users().empty() ? 0 : hlo->users().size() - 1;
-    int64_t logical_buffer_size = SumLogicalBufferSizes(
-        points_to_analysis.GetBuffersDefinedByInstruction(hlo), size_function_);
+    HloValueSet value_set =
+        alias_analysis.dataflow_analysis().GetFlattenedValueSet(hlo);
+    int64_t logical_buffer_size =
+        SumBufferSizes(hlo, value_set, size_function_);
     stats.total_sizes = logical_buffer_size;
     cumulative_total_size += logical_buffer_size;
     absl::flat_hash_set<const HloInstruction*> unique_operands(
@@ -533,8 +539,12 @@ absl::StatusOr<HloInstructionSequence> BFScheduler::Run(
     HloInstruction* inst = ready_queue.front();
     ready_queue.pop();
 
-    for (HloInstruction* user : inst->users()) update_queue(user);
-    for (HloInstruction* succ : inst->control_successors()) update_queue(succ);
+    for (HloInstruction* user : inst->users()) {
+      update_queue(user);
+    }
+    for (HloInstruction* succ : inst->control_successors()) {
+      update_queue(succ);
+    }
 
     sequence.push_back(inst);
   }
@@ -601,15 +611,15 @@ absl::StatusOr<HloSchedule> DefaultMemoryScheduler::Run(
     VLOG(2) << "Chose min-memory list sequence: "
             << HumanReadableNumBytes(list_memory);
     return list_sequence;
-  } else if (min_memory == dfs_memory) {
+  }
+  if (min_memory == dfs_memory) {
     VLOG(2) << "Chose min-memory dfs sequence: "
             << HumanReadableNumBytes(dfs_memory);
     return dfs_sequence;
-  } else {
-    VLOG(2) << "Chose min-memory post_order sequence: "
-            << HumanReadableNumBytes(post_order_memory);
-    return post_order_sequence;
   }
+  VLOG(2) << "Chose min-memory post_order sequence: "
+          << HumanReadableNumBytes(post_order_memory);
+  return post_order_sequence;
 }
 
 absl::StatusOr<HloSchedule> ScheduleModule(
@@ -636,10 +646,12 @@ absl::StatusOr<HloSchedule> ScheduleModule(
 }
 
 absl::StatusOr<HloSchedule> ScheduleModule(
-    const HloModule* module, const BufferValue::SizeFunction& size_function,
+    const HloModule* module, const AliasInfo* alias_info,
+    const BufferValue::SizeFunction& size_function,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     int64_t* peak_memory) {
-  return ScheduleModule(module, DefaultMemoryScheduler(size_function),
+  return ScheduleModule(module,
+                        DefaultMemoryScheduler(alias_info, size_function),
                         execution_threads, peak_memory);
 }
 

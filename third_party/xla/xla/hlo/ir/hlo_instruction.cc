@@ -30,6 +30,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/no_destructor.h"
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/collective_device_list.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -233,7 +235,7 @@ const PtrVec<HloComputation*>& HloInstruction::called_computations() const {
     return rare()->called_computations;
   }
 
-  static PtrVec<HloComputation*>* empty = new PtrVec<HloComputation*>;
+  static const absl::NoDestructor<PtrVec<HloComputation*>> empty;
   return *empty;
 }
 
@@ -755,12 +757,18 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.all_reduce_id() > 0) {
         channel_id = proto.all_reduce_id();
       }
+      std::optional<CollectiveOpGroupMode> mode;
+      if (proto.collective_op_group_mode() !=
+          CollectiveOpGroupModeProto::COLLECTIVE_MODE_UNSPECIFIED) {
+        TF_ASSIGN_OR_RETURN(mode, CollectiveOpGroupModeFromProto(
+                                      proto.collective_op_group_mode()));
+      }
       CollectiveDeviceList device_list = CollectiveDeviceList::FromProto(proto);
       if (opcode == HloOpcode::kAllReduce) {
         instruction =
             CreateAllReduce(shape, all_operands(), computations(0), device_list,
                             proto.constrain_layout(), channel_id,
-                            proto.use_global_device_ids());
+                            proto.use_global_device_ids(), mode);
       } else if (opcode == HloOpcode::kReduceScatter) {
         TF_RET_CHECK(proto.dimensions().size() == 1)
             << "ReduceScatter cannot have more than 1 scatter dimensions";
@@ -768,12 +776,12 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         instruction = CreateReduceScatter(
             shape, all_operands(), computations(0), device_list,
             proto.constrain_layout(), channel_id, proto.use_global_device_ids(),
-            scatter_dimension);
+            scatter_dimension, mode);
       } else {
-        instruction =
-            CreateAllReduceStart(shape, all_operands(), computations(0),
-                                 device_list, proto.constrain_layout(),
-                                 channel_id, proto.use_global_device_ids());
+        instruction = CreateAllReduceStart(shape, all_operands(),
+                                           computations(0), device_list,
+                                           proto.constrain_layout(), channel_id,
+                                           proto.use_global_device_ids(), mode);
       }
       break;
     }
@@ -1704,20 +1712,21 @@ HloInstruction::CreateAllGatherStart(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation, const CollectiveDeviceList& device_list,
     bool constrain_layout, const std::optional<int64_t>& channel_id,
-    bool use_global_device_ids) {
+    bool use_global_device_ids, std::optional<CollectiveOpGroupMode> mode) {
   return std::make_unique<HloAllReduceInstruction>(
       HloOpcode::kAllReduce, shape, operands, reduce_computation, device_list,
-      constrain_layout, channel_id, use_global_device_ids);
+      constrain_layout, channel_id, use_global_device_ids, mode);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllReduce(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const std::optional<int64_t>& channel_id, bool use_global_device_ids) {
+    const std::optional<int64_t>& channel_id, bool use_global_device_ids,
+    std::optional<CollectiveOpGroupMode> mode) {
   return CreateAllReduce(shape, operands, reduce_computation,
                          CollectiveDeviceList(replica_groups), constrain_layout,
-                         channel_id, use_global_device_ids);
+                         channel_id, use_global_device_ids, mode);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1725,10 +1734,11 @@ HloInstruction::CreateReduceScatter(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation, const CollectiveDeviceList& device_list,
     bool constrain_layout, const std::optional<int64_t>& channel_id,
-    bool use_global_device_ids, int64_t scatter_dimension) {
+    bool use_global_device_ids, int64_t scatter_dimension,
+    std::optional<CollectiveOpGroupMode> mode) {
   return std::make_unique<HloReduceScatterInstruction>(
       shape, operands, reduce_computation, device_list, constrain_layout,
-      channel_id, use_global_device_ids, scatter_dimension);
+      channel_id, use_global_device_ids, scatter_dimension, mode);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1737,23 +1747,22 @@ HloInstruction::CreateReduceScatter(
     HloComputation* reduce_computation,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const std::optional<int64_t>& channel_id, bool use_global_device_ids,
-    int64_t scatter_dimension) {
-  return CreateReduceScatter(
-      shape, operands, reduce_computation, CollectiveDeviceList(replica_groups),
-      constrain_layout, channel_id, use_global_device_ids, scatter_dimension);
+    int64_t scatter_dimension, std::optional<CollectiveOpGroupMode> mode) {
+  return CreateReduceScatter(shape, operands, reduce_computation,
+                             CollectiveDeviceList(replica_groups),
+                             constrain_layout, channel_id,
+                             use_global_device_ids, scatter_dimension, mode);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
-HloInstruction::CreateAllReduceStart(const Shape& shape,
-                                     absl::Span<HloInstruction* const> operands,
-                                     HloComputation* reduce_computation,
-                                     const CollectiveDeviceList& device_list,
-                                     bool constrain_layout,
-                                     const std::optional<int64_t>& channel_id,
-                                     bool use_global_device_ids) {
+HloInstruction::CreateAllReduceStart(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* reduce_computation, const CollectiveDeviceList& device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
+    bool use_global_device_ids, std::optional<CollectiveOpGroupMode> mode) {
   return std::make_unique<HloAllReduceInstruction>(
       HloOpcode::kAllReduceStart, shape, operands, reduce_computation,
-      device_list, constrain_layout, channel_id, use_global_device_ids);
+      device_list, constrain_layout, channel_id, use_global_device_ids, mode);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1761,7 +1770,8 @@ HloInstruction::CreateAllReduceStart(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const std::optional<int64_t>& channel_id, bool use_global_device_ids) {
+    const std::optional<int64_t>& channel_id, bool use_global_device_ids,
+    std::optional<CollectiveOpGroupMode> mode) {
   return CreateAllReduceStart(
       shape, operands, reduce_computation, CollectiveDeviceList(replica_groups),
       constrain_layout, channel_id, use_global_device_ids);
@@ -2404,7 +2414,7 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
       // Collective instructions with channel_id are side effecting only if
       // they are used in non-spmd context.
       return Cast<HloChannelInstruction>(this)->channel_id().has_value() &&
-             !GetModule()->config().use_spmd_partitioning();
+             GetModule()->config().ChannelIdSensitive();
 
     case HloOpcode::kCustomCall:
       return Cast<HloCustomCallInstruction>(this)
@@ -2825,6 +2835,9 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
 
   if (!suffix.empty()) {
     clone->AddSuffixToInstructionName(suffix);
+  }
+  if (shape == this->shape()) {
+    clone->CopyOriginalValue(this, /*clone=*/false);
   }
   return clone;
 }
@@ -4891,9 +4904,11 @@ const Shape& HloInstruction::shape() const { return shape_; }
 
 absl::InlinedVector<int64_t, 4> HloInstruction::OperandIndices(
     const HloInstruction* operand) const {
+  const size_t num_operands = operand_count();
+  const HloInstruction* const* operand_ptr = operands_.data();
   absl::InlinedVector<int64_t, 4> result;
-  for (int64_t i = 0; i < operand_count(); ++i) {
-    if (this->operand(i) == operand) {
+  for (size_t i = 0; i < num_operands; ++i) {
+    if (operand_ptr[i] == operand) {
       result.push_back(i);
     }
   }
@@ -5273,17 +5288,18 @@ std::string ConvolutionDimensionNumbersToString(
 
 absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
     const std::string& name) {
-  static absl::flat_hash_map<std::string, RandomAlgorithm>* map = [] {
-    static auto* const map =
-        new absl::flat_hash_map<std::string, RandomAlgorithm>;
-    for (int i = 0; i < RandomAlgorithm_ARRAYSIZE; i++) {
-      if (RandomAlgorithm_IsValid(i)) {
-        auto value = static_cast<RandomAlgorithm>(i);
-        (*map)[RandomAlgorithmToString(value)] = value;
-      }
-    }
-    return map;
-  }();
+  static const absl::NoDestructor<
+      absl::flat_hash_map<std::string, RandomAlgorithm>>
+      map([] {
+        absl::flat_hash_map<std::string, RandomAlgorithm> map;
+        for (int i = 0; i < RandomAlgorithm_ARRAYSIZE; i++) {
+          if (RandomAlgorithm_IsValid(i)) {
+            auto value = static_cast<RandomAlgorithm>(i);
+            map[RandomAlgorithmToString(value)] = value;
+          }
+        }
+        return map;
+      }());
   auto found = map->find(absl::AsciiStrToLower(name));
   if (found == map->end()) {
     return InvalidArgument("Unknown algorithm");
@@ -5293,17 +5309,18 @@ absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
 
 absl::StatusOr<RandomDistribution> StringToRandomDistribution(
     const std::string& name) {
-  static absl::flat_hash_map<std::string, RandomDistribution>* map = [] {
-    static auto* const map =
-        new absl::flat_hash_map<std::string, RandomDistribution>;
-    for (int i = 0; i < RandomDistribution_ARRAYSIZE; i++) {
-      if (RandomDistribution_IsValid(i)) {
-        auto value = static_cast<RandomDistribution>(i);
-        (*map)[RandomDistributionToString(value)] = value;
-      }
-    }
-    return map;
-  }();
+  static const absl::NoDestructor<
+      absl::flat_hash_map<std::string, RandomDistribution>>
+      map([] {
+        absl::flat_hash_map<std::string, RandomDistribution> map;
+        for (int i = 0; i < RandomDistribution_ARRAYSIZE; i++) {
+          if (RandomDistribution_IsValid(i)) {
+            auto value = static_cast<RandomDistribution>(i);
+            map[RandomDistributionToString(value)] = value;
+          }
+        }
+        return map;
+      }());
   auto found = map->find(absl::AsciiStrToLower(name));
   if (found == map->end()) {
     return InvalidArgument("Unknown distribution");
@@ -5313,18 +5330,18 @@ absl::StatusOr<RandomDistribution> StringToRandomDistribution(
 
 absl::StatusOr<PrecisionConfig::Precision> StringToPrecision(
     const std::string& name) {
-  static absl::flat_hash_map<std::string, PrecisionConfig::Precision>* map =
-      [] {
-        static auto* const map =
-            new absl::flat_hash_map<std::string, PrecisionConfig::Precision>;
+  static const absl::NoDestructor<
+      absl::flat_hash_map<std::string, PrecisionConfig::Precision>>
+      map([] {
+        absl::flat_hash_map<std::string, PrecisionConfig::Precision> map;
         for (int i = 0; i < PrecisionConfig::Precision_ARRAYSIZE; i++) {
           if (PrecisionConfig::Precision_IsValid(i)) {
             auto value = static_cast<PrecisionConfig::Precision>(i);
-            (*map)[PrecisionToString(value)] = value;
+            map[PrecisionToString(value)] = value;
           }
         }
         return map;
-      }();
+      }());
   auto found = map->find(absl::AsciiStrToLower(name));
   if (found == map->end()) {
     return InvalidArgument("Unknown precision");
@@ -5334,17 +5351,18 @@ absl::StatusOr<PrecisionConfig::Precision> StringToPrecision(
 
 absl::StatusOr<ResultAccuracy::Mode> StringToResultAccuracy(
     absl::string_view name) {
-  static const absl::flat_hash_map<std::string, ResultAccuracy::Mode>* map =
-      [] {
-        auto* map = new absl::flat_hash_map<std::string, ResultAccuracy::Mode>;
+  static const absl::NoDestructor<
+      absl::flat_hash_map<std::string, ResultAccuracy::Mode>>
+      map([] {
+        absl::flat_hash_map<std::string, ResultAccuracy::Mode> map;
         for (int i = 0; i < ResultAccuracy::Mode_ARRAYSIZE; i++) {
           if (ResultAccuracy::Mode_IsValid(i)) {
             auto value = static_cast<ResultAccuracy::Mode>(i);
-            (*map)[ResultAccuracyToString(value)] = value;
+            map[ResultAccuracyToString(value)] = value;
           }
         }
         return map;
-      }();
+      }());
   auto found = map->find(absl::AsciiStrToLower(name));
   if (found == map->end()) {
     return InvalidArgument("Unknown accuracy mode");
@@ -5354,18 +5372,18 @@ absl::StatusOr<ResultAccuracy::Mode> StringToResultAccuracy(
 
 absl::StatusOr<PrecisionConfig::Algorithm> StringToAlgorithm(
     const std::string& name) {
-  static absl::flat_hash_map<std::string, PrecisionConfig::Algorithm>* map =
-      [] {
-        static auto* const map =
-            new absl::flat_hash_map<std::string, PrecisionConfig::Algorithm>;
+  static const absl::NoDestructor<
+      absl::flat_hash_map<std::string, PrecisionConfig::Algorithm>>
+      map([] {
+        absl::flat_hash_map<std::string, PrecisionConfig::Algorithm> map;
         for (int i = 0; i < PrecisionConfig::Algorithm_ARRAYSIZE; i++) {
           if (PrecisionConfig::Algorithm_IsValid(i)) {
             auto value = static_cast<PrecisionConfig::Algorithm>(i);
-            (*map)[AlgorithmToString(value)] = value;
+            map[AlgorithmToString(value)] = value;
           }
         }
         return map;
-      }();
+      }());
   auto found = map->find(absl::AsciiStrToLower(name));
   if (found == map->end()) {
     return InvalidArgument("Unknown algorithm");
@@ -5375,17 +5393,18 @@ absl::StatusOr<PrecisionConfig::Algorithm> StringToAlgorithm(
 
 absl::StatusOr<CustomCallSchedule> StringToCustomCallSchedule(
     absl::string_view name) {
-  static const absl::flat_hash_map<std::string, CustomCallSchedule>* map = [] {
-    static auto* const map =
-        new absl::flat_hash_map<std::string, CustomCallSchedule>;
-    for (int i = 0; i < CustomCallSchedule_ARRAYSIZE; i++) {
-      if (CustomCallSchedule_IsValid(i)) {
-        auto value = static_cast<CustomCallSchedule>(i);
-        (*map)[CustomCallScheduleToString(value)] = value;
-      }
-    }
-    return map;
-  }();
+  static const absl::NoDestructor<
+      absl::flat_hash_map<std::string, CustomCallSchedule>>
+      map([] {
+        absl::flat_hash_map<std::string, CustomCallSchedule> map;
+        for (int i = 0; i < CustomCallSchedule_ARRAYSIZE; i++) {
+          if (CustomCallSchedule_IsValid(i)) {
+            auto value = static_cast<CustomCallSchedule>(i);
+            map[CustomCallScheduleToString(value)] = value;
+          }
+        }
+        return map;
+      }());
   auto found = map->find(absl::AsciiStrToLower(name));
   if (found == map->end()) {
     return InvalidArgument("Unknown schedule");
@@ -5395,18 +5414,18 @@ absl::StatusOr<CustomCallSchedule> StringToCustomCallSchedule(
 
 absl::StatusOr<CustomCallApiVersion> StringToCustomCallApiVersion(
     absl::string_view name) {
-  static const absl::flat_hash_map<std::string, CustomCallApiVersion>* map =
-      [] {
-        static auto* const map =
-            new absl::flat_hash_map<std::string, CustomCallApiVersion>;
+  static const absl::NoDestructor<
+      absl::flat_hash_map<std::string, CustomCallApiVersion>>
+      map([] {
+        absl::flat_hash_map<std::string, CustomCallApiVersion> map;
         for (int i = 0; i < CustomCallApiVersion_ARRAYSIZE; i++) {
           if (CustomCallApiVersion_IsValid(i)) {
             auto value = static_cast<CustomCallApiVersion>(i);
-            (*map)[CustomCallApiVersionToString(value)] = value;
+            map[CustomCallApiVersionToString(value)] = value;
           }
         }
         return map;
-      }();
+      }());
   auto found = map->find(absl::AsciiStrToLower(name));
   if (found == map->end()) {
     return InvalidArgument("Unknown API version");

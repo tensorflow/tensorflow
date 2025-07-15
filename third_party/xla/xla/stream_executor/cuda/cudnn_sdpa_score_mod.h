@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDNN_SDPA_SCORE_MOD_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDNN_SDPA_SCORE_MOD_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"

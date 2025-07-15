@@ -28,7 +28,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
+#include "absl/base/no_destructor.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/bind_front.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
@@ -166,10 +167,13 @@ void ConnectContextGroups(const ContextGroupMap& context_groups) {
 }
 
 bool IsImplicitRootEvent(const XEventVisitor& event) {
-  static const auto* const kImplicitRootEvents =
-      new absl::flat_hash_set<int64_t>{
-          HostEventType::kFunctionRun, HostEventType::kSessionRun,
-          HostEventType::kRunGraph, HostEventType::kExecutorStateProcess};
+  static const absl::NoDestructor<absl::flat_hash_set<int64_t>>
+      kImplicitRootEvents({
+          HostEventType::kFunctionRun,
+          HostEventType::kSessionRun,
+          HostEventType::kRunGraph,
+          HostEventType::kExecutorStateProcess,
+      });
   return event.Type().has_value() &&
          kImplicitRootEvents->contains(*event.Type());
 }

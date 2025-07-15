@@ -885,19 +885,40 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
+  auto SigmoidActivation(HloInstruction* instr, HloInstruction** src) {
+    return Match(instr,
+                 m::Divide(BcastConstScalar(1.0),
+                           m::AddAnyOrder(BcastConstScalar(1.0),
+                                          m::Exp(m::Negate(m::Op(src))))));
+  }
+
   absl::Status HandleMultiply(HloInstruction* instr) override {
     HloInstruction* contraction;
     HloInstruction* intermediate_instr = nullptr;
-    HloInstruction* src;
+    HloInstruction* optional_bitcast = nullptr;
+    HloInstruction *src, *multiplier, *new_src;
     auto activation = GELUActivation(instr, &src);
     if (activation != OneDnnFusionConfig::UNDEFINED) {
-      HloInstruction* optional_bitcast = nullptr;
       if (Match(src, ElementwiseSafeIntermediates(
                          &intermediate_instr, &optional_bitcast,
                          OneDnnFusibleInstr(&contraction)))) {
         return FuseActivation(activation, instr, contraction,
                               intermediate_instr, optional_bitcast);
       }
+    }
+
+    if (Match(instr, m::MultiplyAnyOrder(
+                         m::Op(&multiplier).WithOpcode(HloOpcode::kDivide),
+                         m::Op(&src))) &&
+        SigmoidActivation(multiplier, &new_src) &&
+        Match(src, ElementwiseSafeIntermediates(
+                       &intermediate_instr, &optional_bitcast,
+                       OneDnnFusibleInstr(&contraction))
+                       .WithPredicate([&new_src](const HloInstruction* root) {
+                         return root == new_src;
+                       }))) {
+      return FuseActivation(OneDnnFusionConfig::SWISH, instr, contraction,
+                            intermediate_instr, optional_bitcast);
     }
 
     HloInstruction* constant;
@@ -948,13 +969,6 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       TF_RETURN_IF_ERROR(ReplaceInstruction(instr, new_instr));
     }
     return absl::OkStatus();
-  }
-
-  auto SigmoidActivation(HloInstruction* instr, HloInstruction** src) {
-    return Match(instr,
-                 m::Divide(BcastConstScalar(1.0),
-                           m::AddAnyOrder(BcastConstScalar(1.0),
-                                          m::Exp(m::Negate(m::Op(src))))));
   }
 
   absl::Status HandleDivide(HloInstruction* instr) override {

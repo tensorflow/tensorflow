@@ -24,17 +24,16 @@ package_group(
     packages = [
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/mlir/...",
+        "//learning/brain/mlir/mlir_lsp_server/...",
+        "//learning/brain/research/babelfish/inference/speech_tflite/mlir/...",
+        "//research/language_modeling/sentence_explorer/ondevice/...",
+        "//tensorflow/compiler/mlir/...",
+        "//tensorflow/lite/...",
         "//third_party/iree/...",
         "//third_party/odml/infra/...",
         "//third_party/odml/litert/...",
-        "//tensorflow/compiler/mlir/...",
-        "//tensorflow/lite/...",
         "//waymo/accelerator/alpine/tools/...",
         "//waymo/ml/compiler/mlir/...",
-        # Allow visibility from the mlir language server.
-        "//learning/brain/mlir/mlir_lsp_server/...",
-        "//research/language_modeling/sentence_explorer/ondevice/...",
-        "//learning/brain/research/babelfish/inference/speech_tflite/mlir/...",
     ],
 )
 
@@ -758,6 +757,13 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
+    ],
+)
+
+cc_library(
+    name = "metadata_utils",
+    hdrs = [
+        "utils/metadata_utils.h",
     ],
 )
 
@@ -1587,6 +1593,7 @@ cc_library(
         ":flatbuffer_tflite_operator_lib",
         ":lite_version",
         ":low_bit_utils",
+        ":metadata_utils",
         ":mlir_module_utils",
         ":region_isolation",
         ":stateful_ops_utils",
@@ -1648,6 +1655,7 @@ cc_library(
         ":control_edges",
         ":convert_type",
         ":flatbuffer_tflite_operator_lib",
+        ":metadata_utils",
         ":offset_buffer",
         ":shape_and_size_utils",
         ":tensorflow_lite",
@@ -1686,9 +1694,9 @@ cc_library(
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:status",
+        "@local_xla//xla/tsl/platform:statusor",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:vhlo_ops",
     ],

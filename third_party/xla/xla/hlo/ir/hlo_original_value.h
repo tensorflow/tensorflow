@@ -37,6 +37,17 @@ struct OriginalArray {
   OriginalArrayProto ToProto() const;
   static OriginalArray FromProto(
       const xla::OriginalArrayProto& original_array_proto);
+
+  friend bool operator==(const OriginalArray& lhs, const OriginalArray& rhs) {
+    return lhs.instruction_name == rhs.instruction_name &&
+           lhs.shape_index == rhs.shape_index;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const OriginalArray& original_array) {
+    return H::combine(std::move(h), original_array.instruction_name,
+                      original_array.shape_index);
+  }
 };
 
 // The information of an HLO value produced by an instruction in an unoptimized
@@ -73,9 +84,11 @@ struct OriginalValuePointer {
     // Compares nodes.
     for (auto& leaf : lhs.original_value->leaves()) {
       xla::ShapeIndex index = leaf.first;
-      std::optional<xla::OriginalArray> lhs_original_array = leaf.second;
-      std::optional<xla::OriginalArray> rhs_original_array =
+      std::optional<const xla::OriginalArray> lhs_original_array = leaf.second;
+      std::optional<const xla::OriginalArray> rhs_original_array =
           rhs.original_value->element(index);
+      // TODO: b/430064396 - Use OriginalArray::operator== to compare the
+      // original arrays.
       if (!lhs_original_array.has_value() || !rhs_original_array.has_value() ||
           (lhs_original_array->instruction_name !=
            rhs_original_array->instruction_name) ||

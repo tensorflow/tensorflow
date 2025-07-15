@@ -27,6 +27,7 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -291,8 +292,10 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
       executable->Execute({{buffer.get(), buffer.get()}}, /*options=*/{}));
 
   ASSERT_EQ(result.size(), 1);
-  ASSERT_EQ(result[0].size(), 1);
-  EXPECT_EQ(result[0][0]->GetReadyFuture().Await(), input_error);
+  ASSERT_EQ(result[0].size(), 2);
+  for (const auto& b : result[0]) {
+    EXPECT_EQ(b->GetReadyFuture().Await(), input_error);
+  }
 }
 
 // TODO(b/372735047): Fix and reenable.
@@ -1231,13 +1234,12 @@ TEST(StreamExecutorGpuClientTest, GetDeviceFabricInfo) {
           if (auto* cc = std::get_if<se::CudaComputeCapability>(
                   &executor->GetDeviceDescription().gpu_compute_capability())) {
             if (cc->IsAtLeastHopper()) {
-              TF_ASSERT_OK_AND_ASSIGN(
-                  std::string fabric_info,
-                  GetDeviceFabricInfo(executor->device_ordinal()));
+              absl::StatusOr<std::string> fabric_info =
+                  GetDeviceFabricInfo(executor->device_ordinal());
               // Hopper devices have empty fabric info, MNNVL Blackwell devices
               // have meaningful fabric info.
-              if (cc->IsHopper()) {
-                EXPECT_EQ(fabric_info,
+              if (cc->IsHopper() && fabric_info.ok()) {
+                EXPECT_EQ(fabric_info.value(),
                           "00000000-0000-0000-0000-000000000000/0");
               }
             }

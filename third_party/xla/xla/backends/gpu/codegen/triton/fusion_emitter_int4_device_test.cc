@@ -59,7 +59,7 @@ class TritonTest : public GpuCodegenTest {
     // TODO(b/393299275): remove this once flag is on by default and test is
     // updated.
     // Note that we do NOT set
-    // xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms here as test
+    // xla_gpu_unsupported_generic_triton_emitter_opts here as test
     // will run the pass forcefully later.
     return debug_options;
   }
@@ -97,10 +97,17 @@ class TritonTest : public GpuCodegenTest {
         !status.ok()) {
       return ::testing::AssertionFailure() << status.message();
     }
-    // NestGemmFusion pass checks if the flag is set, so we need to set it now.
-    module->mutable_config()
-        .mutable_debug_options()
-        .set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(true);
+    // NestGemmFusion pass is controlled by
+    // xla_gpu_unsupported_generic_triton_emitter_opts flag, set it now.
+    auto* emitter_opts =
+        module->mutable_config()
+            .mutable_debug_options()
+            .mutable_xla_gpu_unsupported_generic_triton_emitter_features();
+    emitter_opts->Add(DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
+    emitter_opts->Add(
+        DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION);
+    emitter_opts->Add(
+        DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES);
     absl::StatusOr<bool> nested_or =
         NestGemmFusion(device_desc().gpu_compute_capability())
             .Run(module.get());

@@ -21,6 +21,7 @@ limitations under the License.
 #include <cassert>
 #include <cstdlib>
 
+#include "absl/base/macros.h"
 #include "xla/backends/cpu/alignment.h"
 
 namespace xla {
@@ -177,9 +178,11 @@ class BufferInfo {
 };
 
 // Align to 64-bytes, to mimic tsl::Allocator::kAllocatorAlignment.
+ABSL_DEPRECATE_AND_INLINE()
 inline constexpr size_t Align() { return xla::cpu::Align(); }
 
 // The minimum alignment of buffers passed to XLA:CPU.
+ABSL_DEPRECATE_AND_INLINE()
 inline constexpr size_t MinAlign() { return xla::cpu::MinAlign(); }
 
 // When declaring variables that will be passed to an XLA instance as input via

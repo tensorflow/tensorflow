@@ -158,6 +158,7 @@ class Shape {
         << " has inconsistent element_type and state.";
     return result;
   }
+  bool IsArrayOrBuffer() const { return IsArray() || IsBuffer(); }
 
   // Returns whether all elements in the shape are integers.
   // Tuple shapes are traversed recursively.
@@ -187,14 +188,15 @@ class Shape {
   // Precondition: this is an array shape and `dimension` is a valid dimension
   // index.
   bool is_unbounded_dynamic_dimension(int dimension) const {
-    return array_state().dimensions[dimension] == kUnboundedSize;
+    return array_state_maybe_underneath_buffer().dimensions[dimension] ==
+           kUnboundedSize;
   }
 
   // Sets a given dimension as unbounded dynamic.
   // Precondition: this is an array shape and `dimension` is a valid dimension
   // index.
   void set_unbounded_dynamic_dimension(int dimension) {
-    auto& state = array_state();
+    ArrayState& state = array_state_maybe_underneath_buffer();
     state.dynamic_dimensions[dimension] = true;
     state.dimensions[dimension] = kUnboundedSize;
   }
@@ -216,14 +218,14 @@ class Shape {
   // Precondition: this is an array shape and `dimension` is a valid dimension
   // index.
   bool is_dynamic_dimension(int dimension) const {
-    return array_state().dynamic_dimensions[dimension];
+    return array_state_maybe_underneath_buffer().dynamic_dimensions[dimension];
   }
 
   // Returns true if the given dimension is statically-sized.
   // Precondition: this is an array shape and `dimension` is a valid dimension
   // index.
   bool is_static_dimension(int dimension) const {
-    return !array_state().dynamic_dimensions[dimension];
+    return !array_state_maybe_underneath_buffer().dynamic_dimensions[dimension];
   }
 
   // Sets whether or not the given dimension is dynamically-sized.
@@ -236,7 +238,7 @@ class Shape {
   // Returns a span to indicate whether each dimension is dynamic.
   // Precondition: this is an array shape.
   absl::Span<const bool> dynamic_dimensions() const {
-    return array_state().dynamic_dimensions;
+    return array_state_maybe_underneath_buffer().dynamic_dimensions;
   }
 
   // Removes the given dimension from the shape. Layout, if it exists, is
@@ -250,6 +252,16 @@ class Shape {
 
   // Returns the primitive type of the shape.
   PrimitiveType element_type() const { return element_type_; }
+
+  // Returns the primitive type of the array or buffer shape.
+  // Precondition: this is an array shape or a buffer shape.
+  PrimitiveType array_or_buffer_element_type() const {
+    CHECK(IsArrayOrBuffer());
+    if (const auto* const state = if_buffer_state()) {
+      return state->buffer_shape->element_type();
+    }
+    return element_type_;
+  }
 
   // Sets the primitive type of the shape. If the new type and the old type
   // are in different categories (e.g. array vs. tuple), the state is reset
@@ -268,7 +280,7 @@ class Shape {
   // Precondition: this is an array shape and `index` is a valid dimension
   // index.
   int64_t dimensions(int index) const {
-    return array_state().dimensions[index];
+    return array_state_maybe_underneath_buffer().dimensions[index];
   }
 
   // Returns the size of the index-th minor dimension.
@@ -276,7 +288,7 @@ class Shape {
   // index, and the shape has a layout.
   int64_t dimensions_minor(int index) const {
     CHECK(has_layout());
-    const auto& state = array_state();
+    const ArrayState& state = array_state_maybe_underneath_buffer();
     return state.dimensions[state.layout->minor_to_major(index)];
   }
 
@@ -319,7 +331,7 @@ class Shape {
   // Clears all dimensions (i.e. makes this shape a scalar).
   // Precondition: this is an array shape.
   void clear_dimensions() {
-    auto& state = array_state();
+    ArrayState& state = array_state_maybe_underneath_buffer();
     state.dimensions.clear();
     state.dynamic_dimensions.clear();
   }
@@ -327,7 +339,7 @@ class Shape {
   // Returns a span to indicate the size of each dimension.
   // Precondition: this is an array shape.
   absl::Span<const int64_t> dimensions() const {
-    return array_state().dimensions;
+    return array_state_maybe_underneath_buffer().dimensions;
   }
 
   // Returns the number of top-level tuple components in this shape.
@@ -363,26 +375,30 @@ class Shape {
   // Returns the underlying shape of the buffer.
   const Shape& buffer_shape() const;
 
-  // Returns true if the shape is an array and has a layout.
+  // Returns true if the shape is an array storage and has a layout. Both
+  // if_array_state and if_buffer_state correspond to an array storage.
   bool has_layout() const {
-    const auto* const state = if_array_state();
-    return state != nullptr && state->layout != std::nullopt;
+    if (!if_array_state() && !if_buffer_state()) {
+      return false;
+    }
+    const ArrayState& state = array_state_maybe_underneath_buffer();
+    return state.layout != std::nullopt;
   }
 
   // Returns the layout of the shape.
-  // Precondition: this is an array shape and has a layout.
+  // Precondition: has_layout() is true.
   const Layout& layout() const {
     CHECK(has_layout()) << ToString();
-    return *array_state().layout;
+    return *array_state_maybe_underneath_buffer().layout;
   }
 
   // Returns a pointer to the layout of the shape. If the shape does not have a
   // layout, an empty layout is created.
-  // Precondition: this is an array shape.
+  // Precondition: this is an array shape or a buffer shape.
   // Postcondition: the returned pointer is not null, and the pointee is owned
   // by this shape.
   Layout* mutable_layout() {
-    auto& state = array_state();
+    ArrayState& state = array_state_maybe_underneath_buffer();
     if (state.layout == std::nullopt) {
       state.layout.emplace();
     }
@@ -391,19 +407,22 @@ class Shape {
 
   // Removes the layout of the shape, if any.
   // Precondition: this is an array shape.
-  void clear_layout() { array_state().layout = std::nullopt; }
+  void clear_layout() {
+    array_state_maybe_underneath_buffer().layout = std::nullopt;
+  }
 
   // Recursively clear all dynamic dimension of a shape, including bounded and
   // unbounded dynamic dimensions. Clearing a dynamic dimension means
   // changing the dimension to static and setting its size as the dynamic
   // dimension's size upper bound.
   void clear_dynamic_dimensions() {
-    if (auto* const state = if_array_state()) {
+    if (if_array_state() || if_buffer_state()) {
+      ArrayState& state = array_state_maybe_underneath_buffer();
       if (is_dynamic()) {
         mutable_layout()->set_dynamic_shape_metadata_prefix_bytes(0);
       }
-      for (int64_t i = 0; i < state->dynamic_dimensions.size(); ++i) {
-        state->dynamic_dimensions[i] = false;
+      for (int64_t i = 0; i < state.dynamic_dimensions.size(); ++i) {
+        state.dynamic_dimensions[i] = false;
       }
       return;
     }
@@ -639,6 +658,8 @@ class Shape {
     CHECK(state) << "Expected an opaque shape. Got " << ToString();
     return *state;
   }
+  const ArrayState& array_state_maybe_underneath_buffer() const;
+  ArrayState& array_state_maybe_underneath_buffer();
   const ArrayState& array_state() const;
   ArrayState& array_state();
   const TupleState& tuple_state() const;

@@ -1589,4 +1589,123 @@ ENTRY %e (m: f32[3200,6400], n: f32[3200,6400]) -> (f32[3200,6400], f32[3200,640
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 2e-3}));
 }
 
+TEST_F(CmdBufferTest, DynamicSliceCopyFusionCmd) {
+  const char* module_str = R"(
+    dynamic_slice {
+      p0 = s32[4,8,8]{2,1,0} parameter(0)
+      p1 = s32[] parameter(1)
+      c1 = s32[] constant(1)
+      p2 = s32[] parameter(2)
+
+      p1p1 = s32[] add(p1, c1)
+
+      // Test all supported kinds of offsets: derived from the while loop's
+      // induction variable (p1p1), constant (c1) and always clamped to 0, so
+      // the value is irrelevant (p2).
+      ROOT slice = s32[1,1,8] dynamic-slice(p0, p1p1, c1, p2),
+          dynamic_slice_sizes={1,1,8}
+    }
+
+    remainder {
+      p0 = s32[] parameter(0)
+      c5 = s32[] constant(5)
+      // We take the value modulo 5 to test for correct clamping (the offset 4
+      // must get clamped to 3, since it's greater or equal than the dimension
+      // size).
+      ROOT remainder = s32[] remainder(p0, c5)
+    }
+
+    add {
+      p0 = s32[] parameter(0)
+      c1 = s32[] constant(1)
+      ROOT sum = s32[] add(p0, c1)
+    }
+
+    add_slices {
+      p0 = s32[1,1,8] parameter(0)
+      p1 = s32[1,1,8] parameter(1)
+      ROOT sum = s32[1,1,8] add(p0, p1)
+    }
+
+    times_two {
+      p0 = s32[] parameter(0)
+      ROOT sum = s32[] add(p0, p0)
+    }
+
+    body {
+      p0 = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      input = s32[4,8,8]{2,1,0} get-tuple-element(p0), index=1
+
+      ivar_copy = s32[] copy(ivar)
+      acc = s32[1,1,8] get-tuple-element(p0), index=2
+      acc_copy = s32[1,1,8] copy(acc)
+
+      offset1 = s32[] fusion(ivar_copy), kind=kLoop, calls=remainder
+      offset2 = s32[] get-tuple-element(p0), index=3
+
+      slice = s32[1,1,8] fusion(input, offset1, offset2), kind=kLoop, calls=dynamic_slice,
+          backend_config={"fusion_backend_config":{
+              "kind":"__dynamic_memcpy",
+              "dynamic_memcpy_config":{
+                  "depends_on_loop":true,
+                  "src_offset_bytes":["288","544","800","800","800","288"],
+                  "dst_offset_bytes":["0","0","0","0","0","0"]}}}
+      next_ivar = s32[] fusion(ivar_copy), kind=kLoop, calls=add
+      next_offset_2 = s32[] fusion(offset2), kind=kLoop, calls=times_two
+
+      next_acc = s32[1,1,8] fusion(acc_copy, slice), kind=kLoop, calls=add_slices
+      ROOT result = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[])
+          tuple(next_ivar, input, next_acc, next_offset_2)
+    }
+
+    compare {
+      p0 = s32[] parameter(0)
+      c6 = s32[] constant(6)
+      ROOT cmp = pred[] compare(p0, c6), direction=LT
+    }
+
+    condition {
+      p0 = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      ROOT cmp = pred[] fusion(ivar), kind=kLoop, calls=compare
+    }
+
+    zero {
+      c0 = s32[] constant(0)
+      ROOT bc = s32[1,1,8] broadcast(c0), dimensions={}
+    }
+
+    input {
+      iota = s32[256] iota(), iota_dimension=0
+      ROOT bc = s32[4,8,8]{2,1,0} bitcast(iota)
+    }
+
+    ENTRY main {
+      input = s32[4,8,8]{2,1,0} fusion(), kind=kLoop, calls=input
+      init_acc = s32[1,1,8] fusion(), kind=kLoop, calls=zero
+      c0 = s32[] constant(0)
+      c1 = s32[] constant(1)
+      tuple = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[]) tuple(c0, input, init_acc, c1)
+      ROOT while = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"6"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    }
+)";
+
+  // running with module without exclusive lock on GpuExecutable
+  HloModuleConfig config;
+  auto debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_require_exclusive_lock(false);
+  debug_options.add_xla_gpu_enable_command_buffer(
+      DebugOptions::DYNAMIC_SLICE_COPY_FUSION);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str, config));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(std::move(module), ErrorSpec{1e-3, 2e-3}));
+}
+
 }  // namespace xla::gpu

@@ -234,6 +234,26 @@ absl::Status DotOperandDims::EraseDimensions(int64_t start, int64_t end) {
   return absl::OkStatus();
 }
 
+absl::Status DotOperandDims::InsertDimension(Category category, int64_t dim_idx,
+                                             int64_t dim_size) {
+  TF_RET_CHECK(dim_idx >= 0);
+  TF_RET_CHECK(dim_idx <= shape_.dimensions().size());
+  shape_ = ShapeUtil::InsertDimensionAtIndex(shape_, dim_idx, dim_size);
+  for (auto& dim_numbers : dim_numbers_) {
+    for (auto& dim : dim_numbers) {
+      if (dim >= dim_idx) {
+        ++dim;
+      }
+    }
+  }
+  // Insert before the first dimension with index >= dim_idx, to keep sorted
+  // dimensions list sorted.
+  auto iter = absl::c_find_if(dim_numbers_[category],
+                              [&](int64_t dim) { return dim >= dim_idx; });
+  dim_numbers_[category].insert(iter, dim_idx);
+  return absl::OkStatus();
+}
+
 absl::StatusOr<int64_t> DotOperandDims::LocalIndex(
     Category category, int64_t global_dim_idx) const {
   const auto& dims = dim_numbers_[category];

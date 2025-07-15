@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/tools/hlo_diff/matchers/bipartite_matching.h"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -43,8 +44,11 @@ void MatchInstructionsWithMultipleCandidates(
     double max_match_score = 0.0;
     std::vector<const HloInstructionNode*> right_candidates;
     for (const HloInstructionNode* right : right_instructions) {
-      double similarity =
-          MatchFnForOpcode(left->instruction->opcode())(left, right);
+      double similarity = PropertySimilarityFnForOpcode(
+                              left->instruction->opcode())(left, right) +
+                          AncestorSubGraphLcsSimilarity(
+                              left, right, 20, 1, left_graph.GetNodeCount(),
+                              right_graph.GetNodeCount());
       if (similarity > max_match_score) {
         max_match_score = similarity;
         right_candidates.clear();
@@ -153,7 +157,8 @@ void MatchInstructionsByShape(
 void MatchInstructionsByPosition(
     const std::vector<const HloInstructionNode*>& left_instructions,
     const std::vector<const HloInstructionNode*>& right_instructions,
-    HloGumgraphMappings& mappings, const MatcherType& matcher_type) {
+    HloGumgraphMappings& mappings, const MatcherType& matcher_type,
+    bool only_if_same_size) {
   std::vector<const HloInstructionNode*> unmatched_left_instructions,
       unmatched_right_instructions;
   for (const HloInstructionNode* left_instruction : left_instructions) {
@@ -166,25 +171,29 @@ void MatchInstructionsByPosition(
       unmatched_right_instructions.push_back(right_instruction);
     }
   }
-  // Map by position only if the two sets are of the same size.
-  if (unmatched_left_instructions.size() ==
-      unmatched_right_instructions.size()) {
-    for (int i = 0; i < unmatched_left_instructions.size(); ++i) {
-      mappings.MapInstructionsIfAbsent(unmatched_left_instructions[i],
-                                       unmatched_right_instructions[i],
-                                       matcher_type);
-    }
+  // Map by position regardless of size if only_if_same_size is false,
+  // or if sizes are the same when only_if_same_size is true.
+  if (only_if_same_size && unmatched_left_instructions.size() !=
+                               unmatched_right_instructions.size()) {
+    return;
+  }
+  for (int i = 0; i < std::min(unmatched_left_instructions.size(),
+                               unmatched_right_instructions.size());
+       ++i) {
+    mappings.MapInstructionsIfAbsent(unmatched_left_instructions[i],
+                                     unmatched_right_instructions[i],
+                                     matcher_type);
   }
 }
 
 }  // namespace
 
-void MatchSameTypeInstructions(
+void MatchSameOpcodeInstructions(
     const HloGumgraph& left_graph, const HloGumgraph& right_graph,
     const std::vector<const HloInstructionNode*>& left_instructions,
     const std::vector<const HloInstructionNode*>& right_instructions,
     HloGumgraphMappings& mappings, const MatcherType& matcher_type,
-    bool map_by_position) {
+    MapByPositionMode map_by_position_mode) {
   if (left_instructions.empty() || right_instructions.empty()) {
     return;
   }
@@ -216,22 +225,23 @@ void MatchSameTypeInstructions(
                            right_instructions, mappings, matcher_type);
 
   // Phase 3: Map still unmatched instructions by position.
-  if (map_by_position) {
-    MatchInstructionsByPosition(left_instructions, right_instructions, mappings,
-                                matcher_type);
+  if (map_by_position_mode != MapByPositionMode::kNever) {
+    MatchInstructionsByPosition(
+        left_instructions, right_instructions, mappings, matcher_type,
+        map_by_position_mode == MapByPositionMode::kOnlyIfSameSize);
   }
 }
 
-// Find optimal matches between the left and right instruction set.
+// Find optimal matches between the left and right instruction lists.
 // The goal is to establish a mapping between corresponding instructions from
-// the 'left_instructions' and 'right_instructions' sets. These sets are derived
-// from the two computations being mapped, or two parents being mapped.
-void MatchLeafInstructions(
+// the 'left_instructions' and 'right_instructions' lists. These lists are
+// derived from the two computations being mapped, or two parents being mapped.
+void MatchInstructions(
     const HloGumgraph& left_graph, const HloGumgraph& right_graph,
     const std::vector<HloInstructionNode*>& left_instructions,
     const std::vector<HloInstructionNode*>& right_instructions,
     HloGumgraphMappings& mappings, const MatcherType& matcher_type,
-    bool map_by_position) {
+    MapByPositionMode map_by_position_mode) {
   absl::flat_hash_map<const HloOpcode,
                       std::pair<std::vector<const HloInstructionNode*>,
                                 std::vector<const HloInstructionNode*>>>
@@ -243,9 +253,9 @@ void MatchLeafInstructions(
     instructions_by_opcode[r->instruction->opcode()].second.push_back(r);
   }
   for (const auto& [opcode, instructions] : instructions_by_opcode) {
-    MatchSameTypeInstructions(left_graph, right_graph, instructions.first,
-                              instructions.second, mappings, matcher_type,
-                              map_by_position);
+    MatchSameOpcodeInstructions(left_graph, right_graph, instructions.first,
+                                instructions.second, mappings, matcher_type,
+                                map_by_position_mode);
   }
 }
 

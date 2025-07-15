@@ -80,10 +80,8 @@ class CopyInsertion : public HloModulePass {
   // Try to remove as many copies from the module as possible without
   // introducing live range interference. Only copy instructions that are
   // eligible for copy elision are considered for removal.
-  // If check_live_range_ordering is true, check that live ranges are ordered
-  // in all the existing aliased buffers.
   absl::Status RemoveUnnecessaryCopies(
-      HloModule* module, bool check_live_range_ordering = false,
+      HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads = {},
       bool insert_post_scheduling_control_dependencies = false);
 

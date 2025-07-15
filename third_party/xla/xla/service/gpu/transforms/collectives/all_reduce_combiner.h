@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/transforms/collectives/all_reduce_combiner.h"
-#include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 
@@ -34,15 +33,12 @@ namespace xla::gpu {
 // to figure out the optimal combiner threshold by itself.
 class GpuAllReduceCombiner : public AllReduceCombiner {
  public:
-  GpuAllReduceCombiner(const se::DeviceDescription& device_info,
-                       const int default_combine_threshold_in_bytes,
+  GpuAllReduceCombiner(const int default_combine_threshold_in_bytes,
                        const int64_t combine_threshold_in_bytes,
-                       const int64_t combine_threshold_count,
-                       const int64_t pointer_size)
+                       const int64_t combine_threshold_count)
       : AllReduceCombiner(combine_threshold_in_bytes, combine_threshold_count),
-        device_info_(device_info),
-        default_combine_threshold_in_bytes_(default_combine_threshold_in_bytes),
-        pointer_size_(pointer_size) {}
+        default_combine_threshold_in_bytes_(
+            default_combine_threshold_in_bytes) {}
 
   absl::string_view name() const override { return "gpu-all-reduce-combiner"; }
 
@@ -52,9 +48,7 @@ class GpuAllReduceCombiner : public AllReduceCombiner {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  const se::DeviceDescription& device_info_;
   const int default_combine_threshold_in_bytes_;
-  const int64_t pointer_size_;
 };
 
 }  // namespace xla::gpu

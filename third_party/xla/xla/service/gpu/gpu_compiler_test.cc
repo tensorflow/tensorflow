@@ -470,7 +470,7 @@ TEST_F(GpuCompilerTest, AnnotatesPipelinedInstructions) {
       }
 
       ENTRY entry {
-        c0 = s32[] constant(0)
+        c0 = s32[] constant(1)
         p0 = bf16[3,8,128] parameter(0)
         tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
         while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple),
@@ -827,7 +827,6 @@ ENTRY main {
     EXPECT_TRUE(filecheck_matched);
   }
 }
-
 
 class KernelCacheTest : public HloTestBase {
  public:
@@ -1601,7 +1600,8 @@ TEST_F(PassOrderTest, NestGemmFusionRunsAfterGemmFusionAutotuner) {
   // NestGemmFusion expect to see __triton_gemm custom call with a backend
   // config created by gemm_fusion_autotuner.
   DebugOptions options = GetDebugOptionsForTest();
-  options.set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(true);
+  options.add_xla_gpu_unsupported_generic_triton_emitter_features(
+      DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
   SetDebugOptions(options);
   VerifyPassOrder("gemm-fusion-autotuner", "nest_gemm_fusion");
 }
@@ -1931,6 +1931,44 @@ TEST_F(GpuCompilerTest, CompilingAndCollectingMetadata) {
     EXPECT_LE(pass_metadata.start_timestamp_usec(),
               pass_metadata.end_timestamp_usec());
   }
+}
+
+TEST_F(GpuCompilerTest, CommandBufferConversionPassRuns) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY main {
+  a = f32[2,2] parameter(0)
+  b = f32[2,2] parameter(1)
+  ROOT dot = f32[2,2] dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  auto hlo_module = ParseAndReturnVerifiedModule(hlo_text).value();
+
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_experimental_enable_command_buffer_on_thunks(true);
+  debug_options.clear_xla_gpu_enable_command_buffer();
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
+
+  hlo_module->mutable_config().set_debug_options(debug_options);
+
+  std::unique_ptr<Executable> executable =
+      backend()
+          .compiler()
+          ->RunBackend(std::move(hlo_module),
+                       backend().default_stream_executor(),
+                       {/*device_allocator=*/nullptr,
+                        /*thread_pool=*/nullptr,
+                        /*layout_canonicalization_callback=*/{},
+                        /*is_autotuning_compilation=*/false})
+          .value();
+  std::unique_ptr<GpuExecutable> gpu_exec(
+      static_cast<GpuExecutable*>(executable.release()));
+  const ThunkSequence& thunks = gpu_exec->GetThunk().thunks();
+  ASSERT_EQ(thunks.size(), 1);
+  EXPECT_EQ(thunks[0]->kind(), Thunk::Kind::kCommandBuffer);
 }
 
 }  // namespace

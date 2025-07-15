@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
@@ -52,6 +53,67 @@ limitations under the License.
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
+
+namespace details {
+
+absl::StatusOr<std::vector<RepeatedFlagModifier>> parseRepeatedEnumModifiers(
+    const absl::string_view flag_value, const absl::string_view add_prefix) {
+  std::vector<absl::string_view> values = absl::StrSplit(flag_value, ',');
+  std::string prefix = absl::AsciiStrToUpper(add_prefix);
+  std::vector<RepeatedFlagModifier> modifiers;
+  modifiers.reserve(values.size());
+  int incremental_modifiers_count = 0;
+  for (absl::string_view value : values) {
+    RepeatedFlagModifier modifier;
+    value = absl::StripAsciiWhitespace(value);
+    if (value.empty()) {
+      continue;
+    }
+    modifier.op = RepeatedFlagModifier::Op::kAdd;
+    if (absl::StartsWith(value, "+") || absl::StartsWith(value, "-")) {
+      incremental_modifiers_count++;
+      if (absl::StartsWith(value, "-")) {
+        modifier.op = RepeatedFlagModifier::Op::kRemove;
+      }
+      value = value.substr(1);
+    } else if (modifiers.empty()) {
+      modifiers.push_back(
+          RepeatedFlagModifier{RepeatedFlagModifier::Op::kClear, ""});
+    }
+    modifier.value = absl::AsciiStrToUpper(value);
+    if (!prefix.empty() && !absl::StartsWith(modifier.value, prefix)) {
+      modifier.value = absl::StrCat(prefix, modifier.value);
+    }
+    modifiers.push_back(modifier);
+  }
+  // If we have at least one incremental then we all values are to be
+  // incremental.
+  if (incremental_modifiers_count > 0 &&
+      incremental_modifiers_count != values.size()) {
+    return absl::InvalidArgumentError(
+        "All values must be incremental or none of them.");
+  }
+  return modifiers;
+}
+
+}  // namespace details
+
+namespace {
+
+template <typename T>
+void RemoveRepeatedFieldValue(tsl::protobuf::RepeatedField<int>* values,
+                              T remove) {
+  auto it = values->begin();
+  while (it != values->end()) {
+    if (*it == remove) {
+      it = values->erase(it);
+    } else {
+      it++;
+    }
+  }
+}
+
+}  // namespace
 
 inline std::string DefaultMaxIsa() {
   // There are many missing SVE lowerings in LLVM. Limit features to NEON for
@@ -110,6 +172,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_prefer_vector_width(256);
   opts.set_xla_cpu_max_isa(DefaultMaxIsa());
   opts.set_xla_cpu_generate_unique_c_style_kernel_entry_points(false);
+  opts.set_xla_cpu_emitter_verification_level(0);
 
   opts.set_xla_cpu_enable_fast_math(false);
   // Disable forms of fast math that have caused users problems in the past.
@@ -211,7 +274,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       DebugOptions::PARTITIONING_ALGORITHM_NOOP);
 
   opts.set_xla_gpu_enable_triton_gemm(true);
-  opts.set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(false);
+  opts.clear_xla_gpu_unsupported_generic_triton_emitter_features();
   opts.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(true);
@@ -322,14 +385,16 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_unsupported_use_all_reduce_one_shot_kernel(false);
   opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(true);
   opts.set_xla_gpu_unsupported_enable_all_reduce_decomposer(false);
+  opts.set_xla_gpu_experimental_use_autotuner_pass(false);
   opts.set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_fix_max_iterations(false);
   opts.set_xla_hlo_pass_fix_detect_cycles(false);
-  opts.set_xla_gpu_experimental_enable_sync_collective_combining(false);
+  opts.set_xla_gpu_experimental_enable_heuristic_collective_combining(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_silent_hlo_change(false);
   opts.set_xla_unsupported_crash_on_hlo_pass_noop_change(false);
   opts.set_xla_gpu_experimental_enable_split_k_rewrite(false);
   opts.set_xla_gpu_experimental_enable_triton_tma(false);
+  opts.set_xla_gpu_experimental_enable_command_buffer_on_thunks(false);
   return opts;
 }
 
@@ -584,18 +649,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           return cmd_type;
         };
 
-        auto erase_command_type = [](tsl::protobuf::RepeatedField<int>* enabled,
-                                     DebugOptions::CommandBufferCmdType type) {
-          auto it = enabled->begin();
-          while (it != enabled->end()) {
-            if (*it == type) {
-              it = enabled->erase(it);
-            } else {
-              it++;
-            }
-          }
-        };
-
         // Disable command buffers by clearing a set of supported commands.
         if (input.empty()) {
           debug_options->clear_xla_gpu_enable_command_buffer();
@@ -622,10 +675,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
             if (absl::StartsWith(value, "+")) {
               debug_options->add_xla_gpu_enable_command_buffer(cmd_type);
             } else if (absl::StartsWith(value, "-")) {
-              tsl::protobuf::RepeatedField<int>* enabled =
-                  debug_options->mutable_xla_gpu_enable_command_buffer();
-              erase_command_type(enabled, cmd_type);
+              RemoveRepeatedFieldValue(
+                  debug_options->mutable_xla_gpu_enable_command_buffer(),
+                  cmd_type);
             }
+            // TODO(goncharov): That looks like a bug, we should return after
+            // the loop.
             return true;
           }
         }
@@ -788,6 +843,48 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           return false;
         }
         debug_options->set_xla_gpu_pgle_accuracy_checker(strictness_level);
+        return true;
+      };
+
+  auto setter_for_xla_gpu_unsupported_generic_triton_emitter_features =
+      [debug_options](std::string input) {
+        auto value_modifiers = details::parseRepeatedEnumModifiers(
+            input, "GENERIC_TRITON_EMITTER_");
+        if (!value_modifiers.ok()) {
+          LOG(ERROR) << absl::StreamFormat(
+              "Illegal value for "
+              "--xla_gpu_unsupported_generic_triton_emitter_features "
+              "'%s': %s",
+              input, value_modifiers.status().message());
+          return false;
+        }
+        for (const auto& mod : *value_modifiers) {
+          if (mod.op == details::RepeatedFlagModifier::Op::kClear) {
+            debug_options
+                ->clear_xla_gpu_unsupported_generic_triton_emitter_features();
+            continue;
+          }
+          DebugOptions::GenericTritonEmitterFeature feature;
+          if (!DebugOptions::GenericTritonEmitterFeature_Parse(mod.value,
+                                                               &feature)) {
+            LOG(ERROR) << absl::StreamFormat(
+                "Illegal value for "
+                "--xla_gpu_unsupported_generic_triton_emitter_features "
+                "'%s'",
+                mod.value);
+            return false;
+          }
+          if (mod.op == details::RepeatedFlagModifier::Op::kAdd) {
+            debug_options
+                ->add_xla_gpu_unsupported_generic_triton_emitter_features(
+                    feature);
+          } else if (mod.op == details::RepeatedFlagModifier::Op::kRemove) {
+            RemoveRepeatedFieldValue(
+                debug_options
+                    ->mutable_xla_gpu_unsupported_generic_triton_emitter_features(),  // NOLINT
+                feature);
+          }
+        }
         return true;
       };
 
@@ -1024,6 +1121,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "use newer instructions. Available values: SSE4_2, AVX, AVX2, AVX512, "
       "AVX512_VNNI, AVX512_BF16, AMX, and AMX_FP16. (`AMX` will enable both "
       "`AMX_BF16` and `AMX_INT8` instructions.)"));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_emitter_verification_level",
+      int32_setter_for(&DebugOptions::set_xla_cpu_emitter_verification_level),
+      debug_options->xla_cpu_emitter_verification_level(),
+      "Sets how often we verify the emitted modules. Higher levels mean more "
+      "frequent verification. Currently supported: 0, 1."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_crash_on_verification_failures",
       bool_setter_for(
@@ -1747,14 +1850,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_enable_triton_gemm(),
                 "Use Triton-based matrix multiplication."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms",
-      bool_setter_for(
-          &DebugOptions::
-              set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms),
-      debug_options
-          ->xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(),
-      "Enable lowering Triton GEMM fusions through the generic Triton "
-      "emitter."));
+      "xla_gpu_unsupported_generic_triton_emitter_features",
+      setter_for_xla_gpu_unsupported_generic_triton_emitter_features, "",
+      "Comma-separated list of individual features of generic Triton emitter. "
+      "Use +/- prefix to modify the default list, or list features to enable "
+      "explicitly - that will override the defaults."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_unsupported_enable_triton_multi_output_fusion",
       bool_setter_for(
@@ -2304,12 +2404,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_hlo_pass_fix_detect_cycles(),
       "Perform hash-based cycle detection in fixed-point loops."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_enable_sync_collective_combining",
+      "xla_gpu_experimental_enable_heuristic_collective_combining",
       bool_setter_for(
           &DebugOptions::
-              set_xla_gpu_experimental_enable_sync_collective_combining),
-      debug_options->xla_gpu_experimental_enable_sync_collective_combining(),
-      "Enable sync collective combining."));
+              set_xla_gpu_experimental_enable_heuristic_collective_combining),
+      debug_options
+          ->xla_gpu_experimental_enable_heuristic_collective_combining(),
+      "Enable heuristic based collective combining."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_collective_cse_distance_threshold",
       int64_setter_for(
@@ -2361,6 +2462,21 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_experimental_enable_triton_tma),
       debug_options->xla_gpu_experimental_enable_triton_tma(),
       "Enable Triton's TMA loads/stores for arguments where applicable."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_command_buffer_on_thunks",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_experimental_enable_command_buffer_on_thunks),
+      debug_options->xla_gpu_experimental_enable_command_buffer_on_thunks(),
+      "Enables an experimental feature for command buffer conversion on "
+      "thunks."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_use_autotuner_pass",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_use_autotuner_pass),
+      debug_options->xla_gpu_experimental_use_autotuner_pass(),
+      "If true, use the AutotunerPass to autotune fusions, instead of the "
+      "gemm_fusion_autotuner."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

@@ -330,6 +330,31 @@ TEST_F(XnnFusionTest, UnsupportedDot) {
               HasSubstr("Unsupported XNNPACK Dot op variation"));
 }
 
+TEST_F(XnnFusionTest, UnsupportedBatchDot) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule unsupported_dot
+
+    xnn_fusion {
+      %lhs = f32[64,64] parameter(0)
+      %rhs = f32[64,64] parameter(1)
+      ROOT %dot = f32[64]{0} dot(%lhs, %rhs),
+        lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+    }
+
+    ENTRY entry {
+      %lhs = f32[64,64] parameter(0)
+      %rhs = f32[64,64] parameter(1)
+      ROOT %fusion = f32[64] fusion(%lhs, %rhs),
+        kind=kCustom, calls=xnn_fusion,
+        backend_config={"fusion_config": {kind: "__xnn_fusion"}}
+    })";
+
+  auto status = RunAndCompare(kModuleStr, ErrorSpec{0.0});
+  EXPECT_FALSE(status);
+  EXPECT_THAT(status.message(),
+              HasSubstr("Unsupported XNNPACK Dot op variation"));
+}
+
 TEST_F(XnnFusionTest, UnsupportedOp) {
   constexpr absl::string_view kModuleStr = R"(
     HloModule unsupported_sqrt

@@ -8,6 +8,10 @@ tf_class {
     mtype: "<class \'collections._tuplegetter\'>"
   }
   member {
+    name: "use_shardy_partitioner"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
     name: "use_spmd_for_xla_partitioning"
     mtype: "<class \'collections._tuplegetter\'>"
   }

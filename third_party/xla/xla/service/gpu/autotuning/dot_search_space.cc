@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/primitive_util.h"
@@ -113,10 +114,14 @@ TritonDotFusionSearchSpace::TritonDotFusionSearchSpace(
       std::max(min_out_tile_.lhs_dim, max_out_tile_.lhs_dim);
   max_out_tile_.rhs_dim =
       std::max(min_out_tile_.rhs_dim, max_out_tile_.rhs_dim);
+  exhaustive_tiling_search_ = dot->GetModule()
+                                  ->config()
+                                  .debug_options()
+                                  .xla_gpu_exhaustive_tiling_search();
 }
 
 std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
-    std::optional<int64_t> force_contracting_split) const {
+    std::optional<int64_t> force_contracting_split, bool autotune_tma) const {
   std::vector<ConfigWithNotes> configs;
   if (force_contracting_split.has_value()) {
     ConfigWithNotes config;
@@ -144,6 +149,9 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
   ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddCtaSizeParameter);
   ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddContractingTiling);
   ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddPipeliningParameter);
+  if (autotune_tma) {
+    ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddTmaParameter);
+  }
 
   std::vector<TritonGemmConfig> result;
   result.reserve(configs.size());
@@ -197,10 +205,10 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::OptimizeConfigSet(
   };
 
   if (result_configs.empty()) {
-    LOG(WARNING) << "All configs were filtered out because none of them "
-                    "sufficiently match the hints. Maybe the hints set does "
-                    "not contain a good representative set of valid configs?"
-                    "Working around this by using the full hints set instead.";
+    LOG(INFO) << "All configs were filtered out because none of them "
+                 "sufficiently match the hints. Maybe the hints set does "
+                 "not contain a good representative set of valid configs? "
+                 "Working around this by using the full hints set instead.";
     return hints;
   }
   return result_configs;
@@ -592,9 +600,38 @@ void TritonDotFusionSearchSpace::AddPipeliningParameter(
   }
 }
 
+void TritonDotFusionSearchSpace::AddTmaParameter(
+    const ConfigWithNotes& config,
+    std::vector<ConfigWithNotes>& updated_configs) const {
+  ConfigWithNotes new_config = config;
+  new_config.config.is_tma_allowed = false;
+  VLOG(10) << "Adding TMA (disabled) parameter: config = "
+           << new_config.ToString();
+  updated_configs.push_back(new_config);
+  new_config.config.is_tma_allowed = true;
+  VLOG(10) << "Adding TMA (enabled) parameter: config = "
+           << new_config.ToString();
+  updated_configs.push_back(new_config);
+}
+
 void TritonDotFusionSearchSpace::EliminateLowOccupancyConfigs(
     std::vector<ConfigWithNotes>& configs) const {
   CHECK(!configs.empty());
+
+  if (exhaustive_tiling_search_) {
+    VLOG(10) << "Exhaustive tiling search is enabled, skipping occupancy "
+                "optimization.";
+    return;
+  }
+
+  constexpr int kMinConfigsForOccupancyOptimization = 24;
+  if (configs.size() < kMinConfigsForOccupancyOptimization) {
+    VLOG(10) << "Skipping occupancy optimization for small search spaces. "
+                "Configs size: "
+             << configs.size() << " < " << kMinConfigsForOccupancyOptimization;
+    return;
+  }
+
   ConfigWithNotes last_config = configs.back();  // Largest split.
   auto has_too_few_tiles = [](const ConfigWithNotes& config) {
     if (config.not_enough_tiles) {
@@ -603,6 +640,7 @@ void TritonDotFusionSearchSpace::EliminateLowOccupancyConfigs(
     }
     return config.not_enough_tiles;
   };
+  int num_configs = configs.size();
   configs.erase(llvm::remove_if(configs, has_too_few_tiles), configs.end());
   if (configs.empty()) {
     // We can get no configs if the problem is small enough to not even occupy
@@ -614,6 +652,7 @@ void TritonDotFusionSearchSpace::EliminateLowOccupancyConfigs(
              << last_config.ToString();
     configs.push_back(last_config);
   }
+  VLOG(10) << "Eliminated " << num_configs - configs.size() << " configs.";
 }
 
 }  // namespace xla::gpu

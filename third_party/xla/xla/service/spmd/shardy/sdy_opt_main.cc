@@ -20,7 +20,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/register.h"
 #include "shardy/dialect/sdy/transforms/passes.h"
 #include "shardy/round_trip_import/pipelines.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/spmd/shardy/extensions/mhlo_extensions.h"
 #include "xla/service/spmd/shardy/round_trip_common/export_named_computations.h"
@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/service/spmd/shardy/sdy_round_trip/export_shardy_attrs.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/import_shardy_attrs.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
-#include "xla/service/spmd/shardy/sdy_round_trip/remove_size_one_axes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/shard_map_export.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/shard_map_import.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/test_utils/stablehlo_to_hlo_to_stablehlo.h"
@@ -53,7 +52,7 @@ int main(int argc, char** argv) {
   mlir::DialectRegistry dialects;
   mlir::sdy::registerAllDialects(dialects);
   mlir::func::registerAllExtensions(dialects);
-  dialects.insert<mlir::mhlo::MhloDialect>();
+  mlir::mhlo::registerAllMhloDialects(dialects);
   xla::sdy::registerMhloExtensions(dialects);
 
   // Register all SDY passes and pipelines.
@@ -78,7 +77,6 @@ int main(int argc, char** argv) {
   xla::sdy::registerSdyRoundTripStablehloToHloToStablehloPass();
   xla::sdy::registerSdyRoundTripExportShardyAttrsPass();
   xla::sdy::registerSdyRoundTripImportShardyAttrsPass();
-  xla::sdy::registerSdyRoundTripRemoveSizeOneAxesPass();
   xla::sdy::registerSdyRoundTripExportOpsPass();
   xla::sdy::registerSdyRoundTripExportPipeline();
   xla::sdy::registerSdyRoundTripDedupMeshesPass();

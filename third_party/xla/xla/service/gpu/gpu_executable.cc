@@ -126,6 +126,7 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       output_shape_(params.output_shape),
       allocations_(std::move(params.mlir_allocations)),
       buffer_assignment_(std::move(params.buffer_assignment)),
+      alias_info_(std::move(params.alias_info)),
       debug_buffer_assignment_show_max_(
           params.debug_buffer_assignment_show_max),
       constants_(std::move(params.constants)),
@@ -832,7 +833,8 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
 absl::Status GpuExecutable::VerboseAllocationError(absl::Status s) {
   return ResourceExhausted(
       "%s\n%s\n", s.message(),
-      buffer_assignment_->ToVerboseString(debug_buffer_assignment_show_max_));
+      buffer_assignment_->ToVerboseString(alias_info_.get(),
+                                          debug_buffer_assignment_show_max_));
 }
 
 absl::Status GpuExecutable::ExecuteThunks(

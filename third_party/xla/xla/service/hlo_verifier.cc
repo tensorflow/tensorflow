@@ -23,6 +23,7 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -42,6 +43,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -55,8 +57,10 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/collective_permute_cycle.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shape_inference.h"
+#include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
@@ -389,6 +393,21 @@ static absl::Status CheckReplicaGroups(HloInstruction* hlo,
   return absl::OkStatus();
 }
 
+static absl::Status CheckCollectiveOpGroupMode(HloInstruction* hlo) {
+  HloAllReduceInstructionBase* ar = Cast<HloAllReduceInstructionBase>(hlo);
+  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                      GetCollectiveOpGroupMode(ar->channel_id().has_value(),
+                                               ar->use_global_device_ids()));
+  TF_RET_CHECK(ar->collective_op_group_mode() == group_mode)
+      << "Instruction has mode="
+      << CollectiveOpGroupModeToString(ar->collective_op_group_mode())
+      << " but should be " << CollectiveOpGroupModeToString(group_mode)
+      << " because use_global_device_ids=" << ar->use_global_device_ids()
+      << " and channel_id is "
+      << (ar->channel_id().has_value() ? "present" : "absent");
+  return absl::OkStatus();
+}
+
 static absl::Status CheckCommonAllGatherInvariants(
     HloInstruction* hlo, int64_t* computed_shard_count) {
   auto ag = Cast<HloAllGatherInstruction>(hlo);
@@ -469,11 +488,10 @@ absl::Status ShapeVerifier::HandleAllGatherDone(HloInstruction* hlo) {
 
 absl::Status ShapeVerifier::HandleAllReduce(HloInstruction* hlo) {
   auto ar = Cast<HloAllReduceInstruction>(hlo);
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
-                      GetCollectiveOpGroupMode(ar->channel_id().has_value(),
-                                               ar->use_global_device_ids()));
-  TF_RETURN_IF_ERROR(
-      CheckReplicaGroups(ar, group_mode, /*uniform_replica_group_size=*/false));
+  TF_RETURN_IF_ERROR(CheckCollectiveOpGroupMode(ar));
+
+  TF_RETURN_IF_ERROR(CheckReplicaGroups(ar, ar->collective_op_group_mode(),
+                                        /*uniform_replica_group_size=*/false));
 
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : hlo->operands()) {
@@ -484,10 +502,8 @@ absl::Status ShapeVerifier::HandleAllReduce(HloInstruction* hlo) {
 
 absl::Status ShapeVerifier::HandleReduceScatter(HloInstruction* hlo) {
   auto ars = Cast<HloReduceScatterInstruction>(hlo);
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
-                      GetCollectiveOpGroupMode(ars->channel_id().has_value(),
-                                               ars->use_global_device_ids()));
-  TF_RETURN_IF_ERROR(CheckReplicaGroups(ars, group_mode));
+  TF_RETURN_IF_ERROR(CheckCollectiveOpGroupMode(ars));
+  TF_RETURN_IF_ERROR(CheckReplicaGroups(ars, ars->collective_op_group_mode()));
   TF_RET_CHECK(ars->scatter_dimension() >= 0);
   TF_RET_CHECK(ars->operand_count() >= 1);
 
@@ -508,7 +524,7 @@ absl::Status ShapeVerifier::HandleReduceScatter(HloInstruction* hlo) {
   int64_t shard_count =
       CeilOfRatio(ars->operand(0)->shape().dimensions(ars->scatter_dimension()),
                   output0_shape.dimensions(ars->scatter_dimension()));
-  int64_t subgroup_size = GetSubgroupSize(ars, group_mode);
+  int64_t subgroup_size = GetSubgroupSize(ars, ars->collective_op_group_mode());
   // If replica and partition count is not explicitly set, it will have a
   // default value of 1, in which case the subgroup_size will be 1 as well. Skip
   // these verification checks in that case.
@@ -527,11 +543,9 @@ absl::Status ShapeVerifier::HandleReduceScatter(HloInstruction* hlo) {
 
 absl::Status ShapeVerifier::HandleAllReduceStart(HloInstruction* hlo) {
   auto ar = Cast<HloAllReduceInstruction>(hlo);
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
-                      GetCollectiveOpGroupMode(ar->channel_id().has_value(),
-                                               ar->use_global_device_ids()));
-  TF_RETURN_IF_ERROR(
-      CheckReplicaGroups(ar, group_mode, /*uniform_replica_group_size=*/false));
+  TF_RETURN_IF_ERROR(CheckCollectiveOpGroupMode(ar));
+  TF_RETURN_IF_ERROR(CheckReplicaGroups(ar, ar->collective_op_group_mode(),
+                                        /*uniform_replica_group_size=*/false));
 
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : hlo->operands()) {
@@ -2412,6 +2426,174 @@ absl::Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
   return absl::OkStatus();
 }
 
+// Helper function to match source-target pairs for a pair of send/recv
+// instructions.
+absl::Status VerifySourceTargetPairs(const HloInstruction* first,
+                                     const HloInstruction* second) {
+  if (first == nullptr || second == nullptr) {
+    return Internal("Expected send or recv instruction to be non-null");
+  }
+  auto send_source_target_pairs =
+      first->frontend_attributes().map().find(kSendRecvSourceTargetPairsAttr);
+  auto recv_source_target_pairs =
+      second->frontend_attributes().map().find(kSendRecvSourceTargetPairsAttr);
+  // Source-target pairs should be set or unset for both send and recv.
+  if ((send_source_target_pairs == first->frontend_attributes().map().end()) !=
+      (recv_source_target_pairs == second->frontend_attributes().map().end())) {
+    return Internal(
+        "Expected both send and recv instruction to have source-target pairs "
+        "set, but found %s and %s",
+        first->ToString(), second->ToString());
+  }
+
+  // Skip checks if source-target pairs are unset for both send and recv
+  if (send_source_target_pairs == first->frontend_attributes().map().end()) {
+    return absl::OkStatus();
+  }
+
+  if (send_source_target_pairs->second != recv_source_target_pairs->second) {
+    return Internal(
+        "Expected send and recv instructions to have the same source-target "
+        "pairs, but found %s and %s",
+        first->ToString(), second->ToString());
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      SourceTargetPairs send_source_target_pairs_array,
+      SourceTargetPairs::FromString(send_source_target_pairs->second));
+  if (collective_permute_cycle::HasCycles(send_source_target_pairs_array)) {
+    return Internal(
+        "Expected send and recv instructions to have non-cyclical "
+        "source-target pairs, but found %s",
+        first->ToString());
+  }
+  std::set<int> sources;
+  std::set<int> targets;
+  for (int i = 0; i < send_source_target_pairs_array.size(); ++i) {
+    sources.insert(send_source_target_pairs_array[i].source);
+    targets.insert(send_source_target_pairs_array[i].target);
+  }
+  if (sources.size() != send_source_target_pairs_array.size() ||
+      targets.size() != send_source_target_pairs_array.size()) {
+    return Internal(
+        "Expected send and recv instructions to have unique source and target "
+        "pairs, but found %s",
+        first->ToString());
+  }
+
+  return absl::OkStatus();
+}
+
+enum class DfaState { kNoException, kExpectSend, kExpectRecv };
+
+// Helper function to handle the state transitions for a Send instruction.
+absl::Status HandleSendInstruction(const HloInstruction* instruction,
+                                   DfaState& current_state,
+                                   const HloInstruction*& current_instruction) {
+  if (DynCast<HloSendInstruction>(instruction)->is_host_transfer()) {
+    return absl::OkStatus();
+  }
+  switch (current_state) {
+    case DfaState::kNoException:
+      current_instruction = instruction;
+      current_state = DfaState::kExpectRecv;
+      break;
+    case DfaState::kExpectSend:
+      TF_RETURN_IF_ERROR(
+          VerifySourceTargetPairs(current_instruction, instruction));
+      current_state = DfaState::kNoException;
+      current_instruction = nullptr;
+      break;
+    case DfaState::kExpectRecv:
+      return Internal("Expected recv to match send, but found %s",
+                      instruction->ToString());
+    default:
+      break;
+  }
+  return absl::OkStatus();
+}
+
+// Helper function to handle the state transitions for a Recv instruction.
+absl::Status HandleRecvInstruction(const HloInstruction* instruction,
+                                   DfaState& current_state,
+                                   const HloInstruction*& current_instruction) {
+  if (DynCast<HloRecvInstruction>(instruction)->is_host_transfer()) {
+    return absl::OkStatus();
+  }
+  switch (current_state) {
+    case DfaState::kNoException:
+      current_instruction = instruction;
+      current_state = DfaState::kExpectSend;
+      break;
+    case DfaState::kExpectSend:
+      return Internal("Expected send to match recv, but found %s",
+                      instruction->ToString());
+    case DfaState::kExpectRecv:
+      TF_RETURN_IF_ERROR(
+          VerifySourceTargetPairs(current_instruction, instruction));
+      current_state = DfaState::kNoException;
+      current_instruction = nullptr;
+      break;
+    default:
+      break;
+  }
+  return absl::OkStatus();
+}
+
+// Checks that the send/recv instructions in the module do not deadlock. This is
+// only done on scheduled modules and is specific to device-to-device
+// communications on GPU. At a high level, we want to check that:
+// 1. no collectives are scheduled between a matching pair of send and recv
+// 2. no two send instructions are scheduled in a row
+// 3. no two recv instructions are scheduled in a row
+// 4. the program does not terminate with a dangling send or recv
+absl::Status VerifyNoCollectiveDeadlocks(const HloModule& module) {
+  DfaState current_state = DfaState::kNoException;
+  const HloInstruction* current_instruction = nullptr;
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      switch (instruction->opcode()) {
+        case HloOpcode::kSend:
+          TF_RETURN_IF_ERROR(HandleSendInstruction(instruction, current_state,
+                                                   current_instruction));
+          break;
+          // Handles Recv instructions.
+          break;
+        case HloOpcode::kRecv:
+          TF_RETURN_IF_ERROR(HandleRecvInstruction(instruction, current_state,
+                                                   current_instruction));
+          break;
+        case HloOpcode::kAllGather:
+        case HloOpcode::kAllReduce:
+        case HloOpcode::kAllToAll:
+        case HloOpcode::kRaggedAllToAll:
+        case HloOpcode::kCollectivePermute:
+        case HloOpcode::kReduceScatter:
+        case HloOpcode::kCollectiveBroadcast:
+          switch (current_state) {
+            case DfaState::kExpectSend:
+            case DfaState::kExpectRecv:
+              return Internal("Expected send or recv, but found %s",
+                              instruction->ToString());
+            default:
+              break;
+          }
+          break;
+        default:
+          break;
+      }
+    }
+  }
+  return current_state == DfaState::kNoException
+             ? absl::OkStatus()
+             : Internal(
+                   "Program terminated with dangling send or recv. Last "
+                   "checked instruction: %s",
+                   current_instruction == nullptr
+                       ? ""
+                       : current_instruction->ToString());
+}
+
 // Checks that the asynchronous computation only has a root and parameter
 // instructions.
 absl::Status VerifyAsyncComputation(const HloComputation* async_computation) {
@@ -3425,6 +3607,9 @@ absl::StatusOr<bool> HloVerifier::Run(
     // If the module has a schedule, it must be valid.
     if (module->has_schedule()) {
       TF_RETURN_IF_ERROR(module->schedule().Verify());
+      if (target_metadata_->GetVerifierOpts().CheckForCollectiveDeadlocks()) {
+        TF_RETURN_IF_ERROR(VerifyNoCollectiveDeadlocks(*module));
+      }
     }
 
     if (HloInstruction::IsThreadIncluded(

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 
 #include <cmath>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -1257,7 +1258,7 @@ absl::Status ConstantFolding::CreateNodeDef(const string& name,
 
   AttrValue attr_type;
   attr_type.set_type(tensor->dtype());
-  node->mutable_attr()->insert({"dtype", attr_type});
+  node->mutable_attr()->insert({"dtype", std::move(attr_type)});
 
   AttrValue attr_tensor;
   TensorProto* t = attr_tensor.mutable_tensor();
@@ -1328,7 +1329,7 @@ absl::Status ConstantFolding::CreateNodeDef(const string& name,
     tensor->AsProtoTensorContent(t);
     encoded_size = t->tensor_content().size();
   }
-  node->mutable_attr()->insert({"value", attr_tensor});
+  node->mutable_attr()->insert({"value", std::move(attr_tensor)});
 
   if (encoded_size > original_size && encoded_size >= kMaxConstantSize) {
     return absl::InvalidArgumentError(

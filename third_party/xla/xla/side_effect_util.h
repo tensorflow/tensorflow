@@ -107,6 +107,9 @@ extern const char kFuseLimitAttr[];
 // XLA frontend attribute for specifying groups of collectives that should be
 // launched together.
 extern const char kCollectivesGroupAttr[];
+
+extern const char kNumSlotVariables[];
+extern const char kNumHyperparameters[];
 }  // namespace xla
 
 #endif  // XLA_SIDE_EFFECT_UTIL_H_

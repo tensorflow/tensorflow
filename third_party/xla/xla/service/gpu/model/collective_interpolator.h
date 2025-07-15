@@ -98,7 +98,7 @@ class CollectiveInterpolator {
       const HloInstructionProfile& profile);
 
   // Returns the estimated runtime for a supported `collective`.
-  std::optional<absl::Duration> EstimatedRuntime(
+  absl::StatusOr<absl::Duration> EstimatedRuntime(
       const HloCollectiveInstruction& instr) const;
 
  private:

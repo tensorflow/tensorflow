@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 
 #include <cstddef>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -226,6 +227,27 @@ void TrackedCpuDeviceBuffer::AddUsageEvent(
         tensorflow::down_cast<CpuTrackedDeviceEvent*>(event.get())->event();
     AddUsageEvents({&cpu_event, 1});
   }
+}
+
+void TrackedCpuDeviceBuffer::Delete(PjRtMemorySpace* memory_space) {
+  std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer(this);
+  // Now that all holds have completed and no more can be added, we can get
+  // the final set of usage events.
+  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> usage_events =
+      device_buffer->LockUseAndTransferUsageEvents();
+
+  std::vector<tsl::AsyncValue*> event_avs;
+  event_avs.reserve(usage_events.size() + 1);
+  for (auto& event : usage_events) {
+    event_avs.push_back(event.GetAsyncValue());
+  }
+
+  // We should also wait for the definition event.
+  event_avs.push_back(device_buffer->definition_event().GetAsyncValue());
+
+  RunWhenReady(event_avs, [device_buffer = std::move(device_buffer)]() mutable {
+    device_buffer.reset();
+  });
 }
 
 }  // namespace xla

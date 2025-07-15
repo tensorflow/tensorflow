@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -40,17 +42,20 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla::gpu {
+namespace {
 
-static constexpr const char kCollectiveIdAttr[] = "collective_id";
-static constexpr const char kCollectiveSyncAttr[] = "sync_collective";
+constexpr const char kCollectiveIdAttr[] = "collective_id";
+constexpr const char kCollectiveSyncAttr[] = "sync_collective";
+constexpr const char kSuggestedCombinerThresholdAttr[] =
+    "suggested_combiner_threshold";
 
-static std::string CollectiveId(const HloInstruction* instr) {
+std::string CollectiveId(const HloInstruction* instr) {
   return absl::StrCat(instr->unique_id());
 }
 
 // Annotate all collective instructions with a unique identifier that will be
 // preserved after async collective conversion.
-static void AnnotateCollectives(HloModule* module) {
+void AnnotateCollectives(HloModule* module) {
   HloPredicate is_collective = [](const HloInstruction* instr) {
     return hlo_query::IsCollectiveCommunicationOp(instr->opcode());
   };
@@ -60,14 +65,13 @@ static void AnnotateCollectives(HloModule* module) {
       });
 }
 
-static absl::Status AnnotateSyncCollectives(HloModule* module) {
+absl::Status AnnotateSyncCollectives(HloModule* module) {
   HloPassPipeline pipeline("annotate-sync-collectives");
   pipeline.AddPass<GpuConvertAsyncCollectivesToSync>();
   return pipeline.Run(module).status();
 }
 
-static absl::flat_hash_set<std::string> SyncCollectiveIds(
-    const HloModule& module) {
+absl::flat_hash_set<std::string> SyncCollectiveIds(const HloModule& module) {
   absl::flat_hash_set<std::string> sync_collective_ids;
   HloPredicate is_sync_collective = [](const HloInstruction* instr) {
     return IsGPUSyncCollective(*instr);
@@ -81,43 +85,70 @@ static absl::flat_hash_set<std::string> SyncCollectiveIds(
   return sync_collective_ids;
 }
 
-// Return the set of collective instructions that are synchronous post
-// scheduling.
-static absl::StatusOr<absl::flat_hash_set<std::string>> SynchronousCollectives(
+struct Metadata {
+  int64_t peak_memory_bytes;
+  absl::flat_hash_set<std::string> sync_collective_ids;
+};
+
+// Collect the following metadata by dry-running the scheduler:
+// - peak_memory_bytes: the peak memory usage of the module.
+// - sync_collective_ids: the set of collective instructions that are
+//   synchronous post scheduling.
+absl::StatusOr<Metadata> GetSchedulingMetadata(
     const HloModule& module, int64_t pointer_size,
     const se::DeviceDescription& device_info, const GpuAliasInfo* alias_info) {
   std::unique_ptr<HloModule> cloned_module = module.Clone();
   AnnotateCollectives(cloned_module.get());
   TF_RETURN_IF_ERROR(RunAsyncCollectivesConversionPasses(cloned_module.get()));
-  TF_RETURN_IF_ERROR(ScheduleGpuModule(cloned_module.get(), pointer_size,
-                                       device_info, alias_info)
-                         .status());
+  TF_ASSIGN_OR_RETURN(ScheduleMetadata schedule_metadata,
+                      ScheduleGpuModule(cloned_module.get(), pointer_size,
+                                        device_info, alias_info));
   TF_RETURN_IF_ERROR(AnnotateSyncCollectives(cloned_module.get()));
-  return SyncCollectiveIds(*cloned_module);
+  return Metadata{schedule_metadata.peak_memory_usage,
+                  SyncCollectiveIds(*cloned_module)};
 }
+
+int64_t MaxAvailableMemory(const HloModule& module,
+                           const se::DeviceDescription& device_info) {
+  int64_t base_limit = module.config().device_memory_size() != 0
+                           ? module.config().device_memory_size()
+                           : device_info.device_memory_size();
+  int32_t slop_factor =
+      module.config().debug_options().xla_gpu_memory_limit_slop_factor();
+  return base_limit * slop_factor / 100;
+}
+
+}  // namespace
 
 absl::StatusOr<bool> CollectiveCombinerAnnotator::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_ASSIGN_OR_RETURN(absl::flat_hash_set<std::string> sync_collectives,
-                      SynchronousCollectives(*module, pointer_size_,
-                                             device_info_, alias_info_));
-  if (sync_collectives.empty()) {
+  TF_ASSIGN_OR_RETURN(
+      Metadata metadata,
+      GetSchedulingMetadata(*module, pointer_size_, device_info_, alias_info_));
+  int64_t combiner_threshold =
+      MaxAvailableMemory(*module, device_info_) - metadata.peak_memory_bytes;
+  if (combiner_threshold <= 0) {
+    LOG(ERROR) << "Computed combiner threshold " << combiner_threshold
+               << " is <= 0.";
     return false;
   }
 
-  bool changed = false;
+  AnnotateWithSuggestedCombinerThreshold(module, combiner_threshold);
+  if (metadata.sync_collective_ids.empty()) {
+    return true;
+  }
+
   for (HloComputation* comp : module->computations(execution_threads)) {
     for (HloInstruction* instr : comp->instructions()) {
-      if (!sync_collectives.contains(CollectiveId(instr))) {
+      if (!metadata.sync_collective_ids.contains(CollectiveId(instr))) {
         continue;
       }
       instr->add_frontend_attribute(kCollectiveSyncAttr, "true");
-      changed = true;
     }
   }
 
-  return changed;
+  return true;
 }
 
 bool IsCombinableSyncCollective(const HloInstruction& instr) {
@@ -134,6 +165,25 @@ bool ContainsCombinableSyncCollective(const HloModule& module) {
     }
   }
   return false;
+}
+
+std::optional<int64_t> SuggestedCombinerThreshold(const HloModule& module) {
+  auto it =
+      module.frontend_attributes().map().find(kSuggestedCombinerThresholdAttr);
+  if (it == module.frontend_attributes().map().end()) {
+    return std::nullopt;
+  }
+  int64_t combiner_threshold;
+  if (!absl::SimpleAtoi(it->second, &combiner_threshold)) {
+    return std::nullopt;
+  }
+  return combiner_threshold;
+}
+
+void AnnotateWithSuggestedCombinerThreshold(HloModule* module,
+                                            int64_t combiner_threshold) {
+  module->add_frontend_attribute(kSuggestedCombinerThresholdAttr,
+                                 absl::StrCat(combiner_threshold));
 }
 
 }  // namespace xla::gpu

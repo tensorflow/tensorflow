@@ -142,6 +142,31 @@ TEST_F(StablehloUtilsTest, ConvertShardyToHlo2DSharding) {
   ConvertShardyAndCompare(kShardyMlirString, kExpectedHloPattern);
 }
 
+TEST_F(StablehloUtilsTest, ConvertShardyToHloDataFlowEdge) {
+  const std::string kShardyMlirString = R"MLIR(
+      module @test_module {
+        func.func @main(%arg0: tensor<i32>, %arg1: tensor<4xi64>, %arg2: tensor<4xi64>) -> tensor<4xi64> {
+          %0 = "stablehlo.case"(%arg0) ({
+            stablehlo.return %arg1 : tensor<4xi64>
+          }, {
+            stablehlo.return %arg2 : tensor<4xi64>
+          }) : (tensor<i32>) -> tensor<4xi64>
+          %1 = sdy.data_flow_edge %0 : tensor<4xi64>
+          return %1 : tensor<4xi64>
+        }
+    }
+  )MLIR";
+
+  const std::string kExpectedHloPattern = R"(
+  CHECK: %region_0.7 (Arg_.4: s64[4]) -> s64[4]
+  CHECK: %region_1.11 (Arg_.8: s64[4]) -> s64[4]
+  CHECK: ENTRY %main.13 (Arg_0.1: s32[], Arg_1.2: s64[4], Arg_2.3: s64[4]) -> s64[4]
+  CHECK: ROOT %conditional.12 = s64[4]{0} conditional(%Arg_0.1, %Arg_1.2, %Arg_2.3), branch_computations={%region_0.7, %region_1.11}, sharding={replicated}
+  )";
+
+  ConvertShardyAndCompare(kShardyMlirString, kExpectedHloPattern);
+}
+
 TEST_F(StablehloUtilsTest, ConvertHloToShardy1DSharding) {
   const std::string kHloString = R"(
 HloModule matmul, entry_computation_layout={(f32[400,400]{1,0:T(8,128)}, f32[400,400]{1,0:T(8,128)})->f32[400,400]{1,0}}, num_partitions=8

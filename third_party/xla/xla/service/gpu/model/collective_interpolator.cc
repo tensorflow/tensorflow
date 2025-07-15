@@ -541,7 +541,7 @@ CollectiveInterpolator::Create(int num_devices_per_host,
       device_info, num_devices_per_host, analysis));
 }
 
-std::optional<absl::Duration> CollectiveInterpolator::EstimatedRuntime(
+absl::StatusOr<absl::Duration> CollectiveInterpolator::EstimatedRuntime(
     const HloCollectiveInstruction& instr) const {
   // Exact interpolation.
   int64_t bytes_transferred =
@@ -565,23 +565,18 @@ std::optional<absl::Duration> CollectiveInterpolator::EstimatedRuntime(
     }
   }
   // Fallback interpolation.
-  auto comm = CommunicationType(num_devices_per_host_, instr,
-                                device_info_.gpu_compute_capability());
-  if (!comm.ok()) {
-    return std::nullopt;
-  }
-  auto num_devices = GetReplicaGroupCountAndSize(&instr);
-  if (!num_devices.ok()) {
-    return std::nullopt;
-  }
-  std::array<int64_t, 2> point({bytes_transferred, (*num_devices)->second});
+  TF_ASSIGN_OR_RETURN(auto comm,
+                      CommunicationType(num_devices_per_host_, instr,
+                                        device_info_.gpu_compute_capability()));
+  TF_ASSIGN_OR_RETURN(auto num_devices, GetReplicaGroupCountAndSize(&instr));
+  std::array<int64_t, 2> point({bytes_transferred, num_devices->second});
   CollectiveInterpolator::FallbackInterpolatorKey key{
       /*opcode=*/AsyncToSyncOpcode(instr),
-      /*communication_type=*/*comm,
+      /*communication_type=*/comm,
   };
   if (!fallback_interpolators_->contains(key)) {
-    VLOG(1) << "Cannot find key for instr: " << instr.ToString();
-    return std::nullopt;
+    return absl::NotFoundError(
+        absl::StrCat("Cannot find key for instr: ", instr.ToString()));
   }
   return absl::Seconds(1.0 * bytes_transferred /
                        fallback_interpolators_->at(key)->Eval(point));

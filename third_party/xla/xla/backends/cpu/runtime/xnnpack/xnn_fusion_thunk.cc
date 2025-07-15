@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "experimental.h"  // xnnpack
 #include "xnnpack.h"
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
@@ -102,6 +103,7 @@ struct XnnFusionThunk::XnnRuntime {
 
   std::unique_ptr<ParallelLoopRunner> runner;
   pthreadpool_t threadpool = nullptr;
+  XnnSchedulerPtr scheduler = {nullptr, nullptr};
   xnn_workspace_t workspace = nullptr;
 
   xnn_subgraph_t subgraph = nullptr;
@@ -133,6 +135,7 @@ auto XnnFusionThunk::XnnRuntime::operator=(XnnRuntime&& other) -> XnnRuntime& {
 
   runner = std::move(other.runner);
   captured_arguments = std::move(other.captured_arguments);
+  scheduler = std::move(other.scheduler);
 
   return *this;
 }
@@ -227,11 +230,13 @@ absl::StatusOr<XnnFusionThunk::XnnRuntime> XnnFusionThunk::CreateXnnRuntime(
 
   // Configure XNNPACK runtime thread pool if parallelization is enabled.
   if (parallelization_mode == ParallelizationMode::kParallelLoopRunner) {
-    runtime.runner = std::make_unique<ParallelLoopRunner>(device);
-    runtime.threadpool = CreateCustomPthreadpool(runtime.runner.get());
+    if (options_.use_slinky) {
+      runtime.scheduler = CreateXnnEigenScheduler(device);
+    } else {
+      runtime.runner = std::make_unique<ParallelLoopRunner>(device);
+      runtime.threadpool = CreateCustomPthreadpool(runtime.runner.get());
+    }
   }
-
-  XNN_RETURN_IF_ERROR(xnn_create_workspace(&runtime.workspace));
 
   if (builder_) {
     TF_ASSIGN_OR_RETURN(runtime.subgraph, builder_(arguments_, results_));
@@ -241,9 +246,20 @@ absl::StatusOr<XnnFusionThunk::XnnRuntime> XnnFusionThunk::CreateXnnRuntime(
         capturing_builder_(arguments_, results_, arguments_buffers));
   }
 
-  XNN_RETURN_IF_ERROR(
-      xnn_create_runtime_v4(runtime.subgraph, nullptr, runtime.workspace,
-                            runtime.threadpool, 0, &runtime.runtime));
+  if (options_.use_slinky) {
+    uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS;
+#ifdef NDEBUG
+    flags |= XNN_FLAG_SLINKY_NO_CHECKS;
+#endif
+    XNN_RETURN_IF_ERROR(xnn_create_runtime_with_scheduler(
+        runtime.subgraph, /*weights_cache=*/nullptr, runtime.scheduler.get(),
+        flags, &runtime.runtime));
+  } else {
+    XNN_RETURN_IF_ERROR(xnn_create_workspace(&runtime.workspace));
+    XNN_RETURN_IF_ERROR(xnn_create_runtime_v4(
+        runtime.subgraph, /*weights_cache=*/nullptr, runtime.workspace,
+        runtime.threadpool, /*flags=*/0, &runtime.runtime));
+  }
 
   XNN_RETURN_IF_ERROR(xnn_reshape_runtime(runtime.runtime));
 
@@ -276,9 +292,20 @@ absl::Status XnnFusionThunk::UpdateXnnRuntime(
 
   TF_ASSIGN_OR_RETURN(runtime.subgraph, capturing_builder_(arguments_, results_,
                                                            arguments_buffers));
-  XNN_RETURN_IF_ERROR(
-      xnn_create_runtime_v4(runtime.subgraph, nullptr, runtime.workspace,
-                            runtime.threadpool, 0, &runtime.runtime));
+
+  if (options_.use_slinky) {
+    uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS;
+#ifdef NDEBUG
+    flags |= XNN_FLAG_SLINKY_NO_CHECKS;
+#endif
+    XNN_RETURN_IF_ERROR(xnn_create_runtime_with_scheduler(
+        runtime.subgraph, /*weights_cache=*/nullptr, runtime.scheduler.get(),
+        flags, &runtime.runtime));
+  } else {
+    XNN_RETURN_IF_ERROR(xnn_create_runtime_v4(
+        runtime.subgraph, /*weights_cache=*/nullptr, runtime.workspace,
+        runtime.threadpool, /*flags=*/0, &runtime.runtime));
+  }
 
   XNN_RETURN_IF_ERROR(xnn_reshape_runtime(runtime.runtime));
 

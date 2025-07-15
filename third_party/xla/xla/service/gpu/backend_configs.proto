@@ -194,6 +194,9 @@ message BlockLevelFusionConfig {
 
   // The number of stages to use for loop pipelining.
   int32 num_stages = 5;
+
+  // Allow/disallow TMA usage for all arguments of the kernel (where possible).
+  bool is_tma_allowed = 6;
 }
 
 message DynamicMemcpyConfig {

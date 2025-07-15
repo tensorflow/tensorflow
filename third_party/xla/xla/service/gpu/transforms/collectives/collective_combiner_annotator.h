@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_COMBINER_ANNOTATOR_H_
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
@@ -30,7 +31,8 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Annotates collective operations with metadata used by collective combiners.
+// Annotates collective instructions and HLO module with metadata used by
+// collective combiners.
 class CollectiveCombinerAnnotator : public HloModulePass {
  public:
   CollectiveCombinerAnnotator(se::DeviceDescription device_info,
@@ -60,6 +62,13 @@ bool IsCombinableSyncCollective(const HloInstruction& instr);
 // Returns true if module contains any combinable sync collective. False
 // otherwise.
 bool ContainsCombinableSyncCollective(const HloModule& module);
+
+// Annotates the module with the suggested combiner threshold.
+void AnnotateWithSuggestedCombinerThreshold(HloModule* module,
+                                            int64_t combiner_threshold);
+
+// Returns the suggested combiner threshold for the module.
+std::optional<int64_t> SuggestedCombinerThreshold(const HloModule& module);
 
 }  // namespace xla::gpu
 

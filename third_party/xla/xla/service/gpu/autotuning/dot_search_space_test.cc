@@ -145,6 +145,35 @@ class DotSearchSpaceTest : public DefaultDeviceDotSearchSpaceTest {
   }
 };
 
+TEST_F(DotSearchSpaceTest, ExhaustiveSearchSpaceIsLargerThanDefault) {
+  constexpr const char* kModuleText = R"(
+    ENTRY e {
+      p0 = bf16[16,4096] parameter(0)
+      p1 = bf16[16,4096] parameter(1)
+      p2 = bf16[16,16] parameter(2)
+      p2_broadcast = bf16[16,16,256] broadcast(p2), dimensions={0,1}
+      p2_reshape = bf16[16,4096] reshape(p2_broadcast)
+      p0_scaled = bf16[16,4096] multiply(p0, p2_reshape)
+      ROOT r = bf16[16,16] dot(p0_scaled, p1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={1}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleText));
+  auto default_search_space = MakeSearchSpace(module.get());
+  std::vector<TritonGemmConfig> default_configs =
+      default_search_space.GenerateConfigs();
+
+  auto debug_options = module->config().debug_options();
+  debug_options.set_xla_gpu_exhaustive_tiling_search(true);
+  module->mutable_config().set_debug_options(debug_options);
+  auto exhaustive_search_space = MakeSearchSpace(module.get());
+  std::vector<TritonGemmConfig> exhaustive_configs =
+      exhaustive_search_space.GenerateConfigs();
+
+  EXPECT_THAT(exhaustive_configs.size(), Ge(default_configs.size()));
+}
+
 TEST_F(DotSearchSpaceTest, SerializesSearchSpace) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,
@@ -269,13 +298,12 @@ TEST_F(DotSearchSpaceTest,
        FindsUniqueOccupancyMaximizingTilingForSmallProblem) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,
-      GetDefaultDotModule(/*lhs_parallel_dim=*/32, /*rhs_parallel_dim=*/32,
-                          /*contracting_dim=*/32));
+      GetDefaultDotModule(/*lhs_parallel_dim=*/64, /*rhs_parallel_dim=*/64,
+                          /*contracting_dim=*/64));
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
-
   EXPECT_THAT(search_space.GenerateConfigs(),
               AllOf(SizeIs(1), Each(AllOf(BlockMIs(Eq(16)), BlockNIs(Eq(16)),
-                                          SplitKIs(Eq(2))))));
+                                          SplitKIs(Eq(4))))));
 }
 
 TEST_F(DotSearchSpaceTest, FindsGoodDataReuseTilesForForcedHugeSplit) {

@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -40,7 +41,10 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class HloScheduleTest : public HloHardwareIndependentTestBase {};
+class HloScheduleTest : public HloHardwareIndependentTestBase {
+ protected:
+  AliasInfo alias_info_;
+};
 
 TEST_F(HloScheduleTest, UpdateScheduleUnchangedModule) {
   // Updating the schedule of an unchanged HLO module should not affect the
@@ -61,7 +65,7 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(module.get(), [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), &alias_info_, [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
       }));
   const auto& entry_schedule =
@@ -95,7 +99,7 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(module.get(), [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), &alias_info_, [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
       }));
 
@@ -144,7 +148,7 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(module.get(), [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), &alias_info_, [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
       }));
 
@@ -188,7 +192,7 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(module.get(), [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), &alias_info_, [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
       }));
 
@@ -249,7 +253,7 @@ ENTRY %WhileLoop () -> s32[] {
                           ParseAndReturnVerifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(module.get(), [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), &alias_info_, [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape(),
                                      /*pointer_size=*/sizeof(void*));
       }));
@@ -318,7 +322,7 @@ ENTRY %WhileLoop () -> s32[] {
                           ParseAndReturnVerifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(module.get(), [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), &alias_info_, [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape(),
                                      /*pointer_size=*/sizeof(void*));
       }));
@@ -389,7 +393,7 @@ ENTRY %WhileLoop () -> (s32[], f32[10]) {
                           ParseAndReturnVerifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(module.get(),
+      ScheduleModule(module.get(), &alias_info_,
                      [](const BufferValue& buffer) {
                        return ShapeUtil::ByteSizeOf(
                            buffer.shape(),
@@ -469,7 +473,7 @@ ENTRY %WhileLoop () -> (s32[], f32[10]) {
                           ParseAndReturnVerifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(module.get(),
+      ScheduleModule(module.get(), &alias_info_,
                      [](const BufferValue& buffer) {
                        return ShapeUtil::ByteSizeOf(
                            buffer.shape(),
@@ -543,7 +547,7 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(module.get(), [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), &alias_info_, [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
       }));
 
@@ -598,7 +602,7 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(module.get(), [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), &alias_info_, [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
       }));
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "xla/runtime/device_id.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -48,6 +49,16 @@ TEST(ComputationPlacerTest, SerDes) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<DeviceAssignment> da2,
                           DeviceAssignment::Deserialize(proto));
   EXPECT_EQ(da, *da2);
+}
+
+TEST(ComputationPlacerTest, SerDesError) {
+  ComputationPlacer cp;
+  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment da, cp.AssignDevices(4, 2));
+  DeviceAssignmentProto proto;
+  da.Serialize(&proto);
+  proto.set_replica_count(-1);
+  auto sor = DeviceAssignment::Deserialize(proto);
+  EXPECT_EQ(sor.status().code(), absl::StatusCode::kInvalidArgument);
 }
 
 TEST(ComputationPlacerTest, DuplicateDevices) {

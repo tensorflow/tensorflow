@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -25,13 +24,15 @@ limitations under the License.
 
 #include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/global_device_id.h"
-#include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform.h"
@@ -102,24 +103,26 @@ void DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
     }
   }
 }
+namespace {
+#define RET_CHECK_ARG(condition) \
+  if (!(condition)) return absl::InvalidArgumentError(#condition);
+}  // namespace
 
 /* static */ absl::StatusOr<std::unique_ptr<DeviceAssignment>>
 DeviceAssignment::Deserialize(const DeviceAssignmentProto& proto) {
-  TF_RET_CHECK(proto.computation_devices_size() == proto.computation_count());
-  TF_RET_CHECK(proto.replica_count() > 0);
-  TF_RET_CHECK(proto.computation_count() > 0);
-  auto assignment = std::make_unique<DeviceAssignment>(
-      proto.replica_count(), proto.computation_count());
-  for (int comp = 0; comp < proto.computation_count(); ++comp) {
-    const auto& computation_device = proto.computation_devices(comp);
-    TF_RET_CHECK(computation_device.replica_device_ids_size() ==
-                 proto.replica_count());
+  RET_CHECK_ARG(proto.computation_devices_size() == proto.computation_count());
+  RET_CHECK_ARG(proto.replica_count() > 0);
+  RET_CHECK_ARG(proto.computation_count() > 0);
+  auto da = std::make_unique<DeviceAssignment>(proto.replica_count(),
+                                               proto.computation_count());
+  for (int comp_id = 0; comp_id < proto.computation_count(); ++comp_id) {
+    const auto& comp = proto.computation_devices(comp_id);
+    RET_CHECK_ARG(comp.replica_device_ids_size() == proto.replica_count());
     for (int replica = 0; replica < proto.replica_count(); ++replica) {
-      (*assignment)(replica, comp) =
-          computation_device.replica_device_ids(replica);
+      (*da)(replica, comp_id) = comp.replica_device_ids(replica);
     }
   }
-  return std::move(assignment);
+  return std::move(da);
 }
 
 std::string DeviceAssignment::ToString() const {
@@ -141,23 +144,12 @@ std::string DeviceAssignment::ToString() const {
   return output;
 }
 
-absl::StatusOr<int> ComputationPlacer::DeviceId(int replica, int computation,
-                                                int replica_count,
-                                                int computation_count) {
-  TF_RET_CHECK(replica < replica_count);
-  TF_RET_CHECK(computation < computation_count);
-  return computation * replica_count + replica;
-}
-
 absl::StatusOr<DeviceAssignment> ComputationPlacer::AssignDevices(
     int replica_count, int computation_count) {
   DeviceAssignment assignment(replica_count, computation_count);
   for (int replica = 0; replica < replica_count; ++replica) {
     for (int computation = 0; computation < computation_count; ++computation) {
-      TF_ASSIGN_OR_RETURN(
-          int device_id,
-          DeviceId(replica, computation, replica_count, computation_count));
-      assignment(replica, computation) = device_id;
+      assignment(replica, computation) = computation * replica_count + replica;
     }
   }
   return assignment;

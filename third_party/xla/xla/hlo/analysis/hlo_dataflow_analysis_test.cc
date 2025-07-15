@@ -2273,12 +2273,9 @@ INSTANTIATE_TEST_SUITE_P(HloDataflowAnalysisInstantiation,
                          HloDataflowAnalysisTest,
                          ::testing::Values(false, true));
 
-std::unique_ptr<HloDataflowAnalysis> RunAnalysis(
-    const HloModule& module,
-    const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr) {
+std::unique_ptr<HloDataflowAnalysis> RunAnalysis(const HloModule& module) {
   return HloDataflowAnalysis::Run(module, /*ssa_form=*/false,
-                                  /*bitcast_defines_value=*/false,
-                                  can_share_buffer)
+                                  /*bitcast_defines_value=*/false)
       .value();
 }
 
@@ -2949,36 +2946,6 @@ TEST_F(CanShareOperandBufferWithUserTest, OutputFusionCantAliasOperandBuffer) {
   auto dataflow_analysis = RunAnalysis(*module);
 
   // Output fused operand->reverse->add cannot alias operand buffer 'operand'.
-  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
-      operand, {}, fusion, {}, &alias_info_));
-}
-
-TEST_F(CanShareOperandBufferWithUserTest, FusionCanShareBufferCustomized) {
-  auto builder = HloComputation::Builder(TestName());
-  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
-
-  auto one = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto operand = builder.AddInstruction(
-      HloInstruction::CreateBroadcast(data_shape, one, {}));
-  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
-      data_shape, HloOpcode::kMultiply, operand, operand));
-  auto two = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
-  auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(data_shape, HloOpcode::kAdd, mul, two));
-
-  auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
-  auto fusion = computation->CreateFusionInstruction(
-      {add, two, mul}, HloInstruction::FusionKind::kInput);
-  auto dataflow_analysis = RunAnalysis(
-      *module,
-      /*can_share_buffer=*/[](const HloInstruction* fusion,
-                              const HloInstruction*, const ShapeIndex&) {
-        return fusion->IsLoopFusion();
-      });
-
   EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
       operand, {}, fusion, {}, &alias_info_));
 }
@@ -3710,8 +3677,7 @@ TEST_P(HloDataflowAnalysisTest, b409416499) {
       FindComputation(after_layout_bitcast_module.get(), "region_0.13_spmd");
   HloInstruction* add0 = while_body->root_instruction();
   std::vector<HloInstruction*> defining_instructions;
-  for (const HloValue* value :
-       analysis->GetValueSet(bitcast3, {}).TakeValues()) {
+  for (const HloValue* value : analysis->GetValueSet(bitcast3, {}).values()) {
     defining_instructions.push_back(value->defining_instruction());
   }
   EXPECT_THAT(defining_instructions, UnorderedElementsAre(param2, add0));
@@ -3725,7 +3691,7 @@ TEST_P(HloDataflowAnalysisTest, b409756077) {
     %add_rhs = f32[] parameter(1)
     ROOT %add = f32[] add(%add_lhs, %add_rhs)
   }
-  
+
   %while_body (param.1: f32[256,256]) -> f32[256,256] {
     %param.1 = f32[256,256]{1,0:T(8,128)} parameter(0)
     %constant.0 = f32[]{:T(8,128)} constant(1)
@@ -3761,11 +3727,37 @@ TEST_P(HloDataflowAnalysisTest, b409756077) {
       FindComputation(after_layout_bitcast_module.get(), "while_body");
   HloInstruction* add0 = while_body->root_instruction();
   std::vector<HloInstruction*> defining_instructions;
-  for (const HloValue* value :
-       analysis->GetValueSet(bitcast3, {}).TakeValues()) {
+  for (const HloValue* value : analysis->GetValueSet(bitcast3, {}).values()) {
     defining_instructions.push_back(value->defining_instruction());
   }
   EXPECT_THAT(defining_instructions, UnorderedElementsAre(param2, add0));
+}
+
+TEST_F(GetInPlaceInputOutputPairsTest, nvshmem_ar) {
+  const char* kModule = R"(
+    HloModule test_ar
+    region_add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT ret = f32[] add(lhs, rhs)
+    }
+
+    ENTRY test {
+      p0 = f32[10] parameter(0)
+      ar = f32[10] all-reduce-start(p0), replica_groups={}, to_apply=region_add, backend_config={"collective_backend_config":{"backend":"NVSHMEM"}}
+      ROOT ar.done = f32[10] all-reduce-done(ar)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  const HloInstruction* ar_start =
+      module->entry_computation()->root_instruction()->operand(0);
+
+  auto in_place_pairs =
+      HloDataflowAnalysis::GetInPlaceInputOutputPairs(ar_start);
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
+  // For nvshmem allreduce, we expect no aliasing for input and output buffers
+  // therefore empty inplace pairs.
+  EXPECT_EQ(in_place_pairs, expected_pairs);
 }
 
 }  // namespace

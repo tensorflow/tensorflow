@@ -311,6 +311,12 @@ std::string HumanReadableNumOps(double flops, double nanoseconds,
   throughput += absl::StrCat(op_prefix, "OP/s");
   return throughput;
 }
+
+void LogString(absl::string_view fname, int line, absl::LogSeverity severity,
+               absl::string_view message) {
+  LOG(LEVEL(severity)).AtLocation(fname, line) << message;
+}
+
 }  // namespace
 
 std::string HumanReadableNumFlops(double flops, double nanoseconds) {
@@ -341,14 +347,12 @@ void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
       eol = text.size();
     }
     auto msg = text.substr(cur, eol - cur);
-    tsl::internal::LogString(fname, lineno, sev,
-                             std::string(msg.data(), msg.size()));
+    LogString(fname, lineno, sev, msg);
     cur = eol + 1;
   }
 
   if (orig_sev == absl::LogSeverity::kFatal) {
-    tsl::internal::LogString(fname, lineno, orig_sev,
-                             "Aborting due to errors.");
+    LogString(fname, lineno, orig_sev, "Aborting due to errors.");
   }
 }
 

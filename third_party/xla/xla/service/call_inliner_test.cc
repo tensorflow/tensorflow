@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
+#include "xla/service/call_graph.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -791,11 +793,23 @@ ENTRY main {
             expected_module->ToFingerprint(options));
 }
 
-TEST_F(CallInlinerTest, InliningMergesOpMetadata) {
+TEST_F(CallInlinerTest, InliningMergesOpMetadataRecursively) {
   const char* hlo = R"(
+
+cond {
+  input = f32[128,32] parameter(0)
+  ROOT c0 = pred[] constant(0), metadata={op_name="while/cond"}
+}
+
+body {
+  input = f32[128,32] parameter(0)
+  ROOT convert = f32[128,32] convert(input), metadata={op_name="while/body"}
+}
+
 callee {
   input = f32[128,32] parameter(0)
-  ROOT y = f32[128,32] negate(input), metadata={op_name="y"}
+  ROOT while = f32[128,32] while(input), metadata={op_name="while"},
+    condition=cond, body=body
 }
 
 ENTRY main {
@@ -809,8 +823,48 @@ ENTRY main {
   EXPECT_THAT(call_inliner.Run(m.get()), ::tsl::testing::IsOkAndHolds(true));
 
   auto root = m->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Negate());
-  EXPECT_EQ(root->metadata().op_name(), "x/y");
+  EXPECT_THAT(root, op::While());
+  EXPECT_EQ(root->metadata().op_name(), "x/while");
+  EXPECT_EQ(root->while_condition()->root_instruction()->metadata().op_name(),
+            "x/while/cond");
+  EXPECT_EQ(root->while_body()->root_instruction()->metadata().op_name(),
+            "x/while/body");
+}
+
+TEST_F(CallInlinerTest, InliningCallBack) {
+  const char* hlo = R"(
+callee_negate {
+  input = f32[128,32] parameter(0)
+  ROOT y = f32[128,32] negate(input)
+}
+
+callee_trivial {
+  ROOT input = f32[128,32] parameter(0)
+}
+
+ENTRY main {
+  input = f32[128,32] parameter(0)
+  call.negate = f32[128,32] call(input), to_apply=callee_negate
+  call.trivial = f32[128,32] call(input), to_apply=callee_trivial
+  ROOT result = subtract(call.negate, call.trivial)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  auto inline_trivial_only = [](const CallGraph& call_graph,
+                                HloInstruction* instruction) {
+    HloComputation* callee = instruction->to_apply();
+    return (callee->root_instruction()->opcode() == HloOpcode::kParameter);
+  };
+  CallInliner call_inliner(/*single_call_site=*/false, /*update_domain=*/false,
+                           /*composites_to_preserve=*/{},
+                           /*uniquify_channel_ids=*/false,
+                           /*should_inline=*/inline_trivial_only);
+
+  EXPECT_THAT(call_inliner.Run(m.get()), ::tsl::testing::IsOkAndHolds(true));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              op::Subtract(op::Call(op::Parameter(0)), op::Parameter(0)));
 }
 
 }  // namespace

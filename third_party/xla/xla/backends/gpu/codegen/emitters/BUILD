@@ -227,6 +227,7 @@ cc_library(
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
+        "//xla/runtime:work_dimensions",
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:gpu_constants",
         "//xla/service/gpu:gpu_fusible",

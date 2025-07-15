@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_replication_analysis.h"
+#include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -37,13 +38,15 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
 #include "xla/map_util.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/gpu/dynamic_slicing_utils.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
 namespace {
+namespace m = match;
 
 struct AccumulationContext {
   HloInstruction* accumulation_instruction;
@@ -53,15 +56,24 @@ struct AccumulationContext {
   std::optional<HloInstruction*> dynamic_update_slice;
 };
 
+struct UpdateSliceContext {
+  Shape update_slice_shape;
+  std::vector<int64_t> update_slice_offsets;
+  int64_t param_tuple_index;
+};
+
 // Describes whether an all-reduce instruction can be sinked from a while body
 // computation and all the accumulation uses of the all-reduce's result in the
 // while body if movable.
 struct MovableAllReduceContext {
-  bool is_movable;
+  bool is_movable = false;
   // If movable, `accumulation_contexts` contains one accumulation
   // context for each accumulation in the while body that uses the all-reduce's
   // result. Otherwise, this field is undefined.
-  std::vector<AccumulationContext> accumulation_contexts;
+  std::vector<AccumulationContext> accumulation_contexts = {};
+  // Dynamic update slice context, represents all-reduce results scattered in
+  // an output shape. If set, the `accumulation_contexts` will be empty.
+  std::optional<UpdateSliceContext> update_slice_context = std::nullopt;
 };
 
 bool IsZero(const HloInstruction* hlo) {
@@ -141,6 +153,175 @@ HloInstruction* GetEffectiveScalar(HloInstruction* instruction) {
   return operand;
 }
 
+// Checks if an all-reduce instruction is scattered into the loop output and
+// that output is not used in the loop body.
+//
+// The following conditions must be met:
+// 1. All while instructions must have the same loop induction variable,
+//    which is initialized to zero and incremented by one.
+// 2. The all-reduce result must be stored in a loop output tuple element
+//    (also present in the loop computation input), which has no users in the
+//    loop body.
+// 3. The dynamic-update-slice ops may form a chain, the last op must have
+//    the loop tuple element as the first operand. The update position operands
+//    may be either constants or the loop induction variable.
+std::optional<MovableAllReduceContext> MatchDynamicUpdateSliceContext(
+    HloAllReduceInstructionBase* all_reduce,
+    absl::Span<HloInstruction*> while_instructions,
+    const CallGraph* call_graph) {
+  UpdateSliceContext context{/*update_slice_shape=*/all_reduce->shape(),
+                             /*update_slice_offsets=*/{},
+                             /*param_tuple_index=*/-1};
+
+  // Find the loop induction variable and match the loop range.
+  std::optional<int64_t> indvar_idx;
+  std::optional<int64_t> loop_bound;
+
+  for (HloInstruction* while_op : while_instructions) {
+    std::optional<int64_t> idx = GetLoopInductionVarTupleIdx(while_op);
+    if (!idx.has_value() || (indvar_idx.has_value() && *indvar_idx != *idx)) {
+      VLOG(5) << "Unable to identify the loop induction variable.";
+      return std::nullopt;
+    }
+    const HloInstruction* init = while_op->operand(0)->operand(*idx);
+    if (!IsZero(init)) {
+      VLOG(5) << "Loop induction variable is not initialized to zero.";
+      return std::nullopt;
+    }
+    indvar_idx = *idx;
+
+    auto range = MatchLoopRangeWithKnownValues(while_op, *indvar_idx,
+                                               /*known_values=*/{});
+    if (!range.has_value() || !range->IsLinear() || !range->IsBounded() ||
+        !range->IsStepKnown() || range->step()->GetSignedValue() != 1 ||
+        (loop_bound.has_value() &&
+         *loop_bound != range->max()->GetSignedValue())) {
+      VLOG(5) << "Only simple range loops are supported.";
+      return std::nullopt;
+    }
+    loop_bound = range->max()->GetSignedValue();
+  }
+
+  // Verify that the instruction is an iterator over the loop range.
+  // Allow reverse indexing (i.e. back-to-front).
+  auto is_induction_variable = [&](const HloInstruction* instr) {
+    const HloInstruction* left = nullptr;
+    const HloInstruction* right = nullptr;
+    if (Match(instr, m::Subtract(m::ConstantScalar(&left), m::Op(&right))) &&
+        left->literal().GetFirstInteger().value() == *loop_bound) {
+      instr = right;
+    }
+    return Match(instr, m::GetTupleElement(m::Parameter(0), *indvar_idx));
+  };
+
+  // Do not hoist all-reduce ops if the resulting all-reduce is too large.
+  // The threshold value is chosen arbitrarily.
+  constexpr int64_t kAllReduceMaxSizeBytes = 10240;
+  if ((*loop_bound + 1) * ShapeUtil::ArraySize(all_reduce->shape()) >
+      kAllReduceMaxSizeBytes) {
+    VLOG(5) << "Resulting all-reduce exceeds the size threshold: "
+            << kAllReduceMaxSizeBytes;
+    return std::nullopt;
+  }
+
+  // Get user paths of the all-reduce.
+  auto user_paths = gpu::GetSlicedUserPaths(
+      *all_reduce, *call_graph,
+      HloPredicateIsOp<HloOpcode::kReshape, HloOpcode::kConvert>,
+      /*check_alignment=*/false,
+      /*allow_multiple_callers=*/true);
+  if (user_paths.size() != 1) {
+    VLOG(5) << "Only single user of the all-reduce is supported.";
+    return std::nullopt;
+  }
+
+  // Process HLO ops preceding the DUS.
+  auto& user_chain = user_paths.back();
+  const HloInstruction* hlo = user_chain.back();
+  user_chain.pop_back();
+  for (HloInstruction* hlo : user_chain) {
+    switch (hlo->opcode()) {
+      case HloOpcode::kReshape:
+        context.update_slice_shape = hlo->shape();
+        break;
+      case HloOpcode::kConvert:
+        context.update_slice_shape.set_element_type(
+            hlo->shape().element_type());
+        break;
+      default:
+        return std::nullopt;
+    }
+  }
+
+  // DUS ops may form a chain.
+  const HloInstruction* prev =
+      user_chain.empty() ? all_reduce : user_chain.back();
+  while (auto dus = DynCast<HloDynamicUpdateSliceInstruction>(hlo)) {
+    if (dus->update() != prev) {
+      VLOG(5) << "DUS update must contain the all-reduce result.";
+      return std::nullopt;
+    }
+    int size = dus->shape().dimensions_size();
+    context.update_slice_offsets.resize(size, 0);
+    for (int i = 0; i < size; ++i) {
+      const HloInstruction* index_op =
+          hlo->operand(dus->first_index_operand_number() + i);
+      if (index_op->IsConstant()) {
+        context.update_slice_offsets[i] +=
+            index_op->literal().GetFirstInteger().value();
+      } else if (is_induction_variable(index_op) &&
+                 dus->update()->shape().dimensions(i) == 1) {
+        context.update_slice_shape.set_dimensions(i, *loop_bound + 1);
+      } else {
+        VLOG(5) << "Unsupported indexing mode.";
+        return std::nullopt;
+      }
+    }
+    if (dus->user_count() != 1) {
+      VLOG(5) << "DUS must have exactly one user.";
+      return std::nullopt;
+    }
+    prev = hlo;
+    hlo = dus->users()[0];
+  }
+
+  // Result of DUS must be a loop output tuple element.
+  if (!hlo->IsRoot()) {
+    VLOG(5) << "DUS result must be consumed by the loop output.";
+    return std::nullopt;
+  }
+  const HloInstruction* dus = nullptr;
+  const HloInstruction* gte = nullptr;
+  auto dus_unique_and_valid = [&]() {
+    auto indices = hlo->operand_indices(dus);
+    return indices.size() == 1 && indices[0] == gte->tuple_index();
+  };
+  if (!Match(prev, m::DynamicUpdateSlice(&dus)) ||
+      !Match(dus->operand(0), m::GetTupleElement(&gte, m::Parameter(0))) ||
+      !dus_unique_and_valid()) {
+    VLOG(5) << "DUS must originate from the loop input and be stored in the "
+               "loop output at the same tuple index.";
+    return std::nullopt;
+  }
+  if (gte->user_count() != 1 || hlo_query::CountGteInstructionsWithIndex(
+                                    hlo->parent(), gte->tuple_index()) != 1) {
+    VLOG(5) << "DUS operand must have no users in the loop body.";
+    return std::nullopt;
+  }
+  if (absl::c_any_of(while_instructions, [&](const HloInstruction* op) {
+        return hlo_query::CountGteInstructionsWithIndex(
+                   op->while_condition(), gte->tuple_index()) != 0;
+      })) {
+    VLOG(5) << "All-reduce result must not be used in any of the loop "
+               "condition computations.";
+    return std::nullopt;
+  }
+  context.param_tuple_index = gte->tuple_index();
+  return MovableAllReduceContext{/*is_movable=*/true,
+                                 /*accumulation_contexts=*/{},
+                                 /*update_slice_context=*/std::move(context)};
+}
+
 // Checks if an all-reduce instruction is eligible for sinking and finds all of
 // the all-reduce's accumulation uses inside the while body if eligible.
 // An all-reduce is movable if all following conditions hold. This function
@@ -190,26 +371,37 @@ HloInstruction* GetEffectiveScalar(HloInstruction* instruction) {
 //     HLO level info about whether the entire value is replicated or not, and
 //     that may not be sufficient to change the predicate shape to a new shape.
 MovableAllReduceContext IsAllReduceMovable(
-    HloAllReduceInstructionBase* all_reduce, HloComputation* while_body,
+    HloAllReduceInstructionBase* all_reduce,
+    absl::Span<HloInstruction*> while_instructions,
     const std::unique_ptr<HloReplicationAnalysis>&
         cross_replica_replication_analysis,
     const std::unique_ptr<HloReplicationAnalysis>&
-        cross_partition_replication_analysis) {
+        cross_partition_replication_analysis,
+    const CallGraph* call_graph) {
   VLOG(4) << "IsAllReduceMovable: " << all_reduce->ToString();
+  HloComputation* while_body = while_instructions[0]->called_computations()[0];
+
+  // Determine the reduction type, bail out if not supported.
   std::optional<ReductionKind> reduction_type =
       MatchReductionComputation(all_reduce->to_apply());
-  const bool all_reduce_is_summation =
-      reduction_type.has_value() && *reduction_type == ReductionKind::SUM;
+  if (!reduction_type.has_value()) {
+    return MovableAllReduceContext{};
+  }
 
-  // We only support numerical types.
+  // Try matching dynamic update slice context.
+  if (auto update_slice_context = MatchDynamicUpdateSliceContext(
+          all_reduce, while_instructions, call_graph);
+      update_slice_context.has_value()) {
+    return std::move(*update_slice_context);
+  }
+
+  // We only support numerical types for accumulation.
   const absl::InlinedVector<PrimitiveType, 12> kSupportedTypes{
       BF16, F16, F32, F64, S8, S16, S32, S64, U8, U16, U32, U64};
-
   if (!absl::c_linear_search(kSupportedTypes,
                              all_reduce->shape().element_type()) ||
-      !all_reduce_is_summation) {
-    return MovableAllReduceContext{/*is_movable=*/false,
-                                   /*accumulation_contexts=*/{}};
+      *reduction_type != ReductionKind::SUM) {
+    return MovableAllReduceContext{};
   }
 
   CollectiveOpGroupMode all_reduce_group_mode =
@@ -931,12 +1123,109 @@ absl::Status AddSinkedAllReducesAndReplaceWhile(
   return absl::OkStatus();
 }
 
+// Creates the sinked all-reduce instructions and replaces the while loop
+// output with the new all-reduce results.
+absl::StatusOr<HloInstruction*> AddSinkedAllReducesAndReplaceWhile(
+    HloInstruction* while_instruction,
+    const HloInstructionMap<UpdateSliceContext>& all_reduce_to_update_slices) {
+  HloComputation* while_parent = while_instruction->parent();
+
+  // Constants cache (results in a more readable HLO).
+  absl::flat_hash_map<int64_t, HloInstruction*> constants;
+  auto get_or_create_constant = [&](int64_t value) -> HloInstruction* {
+    auto it = constants.find(value);
+    if (it == constants.end()) {
+      HloInstruction* constant =
+          while_parent->AddInstruction(HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<int64_t>(value)));
+      it = constants.insert({value, constant}).first;
+    }
+    return it->second;
+  };
+
+  // Create the new while instruction.
+  HloInstruction* new_while_instruction =
+      while_parent->AddInstruction(while_instruction->Clone());
+  absl::flat_hash_map<int, HloInstruction*> tuple_index_to_new_buffer;
+
+  for (const auto& [all_reduce, context] : all_reduce_to_update_slices) {
+    // (1) Build the operand of the all-reduce instruction.
+    HloInstruction* result_tuple_element =
+        while_parent->AddInstruction(HloInstruction::CreateGetTupleElement(
+            new_while_instruction, context.param_tuple_index));
+    HloInstruction* operand = result_tuple_element;
+
+    // Slice the all-reduce input from the loop output.
+    const std::vector<int64_t>& start_indices = context.update_slice_offsets;
+    std::vector<int64_t> limit_indices = start_indices;
+    bool slice_needed = false;
+    for (int i = 0; i < start_indices.size(); i++) {
+      limit_indices[i] += context.update_slice_shape.dimensions(i);
+      slice_needed |= start_indices[i] != 0 ||
+                      limit_indices[i] != operand->shape().dimensions(i);
+    }
+    if (slice_needed) {
+      std::vector<int64_t> strides(start_indices.size(), 1);
+      operand = while_parent->AddInstruction(
+          HloInstruction::CreateSlice(context.update_slice_shape, operand,
+                                      start_indices, limit_indices, strides));
+    }
+
+    // Convert the operand to the all-reduce type.
+    if (!ShapeUtil::SameElementType(operand->shape(), all_reduce->shape())) {
+      Shape new_shape = ShapeUtil::ChangeElementType(
+          operand->shape(), all_reduce->shape().element_type());
+      operand = while_parent->AddInstruction(
+          HloInstruction::CreateConvert(new_shape, operand));
+    }
+
+    // (2) Create new all-reduce instruction.
+    HloInstruction* new_all_reduce = while_parent->AddInstruction(
+        all_reduce->CloneWithNewOperands(operand->shape(), {operand}));
+    HloInstruction* update = new_all_reduce;
+
+    // Convert the result back to the original type.
+    if (!ShapeUtil::SameElementType(update->shape(),
+                                    result_tuple_element->shape())) {
+      Shape new_shape = ShapeUtil::ChangeElementType(
+          update->shape(), result_tuple_element->shape().element_type());
+      update = while_parent->AddInstruction(
+          HloInstruction::CreateConvert(new_shape, update));
+    }
+
+    // Create dynamic update slice, if necessary.
+    if (!ShapeUtil::Equal(update->shape(), result_tuple_element->shape())) {
+      std::vector<HloInstruction*> start_indices;
+      start_indices.reserve(context.update_slice_offsets.size());
+      for (int offset : context.update_slice_offsets) {
+        start_indices.push_back(get_or_create_constant(offset));
+      }
+      update =
+          while_parent->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+              result_tuple_element->shape(), result_tuple_element, update,
+              start_indices));
+    }
+
+    // (3) Store the result in the tuple map.
+    tuple_index_to_new_buffer[context.param_tuple_index] = update;
+  }
+
+  // Replace the old while instruction with the new one.
+  HloInstruction* new_while_result =
+      CreateNewWhileResult(new_while_instruction, tuple_index_to_new_buffer);
+  TF_RETURN_IF_ERROR(
+      while_parent->ReplaceInstruction(while_instruction, new_while_result));
+  return new_while_instruction;
+}
+
 }  // namespace
 
 absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool is_changed = false;
+  std::unique_ptr<CallGraph> call_graph =
+      CallGraph::Build(module, execution_threads);
 
   // In case of MPMD, all-reduces might be cross-module and should preserve
   // their channel ID. Do not move all-reduces in this case since the channel
@@ -1024,44 +1313,67 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::Run(
     }
     HloInstructionMap<std::vector<AccumulationContext>>
         all_reduce_to_accumulations;
+    HloInstructionMap<UpdateSliceContext> all_reduce_to_update_slices;
     for (HloAllReduceInstructionBase* all_reduce : while_body_all_reduces) {
-      auto movable_all_reduce_context = IsAllReduceMovable(
-          all_reduce, computation, cross_replica_replication_analysis,
-          cross_partition_replication_analysis);
-      if (movable_all_reduce_context.is_movable) {
-        all_reduce_to_accumulations[all_reduce] =
-            std::move(movable_all_reduce_context.accumulation_contexts);
-      }
+      auto all_reduce_context = IsAllReduceMovable(
+          all_reduce, absl::MakeSpan(while_caller_instructions),
+          cross_replica_replication_analysis,
+          cross_partition_replication_analysis, call_graph.get());
       VLOG(3) << "WhileLoopAllReduceCodeMotion, all-reduce: "
               << all_reduce->ToString()
-              << " is_movable: " << movable_all_reduce_context.is_movable
+              << " is_movable: " << all_reduce_context.is_movable
               << " while loop: " << while_caller_instructions.front()->name()
               << " num_accumulations: "
-              << (movable_all_reduce_context.is_movable
-                      ? all_reduce_to_accumulations[all_reduce].size()
-                      : 0);
+              << all_reduce_context.accumulation_contexts.size()
+              << " dynamic update slice: "
+              << (all_reduce_context.update_slice_context ? "true" : "false");
+      if (all_reduce_context.is_movable) {
+        if (all_reduce_context.update_slice_context.has_value()) {
+          all_reduce_to_update_slices[all_reduce] =
+              std::move(*all_reduce_context.update_slice_context);
+        } else {
+          all_reduce_to_accumulations[all_reduce] =
+              std::move(all_reduce_context.accumulation_contexts);
+        }
+      }
     }
-    if (all_reduce_to_accumulations.empty()) {
-      continue;
-    }
-    // For each while instruction calling this computation, create the
-    // corresponding all-reduces after the while loop.
-    for (HloInstruction* while_instruction : while_caller_instructions) {
-      TF_RETURN_IF_ERROR(AddSinkedAllReducesAndReplaceWhile(
-          while_instruction, all_reduce_to_accumulations));
+    if (!all_reduce_to_update_slices.empty()) {
+      // For each while instruction calling this computation, create the
+      // corresponding all-reduces after the while loop.
+      for (auto& while_instruction : while_caller_instructions) {
+        TF_ASSIGN_OR_RETURN(
+            while_instruction,
+            AddSinkedAllReducesAndReplaceWhile(while_instruction,
+                                               all_reduce_to_update_slices));
+      }
+      // Remove all-reduce instructions in the loop body.
+      for (const auto& [all_reduce, _] : all_reduce_to_update_slices) {
+        ++count_all_reduce;
+        TF_RETURN_IF_ERROR(computation->ReplaceInstruction(
+            all_reduce, all_reduce->mutable_operand(0)));
+      }
       is_changed = true;
     }
-    // At last, remove the old all-reduce instructions in the while body.
-    for (const auto& all_reduce_accumulations_pair :
-         all_reduce_to_accumulations) {
-      HloInstruction* all_reduce = all_reduce_accumulations_pair.first;
-      if (all_reduce->opcode() == HloOpcode::kAllReduce) {
-        count_all_reduce++;
-      } else {
-        count_reduce_scatter++;
+    if (!all_reduce_to_accumulations.empty()) {
+      // For each while instruction calling this computation, create the
+      // corresponding all-reduces after the while loop.
+      for (HloInstruction* while_instruction : while_caller_instructions) {
+        TF_RETURN_IF_ERROR(AddSinkedAllReducesAndReplaceWhile(
+            while_instruction, all_reduce_to_accumulations));
       }
-      TF_RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
-          all_reduce, all_reduce->mutable_operand(0)));
+      // At last, remove the old all-reduce instructions in the while body.
+      for (const auto& all_reduce_accumulations_pair :
+           all_reduce_to_accumulations) {
+        HloInstruction* all_reduce = all_reduce_accumulations_pair.first;
+        if (all_reduce->opcode() == HloOpcode::kAllReduce) {
+          ++count_all_reduce;
+        } else {
+          ++count_reduce_scatter;
+        }
+        TF_RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
+            all_reduce, all_reduce->mutable_operand(0)));
+      }
+      is_changed = true;
     }
   }
   VLOG(2) << "Hoisted " << count_all_reduce << " all-reduce and "

@@ -89,10 +89,14 @@ class TritonTest : public GpuCodegenTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    debug_options
-        .set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(true);
-    // Disable autotuning by default, re-enable it on a per-test basis in order
-    // to avoid unnecessary slowness.
+    auto* emitter_opts =
+        debug_options
+            .mutable_xla_gpu_unsupported_generic_triton_emitter_features();
+    emitter_opts->Add(DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
+    emitter_opts->Add(
+        DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION);
+    emitter_opts->Add(
+        DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES);
     debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;
   }
@@ -3151,47 +3155,6 @@ ENTRY e {
                           GetModuleAndNestedFusionMetadata(kHloText));
   EXPECT_TRUE(Run(std::move(module_and_metadata.module),
                   /*run_hlo_passes=*/false));
-}
-
-// Test PreventMmaV3LoopUnrolling pass in order to keep compile time low.
-// See b/344841434.
-// TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
-// moved to deviceless test file.
-TEST_F(TritonGemmTest, TestPreventMMAV3LoopUnrolling) {
-  if (GetCudaComputeCapability().major != se::CudaComputeCapability::kHopper) {
-    GTEST_SKIP() << "wgmma instruction is only available on Hopper";
-  }
-  constexpr absl::string_view kHloText = R"(
-gemm_fusion_dot {
-  p0 = f16[64,1024]{1,0} parameter(0)
-  p1 = f16[1024,32,32]{2,1,0} parameter(1)
-  bitcast = f16[1024,1024]{0,1} bitcast(p1)
-  ROOT dot = f16[64,1024]{1,0} dot(p0, bitcast),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-
-ENTRY e {
-  p0 = f16[64,1024]{1,0} parameter(0)
-  p1 = f16[1024,32,32]{2,1,0} parameter(1)
-  ROOT triton_gemm_fusion_dot = f16[64,1024]{1,0} fusion(p0, p1), kind=kCustom,
-    calls=gemm_fusion_dot,
-    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-      triton_gemm_config:
-        {"block_m":64,"block_n":32,"block_k":32,
-         "split_k":1,"num_stages":1,"num_warps":4,
-         "num_ctas":1}}}
-})";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
-
-  CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module), R"(
-                                R"(
-CHECK: $L__BB0_1:
-CHECK:      // begin inline asm
-CHECK-NEXT: .pragma "nounroll";
-CHECK: wgmma
-)",
-                                /*run_optimization_passes=*/false);
 }
 
 // TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be

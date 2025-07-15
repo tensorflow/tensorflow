@@ -18,7 +18,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def LowerXlaMathLibPass : Pass<"xla-lower-xla-math-lib", "mlir::func::FuncOp"> {
+def LowerXlaMathLibPass : Pass<"xla-lower-xla-math-lib", "mlir::ModuleOp"> {
   let summary = "Lowers XLA math function calls to xla.* math lib calls.";
   let description = [{
     Lowers XLA math function calls to xla.* math lib calls. This enables LLVM to
@@ -258,6 +258,11 @@ def SimplifyArithPass : Pass<"xla-simplify-arith", "mlir::func::FuncOp"> {
   let dependentDialects = [
     "mlir::arith::ArithDialect",
     "mlir::func::FuncDialect",
+  ];
+
+  let options = [
+    Option<"fast_min_max_", "fast_min_max", "bool", /*default=*/"false",
+           "Use fast min/max (does not propagate nan).">,
   ];
 
   let constructor = "CreateSimplifyArithPass()";

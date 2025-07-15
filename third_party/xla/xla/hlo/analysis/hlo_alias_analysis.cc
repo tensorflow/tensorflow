@@ -310,13 +310,6 @@ const HloBuffer& HloAliasAnalysis::GetUniqueBufferAt(
   return *buffers[0];
 }
 
-HloBuffer& HloAliasAnalysis::GetUniqueBufferAt(
-    const HloInstruction* instruction, const ShapeIndex& index) {
-  return GetBuffer(const_cast<const HloAliasAnalysis*>(this)
-                       ->GetUniqueBufferAt(instruction, index)
-                       .id());
-}
-
 std::vector<const HloBuffer*> HloAliasAnalysis::ComputeBuffersAt(
     const HloInstruction* instruction, const ShapeIndex& index) const {
   const HloValueSet& value_set =
@@ -400,16 +393,15 @@ std::string HloAliasAnalysis::ToString() const {
 
 /* static */
 absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
-    const HloModule* module,
-    const HloDataflowAnalysis::CanShareBuffer& can_share_buffer) {
+    const HloModule* module) {
   VLOG(2) << "HloAliasAnalysis::Run on module " << module->name();
   XLA_VLOG_LINES(2, module->ToString());
 
   auto alias_analysis = absl::WrapUnique(new HloAliasAnalysis(module));
-  TF_ASSIGN_OR_RETURN(alias_analysis->dataflow_analysis_,
-                      HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
-                                               /*bitcast_defines_value=*/false,
-                                               can_share_buffer));
+  TF_ASSIGN_OR_RETURN(
+      alias_analysis->dataflow_analysis_,
+      HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
+                               /*bitcast_defines_value=*/false));
 
   size_t num_values = alias_analysis->dataflow_analysis_->values().size();
   alias_analysis->buffers_ = CreateBuffers(alias_analysis->dataflow_analysis());

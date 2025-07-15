@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 
@@ -172,12 +173,15 @@ absl::StatusOr<std::map<int, int>> GetDimensionIndicesAndNumSplitsFromSharding(
 // to OpSharding and then HloSharding and performing a comparison. Returns
 // failure if the attributes are not equivalent or if there is any problem
 // in converting the attributes to OpSharding or HloSharding.
-mlir::LogicalResult VerifyShardingEquivalent(mlir::Attribute sharding_attr1,
-                                             mlir::Attribute sharding_attr2);
-
 mlir::LogicalResult VerifyShardingEquivalent(
     const xla::OpSharding& sharding_proto1,
     const xla::OpSharding& sharding_proto2);
+
+// Returns _XlaShardingV2 if it exists or _XlaSharding otherwise. When both
+// _XlaSharding and _XlaShardingV2 exist, verifies that they are equivalent
+// and returns an error status if they aren't equivalent.
+absl::StatusOr<mlir::StringAttr> GetXlaShardingAttrFromShardingOp(
+    mlir::TF::XlaShardingOp sharding);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_XLA_SHARDING_UTIL_H_

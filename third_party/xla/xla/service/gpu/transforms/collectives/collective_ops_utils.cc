@@ -162,19 +162,23 @@ absl::StatusOr<GPUCommunicationType> CommunicationType(
   return GPUCommunicationType::UNDEFINED;
 }
 
-std::optional<bool> IsMultiHostTopology(
+GPUTopologyType GetTopologyType(
     const HloModuleConfig& config,
     const se::DeviceDescription& device_description) {
   se::CudaComputeCapability cc = device_description.cuda_compute_capability();
   // TODO: b/390095346 - Use topology information once available at compile
   // time.
   if (cc.IsHopper()) {
-    return config.num_partitions() * config.replica_count() > 8;
+    return config.num_partitions() * config.replica_count() > 8
+               ? GPUTopologyType::MULTI_HOST
+               : GPUTopologyType::SINGLE_HOST;
   }
   if (cc.IsAmpere()) {
-    return config.num_partitions() * config.replica_count() > 16;
+    return config.num_partitions() * config.replica_count() > 16
+               ? GPUTopologyType::MULTI_HOST
+               : GPUTopologyType::SINGLE_HOST;
   }
-  return std::nullopt;
+  return GPUTopologyType::UNKNOWN;
 }
 
 }  // namespace gpu

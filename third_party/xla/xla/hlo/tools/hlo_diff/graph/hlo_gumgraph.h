@@ -149,6 +149,9 @@ class HloGumgraph {
   // instructions in the computation are hashed to compute the fingerprint.
   absl::Status PrecomputeComputationFingerprint();
 
+  // Precomputes and caches HLO value dependencies for every instruction node.
+  void PrecomputeInstructionDependencies();
+
   const HloModule& hlo_module_;
   const HloGumgraphFingerprintOptions& fingerprint_options_;
   HloInstructionNode root_;

@@ -24,6 +24,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/cpu/runtime/rng_state_lib.h"
 #include "xla/cpu_function_runtime.h"
 #include "tensorflow/core/platform/types.h"
@@ -46,7 +47,7 @@ int32 GetResultIndex(const int32* result_index_table, int32 num_results) {
 
 XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
                                                AllocMode alloc_mode)
-    : function_library_symbol_map_(static_data.function_library_symbol_map_),
+    : function_library_symbol_map_(&static_data.function_library_symbol_map_),
       temp_allocation_index_(static_data.temp_allocation_index_),
       raw_function_(static_data.raw_function_),
       thunk_run_impl_(static_data.thunk_run_impl_),
@@ -96,8 +97,8 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
               .embedded_constant_buffers_[embedded_constant_buffers_idx++];
 
       CHECK(buffer_size == buffer_infos()[i].size());
-      std::memcpy(static_cast<char*>(buffer_table()[i]), buffer_data,
-                  buffer_infos()[i].size());
+
+      buffer_table()[i] = buffer_data;
     }
 
     CHECK(embedded_constant_buffers_idx ==
@@ -138,7 +139,7 @@ constexpr int kNotFound = -1;
 // the name isn't found, or is empty.
 //
 // REQUIRES: `names` is a nullptr-terminated array.
-int LookupNameIndex(const string& name, const char** names) {
+int LookupNameIndex(absl::string_view name, const char** names) {
   // Hitting this assert means that there is no name-to-index data available;
   // for AOT try the setting the tfcompile --gen_name_to_index flag.
   assert(names != nullptr);
@@ -160,7 +161,7 @@ int XlaCompiledCpuFunction::LookupArgIndex(const string& name) const {
   return LookupNameIndex(name, arg_names_);
 }
 
-int XlaCompiledCpuFunction::LookupVariableIndex(const string& name) const {
+int XlaCompiledCpuFunction::LookupVariableIndex(absl::string_view name) const {
   int index = LookupNameIndex(name, variable_names_);
   if (index == kNotFound) {
     return kNotFound;

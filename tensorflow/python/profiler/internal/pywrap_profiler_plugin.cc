@@ -70,7 +70,7 @@ PYBIND11_MODULE(_pywrap_profiler_plugin, m) {
         ToolOptions tool_options = ToolOptionsFromPythonDict(options);
         {
           py::gil_scoped_release release;
-          status = tsl::profiler::CaptureRemoteTraceWithBoolOpts(
+          status = tsl::profiler::CaptureRemoteTrace(
               service_addr, logdir, worker_list, include_dataset_ops,
               duration_ms, num_tracing_attempts, tool_options);
         }

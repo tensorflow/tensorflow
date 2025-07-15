@@ -149,6 +149,7 @@ cc_library(
     name = "work_item",
     hdrs = ["work_item.h"],
     deps = [
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -168,6 +169,18 @@ cc_library(
         ":work_cluster",
         ":work_group",
         ":work_item",
+        ":work_tile_size",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
+    name = "work_tile_size",
+    hdrs = ["work_tile_size.h"],
+    deps = [
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
 )

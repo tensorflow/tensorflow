@@ -800,10 +800,18 @@ absl::Status IrEmitter::HandleDot(HloInstruction* dot) {
           << llvm_ir::DumpToString(target_array.GetBasePointer());
 
   // Dot operation is complicated so we delegate to a helper class.
-  return EmitDotOperation(
-      *dot, target_array, lhs_array, rhs_array,
-      /*addend_array=*/nullptr, GetExecutableRunOptionsArgument(), b(),
-      hlo_module_config_, target_machine_features_, allow_runtime_calls_);
+  TF_ASSIGN_OR_RETURN(
+      DotOpWorkGroupDim num_workgroups,
+      EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
+                       /*addend_array=*/nullptr,
+                       /*work_group_id=*/{b()->getInt64(0), b()->getInt64(0)},
+                       GetExecutableRunOptionsArgument(), b(),
+                       hlo_module_config_, target_machine_features_,
+                       allow_runtime_calls_, false));
+  DCHECK_EQ(num_workgroups.x, 1);
+  DCHECK_EQ(num_workgroups.y, 1);
+
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
@@ -2240,10 +2248,16 @@ absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     llvm_ir::IrArray addend_array(
         GetIrArrayFor(fusion->operand(addend_param_number)));
 
-    TF_RETURN_IF_ERROR(
-        EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
-                         &addend_array, GetExecutableRunOptionsArgument(), b(),
-                         hlo_module_config_, target_machine_features_));
+    TF_ASSIGN_OR_RETURN(
+        DotOpWorkGroupDim num_workgroups,
+        EmitDotOperation(
+            *dot, target_array, lhs_array, rhs_array, &addend_array,
+            /*work_group_id=*/{b()->getInt64(0), b()->getInt64(0)},
+            GetExecutableRunOptionsArgument(), b(), hlo_module_config_,
+            target_machine_features_, true, false));
+    DCHECK_EQ(num_workgroups.x, 1);
+    DCHECK_EQ(num_workgroups.y, 1);
+
     return absl::OkStatus();
   } else {
     return Unimplemented("Fusion kind not implemented on CPU");

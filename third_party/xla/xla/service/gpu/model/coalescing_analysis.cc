@@ -21,10 +21,10 @@ limitations under the License.
 #include <cstdlib>
 #include <optional>
 #include <stack>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/MathExtras.h"
@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -233,10 +234,18 @@ Shape GetLinearizedShape(const Shape& shape) {
 // Returns thread ID to linearized physical layout indexing map for each operand
 // of the fusion.
 std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
-    const HloFusionAdaptor& fusion_adaptor,
-    absl::Span<const HloInstruction* const> operands,
     const HloFusionAnalysis& fusion_analysis,
-    KernelFusionInterface* fusion_interface, MLIRContext* mlir_context) {
+    absl::Span<const HloInstruction* const> operands,
+    MLIRContext* mlir_context) {
+  auto emitter =
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{fusion_analysis});
+  const auto* fusion_interface =
+      dynamic_cast<const KernelFusionInterface*>(emitter.get());
+
+  if (fusion_interface == nullptr) {
+    return std::nullopt;
+  }
+
   GroupedByOpIndexingMap result;
   for (const auto& [root_index, hero] :
        llvm::enumerate(fusion_analysis.fusion_heroes())) {
@@ -254,8 +263,8 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
       }
       // Compute indexing from output to inputs for logical layout.
       GroupedByOpIndexing instr_indexing_keyed_by_operands =
-          ComputeGroupedOutputToInputIndexing(fusion_adaptor, hero_operand,
-                                              mlir_context);
+          ComputeGroupedOutputToInputIndexing(fusion_analysis.fusion(),
+                                              hero_operand, mlir_context);
       // For every operand compute thread ID -> physical layout of operand
       // indexing map.
       for (const HloInstruction* operand : operands) {
@@ -614,60 +623,21 @@ bool IsIndexingCoalesced(IndexingMap& thread_x_to_linearized_input,
       element_type);
 }
 
-}  // namespace
-
-CoalescingAnalysis::CoalescingAnalysis(
-    const HloInstruction* instr,
-    absl::Span<const HloInstruction* const> operands,
+std::optional<CoalescingMap> ComputeCoalescingForAllOperands(
     const HloFusionAnalysis& fusion_analysis,
-    KernelFusionInterface* fusion_interface, MLIRContext* mlir_context,
-    bool use_heuristic) {
-  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(instr);
-  if (!use_heuristic && ComputeCoalescingForAllOperands(
-                            *fusion_adaptor, operands, fusion_analysis,
-                            fusion_interface, mlir_context)) {
-    return;
-  }
-  // If ComputeCoalescingForAllOperands fails, fallback to using the heuristic.
-  is_coalesced_computed_by_heuristic_ =
-      IsReadCoalescedHeuristic(fusion_analysis.GetEmitterFusionKind(),
-                               fusion_analysis.device_info(), instr);
-}
-
-CoalescingAnalysis::CoalescingAnalysis(
-    const HloInstruction* producer, const HloInstruction* consumer,
     absl::Span<const HloInstruction* const> operands,
-    const HloFusionAnalysis& fusion_analysis,
-    KernelFusionInterface* fusion_interface, MLIRContext* mlir_context,
-    bool use_heuristic) {
-  auto fusion_adaptor =
-      HloFusionAdaptor::ForProducerConsumer(producer, consumer);
-  if (!use_heuristic && ComputeCoalescingForAllOperands(
-                            *fusion_adaptor, operands, fusion_analysis,
-                            fusion_interface, mlir_context)) {
-    return;
-  }
-  // If ComputeCoalescingForAllOperands fails, fallback to using the heuristic.
-  is_coalesced_computed_by_heuristic_ = IsReadCoalescedHeuristic(
-      fusion_analysis.GetEmitterFusionKind(), fusion_analysis.device_info(),
-      producer, consumer);
-}
-
-bool CoalescingAnalysis::ComputeCoalescingForAllOperands(
-    const HloFusionAdaptor& fusion_adaptor,
-    absl::Span<const HloInstruction* const> operands,
-    const HloFusionAnalysis& fusion_analysis,
-    KernelFusionInterface* fusion_interface, MLIRContext* mlir_context) {
+    MLIRContext* mlir_context) {
   std::optional<GroupedByOpIndexingMap> thread_id_to_input_memory_layouts =
-      GetThreadIdToInputMemoryLayoutsMaps(fusion_adaptor, operands,
-                                          fusion_analysis, fusion_interface,
+      GetThreadIdToInputMemoryLayoutsMaps(fusion_analysis, operands,
                                           mlir_context);
   if (!thread_id_to_input_memory_layouts.has_value()) {
-    return false;
+    return std::nullopt;
   }
+
+  CoalescingMap coalescing_per_operand;
   for (const HloInstruction* operand : operands) {
     if (operand->shape().dimensions().empty()) {
-      coalescing_per_operand_.insert({operand, true});
+      coalescing_per_operand.insert({operand, true});
       continue;
     }
     auto operand_indexing_maps =
@@ -675,21 +645,59 @@ bool CoalescingAnalysis::ComputeCoalescingForAllOperands(
     // If there is no indexing map for the operand, it means that it is not used
     // in the fusion cluster.
     if (operand_indexing_maps == thread_id_to_input_memory_layouts->end()) {
-      coalescing_per_operand_.insert({operand, true});
+      coalescing_per_operand.insert({operand, true});
       continue;
     }
     for (IndexingMap operand_indexing_map : operand_indexing_maps->second) {
       bool is_coalesced = IsIndexingCoalesced(operand_indexing_map,
                                               operand->shape().element_type());
       auto [it, inserted] =
-          coalescing_per_operand_.insert({operand, is_coalesced});
+          coalescing_per_operand.insert({operand, is_coalesced});
       if (!inserted) {
         it->second &= is_coalesced;
       }
-      if (!is_coalesced) break;
+      if (!is_coalesced) {
+        break;
+      }
     }
   }
-  return true;
+  return coalescing_per_operand;
+}
+
+}  // namespace
+
+/*static*/
+CoalescingAnalysis CoalescingAnalysis::Create(
+    const HloInstruction* instr,
+    absl::Span<const HloInstruction* const> operands,
+    const HloFusionAnalysis& fusion_analysis, MLIRContext* mlir_context,
+    bool use_heuristic) {
+  return Create(/*producer=*/instr, /*consumer=*/nullptr, operands,
+                fusion_analysis, mlir_context, use_heuristic);
+}
+
+/*static*/
+CoalescingAnalysis CoalescingAnalysis::Create(
+    const HloInstruction* producer, const HloInstruction* consumer,
+    absl::Span<const HloInstruction* const> operands,
+    const HloFusionAnalysis& fusion_analysis, MLIRContext* mlir_context,
+    bool use_heuristic) {
+  std::optional<CoalescingMap> coalescing_per_operand;
+
+  if (!use_heuristic) {
+    coalescing_per_operand = ComputeCoalescingForAllOperands(
+        fusion_analysis, operands, mlir_context);
+  }
+
+  if (coalescing_per_operand.has_value()) {
+    return CoalescingAnalysis(std::move(*coalescing_per_operand));
+  }
+
+  bool is_coalesced_computed_by_heuristic = IsReadCoalescedHeuristic(
+      fusion_analysis.emitter_fusion_kind(), fusion_analysis.device_info(),
+      producer, consumer);
+
+  return CoalescingAnalysis(is_coalesced_computed_by_heuristic);
 }
 
 bool CoalescingAnalysis::IsReadCoalesced(const HloInstruction* operand) const {

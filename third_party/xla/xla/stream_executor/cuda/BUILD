@@ -493,6 +493,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor:dnn",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -511,6 +512,7 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@cudnn_frontend_archive//:cudnn_frontend",
         "@jsoncpp_git//:jsoncpp",
@@ -2184,6 +2186,7 @@ cuda_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:gpu_test_kernel_traits",
+        "@com_google_absl//absl/base",
     ],
     alwayslink = 1,
 )

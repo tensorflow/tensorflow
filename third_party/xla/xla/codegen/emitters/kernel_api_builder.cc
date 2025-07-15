@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_api_builder.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <utility>
@@ -216,12 +217,13 @@ void SetIndexDataLayout(mlir::ModuleOp module,
 }
 
 IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
-                                          int unroll_factor, const Shape& shape,
+                                          const Shape& shape,
                                           mlir::MLIRContext* ctx) {
   std::vector<mlir::AffineExpr> output_dims(shape.dimensions().size());
 
   const NumWorkItems& num_work_items = work_dimensions.num_work_items;
   const NumWorkGroups& num_work_groups = work_dimensions.num_work_groups;
+  const auto& work_tile_dimensions = work_dimensions.work_tile_size.dimensions;
 
   std::array<uint64_t, 3> work_item_array{num_work_items.x, num_work_items.y,
                                           num_work_items.z};
@@ -231,8 +233,18 @@ IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
       num_work_items.y * num_work_groups.y,
       num_work_items.z * num_work_groups.z};
 
-  uint64_t total_items =
-      total_item_array[0] * total_item_array[1] * total_item_array[2];
+  mlir::AffineExpr c0 = mlir::getAffineConstantExpr(0, ctx);
+  uint64_t stride = 1;
+  mlir::AffineExpr linear_index = c0;
+  // Reverse to get minor to major order.
+  for (auto [idx, dim] : llvm::enumerate(llvm::reverse(work_tile_dimensions))) {
+    uint64_t symbol_index = work_tile_dimensions.size() - idx;
+    auto tile_coord = mlir::getAffineSymbolExpr(symbol_index, ctx);
+    auto tile_component = tile_coord * stride;
+
+    linear_index = linear_index + tile_component;
+    stride *= dim;
+  }
 
   // ParallelLoopEmitter makes some assumptions about launch dimensions and
   // computes the linear index using only the x and y components.
@@ -243,9 +255,6 @@ IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
   // This means that this code supports some launch grids that the parallel
   // loop emitter doesn't support. This is safe, since the latter CHECK fails
   // if its assumptions are not fulfilled.
-  mlir::AffineExpr c0 = mlir::getAffineConstantExpr(0, ctx);
-  mlir::AffineExpr linear_index = c0;
-  uint64_t stride = 1;
   for (int i = 0; i < 3; ++i) {
     auto coord = mlir::getAffineDimExpr(kIndexingMapWorkItemDims[i], ctx) +
                  mlir::getAffineDimExpr(kIndexingMapWorkGroupDims[i], ctx) *
@@ -254,11 +263,13 @@ IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
     linear_index = linear_index + linear_component;
     stride *= total_item_array[i];
   }
-  mlir::AffineExpr chunk_id = mlir::getAffineSymbolExpr(0, ctx);
-  mlir::AffineExpr unroll_elem_id = mlir::getAffineSymbolExpr(1, ctx);
 
-  linear_index = linear_index * unroll_factor +
-                 chunk_id * unroll_factor * total_items + unroll_elem_id;
+  // The final calculated stride is equal to the total number of items in each
+  // chunk.
+  uint64_t items_per_chunk = stride;
+
+  mlir::AffineExpr chunk_id = mlir::getAffineSymbolExpr(0, ctx);
+  linear_index = chunk_id * items_per_chunk + linear_index;
 
   // See IndexUtil::LinearIndexToMultidimensionalIndex.
   uint64_t divisor = 1;
@@ -273,13 +284,17 @@ IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
   std::vector<IndexingMap::Variable> range_vars;
   int64_t num_elements = ShapeUtil::ElementsIn(shape);
   range_vars.push_back(IndexingMap::Variable{
-      {0, CeilOfRatio(num_elements,
-                      static_cast<int64_t>(total_items) * unroll_factor) -
-              1}});
-  range_vars.push_back({0, unroll_factor - 1});
+      {0,
+       CeilOfRatio(num_elements, static_cast<int64_t>(items_per_chunk)) - 1}});
+  for (int64_t dim : work_tile_dimensions) {
+    range_vars.push_back({0, dim - 1});
+  }
+
+  size_t range_vars_size = range_vars.size();
+
   IndexingMap indexing_map(
       mlir::AffineMap::get(/*dimCount=*/6,
-                           /*symbolCount=*/2, output_dims, ctx),
+                           /*symbolCount=*/range_vars_size, output_dims, ctx),
       std::move(dim_vars), std::move(range_vars), /*rt_vars=*/{});
   indexing_map.AddConstraint(linear_index, Interval{0, num_elements - 1});
   indexing_map.Simplify();

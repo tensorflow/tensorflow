@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -73,15 +74,16 @@ absl::StatusOr<xla::WorkflowType> GetWorkflowTypeFromStr(
   std::transform(workflow_type_arg_str.begin(), workflow_type_arg_str.end(),
                  workflow_type_arg_str.begin(), ::toupper);
 
-  static const auto* const kWorkflowAliasMap =
-      new absl::flat_hash_map<std::string, xla::WorkflowType>{
+  static const absl::NoDestructor<
+      absl::flat_hash_map<std::string, xla::WorkflowType>>
+      kWorkflowAliasMap({
           {"NIGHTLY", xla::WorkflowType::SCHEDULED},
           {"PRESUBMIT", xla::WorkflowType::PRESUBMIT},
           {"POSTSUBMIT", xla::WorkflowType::POSTSUBMIT},
           {"SCHEDULED", xla::WorkflowType::SCHEDULED},
           {"MANUAL", xla::WorkflowType::MANUAL},
-          // Add other aliases if needed
-      };
+          // Add other aliases if needed.
+      });
   auto it = kWorkflowAliasMap->find(workflow_type_arg_str);
   if (it != kWorkflowAliasMap->end()) {
     return it->second;

@@ -254,6 +254,7 @@ void PjRtCApiClient::InitAttributes() {
   pjrt::LogFatalIfPjrtError(c_api_->PJRT_Plugin_Attributes(&args), c_api_);
   attributes_ =
       pjrt::ConvertFromPjRtNamedValueList(args.attributes, args.num_attributes);
+  attributes_["serialize_with_sdy"] = true;
 }
 
 int PjRtCApiClient::device_count() const { return devices_.size(); }
@@ -465,6 +466,7 @@ PjRtCApiClient::CreateUninitializedBuffer(const Shape& shape,
   args.struct_size = PJRT_Client_CreateUninitializedBuffer_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.client = c_client_.get();
+  args.device = nullptr;
 
   args.shape_dims = shape.dimensions().data();
   args.shape_num_dims = shape.dimensions().size();
@@ -1761,7 +1763,7 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
     std::vector<PJRT_Buffer**>& c_output_lists,
     std::optional<std::vector<PJRT_Event*>>& device_complete_events,
     SendRecvCallbackData& callback_data,
-    std::vector<int64_t>& non_donatable_input_indices_storage) {
+    std::vector<int64_t>& non_donatable_input_indices_storage) const {
   bool using_host_callbacks =
       !options.send_callbacks.empty() || !options.recv_callbacks.empty();
   if (using_host_callbacks &&
@@ -1891,7 +1893,7 @@ absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 PjRtCApiLoadedExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    std::optional<std::vector<PjRtFuture<>>>& returned_futures) {
+    std::optional<std::vector<PjRtFuture<>>>& returned_futures) const {
   std::vector<std::vector<PJRT_Buffer*>> c_argument_lists_storage;
   std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage;
   std::vector<PJRT_Buffer**> c_output_lists;
@@ -1967,7 +1969,7 @@ absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
-    bool fill_future) {
+    bool fill_future) const {
   if (!options.send_callbacks.empty() || !options.recv_callbacks.empty()) {
     return absl::Status(absl::StatusCode::kUnimplemented,
                         "Send/recv callbacks not implemented for "
@@ -2021,7 +2023,7 @@ absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCApiLoadedExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
-    bool fill_future) {
+    bool fill_future) const {
   return ExecuteWithSingleDevice(argument_handles, device, options,
                                  returned_future, fill_future);
 }
@@ -2030,7 +2032,7 @@ absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCApiLoadedExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
-    bool fill_future) {
+    bool fill_future) const {
   return ExecuteWithSingleDevice(argument_handles, device, options,
                                  returned_future, fill_future);
 }
@@ -2044,7 +2046,7 @@ void PjRtCApiLoadedExecutable::Delete() {
   pjrt::LogFatalIfPjrtError(c_api->PJRT_LoadedExecutable_Delete(&args), c_api);
 }
 
-bool PjRtCApiLoadedExecutable::IsDeleted() {
+bool PjRtCApiLoadedExecutable::IsDeleted() const {
   PJRT_LoadedExecutable_IsDeleted_Args args;
   args.struct_size = PJRT_LoadedExecutable_IsDeleted_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
@@ -2334,7 +2336,7 @@ void PjRtCApiBuffer::Delete() {
   pjrt::LogFatalIfPjrtError(api->PJRT_Buffer_Delete(&args), api);
 }
 
-bool PjRtCApiBuffer::IsDeleted() {
+bool PjRtCApiBuffer::IsDeleted() const {
   PJRT_Buffer_IsDeleted_Args args;
   args.struct_size = PJRT_Buffer_IsDeleted_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
@@ -2732,6 +2734,21 @@ absl::StatusOr<std::unique_ptr<PjRtCompiler>> GetCApiCompiler(
     return Internal("PJRT C API is nullptr for %s", device_type);
   }
   return std::make_unique<PjRtCApiCompiler>(c_api);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtCompiler>> GetCApiCompiler() {
+  TF_ASSIGN_OR_RETURN(std::vector<std::string> device_types,
+                      pjrt::GetRegisteredPjrtApis());
+  if (device_types.empty()) {
+    return absl::FailedPreconditionError("PJRT_Api is not initialized.");
+  }
+  if (device_types.size() > 1) {
+    return absl::FailedPreconditionError(
+        "More than one device type registered. Please use "
+        "GetCApiCompiler(absl::string_view device_type) "
+        "instead.");
+  }
+  return GetCApiCompiler(device_types[0]);
 }
 
 }  // namespace xla

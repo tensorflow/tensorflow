@@ -41,8 +41,6 @@ benchmarks: [
     }
     ]
     update_frequency_policy: QUARTERLY
-    # TODO(juliagmt): remove this label once the benchmark is stable.
-    github_labels: ["blocking_presubmit_test"]
   },
   {
     name: "gemma2_2b_keras_jax"
@@ -75,7 +73,5 @@ benchmarks: [
       runtime_flags: ["--num_repeats=5"]
     }]
     update_frequency_policy: QUARTERLY
-    # TODO(juliagmt): remove this label once the benchmark is stable.
-    github_labels: ["blocking_presubmit_test"]
   }
 ]

@@ -233,6 +233,7 @@ xla_test(
     deps = [
         ":create_client",
         ":functional_hlo_runner",
+        ":hlo_input_output_format",
         "//xla:debug_options_flags",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
@@ -244,6 +245,7 @@ xla_test(
         "//xla/runtime/large_hlo_snapshot_serialization:serialization",
         "//xla/service:computation_layout",
         "//xla/service:hlo_proto_cc",
+        "//xla/tests:xla_test_backend_predicates",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",

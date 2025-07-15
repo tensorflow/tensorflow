@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_HLO_TOOLS_HLO_DIFF_MATCHERS_SIMILARITY_H_
 #define XLA_HLO_TOOLS_HLO_DIFF_MATCHERS_SIMILARITY_H_
 
-#include "absl/base/nullability.h"
 #include "absl/functional/function_ref.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
@@ -30,13 +29,6 @@ namespace hlo_diff {
 using InstructionSimilarityFn = absl::FunctionRef<double(
     const HloInstructionNode*, const HloInstructionNode*)>;
 
-// A heuristic score based on the node attributes. Calculated by comparing the
-// fingerprint, name and generation of the nodes. This set of parameters
-// together with min_similarity threshold = 0.75 works the best so far, and
-// might need to be tuned later.
-double NodeAttributesSimilarity(const HloInstructionNode* absl_nonnull left,
-                                const HloInstructionNode* absl_nonnull right);
-
 // A heuristic score based on the ancestor subgraphs of the given nodes.
 // Calculated by the longest common subsequence of the fingerprints of the
 // ancestors of the nodes in BFS order.
@@ -46,7 +38,7 @@ double AncestorSubGraphLcsSimilarity(const HloInstructionNode* left,
                                      int min_bfs_distance, int left_graph_size,
                                      int right_graph_size);
 
-// Returns similarity of properties between two instructions.
+// A heuristic score based on the node properties.
 double NodePropertySimilarity(const HloInstructionNode* left,
                               const HloInstructionNode* right);
 
@@ -60,7 +52,7 @@ double ParamPropertySimilarity(const HloInstructionNode* left,
 double ConstantPropertySimilarity(const HloInstructionNode* left,
                                   const HloInstructionNode* right);
 
-inline InstructionSimilarityFn MatchFnForOpcode(HloOpcode opcode) {
+inline InstructionSimilarityFn PropertySimilarityFnForOpcode(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kParameter:
       return ParamPropertySimilarity;

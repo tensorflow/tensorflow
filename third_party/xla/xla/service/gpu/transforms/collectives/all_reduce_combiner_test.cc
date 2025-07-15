@@ -15,29 +15,39 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/collectives/all_reduce_combiner.h"
 
+#include <cstdint>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/collective_utils.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/service/gpu/transforms/collectives/collective_combiner_annotator.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
-using ::stream_executor::DeviceDescription;
 using ::testing::Matcher;
 using ::tsl::testing::IsOkAndHolds;
 
 namespace op = xla::testing::opcode_matchers;
 
 using GpuAllReduceCombinerTest = HloHardwareIndependentTestBase;
+
+absl::StatusOr<bool> RunCombiner(
+    HloModule* module, int64_t combine_threshold_bytes,
+    int64_t default_threshold_bytes = kDefaultAllReduceCombineThreshold) {
+  return GpuAllReduceCombiner(default_threshold_bytes, combine_threshold_bytes,
+                              /*combine_threshold_count=*/256)
+      .Run(module);
+}
 
 TEST_F(GpuAllReduceCombinerTest,
        CombinesPipelinedCollectivesUpToSuggestedThreshold) {
@@ -102,25 +112,19 @@ ENTRY entry {
   ROOT _ = bf16[6,8,128] get-tuple-element(while), index=1
 }
 )";
-  auto config =
-      GetModuleConfigForTest(/*replica_count=*/1, /*num_partitions=*/2);
-  DeviceDescription device_info;
-  // Combine at most 2 collectives.
   int collective_size = 2 * 6 * 8 * 128;
-  int threshold_bytes = 2 * collective_size;
-  int current_peak_mem = 87625;
-  int pointer_size = 4;
-  device_info.set_device_memory_size(current_peak_mem + 4 * threshold_bytes);
+  // Combine at most 2 collectives by default
+  int default_threshold_bytes = 2 * collective_size;
+  // Combine at most 4 pipelined collectives.
+  int suggested_threshold_bytes = 4 * collective_size;
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString, config));
-  EXPECT_THAT(
-      GpuAllReduceCombiner(device_info, /*default_combine_threshold_in_bytes=*/
-                           threshold_bytes,
-                           /*combine_threshold_in_bytes=*/threshold_bytes,
-                           /*combine_threshold_count=*/256, pointer_size)
-          .Run(module.get()),
-      IsOkAndHolds(true));
+                          ParseAndReturnVerifiedModule(kHloString));
+  AnnotateWithSuggestedCombinerThreshold(module.get(),
+                                         suggested_threshold_bytes);
+  EXPECT_THAT(RunCombiner(module.get(), default_threshold_bytes,
+                          default_threshold_bytes),
+              IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
   // Pipelined all gathers were combined up to the predefined max available
@@ -202,21 +206,10 @@ ENTRY entry {
   ROOT _ = bf16[6,8,128] get-tuple-element(while), index=1
 }
 )";
-  auto config =
-      GetModuleConfigForTest(/*replica_count=*/1, /*num_partitions=*/2);
-  DeviceDescription device_info;
-  int pointer_size = 4;
-
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString, config));
-  EXPECT_THAT(
-      GpuAllReduceCombiner(
-          device_info, /*default_combine_threshold_in_bytes=*/
-          kDefaultAllReduceCombineThreshold,
-          /*combine_threshold_in_bytes=*/kDefaultAllReduceCombineThreshold,
-          /*combine_threshold_count=*/256, pointer_size)
-          .Run(module.get()),
-      IsOkAndHolds(true));
+                          ParseAndReturnVerifiedModule(kHloString));
+  EXPECT_THAT(RunCombiner(module.get(), kDefaultAllGatherCombineThreshold),
+              IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
   const absl::string_view kExpected = R"(
@@ -299,25 +292,13 @@ ENTRY entry {
   ROOT _ = bf16[6,8,128] get-tuple-element(while), index=1
 }
 )";
-  auto config =
-      GetModuleConfigForTest(/*replica_count=*/1, /*num_partitions=*/2);
-  DeviceDescription device_info;
   // Combine at most 2 collectives.
   int collective_size = 2 * 6 * 8 * 128;
   int threshold_bytes = 2 * collective_size;
-  int current_peak_mem = 87625;
-  int pointer_size = 4;
-  device_info.set_device_memory_size(current_peak_mem + threshold_bytes * 4);
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString, config));
-  EXPECT_THAT(
-      GpuAllReduceCombiner(device_info, /*default_combine_threshold_in_bytes=*/
-                           kDefaultAllReduceCombineThreshold,
-                           /*combine_threshold_in_bytes=*/threshold_bytes,
-                           /*combine_threshold_count=*/256, pointer_size)
-          .Run(module.get()),
-      IsOkAndHolds(true));
+                          ParseAndReturnVerifiedModule(kHloString));
+  EXPECT_THAT(RunCombiner(module.get(), threshold_bytes), IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
   // Pipelined all gathers were combined up to the predefined max available
@@ -342,7 +323,8 @@ ENTRY entry {
                     kExpected));
 }
 
-TEST_F(GpuAllReduceCombinerTest, CombinesSynchronousCollectivesMaximally) {
+TEST_F(GpuAllReduceCombinerTest,
+       CombinesSynchronousCollectivesUpToSuggestedThreshold) {
   absl::string_view kHloText = R"(
     HloModule m
 
@@ -364,17 +346,12 @@ TEST_F(GpuAllReduceCombinerTest, CombinesSynchronousCollectivesMaximally) {
       ROOT result = tuple(ar0, ar1)
     }
   )";
-  DeviceDescription device_info;
-  device_info.set_device_memory_size(10000000000);  // 10GB
-
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  GpuAllReduceCombiner combiner(
-      device_info, /*default_combine_threshold_in_bytes=*/
-      kDefaultAllReduceCombineThreshold,
-      /*combine_threshold_in_bytes=*/kDefaultAllReduceCombineThreshold,
-      /*combine_threshold_count=*/256, /*pointer_size=*/4);
-
-  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(true));
+  int64_t suggested_threshold_bytes = 10000000000;  // 10GB
+  AnnotateWithSuggestedCombinerThreshold(module.get(),
+                                         suggested_threshold_bytes);
+  EXPECT_THAT(RunCombiner(module.get(), kDefaultAllReduceCombineThreshold),
+              IsOkAndHolds(true));
   Matcher<const HloInstruction*> combined_all_reduce =
       op::AllReduce(op::Parameter(0), op::Parameter(1));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -409,16 +386,10 @@ TEST_F(GpuAllReduceCombinerTest,
       ROOT result = tuple(ar0, ar1)
     }
   )";
-  DeviceDescription device_info;
-  device_info.set_device_memory_size(10000000000);  // 10GB
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  GpuAllReduceCombiner combiner(
-      device_info, /*default_combine_threshold_in_bytes=*/
-      kDefaultAllReduceCombineThreshold,
-      /*combine_threshold_in_bytes=*/kDefaultAllReduceCombineThreshold,
-      /*combine_threshold_count=*/256, /*pointer_size=*/4);
-  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(false));
+  int64_t threshold_bytes = 10000000000;  // 10GB
+  EXPECT_THAT(RunCombiner(module.get(), threshold_bytes), IsOkAndHolds(false));
 }
 
 TEST_F(GpuAllReduceCombinerTest,
@@ -445,19 +416,13 @@ TEST_F(GpuAllReduceCombinerTest,
       ROOT result = tuple(ar0, ar1)
     }
   )";
-  DeviceDescription device_info;
-  device_info.set_device_memory_size(10000000000);  // 10GB
-
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  GpuAllReduceCombiner combiner(
-      device_info, /*default_combine_threshold_in_bytes=*/
-      kDefaultAllReduceCombineThreshold,
-      /*combine_threshold_in_bytes=*/kDefaultAllReduceCombineThreshold,
-      /*combine_threshold_count=*/256, /*pointer_size=*/4);
-
-  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(false));
+  int64_t suggested_threshold_bytes = 10000000000;  // 10GB
+  AnnotateWithSuggestedCombinerThreshold(module.get(),
+                                         suggested_threshold_bytes);
+  EXPECT_THAT(RunCombiner(module.get(), kDefaultAllReduceCombineThreshold),
+              IsOkAndHolds(false));
 }
 
 }  // namespace
-
 }  // namespace xla::gpu

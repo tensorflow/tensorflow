@@ -50,6 +50,31 @@ limitations under the License.
 namespace xla {
 namespace {
 
+// Recursively prepends the given prefix to the op name of the given HLO
+// instruction as well as all the instructions in its called computations.
+void RecursivelyUpdateOpName(HloInstruction* hlo, absl::string_view prefix) {
+  if (prefix.empty()) {
+    return;
+  }
+
+  for (HloComputation* computation : hlo->called_computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      RecursivelyUpdateOpName(instruction, prefix);
+    }
+  }
+  // We found that some users are sticking many megabytes of strings into
+  // op_name. Don't concatenate op names if they are too big.
+  constexpr int kMaxOpNameSize = 1000;
+  OpMetadata metadata = hlo->metadata();
+  if (metadata.op_name().empty()) {
+    metadata.set_op_name(prefix);
+    hlo->set_metadata(metadata);
+  } else if (prefix.size() + metadata.op_name().size() < kMaxOpNameSize) {
+    metadata.set_op_name(absl::StrCat(prefix, "/", metadata.op_name()));
+    hlo->set_metadata(metadata);
+  }
+}
+
 // Traverses the callee computation, inlining cloned nodes into the caller
 // computation and connecting them to producers/consumers appropriately.
 // When the traversal has completed, the provided call instruction is entirely
@@ -74,21 +99,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     }
     VLOG(1) << "Cloning HLO and adding to caller: " << hlo->ToString();
     auto new_hlo = hlo->CloneWithNewOperands(hlo->shape(), new_operands);
-    // We found that some users are sticking many megabytes of strings into
-    // op_name. Don't concatenate op names if they are too big.
-    static constexpr int kMaxOpNameSize = 1000;
-    if (!call_op_name_.empty()) {
-      OpMetadata metadata = new_hlo->metadata();
-      if (metadata.op_name().empty()) {
-        metadata.set_op_name(call_op_name_);
-        new_hlo->set_metadata(metadata);
-      } else if (call_op_name_.size() + metadata.op_name().size() <
-                 kMaxOpNameSize) {
-        metadata.set_op_name(
-            absl::StrCat(call_op_name_, "/", metadata.op_name()));
-        new_hlo->set_metadata(metadata);
-      }
-    }
+    RecursivelyUpdateOpName(new_hlo.get(), call_op_name_);
     HloInstruction* new_hlo_pointer =
         outer_->AddInstruction(std::move(new_hlo));
     TF_RETURN_IF_ERROR(NoteMapping(hlo, new_hlo_pointer));
@@ -298,6 +309,27 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
          InlineComposites(instruction, composites_to_preserve_);
 }
 
+bool CallInliner::ShouldInline(const CallGraph& call_graph,
+                               HloInstruction* instruction) const {
+  if (!IsInlineableCallOp(instruction)) {
+    return false;
+  }
+
+  if (should_inline_.has_value()) {
+    if (!(*should_inline_)(call_graph, instruction)) {
+      return false;
+    }
+  }
+
+  if (single_call_site_) {
+    return call_graph.GetNode(instruction->to_apply())
+               .caller_callsites()
+               .size() == 1;
+  }
+
+  return true;
+}
+
 absl::StatusOr<bool> CallInliner::InlineAndLegalize(
     const CallGraph& call_graph, HloComputation* computation,
     absl::Span<HloInstruction* const> instruction_sequence) const {
@@ -309,10 +341,7 @@ absl::StatusOr<bool> CallInliner::InlineAndLegalize(
     // used for parallel device computation.
     // TODO(b/229887502): update the inliner to ignore only parallel
     // device type async call instead of all.
-    if (IsInlineableCallOp(instruction) &&
-        (!single_call_site_ || call_graph.GetNode(instruction->to_apply())
-                                       .caller_callsites()
-                                       .size() == 1)) {
+    if (ShouldInline(call_graph, instruction)) {
       // The caller instruction will get removed after inlining. Record the
       // callee computation beforehand, so we can find its schedule.
       HloComputation* callee = instruction->to_apply();

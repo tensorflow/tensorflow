@@ -357,9 +357,10 @@ config_setting(
             "@platforms//cpu:armv6-m",
             "@platforms//os:linux",
         ],
-    values = {
-        "crosstool_top": "@local_config_arm_compiler//:toolchain",
-    },
+    values = if_oss(
+        {"crosstool_top": "@local_config_arm_compiler//:toolchain"},
+        {},
+    ),
     visibility = ["//visibility:public"],
 )
 
@@ -400,9 +401,10 @@ config_setting(
             "@platforms//cpu:mips64",
             "@platforms//os:android",
         ],
-    values = {
-        "crosstool_top": "//external:android/crosstool",
-    },
+    values = if_oss(
+        {"crosstool_top": "//external:android/crosstool"},
+        {},
+    ),
     visibility = ["//visibility:public"],
 )
 

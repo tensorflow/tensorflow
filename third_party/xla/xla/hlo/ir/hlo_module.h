@@ -194,9 +194,9 @@ class HloModule {
     frontend_attributes_ = std::move(frontend_attributes);
   }
 
-  void add_frontend_attributes(FrontendAttributes frontend_attributes) {
-    frontend_attributes_.mutable_map()->insert(
-        frontend_attributes.map().begin(), frontend_attributes.map().end());
+  void add_frontend_attribute(std::string key, std::string value) {
+    frontend_attributes_.mutable_map()->emplace(std::move(key),
+                                                std::move(value));
   }
 
   const FrontendAttributes& frontend_attributes() const {
@@ -818,7 +818,40 @@ class HloModule {
                   HloComputation::NeighborIterator,
                   &HloComputation::callees_begin, &HloComputation::callees_end>
       topological_sort_;
+
+ public:
+  class OriginalValueRecoveryTable
+      : public absl::flat_hash_map<
+            OriginalArray,
+            std::pair<OriginalArray, std::unique_ptr<HloModule>>> {
+   public:
+    std::string ToString(HloPrintOptions options = HloPrintOptions()) const;
+    OriginalValueRecoveryTableProto ToProto() const;
+    static absl::StatusOr<HloModule::OriginalValueRecoveryTable> FromProto(
+        const xla::OriginalValueRecoveryTableProto&
+            original_value_recovery_table);
+  };
+
+  const OriginalValueRecoveryTable& original_value_recovery_table() {
+    return original_value_recovery_table_;
+  }
+  OriginalValueRecoveryTable& mutable_original_value_recovery_table() {
+    return original_value_recovery_table_;
+  }
+
+  void set_original_value_recovery_table(
+      OriginalValueRecoveryTable& original_value_recovery_table) {
+    for (auto& p : original_value_recovery_table) {
+      original_value_recovery_table_[p.first] =
+          std::make_pair(p.second.first, std::move(p.second.second));
+    }
+  }
+
+ private:
+  OriginalValueRecoveryTable original_value_recovery_table_;
 };
+
+using OriginalValueRecoveryTable = HloModule::OriginalValueRecoveryTable;
 
 }  // namespace xla
 

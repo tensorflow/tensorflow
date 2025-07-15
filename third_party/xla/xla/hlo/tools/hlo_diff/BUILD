@@ -20,8 +20,8 @@ cc_library(
     hdrs = ["hlo_gumgraph_mappings.h"],
     deps = [
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
+        "//xla/hlo/tools/hlo_diff/utils:bidirectional_map",
         "//xla/service:call_graph",
-        "@boost//:bimap",
         "@com_google_absl//absl/strings:string_view",
     ],
 )
@@ -37,7 +37,6 @@ cc_library(
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
         "//xla/hlo/tools/hlo_diff/graph/utils:hlo_gumgraph_bfs",
         "//xla/hlo/tools/hlo_diff/proto:diff_result_proto_cc",
-        "//xla/hlo/tools/hlo_diff/utils:hlo_diff_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -71,9 +70,10 @@ cc_library(
     hdrs = ["hlo_diff_summary.h"],
     deps = [
         ":hlo_diff_result",
+        ":hlo_gumgraph_mappings",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/tools/hlo_diff/utils:bidirectional_map",
         "//xla/hlo/tools/hlo_diff/utils:connected_components",
-        "@boost//:bimap",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",

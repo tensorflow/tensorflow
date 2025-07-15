@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -60,12 +61,11 @@ namespace xla::gpu {
 class ExperimentalSymbolicTile {
  public:
   ExperimentalSymbolicTile(mlir::MLIRContext* mlir_context,
-                           int64_t num_tile_ids,
+                           int64_t num_tile_ids, int64_t num_rt_vars,
                            llvm::ArrayRef<mlir::AffineExpr> offsets,
                            llvm::ArrayRef<mlir::AffineExpr> sizes,
                            llvm::ArrayRef<mlir::AffineExpr> strides,
-                           llvm::ArrayRef<mlir::AffineExpr> upper_bounds,
-                           llvm::ArrayRef<const HloInstruction*> rt_vars);
+                           llvm::ArrayRef<mlir::AffineExpr> upper_bounds);
 
   std::string ToString() const;
 
@@ -78,9 +78,7 @@ class ExperimentalSymbolicTile {
 
   int64_t num_tile_ids() const { return num_tile_ids_; }
   int64_t num_result_dims() const { return offsets().size(); }
-
-  llvm::ArrayRef<const HloInstruction*> rt_vars() const { return rt_vars_; }
-  int64_t num_rt_vars() const { return rt_vars_.size(); }
+  int64_t num_rt_vars() const { return num_rt_vars_; }
 
   mlir::MLIRContext* mlir_context() const { return mlir_context_; }
 
@@ -93,11 +91,11 @@ class ExperimentalSymbolicTile {
  private:
   mlir::MLIRContext* mlir_context_;
   int64_t num_tile_ids_;
+  int64_t num_rt_vars_;
   llvm::SmallVector<mlir::AffineExpr> offsets_;
   llvm::SmallVector<mlir::AffineExpr> sizes_;
   llvm::SmallVector<mlir::AffineExpr> strides_;
   llvm::SmallVector<mlir::AffineExpr> upper_bounds_;
-  llvm::SmallVector<const HloInstruction*> rt_vars_;
 };
 
 }  // namespace xla::gpu

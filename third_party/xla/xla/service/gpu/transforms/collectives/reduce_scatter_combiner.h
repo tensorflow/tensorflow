@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/reduce_scatter_combiner.h"
-#include "xla/stream_executor/device_description.h"
+
 namespace xla::gpu {
 
 // Similarly to `ReduceScatterCombiner` pass, combines `ReduceScatter` ops into
@@ -33,17 +33,14 @@ namespace xla::gpu {
 // to figure out the optimal combiner threshold by itself.
 class GpuReduceScatterCombiner : public ReduceScatterCombiner {
  public:
-  GpuReduceScatterCombiner(const se::DeviceDescription& device_info,
-                           const int default_combine_threshold_in_bytes,
+  GpuReduceScatterCombiner(const int default_combine_threshold_in_bytes,
                            const int64_t combine_threshold_in_bytes,
                            const int64_t combine_threshold_count,
-                           const bool combine_by_dim,
-                           const int64_t pointer_size)
+                           const bool combine_by_dim)
       : ReduceScatterCombiner(combine_threshold_in_bytes,
                               combine_threshold_count, combine_by_dim),
-        device_info_(device_info),
-        default_combine_threshold_in_bytes_(default_combine_threshold_in_bytes),
-        pointer_size_(pointer_size) {}
+        default_combine_threshold_in_bytes_(
+            default_combine_threshold_in_bytes) {}
 
   absl::string_view name() const override {
     return "gpu-reduce-scatter-combiner";
@@ -55,9 +52,7 @@ class GpuReduceScatterCombiner : public ReduceScatterCombiner {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  const se::DeviceDescription& device_info_;
   const int default_combine_threshold_in_bytes_;
-  const int64_t pointer_size_;
 };
 
 }  // namespace xla::gpu

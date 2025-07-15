@@ -118,6 +118,7 @@ struct MeshDeviceIdentifierInfo : public DenseMapInfo<MeshDeviceIdentifier> {
   }
 };
 
+// TODO(b/428947691): Remove this when the Shardy OSS version rolls out.
 class AddAxisOrMergeInserter {
  public:
   using iterator_category = std::output_iterator_tag;

@@ -1970,7 +1970,7 @@ absl::Status MsaAlgorithm::ProcessColoredBuffers() {
                           /*colocations=*/{},
                           /*need_allocation=*/true};
     Chunk chunk_candidate = FindChunkCandidate(interval);
-    if (chunk_candidate.chunk_end() > available_heap_size()) {
+    if (chunk_candidate.chunk_end() > options_.max_size_in_bytes) {
       if (use_colored) {
         return FailedPrecondition(
             "%s",
@@ -4857,6 +4857,12 @@ void MsaAlgorithm::FinalizeAllocations(
           size_t index = it->second;
           colocation_vector[index].second.push_back(inserted_allocation);
         }
+        // Register the allocation start time - 1 and end time + 1 as the edge
+        // time indices for the allocation to indicate the time indices that the
+        // alternate memory will be freer than the next index. Evict uses this
+        // to bypass some of the redundant calls to FindChunkCandidate.
+        edge_time_indices_.insert(inserted_allocation->start_time() - 1);
+        edge_time_indices_.insert(inserted_allocation->end_time() + 1);
       }
     }
   }
@@ -5673,7 +5679,7 @@ AllocationResult MsaAlgorithm::ForceAlternateMemoryAllocationForMinTime(
 
   Chunk chunk_candidate = FindChunkCandidate(alternate_mem_interval);
 
-  if (chunk_candidate.chunk_end() > available_heap_size()) {
+  if (chunk_candidate.chunk_end() > options_.max_size_in_bytes) {
     return AllocationResult::kFailOutOfMemory;
   }
 
@@ -5876,8 +5882,19 @@ AllocationResult MsaAlgorithm::Evict(const AllocationRequest& request,
   VLOG(3) << "Considering eviction after" << eviction_exclusive_start_time
           << ", with preferred end time = " << eviction_mem_interval.end;
 
+  auto next_eviction_end_time_candidate = [&]() {
+    // Only call FindChunkCandidate if the index is an edge time (where there is
+    // another allocation that starts or ends at this time index). This reduces
+    // redundant calls to FundChunkCandidate and so reduces compilation time.
+    int64_t next_eviction_end_time = eviction_mem_interval.end;
+    do {
+      --next_eviction_end_time;
+    } while (next_eviction_end_time > eviction_end_time &&
+             !edge_time_indices_.contains(next_eviction_end_time));
+    return next_eviction_end_time;
+  };
   for (; eviction_mem_interval.end > eviction_end_time;
-       --eviction_mem_interval.end) {
+       eviction_mem_interval.end = next_eviction_end_time_candidate()) {
     Chunk chunk_candidate =
         FindChunkCandidate(eviction_mem_interval, preferred_offset);
     if (chunk_candidate.offset == preferred_offset) {
@@ -6093,7 +6110,7 @@ AllocationResult MsaAlgorithm::Prefetch(
 
   Chunk chunk_candidate = FindChunkCandidate(alternate_mem_interval);
 
-  if (chunk_candidate.chunk_end() > available_heap_size()) {
+  if (chunk_candidate.chunk_end() > options_.max_size_in_bytes) {
     return AllocationResult::kFailOutOfMemory;
   }
   AddToPendingChunks(alternate_mem_interval, chunk_candidate);

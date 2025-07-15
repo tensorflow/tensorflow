@@ -20,7 +20,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
@@ -55,8 +54,8 @@ class SolGPUCostModelTest : public TestWithParam<RingLatencyTestCase> {
 TEST_P(SolGPUCostModelTest, TestRingLatency) {
   const RingLatencyTestCase& test_case = GetParam();
   absl::Duration actual_latency =
-      absl::Trunc(model_.RingLatency(kTenMB, 1, test_case.collective_type,
-                                     /*num_communicators=*/1),
+      absl::Trunc(*model_.RingLatency(kTenMB, 1, test_case.collective_type,
+                                      /*num_communicators=*/1),
                   absl::Microseconds(1));
   EXPECT_EQ(actual_latency, test_case.expected_latency);
 }

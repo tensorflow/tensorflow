@@ -97,7 +97,7 @@ BuildIdToLogicalBufferMap(
     const BufferAssignmentProto& proto,
     const absl::flat_hash_map<int64_t, const HloInstruction*>&
         id_to_hlo_instruction,
-    const std::unique_ptr<HloAliasAnalysis>& alias_analysis) {
+    HloDataflowAnalysis& dataflow_analysis) {
   absl::flat_hash_map<int64_t, const HloValue*> id_to_logical_buffer;
   // Process each logical buffer in the proto.
   for (const LogicalBufferProto& logical_buffer_proto :
@@ -122,8 +122,8 @@ BuildIdToLogicalBufferMap(
     ShapeIndex proto_shape_index(shape_idx_vals);
 
     // Look up logical buffer by hlo instruction and shape index.
-    auto& logical_buffer = alias_analysis->dataflow_analysis().GetUniqueValueAt(
-        hlo_instruction, proto_shape_index);
+    auto& logical_buffer =
+        dataflow_analysis.GetUniqueValueAt(hlo_instruction, proto_shape_index);
 
     // Assign color to a logical buffer from the proto.
     logical_buffer.set_color(logical_buffer_proto.color());
@@ -816,8 +816,8 @@ void BufferAssignment::ComputeSummaryStats() {
   }
 }
 
-absl::StatusOr<int64_t> BufferAssignment::ComputeTotalFragmentationBytes()
-    const {
+absl::StatusOr<int64_t> BufferAssignment::ComputeTotalFragmentationBytes(
+    const AliasInfo* alias_info) const {
   // Only compute total fragmentation if all computations have schedules.
   HloSchedule schedule(module_);
   bool schedule_complete = true;
@@ -836,14 +836,14 @@ absl::StatusOr<int64_t> BufferAssignment::ComputeTotalFragmentationBytes()
     TF_RETURN_IF_ERROR(schedule.Verify());
     TF_ASSIGN_OR_RETURN(
         const int64_t min_size,
-        HeapSimulator::MinimumMemoryForModule(schedule, buffer_size_));
+        HeapSimulator::MinimumMemoryForModule(schedule, alias_analysis(),
+                                              alias_info, buffer_size_));
     return stats_.total_allocation_bytes - min_size;
   }
   return -1;
 }
 
-std::string BufferAssignment::StatsString(
-    bool report_total_fragmentation) const {
+std::string BufferAssignment::StatsString(const AliasInfo* alias_info) const {
   std::string s;
   StrAppendFormat(&s, "BufferAssignment stats:\n");
   StrAppendFormat(&s, "             parameter allocation: %10s\n",
@@ -866,15 +866,12 @@ std::string BufferAssignment::StatsString(
   }
   StrAppendFormat(&s, "                 total allocation: %10s\n",
                   HumanReadableNumBytes(stats_.total_allocation_bytes));
-  if (report_total_fragmentation) {
-    auto total_fragmentation_bytes = ComputeTotalFragmentationBytes();
-    if (total_fragmentation_bytes.ok() && *total_fragmentation_bytes >= 0) {
-      const double percent =
-          100. * *total_fragmentation_bytes / stats_.total_allocation_bytes;
-      StrAppendFormat(&s, "              total fragmentation: %10s (%.2f%%)\n",
-                      HumanReadableNumBytes(*total_fragmentation_bytes),
-                      percent);
-    }
+  auto total_fragmentation_bytes = ComputeTotalFragmentationBytes(alias_info);
+  if (total_fragmentation_bytes.ok() && *total_fragmentation_bytes >= 0) {
+    const double percent =
+        100. * *total_fragmentation_bytes / stats_.total_allocation_bytes;
+    StrAppendFormat(&s, "              total fragmentation: %10s (%.2f%%)\n",
+                    HumanReadableNumBytes(*total_fragmentation_bytes), percent);
   }
   return s;
 }
@@ -1074,10 +1071,9 @@ std::vector<std::pair<int64_t, const HloValue*>> TopKPeakBuffers(
 }
 
 std::string BufferAssignment::ToVerboseString(
-    size_t max_buffers_to_show) const {
-  std::string output =
-      absl::StrCat("BufferAssignment OOM Debugging.\n",
-                   StatsString(/*report_total_fragmentation=*/true));
+    const AliasInfo* alias_info, size_t max_buffers_to_show) const {
+  std::string output = absl::StrCat("BufferAssignment OOM Debugging.\n",
+                                    StatsString(alias_info));
 
   std::vector<std::pair<int64_t, const HloValue*>> peak_buffers =
       TopKPeakBuffers(max_buffers_to_show, allocations_);
@@ -1225,11 +1221,10 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
 /* static */
 absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
     const BufferAssignmentProto& proto, const HloModule* module,
-    BufferValue::SizeFunction buffer_size,
-    HloDataflowAnalysis::CanShareBuffer can_share_buffer) {
+    BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info) {
   // Create alias and dataflow analysis.
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, can_share_buffer));
+                      HloAliasAnalysis::Run(module, alias_info));
 
   // Build a map from a unique_id to corresponding HloInstruction in the module.
   auto id_to_hlo_instruction = BuildIdToHloInstructionMap(module);
@@ -1239,7 +1234,8 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
   absl::flat_hash_map<int64_t, const HloValue*> id_to_logical_buffer;
   TF_ASSIGN_OR_RETURN(
       id_to_logical_buffer,
-      BuildIdToLogicalBufferMap(proto, id_to_hlo_instruction, alias_analysis));
+      BuildIdToLogicalBufferMap(proto, id_to_hlo_instruction,
+                                alias_analysis->dataflow_analysis()));
 
   std::unique_ptr<BufferAssignment> buffer_assignment =
       absl::WrapUnique(new BufferAssignment(
@@ -2229,7 +2225,7 @@ BufferAssigner::CreateAssignment(
     std::optional<BufferAssignment::BufferIsolationOptions> isolation_options,
     std::optional<BufferValue::Color> temp_buffer_color) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module));
+                      HloAliasAnalysis::Run(module, alias_info_));
 
   // Set up a schedule for each computation.
   HloSchedule schedule(module);
@@ -2340,8 +2336,7 @@ BufferAssigner::CreateAssignment(
 
   XLA_VLOG_LINES(2, assignment->ToString());
   assignment->ComputeSummaryStats();
-  XLA_VLOG_LINES(1,
-                 assignment->StatsString(/*report_total_fragmentation=*/true));
+  XLA_VLOG_LINES(1, assignment->StatsString(alias_info_));
   VLOG(1) << "Buffer assignment done.";
   return std::move(assignment);
 }

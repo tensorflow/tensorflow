@@ -52,17 +52,8 @@ def _tfcompile_model_library_rule_impl(ctx):
 
     additional_xla_flags = ctx.attr.xla_flags
 
-    # TODO(basioli): Remove this once the thunk runtime is the default for tfcompile.
-    default_xla_flags = ["--xla_cpu_use_thunk_runtime=false"]
-
-    # If user didn't specify a flag, add the default.
-    for flag in default_xla_flags:
-        if flag.split("=")[0] not in ctx.attr.xla_flags:
-            additional_xla_flags += " " + flag
-
-    # TODO(basioli): After cross tool lands the conditional can be removed, and this can be moved
-    # above.
-    if "--xla_cpu_use_thunk_runtime=true" in additional_xla_flags:
+    # TODO(basioli): Remove once thunk runtime is the only option.
+    if not "--xla_cpu_use_thunk_runtime=false" in additional_xla_flags:
         constant_buffers_object_file = ctx.actions.declare_file("%s_tfcompile_constant_buffers.o" % ctx.attr.model_name)
         output_flags.append("--out_constant_buffers_object=" + constant_buffers_object_file.path)
         out_files.append(constant_buffers_object_file)

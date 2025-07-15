@@ -28,13 +28,15 @@ namespace cpu {
 
 // These routines emit LLVM IR implementing tiled GEMM and GEMV routines.
 
-void EmitRowMajorGemv(PrimitiveType scalar_type, int64_t tile_rows,
+void EmitRowMajorGemv(PrimitiveType scalar_type, int64_t num_tasks,
+                      llvm::Value* work_group_id, int64_t tile_rows,
                       int64_t tile_cols, int64_t m, int64_t k, llvm::Value* lhs,
                       llvm::Value* rhs, llvm::Value* addend,
                       llvm::Value* result, llvm::IRBuilderBase* b,
                       const HloModuleConfig& module_config);
 
-void EmitColumnMajorGemv(PrimitiveType scalar_type, int64_t tile_rows,
+void EmitColumnMajorGemv(PrimitiveType scalar_type, int64_t num_tasks,
+                         llvm::Value* work_group_id, int64_t tile_rows,
                          int64_t tile_cols, int64_t m, int64_t k,
                          llvm::Value* lhs, llvm::Value* rhs,
                          llvm::Value* addend, llvm::Value* result,

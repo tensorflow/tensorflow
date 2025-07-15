@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cudnn_sdpa_score_mod.h"
 
+#include <cstdint>
+#include <memory>
+#include <string>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"
 #include "json/json.h"
 #include "xla/hlo/ir/hlo_computation.h"

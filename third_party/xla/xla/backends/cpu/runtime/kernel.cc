@@ -121,7 +121,7 @@ XLA_CPU_WorkGroupId Kernel::ParallelTask<num_workgroups_x_only>::Delinearize(
     uint64_t task_index) const {
   // In the most common case we parallelize only over the `x` dimension.
   if constexpr (num_workgroups_x_only) {
-    return XLA_CPU_WorkGroupId{task_index, 1, 1};
+    return XLA_CPU_WorkGroupId{task_index, 0, 0};
   }
 
   // Convert linear task index to (x, y, z) coordinate.

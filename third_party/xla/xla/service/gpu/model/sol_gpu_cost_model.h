@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "absl/strings/string_view.h"
+#include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/stream_executor/device_description.h"
@@ -41,16 +41,19 @@ class SolGPUCostModel {
     int64_t gpus_per_node;
     int64_t chunk_size_bytes;
   };
+
   enum CollectiveAlgorithmType {
     RING = 0,
     TREE,
   };
+
   enum class CollectiveType {
     kAllReduce,
     kAllGather,
     kReduceScatter,
     kSendRecv,
   };
+
   explicit SolGPUCostModel(const Config& sys_config);
 
   // Extract the SoL-related configuration from XLA flags.
@@ -63,9 +66,10 @@ class SolGPUCostModel {
   // `num_nodes`: the number of nodes participating in the ring.
   // `coll_type`: the type of the collective (eg AllGather).
   // `mask`: the mask of the collective (AllWorld 0x0 vs RailAligned 0x7).
-  absl::Duration RingLatency(int64_t buff_size_bytes, int num_nodes,
-                             const CollectiveType& coll_type,
-                             int num_communicators) const;
+  absl::StatusOr<absl::Duration> RingLatency(int64_t buff_size_bytes,
+                                             int num_nodes,
+                                             const CollectiveType& coll_type,
+                                             int num_communicators) const;
 
  private:
   // Helper functions to estimate the latency subcomponents
@@ -74,8 +78,9 @@ class SolGPUCostModel {
   absl::Duration TransferDuration(int64_t per_gpu_msg_size_bytes) const;
   // NumGpusPerComm returns  GPUs number participating in a given NCCL
   // collective operation.
-  int NumGpusPerComm(int num_nodes, const CollectiveType& coll_type,
-                     int num_communicators) const;
+  absl::StatusOr<int> NumGpusPerComm(int num_nodes,
+                                     const CollectiveType& coll_type,
+                                     int num_communicators) const;
 
   // SoL-related configuration for NCCL cost modelling passed by user as flags.
   Config xla_flag_config_;

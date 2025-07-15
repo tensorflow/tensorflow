@@ -21,10 +21,9 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
-#include <string>
 #include <vector>
 
-#include "absl/base/nullability.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_compiler.h"
+#include "xla/python/pjrt_ifrt/transfer_server_interface.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
@@ -124,6 +125,10 @@ class PjRtClient final
     absl::Duration get_local_topology_timeout = absl::Minutes(2);
     absl::Duration get_global_topology_timeout = absl::Minutes(5);
     absl::Duration cross_host_transfer_timeout = absl::Minutes(1);
+
+    std::function<absl::StatusOr<std::unique_ptr<TransferServerInterface>>(
+        std::shared_ptr<xla::PjRtClient>)>
+        transfer_server_factory;
 
     // Device mapping to construct a global view consisting of both addressable
     // and non-addressable devices.
@@ -354,6 +359,14 @@ class PjRtClient final
       absl::Span<const xla::Shape> shapes, xla::PjRtDevice* device,
       const std::vector<int64_t>& keys);
 
+  // Copies arrays from source to destination devices when at least one of the
+  // (source, destination) pairs is cross-host using an experimental DCN
+  // transfer library. Called when the PjRt backend does not support
+  // `CopyArraysForCrossHost`.
+  absl::StatusOr<std::vector<ArrayRef>> CopyArraysForCrossHostFallback(
+      absl::Span<ArrayRef> arrays, DeviceListRef src_devices,
+      DeviceListRef dst_devices, std::optional<MemoryKind> memory_kind);
+
   // Creates a unique identifier for each cross-host transfer. Every process
   // must call it, regardless of whether it participates in the cross-host
   // transfer, so that the returned value must be the same in all processes.
@@ -365,6 +378,13 @@ class PjRtClient final
   std::atomic<int64_t> next_transfer_key_ = 0;
   std::shared_ptr<xla::KeyValueStoreInterface> kv_store_;
   absl::Duration cross_host_transfer_timeout_;
+  absl::Mutex transfer_server_mu_;
+  std::function<absl::StatusOr<std::unique_ptr<TransferServerInterface>>(
+      std::shared_ptr<xla::PjRtClient>)>
+      transfer_server_factory_;
+  std::optional<std::unique_ptr<TransferServerInterface>> transfer_server_;
+  absl::Status InitializeTransferServer()
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(transfer_server_mu_);
 
   friend class PjRtClientPeer;
 };

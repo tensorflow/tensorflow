@@ -172,6 +172,7 @@ cc_library(
     hdrs = ["ir_emission_utils.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:inlined_vector",
     ],
@@ -183,8 +184,12 @@ cc_library(
     hdrs = ["math_lib.h"],
     deps = [
         "//xla:xla_data_proto_cc",
+        "//xla/codegen/math:erf",
         "//xla/codegen/math:exp",
+        "//xla/codegen/math:fptrunc",
+        "//xla/codegen/math:intrinsic",
         "//xla/codegen/math:ldexp",
+        "//xla/codegen/math:log1p",
         "//xla/codegen/math:string_interner",
         "//xla/codegen/math:vec_name_mangler",
         "//xla/service/llvm_ir:llvm_util",

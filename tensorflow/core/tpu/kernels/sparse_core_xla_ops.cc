@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
@@ -108,10 +109,11 @@ void GetAndSetSparseCoresPerLogicalDevice(OpKernelConstruction* ctx,
 
   // Validate the final value.
   OP_REQUIRES(
-      ctx, num_sparsecores_per_device == 2 || num_sparsecores_per_device == 4,
-      absl::InvalidArgumentError(
-          absl::StrCat("num_sparsecores_per_device must be 2 or 4, but got: ",
-                       num_sparsecores_per_device)));
+      ctx,
+      absl::has_single_bit(static_cast<uint32_t>(num_sparsecores_per_device)),
+      absl::InvalidArgumentError(absl::StrCat(
+          "num_sparsecores_per_device must be a power of two, but got: ",
+          num_sparsecores_per_device)));
 }
 
 // Returns the number of ops in the tuple.

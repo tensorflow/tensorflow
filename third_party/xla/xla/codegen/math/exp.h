@@ -17,16 +17,33 @@ limitations under the License.
 #define XLA_CODEGEN_MATH_EXP_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
+#include "xla/codegen/math/intrinsic.h"
 
-namespace xla::codegen::math {
+namespace xla::codegen {
+
+class Intrinsic::Exp {
+ public:
+  static std::string Name(PrimitiveType type) {
+    return absl::StrCat("xla.exp.", ScalarName(type));
+  }
+
+  static std::string Name(PrimitiveType type, int64_t vector_width) {
+    return absl::StrCat("xla.exp.", VectorName(type, vector_width));
+  }
+};
+
+namespace math {
 
 llvm::Function* CreateExpF64(llvm::Module* module, llvm::Type* input_type);
 std::string ExpF64FunctionName(size_t num_elements);
 
-}  // namespace xla::codegen::math
+}  // namespace math
+}  // namespace xla::codegen
 
 #endif  // XLA_CODEGEN_MATH_EXP_H_

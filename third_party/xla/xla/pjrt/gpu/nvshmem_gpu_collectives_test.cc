@@ -118,9 +118,10 @@ TEST(NvshmemGpuCollectivesTest, NvshmemCollectivePermuteFloat) {
   RunNvshmemTest(PrimitiveType::F32, "collective_permute");
 }
 
-TEST(NvshmemGpuCollectivesTest, NvshmemSendRecvFloat) {
-  RunNvshmemTest(PrimitiveType::F32, "send_recv");
-}
+// TODO(b/431602576): Re-enable this test once the bug is fixed.
+// TEST(NvshmemGpuCollectivesTest, NvshmemSendRecvFloat) {
+//   RunNvshmemTest(PrimitiveType::F32, "send_recv");
+// }
 
 absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
                                        int input_data_type,

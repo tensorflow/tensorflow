@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Support/WalkResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/mlir_graph_optimization_pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/lower_cluster_to_runtime_ops.h"
@@ -39,6 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/tsl/framework/device_type.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/device.h"
@@ -46,13 +48,10 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -233,7 +232,8 @@ absl::Status MlirBridgePass::Run(
     mlir::ModuleOp module, const Graph& graph,
     const FunctionLibraryDefinition& function_library) {
   static absl::once_flag flag;
-  absl::call_once(flag, UpdateLogVerbosityIfDefined, "TF_DEBUG_LOG_VERBOSITY");
+  absl::call_once(flag, tsl::UpdateLogVerbosityIfDefined,
+                  "TF_DEBUG_LOG_VERBOSITY");
 
   if (!HasDevice(module)) {
     LOG(INFO) << "No devices in " << function_name << "\n";
@@ -348,7 +348,8 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
 absl::Status MlirBridgeV1CompatPass::Run(
     const GraphOptimizationPassOptions& options, mlir::ModuleOp module) {
   static absl::once_flag flag;
-  absl::call_once(flag, UpdateLogVerbosityIfDefined, "TF_DEBUG_LOG_VERBOSITY");
+  absl::call_once(flag, tsl::UpdateLogVerbosityIfDefined,
+                  "TF_DEBUG_LOG_VERBOSITY");
 
   // Skip function graphs as MlirBridgePass will be used instead.
   if (options.is_function_graph) return absl::OkStatus();

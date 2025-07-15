@@ -39,6 +39,7 @@ absl::Status RunAsyncCollectivesConversionPasses(HloModule* module);
 
 struct ScheduleMetadata {
   uint64_t scheduler_mem_limit;
+  int64_t peak_memory_usage;
 };
 
 // Defines the scheduler config to be used by LHS.
@@ -56,13 +57,6 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     HloModule* module, int64_t pointer_size,
     const se::DeviceDescription& gpu_device_info,
     const GpuAliasInfo* alias_info);
-
-// Schedules a GPU module with `DefaultMemoryScheduler` and
-// `PostProcessSchedule` postprocessing. If `peak_memory_bytes` is not nullptr,
-// then the it will be set to peak memory usage in bytes.
-absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
-    const HloModule* module, int64_t pointer_size,
-    int64_t* peak_memory_bytes = nullptr);
 
 HloInstructionSequence PostProcessSchedule(const HloInstructionSequence& input);
 

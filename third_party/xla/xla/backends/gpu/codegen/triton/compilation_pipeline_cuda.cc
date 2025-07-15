@@ -138,10 +138,6 @@ absl::Status CreateTritonPipeline(
 
   // Based on make_llir() in
   // @triton//:third_party/nvidia/backend/compiler.py
-  // This pass reduces Hopper compile time extensively: b/344841434.
-  if (cc.IsHopper()) {
-    pm->addPass(mt_xla::CreatePreventMmaV3LoopUnrollingPass());
-  }
   pm->addPass(ttng::createTritonNvidiaGPUMMALoweringPass());
   pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
   pm->addPass(mt::gpu::createTritonGPUAllocateWarpGroups());

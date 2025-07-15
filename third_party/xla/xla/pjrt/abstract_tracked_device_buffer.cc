@@ -263,7 +263,7 @@ std::unique_ptr<AbstractTrackedDeviceBuffer> CommonPjRtBuffer::ReleaseBuffer() {
   return buffer;
 }
 
-bool CommonPjRtBuffer::IsDeleted() {
+bool CommonPjRtBuffer::IsDeleted() const {
   absl::MutexLock lock(&mu_);
   return device_buffer_ == nullptr;
 }

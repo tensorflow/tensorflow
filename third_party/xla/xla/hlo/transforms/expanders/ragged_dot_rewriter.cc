@@ -101,10 +101,9 @@ std::unique_ptr<HloInstruction> CreateCumulativeSum(
 // Expands ragged_op by one dimension with each row in the new dimension
 // representing each group. It then zeros out the elements that don't belong to
 // that group.
-std::unique_ptr<HloInstruction> RaggedToDense(HloInstruction* ragged_operand,
-                                              HloInstruction* group_sizes,
-                                              int new_dim_index,
-                                              int ragged_dim) {
+HloInstruction* RaggedToDense(HloInstruction* ragged_operand,
+                              HloInstruction* group_sizes, int new_dim_index,
+                              int ragged_dim) {
   auto computation = ragged_operand->parent();
   HloInstruction* cumulative_sum =
       computation->AddInstruction(CreateCumulativeSum(group_sizes));
@@ -192,8 +191,32 @@ std::unique_ptr<HloInstruction> RaggedToDense(HloInstruction* ragged_operand,
   auto zero_new_shape = computation->AddInstruction(
       HloInstruction::CreateBroadcast(new_shape, zero_operand_type, {}));
   // Apply mask to operand.
-  return HloInstruction::CreateTernary(new_shape, HloOpcode::kSelect, mask,
-                                       broadcast_ragged, zero_new_shape);
+  return computation->AddInstruction(HloInstruction::CreateTernary(
+      new_shape, HloOpcode::kSelect, mask, broadcast_ragged, zero_new_shape));
+}
+
+HloInstruction* TransposeIndexToFront(HloInstruction* instr, int index) {
+  if (index == 0) {
+    return instr;
+  }
+  auto new_shape = instr->shape();
+  int64_t dim0 = new_shape.dimensions(0);
+  int64_t dimIndex = new_shape.dimensions(index);
+  new_shape.set_dimensions(0, dimIndex);
+  new_shape.set_dimensions(index, dim0);
+  llvm::SmallVector<int64_t> transpose_dims;
+  transpose_dims.reserve(new_shape.dimensions().size());
+  transpose_dims.push_back(index);
+  for (int i = 1; i < new_shape.dimensions().size(); ++i) {
+    if (i == index) {
+      transpose_dims.push_back(0);
+    } else {
+      transpose_dims.push_back(i);
+    }
+  }
+  auto computation = instr->parent();
+  return computation->AddInstruction(
+      HloInstruction::CreateTranspose(new_shape, instr, transpose_dims));
 }
 
 enum class RaggedDotMode {
@@ -249,13 +272,14 @@ DotDimensionNumbers CreateRaggedNonContractingDotDims(
 DotDimensionNumbers CreateRaggedContractingDotDims(
     const DotDimensionNumbers& old_dims) {
   DotDimensionNumbers new_dims;
+  // Add group dimension to the beginning of the batch dimensions.
   new_dims.add_lhs_batch_dimensions(0);
   for (auto dim : old_dims.lhs_batch_dimensions()) {
-    new_dims.add_lhs_batch_dimensions(dim);
+    new_dims.add_lhs_batch_dimensions(dim + 1);
   }
   new_dims.add_rhs_batch_dimensions(0);
   for (auto dim : old_dims.rhs_batch_dimensions()) {
-    new_dims.add_rhs_batch_dimensions(dim);
+    new_dims.add_rhs_batch_dimensions(dim + 1);
   }
   for (auto dim : old_dims.rhs_contracting_dimensions()) {
     new_dims.add_rhs_contracting_dimensions(dim + 1);
@@ -274,16 +298,11 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> RaggedToGeneral(
     return absl::UnimplementedError("lhs_ragged_dimensions must have size 1");
   }
   int lhs_ragged_dim = ragged_dims.lhs_ragged_dimensions(0);
-  // Unsure about this new_dim_index. It's similar to the way jax does it, but
-  // it comes with an assumption that batch dimensions always come first. They
-  // then also do a transpose to move the group dimension to the front, which
-  // I haven't implemented here.
-  int new_dim_index = dot_dims.rhs_batch_dimensions().size();
 
-  auto* computation = ragged_dot->parent();
   auto lhs = ragged_dot->mutable_operand(0);
   auto rhs = ragged_dot->mutable_operand(1);
   auto group_sizes = ragged_dot->mutable_operand(2);
+  int new_dim_index = group_sizes->shape().dimensions().size() - 1;
   DotDimensionNumbers new_dot_dims;
 
   RaggedDotMode mode =
@@ -296,18 +315,17 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> RaggedToGeneral(
             "dimension is a non-contracting dimension");
       }
       int rhs_group_dim = ragged_dims.rhs_group_dimensions(0);
-      lhs = computation->AddInstruction(
-          RaggedToDense(lhs, group_sizes, new_dim_index, lhs_ragged_dim));
+      lhs = RaggedToDense(lhs, group_sizes, new_dim_index, lhs_ragged_dim);
       new_dot_dims = CreateRaggedNonContractingDotDims(dot_dims, new_dim_index,
                                                        rhs_group_dim);
       break;
     }
     case RaggedDotMode::kRaggedContracting: {
-      lhs = computation->AddInstruction(
-          RaggedToDense(lhs, group_sizes, new_dim_index, lhs_ragged_dim));
+      lhs = RaggedToDense(lhs, group_sizes, new_dim_index, lhs_ragged_dim);
+      lhs = TransposeIndexToFront(lhs, new_dim_index);
       int rhs_ragged_dim = FindRhsRaggedDim(dot_dims, lhs_ragged_dim);
-      rhs = computation->AddInstruction(
-          RaggedToDense(rhs, group_sizes, new_dim_index, rhs_ragged_dim));
+      rhs = RaggedToDense(rhs, group_sizes, new_dim_index, rhs_ragged_dim);
+      rhs = TransposeIndexToFront(rhs, new_dim_index);
       new_dot_dims = CreateRaggedContractingDotDims(dot_dims);
       break;
     }

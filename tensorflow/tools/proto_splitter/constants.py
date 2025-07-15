@@ -19,7 +19,7 @@
 #
 # TODO: b/380463192 - Consider fixing the split algorithm to handle edge cases
 # accurately and raising the max size to 2GB.
-_MAX_SIZE = (1 << 31) - (1 << 27)
+_MAX_SIZE = 1 << 30
 
 
 def debug_set_max_size(value: int) -> None:

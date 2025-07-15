@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/collectives/all_gather_combiner.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/transforms/collectives/collective_combiner_annotator.h"
@@ -32,8 +31,9 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
+namespace {
 
-static std::optional<AllGatherCombiner::GroupKey> DefaultCombinerKey(
+std::optional<AllGatherCombiner::GroupKey> DefaultCombinerKey(
     const HloInstruction* instruction, const HloDomainMap& domain_map,
     bool combine_by_dim, bool combine_different_dtypes) {
   std::optional<AllGatherCombiner::GroupKey> key =
@@ -50,29 +50,30 @@ static std::optional<AllGatherCombiner::GroupKey> DefaultCombinerKey(
   return key;
 }
 
-static std::optional<AllGatherCombiner::GroupKey> PipelinedCombinerKey(
+// A combiner key to combine pipelined and synchronous collectives.
+std::optional<AllGatherCombiner::GroupKey> CustomCombinerKey(
     const HloInstruction* instruction, const HloDomainMap& domain_map,
     bool combine_by_dim, bool combine_different_dtypes) {
-  if (!IsPipelinedCollective(*instruction)) {
+  std::optional<AllGatherCombiner::GroupKey> key =
+      AllGatherCombiner::CombineKey(instruction, domain_map, combine_by_dim,
+                                    combine_different_dtypes);
+  if (!key.has_value()) {
     return std::nullopt;
   }
-  return AllGatherCombiner::CombineKey(instruction, domain_map, combine_by_dim,
-                                       combine_different_dtypes);
+  if (IsPipelinedCollective(*instruction)) {
+    absl::StrAppend(&AllGatherCombiner::GetGroupKeyExtraArgs(*key),
+                    " pipelined=true");
+    return key;
+  }
+  if (IsCombinableSyncCollective(*instruction)) {
+    absl::StrAppend(&AllGatherCombiner::GetGroupKeyExtraArgs(*key),
+                    " sync=true");
+    return key;
+  }
+  return std::nullopt;
 }
 
-static std::optional<AllGatherCombiner::GroupKey> SynchronousCombinerKey(
-    const HloInstruction* instruction, const HloDomainMap& domain_map,
-    bool combine_by_dim, bool combine_different_dtypes) {
-  if (!IsCombinableSyncCollective(*instruction)) {
-    return std::nullopt;
-  }
-  // Exclude pipelined collectives.
-  if (IsPipelinedCollective(*instruction)) {
-    return std::nullopt;
-  }
-  return AllGatherCombiner::CombineKey(instruction, domain_map, combine_by_dim,
-                                       combine_different_dtypes);
-}
+}  // namespace
 
 absl::StatusOr<bool> GpuAllGatherCombiner::Run(
     HloModule* module,
@@ -83,34 +84,21 @@ absl::StatusOr<bool> GpuAllGatherCombiner::Run(
   }
 
   // Combiner threshold is not specified. We use heuristics.
-  // We sequentially combine pipelined collectives then synchronous collectives
+  // We sequentially combine pipelined collectives and synchronous collectives
   // and finally the rest.
 
   bool changed = false;
 
-  // If there are no pipelined instructions in the IR, the optimizations below
-  // do not kick in anyway.
-  if (ContainsPipelinedInstruction(*module)) {
-    // Combine as much as possible for pipelined collectives.
-    combine_threshold_in_bytes_ = ComputeSuggestedCombinerThreshold(
-        *module, device_info_, HloOpcode::kAllGather, pointer_size_);
+  if (auto suggested_threshold = SuggestedCombinerThreshold(*module)) {
+    combine_threshold_in_bytes_ = *suggested_threshold;
     TF_ASSIGN_OR_RETURN(
         bool combined,
-        RunWithKeyCombiner(module, execution_threads, PipelinedCombinerKey));
+        RunWithKeyCombiner(module, execution_threads, CustomCombinerKey));
     changed |= combined;
   }
 
-  // Combine as much as possible for synchronous collectives.
-  if (ContainsCombinableSyncCollective(*module)) {
-    combine_threshold_in_bytes_ = MaxAvailableMemory(*module, device_info_);
-    TF_ASSIGN_OR_RETURN(
-        bool combined,
-        RunWithKeyCombiner(module, execution_threads, SynchronousCombinerKey));
-    changed |= combined;
-  }
-
-  // Use default combiner thresholds after we combine pipelined collectives.
-  // The rest is combined by the parent pass code.
+  // Use the default combiner thresholds after we combined pipelined and
+  // synchronous collectives.
   combine_threshold_in_bytes_ = default_combine_threshold_in_bytes_;
   TF_ASSIGN_OR_RETURN(
       bool combined,

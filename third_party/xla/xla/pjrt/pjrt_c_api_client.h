@@ -475,7 +475,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
         "PJRT C API does not support ReleaseDeviceMemoryOwnership");
   }
 
-  bool IsDeleted() override;
+  bool IsDeleted() const override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) override;
@@ -653,20 +653,23 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
-      std::optional<std::vector<PjRtFuture<>>>& returned_futures) override;
+      std::optional<std::vector<PjRtFuture<>>>& returned_futures)
+      const override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
+      std::optional<PjRtFuture<>>& returned_future,
+      bool fill_future) const override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
+      std::optional<PjRtFuture<>>& returned_future,
+      bool fill_future) const override;
 
   void Delete() override;
-  bool IsDeleted() override;
+  bool IsDeleted() const override;
 
   absl::StatusOr<std::string> SerializeExecutable() const override {
     return executable_->SerializeExecutable();
@@ -712,13 +715,13 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
       std::vector<PJRT_Buffer**>& c_output_lists,
       std::optional<std::vector<PJRT_Event*>>& device_complete_events,
       SendRecvCallbackData& send_recv_callback_data,
-      std::vector<int64_t>& non_donatable_input_indices_storage);
+      std::vector<int64_t>& non_donatable_input_indices_storage) const;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   ExecuteWithSingleDevice(absl::Span<PjRtBuffer* const> argument_handles,
                           PjRtDevice* device, const ExecuteOptions& options,
                           std::optional<PjRtFuture<>>& returned_future,
-                          bool fill_future);
+                          bool fill_future) const;
 
   PjRtCApiClient* client_;
   std::unique_ptr<PJRT_LoadedExecutable, ::pjrt::PJRT_LoadedExecutableDeleter>
@@ -766,6 +769,8 @@ absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
 
 absl::StatusOr<std::unique_ptr<PjRtCompiler>> GetCApiCompiler(
     absl::string_view device_type);
+
+absl::StatusOr<std::unique_ptr<PjRtCompiler>> GetCApiCompiler();
 
 }  // namespace xla
 

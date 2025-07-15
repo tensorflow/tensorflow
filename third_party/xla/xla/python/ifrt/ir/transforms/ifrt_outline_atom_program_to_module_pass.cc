@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <optional>
 
 #include "llvm/ADT/DenseSet.h"
@@ -28,7 +27,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Visitors.h"
-#include "mlir/Pass/Pass.h"
+#include "mlir/Support/WalkResult.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
@@ -37,10 +36,10 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-namespace {
-
 #define GEN_PASS_DEF_IFRTOUTLINEATOMPROGRAMTOMODULEPASS
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"
+
+namespace {
 
 class IfrtOutlineAtomProgramToModulePass
     : public impl::IfrtOutlineAtomProgramToModulePassBase<
@@ -172,11 +171,5 @@ void IfrtOutlineAtomProgramToModulePass::runOnOperation() {
 }
 
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtOutlineAtomProgramToModulePass() {
-  return std::make_unique<IfrtOutlineAtomProgramToModulePass>();
-}
-
 }  // namespace ifrt
 }  // namespace xla

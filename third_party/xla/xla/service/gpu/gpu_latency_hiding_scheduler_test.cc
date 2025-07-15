@@ -68,7 +68,7 @@ class GpuLatencyHidingSchedulerBaseTest
       DebugOptions::PGLEStrictnessLevel strictness =
           DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR) {
     auto gpu_device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
-    GpuAliasInfo alias_info(&gpu_device_info);
+    GpuAliasInfo alias_info(gpu_device_info);
     DebugOptions& options = module->mutable_config().mutable_debug_options();
     options.set_xla_gpu_experimental_parallel_collective_overlap_limit(
         num_parallel_resources);

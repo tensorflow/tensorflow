@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/model/collective_interpolator.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -86,11 +87,16 @@ class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
             /*rtt=*/absl::Microseconds(100),
             /*gpus_per_node=*/8,
             /*chunk_size_bytes=*/4 * 1024 * 1024,
-        }) {}
+        }),
+        collective_interpolator_(*CollectiveInterpolator::Create(
+            sol_flags_.gpus_per_node, gpu_device_info_,
+            /*analysis=*/nullptr)) {}
 
-  absl::Duration ComputeCollectiveTime(const HloInstruction& instr) {
+  absl::StatusOr<absl::Duration> ComputeCollectiveTime(
+      const HloInstruction& instr) {
     return SolLatencyEstimator::ComputeCollectiveTime(
-        instr, gpu_device_info_, shape_size_fn_, sol_flags_);
+        instr, gpu_device_info_, shape_size_fn_, sol_flags_,
+        collective_interpolator_.get());
   }
 
   absl::Duration ComputeNodeCost(const HloInstruction& instr,
@@ -107,6 +113,7 @@ class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
   const se::DeviceDescription gpu_device_info_;
   const SolGPUCostModel::Config sol_flags_;
   SchedulerConfig scheduler_config_;
+  std::unique_ptr<CollectiveInterpolator> collective_interpolator_;
 };
 
 TEST_P(SolLatencyEstimatorTest, TestLatencyEstimation) {
@@ -116,11 +123,12 @@ TEST_P(SolLatencyEstimatorTest, TestLatencyEstimation) {
 
   HloInstruction* instr = hlo_query::FindInstruction(
       module->entry_computation(), test_case.opcode_to_find);
-  CHECK_NE(instr, nullptr);
+  ASSERT_NE(instr, nullptr);
   absl::Duration actual_time_us;
   if (test_case.cost_type == CostType::kCollectiveTime) {
-    actual_time_us =
-        absl::Trunc(ComputeCollectiveTime(*instr), absl::Microseconds(1));
+    TF_ASSERT_OK_AND_ASSIGN(absl::Duration time_us,
+                            ComputeCollectiveTime(*instr));
+    actual_time_us = absl::Trunc(time_us, absl::Microseconds(1));
   } else if (test_case.cost_type == CostType::kNodeCost) {
     actual_time_us = ComputeNodeCost(*instr, module->entry_computation());
   } else {
@@ -147,7 +155,7 @@ ENTRY main {
 })",
       /*opcode_to_find=*/HloOpcode::kAllGatherStart,
       /*cost_type=*/CostType::kCollectiveTime,
-      /*expected_latency=*/GpuPerformanceModelBase::kNcclKernelLaunchOverhead,
+      /*expected_latency=*/absl::Microseconds(695),
   };
 
   EstimatorTestCase all_gather_inter_host_pairwise = {

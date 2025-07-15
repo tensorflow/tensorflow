@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
+#include "xla/tools/multihost_hlo_runner/hlo_input_output_format.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -64,20 +66,13 @@ using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 using HloModuleAndArguments = ::xla::FunctionalHloRunner::HloModuleAndArguments;
 
-bool IsTestingCpu() {
-#ifdef XLA_TEST_BACKEND_CPU
-  return true;
-#endif
-  return false;
-}
-
 std::string GetHloPath(std::string file_name) {
   return tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
                            "multihost_hlo_runner", "data", file_name);
 }
 
 absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient() {
-  if (IsTestingCpu()) {
+  if (test::DeviceTypeIs(test::kCpu)) {
     return CreateHostClient();
   }
   return CreateGpuClient({});
@@ -140,7 +135,7 @@ TEST_F(FunctionalHloRunnerTest, SingleDeviceHloWithExecutionProfile) {
 }
 
 TEST_F(FunctionalHloRunnerTest, GPUProfilerWithEmptyDumpPathReturnsError) {
-  if (IsTestingCpu()) {
+  if (test::DeviceTypeIs(test::kCpu)) {
     GTEST_SKIP() << "GPU-only test";
   }
   std::string empty_profile_dump_path = "";
@@ -150,7 +145,7 @@ TEST_F(FunctionalHloRunnerTest, GPUProfilerWithEmptyDumpPathReturnsError) {
 }
 
 TEST_F(FunctionalHloRunnerTest, GPUProfilerKeepXSpaceReturnsNonNullXSpace) {
-  if (IsTestingCpu()) {
+  if (test::DeviceTypeIs(test::kCpu)) {
     GTEST_SKIP() << "GPU-only test";
   }
   std::string profile_dump_path =
@@ -380,7 +375,7 @@ void CompileAndFilecheck(
   }
 
   // Check that the LLVM IR has been generated.
-  if (!IsTestingCpu()) {
+  if (!test::DeviceTypeIs(test::kCpu)) {
     std::vector<std::string> ir_paths;
     TF_ASSERT_OK(fs->GetMatchingPaths(fs->JoinPath(dump_dir, "*ir-no-opt.ll"),
                                       &ir_paths));
@@ -405,7 +400,9 @@ TEST_F(FunctionalHloRunnerTest, KeepLayoutsFromHloModule) {
 }
 
 TEST_F(FunctionalHloRunnerTest, AutoLayoutAssignsNonDefaultLayout) {
-  if (IsTestingCpu()) GTEST_SKIP() << "CPU doesn't support auto-layout yet.";
+  if (test::DeviceTypeIs(test::kCpu)) {
+    GTEST_SKIP() << "CPU doesn't support auto-layout yet.";
+  }
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   preproc_options.use_layouts_from_hlo_module = true;
   CompileAndFilecheck(GetHloPath("auto_layout.hlo"),
@@ -417,7 +414,7 @@ TEST_F(FunctionalHloRunnerTest, AutoLayoutAssignsNonDefaultLayout) {
 }
 
 TEST_F(FunctionalHloRunnerTest, FixedLayoutAssignsNonDefaultLayout) {
-  if (IsTestingCpu()) {
+  if (test::DeviceTypeIs(test::kCpu)) {
     GTEST_SKIP() << "CPU doesn't support auto-layout yet.";
   }
   FunctionalHloRunner::PreprocessingOptions preproc_options;
@@ -460,7 +457,7 @@ static const char* binary_name;
 constexpr int kNumNodes = 2;
 
 TEST_F(FunctionalHloRunnerTest, ShardedAutotuningWorks) {
-  if (IsTestingCpu()) {
+  if (test::DeviceTypeIs(test::kCpu)) {
     GTEST_SKIP() << "GPU-only test.";
   }
 
@@ -565,7 +562,7 @@ TEST_F(FunctionalHloRunnerTest, PreservesAutoLayout) {
 }
 
 TEST_F(FunctionalHloRunnerTest, MakeFakeLiteralWithSameValue) {
-  if (IsTestingCpu()) {
+  if (test::DeviceTypeIs(test::kCpu)) {
     GTEST_SKIP() << "GPU-only test";
   }
 
@@ -601,7 +598,7 @@ TEST_F(FunctionalHloRunnerTest, MakeFakeLiteralWithSameValue) {
 }
 
 TEST_F(FunctionalHloRunnerTest, CanRunWithMockCollectives) {
-  if (IsTestingCpu()) {
+  if (test::DeviceTypeIs(test::kCpu)) {
     GTEST_SKIP() << "GPU-only test";
   }
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
@@ -613,7 +610,7 @@ TEST_F(FunctionalHloRunnerTest, CanRunWithMockCollectives) {
 TEST_F(FunctionalHloRunnerTest, CanCreateMockClientInPjRtEnv) {
   // Tests that the GPU options are propagated correctly to initialize a mock
   // client.
-  if (IsTestingCpu()) {
+  if (test::DeviceTypeIs(test::kCpu)) {
     GTEST_SKIP() << "GPU-only test";
   }
 
@@ -814,6 +811,60 @@ TEST(FunctionalHloRunnerTest, RespectUseSpmdPartitioning) {
                                                 /*kv_store=*/nullptr));
   EXPECT_FALSE(
       compile_options.executable_build_options.use_spmd_partitioning());
+}
+
+TEST_F(FunctionalHloRunnerTest, DumpsUnoptimizedHLOInUnoptimizedSnapshot) {
+  // Unoptimized snapshots are only supported in the GPU PjRt plugins.
+  if (test::DeviceTypeIs(test::kCpu)) {
+    GTEST_SKIP() << "GPU-only test";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
+
+  DebugOptions debug_options = xla::DefaultDebugOptionsIgnoringFlags();
+  debug_options.set_xla_dump_to(std::getenv("TEST_UNDECLARED_OUTPUTS_DIR"));
+  debug_options.set_xla_dump_hlo_as_proto(true);
+  debug_options.set_xla_gpu_dump_hlo_unoptimized_snapshots(true);
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  FunctionalHloRunner::RunningOptions running_options;
+  CompileOptions compile_options;
+  *compile_options.executable_build_options.mutable_debug_options() =
+      debug_options;
+
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRun(
+      *client, debug_options, preproc_options, compile_options, running_options,
+      {GetHloPath("single_device.hlo")}, InputFormat::kText));
+
+  tsl::Env* env = tsl::Env::Default();
+
+  std::vector<std::string> output_files;
+  TF_ASSERT_OK(env->GetChildren(std::getenv("TEST_UNDECLARED_OUTPUTS_DIR"),
+                                &output_files));
+
+  std::vector<std::string> matching_files;
+  for (const auto& filename : output_files) {
+    if (absl::EndsWith(filename, ".hlo_unoptimized_snapshot.pb")) {
+      matching_files.push_back(tsl::io::JoinPath(
+          std::getenv("TEST_UNDECLARED_OUTPUTS_DIR"), filename));
+    }
+  }
+
+  // There should be exactly one hlo_unoptimized_snapshot.pb file.
+  ASSERT_THAT(matching_files, SizeIs(1));
+
+  std::string output;
+  TF_ASSERT_OK(ReadFileToString(env, matching_files[0], &output));
+
+  tsl::protobuf::io::ArrayInputStream input_stream(output.data(),
+                                                   output.size());
+
+  TF_ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot snapshot,
+                          DeserializeHloUnoptimizedSnapshot(&input_stream));
+
+  // The HLO module should be unoptimized, therefore it should not have a
+  // schedule.
+  EXPECT_FALSE(snapshot.hlo_module().has_schedule());
 }
 
 }  // namespace

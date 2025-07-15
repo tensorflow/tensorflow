@@ -143,7 +143,11 @@ absl::StatusOr<LlvmIrKernelSource> LowerToLlvm(
     MlirKernelSource& mlir_kernel_source) {
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
 
-  FusionCompiler fusion_compiler(FusionCompiler::Options{});
+  FusionCompiler::Options options;
+  options.vector_width = 256;
+  options.verification_level = 1;
+  options.fast_min_max = true;
+  FusionCompiler fusion_compiler(options);
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<llvm::Module> llvm_module,
       fusion_compiler.Compile(*llvm_context, mlir_kernel_source.module()));

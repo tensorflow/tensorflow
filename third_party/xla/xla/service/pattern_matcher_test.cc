@@ -1417,7 +1417,7 @@ TEST_F(PatternMatcherTest, TestWithReplicaGroups) {
 
     ENTRY test {
       input = f32[128,32]{0,1} parameter(0)
-      ROOT all-reduce = f32[128,32]{0,1} all-reduce(input),
+      ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), mode=cross_replica,
                         replica_groups={{0,1},{2,3}}, to_apply=add
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
@@ -1433,7 +1433,7 @@ TEST_F(PatternMatcherTest, TestWithReplicaGroups) {
       " * with replica_group {{1,0},{3,2}}",
       "replica_group {{0,1},{2,3}} don't match expected with replica_group "
       "{{1,0},{3,2}}\n"
-      "in all-reduce = f32[128,32]{0,1} all-reduce(input), "
+      "in all-reduce = f32[128,32]{0,1} all-reduce(input), mode=cross_replica, "
       "replica_groups={{0,1},{2,3}}, to_apply=add");
 }
 

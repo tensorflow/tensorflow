@@ -40,7 +40,7 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-using XnnDotThunkTestSpec = std::tuple<PrimitiveType, bool, bool>;
+using XnnDotThunkTestSpec = std::tuple<PrimitiveType, bool, bool, bool>;
 
 class XnnDotThunkTest : public testing::TestWithParam<XnnDotThunkTestSpec> {
  public:
@@ -49,12 +49,13 @@ class XnnDotThunkTest : public testing::TestWithParam<XnnDotThunkTestSpec> {
     return absl::StrCat(
         primitive_util::LowercasePrimitiveTypeName(std::get<0>(info.param)),
         "_", std::get<1>(info.param) ? "threadpool" : "single_threaded", "_",
-        std::get<2>(info.param) ? "capture_rhs" : "no_capture_rhs");
+        std::get<2>(info.param) ? "slinky" : "xnnpack", "_",
+        std::get<3>(info.param) ? "capture_rhs" : "no_capture_rhs");
   }
 };
 
 TEST_P(XnnDotThunkTest, SimpleDot) {
-  auto [input_type, use_threadpool, capture_rhs] = GetParam();
+  auto [input_type, use_threadpool, use_slinky, capture_rhs] = GetParam();
 
   if (input_type == BF16 &&
       !tsl::port::TestCPUFeature(tsl::port::AVX512_BF16)) {
@@ -88,10 +89,10 @@ TEST_P(XnnDotThunkTest, SimpleDot) {
   dot_dimensions.add_rhs_contracting_dimensions(0);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk,
-      XnnDotThunk::Create(XnnDotThunk::Options{use_threadpool}, {"dot"},
-                          dot_dimensions, lhs_slice, input_shape, rhs_slice,
-                          input_shape, out_slice, output_shape, capture_rhs));
+      auto thunk, XnnDotThunk::Create(
+                      XnnDotThunk::Options{use_threadpool, use_slinky}, {"dot"},
+                      dot_dimensions, lhs_slice, input_shape, rhs_slice,
+                      input_shape, out_slice, output_shape, capture_rhs));
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
@@ -106,6 +107,7 @@ TEST_P(XnnDotThunkTest, SimpleDot) {
 
 INSTANTIATE_TEST_SUITE_P(XnnDot, XnnDotThunkTest,
                          ::testing::Combine(::testing::ValuesIn({F32, BF16}),
+                                            ::testing::Bool(),
                                             ::testing::Bool(),
                                             ::testing::Bool()),
                          XnnDotThunkTest::Name);

@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -30,11 +31,12 @@
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "boost/bimap.hpp"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
+#include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
+#include "xla/hlo/tools/hlo_diff/utils/bidirectional_map.h"
 #include "xla/hlo/tools/hlo_diff/utils/connected_components.h"
 #include "tsl/platform/fingerprint.h"
 
@@ -43,41 +45,37 @@ namespace hlo_diff {
 namespace {
 
 using InstructionBimap =
-    boost::bimap<const HloInstruction*, const HloInstruction*>;
+    BidirectionalMap<const HloInstruction*, const HloInstruction*,
+                     HloInstructionNodeMappingProps>;
 
 InstructionBimap ConstructInstructionBimap(const DiffResult& diff_result) {
   InstructionBimap mapping;
   for (const auto& [left, right] : diff_result.unchanged_instructions) {
-    mapping.insert({left, right});
+    mapping.Insert(left, right);
   }
   for (const auto& [left, right] : diff_result.changed_instructions) {
-    mapping.insert({left, right});
+    mapping.Insert(left, right);
   }
   return mapping;
 }
 
 // Returns the mapped instruction node of the given instruction in the given
 // direction. Returns nullptr if the instruction is not mapped.
-const HloInstruction* FindMappedInstruction(const InstructionBimap& mapping,
-                                            const HloInstruction* instruction,
-                                            DiffSide side) {
+std::optional<const HloInstruction*> FindMappedInstruction(
+    const InstructionBimap& mapping, const HloInstruction* instruction,
+    DiffSide side) {
   switch (side) {
     case DiffSide::kLeft: {
-      auto it = mapping.left.find(instruction);
-      if (it != mapping.left.end()) {
-        return it->second;
-      }
+      return mapping.GetRight(instruction);
       break;
     }
     case DiffSide::kRight: {
-      auto it = mapping.right.find(instruction);
-      if (it != mapping.right.end()) {
-        return it->second;
-      }
+      return mapping.GetLeft(instruction);
       break;
     }
   }
-  return nullptr;
+
+  return std::nullopt;
 }
 
 // Result of finding the main matched computation.
@@ -98,11 +96,11 @@ MainMatchedComputationResult FindMainMatchedComputation(
   int mapped_instruction_count = 0;
   const HloComputation* main_matched_computation = nullptr;
   for (const HloInstruction* instruction : computation->instructions()) {
-    if (const HloInstruction* const mapped_instruction =
+    if (std::optional<const HloInstruction*> mapped_instruction =
             FindMappedInstruction(mapping, instruction, side);
-        mapped_instruction != nullptr) {
+        mapped_instruction.has_value()) {
       ++mapped_instruction_count;
-      const HloComputation* right_computation = mapped_instruction->parent();
+      const HloComputation* right_computation = (*mapped_instruction)->parent();
       const int count = ++matched_instruction_count[right_computation];
       if (count > max_count) {
         max_count = count;

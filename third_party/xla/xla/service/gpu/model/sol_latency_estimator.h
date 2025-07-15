@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_SOL_LATENCY_ESTIMATOR_H_
 
 #include <memory>
+#include <optional>
 
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
@@ -61,7 +62,7 @@ class SolLatencyEstimator : public LatencyEstimator {
   // If `collective_interpolator` is provided, it will be used to estimate the
   // time it takes to execute the collective. Otherwise, just NCCL launch
   // overhead will be returned for ICI collectives.
-  static absl::Duration ComputeCollectiveTime(
+  static absl::StatusOr<absl::Duration> ComputeCollectiveTime(
       const HloInstruction& instr, const se::DeviceDescription& gpu_device_info,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn,
       const SolGPUCostModel::Config& sol_flags,
@@ -72,7 +73,7 @@ class SolLatencyEstimator : public LatencyEstimator {
   // time it takes to execute the collective. Otherwise, just NCCL launch
   // overhead will be returned for ICI collectives.
   // Relies on `cost_analysis` to get the collective size.
-  static absl::Duration ComputeCollectiveTime(
+  static absl::StatusOr<absl::Duration> ComputeCollectiveTime(
       const HloInstruction& instr, const se::DeviceDescription& gpu_device_info,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn,
       const SolGPUCostModel::Config& sol_flags,

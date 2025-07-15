@@ -1584,6 +1584,25 @@ IfrtBackend::HandleLoadedExecutableMetadataRequest(
           tsl::StatusToProto(donated_input_indices.status());
     }
 
+    auto compiled_memory_stats = executable->GetCompiledMemoryStats();
+    if (compiled_memory_stats.ok()) {
+      *metadata_resp->mutable_compiled_memory_stats() =
+          compiled_memory_stats->ToProto();
+
+      // `serialized_buffer_assignment` is a legacy field that is undocumented,
+      // not semantically well-defined across HLO versions, and is used only by
+      // one Google-internal library as of Jul 2025. Do not send it across to
+      // the proxy-client.
+      metadata_resp->mutable_compiled_memory_stats()
+          ->clear_serialized_buffer_assignment();
+    } else {
+      *metadata_resp->mutable_compiled_memory_stats_error() =
+          tsl::StatusToProto(compiled_memory_stats.status());
+    }
+
+    metadata_resp->set_size_of_generated_code_in_bytes(
+        executable->SizeOfGeneratedCodeInBytes());
+
     return ifrt_resp;
   });
 }

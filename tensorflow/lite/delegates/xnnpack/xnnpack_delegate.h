@@ -48,9 +48,6 @@ extern "C" {
 // Enable XNNPack subgraph reshaping. This means that models with dynamic
 // tensors are supported and that inputs may be efficiently resized.
 #define TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING 0x00000080
-// If XNNPACK has been built with Slinky, enable Slinky usage.
-// (Ignored if XNNPACK is built without Slinky.)
-#define TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SLINKY 0x00000100
 // This flag indicates that XNNPACK should attempt to produce numerically
 // consistent results from a specific build of XNNPACK. This causes XNNPACK
 // to avoid using faster codepaths that are numerically inconsistent with any

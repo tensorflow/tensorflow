@@ -88,7 +88,17 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_helpers",
         ":pjrt_c_api_phase_compile_extension_hdrs",
+        ":pjrt_c_api_wrapper_impl",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/proto:pjrt_partial_program_proto_cc",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
     ],
     alwayslink = True,
 )
@@ -298,6 +308,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -321,6 +332,8 @@ cc_library(
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_layouts_extension_hdrs",
         ":pjrt_c_api_memory_descriptions_extension_hdrs",
+        ":pjrt_c_api_phase_compile_extension_hdrs",
+        ":pjrt_c_api_phase_compile_internal",
         ":pjrt_c_api_wrapper_impl",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
@@ -353,6 +366,7 @@ xla_cc_binary(
     linkopts = if_macos(
         [
             "-Wl,-exported_symbol,_GetPjrtApi",
+            "-Wl,-install_name,@rpath/pjrt_c_api_cpu_plugin.dylib",
             "-Wl,-undefined,error",
         ],
         [

@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/array.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/collective_device_list.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -1546,6 +1547,34 @@ ENTRY %test (v1: f32[], v2: f32[3], v3: f32[2,3]) -> ((f32[], f32[3]), f32[2,3])
 
 )"
 },
+
+{
+"OriginalValueRecoveryTable",
+R"(HloModule test, entry_computation_layout={(f32[192]{0})->f32[1,17,17,192]{3,2,1,0}}, origin_recovery_table={
+  {"broadcast.2340"} : {"reshape.2341"},
+  "
+    ENTRY %recovery_computation.3 (p.1: f32[1,192]) -> f32[1,1,1,192] {
+      %p.1 = f32[1,192]{1,0} parameter(0)
+      ROOT %reshape.2 = f32[1,1,1,192]{3,2,1,0} reshape(%p.1)
+    }
+  "
+  {"reshape.2341"} : {"placeholder_reshape.201"},
+  "
+    ENTRY %recovery_computation.3 (p.1: f32[192]) -> f32[1,192] {
+      %p.1 = f32[192]{0} parameter(0)
+      ROOT %reshape.2 = f32[1,192]{1,0} reshape(%p.1)
+    }
+  "
+}
+
+
+ENTRY %main (Arg_0: f32[192]) -> f32[1,17,17,192] {
+  %Arg_0 = f32[192]{0} parameter(0)
+  ROOT %broadcast.2342 = f32[1,17,17,192]{3,2,1,0} broadcast(f32[192]{0} %Arg_0), dimensions={3}, origin={{"broadcast.2342"}}
+}
+
+)"
+},
 });
   // clang-format on
 }
@@ -1984,7 +2013,7 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  ROOT crs = f32[8]{0} all-reduce(input), replica_groups={}, to_apply=add
+  ROOT crs = f32[8]{0} all-reduce(input), mode=cross_replica, replica_groups={}, to_apply=add
 }
 
 )"
@@ -2002,7 +2031,7 @@ add {
 
 ENTRY AllReduceWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
-  ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), replica_groups={{0,1},{2,3}}, to_apply=add
+  ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), mode=cross_replica, replica_groups={{0,1},{2,3}}, to_apply=add
 }
 
 )",
@@ -2021,7 +2050,7 @@ add {
 
 ENTRY AllReduceWithSubgroupsIotaList {
   input = f32[128,32]{0,1} parameter(0)
-  ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), replica_groups=[2,10]<=[20], to_apply=add
+  ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), mode=cross_replica, replica_groups=[2,10]<=[20], to_apply=add
 }
 
 )",
@@ -2040,14 +2069,14 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  ROOT crs = f32[8]{0} all-reduce(input), replica_groups={}, constrain_layout=true, to_apply=add
+  ROOT crs = f32[8]{0} all-reduce(input), mode=cross_replica, replica_groups={}, constrain_layout=true, to_apply=add
 }
 
 )"
 },
-// all-reduce with channel-id
+// all-reduce with mode=cross_replica_and_partition
 {
-"AllReduceAllReduce",
+"AllReduceCrossReplicaAndPartition",
 R"(HloModule CRS, entry_computation_layout={(f32[8]{0})->f32[8]{0}}
 
 add {
@@ -2058,8 +2087,27 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  crs.1 = f32[8]{0} all-reduce(input), channel_id=1, replica_groups={{0}}, to_apply=add
-  ROOT crs.0 = f32[8]{0} all-reduce(input), channel_id=1, replica_groups={{0}}, to_apply=add
+  crs.1 = f32[8]{0} all-reduce(input), mode=cross_replica_and_partition, channel_id=1, replica_groups={{0}}, to_apply=add
+  ROOT crs.0 = f32[8]{0} all-reduce(input), mode=cross_replica_and_partition, channel_id=1, replica_groups={{0}}, to_apply=add
+}
+
+)"
+},
+// all-reduce with mode=flattened_id
+{
+"AllReduceFlattenedIds",
+R"(HloModule CRS, entry_computation_layout={(f32[8]{0})->f32[8]{0}}
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CRS {
+  input = f32[8]{0} parameter(0)
+  crs.1 = f32[8]{0} all-reduce(input), mode=cross_replica_and_partition, channel_id=1, replica_groups={{0}}, to_apply=add
+  ROOT crs.0 = f32[8]{0} all-reduce(input), mode=flattened_id, channel_id=1, replica_groups={{0}}, use_global_device_ids=true, to_apply=add
 }
 
 )"
@@ -2077,7 +2125,7 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  crs = f32[8]{0} all-reduce-start(input), replica_groups={}, to_apply=add
+  crs = f32[8]{0} all-reduce-start(input), mode=cross_replica, replica_groups={}, to_apply=add
   ROOT done = f32[8]{0} all-reduce-done(crs)
 }
 
@@ -2096,7 +2144,25 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  ROOT ars = f32[4]{0} reduce-scatter(input), replica_groups={{0,1}}, dimensions={0}, to_apply=add
+  ROOT ars = f32[4]{0} reduce-scatter(input), mode=cross_replica, replica_groups={{0,1}}, dimensions={0}, to_apply=add
+}
+
+)"
+},
+// reduce-scatter with mode=flattened_id
+{
+"ReduceScatterFlattenedId",
+R"(HloModule RS, entry_computation_layout={(f32[8]{0})->f32[4]{0}}
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CRS {
+  input = f32[8]{0} parameter(0)
+  ROOT ars = f32[4]{0} reduce-scatter(input), mode=flattened_id, channel_id=1, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add
 }
 
 )"
@@ -5923,6 +5989,44 @@ TEST_F(HloParserTest, ParseBufferArray) {
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, AllReduceModeProto) {
+  // Test that the mode attribute is parsed and round trips through proto.
+  // Intentionally give a mode that would fail the verifier, to ensure the
+  // default mode is not used.
+  const std::string hlo_string = R"(
+HloModule AllReduceModeProto
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY AllReduceModeProto {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT all_reduce = f32[128,32]{0,1} all-reduce(input), mode=flattened_id,
+      replica_groups={{0,1},{2,3}}, to_apply=add
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const auto* ar = Cast<HloAllReduceInstruction>(root);
+  EXPECT_EQ(ar->collective_op_group_mode(),
+            CollectiveOpGroupMode::kFlattenedID);
+
+  // Round trip through proto.
+  HloModuleProto proto = module->ToProto();
+  TF_ASSERT_OK_AND_ASSIGN(auto new_module,
+                          HloModule::CreateFromProto(proto, module->config()));
+
+  const HloInstruction* new_root =
+      new_module->entry_computation()->root_instruction();
+  const auto* new_ar = Cast<HloAllReduceInstruction>(new_root);
+  EXPECT_EQ(new_ar->collective_op_group_mode(),
+            CollectiveOpGroupMode::kFlattenedID);
 }
 
 }  // namespace

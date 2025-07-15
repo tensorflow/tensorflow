@@ -65,6 +65,8 @@ def ExpandFloatOpsPass : Pass<"xla-cpu-expand-float-ops", "mlir::func::FuncOp"> 
 
   let dependentDialects = [
     "mlir::arith::ArithDialect",
+    "mlir::math::MathDialect",
+    "mlir::func::FuncDialect",
   ];
 
   let constructor = "CreateExpandFloatOpsPass()";
@@ -84,3 +86,42 @@ def AddReductionFastMathFlagsPass : Pass<"xla-cpu-add-reduction-fast-math-flags"
 
   let constructor = "CreateAddReductionFastMathFlagsPass()";
 }
+
+def AddLoopUnrollFlagsPass : Pass<"xla-cpu-add-loop-unroll-flags", "mlir::func::FuncOp"> {
+  let summary = "Add loop unroll flags to large nested loops.";
+
+  let description = [{
+     Disable loop unrolling for loops that have nested loops larger that the given threshold.
+  }];
+
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+    "mlir::LLVM::LLVMDialect",
+    "mlir::scf::SCFDialect",
+  ];
+
+  let options = [
+    Option<"max_nested_bits_", "max_nested_bits", "int32_t", "256",
+           "The maximum number of bits accessed in a nested loop before disabling unrolling">,
+  ];
+
+  let constructor = "CreateAddLoopUnrollFlagsPass()";
+}
+
+
+def PeelWorkgroupLoopPass : Pass<"xla-cpu-peel-workgroup-loop", "mlir::func::FuncOp"> {
+  let summary = "Split the loop into two, creating one with no constraints.";
+
+  let description = [{
+    Having a loop with no constraints makes vectorization much harder, by
+    creating two loops, the first having no constraints in the body helps with
+    autovectorization significantly.
+  }];
+
+  let dependentDialects = [
+    "xla::XlaDialect",
+    "mlir::scf::SCFDialect",
+  ];
+  let constructor = "CreatePeelWorkgroupLoopPass()";
+}
+

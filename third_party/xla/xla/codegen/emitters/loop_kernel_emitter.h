@@ -48,15 +48,15 @@ class LoopFusionKernelEmitter final : public MlirKernelEmitter {
                           const HloFusionSpec& fusion_spec,
                           const BufferAssignment* buffer_assignment,
                           KernelArguments::BufferAlignment buffer_alignment,
-                          WorkDimensions work_dimensions, int32_t unroll_factor,
+                          WorkDimensions work_dimensions,
                           absl::string_view entry_function_name,
                           BackendKind backend_kind);
 
   absl::StatusOr<MlirKernelDefinition> EmitKernelDefinition() override;
 
   static IndexingMap ComputeWorkItemIdToOutputIndexing(
-      const WorkDimensions& work_dimensions, int32_t unroll_factor,
-      const Shape& root_shape, mlir::MLIRContext* ctx);
+      const WorkDimensions& work_dimensions, const Shape& root_shape,
+      mlir::MLIRContext* ctx);
 
   // Get the shape that will be used for loop indexing for the given fusion
   // specification.
@@ -81,7 +81,6 @@ class LoopFusionKernelEmitter final : public MlirKernelEmitter {
   const BufferAssignment* buffer_assignment_;
   KernelArguments::BufferAlignment buffer_alignment_;
   WorkDimensions work_dimensions_;
-  int32_t unroll_factor_;
   std::string entry_function_name_;
   BackendKind backend_kind_;
 };

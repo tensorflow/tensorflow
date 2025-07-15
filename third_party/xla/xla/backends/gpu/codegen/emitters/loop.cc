@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/runtime/work_dimensions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -57,7 +58,7 @@ const Shape& GetIndexShape(const Shape& shape) {
 std::optional<IndexingMap> LoopFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, mlir::MLIRContext* ctx) const {
   return emitters::LoopFusionKernelEmitter::ComputeWorkItemIdToOutputIndexing(
-      launch_dimensions().AsWorkDimensions(), config_.unroll_factor,
+      GetWorkDimensions(),
       GetIndexShape(analysis_.fusion_root(root_index).shape()), ctx);
 }
 
@@ -91,14 +92,20 @@ LaunchDimensions LoopFusion::launch_dimensions() const {
                                    config_);
 }
 
+WorkDimensions LoopFusion::GetWorkDimensions() const {
+  WorkDimensions work_dimensions = launch_dimensions().AsWorkDimensions();
+  work_dimensions.work_tile_size.dimensions.push_back(config_.unroll_factor);
+  return work_dimensions;
+}
+
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> LoopFusion::CreateMLIRModule(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
   emitters::LoopFusionKernelEmitter emitter(
       context, fusion, analysis_.fusion_spec(), buffer_assignment,
-      GetDefaultBufferAlignment(), launch_dimensions().AsWorkDimensions(),
-      config_.unroll_factor, entry_function_name, BackendKind::kGpu);
+      GetDefaultBufferAlignment(), GetWorkDimensions(), entry_function_name,
+      BackendKind::kGpu);
 
   TF_ASSIGN_OR_RETURN(auto kernel_definition, emitter.EmitKernelDefinition());
   auto [spec, source] = std::move(kernel_definition).ReleaseStorage();

@@ -36,12 +36,13 @@ limitations under the License.
 namespace xla::gpu {
 
 CollectiveStreamId GetCollectiveStreamId(bool is_async,
+                                         CollectiveStreamId stream_id,
                                          AsyncStreamKind stream_kind) {
-  // TODO(ezhulenev): This implementation does not look correct as stream IDs
-  // are not really unique. Figure out if it's the case and fix either the code
-  // or the documentation.
-  int64_t stream_id = static_cast<int64_t>(stream_kind);
-  return CollectiveStreamId(is_async ? stream_id + 1 : 0);
+  if (!is_async) return CollectiveStreamId(0);
+  // TODO: Remove this fallback once AsyncStreamId is used everywhere.
+  if (stream_id.value() == 0)
+    return CollectiveStreamId(static_cast<int64_t>(stream_kind) + 1);
+  return stream_id;
 }
 
 GpuCliqueKey::GpuCliqueKey(

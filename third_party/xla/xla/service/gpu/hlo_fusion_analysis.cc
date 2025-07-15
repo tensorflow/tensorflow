@@ -106,6 +106,103 @@ std::optional<TransposeDescription> FindConsistentTransposeHero(
   return tiled_transpose_hero;
 }
 
+bool UseConcatenateFusion(absl::Span<const HloInstructionAdaptor> roots,
+                          absl::Span<const HloInstructionAdaptor> heroes) {
+  if (heroes.size() != 1) return false;
+  if (heroes.front().opcode() != HloOpcode::kConcatenate) return false;
+  // The concat emitter does not support multiple outputs yet. TODO(csigg): fix.
+  if (roots.front().shape().IsTuple()) return false;
+  // Limit the number of operands because the concat emitter produces code for
+  // each operand, hurting occupancy.
+  if (heroes.front().instruction().operand_count() > 4) return false;
+  // The loop emitter is faster when warp divergence and occupancy are both low.
+  // TODO(csigg): exclude this case.
+  return true;
+}
+
+HloFusionAnalysis::EmitterFusionKind GetEmitterFusionKind(
+    const FusionBackendConfig& fusion_backend_config,
+    absl::Span<const HloInstructionAdaptor> fusion_roots,
+    absl::Span<const HloInstructionAdaptor> fusion_heroes,
+    const std::optional<TransposeDescription>& tiled_transpose,
+    const se::DeviceDescription& device_info) {
+  if (fusion_backend_config.kind() == kCustomFusionKind) {
+    return HloFusionAnalysis::EmitterFusionKind::kCustomFusion;
+  }
+
+  if (fusion_backend_config.kind() == kTritonFusionKind ||
+      fusion_backend_config.kind() == kTritonGemmFusionKind ||
+      fusion_backend_config.kind() == kTritonNestedGemmFusionKind) {
+    return HloFusionAnalysis::EmitterFusionKind::kTriton;
+  }
+
+  if (fusion_backend_config.kind() == kDynamicMemcpyFusionKind) {
+    return HloFusionAnalysis::EmitterFusionKind::kDynamicMemcpy;
+  }
+
+  if (fusion_backend_config.kind() == kCuDnnFusionKind) {
+    return HloFusionAnalysis::EmitterFusionKind::kCuDnn;
+  }
+
+  std::optional<HloInstructionAdaptor> first_reduce_hero;
+  for (auto [root, hero] : llvm::zip(fusion_roots, fusion_heroes)) {
+    if (IsRealReductionHero(root.instruction(), hero.instruction(),
+                            device_info)) {
+      first_reduce_hero = hero;
+      break;
+    }
+  }
+  if (first_reduce_hero.has_value()) {
+    bool valid_shapes = true;
+    Shape hero_operand_shape = first_reduce_hero->GetOperand(0).shape();
+    for (auto [root, hero] : llvm::zip(fusion_roots, fusion_heroes)) {
+      if (root == *first_reduce_hero) {
+        continue;
+      }
+      if (!IsRealReductionHero(root.instruction(), hero.instruction(),
+                               device_info)) {
+        // Needs to have a compatible shape to the reduce operand (compatible
+        // meaning same number of elements).
+        if (ShapeUtil::ElementsIn(root.shape()) !=
+            ShapeUtil::ElementsIn(hero_operand_shape)) {
+          valid_shapes = false;
+          break;
+        }
+      } else if (!AreReductionsMultiOutputFusionCompatible(
+                     &hero.instruction(), &first_reduce_hero->instruction())) {
+        valid_shapes = false;
+        break;
+      }
+    }
+    if (valid_shapes) {
+      return HloFusionAnalysis::EmitterFusionKind::kReduction;
+    }
+  }
+
+  // We expect that the last dimension is swapped with a different dimension.
+  if (tiled_transpose.has_value()) {
+    return HloFusionAnalysis::EmitterFusionKind::kTranspose;
+  }
+
+  if (fusion_roots.size() > 1) {
+    if (IsInputFusibleNonStridedSlices(fusion_roots) &&
+        AllSliceInputsAreCompatible(fusion_roots)) {
+      return HloFusionAnalysis::EmitterFusionKind::kInputSlices;
+    }
+    return HloFusionAnalysis::EmitterFusionKind::kLoop;
+  }
+
+  if (fusion_roots[0].opcode() == HloOpcode::kScatter) {
+    return HloFusionAnalysis::EmitterFusionKind::kScatter;
+  }
+
+  if (UseConcatenateFusion(fusion_roots, fusion_heroes)) {
+    return HloFusionAnalysis::EmitterFusionKind::kConcatenate;
+  }
+
+  return HloFusionAnalysis::EmitterFusionKind::kLoop;
+}
+
 const Shape& GetShape(const HloInstructionAdaptor& adaptor) {
   return adaptor.shape();
 }
@@ -131,11 +228,13 @@ int SmallestBitWidth(const Container& args) {
 
 HloFusionAnalysis::HloFusionAnalysis(
     FusionBackendConfig fusion_backend_config, HloFusionSpec fusion_spec,
+    EmitterFusionKind emitter_fusion_kind,
     const se::DeviceDescription* device_info,
     std::optional<TransposeDescription> tiled_transpose,
     HloFusionAnalysis::InputOutputInfo input_output_info)
     : fusion_backend_config_(std::move(fusion_backend_config)),
       fusion_spec_(std::move(fusion_spec)),
+      emitter_fusion_kind_(emitter_fusion_kind),
       device_info_(device_info),
       tiled_transpose_(tiled_transpose),
       input_output_info_(std::move(input_output_info)) {}
@@ -159,12 +258,24 @@ HloFusionAnalysis HloFusionAnalysis::Create(
   std::optional<TransposeDescription> tiled_transpose_hero =
       FindConsistentTransposeHero(roots, heroes);
 
+  EmitterFusionKind emitter_fusion_kind = GetEmitterFusionKind(
+      backend_config, roots, heroes, tiled_transpose_hero, *device_info);
+
+  // The loop emitter always uses the roots as heroes. Even if we found some
+  // non-trivial heroes in the fusion, some logic in GetEmitterFusionKind might
+  // still decide to use the loop emitter and in that case we need to reset the
+  // heroes to the roots.
+  if (emitter_fusion_kind == EmitterFusionKind::kLoop) {
+    heroes = roots;
+    tiled_transpose_hero = std::nullopt;
+  }
+
   HloFusionSpec fusion_spec(std::move(fusion), std::move(roots),
                             std::move(heroes));
 
   return HloFusionAnalysis(std::move(backend_config), std::move(fusion_spec),
-                           device_info, tiled_transpose_hero,
-                           std::move(input_output_info));
+                           emitter_fusion_kind, device_info,
+                           tiled_transpose_hero, std::move(input_output_info));
 }
 
 // static
@@ -205,107 +316,8 @@ HloFusionAnalysis HloFusionAnalysis::Create(
       &device_info);
 }
 
-// Returns true if the fusion has consistent transpose heros.
-bool HloFusionAnalysis::HasConsistentTransposeHeros() const {
-  return tiled_transpose_.has_value();
-}
-
-static bool UseConcatenateFusion(
-    absl::Span<const HloInstructionAdaptor> roots,
-    absl::Span<const HloInstructionAdaptor> heroes) {
-  if (heroes.size() != 1) return false;
-  if (heroes.front().opcode() != HloOpcode::kConcatenate) return false;
-  // The concat emitter does not support multiple outputs yet. TODO(csigg): fix.
-  if (roots.front().shape().IsTuple()) return false;
-  // Limit the number of operands because the concat emitter produces code for
-  // each operand, hurting occupancy.
-  if (heroes.front().instruction().operand_count() > 4) return false;
-  // The loop emitter is faster when warp divergence and occupancy are both low.
-  // TODO(csigg): exclude this case.
-  return true;
-}
-
-HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
-    const {
-  if (fusion_backend_config_.kind() == kCustomFusionKind) {
-    return EmitterFusionKind::kCustomFusion;
-  }
-
-  if (fusion_backend_config_.kind() == kTritonFusionKind ||
-      fusion_backend_config_.kind() == kTritonGemmFusionKind ||
-      fusion_backend_config_.kind() == kTritonNestedGemmFusionKind) {
-    return EmitterFusionKind::kTriton;
-  }
-
-  if (fusion_backend_config_.kind() == kDynamicMemcpyFusionKind) {
-    return EmitterFusionKind::kDynamicMemcpy;
-  }
-
-  if (fusion_backend_config_.kind() == kCuDnnFusionKind) {
-    return EmitterFusionKind::kCuDnn;
-  }
-
-  std::optional<HloInstructionAdaptor> first_reduce_hero;
-  for (auto [root, hero] : llvm::zip(fusion_roots(), fusion_heroes())) {
-    if (IsRealReductionHero(root.instruction(), hero.instruction(),
-                            *device_info_)) {
-      first_reduce_hero = hero;
-      break;
-    }
-  }
-  if (first_reduce_hero.has_value()) {
-    bool valid_shapes = true;
-    Shape hero_operand_shape = first_reduce_hero->GetOperand(0).shape();
-    for (auto [root, hero] : llvm::zip(fusion_roots(), fusion_heroes())) {
-      if (root == *first_reduce_hero) {
-        continue;
-      }
-      if (!IsRealReductionHero(root.instruction(), hero.instruction(),
-                               *device_info_)) {
-        // Needs to have a compatible shape to the reduce operand (compatible
-        // meaning same number of elements).
-        if (ShapeUtil::ElementsIn(root.shape()) !=
-            ShapeUtil::ElementsIn(hero_operand_shape)) {
-          valid_shapes = false;
-          break;
-        }
-      } else if (!AreReductionsMultiOutputFusionCompatible(
-                     &hero.instruction(), &first_reduce_hero->instruction())) {
-        valid_shapes = false;
-        break;
-      }
-    }
-    if (valid_shapes) {
-      return EmitterFusionKind::kReduction;
-    }
-  }
-
-  // We expect that the last dimension is swapped with a different dimension.
-  if (HasConsistentTransposeHeros()) {
-    return EmitterFusionKind::kTranspose;
-  }
-
-  if (fusion_root_count() > 1) {
-    if (IsInputFusibleNonStridedSlices(fusion_roots()) &&
-        AllSliceInputsAreCompatible(fusion_roots())) {
-      return EmitterFusionKind::kInputSlices;
-    }
-    return EmitterFusionKind::kLoop;
-  }
-
-  if (fusion_root(0).opcode() == HloOpcode::kScatter) {
-    return EmitterFusionKind::kScatter;
-  }
-
-  if (UseConcatenateFusion(fusion_roots(), fusion_heroes())) {
-    return EmitterFusionKind::kConcatenate;
-  }
-
-  return EmitterFusionKind::kLoop;
-}
-
 const HloInstruction* HloFusionAnalysis::FindHeroReduction() const {
-  if (GetEmitterFusionKind() != EmitterFusionKind::kReduction) {
+  if (emitter_fusion_kind_ != EmitterFusionKind::kReduction) {
     return nullptr;
   }
   const auto& roots = fusion_roots();

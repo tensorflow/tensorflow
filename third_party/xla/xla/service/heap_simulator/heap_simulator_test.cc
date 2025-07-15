@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -120,8 +121,11 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
   schedule.set_sequence(entry_computation, {iter, data, tuple, while_op});
   TF_ASSERT_OK(schedule.Verify());
 
-  EXPECT_EQ(25,
-            HeapSimulator::MinimumMemoryForModule(schedule, size_fn).value());
+  std::unique_ptr<HloAliasAnalysis> alias_analysis =
+      HloAliasAnalysis::Run(module.get()).value();
+  EXPECT_EQ(25, HeapSimulator::MinimumMemoryForModule(schedule, *alias_analysis,
+                                                      &alias_info_, size_fn)
+                    .value());
 }
 
 TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
@@ -298,9 +302,12 @@ class HeapSimulatorTracker {
       std::unique_ptr<HloModule> module,
       const std::vector<HloInstruction*>& instruction_sequence,
       const std::vector<HloInstruction*>& must_alias_set = {},
-      const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr) {
+      const AliasInfo* alias_info = nullptr) {
     module_ = std::move(module);
-    Init(instruction_sequence, can_share_buffer);
+    if (alias_info == nullptr) {
+      alias_info = &alias_info_;
+    }
+    Init(instruction_sequence, alias_info);
   }
 
   // Constructor for testing a single entry computation.
@@ -309,11 +316,14 @@ class HeapSimulatorTracker {
       std::unique_ptr<HloComputation> entry_computation,
       const std::vector<HloInstruction*>& instruction_sequence,
       const std::vector<HloInstruction*>& must_alias_set = {},
-      const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr) {
+      const AliasInfo* alias_info = nullptr) {
     HloModuleConfig config;
     module_ = std::make_unique<HloModule>(name, config);
     module_->AddEntryComputation(std::move(entry_computation));
-    Init(instruction_sequence, can_share_buffer);
+    if (alias_info == nullptr) {
+      alias_info = &alias_info_;
+    }
+    Init(instruction_sequence, alias_info);
   }
 
   explicit HeapSimulatorTracker(const std::string& name) {
@@ -400,7 +410,7 @@ class HeapSimulatorTracker {
 
  private:
   void Init(const std::vector<HloInstruction*>& instruction_sequence,
-            const HloDataflowAnalysis::CanShareBuffer& can_share_buffer) {
+            const AliasInfo* alias_info) {
     // Since we're only tracking the sequence of Alloc/Free calls, the actual
     // size of the buffers doesn't matter, so we always return 0.  We rely on
     // the secondary sorting criteria of DecreasingSizeRunsHeap to sort calls
@@ -408,8 +418,7 @@ class HeapSimulatorTracker {
     auto zero_size = [](const BufferValue& buffer) { return 0; };
     auto algorithm = std::make_unique<HeapCallRecorder>(&actual_calls_);
 
-    alias_analysis_ =
-        HloAliasAnalysis::Run(module_.get(), can_share_buffer).value();
+    alias_analysis_ = HloAliasAnalysis::Run(module_.get(), alias_info).value();
 
     HeapSimulator::Options options;
 
@@ -520,17 +529,20 @@ TEST_F(HeapSimulatorTest, MultiplyAdd) {
   tracker.ExpectSharedBuffers(add, {}, mul, {});
 }
 
-TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnce) {
-  // Test that only one output of a fusion node will be shared with its operand.
-  auto can_share_buffer =
-      [](const HloInstruction* instr, const HloInstruction* operand,
-         const ShapeIndex& user_index) -> std::optional<bool> {
+class CanShareWithSameShapeAliasInfo : public AliasInfo {
+ public:
+  std::optional<bool> MayAlias(const HloInstruction* operand, const ShapeIndex&,
+                               const HloInstruction* instr,
+                               const ShapeIndex& user_index) const override {
     return instr->opcode() == HloOpcode::kFusion &&
            operand->shape().IsArray() &&
            ShapeUtil::Equal(operand->shape(),
                             ShapeUtil::GetSubshape(instr->shape(), user_index));
-  };
+  }
+};
 
+TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnce) {
+  // Test that only one output of a fusion node will be shared with its operand.
   HloModuleConfig config;
   auto module = std::make_unique<HloModule>(TestName(), config);
 
@@ -570,10 +582,11 @@ TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnce) {
                                                       negate0, negate1));
 
   module->AddEntryComputation(builder.Build());
+  CanShareWithSameShapeAliasInfo alias_info;
   HeapSimulatorTracker tracker(
       std::move(module),
       {paramA, negate, fusion, element0, element1, negate0, negate1}, {},
-      can_share_buffer);
+      &alias_info);
   tracker.ExpectCallSequence({
       {kAlloc, tracker.BufferAt(paramA, {})},
       {kAlloc, tracker.BufferAt(negate, {})},
@@ -593,18 +606,18 @@ TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnce) {
   });
 }
 
+class FusionCanAlwaysShareAliasInfo : public AliasInfo {
+ public:
+  std::optional<bool> MayAlias(const HloInstruction* operand, const ShapeIndex&,
+                               const HloInstruction* instr,
+                               const ShapeIndex& user_index) const override {
+    return instr->opcode() == HloOpcode::kFusion;
+  }
+};
+
 TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnceOutputShortLived) {
   // Test that only one output of a fusion node will be shared with its operand.
   // This variant of the test has a fusion node that dies immediately.
-  auto can_share_buffer =
-      [](const HloInstruction* instr, const HloInstruction* operand,
-         const ShapeIndex& user_index) -> std::optional<bool> {
-    if (instr->opcode() == HloOpcode::kFusion) {
-      return true;
-    }
-    return false;
-  };
-
   HloModuleConfig config;
   auto module = std::make_unique<HloModule>(TestName(), config);
 
@@ -636,9 +649,10 @@ TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnceOutputShortLived) {
       HloInstruction::CreateUnary(f32vec4_, HloOpcode::kNegate, element1));
 
   module->AddEntryComputation(builder.Build());
+  FusionCanAlwaysShareAliasInfo alias_info;
   HeapSimulatorTracker tracker(std::move(module),
                                {paramA, negate, fusion, element1, negate1}, {},
-                               can_share_buffer);
+                               &alias_info);
   tracker.ExpectCallSequence({
       {kAlloc, tracker.BufferAt(paramA, {})},
       {kAlloc, tracker.BufferAt(negate, {})},
@@ -1031,6 +1045,8 @@ class HeapAlgorithmTestBase : public ::testing::Test {
   const HloValue* buffer_i_;
 
  private:
+  friend class GlobalDecreasingSizeBestFitHeapBenchmark;
+
   // Create a dummy HloValue to pass to the heap algorithm.
   const HloValue* DummyBufferValue() {
     const HloValue::Id id = buffers_.size();
@@ -3809,6 +3825,37 @@ TEST_F(BreadthFirstMidpointIteratorTest, General1) {
 TEST_F(BreadthFirstMidpointIteratorTest, General2) {
   RunTest(0, 10, {5, 2, 8, 1, 4, 7, 10, 0, 3, 6, 9});
 }
+
+class GlobalDecreasingSizeBestFitHeapBenchmark : public HeapAlgorithmTestBase {
+ public:
+  void TestBody() override {}
+
+  void RunBenchmark(::testing::benchmark::State& state) {
+    const int n = state.range(0);
+    std::vector<const HloValue*> buffers;
+    for (int i = 0; i < n; i++) {
+      buffers.push_back(DummyBufferValue());
+    }
+    for (auto s : state) {
+      GlobalDecreasingSizeBestFitHeap<HloValue> heap(/*alignment=*/1);
+      for (int i = 0; i < n; i++) {
+        heap.Alloc(buffers[i], i * 20);
+      }
+      for (int i = 0; i < n; i++) {
+        heap.Free(buffers[i], i * 20);
+      }
+      TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> result,
+                              heap.Finish());
+    }
+  }
+};
+
+static void BM_GlobalDecreasingSizeBestFitHeap(
+    ::testing::benchmark::State& state) {
+  GlobalDecreasingSizeBestFitHeapBenchmark bm;
+  bm.RunBenchmark(state);
+}
+BENCHMARK(BM_GlobalDecreasingSizeBestFitHeap)->Arg(1)->Arg(4)->Arg(16)->Arg(64);
 
 }  // namespace
 }  // namespace xla

@@ -81,14 +81,25 @@ namespace xla::cpu {
 
 static absl::Status RunPassPipeline(
     mlir::ModuleOp module, mlir::PassManager& pm,
-    mlir::interpreter::MlirCompilationTrace* trace) {
+    mlir::interpreter::MlirCompilationTrace* trace,
+    int32_t verification_level) {
   if (VLOG_IS_ON(5)) {
     module.getContext()->disableMultithreading();
     pm.enableIRPrinting();
   }
 
+#if NDEBUG
+  pm.enableVerifier(verification_level > 0);
+#endif
+
   tsl::StatusScopedDiagnosticHandler diagnostic_handler(module.getContext());
   return diagnostic_handler.consumeStatus(pm.run(module));
+}
+
+static std::unique_ptr<::mlir::Pass> CreateConvertMathToLLVMPass() {
+  mlir::ConvertMathToLLVMPassOptions options;
+  options.approximateLog1p = false;
+  return mlir::createConvertMathToLLVMPass(options);
 }
 
 static void AddXlaOpsOptimizationPasses(mlir::OpPassManager& pm) {
@@ -98,9 +109,11 @@ static void AddXlaOpsOptimizationPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createCSEPass());
   pm.addPass(emitters::CreateEraseDeadFunctionsPass());
   pm.addPass(mlir::createCSEPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreatePeelWorkgroupLoopPass());
 }
 
-static void AddLoopTransformationPasses(mlir::OpPassManager& pm) {
+static void AddLoopTransformationPasses(mlir::OpPassManager& pm,
+                                        int32_t vector_width) {
   pm.addNestedPass<mlir::func::FuncOp>(CreateLowerXlaSharedPass());
   pm.addNestedPass<mlir::func::FuncOp>(emitters::CreateLowerXlaToScfPass());
   pm.addPass(mlir::createInlinerPass({}, [&](mlir::OpPassManager& pm) {
@@ -127,9 +140,12 @@ static void AddLoopTransformationPasses(mlir::OpPassManager& pm) {
       emitters::CreateVectorizeLoadsAndStoresPass(/*target_type=*/"cpu"));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      cpu::CreateAddLoopUnrollFlagsPass(vector_width));
 }
 
-static void AddLoweringPasses(mlir::OpPassManager& pm, int32_t vector_width) {
+static void AddLoweringPasses(mlir::OpPassManager& pm, int32_t vector_width,
+                              bool fast_min_max) {
   pm.addNestedPass<mlir::func::FuncOp>(
       emitters::CreateConvertPureCallOpsPass());
   pm.addPass(cpu::createLowerToLLVMPass(
@@ -142,7 +158,8 @@ static void AddLoweringPasses(mlir::OpPassManager& pm, int32_t vector_width) {
   // simplify-affine has maximally folded expressions to work with.
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addNestedPass<mlir::func::FuncOp>(emitters::CreateSimplifyArithPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      emitters::CreateSimplifyArithPass(fast_min_max));
   pm.addPass(emitters::CreateSimplifyAffinePass());
   pm.addPass(mlir::createCanonicalizerPass());
 
@@ -160,8 +177,8 @@ static void AddLoweringPasses(mlir::OpPassManager& pm, int32_t vector_width) {
   pm.addPass(mlir::createLowerAffinePass());
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createSCFToControlFlowPass());
-  pm.addNestedPass<mlir::func::FuncOp>(emitters::CreateLowerXlaMathLibPass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertMathToLLVMPass());
+  pm.addPass(emitters::CreateLowerXlaMathLibPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreateConvertMathToLLVMPass());
   pm.addPass(emitters::CreateLowerToLLVMPass(/*target_type=*/"cpu"));
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addPass(mlir::createInlinerPass());
@@ -189,10 +206,10 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
   }
 
   AddXlaOpsOptimizationPasses(optimization_pass_manager);
-  AddLoopTransformationPasses(optimization_pass_manager);
+  AddLoopTransformationPasses(optimization_pass_manager, options_.vector_width);
 
-  TF_RETURN_IF_ERROR(
-      RunPassPipeline(mlir_module, optimization_pass_manager, nullptr));
+  TF_RETURN_IF_ERROR(RunPassPipeline(mlir_module, optimization_pass_manager,
+                                     nullptr, options_.verification_level));
 
   if (hooks_.post_optimization) {
     hooks_.post_optimization(mlir_module);
@@ -200,10 +217,11 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
 
   mlir::PassManager lowering_pass_manager(mlir_module.getContext());
 
-  AddLoweringPasses(lowering_pass_manager, options_.vector_width);
+  AddLoweringPasses(lowering_pass_manager, options_.vector_width,
+                    options_.fast_min_max);
 
-  TF_RETURN_IF_ERROR(
-      RunPassPipeline(mlir_module, lowering_pass_manager, nullptr));
+  TF_RETURN_IF_ERROR(RunPassPipeline(mlir_module, lowering_pass_manager,
+                                     nullptr, options_.verification_level));
 
   if (hooks_.post_lowering) {
     hooks_.post_lowering(mlir_module);

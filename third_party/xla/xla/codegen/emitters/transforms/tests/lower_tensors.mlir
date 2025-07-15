@@ -936,6 +936,36 @@ func.func @transfer_read_alignment_non_zero_index(%arg0: tensor<16xi64> {llvm.al
 
 // -----
 
+func.func @transfer_write_alignment(%arg0: tensor<8xi64> {llvm.align = 32 : index}) -> tensor<8xi64> {
+  %c0 = arith.constant 0 : index
+  %c0_i64 = arith.constant dense<0> : vector<8xi64>
+  %0 = vector.transfer_write %c0_i64, %arg0[%c0] {in_bounds = [true]} : vector<8xi64>, tensor<8xi64>
+  return %0 : tensor<8xi64>
+}
+// CHECK-LABEL: @transfer_write_alignment(
+// CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
+// CHECK-DAG:       %[[C0_I64:.*]] = arith.constant dense<0> : vector<8xi64>
+// CHECK:           %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 0] :
+// CHECK-SAME:        !llvm.array<8 x i64>
+// CHECK:           llvm.store %[[C0_I64]], %[[GEP]] {alignment = 32 : i64} : vector<8xi64>, !llvm.ptr
+
+// -----
+
+func.func @transfer_write_alignment_non_zero_index(%arg0: tensor<8xi64> {llvm.align = 32 : index}) -> tensor<8xi64> {
+  %c8 = arith.constant 8 : index
+  %c0_i64 = arith.constant dense<0> : vector<8xi64>
+  %0 = vector.transfer_write %c0_i64, %arg0[%c8] {in_bounds = [true]} : vector<8xi64>, tensor<8xi64>
+  return %0 : tensor<8xi64>
+}
+// CHECK-LABEL: @transfer_write_alignment_non_zero_index(
+// CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
+// CHECK-DAG:       %[[C0_I64:.*]] = arith.constant dense<0> : vector<8xi64>
+// CHECK:           %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 8] :
+// CHECK-SAME:        !llvm.array<8 x i64>
+// CHECK:           llvm.store %[[C0_I64]], %[[GEP]] : vector<8xi64>, !llvm.ptr
+
+// -----
+
 func.func @int4_constant(%arg0: tensor<3xi4>, %arg1: index) -> i4 {
   %cst = arith.constant dense<[1, 2, 3]> : tensor<3xi4>
   %extracted = tensor.extract %arg0[%arg1] : tensor<3xi4>

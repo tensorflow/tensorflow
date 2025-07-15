@@ -45,6 +45,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla:debug_options_flags",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:status_macros",
         "@local_xla//xla:util",
@@ -117,6 +118,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@local_xla//xla:cpu_function_runtime",
+        "@local_xla//xla:debug_options_flags",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:status_macros",
         "@local_xla//xla:util",
@@ -386,6 +388,7 @@ cc_library(
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
         "@local_xla//xla:util",
+        "@local_xla//xla/backends/cpu:alignment",
         "@local_xla//xla/service/llvm_ir:llvm_type_conversion_util",
     ],
 )

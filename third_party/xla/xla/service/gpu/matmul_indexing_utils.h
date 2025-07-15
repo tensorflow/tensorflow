@@ -95,6 +95,11 @@ class DotOperandDims {
   absl::Status Collapse(Category category, bool remove_if_empty);
   // Removes the dimensions in the range [start, end).
   absl::Status EraseDimensions(int64_t start, int64_t end);
+  // Inserts a dimension at the given index. The dimension is assigned the given
+  // category. Within the category, the dimension is inserted before the first
+  // dimension with index >= dim_idx (to keep sorted order).
+  absl::Status InsertDimension(Category category, int64_t dim_idx,
+                               int64_t dim_size);
   // Returns the shape of the operand.
   const Shape& shape() const { return shape_; }
   // Converts the shape dimension index to the category dimension index.

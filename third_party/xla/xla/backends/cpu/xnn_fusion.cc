@@ -138,6 +138,15 @@ absl::StatusOr<bool> IsDotSupportedByXnn(
     return false;
   }
 
+  if (dot_canonical_dims.m == 1 && dot_canonical_dims.n == 1 &&
+      dot_shape.batch_size > 1) {
+    // TODO(b/430079105): XNNPACK does not handle batch dimensions that are not
+    // matrix dimensions. We could handle this case by fully implementing dot
+    // (b/430079105), but we also could just insert dummy dimensions of size 1
+    // for the matrix dimensions, so the batch dimensions get handled correctly.
+    return false;
+  }
+
   // XNNPACK does not support transposing LHS or col-major layouts.
   return dot_canonical_dims.lhs_canonical &&
          !dot_canonical_dims.lhs_column_major &&

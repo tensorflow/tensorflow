@@ -181,14 +181,15 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHA(
 
   auto computations = custom_call->called_computations();
   const HloComputation *score_mod_fwd_comp = nullptr;
-  stream_executor::gpu::ScoreModFunc *score_mod = nullptr;
+  std::optional<stream_executor::gpu::ScoreModFunc> score_mod;
   TF_RET_CHECK(computations.size() <= 1);
   if (computations.size() == 1) {
     score_mod_fwd_comp = computations[0];
-    auto smf = stream_executor::gpu::ScoreModFunc(score_mod_fwd_comp, nullptr);
-    score_mod = &smf;
+    score_mod.emplace(
+        stream_executor::gpu::ScoreModFunc(score_mod_fwd_comp, nullptr));
     input_index += score_mod_fwd_comp->num_parameters() - 1;
   }
+  auto score_mod_ptr = score_mod.has_value() ? &score_mod.value() : nullptr;
   TF_RET_CHECK(input_index == custom_call->operand_count());
   TF_ASSIGN_OR_RETURN(
       se::gpu::CudnnGraph graph,
@@ -196,7 +197,7 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHA(
           dnn_support, lhs_bmm1, rhs_bmm1, rhs_bmm2, output, bias, activation,
           page_table_k, page_table_v, static_cast<float>(config.fmha_scale()),
           dropout_rate > 0.0, dropout_rate, dnn_mask_type,
-          sliding_window_length, max_seg_per_batch, score_mod));
+          sliding_window_length, max_seg_per_batch, score_mod_ptr));
   return graph;
 }
 

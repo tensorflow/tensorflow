@@ -177,7 +177,7 @@ class PjRtFutureBase : public PjRtFutureMoveControl<is_move_only> {
   // call to `Await()` has already returned, or any callback passed to
   // `OnReady` has already been triggered. Otherwise IsReady() may block for
   // the duration of a network message on some backends.
-  bool IsReady() {
+  bool IsReady() const {
     CHECK(IsValid());
     return promise_.IsAvailable();
   }
@@ -186,7 +186,7 @@ class PjRtFutureBase : public PjRtFutureMoveControl<is_move_only> {
   // callback passed to `OnReady` has already been triggered. Otherwise,
   // `IsKnownReady()` may return false in some cases in which the future was
   // ready before `IsKnownReady()` was called.
-  bool IsKnownReady() {
+  bool IsKnownReady() const {
     CHECK(IsValid());
     return promise_.IsAvailable();
   }
