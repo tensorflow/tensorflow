@@ -87,20 +87,27 @@ try:
         print(f"  Input shape: {input_data.shape}")
         print(f"  Input data (first 5): {input_data.flatten()[:5]}")
         
+        # Add debug information about tensor shapes
+        print(f"  DEBUG: Model expects input shape: {input_details[0]['shape']}")
+        print(f"  DEBUG: Model expects output shape: {output_details[0]['shape']}")
+        print(f"  DEBUG: Input tensor index: {input_details[0]['index']}")
+        print(f"  DEBUG: Output tensor index: {output_details[0]['index']}")
+        
         interpreter.set_tensor(input_details[0]['index'], input_data)
+        
+        print(f"  DEBUG: About to invoke interpreter...")
         interpreter.invoke()
+        print(f"  DEBUG: Interpreter invoked successfully")
+        
         output_data = interpreter.get_tensor(output_details[0]['index'])
         
         print(f"  Output shape: {output_data.shape}")
         print(f"  Output data: {output_data.flatten()}")
         
 except Exception as e:
-    print(f"❌ Error during inference: {e}")
-    print("This might be due to:")
-    print("  1. Tensor shape mismatch between model and FPGA")
-    print("  2. FPGA hardware not properly initialized")
-    print("  3. Memory access issues in the driver")
+    print(f"Error during inference: {e}")
     sys.exit(1)
 
-print("\n✅ Inference completed successfully using delegate!")
-print("🎉 Your FPGA delegate is working correctly!")
+print("\n? Inference completed successfully using delegate!")
+print("?? Your FPGA delegate is working correctly!")
+# End of script
