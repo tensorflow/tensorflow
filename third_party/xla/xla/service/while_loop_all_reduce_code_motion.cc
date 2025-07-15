@@ -261,7 +261,7 @@ std::optional<MovableAllReduceContext> MatchDynamicUpdateSliceContext(
       VLOG(5) << "DUS update must contain the all-reduce result.";
       return std::nullopt;
     }
-    int size = dus->shape().dimensions_size();
+    int size = dus->shape().dimensions().size();
     context.update_slice_offsets.resize(size, 0);
     for (int i = 0; i < size; ++i) {
       const HloInstruction* index_op =
