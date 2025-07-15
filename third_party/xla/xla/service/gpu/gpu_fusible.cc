@@ -249,17 +249,23 @@ FusionDecision FusionHeroesAreCompatible(
              // same shape and permute the same dimensions.
              !tiled_transpose_hero1->IsEquivalent(*tiled_transpose_hero2)) {
     return FusionDecision::Forbid("tiled transposes with different shapes");
-  } else if ((hero1_is_unnested_transpose && hero2_is_nested_transpose) ||
-             (hero1_is_nested_transpose && hero2_is_unnested_transpose)) {
+  } else if (((hero1_is_unnested_transpose || hero1_is_unnested_reduce) &&
+              hero2_is_nested_transpose) ||
+             (hero1_is_nested_transpose &&
+              (hero2_is_unnested_transpose || hero2_is_unnested_reduce))) {
     // A elemental (aka nested) transpose has a different read pattern than an
-    // unnested transpose (tiled transpose using shared memory). Do not fuse
-    // them, because they won't be able to share the reads. What is worse,
-    // increased register pressure can impact performance.
+    // unnested transpose or reduction, because the emitters for tiled
+    // transposes and parallel reductions ensure uniform read patterns.
+    // A multi-output fusion with roots that have different read patterns is
+    // generally not profitable. Input data will be read multiple times by
+    // different threads, which defeats the purpose of multi-output fusion.
+    // What is worse, increased register pressure can impact performance.
     return FusionDecision::Forbid(
-        "multi-output fusion of a nested and an unnested transpose");
+        "multi-output fusion of a nested transpose with an unnested hero op");
   } else if ((hero1_is_unnested_transpose && hero2_is_unnested_reduce) ||
              (hero1_is_unnested_reduce && hero2_is_unnested_transpose)) {
-    return FusionDecision::Forbid("MOF-fusion of a transpose and a reduction");
+    return FusionDecision::Forbid(
+        "multi-output fusion of a transpose and a reduction");
   }
   // If we are dealing with unnested transpose, make sure that we can still
   // treat them as unnested transpose after the sibling fusion.
