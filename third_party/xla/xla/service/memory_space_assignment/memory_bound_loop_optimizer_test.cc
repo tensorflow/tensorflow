@@ -298,10 +298,12 @@ class MemoryBoundLoopOptimizerTest : public HloHardwareIndependentTestBase {
             "HloCostAnalysis",
             CreateHloCostAnalysisCalculator(*hlo_cost_analysis_wrapper_),
             /*enable_cache=*/false));
-    TF_ASSIGN_OR_RETURN(cost_analysis_,
-                        CostAnalysis::Create(*op_cost_manager_,
-                                             cost_analysis_options_, *module));
-    TF_ASSIGN_OR_RETURN(alias_analysis_, HloAliasAnalysis::Run(module));
+    TF_ASSIGN_OR_RETURN(
+        cost_analysis_,
+        CostAnalysis::Create(*op_cost_manager_, cost_analysis_options_,
+                             &alias_info_, *module));
+    TF_ASSIGN_OR_RETURN(alias_analysis_,
+                        HloAliasAnalysis::Run(module, &alias_info_));
     TF_ASSIGN_OR_RETURN(live_range_,
                         HloLiveRange::Run(module->schedule(), *alias_analysis_,
                                           module->entry_computation()));
@@ -598,7 +600,7 @@ ENTRY Entry {
     };
 
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                        HloAliasAnalysis::Run(module));
+                        HloAliasAnalysis::Run(module, &alias_info_));
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> live_range,
                         HloLiveRange::Run(module->schedule(), *alias_analysis,
                                           module->entry_computation()));
@@ -689,6 +691,8 @@ ENTRY Entry {
     return absl::OkStatus();
   }
 
+  AliasInfo alias_info_;
+
  private:
   Options options_;
   CostAnalysisOptions cost_analysis_options_;
@@ -697,7 +701,6 @@ ENTRY Entry {
   std::unique_ptr<OpCostManager> op_cost_manager_;
   std::unique_ptr<CostAnalysis> cost_analysis_;
   std::unique_ptr<HloAliasAnalysis> alias_analysis_;
-  AliasInfo alias_info_;
   std::unique_ptr<HloLiveRange> live_range_;
   std::unique_ptr<MemoryBoundLoopOptimizer> optimizer_;
 };
@@ -1580,7 +1583,7 @@ ENTRY entry {
   // We expect operand 0 of prev_op4, op4, and next_op4 to all be prefetches of
   // same distance from the user.
   TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
-                          HloAliasAnalysis::Run(module.get()));
+                          HloAliasAnalysis::Run(module.get(), &alias_info_));
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_live_range,
                           HloLiveRange::Run(module->schedule(), *alias_analysis,
                                             module->entry_computation()));
