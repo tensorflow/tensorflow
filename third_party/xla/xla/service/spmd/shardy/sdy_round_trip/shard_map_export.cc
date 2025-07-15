@@ -115,6 +115,9 @@ class SdyRoundTripShardMapExportPass
         // any of its results has a dimension of size 0 (i.e. 0 num-elements),
         // it will be replaced with a constant of the same shape.
         localToGlobalShape.setCallTargetName(kLocalToGlobalShapeCallTargetName);
+        // We mark `xla.sdy.LocalToGlobalShape` as side-effecting to avoid
+        // CSE removing it if it has no users.
+        localToGlobalShape.setHasSideEffect(true);
         setFrontendAttribute(localToGlobalShape, kOutShardings,
                              manualComputation.getOutShardings());
         setFrontendAttribute(localToGlobalShape, kManualAxes,
