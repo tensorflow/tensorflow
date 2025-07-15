@@ -199,7 +199,7 @@ class RetryingRandomAccessFile : public RandomAccessFile {
                     char* scratch) const override {
     return RetryingUtils::CallWithRetries(
         [this, offset, n, result, scratch]() {
-          return base_file_->Read(offset, n, result, scratch);
+          return base_file_->Read(offset, *result, absl::MakeSpan(scratch, n));
         },
         retry_config_);
   }
