@@ -351,6 +351,7 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:util",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/analysis:while_loop_analysis",
         "//xla/hlo/ir:hlo",
@@ -376,6 +377,7 @@ xla_cc_test(
     deps = [
         ":cost_analysis",
         "//xla:shape_util",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:hlo_cost_analysis",
@@ -419,6 +421,7 @@ xla_cc_test(
         ":cost_analysis",
         ":simulator",
         "//xla:shape_util",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -469,6 +472,7 @@ cc_library(
     deps = [
         ":cost_analysis",
         "//xla:shape_util",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",

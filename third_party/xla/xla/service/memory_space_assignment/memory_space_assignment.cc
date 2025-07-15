@@ -412,7 +412,7 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   ScheduleAsynchronousCopies();
   TF_RETURN_IF_ERROR(SimplifyGraph());
   TF_RETURN_IF_ERROR(FixSchedule());
-  TF_ASSIGN_OR_RETURN(auto alias, HloAliasAnalysis::Run(module_));
+  TF_ASSIGN_OR_RETURN(auto alias, HloAliasAnalysis::Run(module_, alias_info_));
   TF_RETURN_IF_ERROR(ExportAndColorBuffers(*alias));
   std::vector<int64_t> alt_mem_bytes_occupied;
   // alt_mem_bytes_occupied is used for logging in the RuntimeSimulator below.
@@ -423,7 +423,7 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
       runtime_simulator.has_value() ? &alt_mem_bytes_occupied : nullptr));
   if (VLOG_IS_ON(2) && runtime_simulator.has_value()) {
     float estimated_time = runtime_simulator->SimulateElapsedTime(
-        module_, allocations_, &alt_mem_bytes_occupied);
+        module_, *alias, allocations_, &alt_mem_bytes_occupied);
     LOG(INFO) << "Estimated elapsed time with async copies (sec): "
               << estimated_time;
   }

@@ -435,8 +435,8 @@ TEST_F(MemorySpaceAssignmentTest, PinnedDefaultMemorySpace) {
 }
 
 // A simple case where the synchronous copy is actually redundant, because its
-// operand ends up getting prefetched and the its output is only used once, so
-// we remove the sync copy.
+// operand ends up getting prefetched and its output is only used once, so we
+// remove the sync copy.
 TEST_F(MemorySpaceAssignmentTest,
        SyncCopyReplacementRedundantCopyAfterPrefetch) {
   absl::string_view hlo_string = R"(
@@ -519,7 +519,7 @@ ENTRY entry {
   EXPECT_GT(negate9_time, copy_done_time);
 }
 
-// This is a case where we p0_copy uses and and p0 uses after copy(p0) are not
+// This is a case where we p0_copy uses and p0 uses after copy(p0) are not
 // allowed to use the same async CopyAllocation. While p0 can be prefetched at
 // p0_copy, but we may clobber the data if we use the same async copy used for
 // prefetching to replace the sync copy p0_copy. The pattern here is that the
@@ -701,7 +701,7 @@ TEST_F(MemorySpaceAssignmentTest,
   // itself which pushes earliest_prefetch_time to right before the
   // dynamic-slice. We test two cases with min_prefetch_interval = 2 and 1: Case
   // 1 - min_prefetch_interval = 2:
-  //   The dynamic slice is NOT replaced by an async. This is beacause we
+  //   The dynamic slice is NOT replaced by an async. This is because we
   //   require at least 2 instructions to be overlapped (including the
   //   dynamic-slice).
   AssignMemorySpace(module.get(), options, /*max_prefetch_interval=*/10,
@@ -1664,7 +1664,7 @@ ENTRY entry {
     VLOG(2) << i << " " << sequence.instructions()[i]->ToString();
   }
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                          HloAliasAnalysis::Run(module.get()));
+                          HloAliasAnalysis::Run(module.get(), &alias_info_));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> live_range,
                           HloLiveRange::Run(module->schedule(), *alias_analysis,
                                             module->entry_computation()));
@@ -1720,7 +1720,7 @@ ENTRY entry {
     VLOG(2) << i << " " << sequence.instructions()[i]->ToString();
   }
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                          HloAliasAnalysis::Run(module.get()));
+                          HloAliasAnalysis::Run(module.get(), &alias_info_));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> live_range,
                           HloLiveRange::Run(module->schedule(), *alias_analysis,
                                             module->entry_computation()));
@@ -1801,7 +1801,7 @@ ENTRY entry {
     VLOG(2) << i << " " << sequence.instructions()[i]->ToString();
   }
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                          HloAliasAnalysis::Run(module.get()));
+                          HloAliasAnalysis::Run(module.get(), &alias_info_));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> live_range,
                           HloLiveRange::Run(module->schedule(), *alias_analysis,
                                             module->entry_computation()));
@@ -6510,7 +6510,7 @@ TEST_F(MemorySpaceAssignmentTest, EvictionsShouldntBeDelayed) {
   AssignMemorySpaceUsingCostAnalysis(module.get());
 
   TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
-                          HloAliasAnalysis::Run(module.get()));
+                          HloAliasAnalysis::Run(module.get(), &alias_info_));
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_live_range,
                           HloLiveRange::Run(module->schedule(), *alias_analysis,
                                             module->entry_computation()));
@@ -12848,10 +12848,10 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
     return nullptr;
   }
 
-  static absl::StatusOr<std::vector<int>> GetSliceStartIndicies(
+  static absl::StatusOr<std::vector<int>> GetSliceStartIndices(
       const std::vector<HloInstruction*>& schedule,
       const HloInstruction* concat_bitcast) {
-    std::vector<int> indicies;
+    std::vector<int> indices;
 
     if (!IsConcatBitcast(concat_bitcast)) {
       return InvalidArgumentStrCat(concat_bitcast->name(),
@@ -12874,10 +12874,10 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
           int schedule_index,
           FindScheduleIndexOfInstruction(schedule, async_slice_start->name(),
                                          InstructionClass::kRelatedSliceStart));
-      indicies.push_back(schedule_index);
+      indices.push_back(schedule_index);
     }
 
-    return indicies;
+    return indices;
   }
 
   // REQUIRES:
@@ -13752,7 +13752,8 @@ ENTRY main {
   });
 
   // Check the aliasing.
-  auto alias_analysis = HloAliasAnalysis::Run(module.get()).value();
+  auto alias_analysis =
+      HloAliasAnalysis::Run(module.get(), &alias_info_).value();
   VLOG(2) << alias_analysis->ToString();
   const HloBuffer& concat_bitcast_buffer =
       alias_analysis->GetUniqueBufferAt(concat_bitcast);
@@ -14158,9 +14159,9 @@ ENTRY main {
           .sequence(module_and_assignments1.module->entry_computation())
           .instructions();
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<int> start_indicies,
-      GetSliceStartIndicies(entry_schedule1, root1->operand(1)->operand(0)));
-  ASSERT_EQ(start_indicies.size(), 2);
+      std::vector<int> start_indices,
+      GetSliceStartIndices(entry_schedule1, root1->operand(1)->operand(0)));
+  ASSERT_EQ(start_indices.size(), 2);
   TF_ASSERT_OK_AND_ASSIGN(
       int first_while,
       FindScheduleIndexOfInstruction(
@@ -14173,9 +14174,9 @@ ENTRY main {
           SlicedPrefetchTest::InstructionClass::kUnrelatedNonCopy));
   EXPECT_TRUE(
       absl::c_is_sorted<std::vector<int>>(
-          {start_indicies[0], first_while, start_indicies[1], second_while}) ||
+          {start_indices[0], first_while, start_indices[1], second_while}) ||
       absl::c_is_sorted<std::vector<int>>(
-          {start_indicies[1], first_while, start_indicies[0], second_while}));
+          {start_indices[1], first_while, start_indices[0], second_while}));
 
   // In this case, more time elapses during the first while loop than the
   // second. This should push us to use a normal prefetch, rather than slicing,
