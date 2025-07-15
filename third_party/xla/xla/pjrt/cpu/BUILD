@@ -61,6 +61,7 @@ cc_library(
         "//xla/backends/cpu:alignment",
         "//xla/pjrt:abstract_tracked_device_buffer",
         "//xla/pjrt:async_work_runner",
+        "//xla/pjrt:common_pjrt_client",
         "//xla/pjrt:device_event",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_future",

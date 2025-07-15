@@ -24,16 +24,20 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/alignment.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/raw_buffer.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/mem.h"
@@ -248,6 +252,24 @@ void TrackedCpuDeviceBuffer::Delete(PjRtMemorySpace* memory_space) {
   RunWhenReady(event_avs, [device_buffer = std::move(device_buffer)]() mutable {
     device_buffer.reset();
   });
+}
+
+PjRtFuture<>::Promise TrackedCpuDeviceBuffer::GetReadyFuturePromise(
+    PjRtMemorySpace* memory_space) {
+  PjRtFuture<>::Promise promise =
+      tensorflow::down_cast<CommonPjRtClient*>(memory_space->client())
+          ->CreateUserPromise(memory_space, "BufferDefinitionEvent");
+  definition_event().AndThen(
+      [definition_event = definition_event().AsPtr(), promise]() mutable {
+        if (definition_event.IsError()) {
+          const absl::Status& s = definition_event.GetError();
+          promise.Set(tsl::errors::CreateWithUpdatedMessage(
+              s, absl::StrCat("Buffer Definition Event: ", s.message())));
+        } else {
+          promise.Set();
+        }
+      });
+  return promise;
 }
 
 }  // namespace xla

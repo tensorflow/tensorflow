@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/async_work_runner.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/raw_buffer.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
@@ -62,6 +63,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -477,55 +479,22 @@ AbstractCpuBuffer::CopyToDeviceHelper(AsyncWorkRunner* async_work_runner) {
 }
 
 PjRtFuture<> AbstractCpuBuffer::GetReadyFuture() {
-  tsl::AsyncValueRef<CpuEvent> definition_event;
+  PjRtFuture<>::Promise definition_promise;
   {
     absl::MutexLock lock(&mu_);
     if (!device_buffer()) {
       return PjRtFuture<>(InvalidArgument(
           "GetReadyFuture() called on deleted or donated buffer"));
     }
-    definition_event = device_buffer()->definition_event();
-  }
-  DCHECK(definition_event);
-
-  if (definition_event.IsAvailable()) {
-    if (definition_event.IsError()) {
-      const absl::Status& s = definition_event.GetError();
-      return PjRtFuture<>(tsl::errors::CreateWithUpdatedMessage(
-          s, absl::StrCat("Buffer Definition Event: ", s.message())));
+    if (!definition_promise_) {
+      definition_promise_ =
+          device_buffer()->GetReadyFuturePromise(memory_space());
     }
-    return PjRtFuture<>(absl::OkStatus());
-  } else {
-    PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
-    definition_event.AndThen(
-        [definition_event = definition_event.AsPtr(), promise]() mutable {
-          if (definition_event.IsError()) {
-            const absl::Status& s = definition_event.GetError();
-            promise.Set(tsl::errors::CreateWithUpdatedMessage(
-                s, absl::StrCat("Buffer Definition Event: ", s.message())));
-          } else {
-            promise.Set();
-          }
-        });
-
-    std::string message = absl::StrCat(buffer_name(), "::Await");
-    return PjRtFuture<>(
-        std::move(promise),
-        /*on_block_start=*/
-        [message]() {
-          absl::string_view message_view(message);
-          tsl::profiler::TraceMeProducer traceme(message_view);
-          VLOG(1) << message_view;
-          return PjRtFutureHelpers::ProfilingKeys(
-              {/*traceme_context_id=*/traceme.GetContextId()});
-        },
-        /*on_block_end=*/
-        [message](PjRtFutureHelpers::ProfilingKeys keys) {
-          absl::string_view message_view(message);
-          tsl::profiler::TraceMeConsumer traceme(message_view,
-                                                 keys.traceme_context_id);
-        });
+    definition_promise = definition_promise_;
   }
+  return tensorflow::down_cast<CommonPjRtClient*>(client())
+      ->CreateFutureFromUserPromise(memory_space(), "AbstractCpuBuffer",
+                                    "Await", std::move(definition_promise));
 }
 
 void PackOrCopy(PrimitiveType element_type, const LiteralSlice& literal,
