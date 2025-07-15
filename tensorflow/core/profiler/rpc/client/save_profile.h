@@ -25,11 +25,6 @@ limitations under the License.
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
-// TODO: b/323943471 - This macro should eventually be provided by Abseil.
-#ifndef ABSL_DEPRECATE_AND_INLINE
-#define ABSL_DEPRECATE_AND_INLINE()
-#endif
-
 namespace tensorflow {
 namespace profiler {
 
