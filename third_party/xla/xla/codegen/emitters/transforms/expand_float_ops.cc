@@ -652,7 +652,9 @@ class ExpandFloatOpsPass
                  RewriteIToFpPattern<ma::UIToFPOp>,
                  RewriteFpToIPattern<ma::FPToSIOp>,
                  RewriteFpToIPattern<ma::FPToUIOp>>(&getContext());
-    mlir::populatePolynomialApproximateTanhPattern(patterns);
+    if (approximate_tanh_) {
+      mlir::populatePolynomialApproximateTanhPattern(patterns);
+    }
     patterns.add<RewriteErf32Pattern>(&getContext());
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
@@ -663,8 +665,10 @@ class ExpandFloatOpsPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass() {
-  return std::make_unique<ExpandFloatOpsPass>();
+std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass(bool aproximate_tanh) {
+  ExpandFloatOpsPassOptions options;
+  options.approximate_tanh_ = aproximate_tanh;
+  return std::make_unique<ExpandFloatOpsPass>(options);
 }
 
 }  // namespace emitters

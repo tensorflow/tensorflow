@@ -34,7 +34,8 @@ namespace emitters {
 std::unique_ptr<mlir::Pass> CreateLowerXlaMathLibPass();
 std::unique_ptr<mlir::Pass> CreateConvertPureCallOpsPass();
 std::unique_ptr<mlir::Pass> CreateEraseDeadFunctionsPass();
-std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass();
+std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass(
+    bool aproximate_tanh = true);
 std::unique_ptr<mlir::Pass> CreateFlattenTensorsPass();
 std::unique_ptr<mlir::Pass> CreateLowerTensorsPass(
     const std::string& target_type = "gpu",
