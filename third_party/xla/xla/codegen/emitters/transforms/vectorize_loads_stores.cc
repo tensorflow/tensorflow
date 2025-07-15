@@ -288,7 +288,8 @@ struct VectorizeLoad : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
           op, "the instruction does not access contiguous elements");
     }
     auto loaded_vector = b.create<mlir::vector::TransferReadOp>(
-        vector_type, op.getTensor(), *vector_index, llvm::ArrayRef<bool>{true});
+        vector_type, op.getTensor(), *vector_index, /*padding=*/std::nullopt,
+        llvm::ArrayRef<bool>{true});
     rewriter.replaceOpWithNewOp<mlir::vector::ExtractOp>(
         op, loaded_vector, loop.getInductionVar());
     return mlir::success();
