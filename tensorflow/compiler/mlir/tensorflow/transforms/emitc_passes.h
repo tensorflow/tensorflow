@@ -27,7 +27,6 @@ namespace emitc {
 std::unique_ptr<mlir::OperationPass<mlir::emitc::ClassOp>>
 CreateAddReflectionMapPass();
 
-#define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_ADDREFLECTIONMAPPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/emitc_passes.h.inc"
 

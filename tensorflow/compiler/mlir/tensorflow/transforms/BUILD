@@ -359,7 +359,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
-        ":emitc_pass_inc_gen"
+        ":emitc_pass_inc_gen",
     ],
 )
 

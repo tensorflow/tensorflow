@@ -50,5 +50,5 @@ def AddReflectionMapPass : Pass<"add-reflection-map", "mlir::emitc::ClassOp"> {
         }
         ```
     }];
-  let constructor = "::mlir::emitc::CreateAddReflectionMapPass()";
+  let constructor = "mlir::emitc::CreateAddReflectionMapPass()";
 }

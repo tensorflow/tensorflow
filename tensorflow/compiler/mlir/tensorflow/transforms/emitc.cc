@@ -18,14 +18,18 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/emitc_passes.h"
 
-using namespace mlir;
-
-void PopulateAddReflectionMapPipeline(mlir::OpPassManager& pm) {
+namespace mlir {
+namespace emitc {
+void createAddReflectionMapPipeline(
+    mlir::OpPassManager& pm, const AddReflectionMapPipelineOptions& opts) {
   pm.addPass(mlir::emitc::CreateAddReflectionMapPass());
 }
 
 void registerAddReflectionMapPipeline() {
-  mlir::PassPipelineRegistration<>("tf-attrs-to-emitc-pipeline",
-                                   "TTSavedModel Func Attrs to EmitC Attrs",
-                                   PopulateAddReflectionMapPipeline);
+  mlir::PassPipelineRegistration<AddReflectionMapPipelineOptions>(
+      "add-reflection-map-pipeline", "Add a reflection map to EmitC class",
+      createAddReflectionMapPipeline);
 }
+
+}  // namespace emitc
+}  // namespace mlir

@@ -29,10 +29,66 @@ namespace emitc {
 
 namespace {
 struct AddReflectionMapPass
-    : public impl::AddReflectionMapPassBase<AddReflectionMapPass> {};
+    : public impl::AddReflectionMapPassBase<AddReflectionMapPass> {
+  void runOnOperation() override {
+    emitc::ClassOp classOp = getOperation();
+    OpBuilder builder(classOp);
+
+    auto stringViewType =
+        emitc::OpaqueType::get(builder.getContext(), "std::string_view");
+    auto charPtrType = emitc::OpaqueType::get(builder.getContext(), "char*");
+    auto mapType = emitc::OpaqueType::get(builder.getContext(),
+                                          "std::map<std::string, char*>");
+
+    auto funcType = builder.getFunctionType({stringViewType}, {charPtrType});
+    auto executeFunc = classOp.lookupSymbol<emitc::FuncOp>("execute");
+    builder.setInsertionPoint(executeFunc);
+
+    auto getBufferFunc = builder.create<emitc::FuncOp>(
+        classOp.getLoc(), "getBufferForName", funcType);
+    getBufferFunc.insertArgument(0, stringViewType, {}, classOp.getLoc());
+
+    Block* funcBody = getBufferFunc.addEntryBlock();
+    builder.setInsertionPointToStart(funcBody);
+
+    // Collect all field names
+    SmallVector<std::string> fieldNames;
+    classOp.walk([&](emitc::FieldOp fieldOp) {
+      if (auto indexPathAttr =
+              fieldOp->getAttrOfType<ArrayAttr>("tf_saved_model.index_path")) {
+        if (!indexPathAttr.empty()) {
+          if (auto stringAttr = indexPathAttr[0].dyn_cast<StringAttr>()) {
+            std::string indexPath = stringAttr.getValue().str();
+            fieldNames.push_back(indexPath);
+          }
+        }
+      }
+    });
+
+    std::string mapInitializer = "{";
+    for (size_t i = 0; i < fieldNames.size(); ++i) {
+      if (i > 0) mapInitializer += ", ";
+      mapInitializer += "\"" + fieldNames[i] + "\", " +
+                        "reinterpret_cast<char*>(&" + fieldNames[i] + ")";
+      mapInitializer += "}";
+      if (i < fieldNames.size() - 1) mapInitializer += ", {";
+    }
+    mapInitializer += "}";
+
+    // Create the constant map
+    auto mapConstant = builder.create<emitc::ConstantOp>(
+        classOp.getLoc(), mapType,
+        emitc::OpaqueAttr::get(builder.getContext(), mapInitializer));
+
+    auto nullConstant = builder.create<emitc::ConstantOp>(
+        classOp.getLoc(), charPtrType,
+        emitc::OpaqueAttr::get(builder.getContext(), "nullptr"));
+
+    builder.create<emitc::ReturnOp>(classOp.getLoc(), nullConstant.getResult());
+  }
+};
 
 }  // namespace
-
 std::unique_ptr<mlir::OperationPass<mlir::emitc::ClassOp>>
 CreateAddReflectionMapPass() {
   return std::make_unique<AddReflectionMapPass>();

@@ -20,9 +20,21 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"      // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/transforms/emitc_passes.h"
 
-void PopulateRegisterAddReflectionMapPipeline(mlir::OpPassManager& pm);
+namespace mlir {
+namespace emitc {
+struct AddReflectionMapPipelineOptions
+    : public PassPipelineOptions<AddReflectionMapPipelineOptions> {
+  AddReflectionMapPipelineOptions() {}
+};
+
+void createAddReflectionMapPipeline(
+    mlir::OpPassManager& pm, const AddReflectionMapPipelineOptions& opts);
 
 void registerAddReflectionMapPipeline();
+
+}  // namespace emitc
+}  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_EMITC_H_

@@ -250,7 +250,7 @@ tf_cc_binary(
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:emitc_passes", # buildcleaner:keep
+        "//tensorflow/compiler/mlir/tensorflow/transforms:emitc", # buildcleaner:keep
     ],
 )
 
