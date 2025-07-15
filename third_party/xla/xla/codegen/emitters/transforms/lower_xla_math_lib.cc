@@ -46,6 +46,8 @@ namespace emitters {
 
 namespace {
 
+using Intrinsic = ::xla::codegen::Intrinsic;
+
 mlir::func::FuncOp GetOrInsertDeclaration(mlir::PatternRewriter& rewriter,
                                           mlir::ModuleOp& module_op,
                                           absl::string_view name,
@@ -202,7 +204,8 @@ class LowerTruncF32BF16FPattern
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
-    auto f32_to_bf16_decl = GetF32ToBF16Declaration(rewriter);
+    auto f32_to_bf16_decl = Intrinsic::FpTrunc::GetOrInsertDeclaration(
+        rewriter, module_op_, Intrinsic::S(F32), Intrinsic::S(BF16));
     auto call_op =
         b.create<mlir::func::CallOp>(f32_to_bf16_decl, op.getOperand());
     rewriter.replaceOp(op, call_op->getResults());
@@ -210,17 +213,6 @@ class LowerTruncF32BF16FPattern
   }
 
  private:
-  mlir::func::FuncOp GetF32ToBF16Declaration(
-      mlir::PatternRewriter& rewriter) const {
-    mlir::Type f32_type = rewriter.getF32Type();
-    mlir::Type bf16_type = rewriter.getBF16Type();
-    return GetOrInsertDeclaration(
-        rewriter, module_op_,
-        codegen::Intrinsic::FpTrunc::Name(codegen::Intrinsic::S(F32),
-                                          codegen::Intrinsic::S(BF16)),
-        rewriter.getFunctionType(f32_type, bf16_type));
-  }
-
   mlir::ModuleOp& module_op_;
 };
 
