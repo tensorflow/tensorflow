@@ -173,7 +173,7 @@ static void AddLoweringPasses(mlir::OpPassManager& pm, int32_t vector_width,
   pm.addPass(mlir::createCSEPass());
 
   pm.addNestedPass<mlir::func::FuncOp>(cpu::CreateExpandFloatOpsPass());
-  pm.addPass(emitters::CreateExpandFloatOpsPass());
+  pm.addPass(emitters::CreateExpandFloatOpsPass(/*aproximate_tanh=*/false));
   pm.addPass(emitters::CreateEraseDeadFunctionsPass());
   pm.addPass(mlir::createLowerAffinePass());
   pm.addPass(mlir::createInlinerPass());

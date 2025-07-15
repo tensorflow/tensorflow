@@ -92,6 +92,11 @@ def ExpandFloatOpsPass : Pass<"xla-expand-float-ops", "mlir::ModuleOp"> {
     "mlir::mhlo::MhloDialect"
   ];
 
+  let options = [
+    Option<"approximate_tanh_", "approximate_tanh", "bool", /*default=*/"true",
+           "Use built-in MLIR approximation for tanh.">,
+  ];
+
   let constructor = "CreateExpandFloatOpsPass()";
 }
 
