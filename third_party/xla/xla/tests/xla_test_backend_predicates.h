@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef XLA_TESTS_XLA_TEST_BACKEND_PREDICATES_H_
 #define XLA_TESTS_XLA_TEST_BACKEND_PREDICATES_H_
 
+#include <vector>
+
+#include <gtest/gtest.h>
 #include "absl/base/nullability.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -85,6 +88,25 @@ bool BackendIsExactly(absl::string_view device,
 
 // Returns true only for base variant hardware + emulation.
 bool BackendIsStrict(absl::string_view device);
+
+// Useful to generate an intentionally empty set of inputs for a parameterized
+// test. This is needed when we are manipulating the inputs based on the
+// backend and would like some backends to receive zero inputs. Usage of this
+// function should always be accompanied by
+// `GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST()`.
+//
+// Example:
+//
+// GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(TestFixture);
+// INSTANTIATE_TEST_SUITE_P(
+//    ParameterizedTestName,
+//    TestFixture,
+//    DeviceIs(kA100) ? ::testing::ValuesIn({1, 2, 3}) : Empty<int>());
+template <typename T>
+::testing::internal::ParamGenerator<T> Empty() {
+  std::vector<T> empty_vec;
+  return ::testing::ValuesIn(empty_vec);
+}
 
 }  // namespace xla::test
 #endif  // XLA_TESTS_XLA_TEST_BACKEND_PREDICATES_H_
