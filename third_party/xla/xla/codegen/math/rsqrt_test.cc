@@ -14,7 +14,6 @@ limitations under the License.
 #include <array>
 #include <cmath>
 #include <cstddef>
-#include <functional>
 #include <limits>
 #include <memory>
 #include <utility>
@@ -39,6 +38,7 @@ limitations under the License.
 #include "xla/codegen/math/test_matchers.h"
 #include "xla/primitive_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::codegen::math {
 namespace {

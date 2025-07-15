@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::codegen {
 
