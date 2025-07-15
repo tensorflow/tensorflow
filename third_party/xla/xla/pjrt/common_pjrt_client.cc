@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
@@ -91,6 +92,23 @@ tsl::AsyncValueRef<bool> CommonPjRtClient::CreateAllocationEventForTransfers(
     PjRtMemorySpace* memory_space,
     const std::optional<std::string>& debug_info) {
   return tsl::AsyncValueRef<bool>();
+}
+
+absl::StatusOr<xla::Shape> CommonPjRtClient::GetCopyDestinationShape(
+    const xla::Shape& shape, PjRtMemorySpace* src_memory_space,
+    PjRtMemorySpace* dst_memory_space) {
+  auto other_client =
+      dynamic_cast<CommonPjRtClient*>(dst_memory_space->client());
+  if (!other_client) {
+    return absl::InternalError(absl::StrFormat(
+        "GetCopyDestinationShape not supported %s -> %s",
+        src_memory_space->ToString(), dst_memory_space->ToString()));
+  }
+  return other_client->MakeDefaultShapeForMemorySpace(
+      dst_memory_space,
+      xla::ShapeUtil::MakeShapeWithDescendingLayout(shape.element_type(),
+                                                    shape.dimensions()),
+      /*layout=*/nullptr);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
@@ -343,6 +361,126 @@ void CommonPjRtClient::ScheduleRemoteSend(
                    memory_space->DebugString()));
   on_done(error, /*sends_were_enqueued=*/false);
   usage_event_promise->SetError(error);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+CommonPjRtBufferImpl::CopyToCpuMemorySpace(const xla::Shape& dst_shape,
+                                           PjRtMemorySpace* dst_memory_space) {
+  auto* dst_client =
+      dynamic_cast<CommonPjRtClient*>(dst_memory_space->client());
+  if (!dst_client) {
+    return absl::InvalidArgumentError(
+        "CopyToCpuMemorySpace only supported across CommonPjRtClient "
+        "subclassed clients");
+  }
+  TF_ASSIGN_OR_RETURN(
+      int64_t on_device_bytes_count,
+      dst_client->GetOnDeviceBytesCount(dst_memory_space, dst_shape));
+  TF_ASSIGN_OR_RETURN(
+      auto dst_raw_buffer,
+      dst_client->AllocateRawBuffer(dst_memory_space, on_device_bytes_count,
+                                    /*retry_on_oom=*/true, {}));
+  tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise;
+  tsl::RCReference<PjRtDeviceEvent> definition_event;
+  TF_ASSIGN_OR_RETURN(
+      std::tie(definition_event_promise, definition_event),
+      dst_client->CreateLinkedEventPromise(dst_memory_space, ""));
+  TF_ASSIGN_OR_RETURN(auto buffer,
+                      dst_client->DefineBuffer(dst_shape, dst_raw_buffer,
+                                               {std::move(definition_event)},
+                                               /*raw_buffer_is_mutable=*/true));
+  auto* base_ptr = dst_raw_buffer->GetHostPointer();
+  std::unique_ptr<MutableLiteralBase> literal;
+  bool needs_second_copy = false;
+  if (!primitive_util::IsSubByteNonPredType(dst_shape.element_type()) &&
+      base_ptr) {
+    literal = std::make_unique<MutableBorrowingLiteral>(
+        reinterpret_cast<char*>(base_ptr), dst_shape);
+  } else {
+    literal = std::make_unique<Literal>(dst_shape);
+    needs_second_copy = true;
+  }
+
+  auto copied = ToLiteral(literal.get());
+  copied.OnReady([literal = std::move(literal), dst_client, needs_second_copy,
+                  dst_raw_buffer = std::move(dst_raw_buffer), dst_shape,
+                  definition_event_promise = std::move(
+                      definition_event_promise)](absl::Status status) mutable {
+    if (!status.ok()) {
+      definition_event_promise->SetError(status);
+    } else {
+      absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
+          status_or_h2d_transfer_event;
+      if (needs_second_copy) {
+        status_or_h2d_transfer_event = dst_client->LinearizeInto(
+            *literal, dst_shape.layout(), dst_raw_buffer);
+      } else {
+        status_or_h2d_transfer_event =
+            dst_raw_buffer->MakeAllocationReadyEvent();
+      }
+      if (!status_or_h2d_transfer_event.ok()) {
+        definition_event_promise->SetError(status);
+      } else {
+        definition_event_promise->Set(*std::move(status_or_h2d_transfer_event));
+      }
+    }
+  });
+
+  return buffer;
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+CommonPjRtBufferImpl::CopyToMemorySpace(PjRtMemorySpace* dst_memory_space) {
+  // Copying across PjRtClients involves a copy through the host.
+  if (auto* other_client =
+          dynamic_cast<CommonPjRtClient*>(dst_memory_space->client())) {
+    TF_ASSIGN_OR_RETURN(
+        auto dest_shape,
+        tensorflow::down_cast<CommonPjRtClient*>(client())
+            ->GetCopyDestinationShape(on_device_shape(), memory_space(),
+                                      dst_memory_space));
+    if (dest_shape == on_device_shape()) {
+      return DirectCopyToMemorySpace(dst_memory_space);
+    }
+    if (!primitive_util::IsSubByteNonPredType(dest_shape.element_type())) {
+      if (other_client->IsOnCpu(dst_memory_space)) {
+        return CopyToCpuMemorySpace(dest_shape, dst_memory_space);
+      }
+    }
+  }
+  Shape shape = ShapeUtil::MakeShapeWithDescendingLayout(
+      on_device_shape().element_type(), on_device_shape().dimensions());
+  TF_ASSIGN_OR_RETURN(
+      auto manager,
+      dst_memory_space->client()->CreateBuffersForAsyncHostToDevice(
+          {shape}, dst_memory_space));
+  std::unique_ptr<PjRtBuffer> dst_buffer = manager->RetrieveBuffer(0);
+
+  auto literal = std::make_unique<Literal>();
+  PjRtFuture<> d2h_future =
+      LazyToLiteral([raw_literal = literal.get(),
+                     shape = std::move(shape)]() -> MutableLiteralBase* {
+        *raw_literal = Literal(shape);
+        return raw_literal;
+      });
+  d2h_future.OnReady(
+      [manager = std::move(manager),
+       literal = std::move(literal)](absl::Status status) mutable {
+        if (!status.ok()) {
+          manager->SetBufferError(0, status);
+          return;
+        }
+        auto* raw_manager = manager.get();
+        auto* raw_literal = literal.get();
+        CHECK_OK(raw_manager->TransferLiteralToBuffer(
+            0, *raw_literal,
+            [literal = std::move(literal), manager = std::move(manager)]() {
+              // Keep `literal` and `manager` alive until the H2D transfer is
+              // complete.
+            }));
+      });
+
+  return dst_buffer;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
@@ -795,6 +933,11 @@ void CommonPjRtBufferImpl::Delete() {
   if (auto device_buffer = ReleaseBuffer()) {
     device_buffer.release()->Delete(memory_space_);
   }
+}
+
+bool CommonPjRtBufferImpl::IsOnCpu() const {
+  return tensorflow::down_cast<CommonPjRtClient*>(client())->IsOnCpu(
+      memory_space());
 }
 
 }  // namespace xla
