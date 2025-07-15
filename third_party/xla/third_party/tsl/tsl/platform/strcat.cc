@@ -28,7 +28,7 @@ limitations under the License.
 namespace tsl {
 namespace strings {
 
-AlphaNum::AlphaNum(Hex hex) {
+AlphaNum::AlphaNum(absl::Hex hex) {
   char *const end = &digits_[kFastToBufferSize];
   char *writer = end;
   uint64 value = hex.value;
