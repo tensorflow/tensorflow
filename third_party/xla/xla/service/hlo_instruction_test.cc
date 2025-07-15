@@ -2100,7 +2100,7 @@ TEST_F(HloInstructionTest, StringifyAsyncOpsWithReduceScatter) {
 
 ENTRY %Entry (pentry: f32[20]) -> f32[10] {
   %pentry = f32[20]{0} parameter(0)
-  %reduce-scatter-start = ((f32[20]{0}), f32[10]{0}) reduce-scatter-start(%pentry), async_execution_thread="parallel_thread", mode=cross_replica, replica_groups={}, dimensions={0}, to_apply=%add
+  %reduce-scatter-start = ((f32[20]{0}), f32[10]{0}) reduce-scatter-start(%pentry), async_execution_thread="parallel_thread", replica_groups={}, dimensions={0}, to_apply=%add
   %reduce-scatter-update = ((f32[20]{0}), f32[10]{0}) reduce-scatter-update(%reduce-scatter-start)
   ROOT %reduce-scatter-done = f32[10]{0} reduce-scatter-done(%reduce-scatter-update)
 }
@@ -2122,7 +2122,7 @@ ENTRY %Entry (pentry: f32[20]) -> f32[10] {
 
 %AsyncOp (pasync: f32[20]) -> f32[10] {
   %pasync = f32[20]{0} parameter(0)
-  ROOT %reduce-scatter = f32[10]{0} reduce-scatter(%pasync), mode=cross_replica, replica_groups={}, dimensions={0}, to_apply=%add
+  ROOT %reduce-scatter = f32[10]{0} reduce-scatter(%pasync), replica_groups={}, dimensions={0}, to_apply=%add
 }, execution_thread="parallel_thread"
 
 ENTRY %Entry (pentry: f32[20]) -> f32[10] {

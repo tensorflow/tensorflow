@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/collective_device_list.h"
-#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -86,6 +85,46 @@ std::optional<HloOpcode> ReductionKindToOpcode(ReductionKind reduction_kind);
 std::optional<Literal> GetReductionIdentity(ReductionKind kind,
                                             PrimitiveType type);
 
+// There are broadly 4 modes that collective communication ops use to describe
+// which sets of devices are participating with a given device in the operation.
+// These modes are determined by the values of channel_id (optional) and
+// use_global_device_ids (optional). The modes are as follows:
+//
+// kCrossReplica:
+//    implied by: no channel id, use_global_device_ids = false, or
+//                no channel_id, no use_global_device_ids:
+//    replica_groups contain replica_id, group contains all replicas for the
+//    current partition
+//
+// kCrossPartition:
+//    implied by: channel_id is set, no use_global_device_ids:
+//    replica_groups contain partition_id, group contains all partitions for the
+//    current replica.
+//
+// kCrossReplicaAndPartition:
+//    implied by: channel_id is set, use_global_device_ids = false:
+//    replica_groups contain replica_id, group contains all replicas for all
+//    partitions (as opposed to just current partition).
+//
+// kFlattenedID:
+//    implied by: channel_id is set, use_global_device_ids = true:
+//    replica_groups contain flattened-ids, group contains devices that are
+//    listed in the flattened-id list.
+//
+// Rest of the combinations are invalid.
+//
+// Since the actual value of channel_id does not matter, we use a bool argument
+// `has_channel_id`, and optional<bool> for use_global_device_ids.
+// Note that use_global_device_ids true requires channel_id to be set as well.
+// Additionally, if use_global_device_ids = true, replica groups cannot be
+// empty (verified in the HLO verifier).
+enum class CollectiveOpGroupMode {
+  kCrossReplica,
+  kCrossPartition,
+  kCrossReplicaAndPartition,
+  kFlattenedID,
+};
+
 // Figures out which IDs are participating in the collective subgroup.
 // An empty `groups` indicates that all [0, total_participant_count) IDs
 // are participating. Note that for CollectiveOpGroupMode::kFlattenedID,
@@ -98,6 +137,9 @@ absl::StatusOr<std::vector<int>> GetParticipatingIDs(
 // Returns the replica groups for the given async collective instruction.
 absl::StatusOr<std::vector<std::vector<int64_t>>> GetAsyncReplicaGroups(
     const HloInstruction* instruction);
+
+absl::string_view CollectiveOpGroupModeToString(
+    CollectiveOpGroupMode group_mode);
 
 const CollectiveDeviceList& GetCollectiveDeviceList(const HloInstruction* hlo);
 
@@ -114,6 +156,11 @@ const std::vector<ReplicaGroup>& GetCollectiveReplicaGroups(
 //   * HloRaggedAllToAllInstruction
 absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
     const HloInstruction* instr);
+
+// Returns the group formation mode implied by (a) whether the operation has
+// channel_id and (b) if it has use_global_device_ids and if yes, its value.
+absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
+    bool has_channel_id, std::optional<bool> use_global_device_ids);
 
 // Figures out subgroups of participating devices from given replica_groups and
 // group_mode.
