@@ -11,11 +11,7 @@ from tensorflow.keras import layers
 # 1. Create a simple deep neural network model
 model = keras.Sequential([
     layers.Input(shape=(16,)),
-    layers.Dense(64, activation='relu'),
-    layers.Dense(32, activation='relu'),
-    layers.Dense(16, activation='relu'),
-    layers.Dense(8, activation='relu'),
-    layers.Dense(1, activation=None)  # Output layer
+    layers.Dense(8, activation='relu')  # Output layer
 ])
 
 model.compile(optimizer='adam', loss='mse')

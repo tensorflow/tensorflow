@@ -40,25 +40,65 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
                     const TfLiteDelegateParams* params) override {
 
   TF_LITE_KERNEL_LOG(context, "======== IN FullyConnectedDelegateKernel::Init =========\n");
-  // Currently assuming one node per delegate. So only one FullyConnected node
-  // is replaced by the delegate. 
-  //TODO: Support multiple nodes in the future. By looping over params->nodes_to_replace->data
-  const int node_index = params->nodes_to_replace->data[0];
-
-  TfLiteNode* node = nullptr;
-  TfLiteRegistration* registration = nullptr;
-  TF_LITE_ENSURE_EQ(context,
-                    context->GetNodeAndRegistration(context, node_index, &node, &registration),
-                    kTfLiteOk);
-
-  input_index_ = node->inputs->data[0];
-  weights_index_ = node->inputs->data[1];
-  has_bias_ = node->inputs->size > 2;
-  if (has_bias_) bias_index_ = node->inputs->data[2];
-  output_index_ = node->outputs->data[0];
-
-  activation_type_ =
-      reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data)->activation;
+  
+  // Handle multiple nodes in the partition
+  const int num_nodes = params->nodes_to_replace->size;
+  TF_LITE_KERNEL_LOG(context, "Number of nodes to replace: %d\n", num_nodes);
+  
+  // Initialize vectors for multiple nodes
+  inputs_.resize(num_nodes);
+  outputs_.resize(num_nodes);
+  builtin_code_.resize(num_nodes);
+  
+  // Process each node in the partition
+  for (int i = 0; i < num_nodes; ++i) {
+    const int node_index = params->nodes_to_replace->data[i];
+    TF_LITE_KERNEL_LOG(context, "Node %d: index = %d\n", i, node_index);
+    
+    TfLiteNode* node = nullptr;
+    TfLiteRegistration* registration = nullptr;
+    TF_LITE_ENSURE_EQ(context,
+                      context->GetNodeAndRegistration(context, node_index, &node, &registration),
+                      kTfLiteOk);
+    
+    // Store builtin code for this node
+    builtin_code_[i] = registration->builtin_code;
+    
+    // Store input tensor indices for this node
+    inputs_[i].resize(node->inputs->size);
+    for (int j = 0; j < node->inputs->size; ++j) {
+      inputs_[i][j] = node->inputs->data[j];
+    }
+    
+    // Store output tensor indices for this node
+    outputs_[i].resize(node->outputs->size);
+    for (int j = 0; j < node->outputs->size; ++j) {
+      outputs_[i][j] = node->outputs->data[j];
+    }
+    
+    // Log the tensor indices for debugging
+    TF_LITE_KERNEL_LOG(context, "Node %d: input=%d, weights=%d, bias=%d, output=%d\n", 
+                       i, inputs_[i][0], inputs_[i][1], 
+                       inputs_[i].size() > 2 ? inputs_[i][2] : -1, 
+                       outputs_[i][0]);
+  }
+  
+  // Keep the old single-node variables for backward compatibility (use first node)
+  if (num_nodes > 0) {
+    input_index_ = inputs_[0][0];
+    weights_index_ = inputs_[0][1];
+    has_bias_ = inputs_[0].size() > 2;
+    if (has_bias_) bias_index_ = inputs_[0][2];
+    output_index_ = outputs_[0][0];
+    
+    // Get activation type from the first node
+    TfLiteNode* first_node = nullptr;
+    TfLiteRegistration* first_registration = nullptr;
+    TF_LITE_ENSURE_EQ(context,
+                      context->GetNodeAndRegistration(context, params->nodes_to_replace->data[0], &first_node, &first_registration),
+                      kTfLiteOk);
+    activation_type_ = reinterpret_cast<TfLiteFullyConnectedParams*>(first_node->builtin_data)->activation;
+  }
 
   try {
     bool clear_bram = false;
