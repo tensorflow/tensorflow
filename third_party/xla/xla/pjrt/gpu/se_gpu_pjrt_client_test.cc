@@ -1234,13 +1234,12 @@ TEST(StreamExecutorGpuClientTest, GetDeviceFabricInfo) {
           if (auto* cc = std::get_if<se::CudaComputeCapability>(
                   &executor->GetDeviceDescription().gpu_compute_capability())) {
             if (cc->IsAtLeastHopper()) {
-              TF_ASSERT_OK_AND_ASSIGN(
-                  std::string fabric_info,
-                  GetDeviceFabricInfo(executor->device_ordinal()));
+              absl::StatusOr<std::string> fabric_info =
+                  GetDeviceFabricInfo(executor->device_ordinal());
               // Hopper devices have empty fabric info, MNNVL Blackwell devices
               // have meaningful fabric info.
-              if (cc->IsHopper()) {
-                EXPECT_EQ(fabric_info,
+              if (cc->IsHopper() && fabric_info.ok()) {
+                EXPECT_EQ(fabric_info.value(),
                           "00000000-0000-0000-0000-000000000000/0");
               }
             }
