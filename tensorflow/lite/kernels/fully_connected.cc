@@ -745,12 +745,8 @@ TfLiteStatus EvalHybridDense(
 
   // Quantize input from float to uint8 + quantization params (scaling factor).
   float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
-  int32_t* input_offset_ptr = nullptr;
-  int32_t* row_sums_ptr = nullptr;
-  if (params->asymmetric_quantize_inputs) {
-    input_offset_ptr = GetTensorData<int32_t>(input_offsets);
-    row_sums_ptr = GetTensorData<int32_t>(row_sums);
-  }
+  int32_t* input_offset_ptr = GetTensorData<int32_t>(input_offsets);
+  int32_t* row_sums_ptr = GetTensorData<int32_t>(row_sums);
   int8_t* quant_data = GetTensorData<int8_t>(input_quantized);
   const int8_t* filter_data = nullptr;
   std::unique_ptr<int8_t[]> unpacked_filter_data = nullptr;
