@@ -31,11 +31,6 @@ limitations under the License.
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/stringpiece.h"
 
-// TODO: b/323943471 - This macro should eventually be provided by Abseil.
-#ifndef ABSL_DEPRECATE_AND_INLINE
-#define ABSL_DEPRECATE_AND_INLINE()
-#endif
-
 // Basic string utility routines
 namespace tsl {
 namespace str_util {

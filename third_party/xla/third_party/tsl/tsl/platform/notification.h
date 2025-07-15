@@ -25,11 +25,6 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 
-// TODO: b/330223377 - This macro should eventually be provided by Abseil.
-#ifndef ABSL_DEPRECATE_AND_INLINE
-#define ABSL_DEPRECATE_AND_INLINE()
-#endif
-
 namespace tsl {
 
 using Notification ABSL_DEPRECATE_AND_INLINE() = absl::Notification;
