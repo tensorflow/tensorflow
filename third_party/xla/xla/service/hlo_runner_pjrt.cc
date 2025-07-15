@@ -403,7 +403,7 @@ absl::StatusOr<Literal> HloRunnerPjRt::Execute(
     absl::Span<const Literal* const> arguments, bool run_hlo_passes) {
   TF_ASSIGN_OR_RETURN(const std::unique_ptr<OpaqueExecutable> executable,
                       CreateExecutable(std::move(module), run_hlo_passes));
-  return ExecuteWithExecutable(executable.get(), arguments);
+  return HloRunnerInterface::ExecuteWithExecutable(executable.get(), arguments);
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
@@ -444,8 +444,10 @@ HloRunnerPjRt::ExecuteWithDeviceBuffers(
   return buffers;
 }
 
-absl::StatusOr<Literal> HloRunnerPjRt::ExecuteWithExecutable(
-    OpaqueExecutable* executable, absl::Span<const Literal* const> arguments) {
+absl::StatusOr<std::vector<absl::StatusOr<Literal>>>
+HloRunnerPjRt::ExecuteWithExecutable(OpaqueExecutable* executable,
+                                     absl::Span<const Literal* const> arguments,
+                                     int64_t num_repeats) {
   TF_ASSIGN_OR_RETURN(HloRunnerPjRtExecutable* const wrapped_executable,
                       HloRunnerPjRtExecutable::TryUnwrap(*this, executable));
 
@@ -460,12 +462,21 @@ absl::StatusOr<Literal> HloRunnerPjRt::ExecuteWithExecutable(
       std::vector<std::unique_ptr<PjRtBuffer>> argument_handles,
       TransferLiteralsToDevice(
           module.entry_computation_layout().parameter_layouts(), arguments));
-  TF_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<PjRtBuffer>> output_buffers,
-      ExecuteWithDeviceBuffers(wrapped_executable, std::move(argument_handles),
-                               &execute_options));
-  return TransferLiteralsFromDevice(std::move(output_buffers),
-                                    execute_options.untuple_result);
+
+  std::vector<absl::StatusOr<Literal>> results;
+  results.reserve(num_repeats);
+  for (int64_t i = 0; i < num_repeats; ++i) {
+    absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers =
+        ExecuteWithDeviceBuffers(wrapped_executable, argument_handles,
+                                 &execute_options);
+    if (!output_buffers.ok()) {
+      results.push_back(output_buffers.status());
+      continue;
+    }
+    results.push_back(TransferLiteralsFromDevice(
+        *std::move(output_buffers), execute_options.untuple_result));
+  }
+  return results;
 }
 
 absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
