@@ -78,7 +78,7 @@ class AddLoopUnrollFlagsPass
         /*isVectorized=*/nullptr,
         /*startLoc=*/nullptr,
         /*endLoc=*/nullptr,
-        /*parallelAccesses=*/std::nullopt);
+        /*parallelAccesses=*/{});
 
     for (auto& [for_op, bits] : nested_iteration_bits) {
       if (bits >= max_nested_bits_) {

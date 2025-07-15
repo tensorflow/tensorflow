@@ -82,14 +82,14 @@ class IrBuilderMixin {
   }
 
   llvm::CallInst* Call(llvm::FunctionCallee func_callee,
-                       llvm::ArrayRef<llvm::Value*> args = std::nullopt,
+                       llvm::ArrayRef<llvm::Value*> args = {},
                        const llvm::Twine& name = "",
                        llvm::MDNode* fp_math_tag = nullptr) {
     return mixin_builder()->CreateCall(func_callee, args, name, fp_math_tag);
   }
 
   llvm::CallInst* Call(llvm::FunctionType* func_type, llvm::Value* callee,
-                       llvm::ArrayRef<llvm::Value*> args = std::nullopt,
+                       llvm::ArrayRef<llvm::Value*> args = {},
                        const llvm::Twine& name = "",
                        llvm::MDNode* fp_math_tag = nullptr) {
     return mixin_builder()->CreateCall(func_type, callee, args, name,
