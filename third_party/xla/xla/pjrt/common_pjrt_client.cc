@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/common_pjrt_client.h"
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -35,9 +36,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -444,17 +447,14 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtBufferImpl::CopyToMemorySpace(PjRtMemorySpace* dst_memory_space) {
   // Copying across PjRtClients involves a copy through the host.
   if (dst_memory_space->client() == client()) {
-    TF_ASSIGN_OR_RETURN(
-        auto dest_shape,
-        tensorflow::down_cast<CommonPjRtClient*>(client())
-            ->GetCopyDestinationShape(on_device_shape(), memory_space(),
-                                      dst_memory_space));
+    TF_ASSIGN_OR_RETURN(auto dest_shape, client()->GetCopyDestinationShape(
+                                             on_device_shape(), memory_space(),
+                                             dst_memory_space));
     if (dest_shape == on_device_shape()) {
       return DirectCopyToMemorySpace(dst_memory_space);
     }
     if (!primitive_util::IsSubByteNonPredType(dest_shape.element_type())) {
-      if (tensorflow::down_cast<CommonPjRtClient*>(client())->IsOnCpu(
-              dst_memory_space)) {
+      if (client()->IsOnCpu(dst_memory_space)) {
         return CopyToCpuMemorySpace(dest_shape, dst_memory_space);
       }
     }
@@ -949,6 +949,65 @@ void CommonPjRtBufferImpl::Delete() {
 bool CommonPjRtBufferImpl::IsOnCpu() const {
   return tensorflow::down_cast<CommonPjRtClient*>(client())->IsOnCpu(
       memory_space());
+}
+
+CommonPjRtBufferImpl::CommonPjRtBufferImpl(
+    Shape on_device_shape,
+    std::unique_ptr<AbstractTrackedDeviceBuffer> tracked_device_buffer,
+    PjRtMemorySpace* memory_space)
+    : CommonPjRtBuffer(std::move(tracked_device_buffer), memory_space),
+      on_device_shape_(std::move(on_device_shape)) {}
+
+CommonPjRtBufferImpl::~CommonPjRtBufferImpl() { Delete(); }
+
+PjRtDevice* CommonPjRtBufferImpl::device() const {
+  CHECK_EQ(memory_space_->devices().size(), 1);
+  return tensorflow::down_cast<PjRtDevice*>(memory_space_->devices()[0]);
+}
+
+CommonPjRtClient* CommonPjRtBufferImpl::client() const {
+  return tensorflow::down_cast<CommonPjRtClient*>(memory_space()->client());
+}
+
+absl::StatusOr<size_t> CommonPjRtBufferImpl::GetOnDeviceSizeInBytes() const {
+  return client()->GetOnDeviceBytesCount(memory_space(), on_device_shape_);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+CommonPjRtBufferImpl::DonateWithControlDependency(PjRtFuture<> dependency) {
+  auto hold = GetBufferWithHold(CommonPjRtBuffer::ScopedHold::kDonation);
+  if (!hold.ok()) {
+    return InvalidArgument(
+        "Invalid buffer passed to DonateWithControlDependency: %s",
+        hold.status().ToString());
+  }
+  // Make the new buffer which is identical to the old, except for the new
+  // definition event.
+  TF_ASSIGN_OR_RETURN(auto new_tracked_buffer,
+                      hold.buffer()->CloneWithControlDependency(
+                          memory_space(), std::move(dependency)));
+  hold.ConfirmDonation();
+
+  return std::make_unique<CommonPjRtBufferImpl>(
+      on_device_shape(),
+      std::unique_ptr<AbstractTrackedDeviceBuffer>(
+          tensorflow::down_cast<AbstractTrackedDeviceBuffer*>(
+              new_tracked_buffer.release())),
+      memory_space());
+}
+
+PjRtFuture<> CommonPjRtBufferImpl::GetReadyFuture() {
+  absl::MutexLock lock(&mu_);
+  if (!device_buffer()) {
+    return PjRtFuture<>(InvalidArgument(
+        "GetReadyFuture() called on deleted or donated buffer"));
+  }
+  if (!definition_promise_) {
+    definition_promise_ =
+        device_buffer()->GetReadyFuturePromise(memory_space());
+  }
+  return client()->CreateFutureFromUserPromise(
+      memory_space(), "CommonPjRtBuffer", "Await", definition_promise_);
 }
 
 }  // namespace xla

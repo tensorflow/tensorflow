@@ -95,121 +95,126 @@ JitRunner::JitRunner(std::unique_ptr<llvm::Module> module,
 llvm::Expected<void*> JitRunner::CreateVectorWrapperWithLoop(
     const std::string& original_function_name, size_t vector_size,
     PrimitiveType ret_type, std::vector<PrimitiveType> arg_types) {
-  auto wrapper_module_owner = std::make_unique<llvm::Module>(
-      original_function_name + "_wrapper_module", *tsc_->getContext());
-  llvm::Module* wrapper_module = wrapper_module_owner.get();
-  llvm::IRBuilder<> builder(*tsc_->getContext());
+  return tsc_->withContextDo([&](llvm::LLVMContext* ctx)
+                                 -> llvm::Expected<void*> {
+    auto wrapper_module_owner = std::make_unique<llvm::Module>(
+        original_function_name + "_wrapper_module", *ctx);
+    llvm::Module* wrapper_module = wrapper_module_owner.get();
+    llvm::IRBuilder<> builder(*ctx);
 
-  auto vec_type = [&](PrimitiveType type) {
-    return llvm::VectorType::get(
-        llvm_ir::PrimitiveTypeToIrType(type, *tsc_->getContext()),
-        llvm::ElementCount::getFixed(vector_size));
-  };
+    auto vec_type = [&](PrimitiveType type) {
+      return llvm::VectorType::get(llvm_ir::PrimitiveTypeToIrType(type, *ctx),
+                                   llvm::ElementCount::getFixed(vector_size));
+    };
 
-  llvm::Type* ret_vec_type = vec_type(ret_type);
-  std::vector<llvm::Type*> arg_vec_types;
-  arg_vec_types.reserve(arg_types.size());
-  for (PrimitiveType arg_type : arg_types) {
-    arg_vec_types.push_back(vec_type(arg_type));
-  }
+    llvm::Type* ret_vec_type = vec_type(ret_type);
+    std::vector<llvm::Type*> arg_vec_types;
+    arg_vec_types.reserve(arg_types.size());
+    for (PrimitiveType arg_type : arg_types) {
+      arg_vec_types.push_back(vec_type(arg_type));
+    }
 
-  llvm::FunctionType* original_func_type =
-      llvm::FunctionType::get(ret_vec_type, arg_vec_types, false);
-  llvm::Function* original_func = llvm::Function::Create(
-      original_func_type, llvm::Function::ExternalLinkage,
-      original_function_name, *wrapper_module);
+    llvm::FunctionType* original_func_type =
+        llvm::FunctionType::get(ret_vec_type, arg_vec_types, false);
+    llvm::Function* original_func = llvm::Function::Create(
+        original_func_type, llvm::Function::ExternalLinkage,
+        original_function_name, *wrapper_module);
 
-  std::vector<llvm::Type*> wrapper_arg_types;
-  // 1. Pointer to write the return data
-  wrapper_arg_types.push_back(ret_vec_type->getScalarType()->getPointerTo());
-  // 2. Iteration count, passed by value
-  wrapper_arg_types.push_back(builder.getInt32Ty());
-  // 3. Data length (number of elements in source arrays), by value
-  wrapper_arg_types.push_back(builder.getInt32Ty());
-  // 4. Pointers for each input data array
-  for (llvm::Type* arg_vec_type : arg_vec_types) {
-    wrapper_arg_types.push_back(arg_vec_type->getScalarType()->getPointerTo());
-  }
+    std::vector<llvm::Type*> wrapper_arg_types;
+    // 1. Pointer to write the return data
+    wrapper_arg_types.push_back(ret_vec_type->getScalarType()->getPointerTo());
+    // 2. Iteration count, passed by value
+    wrapper_arg_types.push_back(builder.getInt32Ty());
+    // 3. Data length (number of elements in source arrays), by value
+    wrapper_arg_types.push_back(builder.getInt32Ty());
+    // 4. Pointers for each input data array
+    for (llvm::Type* arg_vec_type : arg_vec_types) {
+      wrapper_arg_types.push_back(
+          arg_vec_type->getScalarType()->getPointerTo());
+    }
 
-  llvm::FunctionType* wrapper_llvm_func_type =
-      llvm::FunctionType::get(builder.getVoidTy(), wrapper_arg_types, false);
-  std::string wrapper_function_name = original_function_name + "_wrapper";
-  llvm::Function* wrapper_llvm_func = llvm::Function::Create(
-      wrapper_llvm_func_type, llvm::Function::ExternalLinkage,
-      wrapper_function_name, *wrapper_module);
+    llvm::FunctionType* wrapper_llvm_func_type =
+        llvm::FunctionType::get(builder.getVoidTy(), wrapper_arg_types, false);
+    std::string wrapper_function_name = original_function_name + "_wrapper";
+    llvm::Function* wrapper_llvm_func = llvm::Function::Create(
+        wrapper_llvm_func_type, llvm::Function::ExternalLinkage,
+        wrapper_function_name, *wrapper_module);
 
-  llvm::BasicBlock* entry_block =
-      llvm::BasicBlock::Create(*tsc_->getContext(), "entry", wrapper_llvm_func);
-  llvm::BasicBlock* loop_header = llvm::BasicBlock::Create(
-      *tsc_->getContext(), "loop.header", wrapper_llvm_func);
-  llvm::BasicBlock* loop_body = llvm::BasicBlock::Create(
-      *tsc_->getContext(), "loop.body", wrapper_llvm_func);
-  llvm::BasicBlock* loop_exit = llvm::BasicBlock::Create(
-      *tsc_->getContext(), "loop.exit", wrapper_llvm_func);
-  builder.SetInsertPoint(entry_block);
-  // Use a pointer here to make the loop difficult to optimize away.
-  llvm::AllocaInst* counter =
-      builder.CreateAlloca(builder.getInt32Ty(), nullptr, "counter");
-  builder.CreateStore(builder.getInt32(0), counter);
-  builder.CreateBr(loop_header);
+    llvm::BasicBlock* entry_block =
+        llvm::BasicBlock::Create(*ctx, "entry", wrapper_llvm_func);
+    llvm::BasicBlock* loop_header =
+        llvm::BasicBlock::Create(*ctx, "loop.header", wrapper_llvm_func);
+    llvm::BasicBlock* loop_body =
+        llvm::BasicBlock::Create(*ctx, "loop.body", wrapper_llvm_func);
+    llvm::BasicBlock* loop_exit =
+        llvm::BasicBlock::Create(*ctx, "loop.exit", wrapper_llvm_func);
+    builder.SetInsertPoint(entry_block);
+    // Use a pointer here to make the loop difficult to optimize away.
+    llvm::AllocaInst* counter =
+        builder.CreateAlloca(builder.getInt32Ty(), nullptr, "counter");
+    builder.CreateStore(builder.getInt32(0), counter);
+    builder.CreateBr(loop_header);
 
-  builder.SetInsertPoint(loop_header);
-  llvm::Value* loop_iterations = wrapper_llvm_func->getArg(1);
-  llvm::Value* current_count =
-      builder.CreateLoad(builder.getInt32Ty(), counter, "current_count");
-  llvm::Value* condition =
-      builder.CreateICmpSLT(current_count, loop_iterations, "loop_cond");
-  builder.CreateCondBr(condition, loop_body, loop_exit);
+    builder.SetInsertPoint(loop_header);
+    llvm::Value* loop_iterations = wrapper_llvm_func->getArg(1);
+    llvm::Value* current_count =
+        builder.CreateLoad(builder.getInt32Ty(), counter, "current_count");
+    llvm::Value* condition =
+        builder.CreateICmpSLT(current_count, loop_iterations, "loop_cond");
+    builder.CreateCondBr(condition, loop_body, loop_exit);
 
-  builder.SetInsertPoint(loop_body);
-  llvm::Value* data_length = wrapper_llvm_func->getArg(2);
+    builder.SetInsertPoint(loop_body);
+    llvm::Value* data_length = wrapper_llvm_func->getArg(2);
 
-  // Calculate the number of vectors in the data array
-  llvm::Value* num_vectors = builder.CreateUDiv(
-      data_length, builder.getInt32(vector_size), "num_vectors");
-  // Calculate the index for this iteration: current_count % num_vectors
-  llvm::Value* index = builder.CreateURem(current_count, num_vectors, "index");
+    // Calculate the number of vectors in the data array
+    llvm::Value* num_vectors = builder.CreateUDiv(
+        data_length, builder.getInt32(vector_size), "num_vectors");
+    // Calculate the index for this iteration: current_count % num_vectors
+    llvm::Value* index =
+        builder.CreateURem(current_count, num_vectors, "index");
 
-  // Load input vectors using the calculated index
-  std::vector<llvm::Value*> arg_vecs;
-  for (int i = 0; i < arg_types.size(); ++i) {
-    llvm::Value* base_ptr = wrapper_llvm_func->getArg(i + 3);
-    llvm::Value* vec_ptr =
-        builder.CreateGEP(arg_vec_types[i], base_ptr, index, "vec_ptr");
-    llvm::LoadInst* arg_vec =
-        builder.CreateLoad(arg_vec_types[i], vec_ptr, "arg_vec");
-    arg_vec->setAlignment(llvm::Align(32));
-    arg_vecs.push_back(arg_vec);
-  }
-  llvm::CallInst* result_vec = builder.CreateCall(original_func, arg_vecs);
-  llvm::Value* ret_base_ptr = wrapper_llvm_func->getArg(0);
-  llvm::Value* ret_vec_ptr =
-      builder.CreateGEP(ret_vec_type, ret_base_ptr, index, "ret_vec_ptr");
-  llvm::StoreInst* store_result = builder.CreateStore(result_vec, ret_vec_ptr);
-  store_result->setAlignment(llvm::Align(32));
+    // Load input vectors using the calculated index
+    std::vector<llvm::Value*> arg_vecs;
+    for (int i = 0; i < arg_types.size(); ++i) {
+      llvm::Value* base_ptr = wrapper_llvm_func->getArg(i + 3);
+      llvm::Value* vec_ptr =
+          builder.CreateGEP(arg_vec_types[i], base_ptr, index, "vec_ptr");
+      llvm::LoadInst* arg_vec =
+          builder.CreateLoad(arg_vec_types[i], vec_ptr, "arg_vec");
+      arg_vec->setAlignment(llvm::Align(32));
+      arg_vecs.push_back(arg_vec);
+    }
+    llvm::CallInst* result_vec = builder.CreateCall(original_func, arg_vecs);
+    llvm::Value* ret_base_ptr = wrapper_llvm_func->getArg(0);
+    llvm::Value* ret_vec_ptr =
+        builder.CreateGEP(ret_vec_type, ret_base_ptr, index, "ret_vec_ptr");
+    llvm::StoreInst* store_result =
+        builder.CreateStore(result_vec, ret_vec_ptr);
+    store_result->setAlignment(llvm::Align(32));
 
-  llvm::Value* next_count =
-      builder.CreateAdd(current_count, builder.getInt32(1), "next_count");
-  builder.CreateStore(next_count, counter);
-  builder.CreateBr(loop_header);
-  builder.SetInsertPoint(loop_exit);
-  builder.CreateRetVoid();
+    llvm::Value* next_count =
+        builder.CreateAdd(current_count, builder.getInt32(1), "next_count");
+    builder.CreateStore(next_count, counter);
+    builder.CreateBr(loop_header);
+    builder.SetInsertPoint(loop_exit);
+    builder.CreateRetVoid();
 
-  std::string error_str;
-  llvm::raw_string_ostream os(error_str);
-  if (llvm::verifyFunction(*wrapper_llvm_func, &os)) {
-    return llvm::make_error<llvm::StringError>(
-        llvm::errc::invalid_argument,
-        "Error in wrapper function IR: " + os.str());
-  }
-  llvm::ExitOnError exit_on_err;
-  exit_on_err(jit_->addIRModule(
-      llvm::orc::ThreadSafeModule(std::move(wrapper_module_owner), *tsc_)));
-  auto function_sym = jit_->lookup(wrapper_function_name);
-  if (!function_sym) {
-    return function_sym.takeError();
-  }
-  return reinterpret_cast<void*>(function_sym->getValue());
+    std::string error_str;
+    llvm::raw_string_ostream os(error_str);
+    if (llvm::verifyFunction(*wrapper_llvm_func, &os)) {
+      return llvm::make_error<llvm::StringError>(
+          llvm::errc::invalid_argument,
+          "Error in wrapper function IR: " + os.str());
+    }
+    llvm::ExitOnError exit_on_err;
+    exit_on_err(jit_->addIRModule(
+        llvm::orc::ThreadSafeModule(std::move(wrapper_module_owner), *tsc_)));
+    auto function_sym = jit_->lookup(wrapper_function_name);
+    if (!function_sym) {
+      return function_sym.takeError();
+    }
+    return reinterpret_cast<void*>(function_sym->getValue());
+  });
 }
 
 }  // namespace xla::codegen::math
