@@ -802,7 +802,7 @@ IndexingMap PackedTranspose::GetInputIndexing(MLIRContext* ctx) const {
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], ctx);
   auto block_id =
       getAffineDimExpr(KernelFusionInterface::kIndexingMapBlockIdxDims[0], ctx);
-  auto warp_size = WarpSize(analysis_.device_info());
+  auto warp_size = kNumShmemBanks;
   auto lane_id = thread_id % warp_size;
   auto warp_id = thread_id.floorDiv(warp_size);
   std::vector<IndexingMap::Variable> dim_vars = DimVarsFromGPUGrid(
@@ -863,7 +863,7 @@ IndexingMap PackedTranspose::GetShmemWriteIndexing(
   // Dimensions variables.
   auto thread_id = getAffineDimExpr(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], ctx);
-  auto warp_size = WarpSize(analysis_.device_info());
+  auto warp_size = kNumShmemBanks;
   auto lane_id = thread_id % warp_size;
   auto warp_id = thread_id.floorDiv(warp_size);
   std::vector<IndexingMap::Variable> dim_vars = DimVarsFromGPUGrid(
@@ -895,7 +895,7 @@ IndexingMap PackedTranspose::GetShmemReadIndexing(
   // Dimensions variables.
   auto thread_id = getAffineDimExpr(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], ctx);
-  auto warp_size = WarpSize(analysis_.device_info());
+  auto warp_size = kNumShmemBanks;
   auto lane_id = thread_id % warp_size;
   auto warp_id = thread_id.floorDiv(warp_size);
   std::vector<IndexingMap::Variable> dim_vars = DimVarsFromGPUGrid(
@@ -932,7 +932,7 @@ IndexingMap PackedTranspose::GetOutputIndexing(mlir::MLIRContext* ctx) const {
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], ctx);
   auto block_id =
       getAffineDimExpr(KernelFusionInterface::kIndexingMapBlockIdxDims[0], ctx);
-  auto warp_size = WarpSize(analysis_.device_info());
+  auto warp_size = kNumShmemBanks;
   auto lane_id = thread_id % warp_size;
   auto warp_id = thread_id.floorDiv(warp_size);
   std::vector<IndexingMap::Variable> dim_vars = DimVarsFromGPUGrid(
