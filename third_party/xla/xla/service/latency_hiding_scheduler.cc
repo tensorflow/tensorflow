@@ -3259,8 +3259,6 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
   if (VLOG_IS_ON(1)) {
     // Log the statistics before scheduling. We batch the per-computation
     // statistics to speed up the calculation.
-    std::unique_ptr<HloAliasAnalysis> alias_analysis =
-        HloAliasAnalysis::Run(module).value();
     ModulePressureState pressure_state = ModulePressureState(
         module, scheduling_context_->GetAliasAnalysis().get(),
         scheduling_context_->GetShapeSizeBytes());
