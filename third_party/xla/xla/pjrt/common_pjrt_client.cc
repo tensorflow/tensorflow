@@ -443,8 +443,7 @@ CommonPjRtBufferImpl::CopyToCpuMemorySpace(const xla::Shape& dst_shape,
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtBufferImpl::CopyToMemorySpace(PjRtMemorySpace* dst_memory_space) {
   // Copying across PjRtClients involves a copy through the host.
-  if (auto* other_client =
-          dynamic_cast<CommonPjRtClient*>(dst_memory_space->client())) {
+  if (dst_memory_space->client() == client()) {
     TF_ASSIGN_OR_RETURN(
         auto dest_shape,
         tensorflow::down_cast<CommonPjRtClient*>(client())
@@ -454,7 +453,8 @@ CommonPjRtBufferImpl::CopyToMemorySpace(PjRtMemorySpace* dst_memory_space) {
       return DirectCopyToMemorySpace(dst_memory_space);
     }
     if (!primitive_util::IsSubByteNonPredType(dest_shape.element_type())) {
-      if (other_client->IsOnCpu(dst_memory_space)) {
+      if (tensorflow::down_cast<CommonPjRtClient*>(client())->IsOnCpu(
+              dst_memory_space)) {
         return CopyToCpuMemorySpace(dest_shape, dst_memory_space);
       }
     }
