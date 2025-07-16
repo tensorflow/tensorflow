@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
 #include "xla/codegen/math/intrinsic.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::codegen {
 

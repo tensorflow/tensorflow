@@ -21,6 +21,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::codegen {
 namespace {
