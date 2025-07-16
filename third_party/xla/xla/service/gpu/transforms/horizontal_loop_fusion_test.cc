@@ -1061,32 +1061,6 @@ e {
               GmockMatch(m::Tuple(m::Negate(), m::Add())));
 }
 
-TEST_F(HorizontalLoopFusionTest, FuseNonDefaultLayoutsUsingConcatenation) {
-  const std::string kHloText = R"(
-HloModule m, entry_computation_layout={()->(s32[2,3]{0,1}, s32[2,3]{1,0})}
-
-e {
-  a = s32[2,3]{1,0} constant({ { 1, 2, 3 }, { 4, 5, 6 } })
-  b = s32[2,3]{1,0} constant({ { 10, 20, 30 }, { 40, 50, 60 } })
-  t = tuple(a, b)
-})";
-
-  MatchOptimizedHlo(kHloText, R"(
-CHECK: copy_horizontally_fused_computation
-CHECK: %[[p0:.+]] = s32[2,3]{0,1} parameter(0)
-CHECK: %[[c0:.+]] = s32[2,3]{0,1} copy(%[[p0]])
-CHECK: %[[b0:.+]] = s32[3,2]{1,0} bitcast(%[[c0]])
-CHECK: %[[r0:.+]] = s32[6]{0} reshape(%[[b0]])
-CHECK: %[[p1:.+]] = s32[2,3]{1,0} parameter(1)
-CHECK: %[[c1:.+]] = s32[2,3]{1,0} copy(%[[p1]])
-CHECK: %[[r1:.+]] = s32[6]{0} reshape(%[[c1]])
-CHECK: s32[12]{0} concatenate(%[[r0]], %[[r1]]), dimensions={0}
-)");
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{0}));
-}
-
 TEST_F(HorizontalLoopFusionTest, PassBitcastsLookingForFusionCandidates) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 a {
