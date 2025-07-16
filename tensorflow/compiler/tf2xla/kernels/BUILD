@@ -38,6 +38,7 @@ check_deps(
 cc_library(
     name = "xla_ops",
     tags = ["optonly"],
+    visibility = ["//visibility:public"],
     deps = [
         ":aggregate_ops",
         ":all_reduce_op",
