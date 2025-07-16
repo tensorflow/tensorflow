@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/call_graph.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -36,26 +37,29 @@ namespace xla {
 namespace {
 
 // Flatten a single call graph node. Expects to visit nodes in postorder.
-absl::Status FlattenNode(const CallGraphNode& node) {
+// Returns true if the module was changed, false otherwise.
+absl::StatusOr<bool> FlattenNode(const CallGraphNode& node) {
+  bool changed = false;
   HloComputation* computation = node.computation();
   HloModule* module = computation->parent();
-  // Clone callee for all call-sites except the first one.
   for (int i = 0; i < node.caller_callsites().size(); ++i) {
     CallSite call_site = node.caller_callsites()[i];
-    // Only consider sequential call contexts.
-    if (call_site.context() == CallContext::kEmbedded) {
-      continue;
-    }
-    CHECK_EQ(call_site.context(), CallContext::kControlFlow);
-
-    // Skip first element if this computation is only called from a sequential
-    // context.
-    if (node.context() != CallContext::kBoth && i == 0) {
-      continue;
-    }
-
     std::vector<HloComputation*> worklist;
-    // Clone computation for the remaining sequential context call sites.
+    // If this is the first (or only) callsite, and it only refers to the
+    // computation once, no need to clone.
+    if (i == 0) {
+      int computation_count = 0;
+      for (auto* callee : call_site.instruction()->called_computations()) {
+        if (callee == computation) {
+          ++computation_count;
+        }
+      }
+      if (computation_count <= 1) {
+        continue;
+      }
+    }
+
+    changed = true;
     call_site.instruction()->ReplaceCalledComputations(
         [&](HloComputation* callee) {
           if (callee == computation) {
@@ -72,11 +76,6 @@ absl::Status FlattenNode(const CallGraphNode& node) {
       auto current = worklist.back();
       worklist.pop_back();
       for (auto* instruction : current->instructions()) {
-        if (GetInstructionCallContext(instruction->opcode()) !=
-            CallContext::kControlFlow) {
-          continue;
-        }
-
         instruction->ReplaceCalledComputations([&](HloComputation* callee) {
           return module->AddEmbeddedComputation(callee->Clone());
         });
@@ -86,7 +85,7 @@ absl::Status FlattenNode(const CallGraphNode& node) {
       }
     }
   }
-  return absl::OkStatus();
+  return changed;
 }
 
 // Annotates flatten computations with callee instruction types.
@@ -100,6 +99,14 @@ absl::Status AnnotateNode(const CallGraphNode& node) {
       }
     }
   }
+
+  // Correctly handle dead code: if a fusion computation is no longer used, it
+  // should not have a fusion instruction set.
+  if (node.callers().empty() &&
+      node.computation()->FusionInstruction() != nullptr) {
+    node.computation()->SetFusionInstruction(nullptr);
+  }
+
   return absl::OkStatus();
 }
 
@@ -110,12 +117,21 @@ absl::StatusOr<bool> FlattenCallGraph::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(3, "Before flatten call graph:\n" + module->ToString());
 
+  bool changed = false;
   {  // Flatten original call graph.
     std::unique_ptr<CallGraph> call_graph =
         CallGraph::Build(module, execution_threads);
-    TF_RETURN_IF_ERROR(call_graph->VisitNodes(FlattenNode));
+    TF_ASSIGN_OR_RETURN(bool flattened,
+                        call_graph->VisitNodesWithReturn(FlattenNode));
+    changed |= flattened;
   }
 
+  if (!changed) {
+    return false;
+  }
+
+  // TODO(b/418034360): Remove this step once the fusion instruction is
+  // automatically maintained.
   {  // Annotate flattened computations with callee types.
     std::unique_ptr<CallGraph> call_graph =
         CallGraph::Build(module, execution_threads);

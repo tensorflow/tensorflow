@@ -25,8 +25,8 @@ limitations under the License.
 #include <cstring>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <ostream>
-#include <random>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -39,7 +39,9 @@ limitations under the License.
 #include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/xnnpack/file_util.h"
+#include "tensorflow/lite/delegates/xnnpack/mmap_handle.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
+#include "tensorflow/lite/delegates/xnnpack/weight_cache_test_helpers.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 namespace tflite::xnnpack {
@@ -53,256 +55,6 @@ std::ostream& operator<<(std::ostream& os, const PackIdentifier& p) {
 namespace {
 
 using testing::ElementsAreArray;
-using testing::Ge;
-
-std::string GenerateRandomString(const size_t size) {
-  constexpr char chars[] =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz";
-  std::mt19937 rg{std::random_device{}()};
-  std::uniform_int_distribution<std::string::size_type> pick(0,
-                                                             sizeof(chars) - 1);
-  std::string str(size, 'a');
-  std::generate(begin(str), end(str), [&] { return pick(rg); });
-  return str;
-};
-
-template <class T>
-class LightSpan {
- public:
-  using value_type = T;
-
-  LightSpan(const void* data, const size_t size)
-      : ptr_(reinterpret_cast<T*>(data)), size_(size) {}
-
-  size_t size() const { return size(); }
-  const T* begin() const { return ptr_; }
-  const T* end() const { return ptr_ + size_; }
-
-  friend std::ostream& operator<<(std::ostream& os, const LightSpan<T>& s) {
-    os << '[';
-    auto it = s.begin();
-    if (it != s.end()) {
-      os << +*it;
-    }
-    ++it;
-    for (; it != s.end(); ++it) {
-      os << ", " << +*it;
-    }
-    return os << ']';
-  }
-
- private:
-  T* ptr_;
-  size_t size_;
-};
-
-// Wraps a call to `mkstemp` to create temporary files.
-class TempFileDesc {
- public:
-  static constexpr struct AutoClose {
-  } kAutoClose{};
-
-#if defined(_MSC_VER)
-  TempFileDesc() : fd_() {
-    char filename[L_tmpnam_s];
-    errno_t err = tmpnam_s(filename, L_tmpnam_s);
-    if (err) {
-      fprintf(stderr, "Could not create temporary filename.\n");
-      std::abort();
-    }
-    path_ = filename;
-    fd_ = open(path_.c_str(), O_CREAT | O_EXCL | O_RDWR, 0644);
-    if (fd_ < 0) {
-      fprintf(stderr, "Could not create temporary filename.\n");
-      std::abort();
-    }
-  }
-#else
-  TempFileDesc() : fd_(mkstemp(path_.data())) {
-    if (GetFd() < 0) {
-      perror("Could not create temporary file");
-    }
-  }
-#endif
-
-  explicit TempFileDesc(AutoClose) : TempFileDesc() { Close(); }
-
-  TempFileDesc(const TempFileDesc&) = delete;
-  TempFileDesc& operator=(const TempFileDesc&) = delete;
-
-  friend void swap(TempFileDesc& a, TempFileDesc& b) {
-    std::swap(a.path_, b.path_);
-    std::swap(a.fd_, b.fd_);
-  }
-
-  TempFileDesc(TempFileDesc&& other) { swap(*this, other); }
-  TempFileDesc& operator=(TempFileDesc&& other) {
-    swap(*this, other);
-    return *this;
-  }
-
-  ~TempFileDesc() { Close(); }
-
-  void Close() {
-    if (GetFd() >= 0) {
-      close(fd_);
-      fd_ = -1;
-    }
-  }
-
-  const std::string& GetPath() const { return path_; }
-
-  const char* GetCPath() const { return path_.c_str(); }
-
-  int GetFd() const { return fd_; }
-
-  bool IsOpen() const { return fd_ >= 0; }
-
- private:
-  std::string path_ = testing::TempDir() + "/weight_cache_test_file.XXXXXX";
-  int fd_ = -1;
-};
-
-TEST(MMapHandleTest, DefaultConstructs) {
-  MMapHandle handle;
-  EXPECT_FALSE(handle.IsMapped());
-  EXPECT_EQ(handle.data(), nullptr);
-  EXPECT_EQ(handle.size(), 0);
-}
-
-TEST(MMapHandleTest, MapNonExistingFileFails) {
-  // I hope this path doesn't exist...
-  const char* file_path = "sdbgfd";
-  MMapHandle handle;
-  EXPECT_FALSE(handle.Map(file_path));
-}
-
-TEST(MMapHandleTest, MapExistingFileWorks) {
-  using std::size;
-
-  const std::string payload = "This is some data in the file.";
-
-  TempFileDesc tmp_file;
-  ASSERT_TRUE(tmp_file.IsOpen());
-  ASSERT_EQ(write(tmp_file.GetFd(), payload.c_str(), size(payload)),
-            size(payload));
-  tmp_file.Close();
-
-  MMapHandle handle;
-  ASSERT_TRUE(handle.Map(tmp_file.GetCPath()));
-  EXPECT_TRUE(handle.IsMapped());
-  EXPECT_NE(handle.data(), nullptr);
-  EXPECT_THAT(handle.size(), Ge(size(payload)));
-  EXPECT_THAT(handle, ElementsAreArray(payload));
-
-  handle.UnMap();
-  EXPECT_FALSE(handle.IsMapped());
-  EXPECT_EQ(handle.data(), nullptr);
-  EXPECT_EQ(handle.size(), 0);
-}
-
-TEST(MMapHandleTest, MoveConstructs) {
-  const std::string payload = "This is some data in the file.";
-
-  TempFileDesc tmp_file;
-  ASSERT_TRUE(tmp_file.IsOpen());
-  ASSERT_EQ(write(tmp_file.GetFd(), payload.c_str(), size(payload)),
-            size(payload));
-  tmp_file.Close();
-
-  MMapHandle handle;
-  ASSERT_TRUE(handle.Map(tmp_file.GetCPath()));
-
-  MMapHandle handle2(std::move(handle));
-
-  // We are checking that the moved from handle has lost control over the data.
-  // NOLINTBEGIN(bugprone-use-after-move)
-  EXPECT_FALSE(handle.IsMapped());
-  EXPECT_EQ(handle.data(), nullptr);
-  EXPECT_EQ(handle.size(), 0);
-  // NOLINTEND(bugprone-use-after-move)
-
-  EXPECT_TRUE(handle2.IsMapped());
-  EXPECT_NE(handle2.data(), nullptr);
-  EXPECT_THAT(handle2.size(), Ge(size(payload)));
-  EXPECT_THAT(handle2, ElementsAreArray(payload));
-}
-
-TEST(MMapHandleTest, Resize) {
-  const std::string payload = "This is some data in the file.";
-
-  TempFileDesc tmp_file;
-  ASSERT_TRUE(tmp_file.IsOpen());
-  ASSERT_EQ(write(tmp_file.GetFd(), payload.c_str(), size(payload)),
-            size(payload));
-  tmp_file.Close();
-
-  MMapHandle handle;
-  ASSERT_TRUE(handle.Map(tmp_file.GetCPath()));
-
-#if defined(__linux__) || defined(__ANDROID__)
-  const size_t kMaxResizeTestCount = 20;
-  bool was_resized = true;
-  for (size_t i = 0; i < kMaxResizeTestCount && was_resized; ++i) {
-    was_resized = handle.Resize(payload.size() * 2);
-    EXPECT_TRUE(was_resized || errno == ENOMEM);
-  }
-#else
-  EXPECT_FALSE(handle.Resize(payload.size()));
-#endif
-}
-
-TEST(MMapHandleTest, MapWithOffset) {
-  const std::string payload = "This is some data in the file.";
-  const std::string payload2 = "Some other data appended to the the offset.";
-
-  TempFileDesc tmp_file;
-  ASSERT_TRUE(tmp_file.IsOpen());
-  ASSERT_EQ(write(tmp_file.GetFd(), payload.c_str(), size(payload)),
-            size(payload));
-  ASSERT_EQ(write(tmp_file.GetFd(), payload2.c_str(), size(payload2)),
-            size(payload2));
-  tmp_file.Close();
-
-  MMapHandle handle;
-  ASSERT_TRUE(handle.Map(tmp_file.GetCPath(), /*offset=*/size(payload)));
-  EXPECT_EQ(handle.size(), size(payload2));
-  EXPECT_THAT(std::string((const char*)handle.data(), handle.size()),
-              testing::StrEq(payload2));
-}
-
-TEST(MMapHandleTest, ResizeMapWithOffset) {
-  const std::string payload = "This is some data in the file.";
-  const std::string payload2 = "Some other data appended to the the offset.";
-  const std::string payload3 =
-      "Yet some other data written after the initial mapping.";
-
-  TempFileDesc tmp_file;
-  ASSERT_TRUE(tmp_file.IsOpen());
-  ASSERT_EQ(write(tmp_file.GetFd(), payload.c_str(), size(payload)),
-            size(payload));
-  ASSERT_EQ(write(tmp_file.GetFd(), payload2.c_str(), size(payload2)),
-            size(payload2));
-
-  MMapHandle handle;
-  ASSERT_TRUE(handle.Map(tmp_file.GetCPath(), /*offset=*/size(payload)));
-
-  ASSERT_EQ(write(tmp_file.GetFd(), payload3.c_str(), size(payload3)),
-            size(payload3));
-  tmp_file.Close();
-#if defined(__linux__) || defined(__ANDROID__)
-  bool was_resized = handle.Resize(payload2.size() + payload3.size());
-  if (was_resized) {
-    EXPECT_THAT(std::string((const char*)handle.data(), handle.size()),
-                testing::StrEq(payload2 + payload3));
-  } else {
-    GTEST_SKIP()
-        << "This run did not end up in a resize of the mmaped interval.";
-  }
-#else
-  GTEST_SKIP() << "Resize is not supported for this build.";
-#endif
-}
 
 TEST(WeightCacheBuilderTest, ReserveAppendWriteWorks) {
   using std::size;
@@ -312,7 +64,9 @@ TEST(WeightCacheBuilderTest, ReserveAppendWriteWorks) {
 
   WeightCacheBuilder builder;
   const std::string cache_path = testing::TempDir() + "/cache";
-  ASSERT_TRUE(builder.Start(cache_path.c_str()));
+  FileDescriptor file_descriptor = FileDescriptor::Open(
+      cache_path.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+  ASSERT_TRUE(builder.Start(cache_path.c_str(), file_descriptor));
   ASSERT_TRUE(builder.StartBuildStep());
 
   const size_t payload_size = size(payload);
@@ -376,8 +130,10 @@ TEST(WeightCacheBuilderTest, AppendWithoutReserveWriteWorks) {
   const PackIdentifier dummy_id{1, 2, 3};
 
   const std::string cache_path = testing::TempDir() + "/cache";
+  FileDescriptor file_descriptor = FileDescriptor::Open(
+      cache_path.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
   WeightCacheBuilder builder;
-  ASSERT_TRUE(builder.Start(cache_path.c_str()));
+  ASSERT_TRUE(builder.Start(cache_path.c_str(), file_descriptor));
   ASSERT_TRUE(builder.StartBuildStep());
 
   const size_t payload_size = size(payload);
@@ -430,35 +186,25 @@ TEST(WeightCacheBuilderTest, AppendWithoutReserveWriteWorks) {
   EXPECT_THAT(cache_data, ElementsAreArray(payload));
 }
 
-TEST(WeightCacheBuilderTest, NonExistingPathFails) {
+TEST(WeightCacheBuilderTest, InvalidFileDescriptorFails) {
   WeightCacheBuilder builder;
-  EXPECT_FALSE(builder.Start(""));
-  EXPECT_FALSE(builder.Start("/seldf/sedsft"));
+  EXPECT_FALSE(builder.Start("", FileDescriptor()));
+  EXPECT_FALSE(builder.Start("/seldf/sedsft", FileDescriptor()));
 }
 
-TEST(WeightCacheBuilderTest, InMemoryCacheTriggeredByCorrectPrefix) {
+TEST(WeightCacheBuilderTest, InMemoryCacheCanBeBuilt) {
   if (!TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider()) {
     GTEST_SKIP() << "In-memory weight cache isn't enabled for this build or "
                     "isn't supported by the current system, skipping test.";
   }
-  {  // Exact in-memory flag used starts an in-memory build.
-    WeightCacheBuilder builder;
-    EXPECT_TRUE(builder.Start(kInMemoryCachePath));
-    EXPECT_TRUE(builder.IsStarted());
-    const FileDescriptor file_fd(open(kInMemoryCachePath, O_RDONLY));
-    EXPECT_FALSE(file_fd.IsValid());
-    EXPECT_EQ(errno, ENOENT);
-  }
-  {  // Prefixed in-memory flag used starts an in-memory build.
-    WeightCacheBuilder builder;
-    const std::string path_with_in_memory_prefix =
-        std::string(kInMemoryCachePath) + "/slkdjfsldf";
-    EXPECT_TRUE(builder.Start(path_with_in_memory_prefix.c_str()));
-    EXPECT_TRUE(builder.IsStarted());
-    const FileDescriptor file_fd(open(kInMemoryCachePath, O_RDONLY));
-    EXPECT_FALSE(file_fd.IsValid());
-    EXPECT_EQ(errno, ENOENT);
-  }
+  WeightCacheBuilder builder;
+  EXPECT_TRUE(
+      builder.Start(kInMemoryCachePath, CreateInMemoryFileDescriptor(nullptr)));
+  EXPECT_TRUE(builder.IsStarted());
+  const FileDescriptor file_fd =
+      FileDescriptor::Open(kInMemoryCachePath, O_RDONLY);
+  EXPECT_FALSE(file_fd.IsValid());
+  EXPECT_EQ(errno, ENOENT);
 }
 
 TEST(WeightCacheBuilderTest, MultipleStepBuild) {
@@ -474,8 +220,10 @@ TEST(WeightCacheBuilderTest, MultipleStepBuild) {
 
   TempFileDesc tmp_file{TempFileDesc::kAutoClose};
 
+  FileDescriptor file_descriptor = FileDescriptor::Open(
+      tmp_file.GetCPath(), O_CREAT | O_TRUNC | O_RDWR, 0644);
   WeightCacheBuilder builder;
-  ASSERT_TRUE(builder.Start(tmp_file.GetCPath()));
+  ASSERT_TRUE(builder.Start(tmp_file.GetCPath(), file_descriptor));
   ASSERT_TRUE(builder.StartBuildStep());
 
   {
@@ -646,7 +394,7 @@ struct FakeContext {
         packed_buffers.emplace(pack_id, PackedBuffer{})->second;
     (AddTensorToPack(packed.buffer, tensor_indices), ...);
 
-    // Add the packed buffer to the XNNPack cache. Normaly you would pack in
+    // Add the packed buffer to the XNNPack cache. Normally you would pack in
     // place where the reserved space is.
     xnn_weights_cache_look_up_key look_up_key =
         LookUpKey(algorithm_seed, tensor_indices...);
@@ -668,11 +416,63 @@ struct FakeContext {
   std::unordered_map<size_t, size_t> tensor_buffer_identifiers;
 };
 
-struct BuildMMapWeightCacheProviderTest : testing::Test {
+struct TestVariant {
+  bool use_explicit_fd;
+  const char* explicit_fd_path = nullptr;
+  bool use_in_memory_cache = false;
+
+  static std::string Name(const testing::TestParamInfo<TestVariant>& info) {
+    if (info.param.use_in_memory_cache) {
+      return "WithInMemoryCache";
+    }
+    if (info.param.use_explicit_fd) {
+      if (info.param.explicit_fd_path) {
+        return "WithExplicitFileDescriptorAndPath";
+      } else {
+        return "WithExplicitFileDescriptorAndNoPath";
+      }
+    }
+    return "WithImplicitFileDescriptor";
+  }
+
+  friend std::ostream& operator<<(std::ostream& os, const TestVariant& tv) {
+    if (tv.use_in_memory_cache) {
+      return os << "in-memory";
+    }
+    if (tv.use_explicit_fd) {
+      os << "explicit fd:";
+    } else {
+      return os << "implicit fd from path";
+    }
+    if (tv.explicit_fd_path) {
+      os << tv.explicit_fd_path;
+    } else {
+      os << "[no path]";
+    }
+    return os;
+  }
+};
+
+auto TestVariants() {
+  return testing::Values(
+      TestVariant{/*use_explicit_fd=*/false, /*explicit_fd_path=*/nullptr},
+      TestVariant{/*use_explicit_fd=*/true, /*explicit_fd_path=*/nullptr},
+      TestVariant{/*use_explicit_fd=*/true,
+                  /*explicit_fd_path=*/"explicit file descriptor"},
+      TestVariant{/*use_explicit_fd=*/false, /*explicit_fd_path=*/nullptr,
+                  /*use_in_memory_cache=*/true});
+}
+
+struct BuildMMapWeightCacheProviderTest : testing::TestWithParam<TestVariant> {
   enum { kAlgoSeed1, kAlgoSeed2, kAlgoSeed3 };
   enum { kBufferId1, kBufferId2, kBufferId3, kBufferId4 };
 
   void SetUp() override {
+    if (use_in_memory_cache &&
+        !TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider()) {
+      GTEST_SKIP() << "In-memory weight cache isn't enabled for this build or "
+                      "isn't supported by the current system, skipping test.";
+    }
     AddTensors();
     EndSetup();
   }
@@ -688,25 +488,41 @@ struct BuildMMapWeightCacheProviderTest : testing::Test {
     ctx.FinalizeTensors();
     cache_provider.MapTensorIdentifiers(ctx.tensors.data(), ctx.tensors.size(),
                                         ctx.tensor_buffer_identifiers);
-    ASSERT_TRUE(cache_provider.StartBuild(tmp_file.GetCPath()));
+    if (use_explicit_fd) {
+      ASSERT_TRUE(
+          cache_provider.StartBuild(explicit_fd_path, tmp_file.Duplicate()));
+    } else {
+      tmp_file.Close();
+      if (use_in_memory_cache) {
+        ASSERT_TRUE(cache_provider.StartBuild(kInMemoryCachePath));
+      } else {
+        ASSERT_TRUE(cache_provider.StartBuild(tmp_file.GetCPath()));
+      }
+    }
   }
 
   FakeContext ctx;
   MMapWeightCacheProvider cache_provider;
-  TempFileDesc tmp_file{TempFileDesc::kAutoClose};
+  TempFileDesc tmp_file;
+  const bool use_explicit_fd = GetParam().use_explicit_fd;
+  const char* explicit_fd_path = GetParam().explicit_fd_path;
+  const bool use_in_memory_cache = GetParam().use_in_memory_cache;
 };
 
-TEST_F(BuildMMapWeightCacheProviderTest, LookUpFailsIfKeyDoesntMatch) {
+INSTANTIATE_TEST_SUITE_P(Test, BuildMMapWeightCacheProviderTest, TestVariants(),
+                         TestVariant::Name);
+
+TEST_P(BuildMMapWeightCacheProviderTest, LookUpFailsIfKeyDoesntMatch) {
   xnn_weights_cache_look_up_key look_up_key{};
   EXPECT_EQ(cache_provider.LookUp(&look_up_key), SIZE_MAX);
 }
 
-TEST_F(BuildMMapWeightCacheProviderTest, LookUpSucceeds) {
+TEST_P(BuildMMapWeightCacheProviderTest, LookUpSucceeds) {
   enum { kWeightIndex, kBiasIndex };
   ASSERT_TRUE(cache_provider.StartBuildStep());
   const auto pack_id = ctx.PackTensors(&cache_provider.GetCacheProvider(),
                                        kAlgoSeed1, kWeightIndex, kBiasIndex);
-  EXPECT_TRUE(cache_provider.StopBuildStep());
+  ASSERT_TRUE(cache_provider.StopBuildStep());
   const xnn_weights_cache_look_up_key look_up_key =
       ctx.LookUpKey(kAlgoSeed1, kWeightIndex, kBiasIndex);
 
@@ -714,7 +530,7 @@ TEST_F(BuildMMapWeightCacheProviderTest, LookUpSucceeds) {
             ctx.packed_buffers.find(pack_id)->second.offset);
 }
 
-TEST_F(BuildMMapWeightCacheProviderTest,
+TEST_P(BuildMMapWeightCacheProviderTest,
        DifferentAlgoSeedsSameTensorsDontConflict) {
   enum { kWeightIndex, kBiasIndex };
   ASSERT_TRUE(cache_provider.StartBuildStep());
@@ -737,7 +553,7 @@ TEST_F(BuildMMapWeightCacheProviderTest,
             cache_provider.LookUp(&look_up_key_2));
 }
 
-TEST_F(BuildMMapWeightCacheProviderTest,
+TEST_P(BuildMMapWeightCacheProviderTest,
        SameAlgoSeedDifferentTensorsDontConflict) {
   enum { kWeightIndex1, kWeightIndex2, kBiasIndex1, kBiasIndex2 };
   ASSERT_TRUE(cache_provider.StartBuildStep());
@@ -787,7 +603,7 @@ TEST_F(BuildMMapWeightCacheProviderTest,
             cache_provider.LookUp(&look_up_key_4));
 }
 
-TEST_F(BuildMMapWeightCacheProviderTest, BuildStepSequenceWorks) {
+TEST_P(BuildMMapWeightCacheProviderTest, BuildStepSequenceWorks) {
   enum { kWeightIndex1, kBiasIndex, kWeightIndex2 };
   ASSERT_TRUE(cache_provider.StartBuildStep());
 
@@ -809,6 +625,10 @@ struct LoadMMapWeightCacheProviderTest : BuildMMapWeightCacheProviderTest {
 
   void SetUp() override {
     BuildMMapWeightCacheProviderTest::SetUp();
+    if (IsSkipped()) {
+      return;
+    }
+
     ASSERT_TRUE(cache_provider.StartBuildStep());
 
     pack_id_1 = ctx.PackTensors(&cache_provider.GetCacheProvider(), kAlgoSeed1,
@@ -831,12 +651,15 @@ struct LoadMMapWeightCacheProviderTest : BuildMMapWeightCacheProviderTest {
   PackIdentifier pack_id_2;
 };
 
-TEST_F(LoadMMapWeightCacheProviderTest, LookUpFailsIfKeyDoesntMatch) {
+INSTANTIATE_TEST_SUITE_P(Test, LoadMMapWeightCacheProviderTest, TestVariants(),
+                         TestVariant::Name);
+
+TEST_P(LoadMMapWeightCacheProviderTest, LookUpFailsIfKeyDoesntMatch) {
   xnn_weights_cache_look_up_key look_up_key{};
   EXPECT_EQ(cache_provider.LookUp(&look_up_key), SIZE_MAX);
 }
 
-TEST_F(LoadMMapWeightCacheProviderTest, LookUpSucceeds) {
+TEST_P(LoadMMapWeightCacheProviderTest, LookUpSucceeds) {
   const auto& reference_1 = ctx.packed_buffers.find(pack_id_1)->second;
   const auto& reference_2 = ctx.packed_buffers.find(pack_id_2)->second;
 
@@ -861,9 +684,35 @@ TEST_F(LoadMMapWeightCacheProviderTest, LookUpSucceeds) {
               ElementsAreArray(reference_2.buffer));
 }
 
-TEST(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
+struct MMapWeightCacheProviderTest : testing::TestWithParam<TestVariant> {
+  void SetUp() override {
+    if (use_in_memory_cache &&
+        !TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider()) {
+      GTEST_SKIP() << "In-memory weight cache isn't enabled for this build or "
+                      "isn't supported by the current system, skipping test.";
+    }
+  }
+  bool use_explicit_fd = GetParam().use_explicit_fd;
+  const char* const explicit_fd_path = GetParam().explicit_fd_path;
+  const bool use_in_memory_cache = GetParam().use_in_memory_cache;
+};
+
+INSTANTIATE_TEST_SUITE_P(Test, MMapWeightCacheProviderTest, TestVariants(),
+                         TestVariant::Name);
+
+TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
   using std::size;
-  TempFileDesc temp_fd(TempFileDesc::kAutoClose);
+  TempFileDesc temp_fd;
+  const char* temp_fd_cpath = explicit_fd_path;
+  FileDescriptor temp_fd_value = temp_fd.Duplicate();
+  if (!use_explicit_fd) {
+    temp_fd.Close();
+    temp_fd_cpath = temp_fd.GetCPath();
+    temp_fd_value.Close();
+    if (use_in_memory_cache) {
+      temp_fd_cpath = kInMemoryCachePath;
+    }
+  }
   const int32_t fake_packing_algo_seed = 0xBA0BAB;
   const char packed_data_ref_1[] = "abcdefghij";
   const char packed_data_ref_2[] = "klmnopqr";
@@ -876,6 +725,9 @@ TEST(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
   // address to map to a buffer identifier.
   char fake_buffer_pointer[kBufferCount] = {0};
 
+  auto build_cache_provider = std::make_unique<MMapWeightCacheProvider>();
+  auto load_cache_provider = std::make_unique<MMapWeightCacheProvider>();
+
   {  // Build and reload scenario.
     // This isn't factored between the two scenarios. When reloading the cache
     // in another process, the buffer addresses will have changed.
@@ -886,8 +738,9 @@ TEST(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
       tensor_buffer_identifiers[i] = i;
     }
 
-    MMapWeightCacheProvider cache_provider;
-    ASSERT_TRUE(cache_provider.StartBuild(temp_fd.GetCPath()));
+    MMapWeightCacheProvider& cache_provider = *build_cache_provider;
+    ASSERT_TRUE(cache_provider.LoadOrStartBuild(temp_fd_cpath,
+                                                temp_fd_value.Duplicate()));
     // 1st build step.
     ASSERT_TRUE(cache_provider.StartBuildStep());
 
@@ -1001,12 +854,20 @@ TEST(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
       tensor_buffer_identifiers[i] = i;
     }
 
-    MMapWeightCacheProvider cache_provider;
-    ASSERT_TRUE(cache_provider.Load(temp_fd.GetCPath()));
-
-    xnn_weights_cache_t cache = &cache_provider.GetCacheProvider();
-    cache_provider.MapTensorIdentifiers(tensors, size(tensors),
-                                        tensor_buffer_identifiers);
+    // When testing the in-memory cache, we reuse the cache provider used for
+    // building the cache. Otherwise we us a new one.
+    MMapWeightCacheProvider* cache_provider = build_cache_provider.get();
+    if (use_in_memory_cache) {
+      load_cache_provider.reset();
+    } else {
+      build_cache_provider.reset();
+      cache_provider = load_cache_provider.get();
+      ASSERT_TRUE(cache_provider->LoadOrStartBuild(temp_fd_cpath,
+                                                   temp_fd_value.Duplicate()));
+      cache_provider->MapTensorIdentifiers(tensors, size(tensors),
+                                           tensor_buffer_identifiers);
+    }
+    xnn_weights_cache_t cache = &cache_provider->GetCacheProvider();
 
     const xnn_weights_cache_look_up_key look_up_key_1{
         .seed = fake_packing_algo_seed,
@@ -1050,6 +911,39 @@ TEST(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
         LightSpan<const char>(loaded_packed_data_3, size(packed_data_ref_3)),
         ElementsAreArray(packed_data_ref_3));
   }
+}
+
+class IsCompatibleCacheFileTest : public testing::Test {
+ public:
+  void SetUp() override {
+    header_.version = XNNPackCacheHeader::kVersion;
+    memcpy(header_.xnnpack_build_identifier,
+           xnn_experimental_get_build_identifier_data(),
+           xnn_experimental_get_build_identifier_size());
+  }
+
+  bool WriteHeaderAndReturnIsCompatibleCacheFile() {
+    const bool res = fd_.Write(&header_, sizeof(header_));
+    fd_.Close();
+    return res && IsCompatibleCacheFile(fd_.GetCPath());
+  }
+
+  XNNPackCacheHeader header_{};
+  TempFileDesc fd_;
+};
+
+TEST_F(IsCompatibleCacheFileTest, ReturnsTrueForACorrectHeader) {
+  EXPECT_TRUE(WriteHeaderAndReturnIsCompatibleCacheFile());
+}
+
+TEST_F(IsCompatibleCacheFileTest, ReturnsFalseForWrongHeaderVersion) {
+  header_.version += 1;
+  EXPECT_FALSE(WriteHeaderAndReturnIsCompatibleCacheFile());
+}
+
+TEST_F(IsCompatibleCacheFileTest, ReturnsFalseForWrongBuildIdentifier) {
+  header_.xnnpack_build_identifier[0] += 1;
+  EXPECT_FALSE(WriteHeaderAndReturnIsCompatibleCacheFile());
 }
 
 }  // namespace

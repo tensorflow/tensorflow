@@ -225,7 +225,8 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_ImmediateSuccess) {
   EXPECT_EQ(result, "");
 
   char scratch[10];
-  TF_EXPECT_OK(random_access_file->Read(0, 10, &result, scratch));
+  TF_EXPECT_OK(
+      random_access_file->Read(0, result, absl::MakeSpan(scratch, 10)));
 }
 
 TEST(RetryingFileSystemTest, NewRandomAccessFile_SuccessWith3rdTry) {
@@ -254,7 +255,8 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_SuccessWith3rdTry) {
   // Use it and check the results.
   absl::string_view result;
   char scratch[10];
-  TF_EXPECT_OK(random_access_file->Read(0, 10, &result, scratch));
+  TF_EXPECT_OK(
+      random_access_file->Read(0, result, absl::MakeSpan(scratch, 10)));
 }
 
 TEST(RetryingFileSystemTest, NewRandomAccessFile_AllRetriesFailed) {
@@ -280,7 +282,8 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_AllRetriesFailed) {
   // Use it and check the results.
   absl::string_view result;
   char scratch[10];
-  const auto& status = random_access_file->Read(0, 10, &result, scratch);
+  const auto& status =
+      random_access_file->Read(0, result, absl::MakeSpan(scratch, 10));
   EXPECT_TRUE(absl::StrContains(status.message(), "Retriable error #10"))
       << status;
 }
@@ -312,7 +315,8 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_NoRetriesForSomeErrors) {
   absl::string_view result;
   char scratch[10];
   EXPECT_EQ("Failed precondition",
-            random_access_file->Read(0, 10, &result, scratch).message());
+            random_access_file->Read(0, result, absl::MakeSpan(scratch, 10))
+                .message());
 }
 
 TEST(RetryingFileSystemTest, NewWritableFile_ImmediateSuccess) {

@@ -120,11 +120,7 @@ class AsyncValue {
   // for the base type, which we do not have sufficient information to perform
   // at runtime.
   template <typename T>
-  const T& get() const;
-
-  // Same as the const overload of get(), except for returning a non-const ref.
-  template <typename T>
-  T& get();
+  T& get() const;
 
   // Returns the underlying error. IsError() must be true.
   const absl::Status& GetError() const;
@@ -291,8 +287,9 @@ class AsyncValue {
         is_refcounted_(is_refcounted),
         type_id_(GetTypeId<T>()),
         waiters_and_state_(WaitersAndState(nullptr, state)) {
-    if (AsyncValueAllocationTrackingEnabled() && is_refcounted)
+    if (AsyncValueAllocationTrackingEnabled() && is_refcounted) {
       total_allocated_async_values_.fetch_add(1, std::memory_order_relaxed);
+    }
   }
 
   AsyncValue(Kind kind, State state, bool is_refcounted)
@@ -302,8 +299,9 @@ class AsyncValue {
         is_refcounted_(is_refcounted),
         type_id_(kUnknownTypeId),
         waiters_and_state_(WaitersAndState(nullptr, state)) {
-    if (AsyncValueAllocationTrackingEnabled() && is_refcounted)
+    if (AsyncValueAllocationTrackingEnabled() && is_refcounted) {
       total_allocated_async_values_.fetch_add(1, std::memory_order_relaxed);
+    }
   }
 
   AsyncValue(const AsyncValue&) = delete;
@@ -463,7 +461,7 @@ class AsyncValue {
   static uint16_t CreateTypeInfoAndReturnTypeIdImpl(const TypeInfo& type_info);
 
   template <typename T>
-  const T& GetConcreteValue() const;
+  T& GetConcreteValue() const;
 
   // Returns the TypeInfoTable instance (there is one per process).
   using TypeInfoTable = internal::ConcurrentVector<TypeInfo>;
@@ -615,12 +613,7 @@ class ConcreteAsyncValue : public AsyncValue {
     NotifyAvailable(State::kError);
   }
 
-  const T& get() const {
-    DCHECK(HasData());
-    return data_store_.data();
-  }
-
-  T& get() {
+  T& get() const {
     DCHECK(HasData());
     return data_store_.data();
   }
@@ -708,7 +701,9 @@ class ConcreteAsyncValue : public AsyncValue {
     }
 
     void Destroy(State s) {
-      if (HasData()) data().~T();
+      if (HasData()) {
+        data().~T();
+      }
       error_.reset();
       has_data_ = false;
     }
@@ -725,8 +720,9 @@ class ConcreteAsyncValue : public AsyncValue {
       has_data_ = true;
     }
 
-    T& data() { return *reinterpret_cast<T*>(&data_); }
-    const T& data() const { return *reinterpret_cast<const T*>(&data_); }
+    T& data() { return *reinterpret_cast<T*>(data_); }
+
+    const T& data() const { return *reinterpret_cast<const T*>(data_); }
 
     bool HasData(State s) const { return has_data_; }
     bool HasData() const { return has_data_; }
@@ -845,8 +841,9 @@ class TypedIndirectAsyncValue : public IndirectAsyncValue {
 inline AsyncValue::~AsyncValue() {
   DCHECK_EQ(waiters_and_state_.load().waiter(), nullptr)
       << "An async value with waiters should never have refcount of zero";
-  if (AsyncValueAllocationTrackingEnabled() && is_refcounted_)
+  if (AsyncValueAllocationTrackingEnabled() && is_refcounted_) {
     total_allocated_async_values_.fetch_sub(1, std::memory_order_relaxed);
+  }
 
   // Catch use-after-free errors more eagerly, by triggering the size assertion
   // in the 'get' accessor.
@@ -927,18 +924,18 @@ inline void AsyncValue::DropRef(uint32_t count) {
 }
 
 template <typename T>
-const T& AsyncValue::GetConcreteValue() const {
+T& AsyncValue::GetConcreteValue() const {
   // Make sure both T (the stored type) and BaseT have vtable_ptr or
   // neither have the vtable_ptr.
   DCHECK_EQ(std::is_polymorphic<T>::value, has_vtable_);
   DCHECK(IsTypeIdCompatible<T>()) << "Incorrect accessor";
 
-  const char* this_ptr = reinterpret_cast<const char*>(this);
-  return *reinterpret_cast<const T*>(this_ptr + AsyncValue::kDataOffset);
+  uintptr_t base = reinterpret_cast<uintptr_t>(this);
+  return *reinterpret_cast<T*>(base + AsyncValue::kDataOffset);
 }
 
 template <typename T>
-const T& AsyncValue::get() const {
+T& AsyncValue::get() const {
   auto s = state();
   (void)s;
 
@@ -968,11 +965,6 @@ const T& AsyncValue::get() const {
   }
 }
 
-template <typename T>
-T& AsyncValue::get() {
-  return const_cast<T&>(static_cast<const AsyncValue*>(this)->get<T>());
-}
-
 inline void AsyncValue::SetStateConcrete() {
   DCHECK(IsConstructed() && kind() == Kind::kConcrete);
   NotifyAvailable(State::kConcrete);
@@ -991,13 +983,17 @@ void AsyncValue::emplace(Args&&... args) {
 inline const absl::Status* AsyncValue::GetErrorIfPresent() const {
   switch (kind()) {
     case Kind::kConcrete: {
-      if (state() != State::kError) return nullptr;
+      if (state() != State::kError) {
+        return nullptr;
+      }
       return &GetTypeInfo().get_error(this);
     }
     case Kind::kIndirect: {
       auto* iv_value = static_cast<const IndirectAsyncValue*>(this)->value_;
       // Unresolved IndirectAsyncValues are not errors.
-      if (!iv_value) return nullptr;
+      if (!iv_value) {
+        return nullptr;
+      }
 
       DCHECK(iv_value->kind() != Kind::kIndirect);
       return iv_value->GetErrorIfPresent();

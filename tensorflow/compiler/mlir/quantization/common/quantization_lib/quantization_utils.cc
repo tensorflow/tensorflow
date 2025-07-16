@@ -45,11 +45,11 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/portable_tensor_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantizeUtils.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/UniformSupport.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/portable_tensor_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/tools/optimize/quantization_utils.h"
 
@@ -194,12 +194,14 @@ quant::UniformQuantizedPerAxisType ResetAxisAndBroadcast(
 }  // namespace
 
 bool IsOpQuantizable(Operation* op) {
-  if (isa<func::ConstantOp, arith::ConstantOp, quantfork::StatisticsOp>(op)) {
+  if (isa<func::ConstantOp, arith::ConstantOp, mlir::quant::ir::StatisticsOp>(
+          op)) {
     // Constant ops do not have QuantizableResult attribute but they can deal
     // with quantized tensors.
     return true;
   } else if (op->hasTrait<OpTrait::IsTerminator>() ||
-             isa<quantfork::QuantizeCastOp, quantfork::DequantizeCastOp>(op)) {
+             isa<mlir::quant::ir::QuantizeCastOp,
+                 mlir::quant::ir::DequantizeCastOp>(op)) {
     // Terminators, qcast and decast are not quantizable.
     return false;
   }
@@ -633,7 +635,7 @@ ElementsAttr QuantizeLegacy(const Attribute real_value,
     std::vector<int8_t> quantized_values(real_values_attr.getNumElements());
     if (auto uniform_type = dyn_cast<UniformQuantizedType>(q_type)) {
       float min, max, scale;
-      mlir::lite::toco_legacy::PortableSymmetricQuantizeFloats(
+      mlir::quant::PortableSymmetricQuantizeFloats(
           real_values.data(), real_values.size(), quantized_values.data(), &min,
           &max, &scale);
       // The scale has been adjusted, so the adjusted scale should be respected.
@@ -825,15 +827,16 @@ static bool IsSameScaleOp(
 bool RemoveRedundantStatsOps(
     func::FuncOp func, const OpQuantSpecGetter op_quant_spec_getter,
     const OpQuantScaleSpecGetter op_quant_scale_spec_getter) {
-  SmallVector<quantfork::StatisticsOp, 16> all_stats_ops;
+  SmallVector<mlir::quant::ir::StatisticsOp, 16> all_stats_ops;
   llvm::DenseSet<Operation*> redundant_stats_ops;
 
-  // Step 0: remove the quantfork::StatisticsOp which are used by the
+  // Step 0: remove the mlir::quant::ir::StatisticsOp which are used by the
   // quant.qcast op in case it overrides the information from training FakeQuant
   // ops.
-  func.walk([&](quantfork::QuantizeCastOp q) {
+  func.walk([&](mlir::quant::ir::QuantizeCastOp q) {
     auto input_op = q.getArg().getDefiningOp();
-    if (auto stats = dyn_cast_or_null<quantfork::StatisticsOp>(input_op)) {
+    if (auto stats =
+            dyn_cast_or_null<mlir::quant::ir::StatisticsOp>(input_op)) {
       q.setOperand(stats.getArg());
       if (stats.use_empty()) stats.erase();
     }
@@ -844,12 +847,12 @@ bool RemoveRedundantStatsOps(
   // which are produced by the ops with the `FixedOutputRangeInterface`.
   // Note that we don't propagate across the multiple-operands
   // `SameOperandsAndResultsScale` ops like `concatenation`.
-  func.walk([&](quantfork::StatisticsOp stats_op) {
+  func.walk([&](mlir::quant::ir::StatisticsOp stats_op) {
     all_stats_ops.push_back(stats_op);
   });
 
   while (!all_stats_ops.empty()) {
-    quantfork::StatisticsOp stats_op = all_stats_ops.back();
+    mlir::quant::ir::StatisticsOp stats_op = all_stats_ops.back();
     all_stats_ops.pop_back();
 
     if (auto def = stats_op.getArg().getDefiningOp()) {
@@ -870,8 +873,8 @@ bool RemoveRedundantStatsOps(
         if (!res.hasOneUse()) {
           continue;
         }
-        if (auto next_stats =
-                dyn_cast<quantfork::StatisticsOp>(*res.getUsers().begin())) {
+        if (auto next_stats = dyn_cast<mlir::quant::ir::StatisticsOp>(
+                *res.getUsers().begin())) {
           // quantization parameters can be propagated to next_stats
           redundant_stats_ops.insert(next_stats);
           // add next_stats to the work list so propagation can continue.
@@ -883,14 +886,14 @@ bool RemoveRedundantStatsOps(
 
   // Step 2: backward pass: For the ops skipped in the forward pass, propagate
   // its results scale backwards as far as possible.
-  func.walk([&](quantfork::StatisticsOp stats_op) {
+  func.walk([&](mlir::quant::ir::StatisticsOp stats_op) {
     if (redundant_stats_ops.find(stats_op) == redundant_stats_ops.end()) {
       all_stats_ops.push_back(stats_op);
     }
   });
 
   while (!all_stats_ops.empty()) {
-    quantfork::StatisticsOp stats_op = all_stats_ops.back();
+    mlir::quant::ir::StatisticsOp stats_op = all_stats_ops.back();
     all_stats_ops.pop_back();
 
     if (Operation* def = stats_op.getArg().getDefiningOp()) {
@@ -898,7 +901,7 @@ bool RemoveRedundantStatsOps(
         continue;
       }
       for (Value input : def->getOperands()) {
-        if (auto next_stats = dyn_cast_or_null<quantfork::StatisticsOp>(
+        if (auto next_stats = dyn_cast_or_null<mlir::quant::ir::StatisticsOp>(
                 input.getDefiningOp())) {
           redundant_stats_ops.insert(next_stats);
           all_stats_ops.push_back(next_stats);
@@ -909,8 +912,8 @@ bool RemoveRedundantStatsOps(
 
   // Step3: Remove all the redundant stats ops
   for (Operation* it : redundant_stats_ops) {
-    if (!isa<quantfork::StatisticsOp>(it)) return true;
-    auto stats_op = cast<quantfork::StatisticsOp>(it);
+    if (!isa<mlir::quant::ir::StatisticsOp>(it)) return true;
+    auto stats_op = cast<mlir::quant::ir::StatisticsOp>(it);
     stats_op.getResult().replaceAllUsesWith(stats_op.getArg());
     stats_op.erase();
   }

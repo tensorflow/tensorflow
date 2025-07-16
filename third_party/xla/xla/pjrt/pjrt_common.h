@@ -21,6 +21,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "xla/pjrt/proto/pjrt_value_type.pb.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla {
@@ -30,6 +31,10 @@ namespace xla {
 // of possible types that it can be converted to (b/309163973).
 using PjRtValueType =
     std::variant<std::string, bool, int64_t, std::vector<int64_t>, float>;
+
+xla::PjRtValueTypeProto PjRtValueTypeToProto(const PjRtValueType& value);
+
+PjRtValueType PjRtValueTypeFromProto(const xla::PjRtValueTypeProto& value);
 
 // The strong-typed integer classes to better disambiguate different IDs for
 // PJRT devices.

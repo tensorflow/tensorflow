@@ -19,6 +19,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/platform/status_matchers.h"
 
 namespace xla {
@@ -38,10 +39,21 @@ struct Param {
 
 class CompatibleVersionTest : public ::testing::TestWithParam<Param> {};
 
-TEST_P(CompatibleVersionTest, Verify) {
+TEST_P(CompatibleVersionTest, VerifyProtocolVersion) {
   const Param& param = GetParam();
-  EXPECT_THAT(ChooseVersion(param.client_min_version, param.client_max_version,
+  EXPECT_THAT(
+      ChooseProtocolVersion(param.client_min_version, param.client_max_version,
                             param.server_min_version, param.server_max_version),
+      IsOk());
+}
+
+TEST_P(CompatibleVersionTest, VerifyIfrtSerdesVersionNumber) {
+  const Param& param = GetParam();
+  EXPECT_THAT(ChooseIfrtSerdesVersionNumber(
+                  SerDesVersionNumber(param.client_min_version),
+                  SerDesVersionNumber(param.client_max_version),
+                  SerDesVersionNumber(param.server_min_version),
+                  SerDesVersionNumber(param.server_max_version)),
               IsOk());
 }
 
@@ -52,10 +64,21 @@ INSTANTIATE_TEST_SUITE_P(CompatibleVersionTest, CompatibleVersionTest,
 
 class IncompatibleVersionTest : public ::testing::TestWithParam<Param> {};
 
-TEST_P(IncompatibleVersionTest, Verify) {
+TEST_P(IncompatibleVersionTest, VerifyProtocolVersion) {
   const Param& param = GetParam();
-  EXPECT_THAT(ChooseVersion(param.client_min_version, param.client_max_version,
+  EXPECT_THAT(
+      ChooseProtocolVersion(param.client_min_version, param.client_max_version,
                             param.server_min_version, param.server_max_version),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_P(IncompatibleVersionTest, VerifyIfrtSerdesVersionNumber) {
+  const Param& param = GetParam();
+  EXPECT_THAT(ChooseIfrtSerdesVersionNumber(
+                  SerDesVersionNumber(param.client_min_version),
+                  SerDesVersionNumber(param.client_max_version),
+                  SerDesVersionNumber(param.server_min_version),
+                  SerDesVersionNumber(param.server_max_version)),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 

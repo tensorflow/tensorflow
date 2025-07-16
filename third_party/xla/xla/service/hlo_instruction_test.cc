@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
@@ -3376,6 +3377,29 @@ TEST_F(HloInstructionTest, DifferentResultAccuracy) {
   result_accuracy_rtol.mutable_tolerance()->set_rtol(0.4);
   exp2->set_result_accuracy(result_accuracy_rtol);
   EXPECT_FALSE(exp1->equal_result_accuracy(exp2));
+}
+
+TEST_F(HloInstructionTest, PreserveOriginalValueThroughClone) {
+  HloComputation::Builder builder(TestName());
+  auto* constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>({
+          {1, 2},
+          {3, 4},
+      })));
+  constant->set_original_value(OriginalValue::CreateFromInstruction(constant));
+  auto* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({constant, constant}));
+  tuple->set_original_value(OriginalValue::CreateFromInstruction(constant));
+  auto clone_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  auto tuple_clone_same_shape = tuple->CloneWithNewOperands(
+      ShapeUtil::MakeTupleShape({clone_shape, clone_shape}), {});
+  clone_shape = ShapeUtil::MakeShape(F32, {3, 3});
+  auto tuple_clone_different_shape = tuple->CloneWithNewOperands(
+      ShapeUtil::MakeTupleShape({clone_shape, clone_shape}), {});
+  // Only the tuple clone with the same shape as the original tuple should
+  // preserve the original value.
+  EXPECT_TRUE(tuple_clone_same_shape->original_value());
+  EXPECT_FALSE(tuple_clone_different_shape->original_value());
 }
 
 }  // namespace

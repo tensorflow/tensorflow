@@ -59,6 +59,9 @@ class NestGemmFusion : public HloModulePass {
 
  private:
   const se::GpuComputeCapability compute_capability_;
+  absl::StatusOr<bool> RunOnModule(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 };
 
 namespace detail {

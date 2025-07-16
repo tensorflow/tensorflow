@@ -68,6 +68,9 @@ dnnl::post_ops PopulateOneDnnPostOps(
       case OneDnnFusionConfig::SIGMOID:
         post_ops.append_eltwise(dnnl::algorithm::eltwise_logistic, 0.f, 0.f);
         break;
+      case OneDnnFusionConfig::SWISH:
+        post_ops.append_eltwise(dnnl::algorithm::eltwise_swish, 1.0f, 0.0f);
+        break;
       case OneDnnFusionConfig::SUM:
         post_ops.append_sum();
         break;

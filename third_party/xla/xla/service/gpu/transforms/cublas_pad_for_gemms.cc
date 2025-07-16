@@ -32,11 +32,9 @@ limitations under the License.
 #include "xla/service/gpu/transforms/gemm_fusion.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -167,15 +165,17 @@ bool CheckCanonical(HloDotInstruction* dot) {
   return true;
 }
 
-}  // namespace
-
-static std::vector<HloDotInstruction*> GetRelevantDots(
+absl::StatusOr<std::vector<HloDotInstruction*>> GetRelevantDots(
     const se::GpuComputeCapability& gpu_compute_capability,
     HloComputation* comp, PrimitiveType datatype) {
   std::vector<HloDotInstruction*> gemms;
 
   for (HloInstruction* instr : comp->instructions()) {
-    if (IsMatrixMultiplication(*instr)) {
+    TF_ASSIGN_OR_RETURN(
+        bool is_matmul,
+        IsCublasSupportedMatMul(*instr,
+                                /*allow_matrix_vector_multiplication=*/false));
+    if (is_matmul) {
       HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
       if (instr->operand(0)->shape().element_type() == datatype &&
           CheckCanonical(dot) &&
@@ -193,14 +193,18 @@ static std::vector<HloDotInstruction*> GetRelevantDots(
   return gemms;
 }
 
+}  // namespace
+
 absl::StatusOr<bool> CublasPadForGemms::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
-    for (HloDotInstruction* dot :
-         GetRelevantDots(gpu_compute_capability_, comp, datatype_)) {
+    TF_ASSIGN_OR_RETURN(
+        std::vector<HloDotInstruction*> dots,
+        GetRelevantDots(gpu_compute_capability_, comp, datatype_));
+    for (HloDotInstruction* dot : dots) {
       TF_ASSIGN_OR_RETURN(bool result,
                           PadForGemm(dot, datatype_, pad_to_multiple_of_));
       changed |= result;

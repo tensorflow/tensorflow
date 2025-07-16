@@ -83,12 +83,12 @@ ENTRY e {
 
 // We need 2 different kernels:
 // - @fusion_2's %arg0 must have align 16, because we are passing a module input
-// - @fusion_1's %arg0 must have align 128, because we are passing an internal buffer
+// - @fusion_1's %arg0 must have align 256, because we are passing an internal buffer
 // CHECK-LABEL: target triple
-// CHECK-PTX-DAG: define ptx_kernel void @fusion_2(ptr noalias align 16 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}})
-// CHECK-GCN-DAG: define amdgpu_kernel void @fusion_2(ptr noalias align 16 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}})
-// CHECK-PTX-DAG: define ptx_kernel void @fusion_1(ptr noalias align 128 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}})
-// CHECK-GCN-DAG: define amdgpu_kernel void @fusion_1(ptr noalias align 128 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}})
+// CHECK-PTX-DAG: define ptx_kernel void @fusion_2(ptr noalias align 16 dereferenceable(100) %{{.*}}, ptr noalias align 256 dereferenceable(100) %{{.*}})
+// CHECK-GCN-DAG: define amdgpu_kernel void @fusion_2(ptr noalias align 16 dereferenceable(100) %{{.*}}, ptr noalias align 256 dereferenceable(100) %{{.*}})
+// CHECK-PTX-DAG: define ptx_kernel void @fusion_1(ptr noalias align 256 dereferenceable(100) %{{.*}}, ptr noalias align 256 dereferenceable(100) %{{.*}})
+// CHECK-GCN-DAG: define amdgpu_kernel void @fusion_1(ptr noalias align 256 dereferenceable(100) %{{.*}}, ptr noalias align 256 dereferenceable(100) %{{.*}})
 // CHECK-PTX-NOT: define ptx_kernel void
 // CHECK-GCN-NOT: define amdgpu_kernel void
 
@@ -132,10 +132,10 @@ ENTRY main {
 // The first has just 2 parameters (1 input, 1 output) and the second has 3 (2 input, 1 output).
 // All the parameters are noalias, because we are not passing the same argument twice to the kernel.
 // CHECK-LABEL: target triple
-// CHECK-PTX-DAG: define ptx_kernel void @fusion_2(ptr noalias align 128 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}})
-// CHECK-GCN-DAG: define amdgpu_kernel void @fusion_2(ptr noalias align 128 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}})
-// CHECK-PTX-DAG: define ptx_kernel void @fusion_1(ptr noalias align 128 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}})
-// CHECK-GCN-DAG: define amdgpu_kernel void @fusion_1(ptr noalias align 128 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}})
+// CHECK-PTX-DAG: define ptx_kernel void @fusion_2(ptr noalias align 256 dereferenceable(100) %{{.*}}, ptr noalias align 256 dereferenceable(100) %{{.*}})
+// CHECK-GCN-DAG: define amdgpu_kernel void @fusion_2(ptr noalias align 256 dereferenceable(100) %{{.*}}, ptr noalias align 256 dereferenceable(100) %{{.*}})
+// CHECK-PTX-DAG: define ptx_kernel void @fusion_1(ptr noalias align 256 dereferenceable(100) %{{.*}}, ptr noalias align 256 dereferenceable(100) %{{.*}}, ptr noalias align 256 dereferenceable(100) %{{.*}})
+// CHECK-GCN-DAG: define amdgpu_kernel void @fusion_1(ptr noalias align 256 dereferenceable(100) %{{.*}}, ptr noalias align 256 dereferenceable(100) %{{.*}}, ptr noalias align 256 dereferenceable(100) %{{.*}})
 // CHECK-NOT: define void
 
 HloModule KernelReuse, is_scheduled=true
@@ -178,11 +178,11 @@ ENTRY main {
 // "!invariant.load" (thanks to ir_array.MarkInvariantOverWholeProgram).
 //
 // CHECK-LABEL: target triple
-// CHECK-PTX: define ptx_kernel void @fusion_2(ptr noalias align 128 dereferenceable(100) %{{.*}})
-// CHECK-GCN: define amdgpu_kernel void @fusion_2(ptr noalias align 128 dereferenceable(100) %{{.*}})
+// CHECK-PTX: define ptx_kernel void @fusion_2(ptr noalias align 256 dereferenceable(100) %{{.*}})
+// CHECK-GCN: define amdgpu_kernel void @fusion_2(ptr noalias align 256 dereferenceable(100) %{{.*}})
 // CHECK-NOT: !invariant.load
-// CHECK-PTX: define ptx_kernel void @fusion(ptr noalias align 128 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}})
-// CHECK-GCN: define amdgpu_kernel void @fusion(ptr noalias align 128 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}})
+// CHECK-PTX: define ptx_kernel void @fusion(ptr noalias align 256 dereferenceable(100) %{{.*}}, ptr noalias align 256 dereferenceable(100) %{{.*}})
+// CHECK-GCN: define amdgpu_kernel void @fusion(ptr noalias align 256 dereferenceable(100) %{{.*}}, ptr noalias align 256 dereferenceable(100) %{{.*}})
 // CHECK-PTX-NOT: define ptx_kernel void
 // CHECK-GCN-NOT: define amdgpu_kernel void
 // CHECK: !invariant.load

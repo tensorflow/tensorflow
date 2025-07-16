@@ -15,14 +15,21 @@ limitations under the License.
 
 #include "xla/service/hlo_cse.h"
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -31,11 +38,14 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -777,8 +787,19 @@ TEST_F(HloCseTest, OnlyScalar) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
-  HloCSE cse(/*is_layout_sensitive=*/false, /*only_fusion_computations=*/false,
-             /*ignore_control_dependencies=*/false, /*only_scalars=*/true);
+  HloCSE cse(
+      /*is_layout_sensitive=*/false,
+      /*ignore_control_dependencies=*/false,
+      /*should_eliminate_computation=*/nullptr,
+      /*should_eliminate_instruction=*/
+      [](const HloInstruction* instruction) {
+        return HloCSE::ShouldEliminateInstruction(instruction) &&
+               ShapeUtil::IsScalar(instruction->shape());
+      },
+      /*should_combine_constant=*/
+      [](const HloInstruction* instruction) {
+        return ShapeUtil::IsScalar(instruction->shape());
+      });
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
   EXPECT_TRUE(changed);
   EXPECT_EQ(absl::c_count_if(m->entry_computation()->instructions(),
@@ -947,7 +968,7 @@ TEST_F(HloCseTest, IgnoreControlDependencies) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
-  HloCSE cse(/*is_layout_sensitive=*/false, /*only_fusion_computations=*/false,
+  HloCSE cse(/*is_layout_sensitive=*/false,
              /*ignore_control_dependencies=*/true);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
 
@@ -1024,6 +1045,35 @@ TEST_F(HloCseTest, ResultAccuracyCseKey) {
   // after CSE, should be tuple(exponential.2, exponential.3, exponential.4,
   // exponential.4)
   EXPECT_EQ(root->operand(2), root->operand(3));
+}
+
+TEST_F(HloCseTest, ScalarCustomCallNoOperands) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+ENTRY main {
+  custom-call.0 = s32[] custom-call(), custom_call_target="custom_call"
+  custom-call.1 = s32[] custom-call(), custom_call_target="custom_call"
+  ROOT tuple.0 = tuple(custom-call.0, custom-call.1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  HloCSE cse(
+      /*is_layout_sensitive=*/false, /*ignore_control_dependencies=*/false,
+      /*should_eliminate_computation=*/nullptr,
+      /*should_eliminate_instruction=*/[](const HloInstruction* instruction) {
+        // Ignore that doing this is generally unsafe.
+        return instruction->IsCustomCall("custom_call");
+      });
+  EXPECT_THAT(cse.Run(module.get()), IsOkAndHolds(true));
+
+  // Same custom call should used for each tuple element.
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kTuple);
+  ASSERT_EQ(root->operands().size(), 2);
+  EXPECT_EQ(root->operands()[0]->opcode(), HloOpcode::kCustomCall);
+  EXPECT_EQ(root->operands()[0]->unique_id(), root->operands()[1]->unique_id());
 }
 
 class HloCseCommutativeOpTest

@@ -637,6 +637,7 @@ def call_module(
     function_list=(),
     has_token_input_output=False,
     disabled_checks=(),
+    use_shardy_partitioner=False,
 ):
   """See documentation for the XlaCallModule op.
 
@@ -653,6 +654,7 @@ def call_module(
       function_list=function_list,
       has_token_input_output=has_token_input_output,
       disabled_checks=disabled_checks,
+      use_shardy_partitioner=use_shardy_partitioner,
   )
   # Since XLACallModule op is stateful, zero return function will return the TF
   # op under tf.function. It creates trouble for downstream codes.
@@ -669,7 +671,7 @@ def call_module_maximum_supported_version():
   See versioning details documentation for the XlaCallModule op at:
   https://github.com/search?q=repo%3Atensorflow%2Ftensorflow+path%3Axla_call_module+%22int+kVersionMaximumSupported%22&type=code
   """
-  return 9
+  return 10
 
 # pylint: enable=g-doc-args
 # pylint: enable=g-doc-return-or-yield

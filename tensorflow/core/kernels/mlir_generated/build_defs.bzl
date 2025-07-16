@@ -10,6 +10,7 @@ load(
     "@local_xla//xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 def _lookup_file(filegroup, path):
     """Extracts file at (relative) path in filegroup."""
@@ -391,7 +392,7 @@ def _gen_kernel_library(
             ]
             if typed_unroll_factors:
                 test_args.append("--unroll_factors=%s" % typed_unroll_factors)
-            native.sh_test(
+            sh_test(
                 name = "{op}_{name}_{platform}_{type}_{output_type}_gen_test".format(
                     op = op,
                     name = name,

@@ -34,11 +34,11 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
-#include "xla/pjrt/compile_options.pb.h"
-#include "xla/pjrt/executable_metadata.pb.h"
-#include "xla/pjrt/execute_options.pb.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
+#include "xla/pjrt/proto/executable_metadata.pb.h"
+#include "xla/pjrt/proto/execute_options.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/hlo.pb.h"
@@ -270,6 +270,11 @@ struct ExecuteOptions {
   // specific input buffers.
   absl::flat_hash_set<int> non_donatable_input_indices;
 
+  // Execution stream ID identifies the series of executions that must be
+  // executed in program order.  Executions with different execution stream IDs
+  // may be executed in any order and concurrently.
+  int64_t execution_stream_id = 0;
+
   absl::StatusOr<ExecuteOptionsProto> ToProto() const;
   static absl::StatusOr<ExecuteOptions> FromProto(
       const ExecuteOptionsProto& proto);
@@ -285,6 +290,7 @@ struct CompiledMemoryStats {
   int64_t generated_code_size_in_bytes = 0;
   int64_t argument_size_in_bytes = 0;
   int64_t output_size_in_bytes = 0;
+  int64_t peak_memory_in_bytes = 0;
   // How much argument is reused for output.
   int64_t alias_size_in_bytes = 0;
   int64_t temp_size_in_bytes = 0;
@@ -296,7 +302,7 @@ struct CompiledMemoryStats {
   int64_t host_alias_size_in_bytes = 0;
   int64_t host_temp_size_in_bytes = 0;
 
-  std::optional<xla::BufferAssignmentProto> buffer_assignment;
+  std::string serialized_buffer_assignment;
 
   std::string DebugString() const;
 

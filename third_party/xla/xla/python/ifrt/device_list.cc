@@ -18,12 +18,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device.pb.h"
-#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -33,6 +36,12 @@ char DeviceList::ID = 0;
 
 absl::StatusOr<DeviceListRef> DeviceList::FromProto(
     xla::ifrt::Client* client, const DeviceListProto& proto) {
+  const SerDesVersionNumber version_number(proto.version_number());
+  if (version_number != SerDesVersionNumber(0)) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "Unsupported ", version_number, " for DeviceList deserialization"));
+  }
+
   absl::InlinedVector<Device*, 1> devices;
   devices.reserve(proto.device_ids_size());
   for (int device_id : proto.device_ids()) {
@@ -43,8 +52,16 @@ absl::StatusOr<DeviceListRef> DeviceList::FromProto(
   return client->MakeDeviceList(devices);
 }
 
-DeviceListProto DeviceList::ToProto() const {
+DeviceListProto DeviceList::ToProto(SerDesVersion version) const {
+  // TODO(b/423702568): Change the return type to `absl::StatusOr<...>` for
+  // graceful error handling.
+  CHECK_GE(version.version_number(), SerDesVersionNumber(0))
+      << "Unsupported " << version.version_number()
+      << " for DeviceList serialization";
+
   DeviceListProto proto;
+  proto.set_version_number(SerDesVersionNumber(0).value());
+
   proto.mutable_device_ids()->Reserve(devices().size());
   for (Device* device : devices()) {
     proto.mutable_device_ids()->AddAlreadyReserved(device->Id().value());

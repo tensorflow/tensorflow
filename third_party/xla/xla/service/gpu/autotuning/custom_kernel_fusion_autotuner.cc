@@ -226,8 +226,9 @@ absl::StatusOr<bool> CustomKernelFusionAutotuner::Run(
   }
 
   const DebugOptions& debug_options = module->config().debug_options();
-  TF_ASSIGN_OR_RETURN(AutotunerCompileUtil compile_util,
-                      AutotunerCompileUtil::Create(config_, debug_options));
+  TF_ASSIGN_OR_RETURN(
+      AutotunerCompileUtil compile_util,
+      AutotunerCompileUtil::Create(config_.DeviceConfig(), debug_options));
 
   bool hlo_changed = false;
   for (const HloComputation* computation : module->computations()) {

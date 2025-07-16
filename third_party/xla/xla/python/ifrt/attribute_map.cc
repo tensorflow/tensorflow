@@ -23,17 +23,25 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/python/ifrt/attribute_map.pb.h"
+#include "xla/python/ifrt/serdes_version.h"
 
 namespace xla {
 namespace ifrt {
 
 absl::StatusOr<AttributeMap> AttributeMap::FromProto(
     const AttributeMapProto& proto) {
+  const SerDesVersionNumber version_number(proto.version_number());
+  if (version_number != SerDesVersionNumber(0)) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "Unsupported ", version_number, " for AttributeMap deserialization"));
+  }
+
   AttributeMap::Map map;
   map.reserve(proto.attributes_size());
   for (const auto& [key, value] : proto.attributes()) {
@@ -63,8 +71,16 @@ absl::StatusOr<AttributeMap> AttributeMap::FromProto(
   return AttributeMap(std::move(map));
 }
 
-AttributeMapProto AttributeMap::ToProto() const {
+AttributeMapProto AttributeMap::ToProto(SerDesVersion version) const {
+  // TODO(b/423702568): Change the return type to `absl::StatusOr<...>` for
+  // graceful error handling.
+  CHECK_GE(version.version_number(), SerDesVersionNumber(0))
+      << "Unsupported " << version.version_number()
+      << " for AttributeMap serialization";
+
   AttributeMapProto proto;
+  proto.set_version_number(SerDesVersionNumber(0).value());
+
   for (const auto& [key, value] : map_) {
     AttributeMapProto::Value value_proto;
     std::visit(

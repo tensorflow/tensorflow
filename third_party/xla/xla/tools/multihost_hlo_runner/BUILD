@@ -133,10 +133,22 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_input_output_format",
+    srcs = ["hlo_input_output_format.cc"],
+    hdrs = ["hlo_input_output_format.h"],
+    visibility = ["//devtools/ml/mlcompass:__subpackages__"],
+    deps = [
+        "//xla/tsl/util:fixed_option_set_flag",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "functional_hlo_runner",
     srcs = ["functional_hlo_runner.cc"],
     hdrs = ["functional_hlo_runner.h"],
     deps = [
+        ":hlo_input_output_format",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_layout",
@@ -221,6 +233,7 @@ xla_test(
     deps = [
         ":create_client",
         ":functional_hlo_runner",
+        ":hlo_input_output_format",
         "//xla:debug_options_flags",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
@@ -232,6 +245,7 @@ xla_test(
         "//xla/runtime/large_hlo_snapshot_serialization:serialization",
         "//xla/service:computation_layout",
         "//xla/service:hlo_proto_cc",
+        "//xla/tests:xla_test_backend_predicates",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",

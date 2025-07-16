@@ -64,6 +64,9 @@ struct PadContext {
       case kTfLiteInt16:
         SetResizingCategory<int16_t>(context);
         break;
+      case kTfLiteBool:
+        SetResizingCategory<bool>(context);
+        break;
       default:
         TF_LITE_KERNEL_LOG(context,
                            "Padding type %s is currently not supported by Pad.",
@@ -177,6 +180,9 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
     case kTfLiteInt16: {
       return ResizeOutputTensor<int16_t>(context, op_context);
     }
+    case kTfLiteBool: {
+      return ResizeOutputTensor<bool>(context, op_context);
+    }
     default:
       TF_LITE_KERNEL_LOG(context,
                          "Padding type %s is currently not supported by Pad.",
@@ -198,7 +204,9 @@ tflite::PadParams GetPadParams(TfLiteContext* context,
       !(op_context.paddings->type == kTfLiteInt8 &&
         std::is_same_v<PaddingIntegerType, int8_t>) &&
       !(op_context.paddings->type == kTfLiteInt16 &&
-        std::is_same_v<PaddingIntegerType, int16_t>)) {
+        std::is_same_v<PaddingIntegerType, int16_t>) &&
+      !(op_context.paddings->type == kTfLiteBool &&
+        std::is_same_v<PaddingIntegerType, bool>)) {
     TF_LITE_KERNEL_LOG(context, "Padding type %s doesn't match typename.",
                        TfLiteTypeGetName(op_context.paddings->type));
     return op_params;
@@ -230,6 +238,9 @@ tflite::PadParams GetPadParams(TfLiteContext* context,
     case kTfLiteInt16: {
       return GetPadParams<int16_t>(context, op_context);
     }
+    case kTfLiteBool: {
+      return GetPadParams<bool>(context, op_context);
+    }
     default:
       TF_LITE_KERNEL_LOG(context,
                          "Padding type %s is currently not supported by Pad.",
@@ -243,6 +254,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   PadContext op_context(context, node);
+  TF_LITE_ENSURE(context, op_context.output != nullptr);
   if (IsConstantTensor(op_context.paddings)) {
     TF_LITE_ENSURE_MSG(context, !CheckPaddingOverflow(&op_context),
                        "INT64 padding overflow. Only support value between "
@@ -448,6 +460,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_PAD(reference_ops, Pad, int64_t, pad_value);
       } else if (kernel_type == kGenericOptimized) {
         TF_LITE_PAD(optimized_ops, Pad, int64_t, pad_value);
+      }
+    } break;
+    case kTfLiteBool: {
+      bool pad_value = op_context.constant_values == nullptr
+                           ? false
+                           : *GetTensorData<bool>(op_context.constant_values);
+      if (kernel_type == kReference) {
+        TF_LITE_PAD(reference_ops, Pad, bool, pad_value);
+      } else if (kernel_type == kGenericOptimized) {
+        TF_LITE_PAD(optimized_ops, Pad, bool, pad_value);
       }
     } break;
     default:

@@ -1111,7 +1111,8 @@ def saturate_cast(value, dtype, name=None):
       if promoted[0] < promoted[1]:
         min_limit = np.nextafter(min_limit, np_dtype(0), dtype=np_dtype)
 
-      max_limit = np_dtype(np.minimum(in_dtype.max, out_real_dtype.max))
+      max_limit = np_dtype(np.minimum(float(in_dtype.max),
+                                      float(out_real_dtype.max)))
       promoted = np.array([max_limit, out_real_dtype.max], dtype=promoted_type)
       if promoted[0] > promoted[1]:
         max_limit = np.nextafter(max_limit, np_dtype(0), dtype=np_dtype)

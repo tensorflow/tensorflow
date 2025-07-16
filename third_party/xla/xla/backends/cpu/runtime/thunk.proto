@@ -17,6 +17,7 @@ syntax = "proto3";
 
 package xla.cpu;
 
+import "xla/backends/cpu/xnnpack_config.proto";
 import "xla/service/buffer_assignment.proto";
 import "xla/service/hlo.proto";
 import "xla/xla_data.proto";
@@ -148,6 +149,7 @@ message XnnDotThunkProto {
   ShapeBufferAllocationSliceProto lhs_buffer_shape = 2;
   ShapeBufferAllocationSliceProto rhs_buffer_shape = 3;
   ShapeBufferAllocationSliceProto out_buffer_shape = 4;
+  bool capture_rhs = 5;
 }
 
 message XnnConvolutionThunkProto {
@@ -167,11 +169,7 @@ message XnnFusionThunkProtoImpl {
 }
 
 message XnnFusionThunkProto {
-  message Options {
-    bool use_threadpool = 1;
-  }
-
-  Options options = 1;
+  XnnFusionBackendConfig options = 1;
 
   oneof impl {
     XnnDotThunkProto xnn_dot_thunk = 2;
@@ -209,13 +207,13 @@ message WhileThunkProto {
 }
 
 message KernelThunkProto {
-  message ThreadDim {
+  message NumWorkGroups {
     int64 x = 1;
     int64 y = 2;
     int64 z = 3;
   }
   string kernel_name = 1;
-  ThreadDim thread_dim = 2;
+  NumWorkGroups num_workgroups = 2;
   repeated int64 invariant_arguments = 3;
   Int64Optional min_alignment = 4;
   repeated xla.buffer_assignment.BufferAllocationSliceProto arguments_buffers =

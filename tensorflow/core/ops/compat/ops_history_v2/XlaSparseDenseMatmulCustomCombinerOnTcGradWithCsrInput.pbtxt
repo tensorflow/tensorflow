@@ -102,3 +102,114 @@ op {
     type: "string"
   }
 }
+op {
+  name: "XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInput"
+  input_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_pos_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "weights"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "preserved_valencies"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "preserved_vectors"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "preserved_weights"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "activation_gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "tables"
+    type: DT_FLOAT
+    number_attr: "N"
+  }
+  input_arg {
+    name: "hyperparameters"
+    type: DT_FLOAT
+    number_attr: "M"
+  }
+  input_arg {
+    name: "combiner_weights_learning_rate"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_tables"
+    type: DT_FLOAT
+    number_attr: "N"
+  }
+  output_arg {
+    name: "updated_weights"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "M"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_valency"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "num_weights"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "combiner_table_vjp_computation"
+    type: "func"
+  }
+  attr {
+    name: "combiner_weights_vjp_computation"
+    type: "func"
+  }
+  attr {
+    name: "optimizer_custom_computation"
+    type: "func"
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+}

@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "xnnpack.h"
+#include "absl/functional/bind_front.h"
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -45,7 +46,8 @@ limitations under the License.
 namespace xla::cpu {
 
 absl::StatusOr<xnn_subgraph_t> XnnDotThunk::BuildDotSubgraph(
-    absl::Span<const Argument> arguments, absl::Span<const Result> results) {
+    absl::Span<const Argument> arguments, absl::Span<const Result> results,
+    absl::Span<const se::DeviceMemoryBase> arguments_buffers) {
   xnn_subgraph_t subgraph = nullptr;
   XNN_RETURN_IF_ERROR(xnn_create_subgraph(/*external_value_ids=*/3,
                                           /*flags=*/0, &subgraph));
@@ -76,7 +78,8 @@ absl::StatusOr<xnn_subgraph_t> XnnDotThunk::BuildDotSubgraph(
       /*external_id=*/0, XNN_VALUE_FLAG_EXTERNAL_INPUT, &lhs_id));
 
   XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
-      subgraph, input_dtype, rhs_dims.size(), rhs_dims.data(), nullptr,
+      subgraph, input_dtype, rhs_dims.size(), rhs_dims.data(),
+      capture_rhs_ ? arguments_buffers[1].opaque() : nullptr,
       /*external_id=*/1, XNN_VALUE_FLAG_EXTERNAL_INPUT, &rhs_id));
 
   XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
@@ -94,7 +97,7 @@ absl::StatusOr<std::unique_ptr<XnnDotThunk>> XnnDotThunk::Create(
     Options options, Info info, DotDimensionNumbers dot_dimensions,
     BufferAllocation::Slice lhs_buffer, Shape lhs_shape,
     BufferAllocation::Slice rhs_buffer, Shape rhs_shape,
-    BufferAllocation::Slice out_buffer, Shape out_shape) {
+    BufferAllocation::Slice out_buffer, Shape out_shape, bool capture_rhs) {
   TF_RETURN_IF_ERROR(InitializeXnnPack());
 
   TF_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
@@ -107,10 +110,10 @@ absl::StatusOr<std::unique_ptr<XnnDotThunk>> XnnDotThunk::Create(
                        rhs_buffer, std::move(rhs_shape),
                        out_buffer, std::move(out_shape)};
 
-  return absl::WrapUnique(
-      new XnnDotThunk(std::move(options), std::move(info),
-                      std::move(dot_dimensions), std::move(dot_slices),
-                      std::move(dot_shape), std::move(dot_canonical_dims)));
+  return absl::WrapUnique(new XnnDotThunk(
+      std::move(options), std::move(info), std::move(dot_dimensions),
+      std::move(dot_slices), std::move(dot_shape),
+      std::move(dot_canonical_dims), capture_rhs));
 }
 
 static std::vector<XnnFusionThunk::Argument> DotArguments(
@@ -123,30 +126,38 @@ static std::vector<XnnFusionThunk::Result> DotResults(const DotSlices& slices) {
   return {XnnFusionThunk::Result{slices.out_buffer, slices.out_shape}};
 }
 
+static absl::Span<const int64_t> DotCapturedArgumentIds(bool capture_rhs) {
+  static constexpr int64_t kRhsIndex = 1;
+  return capture_rhs ? absl::Span<const int64_t>(&kRhsIndex, 1)
+                     : absl::Span<const int64_t>();
+}
+
 XnnDotThunk::XnnDotThunk(Options options, Info info,
                          DotDimensionNumbers dot_dimensions,
                          DotSlices dot_slices, DotShape dot_shape,
-                         DotCanonicalDims dot_canonical_dims)
-    : XnnFusionThunk(
-          XnnFusionKind::kDot, std::move(options), std::move(info),
-          DotArguments(dot_slices), DotResults(dot_slices),
-          Builder(std::bind(&XnnDotThunk::BuildDotSubgraph, this,
-                            std::placeholders::_1, std::placeholders::_2))),
+                         DotCanonicalDims dot_canonical_dims, bool capture_rhs)
+    : XnnFusionThunk(XnnFusionKind::kDot, std::move(options), std::move(info),
+                     DotArguments(dot_slices), DotResults(dot_slices),
+                     CapturingBuilder(absl::bind_front(
+                         &XnnDotThunk::BuildDotSubgraph, this)),
+                     DotCapturedArgumentIds(capture_rhs)),
       dot_dimensions_(std::move(dot_dimensions)),
       dot_slices_(std::move(dot_slices)),
       dot_shape_(std::move(dot_shape)),
-      dot_canonical_dims_(std::move(dot_canonical_dims)) {}
+      dot_canonical_dims_(std::move(dot_canonical_dims)),
+      capture_rhs_(capture_rhs) {}
 
 std::string XnnDotThunk::fusion_kind() const { return "dot"; }
 
 std::string XnnDotThunk::fusion_description() const {
   return absl::StrFormat(
       "lhs_batch_dims=[%s], rhs_batch_dims=[%s], "
-      "lhs_contract_dims=[%s], rhs_contract_dims=[%s]",
+      "lhs_contract_dims=[%s], rhs_contract_dims=[%s], capture_rhs=%v",
       absl::StrJoin(dot_dimensions_.lhs_batch_dimensions(), ","),
       absl::StrJoin(dot_dimensions_.rhs_batch_dimensions(), ","),
       absl::StrJoin(dot_dimensions_.lhs_contracting_dimensions(), ","),
-      absl::StrJoin(dot_dimensions_.rhs_contracting_dimensions(), ","));
+      absl::StrJoin(dot_dimensions_.rhs_contracting_dimensions(), ","),
+      capture_rhs_);
 }
 
 std::vector<std::string> XnnDotThunk::fusion_details() const {

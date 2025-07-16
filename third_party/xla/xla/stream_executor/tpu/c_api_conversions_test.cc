@@ -127,13 +127,6 @@ void XlaLayout_ToC(const xla::Layout& cpp_layout) {
       MakeSpan(c_layout.minor_to_major);
   EXPECT_EQ(cpp_minor_to_major, c_minor_to_major);
 
-  absl::Span<const int> c_dim_level_types = MakeSpan(c_layout.dim_level_types);
-  EXPECT_EQ(cpp_layout.dim_level_types_size(), c_dim_level_types.size());
-  for (int i = 0; i < c_dim_level_types.size(); ++i) {
-    EXPECT_EQ(static_cast<int>(cpp_layout.dim_level_type(i)),
-              c_dim_level_types[i]);
-  }
-
   absl::Span<const xla::Tile> cpp_tiles = cpp_layout.tiles();
   TileList c_tiles = c_layout.tiles;
   EXPECT_EQ(cpp_tiles.size(), c_tiles.size);

@@ -23,6 +23,8 @@ import "xla/python/ifrt/sharding.proto";
 
 // Proto equivalent of C++ `ArraySpec`.
 message ArraySpecProto {
+  int32 version_number = 5;
+
   DTypeProto dtype = 1;
   ShapeProto shape = 2;
   ShardingProto sharding = 3;

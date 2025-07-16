@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
 
@@ -171,7 +172,7 @@ Shape getFlattenedShape(const Shape& shape) {
       shape, [&](const Shape& subShape, const ShapeIndex& index) {
         flattenedShapes.push_back(subShape);
       });
-  return ShapeUtil::MakeMaybeTupleShape(flattenedShapes);
+  return ShapeUtil::MakeValidatedMaybeTupleShape(flattenedShapes).value();
 }
 
 // Get the flattened version of a computation layout.
@@ -387,6 +388,12 @@ absl::StatusOr<bool> ShardyXLA::Run(
   if (!runSdyShardingPropagation && !useTupleArgs) {
     // Nothing to do.
     return false;
+  }
+  // The auto-spmd flag is present in both the HLO module and the config. Apply
+  // auto spmd partitioning if either is true.
+  if (hloModule->use_auto_spmd_partitioning() ||
+      hloModule->config().use_auto_spmd_partitioning()) {
+    hloModule->set_use_auto_spmd_partitioning(true);
   }
 
   // HLO -> StableHLO

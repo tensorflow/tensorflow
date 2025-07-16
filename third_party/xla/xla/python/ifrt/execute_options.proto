@@ -20,6 +20,8 @@ package xla.ifrt;
 import "xla/python/ifrt/attribute_map.proto";
 
 message ExecuteOptionsProto {
+  int32 version_number = 12;
+
   bool untuple_result = 2;
   int32 launch_id = 3;
   repeated int32 non_donatable_input_indices = 7;

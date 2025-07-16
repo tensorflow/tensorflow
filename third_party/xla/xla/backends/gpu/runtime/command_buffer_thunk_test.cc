@@ -58,7 +58,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
-#include "xla/stream_executor/gpu/gpu_types.h"  // IWYU pragma: keep
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -71,18 +70,13 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/profiler_lock.h"
-
-#ifdef GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#endif
 
 namespace xla::gpu {
 
 using MemoryAccess = BufferUse::MemoryAccess;
-using KernelArgsPacking = se::MultiKernelLoaderSpec::KernelArgsPacking;
+using KernelArgsPacking = se::KernelLoaderSpec::KernelArgsPacking;
 
 namespace {
 
@@ -101,8 +95,9 @@ struct OwningExecutableSource {
 };
 
 absl::StatusOr<OwningExecutableSource> ExecutableSource() {
-  TF_ASSIGN_OR_RETURN(std::vector<uint8_t> fatbin,
-                      se::gpu::GetGpuTestKernelsFatbin());
+  TF_ASSIGN_OR_RETURN(
+      std::vector<uint8_t> fatbin,
+      se::gpu::GetGpuTestKernelsFatbin(GpuExecutor()->GetPlatform()->Name()));
   return OwningExecutableSource{/*text=*/{},
                                 /*binary=*/fatbin};
 }
@@ -566,8 +561,9 @@ TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
 
   auto packing = CreateDefaultArgsPacking();
 
-  se::MultiKernelLoaderSpec spec(/*arity=*/3, std::move(packing));
-  spec.AddInProcessSymbol(se::gpu::internal::GetAddI32Kernel(), "add");
+  TF_ASSERT_OK_AND_ASSIGN(stream_executor::KernelLoaderSpec spec,
+                          stream_executor::gpu::GetAddI32TestKernelSpec(
+                              stream_executor->GetPlatform()->id()));
 
   auto custom_kernel =
       CustomKernel("AddI32", std::move(spec), se::BlockDim(),
@@ -1577,6 +1573,167 @@ TEST(CommandBufferThunkTest, ToStringPrintsNestedThunks) {
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks)));
   EXPECT_TRUE(
       absl::StrContains(thunk.ToString(/*indent=*/1), "    kMemset32BitValue"));
+}
+
+TEST_F(CmdBufferTest, ControlDependencyTest) {
+  const char* module_str = R"(
+HloModule m
+
+%x (a: f32[3200,6400]) -> f32[3200,6400] {
+  %a = f32[3200,6400]{1,0} parameter(0)
+  ROOT %b = f32[3200,6400]{1,0} negate(%a)
+}
+
+%y (a.1: f32[3200,6400]) -> f32[3200,6400] {
+  %a.1 = f32[3200,6400]{1,0} parameter(0)
+  ROOT %b.1 = f32[3200,6400]{1,0} add(%a.1, %a.1)
+}
+
+%command_buffer (p: f32[3200,6400], p.1: f32[3200,6400]) -> (f32[3200,6400], f32[3200,6400]) {
+  %p = f32[3200,6400]{1,0} parameter(0)
+  %p.1 = f32[3200,6400]{1,0} parameter(1)
+  %b.2 = f32[3200,6400]{1,0} fusion(%p), kind=kLoop, calls=%x
+  %c = f32[3200,6400]{1,0} fusion(%p.1), kind=kLoop, calls=%y, control-predecessors={%b.2}
+  ROOT %tuple = (f32[3200,6400]{1,0}, f32[3200,6400]{1,0}) tuple(%b.2, %c)
+}
+
+ENTRY %e (m: f32[3200,6400], n: f32[3200,6400]) -> (f32[3200,6400], f32[3200,6400]) {
+  %m = f32[3200,6400]{1,0} parameter(0)
+  %n = f32[3200,6400]{1,0} parameter(1)
+  %call = (f32[3200,6400]{1,0}, f32[3200,6400]{1,0}) call(%m, %n), to_apply=%command_buffer
+  %get-tuple-element = f32[3200,6400]{1,0} get-tuple-element(%call), index=0
+  %get-tuple-element.1 = f32[3200,6400]{1,0} get-tuple-element(%call), index=1
+  ROOT %t = (f32[3200,6400]{1,0}, f32[3200,6400]{1,0}) tuple(%get-tuple-element, %get-tuple-element.1)
+}
+)";
+
+  // running with module without exclusive lock on GpuExecutable
+  HloModuleConfig config;
+  auto debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_disable_all_hlo_passes(true);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str, config));
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 2e-3}));
+}
+
+TEST_F(CmdBufferTest, DynamicSliceCopyFusionCmd) {
+  const char* module_str = R"(
+    dynamic_slice {
+      p0 = s32[4,8,8]{2,1,0} parameter(0)
+      p1 = s32[] parameter(1)
+      c1 = s32[] constant(1)
+      p2 = s32[] parameter(2)
+
+      p1p1 = s32[] add(p1, c1)
+
+      // Test all supported kinds of offsets: derived from the while loop's
+      // induction variable (p1p1), constant (c1) and always clamped to 0, so
+      // the value is irrelevant (p2).
+      ROOT slice = s32[1,1,8] dynamic-slice(p0, p1p1, c1, p2),
+          dynamic_slice_sizes={1,1,8}
+    }
+
+    remainder {
+      p0 = s32[] parameter(0)
+      c5 = s32[] constant(5)
+      // We take the value modulo 5 to test for correct clamping (the offset 4
+      // must get clamped to 3, since it's greater or equal than the dimension
+      // size).
+      ROOT remainder = s32[] remainder(p0, c5)
+    }
+
+    add {
+      p0 = s32[] parameter(0)
+      c1 = s32[] constant(1)
+      ROOT sum = s32[] add(p0, c1)
+    }
+
+    add_slices {
+      p0 = s32[1,1,8] parameter(0)
+      p1 = s32[1,1,8] parameter(1)
+      ROOT sum = s32[1,1,8] add(p0, p1)
+    }
+
+    times_two {
+      p0 = s32[] parameter(0)
+      ROOT sum = s32[] add(p0, p0)
+    }
+
+    body {
+      p0 = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      input = s32[4,8,8]{2,1,0} get-tuple-element(p0), index=1
+
+      ivar_copy = s32[] copy(ivar)
+      acc = s32[1,1,8] get-tuple-element(p0), index=2
+      acc_copy = s32[1,1,8] copy(acc)
+
+      offset1 = s32[] fusion(ivar_copy), kind=kLoop, calls=remainder
+      offset2 = s32[] get-tuple-element(p0), index=3
+
+      slice = s32[1,1,8] fusion(input, offset1, offset2), kind=kLoop, calls=dynamic_slice,
+          backend_config={"fusion_backend_config":{
+              "kind":"__dynamic_memcpy",
+              "dynamic_memcpy_config":{
+                  "depends_on_loop":true,
+                  "src_offset_bytes":["288","544","800","800","800","288"],
+                  "dst_offset_bytes":["0","0","0","0","0","0"]}}}
+      next_ivar = s32[] fusion(ivar_copy), kind=kLoop, calls=add
+      next_offset_2 = s32[] fusion(offset2), kind=kLoop, calls=times_two
+
+      next_acc = s32[1,1,8] fusion(acc_copy, slice), kind=kLoop, calls=add_slices
+      ROOT result = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[])
+          tuple(next_ivar, input, next_acc, next_offset_2)
+    }
+
+    compare {
+      p0 = s32[] parameter(0)
+      c6 = s32[] constant(6)
+      ROOT cmp = pred[] compare(p0, c6), direction=LT
+    }
+
+    condition {
+      p0 = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      ROOT cmp = pred[] fusion(ivar), kind=kLoop, calls=compare
+    }
+
+    zero {
+      c0 = s32[] constant(0)
+      ROOT bc = s32[1,1,8] broadcast(c0), dimensions={}
+    }
+
+    input {
+      iota = s32[256] iota(), iota_dimension=0
+      ROOT bc = s32[4,8,8]{2,1,0} bitcast(iota)
+    }
+
+    ENTRY main {
+      input = s32[4,8,8]{2,1,0} fusion(), kind=kLoop, calls=input
+      init_acc = s32[1,1,8] fusion(), kind=kLoop, calls=zero
+      c0 = s32[] constant(0)
+      c1 = s32[] constant(1)
+      tuple = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[]) tuple(c0, input, init_acc, c1)
+      ROOT while = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"6"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    }
+)";
+
+  // running with module without exclusive lock on GpuExecutable
+  HloModuleConfig config;
+  auto debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_require_exclusive_lock(false);
+  debug_options.add_xla_gpu_enable_command_buffer(
+      DebugOptions::DYNAMIC_SLICE_COPY_FUSION);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str, config));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(std::move(module), ErrorSpec{1e-3, 2e-3}));
 }
 
 }  // namespace xla::gpu

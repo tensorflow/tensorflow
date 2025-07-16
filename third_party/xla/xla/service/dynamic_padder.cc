@@ -42,9 +42,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/literal_util.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/call_inliner.h"
 #include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/dynamic_window_utils.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -2083,10 +2085,43 @@ absl::StatusOr<bool> DynamicPadder::Run(
   VLOG(2) << "Pre DynamicPadder HLO:";
   XLA_VLOG_LINES(2, module->ToString());
 
+  bool has_dynamic = [&]() {
+    for (HloComputation* computation :
+         module->computations(execution_threads)) {
+      for (HloInstruction* instruction : computation->instructions()) {
+        if (instruction->shape().is_dynamic()) {
+          return true;
+        }
+        if (instruction->opcode() == HloOpcode::kSetDimensionSize ||
+            instruction->opcode() == HloOpcode::kGetDimensionSize ||
+            instruction->IsCustomCall("SetBound")) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }();
+
+  if (!has_dynamic) {
+    return false;
+  }
+
+  // TODO(b/419842730): Support dynamic padder for graphs with complex CFGs.
+  FlattenCallGraph flatten_call_graph;
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      flatten_call_graph.Run(module, execution_threads));
+  CallInliner call_inliner(
+      /*single_call_site=*/false,
+      /*update_domain=*/false);
+  TF_ASSIGN_OR_RETURN(bool inliner_changed,
+                      call_inliner.Run(module, execution_threads));
+  changed |= inliner_changed;
+
   // Run DCE before inference, in case earlier passes left dead instructions
   // that could cause us to insert PadToStatic when it isn't desired.
   HloDCE dce;
-  TF_ASSIGN_OR_RETURN(bool changed, dce.Run(module, execution_threads));
+  TF_ASSIGN_OR_RETURN(bool dce_changed, dce.Run(module, execution_threads));
+  changed |= dce_changed;
 
   TF_ASSIGN_OR_RETURN(
       DynamicDimensionInference dynamic_dimension_inference,

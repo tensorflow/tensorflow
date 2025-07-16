@@ -35,6 +35,8 @@ limitations under the License.
 #include "xla/stream_executor/host/host_event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
+#include "xla/tsl/platform/env.h"
+#include "tsl/platform/context.h"
 #include "tsl/platform/denormal.h"
 #include "tsl/platform/setround.h"
 
@@ -49,7 +51,7 @@ HostStream::HostStream(StreamExecutor* executor)
 HostStream::~HostStream() {
   {
     absl::MutexLock lock(&mu_);
-    work_queue_.push(nullptr);
+    work_queue_.push(WorkItem(nullptr));
   }
   // thread_'s destructor blocks until the thread finishes running.
   thread_.reset();
@@ -146,7 +148,7 @@ bool HostStream::EnqueueTaskWithStatus(
     absl::AnyInvocable<absl::Status() &&> task) {
   CHECK(task != nullptr);
   absl::MutexLock lock(&mu_);
-  work_queue_.push(std::move(task));
+  work_queue_.push(WorkItem(std::move(task)));
   return true;
 }
 
@@ -159,18 +161,21 @@ void HostStream::WorkLoop() {
   tsl::port::ScopedFlushDenormal flush;
   tsl::port::ScopedSetRound round(FE_TONEAREST);
   while (true) {
-    std::queue<absl::AnyInvocable<absl::Status() &&>> queue;
+    std::queue<WorkItem> queue;
     {
       absl::MutexLock lock(&mu_);
       mu_.Await(absl::Condition(this, &HostStream::WorkAvailable));
       std::swap(queue, work_queue_);
     }
     while (!queue.empty()) {
-      absl::AnyInvocable<absl::Status() &&>& fn = queue.front();
-      if (!fn) {
+      WorkItem& work_item = queue.front();
+      if (!work_item.task) {
         return;
       }
-      status_.Update(std::move(fn)());
+      {  // Don't destroy the context until the task is done.
+        tsl::WithContext with_context(work_item.context);
+        status_.Update(std::move(work_item.task)());
+      }
       queue.pop();
     }
   }

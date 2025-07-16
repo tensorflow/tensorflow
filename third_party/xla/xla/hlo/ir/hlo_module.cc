@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
@@ -40,11 +41,13 @@ limitations under the License.
 #include "highwayhash/arch_specific.h"
 #include "highwayhash/hh_types.h"
 #include "highwayhash/highwayhash.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/map_util.h"
@@ -183,7 +186,8 @@ HloComputation* HloModule::AddComputationInternal(
     computation_name_uniquer_.GetUniqueName(computation->name());
     for (auto* instruction : computation->instructions()) {
       instruction_name_uniquer_.GetUniqueName(instruction->name());
-      next_unique_id_ = std::max(next_unique_id_, instruction->unique_id() + 1);
+      next_unique_id_ =
+          std::max(next_unique_id_, instruction->unique_id_64_bits() + 1);
     }
     if (next_unique_id_ < computation->unique_id() + 1) {
       next_unique_id_ = computation->unique_id() + 1;
@@ -438,6 +442,13 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
     AppendCat(printer, ", frontend_attributes=",
               FrontendAttributesToString(frontend_attributes_));
   }
+  if (!original_value_recovery_table_.empty()) {
+    HloPrintOptions new_options = options;
+    new_options.set_indent_amount(options.indent_amount() + 1);
+    printer->Append(", origin_recovery_table={\n");
+    printer->Append(original_value_recovery_table_.ToString(new_options));
+    printer->Append("}\n");
+  }
   printer->Append("\n\n");
   // We use a DFS postorder traversal to ensure that computations are printed
   // more consistently run to run. Even thet non-dfs postorder is deterministic,
@@ -454,14 +465,14 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
         computation->CanExpandIntoSingleInstruction()) {
       continue;
     }
-    if (computation == entry_computation()) {
-      printer->Append("ENTRY ");
-    }
+    HloPrintOptions new_options = options;
+    new_options.set_print_computation_mode(
+        HloPrintOptions::PrintComputationMode::kComputationWithEntryKeyword);
     if (has_schedule() && schedule().is_computation_scheduled(computation)) {
-      computation->Print(printer, options,
+      computation->Print(printer, new_options,
                          schedule().sequence(computation).instructions());
     } else {
-      computation->Print(printer, options);
+      computation->Print(printer, new_options);
     }
     printer->Append("\n\n");
   }
@@ -607,6 +618,12 @@ HloModuleProto HloModule::ToProto() const {
   if (stack_frame_index_.has_value()) {
     (*proto.mutable_stack_frame_index()) = *stack_frame_index_;
   }
+
+  if (!original_value_recovery_table_.empty()) {
+    *proto.mutable_original_value_recovery_table() =
+        original_value_recovery_table_.ToProto();
+  }
+
   return proto;
 }
 
@@ -620,9 +637,9 @@ HloModuleProtoWithConfig HloModule::ToProtoWithConfig() const {
 absl::Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions()
     const {
   absl::flat_hash_set<absl::string_view> computation_names;
-  absl::flat_hash_set<int> computation_ids;
+  absl::flat_hash_set<int64_t> computation_ids;
   absl::flat_hash_set<absl::string_view> instruction_names;
-  absl::flat_hash_set<int> instruction_ids;
+  absl::flat_hash_set<int64_t> instruction_ids;
 
   for (const HloComputation* computation : computations()) {
     TF_RET_CHECK(!ContainsKey(computation_names, computation->name()))
@@ -638,9 +655,11 @@ absl::Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions()
           << "Instruction name is not unique: " << instruction->name();
       instruction_names.insert(instruction->name());
 
-      TF_RET_CHECK(!ContainsKey(instruction_ids, instruction->unique_id()))
-          << "Instruction id is not unique: " << instruction->unique_id();
-      instruction_ids.insert(instruction->unique_id());
+      TF_RET_CHECK(
+          !ContainsKey(instruction_ids, instruction->unique_id_64_bits()))
+          << "Instruction id is not unique: "
+          << instruction->unique_id_64_bits();
+      instruction_ids.insert(instruction->unique_id_64_bits());
     }
   }
   return absl::OkStatus();
@@ -791,6 +810,14 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
       module->stack_frame_index_ = std::move(proto.stack_frame_index());
     }
   }
+
+  if (proto.has_original_value_recovery_table()) {
+    TF_ASSIGN_OR_RETURN(module->original_value_recovery_table_,
+                        HloModule::OriginalValueRecoveryTable::FromProto(
+                            proto.original_value_recovery_table()));
+  }
+
+  DeduplicateOriginalValues(module.get());
   return module;
 }
 
@@ -1104,36 +1131,33 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
                        post_order.end());
     }
     return post_order;
-  } else {
-    // The topological sort is a reverse post-order, reverse it so we get a
-    // post-order.
-    std::vector<HloComputation*> post_order;
-    post_order.reserve(computations_.size());
-    int num_computations = 0;
-    for (auto it = topological_sort_.rbegin(); it != topological_sort_.rend();
-         ++it) {
-      ++num_computations;
-      if (execution_threads.empty() ||
-          execution_threads.contains(it->execution_thread())) {
-        post_order.push_back(&*it);
-      }
+  }  // The topological sort is a reverse post-order, reverse it so we get a
+  // post-order.
+  std::vector<HloComputation*> post_order;
+  post_order.reserve(computations_.size());
+  int num_computations = 0;
+  for (auto it = topological_sort_.rbegin(); it != topological_sort_.rend();
+       ++it) {
+    ++num_computations;
+    if (execution_threads.empty() ||
+        execution_threads.contains(it->execution_thread())) {
+      post_order.push_back(&*it);
     }
-
-    if (num_computations != computations_.size()) {
-      for (HloComputation& computation : topological_sort_) {
-        LOG(ERROR) << "Reverse postorder: " << computation.name() << " ("
-                   << computation.parent()->name() << ")";
-      }
-      for (auto& computation : computations_) {
-        LOG(ERROR) << "Computations: " << computation->name() << " ("
-                   << computation->parent()->name() << ")";
-      }
-      LOG(FATAL) << "Mismatch computation count: post_order="
-                 << post_order.size()
-                 << " computation_count=" << computations_.size();
-    }
-    return post_order;
   }
+
+  if (num_computations != computations_.size()) {
+    for (HloComputation& computation : topological_sort_) {
+      LOG(ERROR) << "Reverse postorder: " << computation.name() << " ("
+                 << computation.parent()->name() << ")";
+    }
+    for (auto& computation : computations_) {
+      LOG(ERROR) << "Computations: " << computation->name() << " ("
+                 << computation->parent()->name() << ")";
+    }
+    LOG(FATAL) << "Mismatch computation count: post_order=" << post_order.size()
+               << " computation_count=" << computations_.size();
+  }
+  return post_order;
 }
 
 namespace {
@@ -1168,7 +1192,9 @@ void SortComputationsByContent(std::vector<HloComputation*>* computations) {
     }
     // Avoid computing fingerprints of (potentially) giant computation strings
     // just to compare when a == b
-    if (a == b) return false;
+    if (a == b) {
+      return false;
+    }
 
     return fingerprint_map.GetFingerprint(a) <
            fingerprint_map.GetFingerprint(b);
@@ -1363,6 +1389,93 @@ std::string HloModule::GetFingerprint128(const HloPrintOptions& options) const {
   absl::string_view fp_bytes(reinterpret_cast<const char*>(&fingerprint),
                              sizeof(tsl::Fprint128));
   return absl::BytesToHexString(fp_bytes);
+}
+
+struct OriginalArrayComparator {
+  bool operator()(const OriginalArray& lhs, const OriginalArray& rhs) const {
+    return lhs.instruction_name < rhs.instruction_name;
+  }
+};
+
+// Order the original value recovery table by the instruction name of the key
+// OriginalArray. This is to make the order of the table deterministic for
+// testing and debugging.
+inline absl::btree_map<OriginalArray, std::pair<OriginalArray, HloModule*>,
+                       OriginalArrayComparator>
+GetOrderedHashMap(const OriginalValueRecoveryTable& unordered_table) {
+  absl::btree_map<OriginalArray, std::pair<OriginalArray, HloModule*>,
+                  OriginalArrayComparator>
+      ordered_table;
+  for (const auto& p : unordered_table) {
+    ordered_table[p.first] =
+        std::make_pair(p.second.first, p.second.second.get());
+  }
+  return ordered_table;
+}
+
+std::string HloModule::OriginalValueRecoveryTable::ToString(
+    HloPrintOptions options) const {
+  std::string result;
+  for (const auto& p : GetOrderedHashMap(*this)) {
+    const auto& removed_original_array = p.first;
+    const auto& remaining_original_array = p.second.first;
+    HloModule* recovery_module = p.second.second;
+    // Wraps the recovery module with double quotes so that it can be parsed as
+    // a string. This is to make sure it can be parsed as a standalone module
+    // without interferecing with theparseing of the main module the table is
+    // associated with.
+    const std::string tab(2 * (options.indent_amount()), ' ');
+    absl::StrAppend(&result, tab, "{", removed_original_array.ToString(),
+                    "} : {", remaining_original_array.ToString(), "},\n", tab,
+                    "\"\n",
+                    recovery_module->entry_computation()->ToString(
+                        HloPrintOptions()
+                            .set_print_computation_mode(
+                                HloPrintOptions::PrintComputationMode::
+                                    kComputationWithEntryKeyword)
+                            .set_indent_amount(options.indent_amount() + 1)),
+                    "\n", tab, "\"\n");
+  }
+  return result;
+}
+
+OriginalValueRecoveryTableProto HloModule::OriginalValueRecoveryTable::ToProto()
+    const {
+  OriginalValueRecoveryTableProto original_value_recovery_table_proto;
+  for (const auto& p : GetOrderedHashMap(*this)) {
+    const auto& removed_original_array = p.first;
+    const auto& remaining_original_array = p.second.first;
+    HloModule* recovery_module = p.second.second;
+    auto* entry = original_value_recovery_table_proto.add_entries();
+    *entry->mutable_removed_original_array() = removed_original_array.ToProto();
+    *entry->mutable_remaining_original_array() =
+        remaining_original_array.ToProto();
+    *entry->mutable_recovery_module() = recovery_module->ToProto();
+  }
+  return original_value_recovery_table_proto;
+}
+
+absl::StatusOr<HloModule::OriginalValueRecoveryTable>
+HloModule::OriginalValueRecoveryTable::FromProto(
+    const xla::OriginalValueRecoveryTableProto&
+        original_value_recovery_table_proto) {
+  OriginalValueRecoveryTable original_value_recovery_table;
+
+  for (const auto& entry : original_value_recovery_table_proto.entries()) {
+    OriginalArray removed_original_array =
+                      OriginalArray::FromProto(entry.removed_original_array()),
+                  remaining_original_array = OriginalArray::FromProto(
+                      entry.remaining_original_array());
+    const HloModuleProto proto = entry.recovery_module();
+    TF_ASSIGN_OR_RETURN(HloModuleConfig config,
+                        HloModule::CreateModuleConfigFromProto(
+                            proto, GetDebugOptionsFromFlags()));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> recovery_module,
+                        HloModule::CreateFromProto(proto, config));
+    original_value_recovery_table[removed_original_array] =
+        std::make_pair(remaining_original_array, std::move(recovery_module));
+  }
+  return original_value_recovery_table;
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

@@ -45,7 +45,6 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@jsoncpp_git//:jsoncpp",
@@ -58,8 +57,10 @@ xla_cc_binary(
     srcs = ["generate_benchmark_matrices_main.cc"],
     deps = [
         ":generate_benchmark_matrices_cc",
+        "//xla/tools/benchmarks/proto:benchmark_config_proto_cc",
         "//xla/tsl/platform:status",
         "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",

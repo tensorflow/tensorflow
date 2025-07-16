@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <utility>
 #include <vector>
@@ -38,7 +39,8 @@ iopddl::Cost ConvertCost(const double cost) {
   return static_cast<int64_t>(cost);
 }
 
-iopddl::Problem ConvertToProblem(const AutoShardingSolverRequest& request) {
+iopddl::Problem ConvertToProblem(const AutoShardingSolverRequest& request,
+                                 const bool use_follower_constraints) {
   iopddl::Problem problem = {.name = request.request_name()};
   std::vector<iopddl::Interval> node_intervals;
   // Process all nodes, taking intervals if provided.
@@ -171,17 +173,19 @@ iopddl::Problem ConvertToProblem(const AutoShardingSolverRequest& request) {
     }
   }
   // The third kind of edges come from request.s_follow
-  for (int64_t node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
-    CHECK_LT(node_idx, request.s_follow_size());
-    if (request.s_follow(node_idx) < 0) {
-      continue;
-    }
-    problem.edges.push_back({{request.s_follow(node_idx), node_idx}});
-    CHECK_LT(node_idx, request.s_len_size());
-    for (int64_t i = 0; i < request.s_len(node_idx); ++i) {
-      for (int64_t j = 0; j < request.s_len(node_idx); ++j) {
-        const iopddl::Cost cost = (i == j) ? 0 : kInfinityInt;
-        problem.edges.back().strategies.push_back({cost});
+  if (use_follower_constraints) {
+    for (int64_t node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
+      CHECK_LT(node_idx, request.s_follow_size());
+      if (request.s_follow(node_idx) < 0) {
+        continue;
+      }
+      problem.edges.push_back({{request.s_follow(node_idx), node_idx}});
+      CHECK_LT(node_idx, request.s_len_size());
+      for (int64_t i = 0; i < request.s_len(node_idx); ++i) {
+        for (int64_t j = 0; j < request.s_len(node_idx); ++j) {
+          const iopddl::Cost cost = (i == j) ? 0 : kInfinityInt;
+          problem.edges.back().strategies.push_back({cost});
+        }
       }
     }
   }
@@ -195,7 +199,7 @@ static bool IsEdgeFollower(const iopddl::Problem& problem,
                            const iopddl::Edge& edge) {
   int strategies0 = problem.nodes[edge.nodes[0]].strategies.size();
   int strategies1 = problem.nodes[edge.nodes[1]].strategies.size();
-  if (strategies0 != strategies1) {
+  if (edge.nodes[0] == edge.nodes[1] || strategies0 != strategies1) {
     return false;
   }
   for (iopddl::StrategyIdx idx0 = 0; idx0 < strategies0; ++idx0) {
@@ -212,13 +216,16 @@ static bool IsEdgeFollower(const iopddl::Problem& problem,
   return true;
 }
 
-static bool IsEdgeAlias(const iopddl::Edge& edge) {
+bool IsEdgeAlias(const iopddl::Edge& edge) {
+  bool has_infinity = false;
   for (const iopddl::Strategy& strategy : edge.strategies) {
     if (strategy.cost == kInfinityInt) {
-      return true;
+      has_infinity = true;
+    } else if (strategy.cost > 0) {
+      return false;
     }
   }
-  return false;
+  return has_infinity;
 }
 
 AutoShardingSolverRequest ConvertToSolverRequest(
@@ -227,11 +234,12 @@ AutoShardingSolverRequest ConvertToSolverRequest(
   request.set_request_name(problem.name);
   request.set_num_nodes(problem.nodes.size());
   request.set_memory_budget(problem.usage_limit.value_or(-1));
+  const std::vector<int64_t> followers = GetFollowers(problem);
   for (iopddl::NodeIdx node_idx = 0; node_idx < problem.nodes.size();
        ++node_idx) {
     const iopddl::Node& node = problem.nodes[node_idx];
     request.add_s_len(node.strategies.size());
-    request.add_s_follow(-1);
+    request.add_s_follow(followers[node_idx]);
     request.add_communication_costs();
     request.add_computation_costs();
     request.add_memory_costs();
@@ -252,24 +260,72 @@ AutoShardingSolverRequest ConvertToSolverRequest(
     request.mutable_node_intervals()->rbegin()->set_second(
         empty_interval ? -1 : node.interval.second - 1);
   }
-  // Aggregate edge costs for all unique node pairs.
-  std::map<std::pair<int64_t, int64_t>, std::vector<iopddl::Cost>> edge_costs;
+  for (const auto& alias : GetAliases(problem)) {
+    auto* alias_proto = request.add_aliases();
+    alias_proto->set_first(alias.nodes[0]);
+    alias_proto->set_second(alias.nodes[1]);
+    request.add_value_costs();
+    for (const iopddl::Strategy& strategy : alias.strategies) {
+      request.mutable_value_costs()->rbegin()->add_costs(
+          strategy.cost == kInfinityInt ? 1.0 : 0.0);
+    }
+  }
+  for (const auto& deduplicated_edge : GetDeduplicatedEdges(problem)) {
+    auto* edge_proto = request.add_edges();
+    edge_proto->set_first(deduplicated_edge.nodes[0]);
+    edge_proto->set_second(deduplicated_edge.nodes[1]);
+    request.add_resharding_costs();
+    for (const auto& strategy : deduplicated_edge.strategies) {
+      request.mutable_resharding_costs()->rbegin()->add_costs(
+          static_cast<double>(strategy.cost));
+    }
+  }
+  return request;
+}
+
+std::vector<int64_t> GetFollowers(const iopddl::Problem& problem) {
+  std::vector<std::vector<int64_t>> followees(problem.nodes.size());
   for (iopddl::EdgeIdx edge_idx = 0; edge_idx < problem.edges.size();
        ++edge_idx) {
     const iopddl::Edge& edge = problem.edges[edge_idx];
     if (IsEdgeFollower(problem, edge)) {
-      request.mutable_s_follow()->Set(edge.nodes[1], edge.nodes[0]);
-      continue;
+      followees[edge.nodes[0]].push_back(edge.nodes[1]);
+      followees[edge.nodes[1]].push_back(edge.nodes[0]);
     }
-    if (IsEdgeAlias(edge)) {
-      auto* alias = request.add_aliases();
-      alias->set_first(edge.nodes[0]);
-      alias->set_second(edge.nodes[1]);
-      request.add_value_costs();
-      for (const iopddl::Strategy& strategy : edge.strategies) {
-        request.mutable_value_costs()->rbegin()->add_costs(
-            strategy.cost == kInfinityInt ? 1.0 : 0.0);
+  }
+  // Ensure that followees (and their followees, etc.) follow the root node.
+  std::vector<int64_t> followers(problem.nodes.size(), -1);
+  std::function<void(int64_t, int64_t)> propagate = [&](int64_t root_idx,
+                                                        int64_t node_idx) {
+    if (root_idx < node_idx && followers[node_idx] == -1) {
+      followers[node_idx] = root_idx;
+      for (int64_t followee_idx : followees[node_idx]) {
+        propagate(root_idx, followee_idx);
       }
+    }
+  };
+  for (NodeIdx root_idx = 0; root_idx < problem.nodes.size(); ++root_idx) {
+    for (int64_t node_idx : followees[root_idx]) {
+      propagate(root_idx, node_idx);
+    }
+  }
+  return followers;
+}
+
+std::vector<iopddl::Edge> GetAliases(const iopddl::Problem& problem) {
+  std::vector<iopddl::Edge> aliases;
+  for (const iopddl::Edge& edge : problem.edges) {
+    if (!IsEdgeFollower(problem, edge) && IsEdgeAlias(edge)) {
+      aliases.push_back(edge);
+    }
+  }
+  return aliases;
+}
+
+std::vector<iopddl::Edge> GetDeduplicatedEdges(const iopddl::Problem& problem) {
+  std::map<std::pair<int64_t, int64_t>, std::vector<iopddl::Cost>> edge_costs;
+  for (const iopddl::Edge& edge : problem.edges) {
+    if (IsEdgeFollower(problem, edge) || IsEdgeAlias(edge)) {
       continue;
     }
     std::pair<int64_t, int64_t> node_pair = {edge.nodes[0], edge.nodes[1]};
@@ -281,18 +337,14 @@ AutoShardingSolverRequest ConvertToSolverRequest(
       costs[idx] += edge.strategies[idx].cost;
     }
   }
-  // Create one edge in the solver request for each node pair that appears.
+  std::vector<iopddl::Edge> deduplicated_edges;
   for (const auto& [edge, costs] : edge_costs) {
-    auto* edge_proto = request.add_edges();
-    edge_proto->set_first(edge.first);
-    edge_proto->set_second(edge.second);
-    request.add_resharding_costs();
+    deduplicated_edges.push_back({{edge.first, edge.second}});
     for (iopddl::Cost strategy_cost : costs) {
-      request.mutable_resharding_costs()->rbegin()->add_costs(
-          static_cast<double>(strategy_cost));
+      deduplicated_edges.back().strategies.push_back({strategy_cost});
     }
   }
-  return request;
+  return deduplicated_edges;
 }
 
 void RandomizeCosts(iopddl::Problem& problem) {

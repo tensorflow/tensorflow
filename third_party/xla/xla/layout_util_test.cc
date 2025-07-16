@@ -41,13 +41,11 @@ using ::tsl::testing::StatusIs;
 
 class LayoutUtilTest : public ::testing::Test {
  protected:
-  Shape MakeShapeWithLayout(
-      PrimitiveType element_type, absl::Span<const int64_t> dimensions,
-      absl::Span<const int64_t> minor_to_major,
-      absl::Span<const DimLevelType> dim_level_types = {}) {
+  Shape MakeShapeWithLayout(PrimitiveType element_type,
+                            absl::Span<const int64_t> dimensions,
+                            absl::Span<const int64_t> minor_to_major) {
     Shape shape = ShapeUtil::MakeShape(element_type, dimensions);
-    *shape.mutable_layout() =
-        LayoutUtil::MakeLayout(minor_to_major, dim_level_types);
+    *shape.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
     return shape;
   }
 };
@@ -99,57 +97,6 @@ TEST_F(LayoutUtilTest, CopyLayoutDenseArray) {
   EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
   EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
   EXPECT_FALSE(dst.has_layout());
-}
-
-TEST_F(LayoutUtilTest, CopyLayoutCSRArray) {
-  Shape src =
-      MakeShapeWithLayout(F32, {2, 3}, {1, 0}, {DIM_DENSE, DIM_COMPRESSED});
-  Shape dst = MakeShapeWithLayout(F32, {2, 3}, {0, 1});
-
-  EXPECT_TRUE(LayoutUtil::IsSparseArray(src));
-  EXPECT_FALSE(LayoutUtil::IsSparseArray(dst));
-
-  EXPECT_TRUE(LayoutUtil::IsCSRArray(src));
-  EXPECT_FALSE(LayoutUtil::IsCSRArray(dst));
-
-  EXPECT_FALSE(LayoutUtil::LayoutsInShapesEqual(src, dst));
-  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
-  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
-  EXPECT_TRUE(LayoutUtil::IsCSRArray(dst));
-
-  // Should work if destination has no layout.
-  dst.clear_layout();
-  EXPECT_FALSE(LayoutUtil::IsCSRArray(dst));
-  EXPECT_FALSE(LayoutUtil::LayoutsInShapesEqual(src, dst));
-  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
-  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
-  EXPECT_TRUE(LayoutUtil::IsCSRArray(dst));
-
-  // Convert dst to a CSC array with dim 0 minor layout.
-  *dst.mutable_layout()->mutable_minor_to_major() = {0, 1};
-  EXPECT_TRUE(LayoutUtil::IsCSCArray(dst));
-  EXPECT_FALSE(LayoutUtil::IsCSRArray(dst));
-
-  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
-  *src.mutable_layout()->mutable_physical_shape() = ShapeUtil::MakeTupleShape({
-      ShapeUtil::MakeShapeWithDenseLayout(U32, {2}, {0}, {Tile({100})}),
-      ShapeUtil::MakeShapeWithDenseLayout(U32, {4}, {0}, {Tile({100})}),
-      ShapeUtil::MakeShapeWithDenseLayout(F32, {4}, {0}, {Tile({100})}),
-  });
-  EXPECT_FALSE(LayoutUtil::LayoutsInShapesEqual(src, dst));
-  dst.clear_layout();
-  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
-  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
-
-  // If source is cleared, then destination should be cleared.
-  src.clear_layout();
-  EXPECT_FALSE(LayoutUtil::IsCSRArray(src));
-  EXPECT_FALSE(LayoutUtil::LayoutsInShapesEqual(src, dst));
-  EXPECT_TRUE(dst.has_layout());
-  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
-  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
-  EXPECT_FALSE(dst.has_layout());
-  EXPECT_FALSE(LayoutUtil::IsCSRArray(dst));
 }
 
 TEST_F(LayoutUtilTest, CopyLayoutTuple) {
@@ -437,26 +384,6 @@ TEST_F(LayoutUtilTest, ValidateLayout_InvalidArrayLayout) {
                         "contains 3 elements, but shape has 2 dimensions"));
 }
 
-TEST_F(LayoutUtilTest, ValidateLayout_InvalidDimLevelTypes) {
-  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
-  *shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
-  shape.mutable_layout()->add_dim_level_type(DIM_DENSE);
-  shape.mutable_layout()->add_dim_level_type(DIM_DENSE);
-  shape.mutable_layout()->add_dim_level_type(DIM_DENSE);
-  auto status =
-      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
-  EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.message(),
-              HasSubstr("layout dim_level_types field "
-                        "contains 3 elements, but shape has 2 dimensions"));
-  status =
-      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
-  EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.message(),
-              HasSubstr("layout dim_level_types field "
-                        "contains 3 elements, but shape has 2 dimensions"));
-}
-
 TEST_F(LayoutUtilTest, ValidateLayout_MissingArrayLayout) {
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   LayoutUtil::ClearLayout(&shape);
@@ -468,37 +395,6 @@ TEST_F(LayoutUtilTest, ValidateLayout_MissingArrayLayout) {
   status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
   EXPECT_TRUE(status.ok());
-}
-
-TEST_F(LayoutUtilTest, ValidateLayout_Sparse) {
-  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
-  *shape.mutable_layout() = LayoutUtil::MakeLayout(
-      {1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {Tile({10, 10})});
-  EXPECT_THAT(
-      LayoutUtil::ValidateLayoutInShape(shape),
-      StatusIs(tsl::error::INVALID_ARGUMENT,
-               HasSubstr("layout has tiles, but the shape is a sparse array")));
-  shape.mutable_layout()->clear_tiles();
-  EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape), IsOk());
-  *shape.mutable_layout()->mutable_physical_shape() =
-      ShapeUtil::MakeShape(F32, {6});
-  EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape), IsOk());
-  *shape.mutable_layout()
-       ->mutable_physical_shape()
-       ->mutable_layout()
-       ->mutable_physical_shape() = ShapeUtil::MakeShape(S32, {10});
-  EXPECT_THAT(
-      LayoutUtil::ValidateLayoutInShape(shape),
-      StatusIs(
-          tsl::error::INVALID_ARGUMENT,
-          HasSubstr("layout has a physical_shape, but is not a sparse array")));
-  shape.mutable_layout()->mutable_physical_shape()->clear_layout();
-  shape.mutable_layout()->clear_dim_level_types();
-  EXPECT_THAT(
-      LayoutUtil::ValidateLayoutInShape(shape),
-      StatusIs(
-          tsl::error::INVALID_ARGUMENT,
-          HasSubstr("layout has a physical_shape, but is not a sparse array")));
 }
 
 TEST_F(LayoutUtilTest, ValidateLayout_TupleSubshapesWithMissingLayouts) {

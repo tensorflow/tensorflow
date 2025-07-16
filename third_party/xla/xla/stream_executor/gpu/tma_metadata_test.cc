@@ -21,7 +21,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "xla/tsl/platform/status_matchers.h"
 
 namespace stream_executor::gpu {
@@ -208,7 +207,7 @@ TEST(TmaMetadataTest, CreateInvalidGlobalStridesFailsGracefully) {
                             /*element_strides=*/{1, 1},
                             /*element_byte_width=*/1),
       StatusIs(StatusCode::kInvalidArgument,
-               AllOf(HasSubstr("global_strides"), HasSubstr("<= 2^40"))));
+               AllOf(HasSubstr("global_strides"), HasSubstr("< 2^40"))));
   constexpr uint64_t kNotDivisibleBy32 = 2000;
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{500, 360, 200},

@@ -57,7 +57,7 @@ absl::StatusOr<tensorflow::NodeDef> BuildNodeDef(
     const std::function<absl::Status(tensorflow::AttrValueMap*)>&
         attr_builder) {
   tensorflow::NodeDef node_def;
-  node_def.set_name(std::string(node_name));
+  node_def.set_name(node_name);
   node_def.set_op(op_def.name());
   for (int i = 0; i < num_args; ++i) {
     node_def.add_input("dummy_input");

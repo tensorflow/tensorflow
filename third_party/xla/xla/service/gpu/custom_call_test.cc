@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "xla/shape.h"
@@ -46,8 +47,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -611,6 +614,25 @@ TEST_F(CustomCallTest, WithCalledComputation) {
   EXPECT_THAT(result.data<float>(), ::testing::Each(42));
 }
 
+TEST_F(CustomCallTest, WithCalledComputationAndLayouts) {
+  auto shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {128, 128}, {0, 1});
+  // Build a called computation which is just a copy instruction.
+  XlaBuilder copy("copy");
+  auto p0 = Parameter(&copy, 0, shape, "l_val");
+  Copy(p0);
+  auto copy_computation = copy.Build().value();
+
+  XlaBuilder b(TestName());
+  CustomCallWithComputationAndLayouts(
+      &b, "xla.gpu.ext.memcpy_with_called_computation",
+      /*operands=*/{Broadcast(ConstantR0WithType(&b, F32, 42.0), {128, 128})},
+      b.AddSubComputation(copy_computation), shape, {shape}, /*opaque=*/"",
+      /*has_side_effect=*/false, /*output_operand_aliasing=*/{},
+      /*literal=*/nullptr, /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+      /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}, &shape));
+  EXPECT_THAT(result.data<float>(), ::testing::Each(42));
+}
 //===----------------------------------------------------------------------===//
 // XLA:FFI handler with execution context
 //===----------------------------------------------------------------------===//
@@ -748,6 +770,123 @@ TEST_F(CustomCallTest, FfiExecutionState) {
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
 
   TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
+}
+
+//===----------------------------------------------------------------------===//
+// Testing the use of buffers in custom calls.
+//===----------------------------------------------------------------------===//
+
+class CustomCallHloTest : public HloTestBase {};
+
+void CallBack_AddOne(se::gpu::GpuStreamHandle stream, void** buffers,
+                     const char* /*opaque*/, size_t /*opaque_len*/) {
+  // Expect that the input and output buffers are the same.
+  if (buffers[0] != buffers[1]) {
+    return;
+  }
+  int32_t dst[2];
+  auto err = gpuMemcpy(dst, buffers[0], /*count=*/sizeof(int32_t) * 2,
+                       gpuMemcpyDeviceToHost);
+  ASSERT_EQ(err, gpuSuccess);
+  dst[0] += 1;
+  dst[1] += 1;
+  err = gpuMemcpy(buffers[1], dst, /*count=*/sizeof(int32_t) * 2,
+                  gpuMemcpyHostToDevice);
+}
+XLA_REGISTER_CUSTOM_CALL_TARGET(CallBack_AddOne, PLATFORM);
+
+TEST_F(CustomCallHloTest, HloBufferStraightLine) {
+  const char* const kModuleStr = R"(
+
+  HloModule test
+  ENTRY test_computation {
+    c1 = s32[] constant(1)
+    init = s32[2] broadcast(c1), dimensions={}
+    b0 = b(s32[2]) custom-call(init), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})}
+    b1 = b(s32[2]) custom-call(b0), custom_call_target="CallBack_AddOne",
+      output_to_operand_aliasing={{}: (0, {})},
+      api_version=API_VERSION_STATUS_RETURNING
+    b2 = b(s32[2]) custom-call(b1), custom_call_target="CallBack_AddOne",
+      output_to_operand_aliasing={{}: (0, {})},
+      api_version=API_VERSION_STATUS_RETURNING
+    ROOT v = s32[2] custom-call(b2), custom_call_target="Unpin",
+      output_to_operand_aliasing={{}: (0, {})}
+  })";
+
+  const int64_t kNumReplicas = 1;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  auto module = ParseAndReturnUnverifiedModule(kModuleStr, config);
+  EXPECT_TRUE(module.ok());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module.value()), absl::Span<Literal* const>{},
+                        kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_THAT(results[0].data<int32_t>(), ::testing::Each(3));
+}
+
+TEST_F(CustomCallHloTest, HloBufferRotated) {
+  const char* const kModuleStr = R"(
+
+  HloModule test
+  cond {
+    param = (s32[], b(s32[2])) parameter(0)
+    count = get-tuple-element(%param), index=0
+    ub = s32[] constant(2)
+    ROOT compare = pred[] compare(count, ub), direction=LT
+  }
+
+  body {
+    param = (s32[], b(s32[2])) parameter(0)
+    count = get-tuple-element(%param), index=0
+    b3 = get-tuple-element(%param), index=1
+
+    c1 = s32[] constant(1)
+    new_count = s32[] add(count, c1)
+    b4 = b(s32[2]) custom-call(b3), custom_call_target="CallBack_AddOne",
+      output_to_operand_aliasing={{}: (0, {})},
+      api_version=API_VERSION_STATUS_RETURNING
+    b5 = b(s32[2]) custom-call(b4), custom_call_target="CallBack_AddOne",
+      output_to_operand_aliasing={{}: (0, {})},
+      api_version=API_VERSION_STATUS_RETURNING
+    v0 = s32[2] custom-call(b5), custom_call_target="Unpin",
+      output_to_operand_aliasing={{}: (0, {})}
+    c1_broadcast = s32[2] broadcast(c1), dimensions={}
+    v1 = s32[2] add(c1_broadcast, v0)
+
+    b6 = b(s32[2]) custom-call(v1), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})}
+    ROOT result = (s32[], b(s32[2])) tuple(new_count, b6)
+  }
+
+  ENTRY test_computation {
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    init = s32[2] broadcast(c1), dimensions={}
+    b0 = b(s32[2]) custom-call(init), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})}
+    while_init = (s32[], b(s32[2])) tuple(c0, b0)
+    while_result = (s32[], b(s32[2])) while(while_init), body=body, condition=cond
+    b1 = b(s32[2]) get-tuple-element(while_result), index=1
+    ROOT v = s32[2] custom-call(b1), custom_call_target="Unpin",
+      output_to_operand_aliasing={{}: (0, {})}
+  })";
+
+  const int64_t kNumReplicas = 1;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  auto module = ParseAndReturnUnverifiedModule(kModuleStr, config);
+  EXPECT_TRUE(module.ok());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module.value()), absl::Span<Literal* const>{},
+                        kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_THAT(results[0].data<int32_t>(), ::testing::Each(7));
 }
 
 }  // anonymous namespace

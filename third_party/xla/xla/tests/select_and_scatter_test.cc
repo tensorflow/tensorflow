@@ -24,6 +24,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/array4d.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -93,11 +93,20 @@ class SelectAndScatterTest
   XlaComputation min_f32_;
 };
 
-TEST_P(SelectAndScatterTest, OVERSIZE_ON_GRM(ParamTest)) { DoIt(); }
+TEST_P(SelectAndScatterTest, ParamTest) {
+  if (test::HasModifiers({test::kGrm})) {
+    GTEST_SKIP();
+  }
+  DoIt();
+}
 
 class SelectAndScatterLarge : public SelectAndScatterTest {};
 
-TEST_P(SelectAndScatterLarge, DISABLED_ON_ISS(OVERSIZE_ON_GRM(ParamTest))) {
+TEST_P(SelectAndScatterLarge, ParamTest) {
+  if (test::HasModifiers({test::kIss}) || test::HasModifiers({test::kGrm})) {
+    // Oversize on GRM.
+    GTEST_SKIP();
+  }
   DoIt();
 }
 
@@ -276,7 +285,10 @@ TEST_F(SelectAndScatterTest, R1S32OverlappingWindow) {
 }
 
 // Test for S32 2D array, when windows do not overlap.
-TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2S32)) {
+TEST_F(SelectAndScatterTest, R2S32) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   const auto operand =
       ConstantR2<int32_t>(&builder_, {{7, 2, 5, 3, 10, 2}, {3, 8, 9, 3, 4, 2}});
   const auto source = ConstantR2<int32_t>(&builder_, {{2, 6}});
@@ -289,7 +301,10 @@ TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2S32)) {
 
 // Test for tie breaking rule in ge_f32_. When a tie is present, the operand
 // that has the lower lexicographical order (smaller index) should be chosen.
-TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2F32Tie)) {
+TEST_F(SelectAndScatterTest, R2F32Tie) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   const auto operand = ConstantR2<float>(
       &builder_, {{0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}});
   const auto source = ConstantR2<float>(
@@ -303,7 +318,10 @@ TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2F32Tie)) {
 }
 
 // Similar to SelectAndScatterTest.R2S32 but the input is transposed.
-TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(ReshapeR2S32)) {
+TEST_F(SelectAndScatterTest, ReshapeR2S32) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   const auto operand = ConstantR2<int32_t>(
       &builder_, {{7, 3}, {2, 8}, {5, 9}, {3, 3}, {10, 4}, {2, 2}});
   const auto reshape = Reshape(Transpose(operand, /*permutation=*/{1, 0}),
@@ -317,7 +335,10 @@ TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(ReshapeR2S32)) {
 }
 
 // Test for S32 2D array, when windows overlap with each other.
-TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2S32OverlappingWindow)) {
+TEST_F(SelectAndScatterTest, R2S32OverlappingWindow) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   const auto operand =
       ConstantR2<int32_t>(&builder_, {{7, 2, 5, 3, 8}, {3, 8, 9, 3, 4}});
   const auto source = ConstantR2<int32_t>(&builder_, {{2, 6, 4}});
@@ -329,7 +350,10 @@ TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2S32OverlappingWindow)) {
 }
 
 // Test for S32 2D array, when the padding is Padding::kSAME.
-TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2S32SamePadding)) {
+TEST_F(SelectAndScatterTest, R2S32SamePadding) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   const auto operand =
       ConstantR2<int32_t>(&builder_, {{7, 2, 5, 3, 8}, {3, 8, 9, 3, 4}});
   const auto source = ConstantR2<int32_t>(&builder_, {{2, 6, 4}});
@@ -342,8 +366,10 @@ TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2S32SamePadding)) {
 
 // Test for S32 2D array, when the padding is Padding::kSAME and windows overlap
 // with each other.
-TEST_F(SelectAndScatterTest,
-       DISABLED_ON_TPU(R2S32SamePaddingOverlappingWindow)) {
+TEST_F(SelectAndScatterTest, R2S32SamePaddingOverlappingWindow) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   const auto operand =
       ConstantR2<int32_t>(&builder_, {{7, 2, 5, 3, 8}, {3, 8, 9, 3, 4}});
   const auto source =
@@ -355,7 +381,10 @@ TEST_F(SelectAndScatterTest,
   ComputeAndCompareR2<int32_t>(&builder_, expected, {});
 }
 
-TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2F32OverlappingR2Source)) {
+TEST_F(SelectAndScatterTest, R2F32OverlappingR2Source) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   const auto operand = ConstantR2<float>(
       &builder_, {{1.5f, 2.5f, 1.5f}, {3.5f, 1.5f, 3.5f}, {4.5f, 2.5f, 4.5f}});
   const auto source =

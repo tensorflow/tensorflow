@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/executable.pb.h"
-#include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -54,28 +54,29 @@ namespace {
 // that the 1st argument is the same as the 0th and the 3rd is the same as
 // the 2nd. These duplicated parameters are passed to the kernel only once.
 std::string GetArgumentFingerprint(
-    absl::Span<const KernelArgument> kernel_arguments) {
-  return absl::StrJoin(
-      kernel_arguments, ",", [](std::string* s, const KernelArgument& arg) {
-        if (arg.first_with_same_slice().has_value()) {
-          absl::StrAppend(s, "=", arg.first_with_same_slice().value());
-          return;
-        }
-        absl::StrAppend(s, arg.alignment());
-        if (arg.aliased()) {
-          absl::StrAppend(s, "a");
-        }
-        if (arg.written()) {
-          absl::StrAppend(s, "w");
-        }
-      });
+    absl::Span<const emitters::KernelArgument> kernel_arguments) {
+  return absl::StrJoin(kernel_arguments, ",",
+                       [](std::string* s, const emitters::KernelArgument& arg) {
+                         if (arg.first_with_same_slice().has_value()) {
+                           absl::StrAppend(s, "=",
+                                           arg.first_with_same_slice().value());
+                           return;
+                         }
+                         absl::StrAppend(s, arg.alignment());
+                         if (arg.aliased()) {
+                           absl::StrAppend(s, "a");
+                         }
+                         if (arg.written()) {
+                           absl::StrAppend(s, "w");
+                         }
+                       });
 }
 
 }  // namespace
 
 std::string GetComputationFingerprint(
     const HloComputation* fused_computation,
-    absl::Span<const KernelArgument> kernel_arguments,
+    absl::Span<const emitters::KernelArgument> kernel_arguments,
     absl::string_view discriminator) {
   // We have to print constants, because otherwise we would accidentally reuse
   // kernels which have different builtin constants.
@@ -126,14 +127,14 @@ CompilationCacheProto KernelReuseCache::Export() const {
     CHECK(inserted) << cache_entry.kernel_name;
     CompilationCacheEntryProto& proto_entry = it->second;
     proto_entry.set_fingerprint(fingerprint);
-    LaunchDimensionsProto launch_dimensions_proto;
+    CompilationCacheEntryProto::LaunchDimensionsProto launch_dimensions_proto;
     launch_dimensions_proto.set_num_blocks(
         cache_entry.launch_dimensions.num_blocks());
     launch_dimensions_proto.set_num_threads_per_block(
         cache_entry.launch_dimensions.num_threads_per_block());
     *proto_entry.mutable_launch_dimensions() = launch_dimensions_proto;
     if (cache_entry.cluster_dim.has_value()) {
-      ClusterDimProto cluster_dim_proto;
+      CompilationCacheEntryProto::ClusterDimProto cluster_dim_proto;
       cluster_dim_proto.set_x(cache_entry.cluster_dim->x);
       cluster_dim_proto.set_y(cache_entry.cluster_dim->y);
       cluster_dim_proto.set_z(cache_entry.cluster_dim->z);
@@ -184,7 +185,7 @@ absl::Status UpdateDiskKernelCache(
 std::pair<absl::StatusOr<const KernelReuseCache::Entry*>, bool>
 KernelReuseCache::GetWithStatus(
     const HloComputation* fused_computation,
-    absl::Span<const KernelArgument> kernel_arguments,
+    absl::Span<const emitters::KernelArgument> kernel_arguments,
     absl::string_view discriminator,
     const std::function<absl::StatusOr<KernelReuseCache::Entry>()>& generator) {
   std::string fingerprint = GetComputationFingerprint(

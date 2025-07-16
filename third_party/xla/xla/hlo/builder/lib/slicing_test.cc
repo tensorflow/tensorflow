@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include <gtest/gtest.h>
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/error_spec.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
@@ -60,7 +60,7 @@ xla::Array3D<float> BatchedAValsFull() {
           }};
 }
 
-XLA_TEST_F(SlicingTest, Simple2dLookup) {
+TEST_F(SlicingTest, Simple2dLookup) {
   xla::XlaBuilder builder(TestName());
 
   xla::XlaOp a, x, y;
@@ -74,7 +74,7 @@ XLA_TEST_F(SlicingTest, Simple2dLookup) {
                              xla::ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(SlicingTest, Simple3dLookup) {
+TEST_F(SlicingTest, Simple3dLookup) {
   xla::XlaBuilder builder(TestName());
 
   xla::XlaOp a, index;
@@ -89,7 +89,7 @@ XLA_TEST_F(SlicingTest, Simple3dLookup) {
                              {a_data.get(), index_data.get()});
 }
 
-XLA_TEST_F(SlicingTest, NestedLookup) {
+TEST_F(SlicingTest, NestedLookup) {
   xla::XlaBuilder builder(TestName());
 
   xla::XlaOp a, index;
@@ -106,7 +106,7 @@ XLA_TEST_F(SlicingTest, NestedLookup) {
                              {a_data.get(), index_data.get()});
 }
 
-XLA_TEST_F(SlicingTest, SimpleSliceUpdate) {
+TEST_F(SlicingTest, SimpleSliceUpdate) {
   xla::XlaBuilder builder(TestName());
 
   xla::XlaOp a, b, x, y;
@@ -125,7 +125,7 @@ XLA_TEST_F(SlicingTest, SimpleSliceUpdate) {
       {a_data.get(), b_data.get(), x_data.get(), y_data.get()});
 }
 
-XLA_TEST_F(SlicingTest, NestedSliceUpdate) {
+TEST_F(SlicingTest, NestedSliceUpdate) {
   xla::XlaBuilder builder(TestName());
 
   xla::XlaOp a, b, x, y;
@@ -147,7 +147,7 @@ XLA_TEST_F(SlicingTest, NestedSliceUpdate) {
       {a_data.get(), b_data.get(), x_data.get(), y_data.get()});
 }
 
-XLA_TEST_F(SlicingTest, TorchGatherSparse) {
+TEST_F(SlicingTest, TorchGatherSparse) {
   xla::XlaBuilder builder(TestName());
 
   xla::XlaOp input, index;
@@ -161,7 +161,7 @@ XLA_TEST_F(SlicingTest, TorchGatherSparse) {
                            {input_data.get(), index_data.get()});
 }
 
-XLA_TEST_F(SlicingTest, TorchGatherDense) {
+TEST_F(SlicingTest, TorchGatherDense) {
   xla::XlaBuilder builder(TestName());
 
   xla::XlaOp input, index;
@@ -175,7 +175,7 @@ XLA_TEST_F(SlicingTest, TorchGatherDense) {
                            {input_data.get(), index_data.get()});
 }
 
-XLA_TEST_F(SlicingTest, TorchScatterDense) {
+TEST_F(SlicingTest, TorchScatterDense) {
   xla::XlaBuilder builder(TestName());
 
   xla::XlaOp src, index, input;
@@ -193,7 +193,7 @@ XLA_TEST_F(SlicingTest, TorchScatterDense) {
       {input_data.get(), index_data.get(), src_data.get()});
 }
 
-XLA_TEST_F(SlicingTest, TorchIndexSelectOn0) {
+TEST_F(SlicingTest, TorchIndexSelectOn0) {
   xla::XlaBuilder builder(TestName());
 
   xla::XlaOp input, index;
@@ -212,7 +212,7 @@ XLA_TEST_F(SlicingTest, TorchIndexSelectOn0) {
       {input_data.get(), index_data.get()});
 }
 
-XLA_TEST_F(SlicingTest, TorchIndexSelectOn0Size1) {
+TEST_F(SlicingTest, TorchIndexSelectOn0Size1) {
   xla::XlaBuilder builder(TestName());
 
   xla::XlaOp input, index;
@@ -232,7 +232,7 @@ XLA_TEST_F(SlicingTest, TorchIndexSelectOn0Size1) {
                              {input_data.get(), index_data.get()});
 }
 
-XLA_TEST_F(SlicingTest, TorchIndexSelectOn1) {
+TEST_F(SlicingTest, TorchIndexSelectOn1) {
   xla::XlaBuilder builder(TestName());
 
   xla::XlaOp input, index;
@@ -251,7 +251,7 @@ XLA_TEST_F(SlicingTest, TorchIndexSelectOn1) {
       {input_data.get(), index_data.get()});
 }
 
-XLA_TEST_F(SlicingTest, EmptyIndexSelect) {
+TEST_F(SlicingTest, EmptyIndexSelect) {
   xla::XlaBuilder builder(TestName());
 
   xla::XlaOp input, index;
@@ -263,7 +263,7 @@ XLA_TEST_F(SlicingTest, EmptyIndexSelect) {
                              {input_data.get(), index_data.get()});
 }
 
-XLA_TEST_F(SlicingTest, DoubleEmptyIndexSelect) {
+TEST_F(SlicingTest, DoubleEmptyIndexSelect) {
   xla::XlaBuilder builder(TestName());
 
   xla::XlaOp input, index;
@@ -279,7 +279,7 @@ XLA_TEST_F(SlicingTest, DoubleEmptyIndexSelect) {
   ComputeAndCompareLiteral(&builder, l, {input_data.get(), index_data.get()});
 }
 
-XLA_TEST_F(SlicingTest, EmptyIndexSelectNonZero) {
+TEST_F(SlicingTest, EmptyIndexSelectNonZero) {
   xla::XlaBuilder builder(TestName());
 
   xla::XlaOp input, index;
@@ -295,7 +295,7 @@ XLA_TEST_F(SlicingTest, EmptyIndexSelectNonZero) {
                              {input_data.get(), index_data.get()});
 }
 
-XLA_TEST_F(SlicingTest, BatchTorchIndexSelectOn0) {
+TEST_F(SlicingTest, BatchTorchIndexSelectOn0) {
   xla::XlaBuilder builder(TestName());
 
   xla::XlaOp input, index;

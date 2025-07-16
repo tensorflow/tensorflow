@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/master.h"
 #include "tensorflow/core/platform/mutex.h"
 
@@ -31,8 +32,8 @@ absl::Status WaitForNotification(CallOptions* call_options,
     timeout_in_ms = default_timeout_in_ms;
   }
   if (timeout_in_ms > 0) {
-    int64_t timeout_in_us = timeout_in_ms * 1000;
-    bool notified = WaitForNotificationWithTimeout(n, timeout_in_us);
+    bool notified =
+        n->WaitForNotificationWithTimeout(absl::Milliseconds(timeout_in_ms));
     if (!notified) {
       call_options->StartCancel();
       // The call has borrowed pointers to the request and response

@@ -414,6 +414,34 @@ absl::StatusOr<std::optional<AutotuneResult>> TryFindInCache(
 }
 }  // namespace
 
+AutotuneConfig AutotuneConfig::FromDebugOptions(
+    const DeviceOrDevicelessConfig& config, const DebugOptions& opts) {
+  int autotune_level = opts.xla_gpu_autotune_level();
+
+  bool should_init_buffers = autotune_level >= 2;
+  bool should_reinit_output_buffer = autotune_level >= 3;
+  bool should_check_correctness = autotune_level >= 4;
+  bool should_skip_wrong_results = autotune_level >= 5;
+
+  bool should_crash_on_check_failure =
+      opts.xla_gpu_crash_on_verification_failures();
+
+  bool exhaustive_tiling_search = opts.xla_gpu_exhaustive_tiling_search();
+
+  bool should_require_complete_aot_autotune_results =
+      opts.xla_gpu_require_complete_aot_autotune_results();
+
+  std::string autotune_cache_dir = opts.xla_gpu_per_fusion_autotune_cache_dir();
+  DebugOptions_AutotuneCacheMode autotune_cache_mode =
+      opts.xla_gpu_experimental_autotune_cache_mode();
+  return AutotuneConfig(config, should_init_buffers,
+                        should_reinit_output_buffer, should_check_correctness,
+                        should_skip_wrong_results,
+                        should_crash_on_check_failure, exhaustive_tiling_search,
+                        should_require_complete_aot_autotune_results,
+                        autotune_cache_dir, autotune_cache_mode);
+}
+
 /*static*/ AutotuneCacheKey AutotunerUtil::GetKey(
     const HloInstruction* instr, const AutotuneConfig& config) {
   return AutotuneCacheKey(config.GetModelStr(), *instr);

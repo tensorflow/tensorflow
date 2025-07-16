@@ -121,6 +121,7 @@ limitations under the License.
 #include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
 #include "xla/literal_pool.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/dump.h"
 #include "xla/service/float_support.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
@@ -180,6 +181,7 @@ absl::StatusOr<std::optional<std::string>> OptProvider::GenerateStage(
 
 absl::StatusOr<std::string> OptProvider::BuildAndRunTransformPipeline(
     std::unique_ptr<HloModule> module, const std::string& input_pass_names) {
+  DumpHloModuleIfEnabled(*module, "before_optimization");
   HloPassPipeline transforms_pipeline{"transforms_pipeline"};
   for (const auto& pass_name :
        std::vector<std::string>(absl::StrSplit(input_pass_names, ','))) {
@@ -192,6 +194,7 @@ absl::StatusOr<std::string> OptProvider::BuildAndRunTransformPipeline(
     }
   }
   CHECK_OK(transforms_pipeline.Run(module.get(), {}));
+  DumpHloModuleIfEnabled(*module, "after_optimization");
   return module->ToString();
 }
 
@@ -224,9 +227,6 @@ std::string OptProvider::GetRegisteredPassNamesHelper(
 void OptProvider::RegisterAllHardwareIndependentPasses() {
   // Dummy pass configs necessary for pass registration.
   FloatSupport* bfloat16_support = new FloatSupport(BF16, F32);
-  auto size_fn = [](const BufferValue& buffer) {
-    return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
-  };
   LiteralPool* literal_pool = new LiteralPool();
 
   // Hardware-independent HLO passes
@@ -291,7 +291,6 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<HloDescheduler>();
   RegisterPass<HloElementTypeConverter>(/*eliminate_type=*/BF16,
                                         /*replace_with_type=*/F32);
-  RegisterPass<HloMemoryScheduler>(/*size_fn*/ size_fn);
   RegisterPass<HloTrivialScheduler>();
   RegisterPass<HostMemoryTransferAsyncifier>(/*host_memory_space_color=*/5);
   RegisterPass<HostOffloadLegalize>();

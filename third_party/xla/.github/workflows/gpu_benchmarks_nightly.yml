@@ -30,17 +30,17 @@ jobs:
         job_info: [
           {
             os: "linux-x86-g2-48-l4-4gpu",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             pretty_name: "XLA Linux x86 GPU L4 48 vcpu Presubmit",
           },
           {
             os: "linux-x86-g2-16-l4-1gpu",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             pretty_name: "XLA Linux x86 GPU L4 16 vcpu Presubmit",
           },
           {
             os: "linux-x86-a4-224-b200-1gpu",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-cuda12.8-cudnn9.8:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda12.8-cudnn9.8:latest",
             pretty_name: "XLA Linux x86 GPU A4 224 vcpu Presubmit",
           },
           # Expect more GPU types in the future.
@@ -56,7 +56,7 @@ jobs:
       OUTPUT_DIR: ${{ github.workspace }}/output
     steps:
       - name: Checkout XLA
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Download Gemma Hlo Files
         run: |
@@ -198,7 +198,7 @@ jobs:
           upload_to_gcs "$GEMMA3_SAMPLE_LOOP_BASE_NAME"
 
       - name: Upload XSpace artifacts
-        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: gpu-xla-benchmarks-xspace-${{ matrix.job_info.os }}
           path: ${{ github.workspace }}/output/*_xspace.pb

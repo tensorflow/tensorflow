@@ -119,3 +119,31 @@ func.func @ragged_dot_mode_batch_multiple_dims(%arg0: tensor<41x21x11x42x22x12x4
     : (tensor<41x21x11x42x22x12x43xf32>, tensor<41x11x31x42x32x12x43xf32>, tensor<11x7xi32>) -> tensor<11x12x21x22x31x32xf32>
   return %0 : tensor<11x12x21x22x31x32xf32>
 }
+
+// CHECK-LABEL: func @topk_1d
+func.func @topk_1d(%arg0: tensor<10xf32>) -> tensor<3xf32> {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i])->([i], [i]) {i=10} need_replication={i} blocked_propagation={i}>
+  %0:2 = mhlo.topk(%arg0, k=3, largest=true) : tensor<10xf32> -> (tensor<3xf32>, tensor<3xi32>)
+  return %0#0 : tensor<3xf32>
+}
+
+// CHECK-LABEL: func @topk_1d_k_equals_one
+func.func @topk_1d_k_equals_one(%arg0: tensor<10xf32>) -> tensor<1xf32> {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i])->([i], [i]) {i=10} need_replication={i} blocked_propagation={i}>
+  %0:2 = mhlo.topk(%arg0, k=1, largest=true) : tensor<10xf32> -> (tensor<1xf32>, tensor<1xi32>)
+  return %0#0 : tensor<1xf32>
+}
+
+// CHECK-LABEL: func @topk_2d
+func.func @topk_2d(%arg0: tensor<16x10xf32>) -> tensor<16x3xf32> {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j], [i, j]) {i=16, j=10} need_replication={j} blocked_propagation={j}>
+  %0:2 = mhlo.topk(%arg0, k=3, largest=true) : tensor<16x10xf32> -> (tensor<16x3xf32>, tensor<16x3xi32>)
+  return %0#0 : tensor<16x3xf32>
+}
+
+// CHECK-LABEL: func @topk_2d_k_equals_one
+func.func @topk_2d_k_equals_one(%arg0: tensor<16x10xf32>) -> tensor<16x1xf32> {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j], [i, j]) {i=16, j=10} need_replication={j} blocked_propagation={j}>
+  %0:2 = mhlo.topk(%arg0, k=1, largest=true) : tensor<16x10xf32> -> (tensor<16x1xf32>, tensor<16x1xi32>)
+  return %0#0 : tensor<16x1xf32>
+}

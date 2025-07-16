@@ -554,4 +554,24 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
   return cubin_vector;
 }
 
+absl::StatusOr<std::string> FindNvdisasmExecutable(
+    absl::string_view preferred_cuda_dir) {
+  static constexpr SemanticVersion kMinimumSupportedNvdisasmAsVersion{3, 1, 7};
+  static constexpr absl::Span<const SemanticVersion> kNoExcludedVersions{};
+  static constexpr absl::string_view kNvdisasmAsBinaryName = "nvdisasm";
+
+  return FindCudaExecutable(kNvdisasmAsBinaryName, preferred_cuda_dir,
+                            kMinimumSupportedNvdisasmAsVersion,
+                            kNoExcludedVersions);
+}
+
+absl::StatusOr<SemanticVersion> GetNvdisasmVersion(
+    absl::string_view preferred_cuda_dir) {
+  // Make sure nvdisasm exists and is executable.
+  TF_ASSIGN_OR_RETURN(std::string bin_path,
+                      FindNvdisasmExecutable(preferred_cuda_dir));
+
+  return GetToolVersion(bin_path);
+}
+
 }  // namespace stream_executor

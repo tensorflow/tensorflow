@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/status/statusor.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
@@ -93,8 +93,10 @@ ENTRY entry {
 // CPU thunks backend (due to incorrect LLVM IR generated).
 // This is an HLO module optimized for CPU backend, it may be invalid for other
 // backends.
-TEST_F(NumericsTest,
-       DISABLED_ON_GPU(DISABLED_ON_TPU(MultiplySubtractConcatTest))) {
+TEST_F(NumericsTest, MultiplySubtractConcatTest) {
+  if (test::DeviceTypeIsOneOf({test::kGpu, test::kTpu})) {
+    GTEST_SKIP();
+  }
   const char* test_hlo = R"(
     HloModule jit_step, is_scheduled=true
 

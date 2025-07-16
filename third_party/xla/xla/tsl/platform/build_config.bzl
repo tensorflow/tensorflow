@@ -29,7 +29,6 @@ load(
     _tf_portable_deps_no_runtime = "tf_portable_deps_no_runtime",
     _tf_portable_proto_lib = "tf_portable_proto_lib",
     _tf_proto_library = "tf_proto_library",
-    _tf_proto_library_cc = "tf_proto_library_cc",
     _tf_protobuf_compiler_deps = "tf_protobuf_compiler_deps",
     _tf_protobuf_deps = "tf_protobuf_deps",
     _tf_protos_grappler = "tf_protos_grappler",
@@ -69,7 +68,6 @@ tf_platform_deps = _tf_platform_deps
 tf_portable_proto_lib = _tf_portable_proto_lib
 tf_portable_deps_no_runtime = _tf_portable_deps_no_runtime
 tf_proto_library = _tf_proto_library
-tf_proto_library_cc = _tf_proto_library_cc
 tf_protobuf_compiler_deps = _tf_protobuf_compiler_deps
 tf_protobuf_deps = _tf_protobuf_deps
 tf_protos_grappler = _tf_protos_grappler

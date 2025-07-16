@@ -44,11 +44,10 @@ absl::StatusOr<OpSharding> ToOpSharding(const Sharding& sharding) {
           llvm::dyn_cast<xla::ifrt::ShardingParamSharding>(&sharding)) {
     return ToOpSharding(sharding_param_sharding->sharding_param(),
                         sharding_param_sharding->devices());
-  } else {
-    return absl::InvalidArgumentError(
-        "Only conversion from `ShardingParamSharding` to `OpSharding` is "
-        "supported.");
   }
+  return absl::InvalidArgumentError(
+      "Only conversion from `ShardingParamSharding` to `OpSharding` is "
+      "supported.");
 }
 
 absl::StatusOr<OpSharding> ToOpSharding(
@@ -142,9 +141,8 @@ absl::StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param) {
     dims.push_back(device_count / cum_size);
     return HloSharding::PartialTile(
         TileAssignment(dims, reshape_dims, permutation));
-  } else {
-    return HloSharding::IotaTile(dims, reshape_dims, permutation);
   }
+  return HloSharding::IotaTile(dims, reshape_dims, permutation);
 }
 
 absl::StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
@@ -165,7 +163,8 @@ absl::StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
     minor_to_major.permutation.push_back(0);
     minor_to_major.axis_sizes.push_back(num_devices);
     return ShardingParam(std::move(dim_shards), std::move(minor_to_major));
-  } else if (hlo_sharding.IsTiled()) {
+  }
+  if (hlo_sharding.IsTiled()) {
     const xla::TileAssignment& tile_assignment = hlo_sharding.tile_assignment();
     if (!tile_assignment.iota()) {
       return absl::InvalidArgumentError(absl::StrCat(

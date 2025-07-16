@@ -486,6 +486,11 @@ void HloFusionAdaptor::AddComputation(const HloComputation* computation) {
       std::make_unique<HloComputationFusion>(computation, this));
 }
 
+HloInstructionAdaptor HloFusionAdaptor::GetInstruction(
+    const HloInstruction* instruction) const {
+  return HloInstructionAdaptor{*ResolveOperand(instruction, *this), this};
+}
+
 absl::InlinedVector<HloInstructionAdaptor, 2>
 HloInstructionAdaptor::GetOperands() const {
   absl::InlinedVector<HloInstructionAdaptor, 2> operands;

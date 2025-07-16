@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -25,16 +27,15 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
-#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/llvm_kernel_definition.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
-#include "xla/stream_executor/launch_dim.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -58,7 +59,7 @@ DotKernelEmitter::DotKernelEmitter(const HloInstruction* instr,
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine) {}
 
-absl::StatusOr<KernelDefinition> DotKernelEmitter::EmitKernelDefinition() {
+absl::StatusOr<LlvmKernelDefinition> DotKernelEmitter::EmitKernelDefinition() {
   const HloModuleConfig& config = instr_->GetModule()->config();
 
   DotImplementationStrategy strategy = GetDotImplementationStrategy(
@@ -82,9 +83,10 @@ absl::StatusOr<KernelDefinition> DotKernelEmitter::EmitKernelDefinition() {
   std::unique_ptr<llvm::Module> llvm_module = KernelApiIrBuilder::CreateModule(
       absl::StrCat(instr_->name(), "_elemental_kernel_module"), *ctx);
 
-  TF_ASSIGN_OR_RETURN(KernelApiIrBuilder::KernelPrototype kernel_prototype,
-                      kernel_api_ir_builder.EmitKernelPrototype(
-                          *llvm_module, instr_, buffer_assignment_, "_kernel"));
+  TF_ASSIGN_OR_RETURN(
+      KernelApiIrBuilder::KernelPrototype kernel_prototype,
+      kernel_api_ir_builder.EmitKernelPrototype(
+          *llvm_module, instr_, buffer_assignment_, name(), "_kernel"));
 
   llvm::IRBuilder<> builder(*ctx);
   builder.SetInsertPoint(
@@ -94,21 +96,25 @@ absl::StatusOr<KernelDefinition> DotKernelEmitter::EmitKernelDefinition() {
   llvm_ir::IrArray rhs_array = kernel_prototype.arguments[1];
   llvm_ir::IrArray target_array = kernel_prototype.results[0];
 
-  TF_RETURN_IF_ERROR(EmitDotOperation(
-      *instr_, target_array, lhs_array, rhs_array,
-      /*addend_array=*/nullptr, /*executable_run_options_value=*/nullptr,
-      &builder, config, *target_machine_,
-      /*allow_runtime_calls=*/false));
+  TF_ASSIGN_OR_RETURN(
+      DotOpWorkGroupDim num_workgroups,
+      EmitDotOperation(
+          *instr_, target_array, lhs_array, rhs_array,
+          /*addend_array=*/nullptr,
+          {kernel_prototype.workgroup_id.x, kernel_prototype.workgroup_id.y},
+          /*executable_run_options_value=*/nullptr, &builder, config,
+          *target_machine_,
+          /*allow_runtime_calls=*/false));
 
-  auto source = std::make_unique<LlvmIrKernelSource>(std::move(ctx),
-                                                     std::move(llvm_module));
+  LlvmIrKernelSource source(std::move(ctx), std::move(llvm_module));
 
-  KernelSpec spec(kernel_prototype.function->getName(), se::ThreadDim(),
+  KernelSpec spec(kernel_prototype.function->getName(),
+                  NumWorkGroups{num_workgroups.x, num_workgroups.y},
                   std::move(kernel_prototype.argument_buffers),
                   std::move(kernel_prototype.result_buffers),
                   std::move(kernel_prototype.invariant_arguments));
 
-  return KernelDefinition(std::move(spec), std::move(source));
+  return LlvmKernelDefinition(std::move(spec), std::move(source));
 }
 
 }  // namespace xla::cpu

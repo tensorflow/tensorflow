@@ -51,12 +51,15 @@ limitations under the License.
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_attrs.h.inc"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
+#include "xla/codegen/mlir_kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -65,13 +68,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
-#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/scatter_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -243,7 +245,7 @@ IndexingMap GetScatterIndexingMap(
       {}, constraints);
 }
 
-absl::StatusOr<KernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
+absl::StatusOr<MlirKernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
   std::unique_ptr<mlir::MLIRContext> context = FusionCompiler::CreateContext();
 
   mlir::OpBuilder builder(context.get());
@@ -251,7 +253,7 @@ absl::StatusOr<KernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
                       CreateNamedMlirModuleOp(*fusion_, builder));
 
   absl::string_view module_name(mlir_module->getName().value());
-  SetDataLayoutAttribute(mlir_module.get(), *fusion_);
+  emitters::SetIndexDataLayout(mlir_module.get(), *fusion_);
 
   mlir::StringAttr disable_loop_unrolling_attr =
       builder.getStringAttr("xla_cpu_disable_loop_unrolling");
@@ -260,10 +262,14 @@ absl::StatusOr<KernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
       builder.getAttr<xla::ExtraBackendOptionsAttr>(
           llvm::ArrayRef{disable_loop_unrolling_attr}));
 
-  TF_ASSIGN_OR_RETURN(mlir::func::FuncOp entry_func,
-                      EmitFusionKernelApi(mlir_module.get(), *fusion_,
-                                          std::string(module_name) + "_entry",
-                                          buffer_assignment_));
+  mlir_module->getOperation()->setAttr(
+      xla::CpuMemoryRegionNameAttr::name,
+      builder.getStringAttr(BuildModuleMemoryRegionName(name(), fusion_)));
+
+  TF_ASSIGN_OR_RETURN(
+      mlir::func::FuncOp entry_func,
+      EmitEntryFunctionApi(mlir_module.get(), *fusion_,
+                           std::string(module_name), buffer_assignment_));
 
   std::vector<emitters::EpilogueSpecification> epilogues =
       GetEpilogues(*fusion_, context.get());
@@ -311,12 +317,14 @@ absl::StatusOr<KernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
     }
   }
 
-  KernelSpec kernel_spec(module_name, se::ThreadDim(num_threads_),
+  KernelSpec kernel_spec(module_name,
+                         NumWorkGroups{static_cast<uint64_t>(num_threads_)},
                          std::move(argument_buffers), std::move(result_buffers),
                          std::move(invariant_arguments));
-  return KernelDefinition(std::move(kernel_spec),
-                          std::make_unique<MlirKernelSource>(
-                              std::move(context), std::move(mlir_module)));
+
+  return MlirKernelDefinition(
+      std::move(kernel_spec),
+      MlirKernelSource(std::move(context), std::move(mlir_module)));
 }
 
 absl::Status CpuScatterFusion::EmitEntryFunction(
@@ -345,7 +353,7 @@ absl::Status CpuScatterFusion::EmitEntryFunction(
   SmallVector<Value> output_tensors;
   output_tensors.reserve(scatter_operands.size());
   for (int i = 0; i < scatter_operands.size(); ++i) {
-    output_tensors.push_back(entry_function.getArgument(1 + i));
+    output_tensors.push_back(entry_function.getArgument(i));
   }
 
   const auto& root_computation = computations.FindPartitionedComputation(
@@ -353,15 +361,12 @@ absl::Status CpuScatterFusion::EmitEntryFunction(
   CHECK(ScatterSimplifier::IsSimplifiedScatter(scatter))
       << "Non-simplified HLO Scatter is not supported.";
 
-  // For now, thread_id is hardcoded to 0.
-  entry_function.setArgAttr(0, "xla.range", b.getIndexArrayAttr({0, 0}));
-
   const Shape& update_shape = scatter_updates.front()->shape();
 
-  Value thread_id = entry_function.getArgument(0);
-  // Set range for the func thread id arg.
-  entry_function.setArgAttr(0, "xla.range",
-                            b.getIndexArrayAttr({0, num_threads_ - 1}));
+  WorkGroupIdOp workgroup_id = b.create<WorkGroupIdOp>(WorkGroupDimension::x);
+  workgroup_id->setAttr("xla.range",
+                        b.getIndexArrayAttr({0, num_threads_ - 1}));
+
   IndexingMap map = GetScatterIndexingMap(
       update_shape.dimensions(), num_threads_, vector_size_, mlir_context);
   map.Simplify();
@@ -371,14 +376,14 @@ absl::Status CpuScatterFusion::EmitEntryFunction(
   int64_t index_vector_dim = scatter_dims.index_vector_dim();
 
   auto results = emitters::EmitXlaLoopOp(
-      b, {thread_id}, output_tensors, map,
+      b, {workgroup_id}, output_tensors, map,
       [&](ImplicitLocOpBuilder nested_b, ValueRange iv,
           ValueRange update_indices,
           ValueRange output_tensors) -> SmallVector<Value> {
         Value update_id = update_indices.front();
 
         Value c0 = nested_b.create<mlir::arith::ConstantIndexOp>(0);
-        Value in_bounds = nested_b.create<ma::ConstantIntOp>(1, b.getI1Type());
+        Value in_bounds = nested_b.create<ma::ConstantIntOp>(b.getI1Type(), 1);
 
         SmallVector<Value, 4> update_offsets(
             scatter_operands.front()->shape().dimensions().size(), c0);

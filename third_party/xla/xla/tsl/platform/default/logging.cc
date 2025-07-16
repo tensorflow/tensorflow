@@ -356,11 +356,6 @@ LogMessageFatal::~LogMessageFatal() {
   abort();
 }
 
-void LogString(const char* fname, int line, absl::LogSeverity severity,
-               const string& message) {
-  LogMessage(fname, line, severity) << message;
-}
-
 template <>
 void MakeCheckOpValueString(std::ostream* os, const char& v) {
   if (v >= 32 && v <= 126) {

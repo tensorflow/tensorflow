@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <tuple>
 
+#include "experimental.h"  // xnnpack
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -107,6 +108,55 @@ void DestroyCustomPthreadpool(pthreadpool_t threadpool) {  // NOLINT
 
 ParallelLoopRunner* GetParallelLoopRunner(pthreadpool_t threadpool) {
   return IsCustomPthreadpool(threadpool) ? Cast(threadpool) : nullptr;
+}
+
+class XnnEigenScheduler : public xnn_scheduler {
+ public:
+  explicit XnnEigenScheduler(Eigen::ThreadPoolInterface* eigen_thread_pool);
+
+ private:
+  static int NumThreads(xnn_scheduler* self);
+  static void Schedule(xnn_scheduler* self, void* context,
+                       void (*task)(void* context));
+
+  Eigen::ThreadPoolInterface* eigen_thread_pool_ = nullptr;
+};
+
+XnnEigenScheduler::XnnEigenScheduler(
+    Eigen::ThreadPoolInterface* eigen_thread_pool) {
+  eigen_thread_pool_ = eigen_thread_pool;
+  num_threads = &NumThreads;
+  schedule = &Schedule;
+}
+
+int XnnEigenScheduler::NumThreads(xnn_scheduler* self) {
+  return reinterpret_cast<XnnEigenScheduler*>(self)
+      ->eigen_thread_pool_->NumThreads();
+}
+
+void XnnEigenScheduler::Schedule(xnn_scheduler* self, void* context,
+                                 void (*task)(void* context)) {
+  reinterpret_cast<XnnEigenScheduler*>(self)->eigen_thread_pool_->Schedule(
+      [task, context]() { (*task)(context); });
+}
+
+namespace {
+
+void DestroyXnnEigenScheduler(xnn_scheduler* scheduler) {
+  delete reinterpret_cast<XnnEigenScheduler*>(scheduler);
+}
+
+}  // namespace
+
+XnnSchedulerPtr CreateXnnEigenScheduler(
+    Eigen::ThreadPoolInterface* eigen_thread_pool) {
+  return XnnSchedulerPtr(new XnnEigenScheduler(eigen_thread_pool),
+                         DestroyXnnEigenScheduler);
+}
+
+XnnSchedulerPtr CreateXnnEigenScheduler(
+    const Eigen::ThreadPoolDevice* eigen_thread_pool) {
+  return CreateXnnEigenScheduler(eigen_thread_pool->getPool());
 }
 
 //===----------------------------------------------------------------------===//

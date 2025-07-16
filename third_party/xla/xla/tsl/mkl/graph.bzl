@@ -30,5 +30,7 @@ def onednn_graph_cc_test(
         deps = if_graph_api(if_true = deps, if_false = ["@com_google_googletest//:gtest_main"]),
         # If not building with Graph API, we don't have any tests linked.
         fail_if_no_test_linked = False,
+        # If not building with Graph API, we don't have any tests defined either.
+        fail_if_no_test_selected = False,
         **kwargs
     )

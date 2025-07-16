@@ -80,25 +80,6 @@ using AlgorithmEmitter = absl::StatusOr<Value> (*)(EmitterLocOpBuilder&,
                                                    const DotOperands&,
                                                    const PrecisionSpec&);
 
-Value RoundToBF16(EmitterLocOpBuilder b, Value input) {
-  return Cast(b, input, b.getBF16Type());
-}
-
-// Truncates |input| of F32 type to the number representable in Bf16 toward
-// zero.
-Value MaskToBF16(EmitterLocOpBuilder& b, Value input) {
-  ShapedType input_type = mlir::dyn_cast<ShapedType>(input.getType());
-  Type input_type_as_i32 = input_type.clone(b.getI32Type());
-  Value input_as_i32 = b.create<ttir::BitcastOp>(input_type_as_i32, input);
-  Value mask = triton::CreateConst<uint32_t>(b, b.getI32Type(), 0xFFFF0000u,
-                                             input_type.getShape())
-                   .UnwrapTensor();
-  Value high_bits =
-      b.create<arith::AndIOp>(input_type_as_i32, input_as_i32, mask);
-
-  return b.create<ttir::BitcastOp>(input_type, high_bits);
-}
-
 // If lhs is 1.0, we will have lhs_high = 1.0 and lhs_low = 0.0.
 // If rhs is +infinity, we will have:
 // +infinity * 1.0 = +infinity
@@ -138,13 +119,12 @@ std::vector<Value> SplitF32(EmitterLocOpBuilder b, Value input,
   std::vector<Value> split_inputs;
   split_inputs.reserve(split_count);
   for (int i = 0; i < split_count; ++i) {
+    Value input_as_bf16 = Cast(b, input, b.getBF16Type());
     if (i != split_count - 1) {
-      Value masked = MaskToBF16(b, input);
-      input = b.create<arith::SubFOp>(input, masked);
-      split_inputs.push_back(RoundToBF16(b, masked));
-    } else {
-      split_inputs.push_back(RoundToBF16(b, input));
+      Value input_as_f32 = Cast(b, input_as_bf16, b.getF32Type());
+      input = b.create<arith::SubFOp>(input, input_as_f32);
     }
+    split_inputs.push_back(input_as_bf16);
   }
   return split_inputs;
 }

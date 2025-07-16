@@ -21,7 +21,9 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "Eigen/Core"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -179,17 +181,23 @@ absl::StatusOr<bool> BufferComparator::CompareEqual(
     return CompareEqualParameterized<ElementT, ComparisonT>(params);
   };
 
-  if (primitive_util::IsFloatingPointType(shape_.element_type())) {
+  PrimitiveType element_type = shape_.element_type();
+  // PRED is handled on buffer level the same way as S8.
+  if (element_type == PRED) {
+    element_type = S8;
+  }
+  if (primitive_util::IsFloatingPointType(element_type)) {
     return xla::primitive_util::FloatingPointTypeSwitch(do_compare,
-                                                        shape_.element_type());
+                                                        element_type);
   }
 
-  if (primitive_util::IsIntegralType(shape_.element_type())) {
-    return xla::primitive_util::IntegralTypeSwitch(do_compare,
-                                                   shape_.element_type());
+  if (primitive_util::IsIntegralType(element_type)) {
+    return xla::primitive_util::IntegralTypeSwitch(do_compare, element_type);
   }
 
-  return Unimplemented("Unimplemented element type for host function");
+  return absl::UnimplementedError(
+      absl::StrCat("Unimplemented element type for host function: ",
+                   primitive_util::LowercasePrimitiveTypeName(element_type)));
 }
 
 BufferComparator::BufferComparator(const Shape& shape, double tolerance,

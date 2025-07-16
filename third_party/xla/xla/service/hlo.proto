@@ -591,6 +591,7 @@ message HloModuleProto {
     DOT = 4;
     FLAGNET = 5;
     SHARDING = 6;
+    SCHEDULE = 7;
   }
   // The type of profile generation strategy used to generate the profile.
   enum ProfileGenerationStrategy {
@@ -631,6 +632,8 @@ message HloModuleProto {
 
   // Frontend attributes to pass to the XLA backend.
   xla.FrontendAttributes frontend_attributes = 19;
+
+  xla.OriginalValueRecoveryTableProto original_value_recovery_table = 20;
 
   reserved 9;
   reserved "dynamic_parameter_binding";
@@ -676,6 +679,7 @@ message BufferAllocationProto {
   bool is_constant = 12;
   int64 parameter_number = 6;
   repeated int64 parameter_shape_index = 10;
+  bool is_parameter_aliased_with_output = 13;
   bool maybe_live_out = 7;
   int64 color = 8;
   repeated Assigned assigned = 9;
@@ -857,4 +861,13 @@ message HloPassMetadata {
 
   // Used to log any number of key, value pair stats per pass.
   repeated KeyValueMetric kv_metrics = 11;
+}
+
+message OriginalValueRecoveryTableProto {
+  message Entry {
+    OriginalArrayProto removed_original_array = 1;
+    OriginalArrayProto remaining_original_array = 2;
+    HloModuleProto recovery_module = 3;
+  }
+  repeated Entry entries = 1;
 }

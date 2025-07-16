@@ -16,10 +16,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -33,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/shape.h"
@@ -136,12 +140,22 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
                       buffer_assignment_->GetUniqueSlice(&fusion, {}));
 
   FusionEmissionResult result;
+
+  TF_ASSIGN_OR_RETURN(auto config, fusion.backend_config<GpuBackendConfig>());
+  const auto& memcpy_config =
+      config.fusion_backend_config().dynamic_memcpy_config();
+  DynamicMemcpyThunk::Offsets offsets;
+  offsets.depends_on_loop = memcpy_config.depends_on_loop();
+  absl::c_copy(memcpy_config.src_offset_bytes(),
+               std::back_inserter(offsets.src_offsets));
+  absl::c_copy(memcpy_config.dst_offset_bytes(),
+               std::back_inserter(offsets.dst_offsets));
+
   result.thunks.emplace_back(std::make_unique<DynamicMemcpyThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(&fusion),
       /*source_buffer=*/src_buffer,
       /*destination_buffer=*/dst_buffer,
-      /*mem_size=*/ShapeUtil::ByteSizeOfElements(*copy_shape),
-      /*descriptor=*/descriptor_));
+      /*mem_size=*/ShapeUtil::ByteSizeOfElements(*copy_shape), offsets));
   return result;
 }
 

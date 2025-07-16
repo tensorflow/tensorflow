@@ -2,4 +2,4 @@ syntax = "proto3";
 
 package tensorflow.profiler.op_profile;
 
-import public "plugin/tensorboard_plugin_profile/protobuf/op_profile.proto";
+import public "plugin/xprof/protobuf/op_profile.proto";

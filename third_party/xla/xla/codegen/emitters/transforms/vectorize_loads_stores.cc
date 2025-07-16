@@ -507,7 +507,7 @@ struct FoldVectorInsertExtractPairs
     int64_t result_index = bbarg.getArgNumber() - 1;
     if (auto transfer_read =
             extract.getVector().getDefiningOp<mlir::vector::TransferReadOp>()) {
-      if (transfer_read.getSource().getType().getNumElements() ==
+      if (transfer_read.getBase().getType().getNumElements() ==
           vector_type.getNumElements()) {
         return rewriter.notifyMatchFailure(
             insert,

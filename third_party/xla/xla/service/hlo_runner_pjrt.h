@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape_layout.h"
 #include "xla/xla_data.pb.h"
@@ -47,10 +46,7 @@ namespace xla {
 // hlo proto file), or parsed from a hlo textual IR string.
 class HloRunnerPjRt : public HloRunnerInterface {
  public:
-  explicit HloRunnerPjRt(
-      std::unique_ptr<PjRtClient> pjrt_client,
-      DeviceShapeRepresentationFn device_shape_representation_fn,
-      DeviceShapeSizeFn device_shape_size_fn);
+  explicit HloRunnerPjRt(std::unique_ptr<PjRtClient> pjrt_client);
 
   // Transfers data between the host and device, using the given parameter
   // layouts.
@@ -119,19 +115,6 @@ class HloRunnerPjRt : public HloRunnerInterface {
 
   absl::string_view Name() const override;
 
-  void UpdateEntryComputationLayout(HloModule* module) {
-    // TODO - b/391868033: Remove UpdateEntryComputationLayout from this class.
-    xla::UpdateEntryComputationLayout(module, device_shape_representation_fn_);
-  }
-
-  DeviceShapeRepresentationFn device_shape_representation_fn() const override {
-    return device_shape_representation_fn_;
-  }
-
-  DeviceShapeSizeFn device_shape_size_fn() const override {
-    return device_shape_size_fn_;
-  }
-
   int device_count() const override { return pjrt_client_->device_count(); }
 
   bool HasProperty(HloRunnerPropertyTag::Type tag) const override;
@@ -166,22 +149,15 @@ class HloRunnerPjRt : public HloRunnerInterface {
   absl::StatusOr<Literal> TransferLiteralFromDevice(PjRtBuffer& buffer);
 
   std::unique_ptr<PjRtClient> pjrt_client_;
-  DeviceShapeRepresentationFn device_shape_representation_fn_;
-  DeviceShapeSizeFn device_shape_size_fn_;
 };
 
 // This class works just like a HloRunnerPjRt, but it only runs compilation
 // (persisting the executable to disk) and does not run the executable.
 class CompilePhaseHloRunnerPjRt : public HloRunnerPjRt {
  public:
-  CompilePhaseHloRunnerPjRt(
-      std::unique_ptr<PjRtClient> pjrt_client,
-      DeviceShapeRepresentationFn device_shape_representation_fn,
-      DeviceShapeSizeFn device_shape_size_fn, absl::string_view artifact_dir)
-      : HloRunnerPjRt(std::move(pjrt_client),
-                      std::move(device_shape_representation_fn),
-                      std::move(device_shape_size_fn)),
-        artifact_dir_(artifact_dir) {}
+  CompilePhaseHloRunnerPjRt(std::unique_ptr<PjRtClient> pjrt_client,
+                            absl::string_view artifact_dir)
+      : HloRunnerPjRt(std::move(pjrt_client)), artifact_dir_(artifact_dir) {}
 
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
       std::unique_ptr<HloModule> module, bool run_hlo_passes) override;
@@ -216,14 +192,10 @@ class CompilePhaseHloRunnerPjRt : public HloRunnerPjRt {
 // found. This effectively makes this class equivalent to HloRunnerPjRt.
 class ExecutePhaseHloRunnerPjRt : public HloRunnerPjRt {
  public:
-  ExecutePhaseHloRunnerPjRt(
-      std::unique_ptr<PjRtClient> pjrt_client,
-      DeviceShapeRepresentationFn device_shape_representation_fn,
-      DeviceShapeSizeFn device_shape_size_fn, absl::string_view artifact_dir,
-      bool compile_if_not_found = true)
-      : HloRunnerPjRt(std::move(pjrt_client),
-                      std::move(device_shape_representation_fn),
-                      std::move(device_shape_size_fn)),
+  ExecutePhaseHloRunnerPjRt(std::unique_ptr<PjRtClient> pjrt_client,
+                            absl::string_view artifact_dir,
+                            bool compile_if_not_found = true)
+      : HloRunnerPjRt(std::move(pjrt_client)),
         artifact_dir_(artifact_dir),
         compile_if_not_found_(compile_if_not_found) {}
 

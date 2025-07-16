@@ -131,6 +131,15 @@ CUptiResult CuptiWrapper::GetGraphId(CUgraph graph, uint32_t* graph_id) {
 #endif
 }
 
+CUptiResult CuptiWrapper::GetGraphNodeId(CUgraphNode node, uint64_t* nodeId) {
+#if CUDA_VERSION >= 11010
+  return cuptiGetGraphNodeId(node, nodeId);
+#else
+  // Do not treat it as error if the interface is not available.
+  return CUPTI_SUCCESS;
+#endif
+}
+
 CUptiResult CuptiWrapper::GetGraphExecId(CUgraphExec graph_exec,
                                          uint32_t* graph_id) {
   // TODO: (b/350105610), Using cuptiGetGraphExecId() for CUDA 12.3 and later

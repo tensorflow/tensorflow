@@ -18,6 +18,24 @@ ENTRY %main.1 (Arg_0.1: s32[8,2]) -> s32[8,2] {
 
 // -----
 
+HloModule CallWithBackendConfigFrontendAttributes
+
+// Test single result call with backend config and frontend attributes
+
+%g.1 (Arg_0.3: s32[8,2]) -> s32[8,2] {
+  %Arg_0.3 = s32[8,2]{1,0} parameter(0)
+  ROOT %multiply.4 = s32[8,2]{1,0} multiply(s32[8,2]{1,0} %Arg_0.3, s32[8,2]{1,0} %Arg_0.3)
+}
+
+ENTRY %main.1 (Arg_0.1: s32[8,2]) -> s32[8,2] {
+  %Arg_0.1 = s32[8,2]{1,0} parameter(0)
+  // CHECK: call @g.1(%arg0) {mhlo.frontend_attributes = {backend_config = "{\22flag_configs\22:[],\22scoped_memory_configs\22:[],\22device_type\22:\22DEVICE_TYPE_HOST\22,\22used_scoped_memory_configs\22:[]}", xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh, [{\22data\22, \22seq\22}, {\22model\22}]>]>"}} : (tensor<8x2xi32>) -> tensor<8x2xi32>
+  %call.5 = s32[8,2]{1,0} call(s32[8,2]{1,0} %Arg_0.1), to_apply=%g.1, backend_config={"flag_configs":[],"scoped_memory_configs":[],"device_type":"DEVICE_TYPE_HOST","used_scoped_memory_configs":[]}, frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<@mesh, [{\"data\", \"seq\"}, {\"model\"}]>]>"}
+  ROOT %custom-call = s32[8,2]{1,0} custom-call(s32[8,2]{1,0} %call.5), custom_call_target="MoveToHost"
+}
+
+// -----
+
 HloModule CallWithBackendConfigMultipleResults
 
 %g.1 (Arg_0.3: s32[8,2]) -> (s32[8,2]{1,0}, s32[8,2]{1,0})  {

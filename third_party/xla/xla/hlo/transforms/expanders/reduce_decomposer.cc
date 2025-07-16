@@ -98,14 +98,17 @@ class ReduceDecomposerVisitor : public DfsHloRewriteVisitor {
     }
 
     TF_RET_CHECK(!output_shapes.empty());
-    if (ShapeUtil::MakeMaybeTupleShape(expected_shapes) !=
-        ShapeUtil::MakeMaybeTupleShape(output_shapes)) {
+    TF_ASSIGN_OR_RETURN(
+        auto expected_tuple_shape,
+        ShapeUtil::MakeValidatedMaybeTupleShape(expected_shapes));
+    TF_ASSIGN_OR_RETURN(auto expected_output_shape,
+                        ShapeUtil::MakeValidatedMaybeTupleShape(output_shapes));
+    if (expected_tuple_shape != expected_output_shape) {
       TF_ASSIGN_OR_RETURN(auto r_prime,
                           MakeReduceHlo(reduce->inputs(), reduce->init_values(),
                                         reduce->dimensions(),
                                         reduce->called_computations()[0]));
-      TF_RET_CHECK(r_prime->shape() ==
-                   ShapeUtil::MakeMaybeTupleShape(expected_shapes));
+      TF_RET_CHECK(r_prime->shape() == expected_tuple_shape);
 
       if (!shape.IsTuple()) {
         auto copy = MakeCopyHlo(r_prime, shape);

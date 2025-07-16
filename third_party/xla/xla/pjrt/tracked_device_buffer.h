@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -294,6 +295,24 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
                       absl::Span<const std::shared_ptr<BufferSequencingEvent>>
                           definition_events);
   ~TrackedDeviceBuffer();
+
+  std::vector<tsl::RCReference<tsl::AsyncValue>> GetAsyncValueDefinitionEvents()
+      override {
+    LOG(FATAL) << "Implement";
+  }
+
+  tsl::RCReference<CommonPjRtRawBuffer> GetRawBuffer(
+      PjRtMemorySpace* memory_space) override {
+    LOG(FATAL) << "Implement";
+  }
+
+  void AddUsageEvent(tsl::RCReference<PjRtDeviceEvent> event) override {
+    LOG(FATAL) << "Implement";
+  }
+
+  void Delete(PjRtMemorySpace* memory_space) override {
+    LOG(FATAL) << "Implement";
+  }
 
  private:
   PjRtDevice* device_;

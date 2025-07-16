@@ -38,7 +38,7 @@ TEST(RetryingUtilsTest, CallWithRetries_RetryDelays) {
 
   const auto& status = RetryingUtils::CallWithRetries(
       f, sleep, RetryConfig(500000 /* init_delay_time_us */));
-  EXPECT_TRUE(errors::IsAborted(status));
+  EXPECT_TRUE(absl::IsAborted(status));
   EXPECT_TRUE(absl::StrContains(
       status.message(),
       "All 10 retry attempts failed. The last failure: Failed."))
@@ -67,7 +67,7 @@ TEST(RetryingUtilsTest, CallWithRetries_NotFoundIsNotRetried) {
     results.erase(results.begin());
     return result;
   };
-  EXPECT_TRUE(errors::IsNotFound(RetryingUtils::CallWithRetries(
+  EXPECT_TRUE(absl::IsNotFound(RetryingUtils::CallWithRetries(
       f, RetryConfig(0 /* init_delay_time_us */))));
 }
 
@@ -129,7 +129,7 @@ TEST(RetryingUtilsTest, DeleteWithRetries_PermissionDeniedNotRetried) {
     delete_results.erase(delete_results.begin());
     return result;
   };
-  EXPECT_TRUE(errors::IsPermissionDenied(RetryingUtils::DeleteWithRetries(
+  EXPECT_TRUE(absl::IsPermissionDenied(RetryingUtils::DeleteWithRetries(
       delete_func, RetryConfig(0 /* init_delay_time_us */))));
 }
 

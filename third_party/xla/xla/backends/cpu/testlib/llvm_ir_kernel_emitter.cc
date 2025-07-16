@@ -30,31 +30,31 @@ limitations under the License.
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/llvm_kernel_definition.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/util.h"
 
 namespace xla::cpu {
-namespace {
+namespace {}  // namespace
 
-}  // namespace
-
-LlvmIrKernelEmitter::LlvmIrKernelEmitter(absl::string_view llvm_ir,
-                                         absl::string_view kernel_name,
-                                         se::ThreadDim thread_dim,
-                                         absl::Span<const KernelArg> args)
+LlvmTestKernelEmitter::LlvmTestKernelEmitter(absl::string_view llvm_ir,
+                                             absl::string_view kernel_name,
+                                             NumWorkGroups num_workgroups,
+                                             absl::Span<const KernelArg> args)
     : llvm_ir_(llvm_ir),
       kernel_name_(kernel_name),
-      thread_dim_(thread_dim),
+      num_workgroups_(num_workgroups),
       args_(args.begin(), args.end()) {
-  for (const LlvmIrKernelEmitter::KernelArg& arg : args_) {
+  for (const LlvmTestKernelEmitter::KernelArg& arg : args_) {
     buffer_allocations_.emplace_back(buffer_allocations_.size(), arg.size_bytes,
                                      /*color=*/0);
   }
 }
 
-absl::StatusOr<KernelDefinition> LlvmIrKernelEmitter::EmitKernelDefinition() {
+absl::StatusOr<LlvmKernelDefinition>
+LlvmTestKernelEmitter::EmitKernelDefinition() {
   auto context = std::make_unique<llvm::LLVMContext>();
 
   // Parse LLVM IR into a module and create a LlvmIrKernelSource.
@@ -67,8 +67,7 @@ absl::StatusOr<KernelDefinition> LlvmIrKernelEmitter::EmitKernelDefinition() {
                     diagnostic.getMessage().str());
   }
 
-  auto source = std::make_unique<LlvmIrKernelSource>(std::move(context),
-                                                     std::move(module));
+  LlvmIrKernelSource source(std::move(context), std::move(module));
 
   // Convert kernel arguments to fake allocations and buffer uses.
   KernelSpec::Buffers argument_buffers;
@@ -83,9 +82,10 @@ absl::StatusOr<KernelDefinition> LlvmIrKernelEmitter::EmitKernelDefinition() {
     }
   }
 
-  KernelSpec kernel_spec(kernel_name_, thread_dim_, std::move(argument_buffers),
-                         std::move(result_buffers), /*invariant_arguments=*/{});
-  return KernelDefinition(std::move(kernel_spec), std::move(source));
+  KernelSpec kernel_spec(kernel_name_, num_workgroups_,
+                         std::move(argument_buffers), std::move(result_buffers),
+                         /*invariant_arguments=*/{});
+  return LlvmKernelDefinition(std::move(kernel_spec), std::move(source));
 }
 
 }  // namespace xla::cpu

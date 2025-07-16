@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/recordphase.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
@@ -252,13 +253,8 @@ class HloRunnerPjRtExecutable : public OpaqueExecutable {
 
 }  // namespace
 
-HloRunnerPjRt::HloRunnerPjRt(
-    std::unique_ptr<PjRtClient> pjrt_client,
-    DeviceShapeRepresentationFn device_shape_representation_fn,
-    DeviceShapeSizeFn device_shape_size_fn)
-    : pjrt_client_(std::move(pjrt_client)),
-      device_shape_representation_fn_(device_shape_representation_fn),
-      device_shape_size_fn_(device_shape_size_fn) {}
+HloRunnerPjRt::HloRunnerPjRt(std::unique_ptr<PjRtClient> pjrt_client)
+    : pjrt_client_(std::move(pjrt_client)) {}
 
 absl::StatusOr<CompileOptions> HloRunnerPjRt::GenerateDefaultCompileOptions(
     HloModule* module, bool run_hlo_passes) {
@@ -309,6 +305,9 @@ absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 HloRunnerPjRt::TransferLiteralsToDevice(
     const absl::Span<const ShapeLayout> layouts,
     const absl::Span<const Literal* const> literals) {
+  tsl::recordphase::RecordScoped rs("HloRunnerPjRt_TransferLiteralsToDevice",
+                                    /*use_unique_phase_name=*/true);
+
   // Note: This function is used for single (default) device execution.
   if (pjrt_client_->addressable_device_count() <= kDeviceIdx) {
     return absl::InternalError("No addressable devices available");
@@ -369,6 +368,9 @@ HloRunnerPjRt::TransferLiteralsToDevice(
 absl::StatusOr<Literal> HloRunnerPjRt::TransferLiteralsFromDevice(
     absl::Span<const std::unique_ptr<PjRtBuffer>> output_buffers,
     const bool untuple_result) {
+  tsl::recordphase::RecordScoped rs("HloRunnerPjRt_TransferLiteralsFromDevice",
+                                    /*use_unique_phase_name=*/true);
+
   if (!untuple_result) {
     // If not flattened, the tuple should only contain arrays with layouts.
     TF_RET_CHECK(output_buffers.size() == 1)
@@ -410,6 +412,9 @@ HloRunnerPjRt::ExecuteWithDeviceBuffers(
     OpaqueExecutable* executable,
     const std::vector<std::unique_ptr<PjRtBuffer>>& arguments,
     const ExecuteOptions* execute_options) {
+  tsl::recordphase::RecordScoped rs("HloRunnerPjRt_Execute",
+                                    /*use_unique_phase_name=*/true);
+
   TF_ASSIGN_OR_RETURN(HloRunnerPjRtExecutable* const wrapped_executable,
                       HloRunnerPjRtExecutable::TryUnwrap(*this, executable));
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
@@ -468,6 +473,9 @@ absl::StatusOr<Literal> HloRunnerPjRt::ExecuteWithExecutable(
 absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
 HloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
                                 bool run_hlo_passes) {
+  tsl::recordphase::RecordScoped rs("HloRunnerPjRt_Compile",
+                                    /*use_unique_phase_name=*/true);
+
   TF_ASSIGN_OR_RETURN(
       CompileOptions compile_options,
       GenerateDefaultCompileOptions(module.get(), run_hlo_passes));
@@ -555,6 +563,8 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
       [&](absl::Span<const std::vector<PjRtBuffer*>> argument_buffer_slices)
           -> absl::StatusOr<
               std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> {
+        tsl::recordphase::RecordScoped rs("HloRunnerPjRt_Execute",
+                                          /*use_unique_phase_name=*/true);
         TF_ASSIGN_OR_RETURN(
             PjRtLoadedExecutable * pjrt_executable,
             wrapped_executable->GetOrLoadExecutable(pjrt_client_.get()));
@@ -578,6 +588,8 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
       [&](absl::Span<const std::vector<PjRtBuffer*>> argument_buffer_slices)
           -> absl::StatusOr<
               std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> {
+        tsl::recordphase::RecordScoped rs("HloRunnerPjRt_Execute",
+                                          /*use_unique_phase_name=*/true);
         TF_RET_CHECK(options.use_threads);
 
         // The underlying data is modified concurrently. We don't need to
@@ -862,7 +874,7 @@ std::string MakeFilename(const HloModule& module, const bool run_hlo_passes) {
   // within PjRt itself since the environment is not easily accessed at this
   // level of abstraction.
   const tsl::Fprint128 module_fingerprint =
-      tsl::Fingerprint128(module.ToString(HloPrintOptions::Fingerprint()));
+      tsl::Fingerprint128(module.ToString(HloPrintOptions::Default()));
   const tsl::Fprint128 run_hlo_passes_fingerprint =
       tsl::Fingerprint128(run_hlo_passes ? "true" : "false");
   const tsl::Fprint128 fingerprint =

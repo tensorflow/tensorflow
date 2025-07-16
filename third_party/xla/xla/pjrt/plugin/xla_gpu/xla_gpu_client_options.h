@@ -21,6 +21,7 @@ limitations under the License.
 #include <set>
 #include <string>
 
+#include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 
@@ -42,6 +43,11 @@ struct GpuClientOptions {
 
   // kv_store must be non-null if num_nodes > 1.
   std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
+
+  std::shared_ptr<DistributedRuntimeClient> distributed_runtime_client =
+      nullptr;
+
+  bool abort_collectives_on_failure = false;
 
   bool enable_mock_nccl = false;
 

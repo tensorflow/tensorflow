@@ -775,7 +775,10 @@ def _create_local_rocm_repository(repository_ctx):
             "%{hip_runtime_library}": "amdhip64",
             "%{crosstool_verbose}": _crosstool_verbose(repository_ctx),
             "%{gcc_host_compiler_path}": str(cc),
+<<<<<<< HEAD
             "%{crosstool_clang}": "1" if _is_clang_enabled(repository_ctx) else "0",
+=======
+>>>>>>> e56b2d952f5f9b9f832fb868dedf7a0cc876757c
             "%{rocm_amdgpu_targets}": ",".join(
                 ["\"%s\"" % c for c in rocm_config.amdgpu_targets],
             ),
@@ -796,6 +799,7 @@ def _create_local_rocm_repository(repository_ctx):
             "%{miopen_version_number}": rocm_config.miopen_version_number,
             "%{hipruntime_version_number}": rocm_config.hipruntime_version_number,
             "%{hipblaslt_flag}": have_hipblaslt,
+<<<<<<< HEAD
             "%{hip_soversion_number}": rocm_libs["amdhip64"].soversion,
             "%{rocblas_soversion_number}": rocm_libs["rocblas"].soversion,
             "%{hipblaslt_soversion_number}": rocm_libs["hipblaslt"].soversion if rocm_libs["hipblaslt"] != None else "",
@@ -807,6 +811,11 @@ def _create_local_rocm_repository(repository_ctx):
             "%{roctracer_soversion_number}": rocm_libs["roctracer64"].soversion,
             "%{rocrand_soversion_number}": rocm_libs["rocrand"].soversion,
           },
+=======
+            "%{hip_soversion_number}": "6" if int(rocm_config.rocm_version_number) >= 60000 else "5",
+            "%{rocblas_soversion_number}": "5" if int(rocm_config.rocm_version_number) >= 70000 else "4",
+        },
+>>>>>>> e56b2d952f5f9b9f832fb868dedf7a0cc876757c
     )
 
     # Set up rocm_config.h, which is used by
@@ -823,6 +832,7 @@ def _create_local_rocm_repository(repository_ctx):
             "%{miopen_version_number}": rocm_config.miopen_version_number,
             "%{hipruntime_version_number}": rocm_config.hipruntime_version_number,
             "%{hipblaslt_flag}": have_hipblaslt,
+<<<<<<< HEAD
             "%{hip_soversion_number}": rocm_libs["amdhip64"].soversion,
             "%{rocblas_soversion_number}": rocm_libs["rocblas"].soversion,
             "%{hipblaslt_soversion_number}": rocm_libs["hipblaslt"].soversion if rocm_libs["hipblaslt"] != None else "",
@@ -833,6 +843,10 @@ def _create_local_rocm_repository(repository_ctx):
             "%{hipsparse_soversion_number}": rocm_libs["hipsparse"].soversion,
             "%{roctracer_soversion_number}": rocm_libs["roctracer64"].soversion,
             "%{rocrand_soversion_number}": rocm_libs["rocrand"].soversion,
+=======
+            "%{hip_soversion_number}": "6" if int(rocm_config.rocm_version_number) >= 60000 else "5",
+            "%{rocblas_soversion_number}": "5" if int(rocm_config.rocm_version_number) >= 70000 else "4",
+>>>>>>> e56b2d952f5f9b9f832fb868dedf7a0cc876757c
         },
     )
 

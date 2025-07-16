@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/service/backend.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
@@ -69,8 +70,12 @@ class NVPTXCompilerTest : public HloTestBase {
     constexpr uint64_t pointer_size = 4;
     const se::DeviceDescription& gpu_device_info =
         backend().default_stream_executor()->GetDeviceDescription();
-    TF_RETURN_IF_ERROR(
-        ScheduleGpuModule(module, pointer_size, gpu_device_info).status());
+    NVPTXCompiler compiler;
+    std::unique_ptr<GpuAliasInfo> alias_info =
+        compiler.GetAliasInfo(gpu_device_info);
+    TF_RETURN_IF_ERROR(ScheduleGpuModule(module, pointer_size, gpu_device_info,
+                                         alias_info.get())
+                           .status());
 
     auto buffer_size_bytes_function =
         [](const BufferValue& buffer_value) -> int64_t {
@@ -79,7 +84,7 @@ class NVPTXCompilerTest : public HloTestBase {
 
     return BufferAssigner::Run(
         module, std::make_unique<SequentialHloOrdering>(module->schedule()),
-        buffer_size_bytes_function,
+        buffer_size_bytes_function, alias_info.get(),
         /*color_alignment=*/
         [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; });
   }
@@ -236,9 +241,12 @@ ENTRY main {
             HloOpcode::kCopy);
 
   NVPTXCompiler compiler;
+  const se::DeviceDescription& device_description =
+      backend().default_stream_executor()->GetDeviceDescription();
+  std::unique_ptr<GpuAliasInfo> alias_info =
+      compiler.GetAliasInfo(device_description);
   TF_EXPECT_OK(compiler.RunPostSchedulingPipelines(
-      module.get(), 100000,
-      backend().default_stream_executor()->GetDeviceDescription()));
+      module.get(), 100000, device_description, alias_info.get()));
   EXPECT_EQ(CountCopies(*module), 3);
   while_op = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);

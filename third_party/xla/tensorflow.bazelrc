@@ -53,11 +53,32 @@
 build --define framework_shared_object=true
 build --define tsl_protobuf_header_only=true
 
-build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
 
 build --spawn_strategy=standalone
 build -c opt
+
+build --repo_env=USE_PYWRAP_RULES=True
+build --copt=-DGRPC_BAZEL_BUILD
+build --host_copt=-DGRPC_BAZEL_BUILD
+build --action_env=GRPC_BAZEL_RUNTIME=1
+build --repo_env=PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=upb
+build --action_env=PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=upb
+build --repo_env=RULES_PYTHON_ENABLE_PYSTAR=0
+# Do not do this. This is how gRPC builds itself by default, but we don't want
+# that as it would link protobuf into its own set of dynamic libraries, which
+# would conflict with our protobuf linkage.
+#build --define=use_fast_cpp_protos=true
+
+# For local build, without dependency on rbe
+build:linux_cpu --config=avx_linux
+build:linux_cpu --linkopt=-lrt
+build:linux_cpu --host_linkopt=-lrt
+build:linux_cpu --linkopt=-lm
+build:linux_cpu --host_linkopt=-lm
+build:linux_cpu --config=avx_linux
+build:linux_cpu --copt=-Wno-error=unused-command-line-argument
+build:linux_cpu --copt=-Wno-gnu-offsetof-extensions
 
 # Make Bazel print out all options from rc files.
 common --announce_rc
@@ -162,9 +183,10 @@ build:mkl_aarch64 -c opt
 build:mkl_aarch64_threadpool --define=build_with_mkl_aarch64=true
 build:mkl_aarch64_threadpool -c opt
 
-# Default CUDA and CUDNN versions.
-build:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.6.3"
-build:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
+# Default CUDA, CUDNN and NVSHMEM versions.
+build:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.8.0"
+build:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.8.0"
+build:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
 
 # CUDA: This config refers to building CUDA op kernels with nvcc.
 build:cuda --repo_env TF_NEED_CUDA=1
@@ -173,9 +195,12 @@ build:cuda --@local_config_cuda//:enable_cuda
 build:cuda --config=cuda_version
 # This flag is needed to include CUDA libraries.
 build:cuda --@local_config_cuda//cuda:include_cuda_libs=true
+# TODO(ybaturina): Remove this once the wheel size issue is fixed.
+build:cuda --config=clang_local
 
 # This configuration is used for building the wheels.
 build:cuda_wheel --@local_config_cuda//cuda:include_cuda_libs=false
+build:cuda_wheel --@local_config_nvshmem//:include_nvshmem_libs=false
 
 # CUDA: This config refers to building CUDA op kernels with clang.
 build:cuda_clang --config=cuda
@@ -211,12 +236,14 @@ build:cuda_nvcc --@local_config_cuda//:cuda_compiler=nvcc
 # Old config for backward compatibility
 build:nvcc_clang --config=cuda_nvcc
 
-# Debug config
+# Debug config. Enables Bazel's 'dbg' compilation mode, build with debugging enabled
 build:dbg -c dbg
-# Only include debug info for files under xla/, to reduce the size of the debug
-# info in the binary. This is because if the debug sections in the ELF binary
-# are too large, errors can occur. See https://github.com/tensorflow/tensorflow/issues/48919.
-# Users can still include debug info for a specific kernel, e.g. with:
+# Compiling all dependencies with debug info can cause linker failures
+# and significantly increase binary size.
+# The following setting disables debug info (-g0) for all files,
+# except those under the xla/* path. This helps reduce the size of debug sections
+# in the ELF binary, which can otherwise become too large and lead to errors.
+# For more details, see: https://github.com/tensorflow/tensorflow/issues/48919.
 build:dbg --per_file_copt=+.*,-xla.*@-g0
 # AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498
 build:dbg --copt -DDEBUG_BUILD
@@ -229,6 +256,7 @@ build:asan --copt -g
 build:asan --copt -fno-omit-frame-pointer
 build:asan --linkopt -fsanitize=address
 
+build:rocm_base --config=clang_local
 build:rocm_base --copt=-Wno-gnu-offsetof-extensions
 build:rocm_base --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm_base --define=using_rocm_hipcc=true
@@ -253,13 +281,21 @@ build:rocm_ci --config=rocm_clang_official
 
 build:rocm_ci_hermetic --config=rocm_clang_official
 build:rocm_ci_hermetic --repo_env="OS=ubuntu_22.04"
-build:rocm_ci_hermetic --repo_env="ROCM_VERSION=6.2.0"
+build:rocm_ci_hermetic --repo_env="ROCM_VERSION=6.4.1"
 build:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 
+# SYCL Configuration (non-hermetic)
 build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
 build:sycl --define=using_sycl=true
 build:sycl --define=tensorflow_mkldnn_contraction_kernel=0
-build:sycl --repo_env TF_NEED_SYCL=1
+build:sycl --repo_env=TF_NEED_SYCL=1
+build:sycl --repo_env=SYCL_BUILD_HERMETIC=0
+
+# Hermetic SYCL Configuration
+build:sycl_hermetic --config=sycl
+build:sycl_hermetic --repo_env=SYCL_BUILD_HERMETIC=1
+build:sycl_hermetic --repo_env=ONEAPI_VERSION=2025.1
+build:sycl_hermetic --repo_env=OS=ubuntu_24.10
 
 # Options to disable default on features
 build:nonccl --define=no_nccl_support=true
@@ -373,8 +409,8 @@ build:avx_linux --copt=-mavx
 build:avx_linux --host_copt=-mavx
 build:avx_win --copt=/arch:AVX
 
-build:win_clang_base --@com_google_protobuf//:use_dlls=True
-build:win_clang_base --@com_google_absl//absl:use_dlls
+build:win_clang_base --@com_google_protobuf//build_defs:use_dlls=True
+build:win_clang_base --@com_google_absl//absl:use_dlls=True
 build:win_clang_base --linkopt=/demangle:no --host_linkopt=/demangle:no
 build:win_clang_base --linkopt=/errorlimit:0 --host_linkopt=/errorlimit:0
 build:win_clang_base --copt=/clang:-Weverything
@@ -422,7 +458,6 @@ common --experimental_repo_remote_exec
 
 # Make Bazel not try to probe the host system for a C++ toolchain.
 build:rbe_base --config=resultstore
-build:rbe_base --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 build:rbe_base --define=EXECUTOR=remote
 build:rbe_base --jobs=800
 build:rbe_base --remote_executor=grpcs://remotebuildexecution.googleapis.com
@@ -446,11 +481,6 @@ build:rbe_linux --host_linkopt=-lm
 
 build:rbe_linux_cpu --config=rbe_linux
 # Linux cpu and cuda builds share the same toolchain now.
-build:rbe_linux_cpu --host_crosstool_top="@local_config_cuda//crosstool:toolchain"
-build:rbe_linux_cpu --crosstool_top="@local_config_cuda//crosstool:toolchain"
-build:rbe_linux_cpu --extra_toolchains="@local_config_cuda//crosstool:toolchain-linux-x86_64"
-build:rbe_linux_cpu --repo_env=CC="/usr/lib/llvm-18/bin/clang"
-build:rbe_linux_cpu --repo_env=TF_SYSROOT="/dt9"
 build:rbe_linux_cpu --extra_execution_platforms="@ml_build_config_platform//:platform"
 build:rbe_linux_cpu --host_platform="@ml_build_config_platform//:platform"
 build:rbe_linux_cpu --platforms="@ml_build_config_platform//:platform"
@@ -466,6 +496,16 @@ build:rbe_linux_cpu --python_path="/usr/bin/python3"
 # These you may need to change for your own GCP project.
 common:rbe_linux_cpu --remote_instance_name=projects/tensorflow-testing/instances/default_instance
 
+# Deprecated RBE config with non-hermetic toolchains.
+build:rbe_linux_cpu_clang_local --config=clang_local
+build:rbe_linux_cpu_clang_local --config=rbe_linux_cpu
+build:rbe_linux_cpu_clang_local --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
+build:rbe_linux_cpu_clang_local --host_crosstool_top="@local_config_cuda//crosstool:toolchain"
+build:rbe_linux_cpu_clang_local --crosstool_top="@local_config_cuda//crosstool:toolchain"
+build:rbe_linux_cpu_clang_local --extra_toolchains="@local_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe_linux_cpu_clang_local --repo_env=CC="/usr/lib/llvm-18/bin/clang"
+build:rbe_linux_cpu_clang_local --repo_env=TF_SYSROOT="/dt9"
+
 # Download CUDA/CUDNN redistributions to preserve the repositories cache between
 # CPU and GPU builds.
 # TODO(ybaturina): Uncomment when RBE is ready to support this.
@@ -474,7 +514,11 @@ common:rbe_linux_cpu --remote_instance_name=projects/tensorflow-testing/instance
 
 build:rbe_linux_cuda --config=cuda_clang_official
 build:rbe_linux_cuda --config=rbe_linux_cpu
+# dt9 is based on glibc 2.17, which is outdated and incompatible with CUDA 12.8.0
+# unset TF_SYSROOT
+build:rbe_linux_cuda --repo_env=TF_SYSROOT=
 build:rbe_linux_cuda --repo_env=USE_CUDA_TAR_ARCHIVE_FILES=1
+build:rbe_linux_cuda --repo_env=USE_NVSHMEM_TAR_ARCHIVE_FILES=1
 # For Remote build execution -- GPU configuration
 build:rbe_linux_cuda --repo_env=REMOTE_GPU_TESTING=1
 
@@ -482,7 +526,9 @@ build:rbe_linux_cuda_nvcc --config=rbe_linux_cuda
 build:rbe_linux_cuda_nvcc --config=cuda_nvcc
 build:rbe_linux_cuda_nvcc --repo_env TF_NCCL_USE_STUB=1
 
+build:rbe_win_base --config=clang_local
 build:rbe_win_base --config=rbe_base
+build:rbe_win_base --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 build:rbe_win_base --shell_executable=C:\\tools\\msys64\\usr\\bin\\bash.exe
 build:rbe_win_base --remote_instance_name=projects/tensorflow-testing/instances/windows
 # Don't build the python zip archive in the RBE build.
@@ -498,6 +544,7 @@ build:rbe_windows_x86_cpu_2022 --config=rbe_win_base --config=windows_x86_cpu_20
 # END TF REMOTE BUILD EXECUTION OPTIONS
 
 # TFLite build configs for generic embedded Linux
+build:elinux --config=clang_local
 build:elinux --crosstool_top=@local_config_embedded_arm//:toolchain
 build:elinux --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 build:elinux_aarch64 --config=elinux
@@ -523,6 +570,7 @@ build:release_macos_base --define=no_nccl_support=true --output_filter=^$
 
 # Ensure release_base is set on mac
 build:release_macos_base --config=cpu_cross
+build:release_macos_base --config=clang_local
 
 # Build configs for macOS x86
 build:release_macos_x86 --config=release_macos_base
@@ -575,11 +623,13 @@ build:tf_public_macos_cache_push --config=tf_public_macos_cache --remote_upload_
 # flags seem to be actually used to specify the execution platform details. It
 # seems it is this way because these flags are old and predate the distinction
 # between host and execution platform.
+build:cross_compile_base --config=clang_local
 build:cross_compile_base --host_cpu=k8
 build:cross_compile_base --host_crosstool_top=//tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
 build:cross_compile_base --extra_execution_platforms=//tools/toolchains/cross_compile/config:linux_x86_64
 
 build:rbe_cross_compile_base --config=rbe_base
+build:rbe_cross_compile_base --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 build:rbe_cross_compile_base --remote_instance_name=projects/tensorflow-testing/instances/default_instance
 
 # Test-related settings below this point

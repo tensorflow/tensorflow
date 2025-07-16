@@ -69,6 +69,19 @@ absl::Status GpuClique::HealthCheck() const {
   return health_check;
 }
 
+absl::Status GpuClique::Abort() {
+  VLOG(1) << "Aborting GpuClique " << key().ToString();
+  absl::Status result = absl::OkStatus();
+  ForEachComm([this, &result](RankId rank, Communicator* comm) {
+    if (absl::Status s = comm->Abort(); !s.ok()) {
+      LOG(ERROR) << "Error aborting GPU communicator (rank " << rank
+                 << ") for clique " << key().ToString() << ": " << s;
+      result = std::move(s);
+    }
+  });
+  return result;
+}
+
 std::string GpuClique::LockableName::ToString(const GpuClique& clique) {
   return absl::StrFormat("lockable clique %s", clique.key().ToString());
 }
@@ -83,6 +96,8 @@ LockableGpuClique::LockableGpuClique(
 absl::Status LockableGpuClique::HealthCheck() const {
   return value().HealthCheck();
 }
+
+absl::Status LockableGpuClique::Abort() { return mutable_value().Abort(); }
 
 std::string LockableGpuClique::DebugString() const {
   return absl::StrFormat("LockableGpuClique: %s", value().DebugString());

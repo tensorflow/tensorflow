@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -41,16 +42,19 @@ class ReshapeMoverTest : public HloHardwareIndependentTestBase {
  protected:
   // ReshapeMover relies on algsimp for cleanup.
   absl::Status RunPass(HloModule* module, bool change_expected,
-                       ReshapeMoverOptions options = ReshapeMoverOptions{}) {
+                       ReshapeMoverOptions options = ReshapeMoverOptions{},
+                       bool run_algsimp = false) {
     TF_ASSIGN_OR_RETURN(bool changed,
                         RunHloPass(ReshapeMover(options), module));
     SCOPED_TRACE(module->ToString());
     EXPECT_EQ(changed, change_expected);
     TF_EXPECT_OK(RunHloPass(HloVerifier(HloVerifierOpts()), module).status());
-    TF_EXPECT_OK(RunHloPass(HloPassFix<AlgebraicSimplifier>(
-                                AlgebraicSimplifierOptions()),
-                            module)
-                     .status());
+    if (run_algsimp) {
+      TF_EXPECT_OK(RunHloPass(HloPassFix<AlgebraicSimplifier>(
+                                  AlgebraicSimplifierOptions()),
+                              module)
+                       .status());
+    }
     return absl::OkStatus();
   }
 };
@@ -215,7 +219,9 @@ TEST_F(ReshapeMoverTest, SinkTransposeAcrossBroadcastScalar) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true));
+  TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true,
+                       /*options=*/ReshapeMoverOptions{},
+                       /*run_algsimp=*/true));
   SCOPED_TRACE(m->ToString());
 
   // ReshapeMover transforms to transpose(broadcast(param(1))), and then algsimp
@@ -271,7 +277,9 @@ TEST_F(ReshapeMoverTest, ReshapeNoUsersOutsideCandidatesSink1) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true));
+  TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true,
+                       /*options=*/ReshapeMoverOptions{},
+                       /*run_algsimp=*/true));
   SCOPED_TRACE(m->ToString());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
@@ -348,7 +356,9 @@ TEST_F(ReshapeMoverTest, ReshapeOfRank2BroadcastIsAllowed) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   ReshapeMoverOptions options;
   options.reshape_of_1d_broadcast_is_cheap = true;
-  TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true, options));
+  TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true,
+                       /*options=*/options,
+                       /*run_algsimp=*/true));
   SCOPED_TRACE(m->ToString());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Reshape(
@@ -381,7 +391,9 @@ TEST_F(ReshapeMoverTest, TransposeOfBroadcastIsAllowed) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true));
+  TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true,
+                       /*options=*/ReshapeMoverOptions{},
+                       /*run_algsimp=*/true));
   SCOPED_TRACE(m->ToString());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Transpose(

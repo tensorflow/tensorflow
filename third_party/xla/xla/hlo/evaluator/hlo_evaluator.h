@@ -73,6 +73,9 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // specified.
   explicit HloEvaluator(int64_t max_loop_iterations = -1);
 
+  // Returns true if the opcode is implemented by HloEvaluator. False otherwise.
+  static bool IsOpcodeImplemented(HloOpcode opcode);
+
   // Called by the evaluator to create an embedded evaluator to execute a
   // sub-region of control flow. Subclasses should override this to return an
   // instance of the subclass instead.
@@ -362,7 +365,6 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   absl::Status HandleReduceWindow(const HloInstruction* hlo) override;
   absl::Status HandleMap(const HloInstruction* map) override;
   absl::Status HandleCustomCall(const HloInstruction* custom_call) override;
-  absl::Status HandleOptimizationBarrier(const HloInstruction* hlo) override;
 
   // Unsupported HLOs, note some of them (such as BatchNorm*) are typically
   // expanded in a semantic-preserving way into other HLOs by adding expansion

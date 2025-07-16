@@ -17,14 +17,18 @@ limitations under the License.
 #define XLA_HLO_TRANSFORMS_SIMPLIFIERS_REDUCE_WINDOW_REWRITER_H_
 
 #include <cstdint>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/shape.h"
 
 namespace xla {
 
@@ -58,6 +62,27 @@ class ReduceWindowRewriter : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
+  // Helper methods to optimize ReduceWindow ops.
+
+  // Transposes the inputs if the scan dimension is not the last dimension.
+  // Returns the permutation of the dimensions.
+  std::vector<int64_t> GetTransposedInputs(HloComputation* hlo_computation,
+                                           std::vector<HloInstruction*>& inputs,
+                                           int64_t rank, int64_t scan_dim,
+                                           int64_t last_dim);
+
+  // Adds padding (if necessary) to enable further rewrites working properly.
+  int64_t PreparePaddingForRewrite(HloReduceWindowInstruction* reduce_window,
+                                   std::vector<HloInstruction*>& inputs,
+                                   int64_t scan_length, int64_t last_dim);
+
+  // [x, y] -> [x, y/128, 128]
+  int64_t ExpandToNewMajorDimension(HloComputation* hlo_computation,
+                                    std::vector<HloInstruction*>& inputs,
+                                    std::vector<HloInstruction*>& tiled_inputs,
+                                    std::vector<Shape>& tiled_shapes,
+                                    int64_t padded_length, int64_t last_dim);
+
   absl::Status ReplaceReduceWindowWithReshape(
       HloReduceWindowInstruction* reduce_window);
 

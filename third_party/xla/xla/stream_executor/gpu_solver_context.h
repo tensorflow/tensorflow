@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <complex>
 #include <cstdint>
+#include <functional>
+#include <memory>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -94,6 +96,11 @@ class GpuSolverContext {
   virtual absl::StatusOr<int64_t> PotrfBufferSize(xla::PrimitiveType type,
                                                   blas::UpperLower uplo, int n,
                                                   int lda, int batch_size) = 0;
+};
+
+struct GpuSolverContextFactory {
+  using Type =
+      std::function<absl::StatusOr<std::unique_ptr<GpuSolverContext>>()>;
 };
 
 }  // namespace stream_executor

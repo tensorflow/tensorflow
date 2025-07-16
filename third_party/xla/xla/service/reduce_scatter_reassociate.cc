@@ -25,6 +25,8 @@ limitations under the License.
 #include "xla/service/all_reduce_key.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/hlo_domain_map.h"
+#include "xla/service/scheduling_annotations_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -85,6 +87,14 @@ absl::StatusOr<bool> ReduceScatterReassociate::Run(
         VLOG(2) << "Reduce-Scatter operations have > 1 users";
         continue;
       }
+      TF_ASSIGN_OR_RETURN(auto rs0_annotation, GetSchedulingAnnotation(rs0));
+      TF_ASSIGN_OR_RETURN(auto rs1_annotation, GetSchedulingAnnotation(rs1));
+      if (rs0_annotation.has_value() && rs1_annotation.has_value() &&
+          *rs0_annotation != *rs1_annotation) {
+        VLOG(2) << "If two reduce scatters have different scheduling group do "
+                   "not merge";
+        continue;
+      }
 
       // Found pattern op(rs(x), rs(y)). Transform it into rs(op(x,y)).
       HloInstruction *new_op =
@@ -93,6 +103,11 @@ absl::StatusOr<bool> ReduceScatterReassociate::Run(
               {rs0->mutable_operand(0), rs1->mutable_operand(0)}));
       HloInstruction *new_rs = computation->AddInstruction(
           rs0->CloneWithNewOperands(inst->shape(), {new_op}));
+      // In case only one of the two instructions had a scheduling annotation,
+      // delete the potential annotation.
+      if (rs0_annotation.has_value() ^ rs1_annotation.has_value()) {
+        RemoveSchedulingAnnotation(new_rs);
+      }
 
       // Do not reuse channel_id from the existing instruction.
       if (new_rs->channel_id()) {

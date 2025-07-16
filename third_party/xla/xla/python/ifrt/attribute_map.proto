@@ -19,6 +19,8 @@ package xla.ifrt;
 
 // Proto equivalent of C++ `AttributeMap`.
 message AttributeMapProto {
+  int32 version_number = 2;
+
   message Value {
     message Int64List {
       repeated sfixed64 elements = 1;

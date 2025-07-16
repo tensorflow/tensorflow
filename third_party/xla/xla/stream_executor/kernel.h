@@ -89,7 +89,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 
@@ -588,11 +587,12 @@ inline absl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>
 PackKernelArgs(absl::Span<const ArgType> args, uint32_t shared_mem_bytes) {
   static constexpr int kKernelArgsLimit = 1024;
 
-  if (args.size() > kKernelArgsLimit)
+  if (args.size() > kKernelArgsLimit) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Can't pack device memory arguments array of size ", args.size(),
         " which is larger than the maximum supported size of ",
         kKernelArgsLimit));
+  }
 
   // Specialize kernel arguments array for small sizes to allocate a smaller
   // chunk of memory and hopefully hit a small allocations cache.

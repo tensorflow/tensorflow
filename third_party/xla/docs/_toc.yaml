@@ -45,6 +45,8 @@ toc:
     path: /xla/lsp
   - title: Writing custom calls
     path: /xla/custom_call
+  - title: XLA Flags guidance
+    path: /xla/flags_guidance
   - title: XLA Tooling
     path: /xla/tools
 - title: Contributing

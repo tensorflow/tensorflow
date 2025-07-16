@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 
-#include <cstdint>
-#include <iterator>
-#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -71,14 +68,12 @@ std::vector<ExecutionInput> ExecutionInputsFromBuffers(
 
 }  // namespace
 
-AutotunerCompileUtil::AutotunerCompileUtil(const AutotuneConfig& config,
-                                           std::unique_ptr<Compiler> compiler,
+AutotunerCompileUtil::AutotunerCompileUtil(std::unique_ptr<Compiler> compiler,
                                            se::StreamExecutor& stream_executor,
                                            se::Stream& stream,
                                            se::DeviceMemoryAllocator& allocator,
                                            const DebugOptions& opts)
-    : config_(config),
-      compiler_(std::move(compiler)),
+    : compiler_(std::move(compiler)),
       stream_executor_(stream_executor),
       stream_(stream),
       allocator_(allocator),
@@ -160,7 +155,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> AutotunerCompileUtil::ExtractModule(
 }
 
 /*static*/ absl::StatusOr<AutotunerCompileUtil> AutotunerCompileUtil::Create(
-    const AutotuneConfig& config, const DebugOptions& opts) {
+    const DeviceOrDevicelessConfig& config, const DebugOptions& opts) {
   tsl::profiler::TraceMe traceme("AutotunerCreate");
   if (config.IsDeviceless()) {
     return absl::InvalidArgumentError(
@@ -171,8 +166,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> AutotunerCompileUtil::ExtractModule(
   TF_ASSIGN_OR_RETURN(se::Stream* const stream, config.GetStream());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
                       Compiler::GetForPlatform(stream_exec->GetPlatform()));
-  return AutotunerCompileUtil(config, std::move(compiler), *stream_exec,
-                              *stream, *allocator, opts);
+  return AutotunerCompileUtil(std::move(compiler), *stream_exec, *stream,
+                              *allocator, opts);
 }
 
 absl::StatusOr<ExecutionOutput> AutotunerCompileUtil::Execute(

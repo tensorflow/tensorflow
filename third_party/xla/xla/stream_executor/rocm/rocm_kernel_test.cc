@@ -18,9 +18,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -36,8 +38,10 @@ TEST(RocmKernelTest, GetMaxOccupiedBlocksPerCore) {
                           PlatformManager::PlatformWithName("ROCM"));
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
+  TF_ASSERT_OK_AND_ASSIGN(KernelLoaderSpec add_kernel,
+                          GetAddI32TestKernelSpec(rocm::kROCmPlatformId));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> rocm_kernel,
-                          executor->LoadKernel(GetAddI32KernelSpec()));
+                          executor->LoadKernel(add_kernel));
 
   EXPECT_EQ(rocm_kernel->Arity(), 3);
   EXPECT_THAT(rocm_kernel->GetMaxOccupiedBlocksPerCore(

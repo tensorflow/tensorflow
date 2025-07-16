@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-identify-dilated-conv | FileCheck %s
+// RUN: litert-opt %s -tfl-identify-dilated-conv | FileCheck %s
 
 func.func @testDilatedConv(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>) -> tensor<1x120x120x8xf32> {
   %cst = arith.constant dense<[2, 2]> : tensor<2xi32>

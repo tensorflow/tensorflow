@@ -195,18 +195,18 @@ absl::Status SetSchedulingAnnotationGroupId(HloInstruction* instr, int64_t id) {
 
 absl::StatusOr<AnnotationGroupId> NextSchedulingGroupId(
     const HloModule& module) {
-  int64_t next_scheduling_id = 1;
+  int64_t next_scheduling_id = 0;
   for (const HloComputation* comp : module.computations()) {
     for (const HloInstruction* hlo : comp->instructions()) {
       TF_ASSIGN_OR_RETURN(std::optional<int64_t> scheduling_id,
                           GetSchedulingAnnotationGroupId(hlo));
       if (scheduling_id.has_value()) {
         next_scheduling_id =
-            std::max(next_scheduling_id, scheduling_id.value() + 1);
+            std::max(next_scheduling_id, scheduling_id.value());
       }
     }
   }
-  return next_scheduling_id;
+  return next_scheduling_id + 1;
 }
 
 bool IsIterationIdConstentWithPipeliningDirection(

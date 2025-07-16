@@ -21,5 +21,7 @@ import "xla/xla_data.proto";
 
 // Proto equivalent of C++ `PjRtLayout`.
 message PjRtLayoutProto {
+  int32 version_number = 2;
+
   xla.LayoutProto xla_layout = 1;
 }

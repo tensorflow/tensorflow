@@ -59,7 +59,7 @@ bool IsDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis) {
 
 std::optional<std::unique_ptr<FusionInterface>> HloFusionInfo::GetCopyFusion()
     const {
-  if (analysis().GetEmitterFusionKind() ==
+  if (analysis().emitter_fusion_kind() ==
       HloFusionAnalysis::EmitterFusionKind::kDynamicMemcpy) {
     if (IsDynamicUpdateSliceFusion(analysis()) &&
         !CanEmitDynamicUpdateSliceInPlace()) {
@@ -67,12 +67,8 @@ std::optional<std::unique_ptr<FusionInterface>> HloFusionInfo::GetCopyFusion()
       return std::nullopt;
     }
 
-    auto dynamic_memcpy =
-        DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(*instr_);
-    if (dynamic_memcpy) {
-      return std::make_unique<DynamicMemcpyFusion>(
-          analysis(), buffer_assignment_, std::move(*dynamic_memcpy));
-    }
+    return std::make_unique<DynamicMemcpyFusion>(analysis(),
+                                                 buffer_assignment_);
   }
 
   for (const HloInstructionAdaptor& root_adaptor : analysis().fusion_roots()) {
@@ -103,7 +99,7 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
   const auto& analysis = fusion_info.analysis();
   const FusionBackendConfig& backend_config = analysis.fusion_backend_config();
 
-  switch (analysis.GetEmitterFusionKind()) {
+  switch (analysis.emitter_fusion_kind()) {
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion: {
       const absl::string_view& config_name =
           backend_config.custom_fusion_config().name();

@@ -14,16 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/core/model_building.h"
 
+#include <algorithm>
 #include <array>
+
 // TODO: Change assert to TFLITE logging.
 #include <cassert>
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
+#include <memory>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/lite/array.h"
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
@@ -35,23 +41,59 @@ limitations under the License.
 namespace tflite {
 namespace model_builder {
 
-namespace internal {
+namespace {
 
-template <typename H, class T, class Tag>
-H AbslHashValue(H h, const StrongType<T, Tag>& v) {
-  return H::combine(std::move(h), v.val);
-}
+// Returns a functor that provides overloads based on the
+// functors passed to it.
+//
+// Useful when used in conjunction with `std::visit`.
+template <class... Ts>
+class Overload : public Ts... {
+ public:
+  explicit Overload(Ts&&... ts) : Ts(static_cast<Ts&&>(ts))... {}
+  using Ts::operator()...;
+};
 
-template <class T, class Tag>
-bool operator==(const StrongType<T, Tag>& lhs, const StrongType<T, Tag>& rhs) {
-  return lhs.val == rhs.val;
-}
+template <class... Ts>
+Overload(Ts&&...) -> Overload<Ts...>;
 
-}  // namespace internal
+}  // namespace
+
+struct BufferInfo {
+  void AssignOwning(char* data_src, void (*deleter)(char*), size_t data_bytes) {
+    data = std::unique_ptr<char, void (*)(char*)>(data_src, deleter);
+    bytes = data_bytes;
+  }
+
+  void AssignNonOwning(char* data_src, size_t data_bytes) {
+    data = std::unique_ptr<char, void (*)(char*)>(data_src, DontDelete);
+    bytes = data_bytes;
+  }
+
+  template <class T>
+  T* DataAs() noexcept {
+    return reinterpret_cast<T*>(data.get());
+  }
+
+  template <class T>
+  const T* DataAs() const noexcept {
+    return reinterpret_cast<T*>(data.get());
+  }
+
+  // No-op cleanup for non-owned data.
+  static constexpr void DontDelete(char*) {}
+
+  BufferIdx idx;
+  TfLiteType type;
+  std::unique_ptr<char, void (*)(char*)> data{nullptr, DontDelete};
+  size_t bytes = 0;
+  std::vector<int> shape;
+  Quantization quantization;
+};
 
 struct TensorInfo {
   TensorInfo() = default;
-  // This object holds information that is part of a graph. A inadvertant copy
+  // This object holds information that is part of a graph. A inadvertent copy
   // made by not returning a reference to the object stored in an GraphInfo will
   // lead to issues (namely no modification done to the graph).
   //
@@ -68,17 +110,21 @@ struct TensorInfo {
   TensorInfo(int idx, TfLiteType type) : idx(idx), type(type) {}
 
   // Index in GraphInfo tensors.
-  internal::TensorIdx idx;
+  TensorIdx idx;
   TfLiteType type;
+  // Index in InterpreterInfo buffers.
+  BufferIdx buffer_idx = Buffer::kNoBuffer;
+  // Shape when the tensor is not backed by a buffer.
+  std::vector<int> shape;
 };
 
 struct OpInfo {
   BuiltinOperator op;
   OwningErasedPtr params;
   // Indices in GraphInfo tensors.
-  std::vector<internal::TensorIdx> inputs;
+  std::vector<TensorIdx> inputs;
   // Indices in GraphInfo tensors.
-  std::vector<internal::TensorIdx> outputs;
+  std::vector<TensorIdx> outputs;
   TfLiteRegistration registration;
 };
 
@@ -100,13 +146,13 @@ struct GraphInfo {
   GraphInfo& operator=(GraphInfo&&) = default;
 
   // Index in InterpreterInfo subgraphs.
-  internal::GraphIdx idx;
+  GraphIdx idx;
   std::vector<OpInfo> ops;
   std::vector<TensorInfo> tensors;
   // Indices in tensors.
-  std::vector<internal::TensorIdx> inputs;
+  std::vector<TensorIdx> inputs;
   // Indices in tensors.
-  std::vector<internal::TensorIdx> outputs;
+  std::vector<TensorIdx> outputs;
 
   enum TensorRole {
     kNone,
@@ -114,8 +160,7 @@ struct GraphInfo {
     kOutput = 1 << 1,
   };
 
-  const TensorInfo& NewTensor(TfLiteType type,
-                              const int role = TensorRole::kNone) {
+  TensorInfo& NewTensor(TfLiteType type, const int role = TensorRole::kNone) {
     const int idx = tensors.size();
     tensors.emplace_back(idx, type);
     if (role & TensorRole::kInput) {
@@ -136,15 +181,16 @@ struct GraphInfo {
   }
 
   const TensorInfo& GetOutput(int i) const {
-    const internal::TensorIdx idx = outputs.at(i);
+    const TensorIdx idx = outputs.at(i);
     return tensors.at(idx.val);
   }
 };
 
 struct InterpreterInfo {
   std::vector<GraphInfo> subgraphs;
+  std::vector<BufferInfo> buffers;
 
-  GraphInfo& GetGraph(internal::GraphIdx graph_idx) {
+  GraphInfo& GetGraph(GraphIdx graph_idx) {
     return subgraphs.at(graph_idx.val);
   }
 
@@ -153,23 +199,51 @@ struct InterpreterInfo {
   // Calling this function may invalidate existing references (to GraphInfo
   // objects, Graph object are fine as they only hold the graph index).
   GraphInfo& NewGraph() {
-    const internal::GraphIdx idx(subgraphs.size());
+    const GraphIdx idx(subgraphs.size());
     subgraphs.emplace_back();
     subgraphs.back().idx = idx;
     return subgraphs.back();
   }
+
+  BufferInfo& NewBuffer() {
+    buffers.emplace_back();
+    BufferInfo& buffer = buffers.back();
+    buffer.idx = BufferIdx(buffers.size() - 1);
+    return buffer;
+  }
 };
 
-void Apply(GraphInfo& graph, Subgraph& subgraph) {
+TfLiteQuantization ToTfLiteQuantization(Quantization quantization) {
+  TfLiteQuantization q{/*.type=*/kTfLiteNoQuantization};
+  std::visit(
+      Overload([&q](NoQuantization) { q.type = kTfLiteNoQuantization; },
+               [&q](const AffineQuantization& src) {
+                 q.type = kTfLiteAffineQuantization;
+                 q.params = calloc(sizeof(TfLiteAffineQuantization), 1);
+                 TfLiteAffineQuantization& qa =
+                     *reinterpret_cast<TfLiteAffineQuantization*>(q.params);
+                 qa.quantized_dimension = src.axis;
+                 qa.scale = BuildTfLiteArray<float>(src.scales).release();
+                 qa.zero_point =
+                     BuildTfLiteArray<int>(src.zero_points).release();
+               }),
+      quantization);
+  return q;
+}
+
+void Apply(InterpreterInfo& interpreter_info, GraphInfo& graph,
+           Subgraph& subgraph) {
   // Maps graph indices to subgraph indices.
-  absl::flat_hash_map<internal::TensorIdx, int> tensor_id_to_idx;
+  absl::flat_hash_map<TensorIdx, int> tensor_id_to_idx;
   int first_new_tensor_index;
   subgraph.AddTensors(graph.tensors.size(), &first_new_tensor_index);
   for (int i = 0; i < graph.tensors.size(); ++i) {
     tensor_id_to_idx.insert({graph.tensors[i].idx, i + first_new_tensor_index});
+    TfLiteTensor& tensor = *subgraph.tensor(i + first_new_tensor_index);
+    tensor.type = graph.tensors[i].type;
   }
 
-  auto GetTensorIds = [&](const std::vector<internal::TensorIdx>& ts) {
+  auto GetTensorIds = [&](const std::vector<TensorIdx>& ts) {
     std::vector<int> indices(ts.size());
     for (int i = 0; i < ts.size(); ++i) {
       indices[i] = tensor_id_to_idx[graph.tensors[ts[i].val].idx];
@@ -181,11 +255,27 @@ void Apply(GraphInfo& graph, Subgraph& subgraph) {
   subgraph.SetInputs(input_indices);
   const std::vector<int> output_indices = GetTensorIds(graph.outputs);
   subgraph.SetOutputs(output_indices);
-  for (internal::TensorIdx i(0); i.val < graph.tensors.size(); ++i.val) {
-    if (subgraph.SetTensorParametersReadWrite(
-            tensor_id_to_idx[i], graph.tensors[i.val].type, "", 0, nullptr, {},
-            false) != kTfLiteOk) {
-      std::terminate();
+  for (TensorIdx i(0); i.val < graph.tensors.size(); ++i.val) {
+    const TensorInfo& tensor = graph.tensors[i.val];
+    if (tensor.buffer_idx.val == -1) {
+      if (subgraph.SetTensorParametersReadWrite(
+              tensor_id_to_idx[i], tensor.type, /*name=*/"",
+              /*ndims=*/tensor.shape.size(),
+              /*dims=*/tensor.shape.data(), /*quantization=*/{},
+              /*is_variable=*/false) != kTfLiteOk) {
+        std::terminate();
+      }
+    } else {
+      const BufferInfo& buffer =
+          interpreter_info.buffers[tensor.buffer_idx.val];
+      if (subgraph.SetTensorParametersReadOnly(
+              tensor_id_to_idx[i], tensor.type, "", buffer.shape,
+              ToTfLiteQuantization(buffer.quantization), buffer.DataAs<char>(),
+              buffer.bytes,
+              /*allocation=*/nullptr, /*sparsity=*/nullptr,
+              /*buffer_identifier=*/buffer.idx.val) != kTfLiteOk) {
+        std::terminate();
+      }
     }
   }
 
@@ -207,6 +297,10 @@ struct Helper {
     return *tensor.builder_;
   }
 
+  static InterpreterInfo& GetInterpreterInfo(const Buffer buffer) {
+    return *buffer.builder_;
+  }
+
   static InterpreterInfo& GetInterpreterInfo(const Graph graph) {
     return *graph.builder_;
   }
@@ -221,17 +315,38 @@ struct Helper {
     return ii.subgraphs.at(a.graph_idx_.val);
   }
 
-  static const TensorInfo& GetTensorInfo(const Tensor& a) {
+  static BufferInfo& GetBufferInfo(const Buffer a) {
+    InterpreterInfo& ii = Helper::GetInterpreterInfo(a);
+    return ii.buffers.at(a.buffer_idx_.val);
+  }
+
+  static BufferInfo* MaybeGetBufferInfo(const Tensor a) {
+    InterpreterInfo& ii = Helper::GetInterpreterInfo(a);
+    const TensorInfo& tensor_info = Helper::GetTensorInfo(a);
+    if (tensor_info.buffer_idx.val >= 0) {
+      return &ii.buffers[tensor_info.buffer_idx.val];
+    }
+    return nullptr;
+  }
+
+  static TensorInfo& GetTensorInfo(const Tensor& a) {
     InterpreterInfo& ii = Helper::GetInterpreterInfo(a);
     return ii.subgraphs.at(a.graph_idx_.val).tensors.at(a.tensor_idx_.val);
   }
 
-  static internal::TensorIdx GetTensorIndex(const Tensor& a) {
-    return a.tensor_idx_;
-  }
+  static TensorIdx GetTensorIndex(const Tensor& a) { return a.tensor_idx_; }
 
   static TfLiteType GetTensorType(const Tensor& a) {
     return Helper::GetTensorInfo(a).type;
+  }
+
+  static const std::vector<int>& GetTensorShape(const Tensor& a) {
+    TensorInfo& tensor_info = Helper::GetTensorInfo(a);
+    if (tensor_info.buffer_idx.val >= 0) {
+      InterpreterInfo& ii = Helper::GetInterpreterInfo(a);
+      return ii.buffers.at(tensor_info.buffer_idx.val).shape;
+    }
+    return tensor_info.shape;
   }
 
   static Graph BuildGraph(InterpreterInfo& interpreter_info,
@@ -243,7 +358,29 @@ struct Helper {
                             const GraphInfo& graph, const TensorInfo& tensor) {
     return Tensor(&interpreter_info, tensor.idx, graph.idx);
   }
+
+  static Buffer BuildBuffer(InterpreterInfo& interpreter_info,
+                            const BufferInfo& buffer) {
+    return Buffer(&interpreter_info, buffer.idx);
+  }
 };
+
+namespace internal {
+
+BufferInfo& GetBufferInfo(Buffer buffer) {
+  return Helper::GetBufferInfo(buffer);
+}
+
+}  // namespace internal
+
+void Assign(Buffer b, TfLiteType type, std::vector<int> shape, char* data,
+            void (*deleter)(char*), size_t bytes, Quantization quantization) {
+  BufferInfo& buffer_info = Helper::GetBufferInfo(b);
+  buffer_info.AssignOwning(data, deleter, bytes);
+  buffer_info.type = type;
+  buffer_info.shape = std::move(shape);
+  buffer_info.quantization = std::move(quantization);
+}
 
 ModelBuilder::ModelBuilder()
     : impl_(new InterpreterInfo(), [](void* data) {
@@ -256,13 +393,21 @@ Graph NewGraph(ModelBuilder& builder) {
   return Helper::BuildGraph(interpreter_info, graph);
 }
 
+Buffer NewConstantBuffer(ModelBuilder& builder) {
+  InterpreterInfo& interpreter_info = Helper::GetInterpreterInfo(builder);
+  BufferInfo& buffer_info = interpreter_info.NewBuffer();
+  return Helper::BuildBuffer(interpreter_info, buffer_info);
+}
+
 void ModelBuilder::Build(Interpreter& interpreter) {
   InterpreterInfo& interpreter_info = Helper::GetInterpreterInfo(*this);
   int first_new_subgraph_index = 0;
   interpreter.AddSubgraphs(interpreter_info.subgraphs.size(),
                            &first_new_subgraph_index);
   for (int i = 0; i < interpreter_info.subgraphs.size(); ++i) {
-    Apply(interpreter_info.subgraphs[i], *interpreter.subgraph(i));
+    auto&& a = interpreter_info.subgraphs[i];
+    auto&& b = *interpreter.subgraph(i);
+    Apply(interpreter_info, a, b);
   }
 }
 
@@ -272,9 +417,27 @@ Tensor NewInput(Graph& g, TfLiteType type) {
   return Helper::BuildTensor(*g.builder_, graph, tensor);
 }
 
+Tensor NewConstantTensor(InterpreterInfo& builder, GraphInfo& graph,
+                         Buffer buffer) {
+  BufferInfo& buffer_info = Helper::GetBufferInfo(buffer);
+  TensorInfo& tensor = graph.NewTensor(buffer_info.type);
+  tensor.buffer_idx = buffer_info.idx;
+  return Helper::BuildTensor(builder, graph, tensor);
+}
+
+Tensor NewConstantTensor(Graph& g, Buffer buffer) {
+  GraphInfo& graph = Helper::GetGraphInfo(g);
+  return NewConstantTensor(*g.builder_, graph, buffer);
+}
+
 void MarkOutput(Tensor tensor) {
   GraphInfo& graph = Helper::GetGraphInfo(tensor);
   graph.outputs.push_back(Helper::GetTensorIndex(tensor));
+}
+
+void SetShape(Tensor tensor, std::vector<int> shape) {
+  TensorInfo& tensor_info = Helper::GetTensorInfo(tensor);
+  tensor_info.shape = std::move(shape);
 }
 
 namespace {
@@ -345,7 +508,8 @@ Tensor UnaryOp(BuiltinOperator op, TfLiteRegistration registration,
                TfLiteType output_type) {
   InterpreterInfo& interpreter_info = Helper::GetInterpreterInfo(input_tensor);
   GraphInfo& graph = Helper::GetGraphInfo(input_tensor);
-  const TensorInfo& output = graph.NewTensor(output_type);
+  TensorInfo& output = graph.NewTensor(output_type);
+  output.shape = Helper::GetTensorShape(input_tensor);
   registration.builtin_code = op;
   graph.ops.push_back(OpInfo{op,
                              std::move(params),
@@ -391,9 +555,38 @@ Tensor Mul(Tensor lhs, Tensor rhs) {
 }
 
 Tensor Transpose(Tensor tensor, Tensor permutation) {
-  return BinaryOp(BuiltinOperator_TRANSPOSE,
-                  *ops::builtin::Register_TRANSPOSE(), NoParam(), tensor,
-                  permutation, Helper::GetTensorType(tensor));
+  Tensor output =
+      BinaryOp(BuiltinOperator_TRANSPOSE, *ops::builtin::Register_TRANSPOSE(),
+               NoParam(), tensor, permutation, Helper::GetTensorType(tensor));
+
+  if (const BufferInfo* buffer_info = Helper::MaybeGetBufferInfo(permutation);
+      buffer_info) {
+    SetShape(output, buffer_info->shape);
+  }
+
+  return output;
+}
+
+Tensor FullyConnected(Tensor input, Buffer weights_buffer) {
+  InterpreterInfo& interpreter_info = Helper::GetInterpreterInfo(input);
+  GraphInfo& graph = Helper::GetGraphInfo(input);
+  Tensor weights = NewConstantTensor(interpreter_info, graph, weights_buffer);
+  const TensorInfo& input_info = Helper::GetTensorInfo(input);
+  TensorInfo& output = graph.NewTensor(input_info.type);
+  const std::vector<int> input_shape = Helper::GetTensorShape(input);
+  const std::vector<int> weights_shape = Helper::GetTensorShape(weights);
+  output.shape = {input_shape.at(0), weights_shape.at(0)};
+  TfLiteRegistration registration = *ops::builtin::Register_FULLY_CONNECTED();
+  registration.builtin_code = BuiltinOperator_FULLY_CONNECTED;
+  OwningErasedPtr params = AllocateParam(TfLiteFullyConnectedParams());
+  graph.ops.push_back(
+      OpInfo{/*op=*/BuiltinOperator_FULLY_CONNECTED,
+             /*params=*/std::move(params),
+             /*inputs=*/
+             {Helper::GetTensorIndex(input), Helper::GetTensorIndex(weights)},
+             /*outputs=*/{output.idx},
+             /*registration=*/registration});
+  return Helper::BuildTensor(interpreter_info, graph, output);
 }
 
 std::vector<Tensor> StableHLOComposite(const char* name, const Graph& subgraph,
@@ -402,14 +595,14 @@ std::vector<Tensor> StableHLOComposite(const char* name, const Graph& subgraph,
   assert(!FromSameGraph(inputs, subgraph) && "inputs belong to the subgraph.");
   InterpreterInfo& interpreter_info = Helper::GetInterpreterInfo(subgraph);
   assert(!inputs.empty());
-  std::vector<internal::TensorIdx> input_indices;
-  std::vector<internal::TensorIdx> output_indices;
+  std::vector<TensorIdx> input_indices;
+  std::vector<TensorIdx> output_indices;
   std::vector<Tensor> outputs;
   GraphInfo& graph_info = Helper::GetGraphInfo(inputs[0]);
   GraphInfo& subgraph_info = Helper::GetGraphInfo(subgraph);
 
   output_indices.reserve(subgraph_info.outputs.size());
-  for (const internal::TensorIdx output_idx : subgraph_info.outputs) {
+  for (const TensorIdx output_idx : subgraph_info.outputs) {
     const TensorInfo& out =
         graph_info.NewTensor(subgraph_info.tensors.at(output_idx.val).type);
     output_indices.push_back(out.idx);

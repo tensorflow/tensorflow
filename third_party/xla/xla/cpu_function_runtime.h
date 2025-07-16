@@ -44,8 +44,7 @@ class BufferInfo {
         entry_param_number_(encoded.entry_param_number),
         result_param_number_(encoded.result_param_number) {}
 
-  // Returns true if this buffer stores a constant.  These never need to be
-  // allocated by the runtime.
+  // Returns true if this buffer stores a constant.
   bool is_constant() const { return kind() == Kind::kConstant; }
 
   // Returns true if this buffer stores an entry parameter.  These may or may

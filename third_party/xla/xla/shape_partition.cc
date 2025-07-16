@@ -35,7 +35,7 @@ std::vector<int64_t> ShapePartitionAssigner::Run(
   int64_t outer_dim_size = 1;
   // TODO(b/27458679) Consider reserving enough minor dimensions (based on
   // target vector register width) to enable vector instructions.
-  for (int i = shape_.layout().minor_to_major_size() - 1; i >= 0; --i) {
+  for (int i = shape_.layout().minor_to_major().size() - 1; i >= 0; --i) {
     const int64_t dimension = shape_.layout().minor_to_major(i);
     outer_dims.push_back(dimension);
     outer_dim_size *= shape_.dimensions(dimension);
@@ -116,7 +116,7 @@ ShapePartitionIterator::ShapePartitionIterator(
   // Store partitioned outer dimensions from 'shape_'.
   for (int i = 0; i < dimensions_.size(); ++i) {
     dimensions_[i] = shape_.layout().minor_to_major(
-        shape_.layout().minor_to_major_size() - 1 - i);
+        shape_.layout().minor_to_major().size() - 1 - i);
   }
 
   // Calculate partition size for each dimension (note that the size of

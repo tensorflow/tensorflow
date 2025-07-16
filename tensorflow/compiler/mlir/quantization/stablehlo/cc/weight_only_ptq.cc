@@ -46,6 +46,7 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 
+using ::mlir::quant::stablehlo::AddWeightOnlyQuantizationPasses;
 using ::stablehlo::quantization::GetReportFilePath;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::SignatureDef;

@@ -16,18 +16,20 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <ostream>
 #include <string>
 #include <utility>
 
+#include "absl/base/nullability.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
@@ -43,7 +45,10 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
@@ -132,6 +137,10 @@ Thunk::CollectiveExecuteParams::Create(
                                  ? &gpu_options->clique_id_callback()
                                  : nullptr;
 
+  auto* incarnations = gpu_options && gpu_options->incarnations().has_value()
+                           ? &*gpu_options->incarnations()
+                           : nullptr;
+
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       GetGlobalDeviceId(device_id_map, local_device_ordinal));
 
@@ -139,7 +148,7 @@ Thunk::CollectiveExecuteParams::Create(
       collectives, run_options.stream()->parent(),
       run_options.run_options().run_id(), async_streams, local_device_ordinal,
       global_device_id, run_options.run_options().device_assignment(),
-      device_id_map, clique_id_callback, collective_max_nchannels,
+      device_id_map, clique_id_callback, incarnations, collective_max_nchannels,
       p2p_max_nchannels);
 }
 
@@ -149,6 +158,7 @@ Thunk::CollectiveExecuteParams::CollectiveExecuteParams(
     GlobalDeviceId global_device_id, const DeviceAssignment* device_assn,
     const GlobalDeviceIdMap* global_device_id_map,
     const CliqueIdCallback* nccl_clique_id_callback,
+    const absl::flat_hash_map<GlobalDeviceId, IncarnationId>* incarnations,
     int64_t collective_max_nchannels, int64_t p2p_max_nchannels)
     : collectives(collectives),
       executor(executor),
@@ -159,6 +169,7 @@ Thunk::CollectiveExecuteParams::CollectiveExecuteParams(
       device_assn(device_assn),
       global_device_id_map(global_device_id_map),
       nccl_clique_id_callback(nccl_clique_id_callback),
+      incarnations(incarnations),
       collective_max_nchannels(collective_max_nchannels),
       p2p_max_nchannels(p2p_max_nchannels) {}
 
@@ -185,11 +196,6 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
                            ? run_options.run_options()
                                  .gpu_executable_run_options()
                                  ->enable_mock_collectives()
-                           : false,
-                       run_options.run_options().gpu_executable_run_options()
-                           ? run_options.run_options()
-                                 .gpu_executable_run_options()
-                                 ->requires_exclusive_lock_on_gpu()
                            : false);
 }
 
@@ -213,8 +219,7 @@ Thunk::ExecuteParams::ExecuteParams(
     SendDeviceMemoryFunction* send_device_memory_function,
     RecvDeviceMemoryFunction* recv_device_memory_function,
     const ffi::ExecutionContext* ffi_execution_context,
-    ExecutionStreamIdMap additional_compute_streams, bool mock_collectives,
-    bool requires_exclusive_lock_on_gpu)
+    ExecutionStreamIdMap additional_compute_streams, bool mock_collectives)
     : buffer_allocations(buffer_allocations),
       stream(stream),
       command_buffer_trace_stream(command_buffer_trace_stream),
@@ -226,8 +231,7 @@ Thunk::ExecuteParams::ExecuteParams(
       recv_device_memory_function(recv_device_memory_function),
       ffi_execution_context(ffi_execution_context),
       additional_compute_streams(additional_compute_streams),
-      mock_collectives(mock_collectives),
-      requires_exclusive_lock_on_gpu(requires_exclusive_lock_on_gpu) {}
+      mock_collectives(mock_collectives) {}
 
 //===----------------------------------------------------------------------===//
 
@@ -250,6 +254,7 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kCollectiveBroadcast);
     CASE(kCollectiveBroadcastDone);
     CASE(kCollectiveBroadcastStart);
+    CASE(kCollectiveKernel);
     CASE(kCollectivePermute);
     CASE(kCollectivePermuteDone);
     CASE(kCollectivePermuteStart);
@@ -278,6 +283,13 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kMemset32BitValue);
     CASE(kMemzero);
     CASE(kNorm);
+    CASE(kNvshmemCollectivePermute);
+    CASE(kNvshmemCollectivePermuteDone);
+    CASE(kNvshmemCollectivePermuteStart);
+    CASE(kNvshmemRecv);
+    CASE(kNvshmemRecvDone);
+    CASE(kNvshmemSend);
+    CASE(kNvshmemSendDone);
     CASE(kOutfeed);
     CASE(kPartitionId);
     CASE(kRaggedAllToAll);
@@ -319,6 +331,17 @@ std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {
 bool IsReductionCollective(Thunk::Kind kind) {
   return kind == Thunk::kAllReduce || kind == Thunk::kAllReduceStart ||
          kind == Thunk::kReduceScatter || kind == Thunk::kReduceScatterStart;
+}
+
+absl::StatusOr<Thunk::ThunkInfo> Thunk::ThunkInfo::FromProto(
+    const ThunkInfoProto& proto) {
+  TF_RET_CHECK(proto.execution_stream_id() >= 0)
+      << "The thunk execution stream ID must be non-negative, but got "
+      << proto.execution_stream_id() << ".";
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = proto.profile_annotation();
+  thunk_info.execution_stream_id = proto.execution_stream_id();
+  return thunk_info;
 }
 
 Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(
@@ -376,12 +399,24 @@ void Thunk::ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const {
 }
 
 absl::StatusOr<ThunkProto> Thunk::ToProto() const {
-  ThunkProto proto;
-  proto.mutable_thunk_info()->set_execution_stream_id(
-      execution_stream_id_.value());
-  proto.mutable_thunk_info()->set_profile_annotation(profile_annotation_);
+  return absl::UnimplementedError(absl::StrFormat(
+      "Proto serialization for thunk of type %s is not implemented",
+      typeid(*this).name()));
+}
+
+absl::StatusOr<ThunkInfoProto> Thunk::GetThunkInfoProto() const {
+  ThunkInfoProto proto;
+  proto.set_execution_stream_id(execution_stream_id_.value());
+  proto.set_profile_annotation(profile_annotation_);
   return proto;
 }
 
+absl::StatusOr<GpuCollectives* absl_nonnull> Thunk::GetGpuCollectives(
+    CollectiveExecuteParams const& params) {
+  if (params.collectives == nullptr) {
+    return Internal("Collectives API is not provided");
+  }
+  return params.collectives;
+}
 }  // namespace gpu
 }  // namespace xla

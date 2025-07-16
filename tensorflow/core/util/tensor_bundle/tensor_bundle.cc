@@ -445,7 +445,7 @@ BundleWriter::BundleWriter(Env* env, absl::string_view prefix,
   }
 
   status_ = env_->CreateDir(string(io::Dirname(prefix_)));
-  if (!status_.ok() && !errors::IsAlreadyExists(status_)) {
+  if (!status_.ok() && !absl::IsAlreadyExists(status_)) {
     return;
   }
 
@@ -719,7 +719,7 @@ absl::Status MergeBundles(Env* env, absl::Span<const tstring> prefixes,
   // TODO(zhifengc): KeyValue sorter if it becomes too big.
   MergeState merge;
   absl::Status status = env->CreateDir(string(io::Dirname(merged_prefix)));
-  if (!status.ok() && !errors::IsAlreadyExists(status)) return status;
+  if (!status.ok() && !absl::IsAlreadyExists(status)) return status;
   bool atleast_one_file_exists = false;
   for (auto& prefix : prefixes) {
     if (!env->FileExists(MetaFilename(prefix)).ok()) {
@@ -935,7 +935,7 @@ absl::Status BundleReader::GetValue(const BundleEntryProto& entry,
       if (!enable_multi_threading_for_testing_ &&
           entry.size() < kLargeTensorThreshold) {
         TF_RETURN_IF_ERROR(buffered_file->file()->Read(
-            entry.offset(), entry.size(), &sp, backing_buffer));
+            entry.offset(), sp, absl::MakeSpan(backing_buffer, entry.size())));
         if (sp.data() != backing_buffer) {
           memmove(backing_buffer, sp.data(), entry.size());
         }
@@ -970,8 +970,9 @@ absl::Status BundleReader::GetValue(const BundleEntryProto& entry,
             }
 
             auto backing_buffer_current_pos = backing_buffer + offset;
-            auto status = section_reader->Read(entry.offset() + offset, size,
-                                               &sp, backing_buffer_current_pos);
+            auto status = section_reader->Read(
+                entry.offset() + offset, sp,
+                absl::MakeSpan(backing_buffer_current_pos, size));
             if (sp.data() != backing_buffer_current_pos) {
               memmove(backing_buffer_current_pos, sp.data(), size);
             }

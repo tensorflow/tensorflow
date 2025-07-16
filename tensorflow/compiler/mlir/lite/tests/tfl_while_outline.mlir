@@ -1,9 +1,9 @@
 // Test to verify loop outlining.
 
-// RUN: tf-opt --split-input-file --tfl-while-loop-outline %s | FileCheck %s
+// RUN: litert-opt --split-input-file --tfl-while-loop-outline %s | FileCheck %s
 // Check that while loop outlining is nop if re-ran.
-// RUN: tf-opt --tfl-while-loop-outline %s -o %t1
-// RUN: tf-opt --tfl-while-loop-outline %t1 -o %t2
+// RUN: litert-opt --tfl-while-loop-outline %s -o %t1
+// RUN: litert-opt --tfl-while-loop-outline %t1 -o %t2
 // RUN: diff %t1 %t2
 
 // CHECK-LABEL: func @while

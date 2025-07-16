@@ -1,4 +1,9 @@
 load("//xla:py_strict.bzl", "py_strict_test")
+load("//xla/python:package_groups.bzl", "XLA_PYTHON_PROFILER_USERS")
+load(
+    "//xla/tsl:tsl.bzl",
+    "internal_visibility",
+)
 load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -37,7 +42,7 @@ tsl_pybind_extension(
         "-fno-strict-aliasing",
     ],
     pytype_srcs = ["profile_data.pyi"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(XLA_PYTHON_PROFILER_USERS),
     deps = [
         ":profile_data_lib",
         "@local_tsl//tsl/platform:protobuf",

@@ -53,6 +53,12 @@ TfLiteStatus FillPerChannelMinMax(const float* const input,
                                   ErrorReporter* error_reporter);
 // LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantization_utils.h:fill_per_channel_min_max)
 
+void SymmetricPerBlockQuantizeValues(
+    const float* input, const float* scales_inv,
+    const std::vector<int32_t>& input_dimension,
+    const std::vector<int32_t>& scale_dimension, int32_t channel_dim_index,
+    std::vector<int8_t>* output_value, TfLiteType type);
+
 // LINT.IfChange(symmetric_per_channel_quantization)
 // Per-channel quantize a tensor at the given index and returns both scales and
 // quantized values.

@@ -1,7 +1,5 @@
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -30,9 +28,11 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:buffer_assignment",
+        "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:ir_emitter_context",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -59,29 +59,27 @@ cc_library(
     name = "cudnn",
     srcs = ["cudnn.cc"],
     hdrs = ["cudnn.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":fusion_emitter",
         "//xla/backends/gpu/runtime:cudnn_thunk",
         "//xla/backends/gpu/runtime:thunk",
+        "//xla/codegen/emitters:kernel_arguments",
         "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:gpu_constants",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emitter_context",
-        "//xla/service/gpu:kernel_arguments",
         "//xla/service/gpu:kernel_reuse_cache",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
 xla_test(
     name = "cudnn_test",
-    srcs = if_cuda_is_configured(["cudnn_test.cc"]),
-    backends = [
-        "gpu_h100",
-        "gpu_b200",
-    ],
+    srcs = ["cudnn_test.cc"],
+    backends = ["gpu"],
+    tags = ["cuda-only"],
     deps = [
         "//xla:comparison_util",
         "//xla:debug_options_flags",
@@ -138,6 +136,7 @@ cc_library(
         "//xla/backends/gpu/runtime:gemm_thunk",
         "//xla/backends/gpu/runtime:kernel_thunk",
         "//xla/backends/gpu/runtime:thunk",
+        "//xla/codegen/emitters:kernel_arguments",
         "//xla/ffi:attribute_map",
         "//xla/ffi:ffi_api",
         "//xla/hlo/analysis:while_loop_analysis",
@@ -150,10 +149,10 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",
+        "//xla/service/gpu:gpu_constants",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:ir_emitter_context",
-        "//xla/service/gpu:kernel_arguments",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:stream_executor_util",
         "//xla/service/gpu/kernels:custom_kernel",
@@ -178,7 +177,7 @@ cc_library(
 
 xla_test(
     name = "dynamic_slice_fusion_test",
-    srcs = if_cuda_is_configured(["dynamic_slice_fusion_test.cc"]),
+    srcs = ["dynamic_slice_fusion_test.cc"],
     backend_tags = {
         "gpu": [
             "multi_gpu",
@@ -186,7 +185,6 @@ xla_test(
         ],
     },
     backends = ["gpu"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         "//xla:error_spec",
         "//xla:shape_util",
@@ -199,38 +197,28 @@ xla_test(
         "//xla/ffi",
         "//xla/ffi:ffi_api",
         "//xla/hlo/builder:xla_builder",
-        "//xla/hlo/builder:xla_computation",
         "//xla/hlo/builder/lib:constants",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
-        "//xla/service:custom_call_target_registry",
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_runner_interface",
+        "//xla/service:platform_util",
         "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu/transforms:dynamic_slice_fusion_rewriter",
-        "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream",
-        "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:test_utils",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocm_headers",
-    ]),
+    ],
 )
 
 cc_library(
@@ -246,10 +234,12 @@ cc_library(
         "//xla:status_macros",
         "//xla:util",
         "//xla/backends/gpu/runtime:thunk",
+        "//xla/codegen/emitters:kernel_api_builder",
+        "//xla/codegen/emitters:kernel_arguments",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
+        "//xla/runtime:work_dimensions",
         "//xla/service/gpu:ir_emitter_context",
-        "//xla/service/gpu:kernel_arguments",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:target_util",
         "//xla/service/llvm_ir:ir_array",

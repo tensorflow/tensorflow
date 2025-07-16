@@ -40,8 +40,8 @@ ENTRY main {
 
   CompileAndVerifyIr(
       hlo_string,
-      "CHECK: {{.*}}align 128 dereferenceable(800) %{{.*}}align 16 "
-      "dereferenceable(400) %{{.*}}align 128 dereferenceable(600) %");
+      "CHECK: {{.*}}align 256 dereferenceable(800) %{{.*}}align 16 "
+      "dereferenceable(400) %{{.*}}align 256 dereferenceable(600) %");
 }
 
 }  // namespace

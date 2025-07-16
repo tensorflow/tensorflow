@@ -89,6 +89,10 @@ using ::stablehlo::quantization::PopulateDefaults;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::stablehlo::quantization::io::CreateTmpDir;
 using ::stablehlo::quantization::io::GetLocalTmpFileName;
+using ::tensorflow::quantization::AddQuantizePtqPostCalibrationPasses;
+using ::tensorflow::quantization::AddQuantizePtqPreCalibrationPasses;
+using ::tensorflow::quantization::kDefaultTfQuantMlirDumpFilePrefix;
+using ::tensorflow::quantization::PreprocessAndFreezeGraph;
 using ::tensorflow::quantization::PyFunctionLibrary;
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportAndPreprocessSavedModel(

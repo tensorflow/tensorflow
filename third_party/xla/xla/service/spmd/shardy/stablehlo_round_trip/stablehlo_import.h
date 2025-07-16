@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Pass/PassManager.h"
@@ -43,6 +44,10 @@ mlir::sdy::TensorShardingAttr convertToSdySharding(
         deviceIdToMaximalMeshName,
     int64_t rank, bool openDims = false);
 
+// Returns the axis sizes from the tile assignment. For example, given the input
+// {devices=[6,35]<=[7,10,3]T(2,1,0)}, the function returns [7, 2, 5, 3].
+mlir::SmallVector<int64_t> getAxisSizes(const TileAssignment& tileAssignment);
+
 // Register the xla-sdy-import-shardings pass.
 void registerStablehloImportShardingsPass();
 
@@ -64,6 +69,11 @@ void addStablehloImportPipeline(mlir::OpPassManager& pm,
                                 mlir::ArrayRef<bool> allowPropagationToArgs,
                                 mlir::ArrayRef<bool> allowPropagationToResults);
 
+// Creates ImportShardingsPass that converts `mhlo.sharding` to `mesh` and
+// `sdy.sharding`.
+std::unique_ptr<mlir::Pass> createImportShardingsPass(
+    mlir::ArrayRef<bool> allowPropagationToArgs,
+    mlir::ArrayRef<bool> allowPropagationToResults);
 }  // namespace sdy
 }  // namespace xla
 

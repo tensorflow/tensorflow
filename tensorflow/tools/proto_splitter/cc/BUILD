@@ -13,8 +13,10 @@ package(
     default_visibility = [
         "//learning/brain/tfrt/aot:__subpackages__",
         "//learning/brain/tfrt/tf_tpu:__subpackages__",
+        "//platforms/darwinn/contrib/waymo:__subpackages__",
         "//tensorflow/cc/saved_model/image_format:__subpackages__",
         "//tensorflow/tools/proto_splitter:__subpackages__",
+        "//waymo/ml/compiler/frontend:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -116,6 +118,7 @@ cc_library(
     hdrs = ["util.h"],
     visibility = [
         "//learning/brain/tfrt/aot:__subpackages__",
+        "//platforms/darwinn/contrib/waymo:__subpackages__",
         "//tensorflow/cc/saved_model:__subpackages__",
         "//tensorflow/cc/saved_model/image_format:__subpackages__",
         "//tensorflow/tools/proto_splitter:__subpackages__",
@@ -137,6 +140,7 @@ cc_library(
         "@riegeli//riegeli/base:initializer",
         "@riegeli//riegeli/base:types",
         "@riegeli//riegeli/bytes:fd_reader",
+        "@riegeli//riegeli/bytes:string_reader",
         "@riegeli//riegeli/records:record_reader",
     ] + if_oss([
         "//tensorflow/tools/proto_splitter:protos_impl",

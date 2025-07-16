@@ -22,7 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/client/executable_build_options.h"
-#include "xla/pjrt/compile_options.pb.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
@@ -149,6 +149,7 @@ TEST(CompiledMemoryStatsTest, Serialization) {
   stats.host_output_size_in_bytes = 19;
   stats.host_alias_size_in_bytes = 23;
   stats.host_temp_size_in_bytes = 29;
+  stats.peak_memory_in_bytes = 31;
 
   CompiledMemoryStatsProto serialized = stats.ToProto();
   CompiledMemoryStats deserialized = CompiledMemoryStats::FromProto(serialized);

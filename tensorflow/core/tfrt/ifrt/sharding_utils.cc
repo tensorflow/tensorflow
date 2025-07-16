@@ -511,9 +511,11 @@ absl::StatusOr<xla::ifrt::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
   } else if (hlo_sharding.IsTileMaximal()) {
     // Maximal implies single device
     VLOG(1) << "Fast path for maximal";
-    TF_ASSIGN_OR_RETURN(std::vector<xla::ifrt::ArrayRef> disassembled_array,
-                        input_array.DisassembleIntoSingleDeviceArrays(
-                            xla::ifrt::ArrayCopySemantics::kDonateInput));
+    TF_ASSIGN_OR_RETURN(
+        std::vector<xla::ifrt::ArrayRef> disassembled_array,
+        input_array.DisassembleIntoSingleDeviceArrays(
+            xla::ifrt::ArrayCopySemantics::kDonateInput,
+            xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
 
     int64_t device_id = hlo_sharding.GetUniqueDevice();
 
@@ -544,9 +546,11 @@ absl::StatusOr<xla::ifrt::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
                          absl::MakeSpan(index_domains), tensor_shape)
                          .status());
 
-  TF_ASSIGN_OR_RETURN(std::vector<xla::ifrt::ArrayRef> disassembled_array,
-                      input_array.DisassembleIntoSingleDeviceArrays(
-                          xla::ifrt::ArrayCopySemantics::kDonateInput));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<xla::ifrt::ArrayRef> disassembled_array,
+      input_array.DisassembleIntoSingleDeviceArrays(
+          xla::ifrt::ArrayCopySemantics::kDonateInput,
+          xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
 
   if (index_domains.size() != disassembled_array.size()) {
     return absl::FailedPreconditionError(absl::StrCat(
@@ -660,18 +664,15 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
     const xla::ifrt::DeviceListRef& device_list,
     const xla::HloSharding& hlo_sharding,
     const tsl::thread::ThreadPool& thread_pool) {
-  VLOG(3) << "IsTiled: " << hlo_sharding.IsTiled();
-  VLOG(3) << "IsReplicated: " << hlo_sharding.IsReplicated();
-  VLOG(3) << "IsTileMaximal: " << hlo_sharding.IsTileMaximal();
+  VLOG(1) << "Hlo sharding: " << hlo_sharding.ToString();
+  VLOG(1) << "Device list size: " << device_list->size();
+
   if (!hlo_sharding.IsTiled() && !hlo_sharding.IsReplicated() &&
       !hlo_sharding.IsTileMaximal()) {
     return absl::UnimplementedError(absl::StrCat(
         "Only support MAXIMAL, OTHER or REPLICATED, but got sharding : ",
         hlo_sharding.ToString()));
   }
-
-  VLOG(1) << "Hlo sharding: " << hlo_sharding.ToString();
-  VLOG(1) << "Device list size: " << device_list->size();
 
   if (device_list->size() == 1) {
     return CreateArrayFromHostTensorForSingleDevice(ifrt_client, input_tensor,

@@ -58,6 +58,9 @@ class ScatterExpander : public OpExpanderPass {
 
   absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* inst) override;
+  static absl::StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
+      HloInstruction* scatter, HloInstruction* induction_var,
+      absl::Span<HloInstruction* const> loop_state);
 
  private:
   Mode mode_;

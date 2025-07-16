@@ -93,7 +93,9 @@ class Stat {
       *stream << "count=0";
     } else if (all_same()) {
       *stream << "count=" << count_ << " curr=" << newest_;
-      if (count_ > 1) *stream << "(all same)";
+      if (count_ > 1) {
+        *stream << "(all same)";
+      }
     } else {
       *stream << "count=" << count_ << " first=" << first_
               << " curr=" << newest_ << " min=" << min_ << " max=" << max_
@@ -135,12 +137,11 @@ class StatWithPercentiles : public Stat<ValueType, HighPrecisionValueType> {
     std::vector<ValueType> values = values_;
     if (percentile == 100) {
       return values[values.size() - 1];
-    } else {
-      std::nth_element(values.begin(),
-                       values.begin() + values.size() * percentile / 100,
-                       values.end());
-      return values[values.size() * percentile / 100];
     }
+    std::nth_element(values.begin(),
+                     values.begin() + values.size() * percentile / 100,
+                     values.end());
+    return values[values.size() * percentile / 100];
   }
 
   void OutputToStream(std::ostream* stream) const {
@@ -225,7 +226,7 @@ class StatsCalculator {
 
   std::string HeaderString(const std::string& title) const;
   std::string ColumnString(const Detail& detail,
-                           const int64_t cumulative_stat_on_node,
+                           int64_t cumulative_stat_on_node,
                            const Stat<int64_t>& stat) const;
 
   Stat<int64_t> run_total_us_;

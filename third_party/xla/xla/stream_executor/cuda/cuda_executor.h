@@ -83,7 +83,7 @@ class CudaExecutor : public GpuExecutor {
   bool CanEnablePeerAccessTo(StreamExecutor* other) override;
   bool DeviceMemoryUsage(int64_t* free_out, int64_t* total_out) const override;
   absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
-      const MultiKernelLoaderSpec& spec) override;
+      const KernelLoaderSpec& spec) override;
   void UnloadKernel(const Kernel* kernel) override;
   absl::StatusOr<ModuleHandle> LoadModule(
       const MultiModuleLoaderSpec& spec) override;

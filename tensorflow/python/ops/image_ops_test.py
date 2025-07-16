@@ -2050,7 +2050,7 @@ class CentralCropTest(test_util.TensorFlowTestCase):
           _ = image_ops.central_crop(x, 1.01)
 
   def testErrorOnInvalidShapes(self):
-    x_shapes = [None, [], [3], [3, 9], [3, 9, 3, 9, 3]]
+    x_shapes = [[], [3], [3, 9], [3, 9, 3, 9, 3]]
     for x_shape in x_shapes:
       x_np = np.ones(x_shape, dtype=np.float32)
       for use_gpu in [True, False]:

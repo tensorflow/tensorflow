@@ -1215,14 +1215,14 @@ TEST_F(CommandBufferSchedulingTest, AsyncDynamicMemcpyFusion) {
         c32 = s32[] constant(32)
         ROOT %slice = s32[32] dynamic-slice(p0, c32), dynamic_slice_sizes={32}
       }
-
+      
       %async_computation {
         p0 = s32[64] parameter(0)
         ROOT fusion0 = s32[32] fusion(p0), kind=kLoop,
           calls=%fused_computation,
           backend_config={"fusion_backend_config":{"kind":"__dynamic_memcpy"}}
       }
-
+      
       main {
         p0 = s32[64] parameter(0)
         async-start = ((s32[64]), s32[32]) async-start(p0),

@@ -81,6 +81,7 @@ message AutotuneResult {
     int64 num_stages = 5;
     int64 num_warps = 6;
     int64 num_ctas = 7;
+    bool is_tma_allowed = 8;
   }
 
   message CustomKernelFusionKey {

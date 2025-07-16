@@ -219,7 +219,7 @@ class RamFileBlockCache : public FileBlockCache {
   std::unique_ptr<Thread> pruning_thread_;
 
   /// Notification for stopping the cache pruning thread.
-  Notification stop_pruning_thread_;
+  absl::Notification stop_pruning_thread_;
 
   /// Guards access to the block map, LRU list, and cached byte count.
   mutable absl::Mutex mu_;

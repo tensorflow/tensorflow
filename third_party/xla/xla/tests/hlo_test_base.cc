@@ -19,22 +19,27 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 
+#include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/backend.h"
+#include "xla/service/compiler.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_runner_pjrt.h"
 #include "xla/service/platform_util.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
@@ -54,28 +59,38 @@ constexpr absl::string_view kInterpreter = "interpreter";
 
 // Returns either an HloRunner or HloRunnerPjRt implementation depending on
 // whether there exists a registered PjRtClientFactory.
-absl::StatusOr<std::unique_ptr<HloRunnerInterface>> GetHloRunnerForTest(
-    se::Platform* test_platform) {
+std::tuple<std::unique_ptr<HloRunnerInterface>,
+           HloRunnerAgnosticTestBase::DeviceShapeRepresentationFn,
+           HloRunnerAgnosticTestBase::DeviceShapeSizeFn>
+GetHloRunnerAndFunctionsForTest(se::Platform* test_platform) {
   if (ShouldUsePjRt()) {
     PjRtClientTestFactoryRegistry& pjrt_registry =
         GetGlobalPjRtClientTestFactory();
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
-                        pjrt_registry.Get()());
+    absl::StatusOr<std::unique_ptr<PjRtClient>> client = pjrt_registry.Get()();
+    CHECK_OK(client.status())
+        << "Failed to create PjRt client. " << client.status();
     PjRtClientTestFactoryRegistry::DeviceShapeRepresentationFn
         device_shape_representation_fn =
-            pjrt_registry.GetDeviceShapeRepresentationFn(client.get());
+            pjrt_registry.GetDeviceShapeRepresentationFn(client->get());
     PjRtClientTestFactoryRegistry::DeviceShapeSizeFn device_shape_size_fn =
-        pjrt_registry.GetDeviceShapeSizeFn(client.get());
+        pjrt_registry.GetDeviceShapeSizeFn(client->get());
 
-    return std::make_unique<HloRunnerPjRt>(std::move(client),
-                                           device_shape_representation_fn,
-                                           device_shape_size_fn);
+    return std::make_tuple(std::make_unique<HloRunnerPjRt>(*std::move(client)),
+                           device_shape_representation_fn,
+                           device_shape_size_fn);
   }
 
-  return std::make_unique<HloRunner>(test_platform);
+  auto runner = std::make_unique<HloRunner>(test_platform);
+  Compiler* const absl_nonnull compiler = runner->backend().compiler();
+  return std::make_tuple(
+      std::move(runner),
+      [compiler](const Shape& shape) -> Shape {
+        return compiler->DefaultDeviceShapeRepresentation(shape);
+      },
+      compiler->ShapeSizeBytesFunction());
 }
 
-absl::StatusOr<std::unique_ptr<HloRunnerInterface>> GetHloRunnerForReference(
+std::unique_ptr<HloRunnerInterface> GetHloRunnerForReference(
     se::Platform* reference_platform) {
   return std::make_unique<HloRunner>(reference_platform);
 }
@@ -95,12 +110,33 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
                          bool verifier_layout_sensitive,
                          bool allow_mixed_precision_in_hlo_verifier,
                          HloPredicate instruction_can_change_layout_func)
+    : HloTestBase(GetHloRunnerAndFunctionsForTest(test_platform),
+                  GetHloRunnerForReference(reference_platform),
+                  verifier_layout_sensitive,
+                  allow_mixed_precision_in_hlo_verifier,
+                  instruction_can_change_layout_func) {}
+
+HloTestBase::HloTestBase(
+    std::tuple<std::unique_ptr<HloRunnerInterface>,
+               HloRunnerAgnosticTestBase::DeviceShapeRepresentationFn,
+               HloRunnerAgnosticTestBase::DeviceShapeSizeFn>
+        test_runner_and_functions,
+    std::unique_ptr<HloRunnerInterface> reference_runner,
+    bool verifier_layout_sensitive, bool allow_mixed_precision_in_hlo_verifier,
+    HloPredicate instruction_can_change_layout_func)
     : HloRunnerAgnosticReferenceMixin<HloRunnerAgnosticTestBase>(
-          /*reference_runner=*/GetHloRunnerForReference(reference_platform)
-              .value(),
-          /*test_runner=*/GetHloRunnerForTest(test_platform).value(),
-          verifier_layout_sensitive, allow_mixed_precision_in_hlo_verifier),
-      test_platform_(test_platform) {}
+          /*reference_runner=*/std::move(reference_runner),
+          /*test_runner=*/
+          std::move(std::get<std::unique_ptr<HloRunnerInterface>>(
+              test_runner_and_functions)),
+          /*device_shape_representation_fn=*/
+          std::move(
+              std::get<HloRunnerAgnosticTestBase::DeviceShapeRepresentationFn>(
+                  test_runner_and_functions)),
+          /*device_shape_size_fn=*/
+          std::move(std::get<HloRunnerAgnosticTestBase::DeviceShapeSizeFn>(
+              test_runner_and_functions)),
+          verifier_layout_sensitive, allow_mixed_precision_in_hlo_verifier) {}
 
 /*static*/ se::Platform* HloTestBase::GetReferencePlatform() {
   auto result = PlatformUtil::GetPlatform(kInterpreter);
@@ -112,15 +148,6 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
   auto result = PlatformUtil::GetDefaultPlatform();
   TF_CHECK_OK(result.status()) << "could not get test platform";
   return result.value();
-}
-
-absl::StatusOr<std::unique_ptr<HloRunnerInterface>>
-HloTestBase::GetHloRunner() {
-  absl::StatusOr<std::unique_ptr<HloRunnerInterface>> status_or_runner =
-      GetHloRunnerForTest(test_platform_);
-  // Test for successful creation of PjRt based Hlo Runner.
-  TF_CHECK_OK(status_or_runner.status());
-  return *std::move(status_or_runner);
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareFromFile(

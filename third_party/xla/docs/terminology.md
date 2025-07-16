@@ -1,13 +1,15 @@
 # XLA Terminology
 
-There are several terms that are used in the context of XLA, MLIR, LLVM, and other related technologies. Below is a partial list of these terms and their definitions.
+There are several terms that are used in the context of XLA, MLIR, LLVM, and
+other related technologies. Below is a partial list of these terms and their
+definitions.
 
 - **OpenXLA**
   - OpenXLA is an open ecosystem of performant, portable, and extensible machine
   learning (ML) infrastructure
   components that simplify ML development by defragmenting the tools between
   frontend frameworks and hardware backends. It includes the XLA compiler,
-  StableHLO, VHLO, [PJRT](https://openxla.org/xla/pjrt/overview) and other
+  StableHLO, VHLO, [PJRT](https://openxla.org/xla/pjrt) and other
   components.
 - **XLA**
   - XLA (Accelerated Linear Algebra) is an open source compiler for machine
@@ -23,13 +25,13 @@ There are several terms that are used in the context of XLA, MLIR, LLVM, and oth
   execution across hardware and frameworks. It provides a hardware and framework
   independent interface for compilers and runtimes.
 - **StableHLO**
-  - StableHLO the public interface to OpenXLA, it is a standardized MLIR dialect
-  that may be used by different frameworks and compilers in the OpenXLA
+  - StableHLO is the public interface to OpenXLA, it is a standardized MLIR
+  dialect that may be used by different frameworks and compilers in the OpenXLA
   ecosystem. XLA supports StableHLO, and immediately converts it to HLO on the
   input. There are some [StableHLO to StableHLO](https://openxla.org/stablehlo/generated/stablehlo_passes)
-  passes that use MLIR framework work. It is also possible to convert StableHLO
-  to other compilers' IR without using HLO, for example in cases where an
-  existing IR is more appropriate.
+  passes implemented using the MLIR framework. It is also possible to convert
+  StableHLO to other compilers' IR without using HLO, for example in cases where
+  an existing IR is more appropriate.
 - **CHLO**
   - CHLO is a collection of higher level operations which are optionally
   decomposable to StableHLO.
@@ -44,14 +46,14 @@ There are several terms that are used in the context of XLA, MLIR, LLVM, and oth
   to use StableHLO instead.
 - **HLO**
   - HLO is an internal graph representation (IR) for the XLA compiler (and also
-  supported input). It is **not** based on MLIR, and has it's own textual syntax
+  supported input). It is **not** based on MLIR, and has its own textual syntax
   and binary (protobuf based) representation.
 - **MLIR**
-    - [MLIR](https://mlir.llvm.org) MLIR is a hybrid IR infrastructure that
+    - [MLIR](https://mlir.llvm.org) is a hybrid IR infrastructure that
     allows users to define "dialects" of operations at varying degrees of
-    abstraction, and gradually lower between these opsets performing
-    transformations at each granularity. StableHLO and CHLO are two examples of
-    MLIR dialects.
+    abstraction, and gradually lower between these opsets, performing
+    transformations at each level of granularity. StableHLO and CHLO are two
+    examples of MLIR dialects.
 - **LLVM**
     - [LLVM](https://llvm.org/) is a compiler backend, and a language that it
     takes as an input. Many compilers generate LLVM code as a first step, and

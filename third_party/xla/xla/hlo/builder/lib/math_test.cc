@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include <gtest/gtest.h>
 #include "xla/array3d.h"
 #include "xla/error_spec.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
@@ -230,16 +230,19 @@ using TestTypes =
 
 TYPED_TEST_CASE(MathTypedTest, TestTypes);
 
-XLA_TYPED_TEST(MathTypedTest, LogEdgeCases) { this->TestLogEdgeCases(); }
-XLA_TYPED_TEST(MathTypedTest, Log1pEdgeCases) { this->TestLog1pEdgeCases(); }
-XLA_TYPED_TEST(MathTypedTest, IsInfOrNan) { this->TestIsInfOrNan(); }
-XLA_TYPED_TEST(MathTypedTest, IsNegZero) { this->TestIsNegZero(); }
-// Disabling on TPU since pow(-inf, 0.5) returns nan instead of +inf.
-XLA_TYPED_TEST(MathTypedTest, DISABLED_ON_TPU(SqrtPowInequivalence)) {
+TYPED_TEST(MathTypedTest, LogEdgeCases) { this->TestLogEdgeCases(); }
+TYPED_TEST(MathTypedTest, Log1pEdgeCases) { this->TestLog1pEdgeCases(); }
+TYPED_TEST(MathTypedTest, IsInfOrNan) { this->TestIsInfOrNan(); }
+TYPED_TEST(MathTypedTest, IsNegZero) { this->TestIsNegZero(); }
+TYPED_TEST(MathTypedTest, SqrtPowInequivalence) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    // Disabling on TPU since pow(-inf, 0.5) returns nan instead of +inf.
+    GTEST_SKIP();
+  }
   this->TestSqrtPowInequivalence();
 }
-XLA_TYPED_TEST(MathTypedTest, ErfInvEdgeCases) { this->TestErfInvEdgeCases(); }
-XLA_TYPED_TEST(MathTypedTest, ErfEdgeCases) { this->TestErfEdgeCases(); }
+TYPED_TEST(MathTypedTest, ErfInvEdgeCases) { this->TestErfInvEdgeCases(); }
+TYPED_TEST(MathTypedTest, ErfEdgeCases) { this->TestErfEdgeCases(); }
 
 // Check that certain ops only support real, floating-point inputs.
 TEST_F(MathTest, RealFpOnlyOps) {
@@ -675,7 +678,10 @@ TEST_F(MathTest, BesselI0eFloat) {
   ComputeAndCompareR1<float>(&builder, expected, {}, kErrorSpec);
 }
 
-TEST_F(MathTest, DISABLED_ON_TPU(BesselI0eDouble)) {
+TEST_F(MathTest, BesselI0eDouble) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
   auto x = ConstantR1<double>(
       &builder,
@@ -741,7 +747,10 @@ TEST_F(MathTest, BesselI1eFloat) {
   ComputeAndCompareR1<float>(&builder, expected, {}, kErrorSpec);
 }
 
-TEST_F(MathTest, DISABLED_ON_TPU(BesselI1eDouble)) {
+TEST_F(MathTest, BesselI1eDouble) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
   auto x = ConstantR1<double>(
       &builder,

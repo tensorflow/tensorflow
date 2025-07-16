@@ -20,7 +20,10 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
@@ -33,6 +36,20 @@ using tensorflow::RemoteProfilerSessionManagerOptions;
 
 // Profiler gives grace after profiling duration to terminate.
 constexpr absl::Duration kMinSessionGraceTime = absl::Seconds(60);
+
+// Helper template function to set integer options in ProfilerOptions.
+template <typename T, typename Setter>
+void SetOption(absl::string_view key,
+               const std::variant<bool, int, std::string>& value, Setter setter,
+               tensorflow::ProfileOptions* profiler_options) {
+  if (std::holds_alternative<T>(value)) {
+    auto int_value = std::get<T>(value);
+    setter(profiler_options, int_value);
+    VLOG(1) << key << " set to " << int_value;
+  } else {
+    LOG(WARNING) << key << " expects an " << typeid(T).name() << " value.";
+  }
+}
 
 // Sets gRPC deadline to a grace period based on the profiling duration.
 void UpdateMaxSessionDuration(RemoteProfilerSessionManagerOptions& options) {
@@ -71,10 +88,11 @@ void AddServiceAddresses(absl::string_view service_addresses,
 }  // namespace
 // Takes profiler options in absl::flat_hash_map and returns a
 // RemoteProfilerSessionManagerOptions.
-RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
+RemoteProfilerSessionManagerOptions
+GetRemoteSessionManagerOptionsLockedWithBoolOpts(
     absl::string_view logdir,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        opts) {
+    const absl::flat_hash_map<std::string,
+                              std::variant<bool, int, std::string>>& opts) {
   RemoteProfilerSessionManagerOptions options;
   *options.mutable_profiler_options() = tsl::ProfilerSession::DefaultOptions();
   // Store a timestamp of when this session was created. This will be the basis
@@ -93,21 +111,33 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
   for (const auto& kw : opts) {
     absl::string_view key = kw.first;
     if (key == "host_tracer_level") {
-      int value = std::get<int>(kw.second);
-      options.mutable_profiler_options()->set_host_tracer_level(value);
-      VLOG(1) << "host_tracer_level set to " << value;
+      SetOption<int>(
+          key, kw.second,
+          [](tensorflow::ProfileOptions* options, int value) {
+            options->set_host_tracer_level(value);
+          },
+          options.mutable_profiler_options());
     } else if (key == "device_tracer_level") {
-      int value = std::get<int>(kw.second);
-      options.mutable_profiler_options()->set_device_tracer_level(value);
-      VLOG(1) << "device_tracer_level set to " << value;
+      SetOption<int>(
+          key, kw.second,
+          [](tensorflow::ProfileOptions* options, int value) {
+            options->set_device_tracer_level(value);
+          },
+          options.mutable_profiler_options());
     } else if (key == "python_tracer_level") {
-      int value = std::get<int>(kw.second);
-      options.mutable_profiler_options()->set_python_tracer_level(value);
-      VLOG(1) << "python_tracer_level set to " << value;
+      SetOption<int>(
+          key, kw.second,
+          [](tensorflow::ProfileOptions* options, int value) {
+            options->set_python_tracer_level(value);
+          },
+          options.mutable_profiler_options());
     } else if (key == "delay_ms") {
-      int value = std::get<int>(kw.second);
-      options.set_delay_ms(value);
-      VLOG(1) << "delay_ms was set to " << value;
+      SetOption<int>(
+          key, kw.second,
+          [&options](tensorflow::ProfileOptions*, int value) {
+            options.set_delay_ms(value);
+          },
+          nullptr);
     } else {
       LOG(WARNING) << "Unrecognised key: " << key;
     }
@@ -116,14 +146,15 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
   return options;
 }
 
-RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
+RemoteProfilerSessionManagerOptions
+GetRemoteSessionManagerOptionsLockedWithBoolOpts(
     absl::string_view service_addresses, absl::string_view logdir,
     absl::string_view worker_list, bool include_dataset_ops,
     int32_t duration_ms,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        opts,
+    const absl::flat_hash_map<std::string,
+                              std::variant<bool, int, std::string>>& opts,
     bool* is_cloud_tpu_session) {
-  auto options = GetRemoteSessionManagerOptionsLocked(logdir, opts);
+  auto options = GetRemoteSessionManagerOptionsLockedWithBoolOpts(logdir, opts);
 
   // Remote profiling does not support any use cases where the following options
   // are set by `opts`. e.g. `opts['service_addrs']` will not happen.
@@ -157,6 +188,40 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
   VLOG(1) << "duration_ms set to " << duration_ms;
 
   return options;
+}
+
+RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
+    absl::string_view logdir,
+    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
+        opts) {
+  absl::flat_hash_map<std::string, std::variant<bool, int, std::string>>
+      converted_opts;
+  for (const auto& [key, value] : opts) {
+    converted_opts[key] = std::visit(
+        [](auto&& arg) -> std::variant<bool, int, std::string> { return arg; },
+        value);
+  }
+  return GetRemoteSessionManagerOptionsLockedWithBoolOpts(logdir,
+                                                          converted_opts);
+}
+
+RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
+    absl::string_view service_addresses, absl::string_view logdir,
+    absl::string_view worker_list, bool include_dataset_ops,
+    int32_t duration_ms,
+    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
+        options,
+    bool* is_cloud_tpu_session) {
+  absl::flat_hash_map<std::string, std::variant<bool, int, std::string>>
+      converted_options;
+  for (const auto& [key, value] : options) {
+    converted_options[key] = std::visit(
+        [](auto&& arg) -> std::variant<bool, int, std::string> { return arg; },
+        value);
+  }
+  return GetRemoteSessionManagerOptionsLockedWithBoolOpts(
+      service_addresses, logdir, worker_list, include_dataset_ops, duration_ms,
+      converted_options, is_cloud_tpu_session);
 }
 
 absl::Status ValidateRemoteProfilerSessionManagerOptions(

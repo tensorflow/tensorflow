@@ -80,6 +80,26 @@ if [[ "${TFCI_MACOS_UPGRADE_PYENV_ENABLE}" == 1 ]]; then
   echo "Upgraded pyenv version: $(pyenv --version)"
 fi
 
+# Scheduled nightly and release builds upload build artifacts (Pip packages,
+# Libtensorflow archives) to GCS buckets. TFCI Mac VMs need to authenticate as
+# a service account that has the right permissions to be able to do so.
+set +x
+if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
+  # Python 3.12 removed the module `imp` which is needed by gcloud CLI so we set
+  # `CLOUDSDK_PYTHON` to Python 3.11 which is the system Python on TFCI Mac
+  # VMs.
+  pyenv install -s "3.11"
+  if [[ $? -eq 0 ]]; then
+    pyenv local "3.11"
+    export CLOUDSDK_PYTHON=$(pyenv which python3.11)
+  else
+    echo "Python 3.11 not found, falling back to system python"
+    export CLOUDSDK_PYTHON=$(which python3)
+  fi
+  gcloud auth activate-service-account --key-file="${GOOGLE_APPLICATION_CREDENTIALS}"
+fi
+set -x
+
 # "TFCI_MACOS_PYENV_INSTALL_ENABLE" controls whether to use Pyenv to install
 # the Python version set in "TFCI_PYTHON_VERSION" and use it as default.
 # We enable this in the nightly and release builds because before uploading the
@@ -100,19 +120,6 @@ fi
 if [[ "$TFCI_MACOS_TWINE_INSTALL_ENABLE" == 1 ]]; then
   pip install twine==3.6.0
 fi
-
-# Scheduled nightly and release builds upload build artifacts (Pip packages,
-# Libtensorflow archives) to GCS buckets. TFCI Mac VMs need to authenticate as
-# a service account that has the right permissions to be able to do so.
-set +x
-if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
-  # Python 3.12 removed the module `imp` which is needed by gcloud CLI so we set
-  # `CLOUDSDK_PYTHON` to Python 3.11 which is the system Python on TFCI Mac
-  # VMs.
-  export CLOUDSDK_PYTHON=$(which python3.11)
-  gcloud auth activate-service-account --key-file="${GOOGLE_APPLICATION_CREDENTIALS}"
-fi
-set -x
 
 # When cross-compiling with RBE, we need to copy the macOS sysroot to be
 # inside the TensorFlow root directory. We then define them as a filegroup

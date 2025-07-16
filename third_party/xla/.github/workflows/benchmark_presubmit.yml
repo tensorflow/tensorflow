@@ -43,14 +43,14 @@ jobs:
         job_info: [
           {
             pool: "linux-x86-n2-128",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             pretty_name: "XLA Linux x86 CPU 128 vcpu Presubmit",
             bazel_arch_dir: "k8-opt",
             platform: "CPU"
           },
           {
             pool: "linux-x86-g2-16-l4-1gpu",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-cuda12.8-cudnn9.8:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda12.8-cudnn9.8:latest",
             pretty_name: "XLA Linux x86 GPU L4 16 vcpu Presubmit",
             bazel_arch_dir: "k8-opt",
             platform: "GPU"
@@ -86,7 +86,7 @@ jobs:
           fi
 
       - name: Checkout OpenXLA
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Configure GPU backend
         if: ${{ matrix.job_info.platform == 'GPU' }}

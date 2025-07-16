@@ -402,9 +402,11 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
       out_function_object='{}.o'.format(output_prefix),
       out_header='{}.h'.format(output_prefix),
       out_metadata_object='{}_metadata.o'.format(output_prefix),
+      out_constant_buffers_object='{}_constants.o'.format(output_prefix),
       gen_name_to_index=True,
       # ProgramShape isn't uniquefied by entry_point.
-      gen_program_shape=False)
+      gen_program_shape=False,
+  )
 
 
 def _optimize_graph(meta_graph_def, signature_def):

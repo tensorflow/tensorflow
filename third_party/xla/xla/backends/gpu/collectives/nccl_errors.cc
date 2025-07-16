@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "xla/backends/gpu/collectives/nccl_errors.h"
 
+#include <atomic>
+
 #include "absl/log/log.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/util.h"
 
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -32,21 +35,25 @@ limitations under the License.
 
 namespace xla::gpu {
 
-absl::Status PollUntilDone(ncclComm_t comm) {
-  auto poll = [](ncclComm_t comm) -> absl::Status {
+absl::Status PollUntilDone(ncclComm_t comm, const std::atomic_bool& aborted) {
+  auto poll = [](ncclComm_t comm,
+                 const std::atomic_bool& aborted) -> absl::Status {
     ncclResult_t state = ncclInProgress;
-    while (state == ncclInProgress) {
+    while (state == ncclInProgress && !aborted.load()) {
       XLA_NCCL_RETURN_IF_ERROR(ncclCommGetAsyncError(comm, &state));
+    }
+    if (aborted.load()) {
+      return Cancelled("NcclCommunicator aborted");
     }
     return XLA_NCCL_STATUS(state);
   };
 
   if (!VLOG_IS_ON(1)) {
-    return poll(comm);
+    return poll(comm, aborted);
   }
 
   absl::Time start = absl::Now();
-  absl::Status s = poll(comm);
+  absl::Status s = poll(comm, aborted);
   absl::Time stop = absl::Now();
   VLOG(1) << "Polled NCCL communicator " << comm << " for " << (stop - start)
           << ": " << s;

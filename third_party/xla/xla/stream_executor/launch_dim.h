@@ -19,10 +19,11 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/stream_executor/launch_dim.pb.h"
 
 namespace stream_executor {
-namespace internal {
 
 struct Dim3D {
   uint64_t x, y, z;
@@ -32,9 +33,10 @@ struct Dim3D {
   }
 
   bool operator!=(const Dim3D& other) const { return !(*this == other); }
-};
 
-}  // namespace internal
+  Dim3DProto ToProto() const;
+  static absl::StatusOr<Dim3D> FromProto(const Dim3DProto& proto);
+};
 
 // Types to express dimensionality of a kernel launch. Blocks, threads and
 // clusters are (up to) 3-dimensional.
@@ -44,34 +46,52 @@ struct Dim3D {
 
 // Thread dimensionality for use in a kernel launch.
 // details.
-struct ThreadDim : internal::Dim3D {
-  explicit ThreadDim(uint64_t x = 1, uint64_t y = 1, uint64_t z = 1)
-      : internal::Dim3D({x, y, z}) {}
+struct ThreadDim : Dim3D {
+  explicit constexpr ThreadDim(uint64_t x_arg = 1, uint64_t y_arg = 1,
+                               uint64_t z_arg = 1)
+      : Dim3D({x_arg, y_arg, z_arg}) {}
+
+  explicit ThreadDim(const Dim3D& other) : Dim3D(other) {}
 
   std::string ToString() const {
     return absl::StrCat("ThreadDim{", x, ", ", y, ", ", z, "}");
   }
+
+  ThreadDimProto ToProto() const;
+  static absl::StatusOr<ThreadDim> FromProto(const ThreadDimProto& proto);
 };
 
 // Block dimensionality for use in a kernel launch.
 // details.
-struct BlockDim : internal::Dim3D {
-  explicit BlockDim(uint64_t x = 1, uint64_t y = 1, uint64_t z = 1)
-      : internal::Dim3D({x, y, z}) {}
+struct BlockDim : Dim3D {
+  explicit constexpr BlockDim(uint64_t x_arg = 1, uint64_t y_arg = 1,
+                              uint64_t z_arg = 1)
+      : Dim3D({x_arg, y_arg, z_arg}) {}
+
+  explicit BlockDim(const Dim3D& other) : Dim3D(other) {}
 
   std::string ToString() const {
     return absl::StrCat("BlockDim{", x, ", ", y, ", ", z, "}");
   }
+
+  BlockDimProto ToProto() const;
+  static absl::StatusOr<BlockDim> FromProto(const BlockDimProto& proto);
 };
 
 // Cluster dimensionality for use in a kernel launch.
-struct ClusterDim : internal::Dim3D {
-  explicit ClusterDim(uint64_t x = 1, uint64_t y = 1, uint64_t z = 1)
-      : internal::Dim3D({x, y, z}) {}
+struct ClusterDim : Dim3D {
+  explicit ClusterDim(uint64_t x_arg = 1, uint64_t y_arg = 1,
+                      uint64_t z_arg = 1)
+      : Dim3D({x_arg, y_arg, z_arg}) {}
+
+  explicit ClusterDim(const Dim3D& other) : Dim3D(other) {}
 
   std::string ToString() const {
     return absl::StrCat("ClusterDim{", x, ", ", y, ", ", z, "}");
   }
+
+  ClusterDimProto ToProto() const;
+  static absl::StatusOr<ClusterDim> FromProto(const ClusterDimProto& proto);
 };
 
 }  // namespace stream_executor

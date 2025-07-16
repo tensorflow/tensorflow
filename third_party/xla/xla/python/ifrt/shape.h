@@ -28,6 +28,8 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
+#include "xla/python/ifrt/serdes_default_version_accessor.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.pb.h"
 
 namespace xla {
@@ -54,7 +56,8 @@ class Shape {
   static absl::StatusOr<Shape> FromProto(const ShapeProto& proto);
 
   // Returns a `ShapeProto` representation.
-  ShapeProto ToProto() const;
+  ShapeProto ToProto(
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
 
   absl::Span<const int64_t> dims() const { return dims_; }
 
@@ -127,7 +130,8 @@ class BoundedDynamicShapeTag {
       const BoundedDynamicShapeTagProto& proto);
 
   // Returns a `BoundedDynamicShapeTagProto` representation.
-  BoundedDynamicShapeTagProto ToProto() const;
+  BoundedDynamicShapeTagProto ToProto(
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
 
  private:
   // This vector is the same size as `Shape`'s 'dims()' and indicates whether
@@ -178,7 +182,8 @@ class DynamicShape {
   static absl::StatusOr<DynamicShape> FromProto(const DynamicShapeProto& proto);
 
   // Returns a `DynamicShapeProto` representation.
-  DynamicShapeProto ToProto() const;
+  DynamicShapeProto ToProto(
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
 
   std::string DebugString() const;
 

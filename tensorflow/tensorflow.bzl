@@ -72,9 +72,12 @@ load(
     _cc_header_only_library = "cc_header_only_library",
     _custom_op_cc_header_only_library = "custom_op_cc_header_only_library",
     _if_cuda_or_rocm = "if_cuda_or_rocm",
-    _if_cuda_tools = "if_cuda_tools",
     _if_nccl = "if_nccl",
     _transitive_hdrs = "transitive_hdrs",
+)
+load(
+    "@local_xla//xla/tsl:tsl.default.bzl",
+    _if_cuda_tools = "if_cuda_tools",
 )
 load(
     "@local_config_tensorrt//:build_defs.bzl",
@@ -3133,9 +3136,10 @@ def pybind_extension_opensource(
         testonly = None,
         visibility = None,
         win_def_file = None,
-        starlark_only = False):
+        starlark_only = False,
+        wrap_py_init = False):
     """Builds a generic Python extension module."""
-    _ignore = [enable_stub_generation, additional_stubgen_deps, module_name, starlark_only]  # buildifier: disable=unused-variable
+    _ignore = [enable_stub_generation, additional_stubgen_deps, module_name, starlark_only, wrap_py_init]  # buildifier: disable=unused-variable
     p = name.rfind("/")
     if p == -1:
         sname = name

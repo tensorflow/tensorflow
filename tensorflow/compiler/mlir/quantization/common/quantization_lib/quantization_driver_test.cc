@@ -34,9 +34,9 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/common/func.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -44,7 +44,8 @@ limitations under the License.
 namespace mlir::quant {
 namespace {
 
-using ApplyQuantizationParamsPropagationTest = QuantizationTestBase;
+using ApplyQuantizationParamsPropagationTest =
+    mlir::quant::QuantizationTestBase;
 using ::testing::IsEmpty;
 using ::testing::Not;
 
@@ -58,23 +59,45 @@ constexpr absl::string_view kModuleTFLite = R"mlir(
       return %1 : tensor<1x4x4x3xf32>
     }
     func.func private @composite_fn_1(%arg0: tensor<1x4x4x3xf32>, %arg1: tensor<3x1x1x3xf32>, %arg2: tensor<3xf32>) -> tensor<1x4x4x3xf32> attributes {tf_quant.composite_function} {
-      %0 = "tfl.conv_2d"(%arg0, %arg1, %arg2) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "RELU", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x4x4x3xf32>, tensor<3x1x1x3xf32>, tensor<3xf32>) -> tensor<1x4x4x3xf32>
-      return %0 : tensor<1x4x4x3xf32>
+      %perm = "tf.Const"() { value = dense<[1, 2, 3, 0]> : tensor<4xi32> } : () -> tensor<4xi32>
+      %filter_hwio = "tf.Transpose"(%arg1, %perm) : (tensor<3x1x1x3xf32>, tensor<4xi32>) -> tensor<1x1x3x3xf32>
+      %0 = "tf.Conv2D"(%arg0, %filter_hwio) {
+        dilations = [1, 1, 1, 1],
+        strides = [1, 1, 1, 1],
+        padding = "VALID",
+        data_format = "NHWC"
+      } : (tensor<1x4x4x3xf32>, tensor<1x1x3x3xf32>) -> tensor<1x4x4x3xf32>
+      %1 = "tf.BiasAdd"(%0, %arg2) {
+        data_format = "NHWC"
+      } : (tensor<1x4x4x3xf32>, tensor<3xf32>) -> tensor<1x4x4x3xf32>
+      %2 = "tf.Relu"(%1) : (tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
+      return %2 : tensor<1x4x4x3xf32>
     }
     func.func private @composite_fn_2(%arg0: tensor<1x4x4x3xf32>, %arg1: tensor<3x1x1x3xf32>, %arg2: tensor<3xf32>) -> tensor<1x4x4x3xf32> attributes {tf_quant.composite_function} {
-      %0 = "tfl.conv_2d"(%arg0, %arg1, %arg2) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "RELU", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x4x4x3xf32>, tensor<3x1x1x3xf32>, tensor<3xf32>) -> tensor<1x4x4x3xf32>
-      return %0 : tensor<1x4x4x3xf32>
+      %perm = "tf.Const"() { value = dense<[1, 2, 3, 0]> : tensor<4xi32> } : () -> tensor<4xi32>
+      %filter_hwio = "tf.Transpose"(%arg1, %perm) : (tensor<3x1x1x3xf32>, tensor<4xi32>) -> tensor<1x1x3x3xf32>
+      %0 = "tf.Conv2D"(%arg0, %filter_hwio) {
+        dilations = [1, 1, 1, 1],
+        strides = [1, 1, 1, 1],
+        padding = "VALID",
+        data_format = "NHWC"
+      } : (tensor<1x4x4x3xf32>, tensor<1x1x3x3xf32>) -> tensor<1x4x4x3xf32>
+      %1 = "tf.BiasAdd"(%0, %arg2) {
+        data_format = "NHWC"
+      } : (tensor<1x4x4x3xf32>, tensor<3xf32>) -> tensor<1x4x4x3xf32>
+      %2 = "tf.Relu"(%1) : (tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
+      return %2 : tensor<1x4x4x3xf32>
     }
   }
 )mlir";
 
 // TOOD: b/323478683 - Directly use types rather than creating a `unique_ptr`.
-std::unique_ptr<quant::OpQuantSpec> GetOpQuantSpec(
+std::unique_ptr<OpQuantSpec> GetOpQuantSpec(
     const mlir::Operation* op,
     bool disable_per_channel_for_dense_layers = false) {
-  auto spec = std::make_unique<quant::OpQuantSpec>();
+  auto spec = std::make_unique<OpQuantSpec>();
   spec->coeff_op_quant_dim[1] = 3;
-  spec->biases_params[2] = {{0, 1}, quant::GetUniformQuantizedTypeForBias};
+  spec->biases_params[2] = {{0, 1}, GetUniformQuantizedTypeForBias};
   for (const auto& [key, value] : spec->coeff_op_quant_dim) {
     spec->quantizable_operands.insert(key);
   }
@@ -84,10 +107,10 @@ std::unique_ptr<quant::OpQuantSpec> GetOpQuantSpec(
 TEST_F(ApplyQuantizationParamsPropagationTest,
        ConstsUsedMultipleTimesAreDuplicated) {
   const OwningOpRef<ModuleOp> module_op_ref =
-      ParseModuleOpString(kModuleTFLite);
-  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+      mlir::quant::QuantizationTestBase::ParseModuleOpString(kModuleTFLite);
+  func::FuncOp main_fn = mlir::quant::FindMainFuncOp(*module_op_ref);
 
-  auto op_quant_spec_getter = [&](Operation* op) {
+  auto op_quant_spec_getter = [&](mlir::Operation* op) {
     return GetOpQuantSpec(op, /*disable_per_channel_for_dense_layers=*/false);
   };
   QuantizationDriver quantization_driver(
@@ -108,9 +131,9 @@ TEST_F(ApplyQuantizationParamsPropagationTest,
        PropagateParamsCreatesQuantState) {
   const OwningOpRef<ModuleOp> module_op_ref =
       ParseModuleOpString(kModuleTFLite);
-  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  func::FuncOp main_fn = mlir::quant::FindMainFuncOp(*module_op_ref);
 
-  auto op_quant_spec_getter = [&](Operation* op) {
+  auto op_quant_spec_getter = [&](mlir::Operation* op) {
     return GetOpQuantSpec(op, /*disable_per_channel_for_dense_layers=*/false);
   };
   QuantizationDriver quantization_driver(
@@ -126,23 +149,23 @@ TEST_F(ApplyQuantizationParamsPropagationTest,
 
   for (const auto& arg : quantization_driver.GetArgs()) {
     const QuantState& state = quantization_driver.GetArgQuantState(arg);
-    EXPECT_TRUE(isa<quant::QuantizedType>(state.params));
+    EXPECT_TRUE(isa<QuantizedType>(state.params));
   }
   for (const auto& result : quantization_driver.GetResultStates()) {
     Operation* op = result.first.first;
     const int res_index = result.first.second;
     const QuantState state =
         quantization_driver.GetResultQuantState(op, res_index);
-    EXPECT_TRUE(isa<quant::QuantizedType>(state.params));
+    EXPECT_TRUE(isa<QuantizedType>(state.params));
   }
 }
 
 TEST_F(ApplyQuantizationParamsPropagationTest, FinalizeInsertsQDQOps) {
   const OwningOpRef<ModuleOp> module_op_ref =
       ParseModuleOpString(kModuleTFLite);
-  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  func::FuncOp main_fn = mlir::quant::FindMainFuncOp(*module_op_ref);
 
-  auto op_quant_spec_getter = [&](Operation* op) {
+  auto op_quant_spec_getter = [&](mlir::Operation* op) {
     return GetOpQuantSpec(op, /*disable_per_channel_for_dense_layers=*/false);
   };
   ApplyQuantizationParamsPropagation(
@@ -151,13 +174,13 @@ TEST_F(ApplyQuantizationParamsPropagationTest, FinalizeInsertsQDQOps) {
       /*infer_tensor_ranges=*/true, /*legacy_float_scale=*/false,
       /*is_qdq_conversion=*/false);
   Operation* xla_call_module_op =
-      FindOperationOfType<TF::XlaCallModuleOp>(main_fn);
+      mlir::quant::FindOperationOfType<TF::XlaCallModuleOp>(main_fn);
   Operation* filter_dcast_op =
       xla_call_module_op->getOperand(1).getDefiningOp();
   Operation* filter_qcast_op = filter_dcast_op->getOperand(0).getDefiningOp();
   ASSERT_NE(filter_qcast_op, nullptr);
-  EXPECT_TRUE(isa<quantfork::QuantizeCastOp>(filter_qcast_op));
-  EXPECT_TRUE(isa<quantfork::DequantizeCastOp>(filter_dcast_op));
+  EXPECT_TRUE(isa<mlir::quant::ir::QuantizeCastOp>(filter_qcast_op));
+  EXPECT_TRUE(isa<mlir::quant::ir::DequantizeCastOp>(filter_dcast_op));
   EXPECT_TRUE(isa<UniformQuantizedPerAxisType>(
       mlir::cast<TensorType>(filter_qcast_op->getResult(0).getType())
           .getElementType()));

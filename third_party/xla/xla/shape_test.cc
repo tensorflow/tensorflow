@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/shape.h"
 
+#include <cstdint>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/layout.h"
@@ -40,7 +42,8 @@ class ShapeTest : public ::testing::Test {
   const Shape matrix_ = ShapeUtil::MakeShape(U32, {1, 2});
   const Shape matrix2_ =
       ShapeUtil::MakeShapeWithDenseLayout(S32, {3, 4}, {0, 1});
-  const Shape matrix_buffer_ = ShapeUtil::MakeBufferShape(S32, {3, 4});
+  const Shape matrix_buffer_ =
+      ShapeUtil::MakeValidatedBufferShape(S32, {3, 4}).value();
   const Shape tuple_ =
       ShapeUtil::MakeTupleShape({opaque_, scalar_, matrix_, matrix2_});
   const Shape nested_tuple_ =
@@ -51,10 +54,20 @@ class ShapeTest : public ::testing::Test {
       ShapeUtil::MakeShape(F32, {Shape::kUnboundedSize, 784}, {true, false});
 };
 
-// Tests that if the dynamic_dimensions parameter empty in the Shape
+// Tests that if the dynamic_dimensions parameter is empty in the Shape
 // constructor, it's treated as all dimensions are static.
 TEST(Shape, ArrayCtorTreatsEmptyDynamicDimensionsAsAllStatic) {
-  const Shape shape(F32, {1, 2, 3}, {});
+  const Shape shape(F32, {1, 2, 3}, /*dynamic_dimensions=*/{});
+  EXPECT_TRUE(shape.is_static());
+  EXPECT_TRUE(shape.is_static_dimension(0));
+  EXPECT_TRUE(shape.is_static_dimension(1));
+  EXPECT_TRUE(shape.is_static_dimension(2));
+}
+
+// Tests that if the dynamic_dimensions parameter is missing in the Shape
+// constructor, it's treated as all dimensions are static.
+TEST(Shape, ArrayCtorTreatsMissingDynamicDimensionsAsAllStatic) {
+  const Shape shape(F32, {1, 2, 3});
   EXPECT_TRUE(shape.is_static());
   EXPECT_TRUE(shape.is_static_dimension(0));
   EXPECT_TRUE(shape.is_static_dimension(1));
@@ -140,11 +153,15 @@ TEST_F(ShapeTest, EqualityTest) {
             ShapeUtil::MakeShapeWithDenseLayout(F32, {23, 44}, {1, 0}));
 
   // Equal with Buffer shapes.
-  EXPECT_TRUE(
-      Shape::Equal().IgnoreBuffer()(ShapeUtil::MakeBufferShape(S32, {3, 4}),
-                                    ShapeUtil::MakeShape(S32, {3, 4})));
-  EXPECT_FALSE(Shape::Equal()(ShapeUtil::MakeBufferShape(S32, {3, 4}),
-                              ShapeUtil::MakeShape(S32, {3, 4})));
+  EXPECT_TRUE(Shape::Equal().IgnoreBuffer()(
+      ShapeUtil::MakeValidatedBufferShape(S32, {3, 4}).value(),
+      ShapeUtil::MakeShape(S32, {3, 4})));
+  EXPECT_FALSE(
+      Shape::Equal()(ShapeUtil::MakeValidatedBufferShape(S32, {3, 4}).value(),
+                     ShapeUtil::MakeShape(S32, {3, 4})));
+  EXPECT_TRUE(Shape::Equal().IgnoreBuffer().IgnoreLayout()(
+      ShapeUtil::MakeValidatedBufferShape(S32, {3, 4}).value(),
+      ShapeUtil::MakeShapeWithDenseLayout(S32, {3, 4}, {0, 1})));
 }
 
 TEST_F(ShapeTest, AreAllLeavesIntegers) {
@@ -328,19 +345,19 @@ static Shape MakeShapeHelper(int id) {
     }
     case 1: {
       // f32[1,2,2]{2,1,0}
-      shape = Shape(F32, {1, 2, 2}, {false, false, false});
+      shape = Shape(F32, {1, 2, 2});
       *shape.mutable_layout() = Layout({2, 1, 0});
       break;
     }
     case 2: {
       // f32[1,2,2]{2,1,0:T(2,128)}
-      shape = Shape(F32, {1, 2, 2}, {false, false, false});
-      *shape.mutable_layout() = Layout({2, 1, 0}, {}, {Tile({2, 128})});
+      shape = Shape(F32, {1, 2, 2});
+      *shape.mutable_layout() = Layout({2, 1, 0}, {Tile({2, 128})});
       break;
     }
     default: {
       // f32[1,2,2]{2,1,0}
-      shape = Shape(F32, {1024, 1024, 128}, {});
+      shape = Shape(F32, {1024, 1024, 128});
     }
   }
   return shape;

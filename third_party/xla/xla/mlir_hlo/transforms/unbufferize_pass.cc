@@ -56,7 +56,7 @@ void UnbufferizePass::runOnOperation() {
   IRMapping mapping;
   llvm::SmallDenseSet<BlockArgument> insertedArgs;
   funcOp->walk([&](bufferization::ToTensorOp op) {
-    auto arg = mlir::dyn_cast<BlockArgument>(op.getMemref());
+    auto arg = mlir::dyn_cast<BlockArgument>(op.getBuffer());
     if (!arg) return;
     Value newValue = mapping.lookupOrNull(arg);
     if (newValue == nullptr) {

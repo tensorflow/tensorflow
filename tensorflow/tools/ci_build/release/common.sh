@@ -19,6 +19,7 @@
 # LINT.IfChange
 LATEST_BAZEL_VERSION=7.4.1
 # LINT.ThenChange(
+#   //tf_keras/google/kokoro/pip/build_and_upload_pip_package.sh,
 #   //tensorflow/opensource_only/.bazelversion,
 #   //tensorflow/tools/ci_build/install/install_bazel.sh,
 #   //tensorflow/tools/ci_build/install/install_bazel_from_source.sh,

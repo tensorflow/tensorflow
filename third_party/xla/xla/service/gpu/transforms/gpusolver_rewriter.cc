@@ -52,7 +52,7 @@ namespace {
 
 void SetFortranLayout(Shape* shape) {
   LayoutUtil::SetToDefaultLayout(shape);
-  int n = shape->mutable_layout()->minor_to_major_size();
+  int n = shape->mutable_layout()->minor_to_major().size();
   CHECK_GE(n, 2);
   std::swap(shape->mutable_layout()->mutable_minor_to_major()->at(0),
             shape->mutable_layout()->mutable_minor_to_major()->at(1));

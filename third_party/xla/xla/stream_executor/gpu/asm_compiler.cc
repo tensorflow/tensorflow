@@ -25,16 +25,17 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/subprocess.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status.h"
 
 namespace stream_executor {
 
@@ -70,7 +71,7 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   for (const HsacoImage& img : images) {
     std::string img_path;
     if (!env->LocalTempFilename(&img_path)) {
-      return tsl::errors::Internal(
+      return absl::InternalError(
           "Could not get temporary filenames for images.");
     }
     TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
@@ -89,7 +90,7 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   // Prepare temorary result file.
   std::string result_path;
   if (!env->LocalTempFilename(&result_path)) {
-    return tsl::errors::Internal(
+    return absl::InternalError(
         "Could not get temporary filename for fatbin result.");
   }
   absl::Cleanup result_file_cleaner = [&result_path] {
@@ -111,13 +112,13 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
                                    clang_offload_bundler_args);
   clang_offload_bundler.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
   if (!clang_offload_bundler.Start()) {
-    return tsl::errors::Internal("Failed to launch clang_offload_bundler.");
+    return absl::InternalError("Failed to launch clang_offload_bundler.");
   }
   std::string stderr_output;
   int exit_status = clang_offload_bundler.Communicate(
       /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
   if (exit_status != 0) {
-    return tsl::errors::Internal(
+    return absl::InternalError(
         absl::StrFormat("clang_offload_bundler exited with non-zero error "
                         "code %d, output: %s",
                         exit_status, stderr_output));

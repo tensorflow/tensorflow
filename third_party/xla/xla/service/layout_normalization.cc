@@ -288,8 +288,8 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
   // BitcastConvert is only layout-preserving if it doesn't change the rank.
   absl::Status HandleBitcastConvert(HloInstruction* hlo) override {
     // If the rank isn't changing this is just an unary op.
-    if (hlo->shape().dimensions_size() ==
-        hlo->operand(0)->shape().dimensions_size()) {
+    if (hlo->shape().dimensions().size() ==
+        hlo->operand(0)->shape().dimensions().size()) {
       return HandleElementwiseUnary(hlo);
     }
 
@@ -445,7 +445,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     // 'scatter_indices'. So we require that there is just a single
     // 'scatter' dimension. This is ensured by the ScatterSimplifier pass.
     const auto& dims = scatter->scatter_dimension_numbers();
-    if (scatter->scatter_updates().front()->shape().dimensions_size() -
+    if (scatter->scatter_updates().front()->shape().dimensions().size() -
             dims.update_window_dims_size() >
         1) {
       return FailedPrecondition(
@@ -645,13 +645,13 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     auto layout_as_permutation = ToTransposeDimensions(s.layout());
 
     PaddingConfig new_padding;
-    new_padding.mutable_dimensions()->Reserve(s_normalized.dimensions_size());
-    for (int dim = 0; dim < s_normalized.dimensions_size(); dim++) {
+    new_padding.mutable_dimensions()->Reserve(s_normalized.dimensions().size());
+    for (int dim = 0; dim < s_normalized.dimensions().size(); dim++) {
       new_padding.add_dimensions();
     }
 
     auto inverse_perm = InversePermutation(layout_as_permutation);
-    for (int dim = 0; dim < s.dimensions_size(); dim++) {
+    for (int dim = 0; dim < s.dimensions().size(); dim++) {
       int tr_dim = static_cast<int>(inverse_perm[dim]);
       *new_padding.mutable_dimensions(tr_dim) = padded_config.dimensions(dim);
     }

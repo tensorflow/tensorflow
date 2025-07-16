@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
@@ -35,7 +36,7 @@ absl::StatusOr<bool> RunFileCheck(const std::string& input,
   std::string pattern_path;
   auto env = tsl::Env::Default();
   if (!env->LocalTempFilename(&pattern_path)) {
-    return tsl::errors::Internal("couldn't get a pattern file name");
+    return absl::InternalError("couldn't get a pattern file name");
   }
   TF_RETURN_IF_ERROR(tsl::WriteStringToFile(env, pattern_path, pattern));
   VLOG(3) << "input: " << input;
@@ -73,7 +74,7 @@ absl::StatusOr<bool> RunFileCheckWithPatternFile(
   file_check_process.SetChannelAction(tsl::CHAN_STDIN, tsl::ACTION_PIPE);
   file_check_process.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
   if (!file_check_process.Start()) {
-    return tsl::errors::Internal("couldn't start FileCheck");
+    return absl::InternalError("couldn't start FileCheck");
   }
 
   std::string standard_error;

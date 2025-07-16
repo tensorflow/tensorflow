@@ -37,10 +37,12 @@ py_strict_library(
 py_strict_library(
     name = "self_check",
     srcs = ["self_check.py"],
-    deps = if_oss([
-        ":build_info",
-        ":_pywrap_cpu_feature_guard",
-    ]),
+    deps = if_oss(
+        [
+            ":build_info",
+            ":_pywrap_cpu_feature_guard",
+        ],
+    ),
 )
 
 py_strict_library(

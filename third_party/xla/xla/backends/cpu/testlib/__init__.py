@@ -25,15 +25,16 @@ ElementalKernelEmitter = _extension.ElementalKernelEmitter
 HloCompiler = _extension.HloCompiler
 JitCompiler = _extension.JitCompiler
 KernelRunner = _extension.KernelRunner
-LlvmIrKernelEmitter = _extension.LlvmIrKernelEmitter
+LlvmTestKernelEmitter = _extension.LlvmTestKernelEmitter
 MLIRContext = _extension.MLIRContext
-MlirKernelEmitter = _extension.MlirKernelEmitter
+MlirTestKernelEmitter = _extension.MlirTestKernelEmitter
 ScatterKernelEmitter = _extension.ScatterKernelEmitter
 TargetMachineFeatures = _extension.TargetMachineFeatures
 # go/keep-sorted end
 
 # Free functions.
 # go/keep-sorted start
+emit_fusion_kernel = _extension.emit_fusion_kernel
 lower_to_llvm = _extension.lower_to_llvm
 run_fusion_wrapper_pass = _extension.run_fusion_wrapper_pass
 # go/keep-sorted end

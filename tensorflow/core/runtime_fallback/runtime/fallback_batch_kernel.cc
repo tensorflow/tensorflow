@@ -66,7 +66,7 @@ BatchFunctionFallbackKernelBase::GetOrCreateBatchThreadsPool() {
     options.num_threads =
         NumBatchThreadsFromEnvironmentWithDefault(kBatchThreadPoolSize);
 
-    options.thread_name = std::string("adaptive_batch_threads");
+    options.thread_name = "adaptive_batch_threads";
 
     auto status_or_executor = serving::BoundedExecutor::Create(options);
     if (!status_or_executor.ok()) {

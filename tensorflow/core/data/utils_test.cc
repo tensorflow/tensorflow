@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/core/framework/tf_data_file_logger_options.h"
 
 namespace tensorflow::data {
 namespace {
@@ -56,9 +57,12 @@ TEST(LocalityOptimizedPath, TfDataPath) {
 }
 
 TEST(LocalityOptimizedPath, LogFilenames) {
-  EXPECT_NO_FATAL_FAILURE(LogFilenames(
-      std::vector<std::string>({"/path/file1", "file2.txt", "a"})));
-  EXPECT_NO_FATAL_FAILURE(LogFilenames(std::vector<std::string>({})));
+  LogFilenamesOptions options = {.files = {"/path/file1", "file2.txt", "a"},
+                                 .data_service_address = ""};
+  EXPECT_NO_FATAL_FAILURE(LogFilenames(options));
+
+  LogFilenamesOptions options_default_address = {.files = {}};
+  EXPECT_NO_FATAL_FAILURE(LogFilenames(options_default_address));
 }
 
 }  // namespace

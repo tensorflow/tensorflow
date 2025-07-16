@@ -24,6 +24,7 @@
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
 
 namespace xla {
 namespace hlo_diff {
@@ -134,6 +135,51 @@ GroupInstructionPairsByOpcode(
     instructions_by_opcode[pair.first->opcode()].push_back(pair);
   }
   return instructions_by_opcode;
+}
+
+absl::flat_hash_map<const HloInstruction*, const HloInstruction*>
+FilterInstructionsByOpcode(
+    const absl::flat_hash_map<const HloInstruction*, const HloInstruction*>&
+        instructions,
+    const absl::flat_hash_set<HloOpcode>& ignored_opcodes) {
+  absl::flat_hash_map<const HloInstruction*, const HloInstruction*>
+      filtered_instructions;
+  for (const auto& [left, right] : instructions) {
+    if (!ignored_opcodes.contains(left->opcode()) &&
+        !ignored_opcodes.contains(right->opcode())) {
+      filtered_instructions[left] = right;
+    }
+  }
+  return filtered_instructions;
+}
+
+absl::flat_hash_set<const HloInstruction*> FilterInstructionsByOpcode(
+    const absl::flat_hash_set<const HloInstruction*>& instructions,
+    const absl::flat_hash_set<HloOpcode>& ignored_opcodes) {
+  absl::flat_hash_set<const HloInstruction*> filtered_instructions;
+  for (const HloInstruction* inst : instructions) {
+    if (!ignored_opcodes.contains(inst->opcode())) {
+      filtered_instructions.insert(inst);
+    }
+  }
+  return filtered_instructions;
+}
+
+DiffResult FilterDiffResultByOpcode(
+    const DiffResult& diff_result,
+    const absl::flat_hash_set<HloOpcode>& ignored_opcodes) {
+  DiffResult filtered_diff_result;
+  filtered_diff_result.left_module_unmatched_instructions =
+      FilterInstructionsByOpcode(diff_result.left_module_unmatched_instructions,
+                                 ignored_opcodes);
+  filtered_diff_result.right_module_unmatched_instructions =
+      FilterInstructionsByOpcode(
+          diff_result.right_module_unmatched_instructions, ignored_opcodes);
+  filtered_diff_result.changed_instructions = FilterInstructionsByOpcode(
+      diff_result.changed_instructions, ignored_opcodes);
+  filtered_diff_result.unchanged_instructions = FilterInstructionsByOpcode(
+      diff_result.unchanged_instructions, ignored_opcodes);
+  return filtered_diff_result;
 }
 
 }  // namespace hlo_diff

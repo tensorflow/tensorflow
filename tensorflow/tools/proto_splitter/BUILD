@@ -174,6 +174,7 @@ cc_library(
         "@local_tsl//tsl/platform:protobuf",
         "@riegeli//riegeli/base:object",
         "@riegeli//riegeli/bytes:fd_reader",
+        "@riegeli//riegeli/bytes:string_reader",
         "@riegeli//riegeli/records:record_reader",
     ] + if_oss([
         "//tensorflow/tools/proto_splitter:protos_impl",
@@ -184,6 +185,7 @@ cc_library(
     name = "merge",
     hdrs = ["merge.h"],
     visibility = [
+        "//platforms/darwinn/contrib/waymo:__subpackages__",
         "//tensorflow:internal",
         "//tensorflow/cc/experimental/tf2:__subpackages__",
         "//tensorflow/cc/saved_model/image_format:__subpackages__",
@@ -242,6 +244,7 @@ tf_cc_test(
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:env",
     ] + if_oss([
         "//tensorflow/tools/proto_splitter:protos_impl",
     ]),

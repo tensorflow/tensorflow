@@ -1535,8 +1535,24 @@ func.func @op_recv(%arg0: !stablehlo.token) -> (tensor<f32>, !stablehlo.token) {
   // CHECK-SAME:   is_host_transfer = true
   // CHECK-SAME: }> : (!mhlo.token) -> (tensor<f32>, !mhlo.token)
   %0:2 = "stablehlo.recv"(%arg0) {
+    source_target_pairs = dense<[]> : tensor<0xi64>,
     channel_handle = #stablehlo.channel_handle<handle = 0, type = 3>,
     is_host_transfer = true
+  } : (!stablehlo.token) -> (tensor<f32>, !stablehlo.token)
+  func.return %0#0, %0#1 : tensor<f32>, !stablehlo.token
+}
+
+// CHECK-LABEL: "op_recv_d2d"
+func.func @op_recv_d2d(%arg0: !stablehlo.token) -> (tensor<f32>, !stablehlo.token) {
+  //      CHECK: "mhlo.recv"([[ARG0:%arg[0-9]+]]) <{
+  // CHECK-SAME:   channel_handle = #mhlo.channel_handle<handle = 0, type = 1>,
+  // CHECK-SAME:   is_host_transfer = false
+  // CHECK-SAME{LITERAL}:   source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>
+  // CHECK-SAME: }> : (!mhlo.token) -> (tensor<f32>, !mhlo.token)
+  %0:2 = "stablehlo.recv"(%arg0) {
+    channel_handle = #stablehlo.channel_handle<handle = 0, type = 1>,
+    is_host_transfer = false,
+    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>
   } : (!stablehlo.token) -> (tensor<f32>, !stablehlo.token)
   func.return %0#0, %0#1 : tensor<f32>, !stablehlo.token
 }
@@ -1827,8 +1843,26 @@ func.func @op_send(%arg0: tensor<f32>, %arg1: !stablehlo.token) -> !stablehlo.to
   // CHECK-SAME:   is_host_transfer = true
   // CHECK-SAME: }> : (tensor<f32>, !mhlo.token) -> !mhlo.token
   %0 = "stablehlo.send"(%arg0, %arg1) {
+    source_target_pairs = dense<[]> : tensor<0xi64>,
     channel_handle = #stablehlo.channel_handle<handle = 0, type = 2>,
     is_host_transfer = true
+  } : (tensor<f32>, !stablehlo.token) -> !stablehlo.token
+  func.return %0 : !stablehlo.token
+}
+
+// -----
+
+// CHECK-LABEL: "op_send_d2d"
+func.func @op_send_d2d(%arg0: tensor<f32>, %arg1: !stablehlo.token) -> !stablehlo.token {
+  //      CHECK: "mhlo.send"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) <{
+  // CHECK-SAME:   channel_handle = #mhlo.channel_handle<handle = 0, type = 1>,
+  // CHECK-SAME:   is_host_transfer = false
+  // CHECK-SAME{LITERAL}:   source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>
+  // CHECK-SAME: }> : (tensor<f32>, !mhlo.token) -> !mhlo.token
+  %0 = "stablehlo.send"(%arg0, %arg1) {
+    channel_handle = #stablehlo.channel_handle<handle = 0, type = 1>,
+    is_host_transfer = false,
+    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>
   } : (tensor<f32>, !stablehlo.token) -> !stablehlo.token
   func.return %0 : !stablehlo.token
 }

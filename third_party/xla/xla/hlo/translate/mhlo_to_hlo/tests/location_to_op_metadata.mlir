@@ -109,3 +109,32 @@ func.func @main(%arg0: tensor<4xf32> loc("x"), %arg1: tensor<4xf32> loc("y")) ->
 // CHECK-SAME: metadata={op_name="x"}
 // CHECK: parameter(1)
 // CHECK-SAME: metadata={op_name="y"}
+
+// -----
+
+// CHECK-LABEL: %main
+func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
+  %0 = "mhlo.after_all"(%arg0) : (!mhlo.token) -> !mhlo.token loc(#type_loc)
+  func.return %0 : !mhlo.token
+}
+#name_loc = loc("aname")
+#type_loc = loc("atype:"(#name_loc))
+
+// CHECK: after-all
+// CHECK-SAME: metadata={op_type="atype" op_name="aname"}
+
+// -----
+
+// CHECK-LABEL: %main
+module @m {
+  func.func public @main(%arg0: tensor<f64>) -> (tensor<f64>) {
+    %0 = call @foo(%arg0) : (tensor<f64>) -> tensor<f64> loc("x")
+    return %0 : tensor<f64>
+  }
+  func.func private @foo(%arg0: tensor<f64>) -> tensor<f64> {
+    %0 = mhlo.cosine %arg0 : tensor<f64>
+    return %0 : tensor<f64>
+  }
+}
+
+// CHECK: call({{.*}}), to_apply=%foo.{{[0-9.]+}}, metadata={op_name="x"}
