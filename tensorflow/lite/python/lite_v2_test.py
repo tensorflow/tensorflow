@@ -2990,7 +2990,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     saved_model_dir = os.path.join(self.get_temp_dir(), 'dense_saved_model')
     save.save(model, saved_model_dir)
     k_dense_bias_name = (
-        'sequential/dense/BiasAdd'
+        'sequential/dense/BiasAdd/ReadVariableOp'
         if is_int16_quantize
         else 'tfl.pseudo_qconst'
     )
