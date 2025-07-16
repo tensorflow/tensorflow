@@ -79,17 +79,7 @@ HloPassPipeline PreSchedulingCopyInsertionPipeline(
     pipeline.AddPass<CopyInsertion>(alias_info);
   }
 
-  // We are using a sub-pipeline here, so that the verifier only runs after both
-  // HorizontalLoopFusion and HloDCE.
-  auto& sub_pipeline =
-      pipeline.AddPass<HloPassPipeline>("horizontal-loop-fusion-for-copy");
-  // To fuse the copy.
-  sub_pipeline.AddPass<CopyFusion>(device_description);
-  // Make sure to run HorizontalLoopFusion only inside the entry computation.
-  // Fusing copies outside of the entry computation can break buffer assignment!
-  sub_pipeline.AddPass<HorizontalLoopFusion>(device_description, "copy_",
-                                             /*only_entry_computation=*/true);
-  sub_pipeline.AddPass<HloDCE>();
+  pipeline.AddPass<CopyFusion>(device_description);
   pipeline.AddPass<SanitizeConstantNames>();
   return pipeline;
 }

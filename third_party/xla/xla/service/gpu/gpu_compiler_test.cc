@@ -262,34 +262,6 @@ ENTRY main {
 }
 )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0, 0}));
-
-  auto module = ParseAndReturnVerifiedModule(hlo_text).value();
-  std::unique_ptr<HloModule> compiled_module =
-      backend()
-          .compiler()
-          ->RunHloPasses(module->Clone(), backend().default_stream_executor(),
-                         /*device_allocator=*/nullptr)
-          .value();
-  VLOG(2) << compiled_module->ToString();
-
-  // Verify that the total number of fusion instructions is 1.
-  size_t total_fusion_instrs = 0;
-  for (const HloInstruction* instr :
-       compiled_module->entry_computation()->instructions()) {
-    if (instr->opcode() == HloOpcode::kFusion) {
-      ++total_fusion_instrs;
-    }
-  }
-  EXPECT_EQ(total_fusion_instrs, 1);
-
-  const HloInstruction* entry_root =
-      compiled_module->entry_computation()->root_instruction();
-  // Check that we add bitcast when needed.
-  EXPECT_THAT(
-      entry_root,
-      GmockMatch(m::Tuple(
-          m::GetTupleElement(m::Fusion()), m::GetTupleElement(m::Fusion()),
-          m::GetTupleElement(m::Fusion()), m::GetTupleElement(m::Fusion()))));
 }
 
 TEST_F(GpuCompilerTest, CanRunScheduledModules) {
