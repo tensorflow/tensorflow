@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
-#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -167,8 +167,9 @@ Value SqueezeTensorValue(PatternRewriter& rewriter, Value value,
 
 // Rewrites tt.make_tensor_ptr with unit dimensions. Returns the
 // new MakeTensorPtrOp result and the dimensions that were removed.
-Value SqueezeMakeTensorPtr(PatternRewriter& rewriter, MakeTensorPtrOp op,
-                           ArrayRef<uint32_t> squeeze_dims) {
+TypedValue<PointerType> SqueezeMakeTensorPtr(PatternRewriter& rewriter,
+                                             MakeTensorPtrOp op,
+                                             ArrayRef<uint32_t> squeeze_dims) {
   auto tensor_type = cast<RankedTensorType>(op.getType().getPointeeType());
   auto squeeze_type = SqueezeTensorType(tensor_type, squeeze_dims);
   auto ptr_type =
@@ -180,17 +181,27 @@ Value SqueezeMakeTensorPtr(PatternRewriter& rewriter, MakeTensorPtrOp op,
   std::iota(order.rbegin(), order.rend(), 0);
 
   OpBuilder::InsertionGuard guard = SetInsertionPoint(rewriter, op);
-  Value result = rewriter.create<MakeTensorPtrOp>(
+  return rewriter.create<MakeTensorPtrOp>(
       op.getLoc(), ptr_type, op.getBase(),
       SqueezeElements(op.getShape(), squeeze_dims),
       SqueezeElements(op.getStrides(), squeeze_dims),
       SqueezeElements(op.getOffsets(), squeeze_dims), order);
-  return result;
+}
+
+TypedValue<TensorDescType> SqueezeMakeTensorDesc(
+    PatternRewriter& rewriter, MakeTensorDescOp op,
+    ArrayRef<uint32_t> squeeze_dims) {
+  auto type = TensorDescType::get(
+      rewriter.getContext(),
+      SqueezeTensorType(op.getType().getBlockType(), squeeze_dims));
+  return rewriter.create<MakeTensorDescOp>(
+      op.getLoc(), type, op.getBase(),
+      SqueezeElements(op.getShape(), squeeze_dims),
+      SqueezeElements(op.getStrides(), squeeze_dims));
 }
 
 // Folds squeeze_dims into tt.load(tt.make_tensor_ptr).
-// TODO(csigg): Add support for tt.load(tt.make_tensor_descriptor).
-LogicalResult FoldSqueezeDimsOfLoad(LoadOp op, PatternRewriter& rewriter) {
+LogicalResult FoldSqueezeDimsOfLoadPtr(LoadOp op, PatternRewriter& rewriter) {
   std::optional<uint32_t> axis = GetSqueezeDimsUserAxis(op);
   if (!axis) {
     return rewriter.notifyMatchFailure(op, "No squeeze_dims users.");
@@ -202,10 +213,31 @@ LogicalResult FoldSqueezeDimsOfLoad(LoadOp op, PatternRewriter& rewriter) {
   }
 
   Value pointer = SqueezeMakeTensorPtr(rewriter, make_tensor_ptr, *axis);
-
   Value new_load = rewriter.create<LoadOp>(
       op.getLoc(), pointer, SqueezeBoundaryCheck(op.getBoundaryCheck(), *axis),
       op.getPadding(), op.getCache(), op.getEvict(), op.getIsVolatile());
+  ReplaceOpWithExpandDimsOf(rewriter, op, new_load, *axis);
+  return success();
+}
+
+// Folds squeeze_dims into tt.descriptor_load(tt.make_tensor_descriptor).
+LogicalResult FoldSqueezeDimsOfLoadDesc(DescriptorLoadOp op,
+                                        PatternRewriter& rewriter) {
+  std::optional<uint32_t> axis = GetSqueezeDimsUserAxis(op);
+  if (!axis) {
+    return rewriter.notifyMatchFailure(op, "No squeeze_dims users.");
+  }
+  auto make_tensor_desc = op.getDesc().getDefiningOp<MakeTensorDescOp>();
+  if (!make_tensor_desc) {
+    return rewriter.notifyMatchFailure(
+        op, "Expected ptr to be defined by make_tensor_ptr.");
+  }
+
+  auto descriptor = SqueezeMakeTensorDesc(rewriter, make_tensor_desc, *axis);
+  Value new_load = rewriter.create<DescriptorLoadOp>(
+      op.getLoc(), descriptor.getType().getBlockType(), descriptor,
+      SqueezeElements(op.getIndices(), *axis), op.getCacheAttr(),
+      op.getEvictAttr());
   ReplaceOpWithExpandDimsOf(rewriter, op, new_load, *axis);
   return success();
 }
@@ -495,7 +527,8 @@ class TritonXLASqueezeDimsPass
  private:
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    patterns.add(FoldSqueezeDimsOfLoad);
+    patterns.add(FoldSqueezeDimsOfLoadPtr);
+    patterns.add(FoldSqueezeDimsOfLoadDesc);
     if (squeeze_store_) {
       patterns.add(SqueezeStore);
     }

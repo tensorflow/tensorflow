@@ -97,8 +97,8 @@ tt.func @reshape_with_encoding(%arg0: tensor<1x32xf32, #arg_enc>) -> tensor<32xf
 }
 }
 
-// CHECK-LABEL: func @fold_squeeze_dims_of_load
-tt.func @fold_squeeze_dims_of_load(%arg0: !tt.ptr<f32>) -> tensor<4x8xf32> {
+// CHECK-LABEL: func @fold_squeeze_dims_of_load_ptr
+tt.func @fold_squeeze_dims_of_load_ptr(%arg0: !tt.ptr<f32>) -> tensor<4x8xf32> {
   %c0_i32 = arith.constant 0 : i32
   %c1_i64 = arith.constant 1 : i64
   %c4_i64 = arith.constant 4 : i64
@@ -107,6 +107,22 @@ tt.func @fold_squeeze_dims_of_load(%arg0: !tt.ptr<f32>) -> tensor<4x8xf32> {
   %0 = tt.make_tensor_ptr %arg0, [%c4_i64, %c1_i64, %c8_i64], [%c8_i64, %c8_i64, %c1_i64], [%c0_i32, %c0_i32, %c0_i32] {order = array<i32: 2, 1, 0>} : <tensor<4x1x8xf32>>
   // CHECK: tt.load {{.*}} {boundaryCheck = array<i32: 1>, padding = 1 : i32} : !tt.ptr<tensor<4x8xf32>>
   %1 = tt.load %0 {boundaryCheck = array<i32: 2>, padding = 1 : i32} : !tt.ptr<tensor<4x1x8xf32>>
+  // CHECK-NOT: triton_xla.squeeze_dims
+  %2 = triton_xla.squeeze_dims %1 {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
+  tt.return %2 : tensor<4x8xf32>
+}
+
+// CHECK-LABEL: func @fold_squeeze_dims_of_load_desc
+tt.func @fold_squeeze_dims_of_load_desc(%arg0: !tt.ptr<f32>) -> tensor<4x8xf32> {
+  %c0_i32 = arith.constant 0 : i32
+  %c1_i32 = arith.constant 1 : i32
+  %c4_i32 = arith.constant 4 : i32
+  %c8_i32 = arith.constant 8 : i32
+  %c1_i64 = arith.constant 1 : i64
+  %c8_i64 = arith.constant 8 : i64
+  %0 = tt.make_tensor_descriptor %arg0, [%c4_i32, %c1_i32, %c8_i32], [%c8_i64, %c8_i64, %c1_i64] : <f32>, <tensor<4x1x8xf32>>
+  // CHECK: tt.descriptor_load {{.*}} cacheModifier = ca evictionPolicy = evict_last : !tt.tensordesc<tensor<4x8xf32>> -> tensor<4x8xf32>
+  %1 = tt.descriptor_load %0[%c0_i32, %c0_i32, %c0_i32] cacheModifier = ca evictionPolicy = evict_last : !tt.tensordesc<tensor<4x1x8xf32>> -> tensor<4x1x8xf32>
   // CHECK-NOT: triton_xla.squeeze_dims
   %2 = triton_xla.squeeze_dims %1 {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
   tt.return %2 : tensor<4x8xf32>
