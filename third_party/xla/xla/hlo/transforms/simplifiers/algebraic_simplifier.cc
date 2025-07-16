@@ -5133,7 +5133,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleOptimizationBarrier(
         continue;
       }
       if (operand->operand(i)->user_count() > 1 ||
-          operand->operand(i) == computation_->root_instruction()) {
+          operand->operand(i) == computation_->root_instruction() ||
+          operand->operand(i)->HasSideEffect()) {
         used_elements[i] = true;
       }
     }
