@@ -33,6 +33,21 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_longest_prefix",
+    srcs = ["hlo_longest_prefix.cc"],
+    hdrs = ["hlo_longest_prefix.h"],
+    deps = [
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "hlo_live_range",
     srcs = ["hlo_live_range.cc"],
     hdrs = ["hlo_live_range.h"],
@@ -99,6 +114,20 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_longest_prefix_test",
+    srcs = ["hlo_longest_prefix_test.cc"],
+    deps = [
+        ":hlo_longest_prefix",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )
