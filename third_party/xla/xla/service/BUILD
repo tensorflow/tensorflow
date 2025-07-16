@@ -4063,16 +4063,23 @@ xla_cc_test(
 
 cc_library(
     name = "maybe_owning_device_memory",
-    srcs = [
-        "maybe_owning_device_memory.cc",
-    ],
-    hdrs = [
-        "maybe_owning_device_memory.h",
-    ],
+    srcs = ["maybe_owning_device_memory.cc"],
+    hdrs = ["maybe_owning_device_memory.h"],
     deps = [
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/types:variant",
+    ],
+)
+
+xla_cc_test(
+    name = "maybe_owning_device_memory_test",
+    srcs = ["maybe_owning_device_memory_test.cc"],
+    deps = [
+        ":maybe_owning_device_memory",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
     ],
 )
 
