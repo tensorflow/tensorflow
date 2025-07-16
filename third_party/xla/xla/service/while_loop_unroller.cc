@@ -536,46 +536,66 @@ Range ConstructTrivialRange(int64_t value, int64_t bitwidth, bool is_signed) {
 // the DUS instructions in the while loop that edit that position of the while
 // tuple. Fails if anything other than a DUS chain produces the new value at
 // that position. Permits nested while loops full of more DUS instruction
-// chains, but does not return those DUS instructions.
+// chains, but does not return those DUS instructions. Also permits nested
+// fusion computations and does return DUS instructions inside the fusion.
 absl::StatusOr<std::vector<const HloInstruction*>> FindDynamicInstructions(
     const HloInstruction* input, const HloInstruction* while_instr) {
   std::vector<const HloInstruction*> dynamic_instructions;
-  int64_t tuple_index = while_instr->operand(0)->operand_index(input);
+  int64_t tuple_index = while_instr->while_init()->operand_index(input);
   HloInstruction* root_instruction =
       while_instr->while_body()->root_instruction();
   if (root_instruction->opcode() != HloOpcode::kTuple) {
-    return absl::NotFoundError(
-        "Valid DUS chain from input tuple to output tuple not found.");
+    return absl::NotFoundError("Unexpected root instruction opcode.");
   }
   const HloInstruction* instruction = root_instruction->operand(tuple_index);
-  while (instruction->opcode() == HloOpcode::kDynamicUpdateSlice ||
-         instruction->opcode() == HloOpcode::kGetTupleElement) {
-    if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
-      dynamic_instructions.push_back(instruction);
-      instruction = instruction->operand(0);
-    } else {  // instruction->opcode() == HloOpcode::kGetTupleElement
-      if (instruction->operand(0) ==
-          while_instr->while_body()->parameter_instruction(0)) {
-        // The only valid way to end is to GTE from parameter zero.
-        return dynamic_instructions;
-      }
-      if (instruction->operand(0)->opcode() == HloOpcode::kWhile) {
-        // Nested while loops are allowed, but only if they only DUS. We use a
-        // recursive call to check.
-        int64_t nested_tuple_index = instruction->tuple_index();
-        const HloInstruction* nested_while_instr = instruction->operand(0);
-        const HloInstruction* nested_input =
-            nested_while_instr->operand(0)->operand(nested_tuple_index);
-        if (!FindDynamicInstructions(nested_input, nested_while_instr).ok()) {
-          return absl::NotFoundError(
-              "Valid DUS chain from input tuple to output tuple not found.");
+  while (true) {
+    // While loop terminates since in each iteration, we either break out or
+    // move to an earlier instruction.
+    switch (instruction->opcode()) {
+      case HloOpcode::kDynamicUpdateSlice:
+        dynamic_instructions.push_back(instruction);
+        instruction = instruction->operand(0);
+        break;
+      case HloOpcode::kFusion:
+        instruction =
+            instruction->fused_instructions_computation()->root_instruction();
+        break;
+      case HloOpcode::kParameter:
+        if (instruction->parent()->IsFusionComputation()) {
+          int64_t parameter_idx = instruction->parameter_number();
+          instruction = instruction->parent()->FusionInstruction()->operand(
+              parameter_idx);
+          break;
         }
-        // Rewind from GTE -> while -> tuple -> tuple input element.
-        instruction = nested_input;
-      } else {
         return absl::NotFoundError(
-            "Valid DUS chain from input tuple to output tuple not found.");
-      }
+            "DUS chain ends in a parameter instruction outside of a fusion.");
+
+      case HloOpcode::kGetTupleElement:
+        if (instruction->operand(0) ==
+            while_instr->while_body()->parameter_instruction(0)) {
+          // The only valid way to end is to GTE from parameter zero.
+          return dynamic_instructions;
+        }
+        if (instruction->operand(0)->opcode() == HloOpcode::kWhile) {
+          // Nested while loops are allowed.
+          int64_t nested_tuple_index = instruction->tuple_index();
+          const HloInstruction* nested_while_instr = instruction->operand(0);
+          const HloInstruction* nested_input =
+              nested_while_instr->operand(0)->operand(nested_tuple_index);
+          // Rewind from GTE -> while -> tuple -> tuple input element.
+          instruction = nested_input;
+          break;
+        }
+        return absl::NotFoundError(
+            absl::StrCat("No valid DUS chain from input tuple to output "
+                         "tuple found. Found unexpected instruction: ",
+                         instruction->ToString()));
+
+      default:
+        return absl::NotFoundError(
+            absl::StrCat("No valid DUS chain from input tuple to output tuple "
+                         "found. Found unexpected instruction: ",
+                         instruction->ToString()));
     }
   }
   return absl::NotFoundError(
@@ -694,6 +714,72 @@ absl::Status FindIndicesCoveredByDynamicInstructionsInInnerLoop(
   }
   return absl::OkStatus();
 }
+
+// Returns true if the input at `input_idx` in the given computation is write
+// only. The computation can either be while body, while condition, or a fusion
+// computation. For fusion computation, the input_idx is the parameter index of
+// the fusion computation, while for the while computations, the input_idx is
+// the tuple index of the input to the while.
+bool IsInputWriteOnly(int64_t input_idx, const HloComputation* computation) {
+  // Determine the corresponding to the input at input_idx. This differs for
+  // fusion and while computations.
+  const HloInstruction* instr = nullptr;
+  if (computation->IsFusionComputation()) {
+    if (input_idx < computation->num_parameters()) {
+      instr = computation->parameter_instruction(input_idx);
+    }
+  } else {
+    const HloInstruction* input_tuple = computation->parameter_instruction(0);
+    for (const HloInstruction* gte : input_tuple->users()) {
+      if (Match(gte, match::GetTupleElement().WithTupleIndex(input_idx))) {
+        instr = gte;
+        break;
+      }
+    }
+  }
+  if (instr == nullptr) {
+    // Nobody is reading from / writing to the input at all.
+    return true;
+  }
+  // Look through all users of instr and ensure that they are write only.
+  for (const HloInstruction* user : instr->users()) {
+    switch (user->opcode()) {
+      case HloOpcode::kFusion:
+        // For fusion ops, look inside the fusion computation.
+        if (!IsInputWriteOnly(user->operand_index(instr),
+                              user->fused_instructions_computation())) {
+          return false;
+        }
+        break;
+      case HloOpcode::kTuple:
+        // For tuple ops with a single while loop as user, look inside the
+        // while loop.
+        if (user->user_count() > 1) {
+          return false;
+        }
+        if (user->user_count() == 1) {
+          const HloInstruction* tuple_user = user->users()[0];
+          if (tuple_user->opcode() != HloOpcode::kWhile ||
+              !IsInputWriteOnly(input_idx, tuple_user->while_body()) ||
+              !IsInputWriteOnly(input_idx, tuple_user->while_condition())) {
+            return false;
+          }
+        }
+        break;
+      case HloOpcode::kDynamicUpdateSlice:
+        // DUS operations with first operand as input are permitted.
+        if (user->operand(0) != instr) {
+          return false;
+        }
+        break;
+      default:
+        // Any other user is not permitted.
+        return false;
+    }
+  }
+  return true;
+}
+
 };  // namespace
 
 // Recursively checks if the given instruction is effectively static by checking
@@ -861,13 +947,19 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
   return dynamic_index;
 }
 
-// Returns true if the input shape is fully covered by dynamic update slice
-// instructions inside the while loop (potentially via those in nested loops).
+// Returns true only if the input shape is fully covered by dynamic update slice
+// instructions inside the while loop (potentially via those in nested loops)
+// AND no instruction in the while loop reads any part of the input.
 absl::StatusOr<bool> IsInputShapeCoveredByDynamicUpdateSliceInstructions(
     int64_t input_idx, const WhileLoopConfig& config) {
-  TF_RET_CHECK(input_idx < config.while_instr->operand(0)->operand_count());
+  if (!IsInputWriteOnly(input_idx, config.while_instr->while_body()) ||
+      !IsInputWriteOnly(input_idx, config.while_instr->while_condition())) {
+    return false;
+  }
+  TF_RET_CHECK(input_idx < config.while_instr->while_init()->operand_count());
+
   const HloInstruction* input =
-      config.while_instr->operand(0)->operand(input_idx);
+      config.while_instr->while_init()->operand(input_idx);
 
   TF_ASSIGN_OR_RETURN(std::vector<const HloInstruction*> dynamic_instructions,
                       FindDynamicInstructions(input, config.while_instr));
