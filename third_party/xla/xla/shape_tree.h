@@ -60,8 +60,6 @@ class IndexTable {
   const Entry& operator[](ShapeIndexView index) const;
 
  private:
-  void CreateEntry(Entry& entry, const Shape& shape, size_t& next_node_id);
-
   absl::InlinedVector<Entry, 1> entries_;
 };
 
@@ -287,7 +285,7 @@ class ShapeTree {
     typename ShapeTree<U>::Nodes result_nodes;
     result_nodes.reserve(nodes_.size());
     for (const Node& node : nodes_) {
-      result_nodes.push_back({node.first, func(node.second)});
+      result_nodes.emplace_back(node.first, func(node.second));
     }
 
     ShapeTree<U> result(shape_, std::move(result_nodes));
@@ -303,7 +301,7 @@ class ShapeTree {
     result_nodes.reserve(nodes_.size());
     for (const Node& node : nodes_) {
       TF_ASSIGN_OR_RETURN(U result, func(node.second));
-      result_nodes.push_back({node.first, std::move(result)});
+      result_nodes.emplace_back(node.first, std::move(result));
     }
 
     ShapeTree<U> result(shape_, std::move(result_nodes));
@@ -379,9 +377,10 @@ class ShapeTree {
   template <typename... Ts>
   static Nodes CreateNodes(const Shape& shape, Ts&&... args) {
     Nodes nodes;
+    nodes.reserve(ShapeUtil::SubshapeCount(shape));
     ShapeUtil::ForEachSubshape(
         shape, [&](const Shape&, const ShapeIndex& index) {
-          nodes.push_back({index, T(std::forward<Ts>(args)...)});
+          nodes.emplace_back(index, T(std::forward<Ts>(args)...));
         });
     return nodes;
   }

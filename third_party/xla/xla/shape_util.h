@@ -767,7 +767,8 @@ class ShapeUtil {
   template <typename Fn>
   static absl::Status ForEachMutableSubshapeWithStatus(Shape* shape, Fn&& fn) {
     ShapeIndex index;
-    return ForEachMutableSubshapeWithStatusHelper(shape, fn, &index);
+    return ForEachMutableSubshapeWithStatusHelper(shape, std::forward<Fn>(fn),
+                                                  &index);
   }
 
   // Calls the given visitor function for each subshape of the given shape.
@@ -819,7 +820,8 @@ class ShapeUtil {
   static absl::Status ForEachMutableSubshapePostOrderWithStatus(Shape* shape,
                                                                 Fn&& fn) {
     ShapeIndex index;
-    return ForEachMutableSubshapePostOrderWithStatusHelper(shape, fn, &index);
+    return ForEachMutableSubshapePostOrderWithStatusHelper(
+        shape, std::forward<Fn>(fn), &index);
   }
 
   // Returns true if `shape` (which must be an array) with degenerate dimensions
@@ -1170,7 +1172,8 @@ class ShapeUtil {
       Shape* shape, Fn&& fn, ShapeIndex* index) {
     TF_RETURN_IF_ERROR(fn(shape, *index));
     if (shape->IsTuple()) {
-      for (int64_t i = 0; i < ShapeUtil::TupleElementCount(*shape); ++i) {
+      for (int64_t i = 0, e = ShapeUtil::TupleElementCount(*shape); i < e;
+           ++i) {
         index->push_back(i);
         TF_RETURN_IF_ERROR(ForEachMutableSubshapeWithStatusHelper(
             shape->mutable_tuple_shapes(i), fn, index));
@@ -1186,7 +1189,8 @@ class ShapeUtil {
   static absl::Status ForEachMutableSubshapePostOrderWithStatusHelper(
       Shape* shape, Fn&& fn, ShapeIndex* index) {
     if (shape->IsTuple()) {
-      for (int64_t i = 0; i < ShapeUtil::TupleElementCount(*shape); ++i) {
+      for (int64_t i = 0, e = ShapeUtil::TupleElementCount(*shape); i < e;
+           ++i) {
         index->push_back(i);
         TF_RETURN_IF_ERROR(ForEachMutableSubshapePostOrderWithStatusHelper(
             shape->mutable_tuple_shapes(i), fn, index));
