@@ -188,13 +188,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override {
   // Process each node in the partition
   for(int i = 0; i < inputs_.size(); i++) {
     // Safety check for tensor indices
-    printf("[DELEGATE-DEBUG] IN for loop iteration %d eval\n", i);
-    fflush(stdout);
-    TF_LITE_KERNEL_LOG(context, "IN for loop iteration %d eval\n", i);
+    TF_LITE_KERNEL_LOG(context, "DEBUG: IN for loop iteration %d eval\n", i);
     if (inputs_[i].empty() || outputs_[i].empty()) {
       TF_LITE_KERNEL_LOG(context, "Error: Empty tensor indices for node %d\n", i);
       return kTfLiteError;
     }
+    TF_LITE_KERNEL_LOG(context, "DEBUG: Node %d - Input_Tidx=%d, Output_Tidx=%d\n", 
+                       i, inputs_[i][0], outputs_[i][0]);
     
     TF_LITE_KERNEL_LOG(context, "Evaluating node %d with input=%d, output=%d\n", 
                        i, inputs_[i][0], outputs_[i][0]);
