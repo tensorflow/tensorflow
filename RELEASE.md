@@ -1,4 +1,4 @@
-# Release 2.20.0
+# Release 2.21.0
 
 ## TensorFlow
 
@@ -8,9 +8,6 @@
 
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
-
-* The `tensorflow-io-gcs-filesystem` package is now optional, due its uncertain, and limited support.
-  To install it alongside `tensorflow`, run `pip install "tensorflow[gcs-filesystem]"`.
 
 ### Known Caveats
 
@@ -28,42 +25,33 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 
-## Keras
-
-<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
-
-### Breaking Changes
-
-* <DOCUMENT BREAKING CHANGES HERE>
-* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
-
-### Known Caveats
-
-* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
-* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
-* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
-
-### Major Features and Improvements
-
-* `tf.data`
-    * Adds `autotune.min_parallelism` to `tf.data.Options` to enable faster
-      input pipeline warm up.
-* `tf.lite`
-    * tf.lite will be deprecated, in favor of the new repo
-      https://github.com/google-ai-edge/LiteRT.
-    * The duplicated source will also be removed from the TF repo.
-
-### Bug Fixes and Other Changes
-
-* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-* <NOTES SHOULD BE GROUPED PER AREA>
-
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
 
 <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
+# Release 2.20.0
+
+## TensorFlow
+
+### Breaking Changes
+
+* The `tensorflow-io-gcs-filesystem` package is now optional, due its uncertain, and limited support. To install it alongside `tensorflow`, run `pip install "tensorflow[gcs-filesystem]"`.
+
+### Major Features and Improvements
+
+* `tf.data`
+    * Adds `autotune.min_parallelism` to `tf.data.Options` to enable faster input pipeline warm up.
+* `tf.lite`
+    * tf.lite will be deprecated, in favor of the new repo https://github.com/google-ai-edge/LiteRT.
+    * The duplicated source will also be removed from the TF repo.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+1ndig0, 372046933, abhinav, afzpatel, Akhil Goel, Alain Carlucci, Aleksei, Alen Huang, Alex, Amrinfathima-Mcw, Aravindh Balaji, Armand Picard, Aseem Athale, Ashiq Imran, Assoap, Chao, Chase Riley Roberts, Chenhao Jiang, chunhsue, chuntl, Chunyu Jin, Corentin Kerisit, Crefeda Rodrigues, dependabot[bot], Dragan Mladjenovic, Elen Kalda, Felix Thomasmathibalan, gabeweisz, Gauri Deshpande, Georg Stefan Schmid, Guozhong Zhuang, Harsha H S, Harshith_N, Hugo Mano, Ian Tayler Lessa, Jack Wolfard, James Ward, Jane Liu, Jaroslav Sevcik, JD, Jerry-Ge, Jian Li, Jinzhe Zeng, jiunkaiy, Johannes Reifferscheid, johnnkp, junweifu, Kanvi Khanna, Kasper Nielsen, Linzb-Xyz, Luke Hutton, Mahmoud Abuzaina, Mathew Odden, Michael Platings, misterBart, Mitchell Ludwig, Mmakevic-Amd, mraunak, NamanAgarwal0905, Namrata-Ibm, Neuropilot-Captain, nhatle, Nicholas Wilson, Nikhil Shinde, Olli Lupton, Patrick J. Lopresti, Pavel Emeliyanenko, Pearu Peterson, pemeliya, Peng Sun, Philipp Hack, Pratham-Mcw, RahulSudarMCW, RakshithGB, Rakshithgb-Fujitsu, RuslanSemchenko, Ruturaj Vaidya, Sachin Muradi, sandeepgupta12, SaoirseARM, Sergey Kozub, Sevin Fide Varoglu, Shanbin Ke, Shaogang Wang, Shraiysh Vaishay, Siddhartha Menon, spiao, Swatheesh Muralidharan, Tai Ly, Terry Sun, Thibaut Goetghebuer-Planchon, Thomas Dickerson, Tilak, Tj Xu, Trevor Morris, tyb0807, vfdev, Wei Wang, wokron, wondertx, Xuefei Jiang, Yaowei Zhou, Zentrik, Ziyun Cheng, Zoranjovanovic-Ns
 
 # Release 2.19.0
 
