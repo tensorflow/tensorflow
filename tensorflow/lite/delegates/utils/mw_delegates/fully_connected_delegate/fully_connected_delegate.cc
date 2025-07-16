@@ -67,7 +67,7 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
     builtin_code_[i] = delegate_node_registration->builtin_code;
     
     // Add debug logging
-    TF_LITE_KERNEL_LOG(context, "Node %d: input=%d, weights=%d, bias=%d, output=%d\n",
+    TF_LITE_KERNEL_LOG(context, "Node %d Input_Tidx=%d; Weights_Tidx=%d; Bias_Tidx=%d; output_Tidx=%d\n",
                        i, inputs_[i][0], weights_[i][0], biases_[i][0], outputs_[i][0]);
   }
   // Initialize FPGA drivers once for all nodes
@@ -92,7 +92,7 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override {
   
   TF_LITE_KERNEL_LOG(context, "======== IN FullyConnectedDelegateKernel::Prepare =========\n");
-  TF_LITE_KERNEL_LOG(context, "Preparing %d nodes in partition\n", inputs_.size());
+  TF_LITE_KERNEL_LOG(context, "Preparing %d nodes in partition\n\n", inputs_.size());
   
   for(int i = 0; i < inputs_.size(); i++){
     // Safety check for tensor indices
@@ -100,8 +100,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override {
       TF_LITE_KERNEL_LOG(context, "Error: Empty tensor indices for node %d\n", i);
       return kTfLiteError;
     }
-    
-    TF_LITE_KERNEL_LOG(context, "Processing node %d with input=%d, weights=%d, output=%d\n", 
+
+    TF_LITE_KERNEL_LOG(context, "Processing node %d with Input_Tidx=%d, Weights_Tidx=%d, Output_Tidx=%d\n",
                        i, inputs_[i][0], weights_[i][0], outputs_[i][0]);
 
     // Get tensors for this node using standard TensorFlow Lite API
@@ -162,10 +162,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override {
     TF_LITE_KERNEL_LOG(context, "Node %d - Successfully prepared output tensor for allocation\n", i);
 
     // Log tensor shapes for debugging
-    TF_LITE_KERNEL_LOG(context, "Node %d - Input: [%d, %d], Weights: [%d, %d], Output: [%d, %d]\n\n",
-                       i, input_tensor->dims->data[0], input_tensor->dims->data[1],
-                       weights_tensor->dims->data[0], weights_tensor->dims->data[1],
-                       output_tensor->dims->data[0], output_tensor->dims->data[1]);
+    if (node_has_bias && bias_tensor){
+      TF_LITE_KERNEL_LOG(context, "Node %d - Input_Shape: [%d, %d], Weights_Shape: [%d, %d], Bias_Shape: [%d], Output_Shape: [%d, %d]\n\n",
+                         i, input_tensor->dims->data[0], input_tensor->dims->data[1],
+                         weights_tensor->dims->data[0], weights_tensor->dims->data[1],
+                         bias_tensor->dims->data[0],
+                         output_tensor->dims->data[0], output_tensor->dims->data[1]);
+    } else {
+      TF_LITE_KERNEL_LOG(context, "Node %d - Input_Shape: [%d, %d], Weights_Shape: [%d, %d], Output_Shape: [%d, %d]\n\n",
+                         i, input_tensor->dims->data[0], input_tensor->dims->data[1],
+                         weights_tensor->dims->data[0], weights_tensor->dims->data[1],
+                         output_tensor->dims->data[0], output_tensor->dims->data[1]);
+    }
   }
 
   TF_LITE_KERNEL_LOG(context, "======== FullyConnectedDelegateKernel::Prepare completed successfully =========\n\n\n");
