@@ -486,10 +486,10 @@ class FullyConnectedDelegate : public SimpleDelegateInterface {
     TF_LITE_KERNEL_LOG(context, "======== IN FullyConnectedDelegate: IsNodeSupportedByDelegate =========\n");
     printf("[DELEGATE-DEBUG] ======= In FullyConnectedDelegate: IsNodeSupportedByDelegate ========\n");
     TF_LITE_KERNEL_LOG(context, "FullyConnectedDelegate: Checking node support\n");
-    TF_LITE_KERNEL_LOG(context, "Node builtin_code: %d (kTfLiteBuiltinFullyConnected = %d)\n", 
-                       registration->builtin_code, kTfLiteBuiltinFullyConnected);
-    printf("[DELEGATE-DEBUG] IsNodeSupportedByDelegate: Node %d - builtin_code: %d\n",
-                registration->builtin_code, kTfLiteBuiltinFullyConnected);
+    TF_LITE_KERNEL_LOG(context, "Node's builtin_code: %d\n", 
+                       registration->builtin_code);
+    printf("[DELEGATE-DEBUG] IsNodeSupportedByDelegate: Node's builtin_code: %d\n",
+                registration->builtin_code);
 
     // This delegate supports only FULLY_CONNECTED operations.
     if (registration->builtin_code != kTfLiteBuiltinFullyConnected) {
