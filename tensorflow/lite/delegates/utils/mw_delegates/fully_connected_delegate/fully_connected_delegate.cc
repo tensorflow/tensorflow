@@ -184,9 +184,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override {
   TF_LITE_KERNEL_LOG(context, "======== IN FullyConnectedDelegateKernel::Eval =========\n");
   TF_LITE_KERNEL_LOG(context, "Evaluating %d nodes in partition\n", inputs_.size());
 
+
   // Process each node in the partition
   for(int i = 0; i < inputs_.size(); i++) {
     // Safety check for tensor indices
+    printf("[DELEGATE-DEBUG] IN for loop iteration %d eval\n", i);
+    fflush(stdout);
+    TF_LITE_KERNEL_LOG(context, "IN for loop iteration %d eval\n", i);
     if (inputs_[i].empty() || outputs_[i].empty()) {
       TF_LITE_KERNEL_LOG(context, "Error: Empty tensor indices for node %d\n", i);
       return kTfLiteError;
