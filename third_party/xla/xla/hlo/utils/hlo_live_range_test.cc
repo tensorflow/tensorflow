@@ -24,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -49,7 +50,8 @@ class HloLiveRangeTest : public HloHardwareIndependentTestBase {
   ~HloLiveRangeTest() override {}
 
   void Analyze(const HloSchedule& schedule) {
-    alias_analysis_ = HloAliasAnalysis::Run(module_.get()).value();
+    alias_analysis_ =
+        HloAliasAnalysis::Run(module_.get(), &alias_info_).value();
     hlo_live_range_ = HloLiveRange::Run(schedule, *alias_analysis_,
                                         module_->entry_computation())
                           .value();
@@ -91,6 +93,7 @@ class HloLiveRangeTest : public HloHardwareIndependentTestBase {
           << "] = " << inst_and_time.first->name() << ")";
     }
   }
+  AliasInfo alias_info_;
 };
 
 TEST_F(HloLiveRangeTest, Multiply) {
@@ -390,7 +393,7 @@ ENTRY %While {
   const int32_t num_runs = 20;
   std::vector<std::unique_ptr<HloLiveRange>> hlo_live_ranges;
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
-      HloAliasAnalysis::Run(module_.get()).value();
+      HloAliasAnalysis::Run(module_.get(), &alias_info_).value();
 
   for (int i = 0; i < num_runs; ++i) {
     hlo_live_ranges.push_back(HloLiveRange::Run(schedule, *alias_analysis,
@@ -456,7 +459,7 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
   CheckSchedule();
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> aa,
-                          HloAliasAnalysis::Run(module_.get()));
+                          HloAliasAnalysis::Run(module_.get(), &alias_info_));
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> hlo_live_range,
                           HloLiveRange::Run(module_->schedule(), *aa,
@@ -502,7 +505,7 @@ TEST_F(HloLiveRangeTest, Call) {
   TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> aa,
-                          HloAliasAnalysis::Run(module_.get()));
+                          HloAliasAnalysis::Run(module_.get(), &alias_info_));
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> hlo_live_range,
                           HloLiveRange::Run(module_->schedule(), *aa,

@@ -122,7 +122,7 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
   TF_ASSERT_OK(schedule.Verify());
 
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
-      HloAliasAnalysis::Run(module.get()).value();
+      HloAliasAnalysis::Run(module.get(), &alias_info_).value();
   EXPECT_EQ(25, HeapSimulator::MinimumMemoryForModule(schedule, *alias_analysis,
                                                       &alias_info_, size_fn)
                     .value());
@@ -235,7 +235,7 @@ TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
   };
 
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
-      HloAliasAnalysis::Run(module.get()).value();
+      HloAliasAnalysis::Run(module.get(), &alias_info_).value();
 
   // HeapSimulator accounts for subcomputations. The output buffer is aliased,
   // so we don't double count.
@@ -335,7 +335,8 @@ class HeapSimulatorTracker {
   // simulation over the entire module.
   void RunWholeModule(
       const std::vector<HloInstruction*>& full_module_sequence) {
-    alias_analysis_ = HloAliasAnalysis::Run(module_.get()).value();
+    alias_analysis_ =
+        HloAliasAnalysis::Run(module_.get(), &alias_info_).value();
 
     // Construct the module sequence grouped by computation.
     HloSchedule schedule(module_.get());
