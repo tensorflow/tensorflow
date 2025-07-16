@@ -351,9 +351,7 @@ class Shape {
   // Precondition: this is a tuple shape and `index` is a valid tuple component
   // index.
   const Shape& tuple_shapes(int index) const;
-  Shape* mutable_tuple_shapes(int index) {
-    return &tuple_state().tuple_shapes[index];
-  }
+  Shape* mutable_tuple_shapes(int index);
 
   // Appends a new invalid shape to the tuple and returns a pointer to it.
   // Precondition: this is a tuple shape.
@@ -643,27 +641,21 @@ class Shape {
   }
   BufferState* if_buffer_state() { return std::get_if<BufferState>(&state_); }
 
-  const InvalidState& invalid_state() const {
-    const auto* const state = if_invalid_state();
-    CHECK(state) << "Expected an invalid shape. Got " << ToString();
-    return *state;
-  }
-  const TokenState& token_state() const {
-    const auto* const state = if_token_state();
-    CHECK(state) << "Expected a token shape. Got " << ToString();
-    return *state;
-  }
-  const OpaqueState& opaque_state() const {
-    const auto* const state = if_opaque_state();
-    CHECK(state) << "Expected an opaque shape. Got " << ToString();
-    return *state;
-  }
+  const InvalidState& invalid_state() const;
+  const TokenState& token_state() const;
+  const OpaqueState& opaque_state() const;
+
+  // Returns the array state of the array state of the buffer shape, assuming
+  // that the shape is an array or a buffer shape.
   const ArrayState& array_state_maybe_underneath_buffer() const;
   ArrayState& array_state_maybe_underneath_buffer();
+
   const ArrayState& array_state() const;
   ArrayState& array_state();
+
   const TupleState& tuple_state() const;
   TupleState& tuple_state();
+
   const BufferState& buffer_state() const;
   BufferState& buffer_state();
 
@@ -759,6 +751,120 @@ class ProgramShape {
 
 std::ostream& operator<<(std::ostream& out, const Shape& shape);
 std::ostream& operator<<(std::ostream& out, const ProgramShape& program_shape);
+
+// We prefer to keep small functions that are on a hot path of various ShapeUtil
+// traversal functions in the header file, to avoid the overhead of function
+// call indirection. We do it only for small functions, to avoid the code bloat.
+
+inline const Shape::InvalidState& Shape::invalid_state() const {
+  const auto* const state = if_invalid_state();
+  CHECK(state) << "Expected an invalid shape. Got " << ToString();
+  return *state;
+}
+
+inline const Shape::TokenState& Shape::token_state() const {
+  const auto* const state = if_token_state();
+  CHECK(state) << "Expected a token shape. Got " << ToString();
+  return *state;
+}
+
+inline const Shape::OpaqueState& Shape::opaque_state() const {
+  const auto* const state = if_opaque_state();
+  CHECK(state) << "Expected an opaque shape. Got " << ToString();
+  return *state;
+}
+
+inline const Shape::ArrayState& Shape::array_state() const {
+  const auto* const state = if_array_state();
+  CHECK(state) << "Expected an array shape. Got " << ToString()
+               << "\nThis is a programmer error. Please read "
+                  "the Shape object's array properties (e.g. dimensions) "
+                  "only when it's an array shape.";
+  return *state;
+}
+
+inline Shape::ArrayState& Shape::array_state() {
+  auto* const state = if_array_state();
+  CHECK(state) << "Expected an array shape. Got " << ToString()
+               << "\nThis is a programmer error. Please mutate "
+                  "the Shape object's array properties (e.g. dimensions) "
+                  "only when it's an array shape.";
+  return *state;
+}
+
+inline const Shape::TupleState& Shape::tuple_state() const {
+  const auto* const state = if_tuple_state();
+  CHECK(state) << "Expected a tuple shape. Got " << ToString()
+               << "\nThis is a programmer error. Please read "
+                  "the Shape object's tuple properties (e.g. tuple_shapes) "
+                  "only when it's a tuple shape.";
+  return *state;
+}
+
+inline Shape::TupleState& Shape::tuple_state() {
+  auto* const state = if_tuple_state();
+  CHECK(state) << "Expected a tuple shape. Got " << ToString()
+               << "\nThis is a programmer error. Please mutate "
+                  "the Shape object's tuple properties (e.g. tuple_shapes) "
+                  "only when it's a tuple shape.";
+  return *state;
+}
+
+inline const Shape::BufferState& Shape::buffer_state() const {
+  const auto* const state = if_buffer_state();
+  CHECK(state) << "Expected a buffer shape. Got " << ToString()
+               << "\nThis is a programmer error. Please read "
+                  "the Shape object's buffer properties (e.g. buffer_shape) "
+                  "only when it's a buffer shape.";
+  return *state;
+}
+
+inline Shape::BufferState& Shape::buffer_state() {
+  auto* const state = if_buffer_state();
+  CHECK(state) << "Expected a buffer shape. Got " << ToString()
+               << "\nThis is a programmer error. Please mutate "
+                  "the Shape object's buffer properties (e.g. buffer_shape) "
+                  "only when it's a buffer shape.";
+  return *state;
+}
+
+inline const Shape::ArrayState& Shape::array_state_maybe_underneath_buffer()
+    const {
+  if (auto* const state = if_array_state()) {
+    return *state;
+  }
+  auto* const state = if_buffer_state();
+  CHECK_NE(state, nullptr);
+  return *state->buffer_shape->if_array_state();
+}
+
+inline Shape::ArrayState& Shape::array_state_maybe_underneath_buffer() {
+  if (auto* state = if_array_state()) {
+    return *state;
+  }
+  BufferState* state = if_buffer_state();
+  CHECK_NE(state, nullptr);
+  return *state->buffer_shape->if_array_state();
+}
+
+inline ABSL_ATTRIBUTE_ALWAYS_INLINE const Shape& Shape::tuple_shapes(
+    int index) const {
+  return tuple_state().tuple_shapes[index];
+}
+
+inline ABSL_ATTRIBUTE_ALWAYS_INLINE Shape* Shape::mutable_tuple_shapes(
+    int index) {
+  return &tuple_state().tuple_shapes[index];
+}
+
+inline ABSL_ATTRIBUTE_ALWAYS_INLINE const std::vector<Shape>&
+Shape::tuple_shapes() const {
+  return tuple_state().tuple_shapes;
+}
+
+inline ABSL_ATTRIBUTE_ALWAYS_INLINE const Shape& Shape::buffer_shape() const {
+  return *buffer_state().buffer_shape;
+}
 
 }  // namespace xla
 

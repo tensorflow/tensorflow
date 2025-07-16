@@ -1648,7 +1648,11 @@ void BM_ShapeCount(::testing::benchmark::State& state) {
   }
 }
 
-BENCHMARK(BM_ShapeCount)->ArgPair(2, 8)->ArgPair(4, 8)->ArgPair(1, 1000);
+BENCHMARK(BM_ShapeCount)
+    ->ArgPair(0, 0)
+    ->ArgPair(2, 8)
+    ->ArgPair(4, 8)
+    ->ArgPair(1, 1000);
 
 void BM_MakeShape(::testing::benchmark::State& state) {
   for (auto s : state) {
