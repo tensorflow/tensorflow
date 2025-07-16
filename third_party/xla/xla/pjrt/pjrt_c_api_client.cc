@@ -76,6 +76,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -345,6 +346,51 @@ absl::StatusOr<PjRtDevice*> PjRtCApiClient::LookupAddressableDevice(
   RETURN_STATUS_IF_PJRT_ERROR(
       c_api_->PJRT_Client_LookupAddressableDevice(&args), c_api_);
   return GetCppDevice(args.addressable_device);
+}
+
+void PjRtCApiClient::UpdateGlobalProcessInfo(
+    absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) {
+  auto translate_state = [](tensorflow::CoordinatedTaskState state) {
+    switch (state) {
+      case tensorflow::CoordinatedTaskState::TASKSTATE_UNSPECIFIED:
+        return PJRT_ProcessState_kUnspecified;
+      case tensorflow::CoordinatedTaskState::TASKSTATE_UNINITIALIZED:
+        return PJRT_ProcessState_kUninitialized;
+      case tensorflow::CoordinatedTaskState::TASKSTATE_DISCONNECTED:
+        return PJRT_ProcessState_kDisconnected;
+      case tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED:
+        return PJRT_ProcessState_kConnected;
+      case tensorflow::CoordinatedTaskState::TASKSTATE_ERROR:
+        return PJRT_ProcessState_kError;
+      default:
+        LOG(FATAL) << "Unexpected CoordinatedTaskState " << state;
+        return PJRT_ProcessState_kUnspecified;
+    }
+  };
+
+  std::vector<PJRT_ProcessInfo> process_infos;
+  for (const tensorflow::CoordinatedTaskStateInfo& info : infos) {
+    PJRT_ProcessInfo process_info;
+    process_info.task_id = info.task().task_id();
+    process_info.incarnation_id = info.incarnation();
+    process_info.state = translate_state(info.state());
+    process_info.error_code = info.error_code();
+    process_info.error_message = info.error_message().data();
+    process_info.error_message_size = info.error_message().size();
+    process_infos.push_back(std::move(process_info));
+  }
+
+  PJRT_Client_UpdateGlobalProcessInfo_Args args;
+  args.struct_size = PJRT_Client_UpdateGlobalProcessInfo_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.client = c_client_.get();
+  args.process_infos = process_infos.data();
+  args.num_process_infos = process_infos.size();
+  absl::Status status = pjrt::PjrtErrorToStatus(
+      c_api_->PJRT_Client_UpdateGlobalProcessInfo(&args), c_api_);
+  if (!status.ok()) {
+    LOG(FATAL) << "PJRT_Client_UpdateGlobalProcessInfo failed: " << status;
+  }
 }
 
 absl::Span<PjRtMemorySpace* const> PjRtCApiClient::memory_spaces() const {

@@ -490,6 +490,44 @@ PJRT_Error* PJRT_Client_LookupAddressableDevice(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Client_UpdateGlobalProcessInfo(
+    PJRT_Client_UpdateGlobalProcessInfo_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Client_UpdateGlobalProcessInfo_Args",
+      PJRT_Client_UpdateGlobalProcessInfo_Args_STRUCT_SIZE, args->struct_size));
+
+  auto translate_state = [](PJRT_ProcessState state) {
+    switch (state) {
+      case PJRT_ProcessState_kUnspecified:
+        return tensorflow::CoordinatedTaskState::TASKSTATE_UNSPECIFIED;
+      case PJRT_ProcessState_kUninitialized:
+        return tensorflow::CoordinatedTaskState::TASKSTATE_UNINITIALIZED;
+      case PJRT_ProcessState_kDisconnected:
+        return tensorflow::CoordinatedTaskState::TASKSTATE_DISCONNECTED;
+      case PJRT_ProcessState_kConnected:
+        return tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED;
+      case PJRT_ProcessState_kError:
+        return tensorflow::CoordinatedTaskState::TASKSTATE_ERROR;
+    }
+    LOG(FATAL) << "Unexpected PJRT_ProcessState " << state;
+  };
+
+  std::vector<tensorflow::CoordinatedTaskStateInfo> infos;
+  for (int i = 0; i < args->num_process_infos; ++i) {
+    PJRT_ProcessInfo* p = &args->process_infos[i];
+    tensorflow::CoordinatedTaskStateInfo info;
+    info.mutable_task()->set_task_id(p->task_id);
+    info.set_incarnation(p->incarnation_id);
+    info.set_state(translate_state(p->state));
+    info.set_error_code(p->error_code);
+    info.set_error_message(
+        absl::string_view(p->error_message, p->error_message_size));
+    infos.push_back(std::move(info));
+  }
+  args->client->client->UpdateGlobalProcessInfo(absl::MakeSpan(infos));
+  return nullptr;
+}
+
 // TODO: b/306669267 - this method is deprecated. Return unimplemented error,
 // until the next major version upgrade.
 PJRT_Error* PJRT_LoadedExecutable_Fingerprint(
@@ -2877,6 +2915,8 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
 
       /*PJRT_Client_CreateUninitializedBuffer=*/
       pjrt::PJRT_Client_CreateUninitializedBuffer,
+      /*PJRT_Client_UpdateGlobalProcessInfo=*/
+      pjrt::PJRT_Client_UpdateGlobalProcessInfo,
   };
 }
 
