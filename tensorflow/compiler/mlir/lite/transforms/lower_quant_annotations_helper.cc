@@ -65,16 +65,16 @@ LogicalResult FillCompositeParams(stablehlo::CompositeOp op,
     }
   }
 
-  auto dtype_attr = llvm::dyn_cast_or_null<StringAttr>(
+  auto dtype_attr = llvm::dyn_cast_or_null<TypeAttr>(
       op.getCompositeAttributes().get("dtype"));
   if (dtype_attr == nullptr) {
     return failure();
   }
-  std::string dtype = dtype_attr.getValue().str();
-  if (dtype == "i8") {
+  auto dtype = dtype_attr.getValue();
+  if (dtype.isInteger(8)) {
     num_bits = 8;
     is_signed = true;
-  } else if (dtype == "i4") {
+  } else if (dtype.isInteger(4)) {
     num_bits = 4;
     is_signed = true;
   } else {
