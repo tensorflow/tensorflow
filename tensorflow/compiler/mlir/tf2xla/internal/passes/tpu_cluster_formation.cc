@@ -538,10 +538,11 @@ Operation* BuildPartitionedOutputs(
     mlir::TF::TPUPartitionedOutputV2Op first_op = *(ops.begin());
     mlir::ArrayAttr dims = first_op.getPartitionDimsAttr();
     StringAttr sharding = first_op.get_XlaShardingAttr();
+    StringAttr sharding_v2 = first_op.get_XlaShardingV2Attr();
     Operation::result_type_range output_types = first_op.getResultTypes();
     result_op = builder.create<mlir::TF::TPUPartitionedOutputV2Op>(
         replicate_op.getLoc(), output_types, cluster.getResult(result_id), dims,
-        sharding);
+        sharding, sharding_v2);
 
     results.insert(results.end(), result_op->getResults().begin(),
                    result_op->getResults().end());
