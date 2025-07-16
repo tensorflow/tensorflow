@@ -80,44 +80,15 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
     return kTfLiteError;
   }
   
-  TF_LITE_KERNEL_LOG(context, "======== FullyConnectedDelegateKernel::Init completed successfully =========\n");
+  TF_LITE_KERNEL_LOG(context, "======== FullyConnectedDelegateKernel::Init completed successfully =========\n\n\n");
   return kTfLiteOk;
 }
 
-//   // Currently assuming one node per delegate. So only one FullyConnected node
-//   // is replaced by the delegate. 
-//   //TODO: Support multiple nodes in the future. By looping over params->nodes_to_replace->data
-//   const int node_index = params->nodes_to_replace->data[0];
-
-//   TfLiteNode* node = nullptr;
-//   TfLiteRegistration* registration = nullptr;
-//   TF_LITE_ENSURE_EQ(context,
-//                     context->GetNodeAndRegistration(context, node_index, &node, &registration),
-//                     kTfLiteOk);
-
-//   input_index_ = node->inputs->data[0];
-//   weights_index_ = node->inputs->data[1];
-//   has_bias_ = node->inputs->size > 2;
-//   if (has_bias_) bias_index_ = node->inputs->data[2];
-//   output_index_ = node->outputs->data[0];
-
-//   activation_type_ =
-//       reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data)->activation;
-
-//   try {
-//     bool clear_bram = false;
-//       fpga_bram_driver_->initialize_bram(clear_bram);
-//   } catch (const std::exception& e) {
-//       TF_LITE_KERNEL_LOG(context, "BRAM initialization failed: %s\n", e.what());
-//       return kTfLiteError;
-//   }
-//   TF_LITE_KERNEL_LOG(context, "======== FullyConnectedDelegateKernel::Init completed successfully =========\n");
-//   return kTfLiteOk;
-// }
-
-  // Prepare is called before the delegate is invoked.
-  // It is called once per node(one instance of the delegate, i.e one FullyConnected operation).
-  // Used to validate input and output memory, Allocate BRAMS and Pre-load weights and biases as they are static for the given node.
+  // Prepare is called before Eval, and is used to prepare the delegate for
+  // execution. It is called once per node in the partition.
+  // It should not be used for any heavy computation or resource allocation.
+  // It should only be used to prepare the delegate for execution.
+  // It is called after Init and before Eval.
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override {
   
   TF_LITE_KERNEL_LOG(context, "======== IN FullyConnectedDelegateKernel::Prepare =========\n");
@@ -143,6 +114,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override {
     const TfLiteTensor* bias_tensor = nullptr;
     if (node_has_bias) {
       bias_tensor = &context->tensors[biases_[i][0]];
+      TF_LITE_KERNEL_LOG(context, "Node %d has bias tensor at index %d\n", i, biases_[i][0]);
     }
 
     // Write weights to BRAM (FLOAT32 only)
@@ -157,13 +129,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override {
       return kTfLiteError;
     }
 
-    // Write bias if available for this node
+    // Write bias to BRAM(FLOAT32) if available for this node
     if (node_has_bias && bias_tensor) {
-      if (bias_tensor->allocation_type == kTfLiteDynamic) {
-        TF_LITE_KERNEL_LOG(context, "Prepare failed: dynamic bias tensor for node %d.\n", i);
-        return kTfLiteError;
-      }
-
       // Handle bias tensors (FLOAT32 only)
       if (bias_tensor->type == kTfLiteFloat32) {
         if (fpga_bram_driver_->write_bias_to_bram(bias_tensor->data.f, NumElements(bias_tensor->dims))) {
@@ -195,13 +162,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override {
     TF_LITE_KERNEL_LOG(context, "Node %d - Successfully prepared output tensor for allocation\n", i);
 
     // Log tensor shapes for debugging
-    TF_LITE_KERNEL_LOG(context, "Node %d - Input: [%d, %d], Weights: [%d, %d], Output: [%d, %d]\n",
+    TF_LITE_KERNEL_LOG(context, "Node %d - Input: [%d, %d], Weights: [%d, %d], Output: [%d, %d]\n\n",
                        i, input_tensor->dims->data[0], input_tensor->dims->data[1],
                        weights_tensor->dims->data[0], weights_tensor->dims->data[1],
                        output_tensor->dims->data[0], output_tensor->dims->data[1]);
   }
 
-  TF_LITE_KERNEL_LOG(context, "======== FullyConnectedDelegateKernel::Prepare completed successfully =========\n");
+  TF_LITE_KERNEL_LOG(context, "======== FullyConnectedDelegateKernel::Prepare completed successfully =========\n\n\n");
   return kTfLiteOk;
 }
 
@@ -272,7 +239,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override {
       }
       
       TF_LITE_KERNEL_LOG(context, "Node %d - Input tensor data address: %p\n", i, input_tensor.data.f);
+
       
+      printf("[DELEGATE-DEBUG] Node %d: input_tensor.data.f address: %p, input_features: %d\n", 
+             i, input_tensor.data.f, input_features);
       if (fpga_bram_driver_->write_input_to_bram(input_tensor.data.f, input_features)) {
         TF_LITE_KERNEL_LOG(context, "Eval failed: failed to write FLOAT32 input to BRAM for node %d.\n", i);
         return kTfLiteError;
@@ -313,7 +283,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override {
       TF_LITE_KERNEL_LOG(context, "Node %d - Output tensor data address: %p\n", i, output_tensor.data.f);
       
       // DEBUG: Print what we're passing to BRAM for output
-      printf("[DELEGATE-DEBUG] Node %d - Calling read_output_from_bram with output_features: %d\n", i, output_features);
+      printf("[DELEGATE-DEBUG] Node %d: output_tensor.data.f address: %p, output_features: %d\n", 
+             i, output_tensor.data.f, output_features);
       fflush(stdout);
       
       if (fpga_bram_driver_->read_output_from_bram(output_tensor.data.f, output_features)) {
