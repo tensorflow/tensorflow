@@ -826,6 +826,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
 
   client->kv_store_ = std::move(options.kv_store);
   client->cross_host_transfer_timeout_ = options.cross_host_transfer_timeout;
+  client->transfer_server_factory_ = std::move(options.transfer_server_factory);
 
   if (client->pjrt_client()->plugin_attributes().has_value()) {
     auto attrs = client->pjrt_client()->plugin_attributes()->attributes;
@@ -1225,9 +1226,9 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::CopyArrays(
     }
   }
 
-  std::vector<ArrayRef> new_arrays;
-  new_arrays.reserve(arrays.size());
   if (all_host_local_transfers) {
+    std::vector<ArrayRef> new_arrays;
+    new_arrays.reserve(arrays.size());
     for (const ArrayRef& array : arrays) {
       if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get())) {
         TF_ASSIGN_OR_RETURN(new_arrays.emplace_back(),
@@ -1244,11 +1245,18 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::CopyArrays(
     }
     return new_arrays;
   }
-  if (!pjrt_supports_cross_host_transfers_) {
-    return absl::UnimplementedError(
-        "Cross-host transfers are not supported by this backend.");
+  if (pjrt_supports_cross_host_transfers_) {
+    return CopyArraysForCrossHost(arrays, src_devices, dst_devices,
+                                  memory_kind);
   }
-  return CopyArraysForCrossHost(arrays, src_devices, dst_devices, memory_kind);
+  if (transfer_server_factory_ != nullptr) {
+    return CopyArraysForCrossHostFallback(arrays, src_devices, dst_devices,
+                                          memory_kind);
+  }
+  return absl::UnimplementedError(
+      "Cross-host transfers are not supported by this backend. Set the "
+      "`--jax_cross_host_transfer_socket_address` flag to enable DCN transfers "
+      "on Linux for any backend.");
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
@@ -1256,11 +1264,6 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
                                    DeviceListRef src_devices,
                                    DeviceListRef dst_devices,
                                    std::optional<MemoryKind> memory_kind) {
-  if (kv_store_ == nullptr) {
-    return absl::FailedPreconditionError(
-        "KV store must be present for cross-host device transfers in "
-        "PjRtClient::CopyArraysForCrossHost.");
-  }
   std::vector<ArrayRef> new_arrays;
   new_arrays.reserve(arrays.size());
   std::vector<PjRtBuffers> recv_buffers;
@@ -1351,6 +1354,30 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
                           std::move(new_layout)));
   }
   return new_arrays;
+}
+
+absl::Status PjRtClient::InitializeTransferServer() {
+  if (!transfer_server_.has_value()) {
+    if (transfer_server_factory_ == nullptr) {
+      return absl::FailedPreconditionError("Transfer server factory is null.");
+    }
+    TF_ASSIGN_OR_RETURN(transfer_server_,
+                        transfer_server_factory_(pjrt_client_));
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
+PjRtClient::CopyArraysForCrossHostFallback(
+    absl::Span<ArrayRef> arrays, DeviceListRef src_devices,
+    DeviceListRef dst_devices, std::optional<MemoryKind> memory_kind) {
+  {
+    absl::MutexLock lock(&(transfer_server_mu_));
+    TF_RETURN_IF_ERROR(InitializeTransferServer());
+  }
+  return (*transfer_server_)
+      ->CopyArraysForCrossHost(this, arrays, src_devices, dst_devices,
+                               memory_kind);
 }
 
 int64_t PjRtClient::CreateNewTransferKey() { return next_transfer_key_++; }
