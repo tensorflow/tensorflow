@@ -216,7 +216,7 @@ module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {x
     %6 = stablehlo.get_tuple_element %4[0] : (tuple<tensor<1xui32>, tensor<1xui32>>) -> tensor<1xui32>
     %7 = stablehlo.get_tuple_element %4[1] : (tuple<tensor<1xui32>, tensor<1xui32>>) -> tensor<1xui32>
     %8 = call @local_xla.sdy.manual_computation_body(%6, %7, %5) : (tensor<1xui32>, tensor<1xui32>, tensor<1xi32>) -> tensor<1xi32>
-    %9 = stablehlo.custom_call @local_xla.sdy.LocalToGlobalShape(%8) {mhlo.frontend_attributes = {xla.sdy.manual_axes = "#sdy<manual_axes{\"a\"}>", xla.sdy.out_shardings = "#sdy.sharding_per_value<[<@mesh, [{\"a\"}]>]>"}} : (tensor<1xi32>) -> tensor<8xi32>
+    %9 = stablehlo.custom_call @local_xla.sdy.LocalToGlobalShape(%8) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.manual_axes = "#sdy<manual_axes{\"a\"}>", xla.sdy.out_shardings = "#sdy.sharding_per_value<[<@mesh, [{\"a\"}]>]>"}} : (tensor<1xi32>) -> tensor<8xi32>
     return %9 : tensor<8xi32>
   }
 
