@@ -607,7 +607,7 @@ class FullyConnectedDelegate : public SimpleDelegateInterface {
     }
     
     TF_LITE_KERNEL_LOG(context, "Node accepted: fully connected operation meets all requirements.\n");
-    TF_LITE_KERNEL_LOG(context, "======== FullyConnectedDelegate: Node support check complete ===========\n");
+    TF_LITE_KERNEL_LOG(context, "======== FullyConnectedDelegate: Node support check complete ===========\n\n\n");
     return true;
 }
 
