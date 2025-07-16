@@ -258,6 +258,41 @@ HloInstruction* ReduceWindowRewriter::GenerateNewReduceWindowWithTiledInputs(
       reduce_window->to_apply()));
 }
 
+// slices [x, y/base, base] -> [x, y/base, 1] slice {x, y/base}
+// reshape [x, y/base, 1] -> [x, y/base]
+void ReduceWindowRewriter::SliceOutLastColumn(
+    HloComputation* hlo_computation, const Shape& subshape,
+    HloInstruction* outer_shape, int64_t rank, int64_t last_dim,
+    bool forward_scan, int64_t num_columns, std::vector<Shape>& column_shapes,
+    std::vector<HloInstruction*>& last_cols) {
+  // creating slices [x, y/base, base] -> [x, y/base, 1]
+  Shape column_shape = subshape;
+  column_shape.set_dimensions(rank, 1);
+  UpdateLayout(&column_shape);
+
+  std::vector<int64_t> col_slice_starts(rank + 1, 0);
+  std::vector<int64_t> col_slice_limits(SpanToVector(subshape.dimensions()));
+  if (forward_scan) {
+    col_slice_starts[rank] = base_length_ - 1;
+  } else {
+    col_slice_limits[rank] = 1;
+  }
+  auto last_col = hlo_computation->AddInstruction(HloInstruction::CreateSlice(
+      column_shape, outer_shape, col_slice_starts, col_slice_limits,
+      std::vector<int64_t>(rank + 1, 1)));
+
+  // we delete the last dimension, it is a simplification because it is 1
+  // anyway. reshape [x, y/base, 1] -> [x, y/base]
+  column_shape.DeleteDimension(rank);
+  last_col = hlo_computation->AddInstruction(
+      HloInstruction::CreateReshape(column_shape, last_col));
+  last_cols.push_back(last_col);
+
+  column_shape.set_dimensions(last_dim, num_columns + 1);
+  UpdateLayout(&column_shape);
+  column_shapes.push_back(column_shape);
+}
+
 absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
     HloReduceWindowInstruction* reduce_window) {
   const Shape& operand_shape = reduce_window->inputs().front()->shape();
@@ -331,11 +366,11 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
   // shapes have k-1 "batch" dimensions that need to be preserved.)
   //
   // 1) If necessary, pad input from {N} to {K}, where K is a multiple of 128.
-  // 2) Reshape from {K} to {K / 128, 128}.
-  // 3) Scan each 128 dimension.
+  // 2) Reshape from {K} to {K / base, base}.
+  // 3) Scan each base dimension.
   // 4) Slice out the last column.
   // 5) Exclusive scan across the last column.
-  // 6) Broadcast it back into {K / 128, 128}
+  // 6) Broadcast it back into {K / base, base}
   // 7) Add up the results of (3) and (6).
   // 8) Reshape back into {K}
   // 9) Slice off the padding.
@@ -351,7 +386,7 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
       PreparePaddingForRewrite(reduce_window, sources, scan_length, last_dim);
 
   // 2) Reshape to R(k+1).
-  // [x, y] -> [x, y/128, 128]
+  // [x, y] -> [x, y/base, base]
   // In the example above
   // [0 1 2 3 4 5 6 7 8] -> [0 1 2
   //                         3 4 5
@@ -361,9 +396,9 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
   const int64_t num_columns = ExpandToNewMajorDimension(
       parent, sources, tiled_sources, tiled_shapes, padded_length, last_dim);
 
-  // 3) Outer scan - Scan each 128 dimension.
-  // reduce_window ( [x, y/128, 128] window [1, 1, 128] )
-  // scan for each window of {1, 128}
+  // 3) Outer scan - Scan each "base" dimension.
+  // reduce_window ( [x, y/base, base] window [1, 1, base] )
+  // scan for each window of {1, base}
   // [0 1 2     [0  1  3
   //  3 4 5  ->  3  7 12
   //  6 7 8]     6 13 21]
@@ -384,30 +419,13 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
                                     shape_index)) {
           return;
         }
-        Shape column_shape = subshape;
-        column_shape.set_dimensions(rank, 1);
 
-        UpdateLayout(&column_shape);
-        std::vector<int64_t> col_slice_starts(rank + 1, 0);
-        std::vector<int64_t> col_slice_limits(
-            SpanToVector(subshape.dimensions()));
-        if (forward_scan) {
-          col_slice_starts[rank] = base_length_ - 1;
-        } else {
-          col_slice_limits[rank] = 1;
-        }
-        auto last_col = parent->AddInstruction(HloInstruction::CreateSlice(
-            column_shape, GetAtIndex(outer_reduce_window, shape_index),
-            col_slice_starts, col_slice_limits,
-            std::vector<int64_t>(rank + 1, 1)));
-        column_shape.DeleteDimension(rank);
-        last_col = parent->AddInstruction(
-            HloInstruction::CreateReshape(column_shape, last_col));
-        last_cols.push_back(last_col);
-
-        column_shape.set_dimensions(last_dim, num_columns + 1);
-        UpdateLayout(&column_shape);
-        column_shapes.push_back(column_shape);
+        // slices [x, y/base, base] -> [x, y/base, 1] slice {x, y/base}
+        // reshape [x, y/base, 1] -> [x, y/base]
+        SliceOutLastColumn(
+            parent, subshape,
+            /*outer_shape=*/GetAtIndex(outer_reduce_window, shape_index), rank,
+            last_dim, forward_scan, num_columns, column_shapes, last_cols);
       });
 
   // 5) Inner scan - Exclusive scan for the last column.
