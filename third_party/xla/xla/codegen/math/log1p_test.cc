@@ -37,6 +37,7 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "xla/codegen/math/simple_jit_runner.h"
 #include "xla/codegen/math/test_matchers.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::codegen::math {
 namespace {

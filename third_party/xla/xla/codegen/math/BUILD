@@ -48,6 +48,7 @@ xla_cc_test(
     srcs = ["intrinsic_test.cc"],
     deps = [
         ":intrinsic",
+        "//xla:xla_data_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:status_matchers",
         "@com_google_googletest//:gtest_main",
@@ -82,6 +83,7 @@ xla_cc_test(
     deps = [
         ":fptrunc",
         ":intrinsic",
+        "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -92,6 +94,7 @@ cc_library(
     hdrs = ["ldexp.h"],
     deps = [
         ":intrinsic",
+        "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Core",  # buildcleaner: keep
@@ -108,6 +111,7 @@ xla_cc_test(
         ":ldexp",
         ":simple_jit_runner",
         ":test_matchers",
+        "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:JITLink",
         "@llvm-project//llvm:Support",
@@ -236,6 +240,7 @@ cc_library(
         ":intrinsic",
         ":ldexp",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Analysis",
@@ -275,6 +280,7 @@ xla_cc_test(
         ":log1p",
         ":simple_jit_runner",
         ":test_matchers",
+        "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:JITLink",
         "@llvm-project//llvm:ir_headers",
@@ -290,6 +296,7 @@ xla_cc_test(
         ":ldexp",
         ":simple_jit_runner",
         ":test_matchers",
+        "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:JITLink",
         "@llvm-project//llvm:Support",
@@ -353,6 +360,7 @@ xla_cc_test(
         ":simple_jit_runner",
         ":test_matchers",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:JITLink",

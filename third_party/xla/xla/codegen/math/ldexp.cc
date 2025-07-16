@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/TypeSize.h"
 #include "xla/codegen/math/intrinsic.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::codegen {
 

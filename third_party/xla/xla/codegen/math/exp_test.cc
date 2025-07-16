@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/codegen/math/ldexp.h"
 #include "xla/codegen/math/simple_jit_runner.h"
 #include "xla/codegen/math/test_matchers.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::codegen {
 namespace {
