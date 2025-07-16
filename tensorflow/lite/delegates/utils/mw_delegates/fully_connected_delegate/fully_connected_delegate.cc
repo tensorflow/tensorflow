@@ -638,11 +638,9 @@ class FullyConnectedDelegate : public SimpleDelegateInterface {
   //   return options;
   // }
   SimpleDelegateInterface::Options DelegateOptions() const override {
-  SimpleDelegateInterface::Options options;
-  options.max_delegated_partitions = 1;  // ✅ Only allow 1 delegated partition
-  options.min_nodes_per_partition = 2;   // ✅ Only delegate if 2+ supported nodes are together
-  return options;
-}
+  // Use default options.
+    return SimpleDelegateInterface::Options();
+  }
 
  private:
   const FullyConnectedDelegateOptions options_;
