@@ -487,7 +487,7 @@ class FullyConnectedDelegate : public SimpleDelegateInterface {
     TF_LITE_KERNEL_LOG(context, "Node builtin_code: %d (kTfLiteBuiltinFullyConnected = %d)\n", 
                        registration->builtin_code, kTfLiteBuiltinFullyConnected);
     printf("[DELEGATE-DEBUG] IsNodeSupportedByDelegate: Node %d - builtin_code: %d\n",
-           node->id, registration->builtin_code);
+                registration->builtin_code, kTfLiteBuiltinFullyConnected);
 
     // This delegate supports only FULLY_CONNECTED operations.
     if (registration->builtin_code != kTfLiteBuiltinFullyConnected) {
