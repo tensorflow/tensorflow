@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/cpu/abstract_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_async_execution_tracker.h"
 #include "xla/pjrt/cpu/cpu_device.h"
@@ -79,7 +80,6 @@ limitations under the License.
 #include "xla/pjrt/layout_mode.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_client_utils.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -93,15 +93,12 @@ limitations under the License.
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
-#include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
-#include "xla/service/custom_call_status.h"
-#include "xla/service/custom_call_status_internal.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
@@ -1421,9 +1418,10 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
         }
       }
       tracked_buffer = cpu_buffer->AcquireUsage(execute_event);
-      if (!tracked_buffer)
+      if (!tracked_buffer) {
         return InvalidArgument(
             "Invalid buffer passed: buffer has been deleted or donated.");
+      }
       tracked_buffers.emplace_back(/*can_donate=*/false, tracked_buffer);
       return absl::OkStatus();
     };
@@ -1612,16 +1610,18 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
 
       thunks_execute_event = cpu_executable->thunks().Execute(execute_params);
 
+      // Confirm donations before blocking until completion to avoid blocking
+      // of the enqueue of other operations behind the execution.
+      for (auto& donation_transaction : donation_transactions) {
+        std::move(donation_transaction).ConfirmDonation();
+      }
+
       tsl::profiler::TraceMe trace(
           "ThunkExecutor::Execute (wait for completion)");
       tsl::BlockUntilReady(thunks_execute_event);
 
     } else {
       return Internal("CpuExecutable has no thunks.");
-    }
-
-    for (auto& donation_transaction : donation_transactions) {
-      std::move(donation_transaction).ConfirmDonation();
     }
 
     if (thunks_execute_event.IsError()) {
@@ -1737,6 +1737,13 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
               auto thunks_execute_event =
                   cpu_executable->thunks().Execute(execute_params);
 
+              // Confirm donations before blocking until completion to avoid
+              // blocking of the enqueue of other operations behind the
+              // execution.
+              for (auto& donation_transaction : donation_transactions) {
+                std::move(donation_transaction).ConfirmDonation();
+              }
+
               tsl::profiler::TraceMe trace(
                   "ThunkExecutor::Execute (wait for completion)");
               tsl::BlockUntilReady(thunks_execute_event);
@@ -1749,10 +1756,6 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
 
           } else {
             status = Internal("CpuExecutable has no thunks.");
-          }
-
-          for (auto& donation_transaction : donation_transactions) {
-            std::move(donation_transaction).ConfirmDonation();
           }
 
           if (!status.ok()) {
