@@ -81,6 +81,26 @@ class ManualComputationPattern : public OpConversionPattern<CallOp> {
       return mlir::failure();
     }
 
+    auto shmapBodyFunc = symbolTable.lookup<FuncOp>(callOp.getCallee());
+    if (shmapBodyFunc.empty()) {
+      return callOp->emitOpError(
+          "expected a unique FuncOp per "
+          "@local_xla.sdy.manual_computation_body call. Were "
+          "functions maybe somehow shared/de-duped between "
+          "two ManualComputations?");
+    }
+
+    // If the callOp has no uses, but has at least one result, then it means
+    // all its results have a dimension of size 0 (i.e. 0 num-elements), and
+    // therefore they were replaced with constants of the same shape. In which
+    // case, we can safely erase the callOp and the manual computation body
+    // function.
+    if (callOp.use_empty() && !callOp->getResults().empty()) {
+      rewriter.eraseOp(callOp);
+      rewriter.eraseOp(shmapBodyFunc);
+      return mlir::success();
+    }
+
     // NOTE: if the original `ManualComputationOp` had no operands (results),
     // then a @GlobalToLocalShape (@LocalToGlobalShape) custom call won't be
     // present. So we have to take the operands/results of the newly created
@@ -114,10 +134,8 @@ class ManualComputationPattern : public OpConversionPattern<CallOp> {
       // dimension of size 0, in which case, the corresponding result of
       // `@local_xla.sdy.manual_computation_body` call would be replaced with a
       // constant. Therefore, we check the first use rather than first result.
-      if (!callOp->use_empty()) {
-        localToGlobalShape =
-            mlir::dyn_cast<CustomCallOp>(*callOp->user_begin());
-      }
+      CHECK(!callOp->use_empty());
+      localToGlobalShape = mlir::dyn_cast<CustomCallOp>(*callOp->user_begin());
       if (!localToGlobalShape) {
         return callOp->emitOpError("expected the first use of ")
                << callOp.getCalleeAttr() << " to be by a "
@@ -126,15 +144,6 @@ class ManualComputationPattern : public OpConversionPattern<CallOp> {
       CHECK(localToGlobalShape.getCallTargetName() ==
             kLocalToGlobalShapeCallTargetName);
       resultTypes = localToGlobalShape->getResultTypes();
-    }
-
-    auto shmapBodyFunc = symbolTable.lookup<FuncOp>(callOp.getCallee());
-    if (shmapBodyFunc.empty()) {
-      return callOp->emitOpError(
-          "expected a unique FuncOp per "
-          "@local_xla.sdy.manual_computation_body call. Were "
-          "functions maybe somehow shared/de-duped between "
-          "two ManualComputations?");
     }
 
     MLIRContext* context = rewriter.getContext();

@@ -181,8 +181,8 @@ func.func @manual_computation_no_inputs_no_outputs() {
   return
 }
 
-// CHECK-LABEL: func @manual_computation_zero_dim_inputs_outputs
-func.func @manual_computation_zero_dim_inputs_outputs(%arg0: tensor<0x16xf32>, %arg1: tensor<16x32xf32>) -> (tensor<0x32xf32>, tensor<16x32xf32>) {
+// CHECK-LABEL: func @manual_computation_some_zero_dim_inputs_outputs
+func.func @manual_computation_some_zero_dim_inputs_outputs(%arg0: tensor<0x16xf32>, %arg1: tensor<16x32xf32>) -> (tensor<0x32xf32>, tensor<16x32xf32>) {
   // CHECK-NOT: call @local_xla.sdy.manual_computation_body
   // CHECK:               %[[CONST_0_32:.*]] = stablehlo.constant dense<0.000000e+00> : tensor<0x32xf32>
   // CHECK:               %[[MAN_COMP:.*]]:2 = sdy.manual_computation(%arg0, %arg1)
@@ -200,6 +200,18 @@ func.func @manual_computation_zero_dim_inputs_outputs(%arg0: tensor<0x16xf32>, %
   %1:2 = call @local_xla.sdy.manual_computation_body_9(%c1, %0#1) : (tensor<0x8xf32>, tensor<8x32xf32>) -> (tensor<0x32xf32>, tensor<8x32xf32>)
   %2:2 = stablehlo.custom_call @local_xla.sdy.LocalToGlobalShape(%c2, %1#1) {mhlo.frontend_attributes = {xla.sdy.manual_axes = "#sdy<manual_axes{\22b\22}>", xla.sdy.out_shardings = "#sdy.sharding_per_value<[<@mesh_0, [{}, {}], replicated={\22b\22}>, <@mesh_0, [{\22b\22}, {}]>]>"}} : (tensor<0x32xf32>, tensor<8x32xf32>) -> (tensor<0x32xf32>, tensor<16x32xf32>)
   return %c2, %2#1 : tensor<0x32xf32>, tensor<16x32xf32>
+}
+
+// CHECK-LABEL: func @manual_computation_all_outputs_zero_dim
+func.func @manual_computation_all_outputs_zero_dim(%arg0: tensor<0x16xf32>, %arg1: tensor<16x0xf32>) -> tensor<0x0xf32> {
+  // CHECK:       %[[CONST_0_0:.*]] = stablehlo.constant dense<0.000000e+00> : tensor<0x0xf32>
+  // CHECK-NOT: call @local_xla.sdy.manual_computation_body
+  // CHECK-NEXT:  return %[[CONST_0_0]]
+  %c1 = stablehlo.constant dense<0.000000e+00> : tensor<0x8xf32>
+  %c2 = stablehlo.constant dense<0.000000e+00> : tensor<8x0xf32>
+  %c3 = stablehlo.constant dense<0.000000e+00> : tensor<0x0xf32>
+  %0:2 = call @local_xla.sdy.manual_computation_body_10(%c1, %c2) : (tensor<0x8xf32>, tensor<8x0xf32>) -> (tensor<0x0xf32>, tensor<8x0xf32>)
+  return %c3 : tensor<0x0xf32>
 }
 
 // CHECK-LABEL: func @stray_unused_manual_computation_custom_calls
@@ -279,4 +291,10 @@ func.func @local_xla.sdy.manual_computation_body_8() {
 func.func @local_xla.sdy.manual_computation_body_9(%arg0: tensor<0x8xf32>, %arg1: tensor<8x32xf32>) -> (tensor<0x32xf32>, tensor<8x32xf32>) {
   %0 = stablehlo.dot %arg0, %arg1 : (tensor<0x8xf32>, tensor<8x32xf32>) -> tensor<0x32xf32>
   return %0, %arg1 : tensor<0x32xf32>, tensor<8x32xf32>
+}
+
+// CHECK-NOT: func @local_xla.sdy.manual_computation_body_10(
+func.func @local_xla.sdy.manual_computation_body_10(%arg0: tensor<0x8xf32>, %arg1: tensor<8x0xf32>) -> (tensor<0x0xf32>, tensor<8x0xf32>) {
+  %0 = stablehlo.dot %arg0, %arg1 : (tensor<0x8xf32>, tensor<8x0xf32>) -> tensor<0x0xf32>
+  return %0, %arg1 : tensor<0x0xf32>, tensor<8x0xf32>
 }
