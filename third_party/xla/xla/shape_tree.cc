@@ -18,7 +18,9 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
+#include "absl/base/optimization.h"
 #include "absl/log/check.h"
+#include "absl/types/span.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
@@ -26,27 +28,59 @@ limitations under the License.
 namespace xla {
 namespace internal {
 
-IndexTable::IndexTable(const Shape& shape) : entries_(1) {
-  size_t next_node_id = 0;
-  CreateEntry(entries_[0], shape, next_node_id);
+// Computes the total size of all nested tuples in the given shape.
+//
+// If `is_known_tuple` is true, then the shape is known to be a tuple, and we
+// can skip the run time check for `IsTuple()`.
+template <bool is_known_tuple = false>
+static size_t IndexTableTuplesSize(const Shape& shape) {
+  if (!is_known_tuple && ABSL_PREDICT_TRUE(!shape.IsTuple())) {
+    return 0;
+  }
+
+  size_t size = shape.tuple_shapes().size();
+  for (const Shape& subshape : shape.tuple_shapes()) {
+    if (ABSL_PREDICT_FALSE(subshape.IsTuple())) {
+      size += IndexTableTuplesSize</*is_known_tuple=*/true>(subshape);
+    }
+  }
+
+  return size;
 }
 
-// TODO(cjfj): Index table cache?.
-void IndexTable::CreateEntry(Entry& entry, const Shape& shape,
-                             size_t& next_node_id) {
+// Initializes the index table in the given entries span. Span must point into
+// the appropriately sized entries storage.
+static void InitializeIndexTable(const Shape& shape,
+                                 absl::Span<IndexTable::Entry> entries,
+                                 size_t entry_index, size_t& next_node_id,
+                                 size_t& next_children_start_index) {
+  IndexTable::Entry& entry = entries[entry_index];
   entry.node_id = next_node_id++;
-  if (!shape.IsTuple()) return;
+
+  // Stop shape traversal once reaching a leaf shape.
+  if (!shape.IsTuple()) {
+    return;
+  }
 
   // The nodes are in depth-first pre-order. However, in order to efficiently
   // lookup indices, we generate the index table using breadth-first.
-  size_t children_start_id = entries_.size();
-  entry.children_start_id = children_start_id;
+  entry.children_start_id = next_children_start_index;
+
   // Add entry for children first, before recursing, so they are consecutive.
-  entries_.resize(entries_.size() + shape.tuple_shapes().size());
+  next_children_start_index += shape.tuple_shapes().size();
   for (size_t i = 0; i < shape.tuple_shapes().size(); ++i) {
-    CreateEntry(entries_[children_start_id + i], shape.tuple_shapes(i),
-                next_node_id);
+    InitializeIndexTable(shape.tuple_shapes(i), entries,
+                         entry.children_start_id + i, next_node_id,
+                         next_children_start_index);
   }
+}
+
+IndexTable::IndexTable(const Shape& shape)
+    : entries_(1 + IndexTableTuplesSize(shape)) {
+  size_t next_node_id = 0;
+  size_t next_children_start_index = 1;
+  InitializeIndexTable(shape, absl::MakeSpan(entries_), 0, next_node_id,
+                       next_children_start_index);
 }
 
 const IndexTable::Entry& IndexTable::operator[](ShapeIndexView index) const {
