@@ -74,10 +74,7 @@ cc_library(
 
 cc_library(
     name = "passes",
-    visibility = [
-        ":__subpackages__",
-        "//tensorflow/python:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:QuantOps",

@@ -1779,6 +1779,7 @@ tf_proto_library(
     name = "types_proto",
     srcs = ["types.proto"],
     make_default_target_header_only = True,
+    visibility = ["//visibility:public"],
 )
 
 tf_jspb_proto_library(

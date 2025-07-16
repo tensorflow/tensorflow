@@ -144,6 +144,7 @@ cc_library(
         "attrs_and_constraints.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
     deps = [
         ":tf_uniform_quantized_types",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
@@ -213,6 +214,7 @@ cc_library(
     srcs = ["uniform_quantized_types.cc"],
     hdrs = ["uniform_quantized_types.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

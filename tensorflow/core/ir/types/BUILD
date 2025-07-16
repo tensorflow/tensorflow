@@ -74,7 +74,7 @@ cc_library(
     textual_hdrs = [
         "types.def",
     ],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":AttributesIncGen",
         ":DialectIncGen",
