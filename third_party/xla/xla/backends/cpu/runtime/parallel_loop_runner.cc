@@ -86,15 +86,10 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE void ParallelLoopRunner::ScheduleAll(
     size_t num_tasks, ParallelTask&& parallel_task) {
   DCHECK_GT(num_tasks, 1) << "Expected at least two task";
 
-  // Use at most `num_threads()` workers as we can't run more parallel workers
-  // than the number of threads in the thread pool.
-  size_t num_workers = std::min(std::min(num_tasks, num_threads()),
-                                size_t{std::numeric_limits<uint16_t>::max()});
-
   auto parallelize =
-      [this, num_workers, num_tasks,
+      [this, num_tasks,
        parallel_task = std::forward<ParallelTask>(parallel_task)](tsl::Chain) {
-        return Worker::Parallelize(device_.load()->getPool(), num_workers,
+        return Worker::Parallelize(device_.load()->getPool(), num_threads(),
                                    num_tasks, std::move(parallel_task));
       };
 

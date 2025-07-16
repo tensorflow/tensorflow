@@ -211,6 +211,42 @@ TEST(WorkQueueTest, WorkerParallelizeDeadlockProof) {
   EXPECT_EQ(data, expected);
 }
 
+TEST(WorkQueueTest, WorkerParallelizeVariousWorkerTaskRatios) {
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 16);
+
+  struct TestCase {
+    size_t num_tasks;
+    size_t num_workers;
+  };
+
+  std::vector<TestCase> test_cases = {
+      {0, 1},     // Edge: no tasks
+      {1, 1},     // Edge: single task, single worker
+      {1, 8},     // Edge: single task, many workers
+      {8, 1},     // Serial execution
+      {8, 4},     // Fewer workers than tasks
+      {8, 8},     // Equal
+      {8, 16},    // More workers than tasks
+      {1024, 8},  // Many tasks, fewer workers
+      {1024, 64}  // Many tasks, many workers
+  };
+
+  for (const auto& test : test_cases) {
+    std::vector<size_t> data(test.num_tasks, 0);
+
+    auto event = Worker::Parallelize(
+        threads.AsEigenThreadPool(), test.num_workers, test.num_tasks,
+        [&](size_t task_index) { ++data[task_index]; });
+
+    tsl::BlockUntilReady(event);
+
+    // Verify that all tasks were executed once (if any exist)
+    std::vector<size_t> expected(test.num_tasks, 1);
+    EXPECT_EQ(data, expected) << "Failed for num_tasks=" << test.num_tasks
+                              << ", num_workers=" << test.num_workers;
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks.
 //===----------------------------------------------------------------------===//

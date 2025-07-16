@@ -352,6 +352,9 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE tsl::AsyncValueRef<tsl::Chain> Worker::Parallelize(
   if (ABSL_PREDICT_FALSE(num_workers > std::numeric_limits<uint16_t>::max())) {
     num_workers = std::numeric_limits<uint16_t>::max();
   }
+  // Ensure we don't launch more workers than tasks.
+  // Extra workers would be idle or cause out-of-bounds partition access.
+  num_workers = std::min(num_tasks, num_workers);
 
   tsl::CountDownAsyncValueRef<tsl::Chain> count_down(num_tasks);
   auto execute_event = count_down.AsRef();
