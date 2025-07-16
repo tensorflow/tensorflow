@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-include "tensorflow/compiler/mlir/tensorflow/transforms/optimize.td"
+include "tensorflow/compiler/mlir/lite/transforms/optimize.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/lite/utils/utils.td"
 

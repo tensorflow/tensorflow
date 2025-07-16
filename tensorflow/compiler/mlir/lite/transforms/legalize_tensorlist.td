@@ -15,7 +15,7 @@ limitations under the License.
 include "mlir/IR/PatternBase.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
-include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
+include "tensorflow/compiler/mlir/lite/ir/tf_ops.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
 

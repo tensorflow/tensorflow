@@ -29,7 +29,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
 include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization.td"
-include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
+include "tensorflow/compiler/mlir/lite/ir/tf_op_base.td"
 
 //===----------------------------------------------------------------------===//
 // TFLite dialect string type - uses the TF string type as implementation
