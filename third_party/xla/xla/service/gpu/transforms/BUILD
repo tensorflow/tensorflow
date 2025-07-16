@@ -349,6 +349,7 @@ cc_library(
         "//xla/ffi:ffi_api",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/utils:hlo_longest_prefix",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",
         "//xla/service/gpu:hlo_fusion_analysis",
