@@ -684,6 +684,12 @@ std::optional<PjRtPluginAttributes> StreamExecutorGpuClient::plugin_attributes()
   return attrs;
 }
 
+void StreamExecutorGpuClient::UpdateGlobalProcessInfo(
+    absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) {
+  // TODO: mwhittaker - Move the AbortOnFailure logic here.
+  LOG(WARNING) << "UpdateGlobalProcessInfo is not supported.";
+}
+
 absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
 StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
     absl::Span<const PjRtClient::ShapeSpec> shape_specs,

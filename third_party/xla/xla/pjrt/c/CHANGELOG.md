@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.73
+
+* Added `PJRT_Client_UpdateGlobalProcessInfo`.
+
 ## 0.72
 
 * Added `peak_memory_in_bytes` to `CompiledMemoryStats`.

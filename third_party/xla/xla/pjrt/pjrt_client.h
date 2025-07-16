@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -529,6 +530,12 @@ class PjRtClient {
   virtual absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
       PjRtLocalDeviceId local_device_id) const {
     return Unimplemented("LookupAddressableDevice is not supported.");
+  }
+
+  // Updates the client with information about all global processes.
+  virtual void UpdateGlobalProcessInfo(
+      absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) {
+    LOG(WARNING) << "UpdateGlobalProcessInfo is not supported.";
   }
 
   // Return all memory spaces owned by the client.

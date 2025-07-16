@@ -535,6 +535,7 @@ xla_test(
         "//xla/ffi:ffi_api",
         "//xla/ffi:type_id_registry",
         "//xla/ffi/api:ffi",
+        "//xla/pjrt:pjrt_c_api_client",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_future",
