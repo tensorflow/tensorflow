@@ -628,15 +628,21 @@ class FullyConnectedDelegate : public SimpleDelegateInterface {
     return std::make_unique<FullyConnectedDelegateKernel>(options_);
   }
 
+  // SimpleDelegateInterface::Options DelegateOptions() const override {
+  //   // Configure delegate partitioning options
+  //   // This allows the delegate to work with complex graphs by creating
+  //   // multiple partitions and selecting only the nodes it can support
+  //   SimpleDelegateInterface::Options options;
+  //   options.max_delegated_partitions = 100;  // Allow many partitions
+  //   options.min_nodes_per_partition = 1;     // Allow single-node partitions
+  //   return options;
+  // }
   SimpleDelegateInterface::Options DelegateOptions() const override {
-    // Configure delegate partitioning options
-    // This allows the delegate to work with complex graphs by creating
-    // multiple partitions and selecting only the nodes it can support
-    SimpleDelegateInterface::Options options;
-    options.max_delegated_partitions = 100;  // Allow many partitions
-    options.min_nodes_per_partition = 1;     // Allow single-node partitions
-    return options;
-  }
+  SimpleDelegateInterface::Options options;
+  options.max_delegated_partitions = 1;  // ✅ Only allow 1 delegated partition
+  options.min_nodes_per_partition = 2;   // ✅ Only delegate if 2+ supported nodes are together
+  return options;
+}
 
  private:
   const FullyConnectedDelegateOptions options_;
