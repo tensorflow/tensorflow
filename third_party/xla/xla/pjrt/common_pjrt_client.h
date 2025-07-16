@@ -200,7 +200,37 @@ class CommonPjRtClient : public PjRtClient {
 // TODO(parkers): Merge everything here into CommonPjRtBuffer.
 class CommonPjRtBufferImpl : public CommonPjRtBuffer {
  public:
-  using CommonPjRtBuffer::CommonPjRtBuffer;
+  CommonPjRtBufferImpl(
+      Shape on_device_shape,
+      std::unique_ptr<AbstractTrackedDeviceBuffer> tracked_device_buffer,
+      PjRtMemorySpace* memory_space);
+
+  ~CommonPjRtBufferImpl() override;
+
+  CommonPjRtBufferImpl(const CommonPjRtBufferImpl&) = delete;
+  CommonPjRtBufferImpl(CommonPjRtBufferImpl&&) = delete;
+  CommonPjRtBufferImpl& operator=(const CommonPjRtBufferImpl&) = delete;
+  CommonPjRtBufferImpl& operator=(CommonPjRtBufferImpl&&) = delete;
+
+  const Shape& on_device_shape() const override { return on_device_shape_; }
+  ABSL_DEPRECATED(
+      "Buffers are associated with memories. Use memory_space() instead when "
+      "possible.")
+  PjRtDevice* device() const override;
+  CommonPjRtClient* client() const override;
+  PjRtMemorySpace* memory_space() const override { return memory_space_; }
+
+  absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
+
+  absl::StatusOr<std::unique_ptr<ExternalReference>>
+  ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) override {
+    return Unimplemented("ReleaseDeviceMemoryOwnership not implemented yet");
+  }
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
+      PjRtFuture<> dependency) override;
+
+  PjRtFuture<> GetReadyFuture() override;
 
   // The implementation of logical_on_device_shape may involve a blocking
   // device to host transfer to read the metadata of dynamic shape.
@@ -247,6 +277,9 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
   PjRtFuture<> ToLiteralImpl(
       MutableLiteralBase* literal,
       absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator);
+
+ private:
+  const Shape on_device_shape_;
 };
 
 }  // namespace xla

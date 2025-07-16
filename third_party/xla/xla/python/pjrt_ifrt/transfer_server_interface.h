@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_PYTHON_PJRT_IFRT_TRANSFER_SERVER_INTERFACE_H_
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -66,12 +65,6 @@ class TransferServerInterface {
       absl::btree_map<int, PjRtBuffers>& buffer_list) = 0;
 };
 
-struct TransferServerInterfaceFactory {
-  std::function<
-      absl::StatusOr<std::unique_ptr<xla::ifrt::TransferServerInterface>>(
-          std::shared_ptr<xla::PjRtClient>)>
-      factory_fn;
-};
 }  // namespace ifrt
 }  // namespace xla
 
