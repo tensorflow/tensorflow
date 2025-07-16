@@ -159,8 +159,6 @@ XlaComputationLaunchContext::PopulateInputs(
     int arg_num = compilation_result->input_mapping[i];
     CHECK_GE(arg_num, missing_ctx_input_prefix);
     const xla::Shape& device_shape = compilation_result->xla_input_shapes[i];
-    const xla::Shape& host_shape =
-        xla::ShapeUtil::DeviceShapeToHostShape(device_shape);
 
     auto resource_var_it = resource_vars.find(arg_num);
     bool is_resource_variable = resource_var_it != resource_vars.end();
@@ -195,7 +193,7 @@ XlaComputationLaunchContext::PopulateInputs(
           ctx->op_device_context()->stream());
     }
 
-    arguments.emplace_back(device_shape, host_shape);
+    arguments.emplace_back(&device_shape);
     xla::ExecutionInput& execution_input = arguments.back();
     se::DeviceMemoryBase dmem = XlaTensor::DeviceMemoryFromTensor(*t);
     PopulateExecutionInputBuffer(execution_input, xla::ShapeIndex{}, dmem,
