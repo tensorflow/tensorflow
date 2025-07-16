@@ -691,8 +691,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 
 /* static */ int64_t ShapeUtil::SubshapeCount(const Shape& shape) {
   int64_t n = 0;
-  ForEachSubshape(shape, [&](const Shape& literal_subshape,
-                             const ShapeIndex& index) { ++n; });
+  ForEachSubshape(shape, [&](const Shape&, const ShapeIndex&) { ++n; });
   return n;
 }
 
