@@ -1,3 +1,7 @@
+#include <optional>
+
+#include "absl/functional/any_invocable.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 /* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -63,6 +67,15 @@ struct TransposeDescription {
                GetBitwidth(other.instr->shape().element_type());
   }
 };
+
+// Checks if the instruction is elementwise.
+bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
+
+// Find the first gero that statises the given predicate.
+std::optional<HloInstructionAdaptor> FindHero(
+    const HloInstructionAdaptor& root,
+    absl::AnyInvocable<bool(const HloInstruction&)> predicate);
+
 }  // namespace xla
 
 #endif  // XLA_CODEGEN_IR_EMISSION_UTILS_H_
