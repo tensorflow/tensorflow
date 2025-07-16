@@ -30,6 +30,8 @@ cc_library(
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -48,6 +50,8 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/grappler/utils:transitive_fanin",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -65,6 +69,8 @@ cc_library(
     deps = [
         ":graph_analyzer_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:node_def_proto_cc",
         "//tensorflow/core/grappler:op_types",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -92,7 +98,12 @@ tf_cc_test(
     deps = [
         ":graph_analyzer_lib",
         ":test_tools_lib",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:op_def_proto_cc",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -106,8 +117,13 @@ tf_cc_test(
     deps = [
         ":graph_analyzer_lib",
         ":test_tools_lib",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:node_def_proto_cc",
         "//tensorflow/core/grappler:utils",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
     ],
@@ -123,6 +139,7 @@ tf_cc_test(
         ":graph_analyzer_lib",
         ":test_tools_lib",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -136,7 +153,10 @@ tf_cc_test(
     deps = [
         ":graph_analyzer_lib",
         ":test_tools_lib",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:node_def_proto_cc",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
     ],
