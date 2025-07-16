@@ -60,7 +60,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -81,10 +80,9 @@ class AlgorithmTest : public GpuCodegenTest {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(0);
-    // TODO(b/393299275): remove when the flag is enabled by default.
+    // Use legacy Triton emitter for these tests by removing all generic
+    // Triton emitter features
     debug_options.clear_xla_gpu_unsupported_generic_triton_emitter_features();
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
     return debug_options;
   }
 
@@ -662,7 +660,7 @@ TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32_X3) {
     }
   )";
   constexpr absl::string_view kPattern =
-      R"(CHECK: "kind":"__triton_nested_gemm_fusion")";
+      R"(CHECK: "kind":"__triton_gemm","triton_gemm_config")";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
   EXPECT_TRUE(ok);
@@ -685,7 +683,7 @@ TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32_X6) {
     }
   )";
   constexpr absl::string_view kPattern =
-      R"(CHECK: "kind":"__triton_nested_gemm_fusion")";
+      R"(CHECK: "kind":"__triton_gemm","triton_gemm_config")";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
   EXPECT_TRUE(ok);
@@ -709,7 +707,7 @@ TEST_F(TritonAlgorithmTest, Algorithm_TF32_TF32_F32) {
   )";
   constexpr absl::string_view kPattern = R"(
     CHECK: algorithm=dot_tf32_tf32_f32
-    CHECK: "kind":"__triton_nested_gemm_fusion"
+    CHECK: "kind":"__triton_gemm","triton_gemm_config"
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
@@ -733,7 +731,7 @@ TEST_F(TritonAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
     }
   )";
   constexpr absl::string_view kPattern =
-      R"(CHECK: "kind":"__triton_nested_gemm_fusion")";
+      R"(CHECK: "kind":"__triton_gemm","triton_gemm_config")";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
   EXPECT_TRUE(ok);
@@ -759,7 +757,7 @@ TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32) {
     }
   )";
   constexpr absl::string_view kPattern =
-      R"(CHECK: "kind":"__triton_nested_gemm_fusion")";
+      R"(CHECK: "kind":"__triton_gemm","triton_gemm_config")";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
   EXPECT_TRUE(ok);
@@ -944,8 +942,7 @@ class NumericTestsForBlas : public BlasAlgorithmTest,
     return absl::StrFormat(kHloTextTemplate, HloModuleTestName(), algorithm_);
   }
 
-  static constexpr absl::string_view kCheckTritionNestedGemm =
-      R"(CHECK: __cublas$gemm)";
+  static constexpr absl::string_view kPattern = R"(CHECK: __cublas$gemm)";
 
   static constexpr absl::string_view kReferenceHloText = R"(
     HloModule %s
@@ -1011,8 +1008,7 @@ class NumericTestsForTriton : public TritonAlgorithmTest,
     return absl::StrFormat(kHloTextTemplate, HloModuleTestName(), algorithm_);
   }
 
-  static constexpr absl::string_view kPattern =
-      R"(CHECK: __triton_nested_gemm_fusion)";
+  static constexpr absl::string_view kPattern = R"(CHECK: __triton_gemm)";
 
  private:
   static constexpr absl::string_view kHloTextTemplate = R"(
@@ -1043,8 +1039,7 @@ TEST_P(NumericTestsForBlas, Infinity) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(hlo_text));
   auto module_text = module->ToString();
-  TF_ASSERT_OK_AND_ASSIGN(auto ok,
-                          RunFileCheck(module_text, kCheckTritionNestedGemm));
+  TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module_text, kPattern));
   ASSERT_TRUE(ok);
 
   auto reference_module = GetReferenceModuleForCublas();
@@ -1062,8 +1057,7 @@ TEST_P(NumericTestsForBlas, NaN) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(hlo_text));
   auto module_text = module->ToString();
-  TF_ASSERT_OK_AND_ASSIGN(auto ok,
-                          RunFileCheck(module_text, kCheckTritionNestedGemm));
+  TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module_text, kPattern));
   ASSERT_TRUE(ok);
 
   auto reference_module = GetReferenceModuleForCublas();
@@ -1081,8 +1075,7 @@ TEST_P(NumericTestsForBlas, InputsWithLargeExponent) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(hlo_text));
   auto module_text = module->ToString();
-  TF_ASSERT_OK_AND_ASSIGN(auto ok,
-                          RunFileCheck(module_text, kCheckTritionNestedGemm));
+  TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module_text, kPattern));
   ASSERT_TRUE(ok);
 
   auto reference_module = GetReferenceModuleForCublas();
@@ -1102,8 +1095,7 @@ TEST_P(NumericTestsForBlas, PrecisionCheck) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(hlo_text));
   auto module_text = module->ToString();
-  TF_ASSERT_OK_AND_ASSIGN(auto ok,
-                          RunFileCheck(module_text, kCheckTritionNestedGemm));
+  TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module_text, kPattern));
   ASSERT_TRUE(ok);
 
   auto reference_module = GetReferenceModuleForCublas();
@@ -1453,7 +1445,7 @@ TEST_P(TritonAndBlasSupportForDifferentTensorSizes,
   auto m = 128;
   auto n = 128;
   auto k = 128;
-  auto run = [&](std::string backend,
+  auto run = [&](std::string backend, absl::string_view pattern,
                  const DebugOptions& options) -> absl::StatusOr<bool> {
     auto test_name = absl::StrReplaceAll(TestName(), {{"/", "_"}});
     auto module_name = absl::StrCat(test_name, "_", backend, "_", m, "_", kMaxK,
@@ -1472,10 +1464,10 @@ TEST_P(TritonAndBlasSupportForDifferentTensorSizes,
     if (!Run(std::move(module.value()), false)) {
       return absl::InternalError("failed to run module");
     }
-    return absl::StrContains(module_text, kTritonNestedGemmFusionKind);
+    return absl::StrContains(module_text, pattern);
   };
 
-  auto result_or_status = run("triton", triton_options_);
+  auto result_or_status = run("triton", kTritonGemmPattern, triton_options_);
   switch (GetParam()) {
     case PC::ALG_UNSET:
     case PC::ALG_DOT_TF32_TF32_F32:
