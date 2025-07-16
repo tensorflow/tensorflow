@@ -90,15 +90,13 @@ def TTXLA_ExtractOp : TTXLA_OpWithOffsetSizesAndStrides<"extract", []> {
     Offsets, strides, and destination tensor size are used to specify the tile
     to extract. Minor-to-major layout should also be specified.
 
+    Assembly format: %src [%offsets] [%sizes] [%strides]
+      {xla layout} : src_tensor to dst_tensor
+
     Example:
       ```
-      %tensor: tensor<120x320xbf16>
-      %of = arith.constant 0 : index
-      %st1 = arith.constant 120 : index
-      %st2 = arith.constant 1 : index
-      ...
-      %extracted_tensor = triton_xla.extract %tensor [%of, %of][%st1, %st2]
-        {layout = array<i64:1, 0>} : tensor<120x320xbf16> to tensor<16x64xbf16>
+      %extracted_tensor = triton_xla.extract %src [0, 0] [16, 64] [128, 1]
+        {layout = array<i64:1, 0>} : tensor<512x128xbf16> to tensor<16x64xbf16>
       ```
   }];
   let builders = [
@@ -145,16 +143,13 @@ def TTXLA_InsertOp : TTXLA_OpWithOffsetSizesAndStrides<"insert", [
     Offsets, strides, and source tensor size are used to specify the tile to
     insert into. Minor-to-major layout should also be specified.
 
+    Assembly format: %src into %dst [%offsets] [%sizes] [%strides]
+      {xla layout} : src_tensor into dst_tensor
+
     Example:
       ```
-      %src: tensor<16x64xbf16>
-      %dst: tensor<120x320xbf16>
-      %of = arith.constant 0 : index
-      %st1 = arith.constant 120 : index
-      %st2 = arith.constant 1 : index
-      ...
-      %updated_tensor = triton_xla.insert %src into %dst [%of, %of][%st1, %st2]
-        {layout = array<i64:1, 0>} : tensor<16x64xbf16> into tensor<120x320xbf16>
+      %updated_tensor = triton_xla.insert %src into
+        %dst [0, 0] [8, 8] [1, 1] {layout = array<i64:1, 0>}
       ```
   }];
   let builders = [
