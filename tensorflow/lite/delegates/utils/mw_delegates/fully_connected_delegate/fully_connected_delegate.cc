@@ -40,7 +40,7 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
                     const TfLiteDelegateParams* params) override {
 
   TF_LITE_KERNEL_LOG(context, "======== In FullyConnectedDelegateKernel::Init =========\n");
-  printf("[DELEGATE-DEBUG: Init] In FullyConnectedDelegateKernel::Init\n");
+  printf("[DELEGATE-DEBUG: Init] ========In FullyConnectedDelegateKernel::Init===========\n");
   
   inputs_.resize(params->nodes_to_replace->size);
   outputs_.resize(params->nodes_to_replace->size);
@@ -198,13 +198,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override {
   }
 
   TF_LITE_KERNEL_LOG(context, "======== FullyConnectedDelegateKernel::Prepare completed successfully =========\n\n\n");
-  printf("[DELEGATE-DEBUG: Prepare] FullyConnectedDelegateKernel::Prepare completed successfully\n\n\n");
+  printf("[DELEGATE-DEBUG: Prepare] ========FullyConnectedDelegateKernel::Prepare completed successfully========\n\n\n");
   return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override {
   TF_LITE_KERNEL_LOG(context, "======== In FullyConnectedDelegateKernel::Eval =========\n");
-  printf("[DELEGATE-DEBUG: Eval] In FullyConnectedDelegateKernel::Eval\n");
+  printf("[DELEGATE-DEBUG: Eval] =============In FullyConnectedDelegateKernel::Eval=================\n");
   TF_LITE_KERNEL_LOG(context, "Evaluating %d nodes in partition\n", inputs_.size());
   printf("[DELEGATE-DEBUG: Eval] Evaluating %d nodes in partition\n", inputs_.size());
 
@@ -338,6 +338,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override {
   } // End of for loop - this was missing!
 
   TF_LITE_KERNEL_LOG(context, "======== FullyConnectedDelegateKernel::Eval completed successfully =========\n");
+  printf("[DELEGATE-DEBUG: Eval] =============FullyConnectedDelegateKernel::Eval completed successfully=================\n");
   return kTfLiteOk;
 }
 
@@ -483,6 +484,7 @@ class FullyConnectedDelegate : public SimpleDelegateInterface {
                                  TfLiteContext* context) const override {
 
     TF_LITE_KERNEL_LOG(context, "======== IN FullyConnectedDelegate: IsNodeSupportedByDelegate =========\n");
+    printf("[DELEGATE-DEBUG] ======= In FullyConnectedDelegate: IsNodeSupportedByDelegate ========\n");
     TF_LITE_KERNEL_LOG(context, "FullyConnectedDelegate: Checking node support\n");
     TF_LITE_KERNEL_LOG(context, "Node builtin_code: %d (kTfLiteBuiltinFullyConnected = %d)\n", 
                        registration->builtin_code, kTfLiteBuiltinFullyConnected);
@@ -635,6 +637,7 @@ class FullyConnectedDelegate : public SimpleDelegateInterface {
     
     TF_LITE_KERNEL_LOG(context, "Node accepted: fully connected operation meets all requirements.\n");
     TF_LITE_KERNEL_LOG(context, "======== FullyConnectedDelegate: Node support check complete ===========\n\n\n");
+    printf("[DELEGATE-DEBUG] ======= FullyConnectedDelegate: Node support check complete ========\n");
     return true;
 }
 
