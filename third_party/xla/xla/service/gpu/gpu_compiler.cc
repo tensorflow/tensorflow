@@ -1114,9 +1114,6 @@ absl::Status RunFusionPasses(HloModule* hlo_module,
                          .Run(hlo_module)
                          .status());
 
-  TF_RETURN_IF_ERROR(
-      HorizontalFusionPipeline(gpu_device_info).Run(hlo_module).status());
-
   if (VLOG_IS_ON(2)) {
     HloFusionStatsVisitor stats;
     TF_RETURN_IF_ERROR(hlo_module->entry_computation()->Accept(&stats));
