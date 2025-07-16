@@ -478,8 +478,13 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
     pipeline->AddPass<GatherSimplifier>();
   }
 
-  // Needs to happen after algebraic simplifier.
-  pipeline->AddPass<TreeReductionRewriter>();
+  if (module->config()
+          .debug_options()
+          .xla_cpu_experimental_xnn_graph_fusion_mode() !=
+      DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY) {
+    // Needs to happen after algebraic simplifier.
+    pipeline->AddPass<TreeReductionRewriter>();
+  }
 
   // BatchNormExpander can create zero-sized ops, so zero-sized HLO
   // elimination has to come after that pass.
