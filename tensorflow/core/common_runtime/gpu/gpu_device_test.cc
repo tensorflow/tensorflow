@@ -21,13 +21,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 
-<<<<<<< HEAD
-=======
-#include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
-#include "xla/stream_executor/gpu/gpu_init.h"
-#include "xla/tsl/framework/device_id.h"
-#include "xla/tsl/lib/core/status_test_util.h"
->>>>>>> e56b2d952f5f9b9f832fb868dedf7a0cc876757c
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"

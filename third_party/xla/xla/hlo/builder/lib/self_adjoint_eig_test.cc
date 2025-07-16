@@ -287,15 +287,12 @@ class RandomEighTest : public ClientLibraryTestRunnerMixin<
                            HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
                        public ::testing::WithParamInterface<EighTestCase> {};
 
-<<<<<<< HEAD
-XLA_TEST_P(RandomEighTest, Random) {
+
+TEST_P(RandomEighTest, Random) {
 #if TENSORFLOW_USE_ROCM
   GTEST_SKIP() << "RandomEighTest.Random is currently not supported on ROCm.";
 #endif  // TENSORFLOW_USE_ROCM
 
-=======
-TEST_P(RandomEighTest, Random) {
->>>>>>> e56b2d952f5f9b9f832fb868dedf7a0cc876757c
   XlaBuilder builder(TestName());
   int64_t size = GetParam();
   Array2D<float> a_val = GenerateRandomSymmetricMatrix(size);

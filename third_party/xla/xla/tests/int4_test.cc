@@ -136,12 +136,7 @@ TEST_F(HloTestBase, Transpose4d) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-<<<<<<< HEAD
-XLA_TEST_F(HloTestBase, TransposeDot) {
-  GTEST_SKIP() << "weekly-sync 250211: crash due to new LLVM version";
-=======
 TEST_F(HloTestBase, TransposeDot) {
->>>>>>> e56b2d952f5f9b9f832fb868dedf7a0cc876757c
   const std::string hlo_text = R"(
   ENTRY main {
     x = s4[32,32,32] parameter(0)
