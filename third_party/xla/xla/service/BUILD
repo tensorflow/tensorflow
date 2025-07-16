@@ -1837,8 +1837,6 @@ cc_library(
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
-        "//xla/hlo/analysis:hlo_alias_analysis",
-        "//xla/hlo/analysis:tuple_points_to_analysis",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
