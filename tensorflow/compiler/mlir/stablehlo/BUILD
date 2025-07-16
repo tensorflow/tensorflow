@@ -150,6 +150,7 @@ cc_library(
         "transforms/legalize_tf_passes.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
     deps = [
         ":legalize_tf_patterns_inc_gen",
         ":legalize_utils",
@@ -197,6 +198,7 @@ cc_library(
     copts = [
         "-Ithird_party",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":legalize_tf",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -267,6 +269,7 @@ cc_library(
     copts = [
         "-Ithird_party",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/utils:validators",
@@ -296,6 +299,7 @@ cc_library(
     copts = [
         "-Ithird_party",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
@@ -323,6 +327,7 @@ cc_library(
     copts = [
         "-Ithird_party",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//llvm:Support",

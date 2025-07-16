@@ -163,6 +163,7 @@ cc_library(
     name = "py_function_lib",
     hdrs = ["py_function_lib.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:min_max_value",
