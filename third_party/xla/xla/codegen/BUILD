@@ -174,7 +174,9 @@ cc_library(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_traversal",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
     ],
 )
 

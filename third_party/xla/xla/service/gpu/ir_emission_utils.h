@@ -261,9 +261,6 @@ TransposeSpec GetTransposeSpec(const HloTransposeInstruction* transpose);
 absl::StatusOr<absl::InlinedVector<int64_t, 3>> GetPackedTransposeTileSizes(
     const TransposeSpec& spec);
 
-// Checks if the instruction is elementwise.
-bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
-
 // Log the given module if the VLOG level is >= level.
 void VLogModule(int level, const llvm::Module& module);
 
