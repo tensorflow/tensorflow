@@ -105,6 +105,9 @@ message PartitionIdThunkProto {
   xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
 }
 
+message HostOffloadingStartThunkProto {}
+message HostOffloadingDoneThunkProto {}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -122,6 +125,8 @@ message ThunkProto {
     ReplicaIdThunkProto replica_id_thunk = 12;
     DeviceToDeviceCopyThunkProto device_to_device_copy_thunk = 13;
     PartitionIdThunkProto partition_id_thunk = 14;
+    HostOffloadingStartThunkProto host_offloading_start_thunk = 15;
+    HostOffloadingDoneThunkProto host_offloading_done_thunk = 16;
   }
 }
 
