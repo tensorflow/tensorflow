@@ -57,11 +57,21 @@ void RecursivelyUpdateOpName(HloInstruction* hlo, absl::string_view prefix) {
     return;
   }
 
-  for (HloComputation* computation : hlo->called_computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      RecursivelyUpdateOpName(instruction, prefix);
+  // We only want to descend into "control flow" computations, since annotating
+  // embedded computations is wasted effort.
+  //
+  // We also don't want to descend into calls, since this will produce incorrect
+  // metadata for computations with multiple callsites. This will get taken care
+  // of when these computations are eventually inlined.
+  if ((GetInstructionCallContext(hlo->opcode()) == CallContext::kControlFlow) &&
+      (hlo->opcode() != HloOpcode::kCall)) {
+    for (HloComputation* computation : hlo->called_computations()) {
+      for (HloInstruction* instruction : computation->instructions()) {
+        RecursivelyUpdateOpName(instruction, prefix);
+      }
     }
   }
+
   // We found that some users are sticking many megabytes of strings into
   // op_name. Don't concatenate op names if they are too big.
   constexpr int kMaxOpNameSize = 1000;
