@@ -74,6 +74,10 @@ class ExecutionInput {
     SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
   }
 
+  explicit ExecutionInput(const xla::Shape* shape) : buffers_(shape) {
+    SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
+  }
+
   explicit ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers)
       : buffers_(std::move(buffers)) {
     SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
