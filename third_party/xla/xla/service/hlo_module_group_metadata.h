@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -210,10 +209,6 @@ class HloModuleGroupMetadata {
   // Returns the maximum channel id used in the module group.
   int64_t max_channel_id() const { return max_channel_id_; }
 
-  HloAliasAnalysis* alias_analysis(HloModule* module) const {
-    return alias_analyses_.at(module).get();
-  }
-
  private:
   absl::Status Build();
 
@@ -284,9 +279,6 @@ class HloModuleGroupMetadata {
 
   // The modules that this metadata was built from.
   const std::vector<HloModule*> modules_;
-
-  absl::flat_hash_map<HloModule*, std::unique_ptr<HloAliasAnalysis>>
-      alias_analyses_;
 };
 
 }  // namespace xla
