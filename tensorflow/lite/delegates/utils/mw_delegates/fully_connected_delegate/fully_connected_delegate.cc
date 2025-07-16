@@ -153,12 +153,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override {
     TF_LITE_KERNEL_LOG(context, "Node %d - Output tensor allocation: data=%p, bytes=%d, allocation_type=%d\n", 
                        i, output_tensor->data.data, output_tensor->bytes, output_tensor->allocation_type);
     
-    // Resize output tensor to ensure TensorFlow Lite allocates it properly
-    TfLiteIntArray* output_shape = TfLiteIntArrayCopy(output_tensor->dims);
-    if (context->ResizeTensor(context, output_tensor, output_shape) != kTfLiteOk) {
-      TF_LITE_KERNEL_LOG(context, "Failed to resize output tensor for node %d\n", i);
-      return kTfLiteError;
-    }
+    // // Resize output tensor to ensure TensorFlow Lite allocates it properly
+    // TfLiteIntArray* output_shape = TfLiteIntArrayCopy(output_tensor->dims);
+    // if (context->ResizeTensor(context, output_tensor, output_shape) != kTfLiteOk) {
+    //   TF_LITE_KERNEL_LOG(context, "Failed to resize output tensor for node %d\n", i);
+    //   return kTfLiteError;
+    // }
+    
     TF_LITE_KERNEL_LOG(context, "Node %d - Successfully prepared output tensor for allocation\n", i);
 
     // Log tensor shapes for debugging
@@ -188,15 +189,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override {
   // Process each node in the partition
   for(int i = 0; i < inputs_.size(); i++) {
     // Safety check for tensor indices
-    TF_LITE_KERNEL_LOG(context, "DEBUG: IN for loop iteration %d eval\n", i);
     if (inputs_[i].empty() || outputs_[i].empty()) {
       TF_LITE_KERNEL_LOG(context, "Error: Empty tensor indices for node %d\n", i);
       return kTfLiteError;
     }
-    TF_LITE_KERNEL_LOG(context, "DEBUG: Node %d - Input_Tidx=%d, Output_Tidx=%d\n", 
-                       i, inputs_[i][0], outputs_[i][0]);
     
-    TF_LITE_KERNEL_LOG(context, "Evaluating node %d with input=%d, output=%d\n", 
+    TF_LITE_KERNEL_LOG(context, "Evaluating node %d with input_Tidx=%d, output_Tidx=%d\n",
                        i, inputs_[i][0], outputs_[i][0]);
 
     const TfLiteTensor& input_tensor = context->tensors[inputs_[i][0]];
