@@ -633,7 +633,7 @@ absl::StatusOr<HloSchedule> ScheduleModule(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(module));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module));
+                      HloAliasAnalysis::Run(module, algorithm.alias_info()));
 
   TF_ASSIGN_OR_RETURN(
       HloSchedule schedule,
