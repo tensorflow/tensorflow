@@ -1610,11 +1610,11 @@ def TFL_DivOp : TFL_Op<"div", [
   }];
 
   let arguments = (
-      ins TFL_TensorOf<[F32, I32, QUI8, QI8]>:$lhs,
-      TFL_TensorOf<[F32, I32, QUI8, QI8]>:$rhs,
+      ins TFL_TensorOf<[F32, I32, QUI8, QI8, QI16]>:$lhs,
+      TFL_TensorOf<[F32, I32, QUI8, QI8, QI16]>:$rhs,
       TFL_AFAttr:$fused_activation_function);
 
-  let results = (outs TFL_TensorOf<[F32, I32, QUI8, QI8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, QUI8, QI8, QI16]>:$output);
 
   let builders = [TFL_FusedBroadcastableBinaryBuilder];
 

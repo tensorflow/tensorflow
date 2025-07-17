@@ -99,7 +99,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     output_size = TfLiteIntArrayCopy(input1->dims);
   }
 
-  if (output->type == kTfLiteInt8 || output->type == kTfLiteUInt8) {
+  if (output->type == kTfLiteInt8 || output->type == kTfLiteUInt8 ||
+      output->type == kTfLiteInt16) {
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
         context, params->activation, output, &data->output_activation_min,
         &data->output_activation_max));
@@ -164,7 +165,8 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                            TfLiteDivParams* params, const OpData* data,
                            const TfLiteTensor* input1,
                            const TfLiteTensor* input2, TfLiteTensor* output) {
-  if (output->type == kTfLiteInt8 || output->type == kTfLiteUInt8) {
+  if (output->type == kTfLiteInt8 || output->type == kTfLiteUInt8 ||
+      output->type == kTfLiteInt16) {
     tflite::ArithmeticParams op_params;
     SetActivationParams(data->output_activation_min,
                         data->output_activation_max, &op_params);
@@ -206,6 +208,20 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
           TF_LITE_DIV(optimized_ops, BroadcastDivSlow, int8_t);
         } else {
           TF_LITE_DIV(optimized_ops, Div, int8_t);
+        }
+      }
+    } else if (output->type == kTfLiteInt16) {
+      if (kernel_type == kReference) {
+        if (need_broadcast) {
+          TF_LITE_DIV(reference_ops, BroadcastDivSlow, int16_t);
+        } else {
+          TF_LITE_DIV(reference_ops, Div, int16_t);
+        }
+      } else {
+        if (need_broadcast) {
+          TF_LITE_DIV(optimized_ops, BroadcastDivSlow, int16_t);
+        } else {
+          TF_LITE_DIV(optimized_ops, Div, int16_t);
         }
       }
     }
@@ -262,10 +278,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(
         context, EvalQuantized<kernel_type>(context, node, params, data, input1,
                                             input2, output));
+  } else if (output->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_OK(context, CheckNonZero<int16_t>(context, input2));
+    TF_LITE_ENSURE_OK(
+        context, EvalQuantized<kernel_type>(context, node, params, data, input1,
+                                            input2, output));
   } else {
     TF_LITE_KERNEL_LOG(context,
                        "Div only supports FLOAT32, INT32 and quantized INT8, "
-                       "UINT8 now, got %d.",
+                       "UINT8, INT16 now, got %d.",
                        output->type);
     return kTfLiteError;
   }
