@@ -1,3 +1,46 @@
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -842,6 +842,7 @@
+     "stablehlo/integrations/c/StablehloDialect.cpp",
+     "stablehlo/integrations/c/StablehloDialectApi.cpp",
+     "stablehlo/integrations/c/StablehloTypes.cpp",
++    "stablehlo/integrations/c/InterpreterDialect.cpp",
+ ]
+ 
+ STABLEHLO_DIALECT_CAPI_HEADERS = [
+@@ -849,6 +850,7 @@
+     "stablehlo/integrations/c/StablehloDialect.h",
+     "stablehlo/integrations/c/StablehloDialectApi.h",
+     "stablehlo/integrations/c/StablehloTypes.h",
++    "stablehlo/integrations/c/InterpreterDialect.h",
+ ]
+ 
+ cc_library(
+@@ -857,6 +859,7 @@
+     hdrs = STABLEHLO_DIALECT_CAPI_HEADERS,
+     strip_include_prefix = ".",
+     deps = [
++        ":interpreter_ops",
+         ":stablehlo_ops",
+         ":stablehlo_portable_api",
+         ":stablehlo_serialization",
+@@ -885,6 +888,7 @@
+     hdrs = STABLEHLO_DIALECT_CAPI_HEADERS,
+     strip_include_prefix = ".",
+     deps = [
++        ":interpreter_ops",
+         ":stablehlo_ops",
+         ":stablehlo_portable_api",
+         ":stablehlo_serialization",
+@@ -909,6 +913,7 @@
+     "stablehlo/integrations/c/StablehloDialectApi.h",
+     "stablehlo/integrations/c/StablehloUnifiedApi.h",
+     "stablehlo/integrations/c/StablehloTypes.h",
++    "stablehlo/integrations/c/InterpreterDialect.h",
+ ]
+ 
+ cc_library(
 diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h b/stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h
 --- stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h
 +++ stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h
@@ -142,6 +185,472 @@ diff --ruN a/stablehlo/stablehlo/dialect/Version.cpp b/stablehlo/stablehlo/diale
      case CompatibilityRequirement::WEEK_12:
        return Version(1, 10, 3);  // WEEK_12 ANCHOR: DO NOT MODIFY
      case CompatibilityRequirement::MAX:
+diff --ruN a/stablehlo/stablehlo/integrations/c/CMakeLists.txt b/stablehlo/stablehlo/integrations/c/CMakeLists.txt
+--- stablehlo/stablehlo/integrations/c/CMakeLists.txt
++++ stablehlo/stablehlo/integrations/c/CMakeLists.txt
+@@ -38,6 +38,7 @@
+   StablehloTypes.cpp
+   StablehloDialectApi.cpp
+   StablehloUnifiedApi.cpp
++  InterpretDialect.cpp
+ 
+   LINK_LIBS PUBLIC
+   MLIRCAPIIR
+@@ -50,6 +51,7 @@
+   StablehloReferenceConfiguration
+   StablehloSerialization
+   Version
++  InterpreterOps
+ )
+ 
+ add_mlir_public_c_api_library(VhloCAPI
+diff --ruN a/stablehlo/stablehlo/integrations/c/InterpreterDialect.cpp b/stablehlo/stablehlo/integrations/c/InterpreterDialect.cpp
+--- stablehlo/stablehlo/integrations/c/InterpreterDialect.cpp
++++ stablehlo/stablehlo/integrations/c/InterpreterDialect.cpp
+@@ -0,0 +1,20 @@
++/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
++   Copyright 2022 The StableHLO Authors.
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++    http://www.apache.org/licenses/LICENSE-2.0
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#include "stablehlo/integrations/c/InterpreterDialect.h"
++
++#include "mlir/CAPI/Registration.h"
++#include "stablehlo/reference/InterpreterOps.h"
++
++MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(
++    Interpreter, interpreter, mlir::stablehlo::interpreter::InterpreterDialect)
+diff --ruN a/stablehlo/stablehlo/integrations/c/InterpreterDialect.h b/stablehlo/stablehlo/integrations/c/InterpreterDialect.h
+--- stablehlo/stablehlo/integrations/c/InterpreterDialect.h
++++ stablehlo/stablehlo/integrations/c/InterpreterDialect.h
+@@ -0,0 +1,30 @@
++/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
++   Copyright 2022 The StableHLO Authors.
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++    http://www.apache.org/licenses/LICENSE-2.0
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#ifndef STABLEHLO_INTEGRATIONS_C_INTERPRETER_DIALECT_H
++#define STABLEHLO_INTEGRATIONS_C_INTERPRETER_DIALECT_H
++
++#include "mlir-c/IR.h"
++#include "mlir-c/RegisterEverything.h"
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(Interpreter, interpreter);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif  // STABLEHLO_INTEGRATIONS_C_INTERPRETER_DIALECT_H
+diff --ruN a/stablehlo/stablehlo/integrations/c/StablehloUnifiedApi.cpp b/stablehlo/stablehlo/integrations/c/StablehloUnifiedApi.cpp
+--- stablehlo/stablehlo/integrations/c/StablehloUnifiedApi.cpp
++++ stablehlo/stablehlo/integrations/c/StablehloUnifiedApi.cpp
+@@ -32,13 +32,16 @@
+ #include "stablehlo/reference/Configuration.h"
+ 
+ MlirAttribute stablehloEvalModule(MlirModule module, int nArgs,
+-                                  MlirAttribute const *args, int *errorCode) {
++                                  MlirAttribute const *args,
++                                  const char* const probeInstrumentationDir,
++                                  int *errorCode) {
+   std::vector<mlir::DenseElementsAttr> inputs;
+   inputs.reserve(nArgs);
+   for (int i = 0; i < nArgs; ++i) {
+     inputs.push_back(llvm::cast<mlir::DenseElementsAttr>(unwrap(args[i])));
+   }
+   mlir::stablehlo::InterpreterConfiguration config;
++  config.probeInstrumentationDir = probeInstrumentationDir;
+   mlir::FailureOr<llvm::SmallVector<mlir::DenseElementsAttr>> results =
+       mlir::stablehlo::evalModule(unwrap(module), inputs, config);
+   if (mlir::failed(results)) {
+diff --ruN a/stablehlo/stablehlo/integrations/c/StablehloUnifiedApi.h b/stablehlo/stablehlo/integrations/c/StablehloUnifiedApi.h
+--- stablehlo/stablehlo/integrations/c/StablehloUnifiedApi.h
++++ stablehlo/stablehlo/integrations/c/StablehloUnifiedApi.h
+@@ -26,10 +26,9 @@
+ // Entrypoint for calling the StableHLO reference interpreter.
+ // Returns an array attribute of dense element attributes for results.
+ // Sets error code to non-zero on failure.
+-MLIR_CAPI_EXPORTED MlirAttribute stablehloEvalModule(MlirModule module,
+-                                                     int nArgs,
+-                                                     MlirAttribute const* args,
+-                                                     int* errorCode);
++MLIR_CAPI_EXPORTED MlirAttribute
++stablehloEvalModule(MlirModule module, int nArgs, MlirAttribute const* args,
++                    const char* probeInstrumentationDir, int* errorCode);
+ 
+ #ifdef __cplusplus
+ }
+diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.cpp b/stablehlo/stablehlo/integrations/python/StablehloApi.cpp
+--- stablehlo/stablehlo/integrations/python/StablehloApi.cpp
++++ stablehlo/stablehlo/integrations/python/StablehloApi.cpp
+@@ -146,8 +146,9 @@
+   //
+   m.def(
+       "eval_module",
+-      [](MlirModule module,
+-         std::vector<MlirAttribute> &args) -> std::vector<MlirAttribute> {
++      [](MlirModule module, std::vector<MlirAttribute> &args,
++         const std::string &probe_instrumentation_dir)
++          -> std::vector<MlirAttribute> {
+         for (auto arg : args) {
+           if (!mlirAttributeIsADenseElements(arg)) {
+             throw nb::value_error("input args must be DenseElementsAttr");
+@@ -156,7 +157,8 @@
+ 
+         int errorCode(0);
+         MlirAttribute resultArrayAttr =
+-            stablehloEvalModule(module, args.size(), args.data(), &errorCode);
++            stablehloEvalModule(module, args.size(), args.data(),
++                                probe_instrumentation_dir.c_str(), &errorCode);
+ 
+         if (errorCode != 0) {
+           throw nb::value_error("interpreter failed");
+@@ -168,7 +170,8 @@
+         }
+         return pyResults;
+       },
+-      nb::arg("module"), nb::arg("args"));
++      nb::arg("module"), nb::arg("args"),
++      nb::arg("probe_instrumentation_dir") = "");
+ }
+ 
+ void AddPortableApi(nb::module_ &m) {
+diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stablehlo/stablehlo/integrations/python/StablehloModule.cpp
+--- stablehlo/stablehlo/integrations/python/StablehloModule.cpp
++++ stablehlo/stablehlo/integrations/python/StablehloModule.cpp
+@@ -19,6 +19,7 @@
+ #include "nanobind/nanobind.h"
+ #include "nanobind/stl/string.h"
+ #include "nanobind/stl/vector.h"
++#include "stablehlo/integrations/c/InterpreterDialect.h"
+ #include "stablehlo/integrations/c/StablehloAttributes.h"
+ #include "stablehlo/integrations/c/StablehloDialect.h"
+ #include "stablehlo/integrations/c/StablehloPasses.h"
+@@ -59,6 +60,17 @@
+       "register_dialect",
+       [](MlirContext context, bool load) {
+         MlirDialectHandle dialect = mlirGetDialectHandle__stablehlo__();
++        mlirDialectHandleRegisterDialect(dialect, context);
++        if (load) {
++          mlirDialectHandleLoadDialect(dialect, context);
++        }
++      },
++      nb::arg("context"), nb::arg("load") = true);
++
++  m.def(
++      "register_interpreter_dialect",
++      [](MlirContext context, bool load) {
++        MlirDialectHandle dialect = mlirGetDialectHandle__interpreter__();
+         mlirDialectHandleRegisterDialect(dialect, context);
+         if (load) {
+           mlirDialectHandleLoadDialect(dialect, context);
+diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/InterpreterOps.td b/stablehlo/stablehlo/integrations/python/mlir/dialects/InterpreterOps.td
+--- stablehlo/stablehlo/integrations/python/mlir/dialects/InterpreterOps.td
++++ stablehlo/stablehlo/integrations/python/mlir/dialects/InterpreterOps.td
+@@ -0,0 +1,22 @@
++/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
++   Copyright 2022 The StableHLO Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#ifndef STABLEHLO_INTEGRATIONS_PYTHON_INTERPRETER_OPS
++#define STABLEHLO_INTEGRATIONS_PYTHON_INTERPRETER_OPS
++
++include "third_party/stablehlo/stablehlo/reference/InterpreterOps.h"
++
++#endif
+diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stablehlo/stablehlo/integrations/python/tests/stablehlo.py
+--- stablehlo/stablehlo/integrations/python/tests/stablehlo.py
++++ stablehlo/stablehlo/integrations/python/tests/stablehlo.py
+@@ -18,7 +18,9 @@
+ # pylint: disable=wildcard-import,undefined-variable
+ 
+ import io
++import os
+ import re
++import tempfile
+ from mlir import ir
+ from mlir import passmanager as pm
+ from mlir.dialects import stablehlo
+@@ -28,6 +30,7 @@
+ def run(f):
+   with ir.Context() as context:
+     stablehlo.register_dialect(context)
++    stablehlo.register_interpreter_dialect(context)
+     f()
+   return f
+ 
+@@ -44,7 +47,7 @@
+ def test_comparison_direction_attr():
+   attr = stablehlo.ComparisonDirectionAttr.get("EQ")
+   assert attr is not None
+-  assert str(attr) == ("#stablehlo<comparison_direction EQ>")
++  assert str(attr) == "#stablehlo<comparison_direction EQ>"
+   assert attr.value == "EQ"
+ 
+ 
+@@ -52,7 +55,7 @@
+ def test_comparison_type_attr():
+   attr = stablehlo.ComparisonTypeAttr.get("FLOAT")
+   assert attr is not None
+-  assert str(attr) == ("#stablehlo<comparison_type FLOAT>")
++  assert str(attr) == "#stablehlo<comparison_type FLOAT>"
+   assert attr.value == "FLOAT"
+ 
+ 
+@@ -67,9 +70,11 @@
+       kernel_spatial_dimensions=[2, 3],
+       output_batch_dimension=0,
+       output_feature_dimension=1,
+-      output_spatial_dimensions=[2, 3])
+-  assert str(attr) == ("#stablehlo.conv<[b, f, 0, 1, 2]x[i, o, 0, 1]->"
+-                       "[b, f, 0, 1]>")
++      output_spatial_dimensions=[2, 3],
++  )
++  assert str(attr) == (
++      "#stablehlo.conv<[b, f, 0, 1, 2]x[i, o, 0, 1]->[b, f, 0, 1]>"
++  )
+   assert attr is not None
+   assert attr.input_batch_dimension == 0
+   assert attr.input_feature_dimension == 1
+@@ -92,13 +97,16 @@
+       lhs_component_count=1,
+       rhs_component_count=1,
+       num_primitive_operations=3,
+-      allow_imprecise_accumulation=False)
+-  assert attr is not None
+-  assert str(attr) == ("#stablehlo.dot_algorithm<lhs_precision_type = bf16, "
+-                       "rhs_precision_type = bf16, accumulation_type = f32, "
+-                       "lhs_component_count = 1, rhs_component_count = 1, "
+-                       "num_primitive_operations = 3, "
+-                       "allow_imprecise_accumulation = false>")
++      allow_imprecise_accumulation=False,
++  )
++  assert attr is not None
++  assert str(attr) == (
++      "#stablehlo.dot_algorithm<lhs_precision_type = bf16, "
++      "rhs_precision_type = bf16, accumulation_type = f32, "
++      "lhs_component_count = 1, rhs_component_count = 1, "
++      "num_primitive_operations = 3, "
++      "allow_imprecise_accumulation = false>"
++  )
+   assert isinstance(attr.lhs_precision_type, ir.BF16Type)
+   assert isinstance(attr.rhs_precision_type, ir.BF16Type)
+   assert isinstance(attr.accumulation_type, ir.F32Type)
+@@ -114,12 +122,15 @@
+       lhs_batching_dimensions=[0, 1],
+       rhs_batching_dimensions=[2, 3],
+       lhs_contracting_dimensions=[4, 5],
+-      rhs_contracting_dimensions=[6, 7])
+-  assert attr is not None
+-  assert str(attr) == ("#stablehlo.dot<lhs_batching_dimensions = [0, 1], "
+-                       "rhs_batching_dimensions = [2, 3], "
+-                       "lhs_contracting_dimensions = [4, 5], "
+-                       "rhs_contracting_dimensions = [6, 7]>")
++      rhs_contracting_dimensions=[6, 7],
++  )
++  assert attr is not None
++  assert str(attr) == (
++      "#stablehlo.dot<lhs_batching_dimensions = [0, 1], "
++      "rhs_batching_dimensions = [2, 3], "
++      "lhs_contracting_dimensions = [4, 5], "
++      "rhs_contracting_dimensions = [6, 7]>"
++  )
+   assert attr.lhs_batching_dimensions == [0, 1]
+   assert attr.rhs_batching_dimensions == [2, 3]
+   assert attr.lhs_contracting_dimensions == [4, 5]
+@@ -130,7 +141,7 @@
+ def test_fft_type_attr():
+   attr = stablehlo.FftTypeAttr.get("FFT")
+   assert attr is not None
+-  assert str(attr) == ("#stablehlo<fft_type FFT>")
++  assert str(attr) == "#stablehlo<fft_type FFT>"
+   assert attr.value == "FFT"
+ 
+ 
+@@ -164,13 +175,14 @@
+ @run
+ def test_output_operand_alias():
+   attr = stablehlo.OutputOperandAlias.get(
+-      output_tuple_indices=[0],
+-      operand_index=0,
+-      operand_tuple_indices=[1])
+-  assert attr is not None
+-  assert str(attr) == ("#stablehlo.output_operand_alias<output_tuple_indices = [0], "
+-                       "operand_index = 0, "
+-                       "operand_tuple_indices = [1]>")
++      output_tuple_indices=[0], operand_index=0, operand_tuple_indices=[1]
++  )
++  assert attr is not None
++  assert str(attr) == (
++      "#stablehlo.output_operand_alias<output_tuple_indices = [0], "
++      "operand_index = 0, "
++      "operand_tuple_indices = [1]>"
++  )
+   assert attr.output_tuple_indices == [0]
+   assert attr.operand_index == 0
+   assert attr.operand_tuple_indices == [1]
+@@ -180,7 +192,7 @@
+ def test_precision_attr():
+   attr = stablehlo.PrecisionAttr.get("DEFAULT")
+   assert attr is not None
+-  assert str(attr) == ("#stablehlo<precision DEFAULT>")
++  assert str(attr) == "#stablehlo<precision DEFAULT>"
+   assert attr.value == "DEFAULT"
+ 
+ 
+@@ -188,7 +200,7 @@
+ def test_rng_algorithm_attr():
+   attr = stablehlo.RngAlgorithmAttr.get("DEFAULT")
+   assert attr is not None
+-  assert str(attr) == ("#stablehlo<rng_algorithm DEFAULT>")
++  assert str(attr) == "#stablehlo<rng_algorithm DEFAULT>"
+   assert attr.value == "DEFAULT"
+ 
+ 
+@@ -196,7 +208,7 @@
+ def test_rng_distribution_attr():
+   attr = stablehlo.RngDistributionAttr.get("UNIFORM")
+   assert attr is not None
+-  assert str(attr) == ("#stablehlo<rng_distribution UNIFORM>")
++  assert str(attr) == "#stablehlo<rng_distribution UNIFORM>"
+   assert attr.value == "UNIFORM"
+ 
+ 
+@@ -231,7 +243,7 @@
+ def test_transpose_attr():
+   attr = stablehlo.TransposeAttr.get("TRANSPOSE")
+   assert attr is not None
+-  assert str(attr) == ("#stablehlo<transpose TRANSPOSE>")
++  assert str(attr) == "#stablehlo<transpose TRANSPOSE>"
+   assert attr.value == "TRANSPOSE"
+ 
+ 
+@@ -293,24 +305,32 @@
+ }}
+ """
+ 
++_ASM_FORMAT_WITH_PROBE = r"""
++func.func @test(%arg0: tensor<{0}>) -> tensor<{0}> {{
++  %0 = stablehlo.add %arg0, %arg0 : (tensor<{0}>, tensor<{0}>) -> tensor<{0}>
++  %1 = interpreter.probe %0, probe_id = "probe0" : tensor<{0}>
++  func.return %1 : tensor<{0}>
++}}
++"""
++
+ 
+ @run
+ def test_reference_api():
+   # Formatted as (tensor_type, np_value)
+   # Program runs arg + arg, which is used for expected value
+   tests = [
+-    # No numpy types for f8 - skipping fp8 tests
+-    ("f16", np.asarray(1, np.float16)),
+-    ("f32", np.asarray(2, np.float32)),
+-    ("f64", np.asarray(3, np.double)),
+-    ("1xi8", np.asarray([4], np.int8)),
+-    ("1xi16", np.asarray([5], np.int16)),
+-    ("1xi32", np.asarray([-6], np.int32)),
+-    # Numpy's uint treated as int by DenseElementsAttr, skipping np.uint tests
+-    ("2x2xf16", np.asarray([1, 2, 3, 4], np.float16).reshape(2,2)),
+-    ("2x1x2xf16", np.asarray([1, 2, 3, 4], np.float16).reshape(2,1,2)),
+-    ("?x?xf16", np.asarray([1, 2, 3, 4], np.float16).reshape(2,2)),
+-    ("?x2xf16", np.asarray([1, 2, 3, 4], np.float16).reshape(2,2)),
++      # No numpy types for f8 - skipping fp8 tests
++      ("f16", np.asarray(1, np.float16)),
++      ("f32", np.asarray(2, np.float32)),
++      ("f64", np.asarray(3, np.double)),
++      ("1xi8", np.asarray([4], np.int8)),
++      ("1xi16", np.asarray([5], np.int16)),
++      ("1xi32", np.asarray([-6], np.int32)),
++      # Numpy's uint treated as int by DenseElementsAttr, skipping np.uint tests
++      ("2x2xf16", np.asarray([1, 2, 3, 4], np.float16).reshape(2, 2)),
++      ("2x1x2xf16", np.asarray([1, 2, 3, 4], np.float16).reshape(2, 1, 2)),
++      ("?x?xf16", np.asarray([1, 2, 3, 4], np.float16).reshape(2, 2)),
++      ("?x2xf16", np.asarray([1, 2, 3, 4], np.float16).reshape(2, 2)),
+   ]
+   for test in tests:
+     tensor_type, arg = test
+@@ -390,20 +410,45 @@
+ 
+ @run
+ def test_result_accuracy_attr_default():
+-  attr = stablehlo.ResultAccuracyAttr.get(atol=0, rtol=0, ulps=0, mode="DEFAULT")
++  attr = stablehlo.ResultAccuracyAttr.get(
++      atol=0, rtol=0, ulps=0, mode="DEFAULT"
++  )
+   assert attr is not None
+   assert attr.mode == "DEFAULT"
+   assert attr.atol == 0
+   assert attr.rtol == 0
+   assert attr.ulps == 0
+ 
++
+ @run
+ def test_result_accuracy_attr_tolerance():
+-  attr = stablehlo.ResultAccuracyAttr.get(atol=1e-5, rtol=1.0,
+-                                          ulps=2, mode="TOLERANCE")
++  attr = stablehlo.ResultAccuracyAttr.get(
++      atol=1e-5, rtol=1.0, ulps=2, mode="TOLERANCE"
++  )
+   assert attr is not None
+   assert attr.mode == "TOLERANCE"
+   assert attr.atol == 1e-5
+   assert attr.rtol == 1.0
+   assert attr.ulps == 2
+ 
++
++@run
++def test_reference_api_with_probe():
++  """Tests that probe files are created in the specified directory."""
++  test_tmpdir_base = os.environ.get("TEST_TMPDIR")
++  with tempfile.TemporaryDirectory(dir=test_tmpdir_base) as tmpdir:
++    tensor_type = "f32"
++    arg = np.asarray(2, np.float32)
++    m = ir.Module.parse(_ASM_FORMAT_WITH_PROBE.format(tensor_type))
++    args = [ir.DenseElementsAttr.get(arg)]
++
++    # Call eval_module, directing probe outputs to the temporary directory.
++    stablehlo.eval_module(m, args, probe_instrumentation_dir=tmpdir)
++
++    # Verify that the expected probe files were created.
++    probe_file = os.path.join(tmpdir, "probe1.npy")
++    metadata_file = os.path.join(tmpdir, "index.csv")
++    assert os.path.exists(probe_file), f"Probe file not found: {probe_file}"
++    assert os.path.exists(
++        metadata_file
++    ), f"Metadata file not found: {metadata_file}"
 diff --ruN a/stablehlo/stablehlo/tests/infer_stablehlo.mlir b/stablehlo/stablehlo/tests/infer_stablehlo.mlir
 --- stablehlo/stablehlo/tests/infer_stablehlo.mlir
 +++ stablehlo/stablehlo/tests/infer_stablehlo.mlir
