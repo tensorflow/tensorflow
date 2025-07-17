@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -34,11 +35,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/service/scheduling_annotations_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+
+namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace {
@@ -70,11 +74,9 @@ class WhileLoopUnrollerTest : public HloTestBase {
                         int64_t unroll_factor = -1, bool wrap_in_loop = false) {
     Literal before_unroll = ExecuteAndTransfer(module->Clone(), arguments);
     VLOG(2) << "before unroll value: " << before_unroll.ToString();
-
     EXPECT_TRUE(WhileLoopUnroller(unroll_factor, wrap_in_loop)
                     .Run(module.get())
                     .value());
-
     Literal after_unroll = ExecuteAndTransfer(std::move(module), arguments);
     VLOG(2) << "after unroll value: " << after_unroll.ToString();
 
@@ -803,6 +805,68 @@ TEST_F(WhileLoopUnrollerTest, NestedIndirectBodyInc) {
                    -1, false);
   UnrollAndCompare(MakeModuleWithNestedLoopBodyIndirectInc(/*num_iters=*/5), {},
                    -1, true);
+}
+
+// In this scenario, we expect the body and cond of the original inner while to
+// be used by 5 while instructions.
+TEST_F(WhileLoopUnrollerTest, NoGraphFlattening) {
+  int num_iters = 5;
+  std::unique_ptr<HloModule> module =
+      MakeModuleWithNestedLoopBodyIndirectInc(num_iters);
+  EXPECT_TRUE(
+      WhileLoopUnroller(/*unroll_factor=*/-1, /*wrap_in_trivial_loop=*/true)
+          .Run(module.get())
+          .value());
+  HloComputation* entry_computation = module->entry_computation();
+  ASSERT_EQ(entry_computation->root_instruction()->opcode(), HloOpcode::kWhile);
+  HloComputation* outer_while_body =
+      entry_computation->root_instruction()->while_body();
+  auto outer_callees = outer_while_body->callee_computations();
+  EXPECT_EQ(outer_callees.size(), 2);
+  for (auto iter : outer_callees) {
+    HloComputation* inner_computation = iter.first;
+    EXPECT_EQ(inner_computation->caller_instructions(HloOpcode::kWhile).size(),
+              num_iters);
+  }
+}
+
+// Make sure we don't inline unrelated calls.
+TEST_F(WhileLoopUnrollerTest, NoUnrelatedInlining) {
+  std::string hlo_string = R"(
+  HloModule SimpleLoop
+
+  NopComputation {
+    ROOT param.0 = (s32[]{:T(128)}, s32[3]{0}) parameter(0)
+  }
+  SimpleLoop.body {
+    loop_var.1 = (s32[]{:T(128)}, s32[3]{0}) parameter(0)
+    get-tuple-element.1 = s32[]{:T(128)} get-tuple-element(loop_var.1), index=0
+    constant.1 = s32[]{:T(128)} constant(1)
+    idx = s32[]{:T(128)} add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(loop_var.1), index=1
+    output = s32[3]{0} add(get-tuple-element.2, get-tuple-element.2)
+    ROOT tuple = (s32[]{:T(128)}, s32[3]{0}) tuple(idx, output)
+  }
+  SimpleLoop.condition {
+    loop_var.2 = (s32[]{:T(128)}, s32[3]{0}) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
+    constant.2 = s32[]{:T(128)} constant(5)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s32[]{:T(128)} constant(0)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    tuple.1 = (s32[]{:T(128)}, s32[3]{0}) tuple(constant.3, constant.4)
+    while = (s32[]{:T(128)}, s32[3]{0}) while(tuple.1), condition=
+      SimpleLoop.condition, body=SimpleLoop.body
+    ROOT call = call(while), to_apply=NopComputation
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_TRUE(
+      WhileLoopUnroller(/*unroll_factor=*/-1).Run(hlo_module.get()).value());
+  EXPECT_THAT(hlo_module->entry_computation()->root_instruction(), op::Call());
 }
 
 TEST_F(WhileLoopUnrollerTest, WhileFeedingWhile) {

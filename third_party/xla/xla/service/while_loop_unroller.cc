@@ -40,7 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
-#include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
@@ -301,6 +301,7 @@ absl::StatusOr<bool> UnrollInternal(HloInstruction* while_op,
 
   TF_ASSIGN_OR_RETURN(int64_t next_scheduling_id,
                       NextSchedulingGroupId(*while_op->GetModule()));
+  std::vector<HloInstruction*> new_calls;
   for (int64_t i = config.init; i < config.trip_count + config.init; ++i) {
     CHECK(OverflowSafeAdd(i, (int64_t)1).has_value());
 
@@ -311,15 +312,15 @@ absl::StatusOr<bool> UnrollInternal(HloInstruction* while_op,
     unrolled_body_call_op =
         computation->AddInstruction(HloInstruction::CreateCall(
             while_op->shape(), call_operands, unrolled_body));
+    new_calls.push_back(unrolled_body_call_op);
     call_operands.clear();
     call_operands.push_back(unrolled_body_call_op);
   }
   TF_RETURN_IF_ERROR(
       computation->ReplaceInstruction(while_op, unrolled_body_call_op));
-
-  // Needed for the nested while loops in which the outer loop has been
-  // unrolled which leaves the call graph non-flat.
-  TF_RETURN_IF_ERROR(FlattenCallGraph().Run(module).status());
+  for (HloInstruction* call : new_calls) {
+    TF_RETURN_IF_ERROR(CallInliner::Inline(call).status());
+  }
   return true;
 }
 
@@ -344,6 +345,8 @@ absl::StatusOr<UnrollResult> UnrollInternalWrappedAndReturnReplacement(
 
   TF_ASSIGN_OR_RETURN(int64_t next_scheduling_id,
                       NextSchedulingGroupId(*while_op->GetModule()));
+
+  std::vector<HloInstruction*> new_calls;
   for (int64_t i = config.init; i < config.trip_count + config.init; ++i) {
     CHECK(OverflowSafeAdd(i, (int64_t)1).has_value());
 
@@ -356,6 +359,7 @@ absl::StatusOr<UnrollResult> UnrollInternalWrappedAndReturnReplacement(
         HloInstruction::CreateCall(while_op->shape(), call_operands,
                                    unrolled_body),
         absl::StrCat(while_op->name(), "-unrolled-body-call-", i));
+    new_calls.push_back(unrolled_body_call_op);
 
     call_operands.clear();
     call_operands.push_back(unrolled_body_call_op);
@@ -372,10 +376,10 @@ absl::StatusOr<UnrollResult> UnrollInternalWrappedAndReturnReplacement(
           while_op->shape(), new_cond, new_body, while_op->mutable_operand(0)));
   while_op->SetupDerivedInstruction(new_while_op);
   CHECK_OK(computation->ReplaceInstruction(while_op, new_while_op));
+  for (HloInstruction* call : new_calls) {
+    TF_RETURN_IF_ERROR(CallInliner::Inline(call).status());
+  }
 
-  // Needed for the nested while loops in which the outer loop has been
-  // unrolled which leaves the call graph non-flat.
-  TF_RETURN_IF_ERROR(FlattenCallGraph().Run(module).status());
   UnrollResult result;
   result.unrolled = true;
   result.new_while_op = new_while_op;
@@ -1424,10 +1428,10 @@ WhileLoopUnroller::UnrollAndReturnReplacement(
                         UnrollInternal(while_op, config.value()));
   }
 
-  // We need to inline the calls created for unrolling since later passes rely
-  // on the calls to be inlined.
   if (result.unrolled) {
-    TF_RETURN_IF_ERROR(CallInliner().Run(module).status());
+    // Inlining calls created during unrolling may have left unused computations
+    // around, run DCE to clean them up.
+    TF_RETURN_IF_ERROR(HloDCE().Run(module, /*execution_threads=*/{}).status());
   }
 
   return result;
@@ -1473,10 +1477,10 @@ absl::StatusOr<bool> WhileLoopUnroller::Run(
     changed |= unrolled;
   }
 
-  // We need to inline the calls created for unrolling since later passes rely
-  // on the calls to be inlined.
   if (changed) {
-    TF_RETURN_IF_ERROR(CallInliner().Run(module, execution_threads).status());
+    // Inlining calls created during unrolling may have left unused computations
+    // around, run DCE to clean them up.
+    TF_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
   }
 
   XLA_VLOG_LINES(3, "WhileLoopUnroller::Run(), after:\n" + module->ToString());
