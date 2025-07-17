@@ -49,7 +49,7 @@ void AddReflectionMapPass::runOnOperation() {
 
   auto getBufferFunc = builder.create<emitc::FuncOp>(
       classOp.getLoc(), "getBufferForName", funcType);
-  // getBufferFunc.insertArgument(0, stringViewType, {}, classOp.getLoc());
+  getBufferFunc.insertArgument(0, stringViewType, {}, classOp.getLoc());
 
   Block* funcBody = getBufferFunc.addEntryBlock();
   builder.setInsertionPointToStart(funcBody);
