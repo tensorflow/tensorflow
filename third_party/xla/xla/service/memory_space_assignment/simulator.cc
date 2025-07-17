@@ -49,6 +49,10 @@ void RuntimeSimulator::InitializeAlternateMemoryMap(
   outputs_in_alternate_memory_map_.clear();
   operands_in_alternate_memory_map_.clear();
   for (auto& allocation : allocations) {
+    if (allocation->is_scoped_allocation()) {
+      continue;
+    }
+
     if (!allocation->is_copy_allocation()) {
       if (allocation->memory_space() == MemorySpace::kAlternate) {
         const HloInstruction* defining_instruction =

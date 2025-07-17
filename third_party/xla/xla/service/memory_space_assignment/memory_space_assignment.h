@@ -414,9 +414,15 @@ class MemorySpaceAssignment {
   // corresponding CopyDones follow the same order.
   void ScheduleAsynchronousCopies();
 
-  // Remove the positions and chunks associated with the instruction from
+  // Remove the positions and chunks associated with instructions, from
   // alternate_memory_assignments_.
-  void RemoveAssignmentForInstruction(const HloInstruction* instruction);
+  void RemoveAlternateMemoryAssignments(
+      const absl::flat_hash_set<const HloInstruction*>& instructions);
+
+  // Remove the positions and chunks associated with instructions, from
+  // scoped_memory_assignments_.
+  void RemoveScopedMemoryAssignments(
+      const absl::flat_hash_set<const HloInstruction*>& instructions);
 
   HloModule* module_;
   // Backend specific aliasing information.
