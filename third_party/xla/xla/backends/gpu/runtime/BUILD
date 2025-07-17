@@ -1607,9 +1607,28 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:dnn",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "cudnn_thunk_test",
+    srcs = ["cudnn_thunk_test.cc"],
+    deps = [
+        ":cudnn_thunk",
+        ":thunk",
+        ":thunk_proto_cc",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -1916,6 +1935,7 @@ cc_library(
     deps = [
         ":conditional_thunk",
         ":copy_thunk",
+        ":cudnn_thunk",
         ":gemm_thunk",
         ":kernel_thunk",
         ":replica_id_thunk",
