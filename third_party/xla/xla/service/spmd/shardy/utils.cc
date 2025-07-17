@@ -24,6 +24,7 @@ limitations under the License.
 #include "mhlo/IR/register.h"
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
@@ -205,6 +206,31 @@ void loadAllRequiredDialects(mlir::MLIRContext* context) {
   mlir::sdy::registerAllDialects(registry);
   context->appendDialectRegistry(registry);
   context->loadAllAvailableDialects();
+}
+
+void adjustOutputSharding(
+    FuncOp func, int idx, TensorShardingAttr sharding, int64_t rank,
+    absl::Span<const bool> allowSpmdShardingPropagationToOutput) {
+  bool allowPropagation = false;
+  if (!allowSpmdShardingPropagationToOutput.empty()) {
+    allowPropagation = allowSpmdShardingPropagationToOutput.size() == 1
+                           ? allowSpmdShardingPropagationToOutput[0]
+                           : allowSpmdShardingPropagationToOutput[idx];
+  }
+
+  if (allowPropagation) {
+    return;
+  }
+
+  // Close all dimensions if sharding propagation to outputs is not allowed.
+  if (sharding) {
+    sharding = sharding.getClosedLike(sharding);
+  } else {
+    sharding = TensorShardingAttr::getFullyClosed(
+        func.getContext(), rank,
+        MeshAttr::get(func.getContext(), mlir::ArrayRef<MeshAxisAttr>{}));
+  }
+  setFuncResultSharding(func, idx, sharding);
 }
 
 CustomCallOp cloneCustomCallWithNewResultTypes(CustomCallOp op,

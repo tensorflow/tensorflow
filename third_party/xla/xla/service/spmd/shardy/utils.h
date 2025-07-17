@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -78,6 +79,12 @@ bool hasFrontendAttr(mlir::Operation* op, mlir::StringRef key);
 bool hasKey(mlir::DictionaryAttr dictAttr, mlir::StringRef key);
 
 void loadAllRequiredDialects(mlir::MLIRContext* context);
+
+// Adjusts the output sharding based on allowSpmdShardingPropagationToOutput
+// flag.
+void adjustOutputSharding(
+    mlir::func::FuncOp func, int idx, mlir::sdy::TensorShardingAttr sharding,
+    int64_t rank, absl::Span<const bool> allowSpmdShardingPropagationToOutput);
 
 // Parses `escapedValue` to an attribute of type `AttrTy`.
 template <typename AttrTy>
