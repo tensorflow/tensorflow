@@ -16,15 +16,22 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
+
+// CPU registration - unchanged, this is working correctly
 REGISTER6(BinaryOp, CPU, "Pow", functor::pow, float, Eigen::half, bfloat16,
           double, complex64, complex128);
 REGISTER4(BinaryOp, CPU, "Pow", functor::safe_pow, int8, int16, int32, int64_t);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-REGISTER3(BinaryOp, GPU, "Pow", functor::pow, float, Eigen::half, double);
-REGISTER(BinaryOp, GPU, "Pow", functor::safe_pow_ignore_error, int64);
-#endif
+    // This is an inner macro if-statement
+    #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+    REGISTER3(BinaryOp, GPU, "Pow", functor::pow, float, Eigen::half, double);
+    // FIX: Changed from functor::safe_pow_ignore_error to functor::safe_pow
+    // This ensures the GPU uses the same overflow handling as the CPU
+    REGISTER(BinaryOp, GPU, "Pow", functor::safe_pow, int64_t);
+    #endif
+// GPU registration for bfloat16 - unchanged
 REGISTER(BinaryOp, GPU, "Pow", functor::pow, bfloat16);
 #endif
-}  // namespace tensorflow
+
+} // namespace tensorflow
