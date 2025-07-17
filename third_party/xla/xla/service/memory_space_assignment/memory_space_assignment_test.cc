@@ -14643,6 +14643,48 @@ TEST_F(MemorySpaceAssignmentTest, TestColoringMultipleOperands) {
             kAlternateMemorySpace);
 }
 
+TEST_F(MemorySpaceAssignmentTest,
+       ScopedAllocationAccountingWhenInstructionsAreRemoved) {
+  absl::string_view hlo_string = R"(
+  HloModule DoIt_S64_10_0_5_1.3, is_scheduled=true
+
+  ENTRY %DoIt_S64_10_0_5_1.3 (p0.1: (u32[10], u32[10])) -> (u32[5], u32[5]) {
+    %p0.1 = (u32[10]{0:T(128)}, u32[10]{0:T(128)}) parameter(0)
+    %get-tuple-element.1 = u32[10]{0:T(128)} get-tuple-element((u32[10]{0:T(128)}, u32[10]{0:T(128)}) %p0.1), index=1
+    %bitcast.1 = u32[5]{0:T(128)} bitcast(u32[10]{0:T(128)} %get-tuple-element.1)
+    %get-tuple-element = u32[10]{0:T(128)} get-tuple-element((u32[10]{0:T(128)}, u32[10]{0:T(128)}) %p0.1), index=0
+    %bitcast = u32[5]{0:T(128)} bitcast(u32[10]{0:T(128)} %get-tuple-element)
+    %tuple.1 = (u32[5]{0:T(128)}, u32[5]{0:T(128)}) tuple(u32[5]{0:T(128)} %bitcast, u32[5]{0:T(128)} %bitcast.1)
+    %tuple.3 = ((u32[5]{0:T(128)}, u32[5]{0:T(128)}), (u32[5]{0:T(128)}, u32[5]{0:T(128)})) tuple(%tuple.1, %tuple.1)
+    %get-tuple-element.4 = u32[5]{0:T(128)} get-tuple-element((u32[5]{0:T(128)}, u32[5]{0:T(128)}) %tuple.1), index=0
+    %get-tuple-element.5 = (u32[5]{0:T(128)}, u32[5]{0:T(128)}) get-tuple-element(%tuple.3), index=0
+    %get-tuple-element.6 = u32[5]{0:T(128)} get-tuple-element((u32[5]{0:T(128)}, u32[5]{0:T(128)}) %get-tuple-element.5), index=1
+    %copy.2 = u32[5]{0:T(128)} copy(u32[5]{0:T(128)} %get-tuple-element.4)
+    %copy.3 = u32[5]{0:T(128)} copy(u32[5]{0:T(128)} %get-tuple-element.6)
+    ROOT %tuple.2 = (u32[5]{0:T(128)}, u32[5]{0:T(128)}) tuple(u32[5]{0:T(128)} %copy.2, u32[5]{0:T(128)} %copy.3)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.reserved_scoped_memory_fn =
+      [&](const HloInstruction* instruction,
+          const absl::flat_hash_set<std::pair<int, ShapeIndex>>
+              operands_in_alternate_memory,
+          const absl::flat_hash_set<ShapeIndex> outputs_in_alternate_memory) {
+        return 10;
+      };
+  std::unique_ptr<PresetAssignments> preset_assignments =
+      AssignMemorySpace(module.get(), options);
+  EXPECT_THAT(preset_assignments->scoped_allocation_chunks(),
+              ::testing::Each(::testing::ResultOf(
+                  "instruction->name()",
+                  [](const auto& pair) { return pair.first->name(); },
+                  ::testing::AllOf(::testing::Not("bitcast"),
+                                   ::testing::Not("bitcast.1")))));
+}
+
 }  // namespace
 }  // namespace memory_space_assignment
 }  // namespace xla
