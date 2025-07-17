@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/autotuner/block_level_emitter.h"
 #include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/backends/gpu/autotuner/triton.h"
 #include "xla/service/compiler.h"
@@ -38,6 +39,8 @@ inline std::vector<std::unique_ptr<CodegenBackend>> GetAllGpuCodegenBackends(
                                                      debug_options, compiler));
   backends.push_back(std::make_unique<CublasBackend>(stream_executor,
                                                      debug_options, compiler));
+  backends.push_back(std::make_unique<BlockLevelEmitterBackend>(
+      stream_executor, debug_options, compiler));
   /*
   TODO(b/407494793): Enable backends as they are ready and verified.
   backends.push_back(std::make_unique<CublasLtBackend>(
