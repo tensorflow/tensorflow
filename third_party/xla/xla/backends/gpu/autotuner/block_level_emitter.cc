@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
@@ -328,7 +329,35 @@ BlockLevelEmitterBackend::GetDefaultConfig(const HloInstruction& instr) {
 
 absl::Status BlockLevelEmitterBackend::ApplyConfig(
     HloInstruction& instr, const BackendConfig& config) {
-  return absl::UnimplementedError("ApplyConfig is not implemented yet");
+  if (!IsSupported(instr)) {
+    return absl::InvalidArgumentError(
+        "BlockLevelEmitterBackend does not support this instruction.");
+  }
+  // Object nesting structure:
+  // HloInstruction
+  // └── GpuBackendConfig
+  //     └── FusionBackendConfig
+  //         └── BlockLevelFusionConfig
+  // Ensure the provided config is of type BlockLevelFusionConfig.
+  if (config.GetDescriptor() != BlockLevelFusionConfig::GetDescriptor()) {
+    return absl::InvalidArgumentError(
+        "Invalid backend config type for BlockLevelFusionConfig.");
+  }
+  // Safe to cast now since we've checked the descriptor above.
+  const BlockLevelFusionConfig& block_level_fusion_config =
+      static_cast<const BlockLevelFusionConfig&>(config);
+  // Extract the current GPU backend config from the instruction.
+  // This contains the nested FusionBackendConfig we want to modify.
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+                      instr.backend_config<GpuBackendConfig>());
+  FusionBackendConfig& backend_config =
+      *gpu_backend_config.mutable_fusion_backend_config();
+  // Overwrite the block-level fusion config with the new one provided.
+  *backend_config.mutable_block_level_fusion_config() =
+      block_level_fusion_config;
+  // Re-attach the modified GPU config back to the instruction.
+  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_backend_config)));
+  return absl::OkStatus();
 }
 
 bool BlockLevelEmitterBackend::IsSupported(const HloInstruction& instr) {
