@@ -1918,7 +1918,6 @@ cc_library(
         "//xla/service/gpu/transforms:cudnn_pad_for_convolutions",
         "//xla/service/gpu/transforms:cudnn_simplify_padding",
         "//xla/service/gpu/transforms:cudnn_vectorize_convolutions",
-        "//xla/service/gpu/transforms:dot_sparsity_rewriter",
         "//xla/service/gpu/transforms:gpusolver_rewriter",
         "//xla/service/gpu/transforms:triangular_solve_rewriter",
         "//xla/service/llvm_ir:llvm_util",
