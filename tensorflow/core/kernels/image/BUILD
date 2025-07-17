@@ -271,7 +271,11 @@ tf_kernel_library(
     name = "non_max_suppression_op",
     features = ["-layering_check"],
     prefix = "non_max_suppression_op",
-    deps = IMAGE_DEPS + ["//tensorflow/core/kernels:gpu_prim_hdrs"] + if_cuda_or_rocm([
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core/kernels:gpu_prim_hdrs",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+    ] + if_cuda_or_rocm([
         "@com_google_absl//absl/strings",
     ]),
 )
@@ -279,7 +283,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "scale_and_translate_op",
     prefix = "scale_and_translate_op",
-    deps = IMAGE_DEPS + [":sampling_kernels"],
+    deps = IMAGE_DEPS + [
+        ":sampling_kernels",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 tf_kernel_library(
