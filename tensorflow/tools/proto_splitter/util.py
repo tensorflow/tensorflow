@@ -180,7 +180,11 @@ def _is_map(desc: descriptor.Descriptor) -> bool:
 
 
 def is_repeated(field_desc: descriptor.FieldDescriptor) -> bool:
+  # copybara:uncomment_begin(google-only)
+  # return field_desc.is_repeated
+  # copybara:uncomment_end_and_comment_begin
   return field_desc.label == descriptor.FieldDescriptor.LABEL_REPEATED
+  # copybara:comment_end
 
 
 _FIELD_DESC = descriptor.FieldDescriptor
