@@ -1365,12 +1365,10 @@ class TotalOrderTest : public ClientLibraryTestRunnerMixin<
     if constexpr (std::numeric_limits<T>::has_infinity) {
       values.push_back(std::numeric_limits<T>::infinity());
     }
-#if defined(XLA_TEST_BACKEND_CPU) || defined(XLA_TEST_BACKEND_GPU) || \
-    defined(XLA_TEST_BACKEND_INTERPRETER)
-    if constexpr (std::numeric_limits<T>::has_quiet_NaN) {
+    if (test::DeviceTypeIsOneOf({test::kCpu, test::kGpu, test::kInterpreter}) &&
+        std::numeric_limits<T>::has_quiet_NaN) {
       values.push_back(Eigen::numext::abs(std::numeric_limits<T>::quiet_NaN()));
     }
-#endif
     AddNegativeValuesMaybeRemoveZero(values);
     std::vector<T> lhs_data;
     std::vector<T> rhs_data;
