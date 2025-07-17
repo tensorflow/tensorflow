@@ -250,6 +250,15 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToCpuMemorySpace(
       const xla::Shape& shape, PjRtMemorySpace* dst_memory_space);
 
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyFromCpuToMemorySpace(
+      const xla::Shape& shape, PjRtMemorySpace* dst_memory_space);
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+  CopyToMemorySpaceFallbackThroughLiteral(PjRtMemorySpace* dst_memory_space);
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+  CopyToMemorySpaceSyncThroughLiteral(PjRtMemorySpace* dst_memory_space);
+
   using PjRtBuffer::ToLiteralSync;
   PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
   PjRtFuture<> LazyToLiteral(
