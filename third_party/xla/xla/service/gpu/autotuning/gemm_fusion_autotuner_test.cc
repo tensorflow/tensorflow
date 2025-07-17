@@ -1481,7 +1481,7 @@ TEST_F(
       GemmFusionAutotunerForKeyValueStore(multi_process_key_value_store);
 
   // Run the autotuner once to populate the key-value store.
-  EXPECT_THAT(autotuner.Run(module->Clone().get()),
+  ASSERT_THAT(autotuner.Run(module->Clone().get()),
               ::tsl::testing::IsOkAndHolds(true));
 
   auto& key_value_store = *static_cast<KeyValueStoreForTest*>(
@@ -1493,7 +1493,7 @@ TEST_F(
   // Running the autotuner a second time on the same module should succeed and
   // modify the HLO again, but we should hit the cache (i.e., the key-value
   // store should still contain a single entry for each process).
-  EXPECT_THAT(autotuner.Run(module.get()), ::tsl::testing::IsOkAndHolds(true));
+  ASSERT_THAT(autotuner.Run(module.get()), ::tsl::testing::IsOkAndHolds(true));
   ASSERT_THAT(key_value_store.storage(), ::testing::SizeIs(kProcessCount));
 }
 
@@ -1565,7 +1565,7 @@ TEST_F(
       GemmFusionAutotunerForKeyValueStore(multi_process_key_value_store);
 
   // Run the autotuner on the first module.
-  EXPECT_THAT(autotuner.Run(module1.get()), ::tsl::testing::IsOkAndHolds(true));
+  ASSERT_THAT(autotuner.Run(module1.get()), ::tsl::testing::IsOkAndHolds(true));
 
   auto& key_value_store = *static_cast<KeyValueStoreForTest*>(
       multi_process_key_value_store.key_value_store.get());
@@ -1576,7 +1576,7 @@ TEST_F(
   // Running the autotuner on the second module should *not* hit the cached
   // results in the key-value store. I.e., the key-value store should now
   // contain a second entry for each process).
-  EXPECT_THAT(autotuner.Run(module2.get()), ::tsl::testing::IsOkAndHolds(true));
+  ASSERT_THAT(autotuner.Run(module2.get()), ::tsl::testing::IsOkAndHolds(true));
   ASSERT_THAT(key_value_store.storage(), ::testing::SizeIs(2 * kProcessCount));
 }
 
