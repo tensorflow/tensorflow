@@ -67,9 +67,10 @@ static absl::StatusOr<llvm::orc::ThreadSafeModule> ParseModule(
     llvm::orc::ThreadSafeContext& context, absl::string_view ir,
     absl::string_view name) {
   llvm::SMDiagnostic diagnostic;
-  llvm::MemoryBufferRef ir_buffer(ir, name);
-
-  auto m = llvm::parseAssembly(ir_buffer, diagnostic, *context.getContext());
+  auto m = context.withContextDo([&](llvm::LLVMContext* ctxt) {
+    llvm::MemoryBufferRef ir_buffer(ir, name);
+    return llvm::parseAssembly(ir_buffer, diagnostic, *ctxt);
+  });
   if (m == nullptr) {
     return Internal("Failed to parse LLVM IR: %s",
                     diagnostic.getMessage().str());
