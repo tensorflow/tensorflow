@@ -89,6 +89,9 @@ class PjRtDeviceEventPromise : public PjRtDeviceEventOrPromise {
 
   // Mark the promise as an error.
   virtual void SetError(absl::Status s) = 0;
+
+  // Mark the event as ready.
+  virtual void SetReady() = 0;
 };
 
 }  // namespace xla

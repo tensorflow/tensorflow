@@ -54,6 +54,8 @@ class CpuTrackedDeviceEventPromise : public PjRtDeviceEventPromise {
 
   void SetError(absl::Status s) override { av_->SetError(std::move(s)); }
 
+  void SetReady() override;
+
   tsl::RCReference<tsl::IndirectAsyncValue>& av() { return av_; }
 
  private:
