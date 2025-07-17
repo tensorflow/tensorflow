@@ -1123,6 +1123,10 @@ class ShapeUtil {
       const Shape& shape,
       const ForEachParallelVisitorFunction& visitor_function);
 
+  // Returns true if the shape doesn't have any device-specific information,
+  // namely tiling and memory-space information.
+  static bool DeviceShapeIsHostShape(const Shape& shape);
+
   // Strips device-specific information, namely tiling and memory-space
   // information, from a shape.
   static Shape DeviceShapeToHostShape(Shape s);

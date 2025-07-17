@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
@@ -66,27 +67,37 @@ namespace xla {
 class ExecutionInput {
  public:
   explicit ExecutionInput(xla::Shape shape) : buffers_(std::move(shape)) {
-    SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
+    if (!ShapeUtil::DeviceShapeIsHostShape(buffers_.shape())) {
+      SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
+    }
   }
   // TODO(b/170310047): remove this overload.
   ExecutionInput(xla::Shape shape, xla::Shape host_shape)
       : buffers_(std::move(shape)) {
-    SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
+    if (!ShapeUtil::DeviceShapeIsHostShape(buffers_.shape())) {
+      SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
+    }
   }
 
   explicit ExecutionInput(const xla::Shape* shape) : buffers_(shape) {
-    SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
+    if (!ShapeUtil::DeviceShapeIsHostShape(buffers_.shape())) {
+      SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
+    }
   }
 
   explicit ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers)
       : buffers_(std::move(buffers)) {
-    SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
+    if (!ShapeUtil::DeviceShapeIsHostShape(buffers_.shape())) {
+      SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
+    }
   }
   // TODO(b/170310047): remove this overload.
   ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers,
                  xla::Shape host_shape)
       : buffers_(std::move(buffers)) {
-    SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
+    if (!ShapeUtil::DeviceShapeIsHostShape(buffers_.shape())) {
+      SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
+    }
   }
 
   ExecutionInput(ExecutionInput&&) = default;
