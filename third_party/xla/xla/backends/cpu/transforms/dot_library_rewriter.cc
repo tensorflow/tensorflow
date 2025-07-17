@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/transforms/library_matcher.h"
@@ -62,6 +61,8 @@ absl::Status FuseConsumerInstruction(HloFusionInstruction* fusion,
   HloComputation* fused_computation = fusion->fused_instructions_computation();
   HloInstruction* old_root = fusion->fused_expression_root();
   std::vector<HloInstruction*> new_operands;
+
+  // Add new operands as fusion parameters.
   for (auto operand : to_fuse->operands()) {
     if (operand == fusion) {
       new_operands.push_back(old_root);
@@ -87,13 +88,18 @@ absl::Status FuseConsumerInstruction(HloFusionInstruction* fusion,
     }
   }
 
+  bool shape_changed = old_root->shape() != to_fuse->shape();
   HloInstruction* new_root = fused_computation->AddInstruction(
       to_fuse->CloneWithNewOperands(to_fuse->shape(), new_operands));
   fused_computation->set_root_instruction(
       new_root,
-      /*accept_different_shape=*/old_root->shape() != new_root->shape());
+      /*accept_different_shape=*/shape_changed);
+  if (shape_changed) {
+    *fusion->mutable_shape() = new_root->shape();
+  }
 
-  TF_RETURN_IF_ERROR(fusion->parent()->ReplaceInstruction(to_fuse, fusion));
+  TF_RETURN_IF_ERROR(
+      fusion->parent()->ReplaceInstructionWithDifferentShape(to_fuse, fusion));
   return absl::OkStatus();
 }
 
@@ -109,68 +115,14 @@ class DotLibraryRewriteVisitor : public DfsHloRewriteVisitor {
       libs_.push_back(
           std::make_unique<OneDnnMatcher>(target_machine_features_));
     }
-    if (options.use_xnnpack) {
-      libs_.push_back(std::make_unique<XnnMatcher>(target_machine_features_));
+    if (options.use_xnnpack && options_.xnn_fusion_types != nullptr &&
+        !options_.xnn_fusion_types->empty()) {
+      libs_.push_back(std::make_unique<XnnMatcher>(target_machine_features_,
+                                                   options_.xnn_fusion_types));
     }
     for (std::unique_ptr<LibraryMatcher>& lib : libs_) {
       supported_ops_.merge(lib->SupportedOps());
     }
-  }
-
-  // Groups possible `Dot` with elementwise instructions into a `Fusion` op
-  // with kind `kCustom`.
-  absl::Status HandleDot(HloInstruction* instr) override {
-    // Replace the dot with a fusion node if any library supports it.
-    for (std::unique_ptr<LibraryMatcher>& lib : libs_) {
-      TF_ASSIGN_OR_RETURN(bool op_supported, lib->IsOpSupported(instr));
-      if (op_supported) {
-        Shape fusion_shape = instr->shape();
-        PrimitiveType out_dtype = fusion_shape.element_type();
-        PrimitiveType lib_out_dtype = lib->LibraryOpOutputType(instr);
-        std::unique_ptr<HloInstruction> convert;
-        HloInstruction* fusion_root = instr;
-
-        // Add a convert node if the library op does not support the original
-        // output type.
-        bool convert_output = lib_out_dtype != out_dtype;
-        if (convert_output) {
-          instr->mutable_shape()->set_element_type(lib_out_dtype);
-          fusion_root = instr->parent()->AddInstruction(
-              HloInstruction::CreateConvert(fusion_shape, instr));
-        }
-
-        // Create a fusion with `dot` as root if we don't need output
-        // conversion. Otherwise, the fusion will have `convert` as root.
-        auto fusion = HloInstruction::CreateFusion(
-            fusion_shape, HloInstruction::FusionKind::kCustom, fusion_root,
-            absl::StrCat(lib->fusion_prefix(), "dot_"));
-
-        if (convert_output) {
-          // Convert is the root. Fuse the dot into the fusion too.
-          fusion->FuseInstruction(instr);
-
-          // `ReplaceWithNewInstruction` checks that the instruction to replace
-          // has a matching shape with the original instruction, so we set the
-          // dtype back to original.
-          instr->mutable_shape()->set_element_type(out_dtype);
-
-          // Remove the first `convert` we created in the parent computation
-          // of the fusion op.
-          TF_RETURN_IF_ERROR(instr->parent()->RemoveInstruction(fusion_root));
-        }
-
-        BackendConfig backend_config;
-        FusionBackendConfig* fusion_config =
-            backend_config.mutable_fusion_config();
-        fusion_config->set_kind(std::string(lib->fusion_kind()));
-        TF_RETURN_IF_ERROR(fusion->set_backend_config(backend_config));
-
-        return ReplaceWithNewInstruction(instr, std::move(fusion));
-      }
-    }
-
-    // Do nothing if no libraries support this Dot.
-    return absl::OkStatus();
   }
 
   absl::Status DefaultAction(HloInstruction* instr) override {
@@ -186,7 +138,7 @@ class DotLibraryRewriteVisitor : public DfsHloRewriteVisitor {
         continue;
       }
 
-      // One of the operands must be a fusion of the same library kind.
+      // Find if an operand is a fusion of the same library kind.
       // If there are more than one, we fuse with the first one.
       HloFusionInstruction* fusion = nullptr;
       for (auto operand : instr->operands()) {
@@ -197,14 +149,56 @@ class DotLibraryRewriteVisitor : public DfsHloRewriteVisitor {
         }
       }
 
+      // If no fusion is found, we check if we should start a new fusion.
+      if (fusion == nullptr && !lib->ShouldCreateFusion(instr)) {
+        continue;
+      }
       // If the custom fusion has multiple users, fusing `instr` into it will
       // require multi-output support. So we do not fuse it for now.
       // TODO(penporn): Support multi-output fusion.
-      if (fusion == nullptr || fusion->user_count() > 1) {
+      if (fusion != nullptr && fusion->user_count() > 1) {
         continue;
       }
 
-      TF_RETURN_IF_ERROR(FuseConsumerInstruction(fusion, instr));
+      PrimitiveType out_dtype = instr->shape().element_type();
+      PrimitiveType lib_out_dtype = lib->LibraryOpOutputType(instr);
+      if (fusion == nullptr) {
+        // Start a new fusion.
+        HloComputation* computation = instr->parent();
+        fusion = Cast<HloFusionInstruction>(
+            computation->AddInstruction(HloInstruction::CreateFusion(
+                instr->shape(), HloInstruction::FusionKind::kCustom, instr,
+                lib->fusion_prefix())));
+
+        // Set the fusion kind.
+        BackendConfig backend_config;
+        FusionBackendConfig* fusion_config =
+            backend_config.mutable_fusion_config();
+        fusion_config->set_kind(lib->fusion_kind());
+        TF_RETURN_IF_ERROR(fusion->set_backend_config(backend_config));
+
+        // Replace the instruction.
+        TF_RETURN_IF_ERROR(
+            computation->ReplaceInstructionWithDifferentShape(instr, fusion));
+
+      } else {
+        // One of the operands is a fusion. Fuse with it.
+        TF_RETURN_IF_ERROR(FuseConsumerInstruction(fusion, instr));
+      }
+
+      // If the library can't output the exact type, we set the type of the op
+      // to what the library supports, and add a convert node to change to the
+      // desired type.
+      if (out_dtype != lib_out_dtype) {
+        HloComputation* fused_computation =
+            fusion->fused_instructions_computation();
+        HloInstruction* root = fusion->fused_expression_root();
+        root->mutable_shape()->set_element_type(lib_out_dtype);
+        HloInstruction* convert = fused_computation->AddInstruction(
+            HloInstruction::CreateConvert(fusion->shape(), root));
+        fused_computation->set_root_instruction(convert);
+      }
+      MarkAsChanged();
       return absl::OkStatus();
     }
     return absl::OkStatus();

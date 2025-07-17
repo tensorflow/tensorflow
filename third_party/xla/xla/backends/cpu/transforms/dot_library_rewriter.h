@@ -16,27 +16,32 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_TRANSFORMS_DOT_LIBRARY_REWRITER_H_
 #define XLA_BACKENDS_CPU_TRANSFORMS_DOT_LIBRARY_REWRITER_H_
 
+#include <utility>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla::cpu {
 
 struct DotLibraryRewriterOptions {
   bool use_onednn = false;
   bool use_xnnpack = false;
+  const tsl::protobuf::RepeatedField<int>* xnn_fusion_types = nullptr;
 };
 
-// Rewrites suitable Dot operations into XNNPACK fusions.
+// Rewrites suitable Dot operations into library fusions.
 class DotLibraryRewriter : public HloModulePass {
  public:
   explicit DotLibraryRewriter(
       const TargetMachineFeatures* target_machine_features,
       const DotLibraryRewriterOptions& options)
-      : target_machine_features_(target_machine_features), options_(options) {}
+      : target_machine_features_(target_machine_features),
+        options_(std::move(options)) {}
   ~DotLibraryRewriter() override = default;
 
   using HloPassInterface::Run;
