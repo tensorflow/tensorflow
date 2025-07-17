@@ -708,11 +708,12 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &alpha));
   PreluOpData* data = reinterpret_cast<PreluOpData*>(node->user_data);
 
-  TF_LITE_ENSURE_TYPES_EQ(context, input->type, alpha->type);
+  // TF_LITE_ENSURE_TYPES_EQ(context, input->type, alpha->type);
 
   output->type = input->type;
 
-  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
+      output->type == kTfLiteInt16) {
     // prelu(x) = x if x >= 0 else x * alpha.
     // So if we translate that for quantized computation:
     //
@@ -1477,11 +1478,33 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
       }
       return kTfLiteOk;
     }
+    case kTfLiteInt16: {
+      PreluParams op_params;
+      op_params.input_offset = -input->params.zero_point;
+      op_params.alpha_offset = -alpha->params.zero_point;
+      op_params.output_offset = output->params.zero_point;
+      op_params.output_multiplier_1 = data->output_multiplier_1;
+      op_params.output_shift_1 = data->output_shift_1;
+      op_params.output_multiplier_2 = data->output_multiplier_2;
+      op_params.output_shift_2 = data->output_shift_2;
+      if (data->requires_broadcast) {
+        reference_ops::BroadcastPrelu4DSlow(
+            op_params, GetTensorShape(input), GetTensorData<int16_t>(input),
+            GetTensorShape(alpha), GetTensorData<int8_t>(alpha),
+            GetTensorShape(output), GetTensorData<int16_t>(output));
+      } else {
+        reference_ops::Prelu(
+            op_params, GetTensorShape(input), GetTensorData<int16_t>(input),
+            GetTensorShape(alpha), GetTensorData<int8_t>(alpha),
+            GetTensorShape(output), GetTensorData<int16_t>(output));
+      }
+      return kTfLiteOk;
+    }
     default:
-      TF_LITE_KERNEL_LOG(
-          context,
-          "Only float32 and uint8 and int8 are supported currently, got %s.",
-          TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Only float32, uint8, int8 and int16 are supported "
+                         "currently, got %s.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 }
