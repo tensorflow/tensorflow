@@ -912,7 +912,7 @@ func.func @main(%arg0: tensor<i32>, %arg1: tensor<f32>) -> tensor<f32> {
 
 // CHECK:       ENTRY %[[$main_7:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
-// CHECK-NEXT:  ROOT %[[all_reduce_6:[^ ]+]] = f32[10] all-reduce(%[[Arg_0_1]]), mode=cross_replica_and_partition, channel_id=5,
+// CHECK-NEXT:  ROOT %[[all_reduce_6:[^ ]+]] = f32[10] all-reduce(%[[Arg_0_1]]), channel_id=5,
 // CHECK-SAME{{LITERAL}}:  replica_groups={{0,2,4,6},{1,3,5,7}}, to_apply=%[[$region_0_2]], metadata=
 
 module {
@@ -938,7 +938,7 @@ module {
 
 // CHECK:       ENTRY %[[$main_7:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
-// CHECK-NEXT:  ROOT %[[all_reduce_6:[^ ]+]] = f32[10] all-reduce(%[[Arg_0_1]]), mode=cross_replica_and_partition, channel_id=5,
+// CHECK-NEXT:  ROOT %[[all_reduce_6:[^ ]+]] = f32[10] all-reduce(%[[Arg_0_1]]), channel_id=5,
 // CHECK-SAME{{LITERAL}}:  replica_groups={{0,2,4},{1,3,5,6}}, to_apply=%[[$region_0_2]], metadata=
 
 module {
@@ -964,7 +964,7 @@ module {
 
 // CHECK:       ENTRY %[[$main_7:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
-// CHECK-NEXT:  ROOT %[[all_reduce_6:[^ ]+]] = f32[10] all-reduce(%[[Arg_0_1]]), mode=flattened_id, channel_id=5,
+// CHECK-NEXT:  ROOT %[[all_reduce_6:[^ ]+]] = f32[10] all-reduce(%[[Arg_0_1]]), channel_id=5,
 // CHECK-SAME{{LITERAL}}:  replica_groups={{0,2,4,6},{1,3,5,7}}, use_global_device_ids=true, to_apply=%[[$region_0_2]], metadata=
 
 module {
@@ -994,7 +994,7 @@ module {
 // CHECK-NEXT:  %[[tuple_3:[^ ]+]] = (f32[8], f32[]) tuple(%[[Arg_0_1]], %[[Arg_1_2]]), metadata=
 // CHECK-NEXT:  %[[get_tuple_element_4:[^ ]+]] = f32[8] get-tuple-element(%[[tuple_3]]), index=0, metadata=
 // CHECK-NEXT:  %[[get_tuple_element_5:[^ ]+]] = f32[] get-tuple-element(%[[tuple_3]]), index=1, metadata=
-// CHECK-NEXT:  %[[all_reduce_10:[^ ]+]] = (f32[8], f32[]) all-reduce(%[[get_tuple_element_4]], %[[get_tuple_element_5]]), mode=cross_replica, replica_groups={}, to_apply=%[[$region_0_6]], metadata=
+// CHECK-NEXT:  %[[all_reduce_10:[^ ]+]] = (f32[8], f32[]) all-reduce(%[[get_tuple_element_4]], %[[get_tuple_element_5]]), replica_groups={}, to_apply=%[[$region_0_6]], metadata=
 // CHECK-NEXT:  %[[get_tuple_element_11:[^ ]+]] = f32[8] get-tuple-element(%[[all_reduce_10]]), index=0, metadata=
 // CHECK-NEXT:  %[[get_tuple_element_12:[^ ]+]] = f32[] get-tuple-element(%[[all_reduce_10]]), index=1, metadata=
 // CHECK-NEXT:  ROOT %[[tuple_13:[^ ]+]] = (f32[8], f32[]) tuple(%[[get_tuple_element_11]], %[[get_tuple_element_12]]), metadata=
@@ -1627,7 +1627,7 @@ module {
 
 // CHECK:       ENTRY %[[$main_7:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
-// CHECK-NEXT:  ROOT %[[reduce_scatter_6:[^ ]+]] = f32[5] reduce-scatter(%[[Arg_0_1]]), mode=cross_replica_and_partition, channel_id=5,
+// CHECK-NEXT:  ROOT %[[reduce_scatter_6:[^ ]+]] = f32[5] reduce-scatter(%[[Arg_0_1]]), channel_id=5,
 // CHECK-SAME{{LITERAL}} : replica_groups={{0,2},{1,3}}, dimensions={0}, to_apply=%[[$region_0_2]], metadata=
 
 module {
@@ -1653,7 +1653,7 @@ module {
 
 // CHECK:       ENTRY %[[$main_7:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
-// CHECK-NEXT:  ROOT %[[reduce_scatter_6:[^ ]+]] = f32[5] reduce-scatter(%[[Arg_0_1]]), mode=cross_replica_and_partition, channel_id=5,
+// CHECK-NEXT:  ROOT %[[reduce_scatter_6:[^ ]+]] = f32[5] reduce-scatter(%[[Arg_0_1]]), channel_id=5,
 // CHECK-SAME{{LITERAL}} : replica_groups={{0,2},{1,3}}, dimensions={0}, to_apply=%[[$region_0_2]], metadata=
 
 module {
@@ -1679,7 +1679,7 @@ module {
 
 // CHECK:       ENTRY %[[$main_7:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
-// CHECK-NEXT:  ROOT %[[reduce_scatter_6:[^ ]+]] = f32[5] reduce-scatter(%[[Arg_0_1]]), mode=flattened_id, channel_id=5,
+// CHECK-NEXT:  ROOT %[[reduce_scatter_6:[^ ]+]] = f32[5] reduce-scatter(%[[Arg_0_1]]), channel_id=5,
 // CHECK-SAME{{LITERAL}} : replica_groups={{0,2},{1,3}}, use_global_device_ids=true, dimensions={0}, to_apply=%[[$region_0_2]], metadata=
 
 module {
@@ -1704,7 +1704,7 @@ module {
 
 // CHECK:       ENTRY %[[$main_6:[^ ]+]]
 // CHECK:  %[[Arg_0_1:[^ ]+]] = f32[4,16] parameter(0)
-// CHECK-NEXT:  ROOT %[[reduce_scatter_5:[^ ]+]] = f32[4,4] reduce-scatter(%[[Arg_0_1]]), mode=flattened_id, channel_id=1,
+// CHECK-NEXT:  ROOT %[[reduce_scatter_5:[^ ]+]] = f32[4,4] reduce-scatter(%[[Arg_0_1]]), channel_id=1,
 // CHECK-SAME{{LITERAL}} : replica_groups={{0,1,2,3}}, use_global_device_ids=true, dimensions={1}, to_apply=%[[$region_0_2]], metadata=
 
 module {
