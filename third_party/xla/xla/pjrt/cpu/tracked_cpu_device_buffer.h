@@ -150,6 +150,9 @@ class TrackedCpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
   PjRtFuture<>::Promise GetReadyFuturePromise(
       PjRtMemorySpace* memory_space) override;
 
+  absl::Status BlockForOperationsToComplete(
+      PjRtMemorySpace* memory_space) override;
+
  private:
   // Relinquishes ownership of the buffer's device memory, e.g., after the
   // buffer is passed to a computation that aliases its inputs to outputs.

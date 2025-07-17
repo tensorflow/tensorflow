@@ -223,9 +223,7 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
   absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
   absl::StatusOr<std::unique_ptr<ExternalReference>>
-  ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) override {
-    return Unimplemented("ReleaseDeviceMemoryOwnership not implemented yet");
-  }
+  ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
       PjRtFuture<> dependency) override;

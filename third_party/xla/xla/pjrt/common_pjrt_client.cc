@@ -1120,6 +1120,49 @@ absl::StatusOr<size_t> CommonPjRtBufferImpl::GetOnDeviceSizeInBytes() const {
   return client()->GetOnDeviceBytesCount(memory_space(), on_device_shape_);
 }
 
+absl::StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
+CommonPjRtBufferImpl::ReleaseDeviceMemoryOwnership(
+    bool wait_for_operations_to_complete) {
+  if (on_device_shape_.IsTuple()) {
+    return InvalidArgument(
+        "ReleaseDeviceMemoryOwnership allowed only for non-tuple");
+  }
+  auto device_buffer = ReleaseBuffer();
+  if (device_buffer == nullptr) {
+    return {nullptr};
+  }
+
+  if (wait_for_operations_to_complete) {
+    TF_RETURN_IF_ERROR(
+        device_buffer->BlockForOperationsToComplete(memory_space_));
+  }
+
+  class RawBufferAsExternalReference : public PjRtBuffer::ExternalReference {
+   public:
+    explicit RawBufferAsExternalReference(
+        tsl::RCReference<CommonPjRtRawBuffer> raw_buffer)
+        : raw_buffer_(std::move(raw_buffer)) {
+      if (!raw_buffer_) {
+        data_ptr_ = nullptr;
+      } else {
+        data_ptr_ = raw_buffer_->OpaqueDeviceMemoryDataPointer();
+      }
+    }
+
+    ~RawBufferAsExternalReference() override = default;
+
+   private:
+    tsl::RCReference<CommonPjRtRawBuffer> raw_buffer_;
+  };
+
+  std::unique_ptr<PjRtBuffer::ExternalReference> ref;
+  if (device_buffer) {
+    ref = std::make_unique<RawBufferAsExternalReference>(
+        device_buffer->GetRawBuffer(memory_space_));
+  }
+  return ref;
+}
+
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtBufferImpl::DonateWithControlDependency(PjRtFuture<> dependency) {
   auto hold = GetBufferWithHold(CommonPjRtBuffer::ScopedHold::kDonation);

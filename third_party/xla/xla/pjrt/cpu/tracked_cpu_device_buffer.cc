@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/pjrt/common_pjrt_client.h"
@@ -270,6 +271,24 @@ PjRtFuture<>::Promise TrackedCpuDeviceBuffer::GetReadyFuturePromise(
         }
       });
   return promise;
+}
+
+absl::Status TrackedCpuDeviceBuffer::BlockForOperationsToComplete(
+    PjRtMemorySpace* memory_space) {
+  // Block the host until all usage events have completed. We do not return
+  // the error of a usage event because it does not matter if these usages
+  // failed.
+  for (const auto& av : usage_events_) {
+    BlockUntilReady(av.GetAsyncValue());
+  }
+
+  // Fetch the error from the definition event (if an error is present).
+  BlockUntilReady(definition_event_.GetAsyncValue());
+  if (auto* error = definition_event_.GetErrorIfPresent()) {
+    return absl::InternalError(
+        absl::StrFormat("Error Execute: %s", error->message()));
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace xla
