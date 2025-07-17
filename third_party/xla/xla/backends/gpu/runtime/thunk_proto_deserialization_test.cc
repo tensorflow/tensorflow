@@ -390,6 +390,30 @@ TEST(ThunkProtoDeserializationTest, WaitForStreamsThunk) {
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
+TEST(ThunkProtoDeserializationTest, CudnnThunk) {
+  ThunkProto proto;
+  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        thunk_info { execution_stream_id: 7 }
+        cudnn_thunk {
+          fingerprint: "fingerprint"
+          args { buffer_allocation_index: 0 }
+          args { buffer_allocation_index: 1 }
+        }
+      )pb",
+      &proto));
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
+      BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0),
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Thunk> thunk,
+                          DeserializeThunkProto(proto, buffer_allocations));
+
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
 TEST(ThunkProtoDeserializationTest, EmptyThunkImplReturnsAnError) {
   ThunkProto proto;
   CHECK(tsl::protobuf::TextFormat::ParseFromString(

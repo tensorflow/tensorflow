@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
@@ -133,6 +134,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
     return PartitionIdThunk::FromProto(std::move(thunk_info),
                                        thunk_proto.partition_id_thunk(),
                                        buffer_allocations);
+  }
+  if (thunk_proto.has_cudnn_thunk()) {
+    return CuDnnThunk::FromProto(std::move(thunk_info),
+                                 thunk_proto.cudnn_thunk(), buffer_allocations);
   }
 
   std::optional<absl::string_view> unsupported_thunk_type =
