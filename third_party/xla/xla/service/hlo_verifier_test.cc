@@ -1739,7 +1739,7 @@ TEST_F(HloVerifierTest, AllReduce_MissingReplicaId) {
 TEST_F(HloVerifierTest, AllReduce_NotEnougReplicasInGroupConfig) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllReduceComputation({{0, 1}}, 8));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
-              HasSubstr("In cross_replica mode, replica groups should contain "
+              HasSubstr("In kCrossReplica mode, replica groups should contain "
                         "8 replicas, but found 2"));
 }
 
@@ -1747,7 +1747,7 @@ TEST_F(HloVerifierTest, AllReduce_TooManyReplicasInGroupConfig) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           MakeAllReduceComputation({{0, 1}, {2, 3}}, 2));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
-              HasSubstr("In cross_replica mode, replica groups should contain "
+              HasSubstr("In kCrossReplica mode, replica groups should contain "
                         "2 replicas, but found 4"));
 }
 
@@ -1758,7 +1758,7 @@ TEST_F(HloVerifierTest, AllReduce_CrossReplicaAndPartition_Invalid) {
   EXPECT_THAT(
       verifier().Run(module.get()).status().message(),
       HasSubstr(
-          "In cross_replica_and_partition mode, replica groups should contain "
+          "In kCrossReplicaAndPartition mode, replica groups should contain "
           "2 replicas, but found 4"));
 }
 
@@ -1775,7 +1775,7 @@ TEST_F(HloVerifierTest, AllReduce_FlattenedID_Invalid) {
       MakeAllReduceComputation({{0, 1}, {2, 3}}, 1, 2,
                                "channel_id=1, use_global_device_ids=true"));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
-              HasSubstr("In flattened_id mode, replica groups should contain "
+              HasSubstr("In kFlattenedID mode, replica groups should contain "
                         "2 flattened IDs, but found 4"));
 }
 
@@ -1931,7 +1931,7 @@ TEST_F(HloVerifierTest, AllToAll_CrossPartition_Invalid) {
       auto module,
       MakeAllToAllComputation({{0, 1}, {2, 3}}, 1, 2, "channel_id=1"));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
-              HasSubstr("In cross_partition mode, replica groups should "
+              HasSubstr("In kCrossPartition mode, replica groups should "
                         "contain 2 partitions, but found 4"));
 }
 
@@ -2797,7 +2797,7 @@ TEST_F(HloVerifierTest, UseGlobalDeviceIdsEmptyReplicaGroup) {
       HasSubstr("Replica groups must be specified in flattened-id mode"));
 }
 
-TEST_F(HloVerifierTest, InvalidMode) {
+TEST_F(HloVerifierTest, InvalidChannelIDandUseGlobalDeviceIDs) {
   const char* const hlo_string = R"(
   HloModule Module
   add {
@@ -2809,7 +2809,7 @@ TEST_F(HloVerifierTest, InvalidMode) {
   ENTRY CRS {
     input = f32[8]{0} parameter(0)
     ROOT crs = f32[8]{0} all-reduce(input), replica_groups={},
-                         mode=flattened_id, to_apply=add
+                         use_global_device_ids=true, to_apply=add
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
@@ -2818,8 +2818,8 @@ TEST_F(HloVerifierTest, InvalidMode) {
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
       status.message(),
-      HasSubstr("Instruction has mode=flattened_id but should be cross_replica "
-                "because use_global_device_ids=0 and channel_id is absent"));
+      HasSubstr(
+          "Invalid combination of has_channel_id and use_global_device_ids"));
 }
 
 TEST_F(HloVerifierTest, ReduceScatterInvalidOutputSize0) {

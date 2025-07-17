@@ -230,7 +230,7 @@ HloModule module
 
 ENTRY %comp {
   p0 = f32[8,8] parameter(0)
-  ROOT crs = f32[8,8] all-reduce(p0), mode=flattened_id, channel_id=1,
+  ROOT crs = f32[8,8] all-reduce(p0), channel_id=1,
     replica_groups={{0,1,2,3,4,5,6,7}}, use_global_device_ids=true, to_apply=add
 })";
   HloModuleConfig module_config;
@@ -244,8 +244,8 @@ ENTRY %comp {
   RunAndFilecheckHloRewrite(hlo_string, std::move(pass), R"(
   CHECK:       %p0 = f32[8,8]{1,0} parameter(0)
   CHECK-NEXT:  [[bitcast:%[^ ]+]] = f32[64]{0} bitcast(%p0)
-  CHECK-NEXT:  [[reduce_scatter:%[^ ]+]] = f32[16]{0} reduce-scatter([[bitcast]]), mode=flattened_id, channel_id=2, replica_groups={{..0,1,2,3.,.4,5,6,7..}}, use_global_device_ids=true, dimensions={0}, to_apply=%add
-  CHECK-NEXT:  [[all_reduce:%[^ ]+]] = f32[16]{0} all-reduce([[reduce_scatter]]), mode=flattened_id, channel_id=1, replica_groups={{..0,4.,.1,5.,.2,6.,.3,7..}}, use_global_device_ids=true, to_apply=%add
+  CHECK-NEXT:  [[reduce_scatter:%[^ ]+]] = f32[16]{0} reduce-scatter([[bitcast]]), channel_id=2, replica_groups={{..0,1,2,3.,.4,5,6,7..}}, use_global_device_ids=true, dimensions={0}, to_apply=%add
+  CHECK-NEXT:  [[all_reduce:%[^ ]+]] = f32[16]{0} all-reduce([[reduce_scatter]]), channel_id=1, replica_groups={{..0,4.,.1,5.,.2,6.,.3,7..}}, use_global_device_ids=true, to_apply=%add
   CHECK-NEXT:  [[all_gather:%[^ ]+]] = f32[64]{0} all-gather([[all_reduce]]), channel_id=3, replica_groups={{..0,1,2,3.,.4,5,6,7..}}, dimensions={0}, use_global_device_ids=true
   CHECK-NEXT:  ROOT [[output:%[^ ]+]] = f32[8,8]{1,0} bitcast([[all_gather]])
 }

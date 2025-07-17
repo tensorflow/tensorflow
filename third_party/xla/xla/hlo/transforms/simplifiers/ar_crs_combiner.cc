@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/hlo_replication_analysis.h"
-#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -85,8 +84,6 @@ absl::StatusOr<bool> ReplaceReplicatedAllReduce(HloModule* module,
         if (replication_analysis->HloInstructionIsReplicatedAt(ar, {})) {
           VLOG(2) << "Replaced replicated all-reduce:" << ar->ToString();
           ar->set_channel_id(next_channel++);
-          ar->set_collective_op_group_mode(
-              CollectiveOpGroupMode::kCrossReplicaAndPartition);
           auto divisor =
               computation->AddInstruction(HloInstruction::CreateConstant(
                   LiteralUtil::CreateR0<float>(partition_count)));
@@ -611,12 +608,6 @@ absl::StatusOr<bool> ArCrsCombiner::RewriteGraph() {
       // combine ReplicaGroup configs using global ids here if we relax that
       // restriction.
       next->set_channel_id(channel_id);
-      HloAllReduceInstructionBase* next_ar =
-          Cast<HloAllReduceInstructionBase>(next);
-      next_ar->set_collective_op_group_mode(
-          next_ar->use_global_device_ids()
-              ? CollectiveOpGroupMode::kFlattenedID
-              : CollectiveOpGroupMode::kCrossReplicaAndPartition);
     }
   }
   return true;
