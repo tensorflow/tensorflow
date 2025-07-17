@@ -92,6 +92,17 @@ bool CanUseMakeArrayFromHostBuffer(
 
 }  // namespace
 
+UserContextRef GetUserContext(Client* client,
+                              UserContextRef per_call_user_context) {
+  if (per_call_user_context != nullptr) {
+    return per_call_user_context;
+  }
+  if (UserContextScope::current() != nullptr) {
+    return UserContextScope::current();
+  }
+  return client->CreateUserContext();
+}
+
 absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
     Client* client,
     absl::Span<Client::MakeArraysFromHostBufferShardsSpec> specs,

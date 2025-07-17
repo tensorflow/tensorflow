@@ -1095,6 +1095,22 @@ cc_library(
     ]),
     deps = [
         "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log:check",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "user_context_test",
+    srcs = ["user_context_test.cc"],
+    deps = [
+        ":user_context",
+        "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
     ],
 )
