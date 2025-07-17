@@ -2430,6 +2430,13 @@ inline void BroadcastDivSlowQuantized(
     TFLITE_DCHECK_LE(params.input2_offset, 128);
     TFLITE_DCHECK_GE(params.output_offset, -128);
     TFLITE_DCHECK_LT(params.output_offset, 128);
+  } else if (std::is_same<T, int16_t>::value) {
+    TFLITE_DCHECK_GT(params.input1_offset, -32768);
+    TFLITE_DCHECK_LE(params.input1_offset, 32768);
+    TFLITE_DCHECK_GT(params.input2_offset, -32768);
+    TFLITE_DCHECK_LE(params.input2_offset, 32768);
+    TFLITE_DCHECK_GE(params.output_offset, -32768);
+    TFLITE_DCHECK_LT(params.output_offset, 32768);
   }
 
   auto div_func = [&](int indexes[N]) {
@@ -2486,6 +2493,19 @@ inline void BroadcastDivSlow(const ArithmeticParams& params,
                              const RuntimeShape& unextended_output_shape,
                              int8_t* output_data) {
   BroadcastDivSlowQuantized<int8_t, N>(
+      params, unextended_input1_shape, input1_data, unextended_input2_shape,
+      input2_data, unextended_output_shape, output_data);
+}
+
+template <int N = 5>
+inline void BroadcastDivSlow(const ArithmeticParams& params,
+                             const RuntimeShape& unextended_input1_shape,
+                             const int16_t* input1_data,
+                             const RuntimeShape& unextended_input2_shape,
+                             const int16_t* input2_data,
+                             const RuntimeShape& unextended_output_shape,
+                             int16_t* output_data) {
+  BroadcastDivSlowQuantized<int16_t, N>(
       params, unextended_input1_shape, input1_data, unextended_input2_shape,
       input2_data, unextended_output_shape, output_data);
 }
