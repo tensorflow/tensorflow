@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 
 namespace pjrt {
