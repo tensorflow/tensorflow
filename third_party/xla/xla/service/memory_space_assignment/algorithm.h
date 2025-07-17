@@ -334,6 +334,15 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   absl::StatusOr<HeapSimulator::Result<HloValue>> Finish() override;
 
+  // Allocates buffers for block-allocated weights.
+  void AllocateBlockAllocatedWeights();
+
+  int64_t MaxReservedScopedMemory();
+
+  int64_t EarliestBlockAllocatedWeightStartTime(
+      int64_t definition_time, int64_t use_time, int64_t buffer_size,
+      int64_t block_allocated_weights_bytes_limit);
+
  protected:
   // Given a buffer interval, returns the colocated intervals. Unlike the
   // similar GlobalDecreasingSizeBestFitHeap::GetTransitiveColocations, it

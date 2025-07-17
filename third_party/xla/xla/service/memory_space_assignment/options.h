@@ -394,6 +394,9 @@ struct Options {
   // allocate for post-module operations.
   uint64_t post_module_scoped_alternate_memory_size_in_bytes = 0;
 
+  uint64_t reserved_bytes_for_block_allocated_weights = 0;
+  absl::flat_hash_set<HloPosition> block_allocated_weights_positions;
+
   std::string ToString() const;
 };
 
