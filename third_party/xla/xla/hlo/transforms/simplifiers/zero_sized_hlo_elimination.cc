@@ -36,15 +36,13 @@ namespace {
 
 // Whether `instruction` has side effects and therefore should be skipped.
 //
-// If `instruction` is a `kCustomCall` with target name
-// `kLocalToGlobalShapeCallTargetName`, we don't skip it since we want to
+// An exception is the custom call with target name
+// `kLocalToGlobalShapeCallTargetName`. We don't skip it since we want to
 // replace its uses with a constant if it's a zero-sized array.
 bool ShouldSkipForSideEffect(HloInstruction* instruction) {
-  if (!instruction->HasSideEffect()) {
-    return false;
-  }
-  return !instruction->IsCustomCall(
-      sdy::toStringView(sdy::kLocalToGlobalShapeCallTargetName));
+  return instruction->HasSideEffect() &&
+         !instruction->IsCustomCall(
+             sdy::toStringView(sdy::kLocalToGlobalShapeCallTargetName));
 }
 
 }  // namespace
