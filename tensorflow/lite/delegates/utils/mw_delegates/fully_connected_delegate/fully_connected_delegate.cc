@@ -91,7 +91,7 @@ class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
 
   TF_LITE_KERNEL_LOG(context, "======== In FullyConnectedDelegateKernel::Init =========\n");
   printf("[DELEGATE-DEBUG: Init] ========In FullyConnectedDelegateKernel::Init===========\n");
-  
+
   inputs_.resize(params->nodes_to_replace->size);
   outputs_.resize(params->nodes_to_replace->size);
   weights_.resize(params->nodes_to_replace->size);
@@ -147,10 +147,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override {
   
   TF_LITE_KERNEL_LOG(context, "======== In FullyConnectedDelegateKernel::Prepare =========\n");
   printf("[DELEGATE-DEBUG: Prepare] In FullyConnectedDelegateKernel::Prepare\n");
-  TF_LITE_KERNEL_LOG(context, "Preparing %d nodes in partition\n\n", inputs_.size());
-  printf("[DELEGATE-DEBUG: Prepare] Preparing %d nodes in partition\n", inputs_.size());
-  
-  for(int i = 0; i < inputs_.size(); i++){
+
+  int node_count = inputs_.size();
+  int out_tid = 0
+
+  TF_LITE_KERNEL_LOG(context, "Preparing %d nodes in partition\n\n", node_count);
+  printf("[DELEGATE-DEBUG: Prepare] Preparing %d nodes in partition\n", node_count);
+
+  for(int i = 0; i < node_count; i++){
     // Safety check for tensor indices
     if (inputs_[i].empty() || weights_[i].empty() || outputs_[i].empty()) {
       TF_LITE_KERNEL_LOG(context, "Error: Empty tensor indices for node %d\n", i);
@@ -214,6 +218,30 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override {
     printf("[DELEGATE-DEBUG: Prepare] Node %d - Output tensor allocation: data=%p, bytes=%d, allocation_type=%d\n", 
            i, output_tensor->data.data, output_tensor->bytes, output_tensor->allocation_type);
     
+    // Resize output tensor to ensure TensorFlow Lite allocates it properly
+    const int out_dim1 = 1; // Default to 1 for batch size
+    const int out_dim2 = weights_tensor->dims->data[0]; // Output dimension weight = [output_size, input_size]    
+    int temp_out_id;
+    bool req_temp_out = outputs_[i][0] != node->outputs->data[out_tid];
+    if (!req_temp_out) out_tid++;
+
+    TF_LITE_ENSURE_STATUS(AllocateTemporaryTensorsIfRequired(
+        context, node, req_temp_out, outputs_[i][0], temp_out_id, inputs_[i][0], weights_[i][0]));
+
+    int k = node->outputs->data[out_tid];
+
+    if (req_temp_out) {
+      node->temporaries->data[temp_out_id] = outputs_[i][0];
+      TfLiteIntArray* temp_out_tensor_size = TfLiteIntArrayCreate(2);
+      temp_out_tensor_size->data[0] = out_dim1;
+      temp_out_tensor_size->data[1] = out_dim2;
+
+      TfLiteTensor* temp_out_tensor = &context->tensors[outputs_[i][0]];
+      temp_out_tensor->type = kTfLiteFloat32; // Ensure type matches
+      temp_out_tensor->allocation_type = kTfLiteArenaRw;
+      auto temp_out_tensor_status = context->ResizeTensor(
+          context, temp_out_tensor, temp_out_tensor_size);
+      if (temp_out_tensor_status != kTfLiteOk) return temp_out_tensor_status;
     // // Resize output tensor to ensure TensorFlow Lite allocates it properly
     // TfLiteIntArray* output_shape = TfLiteIntArrayCopy(output_tensor->dims);
     // if (context->ResizeTensor(context, output_tensor, output_shape) != kTfLiteOk) {
@@ -391,120 +419,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override {
   printf("[DELEGATE-DEBUG: Eval] =============FullyConnectedDelegateKernel::Eval completed successfully=================\n");
   return kTfLiteOk;
 }
-
-//   TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override {
-//     // Evaluate the delegated graph.
-//     // Here we loop over all the delegated nodes.
-//     // We know that all the nodes are either ADD or SUB operations and the
-//     // number of nodes equals ''inputs_.size()'' and inputs[i] is a list of
-//     // tensor indices for inputs to node ''i'', while outputs_[i] is the list of
-//     // outputs for node
-//     // ''i''. Note, that it is intentional we have simple implementation as this
-//     // is for demonstration.
-//     TF_LITE_KERNEL_LOG(context, "======== IN FullyConnectedDelegateKernel::Eval =========\n");
-
-//     int node_count = inputs_.size();
-//     for(int i =0; i< node_count; i++) {
-//       const TfLiteTensor& input_tensor = context->tensors[inputs_[i][0]];
-//       TfLiteTensor& output_tensor = context->tensors[outputs_[i][0]];
-
-//       // Check if input and output tensors are valid
-//       if (input_tensor.data.raw == nullptr || output_tensor.data.raw == nullptr) {
-//         TF_LITE_KERNEL_LOG(context, "Eval failed: null tensor data detected for node %d.\n", i);
-//         return kTfLiteError;
-//       }
-//     const int input_size = NumElements(input_tensor.dims);
-//     const int output_size = NumElements(output_tensor.dims);
-
-//     // Additional safety check for zero-sized tensors
-//     if (input_size <= 0 || output_size <= 0) {
-//       TF_LITE_KERNEL_LOG(context, "Eval failed: invalid tensor sizes (input: %d, output: %d).\n", input_size, output_size);
-//       return kTfLiteError;
-//     }
-
-//     // Debug logging for tensor sizes
-//     TF_LITE_KERNEL_LOG(context, "Tensor sizes - Input: %d, Output: %d\n", input_size, output_size);
-//     TF_LITE_KERNEL_LOG(context, "Input tensor shape: [%d, %d]\n", input_tensor.dims->data[0], input_tensor.dims->data[1]);
-//     TF_LITE_KERNEL_LOG(context, "Output tensor shape: [%d, %d]\n", output_tensor.dims->data[0], output_tensor.dims->data[1]);
-
-//     // Extract the actual feature dimensions (ignore batch dimension)
-//     const int input_features = input_tensor.dims->data[1];  // Features dimension
-//     const int output_features = output_tensor.dims->data[1]; // Output features dimension
-    
-//     // DEBUG: Force print to console to see what's happening
-//     printf("[DELEGATE-DEBUG] Input tensor shape: [%d, %d]\n", input_tensor.dims->data[0], input_tensor.dims->data[1]);
-//     printf("[DELEGATE-DEBUG] Output tensor shape: [%d, %d]\n", output_tensor.dims->data[0], output_tensor.dims->data[1]);
-//     printf("[DELEGATE-DEBUG] Feature dimensions - Input: %d, Output: %d\n", input_features, output_features);
-//     fflush(stdout);
-    
-//     TF_LITE_KERNEL_LOG(context, "Feature dimensions - Input: %d, Output: %d\n", input_features, output_features);
-
-//     // Write input tensor to input BRAM (FLOAT32 only)
-//     if (input_tensor.type == kTfLiteFloat32) {
-//       // Safety check: ensure input tensor data is allocated
-//       if (input_tensor.data.f == nullptr) {
-//         TF_LITE_KERNEL_LOG(context, "Eval failed: input tensor data is null\n");
-//         return kTfLiteError;
-//       }
-      
-//       // For batched input, we need to handle each sample in the batch
-//       const int batch_size = input_tensor.dims->data[0];
-//       if (batch_size != 1) {
-//         TF_LITE_KERNEL_LOG(context, "Eval failed: batch size %d not supported. Only batch size 1 supported.\n", batch_size);
-//         return kTfLiteError;
-//       }
-      
-//       TF_LITE_KERNEL_LOG(context, "Input tensor data address: %p\n", input_tensor.data.f);
-      
-//       if (fpga_bram_driver_->write_input_to_bram(input_tensor.data.f, input_features)) {
-//         TF_LITE_KERNEL_LOG(context, "Eval failed: failed to write FLOAT32 input to BRAM.\n");
-//         return kTfLiteError;
-//       }
-      
-//       // DEBUG: Print what we're passing to BRAM
-//       printf("[DELEGATE-DEBUG] Calling write_input_to_bram with input_features: %d\n", input_features);
-//       fflush(stdout);
-      
-//       TF_LITE_KERNEL_LOG(context, "Successfully wrote input to BRAM (features: %d)\n", input_features);
-//     } else {
-//       TF_LITE_KERNEL_LOG(context, "Eval failed: unsupported input tensor type: %d. Only FLOAT32 supported.\n", input_tensor.type);
-//       return kTfLiteError;
-//     }
-
-//     // Trigger FPGA execution
-//     printf("[DELEGATE-DEBUG] Calling fpga_compute with input_features: %d, output_features: %d\n", input_features, output_features);
-//     fflush(stdout);
-    
-//     if (fpga_ip_driver_->fpga_compute(input_features, output_features)) {
-//       TF_LITE_KERNEL_LOG(context, "Eval failed: FPGA inference trigger failed.\n");
-//       return kTfLiteError;
-//     }
-//     TF_LITE_KERNEL_LOG(context, "FPGA computation completed successfully\n");
-
-//     // Read output from output BRAM into output tensor (FLOAT32 only)
-//     if (output_tensor.type == kTfLiteFloat32) {
-//       // Safety check: ensure output tensor data is allocated
-//       if (output_tensor.data.f == nullptr) {
-//         TF_LITE_KERNEL_LOG(context, "Eval failed: output tensor data is null\n");
-//         return kTfLiteError;
-//       }
-      
-//       // DEBUG: Print what we're passing to BRAM for output
-//       printf("[DELEGATE-DEBUG] Calling read_output_from_bram with output_features: %d\n", output_features);
-//       fflush(stdout);
-      
-//       if (fpga_bram_driver_->read_output_from_bram(output_tensor.data.f, output_features)) {
-//         TF_LITE_KERNEL_LOG(context, "Eval failed: failed to read FLOAT32 output from BRAM.\n");
-//         return kTfLiteError;
-//       }
-//       TF_LITE_KERNEL_LOG(context, "Successfully read output from BRAM (features: %d)\n", output_features);
-//     } else {
-//       TF_LITE_KERNEL_LOG(context, "Eval failed: unsupported output tensor type: %d. Only FLOAT32 supported.\n", output_tensor.type);
-//       return kTfLiteError;
-//     }
-//     TF_LITE_KERNEL_LOG(context, "======== FullyConnectedDelegateKernel::Eval completed successfully =========\n");
-//     return kTfLiteOk;
-// }
 
  private:
   const FullyConnectedDelegateOptions options_;
