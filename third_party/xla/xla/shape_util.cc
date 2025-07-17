@@ -2149,15 +2149,32 @@ struct ParallelState {
   return shape;
 }
 
+bool ShapeUtil::DeviceShapeIsHostShape(const Shape& shape) {
+  bool is_host_shape = true;
+  ForEachSubshape(shape, [&](const Shape& subshape, const ShapeIndex&) {
+    if (subshape.IsArray() && subshape.has_layout()) {
+      const Layout& layout = subshape.layout();
+      is_host_shape &= layout.tiles().empty();
+      is_host_shape &= layout.memory_space() == Layout::kDefaultMemorySpace;
+      is_host_shape &= !layout.has_physical_shape();
+      is_host_shape &= layout.element_size_in_bits() == 0;
+      is_host_shape &= layout.tail_padding_alignment_in_elements() == 1;
+      is_host_shape &= layout.dynamic_shape_metadata_prefix_bytes() == 0;
+    }
+  });
+  return is_host_shape;
+}
+
 Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
   ForEachMutableSubshape(&s, [](Shape* subshape, const ShapeIndex& index) {
     if (subshape->IsArray() && subshape->has_layout()) {
-      subshape->mutable_layout()->clear_tiles();
-      subshape->mutable_layout()->set_memory_space(Layout::kDefaultMemorySpace);
-      subshape->mutable_layout()->clear_physical_shape();
-      subshape->mutable_layout()->set_element_size_in_bits(0);
-      subshape->mutable_layout()->set_tail_padding_alignment_in_elements(1);
-      subshape->mutable_layout()->set_dynamic_shape_metadata_prefix_bytes(0);
+      Layout* layout = subshape->mutable_layout();
+      layout->clear_tiles();
+      layout->set_memory_space(Layout::kDefaultMemorySpace);
+      layout->clear_physical_shape();
+      layout->set_element_size_in_bits(0);
+      layout->set_tail_padding_alignment_in_elements(1);
+      layout->set_dynamic_shape_metadata_prefix_bytes(0);
     }
   });
   return s;
