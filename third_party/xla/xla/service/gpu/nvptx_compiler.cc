@@ -83,7 +83,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/cudnn_pad_for_convolutions.h"
 #include "xla/service/gpu/transforms/cudnn_simplify_padding.h"
 #include "xla/service/gpu/transforms/cudnn_vectorize_convolutions.h"
-#include "xla/service/gpu/transforms/dot_sparsity_rewriter.h"
 #include "xla/service/gpu/transforms/gpusolver_rewriter.h"
 #include "xla/service/gpu/transforms/triangular_solve_rewriter.h"
 #include "xla/service/hlo_module_config.h"
@@ -281,7 +280,6 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
       /*allow_cudnn=*/cuda_compute_capability.IsAtLeastBlackwell() &&
       gpu_target_config.dnn_version_info >= se::dnn::VersionInfo(9, 7));
   pre_pipeline.AddPass<DotDimensionMerger>();
-  pre_pipeline.AddPass<DotSparsityRewriter>();
 
   if (!hlo_module->config()
            .debug_options()
