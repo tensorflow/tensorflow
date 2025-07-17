@@ -23,6 +23,56 @@
 namespace tflite {
 namespace fully_connected {
 
+  // === Utility tensor access functions ===
+inline TfLiteTensor* GetTensorAtIndex(const TfLiteContext* context, int tensor_index) {
+  return &context->tensors[tensor_index];
+}
+
+inline TfLiteStatus GetMutableInputSafe(const TfLiteContext* context, int tensor_index, const TfLiteTensor** tensor) {
+  *tensor = GetTensorAtIndex(context, tensor_index);
+  return kTfLiteOk;
+}
+
+TfLiteStatus GetInputSafe(const TfLiteContext* context, int tensor_index, const TfLiteTensor** tensor) {
+  return GetMutableInputSafe(context, tensor_index, tensor);
+}
+
+TfLiteStatus GetOutputSafe(const TfLiteContext* context, int tensor_index, TfLiteTensor** tensor) {
+  *tensor = GetTensorAtIndex(context, tensor_index);
+  return kTfLiteOk;
+}
+// This function allocates temporary tensors if required by the node.
+static TfLiteStatus AllocateTemporaryTensorsIfRequired(
+    TfLiteContext* context, TfLiteNode* node, bool req_temp_out,
+    int temp_out_tid, int& temp_out_id, int input_tid, int weight_tid) {
+
+  TF_LITE_ENSURE(context, node->inputs->size >= 2);
+  const TfLiteTensor* input;
+  const TfLiteTensor* weight;
+
+  GetInputSafe(context, input_tid, &input);
+  GetInputSafe(context, weight_tid, &weight);
+  int temporaries_count = node->temporaries->size;
+
+  if (req_temp_out) {
+    temp_out_id = temporaries_count;
+    if (temp_out_tid == kTensorNotAllocated) {
+      context->AddTensors(context, 1, &temp_out_tid);
+    }
+    ++temporaries_count;
+  }
+
+  auto temp_array = TfLiteIntArrayCreate(temporaries_count);
+  for (int i = 0; i < node->temporaries->size; i++)
+    temp_array->data[i] = node->temporaries->data[i];
+
+  TfLiteIntArrayFree(node->temporaries);
+  node->temporaries = temp_array;
+
+  return kTfLiteOk;
+}
+// === End of utility tensor access functions ===
+
 // FullyConnectedDelegateKernel implements the interface of SimpleDelegateKernelInterface.
 // This holds the Delegate capabilities.
 class FullyConnectedDelegateKernel : public SimpleDelegateKernelInterface {
