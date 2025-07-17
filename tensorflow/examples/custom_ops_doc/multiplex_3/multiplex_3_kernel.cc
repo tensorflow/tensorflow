@@ -183,10 +183,10 @@ class MultiplexSparseOp : public OpKernel {
   }
 
  private:
-  Status ValidateSparseTensor(const ::tensorflow::Tensor& indices_tensor,
-                              const ::tensorflow::Tensor& values_tensor,
-                              const ::tensorflow::Tensor& shape_tensor,
-                              const string label) {
+  absl::Status ValidateSparseTensor(const ::tensorflow::Tensor& indices_tensor,
+                                    const ::tensorflow::Tensor& values_tensor,
+                                    const ::tensorflow::Tensor& shape_tensor,
+                                    const string label) {
     if (!TensorShapeUtils::IsMatrix(indices_tensor.shape())) {
       return InvalidArgument(
           "Sparse indices for ", label,
@@ -209,7 +209,7 @@ class MultiplexSparseOp : public OpKernel {
                              indices_tensor.shape().DebugString(),
                              " values: ", values_tensor.shape().DebugString());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

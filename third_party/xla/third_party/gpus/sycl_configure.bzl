@@ -4,6 +4,7 @@
   * `GCC_HOST_COMPILER_PATH`: The GCC host compiler path
 """
 
+load("//third_party/gpus/sycl:level_zero.bzl", "level_zero_redist")
 load("//third_party/gpus/sycl:sycl_dl_essential.bzl", "sycl_redist")
 load(
     "//third_party/remote_config:common.bzl",
@@ -30,11 +31,20 @@ load(
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
 _GCC_HOST_COMPILER_PREFIX = "GCC_HOST_COMPILER_PREFIX"
 
-def _mkl_path(sycl_config):
-    return sycl_config.sycl_basekit_path + "/mkl/" + sycl_config.sycl_basekit_version_number
+def _mkl_include_path(sycl_config):
+    return sycl_config.mkl_include_dir
+
+def _mkl_library_path(sycl_config):
+    return sycl_config.mkl_library_dir
+
+def _l0_include_path(sycl_config):
+    return sycl_config.l0_include_dir
+
+def _l0_library_path(sycl_config):
+    return sycl_config.l0_library_dir
 
 def _sycl_header_path(repository_ctx, sycl_config, bash_bin):
-    sycl_header_path = sycl_config.sycl_basekit_path + "/compiler/" + sycl_config.sycl_basekit_version_number
+    sycl_header_path = sycl_config.sycl_toolkit_path
     include_dir = sycl_header_path + "/include"
     if not files_exist(repository_ctx, [include_dir], bash_bin)[0]:
         sycl_header_path = sycl_header_path + "/linux"
@@ -45,9 +55,11 @@ def _sycl_header_path(repository_ctx, sycl_config, bash_bin):
 
 def _sycl_include_path(repository_ctx, sycl_config, bash_bin):
     """Generates the cxx_builtin_include_directory entries for sycl inc dirs.
+
     Args:
       repository_ctx: The repository context.
       sycl_config: The path to the gcc host compiler.
+
     Returns:
       A string containing the Starlark string for each of the gcc
       host compiler include directories, which can be added to the CROSSTOOL
@@ -55,15 +67,14 @@ def _sycl_include_path(repository_ctx, sycl_config, bash_bin):
     """
     inc_dirs = []
 
-    inc_dirs.append(_mkl_path(sycl_config) + "/include")
+    inc_dirs.append(_mkl_include_path(sycl_config))
     inc_dirs.append(_sycl_header_path(repository_ctx, sycl_config, bash_bin) + "/include")
     inc_dirs.append(_sycl_header_path(repository_ctx, sycl_config, bash_bin) + "/include/sycl")
 
     return inc_dirs
 
 def enable_sycl(repository_ctx):
-    """Returns whether to build with SYCL support."""
-    return int(get_host_environ(repository_ctx, "TF_NEED_SYCL", False))
+    return bool(repository_ctx.getenv("TF_NEED_SYCL", "").strip())
 
 def auto_configure_fail(msg):
     """Output failure message when auto configuration fails."""
@@ -95,7 +106,7 @@ def find_sycl_root(repository_ctx, sycl_config):
     sycl_name = str(repository_ctx.path(sycl_config.sycl_toolkit_path.strip()).realpath)
     if sycl_name.startswith("/"):
         return sycl_name
-    fail("Cannot find SYCL compiler, please correct your path")
+    fail("Cannot find DPC++ compiler, please correct your path")
 
 def find_sycl_include_path(repository_ctx, sycl_config):
     base_path = find_sycl_root(repository_ctx, sycl_config)
@@ -121,10 +132,12 @@ def find_sycl_include_path(repository_ctx, sycl_config):
 
 def _lib_name(lib, version = "", static = False):
     """Constructs the name of a library on Linux.
+
     Args:
       lib: The name of the library, such as "mkl"
       version: The version of the library.
       static: True the library is static or False if it is a shared object.
+
     Returns:
       The platform-specific name of the library.
     """
@@ -138,8 +151,7 @@ def _lib_name(lib, version = "", static = False):
 def _sycl_lib_paths(repository_ctx, lib, basedir):
     file_name = _lib_name(lib, version = "", static = False)
     return [
-        repository_ctx.path("%s/lib/%s" % (basedir, file_name)),
-        repository_ctx.path("%s/lib/intel64/%s" % (basedir, file_name)),
+        repository_ctx.path("%s/%s" % (basedir, file_name)),
     ]
 
 def _batch_files_exist(repository_ctx, libs_paths, bash_bin):
@@ -170,20 +182,19 @@ def _select_sycl_lib_paths(repository_ctx, libs_paths, bash_bin):
 
 def _find_libs(repository_ctx, sycl_config, bash_bin):
     """Returns the SYCL libraries on the system.
+
     Args:
       repository_ctx: The repository context.
       sycl_config: The SYCL config as returned by _get_sycl_config
       bash_bin: the path to the bash interpreter
+
     Returns:
       Map of library names to structs of filename and path
     """
-    mkl_path = _mkl_path(sycl_config)
-    sycl_path = _sycl_header_path(repository_ctx, sycl_config, bash_bin)
+    mkl_path = _mkl_library_path(sycl_config)
     libs_paths = [
         (name, _sycl_lib_paths(repository_ctx, name, path))
         for name, path in [
-            ("sycl", sycl_path),
-            ("OpenCL", sycl_path),
             ("mkl_intel_ilp64", mkl_path),
             ("mkl_sequential", mkl_path),
             ("mkl_core", mkl_path),
@@ -200,6 +211,8 @@ def _find_libs(repository_ctx, sycl_config, bash_bin):
         libs_paths.append(("mkl_sycl_rng", _sycl_lib_paths(repository_ctx, "mkl_sycl_rng", mkl_path)))
         libs_paths.append(("mkl_sycl_stats", _sycl_lib_paths(repository_ctx, "mkl_sycl_stats", mkl_path)))
         libs_paths.append(("mkl_sycl_data_fitting", _sycl_lib_paths(repository_ctx, "mkl_sycl_data_fitting", mkl_path)))
+    l0_path = _l0_library_path(sycl_config)
+    libs_paths.append(("ze_loader", _sycl_lib_paths(repository_ctx, "ze_loader", l0_path)))
     return _select_sycl_lib_paths(repository_ctx, libs_paths, bash_bin)
 
 def find_sycl_config(repository_ctx):
@@ -214,6 +227,7 @@ def find_sycl_config(repository_ctx):
 
 def _get_sycl_config(repository_ctx, bash_bin):
     """Detects and returns information about the SYCL installation on the system.
+
     Args:
       repository_ctx: The repository context.
       bash_bin: the path to the path interpreter
@@ -223,11 +237,19 @@ def _get_sycl_config(repository_ctx, bash_bin):
     sycl_toolkit_path = config["sycl_toolkit_path"]
     sycl_version_number = config["sycl_version_number"]
     sycl_basekit_version_number = config["sycl_basekit_version_number"]
+    mkl_include_dir = config["mkl_include_dir"]
+    mkl_library_dir = config["mkl_library_dir"]
+    l0_include_dir = config["l0_include_dir"]
+    l0_library_dir = config["l0_library_dir"]
     return struct(
         sycl_basekit_path = sycl_basekit_path,
         sycl_toolkit_path = sycl_toolkit_path,
         sycl_version_number = sycl_version_number,
         sycl_basekit_version_number = sycl_basekit_version_number,
+        mkl_include_dir = mkl_include_dir,
+        mkl_library_dir = mkl_library_dir,
+        l0_include_dir = l0_include_dir,
+        l0_library_dir = l0_library_dir,
     )
 
 def _tpl_path(repository_ctx, labelname):
@@ -251,6 +273,7 @@ def _cxx_inc_convert(path):
 
 def _normalize_include_path(repository_ctx, path):
     """Normalizes include paths before writing them to the crosstool.
+
       If path points inside the 'crosstool' folder of the repository, a relative
       path is returned.
       If path points outside the 'crosstool' folder, an absolute path is returned.
@@ -320,11 +343,13 @@ def error_gpu_disabled():
   fail("ERROR: Building with --config=sycl but TensorFlow is not configured " +
        "to build with GPU support. Please re-run ./configure and enter 'Y' " +
        "at the prompt to build with GPU support.")
+
   native.genrule(
       name = "error_gen_crosstool",
       outs = ["CROSSTOOL"],
       cmd = "echo 'Should not be run.' && exit 1",
   )
+
   native.filegroup(
       name = "crosstool",
       srcs = [":CROSSTOOL"],
@@ -334,25 +359,14 @@ def error_gpu_disabled():
 
 _DUMMY_CROSSTOOL_BUILD_FILE = """
 load("//crosstool:error_gpu_disabled.bzl", "error_gpu_disabled")
+
 error_gpu_disabled()
 """
 
 def _create_dummy_repository(repository_ctx):
     # Set up BUILD file for sycl/.
     _tpl(repository_ctx, "sycl:build_defs.bzl")
-    _tpl(
-        repository_ctx,
-        "sycl:BUILD",
-        {
-            "%{mkl_intel_ilp64_lib}": _lib_name("mkl_intel_ilp64"),
-            "%{mkl_sequential_lib}": _lib_name("mkl_sequential"),
-            "%{mkl_core_lib}": _lib_name("mkl_core"),
-            "%{mkl_sycl_libs}": "",
-            "%{core_sycl_libs}": "",
-            "%{copy_rules}": "",
-            "%{sycl_headers}": "",
-        },
-    )
+    _tpl(repository_ctx, "sycl:BUILD")
 
     # If sycl_configure is not configured to build with SYCL support, and the user
     # attempts to build with --config=sycl, add a dummy build rule to intercept
@@ -378,7 +392,6 @@ def _extract_file_name_from_url(url):
 
 def _download_and_extract_archive(repository_ctx, archive_info, distribution_path):
     """Downloads and extracts a tar.gz ONEAPI redistributable (cached by Bazel)."""
-
     archive_url = archive_info.get("url")
     archive_sha256 = archive_info.get("sha256")
     if not archive_url or not archive_sha256:
@@ -423,6 +436,17 @@ def _create_local_sycl_repository(repository_ctx):
         install_path = str(repository_ctx.path(redist_info["root"]))
         _download_and_extract_archive(repository_ctx, archive_info, install_path)
 
+        # Added: Download Level Zero redistributable if defined
+        level_zero_info = level_zero_redist.get(os_id, {}).get(oneapi_version, {}).get("level_zero")
+        if level_zero_info:
+            repository_ctx.report_progress("Downloading Level Zero for hermetic build.")
+
+            for archive in level_zero_info["archives"]:
+                _download_and_extract_archive(repository_ctx, archive, install_path)
+
+        else:
+            repository_ctx.report_progress("No Level Zero redistributable defined for %s on %s" % (oneapi_version, os_id))
+
         sycl_config = struct(
             sycl_basekit_path = install_path + "/oneapi/",
             sycl_toolkit_path = install_path + "/oneapi/compiler/" + oneapi_version,
@@ -431,6 +455,10 @@ def _create_local_sycl_repository(repository_ctx):
             # change to auto-detect the sycl_version_number
             sycl_version_number = "80000",
             sycl_basekit_version_number = oneapi_version,
+            mkl_include_dir = install_path + "/oneapi/mkl/" + oneapi_version + "/include",
+            mkl_library_dir = install_path + "/oneapi/mkl/" + oneapi_version + "/lib",
+            l0_include_dir = install_path + "/level-zero-1.21.10/include",
+            l0_library_dir = install_path + "/lib",
         )
     else:
         install_path = repository_ctx.getenv("SYCL_TOOLKIT_PATH") or "/opt/intel/oneapi/compiler/2025.1"
@@ -449,8 +477,14 @@ def _create_local_sycl_repository(repository_ctx):
     copy_rules.append(make_copy_dir_rule(
         repository_ctx,
         name = "mkl-include",
-        src_dir = _mkl_path(sycl_config) + "/include",
+        src_dir = _mkl_include_path(sycl_config),
         out_dir = "sycl/include",
+    ))
+    copy_rules.append(make_copy_dir_rule(
+        repository_ctx,
+        name = "level-zero-include",
+        src_dir = _l0_include_path(sycl_config),
+        out_dir = "level_zero/include/level_zero",
     ))
 
     sycl_libs = _find_libs(repository_ctx, sycl_config, bash_bin)
@@ -481,7 +515,7 @@ def _create_local_sycl_repository(repository_ctx):
             "sycl/lib/" + sycl_libs["mkl_sycl"].file_name,
         )
     else:
-        mkl_sycl_libs = '"{}",\n"{}",\n"{}",\n"{}",\n"{}",\n"{}",\n"{}",\n"{}"'.format(
+        mkl_sycl_libs = '"{}",\n"{}",\n"{}",\n"{}",\n"{}",\n"{}",\n"{}",\n"{}",\n'.format(
             "sycl/lib/" + sycl_libs["mkl_sycl_blas"].file_name,
             "sycl/lib/" + sycl_libs["mkl_sycl_lapack"].file_name,
             "sycl/lib/" + sycl_libs["mkl_sycl_sparse"].file_name,
@@ -491,25 +525,22 @@ def _create_local_sycl_repository(repository_ctx):
             "sycl/lib/" + sycl_libs["mkl_sycl_stats"].file_name,
             "sycl/lib/" + sycl_libs["mkl_sycl_data_fitting"].file_name,
         )
-    core_sycl_libs = '"{}",\n"{}"'.format(
-        "sycl/lib/" + sycl_libs["sycl"].file_name,
-        "sycl/lib/" + sycl_libs["OpenCL"].file_name,
-    )
+    level_zero_libs = '"{}",\n'.format("sycl/lib/" + sycl_libs["ze_loader"].file_name)
     repository_dict = {
         "%{mkl_intel_ilp64_lib}": sycl_libs["mkl_intel_ilp64"].file_name,
         "%{mkl_sequential_lib}": sycl_libs["mkl_sequential"].file_name,
         "%{mkl_core_lib}": sycl_libs["mkl_core"].file_name,
         "%{mkl_sycl_libs}": mkl_sycl_libs,
-        "%{core_sycl_libs}": core_sycl_libs,
         "%{copy_rules}": "\n".join(copy_rules),
         "%{sycl_headers}": ('":mkl-include",\n":sycl-include",\n'),
+        "%{level_zero_libs}": level_zero_libs,
+        "%{level_zero_headers}": ('":level-zero-include"'),
     }
     repository_ctx.template(
         "sycl/BUILD",
         tpl_paths["sycl:BUILD"],
         repository_dict,
     )
-
     # Set up crosstool/
 
     cc = find_cc(repository_ctx)
@@ -521,7 +552,7 @@ def _create_local_sycl_repository(repository_ctx):
     sycl_defines = {}
 
     sycl_defines["%{host_compiler_prefix}"] = host_compiler_prefix
-    sycl_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
+    sycl_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_sycl"
 
     sycl_defines["%{cpu_compiler}"] = str(cc)
     sycl_defines["%{linker_bin_path}"] = "/usr/bin"
@@ -540,7 +571,6 @@ def _create_local_sycl_repository(repository_ctx):
     sycl_defines["%{SYCL_ROOT_DIR}"] = str(sycl_config.sycl_toolkit_path)
     sycl_defines["%{basekit_path}"] = str(sycl_config.sycl_basekit_path)
     sycl_defines["%{basekit_version}"] = str(sycl_config.sycl_basekit_version_number)
-    sycl_defines["%{MKL_PATH}"] = _mkl_path(sycl_config)
 
     # Only expand template variables in the BUILD file
     repository_ctx.template(
@@ -558,7 +588,7 @@ def _create_local_sycl_repository(repository_ctx):
     )
 
     repository_ctx.template(
-        "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
+        "crosstool/clang/bin/crosstool_wrapper_driver_sycl",
         tpl_paths["crosstool:clang/bin/crosstool_wrapper_driver_sycl"],
         sycl_defines,
     )
