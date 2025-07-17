@@ -93,6 +93,7 @@ cc_library(
         ":pjrt_c_api_wrapper_impl",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/pjrt/proto:pjrt_partial_program_proto_cc",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
