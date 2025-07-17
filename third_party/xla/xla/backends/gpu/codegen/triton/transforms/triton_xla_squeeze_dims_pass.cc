@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Analysis/SliceAnalysis.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
-#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -165,6 +165,20 @@ Value SqueezeTensorValue(PatternRewriter& rewriter, Value value,
   return value;
 }
 
+// Returns a new pointer by applying the given offsets and strides for the
+// given dimensions.
+Value SqueezePointer(PatternRewriter& rewriter, Location loc, Value base,
+                     ValueRange offsets, ValueRange strides,
+                     ArrayRef<uint32_t> squeeze_dims) {
+  for (auto dim : squeeze_dims) {
+    Value extsi = rewriter.create<arith::ExtSIOp>(loc, rewriter.getI64Type(),
+                                                  offsets[dim]);
+    Value muli = rewriter.create<arith::MulIOp>(loc, extsi, strides[dim]);
+    base = rewriter.create<AddPtrOp>(loc, base.getType(), base, muli);
+  }
+  return base;
+}
+
 // Rewrites tt.make_tensor_ptr with unit dimensions. Returns the
 // new MakeTensorPtrOp result and the dimensions that were removed.
 Value SqueezeMakeTensorPtr(PatternRewriter& rewriter, MakeTensorPtrOp op,
@@ -180,20 +194,27 @@ Value SqueezeMakeTensorPtr(PatternRewriter& rewriter, MakeTensorPtrOp op,
   std::iota(order.rbegin(), order.rend(), 0);
 
   OpBuilder::InsertionGuard guard = SetInsertionPoint(rewriter, op);
-  Value result = rewriter.create<MakeTensorPtrOp>(
-      op.getLoc(), ptr_type, op.getBase(),
-      SqueezeElements(op.getShape(), squeeze_dims),
+  // Add the offsets along the dimensions to squeeze to the base pointer.
+  Value base = SqueezePointer(rewriter, op.getLoc(), op.getBase(),
+                              op.getOffsets(), op.getStrides(), squeeze_dims);
+  return rewriter.create<MakeTensorPtrOp>(
+      op.getLoc(), ptr_type, base, SqueezeElements(op.getShape(), squeeze_dims),
       SqueezeElements(op.getStrides(), squeeze_dims),
       SqueezeElements(op.getOffsets(), squeeze_dims), order);
-  return result;
 }
 
 // Folds squeeze_dims into tt.load(tt.make_tensor_ptr).
 // TODO(csigg): Add support for tt.load(tt.make_tensor_descriptor).
 LogicalResult FoldSqueezeDimsOfLoad(LoadOp op, PatternRewriter& rewriter) {
+  if (op.getMask() || op.getOther()) {
+    return rewriter.notifyMatchFailure(op, "Unsupported load.");
+  }
   std::optional<uint32_t> axis = GetSqueezeDimsUserAxis(op);
   if (!axis) {
     return rewriter.notifyMatchFailure(op, "No squeeze_dims users.");
+  }
+  if (absl::c_contains(op.getBoundaryCheck(), *axis)) {
+    return rewriter.notifyMatchFailure(op, "Boundary check contains axis.");
   }
   auto make_tensor_ptr = op.getPtr().getDefiningOp<MakeTensorPtrOp>();
   if (!make_tensor_ptr) {
@@ -202,7 +223,6 @@ LogicalResult FoldSqueezeDimsOfLoad(LoadOp op, PatternRewriter& rewriter) {
   }
 
   Value pointer = SqueezeMakeTensorPtr(rewriter, make_tensor_ptr, *axis);
-
   Value new_load = rewriter.create<LoadOp>(
       op.getLoc(), pointer, SqueezeBoundaryCheck(op.getBoundaryCheck(), *axis),
       op.getPadding(), op.getCache(), op.getEvict(), op.getIsVolatile());
@@ -212,6 +232,9 @@ LogicalResult FoldSqueezeDimsOfLoad(LoadOp op, PatternRewriter& rewriter) {
 
 // Extracts unit dimensions from tt.store and prepends them as squeeze_dims.
 LogicalResult SqueezeStore(StoreOp op, PatternRewriter& rewriter) {
+  if (op.getMask()) {
+    return rewriter.notifyMatchFailure(op, "Unsupported store.");
+  }
   auto make_tensor_ptr = op.getPtr().getDefiningOp<MakeTensorPtrOp>();
   if (!make_tensor_ptr) {
     return rewriter.notifyMatchFailure(
@@ -236,8 +259,9 @@ LogicalResult SqueezeStore(StoreOp op, PatternRewriter& rewriter) {
   return success();
 }
 
-// Extracts unit dimensions from tt.reshape and prepends them as squeeze_dims.
-LogicalResult SqueezeReshape(ReshapeOp op, PatternRewriter& rewriter) {
+// Extracts unit dimensions from the tt.reshape operand and prepends them as
+// squeeze_dims.
+LogicalResult SqueezeReshapeOperand(ReshapeOp op, PatternRewriter& rewriter) {
   if (op.getAllowReorderAttr() || op.getEfficientLayoutAttr()) {
     return rewriter.notifyMatchFailure(op, "Unsupported reshape.");
   }
@@ -248,6 +272,27 @@ LogicalResult SqueezeReshape(ReshapeOp op, PatternRewriter& rewriter) {
 
   Value value = SqueezeTensorValue(rewriter, op.getSrc(), squeeze_dims);
   rewriter.modifyOpInPlace(op, [&]() { op.setOperand(value); });
+  return success();
+}
+
+// Extracts unit dimensions from the tt.reshape result and appends them as
+// expand_dims.
+LogicalResult ExpandReshapeResult(ReshapeOp op, PatternRewriter& rewriter) {
+  if (op.getAllowReorderAttr() || op.getEfficientLayoutAttr()) {
+    return rewriter.notifyMatchFailure(op, "Unsupported reshape.");
+  }
+  auto expand_dims = GetDimsToSqueeze(op.getType());
+  if (expand_dims.empty()) {
+    return rewriter.notifyMatchFailure(op, "No unit dimensions.");
+  }
+
+  Value result = rewriter.create<ReshapeOp>(
+      op.getLoc(), SqueezeTensorType(op.getType(), expand_dims), op.getSrc());
+  for (int32_t i = expand_dims.size() - 1; i >= 0; --i) {
+    uint32_t dim = expand_dims[i] - i;
+    result = rewriter.create<ExpandDimsOp>(op.getLoc(), result, dim);
+  }
+  rewriter.replaceOp(op, result);
   return success();
 }
 
@@ -496,10 +541,9 @@ class TritonXLASqueezeDimsPass
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     patterns.add(FoldSqueezeDimsOfLoad);
-    if (squeeze_store_) {
-      patterns.add(SqueezeStore);
-    }
-    patterns.add(SqueezeReshape);
+    patterns.add(SqueezeStore);
+    patterns.add(SqueezeReshapeOperand);
+    patterns.add(ExpandReshapeResult);
     patterns.add<PushSqueezeDimsUpThroughElementwise>(&getContext());
     patterns.add(PushSqueezeDimsUpThroughBroadcast);
     patterns.add(PushSqueezeDimsUpThroughTrans);
