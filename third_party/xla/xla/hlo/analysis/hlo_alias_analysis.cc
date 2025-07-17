@@ -393,43 +393,6 @@ std::string HloAliasAnalysis::ToString() const {
 
 /* static */
 absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
-    const HloModule* module) {
-  VLOG(2) << "HloAliasAnalysis::Run on module " << module->name();
-  XLA_VLOG_LINES(2, module->ToString());
-
-  auto alias_analysis = absl::WrapUnique(new HloAliasAnalysis(module));
-  TF_ASSIGN_OR_RETURN(
-      alias_analysis->dataflow_analysis_,
-      HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
-                               /*bitcast_defines_value=*/false));
-
-  size_t num_values = alias_analysis->dataflow_analysis_->values().size();
-  alias_analysis->buffers_ = CreateBuffers(alias_analysis->dataflow_analysis());
-  alias_analysis->value_to_buffer_.reserve(num_values);
-
-  for (HloBuffer& buffer : alias_analysis->buffers_) {
-    for (const HloValue* value : buffer.values()) {
-      alias_analysis->value_to_buffer_[value] = &buffer;
-    }
-  }
-
-  CHECK_EQ(alias_analysis->value_to_buffer_.size(), num_values);
-  TF_DCHECK_OK(alias_analysis->Verify());
-
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  ShapeUtil::ForEachSubshape(root->shape(), [&](const Shape& /*subshape*/,
-                                                const ShapeIndex& index) {
-    std::vector<const HloBuffer*> buffers =
-        alias_analysis->ComputeBuffersAt(root, index);
-    alias_analysis->live_out_buffers_.insert(buffers.begin(), buffers.end());
-  });
-
-  XLA_VLOG_LINES(2, alias_analysis->ToString());
-  return alias_analysis;
-}
-
-/* static */
-absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
     const HloModule* module, const AliasInfo* alias_info) {
   VLOG(2) << "HloAliasAnalysis::Run on module " << module->name();
   XLA_VLOG_LINES(2, module->ToString());

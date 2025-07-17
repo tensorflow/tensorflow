@@ -43,12 +43,19 @@ namespace xla {
 // TODO(yunxing): Cleanup usage of TuplePointsToAnalysis.
 class ModuleSchedulerAlgorithm {
  public:
+  explicit ModuleSchedulerAlgorithm(const AliasInfo* alias_info)
+      : alias_info_(alias_info) {}
   virtual ~ModuleSchedulerAlgorithm() = default;
   virtual absl::StatusOr<HloSchedule> Run(
       const HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
       const HloAliasAnalysis& alias_analysis,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
       int64_t* peak_memory) const = 0;
+
+  const AliasInfo* alias_info() const { return alias_info_; }
+
+ protected:
+  const AliasInfo* alias_info_;
 };
 
 // Postprocessor of the HloInstructionSequence. This is an opt-in postprocessing
@@ -77,11 +84,10 @@ class ComputationSchedulerAlgorithm : public ModuleSchedulerAlgorithm {
   ComputationSchedulerAlgorithm(const AliasInfo* alias_info,
                                 BufferValue::SizeFunction size_function,
                                 SchedulerPostprocessor postprocessor)
-      : alias_info_(alias_info),
+      : ModuleSchedulerAlgorithm(alias_info),
         size_function_(std::move(size_function)),
         postprocessor_(std::move(postprocessor)) {}
 
-  const AliasInfo* alias_info_;
   BufferValue::SizeFunction size_function_;
   SchedulerPostprocessor postprocessor_;
 };
@@ -165,7 +171,8 @@ class DefaultMemoryScheduler : public ModuleSchedulerAlgorithm {
   DefaultMemoryScheduler(const AliasInfo* alias_info,
                          const BufferValue::SizeFunction& size_function,
                          const SchedulerPostprocessor& postprocessor = {})
-      : list_scheduler_(alias_info, size_function, postprocessor),
+      : ModuleSchedulerAlgorithm(alias_info),
+        list_scheduler_(alias_info, size_function, postprocessor),
         dfs_scheduler_(alias_info, size_function, postprocessor),
         post_order_scheduler_(alias_info, size_function, postprocessor) {}
   absl::StatusOr<HloSchedule> Run(
