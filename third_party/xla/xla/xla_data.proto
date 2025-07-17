@@ -1228,14 +1228,3 @@ message GemmPerfTable {
   // sm86 -> entry content.
   map<string, GemmPerfTableEntryValues> entries = 1;
 }
-
-// Specifies how replica group IDs are interpreted. Corresponds to the C++
-// enum CollectiveOpGroupMode. See the comment above the C++ enum for
-// details.
-enum CollectiveOpGroupModeProto {
-  COLLECTIVE_MODE_UNSPECIFIED = 0;
-  COLLECTIVE_MODE_CROSS_REPLICA = 1;
-  COLLECTIVE_MODE_CROSS_PARTITION = 2;
-  COLLECTIVE_MODE_CROSS_REPLICA_AND_PARTITION = 3;
-  COLLECTIVE_MODE_FLATTENED_ID = 4;
-}

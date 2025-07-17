@@ -36,7 +36,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/collective_device_list.h"
-#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
@@ -754,8 +753,7 @@ class HloAllReduceInstructionBase : public HloCollectiveInstruction {
       absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       const CollectiveDeviceList& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id, bool use_global_device_ids,
-      std::optional<CollectiveOpGroupMode> mode = std::nullopt);
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
 
   // Returns true if the ids in the ReplicaGroup config represent a global id of
   // (replica_id * partition_count + partition_id) instead of a replica id.
@@ -769,21 +767,6 @@ class HloAllReduceInstructionBase : public HloCollectiveInstruction {
   // where each pair is (replica_id, partition_id).
   bool use_global_device_ids() const { return use_global_device_ids_; }
   void set_use_global_device_ids(bool value) { use_global_device_ids_ = value; }
-
-  // The mode that determines how ids in the ReplicaGroup config are
-  // interpreted. The mode is determinable from the values of channel_id and
-  // use_global_device_ids.
-  // TODO(b/425435082): Remove the use_global_device_ids field and make the
-  // channel_id field used only for MPMD, as outside MPMD, these fields are
-  // redundant with the group mode.
-  // TODO(b/425435082): Add this field to all collective instructions.
-  CollectiveOpGroupMode collective_op_group_mode() const {
-    return collective_op_group_mode_;
-  }
-  void set_collective_op_group_mode(
-      CollectiveOpGroupMode collective_op_group_mode) {
-    collective_op_group_mode_ = collective_op_group_mode;
-  }
 
   static bool ClassOf(const HloInstruction* hlo);
 
@@ -799,7 +782,6 @@ class HloAllReduceInstructionBase : public HloCollectiveInstruction {
 
  private:
   bool use_global_device_ids_;
-  CollectiveOpGroupMode collective_op_group_mode_;
 };
 
 class HloAllReduceInstruction : public HloAllReduceInstructionBase {
@@ -829,8 +811,7 @@ class HloReduceScatterInstruction : public HloAllReduceInstructionBase {
       HloComputation* reduce_computation,
       const CollectiveDeviceList& device_list, bool constrain_layout,
       const std::optional<int64_t>& channel_id, bool use_global_device_ids,
-      int64_t scatter_dimension,
-      std::optional<CollectiveOpGroupMode> mode = std::nullopt);
+      int64_t scatter_dimension);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   explicit HloReduceScatterInstruction(
