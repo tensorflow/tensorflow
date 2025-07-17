@@ -17,19 +17,20 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"       // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"           // from @llvm-project
-#include "tensorflow//compiler/mlir/tensorflow/transforms/emitc_passes.h"
+#include "tensorflow//compiler/mlir/emitc/emitc_passes.h"
+#include "tensorflow/compiler/mlir/emitc/transforms/passes.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/emitc.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
 int main(int argc, char** argv) {
   tensorflow::InitMlir y(&argc, &argv);
 
+  mlir::registerAllPasses();
   mlir::emitc::registerAddReflectionMapPipeline();
 
   mlir::DialectRegistry registry;
   mlir::RegisterCommonToolingDialects(registry);
+
   return failed(
       mlir::MlirOptMain(argc, argv, "TensorFlow pass driver\n", registry));
 }

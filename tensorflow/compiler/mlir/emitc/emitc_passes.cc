@@ -10,13 +10,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tensorflow/transforms/emitc.h"
+#include "tensorflow/compiler/mlir/emitc/emitc_passes.h"
 
-#include "mlir/Dialect/EmitC/Transforms/Passes.h.inc"
-#include "mlir/Pass/PassManager.h"   // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/transforms/emitc_passes.h"
+#include "mlir/Dialect/EmitC/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"                 // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"                // from @llvm-project
+#include "mlir/Transforms/Passes.h"                // from @llvm-project
+#include "tensorflow/compiler/mlir/emitc/transforms/passes.h"
 
 namespace mlir {
 namespace emitc {

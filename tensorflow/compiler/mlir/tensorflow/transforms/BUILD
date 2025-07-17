@@ -77,24 +77,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "emitc",
-    srcs = [
-        "emitc.cc",
-    ],
-    hdrs = [
-        "emitc.h",
-    ],
-    deps = [
-        ":emitc_passes",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-    ],
-)
-
 gentbl_cc_library(
     name = "decompose_resource_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
@@ -331,39 +313,6 @@ cc_library(
 )
 
 cc_library(
-    name = "emitc_passes",
-    srcs = [
-        "add_reflection_map.cc"
-    ],
-    hdrs = [
-        "emitc_passes.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:resource_value_typed_analyzer",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AffineUtils",
-        "@llvm-project//mlir:Analysis",
-        "@llvm-project//mlir:EmitCDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MLProgramDialect",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
-        ":emitc_pass_inc_gen",
-    ],
-)
-
-cc_library(
     name = "tf_saved_model_passes",
     srcs = [
         "convert_session_initializer_to_function.cc",
@@ -453,23 +402,6 @@ gentbl_cc_library(
     },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "tf_savedmodel_passes.td",
-    deps = [
-        "@llvm-project//mlir:PassBaseTdFiles",
-    ],
-)
-
-gentbl_cc_library(
-    name = "emitc_pass_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    tbl_outs = {
-        "emitc_passes.h.inc": [
-            "-gen-pass-decls",
-            "-name=EmitC",
-        ],
-        "g3doc/includes/emitc_passes.md": ["-gen-pass-doc"],
-    },
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "emitc_passes.td",
     deps = [
         "@llvm-project//mlir:PassBaseTdFiles",
     ],

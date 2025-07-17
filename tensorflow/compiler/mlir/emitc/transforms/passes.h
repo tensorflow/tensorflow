@@ -10,16 +10,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_EMITC_H_
-#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_EMITC_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_EMITC_TRANSFORMS_PASSES_H_
+#define TENSORFLOW_COMPILER_MLIR_EMITC_TRANSFORMS_PASSES_H_
 
 #include <optional>
 #include <string>
 
 #include "llvm/Support/CommandLine.h"
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Pass/PassOptions.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"      // from @llvm-project
+#include "mlir/Dialect/EmitC/IR/EmitC.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"        // from @llvm-project
+#include "mlir/Pass/PassOptions.h"        // from @llvm-project
+#include "mlir/Support/LLVM.h"            // from @llvm-project
 
 namespace mlir {
 namespace emitc {
@@ -28,9 +29,9 @@ std::unique_ptr<mlir::OperationPass<mlir::emitc::ClassOp>>
 CreateAddReflectionMapPass();
 
 #define GEN_PASS_DECL_ADDREFLECTIONMAPPASS
-#include "tensorflow/compiler/mlir/tensorflow/transforms/emitc_passes.h.inc"
+#include "tensorflow/compiler/mlir/emitc/transforms/passes.h.inc"
 
 }  // namespace emitc
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_EMITC_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_EMITC_TRANSFORMS_PASSES_H_

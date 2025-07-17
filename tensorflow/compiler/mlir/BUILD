@@ -233,27 +233,6 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_binary(
-    name = "tf-emitc-opt",
-    testonly = True,
-    srcs = [
-        "tf_emitc_opt_main.cc",
-    ],
-    deps = [
-        ":init_mlir",
-        ":passes",
-        ":register_common_dialects",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-        "@llvm-project//mlir:AllPassesAndDialects",
-        "@llvm-project//mlir:MlirOptLib",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:emitc", # buildcleaner:keep
-    ],
-)
-
 tf_cc_test(
     name = "mlir_graph_optimization_pass_test",
     srcs = ["mlir_graph_optimization_pass_test.cc"],

@@ -10,8 +10,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_EMITC_H_
-#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_EMITC_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_EMITC_PASSES_H_
+#define TENSORFLOW_COMPILER_MLIR_EMITC_PASSES_H_
 
 #include <optional>
 #include <string>
@@ -20,7 +20,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"      // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/transforms/emitc_passes.h"
 
 namespace mlir {
 namespace emitc {
@@ -37,4 +36,4 @@ void registerAddReflectionMapPipeline();
 }  // namespace emitc
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_EMITC_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_EMITC_PASSES_H_
