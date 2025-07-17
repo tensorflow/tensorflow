@@ -20,8 +20,7 @@
 #include "tensorflow/lite/delegates/utils/mw_delegates/fully_connected_delegate/fully_connected_drivers/fully_connected_bram_driver.h"
 #include "tensorflow/lite/delegates/utils/mw_delegates/fully_connected_delegate/fully_connected_drivers/fully_connected_ip_driver.h"
 
-namespace tflite {
-namespace fully_connected {
+const int kTensorNotAllocated = -1;
 
   // === Utility tensor access functions ===
 inline TfLiteTensor* GetTensorAtIndex(const TfLiteContext* context, int tensor_index) {
@@ -72,6 +71,10 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(
   return kTfLiteOk;
 }
 // === End of utility tensor access functions ===
+
+
+namespace tflite {
+namespace fully_connected {
 
 // FullyConnectedDelegateKernel implements the interface of SimpleDelegateKernelInterface.
 // This holds the Delegate capabilities.
@@ -640,7 +643,7 @@ class FullyConnectedDelegate : public SimpleDelegateInterface {
   const FullyConnectedDelegateOptions options_;
 
 };
-
+}
 }  // namespace fully_connected
 }  // namespace tflite
 
