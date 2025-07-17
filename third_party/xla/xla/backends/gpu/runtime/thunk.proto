@@ -105,6 +105,12 @@ message PartitionIdThunkProto {
   xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
 }
 
+message CudnnThunkProto {
+  string fingerprint = 1;
+  repeated xla.buffer_assignment.BufferAllocationSliceProto args = 2;
+  optional int64 sdpa_dropout_seed = 3;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -122,6 +128,7 @@ message ThunkProto {
     ReplicaIdThunkProto replica_id_thunk = 12;
     DeviceToDeviceCopyThunkProto device_to_device_copy_thunk = 13;
     PartitionIdThunkProto partition_id_thunk = 14;
+    CudnnThunkProto cudnn_thunk = 15;
   }
 }
 

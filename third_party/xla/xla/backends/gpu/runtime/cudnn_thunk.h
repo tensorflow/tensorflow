@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_CUDNN_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_CUDNN_THUNK_H_
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/base/call_once.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
@@ -47,6 +50,12 @@ class CuDnnThunk : public Thunk {
   const std::vector<BufferAllocation::Slice>& arguments() const {
     return args_;
   }
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
+  static absl::StatusOr<std::unique_ptr<CuDnnThunk>> FromProto(
+      ThunkInfo thunk_info, const CudnnThunkProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
 
  private:
   absl::once_flag once_flag_;
