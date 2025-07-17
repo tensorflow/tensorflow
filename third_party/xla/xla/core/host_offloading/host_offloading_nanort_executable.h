@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
+#include "xla/core/host_offloading/host_offloading_buffer.h"
 #include "xla/core/host_offloading/host_offloading_executable.h"
 #include "xla/core/host_offloading/host_offloading_executable.pb.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
@@ -41,11 +43,10 @@ class HostOffloadingNanoRtExecutable : public HostOffloadingExecutable {
   static absl::StatusOr<std::unique_ptr<HostOffloadingNanoRtExecutable>>
   LoadFromProto(const HostOffloadingExecutableProto& proto);
 
-  absl::Status Execute(
+  tsl::AsyncValueRef<ExecuteEvent> Execute(
       absl::Span<const ShapeTree<HostOffloadingBuffer>> parameters,
       const xla::ShapeTree<HostOffloadingBuffer>& result,
-      const ExecuteOptions& execute_options,
-      OnResultReady on_result_ready) final;
+      const ExecuteOptions& execute_options) final;
 
   absl::string_view name() const final { return name_; }
 

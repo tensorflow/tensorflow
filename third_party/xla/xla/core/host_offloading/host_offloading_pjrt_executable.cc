@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/core/host_offloading/host_offloading_buffer.h"
+#include "xla/core/host_offloading/host_offloading_executable.h"
 #include "xla/core/host_offloading/host_offloading_layout_analysis.h"
 #include "xla/core/host_offloading/host_offloading_transforms.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -53,6 +54,7 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -182,10 +184,11 @@ HostOffloadingPjRtExecutable::LoadFromProto(
       std::move(alias_config), std::move(executable), needs_layout_conversion));
 }
 
-absl::Status HostOffloadingPjRtExecutable::Execute(
+tsl::AsyncValueRef<HostOffloadingExecutable::ExecuteEvent>
+HostOffloadingPjRtExecutable::Execute(
     absl::Span<const ShapeTree<HostOffloadingBuffer>> parameters,
     const xla::ShapeTree<HostOffloadingBuffer>& result,
-    const ExecuteOptions& execute_options, OnResultReady) {
+    const ExecuteOptions& execute_options) {
   VLOG(3) << "Execute PjRt host offloading executable: name=" << name_;
 
   TraceMe trace([&] {
@@ -273,7 +276,7 @@ absl::Status HostOffloadingPjRtExecutable::Execute(
                       executable_->ExecuteSharded(arguments_handles, device,
                                                   pjrt_execute_options));
 
-  return absl::OkStatus();
+  return tsl::MakeAvailableAsyncValueRef<ExecuteEvent>();
 }
 
 }  // namespace xla

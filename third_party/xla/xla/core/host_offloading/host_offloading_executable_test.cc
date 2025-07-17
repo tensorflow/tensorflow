@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
@@ -110,8 +111,10 @@ TEST_P(HostOffloadingRuntimeExecutableTest, NonAliasedOutput) {
   ShapeTree<HostOffloadingBuffer> result(
       shape, HostOffloadingBuffer(result_literal.data<float>()));
 
-  TF_EXPECT_OK(
-      computation->Execute(parameters, result, EmptyExecuteOptions(), nullptr));
+  auto execute_event =
+      computation->Execute(parameters, result, EmptyExecuteOptions());
+  tsl::BlockUntilReady(execute_event);
+  EXPECT_FALSE(execute_event.IsError());
   EXPECT_THAT(result_literal.data<float>(), ElementsAreArray({2, 4, 6, 8}));
 }
 
@@ -147,8 +150,10 @@ TEST_P(HostOffloadingRuntimeExecutableTest, AliasedOutput) {
   ShapeTree<HostOffloadingBuffer> result(
       shape, HostOffloadingBuffer(result_literal.data<float>()));
 
-  TF_EXPECT_OK(
-      computation->Execute(parameters, result, EmptyExecuteOptions(), nullptr));
+  auto execute_event =
+      computation->Execute(parameters, result, EmptyExecuteOptions());
+  tsl::BlockUntilReady(execute_event);
+  EXPECT_FALSE(execute_event.IsError());
   EXPECT_THAT(result_literal.data<float>(), ElementsAreArray({2, 4, 6, 8}));
 }
 
@@ -203,8 +208,10 @@ TEST_P(HostOffloadingRuntimeExecutableTest, TwoOutputsOneAliased) {
         HostOffloadingBuffer(result1_literal.data<float>());
   }
 
-  TF_EXPECT_OK(
-      computation->Execute(parameters, result, EmptyExecuteOptions(), nullptr));
+  auto execute_event =
+      computation->Execute(parameters, result, EmptyExecuteOptions());
+  tsl::BlockUntilReady(execute_event);
+  EXPECT_FALSE(execute_event.IsError());
   EXPECT_THAT(result0_literal.data<float>(), ElementsAreArray({2, 4, 6, 8}));
   EXPECT_THAT(result1_literal.data<float>(), ElementsAreArray({1, 4, 9, 16}));
 }
@@ -245,8 +252,10 @@ TEST_P(HostOffloadingRuntimeExecutableTest, NonAliasedTupleOutput) {
   *result.mutable_element({1}) =
       HostOffloadingBuffer(result1_literal.data<float>());
 
-  TF_EXPECT_OK(
-      computation->Execute(parameters, result, EmptyExecuteOptions(), nullptr));
+  auto execute_event =
+      computation->Execute(parameters, result, EmptyExecuteOptions());
+  tsl::BlockUntilReady(execute_event);
+  EXPECT_FALSE(execute_event.IsError());
   EXPECT_THAT(result0_literal.data<float>(), ElementsAreArray({2, 4, 6, 8}));
   EXPECT_THAT(result1_literal.data<float>(), ElementsAreArray({1, 4, 9, 16}));
 }
@@ -294,8 +303,10 @@ TEST_P(HostOffloadingRuntimeExecutableTest, TupleParameter) {
   ShapeTree<HostOffloadingBuffer> result(
       shape, HostOffloadingBuffer(result_literal.data<float>()));
 
-  TF_EXPECT_OK(
-      computation->Execute(parameters, result, EmptyExecuteOptions(), nullptr));
+  auto execute_event =
+      computation->Execute(parameters, result, EmptyExecuteOptions());
+  tsl::BlockUntilReady(execute_event);
+  EXPECT_FALSE(execute_event.IsError());
   EXPECT_THAT(result_literal.data<float>(), ElementsAreArray({6, 9, 12, 15}));
 }
 
@@ -341,8 +352,10 @@ TEST_P(HostOffloadingRuntimeExecutableTest, TupleParameterWithAliasedOutput) {
   ShapeTree<HostOffloadingBuffer> result(
       shape, HostOffloadingBuffer(result_literal.data<float>()));
 
-  TF_EXPECT_OK(
-      computation->Execute(parameters, result, EmptyExecuteOptions(), nullptr));
+  auto execute_event =
+      computation->Execute(parameters, result, EmptyExecuteOptions());
+  tsl::BlockUntilReady(execute_event);
+  EXPECT_FALSE(execute_event.IsError());
   EXPECT_THAT(result_literal.data<float>(), ElementsAreArray({3, 5, 7, 9}));
 }
 
@@ -391,8 +404,9 @@ TEST_P(HostOffloadingRuntimeExecutableTest, FfiWithThreadpool) {
   ShapeTree<HostOffloadingBuffer> result(
       shape, HostOffloadingBuffer(result_literal.data<int32_t>()));
 
-  TF_EXPECT_OK(
-      computation->Execute({}, result, EmptyExecuteOptions(), nullptr));
+  auto execute_event = computation->Execute({}, result, EmptyExecuteOptions());
+  tsl::BlockUntilReady(execute_event);
+  EXPECT_FALSE(execute_event.IsError());
   EXPECT_THAT(result_literal.data<int32_t>(),
               ElementsAreArray({kDummyFFIResult}));
 }
@@ -443,8 +457,10 @@ TEST_P(HostOffloadingRuntimeExecutableTest, Int4) {
       shape, HostOffloadingBuffer(result_literal.untyped_data(),
                                   result_literal.size_bytes()));
 
-  TF_EXPECT_OK(
-      computation->Execute(parameters, result, EmptyExecuteOptions(), nullptr));
+  auto execute_event =
+      computation->Execute(parameters, result, EmptyExecuteOptions());
+  tsl::BlockUntilReady(execute_event);
+  EXPECT_FALSE(execute_event.IsError());
   // {2, 2, 2, 2} for int4
   EXPECT_THAT(result_literal.data<uint8_t>(),
               ElementsAreArray({(2 << 4) | 2, (2 << 4) | 2}));
@@ -525,8 +541,10 @@ void BM_HostOffloadingExecutableAddScalars(
       shape, HostOffloadingBuffer(result_literal.data<float>()));
 
   for (auto _ : state) {
-    CHECK_OK(computation->Execute(parameters, result, EmptyExecuteOptions(),
-                                  nullptr));
+    auto execute_event =
+        computation->Execute(parameters, result, EmptyExecuteOptions());
+    tsl::BlockUntilReady(execute_event);
+    EXPECT_FALSE(execute_event.IsError());
   }
 }
 
