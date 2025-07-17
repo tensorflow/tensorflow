@@ -57,6 +57,13 @@ class OneDnnMatcher : public LibraryMatcher {
                        });
   }
 
+  // Returns true if we should start a new fusion containing just the given HLO
+  // instruction.
+  bool ShouldCreateFusion(const HloInstruction* instr) override {
+    // Policy: Only dots can start a fusion for now.
+    return instr->opcode() == HloOpcode::kDot;
+  }
+
   // Returns a prefix string for the fusion op's name.
   std::string fusion_prefix() const override { return "onednn_"; }
 
