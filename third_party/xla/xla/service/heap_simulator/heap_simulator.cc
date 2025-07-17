@@ -1331,7 +1331,7 @@ class ObservedPermutationManager {
     }
 
     return observed_inclusive_start_time_permutation_
-        .insert(permutation_inclusive_start_times)
+        .insert(std::move(permutation_inclusive_start_times))
         .second;
   }
 
@@ -2062,6 +2062,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::Find()
 
   // Find the smallest overall chunk that fits the allocation request
   std::vector<const FreeChunkRoot*> root_heap;
+  root_heap.reserve(free_chunks_.size());
   for (auto it = free_chunks_.rbegin(); it != free_chunks_.rend(); ++it) {
     root_heap.push_back(&it->second);
   }
