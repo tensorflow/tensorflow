@@ -140,70 +140,153 @@ interpreter.reset();
 TfLiteXNNPackDelegateDelete(xnnpack_delegate);
 ```
 
-### Using the XNNPACK weights cache
+### Using the XNNPACK Weights Cache
 
 XNNPACK internally packs static weights for operations (like convolutions) in
 order to make accessing weights more memory friendly. XNNPACK needs to allocate
 memory internally to hold these packed weights. If you are starting multiple
 TFLite interpreter instances based on the same model, there can be multiple
-copies of the same packed weights in each instance. This can cause high memory
-usage. The weights cache can be used to share packed weights between multiple
-TFLite instances.
+copies of the same packed weights in each instance which can cause high memory
+usage.
+
+The weights cache can be used to store these packed weights to a file to avoid
+re-packing on every run and to share share packed weights between multiple
+TFLite instances. Depending on your use case, **this can lead to significant
+intialization speed-up and memory savings**.
+
+The initialization speed-up happens because the packing operations are only done
+once and read from the cache file for subsequent runs. We are skipping the most
+expensive part of XNNPack's initialization.
+
+The memory savings have multiple reasons, which don't all apply to all use
+cases:
+
+1.  The original weights are never read when using the cache as packing doesn't
+    happen. This is because TFLite usually uses `mmap` to load the model files
+    and that only pulls data that you actually read into memory.
+
+2.  The weight cache provides buffer de-duplication: if multiple tensors share
+    the same weights, it only keeps one copy of the corresponding packed
+    weights. This is usually the case for LLM models and models that have
+    several signatures.
+
+3.  The weight cache can be shared between interpreter instances, further
+    de-duplicating packed data.
+
+4.  Thanks to using `mmap`, the file-backed cache can be shared between
+    processes, further de-duplicating packed data. *This is automatic, you don't
+    need to do anything.*
+
+The weights cache is a contents-based cache. Every time XNNPACK has to pack
+weights, it first tries to look up if the packed weights can be found in the
+weights cache. If they can be found, we access the packed weights in the cache
+for subsequent operations. Otherwise, the weights are packed and added to the
+cache.
+
+Warning: The weight cache cannot be shared between models or hardware
+architectures, a different cache file must be used for each *(model,
+architecture)* pair.
+
+Warning: XNNPack does it's best to detect outdated cache files but cannot check
+for model changes. Checking that the model has been updated and deleting old
+cache files is left to the user.
+
+#### Saving the Cache to Disk
+
+Saving the cache to disk bring you the full list of advantages listed above.
 
 ```c++
-// Create 2 interpreters which share the same model.
+std::unique_ptr<tflite::Interpreter> interpreter;
+
+// Like using the low-level API above, initialize options, and pass this cache
+// to an XNNPACK delegate via the options.
+TfLiteXNNPackDelegateOptions xnnpack_options =
+  TfLiteXNNPackDelegateOptionsDefault();
+xnnpack_options.weights_cache_file_path = "path/to/the/cache/file";
+
+// Modify graph with delegate, as above...
+TfLiteDelegate* delegate = TfLiteXNNPackDelegateCreate(&xnnpack_options);
+if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) {
+  // Handle errors...
+}
+// You can now run the interpreter.
+//
+// Static weights will be packed and written into weights_cache the first time,
+// directly read from disk the 2nd time.
+```
+
+#### Using the Cache In-Memory
+
+If you cannot access a file system, the cache can also be used "in-memory"
+instead of saving it to disk.
+
+You will lose advantages 1 and 4 but can still profit from 2 and 3.
+
+Note: Currently, this is only accessible on systems that have the `memfd_create`
+system call.
+
+```c++
+std::unique_ptr<tflite::Interpreter> interpreter;
+
+// Like using the low-level API above, initialize options, and pass this cache
+// to an XNNPACK delegate via the options.
+TfLiteXNNPackDelegateOptions xnnpack_options =
+  TfLiteXNNPackDelegateOptionsDefault();
+xnnpack_options.weights_cache_file_path =
+  TfLiteXNNPackDelegateInMemoryFilePath();
+
+// Modify graph with delegate, as above...
+TfLiteDelegate* delegate = TfLiteXNNPackDelegateCreate(&xnnpack_options);
+if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) {
+  // Handle errors...
+}
+// You can now run the interpreter.
+//
+// Static weights will be packed and written into weights_cache the first time,
+// directly read from disk the 2nd time.
+```
+
+#### Sharing the Cache Between TFLite Interpreter Instances
+
+This is independent of using file-backed or in-memory caching. To share a cache
+between interpreters, you need to create the cache outside of the delegate and
+pass it down to it.
+
+```c++
 std::unique_ptr<tflite::Interpreter> interpreter1;
 std::unique_ptr<tflite::Interpreter> interpreter2;
 
-// Create a weights cache that you can pass to XNNPACK delegate.
-TfLiteXNNPackDelegateWeightsCache* weights_cache =
-    TfLiteXNNPackDelegateWeightsCacheCreate();
+// Create a weight cache. This should outlive the interpreter.
+tflite::xnnpack::MMapWeightCacheProvider weight_cache;
 
 // Like using the low-level API above, initialize options, and pass this cache
-// to XNNPACK delegate via the options.
+// to an XNNPACK delegate via the options.
 TfLiteXNNPackDelegateOptions xnnpack_options =
-    TfLiteXNNPackDelegateOptionsDefault();
-xnnpack_options.weights_cache = weights_cache;
+  TfLiteXNNPackDelegateOptionsDefault();
+
+// When sharing an existing cache, the path will be used by the first
+// interpreter that is run to load it or create it.
+xnnpack_options.weights_cache_file_path = /* See previous examples. */;
+// Share the cache.
+xnnpack_options.weight_cache_provider = &weight_cache;
 
 // Modify graph with delegate, as above...
 TfLiteDelegate* delegate1 = TfLiteXNNPackDelegateCreate(&xnnpack_options);
 if (interpreter1->ModifyGraphWithDelegate(delegate1) != kTfLiteOk) {
-    // Static weights will be packed and written into weights_cache.
+  // Handle errors...
 }
 TfLiteDelegate* delegate2 = TfLiteXNNPackDelegateCreate(&xnnpack_options);
-if (interpreter1->ModifyGraphWithDelegate(delegate2) != kTfLiteOk) {
-    // XNNPACK will reuse packed weights if they can be found in the weights
-    // cache.
+if (interpreter2->ModifyGraphWithDelegate(delegate2) != kTfLiteOk) {
+  // Handle errors...
 }
-
-// Finalize the weights cache.
-// Hard finalization has the lowest memory overhead, but requires that all
-// TFLite interpreter instances must be created up front before any finalization
-// and inference.
-TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache);
-
-// Alternatively, soft-finalizate the weights cache. This is useful if more
-// delegates using the same model will to be created after finalization.
-// TfLiteXNNPackDelegateWeightsCacheFinalizeSoft(weights_cache);
-
-// Later, after all the interpreters and XNNPACK delegates using the cache are
-// destroyed, release the weights cache.
-TfLiteXNNPackDelegateWeightsCacheDelete(weights_cache);
+// You can now run the interpreters.
+//
+// Static weights will be packed and written into weights_cache the first time,
+// directly read from disk the 2nd time.
 ```
 
-The weights cache is a contents-based cache. Every time XNNPACK has to pack
-weights, it first packs into a temporary buffer, then tries to look up if the
-packed weights can be found in the weights cache, based on the contents of the
-packed weights. If it can be found, we access the packed weights in the
-cache for subsequent operations, and the temporary buffer is freed. Otherwise,
-the packed weights is added to the cache.
-
-The weights cache has to be finalized before any inference, it will be an error
-otherwise. Hard finalization and soft finalization depends on whether new
-XNNPACK delegate instances will be created after finalization. Hard finalization
-does not allow new instances to be created, and has lower memory overhead. Soft
-finalization allows new instances to be created, and has higher memory overhead
-(up to the size of the largest packed weights, rounded up to page alignment).
+Warning: Sharing the cache is not thread safe for writing. You should always do
+one full run of one of the interpreters before starting threading.
 
 ## Profiling
 When TfLite profiling is enabled, XNNPACK will time each operator and report the
