@@ -101,6 +101,9 @@ absl::StatusOr<ThunkProto> KernelThunk::ToProto() const {
     *kernel_proto->mutable_cluster_dim() = cluster_dim_->ToProto();
   }
   kernel_proto->set_shmem_bytes(shmem_bytes_);
+  if (tma_metadata_.has_value()) {
+    *kernel_proto->mutable_tma_metadata() = tma_metadata_->ToProto();
+  }
   return proto;
 }
 
@@ -131,9 +134,16 @@ absl::StatusOr<std::unique_ptr<KernelThunk>> KernelThunk::FromProto(
     arguments.push_back(emitters::KernelArgument{Shape{}, slice, written});
   }
 
-  return std::make_unique<KernelThunk>(thunk_info, proto.kernel_name(),
-                                       arguments, launch_dimensions,
-                                       cluster_dim, proto.shmem_bytes());
+  std::optional<stream_executor::gpu::TmaMetadata> tma_metadata;
+  if (proto.has_tma_metadata()) {
+    TF_ASSIGN_OR_RETURN(
+        tma_metadata,
+        stream_executor::gpu::TmaMetadata::FromProto(proto.tma_metadata()));
+  }
+
+  return std::make_unique<KernelThunk>(
+      thunk_info, proto.kernel_name(), arguments, launch_dimensions,
+      cluster_dim, proto.shmem_bytes(), tma_metadata);
 }
 
 absl::Status KernelThunk::Initialize(const InitializeParams& params) {

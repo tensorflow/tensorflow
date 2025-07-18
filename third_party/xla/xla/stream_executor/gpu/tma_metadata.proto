@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package stream_executor.gpu;
+
+message TmaDescriptorProto {
+  enum TmaInterleave {
+    INTERLEAVE_NONE = 0;
+    INTERLEAVE_BYTES16 = 1;
+    INTERLEAVE_BYTES32 = 2;
+  }
+
+  enum TmaSwizzle {
+    SWIZZLE_NONE = 0;
+    SWIZZLE_BYTES32 = 1;
+    SWIZZLE_BYTES64 = 2;
+    SWIZZLE_BYTES128 = 3;
+  }
+
+  enum TmaL2Promotion {
+    L2_PROMOTION_NONE = 0;
+    L2_PROMOTION_BYTES64 = 1;
+    L2_PROMOTION_BYTES128 = 2;
+    L2_PROMOTION_BYTES256 = 3;
+  }
+
+  enum TmaFloatOobFill {
+    FLOAT_OOB_FILL_NONE = 0;
+    FLOAT_OOB_FILL_NAN_REQUEST_ZERO_FMA = 1;
+  }
+
+  int64 element_size = 1;
+  repeated int64 global_dims = 2;
+  repeated int64 global_strides = 3;
+  repeated int32 box_dims = 4;
+  repeated int32 element_strides = 5;
+  TmaInterleave interleave = 6;
+  TmaSwizzle swizzle = 7;
+  TmaL2Promotion l2_promotion = 8;
+  TmaFloatOobFill float_oob_fill = 9;
+}
+
+message TmaMetadataProto {
+  map<int64, TmaDescriptorProto> arg_index_to_tma_info = 1;
+}
