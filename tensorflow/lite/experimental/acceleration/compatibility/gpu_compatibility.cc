@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/compatibility/gpu_compatibility.h"
 
-#include <cctype>
+#include <cstdint>
+#include <cstdio>
 #include <map>
 #include <memory>
 #include <string>
