@@ -1961,6 +1961,7 @@ cc_library(
         "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:util",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/analysis:hlo_operand_index",
         "//xla/hlo/analysis:hlo_reachability",
