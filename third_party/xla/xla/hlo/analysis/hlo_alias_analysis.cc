@@ -180,13 +180,14 @@ void ComputeConditionalAliasedValues(const HloValue& value,
 
 void ComputeInPlaceOperationAliasedValues(const HloValue& value,
                                           const HloDataflowAnalysis& dataflow,
+                                          const AliasInfo* alias_info,
                                           FlatValueSet& aliased_values) {
   VLOG(3) << "Compute aliases for in-place operations (e.g. "
              "kDynamicUpdateSlice and kScatter)";
   for (const HloPosition& position : value.positions()) {
     HloInstruction* instruction = position.instruction;
     for (const auto& operand_and_output_index :
-         HloDataflowAnalysis::GetInPlaceInputOutputPairs(instruction)) {
+         alias_info->GetInPlaceInputOutputPairs(instruction)) {
       if (position.index == operand_and_output_index.second) {
         const HloOperandIndex& operand_index = operand_and_output_index.first;
         const HloValue& operand_value = dataflow.GetUniqueValueAt(
@@ -200,7 +201,7 @@ void ComputeInPlaceOperationAliasedValues(const HloValue& value,
 
   for (const HloUse& use : value.GetUses()) {
     for (const auto& operand_and_output_index :
-         HloDataflowAnalysis::GetInPlaceInputOutputPairs(use.instruction)) {
+         alias_info->GetInPlaceInputOutputPairs(use.instruction)) {
       const HloOperandIndex& operand_index = operand_and_output_index.first;
       if (use.operand_number == operand_index.operand_number &&
           use.operand_index == operand_index.operand_index) {
@@ -216,7 +217,8 @@ void ComputeInPlaceOperationAliasedValues(const HloValue& value,
 // Compute and return a set of values that the given value must be aliased
 // with due to HLO aliasing rules (including the value itself).
 FlatValueSet ComputeAliasedValues(const HloValue& value,
-                                  const HloDataflowAnalysis& dataflow) {
+                                  const HloDataflowAnalysis& dataflow,
+                                  const AliasInfo* alias_info) {
   if (VLOG_IS_ON(2)) {
     for (const HloUse& use : value.GetUses()) {
       VLOG(2) << "Use of value " << value << ": " << use;
@@ -227,11 +229,13 @@ FlatValueSet ComputeAliasedValues(const HloValue& value,
   ComputeInputOutputAliasedValues(value, dataflow, aliased_values);
   ComputeWhileAliasedValues(value, dataflow, aliased_values);
   ComputeConditionalAliasedValues(value, dataflow, aliased_values);
-  ComputeInPlaceOperationAliasedValues(value, dataflow, aliased_values);
+  ComputeInPlaceOperationAliasedValues(value, dataflow, alias_info,
+                                       aliased_values);
   return aliased_values;
 }
 
-std::vector<HloBuffer> CreateBuffers(const HloDataflowAnalysis& dataflow) {
+std::vector<HloBuffer> CreateBuffers(const HloDataflowAnalysis& dataflow,
+                                     const AliasInfo* alias_info) {
   const std::vector<HloValue*>& values = dataflow.values();
   size_t num_buffers = values.size();
   // The sets of values contained in each buffer.
@@ -250,7 +254,8 @@ std::vector<HloBuffer> CreateBuffers(const HloDataflowAnalysis& dataflow) {
   for (const HloValue* value : values) {
     VLOG(3) << "Merging colocated values, value: " << *value;
 
-    FlatValueSet aliased_values = ComputeAliasedValues(*value, dataflow);
+    FlatValueSet aliased_values =
+        ComputeAliasedValues(*value, dataflow, alias_info);
     if (aliased_values.size() < 2) {
       continue;  // Fast path.
     }
@@ -404,7 +409,8 @@ absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
                                /*bitcast_defines_value=*/false));
 
   size_t num_values = alias_analysis->dataflow_analysis_->values().size();
-  alias_analysis->buffers_ = CreateBuffers(alias_analysis->dataflow_analysis());
+  alias_analysis->buffers_ =
+      CreateBuffers(alias_analysis->dataflow_analysis(), alias_info);
   alias_analysis->value_to_buffer_.reserve(num_values);
 
   for (HloBuffer& buffer : alias_analysis->buffers_) {
