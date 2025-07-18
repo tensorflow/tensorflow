@@ -1285,6 +1285,20 @@ TEST(StreamExecutorGpuClientTest, GpuDeviceDescriptionTest) {
   }
 }
 
+TEST(StreamExecutorGpuClientTest, GpuDeviceSharedMemoryInfo) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(DefaultOptions()));
+  for (const auto& device : client->devices()) {
+    auto value = static_cast<PjRtStreamExecutorDevice*>(device)
+                     ->description()
+                     .Attributes()
+                     .find("shared_memory_per_block_optin")
+                     ->second;
+    int64_t shared_memory_per_block_optin = std::get<int64_t>(value);
+    EXPECT_GT(shared_memory_per_block_optin, 0);
+  }
+}
+
 TEST(StreamExecutorGpuClientTest, GetTopologyDescriptionWithGlobalDevicesTest) {
   const int num_nodes = 4;
   GpuClientOptions options;
