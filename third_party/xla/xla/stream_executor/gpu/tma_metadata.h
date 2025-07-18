@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/gpu/tma_metadata.pb.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -95,7 +96,7 @@ class TmaDescriptor {
   int element_size() const { return element_size_; }
 
   // Number of dimensions of the tensor. Can be 1-5.
-  uint32_t num_dimensions() const { return num_dimensions_; }
+  uint32_t num_dimensions() const { return global_dims_.size(); }
 
   // Array containing tensor size (number of elements) along each of the rank
   // dimensions.
@@ -127,6 +128,10 @@ class TmaDescriptor {
   // out-of-bound elements.
   TmaFloatOobFill float_oob_fill() const { return float_oob_fill_; }
 
+  TmaDescriptorProto ToProto() const;
+  static absl::StatusOr<TmaDescriptor> FromProto(
+      const TmaDescriptorProto& proto);
+
  private:
   TmaDescriptor(absl::Span<const uint64_t> global_dims,
                 absl::Span<const uint64_t> global_strides,
@@ -137,9 +142,6 @@ class TmaDescriptor {
 
   // Element size in bytes of the tensor. Can be 1, 2, 4, 8.
   int element_size_;
-
-  // Number of dimensions of the tensor. Can be 1-5.
-  uint32_t num_dimensions_;
 
   // Array containing tensor size (number of elements) along each of the rank
   // dimensions.
@@ -169,12 +171,38 @@ class TmaDescriptor {
   // Indicate whether zero or special NaN constant must be used to fill
   // out-of-bound elements.
   TmaFloatOobFill float_oob_fill_;
+
+  friend bool operator==(const TmaDescriptor& lhs, const TmaDescriptor& rhs) {
+    return lhs.element_size_ == rhs.element_size_ &&
+           lhs.global_dims_ == rhs.global_dims_ &&
+           lhs.global_strides_ == rhs.global_strides_ &&
+           lhs.box_dims_ == rhs.box_dims_ &&
+           lhs.element_strides_ == rhs.element_strides_ &&
+           lhs.interleave_ == rhs.interleave_ && lhs.swizzle_ == rhs.swizzle_ &&
+           lhs.l2_promotion_ == rhs.l2_promotion_ &&
+           lhs.float_oob_fill_ == rhs.float_oob_fill_;
+  }
+
+  friend bool operator!=(const TmaDescriptor& lhs, const TmaDescriptor& rhs) {
+    return !(lhs == rhs);
+  }
 };
 
 struct TmaMetadata {
   // Maps the index of the kernel argument to the corresponding TmaDescriptor to
   // be used at runtime.
   absl::flat_hash_map<int64_t, TmaDescriptor> arg_index_to_tma_info = {};
+
+  TmaMetadataProto ToProto() const;
+  static absl::StatusOr<TmaMetadata> FromProto(const TmaMetadataProto& proto);
+
+  friend bool operator==(const TmaMetadata& lhs, const TmaMetadata& rhs) {
+    return lhs.arg_index_to_tma_info == rhs.arg_index_to_tma_info;
+  }
+
+  friend bool operator!=(const TmaMetadata& lhs, const TmaMetadata& rhs) {
+    return !(lhs == rhs);
+  }
 };
 
 }  // namespace gpu

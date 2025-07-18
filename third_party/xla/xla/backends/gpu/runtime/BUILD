@@ -837,6 +837,7 @@ xla_cc_test(
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:launch_dimensions",
         "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/util/proto:proto_matchers",
@@ -1925,6 +1926,7 @@ tf_proto_library(
         "//xla/service/gpu:launch_dimensions_proto",
         "//xla/stream_executor:launch_dim_proto",
         "//xla/stream_executor/gpu:gpu_blas_lt_proto",
+        "//xla/stream_executor/gpu:tma_metadata_proto",
     ],
 )
 

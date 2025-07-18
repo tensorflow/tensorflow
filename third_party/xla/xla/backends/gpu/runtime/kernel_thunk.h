@@ -106,6 +106,10 @@ class KernelThunk : public Thunk {
   // The shared memory required by the kernel.
   int64_t shmem_bytes() const { return shmem_bytes_; }
 
+  const std::optional<stream_executor::gpu::TmaMetadata>& tma_metadata() const {
+    return tma_metadata_;
+  }
+
  private:
   // Buffer slices passed to the kernel as arguments.
   std::vector<BufferAllocation::Slice> args_;
