@@ -26,9 +26,9 @@ limitations under the License.
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -155,152 +155,6 @@ TEST_F(
       GpuAlgebraicSimplifier(options, se::CudaComputeCapability::Ampere())
           .Run(module.get())
           .value());
-}
-
-TEST_F(GpuAlgebraicSimplifierTest, VectorVectorDotShouldBeStrengthReduced) {
-  const std::string& hlo_string = R"(
-HloModule m
-
-ENTRY entry {
-  p0 = f32[32, 500] parameter(0)
-  p1 = f32[32, 500] parameter(1)
-  ROOT dot = f32[32] dot(p0, p1), lhs_batch_dims={0},
-    lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  const HloInstruction* dot = module->entry_computation()->root_instruction();
-  AlgebraicSimplifierOptions options;
-  options.set_enable_dot_strength_reduction(true);
-  se::CudaComputeCapability ampere(8, 0);
-  GpuAlgebraicSimplifier simplifier(options, ampere);
-  GpuAlgebraicSimplifierVisitor visitor(options, ampere, &simplifier);
-  EXPECT_TRUE(visitor.ShouldStrengthReduceDotToReduce(dot));
-}
-
-TEST_F(GpuAlgebraicSimplifierTest, MatrixVectorDotShouldNotBeStrengthReduced) {
-  const std::string& hlo_string = R"(
-HloModule m
-
-ENTRY entry {
-  p0 = f32[32, 5000, 7000] parameter(0)
-  p1 = f32[32, 5000] parameter(1)
-  ROOT dot = f32[32,7000] dot(p0, p1), lhs_batch_dims={0},
-    lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1},
-    algorithm=dot_bf16_bf16_f32_x6
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  const HloInstruction* dot = module->entry_computation()->root_instruction();
-  AlgebraicSimplifierOptions options;
-  options.set_enable_dot_strength_reduction(true);
-  se::CudaComputeCapability ampere(8, 0);
-  GpuAlgebraicSimplifier simplifier(options, ampere);
-  GpuAlgebraicSimplifierVisitor visitor(options, ampere, &simplifier);
-  EXPECT_FALSE(visitor.ShouldStrengthReduceDotToReduce(dot));
-}
-
-TEST_F(GpuAlgebraicSimplifierTest,
-       DotWithTypeUnsupportedByGemmFusionShouldBeStrengthReduced) {
-  const std::string& hlo_string = R"(
-HloModule m
-
-ENTRY entry {
-  p0 = c64[32, 5000, 7000] parameter(0)
-  p1 = c64[32, 5000] parameter(1)
-  ROOT dot = c64[32,7000] dot(p0, p1), lhs_batch_dims={0},
-    lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  const HloInstruction* dot = module->entry_computation()->root_instruction();
-  AlgebraicSimplifierOptions options;
-  options.set_enable_dot_strength_reduction(true);
-  se::CudaComputeCapability ampere(8, 0);
-  GpuAlgebraicSimplifier simplifier(options, ampere);
-  GpuAlgebraicSimplifierVisitor visitor(options, ampere, &simplifier);
-  EXPECT_TRUE(visitor.ShouldStrengthReduceDotToReduce(dot));
-}
-
-TEST_F(GpuAlgebraicSimplifierTest, SmallDotShouldBeStrengthReduced) {
-  const std::string& hlo_string = R"(
-HloModule m
-
-ENTRY entry {
-  p0 = f32[32, 50, 70] parameter(0)
-  p1 = f32[32, 50] parameter(1)
-  ROOT dot = f32[32,70] dot(p0, p1), lhs_batch_dims={0},
-    lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1},
-    algorithm=dot_bf16_bf16_f32_x6
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  const HloInstruction* dot = module->entry_computation()->root_instruction();
-  AlgebraicSimplifierOptions options;
-  options.set_enable_dot_strength_reduction(true);
-  se::CudaComputeCapability ampere(8, 0);
-  GpuAlgebraicSimplifier simplifier(options, ampere);
-  GpuAlgebraicSimplifierVisitor visitor(options, ampere, &simplifier);
-  EXPECT_TRUE(visitor.ShouldStrengthReduceDotToReduce(dot));
-}
-
-TEST_F(GpuAlgebraicSimplifierTest, SmallDotShouldBeStrengthReduced2) {
-  const std::string& hlo_string = R"(
-HloModule m
-
-ENTRY entry {
-  p0 = f32[2000, 3000] parameter(0)
-  p1 = f32[2000] parameter(1)
-  ROOT dot = f32[3000] dot(p0, p1), lhs_contracting_dims={0},
-    rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_f32_x6
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  const HloInstruction* dot = module->entry_computation()->root_instruction();
-  AlgebraicSimplifierOptions options;
-  options.set_enable_dot_strength_reduction(true);
-  se::CudaComputeCapability ampere(8, 0);
-  GpuAlgebraicSimplifier simplifier(options, ampere);
-  GpuAlgebraicSimplifierVisitor visitor(options, ampere, &simplifier);
-  EXPECT_TRUE(visitor.ShouldStrengthReduceDotToReduce(dot));
-}
-
-TEST_F(GpuAlgebraicSimplifierTest,
-       DotToMultiplyRewriteWith_F32_F32_F32_Algorithm) {
-  constexpr char kModuleStr[] = R"(
-    HloModule test
-    ENTRY dot {
-      a = f32[128,128] parameter(0)
-      b = f32[128,128] parameter(1)
-      ROOT dot = f32[128] dot(a, b),
-        lhs_batch_dims={0},
-        lhs_contracting_dims={1},
-        rhs_batch_dims={0},
-        rhs_contracting_dims={1},
-        algorithm=dot_f32_f32_f32
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  AlgebraicSimplifierOptions options;
-  ASSERT_TRUE(GpuAlgebraicSimplifier(options, Ampere()).Run(m.get()).value());
-}
-
-TEST_F(GpuAlgebraicSimplifierTest,
-       DotStrengthReductionWith_F32_F32_F32_Algorithm) {
-  constexpr char kModuleStr[] = R"(
-    HloModule test
-    ENTRY dot {
-      a = f32[128,2]{1,0} parameter(0)
-      b = f32[2]{0} parameter(1)
-      ROOT dot = f32[128]{0} dot(a, b),
-        lhs_contracting_dims={1},
-        rhs_contracting_dims={0},
-        algorithm=dot_f32_f32_f32
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  AlgebraicSimplifierOptions options;
-  ASSERT_TRUE(GpuAlgebraicSimplifier(options, Ampere()).Run(m.get()).value());
 }
 
 TEST_F(GpuAlgebraicSimplifierTest,
