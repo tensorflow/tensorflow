@@ -1965,15 +1965,21 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
       DumpingEnabledForHloPass("triton-fusion-emitter",
                                hlo_config.debug_options());
 
+  LOG(ERROR) << "------------------------------------should_dump_mlir_passes: "
+             << should_dump_mlir_passes;
   mlir::PassManager pm(&mlir_context);
   pm.enableVerifier(should_verify);
 
   std::optional<llvm::raw_fd_ostream> log_stream;
   if (should_dump_mlir_passes) {
     std::string outputs_dir;
-    if (!tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir)) {
+
+    if (hlo_config.debug_options().has_xla_dump_to()) {
       outputs_dir = hlo_config.debug_options().xla_dump_to();
+    } else {
+      outputs_dir = !tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir);
     }
+
     if (!outputs_dir.empty()) {
       const std::string basename =
           absl::StrCat(absl::string_view(tsl::io::Basename(hlo_module.name())),

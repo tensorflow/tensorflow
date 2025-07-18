@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -69,26 +70,29 @@ namespace mtx = ::mlir::triton::xla;
 class I4ToI8Converter : public TypeConverter {
  public:
   Type convertIntegerType(IntegerType type) const {
-    VLOG(2) << "I4ToI8Converter: converting IntegerType for "
-            << DumpToString(type);
     if (type.getWidth() == 4) {
       auto new_type = IntegerType::get(type.getContext(), 8);
-      VLOG(2) << "  ->  I4ToI8Converter: IntegerType converted to "
-              << DumpToString(new_type);
+      VLOG(2) << "  ->  I4ToI8Converter: IntegerType " << DumpToString(type)
+              << " converted to " << DumpToString(new_type);
       return new_type;
     }
+    VLOG(2) << "I4ToI8Converter: passthrough for IntegerType "
+            << DumpToString(type);
     return type;
   }
 
   Type convertRankedTensorType(RankedTensorType type) const {
-    VLOG(2) << "I4ToI8Converter: RankedTensorType for " << DumpToString(type);
     if (!type.getElementType().isInteger(4)) {
+      VLOG(2) << "I4ToI8Converter: passthrough for RankedTensorType "
+              << DumpToString(type);
       return type;
     }
 
     auto shape = type.getShape();
     // Only handle static shapes for simplicity.
     if (mlir::ShapedType::isDynamicShape(shape)) {
+      VLOG(2) << "I4ToI8Converter: passthrough for dynamic shape "
+              << DumpToString(type);
       return type;
     }
 
@@ -99,14 +103,12 @@ class I4ToI8Converter : public TypeConverter {
 
     auto new_type = RankedTensorType::get(
         new_shape, IntegerType::get(type.getContext(), 8));
-    VLOG(2) << "  ->  I4ToI8Converter: RankedTensorType converted to "
-            << DumpToString(new_type);
+    VLOG(2) << "  ->  I4ToI8Converter: RankedTensorType " << DumpToString(type)
+            << " converted to " << DumpToString(new_type);
     return new_type;
   }
 
   PointerType convertPointerType(PointerType ptr_type) const {
-    VLOG(2) << "I4ToI8Converter: converting PointerType for "
-            << DumpToString(ptr_type);
     auto pointee_type = ptr_type.getPointeeType();
     auto new_pointee_type = convertType(pointee_type);
     auto new_ptr_type =
@@ -117,9 +119,6 @@ class I4ToI8Converter : public TypeConverter {
   }
 
   Type convertFunctionType(FunctionType func_type) const {
-    VLOG(2) << "I4ToI8Converter: converting FunctionType "
-            << DumpToString(func_type);
-
     SmallVector<Type> inputs;
     if (failed(convertTypes(func_type.getInputs(), inputs))) {
       return func_type;
@@ -317,8 +316,6 @@ class AdvanceOpConversionPattern : public OpConversionPattern<AdvanceOp> {
   LogicalResult matchAndRewrite(
       AdvanceOp op, typename OpConversionPattern<AdvanceOp>::OpAdaptor adaptor,
       ConversionPatternRewriter &r) const override {
-    VLOG(2) << "AvanceOpConversionPattern: matching\n"
-            << DumpToString(op.getOperation());
     // Convert the tensor type using the TypeConverter
     auto new_type = converter_.convertType(op.getType());
     if (op.getType() == new_type) {
@@ -396,14 +393,64 @@ class ExtSIInt4ToInt8Pattern : public OpConversionPattern<ma::ExtSIOp> {
 
     // Make a new i8 tensor with the shape that is half of the int4 tensor.
     auto loc = op.getLoc();
+    constexpr absl::string_view kInt4ToBF16Asm = R"(
+      {
+        .reg .s32 src_shifted;
+        .reg .b32 bias;
 
-    Value shift4_const =
-        r.create<ma::ConstantOp>(loc, r.getIntegerAttr(r.getI8Type(), 4));
-    Value shift4 = r.create<mt::SplatOp>(loc, packed_type, shift4_const);
-    Value shifted_lo =
-        r.create<ma::ShLIOp>(loc, packed_type, adaptor.getIn(), shift4);
-    Value lo = r.create<ma::ShRSIOp>(loc, packed_type, shifted_lo, shift4);
-    Value hi = r.create<ma::ShRSIOp>(loc, packed_type, adaptor.getIn(), shift4);
+        mov.b32 bias, 0x43084308;
+
+        shr.s32 src_shifted, $4, 4;
+
+        // normal ordering (do not use):
+        // prmt.b32 $0, $4, src_shifted, 0xF4F0;
+        // prmt.b32 $1, $4, src_shifted, 0xF5F1;
+        // prmt.b32 $2, $4, src_shifted, 0xF6F2;
+        // prmt.b32 $3, $4, src_shifted, 0xF7F3;
+
+        // interleaved ordering:
+        prmt.b32 $0, $4, src_shifted, 0xF1F0;
+        prmt.b32 $1, $4, src_shifted, 0xF3F2;
+        prmt.b32 $2, $4, src_shifted, 0xF5F4;
+        prmt.b32 $3, $4, src_shifted, 0xF7F6;
+
+        // vectorized interleaved ordering:
+        // prmt.b32 $0, $4, src_shifted, 0xF4F0;
+        // prmt.b32 $1, $4, src_shifted, 0xF6F2;
+        // prmt.b32 $2, $4, src_shifted, 0xF5F1;
+        // prmt.b32 $3, $4, src_shifted, 0xF7F3;
+
+        lop3.b32 $0, $0, 0x000F000F, bias, 0x6a;
+        lop3.b32 $1, $1, 0x000F000F, bias, 0x6a;
+        lop3.b32 $2, $2, 0x000F000F, bias, 0x6a;
+        lop3.b32 $3, $3, 0x000F000F, bias, 0x6a;
+
+        sub.bf16x2 $0, $0, bias;
+        sub.bf16x2 $1, $1, bias;
+        sub.bf16x2 $2, $2, bias;
+        sub.bf16x2 $3, $3, bias;
+      }
+    )";
+    Type bf16_type = input_type.clone(r.getBF16Type());
+    Type bf16_packed_type =
+        dyn_cast<RankedTensorType>(packed_type).clone(r.getBF16Type());
+    auto elementwise_op = r.create<ElementwiseInlineAsmOp>(
+        op.getLoc(), std::vector<Type>{bf16_packed_type, bf16_packed_type},
+        kInt4ToBF16Asm, "=r,=r,=r,=r,r",
+        /*pure=*/true, /*pack_result=*/4, adaptor.getOperands());
+
+    Operation *si_to_fp_op = *op->getResult(0).getUsers().begin();
+    // Value shift4_const =
+    //     r.create<ma::ConstantOp>(loc, r.getIntegerAttr(r.getI8Type(), 4));
+    // Value shift4 = r.create<mt::SplatOp>(loc, packed_type, shift4_const);
+    // Value shifted_lo =
+    //     r.create<ma::ShLIOp>(loc, packed_type, adaptor.getIn(), shift4);
+    // Value lo = r.create<ma::ShRSIOp>(loc, packed_type, shifted_lo, shift4);
+    // Value hi = r.create<ma::ShRSIOp>(loc, packed_type, adaptor.getIn(),
+    // shift4);
+
+    Value lo = elementwise_op->getResult(0);
+    Value hi = elementwise_op->getResult(1);
     Value hi_lo = r.create<mt::JoinOp>(loc, lo, hi);
     if (converter_.packed_dimension() + 1 != input_type.getRank()) {
       // Move the minor (joined) dimension to just after the packed dimension.
@@ -414,9 +461,20 @@ class ExtSIInt4ToInt8Pattern : public OpConversionPattern<ma::ExtSIOp> {
       auto trans_attr = r.getDenseI32ArrayAttr(trans_order);
       hi_lo = r.create<mt::TransOp>(loc, hi_lo, trans_attr);
     }
-    auto unpacked_type = input_type.clone(r.getI8Type());
-    r.replaceOpWithNewOp<mt::ReshapeOp>(op, unpacked_type, hi_lo,
+
+    if (si_to_fp_op->getResultTypes()[0] != bf16_type) {
+      Value reshape = r.create<mt::ReshapeOp>(loc, bf16_type, hi_lo,
+                                              /*allow_reorder=*/false);
+      VLOG(2) << "The result type of the sitofp op is not bf16: "
+              << DumpToString(si_to_fp_op);
+      r.replaceOpWithNewOp<FpToFpOp>(si_to_fp_op,
+                                     si_to_fp_op->getResultTypes()[0], reshape);
+      r.eraseOp(op);
+      return success();
+    }
+    r.replaceOpWithNewOp<mt::ReshapeOp>(si_to_fp_op, bf16_type, hi_lo,
                                         /*allow_reorder=*/false);
+    r.eraseOp(op);
     return success();
   }
 
@@ -429,7 +487,7 @@ class ExtSIInt4ToInt8Pattern : public OpConversionPattern<ma::ExtSIOp> {
 std::vector<Operation *> TraverseUpwards(Operation *op) {
   std::vector<Operation *> result;
   while (op != nullptr) {
-    VLOG(2) << "op: \n" << DumpToString(op);
+    VLOG(2) << "TraverseUpwards found the op: " << DumpToString(op);
     result.push_back(op);
     // Handle the argN of the forOp.
     if (auto arg = dyn_cast<BlockArgument>(op->getOperand(0))) {
@@ -598,7 +656,7 @@ struct PlainInt4ToPackedInt4RewritePass
     I4ToI8Converter converter(packed_dimension);
     target.markUnknownOpDynamicallyLegal([&](Operation *op) {
       if (auto func_op = dyn_cast<mlir::FunctionOpInterface>(op)) {
-        VLOG(2) << "check funcOp: " << DumpToString(func_op);
+        // VLOG(2) << "check funcOp: " << DumpToString(func_op);
         if (func_op.getFunctionType() !=
             converter.convertType(func_op.getFunctionType())) {
           VLOG(2) << "funcOp not legal: " << DumpToString(func_op);
@@ -606,7 +664,9 @@ struct PlainInt4ToPackedInt4RewritePass
         }
       }
       bool is_legal = converter.isLegal(op);
-      VLOG(2) << "is_legal: " << is_legal << " for " << DumpToString(op);
+      if (!is_legal) {
+        VLOG(2) << "not legal for " << DumpToString(op);
+      }
       return is_legal;
     });
     RewritePatternSet patterns(ctx);

@@ -19,21 +19,28 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/literal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tests/literal_test_util.h"
+#include "xla/tests/test_utils.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/types.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -82,6 +89,58 @@ class TritonTest : public GpuCodegenTest {
     return backend().default_stream_executor()->GetDeviceDescription();
   }
 };
+
+TEST_F(TritonTest, FusedInt4DotBf16Identity) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule FusedInt4DotBf16Identity
+
+    ENTRY entry_computation {
+      w.s4 = s4[32,32]{1,0:E(4)} parameter(0)
+      w.s8 = s8[32,32] convert(w.s4)
+      w.b16 = bf16[32,32] convert(w.s8)
+
+      a = f32[32,32] parameter(1)
+      a.bf16 = bf16[32,32] convert(a)
+      ROOT dot = f32[32,32] dot(w.b16, a.bf16),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  TF_ASSERT_OK_AND_ASSIGN(auto args, MakeFakeArguments(module.get()));
+  auto& lhs = args[0];
+  absl::Span<s4> lhs_data = lhs.data<s4>();
+  int counter = 0;
+  for (int i = 0; i < lhs.shape().dimensions(0); ++i) {
+    for (int j = 0; j < lhs.shape().dimensions(1); ++j) {
+      lhs_data[i * lhs.shape().dimensions(1) + j] = s4(counter % 16 - 8);
+      counter++;
+    }
+  }
+  auto& rhs = args[1];
+  absl::Span<float> rhs_data = rhs.data<float>();
+  for (int i = 0; i < rhs.shape().dimensions(0); ++i) {
+    for (int j = 0; j < rhs.shape().dimensions(1); ++j) {
+      if (i == j) {
+        rhs_data[i * rhs.shape().dimensions(1) + j] = 1.0f;
+      } else {
+        rhs_data[i * rhs.shape().dimensions(1) + j] = 0.0f;
+      }
+    }
+  }
+  std::vector<Literal*> fake_argument_ptrs;
+  for (auto& arg : args) {
+    fake_argument_ptrs.push_back(&arg);
+  }
+  LOG(ERROR) << "rhs: " << rhs.ToString();
+  LOG(ERROR) << "expected output: " << lhs.ToString();
+  auto result = Execute(std::move(module), fake_argument_ptrs, true);
+  EXPECT_OK(result.status());
+  LOG(ERROR) << "actual output: " << result.value().ToString();
+  auto compare_result = LiteralTestUtil::NearOrEqual(
+      lhs, result.value(), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3});
+  EXPECT_TRUE(compare_result);
+}
 
 // The following tests are for the channel and subchannel dequantization
 // fusions. We run the fused version to avoid the hlo passes and prove that
