@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/xla_data.pb.h"
@@ -607,20 +609,15 @@ void ConvertV2ToV1Sharding(xla::OpSharding& sharding) {
     return;
   }
 
-  absl::StatusOr<xla::HloSharding> hlo_sharding =
-      xla::HloSharding::FromProto(sharding);
-  if (!hlo_sharding.ok()) {
-    LOG(ERROR) << "Failed to convert OpSharding to HloSharding: "
-               << hlo_sharding.status();
-  }
-
   // V2 Sharding uses iota_reshape_dims and iota_transpose_perm, while V1
   // Sharding uses tile_assignment_devices.
+  absl::c_copy(
+      xla::ToArray(sharding.iota_reshape_dims(), sharding.iota_transpose_perm(),
+                   sharding.tile_assignment_dimensions()),
+      tsl::protobuf::RepeatedFieldBackInserter(
+          sharding.mutable_tile_assignment_devices()));
   sharding.clear_iota_reshape_dims();
   sharding.clear_iota_transpose_perm();
-  for (int64_t device : hlo_sharding->tile_assignment().array()) {
-    sharding.add_tile_assignment_devices(device);
-  }
 }
 
 }  // namespace
