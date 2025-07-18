@@ -5622,6 +5622,15 @@ absl::Status SpmdPartitioner::PreprocessSharding(
       if (hlo->HasSideEffectNoRecurse() && hlo->opcode() != HloOpcode::kRng &&
           (hlo->opcode() != HloOpcode::kCustomCall ||
            GetCustomCallPartitioner(hlo->custom_call_target()) == nullptr)) {
+        // TODO: b/432201708 - Remove this error once Shardy is stable in JAX.
+        if (hlo->opcode() == HloOpcode::kCustomCall) {
+          TF_RET_CHECK(hlo->custom_call_target().rfind("xla.sdy", 0) != 0)
+              << "This is a custom call named 'xla.sdy.*' which shouldn't "
+              << "appear in the XLA partitioner, please file a bug against the "
+              << "OpenXLA Shardy team. One of the possible bugs is your model "
+              << "was lowered targeting Shardy, but Shardy was then disabled "
+              << "in XLA.";
+        }
         TF_RET_CHECK(hlo->has_sharding())
             << "Side-effect HLO must have sharding: " << hlo->ToString();
         TF_RET_CHECK(!HasReplicatedSharding(hlo->sharding()) ||
