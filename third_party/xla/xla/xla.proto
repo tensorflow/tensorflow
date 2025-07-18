@@ -27,7 +27,9 @@ message CompilationEnvironmentsProto {
 }
 
 // Debugging options for XLA. These options may change at any time - there are
-// no guarantees about backward or forward compatibility for these fields.
+// no guarantees about backward or forward compatibility for these fields with
+// the exception of few stable GPU feature flags (see `GetFlagStatus` in
+// `debug_options_flags.cc`).
 //
 // Debug options naming and organization:
 //

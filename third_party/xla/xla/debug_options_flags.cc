@@ -26,7 +26,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -2540,6 +2542,22 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
                                      /*reset_envvar=*/true);
   }
   return *flag_values;
+}
+
+FlagStatus GetFlagStatus(absl::string_view flag_name) {
+  static const absl::NoDestructor<absl::flat_hash_set<std::string>>
+      kStableFlags({
+          // go/keep-sorted start
+          // go/keep-sorted end
+      });
+  static const absl::NoDestructor<absl::flat_hash_set<std::string>>
+      kDeprecatedFlags({
+          // go/keep-sorted start
+          // go/keep-sorted end
+      });
+  return kStableFlags->contains(flag_name)       ? FlagStatus::kStable
+         : kDeprecatedFlags->contains(flag_name) ? FlagStatus::kDeprecated
+                                                 : FlagStatus::kExperimental;
 }
 
 void ResetThreadLocalFuel() {
