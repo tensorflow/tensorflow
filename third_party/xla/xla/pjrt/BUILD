@@ -374,6 +374,7 @@ cc_library(
     deps = [
         ":pjrt_common",
         ":pjrt_layout",
+        "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
