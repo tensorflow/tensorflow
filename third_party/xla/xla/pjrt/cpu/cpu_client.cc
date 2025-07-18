@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/cpu/abstract_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_async_execution_tracker.h"
 #include "xla/pjrt/cpu/cpu_device.h"
@@ -887,7 +888,6 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::CreateErrorBuffer(
           absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>{
               tsl::AsyncValueRef<CpuEvent>(
                   tsl::MakeErrorAsyncValueRef(std::move(error)))}),
-      this, tsl::down_cast<PjRtCpuDevice*>(device),
       *device->default_memory_space());
 }
 
@@ -959,8 +959,6 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::DefineBuffer(
           /*owns_buffers=*/raw_buffer_is_mutable,
           tsl::down_cast<CpuRawBuffer*>(raw_buffer.get())->buffer(),
           std::move(definition_events)),
-      this,
-      tsl::down_cast<PjRtCpuDevice*>(raw_buffer->memory_space()->devices()[0]),
       raw_buffer->memory_space()));
 }
 
@@ -988,11 +986,9 @@ absl::StatusOr<xla::Shape> PjRtCpuClient::MakeDefaultShapeForMemorySpace(
 PjRtCpuBuffer::PjRtCpuBuffer(
     Shape on_device_shape,
     std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer,
-    PjRtCpuClient* client, PjRtCpuDevice* device, PjRtMemorySpace* memory_space)
+    PjRtMemorySpace* memory_space)
     : AbstractCpuBuffer(std::move(on_device_shape),
-                        std::move(tracked_device_buffer), memory_space),
-      client_(client),
-      device_(device) {}
+                        std::move(tracked_device_buffer), memory_space) {}
 
 static std::vector<tsl::RCReference<tsl::AsyncValue>> CopyAsyncValues(
     absl::Span<const tsl::RCReference<tsl::AsyncValue>> events) {
@@ -1002,6 +998,15 @@ static std::vector<tsl::RCReference<tsl::AsyncValue>> CopyAsyncValues(
     avs.push_back(ev.CopyRef());
   }
   return avs;
+}
+
+PjRtCpuDevice* PjRtCpuBuffer::device() const {
+  CHECK_EQ(memory_space_->devices().size(), 1);
+  return tensorflow::down_cast<PjRtCpuDevice*>(memory_space_->devices()[0]);
+}
+
+PjRtCpuClient* PjRtCpuBuffer::client() const {
+  return tensorflow::down_cast<PjRtCpuClient*>(memory_space_->client());
 }
 
 PjRtFuture<> PjRtCpuBuffer::CopyRawToHost(void* dst, int64_t offset,
@@ -1030,7 +1035,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuBuffer::CopyToMemorySpace(
   tsl::profiler::TraceMe traceme("PjRtCpuBuffer::CopyToDevice");
 
   // Copying across PjRtClients involves a copy through the host.
-  if (dst_device->client() != client_) {
+  if (dst_device->client() != client()) {
     return CopyToDeviceAcrossClients(dst_device);
   }
 
@@ -1044,8 +1049,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuBuffer::CopyToMemorySpace(
       CopyToDeviceHelper(client()->async_work_runner()));
 
   return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtCpuBuffer>(
-      on_device_shape_, std::move(tracked_device_buffer), client(),
-      tsl::down_cast<PjRtCpuDevice*>(dst_device), dst_memory_space));
+      on_device_shape_, std::move(tracked_device_buffer), dst_memory_space));
 }
 
 PjRtCpuExecutable::PjRtCpuExecutable(
@@ -1360,8 +1364,9 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
   // there was an error.
   auto execute_event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
   MarkEventReadyOnExit ready_on_exit(execute_event);
+  auto execute_usage_event = tsl::MakeRef<CpuTrackedDeviceEvent>(execute_event);
 
-  absl::InlinedVector<PjRtCpuBuffer::ScopedHold, 4> donation_transactions;
+  absl::InlinedVector<CommonPjRtBuffer::ScopedHold, 4> donation_transactions;
 
   absl::InlinedVector<std::pair<bool, TrackedCpuDeviceBuffer*>, 4>
       tracked_buffers;
@@ -1381,7 +1386,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
   donation_clashes.reserve(argument_handles.size());
   for (int i = 0; i < argument_handles.size(); ++i) {
     PjRtBuffer* handle = argument_handles[i];
-    auto* cpu_buffer = tsl::down_cast<PjRtCpuBuffer*>(handle);
+    auto* cpu_buffer = tsl::down_cast<CommonPjRtBuffer*>(handle);
     if (cpu_buffer->device() != device) {
       return InvalidArgument(
           "Buffer passed to Execute() as argument %d to replica %d is on "
@@ -1398,33 +1403,42 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
           cpu_buffer, donation_clashes, must_donate, i, replica, partition));
       if (must_donate) {
         ++donate_it;
-        PjRtCpuBuffer::ScopedHold donation_transaction =
-            cpu_buffer->AcquireDonation();
+        CommonPjRtBuffer::ScopedHold donation_transaction =
+            cpu_buffer->GetBufferWithHold(
+                CommonPjRtBuffer::ScopedHold::kDonation);
         // On CPU, we allow donation to succeed by introducing a copy. This was
         // added when enabling buffer donation on CPU since it turned out that a
         // number of users were holding external references to buffers that were
         // supposed to be donated. We may wish to tighten those semantics in the
         // future.
         if (donation_transaction.ok()) {
+          tracked_buffer = tensorflow::down_cast<TrackedCpuDeviceBuffer*>(
+              donation_transaction.buffer());
           // After acquiring the buffer for donation, we retrieve the dependent
           // usage events. Note that we don't need any locking here as
           // AcquireDonation() is supposed to synchronize with other usages.
-          for (const auto& ev : donation_transaction->UsageEvents()) {
+          for (const auto& ev : tracked_buffer->UsageEvents()) {
             if (!ev.IsAvailable()) {
               input_deps.push_back(ev.CopyRCRef());
             }
           }
-          tracked_buffer = donation_transaction.buffer();
           tracked_buffers.emplace_back(/*can_donate=*/true, tracked_buffer);
           donation_transactions.push_back(std::move(donation_transaction));
           return absl::OkStatus();
         }
       }
-      tracked_buffer = cpu_buffer->AcquireUsage(execute_event);
-      if (!tracked_buffer)
-        return InvalidArgument(
-            "Invalid buffer passed: buffer has been deleted or donated.");
-      tracked_buffers.emplace_back(/*can_donate=*/false, tracked_buffer);
+      {
+        CommonPjRtBuffer::ScopedHold usage_transaction =
+            cpu_buffer->GetBufferWithHold(CommonPjRtBuffer::ScopedHold::kUsage);
+        if (!usage_transaction.ok()) {
+          return InvalidArgument(
+              "Invalid buffer passed: buffer has been deleted or donated.");
+        }
+        tracked_buffer = tensorflow::down_cast<TrackedCpuDeviceBuffer*>(
+            usage_transaction.buffer());
+        usage_transaction.ConvertUsageHold(execute_usage_event);
+        tracked_buffers.emplace_back(/*can_donate=*/false, tracked_buffer);
+      }
       return absl::OkStatus();
     };
     TF_RETURN_IF_ERROR(get_buffer(i));
@@ -1781,7 +1795,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
               result_buffers_info[i].buffer_size, std::move(definition_events));
       auto leaf_buffer = std::make_unique<PjRtCpuBuffer>(
           result_shape.tuple_shapes(i), std::move(leaf_tracked_device_buffer),
-          client_, device, *device->default_memory_space());
+          *device->default_memory_space());
       res.push_back(std::move(leaf_buffer));
     }
   } else {
@@ -1793,7 +1807,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
         result_buffers_info[0].buffer_size,
         /*definition_event=*/execute_event);
     auto output_buffer = std::make_unique<PjRtCpuBuffer>(
-        result_shape, std::move(tracked_device_buffer), client_, device,
+        result_shape, std::move(tracked_device_buffer),
         *device->default_memory_space());
     res.push_back(std::move(output_buffer));
   }
