@@ -184,7 +184,9 @@ limitations under the License.
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/human_readable_json.h"
+#include "tsl/platform/platform.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla {
@@ -1183,17 +1185,18 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
   // For information about this calling convention, see
   // xla/g3doc/custom_call.md.
   switch (instr->api_version()) {
-    case CustomCallApiVersion::API_VERSION_ORIGINAL:
-#ifdef PLATFORM_GOOGLE
-      LOG(FATAL)
-#else
-      LOG(ERROR)
-#endif
-          << "Custom call API version `API_VERSION_ORIGINAL` is "
-             "not supported "
-             "by XLA:GPU. Prefer "
-             "https://docs.jax.dev/en/latest/ffi.html. It "
-             "will be fully removed in November 2025.";
+    case CustomCallApiVersion::API_VERSION_ORIGINAL: {
+      constexpr absl::string_view kErrorMessage =
+          "Custom call API version `API_VERSION_ORIGINAL` is "
+          "not supported "
+          "by XLA:GPU. Prefer "
+          "https://docs.jax.dev/en/latest/ffi.html. It "
+          "will be fully removed in November 2025.";
+      if constexpr (tsl::kIsOpenSource) {
+        LOG(ERROR) << kErrorMessage;
+      } else {
+        LOG(FATAL) << kErrorMessage;
+      }
 
       custom_call_target = [call_target](stream_executor::Stream* stream,
                                          void** buffers, const char* opaque,
@@ -1204,6 +1207,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
             opaque_len);
       };
       break;
+    }
     case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
     case CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
       custom_call_target = [call_target](stream_executor::Stream* stream,
@@ -1685,7 +1689,9 @@ absl::Status IrEmitterUnnested::EmitWhile(const HloInstruction* instr) {
                       instr->backend_config<xla::WhileLoopBackendConfig>());
 
   std::optional<int64_t> trip_count = std::nullopt;
-  if (config.has_known_trip_count()) trip_count = config.known_trip_count().n();
+  if (config.has_known_trip_count()) {
+    trip_count = config.known_trip_count().n();
+  }
 
   TF_ASSIGN_OR_RETURN(
       auto thunk,
@@ -2336,7 +2342,9 @@ absl::Status IrEmitterUnnested::EmitCollectiveAsyncDone(
 
   // Can be null if no start thunk was created (e.g. if the start op
   // is degenerate), in which case there's nothing to do here.
-  if (!async_events_it->second) return absl::OkStatus();
+  if (!async_events_it->second) {
+    return absl::OkStatus();
+  }
 
   AsyncStreamKind stream_kind = AsyncStreamKind::kCollective;
   if (is_send_recv) {
@@ -2365,7 +2373,9 @@ absl::Status IrEmitterUnnested::EmitNvshmemAsyncDone(
 
   // Can be null if no start thunk was created (e.g. if the start op is
   // degenerate), in which case there's nothing to do here.
-  if (!async_events_it->second) return absl::OkStatus();
+  if (!async_events_it->second) {
+    return absl::OkStatus();
+  }
 
   AsyncStreamKind stream_kind = AsyncStreamKind::kCollective;
   if (is_send_recv) {
@@ -2615,7 +2625,9 @@ absl::Status IrEmitterUnnested::EmitTargetElementLoop(
 static absl::flat_hash_map<std::string, std::string> ConvertFrontendAttributes(
     const FrontendAttributes& attrs) {
   absl::flat_hash_map<std::string, std::string> result;
-  for (auto& [k, v] : attrs.map()) result[k] = v;
+  for (auto& [k, v] : attrs.map()) {
+    result[k] = v;
+  }
   return result;
 }
 
@@ -2792,9 +2804,8 @@ absl::Status IrEmitterUnnested::EmitSendDoneThunk(
   if (!instr->is_host_transfer()) {
     if (IsNvshmemCollective(instr)) {
       return EmitNvshmemAsyncDone(Thunk::kNvshmemSendDone, instr);
-    } else {
-      return EmitCollectiveAsyncDone(Thunk::kSendDone, instr);
     }
+    return EmitCollectiveAsyncDone(Thunk::kSendDone, instr);
   }
 
   if (!instr->channel_id().has_value()) {
@@ -2892,9 +2903,8 @@ absl::Status IrEmitterUnnested::EmitRecvDoneThunk(
   if (!instr->is_host_transfer()) {
     if (IsNvshmemCollective(instr)) {
       return EmitNvshmemAsyncDone(Thunk::kNvshmemRecvDone, instr);
-    } else {
-      return EmitCollectiveAsyncDone(Thunk::kRecvDone, instr);
     }
+    return EmitCollectiveAsyncDone(Thunk::kRecvDone, instr);
   }
   if (!instr->channel_id().has_value()) {
     return absl::InternalError(
@@ -3203,9 +3213,10 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
 absl::Status IrEmitterUnnested::EmitHloComputation(
     const HloComputation* computation) {
   const HloSchedule& schedule = computation->parent()->schedule();
-  if (!schedule.is_computation_scheduled(computation))
+  if (!schedule.is_computation_scheduled(computation)) {
     return Internal("Sequence not found for computation: %s",
                     computation->name());
+  }
 
   const HloInstructionSequence& sequence = schedule.sequence(computation);
   absl::flat_hash_map<const HloInstruction*, Thunk*> instr_to_thunk;
