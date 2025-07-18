@@ -419,6 +419,7 @@ def _create_local_sycl_repository(repository_ctx):
         "crosstool:BUILD.sycl",
         "crosstool:sycl_cc_toolchain_config.bzl",
         "crosstool:clang/bin/crosstool_wrapper_driver_sycl",
+        "crosstool:clang/bin/ar_driver_sycl",
     ]}
 
     bash_bin = get_bash_bin(repository_ctx)
@@ -554,6 +555,7 @@ def _create_local_sycl_repository(repository_ctx):
     sycl_defines["%{host_compiler_prefix}"] = host_compiler_prefix
     sycl_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_sycl"
 
+    sycl_defines["%{ar_path}"] = "clang/bin/ar_driver_sycl"
     sycl_defines["%{cpu_compiler}"] = str(cc)
     sycl_defines["%{linker_bin_path}"] = "/usr/bin"
 
@@ -590,6 +592,11 @@ def _create_local_sycl_repository(repository_ctx):
     repository_ctx.template(
         "crosstool/clang/bin/crosstool_wrapper_driver_sycl",
         tpl_paths["crosstool:clang/bin/crosstool_wrapper_driver_sycl"],
+        sycl_defines,
+    )
+    repository_ctx.template(
+        "crosstool/clang/bin/ar_driver_sycl",
+        tpl_paths["crosstool:clang/bin/ar_driver_sycl"],
         sycl_defines,
     )
 
