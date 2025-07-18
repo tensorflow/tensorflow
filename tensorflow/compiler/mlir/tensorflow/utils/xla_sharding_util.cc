@@ -599,6 +599,32 @@ void EncodeSharding(mlir::Operation* op, llvm::StringRef shard_str) {
               mlir::StringAttr::get(op->getContext(), hlosharding->ToString()));
 }
 
+namespace {
+
+void ConvertV2ToV1Sharding(xla::OpSharding& sharding) {
+  if (sharding.type() != xla::OpSharding::OTHER ||
+      sharding.iota_reshape_dims().empty()) {
+    return;
+  }
+
+  absl::StatusOr<xla::HloSharding> hlo_sharding =
+      xla::HloSharding::FromProto(sharding);
+  if (!hlo_sharding.ok()) {
+    LOG(ERROR) << "Failed to convert OpSharding to HloSharding: "
+               << hlo_sharding.status();
+  }
+
+  // V2 Sharding uses iota_reshape_dims and iota_transpose_perm, while V1
+  // Sharding uses tile_assignment_devices.
+  sharding.clear_iota_reshape_dims();
+  sharding.clear_iota_transpose_perm();
+  for (int64_t device : hlo_sharding->tile_assignment().array()) {
+    sharding.add_tile_assignment_devices(device);
+  }
+}
+
+}  // namespace
+
 mlir::LogicalResult ExtractInputsForLogicalDevices(
     const int num_cores_per_replica,
     mlir::tf_device::ClusterFuncOp cluster_func, mlir::OpBuilder* builder,
@@ -645,6 +671,7 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
             .failed()) {
       return cluster_func.emitError("incorrect sharding format for inputs");
     }
+    ConvertV2ToV1Sharding(sharding);
 
     const auto input_sharding_type = sharding.type();
     auto tiled_sharding_mismatched = [&](int tiled_input_size) {
@@ -758,6 +785,7 @@ mlir::LogicalResult ParseAndValidateOutputSharding(
             .failed()) {
       return cluster_func.emitError("incorrect sharding format for outputs");
     }
+    ConvertV2ToV1Sharding(sharding);
 
     if (sharding.type() == xla::OpSharding::OTHER &&
         sharding.tile_assignment_devices_size() != num_cores_per_replica)
