@@ -6,10 +6,6 @@ load(
 )
 load("//xla/service/gpu:build_defs.bzl", "get_cub_sort_kernel_types")
 load(
-    "//xla/service/gpu:build_defs.bzl",
-    "gpu_kernel_library",
-)
-load(
     "//xla/stream_executor:build_defs.bzl",
     "cuda_only_cc_library",
     "stream_executor_friends",
@@ -407,7 +403,7 @@ cuda_only_cc_library(
     alwayslink = True,
 )
 
-gpu_kernel_library(
+cuda_library(
     name = "delay_kernel_cuda",
     srcs = [
         "delay_kernel_cuda.cu.cc",
