@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -124,13 +126,23 @@ TEST(KernelThunkTest, ToProto) {
 
   LaunchDimensions launch_dimensions(se::BlockDim(32, 31, 30),
                                      se::ThreadDim(256, 255, 254));
+
+  TF_ASSERT_OK_AND_ASSIGN(stream_executor::gpu::TmaDescriptor descriptor,
+                          stream_executor::gpu::TmaDescriptor::Create(
+                              /*global_dims=*/{1024, 1024},
+                              /*global_strides=*/{1024},
+                              /*box_dims=*/{128, 128},
+                              /*element_strides=*/{1, 1},
+                              /*element_byte_width=*/4));
+  stream_executor::gpu::TmaMetadata tma_metadata;
+  tma_metadata.arg_index_to_tma_info.emplace(/*arg_index=*/0,
+                                             std::move(descriptor));
+
   KernelThunk thunk(thunk_info,
-                    /*kernel_name=*/"kernel123",
-                    /*kernel_arguments=*/kernel_arguments,
-                    /*launch_dimensions=*/launch_dimensions,
-                    /*cluster_dim=*/se::ClusterDim(8, 7, 6),
+                    /*kernel_name=*/"kernel123", kernel_arguments,
+                    launch_dimensions, se::ClusterDim(8, 7, 6),
                     /*shmem_bytes=*/1024,
-                    /*tma_metadata=*/std::nullopt);
+                    /*tma_metadata=*/tma_metadata);
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(
       proto, EqualsProto(R"pb(
@@ -147,6 +159,25 @@ TEST(KernelThunkTest, ToProto) {
           }
           cluster_dim { coordinates { x: 8 y: 7 z: 6 } }
           shmem_bytes: 1024
+          tma_metadata {
+            arg_index_to_tma_info {
+              key: 0
+              value {
+                element_size: 4
+                global_dims: 1024
+                global_dims: 1024
+                global_strides: 1024
+                box_dims: 128
+                box_dims: 128
+                element_strides: 1
+                element_strides: 1
+                interleave: INTERLEAVE_NONE
+                swizzle: SWIZZLE_NONE
+                l2_promotion: L2_PROMOTION_NONE
+                float_oob_fill: FLOAT_OOB_FILL_NONE
+              }
+            }
+          }
         }
       )pb"));
 }
@@ -178,9 +209,21 @@ TEST(KernelThunkTest, ToAndFromProto) {
   se::ClusterDim cluster_dim(8, 7, 6);
   constexpr absl::string_view kKernelName = "kernel123";
   constexpr int kSharedMemoryBytes = 1024;
+
+  TF_ASSERT_OK_AND_ASSIGN(stream_executor::gpu::TmaDescriptor descriptor,
+                          stream_executor::gpu::TmaDescriptor::Create(
+                              /*global_dims=*/{1024, 1024},
+                              /*global_strides=*/{1024},
+                              /*box_dims=*/{128, 128},
+                              /*element_strides=*/{1, 1},
+                              /*element_byte_width=*/4));
+  stream_executor::gpu::TmaMetadata tma_metadata;
+  tma_metadata.arg_index_to_tma_info.emplace(/*arg_index=*/0,
+                                             std::move(descriptor));
+
   KernelThunk thunk(thunk_info, std::string{kKernelName}, kernel_arguments,
                     launch_dimensions, cluster_dim, kSharedMemoryBytes,
-                    /*tma_metadata=*/std::nullopt);
+                    tma_metadata);
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   ASSERT_TRUE(proto.has_kernel_thunk());
   TF_ASSERT_OK_AND_ASSIGN(
@@ -195,6 +238,7 @@ TEST(KernelThunkTest, ToAndFromProto) {
               ::testing::ElementsAre(false, true));
   EXPECT_THAT(reconstructed_thunk->arguments(),
               ::testing::ElementsAre(slice0, slice1));
+  EXPECT_THAT(reconstructed_thunk->tma_metadata(), tma_metadata);
 }
 }  // namespace
 }  // namespace xla::gpu
