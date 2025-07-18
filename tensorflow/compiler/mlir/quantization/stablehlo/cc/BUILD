@@ -363,6 +363,7 @@ cc_library(
     srcs = [],
     hdrs = ["context.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
     deps = [
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
