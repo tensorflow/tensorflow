@@ -3014,47 +3014,46 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
     }
 
     HostMemoryAllocator::OwnedPtr staging_buffer;
-    // TODO(b/430389024): Add back the premapped buffer support once we fully
-    // understand host memory corruption issue. For now, we always use staging
-    // buffer for device to host transfer.
-    if (client->should_stage_host_to_device_transfers()) {
+    const bool use_staging = client->should_stage_host_to_device_transfers() &&
+                             !client->IsDmaMapped(dst, transfer_size);
+
+    if (use_staging) {
       staging_buffer = client->host_memory_allocator()->Allocate(transfer_size);
     }
 
-    {
-      tsl::profiler::TraceMe traceme2([&] {
-        return tsl::profiler::TraceMeEncode("CopyRawToHostFuture::D2H_GPU_copy",
-                                            {
-                                                {"device", device->id()},
-                                                {"size", transfer_size},
-                                            });
-      });
-      auto stream = device->stream();
-      void* host_ptr = staging_buffer != nullptr ? staging_buffer.get() : dst;
+    void* host_ptr = use_staging ? staging_buffer.get() : dst;
 
-      VLOG(3) << "D2H copy: " << sub_buffer->opaque() << " -> " << host_ptr
-              << " (" << transfer_size << " bytes)";
-      CHECK_OK(stream->Memcpy(host_ptr, *sub_buffer, transfer_size))
-          << "stream->Memcpy failed copying from GPU to host";
-      absl::Status status;
-      {
-        tsl::profiler::TraceMe traceme("BlockHostUntilDone");
-        status = stream->BlockHostUntilDone();
-      }
-      VLOG(3) << "D2H copy done. " << status;
-      if (!status.ok()) {
-        LOG(ERROR) << "stream->BlockHostUntilDone failed: " << status;
-        promise.Set(status);
-        return;
-      }
+    auto stream = device->stream();
+
+    VLOG(3) << "D2H copy: " << sub_buffer->opaque() << " -> " << host_ptr
+            << " (" << transfer_size << " bytes)";
+    absl::Status status = stream->Memcpy(host_ptr, *sub_buffer, transfer_size);
+    if (!status.ok()) {
+      LOG(ERROR) << "stream->Memcpy failed: " << status;
+      promise.Set(status);
+      return;
     }
-    if (staging_buffer != nullptr) {
-      tsl::profiler::TraceMe traceme3("CopyRawToHostFuture::D2H_staging_copy");
-      std::memcpy(dst, staging_buffer.get(), transfer_size);
-      VLOG(3) << "D2H staging copy done: " << staging_buffer.get() << " -> "
-              << dst << " (" << transfer_size << " bytes)";
+
+    if (use_staging) {
+      status = stream->DoHostCallback(
+          [dst, staging_buffer = std::move(staging_buffer), transfer_size,
+           promise]() mutable {
+            tsl::profiler::TraceMe traceme3(
+                "CopyRawToHostFuture::D2H_staging_copy");
+            std::memcpy(dst, staging_buffer.get(), transfer_size);
+            VLOG(3) << "D2H staging copy done: " << staging_buffer.get()
+                    << " -> " << dst << " (" << transfer_size << " bytes)";
+            promise.Set(absl::OkStatus());
+          });
+    } else {
+      status = stream->DoHostCallback(
+          [promise]() mutable { promise.Set(absl::OkStatus()); });
     }
-    promise.Set(absl::OkStatus());
+
+    if (!status.ok()) {
+      LOG(ERROR) << "stream->DoHostCallback failed: " << status;
+      promise.Set(status);
+    }
   };
 
   dst_future.OnReady([client(client_), promise, device_buffer,
