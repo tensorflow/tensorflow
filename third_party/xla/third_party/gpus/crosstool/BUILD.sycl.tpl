@@ -57,6 +57,7 @@ cc_toolchain_config(
     host_unfiltered_compile_flags = [%{unfiltered_compile_flags}],
     linker_bin_path = "%{linker_bin_path}",
     compiler = "unknown",
+    ar_path = "%{ar_path}",
 )
 
 filegroup(
