@@ -624,6 +624,9 @@ xla_test(
     deps = [
         "//xla:autotuning_proto_cc",
         "//xla:error_spec",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:types",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
@@ -634,6 +637,7 @@ xla_test(
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:path",
     ],
