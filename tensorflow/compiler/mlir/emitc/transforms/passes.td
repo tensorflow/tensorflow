@@ -43,8 +43,14 @@ def AddReflectionMapPass : Pass<"add-reflection-map", "mlir::emitc::ClassOp"> {
           emitc.field @fieldName0 : !emitc.array<1xf32> {tf_saved_model.index_path = ["another_feature"]}
           emitc.field @fieldName1 : !emitc.array<1xf32> {tf_saved_model.index_path = ["some_feature"]}
           emitc.func @getBufferForName(%name : !emitc.opaque<"std::string_view">) -> !emitc.opaque<"char*"> {
-            %map = "emitc.constant"(){value = #emitc.opaque<"{"another_feature", reinterpret_cast<char*>(&another_feature)}, {"some_feature", reinterpret_cast<char*>(&some_feature)}">} : () -> !emitc.opaque<"std::map<std::string, char*>">
-            return %null : !emitc.opaque<"char*">
+            %0 = "emitc.constant"() <{value = #emitc.opaque<"{{\22another_feature\22, reinterpret_cast<char*>(&another_feature)}, {\22some_feature\22, reinterpret_cast<char*>(&some_feature)}}">}> : () -> !emitc.opaque<"const std::map<std::string, char*>">
+            %1 = call_opaque "find"(%0, %arg0) : (!emitc.opaque<"const std::map<std::string, char*>">, !emitc.opaque<"std::string_view">) -> !emitc.opaque<"std::map<std::string, char*>::const_iterator">
+            %2 = call_opaque "end"(%0) : (!emitc.opaque<"const std::map<std::string, char*>">) -> !emitc.opaque<"std::map<std::string, char*>::const_iterator">
+            %3 = call_opaque "operator=="(%1, %2) : (!emitc.opaque<"std::map<std::string, char*>::const_iterator">, !emitc.opaque<"std::map<std::string, char*>::const_iterator">) -> i1
+            %4 = "emitc.constant"() <{value = #emitc.opaque<"nullptr">}> : () -> !emitc.opaque<"char">
+            %5 = call_opaque "second"(%1) : (!emitc.opaque<"std::map<std::string, char*>::const_iterator">) -> !emitc.opaque<"char">
+            %6 = conditional %3, %4, %5 : !emitc.opaque<"char">
+            return %6 : !emitc.opaque<"char">
           }
           emitc.func @execute() { ... }
         }

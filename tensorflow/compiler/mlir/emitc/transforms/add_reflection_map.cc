@@ -37,63 +37,92 @@ void AddReflectionMapPass::runOnOperation() {
   emitc::ClassOp classOp = getOperation();
   OpBuilder builder(classOp);
 
-  auto stringViewType =
-      emitc::OpaqueType::get(builder.getContext(), "std::string_view");
-  auto charPtrType = emitc::OpaqueType::get(builder.getContext(), "char*");
-  auto mapType = emitc::OpaqueType::get(builder.getContext(),
-                                        "std::map<std::string, char*>");
+  mlir::MLIRContext* context = builder.getContext();
+  emitc::OpaqueType stringViewType =
+      mlir::emitc::OpaqueType::get(builder.getContext(), "std::string_view");
+  emitc::OpaqueType charPtrType =
+      mlir::emitc::OpaqueType::get(builder.getContext(), "char");
+  emitc::OpaqueType mapType = mlir::emitc::OpaqueType::get(
+      builder.getContext(), "const std::map<std::string, char*>");
 
-  auto funcType = builder.getFunctionType({stringViewType}, {charPtrType});
-  auto executeFunc = classOp.lookupSymbol<emitc::FuncOp>("execute");
+  FunctionType funcType =
+      builder.getFunctionType({stringViewType}, {charPtrType});
+  emitc::FuncOp executeFunc =
+      classOp.lookupSymbol<mlir::emitc::FuncOp>("execute");
   builder.setInsertionPoint(executeFunc);
 
-  auto getBufferFunc = builder.create<emitc::FuncOp>(
+  emitc::FuncOp getBufferFunc = builder.create<mlir::emitc::FuncOp>(
       classOp.getLoc(), "getBufferForName", funcType);
-  getBufferFunc.insertArgument(0, stringViewType, {}, classOp.getLoc());
 
   Block* funcBody = getBufferFunc.addEntryBlock();
   builder.setInsertionPointToStart(funcBody);
 
   // Collect all field names
   SmallVector<std::string> fieldNames;
-  classOp.walk([&](emitc::FieldOp fieldOp) {
-    if (auto indexPathAttr =
-            fieldOp->getAttrOfType<ArrayAttr>("tf_saved_model.index_path")) {
-      if (!indexPathAttr.empty()) {
-        if (auto stringAttr = dyn_cast<StringAttr>(indexPathAttr[0])) {
+  classOp.walk([&](mlir::emitc::FieldOp fieldOp) {
+    if (mlir::Attribute attrsAttr = fieldOp->getAttrDictionary().get("attrs")) {
+      if (DictionaryAttr innerDictAttr =
+              dyn_cast<mlir::DictionaryAttr>(attrsAttr)) {
+        auto indexPathAttr =
+            innerDictAttr.getNamed("tf_saved_model.index_path");
+        ArrayAttr arrayAttr =
+            dyn_cast<mlir::ArrayAttr>(indexPathAttr->getValue());
+        if (!arrayAttr.empty()) {
+          StringAttr stringAttr = dyn_cast<mlir::StringAttr>(arrayAttr[0]);
           std::string indexPath = stringAttr.getValue().str();
           fieldNames.push_back(indexPath);
         }
-      }
-      if (indexPathAttr.size() > 1) {
-        fieldOp.emitError() << "tf_saved_model.index_path attribute must "
-                               "contain at most one value, but found "
-                            << indexPathAttr.size() << " values.";
-        return;
+        if (arrayAttr.size() > 1) {
+          fieldOp.emitError() << "tf_saved_model.index_path attribute must "
+                                 "contain at most one value, but found "
+                              << arrayAttr.size() << " values.";
+          return;
+        }
       }
     }
   });
 
-  std::string mapInitializer = "{";
+  std::string mapInitializer = "{{";
   for (size_t i = 0; i < fieldNames.size(); ++i) {
-    if (i > 0) mapInitializer += ", ";
     mapInitializer += "\"" + fieldNames[i] + "\", " +
-                      "reinterpret_cast<char*>(&" + fieldNames[i] + ")";
-    mapInitializer += "}";
+                      "reinterpret_cast<char*>(&" + fieldNames[i] + ")",
+        mapInitializer += "}";
     if (i < fieldNames.size() - 1) mapInitializer += ", {";
   }
   mapInitializer += "}";
 
-  // Create the constant map
-  auto mapConstant = builder.create<emitc::ConstantOp>(
+  emitc::OpaqueType iteratorType = mlir::emitc::OpaqueType::get(
+      context, "std::map<std::string, char*>::const_iterator");
+
+  emitc::ConstantOp bufferMap = builder.create<emitc::ConstantOp>(
       classOp.getLoc(), mapType,
-      emitc::OpaqueAttr::get(builder.getContext(), mapInitializer));
+      emitc::OpaqueAttr::get(context, mapInitializer));
 
-  auto nullConstant = builder.create<emitc::ConstantOp>(
+  // 6. Get the function argument
+  mlir::Value nameArg = getBufferFunc.getArgument(0);
+
+  emitc::CallOpaqueOp it = builder.create<emitc::CallOpaqueOp>(
+      classOp.getLoc(), iteratorType, builder.getStringAttr("find"),
+      mlir::ValueRange{bufferMap.getResult(), nameArg});
+  emitc::CallOpaqueOp endIt = builder.create<emitc::CallOpaqueOp>(
+      classOp.getLoc(), iteratorType, builder.getStringAttr("end"),
+      bufferMap.getResult());
+  emitc::CallOpaqueOp isEnd = builder.create<emitc::CallOpaqueOp>(
+      classOp.getLoc(), builder.getI1Type(),
+      "operator==", mlir::ValueRange{it.getResult(0), endIt.getResult(0)});
+  emitc::ConstantOp nullPtr = builder.create<emitc::ConstantOp>(
       classOp.getLoc(), charPtrType,
-      emitc::OpaqueAttr::get(builder.getContext(), "nullptr"));
+      emitc::OpaqueAttr::get(context, "nullptr"));
+  emitc::CallOpaqueOp second = builder.create<emitc::CallOpaqueOp>(
+      classOp.getLoc(), charPtrType, "second", it.getResult(0));
 
-  builder.create<emitc::ReturnOp>(classOp.getLoc(), nullConstant.getResult());
+  // 12. Create the conditional
+  emitc::ConditionalOp result = builder.create<emitc::ConditionalOp>(
+      classOp.getLoc(), charPtrType, isEnd.getResult(0), nullPtr.getResult(),
+      second.getResult(0));
+
+  // 13. Create return
+  builder.create<emitc::ReturnOp>(classOp.getLoc(), result.getResult());
 }
 
 }  // namespace
