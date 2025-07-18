@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
+#include "tsl/platform/context.h"
 
 namespace tsl {
 
@@ -74,6 +75,10 @@ void AsyncValue::RunWaiters(WaiterListNode* list) {
     WaiterListNode* node = list;
     (*node)();
     list = node->next;
+
+    // Waiter destruction may perform work that needs to run in the same context
+    // that created the waiter.
+    WithContext wc(std::move(node->context));
     delete node;
   }
 }
