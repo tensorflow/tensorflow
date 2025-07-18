@@ -660,6 +660,7 @@ py_strict_library(
         # Import will fail, indicating no global dlopen flags
         otherwise = [],
     ),  # b/153585257
+    visibility = ["//visibility:public"],
     deps = [
         ":pywrap_tensorflow_internal",
         "//tensorflow/python/platform:self_check",

@@ -153,6 +153,7 @@ cc_library(
     name = "py_func_lib",
     srcs = ["py_func.cc"],
     hdrs = ["py_func.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":ndarray_tensor",
         ":ndarray_tensor_bridge",
