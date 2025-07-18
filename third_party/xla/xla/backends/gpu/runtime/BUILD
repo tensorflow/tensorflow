@@ -383,7 +383,7 @@ xla_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/profiler/lib:profiler_lock",
-    ]
+    ],
     data = ["//xla/stream_executor/gpu:gpu_test_kernels_fatbin"]
 )
 
