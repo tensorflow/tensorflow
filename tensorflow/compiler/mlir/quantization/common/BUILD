@@ -86,6 +86,7 @@ cc_library(
     srcs = ["func.cc"],
     hdrs = ["func.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/cc/saved_model:signature_constants",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
