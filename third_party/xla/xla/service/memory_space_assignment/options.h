@@ -78,6 +78,8 @@ using DetermineSplitDimensionFunction =
 using BitcastSplitFn = std::function<absl::StatusOr<int64_t>(
     const HloInstruction* instruction, int64_t split_dim)>;
 using ShapeSizeFn = std::function<int64_t(const Shape&)>;
+using AsyncInstructionBwReductionFactorFn =
+    std::function<std::optional<float>(const HloInstruction*)>;
 using HloPositionOrUse = std::variant<HloPosition, HloUse>;
 
 // MSA allows for custom post-allocation transformations. When a post-allocation
@@ -393,6 +395,12 @@ struct Options {
   // If set, this is the size of scoped alternate memory that we require MSA to
   // allocate for post-module operations.
   uint64_t post_module_scoped_alternate_memory_size_in_bytes = 0;
+
+  // Determines the bandwidth reduction factor for an async start instruction.
+  // The available bandwidth for instructions between this and the async done
+  // instruction will be reduced by the factor returned by this function.
+  AsyncInstructionBwReductionFactorFn async_instruction_bw_reduction_factor_fn =
+      [](const HloInstruction*) { return std::nullopt; };
 
   std::string ToString() const;
 };
