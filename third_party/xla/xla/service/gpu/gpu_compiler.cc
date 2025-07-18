@@ -213,6 +213,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/dot_dimension_sorter.h"
 #include "xla/service/gpu/transforms/dot_normalizer.h"
 #include "xla/service/gpu/transforms/dot_operand_converter.h"
+#include "xla/service/gpu/transforms/dot_strength_reduction.h"
 #include "xla/service/gpu/transforms/double_buffer_loop_unrolling.h"
 #include "xla/service/gpu/transforms/dynamic_slice_fusion_rewriter.h"
 #include "xla/service/gpu/transforms/explicit_collectives_group_async_wrapper.h"
@@ -849,6 +850,8 @@ absl::Status RunOptimizationPasses(
     pipeline.AddPass<ScatterExpander>(
         ScatterExpander::kEliminateSimpleScatters);
     pipeline.AddPass<ScatterSliceSimplifier>();
+    pipeline.AddPass<DotStrengthReduction>(
+        gpu_target_config.device_description.gpu_compute_capability());
     pipeline.AddPass<GpuAlgebraicSimplifier>(layout_insensitive_algsimp_opts,
                                              gpu_version);
     pipeline.AddPass<BitcastDtypesExpander>();
@@ -1348,7 +1351,7 @@ AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
     bool is_rocm) {
   AlgebraicSimplifierOptions opts;
 
-  opts.set_enable_dot_strength_reduction(true);
+  opts.set_enable_dot_strength_reduction(false);
   // On GPU it helps to reorder them so that the fused cuDNN kernel can be
   // used.
   opts.set_enable_conv_add_multiply_reorder(true);

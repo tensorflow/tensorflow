@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/matmul_indexing_utils.h"
 
+#include <array>
 #include <cstdint>
 #include <iterator>
 #include <vector>
@@ -101,7 +102,14 @@ DotOperandDims::DotOperandDims(Shape shape,
                                     contracting_dims.end());
 }
 
-absl::StatusOr<DotOperandDims> DotOperandDims::FromDot(
+absl::StatusOr<std::array<DotOperandDims, 2>> DotOperandDims::FromDot(
+    const HloInstruction* dot) {
+  TF_ASSIGN_OR_RETURN(auto lhs_dims, FromDotOperand(dot, 0));
+  TF_ASSIGN_OR_RETURN(auto rhs_dims, FromDotOperand(dot, 1));
+  return std::array<DotOperandDims, 2>{lhs_dims, rhs_dims};
+}
+
+absl::StatusOr<DotOperandDims> DotOperandDims::FromDotOperand(
     const HloInstruction* dot, int operand_idx) {
   TF_RET_CHECK(operand_idx == 0 || operand_idx == 1);
   const Shape& shape = dot->operand(operand_idx)->shape();
