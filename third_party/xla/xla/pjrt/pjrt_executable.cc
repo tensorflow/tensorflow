@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/debug_options_flags.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -639,6 +640,12 @@ absl::Status CompileOptions::ApplyOption(const std::string& key,
   auto* xla_field = xla::DebugOptions::descriptor()->FindFieldByName(key);
   if (xla_field == nullptr) {
     return InvalidArgument("No such compile option: '%s'", key);
+  }
+  if (xla::GetFlagStatus(key) == xla::FlagStatus::kDeprecated) {
+    LOG(WARNING) << "Compile option '" << key
+                 << "' is deprecated and will not be supported when 6 months "
+                    "deprecation period ends. Check the flag description "
+                    "for more details.";
   }
   xla::DebugOptions& debug_options =
       *executable_build_options.mutable_debug_options();
