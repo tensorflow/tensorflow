@@ -2268,7 +2268,7 @@ absl::Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
         if (subshape->IsArrayOrBuffer()) {
           const Shape& result_shape =
               ShapeUtil::GetSubshape(result_layout.shape(), index);
-          if (result_shape.layout().tiles_size() != 0) {
+          if (result_shape.layout().tiles().size() != 0) {
             subshape->mutable_layout()->mutable_tiles()->assign(
                 result_shape.layout().tiles().begin(),
                 result_shape.layout().tiles().end());
