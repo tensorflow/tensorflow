@@ -41,6 +41,8 @@ class GpuAlgebraicSimplifierVisitor : public AlgebraicSimplifierVisitor {
 
   absl::Status HandleAdd(HloInstruction* add) override;
 
+  bool ShouldStrengthReduceDotToReduce(const HloInstruction* hlo) override;
+
  private:
   // Returns true if the dot precision config is supported by simplifier.
   bool SupportedDotPrecisionConfig(const PrecisionConfig& config,
