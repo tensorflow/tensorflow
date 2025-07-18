@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 
@@ -61,6 +62,19 @@ std::optional<ReduceScatterSpec> AllGatherDynamicSliceCancellation(
 // of the same size.
 bool CheckUniformReplicaGroups(const HloChannelInstruction* instruction);
 
+struct CollectiveUsers {
+  HloInstruction* dynamic_slice = nullptr;
+  HloInstruction* bitcast = nullptr;
+  HloInstruction* reshape = nullptr;
+};
+
+// Extracts the dynamic-slice user from a collective instruction, potentially
+// looking through reshapes and bitcasts.
+std::optional<CollectiveUsers> FindUniqueDynamicSliceUserFromCollective(
+    const HloChannelInstruction* absl_nonnull instruction,
+    bool allow_multiple_users, bool allow_intervening_reshape,
+    bool allow_intervening_bitcast);
+
 // Check if a given instruction (AllReduce or AllGather) matches a DynamicSlice;
 // the DynamicSlice has to be the user of the given instruction.
 std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
@@ -74,17 +88,18 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
     bool allow_multiple_users = false);
 
 // Extracts the split dimension spec from a `DynamicSlice` instruction. This
-// spec identifies the dimension(s) being operated on by a collective operation
-// that is fused with the slice.
+// spec identifies the dimension(s) being operated on by a collective
+// operation that is fused with the slice.
 //
 // The function first attempts a fast path by finding a single dimension where
 // the input and output shapes of the `DynamicSlice` differ.
 //
 // If more than one dimension differs, it re-computes the split dimension by
 // examining the slice's offsets. It identifies non-trivial dimensions being
-// sliced. A dimension is considered trivial and skipped if its size is 1, or if
-// the slice offset along it is a constant zero. This prevents misidentifying a
-// dimension that isn't actually being scattered as the split dimension.
+// sliced. A dimension is considered trivial and skipped if its size is 1, or
+// if the slice offset along it is a constant zero. This prevents
+// misidentifying a dimension that isn't actually being scattered as the split
+// dimension.
 std::optional<SplitDimSpec> ExtractSplitDimSpec(
     const HloInstruction& dynamic_slice, bool allow_multiple_split_dims);
 
