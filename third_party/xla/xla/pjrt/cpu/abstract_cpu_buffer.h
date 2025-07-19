@@ -186,12 +186,12 @@ class AbstractCpuBuffer : public CommonPjRtBuffer {
         CommonPjRtBuffer::device_buffer());
   }
 
-  PjRtFuture<> ToLiteralHelper(MutableLiteralBase* literal,
+  PjRtFuture<> ToLiteralHelper(PjRtFuture<MutableLiteralBase*> literal,
                                AsyncWorkRunner* async_work_runner);
 
   PjRtFuture<> DoAsyncWorkOnBuffer(
       absl::string_view method_name,
-      absl::AnyInvocable<absl::Status(const Shape& device_shape,
+      absl::AnyInvocable<PjRtFuture<>(const Shape& device_shape,
                                       TrackedCpuDeviceBuffer* device_buffer) &&>
           work_on_buffer,
       bool should_do_work_sync, AsyncWorkRunner* async_work_runner);

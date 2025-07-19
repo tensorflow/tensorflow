@@ -274,7 +274,7 @@ AbstractCpuBuffer::ScopedHold AbstractCpuBuffer::AcquireDonation() {
 
 PjRtFuture<> AbstractCpuBuffer::DoAsyncWorkOnBuffer(
     absl::string_view method_name,
-    absl::AnyInvocable<absl::Status(const Shape& device_shape,
+    absl::AnyInvocable<PjRtFuture<>(const Shape& device_shape,
                                     TrackedCpuDeviceBuffer* device_buffer) &&>
         work_on_buffer,
     bool should_do_work_sync, AsyncWorkRunner* async_work_runner) {
@@ -303,8 +303,11 @@ PjRtFuture<> AbstractCpuBuffer::DoAsyncWorkOnBuffer(
   }
   if (device_buffer_wait_av->IsConcrete() && should_do_work_sync) {
     // Unblock ToLiteral caller.
-    return PjRtFuture<>(
-        std::move(work_on_buffer)(*device_shape, device_buffer));
+    PjRtFuture<> result =
+        (std::move(work_on_buffer)(*device_shape, device_buffer));
+    // If the caller requested sync work, the callback must be sync too.
+    CHECK(result.IsReady());
+    return result;
   } else {
     std::vector<tsl::RCReference<tsl::AsyncValue>> device_buffer_wait_avs{
         device_buffer_wait_av};
@@ -324,13 +327,17 @@ PjRtFuture<> AbstractCpuBuffer::DoAsyncWorkOnBuffer(
             promise.Set(*error);
             return;
           }
-          auto status = std::move(work_on_buffer)(*device_shape, device_buffer);
-          // Unblock ToLiteral event.
-          if (!status.ok()) {
-            promise.Set(status);
-          } else {
-            promise.Set();
-          }
+          PjRtFuture<> result =
+              std::move(work_on_buffer)(*device_shape, device_buffer);
+          result.OnReady([promise = std::move(promise)](
+                             const absl::Status& status) mutable {
+            // Unblock ToLiteral event.
+            if (!status.ok()) {
+              promise.Set(status);
+            } else {
+              promise.Set();
+            }
+          });
         });
     return PjRtFuture<>(
         std::move(promise),
@@ -349,15 +356,49 @@ PjRtFuture<> AbstractCpuBuffer::DoAsyncWorkOnBuffer(
 }
 
 PjRtFuture<> AbstractCpuBuffer::ToLiteralHelper(
-    MutableLiteralBase* literal, AsyncWorkRunner* async_work_runner) {
-  bool should_sync_copy = !literal->shape().IsTuple() &&
-                          literal->size_bytes() < kSmallDataTransferByteSize;
-  auto work_on_buffer =
-      [literal](const Shape& device_shape,
-                TrackedCpuDeviceBuffer* device_buffer) -> absl::Status {
-    CopyCpuBufferToLiteral(device_shape, device_buffer, literal);
-    return absl::OkStatus();
-  };
+    PjRtFuture<MutableLiteralBase*> literal,
+    AsyncWorkRunner* async_work_runner) {
+  bool should_sync_copy = false;
+  absl::AnyInvocable<PjRtFuture<>(const Shape& device_shape,
+                                  TrackedCpuDeviceBuffer* device_buffer) &&>
+      work_on_buffer;
+
+  // Special case for small literals that can be copied synchronously.
+  if (literal.IsReady()) {
+    const absl::StatusOr<MutableLiteralBase*>& l = literal.Await();
+    if (!l.ok()) {
+      return PjRtFuture<>(l.status());
+    }
+    should_sync_copy = !(*l)->shape().IsTuple() &&
+                       (*l)->size_bytes() < kSmallDataTransferByteSize;
+
+    work_on_buffer =
+        [literal = *l](const Shape& device_shape,
+                       TrackedCpuDeviceBuffer* device_buffer) -> PjRtFuture<> {
+      CopyCpuBufferToLiteral(device_shape, device_buffer, literal);
+      return PjRtFuture<>(absl::OkStatus());
+    };
+  } else {
+    work_on_buffer =
+        [literal = std::move(literal)](
+            const Shape& device_shape,
+            TrackedCpuDeviceBuffer* device_buffer) -> PjRtFuture<> {
+      PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
+      PjRtFuture<> future(promise);
+      literal.OnReady(
+          [device_shape = device_shape, device_buffer,
+           promise = std::move(promise)](
+              const absl::StatusOr<MutableLiteralBase*>& literal) mutable {
+            if (!literal.ok()) {
+              promise.Set(literal.status());
+              return;
+            }
+            CopyCpuBufferToLiteral(device_shape, device_buffer, *literal);
+            promise.Set();
+          });
+      return future;
+    };
+  }
   return DoAsyncWorkOnBuffer("ToLiteral", std::move(work_on_buffer),
                              should_sync_copy, async_work_runner);
 }
@@ -369,18 +410,20 @@ PjRtFuture<> AbstractCpuBuffer::CopyRawToHostHelper(
   auto work_on_buffer =
       [dst, offset, transfer_size](
           const Shape& device_shape,
-          TrackedCpuDeviceBuffer* device_buffer) -> absl::Status {
+          TrackedCpuDeviceBuffer* device_buffer) -> PjRtFuture<> {
     if (device_shape.IsTuple()) {
-      return InvalidArgument("CopyRawToHost not implemented for tuples.");
-    } else if (offset < 0 ||
-               offset + transfer_size > ShapeUtil::ByteSizeOf(device_shape)) {
-      return InvalidArgument("CopyRawToHost out of bounds.");
+      return PjRtFuture<>(
+          InvalidArgument("CopyRawToHost not implemented for tuples."));
+    }
+    if (offset < 0 ||
+        offset + transfer_size > ShapeUtil::ByteSizeOf(device_shape)) {
+      return PjRtFuture<>(InvalidArgument("CopyRawToHost out of bounds."));
     }
     const tsl::AsyncValueRef<CpuDeviceMemory>& b = device_buffer->buffer();
     CHECK(b.IsConcrete());
     std::memcpy(dst, reinterpret_cast<char*>(b->untyped_data()) + offset,
                 transfer_size);
-    return absl::OkStatus();
+    return PjRtFuture<>(absl::OkStatus());
   };
   return DoAsyncWorkOnBuffer("CopyRawToHost", std::move(work_on_buffer),
                              should_sync_copy, async_work_runner);

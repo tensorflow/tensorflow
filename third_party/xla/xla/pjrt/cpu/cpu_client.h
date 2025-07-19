@@ -334,7 +334,7 @@ class PjRtCpuBuffer final : public AbstractCpuBuffer {
   using PjRtBuffer::ToLiteralSync;
   PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
   PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
+      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator)
       override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(

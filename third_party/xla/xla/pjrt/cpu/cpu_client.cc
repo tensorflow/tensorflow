@@ -1015,16 +1015,14 @@ PjRtFuture<> PjRtCpuBuffer::CopyRawToHost(void* dst, int64_t offset,
 }
 
 PjRtFuture<> PjRtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
-  return ToLiteralHelper(literal, client()->async_work_runner());
+  return ToLiteralHelper(PjRtFuture<MutableLiteralBase*>(literal),
+                         client()->async_work_runner());
 }
 
 PjRtFuture<> PjRtCpuBuffer::LazyToLiteral(
-    absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator) {
-  auto buffer = std::move(generator)();
-  if (!buffer.ok()) {
-    return PjRtFuture<>(buffer.status());
-  }
-  return ToLiteralHelper(buffer.value(), client()->async_work_runner());
+    absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator) {
+  PjRtFuture<MutableLiteralBase*> literal = std::move(generator)();
+  return ToLiteralHelper(std::move(literal), client()->async_work_runner());
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuBuffer::CopyToMemorySpace(
