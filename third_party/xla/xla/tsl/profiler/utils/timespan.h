@@ -76,14 +76,18 @@ class Timespan {
 
   // Returns the duration in ps that this Timespan overlaps with the other.
   uint64 OverlappedDurationPs(const Timespan& other) const {
-    if (!Overlaps(other)) return 0;
+    if (!Overlaps(other)) {
+      return 0;
+    }
     return std::min(end_ps(), other.end_ps()) -
            std::max(begin_ps(), other.begin_ps());
   }
 
   // Expands the timespan to include other.
   void ExpandToInclude(const Timespan& other) {
-    if (other.Empty()) return;
+    if (other.Empty()) {
+      return;
+    }
     *this = this->Empty()
                 ? other
                 : FromEndPoints(std::min(begin_ps(), other.begin_ps()),
@@ -93,8 +97,12 @@ class Timespan {
   // Compares timespans by their begin time (ascending), duration (descending)
   // so nested spans are sorted from outer to innermost.
   bool operator<(const Timespan& other) const {
-    if (begin_ps_ < other.begin_ps_) return true;
-    if (begin_ps_ > other.begin_ps_) return false;
+    if (begin_ps_ < other.begin_ps_) {
+      return true;
+    }
+    if (begin_ps_ > other.begin_ps_) {
+      return false;
+    }
     return duration_ps_ > other.duration_ps_;
   }
 
@@ -117,8 +125,12 @@ class Timespan {
   // Compares timespans by their duration_ps (ascending), begin time
   // (ascending).
   static bool ByDuration(const Timespan& a, const Timespan& b) {
-    if (a.duration_ps_ < b.duration_ps_) return true;
-    if (a.duration_ps_ > b.duration_ps_) return false;
+    if (a.duration_ps_ < b.duration_ps_) {
+      return true;
+    }
+    if (a.duration_ps_ > b.duration_ps_) {
+      return false;
+    }
     return a.begin_ps_ < b.begin_ps_;
   }
 

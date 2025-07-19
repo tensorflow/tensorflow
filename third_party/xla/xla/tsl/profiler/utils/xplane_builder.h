@@ -291,7 +291,9 @@ class XLineBuilder {
   void SetName(absl::string_view name) { line_->set_name(std::string(name)); }
 
   void SetNameIfEmpty(absl::string_view name) {
-    if (line_->name().empty()) SetName(name);
+    if (line_->name().empty()) {
+      SetName(name);
+    }
   }
 
   int64_t TimestampNs() const { return line_->timestamp_ns(); }
