@@ -4,6 +4,7 @@ load("@local_xla//third_party/py/rules_pywrap:pywrap.default.bzl", "use_pywrap_r
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_library")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 
 # TODO(b/356020232): cleanup use_pywrap_rules once migration is done
 def gen_op_libraries(
@@ -53,8 +54,7 @@ def gen_op_libraries(
         tools = [":" + gen_op_lib_exec],
         tags = tags,
     )
-
-    native.cc_library(
+    cc_library(
         name = name + "_cc",
         testonly = test,
         srcs = [":" + registered_op],
@@ -126,7 +126,7 @@ def gen_op_libraries(
     )
 
 def gen_op_bindings(name):
-    native.cc_library(
+    cc_library(
         name = name + "_ops_cc",
         srcs = [name + "_ops.cc"],
         deps = [
