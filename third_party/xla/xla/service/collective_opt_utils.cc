@@ -685,4 +685,56 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
   return spec;
 }
 
+std::optional<IndicesSpec> GetIndicesSpecForDynamicSlice(
+    const HloAllGatherInstruction* absl_nonnull ag_instr,
+    const HloInstruction* absl_nonnull offset_hlo,
+    const std::function<int64_t(const HloInstruction*, int64_t)>& map_id) {
+  if (!ag_instr || !offset_hlo) {
+    return std::nullopt;
+  }
+  IndicesSpec indices_spec;
+  if (ag_instr->replica_groups().empty()) {
+    return std::nullopt;
+  }
+
+  if (!IsTableLookup(offset_hlo)) {
+    return std::nullopt;
+  }
+  VLOG(2) << "GetIndicesSpecForDynamicSlice: offset_hlo is a table lookup, "
+             "table operand: "
+          << offset_hlo->operand(0)->ToString();
+
+  for (const ReplicaGroup& group : ag_instr->replica_groups()) {
+    for (int64_t partition_id : group.replica_ids()) {
+      if (offset_hlo->operand_count() < 2) {
+        VLOG(2) << "offset_hlo->operand_count() is "
+                << offset_hlo->operand_count();
+        return std::nullopt;
+      }
+      int64_t table_index =
+          GetIndexForId(offset_hlo->operand(1), partition_id, map_id);
+      if (table_index < 0) {
+        VLOG(2) << "Failed to infer table index from "
+                << offset_hlo->operand(1)->ToString();
+        return std::nullopt;
+      }
+
+      int64_t slice_offset;
+      if (offset_hlo->operand(0)->opcode() == HloOpcode::kIota) {
+        slice_offset = table_index;
+      } else {
+        slice_offset =
+            *offset_hlo->operand(0)->literal().GetIntegralAsS64({table_index});
+      }
+      if (!indices_spec.try_emplace(slice_offset, partition_id).second) {
+        VLOG(2) << "slice_offset:" << slice_offset
+                << " already exists in the map.";
+        return std::nullopt;
+      }
+    }
+  }
+
+  return indices_spec;
+}
+
 }  // namespace xla
