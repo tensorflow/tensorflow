@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
@@ -71,6 +72,13 @@ std::optional<ReductionKind> MatchReductionInstruction(
 // Attempts to match computation to one of the possible cases in ReductionKind.
 std::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
+
+// Creates a computation that performs a reduction operation.
+std::unique_ptr<HloComputation> MakeReductionComputation(
+    ReductionKind reduction_kind, PrimitiveType element_type);
+
+// Returns the HloOpcode corresponding to the given ReductionKind.
+std::optional<HloOpcode> ReductionKindToOpcode(ReductionKind reduction_kind);
 
 // Returns the reduction identity value for a certain ReductionKind and
 // PrimitiveType.
@@ -262,16 +270,6 @@ absl::StatusOr<bool> IsAsyncCollective(const HloInstruction* instruction);
 // collective fusion) with channel_id.
 HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction);
 
-// Returns the cycle type and indices of the vertices that form cycles. For
-// example, GetCycleTypeAndIndices({{0,3},{1,0},{2,1},{3,2}}) returns
-// {kBackward, {0}}, since the communication pattern contains a backward cycle
-// with the cycle-inducing vertex at index 0 in the input source-target pairs
-// array. This function uses the assumption that, in practice, in forward
-// cycles, most edges will have the target replica ID greater than the source
-// replica ID except for the back edges that form cycles (similar logic applies
-// to backward cycles).
-std::pair<collective_permute_cycle::CycleType, std::set<int>>
-GetCycleTypeAndIndices(const std::vector<std::pair<int64_t, int64_t>>& pairs);
 
 // Key that identifies a particular Rendezvous object in our global hashtable.
 // This determines which calls to ExecuteOnStream communicate with each other.

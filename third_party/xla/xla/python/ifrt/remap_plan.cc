@@ -34,8 +34,8 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/remap_plan.pb.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -302,6 +302,12 @@ absl::Status RemapPlan::Validate() const {
 
 absl::StatusOr<RemapPlan> RemapPlan::FromProto(Client* client,
                                                const RemapPlanProto& proto) {
+  const SerDesVersionNumber version_number(proto.version_number());
+  if (version_number != SerDesVersionNumber(0)) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "Unsupported ", version_number, " for RemapPlan deserialization"));
+  }
+
   RemapPlan plan;
 
   plan.input_specs.reserve(proto.input_specs_size());
@@ -328,16 +334,24 @@ absl::StatusOr<RemapPlan> RemapPlan::FromProto(Client* client,
   return plan;
 }
 
-absl::StatusOr<RemapPlanProto> RemapPlan::ToProto() const {
+absl::StatusOr<RemapPlanProto> RemapPlan::ToProto(SerDesVersion version) const {
+  if (version.version_number() < SerDesVersionNumber(0)) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Unsupported ", version.version_number(),
+                     " for RemapPlan serialization"));
+  }
+
   RemapPlanProto proto;
+  proto.set_version_number(SerDesVersionNumber(0).value());
 
   proto.mutable_input_specs()->Reserve(input_specs.size());
   for (const auto& input_spec : input_specs) {
-    TF_ASSIGN_OR_RETURN(*proto.add_input_specs(), input_spec.ToProto());
+    TF_ASSIGN_OR_RETURN(*proto.add_input_specs(), input_spec.ToProto(version));
   }
   proto.mutable_output_specs()->Reserve(output_specs.size());
   for (const auto& output_spec : output_specs) {
-    TF_ASSIGN_OR_RETURN(*proto.add_output_specs(), output_spec.ToProto());
+    TF_ASSIGN_OR_RETURN(*proto.add_output_specs(),
+                        output_spec.ToProto(version));
   }
 
   proto.mutable_mappings()->Reserve(mappings->size());

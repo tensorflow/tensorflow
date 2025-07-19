@@ -22,6 +22,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/hash/hash.h"
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -104,6 +106,9 @@ class HloInstructionPtrEq {
 
 FusionDeduplicationCache::InstructionId
 FusionDeduplicationCache::GetInstructionId(const HloInstruction* instruction) {
+  CHECK(instruction_id_map_.contains(instruction)) << absl::StrCat(
+      "Instruction ", instruction->ToString(), " from module ",
+      instruction->GetModule()->name(), " is not found in the cache");
   return instruction_id_map_.at(instruction);
 }
 

@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
 
@@ -171,7 +172,7 @@ Shape getFlattenedShape(const Shape& shape) {
       shape, [&](const Shape& subShape, const ShapeIndex& index) {
         flattenedShapes.push_back(subShape);
       });
-  return ShapeUtil::MakeMaybeTupleShape(flattenedShapes);
+  return ShapeUtil::MakeValidatedMaybeTupleShape(flattenedShapes).value();
 }
 
 // Get the flattened version of a computation layout.
@@ -343,8 +344,8 @@ absl::Status runShardingPropagation(HloModule* hloModule,
 
   mlir::PassManager pm(mlirModule->getContext());
   pm.enableVerifier(enableVerifier);
-  pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir,
-                                               "sdy_module_before_xla_import"));
+  // TODO(tomnatan): add dump index and remove hard coded in name.
+  pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir, "00.input_module"));
 
   if (importMhloShardings) {
     auto spanToArrayRef = [](absl::Span<const bool> span) {
@@ -368,8 +369,8 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   options.conservativePropagation = hloModule->use_auto_spmd_partitioning();
   mlir::sdy::addPropagationPipeline(pm, options);
   addStablehloExportPipeline(pm);
-  pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir,
-                                               "sdy_module_after_xla_export"));
+  // TODO(tomnatan): add dump index and remove hard coded in name.
+  pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir, "04.output_module"));
   tsl::StatusScopedDiagnosticHandler diagnosticHandler(
       mlirModule->getContext());
   return diagnosticHandler.consumeStatus(pm.run(mlirModule));
@@ -387,6 +388,12 @@ absl::StatusOr<bool> ShardyXLA::Run(
   if (!runSdyShardingPropagation && !useTupleArgs) {
     // Nothing to do.
     return false;
+  }
+  // The auto-spmd flag is present in both the HLO module and the config. Apply
+  // auto spmd partitioning if either is true.
+  if (hloModule->use_auto_spmd_partitioning() ||
+      hloModule->config().use_auto_spmd_partitioning()) {
+    hloModule->set_use_auto_spmd_partitioning(true);
   }
 
   // HLO -> StableHLO
@@ -417,6 +424,13 @@ absl::StatusOr<bool> ShardyXLA::Run(
     TF_RETURN_IF_ERROR(runShardingPropagation(hloModule, mlirModule.get(),
                                               importMhloShardings,
                                               defaultOptions, name()));
+  }
+
+  // TODO(b/431836696): Remove once issue is fixed.
+  if (useTupleArgs) {
+    mlirModule.get()->removeAttr(
+        "mhlo.xla_entry_computation_parameter_layouts");
+    mlirModule.get()->removeAttr("mhlo.xla_entry_computation_parameter_tiles");
   }
 
   // StableHlo -> HLO

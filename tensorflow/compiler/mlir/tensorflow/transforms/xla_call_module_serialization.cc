@@ -18,16 +18,22 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "stablehlo/api/PortableApi.h"  // from @stablehlo
 #include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
+#include "stablehlo/dialect/Version.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -181,8 +187,14 @@ FailureOr<std::string> SerializeStablehlo(ModuleOp stablehlo_module,
                                           StringRef target_version) {
   std::string bytecode;
   llvm::raw_string_ostream os(bytecode);
-  if (mlir::failed(stablehlo::serializePortableArtifact(stablehlo_module,
-                                                        target_version, os))) {
+  // We need to pass `allowOtherDialects=true` if
+  // `stablehlo_version >= 1.11.0`, since the lowered module from JAX can
+  // have a mix of StableHLO and Shardy dialects.
+  vhlo::Version mixed_serialization_ok = vhlo::Version(1, 11, 0);
+  bool allow_other_dialects =
+      mixed_serialization_ok <= vhlo::Version::fromString(target_version);
+  if (mlir::failed(stablehlo::serializePortableArtifact(
+          stablehlo_module, target_version, os, allow_other_dialects))) {
     return stablehlo_module.emitError()
            << "failed to serialize the pruned stablehlo module";
   }

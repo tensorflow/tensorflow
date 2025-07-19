@@ -737,7 +737,9 @@ absl::Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
 }
 
 void HloComputation::Cleanup() {
-  if (to_be_deleted_.empty()) return;
+  if (to_be_deleted_.empty()) {
+    return;
+  }
 
   // Given that there are instructions to be deleted, there must be at least one
   // instruction not marked for deletion. Otherwise we have deleted *all*
@@ -753,7 +755,9 @@ void HloComputation::Cleanup() {
   auto marked_it = absl::c_find_if(instructions_, is_marked_for_removal);
   DCHECK(marked_it < instructions_.end());
   for (auto it = marked_it + 1; it < instructions_.end(); ++it) {
-    if (is_marked_for_removal(*it)) continue;
+    if (is_marked_for_removal(*it)) {
+      continue;
+    }
     // Update reverse mapping and overwrite the 'marked' entry.
     HloInstruction* unmarked_instruction = it->inst();
     unmarked_instruction->index_in_parent_ =
@@ -830,7 +834,9 @@ void HloComputation::ForEachInstructionPostOrderImpl(
   // Pushes instruction to dfs stack only if it was not already processed.
   auto dfs_stack_push = [&](HloInstruction* instr) {
     VisitState state = visited.GetState(instr->index_in_parent_);
-    if (state != VisitState::kVisited) dfs_stack->push_back(instr);
+    if (state != VisitState::kVisited) {
+      dfs_stack->push_back(instr);
+    }
   };
 
   dfs_stack_push(root);
@@ -958,7 +964,7 @@ HloComputation::MakeInstructionPostOrderWithReshapeFirst() const {
   std::vector<HloInstruction*> frontier_std;
   std::vector<HloInstruction*> frontier_reshapes;
   std::vector<HloInstruction*> sorted;
-  absl::flat_hash_map<int, uint32_t> visitations;
+  absl::flat_hash_map<int, uint64_t> visitations;
   sorted.reserve(instruction_count());
   visitations.reserve(instruction_count());
 
@@ -1004,8 +1010,8 @@ HloComputation::MakeInstructionPostOrderWithReshapeFirst() const {
     sorted.push_back(inst);
     for (HloInstruction* const child : inst->operands()) {
       // Will increment, or set to 1 if not present
-      visitations[child->unique_id()]++;
-      if (child->user_count() == visitations[child->unique_id()]) {
+      visitations[child->unique_id_64_bits()]++;
+      if (child->user_count() == visitations[child->unique_id_64_bits()]) {
         add_to_frontier(child);
       }
     }
@@ -1052,7 +1058,9 @@ std::vector<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
   for (const HloInstructionInfo& instruction : instructions_with_info()) {
     using PtrVec = PtrVec<HloComputation*>;
     auto process_called_computations = [&](const PtrVec& called_computations) {
-      if (called_computations.empty()) return;
+      if (called_computations.empty()) {
+        return;
+      }
       // Put the called computations in reverse order onto the stack.
       // Otherwise we don't match the recursive enumeration of
       // computations, which processes the first called computation first.
@@ -1108,6 +1116,12 @@ void HloComputation::Print(
   const std::string tab(2 * options.indent_amount(), ' ');
 
   printer->Append(tab);
+
+  if (options.print_computation_mode() ==
+          HloPrintOptions::PrintComputationMode::kComputationWithEntryKeyword &&
+      IsEntryComputation()) {
+    printer->Append("ENTRY ");
+  }
 
   if (!options.is_in_nested_computation()) {
     if (options.print_percent()) {
@@ -1208,7 +1222,7 @@ HloComputationProto HloComputation::ToProto() const {
     HloInstructionProto instruction_proto = instruction->ToProto();
     proto.add_instructions()->Swap(&instruction_proto);
   }
-  proto.set_root_id(root_instruction()->unique_id());
+  proto.set_root_id(root_instruction()->unique_id_64_bits());
   *proto.mutable_program_shape() = ComputeProgramShape().ToProto();
   proto.set_is_fusion_computation(IsFusionComputation());
   proto.set_execution_thread(IsMainThread() ? ""
@@ -1446,9 +1460,11 @@ absl::StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
     return instruction;
   }
 
-  // Array shape.
-  TF_RET_CHECK(instruction->shape().IsArray());
-  return copy_leaf(instruction, *index, this);
+  HloInstruction* copy = copy_leaf(instruction, *index, this);
+  // We shouldn't copy buffers.
+  TF_RET_CHECK(instruction->shape().IsArray() ||
+               (instruction->shape().IsBuffer() && copy == instruction));
+  return copy;
 }
 
 absl::StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
@@ -1652,7 +1668,8 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     new_instruction->set_frontend_attributes(
         old_instruction->frontend_attributes());
   }
-  MoveOriginalValue(old_instruction, new_instruction);
+
+  new_instruction->CopyOriginalValue(old_instruction, /*clone=*/false);
 
   // Like the metadata above, if the user didn't specify any sharding
   // information on the new instruction we should copy the old sharding
@@ -1873,7 +1890,9 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
   // Note: This can return null, indicating that instr should not be present in
   // the new computation.
   auto replace = [&](const HloInstruction* instr) {
-    if (!replacements) return instr;
+    if (!replacements) {
+      return instr;
+    }
     auto it = replacements->find(instr);
     return it != replacements->end() ? it->second.get() : instr;
   };

@@ -18,9 +18,11 @@
 #define XLA_HLO_TOOLS_HLO_DIFF_HLO_GUMGRAPH_MAPPINGS_H_
 
 #include <cstdint>
+#include <string>
 
-#include "boost/bimap.hpp"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
+#include "xla/hlo/tools/hlo_diff/utils/bidirectional_map.h"
 #include "xla/service/call_graph.h"
 
 namespace xla::hlo_diff {
@@ -32,9 +34,8 @@ enum class MatcherType : std::uint8_t {
   kComputationGraphExactFingerprintMatcher,
   kComputationGraphExactSignatureMatcher,
   kGreedySubGraphExactMatcher,
-  kGreedyDoubleCountedBottomUpMatcher,
   kGreedyLimitedCandidatesBottomUpMatcher,
-  kGreedyLimitedCandidatesStaticSeedsBottomUpMatcher,
+  kStrictGreedyTopDownMatcher,
   kGreedyTopDownMatcher,
 };
 
@@ -48,6 +49,7 @@ enum class ComputationMatchType : std::uint8_t { kExact, kSignature };
 struct HloInstructionNodeMappingProps {
   bool unchanged = false;
   MatcherType matcher_type = MatcherType::kNotSet;
+  std::string matcher_debug_info;
 };
 
 // Aggregated match characteristics of a mapped CallGraphNode.
@@ -55,38 +57,28 @@ struct HloCallGraphNodeMappingProps {
   ComputationMatchType computation_match_type = ComputationMatchType::kExact;
 };
 
-using InstructionPair = boost::bimap<
-    const HloInstructionNode*, const HloInstructionNode*,
-    boost::bimaps::with_info<HloInstructionNodeMappingProps>>::value_type;
-
-using CallGraphNodePair = boost::bimap<
-    const CallGraphNode*, const CallGraphNode*,
-    boost::bimaps::with_info<HloCallGraphNodeMappingProps>>::value_type;
-
 // Mapped nodes between two HloGumgraphs.
 struct HloGumgraphMappings {
   // Map between the left and right CallGraphNodes.
-  boost::bimap<const CallGraphNode*, const CallGraphNode*,
-               boost::bimaps::with_info<HloCallGraphNodeMappingProps>>
+  BidirectionalMap<const CallGraphNode*, const CallGraphNode*,
+                   HloCallGraphNodeMappingProps>
       left_to_right_computation_map;
 
-  // A bi-directional map between the left and right HloInstructionNodes along
-  // with additional information about the mapping. Check out
-  // https://www.boost.org/doc/libs/1_79_0/libs/bimap/doc/html/boost_bimap/the_tutorial/additional_information.html
-  // for more details on the bimap API.
-  boost::bimap<const HloInstructionNode*, const HloInstructionNode*,
-               boost::bimaps::with_info<HloInstructionNodeMappingProps>>
+  // Map between the left and right HloInstructionNodes.
+  BidirectionalMap<const HloInstructionNode*, const HloInstructionNode*,
+                   HloInstructionNodeMappingProps>
       left_to_right_instruction_map;
 
   // Maps two nodes if they are not already mapped. Returns true if mapping
   // was performed.
-  inline bool MapInstructionsIfAbsent(const HloInstructionNode* left,
-                                      const HloInstructionNode* right,
-                                      const MatcherType matcher_type) {
-    auto [it, inserted] = left_to_right_instruction_map.insert(
-        InstructionPair(left, right, {.matcher_type = matcher_type}));
-
-    return inserted;
+  inline bool MapInstructionsIfAbsent(
+      const HloInstructionNode* left, const HloInstructionNode* right,
+      const MatcherType matcher_type,
+      absl::string_view matcher_debug_info = "") {
+    HloInstructionNodeMappingProps props;
+    props.matcher_type = matcher_type;
+    props.matcher_debug_info = std::string(matcher_debug_info);
+    return left_to_right_instruction_map.Insert(left, right, props);
   }
 
   // Maps two CallGraphNodes if they are not already mapped. Returns true if
@@ -94,25 +86,21 @@ struct HloGumgraphMappings {
   inline bool MapComputationsIfAbsent(
       const CallGraphNode& left, const CallGraphNode& right,
       const ComputationMatchType computation_match_type) {
-    auto [it, inserted] =
-        left_to_right_computation_map.insert(CallGraphNodePair(
-            &left, &right, {.computation_match_type = computation_match_type}));
-
-    return inserted;
+    HloCallGraphNodeMappingProps props;
+    props.computation_match_type = computation_match_type;
+    return left_to_right_computation_map.Insert(&left, &right, props);
   }
 
   // Returns true if the left node is mapped to a right node.
   inline bool InstructionMapContainsLeft(
       const HloInstructionNode* left_node) const {
-    return left_to_right_instruction_map.left.find(left_node) !=
-           left_to_right_instruction_map.left.end();
+    return left_to_right_instruction_map.ContainsLeft(left_node);
   }
 
   // Returns true if the right node is mapped to a left node.
   inline bool InstructionMapContainsRight(
       const HloInstructionNode* right_node) const {
-    return left_to_right_instruction_map.right.find(right_node) !=
-           left_to_right_instruction_map.right.end();
+    return left_to_right_instruction_map.ContainsRight(right_node);
   }
 };
 

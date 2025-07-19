@@ -17,20 +17,23 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 
+#include "absl/base/casts.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -55,6 +58,37 @@ absl::Status DeviceToDeviceCopyThunk::ExecuteOnStream(
   VLOG(3) << "Memcpy D2D of size " << mem_size_ << " from "
           << source_data.opaque() << " to " << destination_data.opaque();
   return params.stream->Memcpy(&destination_data, source_data, mem_size_);
+}
+
+absl::StatusOr<ThunkProto> DeviceToDeviceCopyThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+  DeviceToDeviceCopyThunkProto* d2d_copy_thunk_proto =
+      proto.mutable_device_to_device_copy_thunk();
+  CopyThunkProto* copy_thunk_proto = d2d_copy_thunk_proto->mutable_copy_thunk();
+  TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
+                      source().ToProto());
+  TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
+                      destination().ToProto());
+  copy_thunk_proto->set_mem_size(size_bytes());
+  return proto;
+}
+
+absl::StatusOr<std::unique_ptr<DeviceToDeviceCopyThunk>>
+DeviceToDeviceCopyThunk::FromProto(
+    ThunkInfo thunk_info, const DeviceToDeviceCopyThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice src_slice,
+      BufferAllocation::Slice::FromProto(
+          thunk_proto.copy_thunk().source_buffer(), buffer_allocations));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice dst_slice,
+      BufferAllocation::Slice::FromProto(
+          thunk_proto.copy_thunk().destination_buffer(), buffer_allocations));
+  return std::make_unique<DeviceToDeviceCopyThunk>(
+      std::move(thunk_info), src_slice, dst_slice,
+      thunk_proto.copy_thunk().mem_size());
 }
 
 //===----------------------------------------------------------------------===//
@@ -107,7 +141,9 @@ absl::StatusOr<std::unique_ptr<se::Event>> CopyThunk::AsyncEvents::Extract(
 }
 
 absl::StatusOr<ThunkProto> CopyThunk::ToProto() const {
-  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
   CopyThunkProto* copy_thunk_proto = proto.mutable_copy_thunk();
   TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
                       source().ToProto());
@@ -115,6 +151,20 @@ absl::StatusOr<ThunkProto> CopyThunk::ToProto() const {
                       destination().ToProto());
   copy_thunk_proto->set_mem_size(size_bytes());
   return proto;
+}
+
+absl::StatusOr<std::unique_ptr<CopyThunk>> CopyThunk::FromProto(
+    ThunkInfo thunk_info, const CopyThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice src_slice,
+                      BufferAllocation::Slice::FromProto(
+                          thunk_proto.source_buffer(), buffer_allocations));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice dst_slice,
+      BufferAllocation::Slice::FromProto(thunk_proto.destination_buffer(),
+                                         buffer_allocations));
+  return std::make_unique<CopyThunk>(std::move(thunk_info), src_slice,
+                                     dst_slice, thunk_proto.mem_size());
 }
 
 //===----------------------------------------------------------------------===//
@@ -156,7 +206,9 @@ absl::Status DeviceToHostCopyThunk::ExecuteOnStream(
 }
 
 absl::StatusOr<ThunkProto> DeviceToHostCopyThunk::ToProto() const {
-  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
   DeviceToHostCopyThunkProto* d2h_copy_thunk_proto =
       proto.mutable_device_to_host_copy_thunk();
   CopyThunkProto* copy_thunk_proto = d2h_copy_thunk_proto->mutable_copy_thunk();
@@ -166,6 +218,34 @@ absl::StatusOr<ThunkProto> DeviceToHostCopyThunk::ToProto() const {
                       destination().ToProto());
   copy_thunk_proto->set_mem_size(size_bytes());
   return proto;
+}
+
+absl::StatusOr<std::unique_ptr<DeviceToHostCopyThunk>>
+DeviceToHostCopyThunk::FromProto(
+    ThunkInfo thunk_info, const DeviceToHostCopyThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice src_slice,
+      BufferAllocation::Slice::FromProto(
+          thunk_proto.copy_thunk().source_buffer(), buffer_allocations));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice dst_slice,
+      BufferAllocation::Slice::FromProto(
+          thunk_proto.copy_thunk().destination_buffer(), buffer_allocations));
+  return std::make_unique<DeviceToHostCopyThunk>(
+      std::move(thunk_info), src_slice, dst_slice,
+      thunk_proto.copy_thunk().mem_size(),
+      /*events=*/nullptr,
+      /*instr=*/nullptr);
+}
+
+std::optional<AsyncEventsUniqueId>
+DeviceToHostCopyThunk::GetAsyncEventsUniqueId() const {
+  if (!async_events_) {
+    return std::nullopt;
+  }
+  // We rely on the fact that the pointer to async_events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
 }
 
 //===----------------------------------------------------------------------===//
@@ -207,7 +287,9 @@ absl::Status HostToDeviceCopyThunk::ExecuteOnStream(
 }
 
 absl::StatusOr<ThunkProto> HostToDeviceCopyThunk::ToProto() const {
-  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
   HostToDeviceCopyThunkProto* h2d_copy_thunk_proto =
       proto.mutable_host_to_device_copy_thunk();
   CopyThunkProto* copy_thunk_proto = h2d_copy_thunk_proto->mutable_copy_thunk();
@@ -217,6 +299,34 @@ absl::StatusOr<ThunkProto> HostToDeviceCopyThunk::ToProto() const {
                       destination().ToProto());
   copy_thunk_proto->set_mem_size(size_bytes());
   return proto;
+}
+
+absl::StatusOr<std::unique_ptr<HostToDeviceCopyThunk>>
+HostToDeviceCopyThunk::FromProto(
+    ThunkInfo thunk_info, const HostToDeviceCopyThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice src_slice,
+      BufferAllocation::Slice::FromProto(
+          thunk_proto.copy_thunk().source_buffer(), buffer_allocations));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice dst_slice,
+      BufferAllocation::Slice::FromProto(
+          thunk_proto.copy_thunk().destination_buffer(), buffer_allocations));
+  return std::make_unique<HostToDeviceCopyThunk>(
+      std::move(thunk_info), src_slice, dst_slice,
+      thunk_proto.copy_thunk().mem_size(),
+      /*events=*/nullptr,
+      /*instr=*/nullptr);
+}
+
+std::optional<AsyncEventsUniqueId>
+HostToDeviceCopyThunk::GetAsyncEventsUniqueId() const {
+  if (!async_events_) {
+    return std::nullopt;
+  }
+  // We rely on the fact that the pointer to async_events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
 }
 
 //===----------------------------------------------------------------------===//
@@ -238,6 +348,15 @@ absl::Status CopyDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Event> event,
                       async_events_->Extract(executor, copy_start_instr_));
   return params.stream->WaitFor(event.get());
+}
+
+std::optional<AsyncEventsUniqueId> CopyDoneThunk::GetAsyncEventsUniqueId()
+    const {
+  if (!async_events_) {
+    return std::nullopt;
+  }
+  // We rely on the fact that the pointer to async_events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
 }
 
 //===----------------------------------------------------------------------===//

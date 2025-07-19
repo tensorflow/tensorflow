@@ -367,10 +367,20 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
     const auto* affine_quantization =
         reinterpret_cast<TfLiteAffineQuantization*>(
             filter->quantization.params);
-    for (int i = 0; i < affine_quantization->zero_point->size; ++i) {
-      TF_LITE_ENSURE_EQ(context, affine_quantization->zero_point->data[i], 0);
+    if (affine_quantization->zero_point) {
+      for (int i = 0; i < affine_quantization->zero_point->size; ++i) {
+        TF_LITE_ENSURE_EQ(context, affine_quantization->zero_point->data[i], 0);
+      }
     }
   }
+
+  // Validate stride values
+  TF_LITE_ENSURE(context, params->stride_height > 0);
+  TF_LITE_ENSURE(context, params->stride_width > 0);
+
+  // Validate dilation values
+  TF_LITE_ENSURE(context, params->dilation_height_factor > 0);
+  TF_LITE_ENSURE(context, params->dilation_width_factor > 0);
 
   const TfLiteTensor* bias = nullptr;
 

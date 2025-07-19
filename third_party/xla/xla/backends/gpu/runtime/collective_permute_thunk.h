@@ -131,7 +131,7 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
 };
 
 absl::Status RunCollectivePermute(
-    GpuCollectives* collectives, P2PConfig::SourceTargetMapEntry source_target,
+    P2PConfig::SourceTargetMapEntry source_target,
     std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
     Communicator* comm, absl::string_view device_string, int64_t current_id,
     bool use_memcpy, CollectivePermuteStartThunk::RecvPtrMap& recv_ptr_map);

@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "Eigen/Core"  // from @eigen_archive
 #include "llvm/ADT/SetVector.h"
-#include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
@@ -33,12 +32,10 @@ limitations under the License.
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_options.pb.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/utils/fill_quantization_options.h"
 
 // NOLINTNEXTLINE
 //===----------------------------------------------------------------------===//
@@ -47,8 +44,8 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 
-// Put the definitions inside the ::mlir::quant::stablehlo namespace, to match
-// the declarations in passes.h.
+// Put the definitions inside the ::mlir::tf_quant::stablehlo namespace, to
+// match the declarations in passes.h.
 #define GEN_PASS_DEF_QUANTIZEWEIGHTPASS
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"
 

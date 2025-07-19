@@ -176,7 +176,7 @@ def _amdgpu_targets(repository_ctx, rocm_toolkit_path, bash_bin):
         targets = {x: None for x in targets}
         targets = list(targets.keys())
         amdgpu_targets_str = ",".join(targets)
-    amdgpu_targets = amdgpu_targets_str.split(",")
+    amdgpu_targets = [amdgpu for amdgpu in amdgpu_targets_str.split(",") if amdgpu]
     for amdgpu_target in amdgpu_targets:
         if amdgpu_target[:3] != "gfx":
             auto_configure_fail("Invalid AMDGPU target: %s" % amdgpu_target)
@@ -716,6 +716,9 @@ def _create_local_rocm_repository(repository_ctx):
             "%{hip_runtime_library}": "amdhip64",
             "%{crosstool_verbose}": _crosstool_verbose(repository_ctx),
             "%{gcc_host_compiler_path}": str(cc),
+            "%{rocm_amdgpu_targets}": ",".join(
+                ["\"%s\"" % c for c in rocm_config.amdgpu_targets],
+            ),
         },
     )
 
@@ -734,7 +737,7 @@ def _create_local_rocm_repository(repository_ctx):
             "%{hipruntime_version_number}": rocm_config.hipruntime_version_number,
             "%{hipblaslt_flag}": have_hipblaslt,
             "%{hip_soversion_number}": "6" if int(rocm_config.rocm_version_number) >= 60000 else "5",
-            "%{rocblas_soversion_number}": "4" if int(rocm_config.rocm_version_number) >= 60000 else "3",
+            "%{rocblas_soversion_number}": "5" if int(rocm_config.rocm_version_number) >= 70000 else "4",
         },
     )
 
@@ -753,7 +756,7 @@ def _create_local_rocm_repository(repository_ctx):
             "%{hipruntime_version_number}": rocm_config.hipruntime_version_number,
             "%{hipblaslt_flag}": have_hipblaslt,
             "%{hip_soversion_number}": "6" if int(rocm_config.rocm_version_number) >= 60000 else "5",
-            "%{rocblas_soversion_number}": "4" if int(rocm_config.rocm_version_number) >= 60000 else "3",
+            "%{rocblas_soversion_number}": "5" if int(rocm_config.rocm_version_number) >= 70000 else "4",
         },
     )
 

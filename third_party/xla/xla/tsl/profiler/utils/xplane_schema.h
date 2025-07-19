@@ -229,6 +229,7 @@ enum StatType {
   kElementId,
   kParentId,
   kCoreType,
+  kInputPipelineStageName,
   // XPlane semantics related.
   kProducerType,
   kConsumerType,
@@ -354,7 +355,15 @@ enum StatType {
   kCoreDetails,
   kAllReduceId,
   kAllReduceUniqueId,
-  kLastStatType = kAllReduceUniqueId,
+  kMlIRProgram,
+  kCudaGraphNodeId,
+  kCudaOrigGraphId,
+  kCudaGraphOrigNodeId,
+  kCudaGraphMapId,
+  kCudaGraphMapValueId,
+  kCudaGraphNodeMapId,
+  kGraphMetadataLineId,
+  kLastStatType = kGraphMetadataLineId,
 };
 
 enum MegaScaleStatType : uint8_t {

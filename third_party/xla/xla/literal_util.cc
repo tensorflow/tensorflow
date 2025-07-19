@@ -157,6 +157,14 @@ NativeT GetMaxImpl() {
 }
 
 template <typename NativeT>
+NativeT GetMaxFiniteImpl() {
+  if constexpr (IsReal<NativeT>::value) {
+    return std::numeric_limits<NativeT>::max();
+  }
+  LOG(FATAL) << "No finite max value for given type.";
+}
+
+template <typename NativeT>
 NativeT GetMinImpl() {
   if constexpr (IsReal<NativeT>::value) {
     if constexpr (std::numeric_limits<NativeT>::has_infinity) {
@@ -170,6 +178,13 @@ NativeT GetMinImpl() {
 template <PrimitiveType kType>
 struct MaxProvider {
   NativeT<kType> operator()() const { return GetMaxImpl<NativeT<kType>>(); }
+};
+
+template <PrimitiveType kType>
+struct MaxFiniteProvider {
+  NativeT<kType> operator()() const {
+    return GetMaxFiniteImpl<NativeT<kType>>();
+  }
 };
 
 template <PrimitiveType kType>
@@ -345,7 +360,8 @@ void PopulateWithFloatingPointData(
       // We want to generate floating point numbers to a fixed precision, while
       // keeping them between -1 and 1. This preserves their bits of precision
       // while keeping the numbers small.
-      value = static_cast<FloatT>(temp * pow(2, -ceil(log2(abs(temp)))));
+      value = static_cast<FloatT>(
+          temp == 0 ? 0 : temp * pow(2, -ceil(log2(abs(temp)))));
     }
   } else if (no_duplicates) {
     PopulateWithNoDuplicateData<FloatT>(literal, engine);
@@ -510,6 +526,10 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
 
 /* static */ Literal LiteralUtil::MaxValue(PrimitiveType primitive_type) {
   return CreateScalar<MaxProvider>(primitive_type);
+}
+
+/* static */ Literal LiteralUtil::MaxFiniteValue(PrimitiveType primitive_type) {
+  return CreateScalar<MaxFiniteProvider>(primitive_type);
 }
 
 /* static */ absl::StatusOr<Literal> LiteralUtil::NanValue(
@@ -793,6 +813,15 @@ absl::StatusOr<Literal> MakeFakeLiteral(
       },
       shape.element_type()));
   return std::move(literal);
+}
+
+/*static*/ std::vector<const Literal*> LiteralUtil::MakePointers(
+    absl::Span<const Literal> literals) {
+  std::vector<const Literal*> pointers(literals.size());
+  for (int i = 0; i < literals.size(); i++) {
+    pointers[i] = &literals[i];
+  }
+  return pointers;
 }
 
 }  // namespace xla

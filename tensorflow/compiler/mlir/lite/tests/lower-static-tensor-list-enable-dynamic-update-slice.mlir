@@ -1,4 +1,4 @@
-// RUN: tf-opt "-tfl-lower-static-tensor-list=allow-tensorlist-pass-through default-to-single-batch enable-dynamic-update-slice" -split-input-file %s | FileCheck %s
+// RUN: litert-opt "-tfl-lower-static-tensor-list=allow-tensorlist-pass-through default-to-single-batch enable-dynamic-update-slice" -split-input-file %s | FileCheck %s
 
 // -----
 

@@ -322,8 +322,8 @@ Value GetLinearIndex(ValueRange indices, mlir::ImplicitLocOpBuilder& b) {
 
 std::tuple<Value, Value> GetI4IndexAndNibble(Value linear_index,
                                              mlir::ImplicitLocOpBuilder& b) {
-  Value zero = b.create<mlir::arith::ConstantIntOp>(0, linear_index.getType());
-  Value one = b.create<mlir::arith::ConstantIntOp>(1, linear_index.getType());
+  Value zero = b.create<mlir::arith::ConstantIntOp>(linear_index.getType(), 0);
+  Value one = b.create<mlir::arith::ConstantIntOp>(linear_index.getType(), 1);
   Value is_low_nibble = b.create<mlir::arith::CmpIOp>(
       mlir::arith::CmpIPredicate::eq, zero,
       b.create<mlir::arith::AndIOp>(linear_index, one));
@@ -333,18 +333,25 @@ std::tuple<Value, Value> GetI4IndexAndNibble(Value linear_index,
 
 ml::GEPOp CreateGep(TypedValue<mlir::RankedTensorType> tensor,
                     Value linear_index, mlir::ImplicitLocOpBuilder& b) {
-  Type element_type = tensor.getType().getElementType();
+  mlir::RankedTensorType tensor_type = tensor.getType();
+  Type element_type = tensor_type.getElementType();
+  int64_t num_elements = tensor_type.getNumElements();
   if (element_type.isIntOrFloat() &&
       element_type.getIntOrFloatBitWidth() == 4) {
     element_type = b.getI8Type();
+    // Elements are packed.
+    num_elements = CeilOfRatio<int64_t>(num_elements, 2);
   }
   auto ptr = ml::LLVMPointerType::get(b.getContext());
   auto tensor_ptr =
       b.create<UnrealizedConversionCastOp>(ptr, tensor).getResult(0);
   mlir::LLVMTypeConverter converter(b.getContext());
   auto llvm_element_type = converter.convertType(element_type);
-  auto gep =
-      b.create<ml::GEPOp>(ptr, llvm_element_type, tensor_ptr, linear_index);
+  auto array_type =
+      b.getType<ml::LLVMArrayType>(llvm_element_type, num_elements);
+  auto gep = b.create<ml::GEPOp>(
+      ptr, array_type, tensor_ptr,
+      llvm::SmallVector<mlir::LLVM::GEPArg>{0, linear_index});
   gep.setNoWrapFlags(mlir::LLVM::GEPNoWrapFlags::inbounds);
   return gep;
 }
@@ -371,20 +378,29 @@ struct RewriteTensorExtract : OpRewritePattern<mlir::tensor::ExtractOp> {
     }
 
     auto gep = CreateGep(op.getTensor(), linear_index, b);
-    auto load =
-        rewriter.create<ml::LoadOp>(gep.getLoc(), gep.getElemType(), gep)
-            .getResult();
+    Type llvm_type =
+        mlir::dyn_cast<ml::LLVMArrayType>(gep.getElemType()).getElementType();
+    auto load_op = rewriter.create<ml::LoadOp>(gep.getLoc(), llvm_type, gep);
+    if (auto no_alias_attr = op->getAttrOfType<mlir::ArrayAttr>(
+            ml::LLVMDialect::getNoAliasAttrName())) {
+      load_op.setNoaliasScopesAttr(no_alias_attr);
+    }
+    auto load = load_op.getResult();
 
     if (is_low_nibble) {
       auto high_value = b.create<mlir::arith::ShRUIOp>(
-          load, b.create<mlir::arith::ConstantIntOp>(4, load.getType()));
+          load, b.create<mlir::arith::ConstantIntOp>(load.getType(), 4));
       load = b.create<mlir::arith::TruncIOp>(
           rewriter.getI4Type(),
           b.create<mlir::arith::SelectOp>(is_low_nibble, load, high_value));
     }
 
-    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(op, op.getType(),
-                                                            load);
+    if (op.getType().isIntOrFloat()) {
+      rewriter.replaceOpWithNewOp<arith::BitcastOp>(op, op.getType(), load);
+    } else {
+      rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(op, op.getType(),
+                                                              load);
+    }
     return success();
   }
 };
@@ -413,7 +429,7 @@ struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
         gep_element_type.getIntOrFloatBitWidth() == 4) {
       linear_index = b.create<arith::ShRUIOp>(
           linear_index,
-          b.create<arith::ConstantIntOp>(1, linear_index.getType()));
+          b.create<arith::ConstantIntOp>(linear_index.getType(), 1));
     }
     auto gep = CreateGep(source, linear_index, b);
 
@@ -422,6 +438,13 @@ struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
     auto load = b.create<ml::LoadOp>(llvm_vector_type, gep);
     if (auto alignment = GetAlignmentFromArg(op.getSource(), op.getIndices())) {
       load.setAlignment(*alignment);
+    } else {
+      auto data_layout = mlir::DataLayout::closest(op);
+      // TODO(willfroom): We should really just use getTypeABIAlignment here,
+      // but this requires passing through the full data layout for the target
+      // machine.
+      load.setAlignment(
+          data_layout.getTypePreferredAlignment(gep_element_type));
     }
     auto loaded = load.getResult();
 
@@ -488,17 +511,17 @@ struct RewriteTensorInsert : OpRewritePattern<mlir::tensor::InsertOp> {
       Value low_updated = body_builder.create<mlir::arith::OrIOp>(
           body_builder.create<mlir::arith::AndIOp>(
               current_value,
-              body_builder.create<mlir::arith::ConstantIntOp>(0xf0, ty)),
+              body_builder.create<mlir::arith::ConstantIntOp>(ty, 0xf0)),
           body_builder.create<mlir::arith::AndIOp>(
               scalar_value,
-              body_builder.create<mlir::arith::ConstantIntOp>(0x0f, ty)));
+              body_builder.create<mlir::arith::ConstantIntOp>(ty, 0x0f)));
       Value high_updated = body_builder.create<mlir::arith::OrIOp>(
           body_builder.create<mlir::arith::AndIOp>(
               current_value,
-              body_builder.create<mlir::arith::ConstantIntOp>(0x0f, ty)),
+              body_builder.create<mlir::arith::ConstantIntOp>(ty, 0x0f)),
           body_builder.create<mlir::arith::ShLIOp>(
               scalar_value,
-              body_builder.create<mlir::arith::ConstantIntOp>(4, ty)));
+              body_builder.create<mlir::arith::ConstantIntOp>(ty, 4)));
       Value new_value = body_builder.create<mlir::arith::SelectOp>(
           is_low_nibble, low_updated, high_updated);
       body_builder.create<scf::YieldOp>(new_value);
@@ -511,9 +534,19 @@ struct RewriteTensorInsert : OpRewritePattern<mlir::tensor::InsertOp> {
       mlir::LLVMTypeConverter converter(getContext());
       auto llvm_type = converter.convertType(scalar_value.getType());
       scalar_value =
-          b.create<UnrealizedConversionCastOp>(llvm_type, scalar_value)
-              .getResult(0);
-      b.create<ml::StoreOp>(scalar_value, gep);
+          scalar_value.getType().isIntOrFloat()
+              ? b.create<arith::BitcastOp>(llvm_type, scalar_value)
+              : b.create<UnrealizedConversionCastOp>(llvm_type, scalar_value)
+                    .getResult(0);
+      auto store_op = b.create<ml::StoreOp>(scalar_value, gep);
+      if (auto alias_scope_attr = op->getAttrOfType<mlir::ArrayAttr>(
+              ml::LLVMDialect::getAliasScopesAttrName())) {
+        store_op.setAliasScopesAttr(alias_scope_attr);
+      }
+      if (auto no_alias_attr = op->getAttrOfType<mlir::ArrayAttr>(
+              ml::LLVMDialect::getNoAliasAttrName())) {
+        store_op.setNoaliasScopesAttr(no_alias_attr);
+      }
       op.replaceAllUsesWith(op.getDest());
     }
 
@@ -546,7 +579,7 @@ struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
         vector_element_type.getIntOrFloatBitWidth() == 4) {
       linear_index = b.create<arith::ShRUIOp>(
           linear_index,
-          b.create<arith::ConstantIntOp>(1, linear_index.getType()));
+          b.create<arith::ConstantIntOp>(linear_index.getType(), 1));
     }
     auto gep = CreateGep(tensor_dest, linear_index, b);
 
@@ -554,7 +587,17 @@ struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
     auto llvm_type = converter.convertType(vector_value.getType());
     vector_value = b.create<UnrealizedConversionCastOp>(llvm_type, vector_value)
                        .getResult(0);
-    b.create<ml::StoreOp>(vector_value, gep);
+    auto store = b.create<ml::StoreOp>(vector_value, gep);
+    if (auto alignment = GetAlignmentFromArg(op.getSource(), op.getIndices())) {
+      store.setAlignment(*alignment);
+    } else {
+      auto data_layout = mlir::DataLayout::closest(op);
+      // TODO(willfroom): We should really just use getTypeABIAlignment here,
+      // but this requires passing through the full data layout for the target
+      // machine.
+      store.setAlignment(
+          data_layout.getTypePreferredAlignment(vector_element_type));
+    }
 
     rewriter.replaceOp(op, mlir::ValueRange{op.getSource()});
     return success();
@@ -950,11 +993,11 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
                                   vector_type.getElementType());
     auto outputType =
         ml::LLVMStructType::getLiteral(b.getContext(), outputTypes);
-    b.create<ml::InlineAsmOp>(loc, outputType, asm_operands, asm_string,
-                              constraints,
-                              /*has_side_effects=*/true,
-                              /*is_align_stack=*/true, asmDialectAttr,
-                              /*operand_attrs=*/mlir::ArrayAttr());
+    b.create<ml::InlineAsmOp>(
+        loc, outputType, asm_operands, asm_string, constraints,
+        /*has_side_effects=*/true,
+        /*is_align_stack=*/true, ml::TailCallKind::None, asmDialectAttr,
+        /*operand_attrs=*/mlir::ArrayAttr());
     return success();
   }
 

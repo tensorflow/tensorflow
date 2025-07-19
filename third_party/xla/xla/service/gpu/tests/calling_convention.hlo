@@ -6,8 +6,8 @@
 // CHECK-LABEL: target triple
 // CHECK: @buffer_for_dynamic
 // CHECK: @buffer_for_static
-// CHECK-PTX: define ptx_kernel void @custom_call(ptr noalias align 16 dereferenceable(32) %arg0, ptr noalias align 128 dereferenceable(4) %arg1, ptr noalias align 128 dereferenceable(4) %arg2, ptr noalias align 128 dereferenceable(44) %arg3)
-// CHECK-GCN: define amdgpu_kernel void @custom_call(ptr noalias align 16 dereferenceable(32) %arg0, ptr noalias align 128 dereferenceable(4) %arg1, ptr noalias align 128 dereferenceable(4) %arg2, ptr noalias align 128 dereferenceable(44) %arg3)
+// CHECK-PTX: define ptx_kernel void @custom_call(ptr noalias align 16 dereferenceable(32) %arg0, ptr noalias align 256 dereferenceable(4) %arg1, ptr noalias align 256 dereferenceable(4) %arg2, ptr noalias align 256 dereferenceable(44) %arg3)
+// CHECK-GCN: define amdgpu_kernel void @custom_call(ptr noalias align 16 dereferenceable(32) %arg0, ptr noalias align 256 dereferenceable(4) %arg1, ptr noalias align 256 dereferenceable(4) %arg2, ptr noalias align 256 dereferenceable(44) %arg3)
 // CHECK-NOT: @buffer_for_dynamic
 // CHECK-NOT: @buffer_for_static
 

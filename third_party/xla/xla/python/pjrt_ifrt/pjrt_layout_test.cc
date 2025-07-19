@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <tuple>
@@ -34,6 +33,7 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -112,7 +112,7 @@ TEST(PjRtLayoutTest, ToPjRtLayout) {
     auto device = std::make_unique<MockDevice>();
     Shape shape({3, 2});
     ON_CALL(*device, client).WillByDefault(Return(client.get()));
-    EXPECT_CALL(*client, GetDefaultLayout)
+    EXPECT_CALL(*client, GetDefaultPjRtLayout)
         .With(std::make_tuple(DType(DType::kS32), shape.dims(),
                               static_cast<Device*>(device.get()), MemoryKind()))
         .WillOnce(Return(absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>(

@@ -36,8 +36,8 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -199,7 +199,7 @@ absl::StatusOr<bool> LoopScheduleLinearizer::Run(
 
       if (alias_analysis == nullptr) {
         TF_ASSIGN_OR_RETURN(alias_analysis,
-                            HloAliasAnalysis::Run(module, can_share_buffer_));
+                            HloAliasAnalysis::Run(module, alias_info_));
       }
       TF_ASSIGN_OR_RETURN(bool updated_loop, AddControlEdgesForLoopWrites(
                                                  instruction, *alias_analysis));

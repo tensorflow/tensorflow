@@ -19,16 +19,18 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
@@ -54,6 +56,11 @@ class TritonTest : public GpuCodegenTest {
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     debug_options
         .set_xla_gpu_experimental_enable_subchannel_dequantisation_fusion(true);
+    // TODO(b/393299275): remove this once flag is on by default and test is
+    // updated.
+    // Note that we do NOT set
+    // xla_gpu_unsupported_generic_triton_emitter_opts here as test
+    // will run the pass forcefully later.
     return debug_options;
   }
 
@@ -63,7 +70,7 @@ class TritonTest : public GpuCodegenTest {
     if (!module_or.ok()) {
       return ::testing::AssertionFailure() << module_or.status().message();
     }
-    return RunAndCompareNoHloPasses(std::move(*module_or), error_spec);
+    return NestFusionsRunAndCompare(std::move(*module_or), error_spec);
   }
 
   ::testing::AssertionResult RunAndCompare(std::unique_ptr<HloModule> module,
@@ -72,7 +79,7 @@ class TritonTest : public GpuCodegenTest {
     if (!module_or.ok()) {
       return ::testing::AssertionFailure() << module_or.status().message();
     }
-    return RunAndCompareNoHloPasses(std::move(*module_or), error_spec);
+    return NestFusionsRunAndCompare(std::move(*module_or), error_spec);
   }
 
   ::testing::AssertionResult RunAndCompareNoHloPasses(
@@ -81,16 +88,29 @@ class TritonTest : public GpuCodegenTest {
     if (!module_or.ok()) {
       return ::testing::AssertionFailure() << module_or.status().message();
     }
-    return RunAndCompareNoHloPasses(std::move(*module_or), error_spec);
+    return NestFusionsRunAndCompare(std::move(*module_or), error_spec);
   }
 
-  ::testing::AssertionResult RunAndCompareNoHloPasses(
+  ::testing::AssertionResult NestFusionsRunAndCompare(
       std::unique_ptr<HloModule> module, ErrorSpec error_spec) {
-    if (auto status = MaybeAddTritonGemmConfig(module.get()); !status.ok()) {
+    if (absl::Status status = MaybeAddTritonGemmConfig(module.get());
+        !status.ok()) {
       return ::testing::AssertionFailure() << status.message();
     }
-    auto nested_or = NestGemmFusion(device_desc().gpu_compute_capability())
-                         .Run(module.get());
+    // NestGemmFusion pass is controlled by
+    // xla_gpu_unsupported_generic_triton_emitter_opts flag, set it now.
+    auto* emitter_opts =
+        module->mutable_config()
+            .mutable_debug_options()
+            .mutable_xla_gpu_unsupported_generic_triton_emitter_features();
+    emitter_opts->Add(DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
+    emitter_opts->Add(
+        DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION);
+    emitter_opts->Add(
+        DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES);
+    absl::StatusOr<bool> nested_or =
+        NestGemmFusion(device_desc().gpu_compute_capability())
+            .Run(module.get());
     if (!nested_or.ok()) {
       return ::testing::AssertionFailure() << nested_or.status().message();
     }
@@ -100,11 +120,14 @@ class TritonTest : public GpuCodegenTest {
   }
 
   absl::Status MaybeAddTritonGemmConfig(HloModule* module) {
-    auto* fusion = Cast<HloFusionInstruction>(
-        module->entry_computation()->root_instruction());
-    if (!fusion) {
-      return absl::InternalError("Entry root is not a fusion.");
+    auto instructions = module->entry_computation()->instructions();
+    auto it = absl::c_find_if(instructions, [](auto instruction) {
+      return instruction->opcode() == HloOpcode::kFusion;
+    });
+    if (it == instructions.end()) {
+      return absl::InternalError("No fusion in entry computation.");
     }
+    HloInstruction* fusion = *it;
     TF_ASSIGN_OR_RETURN(auto gpu_config,
                         fusion->backend_config<GpuBackendConfig>());
     FusionBackendConfig* backend_config =
@@ -198,7 +221,7 @@ TEST_F(TritonTest, FuseChannelDequantizationFused) {
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest, DISABLED_FuseSubchannelDequantizationWithTranspose) {
+TEST_F(TritonTest, FuseSubchannelDequantizationWithTranspose) {
   constexpr absl::string_view kHloText = R"(
     HloModule FuseSubchannelDequantizationWithTranspose
 
@@ -234,11 +257,11 @@ TEST_F(TritonTest, DISABLED_FuseSubchannelDequantizationWithTranspose) {
   )"));
   EXPECT_TRUE(*RunFileCheck(module->ToString(), "CHECK: __triton_gemm"));
 
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
+  EXPECT_TRUE(NestFusionsRunAndCompare(
       std::move(module), ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonTest, DISABLED_FuseSubchannelDequantization) {
+TEST_F(TritonTest, FuseSubchannelDequantization) {
   // This test is a Subchannel Dequantization fusion.
   // We run the non-fused version with the goal to fail if an hlo rewrite broke
   // the dequantization logic. The case where we do:
@@ -268,7 +291,7 @@ TEST_F(TritonTest, DISABLED_FuseSubchannelDequantization) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   EXPECT_TRUE(*RunFileCheck(module->ToString(), "CHECK: __triton_gemm"));
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
+  EXPECT_TRUE(NestFusionsRunAndCompare(
       std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
@@ -301,11 +324,11 @@ TEST_F(TritonTest, FuseChannelDequantization) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(kHloText));
   EXPECT_TRUE(*RunFileCheck(module->ToString(), "CHECK: __triton_gemm"));
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
+  EXPECT_TRUE(NestFusionsRunAndCompare(
       std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest, DISABLED_FuseSubchannelDequantizationFused) {
+TEST_F(TritonTest, FuseSubchannelDequantizationFused) {
   // This test is a Subchannel Dequantization fusion.
   // We run the fused version to avoid the hlo passes.
   // The case where we do:
@@ -362,8 +385,7 @@ TEST_F(TritonTest, DISABLED_FuseSubchannelDequantizationFused) {
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest,
-       DISABLED_FuseSubchannelDequantizationFusedWithSmallBlockKSize) {
+TEST_F(TritonTest, FuseSubchannelDequantizationFusedWithSmallBlockKSize) {
   // This test is a Subchannel Dequantization fusion.
   // We run the fused version to avoid the hlo passes.
   // The case where we do:
@@ -385,7 +407,7 @@ TEST_F(TritonTest,
 
       a = bf16[2,2,1,2048] parameter(2)
       a.bitcast = bf16[2,2,2048] bitcast(a)
-      ROOT dot = f32[2,32,2] dot(w.bitcast, a.bitcast), 
+      ROOT dot = f32[2,32,2] dot(w.bitcast, a.bitcast),
           lhs_batch_dims={0}, lhs_contracting_dims={1},
           rhs_batch_dims={1}, rhs_contracting_dims={2}
     } // fusion
@@ -441,11 +463,11 @@ TEST_F(TritonTest, FuseBroadcastInPrologue) {
     CHECK:    %[[dot:.*]] = f32[2,1024,512]{2,1,0} dot
     CHECK:    ENTRY %main
   )"));
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
+  EXPECT_TRUE(NestFusionsRunAndCompare(
       std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest, DISABLED_FuseBroadcastBitcastInPrologue) {
+TEST_F(TritonTest, FuseBroadcastBitcastInPrologue) {
   // This test is a Subchannel Dequantization fusion.
   constexpr absl::string_view kHloText = R"(
     HloModule FuseBroadcastBitcastInPrologue
@@ -468,11 +490,11 @@ TEST_F(TritonTest, DISABLED_FuseBroadcastBitcastInPrologue) {
     CHECK:    ROOT %[[dot:.*]] = f32[{{.*}}]{1,0} dot
     CHECK:    ENTRY %main
   )"));
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
+  EXPECT_TRUE(NestFusionsRunAndCompare(
       std::move(module), ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
 }
 
-TEST_F(TritonTest, DISABLED_FuseBroadcastBitcastMultiplyInPrologue) {
+TEST_F(TritonTest, FuseBroadcastBitcastMultiplyInPrologue) {
   // This test is a Subchannel Dequantization fusion.
   constexpr absl::string_view kHloText = R"(
     HloModule FuseBroadcastBitcastMultiplyInPrologue
@@ -495,13 +517,13 @@ TEST_F(TritonTest, DISABLED_FuseBroadcastBitcastMultiplyInPrologue) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
-    CHECK:    %[[broadcast:.*]] = bf16[2,128,1024]{2,1,0} broadcast
-    CHECK:    %[[bitcast:.*]] = bf16[256,1024]{1,0} bitcast
-    CHECK:    %[[multiply:.*]] = [[type:.*]][256,1024]{1,0} multiply
+    CHECK:    %[[broadcast:.*]] = bf16[{{.*}}]{2,1,0} broadcast
+    CHECK:    %[[bitcast:.*]] = bf16[{{.*}}]{1,0} bitcast
+    CHECK:    %[[multiply:.*]] = [[type:.*]][{{.*}}]{1,0} multiply
     CHECK:    %[[dot:.*]] = f32[1024,512]{1,0} dot
     CHECK:    ENTRY %main
   )"));
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
+  EXPECT_TRUE(NestFusionsRunAndCompare(
       std::move(module), ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
 }
 
@@ -674,7 +696,7 @@ TEST_F(TritonTest, NonstandardLayoutInt4) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
+  EXPECT_TRUE(NestFusionsRunAndCompare(
       std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
@@ -825,21 +847,17 @@ std::vector<I4TestParams> Int4TestCases() {
       {"int4_dot_128_16_x_256_128", "128,16", "256,128", 0, 1, "16,256"},
       {"int4_dot_16_128_x_256_128", "16,128", "256,128", 1, 1, "16,256"},
       {"int4_dot_16_128_x_128_256", "16,128", "128,256", 1, 0, "16,256"},
-      // These fail for Int4WeightsOnTheRhs only.
-      {"DISABLED_int4_dot_1_128_x_256_128", "1,128", "256,128", 1, 1, "1,256"},
-      {"DISABLED_int4_dot_128_1_x_256_128", "128,1", "256,128", 0, 1, "1,256"},
-      // These fail for Int4WeightsOnTheLhs only.
-      {"DISABLED_int4_dot_16_128_x_128_1", "16,128", "128,1", 1, 0, "16,1"},
-      {"DISABLED_int4_dot_16_128_x_1_128", "16,128", "1,128", 1, 1, "16,1"},
+      {"int4_dot_1_128_x_256_128", "1,128", "256,128", 1, 1, "1,256"},
+      {"int4_dot_128_1_x_256_128", "128,1", "256,128", 0, 1, "1,256"},
+      {"int4_dot_16_128_x_128_1", "16,128", "128,1", 1, 0, "16,1"},
+      {"int4_dot_16_128_x_1_128", "16,128", "1,128", 1, 1, "16,1"},
 
       {"dot_8_128_16_x_8_128_256", "8,128,16", "8,128,256", 1, 1, "8,16,256"},
       {"dot_8_128_16_x_8_256_128", "8,128,16", "8,256,128", 1, 2, "8,16,256"},
       {"dot_8_16_128_x_8_256_128", "8,16,128", "8,256,128", 2, 2, "8,16,256"},
       {"dot_8_16_128_x_8_128_256", "8,16,128", "8,128,256", 2, 1, "8,16,256"},
-      {"DISABLED_dot_8_1_128_x_8_256_128", "8,1,128", "8,256,128", 2, 2,
-       "8,1,256"},
-      {"DISABLED_dot_8_128_1_x_8_256_128", "8,128,1", "8,256,128", 1, 2,
-       "8,1,256"},
+      {"dot_8_1_128_x_8_256_128", "8,1,128", "8,256,128", 2, 2, "8,1,256"},
+      {"dot_8_128_1_x_8_256_128", "8,128,1", "8,256,128", 1, 2, "8,1,256"},
       {"dot_8_16_128_x_8_128_1", "8,16,128", "8,128,1", 2, 1, "8,16,1"},
       {"dot_8_16_128_x_8_1_128", "8,16,128", "8,1,128", 2, 2, "8,16,1"},
   };
@@ -862,7 +880,7 @@ TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDims) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
+  EXPECT_TRUE(NestFusionsRunAndCompare(
       std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-2}));
 }
 
@@ -880,7 +898,7 @@ TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDimsReversedLayout) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
+  EXPECT_TRUE(NestFusionsRunAndCompare(
       std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
@@ -921,7 +939,7 @@ TEST_F(TritonTest, RejectTritonFusionForWithMinorBatchDim) {
   EXPECT_TRUE(*RunFileCheck(module->ToString(), pattern));
 }
 
-TEST_F(TritonTest, DISABLED_LHSWithMinorDimEqualTo1) {
+TEST_F(TritonTest, LHSWithMinorDimEqualTo1) {
   // We prove that triton can handle int4 dot with non contracting dim size
   // equal to 1.
   constexpr absl::string_view kHloText = R"(
@@ -948,7 +966,7 @@ TEST_F(TritonTest, DISABLED_LHSWithMinorDimEqualTo1) {
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest, DISABLED_RHSWithMinorDimEqualTo1) {
+TEST_F(TritonTest, RHSWithMinorDimEqualTo1) {
   // We prove that triton can handle int4 dot with non contracting dim size
   // equal to 1.
   constexpr absl::string_view kHloText = R"(
@@ -976,7 +994,7 @@ TEST_F(TritonTest, DISABLED_RHSWithMinorDimEqualTo1) {
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest, DISABLED_LHSNonMinorContractingDim) {
+TEST_F(TritonTest, LHSNonMinorContractingDim) {
   // We prove that triton can handle int4 dot with non minor
   // lhs_contracting_dim.
   constexpr absl::string_view kHloText = R"(

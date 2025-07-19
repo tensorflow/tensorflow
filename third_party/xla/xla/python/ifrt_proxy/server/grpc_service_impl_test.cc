@@ -29,8 +29,8 @@
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 #include "grpcpp/support/channel_arguments.h"
-#include "grpcpp/support/status.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt_proxy/client/grpc_host_buffer.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
@@ -52,6 +52,8 @@ using ::tsl::testing::StatusIs;
 IfrtProxyVersion Version() {
   IfrtProxyVersion version;
   version.set_protocol_version(kServerMaxVersion);
+  version.set_ifrt_serdes_version_number(
+      SerDesVersion::current().version_number().value());
   return version;
 }
 

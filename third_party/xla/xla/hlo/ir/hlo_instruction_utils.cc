@@ -50,7 +50,7 @@ void AddOrUpdateVectorOfPairsAsAttribute(HloInstruction* instr,
                     }) +
       "}";
   FrontendAttributes attributes;
-  attributes.CopyFrom(instr->frontend_attributes());
+  attributes = instr->frontend_attributes();
   (*attributes.mutable_map())[attr_name] = intervals_str;
   instr->set_frontend_attributes(attributes);
 }

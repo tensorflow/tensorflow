@@ -39,11 +39,11 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
-namespace {
 
 using SourceTargetPairType = std::pair<int64_t, int64_t>;
 using SourceTargetPairsType = std::vector<SourceTargetPairType>;
 
+namespace {
 struct FoldableSelect {
   Comparison::Direction cmp_direction;
   int64_t constant_id;
@@ -51,8 +51,9 @@ struct FoldableSelect {
   HloInstruction* true_operand;
   HloInstruction* false_operand;
 };
+}  // namespace
 
-const HloInstruction* FindInnerScalarOp(const HloInstruction* inst) {
+static const HloInstruction* FindInnerScalarOp(const HloInstruction* inst) {
   while (inst->opcode() == HloOpcode::kConvert ||
          inst->opcode() == HloOpcode::kBroadcast) {
     inst = inst->operand(0);
@@ -78,7 +79,8 @@ const HloInstruction* FindInnerScalarOp(const HloInstruction* inst) {
 //     true_operand,
 //     false_operand)
 // ```
-std::optional<FoldableSelect> MatchFoldableSelect(HloInstruction* select) {
+static std::optional<FoldableSelect> MatchFoldableSelect(
+    HloInstruction* select) {
   if (HloPredicateIsNotOp<HloOpcode::kSelect>(select)) {
     return std::nullopt;
   }
@@ -126,15 +128,15 @@ std::optional<FoldableSelect> MatchFoldableSelect(HloInstruction* select) {
                         select->mutable_operand(1), select->mutable_operand(2)};
 }
 
-bool SelectPredicateEval(const FoldableSelect& select_match,
-                         const SourceTargetPairType& pair) {
+static bool SelectPredicateEval(const FoldableSelect& select_match,
+                                const SourceTargetPairType& pair) {
   int64_t src_id = pair.first;
   return select_match.cmp_direction == Comparison::Direction::kEq
              ? src_id == select_match.constant_id
              : src_id != select_match.constant_id;
 };
 
-std::optional<bool> StaticallyEvaluatePredicateForAllSourceIDs(
+static std::optional<bool> StaticallyEvaluatePredicateForAllSourceIDs(
     const FoldableSelect& select_match, const SourceTargetPairsType& pairs) {
   // If there are no pairs, the predicate is undefined.
   if (pairs.empty()) return std::nullopt;
@@ -159,7 +161,8 @@ std::optional<bool> StaticallyEvaluatePredicateForAllSourceIDs(
 }
 
 // Recognizes the pattern and update if applicable.
-absl::StatusOr<bool> TryFoldColectivePermuteOfSelect(HloInstruction* inst) {
+static absl::StatusOr<bool> TryFoldColectivePermuteOfSelect(
+    HloInstruction* inst) {
   // Root op must be a collective-permute.
   HloCollectivePermuteInstruction* cp =
       DynCast<HloCollectivePermuteInstruction>(inst);
@@ -206,8 +209,6 @@ absl::StatusOr<bool> TryFoldColectivePermuteOfSelect(HloInstruction* inst) {
   VLOG(3) << "Successfully folded select op away";
   return true;
 }
-
-}  // namespace
 
 absl::StatusOr<bool> CollectiveSelectFolder::Run(
     HloModule* module,

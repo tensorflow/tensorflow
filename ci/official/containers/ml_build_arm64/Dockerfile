@@ -66,6 +66,7 @@ RUN /setup.python.sh python3.12 requirements.txt
 RUN /setup.python.sh python3.13 requirements.txt
 # python3.13-nogil is a free-threaded build of python3.13.
 RUN /setup.python.sh python3.13-nogil requirements.txt
+RUN /setup.python.sh python3.14 requirements.txt
 
 # Python commands by default run under 3.11
 RUN ln -sf /usr/bin/python3.11 /usr/bin/python3

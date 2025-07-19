@@ -18,13 +18,11 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <random>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -40,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module_metadata.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/iterator_util.h"
@@ -194,9 +193,9 @@ class HloModule {
     frontend_attributes_ = std::move(frontend_attributes);
   }
 
-  void add_frontend_attributes(FrontendAttributes frontend_attributes) {
-    frontend_attributes_.mutable_map()->insert(
-        frontend_attributes.map().begin(), frontend_attributes.map().end());
+  void add_frontend_attribute(std::string key, std::string value) {
+    frontend_attributes_.mutable_map()->emplace(std::move(key),
+                                                std::move(value));
   }
 
   const FrontendAttributes& frontend_attributes() const {
@@ -232,8 +231,9 @@ class HloModule {
   // with respect to HloInstruction::Identical() method.
   template <typename H>
   friend H AbslHashValue(H h, const HloModule& module) {
-    if (module.config().has_entry_computation_layout())
+    if (module.config().has_entry_computation_layout()) {
       h = H::combine(std::move(h), module.entry_computation_layout());
+    }
     // Use MakeComputationSorted() instead of MakeComputationPostOrder()
     // because naming may affect the order of MakeComputationPostOrder() but not
     // MakeComputationSorted().
@@ -474,8 +474,8 @@ class HloModule {
   NameUniquer& computation_name_uniquer() { return computation_name_uniquer_; }
 
   // Assign a new unique dense id for an instruction
-  int NewUniqueInstructionId() {
-    int result = next_unique_id_;
+  int64_t NewUniqueInstructionId() {
+    int64_t result = next_unique_id_;
     next_unique_id_++;
     return result;
   }
@@ -733,7 +733,7 @@ class HloModule {
   // unique per module.
   NameUniquer computation_name_uniquer_{/*separator=*/"."};
   NameUniquer instruction_name_uniquer_{/*separator=*/"."};
-  int next_unique_id_ = 0;
+  int64_t next_unique_id_ = 0;
 
   // Used to keep track of the next unique module id that should be assigned.
   static std::atomic<int> next_unique_module_id_;
@@ -817,7 +817,52 @@ class HloModule {
                   HloComputation::NeighborIterator,
                   &HloComputation::callees_begin, &HloComputation::callees_end>
       topological_sort_;
+
+ public:
+  class OriginalValueRecoveryTable
+      : public absl::flat_hash_map<
+            OriginalArray,
+            std::pair<OriginalArray, std::unique_ptr<HloModule>>> {
+   public:
+    std::string ToString(HloPrintOptions options = HloPrintOptions()) const;
+
+    OriginalValueRecoveryTableProto ToProto() const;
+
+    static absl::StatusOr<HloModule::OriginalValueRecoveryTable> FromProto(
+        const xla::OriginalValueRecoveryTableProto&
+            original_value_recovery_table);
+
+    // Adds an entry to the original value recovery table.
+    // XLA may replace some instructions in the HLO graph to improve
+    // performance. This adds an entry to the recovery table to record the
+    // computation that can be used to recover the removed original value due to
+    // the replacement from the replacing instruction.
+    void AddRecoveryComputation(
+        const std::shared_ptr<OriginalValue>& removed_original_value,
+        HloInstruction* replacing_inst,
+        std::unique_ptr<HloModule> recovery_module);
+  };
+
+  const OriginalValueRecoveryTable& original_value_recovery_table() {
+    return original_value_recovery_table_;
+  }
+  OriginalValueRecoveryTable& mutable_original_value_recovery_table() {
+    return original_value_recovery_table_;
+  }
+
+  void set_original_value_recovery_table(
+      OriginalValueRecoveryTable& original_value_recovery_table) {
+    for (auto& p : original_value_recovery_table) {
+      original_value_recovery_table_[p.first] =
+          std::make_pair(p.second.first, std::move(p.second.second));
+    }
+  }
+
+ private:
+  OriginalValueRecoveryTable original_value_recovery_table_;
 };
+
+using OriginalValueRecoveryTable = HloModule::OriginalValueRecoveryTable;
 
 }  // namespace xla
 

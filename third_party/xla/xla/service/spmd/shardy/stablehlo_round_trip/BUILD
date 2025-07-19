@@ -1,21 +1,19 @@
 # Import/Export passes for going from `sdy.sharding`s to `mhlo.sharding`s and vice versa.
 
 load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [":friends"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
 package_group(
     name = "friends",
-    packages = [
-        "//learning/deepmind/partir/...",
-        "//learning/deepmind/partir/compiler/mpmd/export/...",
-        "//third_party/openxla/shardy/tools/...",
-        "//xla/service/spmd/shardy/...",
+    includes = [
+        "//xla:friends",
     ],
 )
 
@@ -31,7 +29,6 @@ cc_library(
         "//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -102,6 +99,7 @@ cc_library(
     hdrs = ["stablehlo_export.h"],
     deps = [
         ":export_callback_custom_calls",
+        ":export_manual_reduction_collectives_cc",
         ":export_ops",
         ":export_shardings",
         ":shard_map_export",
@@ -183,13 +181,15 @@ cc_library(
     hdrs = ["export_manual_reduction_collectives.h"],
     deps = [
         "//xla:array",
+        "//xla/mlir_hlo",
         "//xla/service/spmd/shardy:utils",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:stablehlo_ops",
     ],

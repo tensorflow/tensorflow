@@ -1,4 +1,4 @@
-// RUN: tf-opt -tf-to-quant %s | FileCheck %s
+// RUN: litert-opt -tf-to-quant %s | FileCheck %s
 
 // CHECK-LABEL: fakeQuantPerChannelForActivation
 func.func @fakeQuantPerChannelForActivation(%arg0: tensor<8x3xf32>) -> (tensor<8x3xf32>) {

@@ -23,6 +23,7 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -55,8 +56,10 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/collective_permute_cycle.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shape_inference.h"
+#include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
@@ -149,8 +152,8 @@ absl::Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
                            hlo->ToString());
   }
   if (hlo->shape().has_layout()) {
-    if (hlo->shape().layout().minor_to_major_size() !=
-        hlo->shape().dimensions_size()) {
+    if (hlo->shape().layout().minor_to_major().size() !=
+        hlo->shape().dimensions().size()) {
       return InvalidArgument(
           "Instruction has mismatched minor-to-major size and dimension size: "
           "%s",
@@ -402,8 +405,9 @@ static absl::Status CheckCommonAllGatherInvariants(
 
   int64_t shard_count;
   for (int64_t i = 0; i < ag->operand_count(); ++i) {
-    TF_RET_CHECK(ag->all_gather_dimension() <
-                 ag->operand(i)->shape().dimensions_size());
+    TF_RET_CHECK(
+        ag->all_gather_dimension() <
+        static_cast<int64_t>(ag->operand(i)->shape().dimensions().size()));
 
     Shape output_shape;
     if (hlo->opcode() == HloOpcode::kAllGather) {
@@ -415,7 +419,8 @@ static absl::Status CheckCommonAllGatherInvariants(
                          ? ag->shape().tuple_shapes(1)
                          : ag->shape().tuple_shapes(1).tuple_shapes(i);
     }
-    TF_RET_CHECK(ag->all_gather_dimension() < output_shape.dimensions_size());
+    TF_RET_CHECK(ag->all_gather_dimension() <
+                 static_cast<int64_t>(output_shape.dimensions().size()));
     if (i == 0) {
       shard_count = CeilOfRatio(
           output_shape.dimensions(ag->all_gather_dimension()),
@@ -490,13 +495,15 @@ absl::Status ShapeVerifier::HandleReduceScatter(HloInstruction* hlo) {
   TF_RET_CHECK(ars->operand_count() >= 1);
 
   for (int64_t i = 0; i < ars->operand_count(); ++i) {
-    TF_RET_CHECK(ars->scatter_dimension() <
-                 ars->operand(i)->shape().dimensions_size());
+    TF_RET_CHECK(
+        ars->scatter_dimension() <
+        static_cast<int64_t>(ars->operand(i)->shape().dimensions().size()));
 
     const Shape& output_shape = (ars->operand_count() == 1)
                                     ? ars->shape()
                                     : ars->shape().tuple_shapes(i);
-    TF_RET_CHECK(ars->scatter_dimension() < output_shape.dimensions_size());
+    TF_RET_CHECK(ars->scatter_dimension() <
+                 static_cast<int64_t>(output_shape.dimensions().size()));
   }
 
   const Shape& output0_shape =
@@ -590,8 +597,8 @@ absl::Status ShapeVerifier::HandleRaggedAllToAll(HloInstruction* hlo) {
   const int64_t kOffsetsSizesOperandsStart = 2;
   for (int64_t i = kOffsetsSizesOperandsStart + 1; i < kNumRaggedOperands;
        ++i) {
-    if (operand_shapes[i - 1]->dimensions_size() != 1 &&
-        operand_shapes[i - 1]->dimensions_size() != 2) {
+    if (operand_shapes[i - 1]->dimensions().size() != 1 &&
+        operand_shapes[i - 1]->dimensions().size() != 2) {
       return Internal("RaggedAllToAll operand %d must be rank 1 or 2: %s",
                       i - 1, hlo->ToString());
     }
@@ -637,7 +644,7 @@ absl::Status CheckBufferOffset(const Shape& buffer_shape,
     if (absl::c_any_of(buffer_offset_shape.tuple_shapes(),
                        [&buffer_shape](const Shape& shape) {
                          return ShapeUtil::TupleElementCount(shape) !=
-                                buffer_shape.dimensions_size();
+                                buffer_shape.dimensions().size();
                        })) {
       return Internal(
           "Buffer offset index should have the same number of "
@@ -1064,11 +1071,12 @@ absl::Status ShapeVerifier::HandleSort(HloInstruction* hlo) {
   }
 
   // Verify the sort_dimension.
-  if (sort->sort_dimension() >= sort->operand(0)->shape().dimensions_size()) {
+  if (sort->sort_dimension() >=
+      static_cast<int64_t>(sort->operand(0)->shape().dimensions().size())) {
     return Internal(
         "Expected the sort_dimension %d of sort to be smaller than the rank %d "
         "of the operand(s).",
-        sort->sort_dimension(), sort->shape().dimensions_size());
+        sort->sort_dimension(), sort->shape().dimensions().size());
   }
 
   return CheckVariadicShape(sort);
@@ -1088,7 +1096,7 @@ absl::Status ShapeVerifier::HandleIota(HloInstruction* hlo) {
   if (!iota->shape().IsArray()) {
     return Internal("Iota does not support non-array result.");
   }
-  const int64_t rank = iota->shape().dimensions_size();
+  const int64_t rank = iota->shape().dimensions().size();
   if (rank == 0) {
     return Internal("Iota does not support scalars.");
   }
@@ -1190,15 +1198,15 @@ absl::Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
   // Check for mixed precision.
   TF_RET_CHECK(SameElementType(broadcast->shape(), operand_shape))
       << broadcast->ToString();
-  TF_RET_CHECK(operand_shape.dimensions_size() ==
+  TF_RET_CHECK(operand_shape.dimensions().size() ==
                broadcast->dimensions().size())
       << broadcast->ToString();
   for (int64_t operand_dimension = 0;
-       operand_dimension < operand_shape.dimensions_size();
+       operand_dimension < operand_shape.dimensions().size();
        ++operand_dimension) {
     int64_t output_dimension = broadcast->dimensions()[operand_dimension];
-    TF_RET_CHECK((output_dimension < broadcast->shape().dimensions_size()) &&
-                 output_dimension >= 0 &&
+    TF_RET_CHECK(output_dimension >= 0 &&
+                 output_dimension < broadcast->shape().dimensions().size() &&
                  (broadcast->shape().dimensions(output_dimension) ==
                   operand_shape.dimensions(operand_dimension)))
         << broadcast->ToString() << " operand shape " << operand_shape;
@@ -1213,7 +1221,7 @@ absl::Status ShapeVerifier::HandleDynamicReshape(
   TF_RET_CHECK(SameElementType(dynamic_reshape->shape(), operand_shape));
   TF_RET_CHECK(ShapeUtil::ElementsIn(dynamic_reshape->shape()) ==
                ShapeUtil::ElementsIn(operand_shape));
-  TF_RET_CHECK(dynamic_reshape->shape().dimensions_size() + 1 ==
+  TF_RET_CHECK(dynamic_reshape->shape().dimensions().size() + 1 ==
                dynamic_reshape->operand_count());
   for (int64_t i = 1; i < dynamic_reshape->operand_count(); ++i) {
     TF_RET_CHECK(dynamic_reshape->operand(i)->shape().element_type() == S32);
@@ -1380,6 +1388,10 @@ absl::Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
         << "Invalid aliasing operand shape index.";
     TF_RET_CHECK(ShapeUtil::IndexIsValid(custom_call->shape(), pair.first))
         << "Invalid aliasing output shape index.";
+    if (custom_call->frontend_attributes().map().contains(
+            "xla_skip_custom_call_alias_shape_check")) {
+      return absl::OkStatus();
+    }
     const Shape& output_subshape =
         ShapeUtil::GetSubshape(custom_call->shape(), pair.first);
     const Shape& operand_subshape = ShapeUtil::GetSubshape(
@@ -1440,7 +1452,7 @@ absl::Status ShapeVerifier::HandleMap(HloInstruction* map) {
     operand_shapes.push_back(&operand->shape());
     max_operand_rank =
         std::max(max_operand_rank,
-                 static_cast<int64_t>(operand->shape().dimensions_size()));
+                 static_cast<int64_t>(operand->shape().dimensions().size()));
   }
   // TODO(b/65689298) Remove code below once Map is generalized to accept
   // arbitrary map dimensions.
@@ -2403,6 +2415,174 @@ absl::Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
   return absl::OkStatus();
 }
 
+// Helper function to match source-target pairs for a pair of send/recv
+// instructions.
+absl::Status VerifySourceTargetPairs(const HloInstruction* first,
+                                     const HloInstruction* second) {
+  if (first == nullptr || second == nullptr) {
+    return Internal("Expected send or recv instruction to be non-null");
+  }
+  auto send_source_target_pairs =
+      first->frontend_attributes().map().find(kSendRecvSourceTargetPairsAttr);
+  auto recv_source_target_pairs =
+      second->frontend_attributes().map().find(kSendRecvSourceTargetPairsAttr);
+  // Source-target pairs should be set or unset for both send and recv.
+  if ((send_source_target_pairs == first->frontend_attributes().map().end()) !=
+      (recv_source_target_pairs == second->frontend_attributes().map().end())) {
+    return Internal(
+        "Expected both send and recv instruction to have source-target pairs "
+        "set, but found %s and %s",
+        first->ToString(), second->ToString());
+  }
+
+  // Skip checks if source-target pairs are unset for both send and recv
+  if (send_source_target_pairs == first->frontend_attributes().map().end()) {
+    return absl::OkStatus();
+  }
+
+  if (send_source_target_pairs->second != recv_source_target_pairs->second) {
+    return Internal(
+        "Expected send and recv instructions to have the same source-target "
+        "pairs, but found %s and %s",
+        first->ToString(), second->ToString());
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      SourceTargetPairs send_source_target_pairs_array,
+      SourceTargetPairs::FromString(send_source_target_pairs->second));
+  if (collective_permute_cycle::HasCycles(send_source_target_pairs_array)) {
+    return Internal(
+        "Expected send and recv instructions to have non-cyclical "
+        "source-target pairs, but found %s",
+        first->ToString());
+  }
+  std::set<int> sources;
+  std::set<int> targets;
+  for (int i = 0; i < send_source_target_pairs_array.size(); ++i) {
+    sources.insert(send_source_target_pairs_array[i].source);
+    targets.insert(send_source_target_pairs_array[i].target);
+  }
+  if (sources.size() != send_source_target_pairs_array.size() ||
+      targets.size() != send_source_target_pairs_array.size()) {
+    return Internal(
+        "Expected send and recv instructions to have unique source and target "
+        "pairs, but found %s",
+        first->ToString());
+  }
+
+  return absl::OkStatus();
+}
+
+enum class DfaState { kNoException, kExpectSend, kExpectRecv };
+
+// Helper function to handle the state transitions for a Send instruction.
+absl::Status HandleSendInstruction(const HloInstruction* instruction,
+                                   DfaState& current_state,
+                                   const HloInstruction*& current_instruction) {
+  if (DynCast<HloSendInstruction>(instruction)->is_host_transfer()) {
+    return absl::OkStatus();
+  }
+  switch (current_state) {
+    case DfaState::kNoException:
+      current_instruction = instruction;
+      current_state = DfaState::kExpectRecv;
+      break;
+    case DfaState::kExpectSend:
+      TF_RETURN_IF_ERROR(
+          VerifySourceTargetPairs(current_instruction, instruction));
+      current_state = DfaState::kNoException;
+      current_instruction = nullptr;
+      break;
+    case DfaState::kExpectRecv:
+      return Internal("Expected recv to match send, but found %s",
+                      instruction->ToString());
+    default:
+      break;
+  }
+  return absl::OkStatus();
+}
+
+// Helper function to handle the state transitions for a Recv instruction.
+absl::Status HandleRecvInstruction(const HloInstruction* instruction,
+                                   DfaState& current_state,
+                                   const HloInstruction*& current_instruction) {
+  if (DynCast<HloRecvInstruction>(instruction)->is_host_transfer()) {
+    return absl::OkStatus();
+  }
+  switch (current_state) {
+    case DfaState::kNoException:
+      current_instruction = instruction;
+      current_state = DfaState::kExpectSend;
+      break;
+    case DfaState::kExpectSend:
+      return Internal("Expected send to match recv, but found %s",
+                      instruction->ToString());
+    case DfaState::kExpectRecv:
+      TF_RETURN_IF_ERROR(
+          VerifySourceTargetPairs(current_instruction, instruction));
+      current_state = DfaState::kNoException;
+      current_instruction = nullptr;
+      break;
+    default:
+      break;
+  }
+  return absl::OkStatus();
+}
+
+// Checks that the send/recv instructions in the module do not deadlock. This is
+// only done on scheduled modules and is specific to device-to-device
+// communications on GPU. At a high level, we want to check that:
+// 1. no collectives are scheduled between a matching pair of send and recv
+// 2. no two send instructions are scheduled in a row
+// 3. no two recv instructions are scheduled in a row
+// 4. the program does not terminate with a dangling send or recv
+absl::Status VerifyNoCollectiveDeadlocks(const HloModule& module) {
+  DfaState current_state = DfaState::kNoException;
+  const HloInstruction* current_instruction = nullptr;
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      switch (instruction->opcode()) {
+        case HloOpcode::kSend:
+          TF_RETURN_IF_ERROR(HandleSendInstruction(instruction, current_state,
+                                                   current_instruction));
+          break;
+          // Handles Recv instructions.
+          break;
+        case HloOpcode::kRecv:
+          TF_RETURN_IF_ERROR(HandleRecvInstruction(instruction, current_state,
+                                                   current_instruction));
+          break;
+        case HloOpcode::kAllGather:
+        case HloOpcode::kAllReduce:
+        case HloOpcode::kAllToAll:
+        case HloOpcode::kRaggedAllToAll:
+        case HloOpcode::kCollectivePermute:
+        case HloOpcode::kReduceScatter:
+        case HloOpcode::kCollectiveBroadcast:
+          switch (current_state) {
+            case DfaState::kExpectSend:
+            case DfaState::kExpectRecv:
+              return Internal("Expected send or recv, but found %s",
+                              instruction->ToString());
+            default:
+              break;
+          }
+          break;
+        default:
+          break;
+      }
+    }
+  }
+  return current_state == DfaState::kNoException
+             ? absl::OkStatus()
+             : Internal(
+                   "Program terminated with dangling send or recv. Last "
+                   "checked instruction: %s",
+                   current_instruction == nullptr
+                       ? ""
+                       : current_instruction->ToString());
+}
+
 // Checks that the asynchronous computation only has a root and parameter
 // instructions.
 absl::Status VerifyAsyncComputation(const HloComputation* async_computation) {
@@ -2718,11 +2898,11 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     // op. See https://groups.google.com/forum/#!topic/xla-dev/9LqijHmTt_I
     // or ComputationLowerer::Visit()
     TF_RET_CHECK(broadcast->dimensions().size() ==
-                 broadcast->operand(0)->shape().dimensions_size())
+                 broadcast->operand(0)->shape().dimensions().size())
         << "Broadcast HLO (" << broadcast->ToShortString()
         << ") has invalid number of dimensions: "
         << broadcast->dimensions().size()
-        << " != " << broadcast->operand(0)->shape().dimensions_size();
+        << " != " << broadcast->operand(0)->shape().dimensions().size();
     if (opts_.verify_broadcast_dimensions_order) {
       TF_RET_CHECK(absl::c_is_sorted(broadcast->dimensions()))
           << "Broadcast dimensions should be ordered, got: "
@@ -2868,7 +3048,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   absl::Status HandleScatter(HloInstruction* scatter) override {
-    int64_t rank = scatter->operand(0)->shape().dimensions_size();
+    int64_t rank = scatter->operand(0)->shape().dimensions().size();
     for (int64_t operand_dim :
          scatter->scatter_dimension_numbers().scatter_dims_to_operand_dims()) {
       if (operand_dim > rank) {
@@ -2919,14 +3099,14 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
       TF_RETURN_IF_ERROR(VerifyNoHostMemorySpace(instruction));
     }
     if (!opts_.InstructionCanChangeLayout(instruction) &&
-        LayoutUtil::IsDenseArray(instruction->shape()) &&
-        instruction->shape().has_layout()) {
+        instruction->shape().IsArray() && instruction->shape().has_layout()) {
       const Shape& result_shape = instruction->shape();
       const Layout& result_layout = result_shape.layout();
       for (HloInstruction* operand : instruction->operands()) {
         const Shape& operand_shape = operand->shape();
-        if (LayoutUtil::IsDenseArray(operand_shape) &&
-            operand_shape.dimensions_size() == result_shape.dimensions_size() &&
+        if (operand_shape.IsArray() &&
+            operand_shape.dimensions().size() ==
+                result_shape.dimensions().size() &&
             operand_shape.has_layout()) {
           const Layout& operand_layout = operand_shape.layout();
           Layout::Equal equal_predicate =
@@ -3203,13 +3383,15 @@ absl::Status VerifyUnpin(const HloCustomCallInstruction* inst) {
   return absl::OkStatus();
 }
 
-absl::Status VerifyNoBuffers(const Shape& shape,
-                             absl::string_view error_message) {
+absl::Status VerifyNoBuffers(const Shape& shape, const HloInstruction* inst) {
   return ShapeUtil::ForEachSubshapeWithStatus(
       shape,
       [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         if (subshape.IsBuffer()) {
-          return InvalidArgument("%s", error_message);
+          return InvalidArgument(
+              "Seen buffers while buffers aren't allowed "
+              "in this context: %s",
+              inst->ToString());
         }
         return absl::OkStatus();
       });
@@ -3336,12 +3518,9 @@ absl::Status VerifyCustomCall(const HloCustomCallInstruction* inst) {
 }
 
 absl::Status VerifyNoBuffersInContext(const HloInstruction* inst) {
-  std::string error_message =
-      "Seen buffers while buffers aren't allowed in this context:" +
-      inst->ToString();
-  TF_RETURN_IF_ERROR(VerifyNoBuffers(inst->shape(), error_message));
+  TF_RETURN_IF_ERROR(VerifyNoBuffers(inst->shape(), inst));
   for (auto* operand : inst->operands()) {
-    TF_RETURN_IF_ERROR(VerifyNoBuffers(operand->shape(), error_message));
+    TF_RETURN_IF_ERROR(VerifyNoBuffers(operand->shape(), inst));
   }
   return absl::OkStatus();
 }
@@ -3417,6 +3596,9 @@ absl::StatusOr<bool> HloVerifier::Run(
     // If the module has a schedule, it must be valid.
     if (module->has_schedule()) {
       TF_RETURN_IF_ERROR(module->schedule().Verify());
+      if (target_metadata_->GetVerifierOpts().CheckForCollectiveDeadlocks()) {
+        TF_RETURN_IF_ERROR(VerifyNoCollectiveDeadlocks(*module));
+      }
     }
 
     if (HloInstruction::IsThreadIncluded(

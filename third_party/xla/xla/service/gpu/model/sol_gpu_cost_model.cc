@@ -19,37 +19,60 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/numeric/bits.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
-#include "absl/strings/string_view.h"
+#include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/collective_utils.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
-// Constants for NCCL SoL model
-constexpr double kHeaderOverhead = 0.025;
-constexpr absl::string_view kNcclOpLaunchUs = "nccl_op_launch_us";
-// it's GBytes/s, not Gbit/s (ex: 40Gb/s = 5GB/s)
-// GBytes per second = 10^9 bytes per second
-constexpr absl::string_view kNicSpeedGbps = "nic_speed_gbps";
-constexpr absl::string_view kChunkPrepUs = "chunk_prep_us";
-constexpr absl::string_view kRttUs = "rtt_us";
-constexpr absl::string_view kGpusPerNode = "gpus_per_node";
-constexpr absl::string_view kChunkSizeBytes = "chunk_size_bytes";
 
-// Returns the number of communicators in the mask.
-// For example, if the mask is 0x0, this function returns 1. If the mask is 0x7,
-// this function returns 8.
-int NumCommunicators(const absl::string_view mask) {
-  // Assuming the mask is a hexadecimal number
-  uint64_t mask_value = std::stoul(std::string(mask), nullptr, 16);
-  int bit_count = absl::popcount(mask_value);  // Count set bits
-  return static_cast<int>(std::pow(2, bit_count));
-}
+constexpr double kHeaderOverhead = 0.025;
+
+constexpr char kUnknownKey[] = "<unknown>";
+
+static auto& device_to_cfg =
+    *(new absl::flat_hash_map<std::string, SolGPUCostModel::Config>({
+        {
+            "NVIDIA H100 80GB HBM3",
+            {
+                /*nccl_op_launch_time=*/absl::Microseconds(
+                    100.0f * kDefaultNcclCostModelCoeff),
+                /*nic_speed_gbps=*/
+                55.56f * kDefaultNcclCostModelCoeff,
+                /*chunk_prep_time=*/
+                absl::Microseconds(13.34f * kDefaultNcclCostModelCoeff),
+                /*rtt=*/
+                absl::Microseconds(68.89f * kDefaultNcclCostModelCoeff),
+                /*gpus_per_node=*/8,
+                /*chunk_size_bytes=*/kDefaultNcclCostModelChunkSizeBytes,
+            },
+        },
+        {
+            kUnknownKey,
+            {
+                /*nccl_op_launch_time=*/absl::Microseconds(
+                    100.0f * kDefaultNcclCostModelCoeff),
+                /*nic_speed_gbps=*/
+                111.12f * kDefaultNcclCostModelCoeff,
+                /*chunk_prep_time=*/
+                absl::Microseconds(13.34f * kDefaultNcclCostModelCoeff),
+                /*rtt=*/
+                absl::Microseconds(68.89f * kDefaultNcclCostModelCoeff),
+                /*gpus_per_node=*/8,
+                /*chunk_size_bytes=*/kDefaultNcclCostModelChunkSizeBytes,
+            },
+        },
+    }));
 
 // Returns the number of rounds for the given collective type.
 int NumRounds(const SolGPUCostModel::CollectiveType& coll_type) {
@@ -57,11 +80,20 @@ int NumRounds(const SolGPUCostModel::CollectiveType& coll_type) {
   return coll_type == SolGPUCostModel::CollectiveType::kAllReduce ? 2 : 1;
 }
 
+SolGPUCostModel::Config GetPlatformConfig(
+    const se::DeviceDescription& device_info) {
+  std::string key = device_info.name();
+  if (!device_to_cfg.contains(key)) {
+    return device_to_cfg[kUnknownKey];
+  }
+  return device_to_cfg[key];
+}
+
 }  // namespace
 
 /*static*/ SolGPUCostModel::Config SolGPUCostModel::GetConfig(
-    const HloModule* module) {
-  SolGPUCostModel::Config config;
+    const HloModule* module, const se::DeviceDescription& device_info) {
+  SolGPUCostModel::Config config = GetPlatformConfig(device_info);
   const auto& extra_options =
       module->config()
           .debug_options()
@@ -69,24 +101,24 @@ int NumRounds(const SolGPUCostModel::CollectiveType& coll_type) {
   for (const auto& [option_name, option_value] : extra_options) {
     int64_t value;
     double value_d;
-    VLOG(2) << "[SoL] option: " << option_name << " is " << option_value;
-    if (option_name == kNcclOpLaunchUs &&
-        absl::SimpleAtoi(option_value, &value)) {
+    VLOG(2) << "[SoL] extra option: " << option_name << " is " << option_value;
+    if (option_name == kSolNcclOpLaunchUs &&
+        absl::SimpleAtoi(option_value, &value) && value > 0) {
       config.nccl_op_launch_time = absl::Microseconds(value);
-    } else if (option_name == kNicSpeedGbps &&
-               absl::SimpleAtod(option_value, &value_d)) {
+    } else if (option_name == kSolNicSpeedGbps &&
+               absl::SimpleAtod(option_value, &value_d) && value_d > 0.0) {
       config.nic_speed_gbps = value_d;
-    } else if (option_name == kChunkPrepUs &&
-               absl::SimpleAtoi(option_value, &value)) {
+    } else if (option_name == kSolChunkPrepUs &&
+               absl::SimpleAtoi(option_value, &value) && value > 0) {
       config.chunk_prep_time = absl::Microseconds(value);
-    } else if (option_name == kRttUs &&
-               absl::SimpleAtoi(option_value, &value)) {
+    } else if (option_name == kSolRttUs &&
+               absl::SimpleAtoi(option_value, &value) && value > 0) {
       config.rtt = absl::Microseconds(value);
-    } else if (option_name == kGpusPerNode &&
-               absl::SimpleAtoi(option_value, &value)) {
+    } else if (option_name == kSolGpusPerNode &&
+               absl::SimpleAtoi(option_value, &value) && value > 0) {
       config.gpus_per_node = value;
-    } else if (option_name == kChunkSizeBytes &&
-               absl::SimpleAtoi(option_value, &value)) {
+    } else if (option_name == kSolChunkSizeBytes &&
+               absl::SimpleAtoi(option_value, &value) && value > 0) {
       config.chunk_size_bytes = value;
     }
   }
@@ -123,10 +155,11 @@ absl::Duration SolGPUCostModel::TransferDuration(
   return absl::Microseconds(ret * (1 + kHeaderOverhead));
 }
 
-absl::Duration SolGPUCostModel::RingLatency(
+absl::StatusOr<absl::Duration> SolGPUCostModel::RingLatency(
     const int64_t buff_size_bytes, const int num_nodes,
-    const CollectiveType& coll_type, const absl::string_view mask) const {
-  const int num_gpus = NumGpusPerComm(num_nodes, coll_type, mask);
+    const CollectiveType& coll_type, const int num_communicators) const {
+  TF_ASSIGN_OR_RETURN(int num_gpus,
+                      NumGpusPerComm(num_nodes, coll_type, num_communicators));
 
   int64_t per_gpu_msg_size_bytes;
   if (coll_type == CollectiveType::kSendRecv) {
@@ -171,21 +204,19 @@ absl::Duration SolGPUCostModel::RingLatency(
 }
 
 // Helper functions
-int SolGPUCostModel::NumGpusPerComm(int num_nodes,
-                                    const CollectiveType& coll_type,
-                                    const absl::string_view mask) const {
+absl::StatusOr<int> SolGPUCostModel::NumGpusPerComm(
+    int num_nodes, const CollectiveType& coll_type,
+    const int num_communicators) const {
   if (coll_type == CollectiveType::kSendRecv) {
     return 2;
   }
-  int num_comms = NumCommunicators(mask);
-  CHECK_EQ(xla_flag_config_.gpus_per_node % num_comms, 0)
-      << "GPU_PER_NODE must be divisible by the number of communicators. "
-         "GPU_PER_NODE: "
-      << xla_flag_config_.gpus_per_node
-      << " Number of communicators: " << num_comms
-      << ". Adjust the number of GPUs per node with the flag "
-         "gpus_per_node in xla_gpu_analytical_latency_estimator_options.";
-  return num_nodes * xla_flag_config_.gpus_per_node / num_comms;
+  if (xla_flag_config_.gpus_per_node % num_communicators != 0) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unexpected number of communicators: ", num_communicators,
+                     ". Does not divide gpus_per_node w/o a remainder: ",
+                     xla_flag_config_.gpus_per_node));
+  }
+  return num_nodes * xla_flag_config_.gpus_per_node / num_communicators;
 }
 
 }  // namespace gpu

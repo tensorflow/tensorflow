@@ -432,14 +432,17 @@ TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTest) {
                        CHECK-NOT: void @
 
                        CHECK: void @
+                       CHECK-NEXT: getelementptr
                        CHECK-NEXT: load
                        CHECK-NEXT: icmp
                        CHECK-NEXT: zext
+                       CHECK-NEXT: getelementptr
                        CHECK-NEXT: store
                        CHECK-NEXT: ret
 
                        CHECK-NOT: void @
                        CHECK: void @
+                       CHECK-NEXT: getelementptr
                        CHECK-NEXT: load
                        CHECK-NEXT: add
                        CHECK-NEXT: store

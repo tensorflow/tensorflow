@@ -3,14 +3,18 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load(
     "//xla/tsl:tsl.bzl",
-    "if_cuda_tools",
     "if_not_fuchsia",
     "if_not_windows",
     "if_oss",
     "internal_visibility",
     "tsl_copts",
 )
-load("//xla/tsl:tsl.default.bzl", "filegroup", "tsl_grpc_cc_dependencies")
+load(
+    "//xla/tsl:tsl.default.bzl",
+    "filegroup",
+    "if_cuda_tools",
+    "tsl_grpc_cc_dependencies",
+)
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -300,6 +304,8 @@ cc_library(
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform",
     ],
@@ -667,4 +673,18 @@ exports_files(
         "//tensorflow/core/lib/jpeg:__pkg__",
         "//tensorflow/core/platform:__pkg__",
     ]),
+)
+
+cc_library(
+    name = "recordphase",
+    srcs = ["recordphase.cc"],
+    hdrs = ["//xla/tsl/platform:recordphase.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+    ],
 )

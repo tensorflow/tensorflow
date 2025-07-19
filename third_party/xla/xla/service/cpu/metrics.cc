@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/lib/monitoring/counter.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/stacktrace.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -41,6 +42,11 @@ auto* cpu_compiler_stacktrace_count = tsl::monitoring::Counter<1>::New(
     "The number of times a compiler stacktrace was called.", "stacktrace");
 
 void RecordCpuCompilerStacktrace() {
+  // Only record stack traces in google as streamz doesn't work in OSS.
+  if (tsl::kIsOpenSource) {
+    return;
+  }
+
   TraceMe trace(
       [&] { return TraceMeEncode("RecordCpuCompilerStacktrace", {}); });
   std::string tsl_stacktrace = tsl::CurrentStackTrace();

@@ -47,6 +47,8 @@ def make_all(module_name, doc_string_modules=None):
 
   results = set()
   for doc_module in doc_string_modules:
+    if doc_module.__doc__ is None:
+      continue
     results.update([m.group(1)
                     for m in _reference_pattern.finditer(doc_module.__doc__)
                     if m.group(1) in cur_members])

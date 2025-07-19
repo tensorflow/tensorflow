@@ -43,7 +43,24 @@ $VERSION-distutils
 EOF
 fi
 
-/setup.packages.sh pythons.txt
+if [[ ${VERSION} == "python3.14" ]]; then
+  # Build python 3.14.0b1 from source now. This is a temporary solution until
+  # the apt-get install python3.14 installation is stable to use.
+  # TODO(kanglan): Remove this once official python 3.14 is available in astral
+  # python standalone build repo and the rules_python patch is updated.
+  apt update && apt install -y libssl-dev zlib1g-dev libbz2-dev libreadline-dev libncurses5-dev libffi-dev liblzma-dev
+  wget https://www.python.org/ftp/python/3.14.0/Python-3.14.0b1.tar.xz
+  tar -xf Python-3.14.0b1.tar.xz
+  pushd Python-3.14.0b1
+  mkdir -p /python314-0b1
+  CC=clang-18 CXX=clang++-18 ./configure --prefix /python314-0b1 --with-ensurepip=install
+  make -j$(nproc)
+  make install -j$(nproc)
+  ln -s /python314-0b1/bin/python3 /usr/bin/python3.14
+  popd
+else
+  /setup.packages.sh pythons.txt
+fi
 
 # Re-link pyconfig.h from x86_64-linux-gnu into the devtoolset directory
 # for any Python version present

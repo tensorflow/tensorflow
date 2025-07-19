@@ -144,7 +144,17 @@ class CompilationEnvironments {
 template <typename T>
 T& CompilationEnvironments::GetMutableEnv() {
   auto descriptor = T::descriptor();
+  // Attempt to find by pointer if it exists.
   auto it = environments_.find(descriptor);
+
+  if (it == environments_.end()) {
+    // Attempt to find by name if direct pointer lookup failed. This can happen
+    // with dynamically-linked libraries if descriptor pointers differ.
+    it = absl::c_find_if(environments_, [&](const auto& entry) {
+      return entry.first->full_name() == descriptor->full_name();
+    });
+  }
+
   if (it == environments_.end()) {
     TF_CHECK_OK(AddEnvImpl(*descriptor, nullptr));
     DefaultEnvCreatedByCompilationEnvironments(descriptor->full_name());

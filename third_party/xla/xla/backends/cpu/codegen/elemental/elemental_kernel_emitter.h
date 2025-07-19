@@ -16,13 +16,16 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_CODEGEN_ELEMENTAL_ELEMENTAL_KERNEL_EMITTER_H_
 #define XLA_BACKENDS_CPU_CODEGEN_ELEMENTAL_ELEMENTAL_KERNEL_EMITTER_H_
 
+#include <string>
+
 #include "absl/status/statusor.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/codegen/kernel_definition.h"
-#include "xla/codegen/kernel_emitter.h"
+#include "xla/codegen/llvm_kernel_definition.h"
+#include "xla/codegen/llvm_kernel_emitter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
@@ -31,13 +34,15 @@ limitations under the License.
 
 namespace xla::cpu {
 
-class ElementalKernelEmitter final : public KernelEmitter {
+class ElementalKernelEmitter final : public LlvmKernelEmitter {
  public:
   ElementalKernelEmitter(const HloInstruction* instr,
                          const BufferAssignment* buffer_assignment,
                          const TargetMachineFeatures* target_machine);
 
-  absl::StatusOr<KernelDefinition> EmitKernelDefinition() override;
+  absl::StatusOr<LlvmKernelDefinition> EmitKernelDefinition() override;
+
+  std::string name() const final { return "elemental_kernel_emitter"; }
 
  private:
   // Emits LLVM IR using elemental loop emitter and the given element generator.

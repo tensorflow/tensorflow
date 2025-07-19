@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -72,8 +73,7 @@ PJRT_ClientDeleter MakeClientDeleter(const PJRT_Api* api) {
     destroy_args.extension_start = nullptr;
     destroy_args.client = client;
 
-    PJRT_Error* error = api->PJRT_Client_Destroy(&destroy_args);
-    CHECK(error == nullptr);
+    pjrt::LogFatalIfPjrtError(api->PJRT_Client_Destroy(&destroy_args), api);
   };
 }
 
@@ -1096,6 +1096,7 @@ absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
   args.struct_size = PJRT_Executable_GetCompiledMemoryStats_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.executable = executable;
+  args.peak_memory_in_bytes = 0;
   RETURN_STATUS_IF_PJRT_ERROR(
       api->PJRT_Executable_GetCompiledMemoryStats(&args), api);
   xla::CompiledMemoryStats results;
@@ -1110,6 +1111,7 @@ absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
   results.host_output_size_in_bytes = args.host_output_size_in_bytes;
   results.host_alias_size_in_bytes = args.host_alias_size_in_bytes;
   results.host_temp_size_in_bytes = args.host_temp_size_in_bytes;
+  results.peak_memory_in_bytes = args.peak_memory_in_bytes;
   return results;
 }
 

@@ -114,13 +114,13 @@ class StreamExecutor {
     return AllocateArray<T>(1);
   }
 
-  // Loads a kernel from a MultiKernelLoaderSpec.
+  // Loads a kernel from a KernelLoaderSpec.
   //
   // Parameters:
-  //   spec: The MultiKernelLoaderSpec is usually generated as a compile-time
+  //   spec: The KernelLoaderSpec is usually generated as a compile-time
   //    constant into an appropriate namespace.
   virtual absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
-      const MultiKernelLoaderSpec& spec) {
+      const KernelLoaderSpec& spec) {
     return absl::UnimplementedError("Not Implemented");
   }
 

@@ -45,22 +45,22 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToMlirHlo(
 
 absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
                                  xla::HloModuleProto const* hlo_module_proto,
-                                 bool import_all_computation,
+                                 bool import_all_computations,
                                  bool flatten_computation_args_result,
                                  bool emit_stablehlo) {
   mlir::BaseScopedDiagnosticHandler diag_handler(module.getContext());
-  return HloModuleImporter(module, import_all_computation,
+  return HloModuleImporter(module, import_all_computations,
                            flatten_computation_args_result, emit_stablehlo)
       .Import(*hlo_module_proto);
 }
 
 absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
                                  const xla::HloModule* hlo_module,
-                                 bool import_all_computation,
+                                 bool import_all_computations,
                                  bool flatten_computation_args_result,
                                  bool emit_stablehlo) {
   mlir::BaseScopedDiagnosticHandler diag_handler(module.getContext());
-  return HloModuleImporter(module, import_all_computation,
+  return HloModuleImporter(module, import_all_computations,
                            flatten_computation_args_result, emit_stablehlo)
       .Import(*hlo_module);
 }

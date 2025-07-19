@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/annotation.h"
+#include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
@@ -126,6 +127,7 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       output_shape_(params.output_shape),
       allocations_(std::move(params.mlir_allocations)),
       buffer_assignment_(std::move(params.buffer_assignment)),
+      alias_info_(std::move(params.alias_info)),
       debug_buffer_assignment_show_max_(
           params.debug_buffer_assignment_show_max),
       constants_(std::move(params.constants)),
@@ -192,6 +194,9 @@ absl::Status RendezvousAfterInitialization(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options);
 
+absl::Status BarrierAfterExecutable(const DebugOptions* debug_options,
+                                    se::Stream* stream_to_sync);
+
 absl::Status ExecuteThunksImpl(
     const DebugOptions* debug_options, const std::string& module_name,
     ModuleIdentifier module_id, SequentialThunk& thunk_sequence,
@@ -214,13 +219,6 @@ absl::Status ExecuteThunksImpl(
   bool use_highest_priority_for_async_stream =
       debug_options
           ? debug_options->xla_gpu_enable_highest_priority_async_stream()
-          : false;
-
-  bool requires_exclusive_lock_on_gpu =
-      run_options->run_options().gpu_executable_run_options()
-          ? run_options->run_options()
-                .gpu_executable_run_options()
-                ->requires_exclusive_lock_on_gpu()
           : false;
 
   se::Stream* main_stream = run_options->stream();
@@ -319,8 +317,7 @@ absl::Status ExecuteThunksImpl(
         &collective_params,
         &collective_cliques,
         run_options->run_options().ffi_execution_context(),
-        run_options->local_device_count(),
-        requires_exclusive_lock_on_gpu};
+        run_options->local_device_count()};
 
     tsl::profiler::TraceMe trace_initialize("Thunks::Initialize");
     TF_RETURN_IF_ERROR(thunk_sequence.Initialize(initialize_params));
@@ -348,6 +345,9 @@ absl::Status ExecuteThunksImpl(
   VLOG(1) << "[" << run_options->device_ordinal() << "] "
           << "End GpuExecutable::ExecuteOnStream module: " << module_name;
 
+  if (collective_params.need_barrier) {
+    TF_RETURN_IF_ERROR(BarrierAfterExecutable(debug_options, main_stream));
+  }
   return MaybeSyncAndProfile(run_options, execution_timer.get(),
                              block_host_until_done ? main_stream : nullptr);
 }
@@ -462,6 +462,18 @@ absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
     }
   }
 
+  return absl::OkStatus();
+}
+
+absl::Status BarrierAfterExecutable(const DebugOptions* debug_options,
+                                    se::Stream* stream) {
+  if (debug_options->xla_gpu_experimental_enable_nvshmem()) {
+    TF_ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectivesFromRegistry());
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Communicator> nvshmem_comm,
+                        collectives->CreateCommunicator());
+
+    TF_RETURN_IF_ERROR(nvshmem_comm->Barrier(GpuCollectives::On(*stream)));
+  }
   return absl::OkStatus();
 }
 
@@ -840,7 +852,8 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
 absl::Status GpuExecutable::VerboseAllocationError(absl::Status s) {
   return ResourceExhausted(
       "%s\n%s\n", s.message(),
-      buffer_assignment_->ToVerboseString(debug_buffer_assignment_show_max_));
+      buffer_assignment_->ToVerboseString(alias_info_.get(),
+                                          debug_buffer_assignment_show_max_));
 }
 
 absl::Status GpuExecutable::ExecuteThunks(

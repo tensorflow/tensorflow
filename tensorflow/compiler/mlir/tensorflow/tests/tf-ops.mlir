@@ -5134,6 +5134,29 @@ func.func @testUniformQuantizedClipByValue(
   func.return
 }
 
+// -----
+
+// CHECK-LABEL: func @testValidFusedConv2DBiasActivation
+func.func @testValidFusedConv2DBiasActivation(
+    %conv_input: tensor<*xf32>,
+    %filter: tensor<*xf32>,
+    %bias: tensor<*xf32>,
+    %side_input: tensor<*xf32>,
+    %conv_input_scale: tensor<*xf32>,
+    %side_input_scale: tensor<*xf32>) -> tensor<*xf32> {
+  %0 ="tf.FusedConv2DBiasActivation"(%conv_input, %filter, %bias, %side_input, %conv_input_scale, %side_input_scale) {
+    T = f32, Tbias = f32,
+    activation_mode = "Relu",
+    data_format = "NHWC",
+    dilations = [1, 1, 1, 1],
+    filter_format = "HWIO",
+    padding = "SAME",
+    strides = [1, 2, 2, 1]
+  } : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>)
+  func.return %0 : tensor<*xf32>
+}
+
+
 // Following tests are for LegacyCall symbol use verifier.
 
 // -----
@@ -5197,6 +5220,7 @@ func.func @test_xla_call_module_with_invalid_symbol() {
   "tf.XlaCallModule"() {Sout = [], device = "", dim_args_spec = [], function_list = [@undefined_function], module = "", platforms = [], version = 4 : i64} : () -> ()
   func.return
 }
+
 
 // -----
 

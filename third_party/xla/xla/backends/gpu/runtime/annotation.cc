@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/utils/hlo_longest_prefix.h"
 #include "xla/printer.h"
 #include "tsl/platform/errors.h"
 #include "tsl/profiler/lib/nvtx_utils.h"
@@ -49,6 +50,9 @@ namespace xla::gpu {
 
 using ::tsl::profiler::ScopedAnnotation;
 using ::tsl::profiler::StringHandle;
+using ::xla::hlo_longest_prefix::GetLongestOpNamePrefix;
+using ::xla::hlo_longest_prefix::VisitInstAndCalledButNotOperands;
+
 namespace {
 
 StringHandle RegisterString(const std::string& str) {
@@ -237,84 +241,6 @@ class SourceLocationVisitor : public ConstDfsHloVisitorWithDefault {
   std::set<std::vector<StackFrame>> location_set_{};
 };
 
-template <typename Visitor>
-absl::Status VisitInstAndCalledButNotOperands(Visitor& visitor,
-                                              const HloInstruction& inst) {
-  // Visit the given instruction, and the things it calls, but not its operands.
-  TF_RETURN_IF_ERROR(visitor.DefaultAction(&inst));
-  for (const HloComputation* called : inst.called_computations()) {
-    const HloInstruction* const root = called->root_instruction();
-    TF_RETURN_IF_ERROR(root->Accept(&visitor, false /* call_finish_visit */,
-                                    true /* ignore_control_predecessors */,
-                                    true /* cross_computation */));
-  }
-  return absl::OkStatus();
-}
-
-// Split `a` and `b` by `delim` into two lists of possibly-empty tokens, then
-// rejoin the first N of those lists that match by `delim`. Note: it is
-// unspecified which argument the return value points into.
-absl::string_view LongestPrefix(absl::string_view a, absl::string_view b,
-                                char delim = '/') {
-  auto split_a = absl::StrSplit(a, delim);
-  auto split_b = absl::StrSplit(b, delim);
-
-  size_t common_prefix_len = 0;
-
-  for (auto a_it = split_a.begin(), b_it = split_b.begin();
-       a_it != split_a.end() && b_it != split_b.end(); ++a_it, ++b_it) {
-    if (*a_it != *b_it) break;
-
-    if (common_prefix_len) ++common_prefix_len;  // account for delimiter
-    common_prefix_len += a_it->size();           // length of a matching token
-  }
-
-  return absl::string_view(a.data(), common_prefix_len);
-}
-
-// Find the longest prefix among instructions' op_name metadata
-// Chunk this by delimiting slashes, i.e. given a/b/cat and a/b/cabbage, the
-// longest prefix is a/b not a/b/ca
-class OpNamePrefixVisitor : public ConstDfsHloVisitorWithDefault {
- public:
-  absl::Status DefaultAction(const HloInstruction* inst) final {
-    auto const& op_name = inst->metadata().op_name();
-    if (!op_name.empty()) {
-      prefix_ = prefix_ ? LongestPrefix(*prefix_, op_name) : op_name;
-    }
-    return absl::OkStatus();
-  }
-
-  absl::string_view longest_op_name_prefix() const {
-    return prefix_.value_or("");
-  }
-
- private:
-  std::optional<absl::string_view> prefix_;
-};
-
-absl::string_view GetLongestOpNamePrefix(const HloModule& mod) {
-  // In the presence of (at least) debug callbacks, calling Accept on the root
-  // instruction of the module may not reach all instructions in the module.
-  OpNamePrefixVisitor visitor{};
-  for (const HloComputation* computation : mod.computations()) {
-    for (const HloInstruction* inst : computation->instructions()) {
-      if (!visitor.DefaultAction(inst).ok()) {
-        return {};
-      }
-    }
-  }
-  return visitor.longest_op_name_prefix();
-}
-
-absl::string_view GetLongestOpNamePrefix(const HloInstruction& inst) {
-  OpNamePrefixVisitor visitor{};
-  if (!VisitInstAndCalledButNotOperands(visitor, inst).ok()) {
-    return {};
-  }
-  return visitor.longest_op_name_prefix();
-}
-
 std::string MakeTitle(const HloModule& mod, absl::string_view longest_prefix) {
   if (longest_prefix.empty()) {
     return absl::StrFormat("XlaModule:#hlo_module=%s,program_id=%d#",
@@ -421,10 +347,20 @@ uint64_t ModuleAnnotation::NvtxSchemaId() {
                      "Common source locations",
                      offsetof(ModuleAnnotation, common_src_locations_))};
     const nvtxPayloadSchemaAttr_t schemaAttr = {
+#if defined(NVTX_PAYLOAD_SCHEMA_ATTR_NAME)
         /* .fieldMask = */ NVTX_PAYLOAD_SCHEMA_ATTR_NAME |
             NVTX_PAYLOAD_SCHEMA_ATTR_TYPE | NVTX_PAYLOAD_SCHEMA_ATTR_ENTRIES |
             NVTX_PAYLOAD_SCHEMA_ATTR_NUM_ENTRIES |
             NVTX_PAYLOAD_SCHEMA_ATTR_STATIC_SIZE,
+#elif defined(NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_NAME)
+        /* .fieldMask = */ NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_NAME |
+            NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_TYPE |
+            NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_ENTRIES |
+            NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_NUM_ENTRIES |
+            NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_STATIC_SIZE,
+#else
+#error Unknown NVTX variant.
+#endif
         /* .name = */ "XlaModule",
         /* .type = */ NVTX_PAYLOAD_SCHEMA_TYPE_STATIC,
         /* .flags = */ NVTX_PAYLOAD_SCHEMA_FLAG_NONE,
@@ -496,10 +432,20 @@ uint64_t KernelAnnotation::NvtxSchemaId() {
                      "Called HLO",
                      offsetof(KernelAnnotation, called_hlo_dump))};
     const nvtxPayloadSchemaAttr_t schemaAttr = {
+#if defined(NVTX_PAYLOAD_SCHEMA_ATTR_NAME)
         /* .fieldMask = */ NVTX_PAYLOAD_SCHEMA_ATTR_NAME |
             NVTX_PAYLOAD_SCHEMA_ATTR_TYPE | NVTX_PAYLOAD_SCHEMA_ATTR_ENTRIES |
             NVTX_PAYLOAD_SCHEMA_ATTR_NUM_ENTRIES |
             NVTX_PAYLOAD_SCHEMA_ATTR_STATIC_SIZE,
+#elif defined(NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_NAME)
+        /* .fieldMask = */ NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_NAME |
+            NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_TYPE |
+            NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_ENTRIES |
+            NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_NUM_ENTRIES |
+            NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_STATIC_SIZE,
+#else
+#error Unknown NVTX variant.
+#endif
         /* .name = */ "XlaKernel",
         /* .type = */ NVTX_PAYLOAD_SCHEMA_TYPE_STATIC,
         /* .flags = */ NVTX_PAYLOAD_SCHEMA_FLAG_NONE,

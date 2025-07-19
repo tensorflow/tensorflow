@@ -101,17 +101,24 @@ TEST_P(SimplifyIciDummyVariablesPassTest, replace_dummy_variable) {
   SimplifyIciDummyVariablesPass pass;
   TF_ASSERT_OK(pass.Run(options));
 
-  Node* fill_1 =
+  Node* tpu_dummy_input_1 =
       GetNode(*graph, "tpu_dummy_input_ici_specific_index_0_task_id_2");
-  EXPECT_NE(fill_1, nullptr);
-  EXPECT_EQ(fill_1->requested_device(),
+  EXPECT_NE(tpu_dummy_input_1, nullptr);
+  EXPECT_EQ(tpu_dummy_input_1->requested_device(),
             "/job:tpu_host_worker/replica:0/task:2/device:CPU:0");
 
-  Node* fill_2 =
+  Node* tpu_dummy_input_2 =
       GetNode(*graph, "tpu_dummy_input_ici_specific_index_1_task_id_2");
-  EXPECT_NE(fill_2, nullptr);
-  EXPECT_EQ(fill_2->requested_device(),
+  EXPECT_NE(tpu_dummy_input_2, nullptr);
+  EXPECT_EQ(tpu_dummy_input_2->requested_device(),
             "/job:tpu_host_worker/replica:0/task:2/device:CPU:0");
+
+  // Check that all remaining TPUDummyInput nodes have at least one out edge.
+  for (auto n : graph->nodes()) {
+    if (n->type_string() == "TPUDummyInput") {
+      EXPECT_FALSE(n->out_edges().empty());
+    }
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(All, SimplifyIciDummyVariablesPassTest,

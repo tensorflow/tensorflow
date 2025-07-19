@@ -180,7 +180,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitReduce(
   auto* mlir_context = b.getContext();
   HloInstructionIndexing indexing =
       ComputeOutputToInputIndexing(instr, 0, mlir_context);
-  const auto& indexing_map = *indexing.indexing_maps[0].begin();
+  const IndexingMap& indexing_map = indexing.indexing_maps[0].begin()->map();
 
   SmallVector<Value, 1> init_values;
   for (int i = instr->operand_count() / 2; i < instr->operand_count(); ++i) {
@@ -200,7 +200,9 @@ absl::StatusOr<SmallVector<Value, 1>> EmitReduce(
     }
     auto reducer = call_target_provider(
         instr->called_computations().front()->root_instruction());
-    return b.create<mlir::func::CallOp>(reducer, args).getResults();
+    mlir::func::CallOp call_op = b.create<mlir::func::CallOp>(reducer, args);
+    call_op->setAttr("xla.is_reduction", b.getUnitAttr());
+    return call_op.getResults();
   };
 
   return EmitLoopNestWithStatus(b, indices, init_values, indexing_map, body);
@@ -213,7 +215,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitReduceWindow(
   MLIRContext* mlir_context = b.getContext();
   HloInstructionIndexing indexing =
       ComputeOutputToInputIndexing(instr, 0, mlir_context);
-  auto indexing_map = *indexing.indexing_maps[0].begin();
+  IndexingMap indexing_map = indexing.indexing_maps[0].begin()->map();
   indexing_map.RescaleSymbols();
 
   auto reduce_window = DynCast<HloReduceWindowInstruction>(instr);
@@ -241,7 +243,9 @@ absl::StatusOr<SmallVector<Value, 1>> EmitReduceWindow(
 
     auto reducer = call_target_provider(
         instr->called_computations().front()->root_instruction());
-    return b.create<mlir::func::CallOp>(reducer, args).getResults();
+    mlir::func::CallOp call_op = b.create<mlir::func::CallOp>(reducer, args);
+    call_op->setAttr("xla.is_reduction", b.getUnitAttr());
+    return call_op.getResults();
   };
 
   return EmitLoopNestWithStatus(b, indices, init_values, indexing_map, body);
@@ -438,7 +442,8 @@ SmallVector<SmallVector<Value, 3>, 2> GetInputIndices(
   for (auto& maps : indexing.indexing_maps) {
     CHECK_EQ(maps.size(), 1);
     CHECK(!maps.begin()->IsUndefined());
-    indices.push_back(ApplyIndexing(*maps.begin(), output_indices, {}, b));
+    indices.push_back(
+        ApplyIndexing(maps.begin()->map(), output_indices, {}, b));
   }
   return indices;
 }
@@ -449,7 +454,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitPad(
   auto result_element_type =
       PrimitiveTypeToMlirType(instr->shape().element_type(), b);
   auto indexing = ComputeOutputToInputIndexing(instr, 0, b.getContext());
-  const auto& indexing_map = *indexing.indexing_maps[0].begin();
+  const IndexingMap& indexing_map = indexing.indexing_maps[0].begin()->map();
   Value is_in_bounds = CheckConstraints(indexing_map, indices, {}, b);
 
   auto if_op = b.create<IfOp>(mlir::TypeRange{result_element_type},
@@ -518,8 +523,10 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDotLoop(
       PrimitiveTypeToMlirType(instr->shape().element_type(), b);
   HloInstructionIndexing indexing =
       ComputeOutputToInputIndexing(instr, /*output_id=*/0, b.getContext());
-  const IndexingMap& lhs_indexing_map = *indexing.indexing_maps.at(0).begin();
-  const IndexingMap& rhs_indexing_map = *indexing.indexing_maps.at(1).begin();
+  const IndexingMap& lhs_indexing_map =
+      indexing.indexing_maps.at(0).begin()->map();
+  const IndexingMap& rhs_indexing_map =
+      indexing.indexing_maps.at(1).begin()->map();
 
   const mlir::Type accumulator_type =
       result_element_type.isBF16() ? b.getF32Type() : result_element_type;
@@ -641,7 +648,7 @@ template <typename MhloOp>
 SmallVector<Value, 1> MapElementwiseOp(
     llvm::ArrayRef<mlir::Type> arg_types, llvm::ArrayRef<Value> args,
     ImplicitLocOpBuilder& b,
-    llvm::ArrayRef<mlir::NamedAttribute> attributes = std::nullopt) {
+    llvm::ArrayRef<mlir::NamedAttribute> attributes = {}) {
   // We use the last argument's type because of select.
   return MapHloOp<MhloOp>(args.back().getType(), arg_types, args, attributes,
                           b);
@@ -835,19 +842,19 @@ absl::StatusOr<SmallVector<Value, 1>> EmitConvert(
     if (mlir::isa<IntegerType>(operands[0].getType())) {
       Value i1 = builder.create<mlir::arith::CmpIOp>(
           mlir::arith::CmpIPredicate::ne, operands[0],
-          builder.create<mlir::arith::ConstantIntOp>(0, operands[0].getType()));
+          builder.create<mlir::arith::ConstantIntOp>(operands[0].getType(), 0));
       return {{builder.create<mlir::arith::ExtUIOp>(builder.getI8Type(), i1)
                    .getResult()}};
     }
   }
   auto out = mhlo::MhloOpToStdScalarOp::mapConvertOpToStdScalarOp(
       builder.getLoc(), result_type_with_sign, result_element_type, arg_types,
-      operands, /*attributes=*/std::nullopt, &builder);
+      operands, /*attributes=*/{}, &builder);
   if (auto int_ty = mlir::dyn_cast<IntegerType>(out.getType())) {
     auto in = operands[0];
     if (auto float_ty = mlir::dyn_cast<FloatType>(in.getType())) {
       auto cst_int = [&](int64_t x) {
-        return builder.create<arith::ConstantIntOp>(x, int_ty);
+        return builder.create<arith::ConstantIntOp>(int_ty, x);
       };
       if (primitive_util::IsUnsignedIntegralType(element_type)) {
         auto cst_float = [&](uint64_t x) {
@@ -907,7 +914,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitIota(const HloInstruction* instr,
   index = builder.create<arith::IndexCastUIOp>(index_type, index);
   return {{mhlo::MhloOpToStdScalarOp::mapConvertOpToStdScalarOp(
       builder.getLoc(), result_type_with_sign, result_element_type,
-      {index_type}, {index}, /*attributes=*/std::nullopt, &builder)}};
+      {index_type}, {index}, /*attributes=*/{}, &builder)}};
 }
 
 absl::StatusOr<SmallVector<Value, 1>> EmitCompare(
@@ -923,7 +930,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitCompare(
   auto i1 = mhlo::MhloOpToStdScalarOp::mapOpOfType<mhlo::CompareOp>(
       builder.getLoc(), result_types, arg_types,
       mhlo::CompareOp::Adaptor(operands, nullptr, properties),
-      /*attributes=*/std::nullopt, &builder);
+      /*attributes=*/{}, &builder);
   return {{builder.create<mlir::arith::ExtUIOp>(builder.getI8Type(), i1)
                .getResult()}};
 }
@@ -936,7 +943,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitReducePrecision(
   properties.mantissa_bits = builder.getI32IntegerAttr(instr->mantissa_bits());
   return MapHloOp<mhlo::ReducePrecisionOp>(
       operands.front().getType(), arg_types, operands,
-      /*attributes=*/std::nullopt, builder, nullptr, properties);
+      /*attributes=*/{}, builder, nullptr, properties);
 }
 
 namespace {
@@ -1019,7 +1026,7 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
     case HloOpcode::kAbs:
       return {MapHloOp<mhlo::AbsOp>(
           PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
-          /*attributes=*/std::nullopt, builder)};
+          /*attributes=*/{}, builder)};
     case HloOpcode::kAdd:
       if (element_type == PRED) {
         return MapElementwiseOp<mhlo::OrOp>(arg_types, operands, builder);
@@ -1042,7 +1049,7 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
     case HloOpcode::kComplex:
       return MapHloOp<mhlo::ComplexOp>(
           PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
-          /*attributes=*/std::nullopt, builder);
+          /*attributes=*/{}, builder);
     case HloOpcode::kCos:
       return MapElementwiseOp<mhlo::CosineOp>(arg_types, operands, builder);
     case HloOpcode::kDivide:
@@ -1062,12 +1069,11 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
       return MapElementwiseOp<mhlo::FloorOp>(arg_types, operands, builder);
     case HloOpcode::kIsFinite:
       return MapHloOp<mhlo::IsFiniteOp>(builder.getI1Type(), arg_types,
-                                        operands, /*attributes=*/std::nullopt,
-                                        builder);
+                                        operands, /*attributes=*/{}, builder);
     case HloOpcode::kImag:
       return MapHloOp<mhlo::ImagOp>(
           PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
-          /*attributes=*/std::nullopt, builder);
+          /*attributes=*/{}, builder);
     case HloOpcode::kLog:
       if (element_type == F16 || element_type == BF16) {
         attributes.emplace_back(
@@ -1104,7 +1110,7 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
     case HloOpcode::kNot: {
       if (element_type == PRED) {
         auto zero =
-            builder.create<mlir::arith::ConstantIntOp>(0, builder.getI8Type());
+            builder.create<mlir::arith::ConstantIntOp>(builder.getI8Type(), 0);
         Value result = builder.create<mlir::arith::ExtUIOp>(
             builder.getI8Type(),
             builder.create<mlir::arith::CmpIOp>(mlir::arith::CmpIPredicate::eq,
@@ -1118,13 +1124,13 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
     case HloOpcode::kPopulationCount:
       return MapHloOp<mhlo::PopulationCountOp>(
           PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
-          /*attributes=*/std::nullopt, builder);
+          /*attributes=*/{}, builder);
     case HloOpcode::kPower:
       return MapElementwiseOp<mhlo::PowOp>(arg_types, operands, builder);
     case HloOpcode::kReal:
       return MapHloOp<mhlo::RealOp>(
           PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
-          /*attributes=*/std::nullopt, builder);
+          /*attributes=*/{}, builder);
     case HloOpcode::kReducePrecision:
       return EmitReducePrecision(instr, arg_types, operands, builder);
     case HloOpcode::kRemainder:
@@ -1166,7 +1172,7 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
     case HloOpcode::kBitcastConvert:
       return MapHloOp<mhlo::BitcastConvertOp>(
           PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
-          /*attributes=*/std::nullopt, builder);
+          /*attributes=*/{}, builder);
     case HloOpcode::kConvert:
       return EmitConvert(instr, arg_types, operands, builder);
     case HloOpcode::kBitcast:
@@ -1207,16 +1213,9 @@ ValueRange ProvideParameter(const PartitionedComputation& computation,
   }
 
   auto callee = call_target_provider(operand);
-  SmallVector<Value> operands;
-  if (auto backend_kind = GetBackendKind(this_fn);
-      backend_kind == xla::BackendKind::kCpu && this_fn->getAttr("xla.entry")) {
-    operands =
-        SmallVector<Value>{this_fn.getArguments().drop_front().take_front(
-            instr->parent()->num_parameters())};
-  } else {
-    operands = SmallVector<Value>{
-        this_fn.getArguments().take_front(instr->parent()->num_parameters())};
-  }
+  SmallVector<Value> operands(
+      this_fn.getArguments().take_front(instr->parent()->num_parameters()));
+
   absl::c_copy(indices, std::back_inserter(operands));
   auto results = builder.create<PureCallOp>(callee, operands).getResults();
   auto callee_subgraph = computation.FindSubgraph(operand);
@@ -1727,6 +1726,10 @@ SmallVector<Value, 2> InlineBlock(OpBuilder& builder, Block& src_block,
     mapped_results.push_back(mapping.lookup(result));
   }
   return mapped_results;
+}
+
+bool IsSupportedElementalOp(HloOpcode opcode) {
+  return !kUnsupportedOps.contains(opcode);
 }
 
 }  // namespace emitters

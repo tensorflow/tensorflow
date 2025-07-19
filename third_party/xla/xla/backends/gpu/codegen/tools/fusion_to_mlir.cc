@@ -29,6 +29,7 @@ absl::Status Run(const std::string& filename) {
   TF_ASSIGN_OR_RETURN(auto emitter_data, GetEmitter(*module));
 
   auto context = GetMlirContextForTest();
+  context.loadAllAvailableDialects();
   TF_ASSIGN_OR_RETURN(auto mlir_module,
                       emitter_data->emitter->CreateMLIRModule(
                           context, *emitter_data->fusion, "main",

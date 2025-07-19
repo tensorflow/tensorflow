@@ -479,5 +479,25 @@ HloModule CallInSortInCall
   }
 }
 
+TEST_F(FlattenCallGraphTest, NoChange) {
+  std::string hlo_string = R"(
+HloModule NoChange
+
+  ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
+    %a = f32[4096]{0} parameter(0)
+    %b = f32[4096]{0} parameter(1)
+    ROOT %multiply = f32[4096]{0} multiply(%a, %b)
+  }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_EQ(module->computation_count(), 1);
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  ASSERT_EQ(module->computation_count(), 1);
+  EXPECT_FALSE(result);
+}
+
 }  // namespace
 }  // namespace xla

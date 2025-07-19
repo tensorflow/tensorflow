@@ -1,0 +1,45 @@
+diff --git a/xprof/convert/hlo_to_tools_data.cc b/xprof/convert/hlo_to_tools_data.cc
+--- a/xprof/convert/hlo_to_tools_data.cc	(revision 4c1e5f05c19c1bb0ba96c98780a8308d3c52417c)
++++ b/xprof/convert/hlo_to_tools_data.cc	(date 1749868150428)
+@@ -62,7 +62,7 @@
+ 
+   std::string json_output;
+   tsl::protobuf::util::JsonPrintOptions options;
+-  options.always_print_primitive_fields = true;
++  options.always_print_fields_with_no_presence = true;
+   auto encoded_status = tsl::protobuf::util::MessageToJsonString(
+       result_or.value(), &json_output, options);
+   if (!encoded_status.ok()) {
+diff --git a/xprof/convert/xplane_to_memory_profile.cc b/xprof/convert/xplane_to_memory_profile.cc
+--- a/xprof/convert/xplane_to_memory_profile.cc	(revision 4c1e5f05c19c1bb0ba96c98780a8308d3c52417c)
++++ b/xprof/convert/xplane_to_memory_profile.cc	(date 1749868150428)
+@@ -533,7 +533,7 @@
+ absl::Status ConvertProtoToJson(const Proto& proto_output,
+                                 std::string* json_output) {
+   tsl::protobuf::util::JsonPrintOptions json_options;
+-  json_options.always_print_primitive_fields = true;
++  json_options.always_print_fields_with_no_presence = true;
+   auto status = tsl::protobuf::util::MessageToJsonString(
+       proto_output, json_output, json_options);
+   if (!status.ok()) {
+diff --git a/xprof/convert/xplane_to_tools_data.cc b/xprof/convert/xplane_to_tools_data.cc
+--- a/xprof/convert/xplane_to_tools_data.cc	(revision 4c1e5f05c19c1bb0ba96c98780a8308d3c52417c)
++++ b/xprof/convert/xplane_to_tools_data.cc	(date 1749868150428)
+@@ -247,7 +247,7 @@
+ 
+   std::string json_output;
+   tsl::protobuf::util::JsonPrintOptions opts;
+-  opts.always_print_primitive_fields = true;
++  opts.always_print_fields_with_no_presence = true;
+   auto encode_status = tsl::protobuf::util::MessageToJsonString(
+       ConvertOpStatsToPodViewer(combined_op_stats), &json_output, opts);
+   if (!encode_status.ok()) {
+@@ -323,7 +323,7 @@
+       profile);
+   std::string json_output;
+   tsl::protobuf::util::JsonPrintOptions opts;
+-  opts.always_print_primitive_fields = true;
++  opts.always_print_fields_with_no_presence = true;
+ 
+   auto encode_status =
+       tsl::protobuf::util::MessageToJsonString(profile, &json_output, opts);

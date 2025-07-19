@@ -15,14 +15,17 @@
 #ifndef XLA_HLO_TRANSFORMS_SIMPLIFIERS_HLO_REMATERIALIZATION_H_
 #define XLA_HLO_TRANSFORMS_SIMPLIFIERS_HLO_REMATERIALIZATION_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <tuple>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/tuple_points_to_analysis.h"
@@ -37,6 +40,11 @@
 
 namespace xla {
 
+using RematAlgorithmFunction = std::function<absl::StatusOr<bool>(
+    HloComputation* computation, HloSchedule* schedule,
+    int64_t memory_limit_bytes, int64_t min_remat_size,
+    const absl::flat_hash_set<absl::string_view>& execution_threads)>;
+
 // HLO pass which rematerializes instructions to reduce peak memory use, where
 // memory use is defined as the total size of all live HLO instruction
 // values. Parameters and constants are included in memory use estimates.
@@ -46,6 +54,11 @@ namespace xla {
 // code generation.
 class HloRematerialization : public HloModulePass {
  public:
+  // The minimum cost estimate memory limit in bytes for a computation to be
+  // considered for rematerialization. Only in use for peak priority
+  // rematerialization.
+  constexpr static int64_t kMinimumCostEstimateMemoryLimitBytes =
+      1073741824;  // 1 GiB
   using ShapeSizeFunction = std::function<int64_t(const Shape&)>;
 
   using CompactShapeFunction =
@@ -56,6 +69,18 @@ class HloRematerialization : public HloModulePass {
   struct RematerializationSizes {
     int64_t before_bytes = -1;
     int64_t after_bytes = -1;
+  };
+
+  // The high-level rematerialization algorithm to use. Will significantly
+  // affect the runtime performance of the pass and the memory utilization of
+  // the HLO module.
+  enum class RematAlgorithm {
+    kAlwaysRemat,   // Rematerializes anything it can at any point the HLO is
+                    // above the memory limit. Default rematerialization
+                    // algorithm.
+    kPeakPriority,  // Prioritize rematerializing the highest peak in the module
+                    // at any given step. Much slower than the default algorithm
+                    // but can offer better memory utilization in certain cases.
   };
 
   // Mode in which the rematerialization algorithm should be run.
@@ -93,16 +118,17 @@ class HloRematerialization : public HloModulePass {
   static Shape DefaultCompactShapeFunction(const Shape& shape) { return shape; }
 
   struct Options {
-    explicit Options(HloCostAnalysis& hlo_cost_analysis,
-                     const RematerializationModeConfig& remat_mode_config,
-                     int64_t memory_limit_bytes, int block_size_limit,
-                     float block_rematerialization_factor,
-                     int64_t min_remat_size,
-                     CompactShapeFunction compact_shape_function,
-                     std::optional<HostMemoryOffloadConfig>
-                         host_memory_offload_config = std::nullopt,
-                     absl::flat_hash_map<HloComputation*, int64_t>
-                         async_computation_parallelism = {})
+    explicit Options(
+        HloCostAnalysis& hlo_cost_analysis,
+        const RematerializationModeConfig& remat_mode_config,
+        int64_t memory_limit_bytes, int block_size_limit,
+        float block_rematerialization_factor, int64_t min_remat_size,
+        CompactShapeFunction compact_shape_function,
+        std::optional<HostMemoryOffloadConfig> host_memory_offload_config =
+            std::nullopt,
+        absl::flat_hash_map<HloComputation*, int64_t>
+            async_computation_parallelism = {},
+        RematAlgorithm remat_algorithm = RematAlgorithm::kAlwaysRemat)
         : hlo_cost_analysis(hlo_cost_analysis),
           remat_mode_config(remat_mode_config),
           memory_limit_bytes(memory_limit_bytes),
@@ -113,7 +139,9 @@ class HloRematerialization : public HloModulePass {
                                      ? DefaultCompactShapeFunction
                                      : std::move(compact_shape_function)),
           host_memory_offload_config(host_memory_offload_config),
-          async_computation_parallelism(async_computation_parallelism) {}
+          async_computation_parallelism(
+              std::move(async_computation_parallelism)),
+          remat_algorithm(remat_algorithm) {}
 
     // The cost model used for decisions during rematerialization for host
     // memory offload. It is also used for getting Shape size.
@@ -154,6 +182,9 @@ class HloRematerialization : public HloModulePass {
     // Collection of async entry computations and their number of parallel
     // invocations.
     absl::flat_hash_map<HloComputation*, int64_t> async_computation_parallelism;
+
+    // The high-level rematerialization algorithm to be used.
+    RematAlgorithm remat_algorithm;
   };
 
   explicit HloRematerialization(Options options, RematerializationSizes& sizes)
@@ -171,6 +202,15 @@ class HloRematerialization : public HloModulePass {
     return computation_peak_memory_.at(computation);
   }
 
+  HloRematerialization::RematAlgorithm remat_algorithm() const {
+    return options_.remat_algorithm;
+  }
+
+  void UpdateMaxRematerializedBlockSize(int new_rematerialized_block_size) {
+    max_rematerialized_block_size_ =
+        std::max(max_rematerialized_block_size_, new_rematerialized_block_size);
+  }
+
   // Runs rematerialization on the given module. Returns whether the module was
   // changed. Requires that the module has a schedule set
   // (HloModule::has_schedule() is true) before running. Returns whether any
@@ -183,6 +223,21 @@ class HloRematerialization : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  protected:
+  // Updates the schedule to mirror the provided instruction sequence. This is
+  // used to update the schedule after each rematerialization due to the memory
+  // tracker requiring the schedule to be in sync with the instruction sequence
+  // and computation.
+  absl::Status UpdateScheduleFromSequence(
+      HloComputation* computation, HloSchedule* schedule,
+      const HloInstructionSequence& sequence,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
+
+  // Cleans up dead rematerialized instructions out of the module. Basically
+  // runs DCE and updates the schedule.
+  static absl::StatusOr<bool> CleanupRematerializedInstructions(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
+
   // Rematerializes instructions within the given computation. 'schedule'
   // constrains the order in which the computation's instructions will be
   // emitted in the backend. Rematerialized instructions will be added to the
@@ -192,11 +247,40 @@ class HloRematerialization : public HloModulePass {
       int64_t memory_limit_bytes, int64_t min_remat_size,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
+  // Calls the peak priority rematerialization
+  // algorithm recursively on the callee computations and propagates the
+  // information about whether the module was changed.
+  absl::StatusOr<bool> RematerializeCalledComputationsPeakPriority(
+      const CallSite* callsite, int64_t memory_tracker_memory_usage,
+      HloSchedule* schedule, int64_t memory_limit_bytes, int64_t min_remat_size,
+      int64_t cost_estimate_memory_limit_bytes,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
+
+  // Alternative rematerialization algorithm that prioritizes rematerializing
+  // the highest peaks first. Can offer better memory utilization than the
+  // default algorithm but is usually slower.
+  virtual absl::StatusOr<bool> RematerializeComputationPeakPriority(
+      HloComputation* computation, HloSchedule* schedule,
+      int64_t memory_limit_bytes, int64_t min_remat_size,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
+
+  // Returns the rematerialization algorithm function corresponding to the given
+  // rematerialization algorithm enum.
+  virtual absl::StatusOr<RematAlgorithmFunction> GetRematAlgorithmFunction(
+      RematAlgorithm remat_algorithm);
+
   // Computes and returns the peak memory used by the given computation. The
   // peak memory is the maximum total size of all live HLO instruction values at
   // any program point. 'order' is the order in which the HLO instructions will
   // be emitted which is used to determine lifespans of HLO values.
   absl::StatusOr<int64_t> ComputePeakMemory(
+      const HloComputation* computation, const HloInstructionSequence& order,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) const;
+
+  // Computes and returns the peak memory used by the given computation and the
+  // instruction live at that point in the program.
+  absl::StatusOr<std::tuple<int64_t, const HloInstruction*>>
+  ComputePeakMemoryAndInstruction(
       const HloComputation* computation, const HloInstructionSequence& order,
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 

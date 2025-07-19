@@ -67,6 +67,200 @@ using hlo_sharding_util::DeviceGroupTileAssignment;
 using hlo_sharding_util::GroupedSharding;
 }  // namespace
 
+Window GenNewWindow(const HloInstruction* original_dot,
+                    const HloInstruction* dot_lhs,
+                    const HloInstruction* dot_rhs, int64_t lhs_concat_dim,
+                    int64_t rhs_concat_dim, bool windowed_at_contracting_dims,
+                    bool windowed_at_batch_dims) {
+  auto new_window = original_dot->window();
+  const ConvolutionDimensionNumbers& conv_dnums =
+      original_dot->convolution_dimension_numbers();
+  if (lhs_concat_dim != -1) {
+    for (int64_t i = 0; i < conv_dnums.input_spatial_dimensions_size(); ++i) {
+      if (conv_dnums.input_spatial_dimensions(i) == lhs_concat_dim) {
+        auto wd = new_window.mutable_dimensions(i);
+        auto lhs_size = dot_lhs->shape().dimensions(lhs_concat_dim + 1);
+        if (windowed_at_contracting_dims) {
+          wd->set_size(lhs_size);
+        }
+        if (windowed_at_batch_dims) {
+          wd->set_size(lhs_size);
+          wd->set_padding_low(0);
+          wd->set_padding_high(0);
+          wd->set_stride(std::max<int64_t>(1, lhs_size - 1));
+          wd->set_window_dilation(1);
+          wd->set_base_dilation(lhs_size);
+          wd->set_window_reversal(false);
+        }
+      }
+    }
+  }
+  if (rhs_concat_dim != -1) {
+    for (int64_t i = 0; i < conv_dnums.kernel_spatial_dimensions_size(); ++i) {
+      if (conv_dnums.kernel_spatial_dimensions(i) == rhs_concat_dim &&
+          !windowed_at_contracting_dims && !windowed_at_batch_dims &&
+          lhs_concat_dim == -1) {
+        auto wd = new_window.mutable_dimensions(i);
+        auto rhs_size = dot_rhs->shape().dimensions(rhs_concat_dim + 1);
+        wd->set_size(rhs_size);
+        wd->set_padding_low(rhs_size - 1);
+        wd->set_padding_high(rhs_size - 1);
+      }
+    }
+  }
+  // Add the extra dimension to window.
+  WindowDimension* new_dim = new_window.add_dimensions();
+  if (windowed_at_contracting_dims) {
+    new_dim->set_size(2);
+    new_dim->set_padding_low(0);
+    new_dim->set_padding_high(0);
+    new_dim->set_stride(1);
+    new_dim->set_window_dilation(1);
+    new_dim->set_base_dilation(1);
+    new_dim->set_window_reversal(false);
+  } else if (windowed_at_batch_dims) {
+    new_dim->set_size(2);
+    new_dim->set_padding_low(0);
+    new_dim->set_padding_high(0);
+    new_dim->set_stride(1);  // std::max<int64_t>(1, 2 - 1)
+    new_dim->set_window_dilation(1);
+    new_dim->set_base_dilation(2);
+    new_dim->set_window_reversal(false);
+  } else {
+    if (lhs_concat_dim != -1) {
+      new_dim->set_size(1);
+      new_dim->set_padding_low(0);
+      new_dim->set_padding_high(0);
+      new_dim->set_stride(1);
+      new_dim->set_window_dilation(1);
+      new_dim->set_base_dilation(1);
+      new_dim->set_window_reversal(false);
+    }
+    if (rhs_concat_dim != -1) {
+      new_dim->set_size(2);          // rhs_size
+      new_dim->set_padding_low(1);   // rhs_size - 1
+      new_dim->set_padding_high(1);  // rhs_size - 1
+      new_dim->set_stride(1);
+      new_dim->set_window_dilation(1);
+      new_dim->set_base_dilation(1);
+      new_dim->set_window_reversal(true);
+    }
+  }
+
+  VLOG(2) << "new_window: " << new_window.ShortDebugString();
+  return new_window;
+}
+
+ConvolutionDimensionNumbers GenNewConvDNums(
+    const HloInstruction* original_dot, const HloInstruction* dot_lhs,
+    const HloInstruction* dot_rhs, int64_t lhs_concat_dim,
+    int64_t rhs_concat_dim, bool windowed_at_contracting_dims,
+    bool windowed_at_batch_dims,
+    const std::vector<int64_t>& lhs_to_output_indices,
+    const std::vector<int64_t>& rhs_to_output_indices,
+    const Shape& new_dot_shape) {
+  // Generate the new conv dimension numbers.
+  const ConvolutionDimensionNumbers& dnums =
+      original_dot->convolution_dimension_numbers();
+  // Handle the LHS dimension numbers.
+  int64_t input_batch_dimension = dnums.input_batch_dimension();
+  int64_t input_feature_dimension = dnums.input_feature_dimension();
+  std::vector<int64_t> input_spatial_dimensions(
+      dnums.input_spatial_dimensions().begin(),
+      dnums.input_spatial_dimensions().end());
+  if (lhs_concat_dim != -1) {
+    if (lhs_concat_dim <= input_batch_dimension) {
+      input_batch_dimension++;
+    }
+    if (lhs_concat_dim <= input_feature_dimension) {
+      input_feature_dimension++;
+    }
+    for (int64_t i = 0; i < input_spatial_dimensions.size(); ++i) {
+      if (lhs_concat_dim <= input_spatial_dimensions[i]) {
+        input_spatial_dimensions[i]++;
+      }
+    }
+    input_spatial_dimensions.push_back(lhs_concat_dim);
+  }
+  if (rhs_concat_dim != -1 && !windowed_at_contracting_dims &&
+      !windowed_at_batch_dims) {
+    input_spatial_dimensions.push_back(dot_lhs->shape().dimensions().size() -
+                                       1);
+  }
+  // Handle the RHS dimension numbers.
+  int64_t kernel_input_feature_dimension =
+      dnums.kernel_input_feature_dimension();
+  int64_t kernel_output_feature_dimension =
+      dnums.kernel_output_feature_dimension();
+  std::vector<int64_t> kernel_spatial_dimensions(
+      dnums.kernel_spatial_dimensions().begin(),
+      dnums.kernel_spatial_dimensions().end());
+  if (rhs_concat_dim != -1) {
+    if (rhs_concat_dim <= kernel_input_feature_dimension) {
+      kernel_input_feature_dimension++;
+    }
+    if (rhs_concat_dim <= kernel_output_feature_dimension) {
+      kernel_output_feature_dimension++;
+    }
+    for (int64_t i = 0; i < kernel_spatial_dimensions.size(); ++i) {
+      if (rhs_concat_dim <= kernel_spatial_dimensions[i]) {
+        kernel_spatial_dimensions[i]++;
+      }
+    }
+    kernel_spatial_dimensions.push_back(rhs_concat_dim);
+  }
+  if (lhs_concat_dim != -1 && !windowed_at_contracting_dims &&
+      !windowed_at_batch_dims) {
+    kernel_spatial_dimensions.push_back(dot_rhs->shape().dimensions().size() -
+                                        1);
+  }
+  // Handle the Output dimension numbers.
+  int64_t output_batch_dimension = dnums.output_batch_dimension();
+  int64_t output_feature_dimension = dnums.output_feature_dimension();
+  std::vector<int64_t> output_spatial_dimensions(
+      dnums.output_spatial_dimensions().begin(),
+      dnums.output_spatial_dimensions().end());
+  if (!windowed_at_contracting_dims) {
+    auto output_slice_dim = lhs_concat_dim != -1
+                                ? lhs_to_output_indices[lhs_concat_dim]
+                                : rhs_to_output_indices[rhs_concat_dim];
+    if (output_slice_dim <= output_batch_dimension) {
+      output_batch_dimension++;
+    }
+    if (output_slice_dim <= output_feature_dimension) {
+      output_feature_dimension++;
+    }
+    for (int64_t i = 0; i < output_spatial_dimensions.size(); ++i) {
+      if (output_slice_dim <= output_spatial_dimensions[i]) {
+        output_spatial_dimensions[i]++;
+      }
+    }
+    output_spatial_dimensions.push_back(output_slice_dim);
+  } else {
+    output_spatial_dimensions.push_back(new_dot_shape.dimensions().size() - 1);
+  }
+  // Construct the new dot dimension numbers.
+  ConvolutionDimensionNumbers new_dnums;
+  new_dnums.set_input_batch_dimension(input_batch_dimension);
+  new_dnums.set_input_feature_dimension(input_feature_dimension);
+  for (auto dim : input_spatial_dimensions) {
+    new_dnums.add_input_spatial_dimensions(dim);
+  }
+  new_dnums.set_kernel_input_feature_dimension(kernel_input_feature_dimension);
+  new_dnums.set_kernel_output_feature_dimension(
+      kernel_output_feature_dimension);
+  for (auto dim : kernel_spatial_dimensions) {
+    new_dnums.add_kernel_spatial_dimensions(dim);
+  }
+  new_dnums.set_output_batch_dimension(output_batch_dimension);
+  new_dnums.set_output_feature_dimension(output_feature_dimension);
+  for (auto dim : output_spatial_dimensions) {
+    new_dnums.add_output_spatial_dimensions(dim);
+  }
+
+  return new_dnums;
+}
+
 bool HasReplicatedSharding(const HloSharding& sharding) {
   if (sharding.IsTuple()) {
     return absl::c_any_of(sharding.tuple_elements(), HasReplicatedSharding);
@@ -263,8 +457,85 @@ bool IsIota(const Array<int64_t>& x) {
   return true;
 }
 
-// TODO(b/365830796): Make per group collective op creator create ReplicaGroupV2
-// collectives.
+// Expand the device groups, making each device group follow the format of the
+// partition group.
+std::vector<std::vector<int64_t>> ExpandDeviceGroups(
+    const DeviceGroupTileAssignment& device_groups,
+    const std::vector<std::vector<int64_t>>& partition_subgroups) {
+  // Example: Given device groups of {{0,1,2,3},{4,5,6,7}} and partition
+  // subgroups of {{0,2}, {1,3}} returns device groups of {{0,2}, {1,3}, {4,6},
+  // {5,7}}
+  if (partition_subgroups.empty()) {
+    return device_groups.flattened_device_groups();
+  }
+  std::vector<std::vector<int64_t>> result(partition_subgroups.size() *
+                                           device_groups.num_groups());
+  for (int64_t g = 0; g < device_groups.num_groups(); ++g) {
+    for (int64_t i = 0; i < partition_subgroups.size(); ++i) {
+      result[g * partition_subgroups.size() + i].resize(
+          partition_subgroups[i].size());
+      for (int64_t j = 0; j < partition_subgroups[i].size(); ++j) {
+        result[g * partition_subgroups.size() + i][j] =
+            device_groups(g, partition_subgroups[i][j]);
+      }
+    }
+  }
+  return result;
+}
+
+// Expand the device groups, making each device group follow the format of the
+// iota partition group list.
+std::optional<IotaReplicaGroupList> ExpandDeviceGroupsWithIota(
+    const DeviceGroupTileAssignment& device_groups,
+    const IotaReplicaGroupList& partition_group_list) {
+  // Example: Given device groups of devices=[2,4]<=[8] and partition
+  // group list of devices=[2,2]<=[2,2]T(1,0) returns device groups of
+  // devices=[4,2]<=[2,2,2]T(0,2,1).
+
+  // If device groups are not in iota format, we cannot expand the device
+  // groups into an iota format.
+  if (!device_groups.has_iota()) {
+    return std::nullopt;
+  }
+  CHECK(partition_group_list.num_replica_groups() *
+            partition_group_list.num_devices_per_group() ==
+        device_groups.num_devices_per_group());
+  int64_t final_num_replica_groups =
+      partition_group_list.num_replica_groups() * device_groups.num_groups();
+  int64_t final_num_devices_per_group =
+      partition_group_list.num_devices_per_group();
+  // 1. Split the 2nd dimension of device groups to match dimensions of
+  // partition group list.
+  // 2. Apply transpose to the split dimensions matching the partition group
+  // list transpose perm.
+  std::vector<int64_t> reshape_dims =
+      std::vector<int64_t>(partition_group_list.reshape_dims().begin(),
+                           partition_group_list.reshape_dims().end());
+  reshape_dims.insert(reshape_dims.begin(), device_groups.num_groups());
+  std::vector<int> transpose_perm =
+      std::vector<int>(partition_group_list.transpose_perm().begin(),
+                       partition_group_list.transpose_perm().end());
+  for (int64_t i = 0; i < transpose_perm.size(); ++i) {
+    transpose_perm[i] += 1;
+  }
+  transpose_perm.insert(transpose_perm.begin(), 0);
+  TileAssignment processed_device_groups =
+      device_groups.Reshape(reshape_dims).Transpose(transpose_perm);
+  // If after transpose we don't have an iota, then we can't expand the device
+  // groups with iota.
+  if (!processed_device_groups.iota().has_value()) {
+    return std::nullopt;
+  }
+
+  if (processed_device_groups.iota().has_value()) {
+    return IotaReplicaGroupList(
+        final_num_replica_groups, final_num_devices_per_group,
+        processed_device_groups.iota()->reshape_dims(),
+        processed_device_groups.iota()->transpose_perm());
+  }
+  return std::nullopt;
+}
+
 SPMDCollectiveOpsCreator GetPerGroupCollectiveOpsCreator(
     const SPMDCollectiveOpsCreator& creator,
     const DeviceGroupTileAssignment& device_groups) {
@@ -287,34 +558,36 @@ SPMDCollectiveOpsCreator GetPerGroupCollectiveOpsCreator(
     return GetInGroupPartitionId(creator.create_partition_id(b),
                                  *device_groups_ptr, b);
   };
-  auto expand_partition_groups =
-      [device_groups_ptr](
-          const std::vector<std::vector<int64_t>>& partition_subgroups) {
-        auto& device_groups = *device_groups_ptr;
-        if (partition_subgroups.empty()) {
-          return device_groups.flattened_device_groups();
-        }
-        std::vector<std::vector<int64_t>> result(
-            partition_subgroups.size() * device_groups_ptr->num_groups());
-        for (int64_t g = 0; g < device_groups_ptr->num_groups(); ++g) {
-          for (int64_t i = 0; i < partition_subgroups.size(); ++i) {
-            result[g * partition_subgroups.size() + i].resize(
-                partition_subgroups[i].size());
-            for (int64_t j = 0; j < partition_subgroups[i].size(); ++j) {
-              result[g * partition_subgroups.size() + i][j] =
-                  device_groups(g, partition_subgroups[i][j]);
-            }
-          }
-        }
-        return result;
-      };
   result.create_cross_partition_all_reduce =
-      [creator, expand_partition_groups](
+      [creator, device_groups_ptr](
           SpmdBuilder* b, HloInstruction* operand, HloComputation* reduction,
           const std::vector<std::vector<int64_t>>& partition_subgroups,
           int64_t channel_id) {
         return creator.create_cross_partition_all_reduce(
-            b, operand, reduction, expand_partition_groups(partition_subgroups),
+            b, operand, reduction,
+            ExpandDeviceGroups(*device_groups_ptr, partition_subgroups),
+            channel_id);
+      };
+  result.create_cross_partition_all_reduce_with_iota_device_list =
+      [creator, device_groups_ptr](
+          SpmdBuilder* b, HloInstruction* operand, HloComputation* reduction,
+          const IotaReplicaGroupList& partition_group_list,
+          int64_t channel_id) {
+        // Try to expand the device group list, but if this fails fallback
+        // to creating collective with list of list of integers representation.
+        std::optional<IotaReplicaGroupList> expanded_iota_partition_group_list =
+            ExpandDeviceGroupsWithIota(*device_groups_ptr,
+                                       partition_group_list);
+        if (!expanded_iota_partition_group_list.has_value()) {
+          return creator.create_cross_partition_all_reduce(
+              b, operand, reduction,
+              ExpandDeviceGroups(
+                  *device_groups_ptr,
+                  partition_group_list.flattened_replica_groups()),
+              channel_id);
+        }
+        return creator.create_cross_partition_all_reduce_with_iota_device_list(
+            b, operand, reduction, *expanded_iota_partition_group_list,
             channel_id);
       };
   result.create_cross_partition_collective_permute =
@@ -336,24 +609,73 @@ SPMDCollectiveOpsCreator GetPerGroupCollectiveOpsCreator(
             b, operand, expanded_pairs, next_channel_id);
       };
   result.create_cross_partition_all_to_all =
-      [creator, expand_partition_groups](
+      [creator, device_groups_ptr](
           SpmdBuilder* b, absl::Span<HloInstruction* const> operands,
           const std::vector<std::vector<int64_t>>& partition_subgroups,
           int64_t channel_id, std::optional<int64_t> split_dimension) {
         return creator.create_cross_partition_all_to_all(
-            b, operands, expand_partition_groups(partition_subgroups),
+            b, operands,
+            ExpandDeviceGroups(*device_groups_ptr, partition_subgroups),
             channel_id, split_dimension);
+      };
+  result.create_cross_partition_all_to_all_with_iota_device_list =
+      [creator, device_groups_ptr](
+          SpmdBuilder* b, absl::Span<HloInstruction* const> operands,
+          const IotaReplicaGroupList& partition_group_list, int64_t channel_id,
+          std::optional<int64_t> split_dimension) {
+        // Try to expand the partition group list, but if this fails fallback
+        // to creating collective with list of list of integers representation.
+        std::optional<IotaReplicaGroupList> expanded_iota_partition_group_list =
+            ExpandDeviceGroupsWithIota(*device_groups_ptr,
+                                       partition_group_list);
+        if (!expanded_iota_partition_group_list.has_value()) {
+          return creator.create_cross_partition_all_to_all(
+              b, operands,
+              ExpandDeviceGroups(
+                  *device_groups_ptr,
+                  partition_group_list.flattened_replica_groups()),
+              channel_id, split_dimension);
+        }
+        return creator.create_cross_partition_all_to_all_with_iota_device_list(
+            b, operands, *expanded_iota_partition_group_list, channel_id,
+            split_dimension);
       };
   if (creator.create_cross_partition_all_gather) {
     result.create_cross_partition_all_gather =
-        [creator, expand_partition_groups](
+        [creator, device_groups_ptr](
             SpmdBuilder* b, HloInstruction* operand, const Shape& ag_shape,
             const std::vector<std::vector<int64_t>>& partition_subgroups,
             int64_t channel_id, int64_t all_gather_dimension) {
           return creator.create_cross_partition_all_gather(
               b, operand, ag_shape,
-              expand_partition_groups(partition_subgroups), channel_id,
-              all_gather_dimension);
+              ExpandDeviceGroups(*device_groups_ptr, partition_subgroups),
+              channel_id, all_gather_dimension);
+        };
+  }
+  if (creator.create_cross_partition_all_gather_with_iota_device_list) {
+    result.create_cross_partition_all_gather_with_iota_device_list =
+        [creator, device_groups_ptr](
+            SpmdBuilder* b, HloInstruction* operand, const Shape& ag_shape,
+            const IotaReplicaGroupList& partition_group_list,
+            int64_t channel_id, int64_t all_gather_dimension) {
+          // Try to expand the device group list, but if this fails fallback
+          // to creating collective with list of list of integers
+          // representation.
+          std::optional<IotaReplicaGroupList>
+              expanded_iota_partition_group_list = ExpandDeviceGroupsWithIota(
+                  *device_groups_ptr, partition_group_list);
+          if (!expanded_iota_partition_group_list.has_value()) {
+            return creator.create_cross_partition_all_gather(
+                b, operand, ag_shape,
+                ExpandDeviceGroups(
+                    *device_groups_ptr,
+                    partition_group_list.flattened_replica_groups()),
+                channel_id, all_gather_dimension);
+          }
+          return creator
+              .create_cross_partition_all_gather_with_iota_device_list(
+                  b, operand, ag_shape, *expanded_iota_partition_group_list,
+                  channel_id, all_gather_dimension);
         };
   }
   return result;
@@ -2582,12 +2904,6 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
     return std::nullopt;
   }
 
-  // If the sharding does not utilize all the partitions, we skip generating
-  // compressed format.
-  if (sharding.tile_assignment().num_elements() != num_partitions) {
-    return std::nullopt;
-  }
-
   // The goal of this function is to generate partition groups which span across
   // target dims without using explicit indexing and instead using transposes
   // and reshapes of the tile assignment. We do this by reshaping the tile
@@ -2674,12 +2990,6 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsForReplication(
   // If provided sharding is not HloShardingV2, we cannot generate partition
   // groups in an iota format.
   if (!sharding.tile_assignment().iota().has_value()) {
-    return std::nullopt;
-  }
-
-  // If the sharding does not utilize all the partitions, we skip generating
-  // compressed format.
-  if (sharding.tile_assignment().num_elements() != num_partitions) {
     return std::nullopt;
   }
 

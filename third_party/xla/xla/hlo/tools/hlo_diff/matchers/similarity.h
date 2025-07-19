@@ -16,28 +16,29 @@ limitations under the License.
 #ifndef XLA_HLO_TOOLS_HLO_DIFF_MATCHERS_SIMILARITY_H_
 #define XLA_HLO_TOOLS_HLO_DIFF_MATCHERS_SIMILARITY_H_
 
-#include "absl/base/nullability.h"
+#include "absl/functional/function_ref.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
 
 namespace xla {
 namespace hlo_diff {
 
-// A heuristic score based on the node attributes. Calculated by comparing the
-// fingerprint, name and generation of the nodes. This set of parameters
-// together with min_similarity threshold = 0.75 works the best so far, and
-// might need to be tuned later.
-double NodeAttributesSimilarity(const HloInstructionNode* absl_nonnull left,
-                                const HloInstructionNode* absl_nonnull right);
+// Function to compute property match score between two instructions.
+// Compares various properties of the instructions and returns a double score.
+// Higher the score, more similar the instructions are.
+using InstructionSimilarityFn = absl::FunctionRef<double(
+    const HloInstructionNode*, const HloInstructionNode*)>;
 
 // A heuristic score based on the ancestor subgraphs of the given nodes.
-// Calculated by comparing the fingerprints of the ancestors of the nodes.
-double AncestorSubGraphSimilarity(const HloInstructionNode* left,
-                                  const HloInstructionNode* right,
-                                  int candidate_traversal_limit,
-                                  int min_bfs_distance, int left_graph_size,
-                                  int right_graph_size);
+// Calculated by the longest common subsequence of the fingerprints of the
+// ancestors of the nodes in BFS order.
+double AncestorSubGraphLcsSimilarity(const HloInstructionNode* left,
+                                     const HloInstructionNode* right,
+                                     int candidate_traversal_limit,
+                                     int min_bfs_distance, int left_graph_size,
+                                     int right_graph_size);
 
-// Returns similarity of properties between two instructions.
+// A heuristic score based on the node properties.
 double NodePropertySimilarity(const HloInstructionNode* left,
                               const HloInstructionNode* right);
 
@@ -50,6 +51,17 @@ double ParamPropertySimilarity(const HloInstructionNode* left,
 // sharding, layout, name and users.
 double ConstantPropertySimilarity(const HloInstructionNode* left,
                                   const HloInstructionNode* right);
+
+inline InstructionSimilarityFn PropertySimilarityFnForOpcode(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kParameter:
+      return ParamPropertySimilarity;
+    case HloOpcode::kConstant:
+      return ConstantPropertySimilarity;
+    default:
+      return NodePropertySimilarity;
+  }
+};
 
 }  // namespace hlo_diff
 }  // namespace xla

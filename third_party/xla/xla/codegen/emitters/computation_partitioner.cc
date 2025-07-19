@@ -84,7 +84,10 @@ std::vector<IndexingMapSet> ComputeOperandIndexingMaps(
     auto operands_indexing =
         ComputeOutputToInputIndexing(instr, /*output_id=*/0, mlir_context);
     operands_indexing.Simplify();
-    indexing_maps_per_operand = std::move(operands_indexing.indexing_maps);
+    indexing_maps_per_operand.reserve(operands_indexing.indexing_maps.size());
+    for (auto& indexing_maps : operands_indexing.indexing_maps) {
+      indexing_maps_per_operand.push_back(ToIndexingMapSet(indexing_maps));
+    }
   }
   return indexing_maps_per_operand;
 }

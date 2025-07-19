@@ -76,10 +76,27 @@ enum QuantizationTrait { kFullQuantization, kDynamicRangeQuantization };
 enum class OpQuantizationType { kSRQ, kDRQ, kWeightOnly, kUnsupported };
 
 static LogicalResult IsDrqTensor(Value value, Value& fq_input) {
-  if (auto composite_op = llvm::dyn_cast_or_null<stablehlo::CompositeOp>(
-          value.getDefiningOp())) {
+  // Also allows the edge case where the input is a reshape op following a
+  // fake quant op.
+  // This is to support the case such as:
+  // %2077 = "vhlo.composite_v1"(%73, %69, %2070) : (tensor<i32>, tensor<i32>,
+  //  tensor<1x?x512xf32>) -> tensor<1x?x512xf32>
+  // %2078 = "tfl.reshape"(%2077, %99) : (tensor<1x?x512xf32>, tensor<2xi32>) ->
+  //  tensor<?x512xf32>
+  // %2079 = "tfl.pseudo_qconst"() <{qtype = tensor<64x512x!quant.uniform<i8....
+  // %2080 = "tfl.dequantize"(%2079) %2081 = "tfl.fully_connected"
+  //  (%2078, %2080, %0) : (tensor<?x512xf32>, tensor<64x512xf32>, none) ->
+  //  tensor<?x64xf32>
+  // TODO - b/422588785: Have proper support for dynamic shaped models.
+  auto v = value;
+  if (auto reshape_op = llvm::dyn_cast_or_null<ReshapeOp>(v.getDefiningOp())) {
+    v = reshape_op.getOperand(0);
+  }
+  if (auto composite_op =
+          llvm::dyn_cast_or_null<stablehlo::CompositeOp>(v.getDefiningOp())) {
     if (IsDrqFakeQuant(composite_op)) {
-      fq_input = composite_op.getOperand(0);
+      int num_operands = composite_op.getNumOperands();
+      fq_input = composite_op.getOperand(num_operands - 1);
       return success();
     }
   }
@@ -228,6 +245,12 @@ class StrictQuantizationPattern : public RewritePattern {
 
       auto op_quant_type = GetOpQuantizationType(quantizing_op);
 
+      if (op_quant_type == OpQuantizationType::kWeightOnly) {
+        return rewriter.notifyMatchFailure(
+            quantizing_op,
+            "Weight only op does not need any Q-DQ fused to it.");
+      }
+
       if (op_quant_type == OpQuantizationType::kUnsupported) {
         return rewriter.notifyMatchFailure(
             quantizing_op, "Unsupported quantization type for op: " +
@@ -247,13 +270,11 @@ class StrictQuantizationPattern : public RewritePattern {
         }
 
         if (Value dq_input; HasDQParent(operand, dq_input).succeeded()) {
-          if (op_quant_type == OpQuantizationType::kWeightOnly) {
-            inputs.push_back(operand);
-          } else {
-            // In both SRQ and DRQ cases, the DQ is fused in.
-            is_operand_or_result_modified = true;
-            inputs.push_back(dq_input);
-          }
+          // In both SRQ and DRQ cases, the DQ is fused in.
+          // At this stage, we know it is not weight only as we have explicitly
+          // returned from this function above if it is weight only.
+          is_operand_or_result_modified = true;
+          inputs.push_back(dq_input);
         } else if (Value fq_input; IsDrqTensor(operand, fq_input).succeeded()) {
           is_operand_or_result_modified = true;
           inputs.push_back(fq_input);

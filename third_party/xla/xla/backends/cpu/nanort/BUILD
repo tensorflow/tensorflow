@@ -130,6 +130,9 @@ cc_library(
     name = "ifrt_client",
     srcs = ["ifrt_client.cc"],
     hdrs = ["ifrt_client.h"],
+    copts = [
+        "-Wno-unused-variable",
+    ],
     visibility = internal_visibility([
         "//xla/backends/cpu/nanort:nanort_users",
     ]),

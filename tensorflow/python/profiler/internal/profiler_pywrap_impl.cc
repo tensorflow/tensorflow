@@ -37,8 +37,8 @@ using tsl::profiler::GetRemoteSessionManagerOptionsLocked;
 
 absl::Status ProfilerSessionWrapper::Start(
     const char* logdir,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        options) {
+    const absl::flat_hash_map<std::string,
+                              std::variant<bool, int, std::string>>& options) {
   auto opts = GetRemoteSessionManagerOptionsLocked(logdir, options);
   session_ = tsl::ProfilerSession::Create(opts.profiler_options());
   logdir_ = logdir;

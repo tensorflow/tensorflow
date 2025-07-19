@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <utility>
 #include <vector>
@@ -38,7 +39,8 @@ iopddl::Cost ConvertCost(const double cost) {
   return static_cast<int64_t>(cost);
 }
 
-iopddl::Problem ConvertToProblem(const AutoShardingSolverRequest& request) {
+iopddl::Problem ConvertToProblem(const AutoShardingSolverRequest& request,
+                                 const bool use_follower_constraints) {
   iopddl::Problem problem = {.name = request.request_name()};
   std::vector<iopddl::Interval> node_intervals;
   // Process all nodes, taking intervals if provided.
@@ -171,17 +173,19 @@ iopddl::Problem ConvertToProblem(const AutoShardingSolverRequest& request) {
     }
   }
   // The third kind of edges come from request.s_follow
-  for (int64_t node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
-    CHECK_LT(node_idx, request.s_follow_size());
-    if (request.s_follow(node_idx) < 0) {
-      continue;
-    }
-    problem.edges.push_back({{request.s_follow(node_idx), node_idx}});
-    CHECK_LT(node_idx, request.s_len_size());
-    for (int64_t i = 0; i < request.s_len(node_idx); ++i) {
-      for (int64_t j = 0; j < request.s_len(node_idx); ++j) {
-        const iopddl::Cost cost = (i == j) ? 0 : kInfinityInt;
-        problem.edges.back().strategies.push_back({cost});
+  if (use_follower_constraints) {
+    for (int64_t node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
+      CHECK_LT(node_idx, request.s_follow_size());
+      if (request.s_follow(node_idx) < 0) {
+        continue;
+      }
+      problem.edges.push_back({{request.s_follow(node_idx), node_idx}});
+      CHECK_LT(node_idx, request.s_len_size());
+      for (int64_t i = 0; i < request.s_len(node_idx); ++i) {
+        for (int64_t j = 0; j < request.s_len(node_idx); ++j) {
+          const iopddl::Cost cost = (i == j) ? 0 : kInfinityInt;
+          problem.edges.back().strategies.push_back({cost});
+        }
       }
     }
   }
@@ -195,7 +199,7 @@ static bool IsEdgeFollower(const iopddl::Problem& problem,
                            const iopddl::Edge& edge) {
   int strategies0 = problem.nodes[edge.nodes[0]].strategies.size();
   int strategies1 = problem.nodes[edge.nodes[1]].strategies.size();
-  if (strategies0 != strategies1) {
+  if (edge.nodes[0] == edge.nodes[1] || strategies0 != strategies1) {
     return false;
   }
   for (iopddl::StrategyIdx idx0 = 0; idx0 < strategies0; ++idx0) {
@@ -212,13 +216,16 @@ static bool IsEdgeFollower(const iopddl::Problem& problem,
   return true;
 }
 
-static bool IsEdgeAlias(const iopddl::Edge& edge) {
+bool IsEdgeAlias(const iopddl::Edge& edge) {
+  bool has_infinity = false;
   for (const iopddl::Strategy& strategy : edge.strategies) {
     if (strategy.cost == kInfinityInt) {
-      return true;
+      has_infinity = true;
+    } else if (strategy.cost > 0) {
+      return false;
     }
   }
-  return false;
+  return has_infinity;
 }
 
 AutoShardingSolverRequest ConvertToSolverRequest(
@@ -277,12 +284,29 @@ AutoShardingSolverRequest ConvertToSolverRequest(
 }
 
 std::vector<int64_t> GetFollowers(const iopddl::Problem& problem) {
-  std::vector<int64_t> followers(problem.nodes.size(), -1);
+  std::vector<std::vector<int64_t>> followees(problem.nodes.size());
   for (iopddl::EdgeIdx edge_idx = 0; edge_idx < problem.edges.size();
        ++edge_idx) {
     const iopddl::Edge& edge = problem.edges[edge_idx];
     if (IsEdgeFollower(problem, edge)) {
-      followers[edge.nodes[1]] = edge.nodes[0];
+      followees[edge.nodes[0]].push_back(edge.nodes[1]);
+      followees[edge.nodes[1]].push_back(edge.nodes[0]);
+    }
+  }
+  // Ensure that followees (and their followees, etc.) follow the root node.
+  std::vector<int64_t> followers(problem.nodes.size(), -1);
+  std::function<void(int64_t, int64_t)> propagate = [&](int64_t root_idx,
+                                                        int64_t node_idx) {
+    if (root_idx < node_idx && followers[node_idx] == -1) {
+      followers[node_idx] = root_idx;
+      for (int64_t followee_idx : followees[node_idx]) {
+        propagate(root_idx, followee_idx);
+      }
+    }
+  };
+  for (NodeIdx root_idx = 0; root_idx < problem.nodes.size(); ++root_idx) {
+    for (int64_t node_idx : followees[root_idx]) {
+      propagate(root_idx, node_idx);
     }
   }
   return followers;

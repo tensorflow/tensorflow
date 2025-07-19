@@ -260,6 +260,14 @@ TEST(QuantizedDivOpTest, QuantizedNoActivationUInt8) {
   QuantizedNoActivation<TensorType_UINT8, uint8_t>();
 }
 
+TEST(QuantizedDivOpTest, QuantizedNoActivationInt8) {
+  QuantizedNoActivation<TensorType_INT8, int8_t>();
+}
+
+TEST(QuantizedDivOpTest, QuantizedNoActivationInt16) {
+  QuantizedNoActivation<TensorType_INT16, int16_t>();
+}
+
 template <TensorType tensor_type, typename integer_dtype>
 void QuantizedActivationRELU_N1_TO_1() {
   const float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
@@ -286,6 +294,14 @@ void QuantizedActivationRELU_N1_TO_1() {
 
 TEST(QuantizedDivOpTest, QuantizedActivationRELU_N1_TO_1UInt8) {
   QuantizedActivationRELU_N1_TO_1<TensorType_UINT8, uint8_t>();
+}
+
+TEST(QuantizedDivOpTest, QuantizedActivationRELU_N1_TO_1Int8) {
+  QuantizedActivationRELU_N1_TO_1<TensorType_INT8, int8_t>();
+}
+
+TEST(QuantizedDivOpTest, QuantizedActivationRELU_N1_TO_1Int16) {
+  QuantizedActivationRELU_N1_TO_1<TensorType_INT16, int16_t>();
 }
 
 template <TensorType tensor_type, typename integer_dtype>
@@ -315,6 +331,14 @@ TEST(QuantizedDivOpTest, QuantizedVariousInputShapesUInt8) {
   QuantizedVariousInputShapes<TensorType_UINT8, uint8_t>();
 }
 
+TEST(QuantizedDivOpTest, QuantizedVariousInputShapesInt8) {
+  QuantizedVariousInputShapes<TensorType_INT8, int8_t>();
+}
+
+TEST(QuantizedDivOpTest, QuantizedVariousInputShapesInt16) {
+  QuantizedVariousInputShapes<TensorType_INT16, int16_t>();
+}
+
 template <TensorType tensor_type, typename integer_dtype>
 void QuantizedWithBroadcast() {
   const float kQuantizedTolerance = GetTolerance(-3.0, 3.0);
@@ -338,6 +362,14 @@ void QuantizedWithBroadcast() {
 
 TEST(QuantizedDivOpTest, QuantizedWithBroadcastUInt8) {
   QuantizedWithBroadcast<TensorType_UINT8, uint8_t>();
+}
+
+TEST(QuantizedDivOpTest, QuantizedWithBroadcastInt8) {
+  QuantizedWithBroadcast<TensorType_INT8, int8_t>();
+}
+
+TEST(QuantizedDivOpTest, QuantizedWithBroadcastInt16) {
+  QuantizedWithBroadcast<TensorType_INT16, int16_t>();
 }
 
 }  // namespace

@@ -76,7 +76,8 @@ absl::Status GemmThunk::Initialize(const InitializeParams& params) {
 }
 
 absl::StatusOr<ThunkProto> GemmThunk::ToProto() const {
-  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   auto* gemm_thunk_proto = proto.mutable_gemm_thunk();
   *gemm_thunk_proto->mutable_gemm_config() = config_.ToProto();

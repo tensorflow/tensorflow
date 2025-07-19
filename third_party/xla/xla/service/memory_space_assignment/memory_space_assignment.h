@@ -136,7 +136,7 @@ Classes
     before the while loop, 1 for the while loop's body parameter, and 1 for the
     result of the while loop. There are situations heading into a while loop, in
     which the while loop input is both in alternate memory and default memory.
-    (For example, this could happen beause we want the buffer in alternate
+    (For example, this could happen because we want the buffer in alternate
     memory for the while loop and default memory after the while loop, but we
     don't have resources to evict the buffer after the while loop.) In those
     cases, we use a mirrored allocation for the AllocationValue inside the
@@ -191,6 +191,7 @@ Useful logging and error messages
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -318,7 +319,8 @@ class MemorySpaceAssignment {
   // Runs the MemorySpaceAssignment pass.
   static absl::StatusOr<std::unique_ptr<PresetAssignments>> Run(
       HloModule* module, const HloLiveRange& hlo_live_range,
-      const HloAliasAnalysis& alias_analysis, const Options& options);
+      const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
+      const Options& options);
 
   // Calculates asynchronous copy statistics.
   absl::StatusOr<AsyncCopyStats> CalculateAsyncCopyStats(
@@ -354,9 +356,11 @@ class MemorySpaceAssignment {
 
   const Options& options() const { return options_; }
 
-  MemorySpaceAssignment(HloModule* module, const Options& options,
+  MemorySpaceAssignment(HloModule* module, const AliasInfo* alias_info,
+                        const Options& options,
                         const HloLiveRange& hlo_live_range)
       : module_(module),
+        alias_info_(alias_info),
         options_(options),
         flattened_instructions_(hlo_live_range.flattened_instruction_sequence()
                                     .instructions()
@@ -410,11 +414,19 @@ class MemorySpaceAssignment {
   // corresponding CopyDones follow the same order.
   void ScheduleAsynchronousCopies();
 
-  // Remove the positions and chunks associated with the instruction from
+  // Remove the positions and chunks associated with instructions, from
   // alternate_memory_assignments_.
-  void RemoveAssignmentForInstruction(const HloInstruction* instruction);
+  void RemoveAlternateMemoryAssignments(
+      const absl::flat_hash_set<const HloInstruction*>& instructions);
+
+  // Remove the positions and chunks associated with instructions, from
+  // scoped_memory_assignments_.
+  void RemoveScopedMemoryAssignments(
+      const absl::flat_hash_set<const HloInstruction*>& instructions);
 
   HloModule* module_;
+  // Backend specific aliasing information.
+  const AliasInfo* alias_info_;
   const Options& options_;
   std::vector<HloInstruction*> flattened_instructions_;
   absl::flat_hash_set<const HloComputation*> computations_in_schedule_;

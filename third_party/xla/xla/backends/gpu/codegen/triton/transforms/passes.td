@@ -29,13 +29,22 @@ def TritonXLAExtractInsertToTritonPass : Pass<"triton-xla-extract-insert-to-trit
     "triton::TritonDialect",
     "::xla::XlaDialect"
   ];
-  let options = [
-    Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
-           "Serialized stream_executor::GPUDeviceInfo proto">,
-    Option<"tma_enabled_", "tma_enabled", "bool", /*default=*/"false",
-           "Flag to enable/disable TMA">,
-  ];
   let constructor = "CreateTritonXLAExtractInsertToTritonPass()";
+}
+
+def TritonXLASqueezeDimsPass : Pass<"triton-xla-squeeze-dims", "mlir::ModuleOp"> {
+  let summary = "Remove superfluous size-1 dimensions.";
+  let description = [{
+    This pass tries to remove size-1 dimensions from tensors.
+  }];
+  let dependentDialects = [
+    "::mlir::triton::xla::XlaTritonDialect"
+  ];
+  let options = [
+    Option<"finalize_", "finalize", "bool", "true",
+           "Convert squeeze_dims back to reshape. Disable for testing only.">,
+  ];
+  let constructor = "CreateTritonXLASqueezeDimsPass()";
 }
 
 def GeneralizeKernelSignaturePass
@@ -46,18 +55,6 @@ def GeneralizeKernelSignaturePass
     pointers and cast them to global ones within the kernel.
   }];
   let constructor = "CreateGeneralizeKernelSignaturePass()";
-}
-
-def PreventMmaV3LoopUnrollingPass
-    : Pass<"prevent-mmav3-loop-unrolling", "mlir::ModuleOp"> {
-  let summary = "Prevent MMAv3 loop unrolling.";
-  let description = [{
-    This pass is a result of b/344841434:
-    PTX sometimes unrolls wgmma loops that can cause a 1000x slow down in
-    compilation time. Most unrolling has already been done before PTX,
-    this pragma prevents ptxas from doing more.
-  }];
-  let constructor = "CreatePreventMmaV3LoopUnrollingPass()";
 }
 
 def ExtractTmaInfoPass
@@ -79,6 +76,9 @@ def LoadInt4RewritePass
     the twice smaller size. It also replaces the plain ExtSIOp upcast to the
     int8 tensor with the unpack sequence.
   }];
+  let dependentDialects = [
+    "triton::TritonDialect"
+  ];
   let constructor = "CreateInt4ToPackedInt4RewritePass()";
 }
 

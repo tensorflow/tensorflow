@@ -29,11 +29,6 @@ limitations under the License.
 #include "absl/base/macros.h"
 #include "absl/strings/string_view.h"  // IWYU pragma: export
 
-// TODO: b/323943471 - This macro should eventually be provided by Abseil.
-#ifndef ABSL_DEPRECATE_AND_INLINE
-#define ABSL_DEPRECATE_AND_INLINE()
-#endif
-
 namespace tsl {
 
 using StringPiece ABSL_DEPRECATE_AND_INLINE() = absl::string_view;

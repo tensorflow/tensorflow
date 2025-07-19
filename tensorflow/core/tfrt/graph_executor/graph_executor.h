@@ -158,7 +158,7 @@ class GraphExecutor {
                       mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir,
                       std::shared_ptr<ExecutableContext> executable_context,
                       std::optional<StreamCallbackId> stream_callback_id,
-                      bool is_restore, FunctionLibraryDefinition flib_def,
+                      FunctionLibraryDefinition flib_def,
                       tsl::monitoring::SamplerCell* latency_sampler);
 
     // Returns this instance's CostRecorder if it is time to update costs,
@@ -188,8 +188,6 @@ class GraphExecutor {
     std::optional<StreamCallbackId> stream_callback_id() const {
       return stream_callback_id_;
     }
-
-    bool is_restore() const { return is_restore_; }
 
     const ProcessFunctionLibraryRuntime& process_function_library_runtime()
         const {
@@ -231,7 +229,6 @@ class GraphExecutor {
     SyncResourceState sync_resource_state_;
 
     std::optional<StreamCallbackId> stream_callback_id_;
-    bool is_restore_;
     FunctionLibraryDefinition flib_def_;
     ProcessFunctionLibraryRuntime pflr_;
     tsl::monitoring::SamplerCell* latency_sampler_;

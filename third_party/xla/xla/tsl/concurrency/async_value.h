@@ -375,6 +375,7 @@ class AsyncValue {
     virtual void operator()() = 0;
 
     WaiterListNode* next = nullptr;
+    Context context{ContextKind::kThread};
   };
 
   // The waiter list and the state are compacted into one single atomic word as
@@ -486,13 +487,11 @@ class AsyncValue {
     static_assert(std::is_invocable_v<Waiter>, "Waiter must be invocable");
 
     struct Node final : public WaiterListNode {
-      explicit Node(Waiter waiter)
-          : context(ContextKind::kThread), waiter(std::move(waiter)) {}
+      explicit Node(Waiter waiter) : waiter(std::move(waiter)) {}
       void operator()() final {
         WithContext wc(context);
         std::move(waiter)();
       }
-      Context context;
       Waiter waiter;
     };
 

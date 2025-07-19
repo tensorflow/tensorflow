@@ -565,6 +565,13 @@ tf_cc_test(
     srcs = if_xla_available([
         "aot_compiled_test.cc",
     ]),
+    # For Windows the test works locally, but for some reason throws
+    # "The filename or extension is too long." when run on our RBE.
+    # Given that the test fails for Windows RBE infrastructure reasons,
+    # but passes otherwise disabling for Windows it for now.
+    tags = [
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/core:test_main",
     ] + if_xla_available([

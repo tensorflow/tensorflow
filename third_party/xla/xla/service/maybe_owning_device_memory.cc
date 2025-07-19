@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <optional>
 #include <utility>
+#include <variant>
 
-#include "absl/types/variant.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 
@@ -28,9 +28,8 @@ tensorflow::se::DeviceMemoryBase MaybeOwningDeviceMemory::AsDeviceMemoryBase()
     const {
   if (HasOwnership()) {
     return *std::get<tensorflow::se::OwningDeviceMemory>(mem_);
-  } else {
-    return std::get<tensorflow::se::DeviceMemoryBase>(mem_);
   }
+  return std::get<tensorflow::se::DeviceMemoryBase>(mem_);
 }
 
 bool MaybeOwningDeviceMemory::HasOwnership() const {

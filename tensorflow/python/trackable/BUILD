@@ -174,7 +174,10 @@ tf_py_strict_test(
 py_strict_library(
     name = "resource",
     srcs = ["resource.py"],
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//intelligence/climate_foundations/vlm/export:__subpackages__",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":base",
         "//tensorflow/python/eager:context",

@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/flags/flag.h"
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_runner_pjrt.h"
 
 enum class SplitPhaseMode : uint8_t {
@@ -86,10 +85,7 @@ ABSL_FLAG(
 namespace xla {
 
 std::unique_ptr<HloRunnerPjRt> MakeHloRunnerPjRtSplitPhaseAware(
-    std::unique_ptr<PjRtClient> client,
-    HloRunnerInterface::DeviceShapeRepresentationFn
-        device_shape_representation_fn,
-    HloRunnerInterface::DeviceShapeSizeFn device_shape_size_fn) {
+    std::unique_ptr<PjRtClient> client) {
   const SplitPhaseMode mode = absl::GetFlag(FLAGS_xla_pjrt_split_phase_mode);
   std::string artifact_dir;
   if (mode != SplitPhaseMode::kDisabled) {
@@ -103,17 +99,13 @@ std::unique_ptr<HloRunnerPjRt> MakeHloRunnerPjRtSplitPhaseAware(
 
   switch (absl::GetFlag(FLAGS_xla_pjrt_split_phase_mode)) {
     case SplitPhaseMode::kDisabled:
-      return std::make_unique<HloRunnerPjRt>(
-          std::move(client), std::move(device_shape_representation_fn),
-          std::move(device_shape_size_fn));
+      return std::make_unique<HloRunnerPjRt>(std::move(client));
     case SplitPhaseMode::kCompile:
       return std::make_unique<CompilePhaseHloRunnerPjRt>(
-          std::move(client), std::move(device_shape_representation_fn),
-          std::move(device_shape_size_fn), std::move(artifact_dir));
+          std::move(client), std::move(artifact_dir));
     case SplitPhaseMode::kExecute:
       return std::make_unique<ExecutePhaseHloRunnerPjRt>(
-          std::move(client), std::move(device_shape_representation_fn),
-          std::move(device_shape_size_fn), std::move(artifact_dir));
+          std::move(client), std::move(artifact_dir));
   }
   return nullptr;  // Should not reach here.
 }

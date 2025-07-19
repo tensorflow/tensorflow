@@ -213,18 +213,6 @@ class Layout {
   //                   dimension, and dimension 0 is the most major dimension.
   //   properties: concatenation of the following, separated by nothing (a
   //               property is ommitted if it is the default):
-  //     D(...): Comma-separated list of attributes for each dimension. Each
-  //             attribute is a single character abbreviation of the dimension
-  //             level type
-  //            The  abbreviations can be:
-  //               D: DIM_DENSE
-  //               C: DIM_COMPRESSED
-  //               S: DIM_SINGLETON
-  //               H: DIM_LOOSE_COMPRESSED
-  //             E.g.
-  //               D(D,C): dimension 0 is dense.
-  //                       dimension 1 is compressed.
-  //             If omitted, all dimensions are dense.
   //     T(...)...(...): The tiling (each (...) is acomma-separated list of
   //                     tile bound sizes). E.g.
   //             T(2,4)(3,5): The shape is tiled with 2x4 and 3x5 tiles.
@@ -325,13 +313,6 @@ class Layout {
 
   bool operator==(const Layout& other) const;
   bool operator!=(const Layout& other) const { return !(*this == other); }
-
-  // The following methods mirror the protobuf generated code interface for the
-  // message LayoutProto. This enabled easy migration of this data structure
-  // from a proto to a proper C++ class.
-  //
-  // TODO(b/29771030): Replace or augment these methods with a more ergonomic
-  // interface.
 
   // Methods for accessing the minor-to-major array.
   ABSL_DEPRECATE_AND_INLINE()

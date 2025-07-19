@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/layout.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <ostream>
@@ -196,7 +195,7 @@ Layout& Layout::operator=(Layout&& other) = default;
 LayoutProto Layout::ToProto() const {
   LayoutProto proto;
   proto.Clear();
-  proto.mutable_minor_to_major()->Reserve(minor_to_major_size());
+  proto.mutable_minor_to_major()->Reserve(minor_to_major().size());
   for (const int64_t dimension : minor_to_major()) {
     proto.add_minor_to_major(dimension);
   }

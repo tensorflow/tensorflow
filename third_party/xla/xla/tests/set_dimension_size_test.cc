@@ -16,13 +16,13 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -62,9 +62,10 @@ TEST_F(SetDimensionSizeTest, CorrectComputation) {
   EXPECT_EQ(result, expected);
 }
 
-TEST_F(SetDimensionSizeTest,
-       DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(
-           DISABLED_ON_TPU(ReturnsErrorWhenHloPassesDisabled)))) {
+TEST_F(SetDimensionSizeTest, ReturnsErrorWhenHloPassesDisabled) {
+  if (test::DeviceTypeIsOneOf({test::kGpu, test::kInterpreter, test::kTpu})) {
+    GTEST_SKIP();
+  }
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 

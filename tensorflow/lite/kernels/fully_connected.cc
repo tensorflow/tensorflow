@@ -243,8 +243,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // Instead, we allocate a new object to carry information from Prepare() to
   // Eval().
   auto* op_data = new OpData();
-  context->AddTensors(context, /*tensors_to_add=*/6,
-                      &op_data->scratch_tensor_index);
+  op_data->scratch_tensor_index = -1;
   return op_data;
 }
 
@@ -639,6 +638,11 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
 
 template <KernelType kernel_type>
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  if (data->scratch_tensor_index == -1) {
+    context->AddTensors(context, /*tensors_to_add=*/6,
+                        &data->scratch_tensor_index);
+  }
   // Check for supported activation types.
   auto* params =
       reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data);
@@ -741,12 +745,8 @@ TfLiteStatus EvalHybridDense(
 
   // Quantize input from float to uint8 + quantization params (scaling factor).
   float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
-  int32_t* input_offset_ptr = nullptr;
-  int32_t* row_sums_ptr = nullptr;
-  if (params->asymmetric_quantize_inputs) {
-    input_offset_ptr = GetTensorData<int32_t>(input_offsets);
-    row_sums_ptr = GetTensorData<int32_t>(row_sums);
-  }
+  int32_t* input_offset_ptr = GetTensorData<int32_t>(input_offsets);
+  int32_t* row_sums_ptr = GetTensorData<int32_t>(row_sums);
   int8_t* quant_data = GetTensorData<int8_t>(input_quantized);
   const int8_t* filter_data = nullptr;
   std::unique_ptr<int8_t[]> unpacked_filter_data = nullptr;

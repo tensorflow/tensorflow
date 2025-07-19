@@ -21,41 +21,43 @@ limitations under the License.
 #include <functional>
 
 #include "oneapi/dnnl/dnnl_threadpool_iface.hpp"
-#include "xla/backends/cpu/runtime/parallel_loop_runner.h"
+#include "xla/backends/cpu/runtime/work_queue.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu {
 
 class OneDnnThreadPool final
     : public dnnl::threadpool_interop::threadpool_iface {
  public:
-  explicit OneDnnThreadPool(ParallelLoopRunner* runner) : runner_(runner) {}
+  explicit OneDnnThreadPool(Eigen::ThreadPoolInterface* thread_pool)
+      : thread_pool_(thread_pool) {}
 
-  int get_num_threads() const final;
-  bool get_in_parallel() const final;
-  uint64_t get_flags() const final;
+  int get_num_threads() const final { return thread_pool_->NumThreads(); }
 
-  void parallel_for(int n, const std::function<void(int, int)>& fn) final;
+  bool get_in_parallel() const final {
+    return thread_pool_->CurrentThreadId() >= 0;
+  }
+
+  uint64_t get_flags() const final { return 0; }
+
+  void parallel_for(int n, const std::function<void(int, int)>& fn) final {
+    // It is perfectly safe to block here as Worker implements work stealing
+    // that guarantees forward progress and deadlock freedom, even if we are
+    // running in the same thread pool as the Eigen thread_pool.
+    tsl::BlockUntilReady(Worker::Parallelize(thread_pool_,
+                                             thread_pool_->NumThreads(), n,
+                                             [fn, n](size_t i) { fn(i, n); }));
+  }
+
+  const void set_thread_pool(Eigen::ThreadPoolInterface* thread_pool) {
+    thread_pool_ = thread_pool;
+  }
 
  private:
-  ParallelLoopRunner* runner_;
+  Eigen::ThreadPoolInterface* thread_pool_;
 };
-
-inline int OneDnnThreadPool::get_num_threads() const {
-  return runner_->num_threads();
-}
-
-inline bool OneDnnThreadPool::get_in_parallel() const {
-  return runner_->is_in_runner();
-}
-
-inline uint64_t OneDnnThreadPool::get_flags() const { return 0; }
-
-inline void OneDnnThreadPool::parallel_for(
-    int n, const std::function<void(int, int)>& fn) {
-  runner_->Parallelize(
-      ParallelLoopRunner::RangeDim{static_cast<size_t>(n)},
-      [fn, n](ParallelLoopRunner::RangeIndex i) { fn(i.offset, n); });
-}
 
 }  // namespace xla::cpu
 

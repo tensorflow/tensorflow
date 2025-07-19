@@ -46,7 +46,7 @@ void CancellationManager::StartCancel() {
 void CancellationManager::StartCancelWithStatus(const absl::Status& status) {
   gtl::FlatMap<CancellationToken, CallbackConfiguration> callbacks_to_run;
   std::forward_list<CancellationManager*> children_to_cancel;
-  Notification* cancelled_notification = nullptr;
+  absl::Notification* cancelled_notification = nullptr;
   {
     absl::MutexLock l(&mu_);
     if (is_cancelled_.load(std::memory_order_relaxed) || is_cancelling_) {
@@ -129,7 +129,7 @@ bool CancellationManager::DeregisterCallback(CancellationToken token) {
     mu_.Unlock();
     return false;
   } else if (is_cancelling_) {
-    Notification* cancelled_notification =
+    absl::Notification* cancelled_notification =
         state_ ? &state_->cancelled_notification : nullptr;
     mu_.Unlock();
     // Wait for all of the cancellation callbacks to be called. This
@@ -174,7 +174,7 @@ bool CancellationManager::RegisterChild(CancellationManager* child) {
 
 void CancellationManager::DeregisterChild(CancellationManager* child) {
   DCHECK_EQ(child->parent_, this);
-  Notification* cancelled_notification = nullptr;
+  absl::Notification* cancelled_notification = nullptr;
   {
     absl::MutexLock l(&mu_);
     if (!child->is_removed_from_parent_) {

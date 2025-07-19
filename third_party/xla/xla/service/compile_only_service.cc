@@ -92,6 +92,8 @@ CompileOnlyService::CompileAheadOfTime(
         execution_options.mutable_device_assignment());
   }
   execution_options.set_use_spmd_partitioning(options.use_spmd_partitioning());
+  execution_options.set_use_shardy_partitioner(
+      options.use_shardy_partitioner());
   execution_options.set_use_auto_spmd_partitioning(
       options.use_auto_spmd_partitioning());
   for (auto t : options.auto_spmd_partitioning_mesh_shape()) {

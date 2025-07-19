@@ -53,10 +53,10 @@ TEST(SimpleJitRunnerTest, RunJitTest) {
       arg, llvm::ConstantFP::get(llvm::Type::getDoubleTy(*context), 2.0));
   builder.CreateRet(result);
 
-  JitRunner jit_runner(std::move(module), std::move(context));
-  auto result_or_err =
-      jit_runner.RunJitTest<double(double), double, double>("test_func", 3.0);
-  EXPECT_DOUBLE_EQ(result_or_err.get(), 6.0);
+  JitRunner jit(std::move(module), std::move(context));
+  auto* fn = jit.GetScalarFn<double(double)>("test_func");
+  double actual = fn(3.0);
+  EXPECT_DOUBLE_EQ(actual, 6.0);
 }
 
 TEST(SimpleJitRunnerTest, RunJitVectorized) {
@@ -85,12 +85,12 @@ TEST(SimpleJitRunnerTest, RunJitVectorized) {
       builder.CreateFMul(arg1, builder.CreateSIToFP(arg2, vec_type));
   builder.CreateRet(result);
 
-  JitRunner jit_runner(std::move(module), std::move(context));
+  JitRunner jit(std::move(module), std::move(context));
+  auto fn = jit.GetVectorizedFn<vector_size, double, double, int64_t>(
+      "test_vec_func");
   std::array<double, vector_size> arg1_array = {1.0, 2.0, 3.0, 4.0};
   std::array<int64_t, vector_size> arg2_array = {2, 3, 4, 5};
-  auto result_or_err = jit_runner.RunJitBinaryVectorized<vector_size>(
-      "test_vec_func", arg1_array, arg2_array);
-  std::array<double, vector_size> result_array = result_or_err.get();
+  std::array<double, vector_size> result_array = fn(arg1_array, arg2_array);
   EXPECT_DOUBLE_EQ(result_array[0], 2.0);
   EXPECT_DOUBLE_EQ(result_array[1], 6.0);
   EXPECT_DOUBLE_EQ(result_array[2], 12.0);
@@ -123,12 +123,59 @@ TEST(SimpleJitRunnerTest, RunJitVectorizedF32) {
       builder.CreateFMul(arg1, builder.CreateSIToFP(arg2, vec_type));
   builder.CreateRet(result);
 
-  JitRunner jit_runner(std::move(module), std::move(context));
+  JitRunner jit(std::move(module), std::move(context));
   std::array<float, vector_size> arg1_array = {1.0, 2.0, 3.0, 4.0};
   std::array<int64_t, vector_size> arg2_array = {2, 3, 4, 5};
-  auto result_or_err = jit_runner.RunJitBinaryVectorized<vector_size>(
-      "test_vec_func", arg1_array, arg2_array);
-  std::array<float, vector_size> result_array = result_or_err.get();
+  auto fn =
+      jit.GetVectorizedFn<vector_size, float, float, int64_t>("test_vec_func");
+  std::array<float, vector_size> result_array = fn(arg1_array, arg2_array);
+  EXPECT_DOUBLE_EQ(result_array[0], 2.0);
+  EXPECT_DOUBLE_EQ(result_array[1], 6.0);
+  EXPECT_DOUBLE_EQ(result_array[2], 12.0);
+  EXPECT_DOUBLE_EQ(result_array[3], 20.0);
+}
+
+TEST(SimpleJitRunnerTest, RunJitVectorizedF32Loop) {
+  auto context = std::make_unique<llvm::LLVMContext>();
+  auto module = std::make_unique<llvm::Module>("test_module", *context);
+
+  llvm::IRBuilder<> builder(*context);
+  constexpr int vector_size = 4;
+  llvm::Type* vec_type =
+      llvm::VectorType::get(llvm::Type::getFloatTy(*context),
+                            llvm::ElementCount::getFixed(vector_size));
+  llvm::Type* int_vec_type =
+      llvm::VectorType::get(llvm::Type::getInt64Ty(*context),
+                            llvm::ElementCount::getFixed(vector_size));
+
+  llvm::FunctionType* func_type =
+      llvm::FunctionType::get(vec_type, {vec_type, int_vec_type}, false);
+  llvm::Function* func = llvm::Function::Create(
+      func_type, llvm::Function::ExternalLinkage, "test_vec_func", *module);
+  llvm::BasicBlock* entry_block =
+      llvm::BasicBlock::Create(*context, "entry", func);
+  builder.SetInsertPoint(entry_block);
+  llvm::Value* arg1 = func->getArg(0);
+  llvm::Value* arg2 = func->getArg(1);
+  llvm::Value* result =
+      builder.CreateFMul(arg1, builder.CreateSIToFP(arg2, vec_type));
+
+  // Print something so we can count iterations when debugging the test.
+  llvm::FunctionType* PrintfFuncType = llvm::FunctionType::get(
+      builder.getInt32Ty(), builder.getInt8Ty()->getPointerTo(), true);
+  llvm::Function* PrintfFunc = llvm::Function::Create(
+      PrintfFuncType, llvm::Function::ExternalLinkage, "printf", *module);
+  llvm::Value* format_str = builder.CreateGlobalStringPtr("Iterating\n");
+  builder.CreateCall(PrintfFunc, {format_str});
+
+  builder.CreateRet(result);
+
+  JitRunner jit(std::move(module), std::move(context));
+  std::array<float, vector_size> arg1_array = {1.0, 2.0, 3.0, 4.0};
+  std::array<int64_t, vector_size> arg2_array = {2, 3, 4, 5};
+  auto fn = jit.GetVectorizedFn<vector_size, float, float, int64_t>(
+      "test_vec_func", 10);
+  std::array<float, vector_size> result_array = fn(arg1_array, arg2_array);
   EXPECT_DOUBLE_EQ(result_array[0], 2.0);
   EXPECT_DOUBLE_EQ(result_array[1], 6.0);
   EXPECT_DOUBLE_EQ(result_array[2], 12.0);

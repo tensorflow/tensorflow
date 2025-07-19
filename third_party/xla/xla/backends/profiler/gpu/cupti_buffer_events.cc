@@ -640,6 +640,8 @@ const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
       return "ThreadMarkerStart";
     case CuptiTracerEventType::ThreadMarkerEnd:
       return "ThreadMarkerEnd";
+    case CuptiTracerEventType::CudaGraphNodeMap:
+      return "CudaGraphNodeMap";
     case CuptiTracerEventType::Unsupported:
       return "";
   }

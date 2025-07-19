@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/debug_options_flags.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -228,6 +229,7 @@ CompiledMemoryStatsProto CompiledMemoryStats::ToProto() const {
   proto.set_host_output_size_in_bytes(host_output_size_in_bytes);
   proto.set_host_alias_size_in_bytes(host_alias_size_in_bytes);
   proto.set_host_temp_size_in_bytes(host_temp_size_in_bytes);
+  proto.set_peak_memory_in_bytes(peak_memory_in_bytes);
   return proto;
 }
 
@@ -246,6 +248,7 @@ CompiledMemoryStats CompiledMemoryStats::FromProto(
   stats.host_output_size_in_bytes = proto.host_output_size_in_bytes();
   stats.host_alias_size_in_bytes = proto.host_alias_size_in_bytes();
   stats.host_temp_size_in_bytes = proto.host_temp_size_in_bytes();
+  stats.peak_memory_in_bytes = proto.peak_memory_in_bytes();
   return stats;
 }
 
@@ -637,6 +640,12 @@ absl::Status CompileOptions::ApplyOption(const std::string& key,
   auto* xla_field = xla::DebugOptions::descriptor()->FindFieldByName(key);
   if (xla_field == nullptr) {
     return InvalidArgument("No such compile option: '%s'", key);
+  }
+  if (xla::GetFlagStatus(key) == xla::FlagStatus::kDeprecated) {
+    LOG(WARNING) << "Compile option '" << key
+                 << "' is deprecated and will not be supported when 6 months "
+                    "deprecation period ends. Check the flag description "
+                    "for more details.";
   }
   xla::DebugOptions& debug_options =
       *executable_build_options.mutable_debug_options();

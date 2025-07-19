@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -24,16 +25,20 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/literal_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/types.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -82,6 +87,41 @@ class TritonTest : public GpuCodegenTest {
     return backend().default_stream_executor()->GetDeviceDescription();
   }
 };
+
+TEST_F(TritonTest, DotForInt4vsIdentityBF16ReturnsCorrectResult) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule FusedInt4DotBf16Identity
+
+    ENTRY entry_computation {
+      w.s4 = s4[32,32]{1,0:E(4)} parameter(0)
+      w.s8 = s8[32,32] convert(w.s4)
+      w.b16 = bf16[32,32] convert(w.s8)
+
+      a = f32[32,32] parameter(1)
+      a.bf16 = bf16[32,32] convert(a)
+      ROOT dot = f32[32,32] dot(w.b16, a.bf16),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  TF_ASSERT_OK_AND_ASSIGN(auto lhs,
+                          (LiteralUtil::CreateLiteralWithGenerator<S4, s4>(
+                              ShapeUtil::MakeShape(S4, {32, 32}),
+                              [](absl::Span<const int64_t> indices) {
+                                return static_cast<s4>(indices[0] % 16 - 8);
+                              })));
+  // LHS is a int4 matrix with a clear pattern.
+  // RHS is a constant identity matrix.
+  // The result is a matrix with a clear pattern.
+  TF_ASSERT_OK_AND_ASSIGN(auto rhs,
+                          (LiteralUtil::CreateLiteralWithGenerator<F32, float>(
+                              ShapeUtil::MakeShape(F32, {32, 32}),
+                              [](absl::Span<const int64_t> indices) {
+                                return indices[0] == indices[1] ? 1.0f : 0.0f;
+                              })));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), {&lhs, &rhs}, {}));
+}
 
 // The following tests are for the channel and subchannel dequantization
 // fusions. We run the fused version to avoid the hlo passes and prove that

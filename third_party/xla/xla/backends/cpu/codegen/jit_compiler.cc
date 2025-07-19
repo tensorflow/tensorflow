@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "llvm/ExecutionEngine/Orc/InProcessMemoryAccess.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/TaskDispatch.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
@@ -49,6 +50,46 @@ limitations under the License.
 
 namespace xla::cpu {
 
+namespace {
+// TODO: move to ExecutorProcessControl-based APIs.
+class UnsupportedExecutorProcessControl
+    : public llvm::orc::ExecutorProcessControl,
+      private llvm::orc::InProcessMemoryAccess {
+ public:
+  explicit UnsupportedExecutorProcessControl(
+      std::unique_ptr<llvm::orc::TaskDispatcher> Dispatcher)
+      : ExecutorProcessControl(std::make_shared<llvm::orc::SymbolStringPool>(),
+                               std::move(Dispatcher)),
+        InProcessMemoryAccess(llvm::Triple("").isArch64Bit()) {
+    this->TargetTriple = llvm::Triple("");
+    this->MemAccess = this;
+  }
+
+  llvm::Expected<int32_t> runAsMain(llvm::orc::ExecutorAddr MainFnAddr,
+                                    llvm::ArrayRef<std::string> Args) override {
+    llvm_unreachable("Unsupported");
+  }
+
+  llvm::Expected<int32_t> runAsVoidFunction(
+      llvm::orc::ExecutorAddr VoidFnAddr) override {
+    llvm_unreachable("Unsupported");
+  }
+
+  llvm::Expected<int32_t> runAsIntFunction(llvm::orc::ExecutorAddr IntFnAddr,
+                                           int Arg) override {
+    llvm_unreachable("Unsupported");
+  }
+
+  void callWrapperAsync(llvm::orc::ExecutorAddr WrapperFnAddr,
+                        IncomingWFRHandler OnComplete,
+                        llvm::ArrayRef<char> ArgBuffer) override {
+    llvm_unreachable("Unsupported");
+  }
+
+  llvm::Error disconnect() override { return llvm::Error::success(); }
+};
+}  // namespace
+
 using tsl::profiler::TraceMe;
 using tsl::profiler::TraceMeEncode;
 
@@ -65,8 +106,8 @@ absl::StatusOr<JitCompiler> JitCompiler::Create(
 
   // LLVM execution session that holds jit-compiled functions.
   auto execution_session = std::make_unique<llvm::orc::ExecutionSession>(
-      std::make_unique<llvm::orc::UnsupportedExecutorProcessControl>(
-          /*SSP=*/nullptr, std::move(task_dispatcher)));
+      std::make_unique<UnsupportedExecutorProcessControl>(
+          std::move(task_dispatcher)));
 
   execution_session->setErrorReporter([](llvm::Error err) {
     LOG(ERROR) << "LLVM compilation error: " << llvm::toString(std::move(err));

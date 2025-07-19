@@ -21,6 +21,7 @@ cc_library(
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service:call_graph",
+        "//xla/service:hlo_value",
         "@com_google_absl//absl/strings:string_view",
     ],
 )
@@ -31,11 +32,14 @@ cc_library(
     hdrs = ["hlo_gumgraph.h"],
     deps = [
         ":hlo_gumgraph_node",
+        "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/tools/hlo_diff/graph/analysis:hlo_value_tracing",
+        "//xla/hlo/tools/hlo_diff/graph/utils:cycle_detector",
         "//xla/hlo/tools/hlo_diff/graph/utils:hlo_gumgraph_dfs",
         "//xla/hlo/tools/hlo_diff/utils:hlo_diff_util",
         "//xla/service:call_graph",
+        "//xla/service:hlo_value",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:nullability",
@@ -47,6 +51,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:fingerprint",
     ],
 )
@@ -61,6 +66,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:hlo_module_config",
+        "//xla/service:hlo_value",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",

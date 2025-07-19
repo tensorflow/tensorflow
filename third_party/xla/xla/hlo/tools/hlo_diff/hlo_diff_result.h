@@ -18,6 +18,7 @@
 #define XLA_HLO_TOOLS_HLO_DIFF_HLO_DIFF_RESULT_H_
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -51,8 +52,13 @@ struct DiffResult {
   absl::flat_hash_map<std::pair<const HloInstruction*, const HloInstruction*>,
                       MatcherType>
       map_by;
+  absl::flat_hash_map<std::pair<const HloInstruction*, const HloInstruction*>,
+                      std::string>
+      matcher_debug_info;
   absl::flat_hash_map<const HloInstruction*, HloInstructionNodeProps>
-      node_props;
+      node_props_left;
+  absl::flat_hash_map<const HloInstruction*, HloInstructionNodeProps>
+      node_props_right;
 
   // Converts the diff result to a proto.
   DiffResultProto ToProto() const;

@@ -18,38 +18,43 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 
 namespace xla {
 namespace cpu {
 
 namespace orc_jit_memory_mapper {
-// Returns the registered memory mapper if there is one.  Returns nullptr if no
-// memory mapper is registered.
-llvm::SectionMemoryManager::MemoryMapper* GetInstance();
+// Registers (if needed) a memory mapper by name and returns it if the
+// memory mapper getter has been set.  Otherwise returns nullptr.
+llvm::SectionMemoryManager::MemoryMapper* GetInstance(
+    absl::string_view allocation_region_name);
 
 class Registrar {
  public:
-  // Registers the `mapper` as a memory mapper.  This is a no-op if `mapper` is
-  // null.  Precondition:  no other memory mapper has been registered yet.
-  explicit Registrar(
-      std::unique_ptr<llvm::SectionMemoryManager::MemoryMapper> mapper);
+  using MemoryMapperGetter =
+      std::unique_ptr<llvm::SectionMemoryManager::MemoryMapper>(
+          absl::string_view allocation_region_name);
+  // Registers the `mapper_getter`.  This is a no-op if `mapper_getter` is
+  // null.  Precondition:  no other memory mapper getter has been registered
+  // yet.
+  explicit Registrar(MemoryMapperGetter* mapper_getter);
 };
 }  // namespace orc_jit_memory_mapper
 
-#define XLA_INTERNAL_REGISTER_ORC_JIT_MEMORY_MAPPER(mapper_instance, ctr) \
-  static ::xla::cpu::orc_jit_memory_mapper::Registrar                     \
-      XLA_INTERNAL_REGISTER_ORC_JIT_MEMORY_MAPPER_NAME(ctr)(mapper_instance)
+#define XLA_INTERNAL_REGISTER_ORC_JIT_MEMORY_MAPPER_GETTER(mapper_instance, \
+                                                           ctr)             \
+  static ::xla::cpu::orc_jit_memory_mapper::Registrar                       \
+  XLA_INTERNAL_REGISTER_ORC_JIT_MEMORY_MAPPER_GETTER_NAME(ctr)(             \
+      mapper_instance)
 
 // __COUNTER__ must go through another macro to be properly expanded
-#define XLA_INTERNAL_REGISTER_ORC_JIT_MEMORY_MAPPER_NAME(ctr) \
+#define XLA_INTERNAL_REGISTER_ORC_JIT_MEMORY_MAPPER_GETTER_NAME(ctr) \
   __orc_jit_memory_mapper_registrar_##ctr
 
-// Registers the std::unique_ptr<llvm::SectionMemoryManager::MemoryMapper>
-// returned by the `factory` expression.  `factory` is allowed to evaluate to
-// a null unique_ptr in which case this macro does nothing.
-#define XLA_REGISTER_ORC_JIT_MEMORY_MAPPER(factory) \
-  XLA_INTERNAL_REGISTER_ORC_JIT_MEMORY_MAPPER(factory, __COUNTER__)
+// Registers the MemoryMapperGetter.
+#define XLA_REGISTER_ORC_JIT_MEMORY_MAPPER_GETTER(factory) \
+  XLA_INTERNAL_REGISTER_ORC_JIT_MEMORY_MAPPER_GETTER(factory, __COUNTER__)
 }  // namespace cpu
 }  // namespace xla
 

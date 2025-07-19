@@ -81,6 +81,7 @@ class InterpreterWrapper;  // Class for friend declarations.
 namespace model_builder {
 class ModelBuilder;
 }  // namespace model_builder
+
 #endif  // DOXYGEN_SKIP
 
 /// An interpreter for a graph of nodes that input and output from tensors.
@@ -279,27 +280,41 @@ class Interpreter {
     return primary_subgraph().execution_plan();
   }
 
-  /// Get a mutable tensor data structure.
-  // TODO(aselle): Create a safe ArrayHandle interface to avoid exposing this
-  // read/write access to structure
+  // Returns a mutable tensor.
+  //
+  // Warning: No guarantee is given about address stability. Operations
+  // (including but not limited to: `Invoke`, `AddTensors`) may invalidate the
+  // pointer returned by this function.
   TfLiteTensor* tensor(int tensor_index) {
     return primary_subgraph().tensor(tensor_index);
   }
 
-  /// Get an immutable tensor data structure.
+  // Returns an immutable tensor.
+  //
+  // Warning: No guarantee is given about address stability. Operations
+  // (including but not limited to: `Invoke`, `AddTensors`) may invalidate the
+  // pointer returned by this function.
   const TfLiteTensor* tensor(int tensor_index) const {
     return primary_subgraph().tensor(tensor_index);
   }
 
-  /// Returns a pointer to an operation and registration data structure if in
-  /// bounds from the primary subgraph(subgraph_[0]).
+  // Returns a pointer to an operation and registration data structure if in
+  // bounds from the primary subgraph(subgraph_[0]).
+  //
+  // Warning: No guarantee is given about address stability. Operations
+  // (including but not limited to: `Invoke`, `ModifyGraphWithDelegate`) may
+  // invalidate the pointer returned by this function.
   const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
       int node_index) const {
     return primary_subgraph().node_and_registration(node_index);
   }
 
-  /// Returns a pointer to an operation and registration data structure if in
-  /// bounds.
+  // Returns a pointer to an operation and registration data structure if in
+  // bounds.
+  //
+  // Warning: No guarantee is given about address stability. Operations
+  // (including but not limited to: `Invoke`, `ModifyGraphWithDelegate`) may
+  // invalidate the pointer returned by this function.
   const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
       int subgraph_index, int node_index) const {
     return subgraph(subgraph_index)->node_and_registration(node_index);
@@ -408,9 +423,14 @@ class Interpreter {
     return *default_empty_list;
   }
 
-  /// \brief Returns the input tensor identified by 'signature_input_name' in
-  /// the signature identified by 'signature_key'.
-  /// Returns nullptr if not found.
+  // Returns the input tensor identified by 'signature_input_name' in the
+  // signature identified by 'signature_key'.
+  //
+  // Returns nullptr if not found.
+  //
+  // Warning: No guarantee is given about address stability. Operations
+  // (including but not limited to: `Invoke`, `AddTensors`) may invalidate the
+  // pointer returned by this function.
   TfLiteTensor* input_tensor_by_signature(const char* signature_input_name,
                                           const char* signature_key) {
     const int subgraph_index = GetSubgraphIndexFromSignature(signature_key);
@@ -421,9 +441,14 @@ class Interpreter {
     return subgraph(subgraph_index)->tensor(tensor_index);
   }
 
-  /// \brief Returns the output tensor identified by 'signature_output_name' in
-  /// the signature identified by 'signature_key'.
-  /// Returns nullptr if not found.
+  // Returns the output tensor identified by 'signature_output_name' in the
+  // signature identified by 'signature_key'.
+  //
+  // Returns `nullptr` if not found.
+  //
+  // Warning: No guarantee is given about address stability. Operations
+  // (including but not limited to: `Invoke`, `AddTensors`) may invalidate the
+  // pointer returned by this function.
   const TfLiteTensor* output_tensor_by_signature(
       const char* signature_output_name, const char* signature_key) const {
     const int subgraph_index = GetSubgraphIndexFromSignature(signature_key);
@@ -434,49 +459,89 @@ class Interpreter {
     return subgraph(subgraph_index)->tensor(tensor_index);
   }
 
-  /// Return a mutable pointer to the given input tensor. The given index must
-  /// be between 0 and inputs().size().
+  // Returns a mutable pointer to the `index`th input tensor.
+  //
+  // `index` must be between 0 and inputs().size().
+  //
+  // Warning: No guarantee is given about address stability. Operations
+  // (including but not limited to: `Invoke`, `AddTensors`) may invalidate the
+  // pointer returned by this function.
   TfLiteTensor* input_tensor(size_t index) { return tensor(inputs()[index]); }
 
-  /// Return an immutable pointer to the given input tensor. The given index
-  /// must be between 0 and inputs().size().
+  // Returns an immutable pointer to the `index`th input tensor.
+  //
+  // `index` must be between 0 and `inputs().size()`.
+  //
+  // Warning: No guarantee is given about address stability. Operations
+  // (including but not limited to: `Invoke`, `AddTensors`) may invalidate the
+  // pointer returned by this function.
   const TfLiteTensor* input_tensor(size_t index) const {
     return tensor(inputs()[index]);
   }
 
-  /// Return a mutable pointer into the data of a given input tensor. The given
-  /// index must be between 0 and inputs().size().
+  // Returns a mutable pointer into the data of the `index`th input tensor.
+  //
+  // `index` must be between 0 and `inputs().size()`.
+  //
+  // Warning: No guarantee is given about address stability. Operations
+  // (including but not limited to: `AllocateTensors`) may invalidate the
+  // pointer returned by this function.
   template <class T>
   T* typed_input_tensor(int index) {
     return typed_tensor<T>(inputs()[index]);
   }
 
-  /// Return an immutable pointer into the data of a given input tensor. The
-  /// given index must be between 0 and inputs().size().
+  // Returns a mutable pointer into the data of the `index`th input tensor.
+  //
+  // `index` must be between 0 and `inputs().size()`.
+  //
+  // Warning: No guarantee is given about address stability. Operations
+  // (including but not limited to: `AllocateTensors`) may invalidate the
+  // pointer returned by this function.
   template <class T>
   const T* typed_input_tensor(int index) const {
     return typed_tensor<T>(inputs()[index]);
   }
 
-  /// Return a mutable pointer to the given output tensor. The given index must
-  /// be between 0 and outputs().size().
+  // Returns a mutable pointer to the `index`th output tensor.
+  //
+  // The given index must be between 0 and `outputs().size()`.
+  //
+  // Warning: No guarantee is given about address stability. Operations
+  // (including but not limited to: `Invoke`, `AddTensors`) may invalidate the
+  // pointer returned by this function.
   TfLiteTensor* output_tensor(size_t index) { return tensor(outputs()[index]); }
 
-  /// Return an immutable pointer to the given output tensor. The given index
-  /// must be between 0 and outputs().size().
+  // Returns a mutable pointer to the `index`th output tensor.
+  //
+  // The given index must be between 0 and `outputs().size()`.
+  //
+  // Warning: No guarantee is given about address stability. Operations
+  // (including but not limited to: `Invoke`, `AddTensors`) may invalidate the
+  // pointer returned by this function.
   const TfLiteTensor* output_tensor(size_t index) const {
     return tensor(outputs()[index]);
   }
 
-  /// Return a mutable pointer into the data of a given output tensor. The given
-  /// index must be between 0 and outputs().size().
+  // Returns a mutable pointer into the data of the `index`th output tensor.
+  //
+  // `index` must be between 0 and `outputs().size()`.
+  //
+  // Warning: No guarantee is given about address stability. Operations
+  // (including but not limited to: `AllocateTensors`) may invalidate the
+  // pointer returned by this function.
   template <class T>
   T* typed_output_tensor(int index) {
     return typed_tensor<T>(outputs()[index]);
   }
 
-  /// Return an immutable pointer into the data of a given output tensor. The
-  /// given index must be between 0 and outputs().size().
+  // Returns a mutable pointer into the data of the `index`th output tensor.
+  //
+  // `index` must be between 0 and `outputs().size()`.
+  //
+  // Warning: No guarantee is given about address stability. Operations
+  // (including but not limited to: `AllocateTensors`) may invalidate the
+  // pointer returned by this function.
   template <class T>
   const T* typed_output_tensor(int index) const {
     return typed_tensor<T>(outputs()[index]);

@@ -85,7 +85,7 @@ class LocalClientTestBase : public ::testing::Test {
  protected:
   struct EigenThreadPoolWrapper;
   explicit LocalClientTestBase(se::Platform* platform = nullptr);
-  virtual ~LocalClientTestBase();
+  ~LocalClientTestBase() override;
 
   static TestAllocator* GetOrCreateAllocator(se::Platform* platform);
 

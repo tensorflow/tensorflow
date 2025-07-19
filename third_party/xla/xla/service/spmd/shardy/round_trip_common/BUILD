@@ -9,9 +9,8 @@ package(
 
 package_group(
     name = "friends",
-    packages = [
-        "//third_party/py/jax/...",
-        "//xla/...",
+    includes = [
+        "//xla:friends",
     ],
 )
 

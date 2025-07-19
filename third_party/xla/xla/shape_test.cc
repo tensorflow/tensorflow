@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/shape.h"
 
+#include <cstdint>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/layout.h"
@@ -40,7 +42,8 @@ class ShapeTest : public ::testing::Test {
   const Shape matrix_ = ShapeUtil::MakeShape(U32, {1, 2});
   const Shape matrix2_ =
       ShapeUtil::MakeShapeWithDenseLayout(S32, {3, 4}, {0, 1});
-  const Shape matrix_buffer_ = ShapeUtil::MakeBufferShape(S32, {3, 4});
+  const Shape matrix_buffer_ =
+      ShapeUtil::MakeValidatedBufferShape(S32, {3, 4}).value();
   const Shape tuple_ =
       ShapeUtil::MakeTupleShape({opaque_, scalar_, matrix_, matrix2_});
   const Shape nested_tuple_ =
@@ -150,11 +153,15 @@ TEST_F(ShapeTest, EqualityTest) {
             ShapeUtil::MakeShapeWithDenseLayout(F32, {23, 44}, {1, 0}));
 
   // Equal with Buffer shapes.
-  EXPECT_TRUE(
-      Shape::Equal().IgnoreBuffer()(ShapeUtil::MakeBufferShape(S32, {3, 4}),
-                                    ShapeUtil::MakeShape(S32, {3, 4})));
-  EXPECT_FALSE(Shape::Equal()(ShapeUtil::MakeBufferShape(S32, {3, 4}),
-                              ShapeUtil::MakeShape(S32, {3, 4})));
+  EXPECT_TRUE(Shape::Equal().IgnoreBuffer()(
+      ShapeUtil::MakeValidatedBufferShape(S32, {3, 4}).value(),
+      ShapeUtil::MakeShape(S32, {3, 4})));
+  EXPECT_FALSE(
+      Shape::Equal()(ShapeUtil::MakeValidatedBufferShape(S32, {3, 4}).value(),
+                     ShapeUtil::MakeShape(S32, {3, 4})));
+  EXPECT_TRUE(Shape::Equal().IgnoreBuffer().IgnoreLayout()(
+      ShapeUtil::MakeValidatedBufferShape(S32, {3, 4}).value(),
+      ShapeUtil::MakeShapeWithDenseLayout(S32, {3, 4}, {0, 1})));
 }
 
 TEST_F(ShapeTest, AreAllLeavesIntegers) {

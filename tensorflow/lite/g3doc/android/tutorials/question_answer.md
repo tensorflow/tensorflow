@@ -8,7 +8,7 @@ Lite to provide answers to questions structured in natural language text. The
 uses the *BERT question answerer*
 ([`BertQuestionAnswerer`](../../inference_with_metadata/task_library/bert_question_answerer))
 API within the
-[Task library for natural language (NL)](../../inference_with_metadata/task_library/overview#supported_tasks)
+[Task library for natural language (NL)](https://ai.google.dev/edge/litert/libraries/task_library/overview)
 to enable Question answering machine learning models. The application is
 designed for a physical Android device but can also run on a device emulator.
 
@@ -30,7 +30,7 @@ based on different segments of text.
 
 For more information on how the models in this tutorial are generated, refer to
 the
-[BERT Question Answer with TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/models/modify/model_maker/question_answer)
+[BERT Question Answer with TensorFlow Lite Model Maker](https://ai.google.dev/edge/litert/libraries/modify/question_answer)
 tutorial.
 
 ## Models and dataset
@@ -138,9 +138,9 @@ implement question answering features in your production applications:
 ## How the example app works {:#how_it_works}
 
 The application uses the `BertQuestionAnswerer` API within the
-[Task library for natural language (NL)](../../inference_with_metadata/task_library/overview#supported_tasks)
+[Task library for natural language (NL)](https://ai.google.dev/edge/litert/libraries/task_library/overview)
 package. The MobileBERT model was trained using the TensorFlow Lite
-[Model Maker](https://www.tensorflow.org/lite/models/modify/model_maker/question_answer).
+[Model Maker](https://ai.google.dev/edge/litert/libraries/modify/question_answer).
 The application runs on CPU by default, with the option of hardware acceleration
 using the GPU or NNAPI delegate.
 
@@ -226,9 +226,9 @@ model with parameters before running predictions with the model.
 
 A TensorFlow Lite model is stored as a `*.tflite` file. The model file contains
 the prediction logic and typically includes
-[metadata](../../models/convert/metadata) about how to interpret prediction
-results. Typically, model files are stored in the `src/main/assets` directory of
-your development project, as in the code example:
+[metadata](https://ai.google.dev/edge/litert/models/metadata) about how to
+interpret prediction results. Typically, model files are stored in the
+`src/main/assets` directory of your development project, as in the code example:
 
 -   `<project>/src/main/assets/mobilebert_qa.tflite`
 
@@ -525,7 +525,7 @@ predictions by presenting the result to your user or executing additional logic.
 ## Next steps
 
 *   Train and implement the models from scratch with the
-    [Question Answer with TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/models/modify/model_maker/question_answer)
+    [Question Answer with TensorFlow Lite Model Maker](https://ai.google.dev/edge/litert/libraries/modify/question_answer)
     tutorial.
 *   Explore more
     [text processing tools for TensorFlow](https://www.tensorflow.org/text).

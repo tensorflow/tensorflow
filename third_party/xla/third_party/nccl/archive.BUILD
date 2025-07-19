@@ -22,9 +22,9 @@ exports_files(["LICENSE.txt"])
 
 NCCL_MAJOR = 2
 
-NCCL_MINOR = 25
+NCCL_MINOR = 26
 
-NCCL_PATCH = 1
+NCCL_PATCH = 5
 
 NCCL_VERSION = NCCL_MAJOR * 10000 + NCCL_MINOR * 100 + NCCL_PATCH  # e.g., 21605
 
@@ -69,8 +69,18 @@ cc_library(
 
 cc_library(
     name = "include_hdrs",
-    hdrs = glob(["src/include/**"]),
+    hdrs = glob(
+        include = ["src/include/**"],
+        exclude = ["src/include/plugin/**"],
+    ),
     strip_include_prefix = "src/include",
+    deps = ["@local_config_cuda//cuda:cuda_headers"],
+)
+
+cc_library(
+    name = "plugin_hdrs",
+    hdrs = glob(["src/include/plugin/**"]),
+    strip_include_prefix = "src/include/plugin",
     deps = ["@local_config_cuda//cuda:cuda_headers"],
 )
 
@@ -152,6 +162,7 @@ cc_library(
     linkopts = ["-lrt"],
     deps = [
         ":include_hdrs",
+        ":plugin_hdrs",
         ":src_hdrs",
     ],
 )
@@ -217,6 +228,7 @@ cc_library(
         ":enqueue",
         ":include_hdrs",
         ":net",
+        ":plugin_hdrs",
         ":src_hdrs",
     ],
 )
@@ -258,6 +270,7 @@ cuda_library(
     deps = [
         ":device",
         ":include_hdrs",
+        ":plugin_hdrs",
         ":src_hdrs",
     ],
 )
@@ -279,6 +292,7 @@ cc_library(
     deps = [
         ":device",
         ":include_hdrs",
+        ":plugin_hdrs",
         ":src_hdrs",
     ],
 )

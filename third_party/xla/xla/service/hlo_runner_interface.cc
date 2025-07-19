@@ -19,10 +19,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -40,37 +42,42 @@ std::vector<T*> MakePointerVector(absl::Span<T> input_vec) {
 
 absl::StatusOr<Literal> HloRunnerInterface::Execute(
     std::unique_ptr<HloModule> module, absl::Span<const Literal> arguments,
-    bool run_hlo_passes, ExecutionProfile* profile) {
+    bool run_hlo_passes) {
   // Construct a vector of plain pointers for the arguments.
   auto argument_pointers = MakePointerVector<const Literal>(arguments);
   return Execute(
       /*module=*/std::move(module),
       /*arguments=*/argument_pointers,
-      /*run_hlo_passes=*/run_hlo_passes,
-      /*profile=*/profile);
+      /*run_hlo_passes=*/run_hlo_passes);
 }
 
 absl::StatusOr<Literal> HloRunnerInterface::ExecuteWithBufferAssignment(
     std::unique_ptr<HloModule> module,
     const BufferAssignmentProto* buffer_assignment_proto,
-    absl::Span<const Literal> arguments, bool run_hlo_passes,
-    ExecutionProfile* profile) {
+    absl::Span<const Literal> arguments, bool run_hlo_passes) {
   // Construct a vector of plain pointers for the arguments.
   auto argument_pointers = MakePointerVector<const Literal>(arguments);
   return ExecuteWithBufferAssignment(
       /*module=*/std::move(module),
       /*buffer_assignment_proto=*/buffer_assignment_proto,
       /*arguments=*/argument_pointers,
-      /*run_hlo_passes=*/run_hlo_passes,
-      /*profile=*/profile);
+      /*run_hlo_passes=*/run_hlo_passes);
 }
 
 absl::StatusOr<Literal> HloRunnerInterface::ExecuteWithExecutable(
-    OpaqueExecutable* executable, absl::Span<const Literal> arguments,
-    ExecutionProfile* profile) {
+    OpaqueExecutable* executable, absl::Span<const Literal> arguments) {
   // Construct a vector of plain pointers for the arguments.
   auto argument_pointers = MakePointerVector<const Literal>(arguments);
-  return ExecuteWithExecutable(executable, argument_pointers, profile);
+  return ExecuteWithExecutable(executable, argument_pointers);
+}
+
+absl::StatusOr<Literal> HloRunnerInterface::ExecuteWithExecutable(
+    OpaqueExecutable* executable, absl::Span<const Literal* const> arguments) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<absl::StatusOr<Literal>> results,
+      ExecuteWithExecutable(executable, arguments, /*num_repeats=*/1));
+  CHECK_EQ(results.size(), 1);
+  return std::move(results[0]);
 }
 
 }  // namespace xla

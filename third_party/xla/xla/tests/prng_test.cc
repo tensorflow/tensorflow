@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/SpecialFunctions"
 #include "xla/client/local_client.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
@@ -74,17 +74,17 @@ Literal PrngTest::UniformTest(T a, T b, absl::Span<const int64_t> dims,
 }
 
 // Uniform random number generation tests
-XLA_TEST_F(PrngTest, ScalarU01) { UniformTest<float>(0, 1, {}); }
-XLA_TEST_F(PrngTest, ScalarU01limits) {
+TEST_F(PrngTest, ScalarU01) { UniformTest<float>(0, 1, {}); }
+TEST_F(PrngTest, ScalarU01limits) {
   UniformTest<float>(std::numeric_limits<float>::min(),
                      std::numeric_limits<float>::max(), {});
 }
-XLA_TEST_F(PrngTest, ZeroValuesU01) { UniformTest<float>(0, 1, {0}); }
-XLA_TEST_F(PrngTest, TenValuesU01) { UniformTest<float>(0, 1, {10}); }
-XLA_TEST_F(PrngTest, TenValuesU37) { UniformTest<float>(3, 7, {10}); }
-XLA_TEST_F(PrngTest, ZeroValuesR2) { UniformTest<float>(0, 1, {0, 20}); }
-XLA_TEST_F(PrngTest, LargeU01) { UniformTest<float>(0, 1, {0x100, 0x100}); }
-XLA_TEST_F(PrngTest, TwelveValuesU524) { UniformTest<int32_t>(5, 24, {12}); }
+TEST_F(PrngTest, ZeroValuesU01) { UniformTest<float>(0, 1, {0}); }
+TEST_F(PrngTest, TenValuesU01) { UniformTest<float>(0, 1, {10}); }
+TEST_F(PrngTest, TenValuesU37) { UniformTest<float>(3, 7, {10}); }
+TEST_F(PrngTest, ZeroValuesR2) { UniformTest<float>(0, 1, {0, 20}); }
+TEST_F(PrngTest, LargeU01) { UniformTest<float>(0, 1, {0x100, 0x100}); }
+TEST_F(PrngTest, TwelveValuesU524) { UniformTest<int32_t>(5, 24, {12}); }
 
 // TODO(b/71543667): Fix Rng ops on LLVM backends.
 // TODO(b/122047800): Interpreter does not support BF16 for RNG ops.
@@ -94,8 +94,10 @@ class ScalarBF16Test
     : public PrngTest,
       public ::testing::WithParamInterface<ScalarBF16TestCase> {};
 
-XLA_TEST_P(ScalarBF16Test,
-           DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(DISABLED_ON_CPU(DoIt)))) {
+TEST_P(ScalarBF16Test, DoIt) {
+  if (test::DeviceTypeIsOneOf({test::kCpu, test::kGpu, test::kInterpreter})) {
+    GTEST_SKIP();
+  }
   auto test_params = GetParam();
   UniformTest<bfloat16>(static_cast<bfloat16>(std::get<1>(test_params).first),
                         static_cast<bfloat16>(std::get<1>(test_params).second),
@@ -120,8 +122,10 @@ INSTANTIATE_TEST_SUITE_P(
 
 // TODO(b/71543667): Fix Rng ops on LLVM backends.
 // TODO(b/122047800): Interpreter does not support BF16 for RNG ops.
-XLA_TEST_F(PrngTest, DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(
-                         DISABLED_ON_CPU(ScalarBF16CountTests)))) {
+TEST_F(PrngTest, ScalarBF16CountTests) {
+  if (test::DeviceTypeIsOneOf({test::kCpu, test::kGpu, test::kInterpreter})) {
+    GTEST_SKIP();
+  }
   // There are 3 BF16 values in the range of [32.25, 33): 32.25, 32.5, 32.75,
   // they should get similar counts.
   bfloat16 low = static_cast<bfloat16>(32.25);
@@ -222,15 +226,18 @@ void PrngTest::UniformChiSquared(int32_t range_size, int32_t expected_count,
 // These range sizes are arbitrary but include prime numbers, powers of 2, and
 // other composite numbers.
 // TODO(b/35723038): Use parametrized tests where possible.
-XLA_TEST_F(PrngTest, Uniformity7) { UniformChiSquared(7, 256); }
-XLA_TEST_F(PrngTest, Uniformity61) { UniformChiSquared(61, 256); }
-XLA_TEST_F(PrngTest, Uniformity64) { UniformChiSquared(64, 256); }
-XLA_TEST_F(PrngTest, Uniformity108) { UniformChiSquared(108, 256); }
-XLA_TEST_F(PrngTest, Uniformity256) { UniformChiSquared(256, 256); }
+TEST_F(PrngTest, Uniformity7) { UniformChiSquared(7, 256); }
+TEST_F(PrngTest, Uniformity61) { UniformChiSquared(61, 256); }
+TEST_F(PrngTest, Uniformity64) { UniformChiSquared(64, 256); }
+TEST_F(PrngTest, Uniformity108) { UniformChiSquared(108, 256); }
+TEST_F(PrngTest, Uniformity256) { UniformChiSquared(256, 256); }
 
 // TODO(b/134770669): May remove this test if we decide not to support map
 //                    computations with kRng instructions.
-XLA_TEST_F(PrngTest, DISABLED_ON_GPU(DISABLED_ON_CPU(MapUsingRng))) {
+TEST_F(PrngTest, MapUsingRng) {
+  if (test::DeviceTypeIsOneOf({test::kCpu, test::kGpu})) {
+    GTEST_SKIP();
+  }
   // Build a x -> (x + U[0,1)) computation.
   auto build_sum_rng = [](XlaBuilder& builder) {
     auto b = builder.CreateSubBuilder("sum_with_rng");
@@ -273,7 +280,7 @@ XLA_TEST_F(PrngTest, DISABLED_ON_GPU(DISABLED_ON_CPU(MapUsingRng))) {
 // is
 //   fixed (i.e., there is a single output for a given seed);
 // * If no seed is passed in then the output of every call can be different;
-XLA_TEST_F(PrngTest, PassInGlobalRngSeed) {
+TEST_F(PrngTest, PassInGlobalRngSeed) {
   // Build a U[0,1) computation.
   auto build_computation = [this]() {
     XlaBuilder builder(TestName());
@@ -332,7 +339,7 @@ XLA_TEST_F(PrngTest, PassInGlobalRngSeed) {
 
 // This test verifies that the two RNG instructions with the same parameters
 // in the same HloComputation produces different values.
-XLA_TEST_F(PrngTest, DifferentValuesForIdenticalRngNodesInSameComputation) {
+TEST_F(PrngTest, DifferentValuesForIdenticalRngNodesInSameComputation) {
   // Build a U[0,1) computation.
   auto build_computation = [this]() {
     XlaBuilder builder(TestName());
@@ -363,7 +370,7 @@ XLA_TEST_F(PrngTest, DifferentValuesForIdenticalRngNodesInSameComputation) {
   EXPECT_FALSE(LiteralTestUtil::Equal(results[0], results[1]));
 }
 
-XLA_TEST_F(PrngTest, TenValuesN01) {
+TEST_F(PrngTest, TenValuesN01) {
   XlaBuilder builder(TestName());
   RngNormal(ConstantR0<float>(&builder, 0), ConstantR0<float>(&builder, 1),
             ShapeUtil::MakeShape(F32, {10}));
@@ -373,7 +380,7 @@ XLA_TEST_F(PrngTest, TenValuesN01) {
   // TODO(b/25995601): Test that resultant values are reasonable
 }
 
-XLA_TEST_F(PrngTest, RngUniformCrash) {
+TEST_F(PrngTest, RngUniformCrash) {
   XlaBuilder builder(TestName());
 
   // This used to crash XLA during LLVM IR generation for CPUs.

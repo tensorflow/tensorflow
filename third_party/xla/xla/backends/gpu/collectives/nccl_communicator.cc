@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "tsl/platform/casts.h"
 
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -92,6 +93,10 @@ absl::Status BlockAndGet(tsl::AsyncValueRef<NcclCommunicator::Event> ref) {
     return ref.GetError();
   }
   return absl::OkStatus();
+}
+
+se::Stream* ToStream(const Communicator::Executor& executor) {
+  return tsl::down_cast<const GpuCollectives::Executor&>(executor).stream();
 }
 
 //==-----------------------------------------------------------------------===//
@@ -460,7 +465,7 @@ absl::Status NcclCommunicator::LaunchAllReduce(
   if (canceling_.load()) {
     return FailedPrecondition("NcclCommunicator aborted");
   }
-  TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
+  se::Stream* stream = ToStream(executor);
 
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL AllReduce operation on device #%d; send_buffer=%p; "
@@ -490,7 +495,7 @@ absl::Status NcclCommunicator::LaunchBroadcast(se::DeviceMemoryBase send_buffer,
   if (canceling_.load()) {
     return absl::FailedPreconditionError("NcclCommunicator aborted");
   }
-  TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
+  se::Stream* stream = ToStream(executor);
 
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL Broadcast operation on device #%d; send_buffer=%p; "
@@ -518,7 +523,7 @@ absl::Status NcclCommunicator::LaunchReduceScatter(
   if (canceling_.load()) {
     return absl::FailedPreconditionError("NcclCommunicator aborted");
   }
-  TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
+  se::Stream* stream = ToStream(executor);
 
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL ReduceScatter operation on device #%d; send_buffer=%p; "
@@ -548,7 +553,7 @@ absl::Status NcclCommunicator::LaunchAllGather(se::DeviceMemoryBase send_buffer,
   if (canceling_.load()) {
     return absl::FailedPreconditionError("NcclCommunicator aborted");
   }
-  TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
+  se::Stream* stream = ToStream(executor);
 
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL AllGather operation on device #%d; send_buffer=%p; "
@@ -575,7 +580,7 @@ absl::Status NcclCommunicator::LaunchAllToAll(
   if (canceling_.load()) {
     return absl::FailedPreconditionError("NcclCommunicator aborted");
   }
-  TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
+  se::Stream* stream = ToStream(executor);
 
   auto buffer_formatter = [](std::string* out, se::DeviceMemoryBase buffer) {
     absl::StrAppendFormat(out, "%p", buffer.opaque());
@@ -630,7 +635,7 @@ absl::Status NcclCommunicator::LaunchCollectivePermute(
   if (canceling_.load()) {
     return FailedPrecondition("NcclCommunicator aborted");
   }
-  TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
+  se::Stream* stream = ToStream(executor);
 
   auto rank_formatter = [](std::string* out, RankId rank) {
     absl::StrAppendFormat(out, "%d", rank.value());
@@ -678,7 +683,7 @@ absl::Status NcclCommunicator::LaunchSend(se::DeviceMemoryBase send_buffer,
   if (canceling_.load()) {
     return absl::FailedPreconditionError("NcclCommunicator aborted");
   }
-  TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
+  se::Stream* stream = ToStream(executor);
 
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL Send operation on device #%d; send_buffer=%p; dtype=%s; "
@@ -705,7 +710,7 @@ absl::Status NcclCommunicator::LaunchRecv(se::DeviceMemoryBase recv_buffer,
   if (canceling_.load()) {
     return absl::FailedPreconditionError("NcclCommunicator aborted");
   }
-  TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
+  se::Stream* stream = ToStream(executor);
 
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL Recv operation on device #%d; recv_buffer=%p; dtype=%s; "
@@ -736,15 +741,6 @@ absl::Status NcclCommunicator::PollUntilDone() const {
     return FailedPrecondition("NcclCommunicator aborted");
   }
   return ::xla::gpu::PollUntilDone(comm_, canceling_);
-}
-
-absl::StatusOr<se::Stream*> NcclCommunicator::ToStream(
-    const Executor& executor) {
-  if (auto* gpu_executor =
-          tsl::down_cast<const GpuCollectives::Executor*>(&executor)) {
-    return gpu_executor->stream();
-  }
-  return InvalidArgument("Communicator executor is not a GPU executor");
 }
 
 tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::Execute(

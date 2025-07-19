@@ -29,8 +29,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/overload.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/ffi/ffi_api.h"
@@ -41,11 +43,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/utils/hlo_longest_prefix.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/overload.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -59,6 +61,7 @@ namespace xla::gpu {
 
 using CommandBuffer = CommandBufferScheduling::CommandBuffer;
 using CommandBufferConfig = CommandBufferScheduling::CommandBufferConfig;
+using ::xla::hlo_longest_prefix::GetLongestOpNamePrefix;
 
 // Returns true if HLO computation can be executed as a command buffer.
 static bool IsCommand(const HloComputation* computation,
@@ -114,7 +117,8 @@ static bool AsyncStartOrDoneCommandIsSupported(
   if (hlo->async_wrapped_opcode() == HloOpcode::kFusion) {
     // We don't currently support dynamic memcpy fusions in command buffers.
     if (IsDynamicMemcpyFusion(hlo->async_wrapped_instruction())) {
-      return false;
+      return config.enabled_commands.contains(
+          DebugOptions::DYNAMIC_SLICE_COPY_FUSION);
     }
 
     // We currently only support static address computations in command
@@ -265,8 +269,8 @@ static bool IsCommand(const HloInstruction* hlo,
       return config.enabled_commands.contains(DebugOptions::CUDNN);
     }
     if (IsDynamicMemcpyFusion(fusion)) {
-      // Dynamic memcpy fusions do not yet have a command implementation.
-      return false;
+      return config.enabled_commands.contains(
+          DebugOptions::DYNAMIC_SLICE_COPY_FUSION);
     }
     if (IsDynamicSliceFusion(fusion)) {
       auto fusion_analysis =
@@ -870,6 +874,13 @@ absl::StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
     TF_RETURN_IF_ERROR(parent->RemoveInstruction(seq.instructions()[i]));
   }
 
+  absl::string_view call_prefix =
+      GetLongestOpNamePrefix(*call, /*ignore_malformed_op_names=*/true);
+  std::string call_op_name = (call_prefix.empty())
+                                 ? (std::string)call->name()
+                                 : absl::StrCat(call_prefix, "/", call->name());
+  call->set_metadata_op_name(call_op_name);
+
   return computation;
 }
 
@@ -947,7 +958,7 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
     erase(kRequireConditionals);  // on-device control flow
   };
 
-  std::visit(Overload{erase_cuda, erase_rocm},
+  std::visit(absl::Overload(erase_cuda, erase_rocm),
              device_description_.gpu_compute_capability());
 
   auto order = module->MakeComputationPostOrder();

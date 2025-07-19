@@ -51,7 +51,8 @@ absl::StatusOr<ModuleOp> PostCalibrationComponent::Run(
             std::make_unique<SaveQuantizationReportInstrumentation>(
                 GetReportFilePath(config)));
 
-        AddPostCalibrationPasses(pm, config.pipeline_config(), config.specs());
+        quant::stablehlo::AddPostCalibrationPasses(pm, config.pipeline_config(),
+                                                   config.specs());
       },
       *ctx_, module_op));
   return module_op;
@@ -60,7 +61,7 @@ absl::StatusOr<ModuleOp> PostCalibrationComponent::Run(
 void PostCalibrationComponent::AddPasses(
     OpPassManager& pm, const QuantizationSpecs& specs,
     const PipelineConfig& pipeline_config) const {
-  AddPostCalibrationPasses(pm, pipeline_config, specs);
+  quant::stablehlo::AddPostCalibrationPasses(pm, pipeline_config, specs);
 }
 
 }  // namespace mlir::quant::stablehlo

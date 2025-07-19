@@ -24,10 +24,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tsl/platform/status.h"
 
-#if !defined(ABSL_DEPRECATE_AND_INLINE)
-#define ABSL_DEPRECATE_AND_INLINE()
-#endif
-
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)
 #ifdef SWIG

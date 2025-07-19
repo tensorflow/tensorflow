@@ -27,33 +27,10 @@ namespace xnnpack {
 using mode_t = int;
 #endif
 
-// Wraps a C file descriptor and closes it when destroyed.
-//
-// Note that constness of the wrapped does NOT propagate to the file operations.
-class FileDescriptor {
+class FileDescriptorView {
  public:
-  explicit FileDescriptor(int fd) : fd_(fd) {}
-
-  FileDescriptor() = default;
-
-  FileDescriptor(const FileDescriptor&) = delete;
-  FileDescriptor& operator=(const FileDescriptor&) = delete;
-
-  FileDescriptor(FileDescriptor&& other) : fd_(other.fd_) { other.fd_ = -1; }
-
-  FileDescriptor& operator=(FileDescriptor&& other) {
-    if (other.fd_ != fd_) {
-      Close();
-      fd_ = other.fd_;
-      other.fd_ = -1;
-    }
-    return *this;
-  }
-
-  ~FileDescriptor() { Close(); }
-
-  // Duplicates an existing raw file descriptor.
-  static FileDescriptor Duplicate(int fd);
+  explicit FileDescriptorView(int fd) : fd_(fd) {}
+  FileDescriptorView() = default;
 
   // Checks that the file descriptor has a valid value.
   //
@@ -62,9 +39,6 @@ class FileDescriptor {
 
   // Returns the file descriptor value.
   int Value() const { return fd_; }
-
-  // Closes the current file descriptor if needed and assigns the given value.
-  void Reset(int new_fd);
 
   // Returns the cursor position in the current file.
   //
@@ -94,20 +68,6 @@ class FileDescriptor {
   // WARNING: the file descriptor must be valid and the file must be opened.
   off_t MovePos(off_t offset) const;
 
-  // Duplicates the current file descriptor and returns the new file descriptor.
-  //
-  // If the file descriptor is invalid, returns a new invalid FileDescriptor
-  // object.
-  FileDescriptor Duplicate() const;
-
-  // Opens a file.
-  //
-  // Directly maps to the standard C function `open`.
-  static FileDescriptor Open(const char* path, int flags, mode_t mode = 0);
-
-  // Closes the current file descriptor and sets it to -1.
-  void Close();
-
   // Reads `count` bytes from the file at the current position to `dst`.
   //
   // Returns true if all the data available in the file was read to the buffer
@@ -125,6 +85,57 @@ class FileDescriptor {
   [[nodiscard /*Reading from a file may fail.*/]]
   bool Write(const void* src, size_t count) const;
 
+ protected:
+  int fd_ = -1;
+};
+
+// Wraps a C file descriptor and closes it when destroyed.
+//
+// Note that constness of the wrapped does NOT propagate to the file operations.
+class FileDescriptor : public FileDescriptorView {
+ public:
+  explicit FileDescriptor(int fd) : FileDescriptorView(fd) {}
+
+  FileDescriptor() = default;
+
+  FileDescriptor(const FileDescriptor&) = delete;
+  FileDescriptor& operator=(const FileDescriptor&) = delete;
+
+  FileDescriptor(FileDescriptor&& other) : FileDescriptorView{other.fd_} {
+    other.fd_ = -1;
+  }
+
+  FileDescriptor& operator=(FileDescriptor&& other) {
+    if (other.fd_ != fd_) {
+      Close();
+      fd_ = other.fd_;
+      other.fd_ = -1;
+    }
+    return *this;
+  }
+
+  ~FileDescriptor() { Close(); }
+
+  // Duplicates an existing raw file descriptor.
+  static FileDescriptor Duplicate(int fd);
+
+  // Closes the current file descriptor if needed and assigns the given value.
+  void Reset(int new_fd);
+
+  // Duplicates the current file descriptor and returns the new file descriptor.
+  //
+  // If the file descriptor is invalid, returns a new invalid FileDescriptor
+  // object.
+  FileDescriptor Duplicate() const;
+
+  // Opens a file.
+  //
+  // Directly maps to the standard C function `open`.
+  static FileDescriptor Open(const char* path, int flags, mode_t mode = 0);
+
+  // Closes the current file descriptor and sets it to -1.
+  void Close();
+
   // Returns the current file descriptor value and stops managing it.
   int Release() {
     const int fd = fd_;
@@ -136,9 +147,6 @@ class FileDescriptor {
     using std::swap;
     swap(f1.fd_, f2.fd_);
   }
-
- private:
-  int fd_ = -1;
 };
 
 // Checks if the current build and system support creating an in-memory file

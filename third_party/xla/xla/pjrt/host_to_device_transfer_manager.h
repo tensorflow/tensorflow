@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_PJRT_HOST_TO_DEVICE_TRANSFER_MANAGER_H_
 #define XLA_PJRT_HOST_TO_DEVICE_TRANSFER_MANAGER_H_
 
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/pjrt/common_pjrt_client.h"
 
 namespace xla {

@@ -1,5 +1,5 @@
-// RUN: tf-opt %s -tfl-post-quantize | FileCheck %s
-// RUN: tf-opt %s -tfl-post-quantize-remove-qdq | FileCheck --check-prefix=QDQ %s
+// RUN: litert-opt %s -tfl-post-quantize | FileCheck %s
+// RUN: litert-opt %s -tfl-post-quantize-remove-qdq | FileCheck --check-prefix=QDQ %s
 
 // CHECK-LABEL: RemoveUnused
 // QDQ-LABEL: RemoveUnused

@@ -843,7 +843,8 @@ bool AlgebraicSimplifierVisitor::ReplaceInstructionIfCompatible(
   }
   CHECK(!new_instructions.empty());
   if (!old_instruction->shape().IsTuple() ||
-      old_instruction->shape().tuple_shapes_size() != new_instructions.size()) {
+      old_instruction->shape().tuple_shapes().size() !=
+          new_instructions.size()) {
     return false;
   }
   for (int i = 0, n = new_instructions.size(); i < n; ++i) {
@@ -3542,8 +3543,12 @@ AlgebraicSimplifierVisitor::RewriteAsMultiplyDotWithZeroLhsContractingDim(
   }
   auto new_instruction = HloInstruction::CreateBinary(
       dot->shape(), HloOpcode::kMultiply, new_lhs, new_rhs);
-  dot->SetupDerivedInstruction(new_lhs);
-  dot->SetupDerivedInstruction(new_rhs);
+  if (new_lhs != lhs) {
+    dot->SetupDerivedInstruction(new_lhs);
+  }
+  if (new_rhs != rhs) {
+    dot->SetupDerivedInstruction(new_rhs);
+  }
   dot->SetupDerivedInstruction(new_instruction.get());
   return ReplaceWithNewInstruction(dot, std::move(new_instruction));
 }
@@ -4779,13 +4784,15 @@ absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
 
   // 0*RHS => 0. Only applies for integral types for correct NaN-handling.
   if (IsAll(lhs, 0) &&
-      primitive_util::IsIntegralType(multiply->shape().element_type()) &&
+      (options_.enable_fast_math() ||
+       primitive_util::IsIntegralType(multiply->shape().element_type())) &&
       ReplaceInstructionIfCompatible(multiply, lhs)) {
     return absl::OkStatus();
   }
   // LHS*0 => 0
   if (IsAll(rhs, 0) &&
-      primitive_util::IsIntegralType(multiply->shape().element_type()) &&
+      (options_.enable_fast_math() ||
+       primitive_util::IsIntegralType(multiply->shape().element_type())) &&
       ReplaceInstructionIfCompatible(multiply, rhs)) {
     return absl::OkStatus();
   }
@@ -5109,7 +5116,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleOptimizationBarrier(
   // optimization barrier. Additionally if the operand is a tuple producing
   // instruction it should also be safe to create a sub tuple of only the used
   // components to enable module level dce.
-  std::vector<bool> used_elements(barrier->shape().tuple_shapes_size());
+  std::vector<bool> used_elements(barrier->shape().tuple_shapes().size());
   bool has_non_gte_use = false;
   for (auto use : barrier->users()) {
     if (use->opcode() != HloOpcode::kGetTupleElement) {
@@ -5126,7 +5133,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleOptimizationBarrier(
         continue;
       }
       if (operand->operand(i)->user_count() > 1 ||
-          operand->operand(i) == computation_->root_instruction()) {
+          operand->operand(i) == computation_->root_instruction() ||
+          operand->operand(i)->HasSideEffect()) {
         used_elements[i] = true;
       }
     }
@@ -8558,6 +8566,41 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduceWindow(
              operand->operand(0)->opcode() == HloOpcode::kPad) {
     convert = operand;
     pad = operand->mutable_operand(0);
+
+    // TODO(b/214340779): This is a temporary hack to avoid folding pad into
+    // reduce-window. We need to get AssociativeScan to work first.
+    std::vector<int64_t> non_trivial_window_dimensions =
+        reduce_window->non_trivial_window_dimensions();
+
+    // If there is only one non-trivial dimension, we can check if the padding
+    // ratio is big enough to justify the optimization.
+    if (non_trivial_window_dimensions.size() == 1) {
+      int64_t non_trivial_window_dimension = non_trivial_window_dimensions[0];
+
+      // Getting the scan length.
+      const Shape& operand_shape = reduce_window->inputs().front()->shape();
+      int64_t scan_length =
+          operand_shape.dimensions(non_trivial_window_dimension);
+
+      // Padding size of the dimension in interest
+      PaddingConfig padding_config = pad->padding_config();
+      auto& padding_dim =
+          padding_config.dimensions(non_trivial_window_dimension);
+
+      // Calculate the ration of padding size to scan length to decide if the
+      // optimization is worth it. If the ratio is not significant enough it
+      // disturbs later optimizations (reduce-window-rewriter).
+      int64_t padding_size =
+          padding_dim.edge_padding_high() + padding_dim.edge_padding_low();
+      double padding_ratio = static_cast<double>(padding_size) / scan_length;
+
+      if (padding_ratio < 0.1) {
+        VLOG(10) << "Not folding pad into reduce-window as the padding ratio "
+                    "is not significant enough. padding_ratio: "
+                 << padding_ratio;
+        return absl::OkStatus();
+      }
+    }
   } else {
     VLOG(10) << "Not folding pad into reduce-window as there is no pad.";
     return absl::OkStatus();

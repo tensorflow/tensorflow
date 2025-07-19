@@ -43,6 +43,16 @@ _CSS = """
 body {font-family: sans-serif; background-color: #fa0;}
 table {background-color: #eca;}
 th {background-color: black; color: white;}
+/* Constrain table cells to a max size and make them scrollable. */
+.data-table td {
+  max-width: 900px;
+}
+.data-table .cell-content {
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
 h1 {
   background-color: ffaa00;
   padding:5px;
@@ -284,6 +294,27 @@ class TensorMapper:
     return html
 
 
+def QuantizationMapper(q):
+  """Pretty-print the quantization dictionary, truncating large arrays."""
+  if not q:
+    return ""
+
+  items_str = []
+  for key, value in q.items():
+    key_str = repr(key)
+    # In TFLite, quantization arrays can be large.
+    if isinstance(value, list) and len(value) > 20:
+      head = value[:10]
+      tail = value[-10:]
+      value_str = (f"[{', '.join(map(repr, head))}, ..., "
+                   f"{', '.join(map(repr, tail))}]")
+    else:
+      value_str = repr(value)
+    items_str.append(f"{key_str}: {value_str}")
+
+  return f"{{{', '.join(items_str)}}}"
+
+
 def GenerateGraph(subgraph_idx, g, opcode_mapper):
   """Produces the HTML required to have a d3 visualization of the dag."""
 
@@ -359,8 +390,8 @@ def GenerateTableHtml(items, keys_to_print, display_index=True):
     An html table.
   """
   html = ""
-  # Print the list of  items
-  html += "<table><tr>\n"
+  # Print the list of items
+  html += "<table class='data-table'>\n"
   html += "<tr>\n"
   if display_index:
     html += "<th>index</th>"
@@ -375,7 +406,7 @@ def GenerateTableHtml(items, keys_to_print, display_index=True):
     for h, mapper in keys_to_print:
       val = tensor[h] if h in tensor else None
       val = val if mapper is None else mapper(val)
-      html += "<td>%s</td>\n" % val
+      html += "<td><div class='cell-content'>%s</div></td>\n" % val
 
     html += "</tr>\n"
   html += "</table>\n"
@@ -465,11 +496,13 @@ def create_html(tflite_input, input_is_filepath=True):  # pylint: disable=invali
   toplevel_stuff = [("filename", None), ("version", None),
                     ("description", None)]
 
-  html += "<table>\n"
+  html += "<table class='data-table'>\n"
   for key, mapping in toplevel_stuff:
     if not mapping:
       mapping = lambda x: x
-    html += "<tr><th>%s</th><td>%s</td></tr>\n" % (key, mapping(data.get(key)))
+    val = mapping(data.get(key))
+    html += ("<tr><th>%s</th><td><div class='cell-content'>%s</div></td></tr>\n"
+             % (key, val))
   html += "</table>\n"
 
   # Spec on what keys to display
@@ -493,7 +526,7 @@ def create_html(tflite_input, input_is_filepath=True):  # pylint: disable=invali
     tensor_keys_to_display = [("name", NameListToString),
                               ("type", TensorTypeToName), ("shape", None),
                               ("shape_signature", None), ("buffer", None),
-                              ("quantization", None)]
+                              ("quantization", QuantizationMapper)]
 
     html += "<h2>Subgraph %d</h2>\n" % subgraph_idx
 

@@ -279,7 +279,7 @@ cc_library(
     testonly = True,
     deps = [
         ":target_aware_conversion",
-        "//tensorflow/compiler/mlir:tf_mlir_opt_main",
+        "//tensorflow/compiler/mlir/lite:litert_mlir_opt_main",
     ],
     alwayslink = 1,
 )

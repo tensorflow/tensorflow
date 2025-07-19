@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
@@ -137,7 +138,8 @@ Compiler::GetPlatformCompilers() {
 // TODO(b/256849421) Replace with non-null instantiation of MetricsHookInterface
 // with empty implementations.
 std::unique_ptr<MetricsHookInterface> Compiler::CreateMetricsHook(
-    absl::string_view filename_prefix) const {
+    absl::string_view filename_prefix,
+    absl::string_view hlo_module_name) const {
   return nullptr;
 }
 

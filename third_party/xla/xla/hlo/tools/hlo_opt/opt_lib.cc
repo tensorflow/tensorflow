@@ -76,7 +76,6 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/stable_sort_expander.h"
 #include "xla/hlo/transforms/expanders/stochastic_convert_decomposer.h"
 #include "xla/hlo/transforms/host_offload_legalize.h"
-#include "xla/hlo/transforms/host_offloader.h"
 #include "xla/hlo/transforms/host_offloading_prepare.h"
 #include "xla/hlo/transforms/literal_canonicalizer.h"
 #include "xla/hlo/transforms/memory_space_propagation.h"
@@ -227,9 +226,6 @@ std::string OptProvider::GetRegisteredPassNamesHelper(
 void OptProvider::RegisterAllHardwareIndependentPasses() {
   // Dummy pass configs necessary for pass registration.
   FloatSupport* bfloat16_support = new FloatSupport(BF16, F32);
-  auto size_fn = [](const BufferValue& buffer) {
-    return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
-  };
   LiteralPool* literal_pool = new LiteralPool();
 
   // Hardware-independent HLO passes
@@ -294,11 +290,9 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<HloDescheduler>();
   RegisterPass<HloElementTypeConverter>(/*eliminate_type=*/BF16,
                                         /*replace_with_type=*/F32);
-  RegisterPass<HloMemoryScheduler>(/*size_fn*/ size_fn);
   RegisterPass<HloTrivialScheduler>();
   RegisterPass<HostMemoryTransferAsyncifier>(/*host_memory_space_color=*/5);
   RegisterPass<HostOffloadLegalize>();
-  RegisterPass<HostOffloader>();
   RegisterPass<HostOffloadingPrepare>(
       /*rewrite=*/HostOffloadingPrepare::Rewrite::kElideMoveToHost);
   RegisterPass<IndexedArrayAnalysisPrinterPass>();

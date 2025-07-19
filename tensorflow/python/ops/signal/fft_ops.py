@@ -164,7 +164,8 @@ def _rfft_wrapper(fft_fn, fft_rank, default_name):
       if fft_length_static is not None:
         fft_length = fft_length_static
       return fft_fn(input_tensor, fft_length, Tcomplex=complex_dtype, name=name)
-  _rfft.__doc__ = re.sub("    Tcomplex.*?\n", "", fft_fn.__doc__)
+  if fft_fn.__doc__ is not None:
+    _rfft.__doc__ = re.sub("    Tcomplex.*?\n", "", fft_fn.__doc__)
   return _rfft
 
 
@@ -195,8 +196,12 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
         fft_length = fft_length_static
       return ifft_fn(input_tensor, fft_length, Treal=real_dtype, name=name)
 
-  _irfft.__doc__ = re.sub("`input`", "`input_tensor`",
-                          re.sub("    Treal.*?\n", "", ifft_fn.__doc__))
+  if ifft_fn.__doc__ is not None:
+    _irfft.__doc__ = re.sub(
+        "`input`",
+        "`input_tensor`",
+        re.sub("    Treal.*?\n", "", ifft_fn.__doc__),
+    )
   return _irfft
 
 
@@ -235,7 +240,8 @@ def _fftn_wrapper(fft_n, default_name):
           input_tensor /= np.sqrt(n)  # should be sqrt(N)
       return fft_n(input_tensor, fft_length, axes, name=name)
 
-  _fftn.__doc__ = re.sub(r"    Tcomplex.*?\n", "", fft_n.__doc__)
+  if fft_n.__doc__ is not None:
+    _fftn.__doc__ = re.sub(r"    Tcomplex.*?\n", "", fft_n.__doc__)
   return _fftn
 
 
@@ -274,7 +280,8 @@ def _ifftn_wrapper(ifft_n, default_name):
           input_tensor *= np.sqrt(n)  # should be sqrt(N)
       return ifft_n(input_tensor, fft_length, axes, name=name)
 
-  _ifftn.__doc__ = re.sub(r"    Tcomplex.*?\n", "", ifft_n.__doc__)
+  if ifft_n.__doc__ is not None:
+    _ifftn.__doc__ = re.sub(r"    Tcomplex.*?\n", "", ifft_n.__doc__)
   return _ifftn
 
 
@@ -330,7 +337,8 @@ def _rfftn_wrapper(rfft_n, default_name):
           name=name,
       )
 
-  _rfftn.__doc__ = re.sub(r"    Tcomplex.*?\n", "", rfft_n.__doc__)
+  if rfft_n.__doc__ is not None:
+    _rfftn.__doc__ = re.sub(r"    Tcomplex.*?\n", "", rfft_n.__doc__)
   return _rfftn
 
 
@@ -380,11 +388,12 @@ def _irfftn_wrapper(irfft_n, default_name):
           input_tensor, fft_length, axes, Treal=real_dtype, name=name
       )
 
-  _irfftn.__doc__ = re.sub(
-      "`input`",
-      "`input_tensor`",
-      re.sub(r"    Treal.*?\n", "", irfft_n.__doc__),
-  )
+  if irfft_n.__doc__ is not None:
+    _irfftn.__doc__ = re.sub(
+        "`input`",
+        "`input_tensor`",
+        re.sub(r"    Treal.*?\n", "", irfft_n.__doc__),
+    )
   return _irfftn
 
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <queue>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/btree_map.h"
@@ -328,9 +329,116 @@ bool LegalizeSchedulingAnnotations::KeepSchedulingAnnotation(
   return IsSupportedAsyncOp(instr) || config_.keep_sync_annotation(instr);
 }
 
+bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
+    const absl::flat_hash_map<
+        Annotation,
+        absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>&
+        annotation_to_instruction) {
+  absl::flat_hash_map<
+      AnnotationGroupId,
+      absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>
+      group_id_to_instruction;
+  for (const auto& [annotation, comp_inst_vector] : annotation_to_instruction) {
+    for (const auto& [comp, annotated_instructions] : comp_inst_vector) {
+      for (const auto& annotated_instruction : annotated_instructions) {
+        if (annotation.group_id.has_value()) {
+          group_id_to_instruction[annotation.group_id.value()][comp].push_back(
+              annotated_instruction);
+        }
+      }
+    }
+  }
+
+  bool changed = false;
+  for (const auto& [group_id, annotated_instructions] :
+       group_id_to_instruction) {
+    for (const auto& [comp, annotated_instructions] : annotated_instructions) {
+      if (annotated_instructions.size() == 1 &&
+          !config_.keep_trivial_sync_annotation(annotated_instructions[0])) {
+        // Remove annotations from synchronous operations (control flow, TC
+        // custom calls) since they won't do anything and will just get in the
+        // way of scheduling.
+        VLOG(2) << "Removing trivial group: " << group_id
+                << " from instruction: " << annotated_instructions[0]->name()
+                << " in computation: " << comp->name();
+        changed |= RemoveSchedulingAnnotation(annotated_instructions[0]);
+      } else {
+        VLOG(3) << "Retaining nontrivial group: " << group_id;
+      }
+    }
+  }
+
+  return changed;
+}
+
+absl::Status LegalizeSchedulingAnnotations::Verify(HloModule* module) {
+  VLOG(1) << "Verifying scheduling annotations for module: " << module->name();
+  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+    auto reachability_map = HloReachabilityMap::Build(computation);
+    absl::flat_hash_map<Annotation, std::vector<HloInstruction*>> grp_map;
+    for (HloInstruction* instr : computation->instructions()) {
+      if (HasSchedulingAnnotation(instr)) {
+        auto scheduling_annotation_or = GetSchedulingAnnotation(instr);
+        if (!scheduling_annotation_or.ok()) {
+          continue;
+        }
+        std::optional<Annotation> scheduling_annotation =
+            scheduling_annotation_or.value();
+        if (scheduling_annotation.has_value()) {
+          grp_map[scheduling_annotation.value()].push_back(instr);
+        }
+      }
+    }
+    // Check reachability for each group.
+    for (auto& [id_a, instrs_a] : grp_map) {
+      for (auto& [id_b, instrs_b] : grp_map) {
+        if (id_a == id_b) {
+          continue;
+        }
+        bool b_is_reachable_from_a = false;
+        bool a_is_reachable_from_b = false;
+        std::pair<HloInstruction*, HloInstruction*> a_b_pair;
+        std::pair<HloInstruction*, HloInstruction*> b_a_pair;
+        for (int64_t i = 0; i < instrs_a.size(); ++i) {
+          for (int64_t j = 0; j < instrs_b.size(); ++j) {
+            auto* a = instrs_a[i];
+            auto* b = instrs_b[j];
+            if (reachability_map->IsReachable(a, b)) {
+              b_is_reachable_from_a = true;
+              a_b_pair = std::make_pair(a, b);
+            }
+            if (reachability_map->IsReachable(b, a)) {
+              a_is_reachable_from_b = true;
+              b_a_pair = std::make_pair(b, a);
+            }
+          }
+          if (a_is_reachable_from_b && b_is_reachable_from_a) {
+            VLOG(1) << "a_b_pair: " << a_b_pair.first->name() << " "
+                    << a_b_pair.second->name();
+            VLOG(1) << "b_a_pair: " << b_a_pair.first->name() << " "
+                    << b_a_pair.second->name();
+            return absl::InternalError(
+                absl::StrCat("ERROR: Detected scheduling group annotation "
+                             "cycle between scheduling_group_id: ",
+                             id_a.ToString(),
+                             " and scheduling_group_id: ", id_b.ToString()));
+          }
+        }
+      }
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  // Run verification if requested.
+  if (config_.run_verification) {
+    TF_RETURN_IF_ERROR(Verify(module));
+  }
+
   bool changed = false;
   // Remove loop iteration annotation if requested.
   if (config_.remove_loop_iteration_annotation_only) {
@@ -389,6 +497,8 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
       return status;
     }
   }
+
+  changed |= RemoveTrivialGroups(annotation_to_instruction);
 
   // Either propagate the annotation to fill the gaps between instructions with
   // the same annotation ID or check (and return error) if there are gaps.

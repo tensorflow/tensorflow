@@ -150,6 +150,7 @@ cc_library(
         "transforms/legalize_tf_passes.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
     deps = [
         ":legalize_tf_patterns_inc_gen",
         ":legalize_utils",
@@ -197,6 +198,7 @@ cc_library(
     copts = [
         "-Ithird_party",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":legalize_tf",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -267,37 +269,9 @@ cc_library(
     copts = [
         "-Ithird_party",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
-        "//tensorflow/compiler/mlir/utils:validators",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Dialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/mlir_hlo",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "tf_fuse_convolution_pass",
-    srcs = [
-        "transforms/mhlo_passes/tf_fuse_convolution_pass.cc",
-    ],
-    hdrs = [
-        "transforms/mhlo_passes/tf_fuse_convolution_pass.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    copts = [
-        "-Ithird_party",
-    ],
-    deps = [
-        "//tensorflow/compiler/mlir/quantization/common:tf_attrs_and_constraints",
         "//tensorflow/compiler/mlir/utils:validators",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Dialect",
@@ -325,6 +299,7 @@ cc_library(
     copts = [
         "-Ithird_party",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
@@ -352,6 +327,7 @@ cc_library(
     copts = [
         "-Ithird_party",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//llvm:Support",

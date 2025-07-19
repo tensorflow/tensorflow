@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -126,6 +127,7 @@ TEST(DumpHloModule, WithBufferAssignment) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnUnverifiedModule(kModuleStr, config));
+  AliasInfo alias_info;
   std::unique_ptr<BufferAssignment> buffer_assignment =
       BufferAssigner::Run(
           /*module=*/&*m,
@@ -134,6 +136,7 @@ TEST(DumpHloModule, WithBufferAssignment) {
           [](const BufferValue& buffer) -> int64_t {
             return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
           },
+          &alias_info,
           /*color_alignment=*/[](LogicalBuffer::Color) -> int64_t { return 1; },
           /*allocate_buffers_for_constants=*/true)
           .value();
@@ -476,6 +479,17 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
                         FilenameFor(*m, "", kNonDefaultDebugOptionsDumpSuffix)),
       &real_contents));
   EXPECT_THAT(real_contents, testing::Eq(non_default_options));
+}
+
+TEST(DumpTest, DumpRepeatedStringTest) {
+  DebugOptions options = DefaultDebugOptionsIgnoringFlags();
+  options.add_legacy_command_buffer_custom_call_targets("__gpu.gpu.triton");
+
+  std::string non_default_options = GetNonDefaultDebugOptions(options);
+  EXPECT_THAT(
+      non_default_options,
+      testing::HasSubstr(
+          "legacy_command_buffer_custom_call_targets: \"__gpu.gpu.triton\""));
 }
 
 }  // namespace

@@ -174,6 +174,13 @@ TEST_P(XnnConvolutionThunkTest, SimpleConvolution) {
 
   ErrorSpec error_spec{1e-5};
   EXPECT_TRUE(LiteralTestUtil::Near(expected_result, out, error_spec));
+
+  // Execute thunk one more time to test that we reuse XNN runtime.
+  execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_FALSE(execute_event.IsError()) << execute_event.GetError();
+
+  EXPECT_TRUE(LiteralTestUtil::Near(expected_result, out, error_spec));
 }
 
 INSTANTIATE_TEST_SUITE_P(

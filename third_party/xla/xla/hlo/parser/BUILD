@@ -117,3 +117,15 @@ cc_library(
         "@local_tsl//tsl/platform:regexp",
     ],
 )
+
+xla_cc_test(
+    name = "hlo_lexer_test",
+    srcs = ["hlo_lexer_test.cc"],
+    deps = [
+        ":hlo_lexer",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

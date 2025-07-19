@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_UTIL_H_
 #define TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_UTIL_H_
 
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -28,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -71,8 +76,8 @@ template <typename T>
 string PrintArray(int64_t num_elts, const T* array) {
   string ret;
   for (int64_t i = 0; i < num_elts; ++i) {
-    if (i > 0) strings::StrAppend(&ret, ", ");
-    strings::StrAppend(&ret, array[i]);
+    if (i > 0) absl::StrAppend(&ret, ", ");
+    absl::StrAppend(&ret, strings::LegacyPrecision(array[i]));
   }
   return ret;
 }

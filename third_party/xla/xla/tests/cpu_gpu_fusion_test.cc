@@ -26,6 +26,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "benchmark/benchmark.h"
@@ -53,7 +54,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
@@ -614,7 +614,10 @@ std::unique_ptr<HloComputation> MakeReduceTestComputation() {
   return builder.Build();
 }
 
-TEST_F(CpuGpuFusionTest, DISABLED_ON_CPU(Reduce)) {
+TEST_F(CpuGpuFusionTest, Reduce) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   auto hlo_module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto const0 = builder.AddInstruction(
@@ -655,7 +658,10 @@ TEST_F(CpuGpuFusionTest, ReduceImplicitBroadcast) {
                              ExecuteAndTransfer(std::move(hlo_module), {})));
 }
 
-TEST_F(CpuGpuFusionTest, DISABLED_ON_CPU(ReduceWindow)) {
+TEST_F(CpuGpuFusionTest, ReduceWindow) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   auto builder = HloComputation::Builder(TestName());
   auto hlo_module = CreateNewVerifiedModule();
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(

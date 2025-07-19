@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-optimize-op-order | FileCheck %s
+// RUN: litert-opt %s -tfl-optimize-op-order | FileCheck %s
 
 // CHECK-LABEL: dequantize_pushdown
 func.func @dequantize_pushdown(%arg0: tensor<1000x1000x!quant.uniform<i8:f32, 7.812500e-03>>, %arg1: tensor<1x1xi32>) -> tensor<1x1x1000xf32> {

@@ -52,6 +52,7 @@ namespace TFTPU {
 namespace {
 constexpr char kStepMarkerLocationAttr[] = "step_marker_location";
 constexpr char kUseXlaSpmdAttr[] = "use_spmd_for_xla_partitioning";
+constexpr char kUseShardyAttr[] = "use_shardy_partitioner";
 
 constexpr char kBadStringArrayElementMsg[] =
     "bad '{0}' attribute at index {1}, not a string";
@@ -237,10 +238,14 @@ LogicalResult SetMetadataProtoFromClusterFuncOp(
   if (xla_device_assignment.has_value())
     *metadata->mutable_device_assignment() =
         std::move(xla_device_assignment.value());
+
   auto use_spmd_attr = op->getAttrOfType<BoolAttr>(kUseXlaSpmdAttr);
   if (!use_spmd_attr)
     return op.emitOpError(CreateMissingAttributeMsg(kUseXlaSpmdAttr));
   metadata->set_use_spmd_for_xla_partitioning(use_spmd_attr.getValue());
+
+  if (auto use_shardy_attr = op->getAttrOfType<BoolAttr>(kUseShardyAttr))
+    metadata->set_use_shardy_partitioner(use_shardy_attr.getValue());
 
   if (failed(SetMetadataProtoArgs(op, metadata))) return failure();
 

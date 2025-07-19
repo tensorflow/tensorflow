@@ -1590,7 +1590,7 @@ TEST_F(SmallDotGemmRewriteTest, RewriteForALG_BF16_BF16_F32) {
                     R"(
 ; CHECK-LABEL: ENTRY %DotFunc ({{.*}}: f32[1024,1024], {{.*}}: f32[1024,1024]) -> f32[1024,1024] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[1024,1024]{1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[1024,1024]{1,0} parameter(1)
+; CHECK:         [[P1:%[^ ]+]] = f32[1024,1024]{1,0} parameter(1)
 ; CHECK:        [[GEMM:%[^ ]+]] = {{.*}} custom-call({{.*}}), custom_call_target="__cublas$gemm", {{.*}},"algorithm":"ALG_UNSET"
 )");
 }

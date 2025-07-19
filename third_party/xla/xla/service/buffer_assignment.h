@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
@@ -514,7 +515,8 @@ class BufferAssignment {
                                 int64_t more_than_k = 50) const;
   // Verbose string tailored to debugging OOMs, includes the Hlo op metadata for
   // every buffer associated with each allocation.
-  std::string ToVerboseString(size_t max_buffers_to_show) const;
+  std::string ToVerboseString(const AliasInfo* alias_info,
+                              size_t max_buffers_to_show) const;
 
   // Is in use by tpu compiler to dump the buffer info.
   std::string BufferInfoString() const;
@@ -523,13 +525,11 @@ class BufferAssignment {
   BufferAssignmentProto ToProto() const;
   static absl::StatusOr<std::unique_ptr<BufferAssignment>> FromProto(
       const BufferAssignmentProto& proto, const HloModule* module,
-      BufferValue::SizeFunction buffer_size,
-      HloDataflowAnalysis::CanShareBuffer can_share_buffer);
+      BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info);
 
   // Returns string representation of buffer assignment statistics. Also
-  // calculates and returns the total fragmentation if
-  // report_total_fragmentation is true.
-  std::string StatsString(bool report_total_fragmentation = false) const;
+  // calculates and returns the total fragmentation.
+  std::string StatsString(const AliasInfo* alias_info) const;
 
   // Statistics for the assignment.  Values initialized to -1 are not always
   // collected; fragmentation is only collected for instructions that have a
@@ -616,7 +616,8 @@ class BufferAssignment {
   void ComputeSummaryStats();
 
   // Calculates and returns the total fragmentation in bytes.
-  absl::StatusOr<int64_t> ComputeTotalFragmentationBytes() const;
+  absl::StatusOr<int64_t> ComputeTotalFragmentationBytes(
+      const AliasInfo* alias_info) const;
 
   // The vector of buffer allocations. Indexed by BufferAllocation::Index.
   std::vector<BufferAllocation> allocations_;
@@ -687,12 +688,11 @@ class BufferAssigner {
   // valid and they do not overwrite each other.
   static absl::StatusOr<std::unique_ptr<BufferAssignment>> Run(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-      BufferValue::SizeFunction buffer_size,
+      BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info,
       LogicalBuffer::AlignmentFunction color_alignment,
       bool allocate_buffers_for_constants = false,
       Colorer colorer = DefaultColorer(),
       std::optional<MustNotLiveOut> must_not_live_out = std::nullopt,
-      HloDataflowAnalysis::CanShareBuffer can_share_buffer = nullptr,
       std::unique_ptr<memory_space_assignment::PresetAssignments>
           preset_assignments = {},
       const PrivateStacks& private_stacks = {},
@@ -706,11 +706,13 @@ class BufferAssigner {
   BufferAssigner(bool allocate_buffers_for_constants, Colorer colorer,
                  std::optional<MustNotLiveOut> must_not_live_out,
                  std::unique_ptr<memory_space_assignment::PresetAssignments>
-                     preset_assignments)
+                     preset_assignments,
+                 const AliasInfo* alias_info)
       : allocate_buffers_for_constants_(allocate_buffers_for_constants),
         colorer_(colorer),
         must_not_live_out_(must_not_live_out),
-        preset_assignments_(std::move(preset_assignments)) {}
+        preset_assignments_(std::move(preset_assignments)),
+        alias_info_(alias_info) {}
   virtual ~BufferAssigner() = default;
 
   // Create a buffer assignment.
@@ -718,7 +720,6 @@ class BufferAssigner {
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
       BufferValue::SizeFunction buffer_size,
       LogicalBuffer::AlignmentFunction color_alignment,
-      HloDataflowAnalysis::CanShareBuffer can_share_buffer,
       const PrivateStacks& private_stacks,
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
           heap_buffer_interval_compare,
@@ -825,9 +826,14 @@ class BufferAssigner {
   std::unique_ptr<memory_space_assignment::PresetAssignments>
       preset_assignments_;
 
+  const AliasInfo* alias_info_;
+
   BufferAssigner(const BufferAssigner&) = delete;
   BufferAssigner& operator=(const BufferAssigner&) = delete;
 };
+
+// Computes the peak memory usage through the proto's heap simulator traces.
+absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto);
 
 }  // namespace xla
 

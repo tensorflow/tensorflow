@@ -53,9 +53,8 @@ class GpuSpmdPartitioningTest : public HloHardwareIndependentTestBase,
     TF_ASSIGN_OR_RETURN(auto module,
                         ParseAndReturnVerifiedModule(hlo_module, config));
     if (UseShardy()) {
-      FrontendAttributes attrs;
-      attrs.mutable_map()->try_emplace(xla::sdy::kImportMhloShardings, "t");
-      module->add_frontend_attributes(attrs);
+      module->add_frontend_attribute(
+          std::string(xla::sdy::kImportMhloShardings), "t");
     }
 
     HloPassPipeline spmd_pipeline("spmd-partitioner");

@@ -70,6 +70,16 @@ static constexpr bool UseBlockingThunkExecutor() {
 
 namespace {
 
+class ThunkOperation;
+
+// Converts a ThunkSequence to a vector of ThunkOperations.
+static std::vector<ThunkOperation> CreateThunkOperations(
+    const ThunkSequence& thunk_sequence);
+
+// Converts a ThunkSequence to a vector of ThunkOperations.
+static std::vector<std::unique_ptr<ExecutionGraph::Operation>>
+CreateThunkOperationsAsPtrs(const ThunkSequence& thunk_sequence);
+
 // An adaptor from Thunk to ExecutionGraph::Operation for building an execution
 // graph from a thunk sequence.
 class ThunkOperation : public ExecutionGraph::Operation {
@@ -79,7 +89,12 @@ class ThunkOperation : public ExecutionGraph::Operation {
                               thunk->kind())),
         op_type_id_(static_cast<int64_t>(thunk->kind())),
         buffer_uses_(thunk->buffer_uses()),
-        resource_uses_(thunk->resource_uses()) {}
+        resource_uses_(thunk->resource_uses()) {
+    for (const auto& [name, thunk_sequence] : thunk->nested_thunks()) {
+      named_nested_operations().emplace_back(
+          name, CreateThunkOperationsAsPtrs(*thunk_sequence));
+    }
+  }
 
   absl::string_view name() const final { return name_; }
   int64_t op_type_id() const final { return op_type_id_; }
@@ -95,10 +110,7 @@ class ThunkOperation : public ExecutionGraph::Operation {
   Thunk::ResourceUses resource_uses_;
 };
 
-}  // namespace
-
-// Converts a ThunkSequence to a vector of ThunkOperations.
-static std::vector<ThunkOperation> CreateThunkOperations(
+std::vector<ThunkOperation> CreateThunkOperations(
     const ThunkSequence& thunk_sequence) {
   std::vector<ThunkOperation> operations;
   operations.reserve(thunk_sequence.size());
@@ -107,6 +119,18 @@ static std::vector<ThunkOperation> CreateThunkOperations(
   }
   return operations;
 }
+
+std::vector<std::unique_ptr<ExecutionGraph::Operation>>
+CreateThunkOperationsAsPtrs(const ThunkSequence& thunk_sequence) {
+  std::vector<std::unique_ptr<ExecutionGraph::Operation>> operations;
+  operations.reserve(thunk_sequence.size());
+  for (const auto& thunk : thunk_sequence) {
+    operations.push_back(std::make_unique<ThunkOperation>(thunk.get()));
+  }
+  return operations;
+}
+
+}  // namespace
 
 ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
                              ExecutionGraph execution_graph,
@@ -453,7 +477,7 @@ void ThunkExecutor::Execute(ExecuteState* state,
     if (ABSL_PREDICT_TRUE(execute_event.IsAvailable())) {
       // If thunk execution is completed, process out edges in the current
       // thread and keep working on the ready queue.
-      ProcessOutEdges</*process_scheduling_edges=*/true>(
+      ProcessCompletedOutEdges</*process_scheduling_edges=*/true>(
           state, execute_event.AsPtr(), node, ready_queue,
           /*drop_pending_nodes=*/is_sink);
 
@@ -461,7 +485,8 @@ void ThunkExecutor::Execute(ExecuteState* state,
       // Process scheduling edges first, before waiting for the completion of
       // thunk execution. This allows to schedule more thunks without having to
       // wait for the execution completion.
-      bool inc_pending_nodes = ProcessOutEdges(state, node, ready_queue);
+      bool inc_pending_nodes =
+          ProcessScheduledOutEdges(state, node, ready_queue);
 
       // If thunk execution is not completed yet, attach a continuation to the
       // event and resume execution on the continuation thread (ready queue
@@ -479,9 +504,13 @@ void ThunkExecutor::Execute(ExecuteState* state,
                              lock = ready_queue.Empty()
                                         ? std::move(lock)
                                         : params.session.Join()]() mutable {
-        state->executor->ProcessOutEdges</*process_scheduling_edges=*/false>(
-            state, execute_event, node, ready_queue,
-            /*drop_pending_nodes=*/is_sink || inc_pending_nodes);
+        // Drop pending nodes counter only if we are processing a sink node
+        // (pending counter initialized to the number of sink nodes) or we
+        // incremented it above (for scheduled but not completed thunks).
+        bool drop_pending_nodes = is_sink || inc_pending_nodes;
+        state->executor
+            ->ProcessCompletedOutEdges</*process_scheduling_edges=*/false>(
+                state, execute_event, node, ready_queue, drop_pending_nodes);
 
         // If ready queue is empty, it might mean that we have completed an
         // execution and destroyed the `state`, so we make sure we don't
@@ -539,9 +568,9 @@ inline ABSL_ATTRIBUTE_ALWAYS_INLINE void ThunkExecutor::SplitReadyQueue(
 }
 
 template <typename ReadyQueue>
-bool ThunkExecutor::ProcessOutEdges(ExecuteState* state,
-                                    ExecuteState::Node& node,
-                                    ReadyQueue& ready_queue) {
+bool ThunkExecutor::ProcessScheduledOutEdges(ExecuteState* state,
+                                             ExecuteState::Node& node,
+                                             ReadyQueue& ready_queue) {
   bool inc_pending_nodes = false;
 
   // Append ready nodes to the back of the ready queue.
@@ -576,7 +605,7 @@ bool ThunkExecutor::ProcessOutEdges(ExecuteState* state,
 }
 
 template <bool process_scheduling_edges, typename ReadyQueue>
-void ThunkExecutor::ProcessOutEdges(
+void ThunkExecutor::ProcessCompletedOutEdges(
     ExecuteState* state, tsl::AsyncValuePtr<Thunk::ExecuteEvent> node_event,
     ExecuteState::Node& node, ReadyQueue& ready_queue,
     bool drop_pending_nodes) {

@@ -101,16 +101,17 @@ def unicode_encode(input,
     input: An `N+1` dimensional potentially ragged integer tensor with shape
       `[D1...DN, num_chars]`.
     output_encoding: Unicode encoding that should be used to encode each
-      codepoint sequence.  Can be `"UTF-8"`, `"UTF-16-BE"`, or `"UTF-32-BE"`.
-    errors: Specifies the response when an invalid codepoint is encountered
-      (optional). One of:
-            * `'replace'`: Replace invalid codepoint with the
+      code point sequence.  Can be `"UTF-8"`, `"UTF-16-BE"`, or `"UTF-32-BE"`.
+    errors: Specifies the response when a code point that is not a [Unicode
+      scalar value](https://www.unicode.org/glossary/#unicode_scalar_value)
+      is encountered (optional). One of:
+            * `'replace'`: Replace non-scalar-value with the
               `replacement_char`. (default)
-            * `'ignore'`: Skip invalid codepoints.
-            * `'strict'`: Raise an exception for any invalid codepoint.
-    replacement_char: The replacement character codepoint to be used in place of
-      any invalid input when `errors='replace'`. Any valid unicode codepoint may
-      be used. The default value is the default unicode replacement character
+            * `'ignore'`: Skip non-scalar-value .
+            * `'strict'`: Raise an exception for any non-scalar-value.
+    replacement_char: The replacement character to be used in place of
+      any invalid input when `errors='replace'`. Any Unicode scalar value may
+      be used. The default value is the default Unicode replacement character
       which is 0xFFFD (U+65533).
     name: A name for the operation (optional).
 

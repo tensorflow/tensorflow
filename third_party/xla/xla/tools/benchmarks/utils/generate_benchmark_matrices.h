@@ -39,7 +39,7 @@ absl::StatusOr<BenchmarkSuite> LoadBenchmarkSuiteFromFile(
 // during generation (though errors are primarily handled by printing
 // warnings).
 absl::StatusOr<Json::Value> BuildGitHubActionsMatrix(
-    const BenchmarkSuite& suite, RunFrequency run_frequency);
+    const BenchmarkSuite& suite, WorkflowType current_workflow_type);
 
 // Attempts to find the absolute path to the registry file.
 // Checks the provided path directly, then relative to BUILD_WORKSPACE_DIRECTORY

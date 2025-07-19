@@ -16,10 +16,8 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <utility>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -81,10 +79,11 @@ absl::StatusOr<GpuDeviceMemory> GpuDeviceMemory::Allocate(
 TrackedGpuDeviceBuffer::TrackedGpuDeviceBuffer(
     tsl::AsyncValueRef<GpuDeviceMemory> buffer,
     tsl::AsyncValueRef<GpuEvent> definition_event,
+    tsl::AsyncValueRef<GpuEvent> ready_event,
     absl::AnyInvocable<void() &&> on_delete_callback)
     : buffer_(std::move(buffer)),
       definition_event_(std::move(definition_event)),
-      deallocation_event_(tsl::MakeConstructedAsyncValueRef<GpuEvent>()),
+      ready_event_(std::move(ready_event)),
       on_delete_callback_(std::move(on_delete_callback)) {
   VLOG(4) << "TrackedGpuDeviceBuffer::TrackedGpuDeviceBuffer: " << this << "\n "
           << tsl::CurrentStackTrace();
@@ -129,7 +128,6 @@ void TrackedGpuDeviceBuffer::ReleaseDeviceMemory() {
   buffer_.reset();
   definition_event_.reset();
   usage_events_.Clear();
-  deallocation_event_.SetStateConcrete();
 }
 
 void TrackedGpuDeviceBuffer::SetUnOwned() {

@@ -2362,7 +2362,6 @@ absl::Status TPUPartitionedCallOp::GetGraphFromFunction(
 
   // Pin the inputs and outputs to the local device to simplify the
   // function-dispatching logic.
-  local_device_name_ = library_runtime_->device()->name();
   replaced_input_indices_.resize(fbody->arg_nodes.size(), false);
   for (Node* node : graph->op_nodes()) {
     if (node->IsArg() || node->IsRetval()) {

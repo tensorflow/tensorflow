@@ -116,6 +116,17 @@ class HloGumgraph {
         call_graph_(std::move(call_graph)),
         hlo_value_tracing_(std::move(hlo_value_tracing)) {}
 
+  // Connects the provided callsite instruction to the called computation by
+  // connecting the  computation's parameters with the operands of the callsite
+  // instructions. This can be thought of as inlining the called computation at
+  // the callsite.
+  absl::Status ConnectCalledComputation(
+      const HloInstruction::InstructionVector& callsite_operands,
+      const HloInstruction::InstructionVector& called_computation_parameters);
+
+  // Connects the provided node to its operands.
+  absl::Status ConnectOperands(HloInstructionNode* node);
+
   // Adds a HloInstructionNode for the given HloInstruction to the graph.
   // Returns a pair of the node and a boolean indicating whether the node was
   // already in the graph.
@@ -138,9 +149,8 @@ class HloGumgraph {
   // instructions in the computation are hashed to compute the fingerprint.
   absl::Status PrecomputeComputationFingerprint();
 
-  // Precomputes the index of each node in a pre-order DFS traversal of the
-  // graph.
-  void PrecomputeDfsPosition();
+  // Precomputes and caches HLO value dependencies for every instruction node.
+  void PrecomputeInstructionDependencies();
 
   const HloModule& hlo_module_;
   const HloGumgraphFingerprintOptions& fingerprint_options_;

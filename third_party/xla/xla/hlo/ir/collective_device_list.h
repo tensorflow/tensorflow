@@ -75,6 +75,7 @@ class IotaReplicaGroupList {
     return iota_tile_assignment_.transpose_perm();
   }
   Array<int64_t> ToArray() const { return iota_tile_assignment_.ToArray(); }
+  std::vector<std::vector<int64_t>> flattened_replica_groups() const;
 
   void Print(Printer* printer) const;
 
@@ -119,6 +120,18 @@ class CollectiveDeviceList {
   const std::vector<ReplicaGroup>& replica_groups() const;
   const std::optional<IotaReplicaGroupList>& iota_replica_group_list() const {
     return iota_replica_group_list_;
+  }
+
+  int64_t num_replica_groups() const {
+    return iota_replica_group_list_.has_value()
+               ? iota_replica_group_list_->num_replica_groups()
+               : replica_groups_->size();
+  }
+
+  int64_t num_devices_per_group() const {
+    return iota_replica_group_list_.has_value()
+               ? iota_replica_group_list_->num_devices_per_group()
+               : replica_groups_->begin()->replica_ids_size();
   }
 
   void Print(Printer* printer,

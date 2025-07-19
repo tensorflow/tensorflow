@@ -95,13 +95,12 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
-#include "absl/types/variant.h"
 #include "xla/ef57.h"
 #include "xla/permutation_util.h"
 #include "xla/pjrt/transpose_kernels.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -122,7 +121,8 @@ struct TransposePlan::Node {
   // The loop should iterate over the index space range(start, end, inc).
   // These fields are ignored by the macrokernel.
   int64_t start;
-  int64_t end;
+  int64_t end;  // For the inner loop of a memcpy loop nest, this is the size of
+                // the transfer.
   int64_t inc;  // The transpose sentinel node has inc < 0.
 
   // Strides of this dimension in A and B.
@@ -331,18 +331,17 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
   }
 }
 
-template <typename T>
 void TransposeConstStride1(const char* __restrict a, char* __restrict b,
                            TransposePlan::Node const* __restrict node) {
   a += node[0].start * node[0].lda;
   b += node[0].start * node[0].ldb;
   if (node[0].is_inner_dim_in_a) {
-    int64_t num_bytes = (node->end - node->start) * sizeof(T);
+    int64_t num_bytes = node->end;
     std::memcpy(b, a, num_bytes);
   } else if (node[1].is_inner_dim_in_a) {
     int64_t offset_a = node[1].start * node[1].lda;
     int64_t offset_b = node[1].start * node[1].ldb;
-    int64_t num_bytes = (node[1].end - node[1].start) * sizeof(T);
+    int64_t num_bytes = node[1].end;
     a += offset_a;
     b += offset_b;
     for (int64_t i = node[0].start; i < node[0].end; ++i) {
@@ -351,11 +350,11 @@ void TransposeConstStride1(const char* __restrict a, char* __restrict b,
       b += node[0].ldb;
     }
     if (node[0].trailing_tile_next_node_inc) {
-      TransposeConstStride1<T>(a - offset_a, b - offset_b,
-                               node + node[0].trailing_tile_next_node_inc);
+      TransposeConstStride1(a - offset_a, b - offset_b,
+                            node + node[0].trailing_tile_next_node_inc);
     }
   } else if (node[2].is_inner_dim_in_a) {
-    int64_t num_bytes = (node[2].end - node[2].start) * sizeof(T);
+    int64_t num_bytes = node[2].end;
     int64_t offset_a1 = node[1].start * node[1].lda;
     int64_t offset_b1 = node[1].start * node[1].ldb;
     int64_t offset_a2 = node[2].start * node[2].lda;
@@ -371,37 +370,35 @@ void TransposeConstStride1(const char* __restrict a, char* __restrict b,
         b1 += node[1].ldb;
       }
       if (node[1].trailing_tile_next_node_inc) {
-        TransposeConstStride1<T>(
-            a1 - offset_a2, b1 - offset_b2,
-            &node[1] + node[1].trailing_tile_next_node_inc);
+        TransposeConstStride1(a1 - offset_a2, b1 - offset_b2,
+                              &node[1] + node[1].trailing_tile_next_node_inc);
       }
       a += node[0].lda;
       b += node[0].ldb;
     }
     if (node[0].trailing_tile_next_node_inc) {
-      TransposeConstStride1<T>(a - offset_a1 - offset_a2,
-                               b - offset_b1 - offset_b2,
-                               node + node[0].trailing_tile_next_node_inc);
+      TransposeConstStride1(a - offset_a1 - offset_a2,
+                            b - offset_b1 - offset_b2,
+                            node + node[0].trailing_tile_next_node_inc);
     }
   } else {
     for (int64_t i = node[0].start; i < node[0].end; ++i) {
       const char* a1 = a + node[1].start * node[1].lda;
       char* b1 = b + node[1].start * node[1].ldb;
       for (int64_t j = node[1].start; j < node[1].end; ++j) {
-        TransposeConstStride1<T>(a1, b1, node + 2);
+        TransposeConstStride1(a1, b1, node + 2);
         a1 += node[1].lda;
         b1 += node[1].ldb;
       }
       if (node[1].trailing_tile_next_node_inc) {
-        TransposeConstStride1<T>(
-            a1, b1, &node[1] + node[1].trailing_tile_next_node_inc);
+        TransposeConstStride1(a1, b1,
+                              &node[1] + node[1].trailing_tile_next_node_inc);
       }
       a += node[0].lda;
       b += node[0].ldb;
     }
     if (node[0].trailing_tile_next_node_inc) {
-      TransposeConstStride1<T>(a, b,
-                               node + node[0].trailing_tile_next_node_inc);
+      TransposeConstStride1(a, b, node + node[0].trailing_tile_next_node_inc);
     }
   }
 }
@@ -416,45 +413,41 @@ void TransposePlan::ExecuteTyped(const char* a, char* b,
          {"inner_block_elems", inner_block_elems_}});
   });
 
-  if (inner_kernel_is_memcpy_) {
-    DCHECK(transformation_ == Transformation::kNone);
-    TransposeConstStride1<T>(a, b, nodes.data());
-  } else {
-    std::unique_ptr<char[]> scratch;
-    if (scratch_size_ > 0) {
-      scratch.reset(new char[scratch_size_]);
+  CHECK(!inner_kernel_is_memcpy_);
+  std::unique_ptr<char[]> scratch;
+  if (scratch_size_ > 0) {
+    scratch.reset(new char[scratch_size_]);
+  }
+  DCHECK_LE(sizeof(T) * inner_block_elems_, kMaxInnerBlockSizeBytes);
+  auto handle_inner_block_elems = [&](auto const_inner_block_elems) {
+    if (nodes.size() > 1) {
+      Transpose<T, const_inner_block_elems, transformation>(
+          a, outer_block_elems_a_, b, outer_block_elems_b_, nodes.data(),
+          scratch.get());
+    } else {
+      MacroKernel<T, const_inner_block_elems, transformation>(
+          a, nodes.back().lda, outer_block_elems_a_, b, nodes.back().ldb,
+          outer_block_elems_b_, scratch.get());
     }
-    DCHECK_LE(sizeof(T) * inner_block_elems_, kMaxInnerBlockSizeBytes);
-    auto handle_inner_block_elems = [&](auto const_inner_block_elems) {
-      if (nodes.size() > 1) {
-        Transpose<T, const_inner_block_elems, transformation>(
-            a, outer_block_elems_a_, b, outer_block_elems_b_, nodes.data(),
-            scratch.get());
-      } else {
-        MacroKernel<T, const_inner_block_elems, transformation>(
-            a, nodes.back().lda, outer_block_elems_a_, b, nodes.back().ldb,
-            outer_block_elems_b_, scratch.get());
-      }
-    };
-    switch (inner_block_elems_) {
-      case 1:
-        handle_inner_block_elems(std::integral_constant<int, 1>{});
-        break;
-      case 2:
-        handle_inner_block_elems(std::integral_constant<int, 2>{});
-        break;
-      case 4:
-        handle_inner_block_elems(std::integral_constant<int, 4>{});
-        break;
-      case 8:
-        handle_inner_block_elems(std::integral_constant<int, 8>{});
-        break;
-      case 16:
-        handle_inner_block_elems(std::integral_constant<int, 16>{});
-        break;
-      default:
-        LOG(FATAL) << "Invalid inner_block_elems_ " << inner_block_elems_;
-    }
+  };
+  switch (inner_block_elems_) {
+    case 1:
+      handle_inner_block_elems(std::integral_constant<int, 1>{});
+      break;
+    case 2:
+      handle_inner_block_elems(std::integral_constant<int, 2>{});
+      break;
+    case 4:
+      handle_inner_block_elems(std::integral_constant<int, 4>{});
+      break;
+    case 8:
+      handle_inner_block_elems(std::integral_constant<int, 8>{});
+      break;
+    case 16:
+      handle_inner_block_elems(std::integral_constant<int, 16>{});
+      break;
+    default:
+      LOG(FATAL) << "Invalid inner_block_elems_ " << inner_block_elems_;
   }
 }
 
@@ -477,6 +470,13 @@ void TransposePlan::Execute(
   char* bc = static_cast<char*>(b);
 
   auto execute_by_type = [&](absl::Span<Node const> nodes) {
+    if (inner_kernel_is_memcpy_) {
+      DCHECK(transformation_ == Transformation::kNone);
+      // Memcpy-based plans all assume element size 1 (i.e., bytes).
+      TransposeConstStride1(ac, bc, nodes.data());
+      return;
+    }
+
     switch (elem_size_in_bytes_) {
       case 1:
         ExecuteTyped<uint8_t, Transformation::kNone>(ac, bc, nodes);
@@ -717,7 +717,7 @@ void TransposePlan::BuildPlanNodes(
   const int pos_stride1b_in_a = permutation_.back();
   const int pos_stride1a_in_b = inverse_permutation[pos_stride1a];
 
-  // We builld plans in a depth-first order, visiting loops from outermost to
+  // We build plans in a depth-first order, visiting loops from outermost to
   // innermost. We use a stack (depth-first) order to handle trailing partial
   // tiles, which we "come back to" after handling the non-trailing case.
   struct Agendum {
@@ -821,6 +821,11 @@ void TransposePlan::BuildPlanNodes(
       node.start = std::min(size, task_id * num_iterations_per_task * node.inc);
       node.end =
           std::min(size, (task_id + 1) * num_iterations_per_task * node.inc);
+
+      if (node.is_inner_dim_in_a && inner_kernel_is_memcpy_) {
+        node.end = (node.end - node.start) * elem_size_in_bytes_;
+      }
+
       if (!loop_has_trivial_iteration_space(node) ||
           (inner_kernel_is_memcpy_ && node.is_inner_dim_in_a)) {
         nodes.push_back(node);
@@ -880,6 +885,11 @@ void TransposePlan::BuildPlanNodes(
           std::min(num_tiles, task_id * num_iterations_per_task * node.inc);
       node.end = std::min(num_tiles,
                           (task_id + 1) * num_iterations_per_task * node.inc);
+
+      if (node.is_inner_dim_in_a && inner_kernel_is_memcpy_) {
+        node.end = (node.end - node.start) * elem_size_in_bytes_;
+      }
+
       // If this loop has a trivial iteration space, drop it.
       if (!loop_has_trivial_iteration_space(node) ||
           (inner_kernel_is_memcpy_ && node.is_inner_dim_in_a) ||

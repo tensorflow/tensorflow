@@ -15,6 +15,12 @@ package(
 )
 
 cc_library(
+    name = "portable_tensor_utils",
+    srcs = ["portable_tensor_utils.cc"],
+    hdrs = ["portable_tensor_utils.h"],
+)
+
+cc_library(
     name = "quantization_lib",
     srcs = [
         "quantization_driver.cc",
@@ -28,10 +34,9 @@ cc_library(
         "quantization_utils.h",
     ],
     deps = [
+        ":portable_tensor_utils",
         ":quantization_config",
         ":quantization_interfaces_inc_gen",
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
-        "//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy:portable_tensor_utils",
         "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
         "//tensorflow/compiler/mlir/tools/optimize:quantization_utils",
         "//tensorflow/core:lib_proto_parsing",
@@ -54,10 +59,10 @@ tf_cc_test(
     srcs = ["quantization_driver_test.cc"],
     deps = [
         ":quantization_lib",
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/common:func",
         "//tensorflow/compiler/mlir/quantization/common:test_base",
+        "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
@@ -79,7 +84,6 @@ cc_library(
         "quantization_config.h",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -94,7 +98,7 @@ td_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantizationOpsTdFiles",
+        "//tensorflow/compiler/mlir/quantization/common/ir:QuantizationOpsTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
     ],
 )

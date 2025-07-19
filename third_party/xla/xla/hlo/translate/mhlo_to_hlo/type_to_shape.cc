@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <numeric>
 #include <optional>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -186,9 +185,9 @@ Shape TypeToShape(mlir::Type type) {
                                 rank, sparse.getContext());
       auto final_ordering = mlir::applyPermutationMap(
           dimToLvl, llvm::ArrayRef<int64_t>(ordering));
-      auto sparse_shape = ::xla::ShapeUtil::MakeShapeWithSparseLayout(
-          primitive_type, shape, final_ordering);
-      return sparse_shape;
+      return ::xla::ShapeUtil::MakeValidatedShapeWithSparseLayout(
+                 primitive_type, shape, final_ordering)
+          .value();
     }
 
     return ShapeUtil::MakeShape(primitive_type, shape, is_dynamic);

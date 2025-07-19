@@ -58,22 +58,22 @@ xla::PjRtPlatformId MypluginPjrtClient::platform_id() const {
   return kMyBackendId;
 }
 
-int MypluginPjrtClient::device_count() const { return 42; }
+int MypluginPjrtClient::device_count() const { return 0; }
 
-int MypluginPjrtClient::addressable_device_count() const { return 43; }
+int MypluginPjrtClient::addressable_device_count() const { return 0; }
 
 absl::Span<xla::PjRtDevice* const> MypluginPjrtClient::addressable_devices()
     const {
   return devices_;
 }
 
+absl::Span<xla::PjRtDevice* const> MypluginPjrtClient::devices() const {
+  return devices_;
+}
+
 absl::Span<xla::PjRtMemorySpace* const> MypluginPjrtClient::memory_spaces()
     const {
   return memory_spaces_;
-}
-
-absl::Span<xla::PjRtDevice* const> MypluginPjrtClient::devices() const {
-  return devices_;
 }
 
 absl::string_view MypluginPjrtClient::platform_version() const {

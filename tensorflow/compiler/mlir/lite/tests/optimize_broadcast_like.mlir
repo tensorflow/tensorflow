@@ -1,5 +1,5 @@
-// RUN: tf-opt -tfl-optimize-broadcast-like='unsafe-fuse-dynamic-shaped-broadcast=false' -split-input-file %s | FileCheck %s
-// RUN: tf-opt -tfl-optimize-broadcast-like='unsafe-fuse-dynamic-shaped-broadcast=true' -split-input-file %s | FileCheck --check-prefix=UNSAFE-DYNAMIC-CHECK %s
+// RUN: litert-opt -tfl-optimize-broadcast-like='unsafe-fuse-dynamic-shaped-broadcast=false' -split-input-file %s | FileCheck %s
+// RUN: litert-opt -tfl-optimize-broadcast-like='unsafe-fuse-dynamic-shaped-broadcast=true' -split-input-file %s | FileCheck --check-prefix=UNSAFE-DYNAMIC-CHECK %s
 
 // CHECK-LABEL: @broadcast_mul0
 func.func @broadcast_mul0(%arg0: tensor<5x7xf32>, %arg1: tensor<7xf32>) -> tensor<5x7xf32> {

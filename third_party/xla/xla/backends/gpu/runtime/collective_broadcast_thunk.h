@@ -62,8 +62,7 @@ class CollectiveBroadcastStartThunk : public CollectiveThunk {
 };
 
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
-                                    se::Stream& stream, Communicator* comm,
-                                    GpuCollectives* collectives);
+                                    se::Stream& stream, Communicator* comm);
 
 }  // namespace xla::gpu
 

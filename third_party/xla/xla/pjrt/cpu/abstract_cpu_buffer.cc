@@ -24,9 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
-#include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -42,10 +40,13 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/async_work_runner.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/cpu/cpu_event.h"
+#include "xla/pjrt/cpu/raw_buffer.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
@@ -63,6 +64,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -122,8 +124,9 @@ ShapedBuffer AsShapedBuffer(int device_ordinal, const Shape& on_device_shape,
 
 AbstractCpuBuffer::AbstractCpuBuffer(
     Shape on_device_shape,
-    std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer)
-    : CommonPjRtBuffer(std::move(tracked_device_buffer)),
+    std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer,
+    PjRtMemorySpace* memory_space)
+    : CommonPjRtBuffer(std::move(tracked_device_buffer), memory_space),
       on_device_shape_(std::move(on_device_shape)) {}
 
 AbstractCpuBuffer::~AbstractCpuBuffer() { AbstractCpuBuffer::Delete(); }
@@ -148,14 +151,15 @@ absl::StatusOr<Shape> AbstractCpuBuffer::logical_on_device_shape() {
     return Internal("Error Execute: %s", error->message());
   }
 
-  // Safe to call `AsShapedBuffer` because the definition event is ready.
-  ShapedBuffer shaped_buffer =
-      AsShapedBuffer(device()->local_hardware_id().value(), on_device_shape_,
-                     device_buffer->buffer());
-  Shape ret_shape = on_device_shape_;
-  TF_RETURN_IF_ERROR(ReadDynamicShapesOnCpu(
-      &shaped_buffer, &ret_shape, cpu::CpuExecutable::ShapeSizeBytes));
-  return ret_shape;
+  auto output_shape =
+      tsl::MakeConstructedAsyncValueRef<Shape>(on_device_shape_);
+  tsl::MakeRef<CpuRawBuffer>(memory_space(), device_buffer->buffer())
+      ->ReadDynamicShape(output_shape, on_device_shape_);
+  tsl::BlockUntilReady(output_shape);
+  if (auto* error = output_shape.GetErrorIfPresent()) {
+    return Internal("logical_on_device_shape failed: %s", error->message());
+  }
+  return output_shape.get();
 }
 
 absl::StatusOr<size_t> AbstractCpuBuffer::GetOnDeviceSizeInBytes() const {
@@ -196,20 +200,19 @@ class TrackedCpuDeviceBufferExternalReference
     : public PjRtBuffer::ExternalReference {
  public:
   explicit TrackedCpuDeviceBufferExternalReference(
-      std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer)
-      : device_buffer_(std::move(tracked_device_buffer)) {
-    // We need to wait for the memory to be allocated before sharing it with
-    // external frameworks like NumPy.
-    const auto& buffer = device_buffer_->buffer();
-    tsl::BlockUntilReady(buffer);
-    CHECK(buffer.IsConcrete());
-    data_ptr_ = buffer->untyped_data();
+      tsl::RCReference<CommonPjRtRawBuffer> raw_buffer)
+      : raw_buffer_(std::move(raw_buffer)) {
+    if (!raw_buffer_) {
+      data_ptr_ = nullptr;
+    } else {
+      data_ptr_ = raw_buffer_->OpaqueDeviceMemoryDataPointer();
+    }
   }
 
   ~TrackedCpuDeviceBufferExternalReference() override = default;
 
  private:
-  std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer_;
+  tsl::RCReference<CommonPjRtRawBuffer> raw_buffer_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
@@ -219,68 +222,29 @@ AbstractCpuBuffer::ReleaseDeviceMemoryOwnership(
     return InvalidArgument(
         "ReleaseDeviceMemoryOwnership allowed only for non-tuple");
   }
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer,
-      Release(wait_for_operations_to_complete));
+  std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer(
+      static_cast<TrackedCpuDeviceBuffer*>(ReleaseBuffer().release()));
+  if (device_buffer == nullptr) {
+    return {nullptr};
+  }
+
+  if (wait_for_operations_to_complete) {
+    TF_RETURN_IF_ERROR(
+        device_buffer->BlockForOperationsToComplete(memory_space_));
+  }
 
   std::unique_ptr<PjRtBuffer::ExternalReference> ref;
-  if (tracked_device_buffer) {
+  if (device_buffer) {
     ref = std::make_unique<TrackedCpuDeviceBufferExternalReference>(
-        std::move(tracked_device_buffer));
+        device_buffer->GetRawBuffer(memory_space_));
   }
   return ref;
 }
 
 void AbstractCpuBuffer::Delete() {
-  std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer(
-      static_cast<TrackedCpuDeviceBuffer*>(ReleaseBuffer().release()));
-  if (device_buffer == nullptr) return;
-
-  // Now that all holds have completed and no more can be added, we can get
-  // the final set of usage events.
-  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> usage_events =
-      device_buffer->LockUseAndTransferUsageEvents();
-
-  std::vector<tsl::AsyncValue*> event_avs;
-  event_avs.reserve(usage_events.size() + 1);
-  for (auto& event : usage_events) {
-    event_avs.push_back(event.GetAsyncValue());
+  if (auto device_buffer = ReleaseBuffer()) {
+    device_buffer.release()->Delete(memory_space_);
   }
-
-  // We should also wait for the definition event.
-  event_avs.push_back(device_buffer->definition_event().GetAsyncValue());
-
-  RunWhenReady(event_avs, [device_buffer = std::move(device_buffer)]() mutable {
-    device_buffer.reset();
-  });
-}
-
-absl::StatusOr<std::unique_ptr<TrackedCpuDeviceBuffer>>
-AbstractCpuBuffer::Release(bool wait_for_operations_to_complete) {
-  std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer(
-      static_cast<TrackedCpuDeviceBuffer*>(ReleaseBuffer().release()));
-  if (device_buffer == nullptr) return {nullptr};
-
-  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> events;
-  // Now that all holds have completed and no more can be added, we can get
-  // the final set of usage events.
-  events = device_buffer->LockUseAndTransferUsageEvents();
-
-  if (wait_for_operations_to_complete) {
-    // Block the host until all usage events have completed. Usage events
-    // dominate definition events, so this also waits for the buffer to be
-    // defined. Return the first error encountered.
-    absl::Status first_error;
-    for (const auto& av : events) {
-      BlockUntilReady(av.GetAsyncValue());
-      if (auto* error = av.GetErrorIfPresent()) {
-        first_error.Update(Internal("Error Execute: %s", error->message()));
-      }
-    }
-    if (!first_error.ok()) return std::move(first_error);
-  }
-
-  return device_buffer;
 }
 
 TrackedCpuDeviceBuffer* AbstractCpuBuffer::AcquireUsage(
@@ -494,55 +458,22 @@ AbstractCpuBuffer::CopyToDeviceHelper(AsyncWorkRunner* async_work_runner) {
 }
 
 PjRtFuture<> AbstractCpuBuffer::GetReadyFuture() {
-  tsl::AsyncValueRef<CpuEvent> definition_event;
+  PjRtFuture<>::Promise definition_promise;
   {
     absl::MutexLock lock(&mu_);
     if (!device_buffer()) {
       return PjRtFuture<>(InvalidArgument(
           "GetReadyFuture() called on deleted or donated buffer"));
     }
-    definition_event = device_buffer()->definition_event();
-  }
-  DCHECK(definition_event);
-
-  if (definition_event.IsAvailable()) {
-    if (definition_event.IsError()) {
-      const absl::Status& s = definition_event.GetError();
-      return PjRtFuture<>(tsl::errors::CreateWithUpdatedMessage(
-          s, absl::StrCat("Buffer Definition Event: ", s.message())));
+    if (!definition_promise_) {
+      definition_promise_ =
+          device_buffer()->GetReadyFuturePromise(memory_space());
     }
-    return PjRtFuture<>(absl::OkStatus());
-  } else {
-    PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
-    definition_event.AndThen(
-        [definition_event = definition_event.AsPtr(), promise]() mutable {
-          if (definition_event.IsError()) {
-            const absl::Status& s = definition_event.GetError();
-            promise.Set(tsl::errors::CreateWithUpdatedMessage(
-                s, absl::StrCat("Buffer Definition Event: ", s.message())));
-          } else {
-            promise.Set();
-          }
-        });
-
-    std::string message = absl::StrCat(buffer_name(), "::Await");
-    return PjRtFuture<>(
-        std::move(promise),
-        /*on_block_start=*/
-        [message]() {
-          absl::string_view message_view(message);
-          tsl::profiler::TraceMeProducer traceme(message_view);
-          VLOG(1) << message_view;
-          return PjRtFutureHelpers::ProfilingKeys(
-              {/*traceme_context_id=*/traceme.GetContextId()});
-        },
-        /*on_block_end=*/
-        [message](PjRtFutureHelpers::ProfilingKeys keys) {
-          absl::string_view message_view(message);
-          tsl::profiler::TraceMeConsumer traceme(message_view,
-                                                 keys.traceme_context_id);
-        });
+    definition_promise = definition_promise_;
   }
+  return tensorflow::down_cast<CommonPjRtClient*>(client())
+      ->CreateFutureFromUserPromise(memory_space(), "AbstractCpuBuffer",
+                                    "Await", std::move(definition_promise));
 }
 
 void PackOrCopy(PrimitiveType element_type, const LiteralSlice& literal,

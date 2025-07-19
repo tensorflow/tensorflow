@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
 
+#include <cstddef>
+#include <cstdint>
+
 extern "C" {
 
 const TfLiteTelemetryConversionMetadata*

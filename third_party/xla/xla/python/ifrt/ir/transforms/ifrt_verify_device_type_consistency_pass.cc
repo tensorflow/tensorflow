@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -33,23 +32,22 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Visitors.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/TypeID.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
-#include "xla/python/ifrt/ir/transforms/passes.h"
+#include "xla/python/ifrt/ir/transforms/passes.h"  // IWYU pragma: keep
 #include "xla/python/ifrt/ir/transforms/utils.h"
 
 namespace xla {
 namespace ifrt {
 
-namespace {
-
 #define GEN_PASS_DEF_IFRTVERIFYDEVICETYPECONSISTENCYPASS
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"
+
+namespace {
 
 // Represents module type inferred from function.
 enum class ModuleType { kUnknown, kXLA };
@@ -145,7 +143,8 @@ bool IfrtVerifyDeviceTypeConsistencyPass::IsConsistentWithModuleType(
       return true;
     case ModuleType::kXLA:
       return platform_name == xla::TpuName() ||
-             platform_name == xla::CudaName();
+             platform_name == xla::CudaName() ||
+             platform_name == xla::CpuName();
     default:
       LOG(ERROR) << "Unexpected value for InferredDeviceType.";
       return false;
@@ -207,12 +206,5 @@ void IfrtVerifyDeviceTypeConsistencyPass::runOnOperation() {
 }
 
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtVerifyDeviceTypeConsistencyPass(
-    IfrtVerifyDeviceTypeConsistencyPassOptions options) {
-  return std::make_unique<IfrtVerifyDeviceTypeConsistencyPass>(options);
-}
-
 }  // namespace ifrt
 }  // namespace xla

@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -32,12 +33,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel.h"
@@ -53,19 +55,9 @@ namespace gpu {
 // KernelThunk
 //===----------------------------------------------------------------------===//
 
-namespace {
-Dim3DProto Dim3DToProto(const se::Dim3D& dim) {
-  Dim3DProto proto;
-  proto.set_x(dim.x);
-  proto.set_y(dim.y);
-  proto.set_z(dim.z);
-  return proto;
-}
-}  // namespace
-
 KernelThunk::KernelThunk(
     Thunk::ThunkInfo thunk_info, std::string kernel_name,
-    absl::Span<const KernelArgument> kernel_arguments,
+    absl::Span<const emitters::KernelArgument> kernel_arguments,
     LaunchDimensions launch_dimensions,
     std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
     std::optional<stream_executor::gpu::TmaMetadata> tma_metadata)
@@ -77,7 +69,7 @@ KernelThunk::KernelThunk(
       tma_metadata_(std::move(tma_metadata)) {
   args_.reserve(kernel_arguments.size());
   written_.reserve(kernel_arguments.size());
-  for (const KernelArgument& kernel_argument : kernel_arguments) {
+  for (const emitters::KernelArgument& kernel_argument : kernel_arguments) {
     if (!kernel_argument.first_with_same_slice().has_value()) {
       args_.push_back(kernel_argument.slice());
       written_.push_back(kernel_argument.written());
@@ -93,7 +85,9 @@ std::string KernelThunk::ToString(int indent) const {
 }
 
 absl::StatusOr<ThunkProto> KernelThunk::ToProto() const {
-  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
   auto* kernel_proto = proto.mutable_kernel_thunk();
   for (const auto& arg : args_) {
     TF_ASSIGN_OR_RETURN(*kernel_proto->add_args(), arg.ToProto());
@@ -102,15 +96,54 @@ absl::StatusOr<ThunkProto> KernelThunk::ToProto() const {
     kernel_proto->add_written(written);
   }
   kernel_proto->set_kernel_name(kernel_name_);
-  *kernel_proto->mutable_launch_block_counts() =
-      Dim3DToProto(launch_dimensions_.block_counts());
-  *kernel_proto->mutable_launch_thread_counts_per_block() =
-      Dim3DToProto(launch_dimensions_.thread_counts_per_block());
+  *kernel_proto->mutable_launch_dimensions() = launch_dimensions_.ToProto();
   if (cluster_dim_) {
-    *kernel_proto->mutable_cluster_dim() = Dim3DToProto(*cluster_dim_);
+    *kernel_proto->mutable_cluster_dim() = cluster_dim_->ToProto();
   }
   kernel_proto->set_shmem_bytes(shmem_bytes_);
+  if (tma_metadata_.has_value()) {
+    *kernel_proto->mutable_tma_metadata() = tma_metadata_->ToProto();
+  }
   return proto;
+}
+
+absl::StatusOr<std::unique_ptr<KernelThunk>> KernelThunk::FromProto(
+    ThunkInfo thunk_info, const KernelThunkProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
+                      LaunchDimensions::FromProto(proto.launch_dimensions()));
+  std::optional<stream_executor::ClusterDim> cluster_dim;
+  if (proto.has_cluster_dim()) {
+    TF_ASSIGN_OR_RETURN(
+        cluster_dim.emplace(),
+        stream_executor::ClusterDim::FromProto(proto.cluster_dim()));
+  }
+
+  if (proto.written().size() != proto.args().size()) {
+    return absl::InvalidArgumentError(
+        "Proto fields `written` and `args` need to have the same cardinality.");
+  }
+
+  std::vector<emitters::KernelArgument> arguments;
+  arguments.reserve(proto.args().size());
+  for (int i = 0; i < proto.args().size(); ++i) {
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                        BufferAllocation::Slice::FromProto(proto.args().at(i),
+                                                           buffer_allocations));
+    bool written = proto.written().at(i);
+    arguments.push_back(emitters::KernelArgument{Shape{}, slice, written});
+  }
+
+  std::optional<stream_executor::gpu::TmaMetadata> tma_metadata;
+  if (proto.has_tma_metadata()) {
+    TF_ASSIGN_OR_RETURN(
+        tma_metadata,
+        stream_executor::gpu::TmaMetadata::FromProto(proto.tma_metadata()));
+  }
+
+  return std::make_unique<KernelThunk>(
+      thunk_info, proto.kernel_name(), arguments, launch_dimensions,
+      cluster_dim, proto.shmem_bytes(), tma_metadata);
 }
 
 absl::Status KernelThunk::Initialize(const InitializeParams& params) {
@@ -122,10 +155,17 @@ absl::Status KernelThunk::Initialize(const InitializeParams& params) {
   // lets the time spent loading the kernel not count towards our execution
   // profiles.
   if (!kernel_cache_.contains(params.executor)) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<se::Kernel> kernel,
-        CreateKernel(kernel_name_, args_.size(), params.src.text,
-                     params.src.binary, params.executor, shmem_bytes_));
+    std::unique_ptr<se::Kernel> kernel;
+    if (!params.src.binary.empty()) {
+      TF_ASSIGN_OR_RETURN(
+          kernel, CreateKernel(kernel_name_, args_.size(), params.src.binary,
+                               params.executor, shmem_bytes_));
+
+    } else {
+      TF_ASSIGN_OR_RETURN(
+          kernel, CreateKernel(kernel_name_, args_.size(), params.src.text,
+                               params.executor, shmem_bytes_));
+    }
 
     kernel_cache_.emplace(params.executor, std::move(kernel));
   }
@@ -219,13 +259,13 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 CustomKernelThunk::CustomKernelThunk(
     const HloInstruction* instr, CustomKernel custom_kernel,
-    absl::Span<const KernelArgument> kernel_arguments)
+    absl::Span<const emitters::KernelArgument> kernel_arguments)
     : Thunk(Kind::kCustomKernel,
             Thunk::ThunkInfo::WithProfileAnnotation(instr)),
       custom_kernel_(std::move(custom_kernel)) {
   args_.reserve(kernel_arguments.size());
   written_.reserve(kernel_arguments.size());
-  for (const KernelArgument& kernel_argument : kernel_arguments) {
+  for (const emitters::KernelArgument& kernel_argument : kernel_arguments) {
     if (!kernel_argument.first_with_same_slice().has_value()) {
       args_.push_back(kernel_argument.slice());
       written_.push_back(kernel_argument.written());

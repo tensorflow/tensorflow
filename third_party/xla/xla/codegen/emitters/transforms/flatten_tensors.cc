@@ -340,7 +340,8 @@ struct RewriteVectorTransferRead : OpRewritePattern<mv::TransferReadOp> {
                              loc, GetFlattenedType(tensor_type), tensor)
                          .getResult(0);
     rewriter.replaceOpWithNewOp<mv::TransferReadOp>(
-        op, vector_type, tensor_1D, linear_index, llvm::ArrayRef<bool>{true});
+        op, vector_type, tensor_1D, linear_index, op.getPadding(),
+        llvm::ArrayRef<bool>{true});
     return mlir::success();
   }
 };

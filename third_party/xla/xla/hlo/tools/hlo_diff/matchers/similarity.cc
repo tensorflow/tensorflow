@@ -17,9 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <vector>
 
-#include "absl/base/nullability.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
@@ -48,14 +47,128 @@ bool AllInstructionUsersAreMatched(const HloInstructionNode* left,
   return true;
 }
 
+bool InSameChildPositionOfEachParent(const HloInstructionNode* left,
+                                     const HloInstructionNode* right) {
+  if (left->i_th_children.size() != right->i_th_children.size()) {
+    return false;
+  }
+  for (int i = 0; i < left->i_th_children.size(); ++i) {
+    if (left->i_th_children[i] != right->i_th_children[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool InSameParentPositionOfEachChild(const HloInstructionNode* left,
+                                     const HloInstructionNode* right) {
+  if (left->i_th_parents.size() != right->i_th_parents.size()) {
+    return false;
+  }
+  for (int i = 0; i < left->i_th_parents.size(); ++i) {
+    if (left->i_th_parents[i] != right->i_th_parents[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 constexpr double kFingerprintMatchScore = 0.5;
 constexpr double kUnitMatchScore = 0.1;
+constexpr double kPositionMatchBonus = 0.01;
 
-double NodeAttributesSimilarity(const HloInstructionNode* absl_nonnull left,
-                                const HloInstructionNode* absl_nonnull right) {
+double AncestorSubGraphLcsSimilarity(const HloInstructionNode* left,
+                                     const HloInstructionNode* right,
+                                     int candidate_traversal_limit,
+                                     int min_bfs_distance, int left_graph_size,
+                                     int right_graph_size) {
+  std::vector<uint64_t> left_fingerprints, right_fingerprints;
+
+  left_fingerprints.reserve(candidate_traversal_limit);
+  right_fingerprints.reserve(candidate_traversal_limit);
+
+  int left_traversal_count = 0;
+  HloGumgraphBfs(
+      *left,
+      [&](const HloInstructionNode& node, int distance) {
+        if (node.instruction == nullptr) {
+          return true;
+        }
+        left_fingerprints.push_back(node.props.fingerprint);
+        ++left_traversal_count;
+        return distance <= min_bfs_distance ||
+               left_traversal_count < candidate_traversal_limit;
+      },
+      BfsTraversalDirection::kReverse, left_graph_size);
+  int right_traversal_count = 0;
+  HloGumgraphBfs(
+      *right,
+      [&](const HloInstructionNode& node, int distance) {
+        if (node.instruction == nullptr) {
+          return true;
+        }
+        right_fingerprints.push_back(node.props.fingerprint);
+        ++right_traversal_count;
+        return distance <= min_bfs_distance ||
+               right_traversal_count < candidate_traversal_limit;
+      },
+      BfsTraversalDirection::kReverse, right_graph_size);
+
+  const std::vector<uint64_t>* s1 = &left_fingerprints;
+  const std::vector<uint64_t>* s2 = &right_fingerprints;
+
+  // Ensure s2 is the smaller sequence to optimize space for the DP table.
+  if (s1->size() < s2->size()) {
+    std::swap(s1, s2);
+  }
+
+  int m = s1->size();
+  int n = s2->size();
+
+  if (n == 0) {
+    return 0.0;
+  }
+
+  std::vector<int> prev(n + 1, 0);
+  std::vector<int> curr(n + 1, 0);
+
+  for (int i = 1; i <= m; ++i) {
+    for (int j = 1; j <= n; ++j) {
+      if ((*s1)[i - 1] == (*s2)[j - 1]) {
+        curr[j] = prev[j - 1] + 1;
+      } else {
+        curr[j] = std::max(prev[j], curr[j - 1]);
+      }
+    }
+    prev = curr;
+  }
+
+  int lcs_length = prev[n];
+  double denominator =
+      static_cast<double>(left_traversal_count + right_traversal_count);
+  if (denominator == 0) {
+    return 0.0;
+  }
+
+  return (2.0 * lcs_length) / denominator;
+}
+
+double NodePropertySimilarity(const HloInstructionNode* left,
+                              const HloInstructionNode* right) {
   double sim_score = 0.0;
+  if (left->instruction->shape().has_layout() &&
+      right->instruction->shape().has_layout() &&
+      (left->instruction->shape().layout() ==
+       right->instruction->shape().layout())) {
+    sim_score += kUnitMatchScore;
+  }
+
+  if (left->instruction->has_sharding() && right->instruction->has_sharding() &&
+      (left->instruction->sharding() == right->instruction->sharding())) {
+    sim_score += kUnitMatchScore;
+  }
 
   if (right->props.fingerprint == left->props.fingerprint) {
     sim_score += kFingerprintMatchScore;
@@ -77,68 +190,16 @@ double NodeAttributesSimilarity(const HloInstructionNode* absl_nonnull left,
     sim_score += kUnitMatchScore;
   }
 
-  return sim_score;
-}
-
-double AncestorSubGraphSimilarity(const HloInstructionNode* left,
-                                  const HloInstructionNode* right,
-                                  int candidate_traversal_limit,
-                                  int min_bfs_distance, int left_graph_size,
-                                  int right_graph_size) {
-  absl::flat_hash_map<uint64_t, int> left_ancestor_fingerprints,
-      right_ancestor_fingerprints;
-  int left_traversal_count = 0;
-  HloGumgraphBfs(
-      *left,
-      [&](const HloInstructionNode& node, int distance) {
-        ++left_ancestor_fingerprints[node.props.fingerprint];
-        ++left_traversal_count;
-        return distance <= min_bfs_distance ||
-               left_traversal_count < candidate_traversal_limit;
-      },
-      BfsTraversalDirection::kReverse, left_graph_size);
-  int right_traversal_count = 0;
-  HloGumgraphBfs(
-      *right,
-      [&](const HloInstructionNode& node, int distance) {
-        ++right_ancestor_fingerprints[node.props.fingerprint];
-        ++right_traversal_count;
-        return distance <= min_bfs_distance ||
-               right_traversal_count < candidate_traversal_limit;
-      },
-      BfsTraversalDirection::kReverse, right_graph_size);
-
-  int matching_ancestors = 0;
-  for (const auto& [fingerprint, count] : left_ancestor_fingerprints) {
-    if (right_ancestor_fingerprints.contains(fingerprint)) {
-      matching_ancestors +=
-          std::min(count, right_ancestor_fingerprints[fingerprint]);
-    }
-  }
-
-  return 2.0 * static_cast<double>(matching_ancestors) /
-         static_cast<double>(left_traversal_count + right_traversal_count);
-}
-
-double NodePropertySimilarity(const HloInstructionNode* left,
-                              const HloInstructionNode* right) {
-  double sim_score = 0.0;
-  if (left->instruction->shape().has_layout() &&
-      right->instruction->shape().has_layout() &&
-      (left->instruction->shape().layout() ==
-       right->instruction->shape().layout())) {
-    sim_score += kUnitMatchScore;
-  }
-
-  if (left->instruction->has_sharding() && right->instruction->has_sharding() &&
-      (left->instruction->sharding() == right->instruction->sharding())) {
-    sim_score += kUnitMatchScore;
-  }
-
-  sim_score += NodeAttributesSimilarity(left, right);
-
   if (AllInstructionUsersAreMatched(left, right)) {
     sim_score += kUnitMatchScore;
+  }
+
+  if (InSameChildPositionOfEachParent(left, right)) {
+    sim_score += kPositionMatchBonus;
+  }
+
+  if (InSameParentPositionOfEachChild(left, right)) {
+    sim_score += kPositionMatchBonus;
   }
 
   return sim_score;

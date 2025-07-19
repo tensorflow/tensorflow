@@ -254,6 +254,20 @@ class KernelSupportLibrary {
         });
   }
 
+  static void EmitAndCallOutlinedKernel(
+      const HloModuleConfig& module_config, llvm::IRBuilderBase* b,
+      absl::string_view kernel_name, llvm::Value* arg0, llvm::Value* arg1,
+      llvm::Value* arg2, llvm::Value* arg3, llvm::Value* arg4,
+      const std::function<void(llvm::Value*, llvm::Value*, llvm::Value*,
+                               llvm::Value*, llvm::Value*)>&
+          kernel_body_generator) {
+    EmitAndCallOutlinedKernel(
+        module_config, b, kernel_name, {arg0, arg1, arg2, arg3, arg4},
+        [&](ArgumentVector args) {
+          kernel_body_generator(args[0], args[1], args[2], args[3], args[4]);
+        });
+  }
+
  private:
   llvm::IRBuilderBase* b_;
   llvm_ir::UnrollMode unroll_mode_;
