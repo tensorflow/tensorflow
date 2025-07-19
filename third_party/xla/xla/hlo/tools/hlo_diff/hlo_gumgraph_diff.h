@@ -18,8 +18,11 @@
 #define XLA_HLO_TOOLS_HLO_DIFF_HLO_GUMGRAPH_DIFF_H_
 
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_eval.h"
@@ -45,7 +48,9 @@ struct HloGumgraphDiffResults {
 // Compares two HLO modules, computes and returns differences.
 absl::StatusOr<HloGumgraphDiffResults> ComputeDiff(
     const HloModule& left, const HloModule& right,
-    const DiffOptions& options = {}, bool run_eval = false);
+    const DiffOptions& options = {}, bool run_eval = false,
+    const std::vector<std::pair<absl::string_view, absl::string_view>>&
+        manual_mappings = {});
 
 }  // namespace hlo_diff
 }  // namespace xla
