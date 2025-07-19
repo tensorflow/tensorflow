@@ -19,6 +19,9 @@ load("//tensorflow:tensorflow.bzl", "clean_dep")
 # Mini benchmarking helps in validating HW acceleration across Android and iOS.
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//third_party/bazel_rules/rules_cc/cc:cc_binary.bzl", "cc_binary")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
+load("//third_party/bazel_rules/rules_cc/cc:cc_test.bzl", "cc_test")
 load("build_defs.bzl", "cc_library_with_forced_in_process_benchmark_variant", "embedded_binary")
 load("special_rules.bzl", "libjpeg_deps", "libjpeg_handle_deps", "libjpeg_hdrs_deps", "minibenchmark_visibility_allowlist")
 

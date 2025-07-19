@@ -20,6 +20,8 @@ load(
 )
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "add_suffix")
 load("//tensorflow/lite/experimental/acceleration/mini_benchmark:special_rules.bzl", "libjpeg_handle_deps")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
+load("//third_party/bazel_rules/rules_cc/cc:cc_test.bzl", "cc_test")
 
 def _concat(lists):
     """Concatenate a list of lists, without requiring the inner lists to be iterable.
@@ -59,8 +61,7 @@ def embedded_binary(name, binary, array_variable_name, testonly = False, exec_pr
         tools = ["//tensorflow/lite/experimental/acceleration/compatibility:convert_binary_to_cc_source"],
         testonly = testonly,
     )
-
-    native.cc_library(
+    cc_library(
         name = name,
         srcs = [cc_name],
         hdrs = [h_name],
@@ -161,7 +162,7 @@ def validation_test(name, validation_model, tags = [], copts = [], deps = []):
         binary = validation_model,
         array_variable_name = "g_tflite_acceleration_" + name + "_model",
     )
-    native.cc_test(
+    cc_test(
         name = name,
         srcs = ["//tensorflow/lite/experimental/acceleration/mini_benchmark:model_validation_test.cc"],
         tags = tags + ["no_mac", "no_windows", "tflite_not_portable_ios"],
@@ -243,7 +244,7 @@ def cc_library_with_forced_in_process_benchmark_variant(
       **kwargs:
         Additional cc_library parameters.
     """
-    native.cc_library(
+    cc_library(
         name = name,
         deps = deps + in_process_deps + _concat([select(map) for map in non_in_process_deps_selects]) + [
             "//tensorflow/lite/experimental/acceleration/mini_benchmark:tflite_acceleration_in_process_default",
@@ -252,7 +253,7 @@ def cc_library_with_forced_in_process_benchmark_variant(
     )
 
     in_process_deps_renamed = [add_suffix(in_process_dep, "_in_process") for in_process_dep in in_process_deps]
-    native.cc_library(
+    cc_library(
         name = name + "_in_process",
         deps = deps + in_process_deps_renamed + forced_in_process_deps + [
             "//tensorflow/lite/experimental/acceleration/mini_benchmark:tflite_acceleration_in_process_enable",

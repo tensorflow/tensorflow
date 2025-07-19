@@ -6,6 +6,8 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_copts_warnings", "tflite_linkopts_no_undefined", "tflite_self_contained_libs_test_suite")
 load("//tensorflow/lite:special_rules.bzl", "SPECIAL_RULES_DEPS", "internal_visibility_allowlist", "tflite_internal_cc_3p_api_deps_src_all_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "alias_with_tflite", "cc_library_with_tflite", "cc_test_with_tflite")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
+load("//third_party/bazel_rules/rules_cc/cc:cc_test.bzl", "cc_test")
 
 package_group(
     name = "tf_lite_runtime",
@@ -1450,6 +1452,7 @@ bzl_library(
         ":special_rules_bzl",
         "//tensorflow:tensorflow_bzl",
         "//tensorflow/lite/java:aar_with_jni_bzl",
+        "//third_party/bazel_rules/rules_cc/cc:core_rules",
         "@bazel_skylib//rules:build_test",
     ],
 )
@@ -1468,7 +1471,10 @@ bzl_library(
     name = "special_rules_bzl",
     srcs = ["special_rules.bzl"],
     visibility = ["//visibility:private"],
-    deps = SPECIAL_RULES_DEPS,
+    deps = SPECIAL_RULES_DEPS + [
+        "//third_party/bazel_rules/rules_cc/cc:core_rules",
+        "//tools/build_defs/apple:ios",
+    ],
 )
 
 tflite_self_contained_libs_test_suite(name = "self_contained_libs_test_suite")
