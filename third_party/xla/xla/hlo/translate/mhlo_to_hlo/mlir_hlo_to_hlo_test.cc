@@ -65,5 +65,26 @@ func.func @main(%arg0: tensor<?xf32>, %arg1: tensor<1xindex>, %arg2: tensor<1xin
                                 HasSubstr("real_dynamic_slice"))));
 }
 
+TEST(ConvertMlirHloToHloModuleTest, ConvertsPrecisionConfig) {
+  const std::string mlir_source = R"mlir(
+func.func @main(%arg0: tensor<5x10xbf16>, %arg1: tensor<10x5xbf16>) -> tensor<5x5xbf16> {
+  %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [HIGHEST, HIGHEST] : (tensor<5x10xbf16>, tensor<10x5xbf16>) -> tensor<5x5xbf16>
+  return %0 : tensor<5x5xbf16>
+}
+)mlir";
+
+  mlir::DialectRegistry registry;
+  registry.insert<mlir::func::FuncDialect, mlir::shape::ShapeDialect>();
+  mlir::stablehlo::registerAllDialects(registry);
+  mlir::MLIRContext context(registry);
+  mlir::OwningOpRef<mlir::ModuleOp> module;
+  {
+    mlir::BaseScopedDiagnosticHandler handler(&context);
+    module = mlir::parseSourceString<mlir::ModuleOp>(mlir_source, &context);
+    TF_ASSERT_OK(handler.ConsumeStatus());
+  }
+
+  ASSERT_OK(ConvertMlirHloToHloModule(*module));
+}
 }  // namespace
 }  // namespace mlir
