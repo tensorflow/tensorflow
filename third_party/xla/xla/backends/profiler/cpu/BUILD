@@ -54,6 +54,7 @@ cc_library(
         "//xla/python:__pkg__",
         # copybara:uncomment "//tensorflow/core/profiler:internal",
         # copybara:uncomment "//tensorflow:internal",
+        "//third_party/py/jax:__subpackages__",
     ]),
     deps = [
         ":python_tracer_impl",
