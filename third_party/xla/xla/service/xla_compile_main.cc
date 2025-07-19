@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <iostream>
-#include <string>
 #include <vector>
 
 #include "absl/log/check.h"
