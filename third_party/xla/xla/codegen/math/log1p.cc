@@ -16,8 +16,6 @@ limitations under the License.
 #include "xla/codegen/math/log1p.h"
 
 #include <array>
-#include <cstddef>
-#include <string>
 
 #include "absl/log/check.h"
 #include "absl/types/span.h"
@@ -35,8 +33,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::codegen {
-namespace math {
+namespace xla::codegen::intrinsics {
 
 static llvm::Value* EvaluatePolynomial(llvm::Type* type, llvm::Value* x,
                                        absl::Span<const double> coefficients,
@@ -49,15 +46,9 @@ static llvm::Value* EvaluatePolynomial(llvm::Type* type, llvm::Value* x,
   return poly;
 }
 
-std::string Log1pFunctionName(size_t num_elements, PrimitiveType type) {
-  if (num_elements > 1) {
-    return Intrinsic::Log1p::Name(type, num_elements);
-  }
-
-  return Intrinsic::Log1p::Name(type);
-}
-
-llvm::Function* CreateLog1p(llvm::Module* module, llvm::Type* type) {
+absl::StatusOr<llvm::Function*> Log1p::CreateDefinition(llvm::Module* module,
+                                                        Type intrinsic_type) {
+  llvm::Type* type = Type::TypeToIrType(intrinsic_type, module->getContext());
   CHECK(type != nullptr);
   CHECK(type->isFloatingPointTy() || type->isVectorTy())
       << "Type must be a floating point or vector of floating point.";
@@ -70,14 +61,10 @@ llvm::Function* CreateLog1p(llvm::Module* module, llvm::Type* type) {
     num_elements = vec_ty->getElementCount().getKnownMinValue();
   }
 
-  PrimitiveType primitive_type = llvm_ir::PrimitiveTypeFromIrType(type);
-
   llvm::FunctionType* function_type =
       llvm::FunctionType::get(type, {type}, false);
   llvm::Function* func = llvm::dyn_cast<llvm::Function>(
-      module
-          ->getOrInsertFunction(Log1pFunctionName(num_elements, primitive_type),
-                                function_type)
+      module->getOrInsertFunction(Log1p::Name(intrinsic_type), function_type)
           .getCallee());
 
   llvm::Argument* input_value = func->getArg(0);
@@ -138,15 +125,4 @@ llvm::Function* CreateLog1p(llvm::Module* module, llvm::Type* type) {
 
   return func;
 }
-}  // namespace math
-
-absl::StatusOr<llvm::Function*> Intrinsic::Log1p::CreateDefinition(
-    llvm::Module* module, PrimitiveType prim_type, size_t vector_width) {
-  llvm::Type* type =
-      llvm_ir::PrimitiveTypeToIrType(prim_type, module->getContext());
-  if (vector_width > 1) {
-    type = llvm::VectorType::get(type, vector_width, false);
-  }
-  return math::CreateLog1p(module, type);
-}
-}  // namespace xla::codegen
+}  // namespace xla::codegen::intrinsics

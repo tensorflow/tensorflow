@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
@@ -66,6 +67,8 @@ void RunInlineAndOptPasses(llvm::Module& module) {
   mpm.run(module, mam);
 }
 
+constexpr absl::string_view kCompilerUsedName = "llvm.compiler.used";
+
 void RemoveFromCompilerUsed(
     llvm::Module& module,
     absl::flat_hash_set<absl::string_view> replaced_functions) {
@@ -74,7 +77,7 @@ void RemoveFromCompilerUsed(
   }
 
   llvm::GlobalVariable* compiler_used =
-      module.getNamedGlobal("llvm.compiler.used");
+      module.getNamedGlobal(kCompilerUsedName);
   if (!compiler_used) {
     return;
   }
@@ -114,15 +117,14 @@ void RemoveFromCompilerUsed(
 
     // Rename existing llvm.compiler.used so llvm doesn't give our replacement
     // a suffix due to name collission.
-    compiler_used->setName("llvm.compiler.used.old");
+    compiler_used->setName(absl::StrCat(kCompilerUsedName, ".old"));
 
     // Create a new global llvm.compiler.used with the new contents.
     new llvm::GlobalVariable(module, new_array_type, false,
                              llvm::GlobalValue::AppendingLinkage,
-                             new_array_init, "llvm.compiler.used");
+                             new_array_init, kCompilerUsedName);
     // Replace all uses of the old llvm.compiler.used with the new one.
-    compiler_used->replaceAllUsesWith(
-        module.getNamedGlobal("llvm.compiler.used"));
+    compiler_used->replaceAllUsesWith(module.getNamedGlobal(kCompilerUsedName));
 
     // Remove the old llvm.compiler.used.
     compiler_used->eraseFromParent();

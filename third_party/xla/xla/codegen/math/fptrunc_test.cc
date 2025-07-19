@@ -19,19 +19,15 @@ limitations under the License.
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::codegen {
-namespace {
+namespace xla::codegen::intrinsics {
 
-TEST(ExpTest, SclarIninsic) {
-  EXPECT_EQ(Intrinsic::FpTrunc::Name(Intrinsic::S(F32), Intrinsic::S(BF16)),
+TEST(FpTruncTest, SclarIninsic) {
+  EXPECT_EQ(FpTrunc::Name(Type::S(F32), Type::S(BF16)),
             "xla.fptrunc.f32.to.bf16");
 }
 
-TEST(ExpTest, VectorIninsic) {
-  EXPECT_EQ(
-      Intrinsic::FpTrunc::Name(Intrinsic::V(F32, 4), Intrinsic::V(BF16, 4)),
-      "xla.fptrunc.v4f32.to.v4bf16");
+TEST(FpTruncTest, VectorIninsic) {
+  EXPECT_EQ(FpTrunc::Name(Type::V(F32, 4), Type::V(BF16, 4)),
+            "xla.fptrunc.v4f32.to.v4bf16");
 }
-
-}  // namespace
-}  // namespace xla::codegen
+}  // namespace xla::codegen::intrinsics

@@ -15,12 +15,9 @@ limitations under the License.
 
 #include "xla/codegen/math/exp.h"
 
-#include <cstddef>
 #include <limits>
-#include <string>
 
 #include "absl/log/check.h"
-#include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
@@ -38,7 +35,6 @@ limitations under the License.
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
-#include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/TypeSize.h"
@@ -46,20 +42,17 @@ limitations under the License.
 #include "llvm/Transforms/IPO/GlobalDCE.h"
 #include "llvm/Transforms/Utils/BuildLibCalls.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
+#include "xla/codegen/math/intrinsic.h"
 #include "xla/codegen/math/ldexp.h"
 
-namespace xla::codegen::math {
-::std::string ExpF64FunctionName(size_t num_elements) {
-  if (num_elements == 1) {
-    return "xla.exp.f64";
-  }
-  return absl::StrCat("xla.exp.v", num_elements, "f64");
-}
+namespace xla::codegen::intrinsics {
 
 // Creates an LLVM function that implements a vectorized exponential function
 // (exp(x)). The implementation uses a polynomial approximation method based on
 // https://gitlab.com/libeigen/eigen/-/blob/21e89b930c6af56dbdaeea2a91d8b9d6fd2c208a/Eigen/src/Core/arch/Default/GenericPacketMathFunctions.h#L645
-llvm::Function* CreateExpF64(llvm::Module* module, llvm::Type* input_type) {
+absl::StatusOr<llvm::Function*> Exp::CreateDefinition(llvm::Module* module,
+                                                      Type type) {
+  llvm::Type* input_type = Type::TypeToIrType(type, module->getContext());
   CHECK(input_type != nullptr);
   CHECK(input_type->isFloatingPointTy() || input_type->isVectorTy())
       << "Vector type must be a floating point or vector of floating point.";
@@ -76,9 +69,7 @@ llvm::Function* CreateExpF64(llvm::Module* module, llvm::Type* input_type) {
   llvm::FunctionType* function_type =
       llvm::FunctionType::get(input_type, {input_type}, false);
   llvm::Function* func = llvm::dyn_cast<llvm::Function>(
-      module
-          ->getOrInsertFunction(ExpF64FunctionName(num_elements), function_type)
-          .getCallee());
+      module->getOrInsertFunction(Exp::Name(type), function_type).getCallee());
 
   llvm::Argument* input_x_arg = func->getArg(0);
   input_x_arg->setName("input_x");
@@ -196,7 +187,9 @@ llvm::Function* CreateExpF64(llvm::Module* module, llvm::Type* input_type) {
   // exp_g_approx now holds the approximation for exp(g).
 
   // Convert n (stored as float vector) to an integer vector for ldexp.
-  llvm::Function* ldexp_fn = CreateLdexpF64(module, input_type);
+  Type ldexp_int_type = Type(xla::S32, type.vector_width());
+  llvm::Function* ldexp_fn =
+      Ldexp::CreateDefinition(module, type, ldexp_int_type).value();
   // FPtoSI(nan) yields a poison value. We freeze the output to halt propagation
   // of UB and let the compiler know we will accept any arbitrary value of that
   // type here.
@@ -227,4 +220,4 @@ llvm::Function* CreateExpF64(llvm::Module* module, llvm::Type* input_type) {
   return func;
 }
 
-}  // namespace xla::codegen::math
+}  // namespace xla::codegen::intrinsics

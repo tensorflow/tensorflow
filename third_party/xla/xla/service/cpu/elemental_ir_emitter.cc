@@ -24,12 +24,14 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Value.h"
-#include "llvm/Support/Casting.h"
+#include "xla/codegen/math/exp.h"
+#include "xla/codegen/math/intrinsic.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/cpu/elemental_math_emitter.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 
 namespace xla::cpu {
+using ::xla::codegen::intrinsics::Type;
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
     PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs,
@@ -51,9 +53,9 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitExp(
     PrimitiveType prim_type, llvm::Value* value, absl::string_view name) {
   if (prim_type == F64) {
     llvm::Type* f64 = b()->getDoubleTy();
-    llvm::FunctionType* f64_type = llvm::FunctionType::get(f64, {f64}, false);
-    llvm::Function* exp_f64 = llvm::cast<llvm::Function>(
-        module()->getOrInsertFunction("xla.exp.f64", f64_type).getCallee());
+    llvm::Function* exp_f64 =
+        xla::codegen::intrinsics::Exp::GetOrInsertDeclaration(
+            module(), Type::TypeFromIrType(f64));
     return b()->CreateCall(exp_f64, value);
   }
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::exp, {value},

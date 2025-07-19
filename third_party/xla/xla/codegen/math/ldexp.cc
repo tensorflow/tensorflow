@@ -15,12 +15,9 @@ limitations under the License.
 
 #include "xla/codegen/math/ldexp.h"
 
-#include <cstddef>
 #include <cstdint>
-#include <string>
 
 #include "absl/log/check.h"
-#include "absl/strings/str_cat.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
@@ -37,17 +34,7 @@ limitations under the License.
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::codegen {
-
-std::string Intrinsic::Ldexp::Name(PrimitiveType type) {
-  return absl::StrCat("xla.ldexp.", ScalarName(type), ".i32");
-}
-
-std::string Intrinsic::Ldexp::Name(PrimitiveType type, size_t vector_width) {
-  return absl::StrCat("xla.ldexp.", VectorName(type, vector_width), ".i32");
-}
-
-namespace math {
+namespace xla::codegen::intrinsics {
 
 namespace {
 llvm::Value* IntMax(llvm::IRBuilderBase& builder, llvm::Value* v1,
@@ -63,11 +50,17 @@ llvm::Value* IntMin(llvm::IRBuilderBase& builder, llvm::Value* v1,
 }
 }  // namespace
 
-llvm::Function* CreateLdexpF64(llvm::Module* module, llvm::Type* vector_type) {
+absl::StatusOr<llvm::Function*> Ldexp::CreateDefinition(llvm::Module* module,
+                                                        Type base,
+                                                        Type exp_type) {
   // This implementation closely follows Eigen's ldexp implementation:
   // https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Core/arch/Default/GenericPacketMathFunctions.h#L226
   // One key difference being that the 2nd exponent argument is an integer or
   // vector of integers, not doubles.
+
+  llvm::Type* vector_type = Type::TypeToIrType(base, module->getContext());
+  llvm::Type* input_int_type =
+      Type::TypeToIrType(exp_type, module->getContext());
 
   CHECK(vector_type != nullptr);
   CHECK(vector_type->isFloatingPointTy() || vector_type->isVectorTy())
@@ -77,22 +70,18 @@ llvm::Function* CreateLdexpF64(llvm::Module* module, llvm::Type* vector_type) {
 
   int num_elements = 1;
   llvm::Type* i64_type = llvm::Type::getInt64Ty(module->getContext());
-  llvm::Type* input_int_type = llvm::Type::getInt32Ty(module->getContext());
 
   if (llvm::VectorType* vec_ty =
           llvm::dyn_cast<llvm::VectorType>(vector_type)) {
     num_elements = vec_ty->getElementCount().getKnownMinValue();
     i64_type = llvm::VectorType::get(i64_type, num_elements, false);
-    input_int_type = llvm::VectorType::get(input_int_type, num_elements, false);
   }
 
   llvm::FunctionType* ldexp_func_type = llvm::FunctionType::get(
       vector_type, {vector_type, input_int_type}, false);
-  llvm::Function* ldexp_func = llvm::Function::Create(
-      ldexp_func_type, llvm::Function::InternalLinkage,
-      num_elements == 1 ? Intrinsic::Ldexp::Name(F64)
-                        : Intrinsic::Ldexp::Name(F64, num_elements),
-      module);
+  llvm::Function* ldexp_func =
+      llvm::Function::Create(ldexp_func_type, llvm::Function::InternalLinkage,
+                             Ldexp::Name(base, exp_type), module);
   ldexp_func->addFnAttr(llvm::Attribute::AlwaysInline);
   llvm::Argument* a = ldexp_func->getArg(0);
   a->setName("a");
@@ -158,5 +147,4 @@ llvm::Function* CreateLdexpF64(llvm::Module* module, llvm::Type* vector_type) {
   return ldexp_func;
 }
 
-}  // namespace math
-}  // namespace xla::codegen
+}  // namespace xla::codegen::intrinsics
