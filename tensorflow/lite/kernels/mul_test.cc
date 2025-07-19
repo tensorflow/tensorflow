@@ -75,9 +75,10 @@ class BaseMulOpModel : public SingleOpModel {
   int output_;
 };
 
-class FloatMulOpModel : public BaseMulOpModel<float> {
+template <typename InputType>
+class FloatMulOpModel : public BaseMulOpModel<InputType> {
  public:
-  using BaseMulOpModel::BaseMulOpModel;
+  using BaseMulOpModel<InputType>::BaseMulOpModel;
 };
 
 class ComplexMulOpModel : public BaseMulOpModel<std::complex<float>> {
@@ -157,10 +158,10 @@ class QuantizedMulOpModel : public SingleOpModel {
 using MulOpTest = testing::TestWithParam<bool>;
 
 TEST(MulOpTest, NoActivationFloatInplaceInput0) {
-  FloatMulOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
-                    {-2.0, 0.2, 0.7, 0.8}, {0.1, 0.2, 0.3, 0.5}, false);
+  FloatMulOpModel<float> m(
+      {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
+      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
+      {-2.0, 0.2, 0.7, 0.8}, {0.1, 0.2, 0.3, 0.5}, false);
   const int kInplaceInputTensorIdx = 0;
   const int kInplaceOutputTensorIdx = 0;
   const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
@@ -171,12 +172,11 @@ TEST(MulOpTest, NoActivationFloatInplaceInput0) {
               ElementsAreArray(ArrayFloatNear({-0.2, 0.04, 0.21, 0.4})));
   EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
 }
-
 TEST(MulOpTest, NoActivationFloatInplaceInput1) {
-  FloatMulOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
-                    {-2.0, 0.2, 0.7, 0.8}, {0.1, 0.2, 0.3, 0.5}, false);
+  FloatMulOpModel<float> m(
+      {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
+      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
+      {-2.0, 0.2, 0.7, 0.8}, {0.1, 0.2, 0.3, 0.5}, false);
   const int kInplaceInputTensorIdx = 1;
   const int kInplaceOutputTensorIdx = 0;
   const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
@@ -194,7 +194,7 @@ TEST_P(MulOpTest, NoActivationFloat) {
     // NNAPI does not support graphs with all constant inputs.
     return;
   }
-  FloatMulOpModel m(
+  FloatMulOpModel<float> m(
       {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
       {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
       {-2.0, 0.2, 0.7, 0.8}, {0.1, 0.2, 0.3, 0.5}, constant_tensors);
@@ -209,7 +209,7 @@ TEST_P(MulOpTest, FloatActivationRELU_N1_TO_1) {
     // NNAPI does not support graphs with all constant inputs.
     return;
   }
-  FloatMulOpModel m(
+  FloatMulOpModel<float> m(
       {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
       {TensorType_FLOAT32, {}}, ActivationFunctionType_RELU_N1_TO_1,
       {-2.0, 0.2, 0.7, 0.8}, {0.1, 0.2, 0.3, 5}, constant_tensors);
@@ -227,11 +227,11 @@ TEST_P(MulOpTest, FloatVariousInputShapes) {
   const std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
-    FloatMulOpModel m({TensorType_FLOAT32, test_shapes[i]},
-                      {TensorType_FLOAT32, test_shapes[i]},
-                      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
-                      {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0},
-                      {0.1, 0.2, 0.3, 0.5, 1.1, 0.1}, constant_tensors);
+    FloatMulOpModel<float> m(
+        {TensorType_FLOAT32, test_shapes[i]},
+        {TensorType_FLOAT32, test_shapes[i]}, {TensorType_FLOAT32, {}},
+        ActivationFunctionType_NONE, {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0},
+        {0.1, 0.2, 0.3, 0.5, 1.1, 0.1}, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(
         m.GetOutput(),
@@ -249,10 +249,11 @@ TEST_P(MulOpTest, FloatWithScalarBroadcast) {
   const std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
-    FloatMulOpModel m({TensorType_FLOAT32, test_shapes[i]},
-                      {TensorType_FLOAT32, {}},  // always a scalar
-                      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
-                      {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0}, {0.1}, constant_tensors);
+    FloatMulOpModel<float> m(
+        {TensorType_FLOAT32, test_shapes[i]},
+        {TensorType_FLOAT32, {}},  // always a scalar
+        {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
+        {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0}, {0.1}, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(
         m.GetOutput(),
@@ -270,11 +271,12 @@ TEST_P(MulOpTest, FloatWithBroadcast) {
   const std::vector<std::vector<int>> test_shapes = {
       {2, 4}, {2, 1, 4}, {1, 2, 4}, {1, 2, 1, 4}};
   for (int i = 0; i < test_shapes.size(); ++i) {
-    FloatMulOpModel m({TensorType_FLOAT32, test_shapes[i]},
-                      {TensorType_FLOAT32, {4}},  // always a scalar
-                      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
-                      {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0, 1.1, 0.8},
-                      {0.1, 0.2, 0.3, 0.4}, constant_tensors);
+    FloatMulOpModel<float> m({TensorType_FLOAT32, test_shapes[i]},
+                             {TensorType_FLOAT32, {4}},  // always a scalar
+                             {TensorType_FLOAT32, {}},
+                             ActivationFunctionType_NONE,
+                             {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0, 1.1, 0.8},
+                             {0.1, 0.2, 0.3, 0.4}, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutput(),
                 ElementsAreArray(ArrayFloatNear(
@@ -306,7 +308,7 @@ TEST_P(MulOpTest, FloatMixedBroadcast) {
       {-0.06f, 0.46f, 0.27f, 0.15f, -0.32f, 0.44f, 0.60f, 1.40f, -1.60f, 0.00f,
        0.63f, -1.98f}};
   for (size_t i = 0; i < test_shapes.size(); ++i) {
-    FloatMulOpModel model_fixture(
+    FloatMulOpModel<float> model_fixture(
         {TensorType_FLOAT32, base_shape}, {TensorType_FLOAT32, test_shapes[i]},
         {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
         {-0.3f, 2.3f, 0.9f, 0.5f, 0.8f, -1.1f, 1.2f, 2.8f, -1.6f, 0.0f, 0.7f,
@@ -320,7 +322,7 @@ TEST_P(MulOpTest, FloatMixedBroadcast) {
   }
   // Re-run with exchanged inputs.
   for (size_t i = 0; i < test_shapes.size(); ++i) {
-    FloatMulOpModel model_fixture(
+    FloatMulOpModel<float> model_fixture(
         {TensorType_FLOAT32, test_shapes[i]}, {TensorType_FLOAT32, base_shape},
         {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
         {0.2f, 0.3f, -0.4f, 0.5f, 1.0f, 0.9f},
@@ -343,10 +345,11 @@ TEST_P(MulOpTest, FloatWithBroadcast2Elements) {
   const std::vector<std::vector<int>> test_shapes = {
       {2, 2}, {2, 1, 2}, {1, 2, 2}, {1, 2, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
-    FloatMulOpModel m({TensorType_FLOAT32, test_shapes[i]},
-                      {TensorType_FLOAT32, {2}},  // always a scalar
-                      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
-                      {-2.0, 0.2, 0.7, 0.8}, {0.1, 0.2}, constant_tensors);
+    FloatMulOpModel<float> m({TensorType_FLOAT32, test_shapes[i]},
+                             {TensorType_FLOAT32, {2}},  // always a scalar
+                             {TensorType_FLOAT32, {}},
+                             ActivationFunctionType_NONE, {-2.0, 0.2, 0.7, 0.8},
+                             {0.1, 0.2}, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutput(),
                 ElementsAreArray(ArrayFloatNear({-0.2, 0.04, 0.07, 0.16})))
@@ -360,11 +363,623 @@ TEST_P(MulOpTest, FloatScalarAndOneElement) {
     // NNAPI does not support graphs with all constant inputs.
     return;
   }
-  FloatMulOpModel m({TensorType_FLOAT32, {1}}, {TensorType_FLOAT32, {}},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
-                    {0.8}, {0.5}, constant_tensors);
+  FloatMulOpModel<float> m({TensorType_FLOAT32, {1}}, {TensorType_FLOAT32, {}},
+                           {TensorType_FLOAT32, {}},
+                           ActivationFunctionType_NONE, {0.8}, {0.5},
+                           constant_tensors);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({0.4})));
+}
+
+TEST(MulOpTest, NoActivationFloatInplaceInput0Float16) {
+  FloatMulOpModel<Eigen::half> m(
+      {TensorType_FLOAT16, {1, 2, 2, 1}}, {TensorType_FLOAT16, {1, 2, 2, 1}},
+      {TensorType_FLOAT16, {}}, ActivationFunctionType_NONE,
+      {static_cast<Eigen::half>(-2.0), static_cast<Eigen::half>(0.2),
+       static_cast<Eigen::half>(0.7), static_cast<Eigen::half>(0.8)},
+      {static_cast<Eigen::half>(0.1), static_cast<Eigen::half>(0.2),
+       static_cast<Eigen::half>(0.3), static_cast<Eigen::half>(0.5)},
+      false);
+  const int kInplaceInputTensorIdx = 0;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {static_cast<Eigen::half>(-0.2), static_cast<Eigen::half>(0.04),
+           static_cast<Eigen::half>(0.21), static_cast<Eigen::half>(0.4)},
+          1e-3)));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
+TEST(MulOpTest, NoActivationFloatInplaceInput1Float16) {
+  FloatMulOpModel<Eigen::half> m(
+      {TensorType_FLOAT16, {1, 2, 2, 1}}, {TensorType_FLOAT16, {1, 2, 2, 1}},
+      {TensorType_FLOAT16, {}}, ActivationFunctionType_NONE,
+      {static_cast<Eigen::half>(-2.0), static_cast<Eigen::half>(0.2),
+       static_cast<Eigen::half>(0.7), static_cast<Eigen::half>(0.8)},
+      {static_cast<Eigen::half>(0.1), static_cast<Eigen::half>(0.2),
+       static_cast<Eigen::half>(0.3), static_cast<Eigen::half>(0.5)},
+      false);
+  const int kInplaceInputTensorIdx = 1;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {static_cast<Eigen::half>(-0.2), static_cast<Eigen::half>(0.04),
+           static_cast<Eigen::half>(0.21), static_cast<Eigen::half>(0.4)},
+          1e-3)));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
+TEST_P(MulOpTest, NoActivationFloat16) {
+  const bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  FloatMulOpModel<Eigen::half> m(
+      {TensorType_FLOAT16, {1, 2, 2, 1}}, {TensorType_FLOAT16, {1, 2, 2, 1}},
+      {TensorType_FLOAT16, {}}, ActivationFunctionType_NONE,
+      {static_cast<Eigen::half>(-2.0), static_cast<Eigen::half>(0.2),
+       static_cast<Eigen::half>(0.7), static_cast<Eigen::half>(0.8)},
+      {static_cast<Eigen::half>(0.1), static_cast<Eigen::half>(0.2),
+       static_cast<Eigen::half>(0.3), static_cast<Eigen::half>(0.5)},
+      constant_tensors);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {static_cast<Eigen::half>(-0.2), static_cast<Eigen::half>(0.04),
+           static_cast<Eigen::half>(0.21), static_cast<Eigen::half>(0.4)},
+          1e-3)));
+}
+
+TEST_P(MulOpTest, FloatActivationRELU_N1_TO_1Float16) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  FloatMulOpModel<Eigen::half> m(
+      {TensorType_FLOAT16, {1, 2, 2, 1}}, {TensorType_FLOAT16, {1, 2, 2, 1}},
+      {TensorType_FLOAT16, {}}, ActivationFunctionType_RELU_N1_TO_1,
+      {static_cast<Eigen::half>(-2.0), static_cast<Eigen::half>(0.2),
+       static_cast<Eigen::half>(0.7), static_cast<Eigen::half>(0.8)},
+      {static_cast<Eigen::half>(0.1), static_cast<Eigen::half>(0.2),
+       static_cast<Eigen::half>(0.3), static_cast<Eigen::half>(5)},
+      constant_tensors);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {static_cast<Eigen::half>(-0.2), static_cast<Eigen::half>(0.04),
+           static_cast<Eigen::half>(0.21), static_cast<Eigen::half>(1.0)},
+          1e-1)));
+}
+
+TEST_P(MulOpTest, FloatVariousInputShapesFloat16) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  const std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    FloatMulOpModel<Eigen::half> m(
+        {TensorType_FLOAT16, test_shapes[i]},
+        {TensorType_FLOAT16, test_shapes[i]}, {TensorType_FLOAT16, {}},
+        ActivationFunctionType_NONE,
+        {static_cast<Eigen::half>(-2.0), static_cast<Eigen::half>(0.2),
+         static_cast<Eigen::half>(0.7), static_cast<Eigen::half>(0.8),
+         static_cast<Eigen::half>(1.1), static_cast<Eigen::half>(2.0)},
+        {static_cast<Eigen::half>(0.1), static_cast<Eigen::half>(0.2),
+         static_cast<Eigen::half>(0.3), static_cast<Eigen::half>(0.5),
+         static_cast<Eigen::half>(1.1), static_cast<Eigen::half>(0.1)},
+        constant_tensors);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(
+        m.GetOutput(),
+        ElementsAreArray(ArrayFloatNear(
+            {static_cast<Eigen::half>(-0.2), static_cast<Eigen::half>(0.04),
+             static_cast<Eigen::half>(0.21), static_cast<Eigen::half>(0.4),
+             static_cast<Eigen::half>(1.21), static_cast<Eigen::half>(0.2)},
+            1e-1)))
+        << "With shape number " << i;
+  }
+}
+
+TEST_P(MulOpTest, FloatWithScalarBroadcastFloat16) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  const std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    FloatMulOpModel<Eigen::half> m(
+        {TensorType_FLOAT16, test_shapes[i]},
+        {TensorType_FLOAT16, {}},  // always a scalar
+        {TensorType_FLOAT16, {}}, ActivationFunctionType_NONE,
+        {static_cast<Eigen::half>(-2.0), static_cast<Eigen::half>(0.2),
+         static_cast<Eigen::half>(0.7), static_cast<Eigen::half>(0.8),
+         static_cast<Eigen::half>(1.1), static_cast<Eigen::half>(2.0)},
+        {static_cast<Eigen::half>(0.1)}, constant_tensors);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(
+        m.GetOutput(),
+        ElementsAreArray(ArrayFloatNear(
+            {static_cast<Eigen::half>(-0.2), static_cast<Eigen::half>(0.02),
+             static_cast<Eigen::half>(0.07), static_cast<Eigen::half>(0.08),
+             static_cast<Eigen::half>(0.11), static_cast<Eigen::half>(0.2)},
+            1e-4)))
+        << "With shape number " << i;
+  }
+}
+
+TEST_P(MulOpTest, FloatWithBroadcastFloat16) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  const std::vector<std::vector<int>> test_shapes = {
+      {2, 4}, {2, 1, 4}, {1, 2, 4}, {1, 2, 1, 4}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    FloatMulOpModel<Eigen::half> m(
+        {TensorType_FLOAT16, test_shapes[i]},
+        {TensorType_FLOAT16, {4}},  // always a scalar
+        {TensorType_FLOAT16, {}}, ActivationFunctionType_NONE,
+        {static_cast<Eigen::half>(-2.0), static_cast<Eigen::half>(0.2),
+         static_cast<Eigen::half>(0.7), static_cast<Eigen::half>(0.8),
+         static_cast<Eigen::half>(1.1), static_cast<Eigen::half>(2.0),
+         static_cast<Eigen::half>(1.1), static_cast<Eigen::half>(0.8)},
+        {static_cast<Eigen::half>(0.1), static_cast<Eigen::half>(0.2),
+         static_cast<Eigen::half>(0.3), static_cast<Eigen::half>(0.4)},
+        constant_tensors);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(
+        m.GetOutput(),
+        ElementsAreArray(ArrayFloatNear(
+            {static_cast<Eigen::half>(-0.2), static_cast<Eigen::half>(0.04),
+             static_cast<Eigen::half>(0.21), static_cast<Eigen::half>(0.32),
+             static_cast<Eigen::half>(0.11), static_cast<Eigen::half>(0.4),
+             static_cast<Eigen::half>(0.33), static_cast<Eigen::half>(0.32)},
+            1e-3)))
+        << "With shape number " << i;
+  }
+}
+
+TEST_P(MulOpTest, FloatMixedBroadcastFloat16) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  const std::vector<int> base_shape = {2, 3, 1, 2};
+  const std::vector<std::vector<int>> test_shapes = {
+      {1, 1, 3, 2}, {1, 3, 1, 2}, {2, 1, 3, 1}, {2, 3, 1, 1}};
+  const std::vector<std::vector<float>> test_outputs = {
+      {-0.06f, 0.69f,  0.12f,  1.15f, -0.30f, 2.07f,  0.18f,  0.15f, -0.36f,
+       0.25f,  0.90f,  0.45f,  0.16f, -0.33f, -0.32f, -0.55f, 0.80f, -0.99f,
+       0.24f,  0.84f,  -0.48f, 1.40f, 1.20f,  2.52f,  -0.32f, 0.00f, 0.64f,
+       0.00f,  -1.60f, 0.00f,  0.14f, -0.66f, -0.28f, -1.10f, 0.70f, -1.98f},
+      {-0.06f, 0.69f, -0.36f, 0.25f, 0.80f, -0.99f, 0.24f, 0.84f, 0.64f, 0.00f,
+       0.70f, -1.98f},
+      {-0.06f, 0.46f,  -0.09f, 0.69f, 0.12f,  -0.92f, 0.18f,  0.10f,  0.27f,
+       0.15f,  -0.36f, -0.20f, 0.16f, -0.22f, 0.24f,  -0.33f, -0.32f, 0.44f,
+       0.60f,  1.40f,  1.20f,  2.80f, 1.08f,  2.52f,  -0.80f, 0.00f,  -1.60f,
+       0.00f,  -1.44f, 0.00f,  0.35f, -1.10f, 0.70f,  -2.20f, 0.63f,  -1.98f},
+      {-0.06f, 0.46f, 0.27f, 0.15f, -0.32f, 0.44f, 0.60f, 1.40f, -1.60f, 0.00f,
+       0.63f, -1.98f}};
+  for (size_t i = 0; i < test_shapes.size(); ++i) {
+    FloatMulOpModel<Eigen::half> model_fixture(
+        {TensorType_FLOAT16, base_shape}, {TensorType_FLOAT16, test_shapes[i]},
+        {TensorType_FLOAT16, {}}, ActivationFunctionType_NONE,
+        {static_cast<Eigen::half>(-0.3f), static_cast<Eigen::half>(2.3f),
+         static_cast<Eigen::half>(0.9f), static_cast<Eigen::half>(0.5f),
+         static_cast<Eigen::half>(0.8f), static_cast<Eigen::half>(-1.1f),
+         static_cast<Eigen::half>(1.2f), static_cast<Eigen::half>(2.8f),
+         static_cast<Eigen::half>(-1.6f), static_cast<Eigen::half>(0.0f),
+         static_cast<Eigen::half>(0.7f), static_cast<Eigen::half>(-2.2f)},
+        {static_cast<Eigen::half>(0.2f), static_cast<Eigen::half>(0.3f),
+         static_cast<Eigen::half>(-0.4f), static_cast<Eigen::half>(0.5f),
+         static_cast<Eigen::half>(1.0f), static_cast<Eigen::half>(0.9f)},
+        constant_tensors);
+    ASSERT_EQ(model_fixture.Invoke(), kTfLiteOk);
+
+    EXPECT_THAT(model_fixture.GetOutput(),
+                ElementsAreArray(ArrayFloatNear(
+                    test_outputs[i], static_cast<Eigen::half>(0.0001f, 1e-2))))
+        << "With shape number " << i;
+  }
+  // Re-run with exchanged inputs.
+  for (size_t i = 0; i < test_shapes.size(); ++i) {
+    FloatMulOpModel<Eigen::half> model_fixture(
+        {TensorType_FLOAT16, test_shapes[i]}, {TensorType_FLOAT16, base_shape},
+        {TensorType_FLOAT16, {}}, ActivationFunctionType_NONE,
+        {static_cast<Eigen::half>(0.2f), static_cast<Eigen::half>(0.3f),
+         static_cast<Eigen::half>(-0.4f), static_cast<Eigen::half>(0.5f),
+         static_cast<Eigen::half>(1.0f), static_cast<Eigen::half>(0.9f)},
+        {static_cast<Eigen::half>(-0.3f), static_cast<Eigen::half>(2.3f),
+         static_cast<Eigen::half>(0.9f), static_cast<Eigen::half>(0.5f),
+         static_cast<Eigen::half>(0.8f), static_cast<Eigen::half>(-1.1f),
+         static_cast<Eigen::half>(1.2f), static_cast<Eigen::half>(2.8f),
+         static_cast<Eigen::half>(-1.6f), static_cast<Eigen::half>(0.0f),
+         static_cast<Eigen::half>(0.7f), static_cast<Eigen::half>(-2.2f)},
+        constant_tensors);
+    ASSERT_EQ(model_fixture.Invoke(), kTfLiteOk);
+    EXPECT_THAT(model_fixture.GetOutput(),
+                ElementsAreArray(ArrayFloatNear(
+                    test_outputs[i], static_cast<Eigen::half>(0.0001f, 1e-2))))
+        << "With shape number " << i;
+  }
+}
+
+TEST_P(MulOpTest, FloatWithBroadcast2ElementsFloat16) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  const std::vector<std::vector<int>> test_shapes = {
+      {2, 2}, {2, 1, 2}, {1, 2, 2}, {1, 2, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    FloatMulOpModel<Eigen::half> m(
+        {TensorType_FLOAT16, test_shapes[i]},
+        {TensorType_FLOAT16, {2}},  // always a scalar
+        {TensorType_FLOAT16, {}}, ActivationFunctionType_NONE,
+        {static_cast<Eigen::half>(-2.0), static_cast<Eigen::half>(0.2),
+         static_cast<Eigen::half>(0.7), static_cast<Eigen::half>(0.8)},
+        {static_cast<Eigen::half>(0.1), static_cast<Eigen::half>(0.2)},
+        constant_tensors);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(
+        m.GetOutput(),
+        ElementsAreArray(ArrayFloatNear(
+            {static_cast<Eigen::half>(-0.2), static_cast<Eigen::half>(0.04),
+             static_cast<Eigen::half>(0.07), static_cast<Eigen::half>(0.16)},
+            1e-3)))
+        << "With shape number " << i;
+  }
+}
+
+TEST_P(MulOpTest, FloatScalarAndOneElementFloat16) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  FloatMulOpModel<Eigen::half> m(
+      {TensorType_FLOAT16, {1}}, {TensorType_FLOAT16, {}},
+      {TensorType_FLOAT16, {}}, ActivationFunctionType_NONE,
+      {static_cast<Eigen::half>(0.8)}, {static_cast<Eigen::half>(0.5)},
+      constant_tensors);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear({static_cast<Eigen::half>(0.4)})));
+}
+
+TEST(MulOpTest, NoActivationFloatInplaceInput0BFloat16) {
+  FloatMulOpModel<Eigen::bfloat16> m(
+      {TensorType_BFLOAT16, {1, 2, 2, 1}}, {TensorType_BFLOAT16, {1, 2, 2, 1}},
+      {TensorType_BFLOAT16, {}}, ActivationFunctionType_NONE,
+      {static_cast<Eigen::bfloat16>(-2.0), static_cast<Eigen::bfloat16>(0.2),
+       static_cast<Eigen::bfloat16>(0.7), static_cast<Eigen::bfloat16>(0.8)},
+      {static_cast<Eigen::bfloat16>(0.1), static_cast<Eigen::bfloat16>(0.2),
+       static_cast<Eigen::bfloat16>(0.3), static_cast<Eigen::bfloat16>(0.5)},
+      false);
+  const int kInplaceInputTensorIdx = 0;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {static_cast<Eigen::bfloat16>(-0.2),
+                                  static_cast<Eigen::bfloat16>(0.04),
+                                  static_cast<Eigen::bfloat16>(0.21),
+                                  static_cast<Eigen::bfloat16>(0.4)},
+                                 1e-1)));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
+TEST(MulOpTest, NoActivationFloatInplaceInput1BFloat16) {
+  FloatMulOpModel<Eigen::bfloat16> m(
+      {TensorType_BFLOAT16, {1, 2, 2, 1}}, {TensorType_BFLOAT16, {1, 2, 2, 1}},
+      {TensorType_BFLOAT16, {}}, ActivationFunctionType_NONE,
+      {static_cast<Eigen::bfloat16>(-2.0), static_cast<Eigen::bfloat16>(0.2),
+       static_cast<Eigen::bfloat16>(0.7), static_cast<Eigen::bfloat16>(0.8)},
+      {static_cast<Eigen::bfloat16>(0.1), static_cast<Eigen::bfloat16>(0.2),
+       static_cast<Eigen::bfloat16>(0.3), static_cast<Eigen::bfloat16>(0.5)},
+      false);
+  const int kInplaceInputTensorIdx = 1;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {static_cast<Eigen::bfloat16>(-0.2),
+                                  static_cast<Eigen::bfloat16>(0.04),
+                                  static_cast<Eigen::bfloat16>(0.21),
+                                  static_cast<Eigen::bfloat16>(0.4)},
+                                 1e-1)));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
+TEST_P(MulOpTest, NoActivationBFloat16) {
+  const bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  FloatMulOpModel<Eigen::bfloat16> m(
+      {TensorType_BFLOAT16, {1, 2, 2, 1}}, {TensorType_BFLOAT16, {1, 2, 2, 1}},
+      {TensorType_BFLOAT16, {}}, ActivationFunctionType_NONE,
+      {static_cast<Eigen::bfloat16>(-2.0), static_cast<Eigen::bfloat16>(0.2),
+       static_cast<Eigen::bfloat16>(0.7), static_cast<Eigen::bfloat16>(0.8)},
+      {static_cast<Eigen::bfloat16>(0.1), static_cast<Eigen::bfloat16>(0.2),
+       static_cast<Eigen::bfloat16>(0.3), static_cast<Eigen::bfloat16>(0.5)},
+      constant_tensors);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {static_cast<Eigen::bfloat16>(-0.2),
+                                  static_cast<Eigen::bfloat16>(0.04),
+                                  static_cast<Eigen::bfloat16>(0.21),
+                                  static_cast<Eigen::bfloat16>(0.4)},
+                                 1e-1)));
+}
+
+TEST_P(MulOpTest, FloatActivationRELU_N1_TO_1BFloat16) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  FloatMulOpModel<Eigen::bfloat16> m(
+      {TensorType_BFLOAT16, {1, 2, 2, 1}}, {TensorType_BFLOAT16, {1, 2, 2, 1}},
+      {TensorType_BFLOAT16, {}}, ActivationFunctionType_RELU_N1_TO_1,
+      {static_cast<Eigen::bfloat16>(-2.0), static_cast<Eigen::bfloat16>(0.2),
+       static_cast<Eigen::bfloat16>(0.7), static_cast<Eigen::bfloat16>(0.8)},
+      {static_cast<Eigen::bfloat16>(0.1), static_cast<Eigen::bfloat16>(0.2),
+       static_cast<Eigen::bfloat16>(0.3), static_cast<Eigen::bfloat16>(5)},
+      constant_tensors);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {static_cast<Eigen::bfloat16>(-0.2),
+                                  static_cast<Eigen::bfloat16>(0.04),
+                                  static_cast<Eigen::bfloat16>(0.21),
+                                  static_cast<Eigen::bfloat16>(1.0)},
+                                 1e-1)));
+}
+
+TEST_P(MulOpTest, FloatVariousInputShapesBFloat16) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  const std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    FloatMulOpModel<Eigen::bfloat16> m(
+        {TensorType_BFLOAT16, test_shapes[i]},
+        {TensorType_BFLOAT16, test_shapes[i]}, {TensorType_BFLOAT16, {}},
+        ActivationFunctionType_NONE,
+        {static_cast<Eigen::bfloat16>(-2.0), static_cast<Eigen::bfloat16>(0.2),
+         static_cast<Eigen::bfloat16>(0.7), static_cast<Eigen::bfloat16>(0.8),
+         static_cast<Eigen::bfloat16>(1.1), static_cast<Eigen::bfloat16>(2.0)},
+        {static_cast<Eigen::bfloat16>(0.1), static_cast<Eigen::bfloat16>(0.2),
+         static_cast<Eigen::bfloat16>(0.3), static_cast<Eigen::bfloat16>(0.5),
+         static_cast<Eigen::bfloat16>(1.1), static_cast<Eigen::bfloat16>(0.1)},
+        constant_tensors);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                   {static_cast<Eigen::bfloat16>(-0.2),
+                                    static_cast<Eigen::bfloat16>(0.04),
+                                    static_cast<Eigen::bfloat16>(0.21),
+                                    static_cast<Eigen::bfloat16>(0.4),
+                                    static_cast<Eigen::bfloat16>(1.21),
+                                    static_cast<Eigen::bfloat16>(0.2)},
+                                   1e-1)))
+        << "With shape number " << i;
+  }
+}
+
+TEST_P(MulOpTest, FloatWithScalarBroadcastBFloat16) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  const std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    FloatMulOpModel<Eigen::bfloat16> m(
+        {TensorType_BFLOAT16, test_shapes[i]},
+        {TensorType_BFLOAT16, {}},  // always a scalar
+        {TensorType_BFLOAT16, {}}, ActivationFunctionType_NONE,
+        {static_cast<Eigen::bfloat16>(-2.0), static_cast<Eigen::bfloat16>(0.2),
+         static_cast<Eigen::bfloat16>(0.7), static_cast<Eigen::bfloat16>(0.8),
+         static_cast<Eigen::bfloat16>(1.1), static_cast<Eigen::bfloat16>(2.0)},
+        {static_cast<Eigen::bfloat16>(0.1)}, constant_tensors);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                   {static_cast<Eigen::bfloat16>(-0.2),
+                                    static_cast<Eigen::bfloat16>(0.02),
+                                    static_cast<Eigen::bfloat16>(0.07),
+                                    static_cast<Eigen::bfloat16>(0.08),
+                                    static_cast<Eigen::bfloat16>(0.11),
+                                    static_cast<Eigen::bfloat16>(0.2)},
+                                   1e-3)))
+        << "With shape number " << i;
+  }
+}
+
+TEST_P(MulOpTest, FloatWithBroadcastBFloat16) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  const std::vector<std::vector<int>> test_shapes = {
+      {2, 4}, {2, 1, 4}, {1, 2, 4}, {1, 2, 1, 4}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    FloatMulOpModel<Eigen::bfloat16> m(
+        {TensorType_BFLOAT16, test_shapes[i]},
+        {TensorType_BFLOAT16, {4}},  // always a scalar
+        {TensorType_BFLOAT16, {}}, ActivationFunctionType_NONE,
+        {static_cast<Eigen::bfloat16>(-2.0), static_cast<Eigen::bfloat16>(0.2),
+         static_cast<Eigen::bfloat16>(0.7), static_cast<Eigen::bfloat16>(0.8),
+         static_cast<Eigen::bfloat16>(1.1), static_cast<Eigen::bfloat16>(2.0),
+         static_cast<Eigen::bfloat16>(1.1), static_cast<Eigen::bfloat16>(0.8)},
+        {static_cast<Eigen::bfloat16>(0.1), static_cast<Eigen::bfloat16>(0.2),
+         static_cast<Eigen::bfloat16>(0.3), static_cast<Eigen::bfloat16>(0.4)},
+        constant_tensors);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                   {static_cast<Eigen::bfloat16>(-0.2),
+                                    static_cast<Eigen::bfloat16>(0.04),
+                                    static_cast<Eigen::bfloat16>(0.21),
+                                    static_cast<Eigen::bfloat16>(0.32),
+                                    static_cast<Eigen::bfloat16>(0.11),
+                                    static_cast<Eigen::bfloat16>(0.4),
+                                    static_cast<Eigen::bfloat16>(0.33),
+                                    static_cast<Eigen::bfloat16>(0.32)},
+                                   1e-2)))
+        << "With shape number " << i;
+  }
+}
+
+TEST_P(MulOpTest, FloatMixedBroadcastBFloat16) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  const std::vector<int> base_shape = {2, 3, 1, 2};
+  const std::vector<std::vector<int>> test_shapes = {
+      {1, 1, 3, 2}, {1, 3, 1, 2}, {2, 1, 3, 1}, {2, 3, 1, 1}};
+  const std::vector<std::vector<float>> test_outputs = {
+      {-0.06f, 0.69f,  0.12f,  1.15f, -0.30f, 2.07f,  0.18f,  0.15f, -0.36f,
+       0.25f,  0.90f,  0.45f,  0.16f, -0.33f, -0.32f, -0.55f, 0.80f, -0.99f,
+       0.24f,  0.84f,  -0.48f, 1.40f, 1.20f,  2.52f,  -0.32f, 0.00f, 0.64f,
+       0.00f,  -1.60f, 0.00f,  0.14f, -0.66f, -0.28f, -1.10f, 0.70f, -1.98f},
+      {-0.06f, 0.69f, -0.36f, 0.25f, 0.80f, -0.99f, 0.24f, 0.84f, 0.64f, 0.00f,
+       0.70f, -1.98f},
+      {-0.06f, 0.46f,  -0.09f, 0.69f, 0.12f,  -0.92f, 0.18f,  0.10f,  0.27f,
+       0.15f,  -0.36f, -0.20f, 0.16f, -0.22f, 0.24f,  -0.33f, -0.32f, 0.44f,
+       0.60f,  1.40f,  1.20f,  2.80f, 1.08f,  2.52f,  -0.80f, 0.00f,  -1.60f,
+       0.00f,  -1.44f, 0.00f,  0.35f, -1.10f, 0.70f,  -2.20f, 0.63f,  -1.98f},
+      {-0.06f, 0.46f, 0.27f, 0.15f, -0.32f, 0.44f, 0.60f, 1.40f, -1.60f, 0.00f,
+       0.63f, -1.98f}};
+  for (size_t i = 0; i < test_shapes.size(); ++i) {
+    FloatMulOpModel<Eigen::bfloat16> model_fixture(
+        {TensorType_BFLOAT16, base_shape},
+        {TensorType_BFLOAT16, test_shapes[i]}, {TensorType_BFLOAT16, {}},
+        ActivationFunctionType_NONE,
+        {static_cast<Eigen::bfloat16>(-0.3f),
+         static_cast<Eigen::bfloat16>(2.3f), static_cast<Eigen::bfloat16>(0.9f),
+         static_cast<Eigen::bfloat16>(0.5f), static_cast<Eigen::bfloat16>(0.8f),
+         static_cast<Eigen::bfloat16>(-1.1f),
+         static_cast<Eigen::bfloat16>(1.2f), static_cast<Eigen::bfloat16>(2.8f),
+         static_cast<Eigen::bfloat16>(-1.6f),
+         static_cast<Eigen::bfloat16>(0.0f), static_cast<Eigen::bfloat16>(0.7f),
+         static_cast<Eigen::bfloat16>(-2.2f)},
+        {static_cast<Eigen::bfloat16>(0.2f), static_cast<Eigen::bfloat16>(0.3f),
+         static_cast<Eigen::bfloat16>(-0.4f),
+         static_cast<Eigen::bfloat16>(0.5f), static_cast<Eigen::bfloat16>(1.0f),
+         static_cast<Eigen::bfloat16>(0.9f)},
+        constant_tensors);
+    ASSERT_EQ(model_fixture.Invoke(), kTfLiteOk);
+    EXPECT_THAT(
+        model_fixture.GetOutput(),
+        ElementsAreArray(ArrayFloatNear(
+            test_outputs[i], static_cast<Eigen::bfloat16>(0.0001f, 1e-2))))
+        << "With shape number " << i;
+  }
+  // Re-run with exchanged inputs.
+  for (size_t i = 0; i < test_shapes.size(); ++i) {
+    FloatMulOpModel<Eigen::bfloat16> model_fixture(
+        {TensorType_BFLOAT16, test_shapes[i]},
+        {TensorType_BFLOAT16, base_shape}, {TensorType_BFLOAT16, {}},
+        ActivationFunctionType_NONE,
+        {static_cast<Eigen::bfloat16>(0.2f), static_cast<Eigen::bfloat16>(0.3f),
+         static_cast<Eigen::bfloat16>(-0.4f),
+         static_cast<Eigen::bfloat16>(0.5f), static_cast<Eigen::bfloat16>(1.0f),
+         static_cast<Eigen::bfloat16>(0.9f)},
+        {static_cast<Eigen::bfloat16>(-0.3f),
+         static_cast<Eigen::bfloat16>(2.3f), static_cast<Eigen::bfloat16>(0.9f),
+         static_cast<Eigen::bfloat16>(0.5f), static_cast<Eigen::bfloat16>(0.8f),
+         static_cast<Eigen::bfloat16>(-1.1f),
+         static_cast<Eigen::bfloat16>(1.2f), static_cast<Eigen::bfloat16>(2.8f),
+         static_cast<Eigen::bfloat16>(-1.6f),
+         static_cast<Eigen::bfloat16>(0.0f), static_cast<Eigen::bfloat16>(0.7f),
+         static_cast<Eigen::bfloat16>(-2.2f)},
+        constant_tensors);
+    ASSERT_EQ(model_fixture.Invoke(), kTfLiteOk);
+    EXPECT_THAT(
+        model_fixture.GetOutput(),
+        ElementsAreArray(ArrayFloatNear(
+            test_outputs[i], static_cast<Eigen::bfloat16>(0.0001f, 1e-2))))
+        << "With shape number " << i;
+  }
+}
+
+TEST_P(MulOpTest, FloatWithBroadcast2ElementsBFloat16) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  const std::vector<std::vector<int>> test_shapes = {
+      {2, 2}, {2, 1, 2}, {1, 2, 2}, {1, 2, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    FloatMulOpModel<Eigen::bfloat16> m(
+        {TensorType_BFLOAT16, test_shapes[i]},
+        {TensorType_BFLOAT16, {2}},  // always a scalar
+        {TensorType_BFLOAT16, {}}, ActivationFunctionType_NONE,
+        {static_cast<Eigen::bfloat16>(-2.0), static_cast<Eigen::bfloat16>(0.2),
+         static_cast<Eigen::bfloat16>(0.7), static_cast<Eigen::bfloat16>(0.8)},
+        {static_cast<Eigen::bfloat16>(0.1), static_cast<Eigen::bfloat16>(0.2)},
+        constant_tensors);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                   {static_cast<Eigen::bfloat16>(-0.2),
+                                    static_cast<Eigen::bfloat16>(0.04),
+                                    static_cast<Eigen::bfloat16>(0.07),
+                                    static_cast<Eigen::bfloat16>(0.16)},
+                                   1e-3)))
+        << "With shape number " << i;
+  }
+}
+
+TEST_P(MulOpTest, FloatScalarAndOneElementBFloat16) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  FloatMulOpModel<Eigen::bfloat16> m(
+      {TensorType_BFLOAT16, {1}}, {TensorType_BFLOAT16, {}},
+      {TensorType_BFLOAT16, {}}, ActivationFunctionType_NONE,
+      {static_cast<Eigen::bfloat16>(0.8)}, {static_cast<Eigen::bfloat16>(0.5)},
+      constant_tensors);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear({static_cast<Eigen::bfloat16>(0.4)})));
 }
 
 TEST_P(MulOpTest, IntegerNoActivation) {
@@ -442,6 +1057,74 @@ TEST_P(MulOpTest, 16BitIntegerNoActivation) {
   }
   IntegerMulOpModel<int16_t> m({TensorType_INT16, {4}}, {TensorType_INT16, {4}},
                                {TensorType_INT16, {}},
+                               ActivationFunctionType_NONE, {-20, 2, 7, 8},
+                               {1, 2, 3, 5}, constant_tensors);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-20, 4, 21, 40}));
+}
+
+
+TEST_P(MulOpTest, Int8ActivationRELU_N1_TO_1) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  IntegerMulOpModel<int8_t> m(
+      {TensorType_INT8, {1, 2, 2, 1}}, {TensorType_INT8, {1, 2, 2, 1}},
+      {TensorType_INT8, {}}, ActivationFunctionType_RELU_N1_TO_1,
+      {-20, 2, 7, 8}, {1, 2, 3, 5}, constant_tensors);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1, 1, 1, 1}));
+}
+
+TEST_P(MulOpTest, Int8VariousInputShapes) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  const std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    IntegerMulOpModel<int8_t> m(
+        {TensorType_INT8, test_shapes[i]}, {TensorType_INT8, test_shapes[i]},
+        {TensorType_INT8, {}}, ActivationFunctionType_NONE,
+        {-20, 2, 7, 8, 11, 20}, {1, 2, 3, 5, 11, 1}, constant_tensors);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({-20, 4, 21, 40, 121, 20}))
+        << "With shape number " << i;
+  }
+}
+
+TEST_P(MulOpTest, Int8WithBroadcast) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  const std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    IntegerMulOpModel<int8_t> m({TensorType_INT8, test_shapes[i]},
+                                 {TensorType_INT8, {}},  // always a scalar
+                                 {TensorType_INT8, {}},
+                                 ActivationFunctionType_NONE,
+                                 {-20, 2, 7, 8, 11, 20}, {1}, constant_tensors);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({-20, 2, 7, 8, 11, 20}))
+        << "With shape number " << i;
+  }
+}
+
+TEST_P(MulOpTest, 8BitIntegerNoActivation) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  IntegerMulOpModel<int8_t> m({TensorType_INT8, {4}}, {TensorType_INT8, {4}},
+                               {TensorType_INT8, {}},
                                ActivationFunctionType_NONE, {-20, 2, 7, 8},
                                {1, 2, 3, 5}, constant_tensors);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
@@ -866,8 +1549,9 @@ constexpr int kDim6 = 7;
 
 constexpr int kMaxMulBroadcastDim = 6;
 
-void TestFloatBroadcast(std::vector<int> input1_shape,
-                        std::vector<int> input2_shape) {
+template <typename InputType>
+void TestFloatBroadcast(const std::vector<int>& input1_shape,
+                        const std::vector<int>& input2_shape) {
   std::array<int, kMaxMulBroadcastDim> input1_dims;
   std::array<int, kMaxMulBroadcastDim> input2_dims;
   std::array<int, kMaxMulBroadcastDim> output_dims;
@@ -904,16 +1588,29 @@ void TestFloatBroadcast(std::vector<int> input1_shape,
       input2_dims.begin(), input2_dims.end(), 1, std::multiplies<int>());
   const int num_output_elements = std::accumulate(
       output_dims.begin(), output_dims.end(), 1, std::multiplies<int>());
-  std::vector<float> input1(num_input1_elements);
-  std::vector<float> input2(num_input2_elements);
-  std::vector<float> output_ref(num_output_elements);
+
+  std::vector<InputType> input1(num_input1_elements);
+  std::vector<InputType> input2(num_input2_elements);
+  std::vector<InputType> output_ref(num_output_elements);
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
-  std::uniform_real_distribution<float> f32dist(0.01f, 1.0f);
 
-  std::generate(input1.begin(), input1.end(), [&]() { return f32dist(rng); });
-  std::generate(input2.begin(), input2.end(), [&]() { return f32dist(rng); });
+  if constexpr (std::is_same_v<InputType, float>) {
+    std::uniform_real_distribution<float> f32dist(0.01f, 1.0f);
+    std::generate(input1.begin(), input1.end(), [&]() { return f32dist(rng); });
+    std::generate(input2.begin(), input2.end(), [&]() { return f32dist(rng); });
+  } else if constexpr (std::is_same_v<InputType, Eigen::half>) {
+    std::uniform_real_distribution<float> f32dist(0.01f, 1.0f);
+    auto half_dist = [&]() { return Eigen::half(f32dist(rng)); };
+    std::generate(input1.begin(), input1.end(), half_dist);
+    std::generate(input2.begin(), input2.end(), half_dist);
+  } else if constexpr (std::is_same_v<InputType, Eigen::bfloat16>) {
+    std::uniform_real_distribution<float> f32dist(0.01f, 1.0f);
+    auto bfloat_dist = [&]() { return Eigen::bfloat16(f32dist(rng)); };
+    std::generate(input1.begin(), input1.end(), bfloat_dist);
+    std::generate(input2.begin(), input2.end(), bfloat_dist);
+  }
 
   // Compute reference results.
   for (size_t i = 0; i < output_dims[0]; i++) {
@@ -938,12 +1635,13 @@ void TestFloatBroadcast(std::vector<int> input1_shape,
     }
   }
 
-  FloatMulOpModel m({TensorType_FLOAT32, input1_shape},
-                    {TensorType_FLOAT32, input2_shape},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
-                    input1, input2, /*constant_tensors=*/false);
-  m.PopulateTensor<float>(m.input1(), input1);
-  m.PopulateTensor<float>(m.input2(), input2);
+  FloatMulOpModel<InputType> m({GetTensorType<InputType>(), input1_shape},
+                               {GetTensorType<InputType>(), input2_shape},
+                               {GetTensorType<InputType>(), {}},
+                               ActivationFunctionType_NONE, input1, input2,
+                               /*constant_tensors=*/false);
+  m.template PopulateTensor<InputType>(m.input1(), input1);
+  m.template PopulateTensor<InputType>(m.input2(), input2);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), output_ref));
 }
@@ -1035,12 +1733,13 @@ void TestIntegerBroadcast(std::vector<int> input1_shape,
 // To improve automatic test sharding (via shard_count in the BUILD file),
 // we need to ensure that each individual test case runs in a reasonable time,
 // otherwise we end up being limited by the performance of the longest shard.
-// Since TestFloat32MultiDimBroadcast has 2^12 iterations, it takes a
+// Since TestFloatMultiDimBroadcast has 2^12 iterations, it takes a
 // long time (over 30 seconds) to execute all iterations -- too long for a
 // single shard.  So we split it into a few "subshards" and have a separate
 // TYPED_TEST macro invocation for each subshard.
 
-void TestFloat32MultiDimBroadcast(int selected_subshard, int subshard_count) {
+template <typename InputType>
+void TestMultiDimBroadcast(int selected_subshard, int subshard_count) {
   int iteration = 0;
   for (uint32_t bm1 = 0;
        bm1 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm1++) {
@@ -1086,7 +1785,7 @@ void TestFloat32MultiDimBroadcast(int selected_subshard, int subshard_count) {
                     input1_full_shape.end(), input1_shape.data());
           std::copy(input2_full_shape.end() - input2_dims,
                     input2_full_shape.end(), input2_shape.data());
-          TestFloatBroadcast(input1_shape, input2_shape);
+          TestFloatBroadcast<InputType>(input1_shape, input2_shape);
         }
       }
     }
@@ -1094,48 +1793,39 @@ void TestFloat32MultiDimBroadcast(int selected_subshard, int subshard_count) {
 }
 
 // Should match the number of TEST or TYPED_TEST invoations for each of
-// Float32MultiDimBroadcastSubshard*,
+// FloatMultiDimBroadcastSubshard*,
 // IntegerMultiDimBroadcastSubshard*,
 // Int8QuantizedMultiDimBroadcastSubshard*, and
 // Uint8QuantizedMultiDimBroadcastSubshard* below.
 constexpr int kMultiDimBroadcastSubshardCount = 10;
 
-TEST(FloatMulOpModel, Float32MultiDimBroadcastSubshard0) {
-  TestFloat32MultiDimBroadcast(0, kMultiDimBroadcastSubshardCount);
+// Specializations for different data types
+void TestFloatMultiDimBroadcast(float) {
+  constexpr int kMultiDimBroadcastSubshardCount = 10;
+  for (int i = 0; i < kMultiDimBroadcastSubshardCount; ++i) {
+    TestMultiDimBroadcast<float>(i, kMultiDimBroadcastSubshardCount);
+  }
 }
-TEST(FloatMulOpModel, Float32MultiDimBroadcastSubshard1) {
-  TestFloat32MultiDimBroadcast(1, kMultiDimBroadcastSubshardCount);
+
+void TestFloatMultiDimBroadcast(Eigen::half) {
+  constexpr int kMultiDimBroadcastSubshardCount = 10;
+  for (int i = 0; i < kMultiDimBroadcastSubshardCount; ++i) {
+    TestMultiDimBroadcast<Eigen::half>(i, kMultiDimBroadcastSubshardCount);
+  }
 }
-TEST(FloatMulOpModel, Float32MultiDimBroadcastSubshard2) {
-  TestFloat32MultiDimBroadcast(2, kMultiDimBroadcastSubshardCount);
-}
-TEST(FloatMulOpModel, Float32MultiDimBroadcastSubshard3) {
-  TestFloat32MultiDimBroadcast(3, kMultiDimBroadcastSubshardCount);
-}
-TEST(FloatMulOpModel, Float32MultiDimBroadcastSubshard4) {
-  TestFloat32MultiDimBroadcast(4, kMultiDimBroadcastSubshardCount);
-}
-TEST(FloatMulOpModel, Float32MultiDimBroadcastSubshard5) {
-  TestFloat32MultiDimBroadcast(5, kMultiDimBroadcastSubshardCount);
-}
-TEST(FloatMulOpModel, Float32MultiDimBroadcastSubshard6) {
-  TestFloat32MultiDimBroadcast(6, kMultiDimBroadcastSubshardCount);
-}
-TEST(FloatMulOpModel, Float32MultiDimBroadcastSubshard7) {
-  TestFloat32MultiDimBroadcast(7, kMultiDimBroadcastSubshardCount);
-}
-TEST(FloatMulOpModel, Float32MultiDimBroadcastSubshard8) {
-  TestFloat32MultiDimBroadcast(8, kMultiDimBroadcastSubshardCount);
-}
-TEST(FloatMulOpModel, Float32MultiDimBroadcastSubshard9) {
-  TestFloat32MultiDimBroadcast(9, kMultiDimBroadcastSubshardCount);
+
+void TestFloatMultiDimBroadcast(Eigen::bfloat16) {
+  constexpr int kMultiDimBroadcastSubshardCount = 10;
+  for (int i = 0; i < kMultiDimBroadcastSubshardCount; ++i) {
+    TestMultiDimBroadcast<Eigen::bfloat16>(i, kMultiDimBroadcastSubshardCount);
+  }
 }
 
 template <typename T>
 class IntegerMulOpTest : public ::testing::Test {};
 
-using Int16OrInt32Or64Types = ::testing::Types<int16_t, int32_t, int64_t>;
-TYPED_TEST_SUITE(IntegerMulOpTest, Int16OrInt32Or64Types);
+using Int8OrInt16OrInt32Or64Types = ::testing::Types<int8_t, int16_t, int32_t, int64_t>;
+TYPED_TEST_SUITE(IntegerMulOpTest, Int8OrInt16OrInt32Or64Types);
 
 // To improve automatic test sharding (via shard_count in the BUILD file),
 // we need to ensure that each individual test case runs in a reasonable time,
