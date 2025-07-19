@@ -32,8 +32,6 @@ using tensorflow::DeleteKeyValueRequest;
 using tensorflow::DeleteKeyValueResponse;
 using tensorflow::GetAliveTasksRequest;
 using tensorflow::GetAliveTasksResponse;
-using tensorflow::GetJobStateRequest;
-using tensorflow::GetJobStateResponse;
 using tensorflow::GetKeyValueDirRequest;
 using tensorflow::GetKeyValueDirResponse;
 using tensorflow::GetKeyValueRequest;
@@ -60,6 +58,8 @@ using tensorflow::TryGetKeyValueRequest;
 using tensorflow::TryGetKeyValueResponse;
 using tensorflow::WaitForAllTasksRequest;
 using tensorflow::WaitForAllTasksResponse;
+using tensorflow::WatchJobStateRequest;
+using tensorflow::WatchJobStateResponse;
 
 // Base class of client interface for communicating with coordination service.
 // Can be implemented by a variety of transports such as gRPC.
@@ -103,9 +103,10 @@ class CoordinationClient {
                                  GetTaskStateResponse* response,
                                  StatusCallback done) = 0;
 
-  virtual void GetJobStateAsync(const GetJobStateRequest* request,
-                                GetJobStateResponse* response,
-                                StatusCallback done) = 0;
+  virtual void WatchJobStateAsync(CallOptions* call_opts,
+                                  const WatchJobStateRequest* request,
+                                  WatchJobStateResponse* response,
+                                  StatusCallback done) = 0;
 
   virtual void InsertKeyValueAsync(const InsertKeyValueRequest* request,
                                    InsertKeyValueResponse* response,

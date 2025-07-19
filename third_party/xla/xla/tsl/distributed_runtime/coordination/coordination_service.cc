@@ -534,6 +534,7 @@ CoordinationService::ConnectAfterBarrierPasses(absl::string_view task_name,
       // Connect task to service.
       cluster_state_[task]->Connect();
       done(absl::OkStatus());
+      ClusterStateUpdated();
     } else if (s.ok() || absl::IsCancelled(s)) {
       // Avoid using `AbortedError` which typically has retry semantics.
       done(MakeCoordinationError(
@@ -559,6 +560,7 @@ void CoordinationService::ConnectTask(const CoordinatedTask& task,
       unsynced_recoverable_jobs_.insert(task_name);
     }
   }
+  ClusterStateUpdated();
 }
 
 void CoordinationService::RegisterTaskAsync(const CoordinatedTask& task,
@@ -617,6 +619,7 @@ void CoordinationService::RegisterTaskAsync(const CoordinatedTask& task,
           kClusterRegisterBarrierId, kUniqueBarrierCounter,
           cluster_register_timeout_, task, {},
           ConnectAfterBarrierPasses(task_name, incarnation, std::move(done)));
+      ClusterStateUpdated();
       return;
     }
     ConnectTask(task, incarnation);
@@ -624,6 +627,7 @@ void CoordinationService::RegisterTaskAsync(const CoordinatedTask& task,
     // reporting of stragglers.
     LogConnectStatusLocked();
     done(absl::OkStatus());
+    ClusterStateUpdated();
     return;
   } else if (task_state == CoordinatedTaskState::TASKSTATE_CONNECTED) {
     // This may happen if the service processes the initial RegisterTask(),
@@ -637,6 +641,7 @@ void CoordinationService::RegisterTaskAsync(const CoordinatedTask& task,
       ConnectTask(task, incarnation);
       LogConnectStatusLocked();
       done(absl::OkStatus());
+      ClusterStateUpdated();
       return;
     } else {
       error_message =
@@ -760,6 +765,7 @@ absl::Status CoordinationService::DisconnectTask(const CoordinatedTask& task) {
   RefreshAliveness();
   error_polling_state_.RemoveTask(task, "task has disconnected.");
   LOG(INFO) << task_name << " has disconnected from coordination service.";
+  ClusterStateUpdated();
   return absl::OkStatus();
 }
 
@@ -822,7 +828,6 @@ std::vector<CoordinatedTaskStateInfo> CoordinationService::GetTaskState(
 
 std::vector<CoordinatedTaskStateInfo> CoordinationService::GetJobState(
     absl::string_view job_name) {
-  absl::MutexLock l(&state_mu_);
   std::vector<CoordinatedTaskStateInfo> states_info;
   for (const auto& [name, task_state] : cluster_state_) {
     const CoordinatedTask task = GetTaskFromName(name);
@@ -832,6 +837,31 @@ std::vector<CoordinatedTaskStateInfo> CoordinationService::GetJobState(
     states_info.push_back(CreateTaskStateInfo(task, *cluster_state_[name]));
   }
   return states_info;
+}
+
+void CoordinationService::NotifyWatchJobStateCallbacks() {
+  for (auto& [job_name, callback] : watch_job_state_callbacks_) {
+    callback(GetJobState(job_name), cluster_state_version_number_);
+  }
+  watch_job_state_callbacks_.clear();
+}
+
+void CoordinationService::ClusterStateUpdated() {
+  cluster_state_version_number_++;
+  NotifyWatchJobStateCallbacks();
+}
+
+void CoordinationService::WatchJobState(absl::string_view job_name,
+                                        int64_t version_number,
+                                        WatchJobStateCallback callback) {
+  absl::MutexLock l(&state_mu_);
+  if (cluster_state_version_number_ == version_number) {
+    // Wait until the cluster state changes before invoking the callback.
+    watch_job_state_callbacks_.emplace_back(job_name, std::move(callback));
+  } else {
+    // Invoke the callback immediately.
+    callback(GetJobState(job_name), cluster_state_version_number_);
+  }
 }
 
 absl::Status CoordinationService::RecordHeartbeat(const CoordinatedTask& task,
@@ -1052,6 +1082,7 @@ void CoordinationService::SetTaskError(absl::string_view task_name,
     LeaveOngoingBarriers(
         task, absl::StrCat("task is set to ERROR: ", error.ToString()));
     RefreshAliveness();
+    ClusterStateUpdated();
   }
 }
 
