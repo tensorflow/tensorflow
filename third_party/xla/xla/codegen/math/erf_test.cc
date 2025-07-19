@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/codegen/math/erf.h"
 
 #include <cmath>
-#include <functional>
 #include <limits>
 #include <memory>
 #include <utility>
@@ -29,23 +28,25 @@ limitations under the License.
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
-#include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
+#include "xla/codegen/math/intrinsic.h"
 #include "xla/codegen/math/simple_jit_runner.h"
 #include "xla/codegen/math/test_matchers.h"
 
-namespace xla::codegen::math {
+namespace xla::codegen::intrinsics {
 namespace {
 
-JitRunner CreateJitRunner(
-    std::function<llvm::Type*(llvm::LLVMContext&)> make_type) {
+using ::xla::codegen::math::JitRunner;
+using ::xla::codegen::math::NearUlps;
+
+JitRunner CreateJitRunner(Type type) {
   auto context = std::make_unique<llvm::LLVMContext>();
   auto module = std::make_unique<llvm::Module>("test_module", *context);
-  llvm::Function* erf_func = CreateErf(module.get(), make_type(*context));
+  llvm::Function* erf_func = Erf::CreateDefinition(module.get(), type).value();
   erf_func->setLinkage(llvm::Function::ExternalLinkage);
   EXPECT_FALSE(llvm::verifyFunction(*erf_func));
   return JitRunner(std::move(module), std::move(context));
@@ -69,8 +70,9 @@ std::vector<T> GetTestValues() {
 }
 
 TEST(ErfTest, F32) {
-  JitRunner runner = CreateJitRunner(llvm::Type::getFloatTy);
-  auto fn = runner.GetScalarFn<float(float)>(ErfFunctionName(1, F32));
+  Type type = Type::S(F32);
+  JitRunner runner = CreateJitRunner(type);
+  auto fn = runner.GetScalarFn<float(float)>(Erf::Name(type));
 
   for (float x_val : GetTestValues<float>()) {
     float expected = std::erf(x_val);
@@ -84,4 +86,4 @@ TEST(ErfTest, F32) {
 }
 
 }  // namespace
-}  // namespace xla::codegen::math
+}  // namespace xla::codegen::intrinsics

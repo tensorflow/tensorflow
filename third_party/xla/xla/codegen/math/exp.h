@@ -16,35 +16,32 @@ limitations under the License.
 #ifndef XLA_CODEGEN_MATH_EXP_H_
 #define XLA_CODEGEN_MATH_EXP_H_
 
-#include <cstddef>
-#include <cstdint>
-#include <string>
+#include <vector>
 
-#include "absl/strings/str_cat.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::codegen {
+namespace xla::codegen::intrinsics {
 
-class Intrinsic::Exp {
+class Exp : public Intrinsic<Exp> {
  public:
-  static std::string Name(PrimitiveType type) {
-    return absl::StrCat("xla.exp.", ScalarName(type));
+  static constexpr absl::string_view kName = "exp";
+  static std::vector<std::vector<Type>> SupportedVectorTypes() {
+    return {
+        {Type::S(xla::F64)},
+        {Type::V(xla::F64, 2)},
+        {Type::V(xla::F64, 4)},
+        {Type::V(xla::F64, 8)},
+    };
   }
-
-  static std::string Name(PrimitiveType type, int64_t vector_width) {
-    return absl::StrCat("xla.exp.", VectorName(type, vector_width));
-  }
+  static absl::StatusOr<llvm::Function*> CreateDefinition(llvm::Module* module,
+                                                          Type type);
 };
 
-namespace math {
-
-llvm::Function* CreateExpF64(llvm::Module* module, llvm::Type* input_type);
-std::string ExpF64FunctionName(size_t num_elements);
-
-}  // namespace math
-}  // namespace xla::codegen
+}  // namespace xla::codegen::intrinsics
 
 #endif  // XLA_CODEGEN_MATH_EXP_H_

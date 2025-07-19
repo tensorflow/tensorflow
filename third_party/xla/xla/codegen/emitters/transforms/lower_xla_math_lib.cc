@@ -33,10 +33,10 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/math/erf.h"
+#include "xla/codegen/math/exp.h"
 #include "xla/codegen/math/fptrunc.h"
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/codegen/math/log1p.h"
-#include "xla/mlir/utils/type_util.h"
 
 namespace xla {
 namespace emitters {
@@ -46,7 +46,8 @@ namespace emitters {
 
 namespace {
 
-using Intrinsic = ::xla::codegen::Intrinsic;
+using Type = ::xla::codegen::intrinsics::Type;
+// TODO(talts): Add LowerMathOpPattern based on MathFunction instances.
 
 mlir::func::FuncOp GetOrInsertDeclaration(mlir::PatternRewriter& rewriter,
                                           mlir::ModuleOp& module_op,
@@ -91,8 +92,8 @@ class LowerExpOpPattern : public mlir::OpRewritePattern<mlir::math::ExpOp> {
     mlir::ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
 
     mlir::func::FuncOp xla_exp_func =
-        GetOrInsertDeclaration(rewriter, module_op_, "xla.exp.f64",
-                               rewriter.getFunctionType(op_type, op_type));
+        codegen::intrinsics::Exp::GetOrInsertDeclaration(
+            rewriter, module_op_, Type::TypeFromIrType(op_type));
 
     // Replace math.exp with call to xla.exp.f64
     auto call_op =
@@ -114,14 +115,11 @@ class LowerLog1pPattern : public mlir::OpRewritePattern<mlir::math::Log1pOp> {
   mlir::LogicalResult matchAndRewrite(
       mlir::math::Log1pOp op, mlir::PatternRewriter& rewriter) const override {
     mlir::Type type = op.getType();
-    PrimitiveType primitive_type = ConvertMlirTypeToPrimitiveType(type);
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
-    auto log1p_decl = GetOrInsertDeclaration(
-        rewriter, module_op_,
-        codegen::math::Log1pFunctionName(1, primitive_type),
-        rewriter.getFunctionType(type, type));
+    auto log1p_decl = codegen::intrinsics::Log1p::GetOrInsertDeclaration(
+        rewriter, module_op_, Type::TypeFromIrType(type));
     auto call_op = b.create<mlir::func::CallOp>(log1p_decl, op.getOperand());
     rewriter.replaceOp(op, call_op->getResults());
     return mlir::success();
@@ -149,9 +147,8 @@ class LowerErfPattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
       mlir::Value input_value =
           b.create<mlir::arith::ExtFOp>(f32_type, op.getOperand());
 
-      auto erf_decl = GetOrInsertDeclaration(
-          rewriter, module_op_, codegen::math::ErfFunctionName(1, F32),
-          rewriter.getFunctionType(f32_type, f32_type));
+      auto erf_decl = codegen::intrinsics::Erf::GetOrInsertDeclaration(
+          rewriter, module_op_, Type::TypeFromIrType(f32_type));
       auto call_op = b.create<mlir::func::CallOp>(erf_decl, input_value);
 
       mlir::Value f32_result = call_op.getResult(0);
@@ -204,8 +201,11 @@ class LowerTruncF32BF16FPattern
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
-    auto f32_to_bf16_decl = Intrinsic::FpTrunc::GetOrInsertDeclaration(
-        rewriter, module_op_, Intrinsic::S(F32), Intrinsic::S(BF16));
+    Type src_type = Type::S(F32);
+    Type dst_type = Type::S(BF16);
+    auto f32_to_bf16_decl =
+        codegen::intrinsics::FpTrunc::GetOrInsertDeclaration(
+            rewriter, module_op_, src_type, dst_type);
     auto call_op =
         b.create<mlir::func::CallOp>(f32_to_bf16_decl, op.getOperand());
     rewriter.replaceOp(op, call_op->getResults());

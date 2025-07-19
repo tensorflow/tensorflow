@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_CODEGEN_MATH_LIB_H_
 #define XLA_CODEGEN_MATH_LIB_H_
 
-#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
@@ -24,9 +23,11 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
+#include "xla/codegen/math/intrinsic.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::codegen {
@@ -42,27 +43,24 @@ class MathFunction {
   // The name of the function being approximated.
   virtual absl::string_view FunctionName() const = 0;
 
-  // Which LLVM intrinsics does this approximation replace?
-  virtual std::vector<std::string> TargetFunctions() const = 0;
-
-  struct VectorType {
-    PrimitiveType dtype;
-    size_t width;
-  };
-
   // Returns the vector types supported well by this approximation.
-  virtual std::vector<VectorType> SupportedVectorTypes() const = 0;
+  virtual std::vector<std::vector<intrinsics::Type>> SupportedVectorTypes()
+      const = 0;
 
   // Returns the LLVM IR function definition for the approximation.
   // Reads the target machine and features from the LLVM module.
-  virtual llvm::Function* CreateDefinition(llvm::Module& module,
-                                           absl::string_view function_name,
-                                           VectorType vector_type) const = 0;
+  virtual llvm::Function* CreateDefinition(
+      llvm::Module& module, absl::string_view function_name,
+      absl::Span<const intrinsics::Type> types) const = 0;
 
   // The vectorized function name, e.g. "xla.ldexp.v8f64.v8i32".
   virtual std::string GenerateVectorizedFunctionName(
-      VectorType vector_type) const = 0;
-  virtual std::string GenerateMangledSimdName(VectorType vector_type) const = 0;
+      absl::Span<const intrinsics::Type> types) const = 0;
+
+  // The LLVM mangled prefix for the vectorized function, e.g.
+  // "_ZGV_LLVM_N8" used in llvm::VecDesc.
+  virtual std::string GenerateMangledSimdPrefix(
+      absl::Span<const intrinsics::Type> types) const = 0;
 };
 
 // A library of math approximations for use in codegen.

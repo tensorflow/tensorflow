@@ -16,8 +16,7 @@ limitations under the License.
 #ifndef XLA_CODEGEN_MATH_LOG1P_H_
 #define XLA_CODEGEN_MATH_LOG1P_H_
 
-#include <cstddef>
-#include <string>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -25,26 +24,22 @@ limitations under the License.
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::codegen {
+namespace xla::codegen::intrinsics {
 
-class Intrinsic::Log1p : public intrinsics::UnaryIntrinsic<Log1p> {
+class Log1p : public Intrinsic<Log1p> {
  public:
   static constexpr absl::string_view kName = "log1p";
 
-  static absl::StatusOr<llvm::Function*> CreateDefinition(
-      llvm::Module* module, PrimitiveType prim_type, size_t vector_width);
+  static absl::StatusOr<llvm::Function*> CreateDefinition(llvm::Module* module,
+                                                          Type type);
+  static std::vector<std::vector<Type>> SupportedVectorTypes() {
+    return {
+        {Type::S(F16)}, {Type::V(F16, 2)}, {Type::V(F16, 4)}, {Type::V(F16, 8)},
+        {Type::S(F32)}, {Type::V(F32, 2)}, {Type::V(F32, 4)}, {Type::V(F32, 8)},
+        {Type::S(F64)}, {Type::V(F64, 2)}, {Type::V(F64, 4)}, {Type::V(F64, 8)},
+    };
+  }
 };
-
-namespace math {
-
-// Return the XLA intrinsic name for the log1p function:
-//
-// `xla.log1p.v<num_elements><type>`
-std::string Log1pFunctionName(size_t num_elements, PrimitiveType type);
-
-llvm::Function* CreateLog1p(llvm::Module* module, llvm::Type* type);
-
-}  // namespace math
-}  // namespace xla::codegen
+}  // namespace xla::codegen::intrinsics
 
 #endif  // XLA_CODEGEN_MATH_LOG1P_H_
