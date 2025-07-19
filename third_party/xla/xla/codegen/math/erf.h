@@ -16,35 +16,30 @@ limitations under the License.
 #ifndef XLA_CODEGEN_MATH_ERF_H_
 #define XLA_CODEGEN_MATH_ERF_H_
 
-#include <cstddef>
-#include <cstdint>
-#include <string>
+#include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/Function.h"
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::codegen {
+namespace xla::codegen::intrinsics {
 
-class Intrinsic::Erf {
+class Erf : public Intrinsic<Erf> {
  public:
-  static std::string Name(PrimitiveType type);
-  static std::string Name(PrimitiveType type, int64_t vector_width);
+  static constexpr absl::string_view kName = "erf";
+  static std::vector<std::vector<Type>> SupportedVectorTypes() {
+    return {{Type::S(F32)},
+            {Type::V(F32, 2)},
+            {Type::V(F32, 4)},
+            {Type::V(F32, 8)}};
+  }
 
-  static llvm::Function* GetOrInsertDeclaration(llvm::Module* module,
-                                                PrimitiveType type);
+  static absl::StatusOr<llvm::Function*> CreateDefinition(llvm::Module* module,
+                                                          Type type);
 };
 
-namespace math {
-
-// Return the XLA intrinsic name for the erf function:
-//
-// `xla.erf.v<num_elements><type>`
-std::string ErfFunctionName(size_t num_elements, PrimitiveType type);
-
-llvm::Function* CreateErf(llvm::Module* module, llvm::Type* type);
-
-}  // namespace math
-}  // namespace xla::codegen
+}  // namespace xla::codegen::intrinsics
 
 #endif  // XLA_CODEGEN_MATH_ERF_H_

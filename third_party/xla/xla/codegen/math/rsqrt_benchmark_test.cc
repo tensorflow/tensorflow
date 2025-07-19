@@ -31,16 +31,17 @@ limitations under the License.
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
-#include "llvm/Support/TypeSize.h"
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/codegen/math/rsqrt.h"
 #include "xla/codegen/math/simple_jit_runner.h"
 #include "xla/primitive_util.h"
-#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::codegen::math {
+
+using ::xla::codegen::intrinsics::Rsqrt;
+using ::xla::codegen::intrinsics::Type;
 
 void CreateOneOverSqrt(llvm::LLVMContext& context, llvm::Module& module,
                        llvm::Type* type) {
@@ -58,19 +59,13 @@ void CreateOneOverSqrt(llvm::LLVMContext& context, llvm::Module& module,
   builder.CreateRet(one_over_sqrt);
 }
 
-JitRunner CreateJitRunnerWithRsqrt(size_t num_elements, PrimitiveType type) {
+JitRunner CreateJitRunnerWithRsqrt(Type type) {
   auto context = std::make_unique<llvm::LLVMContext>();
   auto module = std::make_unique<llvm::Module>("test_module", *context);
-  llvm::Type* llvm_type = llvm_ir::PrimitiveTypeToIrType(type, *context);
-  if (num_elements > 1) {
-    llvm_type = llvm::VectorType::get(
-        llvm_type, llvm::ElementCount::getFixed(num_elements));
-  }
   llvm::Function* rsqrt_func =
-      Intrinsic::Rsqrt::CreateDefinition(module.get(), type, num_elements)
-          .value();
+      Rsqrt::CreateDefinition(module.get(), type).value();
   rsqrt_func->setLinkage(llvm::Function::ExternalLinkage);
-  CreateOneOverSqrt(*context, *module, llvm_type);
+  CreateOneOverSqrt(*context, *module, Type::TypeToIrType(type, *context));
   return JitRunner(std::move(module), std::move(context));
 }
 
@@ -82,10 +77,10 @@ enum RsqrtFunction {
 template <size_t num_elements, PrimitiveType type, RsqrtFunction function>
 static void BM_RsqrtVectorized(benchmark::State& state) {
   using NativeType = typename primitive_util::PrimitiveTypeToNative<type>::type;
-  JitRunner jit = CreateJitRunnerWithRsqrt(num_elements, type);
-  std::string function_name = (function == kRsqrt)
-                                  ? Intrinsic::Rsqrt::Name(type, num_elements)
-                                  : "one_over_sqrt";
+  Type intrinsic_type = Type::V(type, num_elements);
+  JitRunner jit = CreateJitRunnerWithRsqrt(intrinsic_type);
+  std::string function_name =
+      (function == kRsqrt) ? Rsqrt::Name(intrinsic_type) : "one_over_sqrt";
   auto rsqrt = jit.GetVectorizedFn<num_elements, NativeType, NativeType>(
       function_name, 100'000);
   std::array<NativeType, num_elements> vec = {1.0, -1.0, 100.0, 1e14};

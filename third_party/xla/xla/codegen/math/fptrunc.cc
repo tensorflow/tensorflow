@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 
 #include "absl/log/check.h"
-#include "absl/strings/str_cat.h"
 #include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/BasicBlock.h"
@@ -30,41 +29,15 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::codegen {
-
-std::string Intrinsic::FpTrunc::Name(Type from, Type to) {
-  return absl::StrCat("xla.fptrunc.", from, ".to.", to);
-}
-
-llvm::Function* Intrinsic::FpTrunc::GetOrInsertDeclaration(llvm::Module* module,
-                                                           Type from, Type to) {
-  auto* from_type = TypeToIrType(from, module->getContext());
-  auto* to_type = TypeToIrType(to, module->getContext());
-  auto* function_type = llvm::FunctionType::get(to_type, {from_type}, false);
-  return llvm::cast<llvm::Function>(
-      module->getOrInsertFunction(Name(from, to), function_type).getCallee());
-}
-
-mlir::func::FuncOp Intrinsic::FpTrunc::GetOrInsertDeclaration(
-    mlir::OpBuilder& b, mlir::ModuleOp module, Type from, Type to) {
-  auto from_type = TypeToIrType(from, *module.getContext());
-  auto to_type = TypeToIrType(to, *module.getContext());
-  return Intrinsic::GetOrInsertDeclaration(
-      b, module, Name(from, to), b.getFunctionType(from_type, to_type));
-}
-
+namespace xla::codegen::intrinsics {
 // Truncates an f32 value (scalar or vector) to bf16 with correct rounding.
-static llvm::Function* TruncateF32ToBf16(llvm::Module* module,
-                                         Intrinsic::Type from,
-                                         Intrinsic::Type to) {
+static llvm::Function* TruncateF32ToBf16(llvm::Module* module, Type from,
+                                         Type to) {
   llvm::LLVMContext& context = module->getContext();
   llvm::IRBuilder<> builder(context);
   DCHECK_EQ(from.element_type(), F32);
@@ -87,9 +60,7 @@ static llvm::Function* TruncateF32ToBf16(llvm::Module* module,
   llvm::FunctionType* function_type =
       llvm::FunctionType::get(bf16_type, {f32_type}, false);
   llvm::Function* func = llvm::dyn_cast<llvm::Function>(
-      module
-          ->getOrInsertFunction(Intrinsic::FpTrunc::Name(from, to),
-                                function_type)
+      module->getOrInsertFunction(FpTrunc::Name(from, to), function_type)
           .getCallee());
 
   llvm::Argument* arg = func->getArg(0);
@@ -126,15 +97,16 @@ static llvm::Function* TruncateF32ToBf16(llvm::Module* module,
   return func;
 }
 
-absl::StatusOr<llvm::Function*> Intrinsic::FpTrunc::CreateDefinition(
-    llvm::Module* module, Type from, Type to) {
-  TF_RETURN_IF_ERROR(VerifySameWidth(from, to));
+absl::StatusOr<llvm::Function*> FpTrunc::CreateDefinition(llvm::Module* module,
+                                                          Type from, Type to) {
+  TF_RETURN_IF_ERROR(Type::VerifySameWidth(from, to));
 
   if (from.element_type() == F32 && to.element_type() == BF16) {
     return TruncateF32ToBf16(module, from, to);
   }
 
-  return Internal("Unsupported fptrunc conversion: from=%v to=%v", from, to);
+  return Internal("Unsupported fptrunc conversion: from=%s to=%s", from.name(),
+                  to.name());
 }
 
-}  // namespace xla::codegen
+}  // namespace xla::codegen::intrinsics

@@ -31,22 +31,23 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Verifier.h"
-#include "llvm/Support/TypeSize.h"
 #include "llvm/TargetParser/Host.h"
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/codegen/math/simple_jit_runner.h"
 #include "xla/codegen/math/test_matchers.h"
 #include "xla/primitive_util.h"
-#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::codegen::math {
+namespace xla::codegen::intrinsics {
 namespace {
 
+using ::xla::codegen::math::JitRunner;
+using ::xla::codegen::math::NearUlps;
+
 TEST(RsqrtTest, Name) {
-  EXPECT_EQ(Intrinsic::Rsqrt::Name(F32), "xla.rsqrt.f32");
-  EXPECT_EQ(Intrinsic::Rsqrt::Name(F32, 4), "xla.rsqrt.v4f32");
-  EXPECT_EQ(Intrinsic::Rsqrt::Name(F64, 8), "xla.rsqrt.v8f64");
+  EXPECT_EQ(Rsqrt::Name(Type::S(F32)), "xla.rsqrt.f32");
+  EXPECT_EQ(Rsqrt::Name(Type::V(F32, 4)), "xla.rsqrt.v4f32");
+  EXPECT_EQ(Rsqrt::Name(Type::V(F64, 8)), "xla.rsqrt.v8f64");
 }
 
 void AddOneOverSqrt(llvm::LLVMContext& context, llvm::Module& module,
@@ -65,12 +66,11 @@ void AddOneOverSqrt(llvm::LLVMContext& context, llvm::Module& module,
   builder.CreateRet(one_over_sqrt);
 }
 
-JitRunner CreateJitRunnerWithRsqrt(PrimitiveType type, size_t vector_width) {
+JitRunner CreateJitRunnerWithRsqrt(Type type) {
   auto context = std::make_unique<llvm::LLVMContext>();
   auto module = std::make_unique<llvm::Module>("test_module", *context);
   llvm::Function* rsqrt_func =
-      Intrinsic::Rsqrt::CreateDefinition(module.get(), type, vector_width)
-          .value();
+      Rsqrt::CreateDefinition(module.get(), type).value();
   rsqrt_func->setLinkage(llvm::Function::ExternalLinkage);
   EXPECT_FALSE(llvm::verifyFunction(*rsqrt_func));
 
@@ -90,8 +90,9 @@ bool hasAVX512Support() {
 
 TEST(RsqrtTest, EmitRsqrtF32) {
   if (isX86()) {
-    JitRunner jit = CreateJitRunnerWithRsqrt(F32, 1);
-    auto rsqrt = jit.GetScalarFn<float(float)>(Intrinsic::Rsqrt::Name(F32, 1));
+    Type type = Type::S(F32);
+    JitRunner jit = CreateJitRunnerWithRsqrt(type);
+    auto rsqrt = jit.GetScalarFn<float(float)>(Rsqrt::Name(type));
     auto one_over_sqrt = jit.GetScalarFn<float(float)>("one_over_sqrt");
     float vals[] = {
         1.0f,
@@ -124,12 +125,13 @@ TEST(RsqrtTest, EmitRsqrtF32) {
   }
 }
 
-template <size_t kN, PrimitiveType type>
+template <size_t kN, PrimitiveType prim_type>
 void TestRsqrt_Vectors() {
-  JitRunner jit = CreateJitRunnerWithRsqrt(type, kN);
-  using NativeType = primitive_util::NativeTypeOf<type>;
-  auto rsqrt = jit.GetVectorizedFn<kN, NativeType, NativeType>(
-      Intrinsic::Rsqrt::Name(type, kN));
+  Type type = Type::V(prim_type, kN);
+  JitRunner jit = CreateJitRunnerWithRsqrt(type);
+  using NativeType = primitive_util::NativeTypeOf<prim_type>;
+  auto rsqrt =
+      jit.GetVectorizedFn<kN, NativeType, NativeType>(Rsqrt::Name(type));
   std::vector<NativeType> val_vec = {1.0f, 0.0f, 0.25f, 100.0f, -1.0f};
   std::array<NativeType, kN> vals;
   for (size_t i = 0; i < kN; ++i) {
@@ -164,8 +166,9 @@ TEST(RsqrtTest, EmitRsqrtF64_Vectors) {
 
 TEST(RsqrtTest, EmitRsqrtF32_EdgeCases) {
   if (isX86()) {
-    JitRunner jit = CreateJitRunnerWithRsqrt(F32, 1);
-    auto rsqrt = jit.GetScalarFn<float(float)>(Intrinsic::Rsqrt::Name(F32, 1));
+    Type type = Type::S(F32);
+    JitRunner jit = CreateJitRunnerWithRsqrt(type);
+    auto rsqrt = jit.GetScalarFn<float(float)>(Rsqrt::Name(type));
 
     float actual_denorm = rsqrt(std::numeric_limits<float>::denorm_min());
     EXPECT_THAT(actual_denorm,
@@ -184,4 +187,4 @@ TEST(RsqrtTest, EmitRsqrtF32_EdgeCases) {
 }
 
 }  // namespace
-}  // namespace xla::codegen::math
+}  // namespace xla::codegen::intrinsics

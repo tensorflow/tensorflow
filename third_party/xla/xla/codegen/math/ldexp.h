@@ -16,22 +16,17 @@ limitations under the License.
 #ifndef XLA_CODEGEN_MATH_LDEXP_H_
 #define XLA_CODEGEN_MATH_LDEXP_H_
 
-#include <cstddef>
-#include <string>
+#include <cstdint>
+#include <vector>
 
-#include "llvm/IR/Value.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Module.h"
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::codegen {
-
-class Intrinsic::Ldexp {
- public:
-  static std::string Name(PrimitiveType type);
-  static std::string Name(PrimitiveType type, size_t vector_width);
-};
-
-namespace math {
+namespace xla::codegen::intrinsics {
 
 // Returns a fast bit-shifting f64 implementation of ldexp for F64 based on
 // Eigen. Function is named `xla.ldexp.<vector_size>xf64`.
@@ -39,9 +34,21 @@ namespace math {
 // N.B. A 7x faster implementation is available in Eigen that we could try
 // in the future:
 // https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Core/arch/Default/GenericPacketMathFunctions.h#L272
-llvm::Function* CreateLdexpF64(llvm::Module* module, llvm::Type* vector_type);
+class Ldexp : public intrinsics::Intrinsic<Ldexp> {
+ public:
+  static constexpr absl::string_view kName = "ldexp";
+  static constexpr int8_t kNumArgs = 2;
+  static std::vector<std::vector<Type>> SupportedVectorTypes() {
+    return {{Type::S(xla::F64), Type::S(xla::S32)},
+            {Type::V(xla::F64, 1), Type::V(xla::S32, 1)},
+            {Type::V(xla::F64, 2), Type::V(xla::S32, 2)},
+            {Type::V(xla::F64, 4), Type::V(xla::S32, 4)},
+            {Type::V(xla::F64, 8), Type::V(xla::S32, 8)}};
+  }
 
-}  // namespace math
-}  // namespace xla::codegen
+  static absl::StatusOr<llvm::Function*> CreateDefinition(llvm::Module* module,
+                                                          Type base, Type exp);
+};
+}  // namespace xla::codegen::intrinsics
 
 #endif  // XLA_CODEGEN_MATH_LDEXP_H_

@@ -1983,6 +1983,8 @@ cc_library(
     hdrs = ["elemental_ir_emitter.h"],
     deps = [
         ":elemental_math_emitter",
+        "//xla/codegen/math:exp",
+        "//xla/codegen/math:intrinsic",
         "//xla/hlo/ir:hlo",
         "//xla/service:elemental_ir_emitter",
         "//xla/service/llvm_ir:llvm_util",

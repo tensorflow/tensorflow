@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/codegen/math/log1p.h"
 
 #include <cmath>
-#include <functional>
 #include <limits>
 #include <memory>
 #include <utility>
@@ -29,31 +28,33 @@ limitations under the License.
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
-#include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
+#include "xla/codegen/math/intrinsic.h"
 #include "xla/codegen/math/simple_jit_runner.h"
 #include "xla/codegen/math/test_matchers.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::codegen::math {
+namespace xla::codegen::intrinsics {
 namespace {
+using ::xla::codegen::math::JitRunner;
+using ::xla::codegen::math::NearUlps;
 
 TEST(Log1pTest, Log1pFunctionName) {
-  EXPECT_EQ(Log1pFunctionName(1, F32), "xla.log1p.f32");
-  EXPECT_EQ(Log1pFunctionName(2, F32), "xla.log1p.v2f32");
-  EXPECT_EQ(Log1pFunctionName(1, F64), "xla.log1p.f64");
-  EXPECT_EQ(Log1pFunctionName(2, F64), "xla.log1p.v2f64");
+  EXPECT_EQ(Log1p::Name(Type::S(F32)), "xla.log1p.f32");
+  EXPECT_EQ(Log1p::Name(Type::V(F32, 2)), "xla.log1p.v2f32");
+  EXPECT_EQ(Log1p::Name(Type::S(F64)), "xla.log1p.f64");
+  EXPECT_EQ(Log1p::Name(Type::V(F64, 2)), "xla.log1p.v2f64");
 }
 
-JitRunner CreateJitRunnerWithLog1p(
-    std::function<llvm::Type*(llvm::LLVMContext&)> make_type) {
+JitRunner CreateJitRunnerWithLog1p(Type type) {
   auto context = std::make_unique<llvm::LLVMContext>();
   auto module = std::make_unique<llvm::Module>("test_module", *context);
-  llvm::Function* log1p_func = CreateLog1p(module.get(), make_type(*context));
+  llvm::Function* log1p_func =
+      Log1p::CreateDefinition(module.get(), type).value();
   log1p_func->setLinkage(llvm::Function::ExternalLinkage);
   EXPECT_FALSE(llvm::verifyFunction(*log1p_func));
   return JitRunner(std::move(module), std::move(context));
@@ -76,8 +77,9 @@ std::vector<T> GetTestValues() {
 }
 
 TEST(Log1pTest, F32) {
-  JitRunner runner = CreateJitRunnerWithLog1p(llvm::Type::getFloatTy);
-  auto fn = runner.GetScalarFn<float(float)>(Log1pFunctionName(1, F32));
+  Type type = Type::S(F32);
+  JitRunner runner = CreateJitRunnerWithLog1p(type);
+  auto fn = runner.GetScalarFn<float(float)>(Log1p::Name(type));
 
   for (float x_val : GetTestValues<float>()) {
     float expected = std::log1pf(x_val);
@@ -91,8 +93,9 @@ TEST(Log1pTest, F32) {
 }
 
 TEST(Log1pTest, F64) {
-  JitRunner runner = CreateJitRunnerWithLog1p(llvm::Type::getDoubleTy);
-  auto fn = runner.GetScalarFn<double(double)>(Log1pFunctionName(1, F64));
+  Type type = Type::S(F64);
+  JitRunner runner = CreateJitRunnerWithLog1p(type);
+  auto fn = runner.GetScalarFn<double(double)>(Log1p::Name(type));
 
   for (double x_val : GetTestValues<double>()) {
     double expected = std::log1p(x_val);
@@ -106,4 +109,4 @@ TEST(Log1pTest, F64) {
 }
 
 }  // namespace
-}  // namespace xla::codegen::math
+}  // namespace xla::codegen::intrinsics

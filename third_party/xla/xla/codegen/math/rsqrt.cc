@@ -42,8 +42,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::codegen {
-namespace math {
+namespace xla::codegen::intrinsics {
 
 static llvm::Value* NewtonRaphsonRsqrtIteration(llvm::IRBuilder<>& builder,
                                                 llvm::Value* x, llvm::Value* y,
@@ -130,7 +129,9 @@ struct RsqrtIntrinsic {
   }
 };
 
-llvm::Function* CreateRsqrtX86(llvm::Module* module, llvm::Type* input_type) {
+absl::StatusOr<llvm::Function*> Rsqrt::CreateDefinition(llvm::Module* module,
+                                                        Type type) {
+  llvm::Type* input_type = Type::TypeToIrType(type, module->getContext());
   CHECK(input_type != nullptr);
   CHECK(input_type->isFloatingPointTy() || input_type->isVectorTy());
   CHECK(input_type->getScalarType()->isFloatTy() ||
@@ -147,12 +148,7 @@ llvm::Function* CreateRsqrtX86(llvm::Module* module, llvm::Type* input_type) {
   llvm::FunctionType* function_type =
       llvm::FunctionType::get(input_type, {input_type}, false);
   llvm::Function* func = llvm::dyn_cast<llvm::Function>(
-      module
-          ->getOrInsertFunction(
-              Intrinsic::Rsqrt::Name(
-                  llvm_ir::PrimitiveTypeFromIrType(input_type->getScalarType()),
-                  num_elements),
-              function_type)
+      module->getOrInsertFunction(Rsqrt::Name(type), function_type)
           .getCallee());
 
   llvm::Argument* input_x_arg = func->getArg(0);
@@ -196,25 +192,4 @@ llvm::Function* CreateRsqrtX86(llvm::Module* module, llvm::Type* input_type) {
   return func;
 }
 
-}  // namespace math
-
-absl::StatusOr<llvm::Function*> Intrinsic::Rsqrt::CreateDefinition(
-    llvm::Module* module, PrimitiveType prim_type, size_t vector_width) {
-  llvm::Type* type = nullptr;
-  switch (prim_type) {
-    case F32:
-      type = llvm::Type::getFloatTy(module->getContext());
-      break;
-    case F64:
-      type = llvm::Type::getDoubleTy(module->getContext());
-      break;
-    default:
-      return absl::InvalidArgumentError(
-          absl::StrCat("Unsupported type for rsqrt: ", prim_type));
-  }
-  if (vector_width > 1) {
-    type = llvm::VectorType::get(type, vector_width, false);
-  }
-  return math::CreateRsqrtX86(module, type);
-}
-}  // namespace xla::codegen
+}  // namespace xla::codegen::intrinsics
