@@ -26,6 +26,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
