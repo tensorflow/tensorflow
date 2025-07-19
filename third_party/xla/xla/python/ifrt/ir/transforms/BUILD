@@ -122,6 +122,7 @@ cc_library(
         "@stablehlo//:register",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_serialization",
+        "@stablehlo//:version",
     ],
 )
 
