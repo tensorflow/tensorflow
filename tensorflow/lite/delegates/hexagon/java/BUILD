@@ -1,6 +1,7 @@
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary", "tflite_jni_linkopts")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
