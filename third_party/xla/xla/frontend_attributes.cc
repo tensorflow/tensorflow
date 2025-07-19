@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/frontend_attributes.h"
 
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/xla_data.pb.h"
 
@@ -27,6 +28,16 @@ void SetDisjointReadWriteRegionsAttr(HloInstruction* instruction) {
 bool HasDisjointReadWriteRegionsAttr(HloInstruction* instruction) {
   return instruction->frontend_attributes().map().contains(
       xla::kXlaDisjointReadWriteRegions);
+}
+
+bool PropagateFrontendAttribute(absl::string_view attribute,
+                                HloInstruction* from, HloInstruction* to) {
+  if (from->get_frontend_attribute(attribute)) {
+    to->set_frontend_attribute(attribute,
+                               from->get_frontend_attribute(attribute).value());
+    return true;
+  }
+  return false;
 }
 
 }  // namespace xla

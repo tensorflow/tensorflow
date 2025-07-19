@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_domain_isolator.h"
 #include "xla/service/spmd/shardy/constants.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -272,6 +274,17 @@ CallInliner::Inline(HloInstruction* call) {
               {has_fuse, call_attributes.map().at(has_fuse)});
           instruction->set_frontend_attributes(frontend_attributes);
         }
+      }
+    }
+
+    std::string scheduling_group_id =
+        call_attributes.map().contains(kXlaSchedulingGroupIdAttr)
+            ? call_attributes.map().at(kXlaSchedulingGroupIdAttr)
+            : "";
+    if (call_attributes.map().contains(kXlaSchedulingGroupIdAttr)) {
+      for (auto instruction : callee->instructions()) {
+        PropagateFrontendAttribute(kXlaSchedulingGroupIdAttr, call,
+                                   instruction);
       }
     }
   }

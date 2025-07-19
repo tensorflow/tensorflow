@@ -202,6 +202,7 @@ cc_library(
     deps = [
         ":xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

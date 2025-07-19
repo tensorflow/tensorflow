@@ -14,8 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <string>
-
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
@@ -32,6 +31,11 @@ void SetDisjointReadWriteRegionsAttr(HloInstruction* instruction);
 // Returns 'true' if in-place 'instruction' has the kXlaDisjointReadWriteRegions
 // frontend attribute set (returns false otherwise).
 bool HasDisjointReadWriteRegionsAttr(HloInstruction* instruction);
+
+// Propagates the frontend attribute from 'from' to 'to' if 'from' has the
+// attribute. Returns true if the attribute was propagated.
+bool PropagateFrontendAttribute(absl::string_view attribute,
+                                HloInstruction* from, HloInstruction* to);
 
 }  // namespace xla
 

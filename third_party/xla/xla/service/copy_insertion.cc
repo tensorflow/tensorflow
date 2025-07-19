@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -891,6 +892,8 @@ absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
     VLOG(2) << "Transition from copyable to non-copyable:  copy "
             << operand->ToString() << " for " << start_op->ToString()
             << " output_index ";
+    PropagateFrontendAttribute(kXlaSchedulingGroupIdAttr, start_op,
+                               copied_operand);
     TF_RETURN_IF_ERROR(operand->ReplaceUseWith(start_op, copied_operand));
     TF_RETURN_IF_ERROR(end_op->AddControlDependencyTo(copied_operand));
   }
@@ -911,6 +914,7 @@ absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
     HloInstruction* copy = while_body->AddInstruction(
         HloInstruction::CreateUnary(end_op->shape(), HloOpcode::kCopy, end_op));
     TF_RETURN_IF_ERROR(copy->AddControlDependencyTo(start_op));
+    PropagateFrontendAttribute(kXlaSchedulingGroupIdAttr, end_op, copy);
     return end_op->ReplaceAllUsesWith(copy);
   }
 
@@ -926,6 +930,7 @@ absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
           HloInstruction::CreateUnary(user->shape(), HloOpcode::kCopy, user));
       TF_RETURN_IF_ERROR(copy->AddControlDependencyTo(start_op));
       TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(copy));
+      PropagateFrontendAttribute(kXlaSchedulingGroupIdAttr, start_op, copy);
     }
   }
 
@@ -960,6 +965,8 @@ absl::Status CopyInsertion::AddCopiesForExplicitNonCopyableTransitions(
         parent->AddInstruction(HloInstruction::CreateUnary(
             operand->shape(), HloOpcode::kCopy, operand));
     TF_RETURN_IF_ERROR(operand->ReplaceUseWith(chain_start, copied_operand));
+    PropagateFrontendAttribute(kXlaSchedulingGroupIdAttr, chain_start,
+                               copied_operand);
   }
 
   return absl::OkStatus();
@@ -1132,6 +1139,8 @@ absl::Status CopyInsertion::AddCopiesForNonCopyableTransitions(
     HloInstruction* copied_operand =
         parent->AddInstruction(HloInstruction::CreateUnary(
             operand->shape(), HloOpcode::kCopy, operand));
+    PropagateFrontendAttribute("_scheduling_group_id", chain_start,
+                               copied_operand);
     TF_RETURN_IF_ERROR(operand->ReplaceUseWith(chain_start, copied_operand));
     return absl::OkStatus();
   }
