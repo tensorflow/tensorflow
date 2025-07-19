@@ -491,7 +491,7 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
     bool allow_intervening_bitcast, bool allow_multiple_users) {
   if (!instruction->shape().IsArray() || is_constrain_layout ||
       (is_cross_module &&
-       !instruction->GetModule()->config().use_spmd_partitioning())) {
+       instruction->GetModule()->config().num_partitions() <= 1)) {
     VLOG(2) << "Unsupported collective: " << instruction->ToString();
     return std::nullopt;
   }
