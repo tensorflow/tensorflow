@@ -377,7 +377,11 @@ const StatTypeMap& GetStatTypeMap() {
        {"cuda_graph_map_id", kCudaGraphMapId},
        {"cuda_graph_map_value_id", kCudaGraphMapValueId},
        {"cuda_graph_node_map_id", kCudaGraphNodeMapId},
-       {"graph_metadata_line_id", kGraphMetadataLineId}});
+       {"graph_metadata_line_id", kGraphMetadataLineId},
+       {"cuda_version", kMetadataCudaVersion},
+       {"jax_version", kMetadataJaxVersion},
+       {"jaxlib_version", kMetadataJaxlibVersion},
+       {"libtpu_version", kMetadataLibtpuVersion}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }

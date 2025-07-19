@@ -1,5 +1,6 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
@@ -47,6 +48,7 @@ tsl_gpu_library(
         ":cupti_collector",
         ":cupti_tracer",
         ":cupti_wrapper",
+        ":gpu_metadata",
     ]) + if_rocm([
         # keep sorted
         ":rocm_collector",
@@ -454,5 +456,19 @@ xla_test(
     deps = [
         ":nvtx_with_cuda_kernels",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "gpu_metadata",
+    srcs = ["gpu_metadata.cc"],
+    hdrs = ["gpu_metadata.h"],
+    deps = [
+        "//xla/tsl/profiler/utils:xplane_builder",
+        "//xla/tsl/profiler/utils:xplane_schema",
+        "//xla/tsl/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/strings",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
