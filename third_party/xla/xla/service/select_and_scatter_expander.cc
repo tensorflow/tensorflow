@@ -15,14 +15,18 @@ limitations under the License.
 
 #include "xla/service/select_and_scatter_expander.h"
 
+#include <cstdint>
 #include <numeric>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal_util.h"
 #include "xla/service/call_inliner.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 

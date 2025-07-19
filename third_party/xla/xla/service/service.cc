@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/service.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
