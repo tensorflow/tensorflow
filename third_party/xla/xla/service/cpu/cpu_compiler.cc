@@ -864,6 +864,32 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
   pipeline.AddPass<ReshapeDecomposer>();
 
+  // The LayoutAssignment pass may leave behind kCopy instructions which are
+  // duplicate or NOPs, so remove them with algebraic simplification and CSE.
+  // Run this to a fixed point.
+  [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
+       "simplification after layout assignment"),
+   &module, is_onednn_compatible] {
+    AddHloVerifier(
+        &pipeline,
+        HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
+            LayoutAssignment::InstructionCanChangeLayout),
+        /*debug_only=*/true);
+    AlgebraicSimplifierOptions options;
+    options.set_is_layout_sensitive(true);
+    options.set_supports_non_canonical_dots(false);
+    options.set_enable_dot_strength_reduction(false);
+    // "slow" minmax means we propagate nan.
+    options.set_minmax_propagate_nan(
+        !module->config().debug_options().xla_cpu_enable_fast_min_max());
+    options.set_executing_on_cpu(true);
+    // oneDNN support is currently enabled only when thunk runtime is turned off
+    options.set_enable_onednn_support(is_onednn_compatible);
+    pipeline.AddPass<AlgebraicSimplifier>(options);
+    pipeline.AddPass<HloDCE>();
+    pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+  }();
+
   const int max_parallelism =
       module->config().intra_op_parallelism_threads() > 0
           ? module->config().intra_op_parallelism_threads()
@@ -904,32 +930,6 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pipeline.AddPass<FlattenCallGraph>();
     pipeline.AddPass<CallInliner>(/*single_call_site=*/true);
   }
-
-  // The LayoutAssignment pass may leave behind kCopy instructions which are
-  // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-  // Run this to a fixed point.
-  [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
-       "simplification after layout assignment"),
-   &module, is_onednn_compatible] {
-    AddHloVerifier(
-        &pipeline,
-        HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
-            LayoutAssignment::InstructionCanChangeLayout),
-        /*debug_only=*/true);
-    AlgebraicSimplifierOptions options;
-    options.set_is_layout_sensitive(true);
-    options.set_supports_non_canonical_dots(false);
-    options.set_enable_dot_strength_reduction(false);
-    // "slow" minmax means we propagate nan.
-    options.set_minmax_propagate_nan(
-        !module->config().debug_options().xla_cpu_enable_fast_min_max());
-    options.set_executing_on_cpu(true);
-    // oneDNN support is currently enabled only when thunk runtime is turned off
-    options.set_enable_onednn_support(is_onednn_compatible);
-    pipeline.AddPass<AlgebraicSimplifier>(options);
-    pipeline.AddPass<HloDCE>();
-    pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
-  }();
 
   // Outline ops in the entry computation into calls to subcomputations.
   if (!is_aot_compile) {
