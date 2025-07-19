@@ -15,11 +15,24 @@ limitations under the License.
 
 #include "tensorflow/core/framework/node_def_util.h"
 
+#include <cstdint>
+#include <map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/framework/attr_value.pb.h"  // NOLINT
 #include "tensorflow/core/framework/fake_input.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
