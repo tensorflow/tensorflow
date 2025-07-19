@@ -62,8 +62,8 @@ class AMDGPUCompiler : public GpuCompiler {
   absl::Status AddConvAndGemmAutotuningPasses(
       HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
       const CompileOptions& options, HloModule* hlo_module,
-      AutotuneConfig& autotune_config,
-      tsl::thread::ThreadPool* thread_pool) override;
+      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
+      se::StreamExecutor* stream_exec) override;
 
   absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
