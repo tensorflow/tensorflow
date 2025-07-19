@@ -6,6 +6,7 @@ load(
 )
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 
 default_visibility = [
     "//tensorflow/compiler/mlir/lite:__subpackages__",
