@@ -3004,12 +3004,11 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
       return;
     }
 
-    std::unique_ptr<se::DeviceMemoryBase> sub_buffer;
+    se::DeviceMemoryBase sub_buffer;
     if (transfer_size < device_memory.size()) {
-      sub_buffer = std::make_unique<se::DeviceMemoryBase>(
-          device_memory.GetByteSlice(offset, transfer_size));
+      sub_buffer = device_memory.GetByteSlice(offset, transfer_size);
     } else {
-      sub_buffer = std::make_unique<se::DeviceMemoryBase>(device_memory);
+      sub_buffer = device_memory;
     }
 
     HostMemoryAllocator::OwnedPtr staging_buffer;
@@ -3024,9 +3023,9 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
 
     auto stream = device->stream();
 
-    VLOG(3) << "D2H copy: " << sub_buffer->opaque() << " -> " << host_ptr
-            << " (" << transfer_size << " bytes)";
-    absl::Status status = stream->Memcpy(host_ptr, *sub_buffer, transfer_size);
+    VLOG(3) << "D2H copy: " << sub_buffer.opaque() << " -> " << host_ptr << " ("
+            << transfer_size << " bytes)";
+    absl::Status status = stream->Memcpy(host_ptr, sub_buffer, transfer_size);
     if (!status.ok()) {
       LOG(ERROR) << "stream->Memcpy failed: " << status;
       promise.Set(status);
