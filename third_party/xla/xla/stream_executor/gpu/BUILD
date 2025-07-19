@@ -746,13 +746,20 @@ xla_test(
     ],
 )
 
+tf_proto_library(
+    name = "tma_metadata_proto",
+    srcs = ["tma_metadata.proto"],
+)
+
 cc_library(
     name = "tma_metadata",
     srcs = ["tma_metadata.cc"],
     hdrs = ["tma_metadata.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
+        ":tma_metadata_proto_cc",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -772,8 +779,12 @@ xla_cc_test(
     deps = [
         ":tma_metadata",
         "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 

@@ -1473,10 +1473,6 @@ cc_library(
     }) +
     # The TF proto implementations that we will statically link here.
     [
-        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc_impl",
-        "//tensorflow/compiler/mlir/lite:model_flags_proto_cc_impl",
-        "//tensorflow/compiler/mlir/lite:types_proto_cc_impl",
-        "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc_impl",
@@ -1503,6 +1499,10 @@ cc_library(
         # Disable the TF Lite proto implementations in the OSS build for LiteRT repository.
         "//tensorflow:disable_tf_lite_py": [],
         "//conditions:default": [
+            "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc_impl",
+            "//tensorflow/compiler/mlir/lite:model_flags_proto_cc_impl",
+            "//tensorflow/compiler/mlir/lite:types_proto_cc_impl",
+            "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc_impl",
             "//tensorflow/lite/toco:model_flags_proto_cc_impl",
             "//tensorflow/lite/toco:toco_flags_proto_cc_impl",
             "//tensorflow/lite/toco:types_proto_cc_impl",
@@ -1900,7 +1900,7 @@ cc_library(
 alias(
     name = "test_main",
     actual = "@local_xla//xla/tsl/platform:test_main",
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
 )
 
 tf_cc_tests(

@@ -174,6 +174,8 @@ class PjRtCpuClient final : public CommonPjRtClient {
     return eigen_intraop_device_.get();
   }
 
+  bool IsOnCpu(PjRtMemorySpace* memory_space) override { return true; }
+
   // Returns a pair of async events:
   // - async event that signals the completion of the last collective launch
   // - count down event that must be signalled when each rank completes
@@ -315,7 +317,6 @@ class PjRtCpuBuffer final : public AbstractCpuBuffer {
  public:
   PjRtCpuBuffer(Shape on_device_shape,
                 std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer,
-                PjRtCpuClient* client, PjRtCpuDevice* device,
                 PjRtMemorySpace* memory_space);
 
   PjRtCpuBuffer(const PjRtCpuBuffer&) = delete;
@@ -324,8 +325,8 @@ class PjRtCpuBuffer final : public AbstractCpuBuffer {
   PjRtCpuBuffer& operator=(PjRtCpuBuffer&&) = delete;
 
   PjRtMemorySpace* memory_space() const override { return memory_space_; }
-  PjRtCpuDevice* device() const override { return device_; }
-  PjRtCpuClient* client() const override { return client_; }
+  PjRtCpuDevice* device() const override;
+  PjRtCpuClient* client() const override;
 
   PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
                              int64_t transfer_size) override;
@@ -341,9 +342,6 @@ class PjRtCpuBuffer final : public AbstractCpuBuffer {
 
  private:
   absl::string_view buffer_name() const override { return "PjRtCpuBuffer"; }
-
-  PjRtCpuClient* client_;
-  PjRtCpuDevice* const device_;
 };
 
 class PjRtCpuExecutable final : public PjRtLoadedExecutable {

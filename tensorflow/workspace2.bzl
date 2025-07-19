@@ -160,9 +160,9 @@ def _tf_repositories():
     # LINT.IfChange(xnnpack)
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "0dcee90177f57043734b6722b48841a6b8946220b26143d370bba4715c347679",
-        strip_prefix = "XNNPACK-3d9005a29906c0230513944bc01c6b5deb7baedb",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/3d9005a29906c0230513944bc01c6b5deb7baedb.zip"),
+        sha256 = "70ff0edaaabd0092d0315c5da75572d36f70ea4c0d9c2e3d9c147f18bdd65fff",
+        strip_prefix = "XNNPACK-7566fefb2d5d035c9bb375f9aca5370a13a2b6c1",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/7566fefb2d5d035c9bb375f9aca5370a13a2b6c1.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -359,10 +359,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "org_sqlite",
         build_file = "//third_party:sqlite.BUILD",
-        sha256 = "bb5849ae4d7129c09d20596379a0b3f7b1ac59cf9998eba5ef283ea9b6c000a5",
-        strip_prefix = "sqlite-amalgamation-3430000",
+        sha256 = "9ad6d16cbc1df7cd55c8b55127c82a9bca5e9f287818de6dc87e04e73599d754",
+        strip_prefix = "sqlite-amalgamation-3500300",
         system_build_file = "//third_party/systemlibs:sqlite.BUILD",
-        urls = tf_mirror_urls("https://www.sqlite.org/2023/sqlite-amalgamation-3430000.zip"),
+        urls = tf_mirror_urls("https://www.sqlite.org/2025/sqlite-amalgamation-3500300.zip"),
     )
 
     tf_http_archive(
@@ -534,9 +534,9 @@ def _tf_repositories():
         name = "nccl_archive",
         build_file = "@local_xla//third_party:nccl/archive.BUILD",
         patch_file = ["@local_xla//third_party/nccl:archive.patch"],
-        sha256 = "7b154ad1f8ccafa795ed6696507d402b1b4ccac944c5fceb7f4e29b19a39cc47",
-        strip_prefix = "nccl-2.25.1-1",
-        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.25.1-1.tar.gz"),
+        sha256 = "0c5199ea56c70beb72a00eaf0d29887ac90243b47ebba048fba33ad86fcc2322",
+        strip_prefix = "nccl-2.26.5-1",
+        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.26.5-1.tar.gz"),
     )
 
     tf_http_archive(

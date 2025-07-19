@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/xla_data.pb.h"
@@ -599,6 +601,27 @@ void EncodeSharding(mlir::Operation* op, llvm::StringRef shard_str) {
               mlir::StringAttr::get(op->getContext(), hlosharding->ToString()));
 }
 
+namespace {
+
+void ConvertV2ToV1Sharding(xla::OpSharding& sharding) {
+  if (sharding.type() != xla::OpSharding::OTHER ||
+      sharding.iota_reshape_dims().empty()) {
+    return;
+  }
+
+  // V2 Sharding uses iota_reshape_dims and iota_transpose_perm, while V1
+  // Sharding uses tile_assignment_devices.
+  absl::c_copy(
+      xla::ToArray(sharding.iota_reshape_dims(), sharding.iota_transpose_perm(),
+                   sharding.tile_assignment_dimensions()),
+      tsl::protobuf::RepeatedFieldBackInserter(
+          sharding.mutable_tile_assignment_devices()));
+  sharding.clear_iota_reshape_dims();
+  sharding.clear_iota_transpose_perm();
+}
+
+}  // namespace
+
 mlir::LogicalResult ExtractInputsForLogicalDevices(
     const int num_cores_per_replica,
     mlir::tf_device::ClusterFuncOp cluster_func, mlir::OpBuilder* builder,
@@ -645,6 +668,7 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
             .failed()) {
       return cluster_func.emitError("incorrect sharding format for inputs");
     }
+    ConvertV2ToV1Sharding(sharding);
 
     const auto input_sharding_type = sharding.type();
     auto tiled_sharding_mismatched = [&](int tiled_input_size) {
@@ -758,6 +782,7 @@ mlir::LogicalResult ParseAndValidateOutputSharding(
             .failed()) {
       return cluster_func.emitError("incorrect sharding format for outputs");
     }
+    ConvertV2ToV1Sharding(sharding);
 
     if (sharding.type() == xla::OpSharding::OTHER &&
         sharding.tile_assignment_devices_size() != num_cores_per_replica)

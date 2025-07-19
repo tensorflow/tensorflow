@@ -160,8 +160,17 @@ inline bool IsTransposeTrivial(llvm::ArrayRef<int64_t> input_shape,
   if (!matchPattern(perm, m_Constant(&perm_values_attr))) return false;
 
   SmallVector<int64_t, 8> perm_values;
-  for (const auto& dim : perm_values_attr.getValues<APInt>())
-    perm_values.push_back(dim.getSExtValue());
+  for (const auto& dim : perm_values_attr.getValues<APInt>()) {
+    // Valid range is [-input_shape.size(), input_shape.size()).
+    int64_t p = dim.getSExtValue();
+    if (p < 0) {
+      p += input_shape.size();
+    }
+    if (p < 0 || p >= input_shape.size()) {
+      return false;
+    }
+    perm_values.push_back(p);
+  }
 
   // This should never happen unless the input graph is malformed.
   if (input_shape.size() != perm_values.size()) {

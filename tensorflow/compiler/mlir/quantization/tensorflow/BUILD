@@ -233,6 +233,7 @@ cc_library(
     ],
     hdrs = ["passes/tf_quant_ops.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_op_interfaces",

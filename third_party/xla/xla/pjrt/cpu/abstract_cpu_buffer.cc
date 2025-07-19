@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
@@ -199,20 +200,19 @@ class TrackedCpuDeviceBufferExternalReference
     : public PjRtBuffer::ExternalReference {
  public:
   explicit TrackedCpuDeviceBufferExternalReference(
-      std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer)
-      : device_buffer_(std::move(tracked_device_buffer)) {
-    // We need to wait for the memory to be allocated before sharing it with
-    // external frameworks like NumPy.
-    const auto& buffer = device_buffer_->buffer();
-    tsl::BlockUntilReady(buffer);
-    CHECK(buffer.IsConcrete());
-    data_ptr_ = buffer->untyped_data();
+      tsl::RCReference<CommonPjRtRawBuffer> raw_buffer)
+      : raw_buffer_(std::move(raw_buffer)) {
+    if (!raw_buffer_) {
+      data_ptr_ = nullptr;
+    } else {
+      data_ptr_ = raw_buffer_->OpaqueDeviceMemoryDataPointer();
+    }
   }
 
   ~TrackedCpuDeviceBufferExternalReference() override = default;
 
  private:
-  std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer_;
+  tsl::RCReference<CommonPjRtRawBuffer> raw_buffer_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
@@ -222,14 +222,21 @@ AbstractCpuBuffer::ReleaseDeviceMemoryOwnership(
     return InvalidArgument(
         "ReleaseDeviceMemoryOwnership allowed only for non-tuple");
   }
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer,
-      Release(wait_for_operations_to_complete));
+  std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer(
+      static_cast<TrackedCpuDeviceBuffer*>(ReleaseBuffer().release()));
+  if (device_buffer == nullptr) {
+    return {nullptr};
+  }
+
+  if (wait_for_operations_to_complete) {
+    TF_RETURN_IF_ERROR(
+        device_buffer->BlockForOperationsToComplete(memory_space_));
+  }
 
   std::unique_ptr<PjRtBuffer::ExternalReference> ref;
-  if (tracked_device_buffer) {
+  if (device_buffer) {
     ref = std::make_unique<TrackedCpuDeviceBufferExternalReference>(
-        std::move(tracked_device_buffer));
+        device_buffer->GetRawBuffer(memory_space_));
   }
   return ref;
 }
@@ -238,34 +245,6 @@ void AbstractCpuBuffer::Delete() {
   if (auto device_buffer = ReleaseBuffer()) {
     device_buffer.release()->Delete(memory_space_);
   }
-}
-
-absl::StatusOr<std::unique_ptr<TrackedCpuDeviceBuffer>>
-AbstractCpuBuffer::Release(bool wait_for_operations_to_complete) {
-  std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer(
-      static_cast<TrackedCpuDeviceBuffer*>(ReleaseBuffer().release()));
-  if (device_buffer == nullptr) return {nullptr};
-
-  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> events;
-  // Now that all holds have completed and no more can be added, we can get
-  // the final set of usage events.
-  events = device_buffer->LockUseAndTransferUsageEvents();
-
-  if (wait_for_operations_to_complete) {
-    // Block the host until all usage events have completed. Usage events
-    // dominate definition events, so this also waits for the buffer to be
-    // defined. Return the first error encountered.
-    absl::Status first_error;
-    for (const auto& av : events) {
-      BlockUntilReady(av.GetAsyncValue());
-      if (auto* error = av.GetErrorIfPresent()) {
-        first_error.Update(Internal("Error Execute: %s", error->message()));
-      }
-    }
-    if (!first_error.ok()) return std::move(first_error);
-  }
-
-  return device_buffer;
 }
 
 TrackedCpuDeviceBuffer* AbstractCpuBuffer::AcquireUsage(
@@ -515,7 +494,6 @@ void PackOrCopy(PrimitiveType element_type, const LiteralSlice& literal,
 AbstractCpuBuffer::AllocateTrackedDeviceBuffer(
     const Shape& on_device_shape,
     absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events) {
-  VLOG(0) << "Allocate: " << on_device_shape.ToString();
   if (on_device_shape.IsTuple()) {
     return absl::InvalidArgumentError(
         absl::StrCat("Tuples are not supported for cpu-buffers: ",

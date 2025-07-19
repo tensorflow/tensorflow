@@ -659,31 +659,55 @@ absl::Status MemorySpaceAssignment::ExportAndColorBuffers(
   return absl::OkStatus();
 }
 
-void MemorySpaceAssignment::RemoveAssignmentForInstruction(
-    const HloInstruction* instruction) {
-  auto it = alternate_memory_assignments_.begin();
-  auto end = alternate_memory_assignments_.end();
-  while (it != end) {
-    const HloPosition& position = it->first;
-    if (position.instruction == instruction) {
-      VLOG(3) << "Removing instruction from alternate memory assignments.";
-      if (std::next(it) == end) {
-        alternate_memory_assignments_.pop_back();
-        break;
-      } else {
-        // Swap the removed position and chunk with the back and pop back.
-        *it = alternate_memory_assignments_.back();
-        alternate_memory_assignments_.pop_back();
-        end = alternate_memory_assignments_.end();
-      }
-    } else {
+void MemorySpaceAssignment::RemoveAlternateMemoryAssignments(
+    const absl::flat_hash_set<const HloInstruction*>& instructions) {
+  for (auto it = alternate_memory_assignments_.begin();
+       it != alternate_memory_assignments_.end();) {
+    const HloInstruction* instruction = it->first.instruction;
+    if (!instructions.contains(instruction)) {
       ++it;
+      continue;
     }
+
+    VLOG(3) << "Removing instruction from alternate memory assignments.";
+    if (std::next(it) == alternate_memory_assignments_.end()) {
+      alternate_memory_assignments_.pop_back();
+      break;
+    }
+
+    // Swap the removed position and chunk with the back and pop back.
+    *it = alternate_memory_assignments_.back();
+    alternate_memory_assignments_.pop_back();
+  }
+}
+
+void MemorySpaceAssignment::RemoveScopedMemoryAssignments(
+    const absl::flat_hash_set<const HloInstruction*>& instructions) {
+  for (auto it = scoped_memory_assignments_.begin();
+       it != scoped_memory_assignments_.end();) {
+    const HloInstruction* instruction = it->first.instruction;
+    if (!instructions.contains(instruction)) {
+      ++it;
+      continue;
+    }
+
+    VLOG(3) << "Removing instruction from alternate memory assignments.";
+    if (std::next(it) == scoped_memory_assignments_.end()) {
+      scoped_memory_assignments_.pop_back();
+      break;
+    }
+
+    // Swap the removed position and chunk with the back and pop back.
+    *it = scoped_memory_assignments_.back();
+    scoped_memory_assignments_.pop_back();
   }
 }
 
 absl::Status MemorySpaceAssignment::SimplifyGraph() {
   VLOG(1) << "Simplifying graph...";
+
+  absl::flat_hash_set<const HloInstruction*> removed_instructions;
+
   for (HloComputation* computation : module_->MakeNonfusionComputations()) {
     // Parallel computations aren't in the schedule and don't need to be
     // modified.
@@ -717,9 +741,7 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
             instruction->opcode() != HloOpcode::kCopyStart &&
             instruction->opcode() != HloOpcode::kCopyDone) {
           VLOG(4) << "Instruction removed: " << instruction->ToString();
-          // Ensure the alternate memory assignments don't contain a reference
-          // to the removed instruction.
-          RemoveAssignmentForInstruction(instruction);
+          removed_instructions.insert(instruction);
           // Instead of deleting the instruction from the schedule, replace it
           // with a nullptr. This is needed because FixSchedule relies on the
           // logical time that is the index into flattened_instructions_ for
@@ -778,6 +800,9 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
       }
     }
   }
+
+  RemoveAlternateMemoryAssignments(removed_instructions);
+  RemoveScopedMemoryAssignments(removed_instructions);
 
   return absl::OkStatus();
 }

@@ -17,17 +17,23 @@ limitations under the License.
 
 #include <cmath>
 #include <cstdint>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
+#include "tsl/platform/protobuf.h"
 
 namespace stream_executor::gpu {
 namespace {
 
 using absl::StatusCode;
 using testing::HasSubstr;
+using tsl::proto_testing::EqualsProto;
 using tsl::testing::IsOk;
 using tsl::testing::StatusIs;
 
@@ -348,6 +354,38 @@ TEST(TmaMetadataTest, CreateInvalidInterleaveSwizzleComboFailsGracefully) {
           /*swizzle=*/kNot32BSwizzle),
       StatusIs(StatusCode::kFailedPrecondition,
                HasSubstr("when interleave is k32B, swizzle must be k32B.")));
+}
+
+TEST(TmaMetadataTest, ProtoSerializationDeserialization) {
+  TmaDescriptorProto descriptor_proto;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        element_size: 4
+        global_dims: 100
+        global_dims: 100
+        global_dims: 100
+        global_strides: 400
+        global_strides: 40000
+        box_dims: 16
+        box_dims: 16
+        box_dims: 16
+        element_strides: 1
+        element_strides: 1
+        element_strides: 1
+        interleave: INTERLEAVE_BYTES16
+        swizzle: SWIZZLE_BYTES32
+        l2_promotion: L2_PROMOTION_BYTES64
+        float_oob_fill: FLOAT_OOB_FILL_NAN_REQUEST_ZERO_FMA
+      )pb",
+      &descriptor_proto));
+
+  TmaMetadataProto metadata_proto;
+  metadata_proto.mutable_arg_index_to_tma_info()->emplace(
+      /*arg_index=*/0, std::move(descriptor_proto));
+
+  TF_ASSERT_OK_AND_ASSIGN(TmaMetadata metadata,
+                          TmaMetadata::FromProto(metadata_proto));
+  EXPECT_THAT(metadata.ToProto(), EqualsProto(metadata_proto));
 }
 
 }  // namespace

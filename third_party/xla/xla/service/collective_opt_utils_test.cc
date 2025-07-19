@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/tsl/platform/statusor.h"
@@ -43,7 +44,7 @@ TEST_F(CheckUniformReplicaGroupsTest, CheckUniformReplicaGroupsUniform) {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
-  const auto* ag = Cast<HloAllGatherInstruction>(
+  const HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(
       module->entry_computation()->root_instruction());
   EXPECT_TRUE(CheckUniformReplicaGroups(ag));
 }
@@ -59,7 +60,7 @@ TEST_F(CheckUniformReplicaGroupsTest, CheckUniformReplicaGroupsNonUniform) {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
-  const auto* ag = Cast<HloAllGatherInstruction>(
+  const HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(
       module->entry_computation()->root_instruction());
   EXPECT_FALSE(CheckUniformReplicaGroups(ag));
 }
@@ -75,7 +76,7 @@ TEST_F(CheckUniformReplicaGroupsTest, CheckUniformReplicaGroupsSingleGroup) {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
-  const auto* ag = Cast<HloAllGatherInstruction>(
+  const HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(
       module->entry_computation()->root_instruction());
   EXPECT_TRUE(CheckUniformReplicaGroups(ag));
 }
@@ -222,6 +223,221 @@ ENTRY main {
   ASSERT_TRUE(spec.has_value());
   EXPECT_EQ(spec->split_dim, -1);
   EXPECT_TRUE(spec->split_dims.empty());
+}
+
+class FindUniqueDynamicSliceUserFromCollectiveTest
+    : public HloHardwareIndependentTestBase {};
+
+TEST_F(FindUniqueDynamicSliceUserFromCollectiveTest, CaptureDsAllGatger) {
+  absl::string_view hlo_string = R"(
+HloModule test
+ENTRY main {
+  param = f32[16,10] parameter(0)
+  ag = f32[32,10] all-gather(param), dimensions={0}, replica_groups={{0,1}}
+  zero = s32[] constant(0)
+  replica_id = u32[] replica-id()
+  slice_index = s32[] convert(replica_id)
+  ROOT ds = f32[16,10] dynamic-slice(ag, slice_index, zero), dynamic_slice_sizes={16,10}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(
+      module->entry_computation()->GetInstructionWithName("ag"));
+  ASSERT_THAT(ag, testing::NotNull());
+
+  std::optional<CollectiveUsers> result =
+      FindUniqueDynamicSliceUserFromCollective(
+          ag, /*allow_multiple_users=*/false,
+          /*allow_intervening_reshape=*/false,
+          /*allow_intervening_bitcast=*/false);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->dynamic_slice->opcode(), HloOpcode::kDynamicSlice);
+  EXPECT_EQ(result->dynamic_slice->name(), "ds");
+  EXPECT_EQ(result->bitcast, nullptr);
+  EXPECT_EQ(result->reshape, nullptr);
+}
+
+TEST_F(FindUniqueDynamicSliceUserFromCollectiveTest,
+       CaptureDsReshapeAllGather) {
+  absl::string_view hlo_string = R"(
+HloModule test
+ENTRY main {
+  param = f32[16,10] parameter(0)
+  ag = f32[32,10] all-gather(param), dimensions={0}, replica_groups={{0,1}}
+  reshape = f32[320] reshape(ag)
+  zero = s32[] constant(0)
+  replica_id = u32[] replica-id()
+  slice_index = s32[] convert(replica_id)
+  ROOT ds = f32[160] dynamic-slice(reshape, slice_index), dynamic_slice_sizes={160}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(
+      module->entry_computation()->GetInstructionWithName("ag"));
+  ASSERT_THAT(ag, testing::NotNull());
+  std::optional<CollectiveUsers> result =
+      FindUniqueDynamicSliceUserFromCollective(
+          ag, /*allow_multiple_users=*/false,
+          /*allow_intervening_reshape=*/true,
+          /*allow_intervening_bitcast=*/false);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->dynamic_slice->opcode(), HloOpcode::kDynamicSlice);
+  EXPECT_EQ(result->dynamic_slice->name(), "ds");
+  EXPECT_NE(result->reshape, nullptr);
+  EXPECT_EQ(result->reshape->name(), "reshape");
+  EXPECT_EQ(result->bitcast, nullptr);
+}
+
+TEST_F(FindUniqueDynamicSliceUserFromCollectiveTest, WithBitcast) {
+  absl::string_view hlo_string = R"(
+HloModule test
+ENTRY main {
+  param = f32[16,10] parameter(0)
+  ag = f32[32,10] all-gather(param), dimensions={0}, replica_groups={{0,1}}
+  bitcast = f32[32,10] bitcast(ag)
+  zero = s32[] constant(0)
+  replica_id = u32[] replica-id()
+  slice_index = s32[] convert(replica_id)
+  ROOT ds = f32[16,10] dynamic-slice(bitcast, slice_index, zero), dynamic_slice_sizes={16,10}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(
+      module->entry_computation()->GetInstructionWithName("ag"));
+  ASSERT_THAT(ag, testing::NotNull());
+
+  std::optional<CollectiveUsers> result =
+      FindUniqueDynamicSliceUserFromCollective(
+          ag, /*allow_multiple_users=*/false,
+          /*allow_intervening_reshape=*/false,
+          /*allow_intervening_bitcast=*/true);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->dynamic_slice->opcode(), HloOpcode::kDynamicSlice);
+  EXPECT_EQ(result->dynamic_slice->name(), "ds");
+  EXPECT_NE(result->bitcast, nullptr);
+  EXPECT_EQ(result->bitcast->name(), "bitcast");
+  EXPECT_EQ(result->reshape, nullptr);
+}
+
+TEST_F(FindUniqueDynamicSliceUserFromCollectiveTest, WithReshapeAndBitcast) {
+  absl::string_view hlo_string = R"(
+HloModule test
+ENTRY main {
+  param = f32[16,10] parameter(0)
+  ag = f32[32,10] all-gather(param), dimensions={0}, replica_groups={{0,1}}
+  reshape = f32[320] reshape(ag)
+  bitcast = f32[320] bitcast(reshape)
+  replica_id = u32[] replica-id()
+  slice_index = s32[] convert(replica_id)
+  ROOT ds = f32[160] dynamic-slice(bitcast, slice_index), dynamic_slice_sizes={160}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(
+      module->entry_computation()->GetInstructionWithName("ag"));
+  ASSERT_THAT(ag, testing::NotNull());
+
+  std::optional<CollectiveUsers> result =
+      FindUniqueDynamicSliceUserFromCollective(
+          ag, /*allow_multiple_users=*/false,
+          /*allow_intervening_reshape=*/true,
+          /*allow_intervening_bitcast=*/true);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->dynamic_slice->opcode(), HloOpcode::kDynamicSlice);
+  EXPECT_EQ(result->dynamic_slice->name(), "ds");
+  EXPECT_NE(result->reshape, nullptr);
+  EXPECT_EQ(result->reshape->name(), "reshape");
+  EXPECT_NE(result->bitcast, nullptr);
+  EXPECT_EQ(result->bitcast->name(), "bitcast");
+}
+
+TEST_F(FindUniqueDynamicSliceUserFromCollectiveTest, MultipleUsersWithReshape) {
+  absl::string_view hlo_string = R"(
+HloModule test
+ENTRY main {
+  param = f32[16,10] parameter(0)
+  ag = f32[32,10] all-gather(param), dimensions={0}, replica_groups={{0,1}}
+  neg = f32[32,10] negate(ag)
+  reshape = f32[320] reshape(ag)
+  bitcast = f32[320] bitcast(reshape)
+  replica_id = u32[] replica-id()
+  slice_index = s32[] convert(replica_id)
+  ROOT ds = f32[160] dynamic-slice(bitcast, slice_index), dynamic_slice_sizes={160}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(
+      module->entry_computation()->GetInstructionWithName("ag"));
+  ASSERT_THAT(ag, testing::NotNull());
+
+  std::optional<CollectiveUsers> result =
+      FindUniqueDynamicSliceUserFromCollective(
+          ag, /*allow_multiple_users=*/true,
+          /*allow_intervening_reshape=*/true,
+          /*allow_intervening_bitcast=*/true);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->dynamic_slice->opcode(), HloOpcode::kDynamicSlice);
+  EXPECT_EQ(result->dynamic_slice->name(), "ds");
+  EXPECT_NE(result->reshape, nullptr);
+  EXPECT_EQ(result->reshape->name(), "reshape");
+  EXPECT_NE(result->bitcast, nullptr);
+  EXPECT_EQ(result->bitcast->name(), "bitcast");
+}
+
+TEST_F(FindUniqueDynamicSliceUserFromCollectiveTest, NoDynamicSlice) {
+  absl::string_view hlo_string = R"(
+HloModule test
+ENTRY main {
+  param = f32[16,10] parameter(0)
+  ag = f32[32,10] all-gather(param), dimensions={0}, replica_groups={{0,1}}
+  ROOT neg = f32[32,10] negate(ag)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(
+      module->entry_computation()->GetInstructionWithName("ag"));
+  ASSERT_THAT(ag, testing::NotNull());
+
+  std::optional<CollectiveUsers> result =
+      FindUniqueDynamicSliceUserFromCollective(
+          ag, /*allow_multiple_users=*/false,
+          /*allow_intervening_reshape=*/true,
+          /*allow_intervening_bitcast=*/true);
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST_F(FindUniqueDynamicSliceUserFromCollectiveTest,
+       InterveningOpWithMultipleUsers) {
+  absl::string_view hlo_string = R"(
+HloModule test
+ENTRY main {
+  param = f32[16,10] parameter(0)
+  ag = f32[32,10] all-gather(param), dimensions={0}, replica_groups={{0,1}}
+  reshape = f32[320] reshape(ag)
+  neg = f32[320] negate(reshape)
+  replica_id = u32[] replica-id()
+  slice_index = s32[] convert(replica_id)
+  ROOT ds = f32[160] dynamic-slice(reshape, slice_index), dynamic_slice_sizes={160}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(
+      module->entry_computation()->GetInstructionWithName("ag"));
+  ASSERT_THAT(ag, testing::NotNull());
+
+  std::optional<CollectiveUsers> result =
+      FindUniqueDynamicSliceUserFromCollective(
+          ag, /*allow_multiple_users=*/false,
+          /*allow_intervening_reshape=*/true,
+          /*allow_intervening_bitcast=*/true);
+  EXPECT_FALSE(result.has_value());
 }
 
 }  // namespace

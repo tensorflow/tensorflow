@@ -39,6 +39,7 @@ limitations under the License.
 #endif  // PLATFORM_GOOGLE
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/analysis/hlo_reachability.h"

@@ -462,7 +462,7 @@ class SliceTimePermutationIterator {
   enum class Ty : std::int8_t {
     // Include all valid permutations
     kAll,
-    // Only include perferred valid permutations. Heap simulator is trying to
+    // Only include preferred valid permutations. Heap simulator is trying to
     // optimize fitting allocations into a grid of (heap) space by time. The
     // preferred permutation iterator only allows the following triagular
     // shapes:

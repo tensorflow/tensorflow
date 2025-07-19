@@ -138,6 +138,7 @@ absl::Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
     // The row ids are just the sample ids which is the first dim of the
     // indices.
     auto indices_matrix = indices_or_row_splits.matrix<int32>();
+    // TODO(b/432045101): remove this once the bug is fixed.
     if (indices_matrix.dimension(1) != 2) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Sparse tensor input should have 2D indices matrix. But got ",

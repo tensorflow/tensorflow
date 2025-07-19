@@ -30,6 +30,8 @@ limitations under the License.
 
 namespace xla::cpu {
 
+using ::xla::codegen::intrinsics::Type;
+
 absl::StatusOr<llvm::Value*> EmitAtan2(llvm::Module* module,
                                        llvm::IRBuilderBase& b,
                                        PrimitiveType prim_type,
@@ -129,8 +131,7 @@ absl::StatusOr<llvm::Value*> EmitErf(llvm::Module* module,
   if (type == b.getFloatTy()) {
     llvm::Value* x = b.CreateFPCast(value, type);
     llvm::Function* erf =
-        codegen::Intrinsic::GetOrInsertDeclaration<codegen::Intrinsic::Erf>(
-            module, F32);
+        codegen::intrinsics::Erf::GetOrInsertDeclaration(module, Type::S(F32));
     llvm::Value* result = b.CreateCall(erf, {x});
     return b.CreateFPCast(result, value->getType());
   }

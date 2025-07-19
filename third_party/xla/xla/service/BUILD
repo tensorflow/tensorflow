@@ -106,6 +106,7 @@ cc_library(
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log:check",
     ],
 )
@@ -1961,6 +1962,7 @@ cc_library(
         "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:util",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/analysis:hlo_operand_index",
         "//xla/hlo/analysis:hlo_reachability",

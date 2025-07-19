@@ -1185,6 +1185,122 @@ struct Convert2DUpscalingToResizeNearestNeighor
   }
 };
 
+// Tries to get the given `value` as a 1D tensor of `num_channels` elements.
+// This is possible if `value` is already a 1D tensor of the correct size, or
+// if it is a constant that is either a scalar or has a shape that is
+// broadcastable to a 1D tensor of the correct size (e.g. [1, 1, C]).
+static std::optional<Value> GetAs1DValue(PatternRewriter &rewriter, Value value,
+                                         int64_t num_channels) {
+  auto type = mlir::dyn_cast<RankedTensorType>(value.getType());
+  if (!type) return std::nullopt;
+
+  // If it's already a 1D tensor of the correct size, return it.
+  if (type.getRank() == 1 && type.getDimSize(0) == num_channels) {
+    return value;
+  }
+
+  // Check if the value is a constant that can be expressed as a 1D tensor.
+  // This is true if it's a scalar or has a shape like [1, ..., 1, C].
+  DenseElementsAttr attr;
+  if (matchPattern(value, m_Constant(&attr))) {
+    if (attr.isSplat()) {
+      auto splat_type =
+          RankedTensorType::get({num_channels}, type.getElementType());
+      auto splat_attr =
+          DenseElementsAttr::get(splat_type, attr.getSplatValue<Attribute>());
+      return rewriter.create<arith::ConstantOp>(value.getLoc(), splat_attr);
+    }
+
+    if (HasOneTailUnitDimension(attr) &&
+        attr.getNumElements() == num_channels) {
+      auto flattened = FlattenTo1D(attr);
+      return rewriter.create<arith::ConstantOp>(value.getLoc(), flattened);
+    }
+  }
+
+  return std::nullopt;
+}
+
+// Tries to get the given `bias` as a 1D tensor of `num_channels` elements.
+// If `bias` is a `NoneType`, a 1D tensor of zeros is created.
+// Otherwise, it uses `GetAs1DValue` to handle scalar constants and other
+// broadcastable shapes.
+static std::optional<Value> GetBiasIn1D(PatternRewriter &rewriter, Value bias,
+                                        int num_channels,
+                                        Type filter_element_type) {
+  // If it's none, create a zero tensor with shape {num_channels}.
+  if (mlir::isa<NoneType>(bias.getType())) {
+    RankedTensorType type =
+        RankedTensorType::get({num_channels}, filter_element_type);
+    auto attr = rewriter.getZeroAttr(type);
+    return rewriter.create<arith::ConstantOp>(bias.getLoc(), type, attr);
+  }
+
+  auto bias_type = mlir::dyn_cast<RankedTensorType>(bias.getType());
+  if (!bias_type) return std::nullopt;
+
+  // Check if bias is already a 1D tensor of the correct size.
+  if (bias_type.getRank() == 1 && bias_type.getDimSize(0) == num_channels) {
+    return bias;
+  }
+
+  // Handle scalar bias constant by broadcasting it, or other broadcastable
+  // shapes.
+  return GetAs1DValue(rewriter, bias, num_channels);
+}
+
+// tfmot quantization appears to generate Q/DQ annotations whose output is an
+// unranked tensor. For that case, we traverse the Q-DQ chain to find the
+// original filter constant.
+static RankedTensorType GetRankedTensorType(Value value) {
+  auto filter_type = mlir::dyn_cast<RankedTensorType>(value.getType());
+  if (filter_type) {
+    return filter_type;
+  }
+
+  // The filter may be unranked after quantization. In that case, we
+  // recursively look for the ranked tensor type.
+  Operation *op = value.getDefiningOp();
+  while (op != nullptr && op->getNumOperands() > 0) {
+    filter_type = mlir::dyn_cast<RankedTensorType>(op->getOperand(0).getType());
+    if (filter_type) return filter_type;
+    op = op->getOperand(0).getDefiningOp();
+  }
+  return nullptr;
+}
+
+// Gets the number of channels and filter element type for a FullyConnected op.
+// This is used to determine the shape of the bias tensor when fusing an Add op.
+// It first tries to get this information from the filter tensor. If the filter
+// is unranked, it falls back to using the output tensor of the FullyConnected
+// op.
+static std::optional<std::pair<int, Type>> GetFcNumChannelsAndFilterType(
+    TFL::FullyConnectedOp fc_op) {
+  Value filter = fc_op.getFilter();
+  if (auto filter_type = GetRankedTensorType(filter);
+      filter_type && filter_type.getRank() == 2 &&
+      !mlir::isa<quant::QuantizedType>(filter_type.getElementType())) {
+    // Get the number of channels from the filter's shape if it's a ranked
+    // 2D tensor. Filter must be a `2D` tensor with `{num_channels,
+    // num_features}` shape.
+    int num_channels = filter_type.getShape()[0];
+    Type filter_element_type = filter_type.getElementType();
+    return {{num_channels, filter_element_type}};
+  }
+
+  // Fallback to using the FC op's output shape to determine the number of
+  // channels. This is useful when the filter is unranked.
+  auto fc_output_type =
+      mlir::dyn_cast<RankedTensorType>(fc_op.getOutput()[0].getType());
+  if (!fc_output_type || !fc_output_type.hasStaticShape() ||
+      fc_output_type.getRank() == 0) {
+    return std::nullopt;
+  }
+  int num_channels = fc_output_type.getShape().back();
+  Type filter_element_type = fc_output_type.getElementType();
+  return {{num_channels, filter_element_type}};
+}
+
 // Fuse Add with proceeding FullyConnected.
 // TODO(b/136285429): Move to tablegen when variadic is supported
 struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
@@ -1194,15 +1310,20 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
                                 PatternRewriter &rewriter) const override {
     // Match Add.
     DenseElementsAttr added_value;
-    Value constant_val = add_op.getRhs();
-    if (!matchPattern(constant_val, m_Constant(&added_value))) {
+    Value add_rhs = add_op.getRhs();
+    if (!matchPattern(add_rhs, m_Constant(&added_value))) {
       // The constant may be preceded by QDQs in models with QDQ format, so we
       // should set it to the real constant.
-      auto dq = dyn_cast_or_null<DequantizeOp>(constant_val.getDefiningOp());
-      if (!dq) return failure();
-      auto q = dyn_cast_or_null<QuantizeOp>(dq.getInput().getDefiningOp());
-      if (!q || !matchPattern(q.getInput(), m_Constant(&added_value))) {
+      auto dq = dyn_cast_or_null<DequantizeOp>(add_rhs.getDefiningOp());
+      if (!dq) {
         return failure();
+      } else if (!matchPattern(dq.getInput(), m_Constant(&added_value))) {
+        auto q = dyn_cast_or_null<QuantizeOp>(dq.getInput().getDefiningOp());
+        if (!q || !matchPattern(q.getInput(), m_Constant(&added_value))) {
+          return failure();
+        } else {
+          add_rhs = q.getInput();
+        }
       }
     }
 
@@ -1211,74 +1332,45 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
         add_op.getLhs().getDefiningOp());
     if (!fc_op) return failure();
 
-    auto constant_val_type = mlir::cast<TensorType>(constant_val.getType());
-
-    // In TFLite FullyConnect definition, bias must be a 1D tensor where
-    // the number of elements is equal to the number of channels.
-    // If it's not 1D or 0D (which can be broadcasted to 1D), reject the
-    // matching.
-    bool is_scalar_rhs = false;
-    if (constant_val_type.getRank() == 0) {
-      is_scalar_rhs = true;
-    } else if (constant_val_type.getRank() > 1) {
-      return failure();
+    // If the FC op has more than one use, don't fuse, as it will duplicate the
+    // FC.
+    if (!fc_op->hasOneUse()) {
+      return rewriter.notifyMatchFailure(
+          add_op, "FC op has multiple uses, skipping fusion");
     }
 
     Value filter = fc_op.getFilter();
     Value bias = fc_op.getBias();
     ElementsAttr bias_value;
-    const bool is_none_bias = mlir::isa<NoneType>(bias.getType());
     if (fc_op.getFusedActivationFunction() != "NONE") return failure();
 
-    if (!is_none_bias && !matchPattern(bias, m_Constant(&bias_value)))
+    // Get the number of channels if possible.
+    auto fc_info = GetFcNumChannelsAndFilterType(fc_op);
+    if (!fc_info) {
       return failure();
+    }
+    const auto &[num_channels, filter_element_type] = *fc_info;
 
-    // Rewrite
-    if (is_none_bias) {
-      if (is_scalar_rhs) {
-        // If the `constant_val` is scalar, we must the shape of filter
-        // to properly broadcast the scalar to `{num_channels}` shape.
+    auto bias_1d =
+        GetBiasIn1D(rewriter, bias, num_channels, filter_element_type);
+    // Get the added value as a 1D tensor.
+    auto add_rhs_1d = GetAs1DValue(rewriter, add_rhs, num_channels);
 
-        // Get the number of channels if possible.
-        auto filter_type = mlir::dyn_cast<RankedTensorType>(filter.getType());
-        // Filter must be a `2D` tensor with `{num_channels, num_features}`
-        // shape. The following check is rejecting unknown rank (-1).
-        if (filter_type == nullptr || filter_type.getRank() != 2) {
-          return failure();
-        }
-        int num_channels = filter_type.getShape()[0];
-
-        // Create a zero tensor with shape {num_channels}, and the type need
-        // to be the same as constant_val. This is a way to gracefully handle
-        // scalar tensor. The Add will always be constant-folded away
-        // regardless if `constant_val` is a scalar or not.
-        RankedTensorType type = RankedTensorType::get(
-            {num_channels}, constant_val_type.getElementType());
-        auto attr = rewriter.getZeroAttr(type);
-        bias = rewriter.create<arith::ConstantOp>(add_op.getLoc(), type, attr);
-        auto none_af = rewriter.getStringAttr("NONE");
-
-        bias =
-            rewriter.create<AddOp>(add_op.getLoc(), bias, constant_val, none_af)
-                .getOutput();
-      } else {
-        // If there no pre-existing bias and the `constant_val` is 1D, simply
-        // use `constant_val` as bias.
-        bias = constant_val;
-      }
-    } else {
-      bias = rewriter
-                 .create<AddOp>(add_op.getLoc(), bias, constant_val,
-                                rewriter.getStringAttr("NONE"))
-                 .getOutput();
+    if (!bias_1d.has_value() || !add_rhs_1d.has_value()) {
+      return failure();
     }
 
+    auto new_bias =
+        rewriter
+            .create<AddOp>(add_op.getLoc(), bias_1d.value(), add_rhs_1d.value(),
+                           rewriter.getStringAttr("NONE"))
+            .getOutput();
     auto fc = rewriter.create<TFL::FullyConnectedOp>(
         FusedLoc::get(fc_op.getContext(), {fc_op.getLoc(), add_op.getLoc()}),
         add_op.getType(),
         /*input=*/fc_op.getInput(),
         /*filter=*/filter,
-        /*bias=*/bias,
+        /*bias=*/new_bias,
         /*fused_activation_function=*/
         rewriter.getStringAttr(add_op.getFusedActivationFunction()),
         /*weights_format=*/rewriter.getStringAttr(fc_op.getWeightsFormat()),
@@ -3019,8 +3111,7 @@ void OptimizePass::runOnOperation() {
   RewritePatternSet phase_2_patterns(&getContext());
   TFL::populateWithGenerated(phase_2_patterns);
   phase_2_patterns.add<
-      UndoBroadcastFullyConnectedBiasAddWithQDQs, FuseLogSoftmax,
-      FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
+      FuseLogSoftmax, FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
       FuseFullyConnectedAndMul, FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
       FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
       FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,

@@ -21,8 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/log/check.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -432,6 +432,56 @@ bool CheckUniformReplicaGroups(const HloChannelInstruction* instruction) {
   });
 }
 
+std::optional<CollectiveUsers> FindUniqueDynamicSliceUserFromCollective(
+    const HloChannelInstruction* absl_nonnull instruction,
+    bool allow_multiple_users, bool allow_intervening_reshape,
+    bool allow_intervening_bitcast) {
+  if (instruction->user_count() == 0) {
+    return std::nullopt;
+  }
+
+  HloInstruction* user = instruction->users()[0];
+  if (allow_multiple_users) {
+    for (HloInstruction* some_user : instruction->users()) {
+      if ((allow_intervening_reshape &&
+           some_user->opcode() == HloOpcode::kReshape) ||
+          some_user->opcode() == HloOpcode::kDynamicSlice) {
+        user = some_user;
+        break;
+      }
+    }
+  }
+
+  CollectiveUsers result;
+  if (allow_intervening_reshape) {
+    if (user->opcode() == HloOpcode::kReshape) {
+      if (user->user_count() != 1) {
+        VLOG(2) << "Reshape user count > 1 for " << user->ToString();
+        return std::nullopt;
+      }
+      result.reshape = user;
+      user = user->users().front();
+    }
+  }
+
+  if (allow_intervening_bitcast) {
+    if (user->opcode() == HloOpcode::kBitcast) {
+      if (user->user_count() != 1) {
+        VLOG(2) << "Bitcast user count > 1 for " << user->ToString();
+        return std::nullopt;
+      }
+      result.bitcast = user;
+      user = user->users().front();
+    }
+  }
+
+  if (user->opcode() == HloOpcode::kDynamicSlice) {
+    result.dynamic_slice = user;
+    return result;
+  }
+  return std::nullopt;
+}
+
 std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
     const HloChannelInstruction* instruction, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims,
@@ -461,47 +511,18 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
     return std::nullopt;
   }
 
-  // Always assume first user to start.
-  HloInstruction* user = instruction->users()[0];
-  if (allow_multiple_users) {
-    // If we find a reshape or dynamic-slice use that.
-    for (auto* some_user : instruction->users()) {
-      if ((allow_intervening_reshape &&
-           some_user->opcode() == HloOpcode::kReshape) ||
-          some_user->opcode() == HloOpcode::kDynamicSlice) {
-        user = some_user;
-        break;
-      }
-    }
-  }
-  HloInstruction* reshape = nullptr;
-  if (allow_intervening_reshape && user->opcode() == HloOpcode::kReshape) {
-    // Allow the intervening reshape if it reshapes just the non scattered
-    // dimension (checked later).
-    reshape = user;
-    if (reshape->user_count() != 1) {
-      VLOG(2) << "Reshape following all-reduce has user count > 1"
-              << reshape->ToString();
-      return std::nullopt;
-    }
-    user = reshape->users().front();
-  }
-  HloInstruction* bitcast = nullptr;
-  if (allow_intervening_bitcast && user->opcode() == HloOpcode::kBitcast) {
-    VLOG(2) << "Allowing intervening bitcast " << user->ToString();
-    bitcast = user;
-    if (bitcast->user_count() != 1) {
-      VLOG(2) << "Bitcast following all-reduce has user count > 1"
-              << bitcast->ToString();
-      return std::nullopt;
-    }
-    user = bitcast->users().front();
-  }
+  std::optional<CollectiveUsers> ds_user =
+      FindUniqueDynamicSliceUserFromCollective(
+          instruction, allow_multiple_users, allow_intervening_reshape,
+          allow_intervening_bitcast);
 
-  if (user->opcode() != HloOpcode::kDynamicSlice) {
-    VLOG(2) << "AG or AR user is not dynamic slice " << user->ToString();
+  if (!ds_user.has_value()) {
+    VLOG(2) << "AG or AR user is not dynamic slice " << instruction->ToString();
     return std::nullopt;
   }
+
+  HloInstruction* user = ds_user->dynamic_slice;
+  HloInstruction* reshape = ds_user->reshape;
 
   ReduceScatterSpec spec;
   int64_t group_size;

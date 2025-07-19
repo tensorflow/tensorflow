@@ -213,12 +213,19 @@ DecanonicalizationInfo FullyDecanonicalize(
   return IotaTileAssignment(dims, dims_span, perm_span);
 }
 
-Array<int64_t> IotaTileAssignment::ToArray() const {
-  Array<int64_t> array(reshape_dims());
+// Materializes array representation of IotaTileAssignment.
+Array<int64_t> ToArray(absl::Span<const int64_t> reshape_dims,
+                       absl::Span<const int> transpose_perm,
+                       absl::Span<const int64_t> dims) {
+  Array<int64_t> array(reshape_dims);
   array.FillIota(0);
-  array.TransposeDimensions(transpose_perm());
-  array.Reshape(dims());
+  array.TransposeDimensions(transpose_perm);
+  array.Reshape(dims);
   return array;
+}
+
+Array<int64_t> IotaTileAssignment::ToArray() const {
+  return ::xla::ToArray(reshape_dims(), transpose_perm(), dims());
 }
 
 IotaTileAssignment::IotaTileAssignment(const IotaTileAssignment& other)

@@ -66,9 +66,13 @@ constexpr size_t kSmallDataTransferByteSize = 102400;  // 100 KiB
 
 void CpuTrackedDeviceEventPromise::Set(
     tsl::RCReference<PjRtDeviceEvent> event) {
-  auto tpu_event =
+  auto cpu_event =
       tensorflow::down_cast<CpuTrackedDeviceEvent*>(event.get())->event();
-  av_->ForwardTo(std::move(tpu_event));
+  av_->ForwardTo(std::move(cpu_event));
+}
+
+void CpuTrackedDeviceEventPromise::SetReady() {
+  av_->ForwardTo(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
 }
 
 PjRtFuture<> CpuTrackedDeviceEvent::GetReadyFuture() {

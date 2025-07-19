@@ -85,7 +85,7 @@ using llvm_ir::SetToFirstInsertPoint;
 using xla::float8_fnuz_ir_emitter::EmitF8fnuzToFloating;
 using xla::float8_fnuz_ir_emitter::EmitFloatingToF8fnuz;
 
-using Intrinsic = xla::codegen::Intrinsic;
+using IntrinsicType = xla::codegen::intrinsics::Type;
 
 absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
     PrimitiveType src_ty, llvm::Value* x, int64_t dest_exponent_bits,
@@ -1310,8 +1310,9 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       // This is enabled explicitly by a flag only for XLA:CPU backend.
       if (options_.xla_cpu_use_truncate_f32_to_bf16_conversion) {
         if (from_type == F32 && to_type == BF16) {
-          llvm::Function* fptrunc = Intrinsic::FpTrunc::GetOrInsertDeclaration(
-              module_, Intrinsic::S(F32), Intrinsic::S(BF16));
+          llvm::Function* fptrunc =
+              codegen::intrinsics::FpTrunc::GetOrInsertDeclaration(
+                  module_, IntrinsicType::S(F32), IntrinsicType::S(BF16));
           return b_->CreateCall(fptrunc, {operand_value});
         }
         if (from_type == BF16 && to_type == F32) {
@@ -2646,8 +2647,8 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog(
 
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog1p(
     PrimitiveType prim_type, llvm::Value* value) {
-  llvm::Function* log1p =
-      Intrinsic::GetOrInsertDeclaration<Intrinsic::Log1p>(module_, prim_type);
+  llvm::Function* log1p = codegen::intrinsics::Log1p::GetOrInsertDeclaration(
+      module_, IntrinsicType::S(prim_type));
   return b_->CreateCall(log1p, {value});
 }
 
