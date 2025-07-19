@@ -1,6 +1,7 @@
 # Description:
 #   SYCL-platform specific StreamExecutor support code.
 
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load(
     "@local_config_sycl//sycl:build_defs.bzl",
     "if_sycl_is_configured",
@@ -23,6 +24,11 @@ package(
 package_group(
     name = "friends",
     packages = stream_executor_friends(),
+)
+
+build_test(
+    name = "stream_executor_sycl_build_test",
+    targets = [":stream_executor_sycl"],
 )
 
 cc_library(
