@@ -81,7 +81,9 @@ static inline std::optional<uint32_t> ParseDeviceOrdinal(
     device_name.remove_suffix(device_name.size() - pos);
   }
   uint32_t device_id;
-  if (absl::SimpleAtoi(device_name, &device_id)) return device_id;
+  if (absl::SimpleAtoi(device_name, &device_id)) {
+    return device_id;
+  }
   return std::nullopt;
 }
 
