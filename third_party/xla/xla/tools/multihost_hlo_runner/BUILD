@@ -136,7 +136,10 @@ cc_library(
     name = "hlo_input_output_format",
     srcs = ["hlo_input_output_format.cc"],
     hdrs = ["hlo_input_output_format.h"],
-    visibility = ["//devtools/ml/mlcompass:__subpackages__"],
+    visibility = [
+        "//devtools/ml/mlcompass:__subpackages__",
+        "//xla:internal",
+    ],
     deps = [
         "//xla/tsl/util:fixed_option_set_flag",
         "@com_google_absl//absl/strings:string_view",
