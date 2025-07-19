@@ -1,334 +1,527 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/include/clang/AST/Decl.h b/clang/include/clang/AST/Decl.h
---- a/clang/include/clang/AST/Decl.h
-+++ b/clang/include/clang/AST/Decl.h
-@@ -888,13 +888,17 @@
-   bool HasICEInit : 1;
-   bool CheckedForICEInit : 1;
+diff -ruN --strip-trailing-cr a/clang/include/clang/Basic/SourceManager.h b/clang/include/clang/Basic/SourceManager.h
+--- a/clang/include/clang/Basic/SourceManager.h
++++ b/clang/include/clang/Basic/SourceManager.h
+@@ -824,12 +824,6 @@
  
-+  bool HasSideEffects : 1;
-+  bool CheckedForSideEffects : 1;
-+
-   LazyDeclStmtPtr Value;
-   APValue Evaluated;
+   mutable std::unique_ptr<SrcMgr::SLocEntry> FakeSLocEntryForRecovery;
  
-   EvaluatedStmt()
-       : WasEvaluated(false), IsEvaluating(false),
-         HasConstantInitialization(false), HasConstantDestruction(false),
--        HasICEInit(false), CheckedForICEInit(false) {}
-+        HasICEInit(false), CheckedForICEInit(false), HasSideEffects(false),
-+        CheckedForSideEffects(false) {}
- };
- 
- /// Represents a variable declaration or definition.
-@@ -1353,9 +1357,11 @@
-     return const_cast<VarDecl *>(this)->getInitializingDeclaration();
-   }
- 
--  /// Checks whether this declaration has an initializer with side effects,
--  /// without triggering deserialization if the initializer is not yet
--  /// deserialized.
-+  /// Checks whether this declaration has an initializer with side effects.
-+  /// The result is cached. If the result hasn't been computed this can trigger
-+  /// deserialization and constant evaluation. By running this during
-+  /// serialization and serializing the result all clients can safely call this
-+  /// without triggering further deserialization.
-   bool hasInitWithSideEffects() const;
- 
-   /// Determine whether this variable's value might be usable in a
-diff -ruN --strip-trailing-cr a/clang/include/clang/AST/ExternalASTSource.h b/clang/include/clang/AST/ExternalASTSource.h
---- a/clang/include/clang/AST/ExternalASTSource.h
-+++ b/clang/include/clang/AST/ExternalASTSource.h
-@@ -196,10 +196,6 @@
-   /// module.
-   virtual bool wasThisDeclarationADefinition(const FunctionDecl *FD);
- 
--  virtual bool hasInitializerWithSideEffects(const VarDecl *VD) const {
--    return false;
--  }
+-  /// Cache for filenames used in diagnostics. See 'getNameForDiagnostic()'.
+-  mutable llvm::StringMap<StringRef> DiagNames;
 -
-   /// Finds all declarations lexically contained within the given
-   /// DeclContext, after applying an optional filter predicate.
-   ///
-@@ -433,17 +429,6 @@
-     }
-     return GetPtr();
-   }
+-  /// Allocator for absolute/short names.
+-  mutable llvm::BumpPtrAllocator DiagNameAlloc;
 -
--  /// Retrieve the pointer to the AST node that this lazy pointer points to,
--  /// if it can be done without triggering deserialization.
--  ///
--  /// \returns a pointer to the AST node, or null if not yet deserialized.
--  T *getWithoutDeserializing() const {
--    if (isOffset()) {
--      return nullptr;
--    }
--    return GetPtr();
--  }
+   /// Lazily computed map of macro argument chunks to their expanded
+   /// source location.
+   using MacroArgsMap = std::map<unsigned, SourceLocation>;
+@@ -1854,16 +1848,6 @@
+   /// \return Location of the top-level macro caller.
+   SourceLocation getTopMacroCallerLoc(SourceLocation Loc) const;
  
-   /// Retrieve the address of the AST node pointer. Deserializes the pointee if
-   /// necessary.
-diff -ruN --strip-trailing-cr a/clang/include/clang/Sema/MultiplexExternalSemaSource.h b/clang/include/clang/Sema/MultiplexExternalSemaSource.h
---- a/clang/include/clang/Sema/MultiplexExternalSemaSource.h
-+++ b/clang/include/clang/Sema/MultiplexExternalSemaSource.h
-@@ -94,8 +94,6 @@
- 
-   bool wasThisDeclarationADefinition(const FunctionDecl *FD) override;
- 
--  bool hasInitializerWithSideEffects(const VarDecl *VD) const override;
+-  /// Retrieve the name of a file suitable for diagnostics.
+-  // FIXME: Passing in the DiagnosticOptions here is a workaround for the
+-  // fact that installapi does some weird things with DiagnosticsEngines,
+-  // which causes the 'Diag' member of SourceManager (or at least the
+-  // DiagnosticsOptions member thereof) to be a dangling reference
+-  // sometimes. We should probably fix that or decouple the two classes
+-  // to avoid this issue entirely.
+-  StringRef getNameForDiagnostic(StringRef Filename,
+-                                 const DiagnosticOptions &Opts) const;
 -
-   /// Find all declarations with the given name in the
-   /// given context.
-   bool FindExternalVisibleDeclsByName(const DeclContext *DC,
-diff -ruN --strip-trailing-cr a/clang/include/clang/Serialization/ASTReader.h b/clang/include/clang/Serialization/ASTReader.h
---- a/clang/include/clang/Serialization/ASTReader.h
-+++ b/clang/include/clang/Serialization/ASTReader.h
-@@ -1453,12 +1453,6 @@
-     const StringRef &operator*() && = delete;
-   };
- 
--  /// VarDecls with initializers containing side effects must be emitted,
--  /// but DeclMustBeEmitted is not allowed to deserialize the intializer.
--  /// FIXME: Lower memory usage by removing VarDecls once the initializer
--  /// is deserialized.
--  llvm::SmallPtrSet<Decl *, 16> InitSideEffectVars;
--
- public:
-   /// Get the buffer for resolving paths.
-   SmallString<0> &getPathBuf() { return PathBuf; }
-@@ -2410,8 +2404,6 @@
- 
-   bool wasThisDeclarationADefinition(const FunctionDecl *FD) override;
- 
--  bool hasInitializerWithSideEffects(const VarDecl *VD) const override;
--
-   /// Retrieve a selector from the given module with its local ID
-   /// number.
-   Selector getLocalSelector(ModuleFile &M, unsigned LocalID);
-diff -ruN --strip-trailing-cr a/clang/lib/AST/Decl.cpp b/clang/lib/AST/Decl.cpp
---- a/clang/lib/AST/Decl.cpp
-+++ b/clang/lib/AST/Decl.cpp
-@@ -2444,24 +2444,17 @@
-   if (!hasInit())
-     return false;
- 
--  // Check if we can get the initializer without deserializing
--  const Expr *E = nullptr;
--  if (auto *S = dyn_cast<Stmt *>(Init)) {
--    E = cast<Expr>(S);
--  } else {
--    E = cast_or_null<Expr>(getEvaluatedStmt()->Value.getWithoutDeserializing());
-+  EvaluatedStmt *ES = ensureEvaluatedStmt();
-+  if (!ES->CheckedForSideEffects) {
-+    const Expr *E = getInit();
-+    ES->HasSideEffects =
-+        E->HasSideEffects(getASTContext()) &&
-+        // We can get a value-dependent initializer during error recovery.
-+        (E->isValueDependent() || getType()->isDependentType() ||
-+         !evaluateValue());
-+    ES->CheckedForSideEffects = true;
-   }
--
--  if (E)
--    return E->HasSideEffects(getASTContext()) &&
--           // We can get a value-dependent initializer during error recovery.
--           (E->isValueDependent() || !evaluateValue());
--
--  assert(getEvaluatedStmt()->Value.isOffset());
--  // ASTReader tracks this without having to deserialize the initializer
--  if (auto Source = getASTContext().getExternalSource())
--    return Source->hasInitializerWithSideEffects(this);
--  return false;
-+  return ES->HasSideEffects;
+ private:
+   friend class ASTReader;
+   friend class ASTWriter;
+diff -ruN --strip-trailing-cr a/clang/lib/Basic/SourceManager.cpp b/clang/lib/Basic/SourceManager.cpp
+--- a/clang/lib/Basic/SourceManager.cpp
++++ b/clang/lib/Basic/SourceManager.cpp
+@@ -2390,75 +2390,3 @@
+   assert(ID.isValid());
+   SourceMgr->setMainFileID(ID);
  }
- 
- bool VarDecl::isOutOfLine() const {
-diff -ruN --strip-trailing-cr a/clang/lib/Sema/MultiplexExternalSemaSource.cpp b/clang/lib/Sema/MultiplexExternalSemaSource.cpp
---- a/clang/lib/Sema/MultiplexExternalSemaSource.cpp
-+++ b/clang/lib/Sema/MultiplexExternalSemaSource.cpp
-@@ -115,14 +115,6 @@
-   return false;
- }
- 
--bool MultiplexExternalSemaSource::hasInitializerWithSideEffects(
--    const VarDecl *VD) const {
--  for (const auto &S : Sources)
--    if (S->hasInitializerWithSideEffects(VD))
+-
+-StringRef
+-SourceManager::getNameForDiagnostic(StringRef Filename,
+-                                    const DiagnosticOptions &Opts) const {
+-  OptionalFileEntryRef File = getFileManager().getOptionalFileRef(Filename);
+-  if (!File)
+-    return Filename;
+-
+-  bool SimplifyPath = [&] {
+-    if (Opts.AbsolutePath)
 -      return true;
--  return false;
--}
 -
- bool MultiplexExternalSemaSource::FindExternalVisibleDeclsByName(
-     const DeclContext *DC, DeclarationName Name,
-     const DeclContext *OriginalDC) {
-diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTReader.cpp b/clang/lib/Serialization/ASTReader.cpp
---- a/clang/lib/Serialization/ASTReader.cpp
-+++ b/clang/lib/Serialization/ASTReader.cpp
-@@ -9725,10 +9725,6 @@
-   return ThisDeclarationWasADefinitionSet.contains(FD);
+-    // Try to simplify paths that contain '..' in any case since paths to
+-    // standard library headers especially tend to get quite long otherwise.
+-    // Only do that for local filesystems though to avoid slowing down
+-    // compilation too much.
+-    if (!File->getName().contains(".."))
+-      return false;
+-
+-    // If we're not on Windows, check if we're on a network file system and
+-    // avoid simplifying the path in that case since that can be slow. On
+-    // Windows, the check for a local filesystem is already slow, so skip it.
+-#ifndef _WIN32
+-    if (!llvm::sys::fs::is_local(File->getName()))
+-      return false;
+-#endif
+-
+-    return true;
+-  }();
+-
+-  if (!SimplifyPath)
+-    return Filename;
+-
+-  // This may involve computing canonical names, so cache the result.
+-  StringRef &CacheEntry = DiagNames[Filename];
+-  if (!CacheEntry.empty())
+-    return CacheEntry;
+-
+-  // We want to print a simplified absolute path, i. e. without "dots".
+-  //
+-  // The hardest part here are the paths like "<part1>/<link>/../<part2>".
+-  // On Unix-like systems, we cannot just collapse "<link>/..", because
+-  // paths are resolved sequentially, and, thereby, the path
+-  // "<part1>/<part2>" may point to a different location. That is why
+-  // we use FileManager::getCanonicalName(), which expands all indirections
+-  // with llvm::sys::fs::real_path() and caches the result.
+-  //
+-  // On the other hand, it would be better to preserve as much of the
+-  // original path as possible, because that helps a user to recognize it.
+-  // real_path() expands all links, which sometimes too much. Luckily,
+-  // on Windows we can just use llvm::sys::path::remove_dots(), because,
+-  // on that system, both aforementioned paths point to the same place.
+-  SmallString<256> TempBuf;
+-#ifdef _WIN32
+-  TempBuf = File->getName();
+-  llvm::sys::fs::make_absolute(TempBuf);
+-  llvm::sys::path::native(TempBuf);
+-  llvm::sys::path::remove_dots(TempBuf, /* remove_dot_dot */ true);
+-#else
+-  TempBuf = getFileManager().getCanonicalName(*File);
+-#endif
+-
+-  // In some cases, the resolved path may actually end up being longer (e.g.
+-  // if it was originally a relative path), so just retain whichever one
+-  // ends up being shorter.
+-  if (!Opts.AbsolutePath && TempBuf.size() > Filename.size())
+-    CacheEntry = Filename;
+-  else
+-    CacheEntry = TempBuf.str().copy(DiagNameAlloc);
+-
+-  return CacheEntry;
+-}
+diff -ruN --strip-trailing-cr a/clang/lib/Frontend/SARIFDiagnostic.cpp b/clang/lib/Frontend/SARIFDiagnostic.cpp
+--- a/clang/lib/Frontend/SARIFDiagnostic.cpp
++++ b/clang/lib/Frontend/SARIFDiagnostic.cpp
+@@ -163,7 +163,36 @@
+ 
+ llvm::StringRef SARIFDiagnostic::emitFilename(StringRef Filename,
+                                               const SourceManager &SM) {
+-  return SM.getNameForDiagnostic(Filename, DiagOpts);
++  if (DiagOpts.AbsolutePath) {
++    auto File = SM.getFileManager().getOptionalFileRef(Filename);
++    if (File) {
++      // We want to print a simplified absolute path, i. e. without "dots".
++      //
++      // The hardest part here are the paths like "<part1>/<link>/../<part2>".
++      // On Unix-like systems, we cannot just collapse "<link>/..", because
++      // paths are resolved sequentially, and, thereby, the path
++      // "<part1>/<part2>" may point to a different location. That is why
++      // we use FileManager::getCanonicalName(), which expands all indirections
++      // with llvm::sys::fs::real_path() and caches the result.
++      //
++      // On the other hand, it would be better to preserve as much of the
++      // original path as possible, because that helps a user to recognize it.
++      // real_path() expands all links, which is sometimes too much. Luckily,
++      // on Windows we can just use llvm::sys::path::remove_dots(), because,
++      // on that system, both aforementioned paths point to the same place.
++#ifdef _WIN32
++      SmallString<256> TmpFilename = File->getName();
++      llvm::sys::fs::make_absolute(TmpFilename);
++      llvm::sys::path::native(TmpFilename);
++      llvm::sys::path::remove_dots(TmpFilename, /* remove_dot_dot */ true);
++      Filename = StringRef(TmpFilename.data(), TmpFilename.size());
++#else
++      Filename = SM.getFileManager().getCanonicalName(*File);
++#endif
++    }
++  }
++
++  return Filename;
  }
  
--bool ASTReader::hasInitializerWithSideEffects(const VarDecl *VD) const {
--  return InitSideEffectVars.count(VD);
--}
--
- Selector ASTReader::getLocalSelector(ModuleFile &M, unsigned LocalID) {
-   return DecodeSelector(getGlobalSelectorID(M, LocalID));
+ /// Print out the file/line/column information and include trace.
+diff -ruN --strip-trailing-cr a/clang/lib/Frontend/TextDiagnostic.cpp b/clang/lib/Frontend/TextDiagnostic.cpp
+--- a/clang/lib/Frontend/TextDiagnostic.cpp
++++ b/clang/lib/Frontend/TextDiagnostic.cpp
+@@ -738,7 +738,39 @@
  }
-diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTReaderDecl.cpp b/clang/lib/Serialization/ASTReaderDecl.cpp
---- a/clang/lib/Serialization/ASTReaderDecl.cpp
-+++ b/clang/lib/Serialization/ASTReaderDecl.cpp
-@@ -1628,9 +1628,6 @@
-     VD->NonParmVarDeclBits.PreviousDeclInSameBlockScope =
-         VarDeclBits.getNextBit();
  
--    if (VarDeclBits.getNextBit())
--      Reader.InitSideEffectVars.insert(VD);
+ void TextDiagnostic::emitFilename(StringRef Filename, const SourceManager &SM) {
+-  OS << SM.getNameForDiagnostic(Filename, DiagOpts);
++#ifdef _WIN32
++  SmallString<4096> TmpFilename;
++#endif
++  if (DiagOpts.AbsolutePath) {
++    auto File = SM.getFileManager().getOptionalFileRef(Filename);
++    if (File) {
++      // We want to print a simplified absolute path, i. e. without "dots".
++      //
++      // The hardest part here are the paths like "<part1>/<link>/../<part2>".
++      // On Unix-like systems, we cannot just collapse "<link>/..", because
++      // paths are resolved sequentially, and, thereby, the path
++      // "<part1>/<part2>" may point to a different location. That is why
++      // we use FileManager::getCanonicalName(), which expands all indirections
++      // with llvm::sys::fs::real_path() and caches the result.
++      //
++      // On the other hand, it would be better to preserve as much of the
++      // original path as possible, because that helps a user to recognize it.
++      // real_path() expands all links, which sometimes too much. Luckily,
++      // on Windows we can just use llvm::sys::path::remove_dots(), because,
++      // on that system, both aforementioned paths point to the same place.
++#ifdef _WIN32
++      TmpFilename = File->getName();
++      llvm::sys::fs::make_absolute(TmpFilename);
++      llvm::sys::path::native(TmpFilename);
++      llvm::sys::path::remove_dots(TmpFilename, /* remove_dot_dot */ true);
++      Filename = StringRef(TmpFilename.data(), TmpFilename.size());
++#else
++      Filename = SM.getFileManager().getCanonicalName(*File);
++#endif
++    }
++  }
++
++  OS << Filename;
+ }
+ 
+ /// Print out the file/line/column information and include trace.
+diff -ruN --strip-trailing-cr a/clang/lib/Headers/CMakeLists.txt b/clang/lib/Headers/CMakeLists.txt
+--- a/clang/lib/Headers/CMakeLists.txt
++++ b/clang/lib/Headers/CMakeLists.txt
+@@ -347,6 +347,10 @@
+   cuda_wrappers/bits/basic_string.tcc
+ )
+ 
++set(cuda_wrapper_utility_files
++  cuda_wrappers/__utility/declval.h
++)
++
+ set(ppc_wrapper_files
+   ppc_wrappers/mmintrin.h
+   ppc_wrappers/xmmintrin.h
+@@ -443,8 +447,9 @@
+ 
+ # Copy header files from the source directory to the build directory
+ foreach( f ${files} ${cuda_wrapper_files} ${cuda_wrapper_bits_files}
+-           ${ppc_wrapper_files} ${openmp_wrapper_files} ${zos_wrapper_files} ${hlsl_files}
+-	   ${llvm_libc_wrapper_files} ${llvm_offload_wrapper_files})
++           ${cuda_wrapper_utility_files} ${ppc_wrapper_files} ${openmp_wrapper_files}
++           ${zos_wrapper_files} ${hlsl_files} ${llvm_libc_wrapper_files}
++           ${llvm_offload_wrapper_files})
+   copy_header_to_output_dir(${CMAKE_CURRENT_SOURCE_DIR} ${f})
+ endforeach( f )
+ 
+@@ -553,7 +558,7 @@
+ # Architecture/platform specific targets
+ add_header_target("arm-resource-headers" "${arm_only_files};${arm_only_generated_files}")
+ add_header_target("aarch64-resource-headers" "${aarch64_only_files};${aarch64_only_generated_files}")
+-add_header_target("cuda-resource-headers" "${cuda_files};${cuda_wrapper_files};${cuda_wrapper_bits_files}")
++add_header_target("cuda-resource-headers" "${cuda_files};${cuda_wrapper_files};${cuda_wrapper_bits_files};${cuda_wrapper_utility_files}")
+ add_header_target("hexagon-resource-headers" "${hexagon_files}")
+ add_header_target("hip-resource-headers" "${hip_files}")
+ add_header_target("loongarch-resource-headers" "${loongarch_files}")
+@@ -601,6 +606,11 @@
+   COMPONENT clang-resource-headers)
+ 
+ install(
++  FILES ${cuda_wrapper_utility_files}
++  DESTINATION ${header_install_dir}/cuda_wrappers/__utility
++  COMPONENT clang-resource-headers)
++
++install(
+   FILES ${ppc_wrapper_files}
+   DESTINATION ${header_install_dir}/ppc_wrappers
+   COMPONENT clang-resource-headers)
+@@ -663,6 +673,12 @@
+   EXCLUDE_FROM_ALL
+   COMPONENT cuda-resource-headers)
+ 
++install(
++  FILES ${cuda_wrapper_utility_files}
++  DESTINATION ${header_install_dir}/cuda_wrappers/__utility
++  EXCLUDE_FROM_ALL
++  COMPONENT cuda-resource-headers)
++
+ install(
+   FILES ${cuda_files}
+   DESTINATION ${header_install_dir}
+diff -ruN --strip-trailing-cr a/clang/lib/Headers/cuda_wrappers/__utility/declval.h b/clang/lib/Headers/cuda_wrappers/__utility/declval.h
+--- a/clang/lib/Headers/cuda_wrappers/__utility/declval.h
++++ b/clang/lib/Headers/cuda_wrappers/__utility/declval.h
+@@ -0,0 +1,28 @@
++#ifndef __CUDA_WRAPPERS_UTILITY_DECLVAL_H__
++#define __CUDA_WRAPPERS_UTILITY_DECLVAL_H__
++
++#include_next <__utility/declval.h>
++
++// The stuff below is the exact copy of the <__utility/declval.h>,
++// but with __device__ attribute applied to the functions, so it works on a GPU.
++
++_LIBCPP_BEGIN_NAMESPACE_STD
++
++// Suppress deprecation notice for volatile-qualified return type resulting
++// from volatile-qualified types _Tp.
++_LIBCPP_SUPPRESS_DEPRECATED_PUSH
++template <class _Tp> __attribute__((device)) _Tp &&__declval(int);
++template <class _Tp> __attribute__((device)) _Tp __declval(long);
++_LIBCPP_SUPPRESS_DEPRECATED_POP
++
++template <class _Tp>
++__attribute__((device)) _LIBCPP_HIDE_FROM_ABI decltype(std::__declval<_Tp>(0))
++declval() _NOEXCEPT {
++  static_assert(!__is_same(_Tp, _Tp),
++                "std::declval can only be used in an unevaluated context. "
++                "It's likely that your current usage is trying to extract a "
++                "value from the function.");
++}
++
++_LIBCPP_END_NAMESPACE_STD
++#endif // __CUDA_WRAPPERS_UTILITY_DECLVAL_H__
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/AnalysisBasedWarnings.cpp b/clang/lib/Sema/AnalysisBasedWarnings.cpp
+--- a/clang/lib/Sema/AnalysisBasedWarnings.cpp
++++ b/clang/lib/Sema/AnalysisBasedWarnings.cpp
+@@ -1969,11 +1969,26 @@
+ 
+   void handleNoMutexHeld(const NamedDecl *D, ProtectedOperationKind POK,
+                          AccessKind AK, SourceLocation Loc) override {
+-    assert((POK == POK_VarAccess || POK == POK_VarDereference) &&
+-           "Only works for variables");
+-    unsigned DiagID = POK == POK_VarAccess?
+-                        diag::warn_variable_requires_any_lock:
+-                        diag::warn_var_deref_requires_any_lock;
++    unsigned DiagID = 0;
++    switch (POK) {
++    case POK_VarAccess:
++    case POK_PassByRef:
++    case POK_ReturnByRef:
++    case POK_PassPointer:
++    case POK_ReturnPointer:
++      DiagID = diag::warn_variable_requires_any_lock;
++      break;
++    case POK_VarDereference:
++    case POK_PtPassByRef:
++    case POK_PtReturnByRef:
++    case POK_PtPassPointer:
++    case POK_PtReturnPointer:
++      DiagID = diag::warn_var_deref_requires_any_lock;
++      break;
++    case POK_FunctionCall:
++      llvm_unreachable("Only works for variables");
++      break;
++    }
+     PartialDiagnosticAt Warning(Loc, S.PDiag(DiagID)
+       << D << getLockKindFromAccessKind(AK));
+     Warnings.emplace_back(std::move(Warning), getNotes());
+diff -ruN --strip-trailing-cr a/clang/test/Frontend/absolute-paths.c b/clang/test/Frontend/absolute-paths.c
+--- a/clang/test/Frontend/absolute-paths.c
++++ b/clang/test/Frontend/absolute-paths.c
+@@ -8,9 +8,9 @@
+ 
+ #include "absolute-paths.h"
+ 
+-// Check that the bogus prefix we added is stripped out even if absolute paths
+-// are disabled.
+-// NORMAL-NOT: SystemHeaderPrefix
++// Check whether the diagnostic from the header above includes the dummy
++// directory in the path.
++// NORMAL: SystemHeaderPrefix
+ // ABSOLUTE-NOT: SystemHeaderPrefix
+ // CHECK: warning: non-void function does not return a value
+ 
+diff -ruN --strip-trailing-cr a/clang/test/Frontend/simplify-paths.c b/clang/test/Frontend/simplify-paths.c
+--- a/clang/test/Frontend/simplify-paths.c
++++ b/clang/test/Frontend/simplify-paths.c
+@@ -1,18 +0,0 @@
+-// REQUIRES: shell
 -
-     VD->NonParmVarDeclBits.EscapingByref = VarDeclBits.getNextBit();
-     HasDeducedType = VarDeclBits.getNextBit();
-     VD->NonParmVarDeclBits.ImplicitParamKind =
-@@ -1701,6 +1698,8 @@
-     Eval->HasConstantInitialization = (Val & 2) != 0;
-     Eval->HasConstantDestruction = (Val & 4) != 0;
-     Eval->WasEvaluated = (Val & 8) != 0;
-+    Eval->HasSideEffects = (Val & 16) != 0;
-+    Eval->CheckedForSideEffects = true;
-     if (Eval->WasEvaluated) {
-       Eval->Evaluated = Record.readAPValue();
-       if (Eval->Evaluated.needsCleanup())
-diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTWriter.cpp b/clang/lib/Serialization/ASTWriter.cpp
---- a/clang/lib/Serialization/ASTWriter.cpp
-+++ b/clang/lib/Serialization/ASTWriter.cpp
-@@ -7320,6 +7320,10 @@
+-// RUN: rm -rf %t
+-// RUN: mkdir -p %t/a/b/
+-// RUN: echo 'void x;' > %t/test.h
+-// RUN: echo 'const void x;' > %t/header_with_a_really_long_name.h
+-// RUN: ln -s %t/header_with_a_really_long_name.h %t/a/shorter_name.h
+-//
+-// RUN: %clang_cc1 -fsyntax-only -I %t %s 2> %t/output.txt || true
+-// RUN: cat %t/output.txt | FileCheck %s
+-
+-// Check that we strip '..' by canonicalising the path...
+-#include "a/b/../../test.h"
+-// CHECK: simplify-paths.c.tmp/test.h:1:6: error: variable has incomplete type 'void'
+-
+-// ... but only if the resulting path is actually shorter.
+-#include "a/b/../shorter_name.h"
+-// CHECK: simplify-paths.c.tmp/a/b/../shorter_name.h:1:12: error: variable has incomplete type 'const void'
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/warn-thread-safety-analysis.cpp b/clang/test/SemaCXX/warn-thread-safety-analysis.cpp
+--- a/clang/test/SemaCXX/warn-thread-safety-analysis.cpp
++++ b/clang/test/SemaCXX/warn-thread-safety-analysis.cpp
+@@ -6196,6 +6196,8 @@
+   Mutex mu;
+   Foo foo GUARDED_BY(mu);
+   Foo* foo_ptr PT_GUARDED_BY(mu);
++  Foo foo_depr GUARDED_VAR;          // test deprecated attribute
++  Foo* foo_ptr_depr PT_GUARDED_VAR;  // test deprecated attribute
  
-   uint64_t Val = 1;
-   if (EvaluatedStmt *ES = VD->getEvaluatedStmt()) {
-+    // This may trigger evaluation, so run it first
-+    if (VD->hasInitWithSideEffects())
-+      Val |= 16;
-+    assert(ES->CheckedForSideEffects);
-     Val |= (ES->HasConstantInitialization ? 2 : 0);
-     Val |= (ES->HasConstantDestruction ? 4 : 0);
-     APValue *Evaluated = VD->getEvaluatedValue();
-diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTWriterDecl.cpp b/clang/lib/Serialization/ASTWriterDecl.cpp
---- a/clang/lib/Serialization/ASTWriterDecl.cpp
-+++ b/clang/lib/Serialization/ASTWriterDecl.cpp
-@@ -1305,7 +1305,6 @@
-     VarDeclBits.addBit(D->isConstexpr());
-     VarDeclBits.addBit(D->isInitCapture());
-     VarDeclBits.addBit(D->isPreviousDeclInSameBlockScope());
--    VarDeclBits.addBit(D->hasInitWithSideEffects());
+   Foo returns_value_locked() {
+     MutexLock lock(&mu);
+@@ -6297,6 +6299,18 @@
+     return *foo_ptr;          // expected-warning {{returning the value that 'foo_ptr' points to by reference requires holding mutex 'mu' exclusively}}
+   }
  
-     VarDeclBits.addBit(D->isEscapingByref());
-     HasDeducedType = D->getType()->getContainedDeducedType();
-diff -ruN --strip-trailing-cr a/clang/test/Driver/autocomplete.c b/clang/test/Driver/autocomplete.c
---- a/clang/test/Driver/autocomplete.c
-+++ b/clang/test/Driver/autocomplete.c
-@@ -111,6 +111,7 @@
- // RUN: %clang --autocomplete=-Wma | FileCheck %s -check-prefix=WARNING
- // WARNING: -Wmacro-redefined
- // WARNING-NEXT: -Wmain
-+// WARNING-NEXT: -Wmain-attached-to-named-module
- // WARNING-NEXT: -Wmain-return-type
- // WARNING-NEXT: -Wmalformed-warning-check
- // WARNING-NEXT: -Wmany-braces-around-scalar-init
-diff -ruN --strip-trailing-cr a/clang/test/Modules/var-init-side-effects-modulemap.cpp b/clang/test/Modules/var-init-side-effects-modulemap.cpp
---- a/clang/test/Modules/var-init-side-effects-modulemap.cpp
-+++ b/clang/test/Modules/var-init-side-effects-modulemap.cpp
-@@ -0,0 +1,51 @@
-+// RUN: rm -rf %t
-+// RUN: mkdir -p %t
-+// RUN: split-file %s %t
++  Foo *returns_ptr_deprecated() {
++    return &foo_depr;          // expected-warning {{writing variable 'foo_depr' requires holding any mutex exclusively}}
++  }
 +
-+// RUN: %clang_cc1 -fsyntax-only -fmodules -fmodules-cache-path=%t -fmodule-map-file=%t/module.modulemap  %t/test.cppm -I%t
-+//
++  Foo *returns_pt_ptr_deprecated() {
++    return foo_ptr_depr;       // expected-warning {{writing the value pointed to by 'foo_ptr_depr' requires holding any mutex exclusively}}
++  }
 +
-+//--- test.cppm
-+#pragma clang module import Baz
++  Foo &returns_ref_deprecated() {
++    return *foo_ptr_depr;      // expected-warning {{writing the value pointed to by 'foo_ptr_depr' requires holding any mutex exclusively}}
++  }
 +
-+//--- Foo.h
-+#pragma once
-+class foo {
-+  char dummy = 1;
-+
-+public:
-+  static foo var;
-+
-+};
-+
-+inline foo foo::var;
-+
-+//--- Bar.h
-+#pragma once
-+#include <Foo.h>
-+
-+void bar() {
-+  (void) foo::var;
-+}
-+
-+//--- Baz.h
-+#pragma once
-+#include <Foo.h>
-+
-+void baz() {
-+  (void) foo::var;
-+}
-+
-+#include <Bar.h>
-+
-+//--- module.modulemap
-+module Foo {
-+  header "Foo.h"
-+}
-+module Bar {
-+  header "Bar.h"
-+}
-+module Baz {
-+  header "Baz.h"
-+}
-+
-diff -ruN --strip-trailing-cr a/clang/test/Modules/var-init-side-effects-templated.cpp b/clang/test/Modules/var-init-side-effects-templated.cpp
---- a/clang/test/Modules/var-init-side-effects-templated.cpp
-+++ b/clang/test/Modules/var-init-side-effects-templated.cpp
-@@ -0,0 +1,20 @@
-+// Tests referencing variable with initializer containing side effect across module boundary
-+
-+// RUN: %clang_cc1 -std=c++20 -emit-module-interface %s -o %t
-+
-+export module Foo;
-+
-+export template <class Float>
-+struct Wrapper {
-+  double value;
-+};
-+
-+export constexpr Wrapper<double> Compute() {
-+  return Wrapper<double>{1.0};
-+}
-+
-+export template <typename Float>
-+Wrapper<Float> ComputeInFloat() {
-+  const Wrapper<Float> a = Compute();
-+  return a;
-+}
-diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
---- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
-+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
-@@ -18090,8 +18090,7 @@
+   // FIXME: Basic alias analysis would help catch cases like below.
+   Foo *returns_ptr_alias() {
+     mu.Lock();
+diff -ruN --strip-trailing-cr a/clang-tools-extra/test/clang-tidy/infrastructure/file-filter-symlinks.cpp b/clang-tools-extra/test/clang-tidy/infrastructure/file-filter-symlinks.cpp
+--- a/clang-tools-extra/test/clang-tidy/infrastructure/file-filter-symlinks.cpp
++++ b/clang-tools-extra/test/clang-tidy/infrastructure/file-filter-symlinks.cpp
+@@ -12,9 +12,8 @@
+ // RUN: clang-tidy -checks='-*,google-explicit-constructor' -header-filter='header\.h' %s -- -I %t 2>&1 | FileCheck --check-prefix=CHECK_HEADER %s
+ // RUN: clang-tidy -checks='-*,google-explicit-constructor' -header-filter='header\.h' -quiet %s -- -I %t 2>&1 | FileCheck --check-prefix=CHECK_HEADER %s
  
-   // FIXME: use fast math flags instead of Options.UnsafeFPMath
-   // TODO: Finally migrate away from global TargetOptions.
--  if (Options.AllowFPOpFusion == FPOpFusion::Fast ||
--      (Options.NoNaNsFPMath && Options.NoInfsFPMath) ||
-+  if ((Options.NoNaNsFPMath && Options.NoInfsFPMath) ||
-       (N->getFlags().hasNoNaNs() && N->getFlags().hasNoInfs())) {
-     if (Options.NoSignedZerosFPMath || N->getFlags().hasNoSignedZeros() ||
-         (N2CFP && !N2CFP->isExactlyValue(-0.0))) {
+-// `-header-filter` operates on the actual file path that the user provided in
+-// the #include directive; however, Clang's path name simplification causes the
+-// path to be printed in canonicalised form here.
++// Check that `-header-filter` operates on the same file paths as paths in
++// diagnostics printed by ClangTidy.
+ #include "dir1/dir2/../header_alias.h"
+-// CHECK_HEADER_ALIAS: dir1/header.h:1:11: warning: single-argument constructors
++// CHECK_HEADER_ALIAS: dir1/dir2/../header_alias.h:1:11: warning: single-argument constructors
+ // CHECK_HEADER-NOT: warning:
+diff -ruN --strip-trailing-cr a/libcxx/include/unordered_map b/libcxx/include/unordered_map
+--- a/libcxx/include/unordered_map
++++ b/libcxx/include/unordered_map
+@@ -967,9 +967,8 @@
+   typedef __hash_value_type<key_type, mapped_type> __value_type;
+   typedef __unordered_map_hasher<key_type, value_type, hasher, key_equal> __hasher;
+   typedef __unordered_map_equal<key_type, value_type, key_equal, hasher> __key_equal;
+-  typedef __rebind_alloc<allocator_traits<allocator_type>, __value_type> __allocator_type;
+ 
+-  typedef __hash_table<__value_type, __hasher, __key_equal, __allocator_type> __table;
++  typedef __hash_table<__value_type, __hasher, __key_equal, allocator_type> __table;
+ 
+   __table __table_;
+ 
+@@ -1777,9 +1776,8 @@
+   typedef __hash_value_type<key_type, mapped_type> __value_type;
+   typedef __unordered_map_hasher<key_type, value_type, hasher, key_equal> __hasher;
+   typedef __unordered_map_equal<key_type, value_type, key_equal, hasher> __key_equal;
+-  typedef __rebind_alloc<allocator_traits<allocator_type>, __value_type> __allocator_type;
+ 
+-  typedef __hash_table<__value_type, __hasher, __key_equal, __allocator_type> __table;
++  typedef __hash_table<__value_type, __hasher, __key_equal, allocator_type> __table;
+ 
+   __table __table_;
+ 
+diff -ruN --strip-trailing-cr a/libcxx/test/std/containers/associative/multimap/incomplete_type.pass.cpp b/libcxx/test/std/containers/associative/multimap/incomplete_type.pass.cpp
+--- a/libcxx/test/std/containers/associative/multimap/incomplete_type.pass.cpp
++++ b/libcxx/test/std/containers/associative/multimap/incomplete_type.pass.cpp
+@@ -13,6 +13,7 @@
+ 
+ #include <map>
+ 
++#include "min_allocator.h"
+ #include "test_macros.h"
+ 
+ struct A {
+@@ -28,5 +29,8 @@
+ int main(int, char**) {
+   A a;
+ 
++  // Make sure that the allocator isn't rebound to and incomplete type
++  std::multimap<int, int, std::less<int>, complete_type_allocator<std::pair<const int, int> > > m;
++
+   return 0;
+ }
+diff -ruN --strip-trailing-cr a/libcxx/test/std/containers/unord/unord.map/incomplete_type.pass.cpp b/libcxx/test/std/containers/unord/unord.map/incomplete_type.pass.cpp
+--- a/libcxx/test/std/containers/unord/unord.map/incomplete_type.pass.cpp
++++ b/libcxx/test/std/containers/unord/unord.map/incomplete_type.pass.cpp
+@@ -14,6 +14,7 @@
+ 
+ #include <unordered_map>
+ 
++#include "min_allocator.h"
+ #include "test_macros.h"
+ 
+ template <class Tp>
+@@ -36,5 +37,9 @@
+ int main(int, char**) {
+   A a;
+ 
++  // Make sure that the allocator isn't rebound to an incomplete type
++  std::unordered_map<int, int, std::hash<int>, std::equal_to<int>, complete_type_allocator<std::pair<const int, int> > >
++      m;
++
+   return 0;
+ }
+diff -ruN --strip-trailing-cr a/libcxx/test/std/containers/unord/unord.multimap/incomplete.pass.cpp b/libcxx/test/std/containers/unord/unord.multimap/incomplete.pass.cpp
+--- a/libcxx/test/std/containers/unord/unord.multimap/incomplete.pass.cpp
++++ b/libcxx/test/std/containers/unord/unord.multimap/incomplete.pass.cpp
+@@ -14,6 +14,7 @@
+ 
+ #include <unordered_map>
+ 
++#include "min_allocator.h"
+ #include "test_macros.h"
+ 
+ template <class Tp>
+@@ -36,5 +37,13 @@
+ int main(int, char**) {
+   A a;
+ 
++  // Make sure that the allocator isn't rebound to an incomplete type
++  std::unordered_multimap<int,
++                          int,
++                          std::hash<int>,
++                          std::equal_to<int>,
++                          complete_type_allocator<std::pair<const int, int> > >
++      m;
++
+   return 0;
+ }
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Coroutines/CoroSplit.cpp b/llvm/lib/Transforms/Coroutines/CoroSplit.cpp
+--- a/llvm/lib/Transforms/Coroutines/CoroSplit.cpp
++++ b/llvm/lib/Transforms/Coroutines/CoroSplit.cpp
+@@ -1484,12 +1484,9 @@
+     // If there is no DISubprogram for F, it implies the function is compiled
+     // without debug info. So we also don't generate debug info for the
+     // suspension points.
+-    bool AddDebugLabels =
+-        (DIS && DIS->getUnit() &&
+-         (DIS->getUnit()->getEmissionKind() ==
+-              DICompileUnit::DebugEmissionKind::FullDebug ||
+-          DIS->getUnit()->getEmissionKind() ==
+-              DICompileUnit::DebugEmissionKind::LineTablesOnly));
++    bool AddDebugLabels = DIS && DIS->getUnit() &&
++                          (DIS->getUnit()->getEmissionKind() ==
++                           DICompileUnit::DebugEmissionKind::FullDebug);
+ 
+     // resume.entry:
+     //  %index.addr = getelementptr inbounds %f.Frame, %f.Frame* %FramePtr, i32
 diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp b/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
 --- a/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
 +++ b/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
-@@ -10101,8 +10101,7 @@
+@@ -10061,8 +10061,7 @@
    // Get user vectorization factor and interleave count.
    ElementCount UserVF = Hints.getWidth();
    unsigned UserIC = Hints.getInterleave();
@@ -338,42 +531,44 @@ diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp 
      UserIC = 1;
      reportVectorizationInfo("Interleaving not supported for loops "
                              "with uncountable early exits",
-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/VPlanUnroll.cpp b/llvm/lib/Transforms/Vectorize/VPlanUnroll.cpp
---- a/llvm/lib/Transforms/Vectorize/VPlanUnroll.cpp
-+++ b/llvm/lib/Transforms/Vectorize/VPlanUnroll.cpp
-@@ -486,6 +486,7 @@
-   auto *New =
-       new VPReplicateRecipe(RepR->getUnderlyingInstr(), NewOps,
-                             /*IsSingleScalar=*/true, /*Mask=*/nullptr, *RepR);
-+  New->transferFlags(*RepR);
-   New->insertBefore(RepR);
-   return New;
- }
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/dag-combiner-fma-folding.ll b/llvm/test/CodeGen/X86/dag-combiner-fma-folding.ll
---- a/llvm/test/CodeGen/X86/dag-combiner-fma-folding.ll
-+++ b/llvm/test/CodeGen/X86/dag-combiner-fma-folding.ll
-@@ -1,5 +1,6 @@
- ; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
- ; RUN: llc -mtriple=x86_64-- --start-before=x86-isel -mattr=+avx,+fma %s -o - | FileCheck %s
-+; RUN: llc -mtriple=x86_64-- --start-before=x86-isel -mattr=+avx,+fma %s -o - -fp-contract=fast | FileCheck %s
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/Coroutines/coro-split-dbg-labels.ll b/llvm/test/Transforms/Coroutines/coro-split-dbg-labels.ll
+--- a/llvm/test/Transforms/Coroutines/coro-split-dbg-labels.ll
++++ b/llvm/test/Transforms/Coroutines/coro-split-dbg-labels.ll
+@@ -1,14 +1,19 @@
+ ; Tests that we add DILabels for the suspend points.
+ ;
+-; We check both the generated LLVM:
++; Check the generated LLVM:
+ ; RUN: opt < %s -passes='cgscc(coro-split)' -S | FileCheck %s
+ ;
+-; And the debug info:
++; Check the generated DWARF debug info:
+ ; REQUIRES: object-emission
+ ; RUN: opt < %s -passes='cgscc(coro-split),coro-cleanup' \
+ ; RUN:   | %llc_dwarf -O0 -filetype=obj -o - \
+ ; RUN:   | llvm-dwarfdump - \
+ ; RUN:   | FileCheck %s -check-prefix=DWARF
++;
++; Check that we don't emit any DILabel if in `LineTablesOnly` mode
++; RUN: sed -e 's/emissionKind: FullDebug/emissionKind: LineTablesOnly/' %s \
++; RUN:   | opt -passes='cgscc(coro-split)' -S \
++; RUN:   | FileCheck %s -check-prefix=LINE-TABLE
  
- define double @fma_folding(double %x) {
- ; CHECK-LABEL: fma_folding:
-@@ -20,3 +21,14 @@
-   %fused = call contract nnan ninf double @llvm.fma.f64(double %x, double 0.0, double -0.0)
-   ret double %fused
- }
+ source_filename = "coro.c"
+ 
+@@ -83,6 +88,12 @@
+ ; CHECK: ![[DESTROY_0]] = !DILabel(scope: !{{[0-9]+}}, name: "__coro_resume_0", file: !{{[0-9]*}}, line: 12, column: 6, isArtificial: true, coroSuspendIdx: 0)
+ ; CHECK: ![[DESTROY_1]] = !DILabel(scope: !{{[0-9]+}}, name: "__coro_resume_1", file: !{{[0-9]*}}, line: 14, column: 6, isArtificial: true, coroSuspendIdx: 1)
+ 
++; Check the we do not emit any DILabels in LineTablesOnly mode.
++; The DWARF emitter cannot handle this and would run into an assertion.
++; LINE-TABLE: !DICompileUnit{{.*}}LineTablesOnly
++; LINE-TABLE-NOT: DILabel
 +
-+define double @fma_no_fold_potential_nan(double %x) {
-+; CHECK-LABEL: fma_no_fold_potential_nan:
-+; CHECK:       # %bb.0:
-+; CHECK-NEXT:    vxorpd %xmm1, %xmm1, %xmm1
-+; CHECK-NEXT:    vfmadd213sd {{.*#+}} xmm0 = (xmm1 * xmm0) + mem
-+; CHECK-NEXT:    retq
-+ %fused = call contract double @llvm.fma.f64(double %x, double 0.0, double 1.0)
-+ ret double %fused
-+}
 +
+ ; DWARF:        {{.*}}DW_TAG_label
+ ; DWARF-NEXT:    DW_AT_name ("__coro_resume_0")
+ ; DWARF-NEXT:    DW_AT_decl_file
 diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/AArch64/single-early-exit-interleave.ll b/llvm/test/Transforms/LoopVectorize/AArch64/single-early-exit-interleave.ll
 --- a/llvm/test/Transforms/LoopVectorize/AArch64/single-early-exit-interleave.ll
 +++ b/llvm/test/Transforms/LoopVectorize/AArch64/single-early-exit-interleave.ll
@@ -1091,165 +1286,123 @@ diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/vector-loop-b
  ; VF8UF2-NEXT:    ret i64 [[RES]]
  ;
  ; VF16UF1-LABEL: define i64 @test_early_exit_max_tc_less_than_16_with_iv_used_outside(
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/X86/drop-poison-generating-flags.ll b/llvm/test/Transforms/LoopVectorize/X86/drop-poison-generating-flags.ll
---- a/llvm/test/Transforms/LoopVectorize/X86/drop-poison-generating-flags.ll
-+++ b/llvm/test/Transforms/LoopVectorize/X86/drop-poison-generating-flags.ll
-@@ -338,6 +338,79 @@
-   ret void
- }
+diff -ruN --strip-trailing-cr a/mlir/python/mlir/dialects/TransformTuneExtensionOps.td b/mlir/python/mlir/dialects/TransformTuneExtensionOps.td
+--- a/mlir/python/mlir/dialects/TransformTuneExtensionOps.td
++++ b/mlir/python/mlir/dialects/TransformTuneExtensionOps.td
+@@ -11,9 +11,9 @@
+ //
+ //===----------------------------------------------------------------------===//
  
-+; Same as @drop_vector_nuw_nsw, except built with avx1; in this case,
-+; we make scalar clones of the 'sub' operation. These clones also need
-+; cleared flags.
-+define void @drop_nonvector_nuw_nsw_avx1(ptr noalias nocapture readonly %input, ptr %output, ptr noalias %ptrs) local_unnamed_addr #1 {
-+; CHECK-LABEL: define void @drop_nonvector_nuw_nsw_avx1(
-+; CHECK-SAME: ptr noalias readonly captures(none) [[INPUT:%.*]], ptr [[OUTPUT:%.*]], ptr noalias [[PTRS:%.*]]) local_unnamed_addr #[[ATTR1:[0-9]+]] {
-+; CHECK-NEXT:  [[ENTRY:.*:]]
-+; CHECK-NEXT:    br i1 false, [[SCALAR_PH:label %.*]], label %[[VECTOR_PH:.*]]
-+; CHECK:       [[VECTOR_PH]]:
-+; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
-+; CHECK:       [[VECTOR_BODY]]:
-+; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
-+; CHECK-NEXT:    [[VEC_IND:%.*]] = phi <4 x i64> [ <i64 0, i64 1, i64 2, i64 3>, %[[VECTOR_PH]] ], [ [[VEC_IND_NEXT:%.*]], %[[VECTOR_BODY]] ]
-+; CHECK-NEXT:    [[TMP0:%.*]] = add i64 [[INDEX]], 0
-+; CHECK-NEXT:    [[TMP1:%.*]] = add i64 [[INDEX]], 1
-+; CHECK-NEXT:    [[TMP2:%.*]] = add i64 [[INDEX]], 2
-+; CHECK-NEXT:    [[TMP3:%.*]] = add i64 [[INDEX]], 3
-+; CHECK-NEXT:    [[TMP4:%.*]] = icmp eq <4 x i64> [[VEC_IND]], zeroinitializer
-+; CHECK-NEXT:    [[TMP5:%.*]] = getelementptr inbounds ptr, ptr [[PTRS]], i64 [[TMP0]]
-+; CHECK-NEXT:    [[TMP6:%.*]] = sub i64 [[TMP0]], 1
-+; CHECK-NEXT:    [[TMP7:%.*]] = sub i64 [[TMP1]], 1
-+; CHECK-NEXT:    [[TMP8:%.*]] = sub i64 [[TMP2]], 1
-+; CHECK-NEXT:    [[TMP9:%.*]] = sub i64 [[TMP3]], 1
-+; CHECK-NEXT:    [[TMP10:%.*]] = getelementptr float, ptr [[INPUT]], i64 [[TMP6]]
-+; CHECK-NEXT:    [[TMP11:%.*]] = getelementptr float, ptr [[INPUT]], i64 [[TMP7]]
-+; CHECK-NEXT:    [[TMP12:%.*]] = getelementptr float, ptr [[INPUT]], i64 [[TMP8]]
-+; CHECK-NEXT:    [[TMP13:%.*]] = getelementptr float, ptr [[INPUT]], i64 [[TMP9]]
-+; CHECK-NEXT:    [[TMP14:%.*]] = insertelement <4 x ptr> poison, ptr [[TMP10]], i32 0
-+; CHECK-NEXT:    [[TMP15:%.*]] = insertelement <4 x ptr> [[TMP14]], ptr [[TMP11]], i32 1
-+; CHECK-NEXT:    [[TMP16:%.*]] = insertelement <4 x ptr> [[TMP15]], ptr [[TMP12]], i32 2
-+; CHECK-NEXT:    [[TMP17:%.*]] = insertelement <4 x ptr> [[TMP16]], ptr [[TMP13]], i32 3
-+; CHECK-NEXT:    [[TMP18:%.*]] = getelementptr inbounds ptr, ptr [[TMP5]], i32 0
-+; CHECK-NEXT:    store <4 x ptr> [[TMP17]], ptr [[TMP18]], align 8
-+; CHECK-NEXT:    [[TMP19:%.*]] = xor <4 x i1> [[TMP4]], splat (i1 true)
-+; CHECK-NEXT:    [[TMP20:%.*]] = getelementptr float, ptr [[TMP10]], i32 0
-+; CHECK-NEXT:    [[WIDE_MASKED_LOAD:%.*]] = call <4 x float> @llvm.masked.load.v4f32.p0(ptr [[TMP20]], i32 4, <4 x i1> [[TMP19]], <4 x float> poison), !invariant.load [[META0]]
-+; CHECK-NEXT:    [[PREDPHI:%.*]] = select <4 x i1> [[TMP4]], <4 x float> zeroinitializer, <4 x float> [[WIDE_MASKED_LOAD]]
-+; CHECK-NEXT:    [[TMP21:%.*]] = getelementptr inbounds float, ptr [[OUTPUT]], i64 [[TMP0]]
-+; CHECK-NEXT:    [[TMP22:%.*]] = getelementptr inbounds float, ptr [[TMP21]], i32 0
-+; CHECK-NEXT:    store <4 x float> [[PREDPHI]], ptr [[TMP22]], align 4
-+; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
-+; CHECK-NEXT:    [[VEC_IND_NEXT]] = add <4 x i64> [[VEC_IND]], splat (i64 4)
-+; CHECK-NEXT:    br i1 true, label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP15:![0-9]+]]
-+; CHECK:       [[MIDDLE_BLOCK]]:
-+;
-+entry:
-+  br label %loop.header
+-#ifndef PYTHON_BINDINGS_TRANSFORM_DEBUG_EXTENSION_OPS
+-#define PYTHON_BINDINGS_TRANSFORM_DEBUG_EXTENSION_OPS
++#ifndef PYTHON_BINDINGS_TRANSFORM_TUNE_EXTENSION_OPS
++#define PYTHON_BINDINGS_TRANSFORM_TUNE_EXTENSION_OPS
+ 
+ include "mlir/Dialect/Transform/TuneExtension/TuneExtensionOps.td"
+ 
+-#endif // PYTHON_BINDINGS_TRANSFORM_DEBUG_EXTENSION_OPS
++#endif // PYTHON_BINDINGS_TRANSFORM_TUNE_EXTENSION_OPS
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -492,6 +492,7 @@
+     name = "__support_macros_properties_types",
+     hdrs = ["src/__support/macros/properties/types.h"],
+     deps = [
++        ":__support_macros_config",
+         ":__support_macros_properties_architectures",
+         ":__support_macros_properties_compiler",
+         ":__support_macros_properties_cpu_features",
+@@ -1078,6 +1079,24 @@
+ )
+ 
+ libc_support_library(
++    name = "__support_fputil_bfloat16",
++    hdrs = ["src/__support/FPUtil/bfloat16.h"],
++    deps = [
++        ":__support_cpp_bit",
++        ":__support_cpp_type_traits",
++        ":__support_fputil_cast",
++        ":__support_fputil_dyadic_float",
++        ":__support_macros_config",
++        ":__support_macros_properties_types",
++    ],
++)
 +
-+loop.header:
-+  %iv = phi i64 [ 0, %entry ], [ %iv.inc, %if.end ]
-+  %i23 = icmp eq i64 %iv, 0
-+  %gep = getelementptr inbounds ptr, ptr %ptrs, i64 %iv
-+  %i27 = sub nuw nsw i64 %iv, 1
-+  %i29 = getelementptr inbounds float, ptr %input, i64 %i27
-+  store ptr %i29, ptr %gep
-+  br i1 %i23, label %if.end, label %if.then
++alias(
++    name = "bfloat16",  # Alias for test/src/math:bfloat16_test.
++    actual = ":__support_fputil_bfloat16",
++)
 +
-+if.then:
-+  %i30 = load float, ptr %i29, align 4, !invariant.load !0
-+  br label %if.end
++libc_support_library(
+     name = "__support_fputil_cast",
+     hdrs = ["src/__support/FPUtil/cast.h"],
+     deps = [
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/__support/FPUtil/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/src/__support/FPUtil/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/test/src/__support/FPUtil/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/test/src/__support/FPUtil/BUILD.bazel
+@@ -24,6 +24,17 @@
+ )
+ 
+ libc_test(
++    name = "bfloat16_test",
++    srcs = ["bfloat16_test.cpp"],
++    deps = [
++        "//libc:__support_fputil_bfloat16",
++        "//libc/test/UnitTest:fp_test_helpers",
++        "//libc/utils/MPFRWrapper:mp_common",
++        "//libc/utils/MPFRWrapper:mpfr_wrapper",
++    ],
++)
 +
-+if.end:
-+  %i34 = phi float [ 0.000000e+00, %loop.header ], [ %i30, %if.then ]
-+  %i35 = getelementptr inbounds float, ptr %output, i64 %iv
-+  store float %i34, ptr %i35, align 4
-+  %iv.inc = add nuw nsw i64 %iv, 1
-+  %exitcond = icmp eq i64 %iv.inc, 4
-+  br i1 %exitcond, label %loop.exit, label %loop.header
++libc_test(
+     name = "dyadic_float_test",
+     srcs = ["dyadic_float_test.cpp"],
+     copts = ["-frounding-math"],
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/utils/MPFRWrapper/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/utils/MPFRWrapper/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/utils/MPFRWrapper/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/utils/MPFRWrapper/BUILD.bazel
+@@ -42,6 +42,7 @@
+         "//libc:__support_cpp_string",
+         "//libc:__support_cpp_string_view",
+         "//libc:__support_cpp_type_traits",
++        "//libc:__support_fputil_bfloat16",
+         "//libc:__support_fputil_cast",
+         "//libc:__support_fputil_fp_bits",
+         "//libc:__support_macros_config",
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
+@@ -701,6 +701,32 @@
+ )
+ 
+ ##---------------------------------------------------------------------------##
++# Tune dialect.
++##---------------------------------------------------------------------------##
 +
-+loop.exit:
-+  ret void
-+}
++gentbl_filegroup(
++    name = "TuneTransformOpsPyGen",
++    tbl_outs = {"mlir/dialects/_transform_tune_extension_ops_gen.py": [
++        "-gen-python-op-bindings",
++        "-bind-dialect=transform",
++        "-dialect-extension=transform_tune_extension",
++    ]},
++    tblgen = "//mlir:mlir-tblgen",
++    td_file = "mlir/dialects/TransformTuneExtensionOps.td",
++    deps = [
++        "//mlir:TransformTuneExtensionTdFiles",
++    ],
++)
 +
- ; Preserve poison-generating flags from 'sub', which is not contributing to any address computation
- ; of any masked load/store/gather/scatter.
- define void @preserve_nuw_nsw_no_addr(ptr %output) local_unnamed_addr #0 {
-@@ -358,7 +431,7 @@
- ; CHECK-NEXT:    store <4 x i64> [[PREDPHI]], ptr [[TMP3]], align 4
- ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
- ; CHECK-NEXT:    [[VEC_IND_NEXT]] = add <4 x i64> [[VEC_IND]], splat (i64 4)
--; CHECK-NEXT:    br i1 true, label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP15:![0-9]+]]
-+; CHECK-NEXT:    br i1 true, label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP17:![0-9]+]]
- ; CHECK:       [[MIDDLE_BLOCK]]:
- ;
- entry:
-@@ -411,7 +484,7 @@
- ; CHECK-NEXT:    store <4 x float> [[PREDPHI]], ptr [[TMP9]], align 4
- ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
- ; CHECK-NEXT:    [[VEC_IND_NEXT]] = add <4 x i64> [[VEC_IND]], splat (i64 4)
--; CHECK-NEXT:    br i1 true, label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP17:![0-9]+]]
-+; CHECK-NEXT:    br i1 true, label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP19:![0-9]+]]
- ; CHECK:       [[MIDDLE_BLOCK]]:
- ;
- entry:
-@@ -465,7 +538,7 @@
- ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
- ; CHECK-NEXT:    [[VEC_IND_NEXT]] = add <4 x i32> [[VEC_IND]], splat (i32 4)
- ; CHECK-NEXT:    [[TMP6:%.*]] = icmp eq i64 [[INDEX_NEXT]], 1024
--; CHECK-NEXT:    br i1 [[TMP6]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP19:![0-9]+]]
-+; CHECK-NEXT:    br i1 [[TMP6]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP21:![0-9]+]]
- ; CHECK:       [[MIDDLE_BLOCK]]:
- ;
- entry:
-@@ -520,7 +593,7 @@
- ; CHECK-NEXT:    store <4 x float> [[PREDPHI]], ptr [[TMP8]], align 4
- ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
- ; CHECK-NEXT:    [[VEC_IND_NEXT]] = add <4 x i64> [[VEC_IND]], splat (i64 4)
--; CHECK-NEXT:    br i1 true, label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP21:![0-9]+]]
-+; CHECK-NEXT:    br i1 true, label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP23:![0-9]+]]
- ; CHECK:       [[MIDDLE_BLOCK]]:
- ;
- entry:
-@@ -572,7 +645,7 @@
- ; CHECK-NEXT:    store <4 x i64> [[PREDPHI]], ptr [[TMP3]], align 4
- ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
- ; CHECK-NEXT:    [[VEC_IND_NEXT]] = add <4 x i64> [[VEC_IND]], splat (i64 4)
--; CHECK-NEXT:    br i1 true, label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP23:![0-9]+]]
-+; CHECK-NEXT:    br i1 true, label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP25:![0-9]+]]
- ; CHECK:       [[MIDDLE_BLOCK]]:
- ;
- entry:
-@@ -720,7 +793,7 @@
- ; CHECK-NEXT:    store <4 x i8> [[PREDPHI]], ptr [[TMP16]], align 4
- ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
- ; CHECK-NEXT:    [[VEC_IND_NEXT]] = add <4 x i64> [[VEC_IND]], splat (i64 4)
--; CHECK-NEXT:    br i1 true, label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP25:![0-9]+]]
-+; CHECK-NEXT:    br i1 true, label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP27:![0-9]+]]
- ; CHECK:       [[MIDDLE_BLOCK]]:
- ;
++filegroup(
++    name = "TunePyFiles",
++    srcs = [
++        "mlir/dialects/transform/tune.py",
++        ":TuneTransformOpsPyGen",
++    ],
++)
++
++##---------------------------------------------------------------------------##
+ # PythonTest dialect.
+ ##---------------------------------------------------------------------------##
  
-@@ -820,7 +893,7 @@
- ; CHECK-NEXT:    store <4 x i8> [[PREDPHI]], ptr [[TMP11]], align 4
- ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
- ; CHECK-NEXT:    [[VEC_IND_NEXT]] = add <4 x i64> [[VEC_IND]], splat (i64 4)
--; CHECK-NEXT:    br i1 true, label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP27:![0-9]+]]
-+; CHECK-NEXT:    br i1 true, label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP29:![0-9]+]]
- ; CHECK:       [[MIDDLE_BLOCK]]:
- ;
- 
-@@ -879,7 +952,7 @@
- ; CHECK-NEXT:    store <4 x float> [[PREDPHI]], ptr [[TMP6]], align 4
- ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
- ; CHECK-NEXT:    [[TMP7:%.*]] = icmp eq i64 [[INDEX_NEXT]], 10000
--; CHECK-NEXT:    br i1 [[TMP7]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP29:![0-9]+]]
-+; CHECK-NEXT:    br i1 [[TMP7]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP31:![0-9]+]]
- ; CHECK:       [[MIDDLE_BLOCK]]:
- ;
- 
-@@ -911,5 +984,6 @@
- }
- 
- attributes #0 = { noinline nounwind uwtable "target-features"="+avx512bw,+avx512cd,+avx512dq,+avx512f,+avx512vl" }
-+attributes #1 = { "target-features"="+avx" }
- 
- !0 = !{}

@@ -55,15 +55,13 @@ struct TFRTypeStorage final
 
     // Copy in the string attributes into the trailing storage.
     std::uninitialized_copy(key.begin(), key.end(),
-                            result->getTrailingObjects<StringAttr>());
+                            result->getTrailingObjects());
     return result;
   }
 
   bool operator==(const KeyTy& attrs) const { return attrs == GetAttrs(); }
 
-  KeyTy GetAttrs() const {
-    return {getTrailingObjects<StringAttr>(), num_attrs};
-  }
+  KeyTy GetAttrs() const { return {getTrailingObjects(), num_attrs}; }
 
   unsigned num_attrs;
 };
