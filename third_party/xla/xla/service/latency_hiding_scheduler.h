@@ -1199,8 +1199,9 @@ class ModulePressureState {
   void UpdatePressureStateForComputation(
       const HloComputation* comp,
       MemoryPressureTracker::MemoryPressureState state) {
+    bool dirty_update = memory_pressure_states_.contains(comp);
     memory_pressure_states_[comp] = state;
-    if (memory_pressure_states_.contains(comp)) {
+    if (dirty_update) {
       // Rescheduling computation that has already been scheduled
       // can only happen during preference/heuristic rescheduling.
       // Recalculate memory peak.
