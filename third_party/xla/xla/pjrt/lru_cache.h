@@ -109,6 +109,9 @@ class LRUCache {
     const Key* key;
     LRUCache* container;
     std::optional<Value> value;
+
+    // Iterator to self in container.entries_.
+    typename std::unordered_map<Key, Entry, Hash, Eq>::iterator iter;
   };
 
   // We use `unordered_map` because (a) we want to guarantee pointer stability
@@ -143,12 +146,12 @@ LRUCache<Key, Value, Hash, Eq>::~LRUCache() {
 
 template <typename Key, typename Value, typename Hash, typename Eq>
 void LRUCache<Key, Value, Hash, Eq>::Remove(const Key& key) {
-  LRUListEntry* l = &entries_[key];
+  Entry* l = &entries_[key];
   l->next->prev = l->prev;
   l->prev->next = l->next;
   --lru_list_->size_;
 
-  entries_.erase(key);
+  entries_.erase(l->iter);
 }
 
 template <typename Key, typename Value, typename Hash, typename Eq>
@@ -159,6 +162,7 @@ Value LRUCache<Key, Value, Hash, Eq>::GetOrCreateIfAbsent(
   if (inserted) {
     entry.key = &it->first;
     entry.value = factory(*entry.key);
+    entry.iter = it;
     ++lru_list_->size_;
   } else {
     // Removes the entry from the LRU list, in preparation for adding it
@@ -185,7 +189,7 @@ Value LRUCache<Key, Value, Hash, Eq>::GetOrCreateIfAbsent(
     // Extract instead of erase in case the kv pair contains python objects
     // whose destruction could call back into this code. Extract causes the
     // dtor to be delayed until the kv pair is fully removed from the map.
-    to_remove->container->entries_.extract(*to_remove->key);
+    to_remove->container->entries_.extract(to_remove->iter);
     --lru_list_->size_;
   }
   return v;
