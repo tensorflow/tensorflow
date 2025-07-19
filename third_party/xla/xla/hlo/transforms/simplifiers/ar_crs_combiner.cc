@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/ar_crs_combiner.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <utility>
@@ -114,19 +115,27 @@ bool HasCombinableReplicaGroup(HloInstruction* hlo, int64_t num_partitions) {
     if (replica_groups.size() != replica_count) {
       return false;
     }
+    const size_t num_replica_groups = replica_groups.size();
+    if (num_replica_groups == 0) {
+      return true;
+    }
+
+    std::vector<int> partition_id_counts(num_partitions, 0);
     for (const auto& group : replica_groups) {
       if (group.replica_ids_size() != num_partitions) {
         return false;
       }
-      absl::flat_hash_set<int64_t> partition_ids;
       int64_t replica_id = group.replica_ids(0) / num_partitions;
       for (int64_t i = 0; i < num_partitions; ++i) {
-        if (group.replica_ids(i) / num_partitions != replica_id) {
+        const int64_t group_replica_id = group.replica_ids(i);
+        if (group_replica_id / num_partitions != replica_id) {
           return false;
         }
-        partition_ids.insert(group.replica_ids(i) % num_partitions);
+        ++partition_id_counts[group_replica_id % num_partitions];
       }
-      if (partition_ids.size() != num_partitions) {
+    }
+    for (size_t i = 0; i < num_partitions; ++i) {
+      if (partition_id_counts[i] != num_replica_groups) {
         return false;
       }
     }

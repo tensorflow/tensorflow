@@ -322,23 +322,34 @@ static absl::Status CheckReplicaGroups(HloInstruction* hlo,
                                        CollectiveOpGroupMode group_mode,
                                        bool uniform_replica_group_size = true) {
   if (!hlo->replica_groups().empty()) {
-    absl::flat_hash_set<int64_t> replicas_seen;
+    size_t n = 0;
     for (const ReplicaGroup& g : hlo->replica_groups()) {
-      if (g.replica_ids().empty()) {
+      const size_t size = g.replica_ids_size();
+      if (size == 0) {
         return Internal("Instruction cannot have an empty replica group: %s",
                         hlo->ToString());
       }
+      n += size;
+    }
+    std::vector<bool> replicas_seen(n, false);
+    for (const ReplicaGroup& g : hlo->replica_groups()) {
       for (int64_t i : g.replica_ids()) {
-        if (!replicas_seen.insert(i).second) {
+        if (i < 0 || i >= n) {
+          return Internal(
+              "Replica %d is out of range (should be in [0, %d) range) in "
+              "instruction's replica-groups: %s",
+              i, n, hlo->ToString());
+        }
+        if (replicas_seen[i]) {
           return Internal(
               "Replica %d is repeated in instruction's replica-groups: %s", i,
               hlo->ToString());
         }
+        replicas_seen[i] = true;
       }
     }
-    size_t n = replicas_seen.size();
     for (int64_t i = 0; i < n; ++i) {
-      if (!replicas_seen.count(i)) {
+      if (!replicas_seen[i]) {
         return Internal(
             "Replica %d is not named in instruction's replica-groups: %s", i,
             hlo->ToString());
