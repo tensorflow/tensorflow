@@ -47,6 +47,7 @@ cc_library(
     hdrs = ["export_ops.h"],
     deps = [
         "//xla/mlir_hlo",
+        "//xla/service/spmd/shardy:constants",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -104,6 +105,7 @@ cc_library(
         ":export_shardings",
         ":shard_map_export",
         "//xla/service/spmd/shardy/round_trip_common:export_named_computations",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
     ],

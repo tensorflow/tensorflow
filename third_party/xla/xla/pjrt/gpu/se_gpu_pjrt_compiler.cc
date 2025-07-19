@@ -210,7 +210,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
       module, xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
       /*return_tuple=*/false,
-      /*use_shardy=*/false));
+      /*exec_build_options=*/&input_options.executable_build_options));
   return Compile(std::move(input_options), xla_computation, topology, client);
 }
 }  // namespace xla

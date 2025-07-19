@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 
 namespace xla {
@@ -44,7 +45,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
 absl::Status MlirToXlaComputation(mlir::ModuleOp module,
                                   XlaComputation& xla_computation,
                                   bool use_tuple_args, bool return_tuple,
-                                  bool use_shardy);
+                                  ExecutableBuildOptions* exec_build_options);
 
 // Converts an MHLO/CHLO module string to an XLA computation.
 absl::Status ParseMlirModuleStringAndConvertToXlaComputation(
