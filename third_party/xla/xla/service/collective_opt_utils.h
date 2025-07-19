@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/container/flat_hash_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 
@@ -39,6 +40,9 @@ struct SplitDimSpec {
   int64_t split_dim = -1;
   std::vector<int64_t> split_dims = {};
 };
+
+// A map from a slice offset to its corresponding partition ID(flattened-id).
+using IndicesSpec = absl::flat_hash_map<int64_t, int64_t>;
 
 // Matches the given all-reduce operation to a reduce-scatter pattern.
 std::optional<ReduceScatterSpec> MatchReduceScatter(
@@ -102,6 +106,13 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
 // dimension.
 std::optional<SplitDimSpec> ExtractSplitDimSpec(
     const HloInstruction& dynamic_slice, bool allow_multiple_split_dims);
+
+// Extracts the mapping from slice offsets to partition IDs from a dynamic-slice
+// instruction that is fed by an all-gather.
+std::optional<IndicesSpec> GetIndicesSpecForDynamicSlice(
+    const HloAllGatherInstruction* absl_nonnull ag_instr,
+    const HloInstruction* absl_nonnull offset_hlo,
+    const std::function<int64_t(const HloInstruction*, int64_t)>& map_id);
 
 }  // namespace xla
 
