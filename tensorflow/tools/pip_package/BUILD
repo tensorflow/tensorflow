@@ -444,6 +444,7 @@ py_import(
         "@pypi_nvidia_cusparse_cu12//:pkg",
         "@pypi_nvidia_nccl_cu12//:pkg",
         "@pypi_nvidia_nvjitlink_cu12//:pkg",
+        "@pypi_nvidia_nvshmem_cu12//:pkg",
     ]),
     deps = [
         "@pypi_absl_py//:pkg",
