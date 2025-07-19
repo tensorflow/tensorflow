@@ -117,7 +117,8 @@ Value ReadVectorTileFromShmem(ImplicitLocOpBuilder& b, Value shmem,
   auto vector_type = mlir::VectorType::get({vector_size}, elem_type);
   for (int64_t i = 0; i < vector_size; ++i) {
     Value loaded_vector = b.create<mv::TransferReadOp>(
-        vector_type, shmem, shmem_indices_vec, llvm::ArrayRef<bool>{true});
+        vector_type, shmem, shmem_indices_vec, /*padding=*/std::nullopt,
+        llvm::ArrayRef<bool>{true});
     for (int64_t j = 0; j < vector_size; ++j) {
       Value elem =
           b.create<mv::ExtractOp>(loaded_vector, SmallVector<int64_t>{j});
