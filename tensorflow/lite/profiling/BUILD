@@ -7,6 +7,10 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined
 # load("//tensorflow/lite/experimental/perfetto_profiling:build_def.bzl", "tflite_perfetto_copts")
 # copybara:uncomment_end
 
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
+load("//third_party/bazel_rules/rules_cc/cc:cc_test.bzl", "cc_test")
+load("//third_party/bazel_rules/rules_cc/cc:objc_library.bzl", "objc_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],

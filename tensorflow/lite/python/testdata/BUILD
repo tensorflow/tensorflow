@@ -8,6 +8,8 @@ load(
 )
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_custom_op_py_strict_library")
 load("//tensorflow/lite:build_def.bzl", "tf_to_tflite", "tflite_copts")
+load("//third_party/bazel_rules/rules_cc/cc:cc_binary.bzl", "cc_binary")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
