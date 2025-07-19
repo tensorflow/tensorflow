@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -28,10 +29,12 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/Base.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -322,6 +325,16 @@ std::optional<xla::OpSharding> ConvertSharding(llvm::StringRef sharding) {
       xla::ParseSharding(sharding.str());
   if (sharding_cpp.ok()) return sharding_cpp->ToProto();
   return std::nullopt;
+}
+
+std::optional<xla::OriginalValueProto> ConvertOriginalValue(
+    llvm::StringRef original_value, const xla::Shape& shape) {
+  absl::StatusOr<std::shared_ptr<xla::OriginalValue>> hlo_original_value =
+      xla::ParseOriginalValue(original_value, shape);
+  if (!hlo_original_value.ok()) {
+    return std::nullopt;
+  }
+  return hlo_original_value.value()->ToProto();
 }
 
 std::optional<xla::HloInputOutputAliasProto> ConvertInputOutputAlias(
