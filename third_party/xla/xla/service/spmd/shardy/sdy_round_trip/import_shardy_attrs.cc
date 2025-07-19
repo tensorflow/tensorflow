@@ -21,10 +21,12 @@ limitations under the License.
 #include <optional>
 #include <string_view>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -61,6 +63,7 @@ namespace {
 using ::mlir::Attribute;
 using ::mlir::DictionaryAttr;
 using ::mlir::IRRewriter;
+using ::mlir::LogicalResult;
 using ::mlir::ModuleOp;
 using ::mlir::NamedAttribute;
 using ::mlir::Operation;
@@ -232,6 +235,37 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter) {
   });
 }
 
+// TODO (b/432659630): Add tests
+using ShardingSetter =
+    absl::AnyInvocable<void(FuncOp, int64_t, TensorShardingAttr)>;
+LogicalResult handleFuncTupleInOutShardings(ModuleOp moduleOp, FuncOp funcOp,
+                                            StringRef attrName,
+                                            ShardingSetter shardingSetter,
+                                            int64_t expectedNumShardings) {
+  std::optional<TensorShardingPerValueAttr> shardings =
+      tryGetFrontendAttr<TensorShardingPerValueAttr>(moduleOp, attrName);
+  if (!shardings.has_value()) {
+    return mlir::success();
+  }
+
+  if (shardings->size() != expectedNumShardings) {
+    moduleOp.emitError() << "Number of actual shardings (" << shardings->size()
+                         << ") does not match number of expected shardings ("
+                         << expectedNumShardings << "for " << attrName
+                         << ") for function.";
+    return mlir::failure();
+  }
+
+  for (auto [argNum, argSharding] :
+       llvm::enumerate(shardings->getShardings())) {
+    shardingSetter(funcOp, argNum, argSharding);
+  }
+
+  removeFrontendAttribute(moduleOp, attrName);
+
+  return mlir::success();
+}
+
 class SdyRoundTripImportShardyAttrsPass
     : public mlir::PassWrapper<SdyRoundTripImportShardyAttrsPass,
                                mlir::OperationPass<ModuleOp>> {
@@ -262,6 +296,28 @@ class SdyRoundTripImportShardyAttrsPass
           moduleOp.getLoc(), mesh.getName(), meshAttr));
     }
     removeFrontendAttribute(moduleOp, kMeshesRoundTripAttr);
+
+    if (FuncOp mainFunc = moduleOp.lookupSymbol<FuncOp>("main")) {
+      auto argShardingSetter = [](FuncOp funcOp, int64_t argNum,
+                                  TensorShardingAttr argSharding) {
+        setSharding(funcOp.getArgument(argNum), argSharding);
+      };
+      if (mlir::failed(handleFuncTupleInOutShardings(
+              moduleOp, mainFunc, kInTupleShardings, argShardingSetter,
+              mainFunc.getNumArguments()))) {
+        signalPassFailure();
+      }
+
+      auto resultShardingSetter = [](FuncOp funcOp, int64_t resultNum,
+                                     TensorShardingAttr resultSharding) {
+        setFuncResultSharding(funcOp, resultNum, resultSharding);
+      };
+      if (mlir::failed(handleFuncTupleInOutShardings(
+              moduleOp, mainFunc, kOutTupleShardings, resultShardingSetter,
+              mainFunc.getNumResults()))) {
+        signalPassFailure();
+      }
+    }
 
     for (auto funcOp : moduleOp.getOps<FuncOp>()) {
       convertShardyAttrs(funcOp, rewriter);
