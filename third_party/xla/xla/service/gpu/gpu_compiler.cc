@@ -2384,6 +2384,8 @@ GpuCompiler::CompileToBackendResult(
   TF_ASSIGN_OR_RETURN(ScheduleMetadata schedule_metadata,
                       ScheduleGpuModule(module, pointer_size_, gpu_device_info,
                                         alias_info.get()));
+  HloPassPipeline pipeline("scheduled-gpu-module");
+  AddHloVerifier(&pipeline);
   TF_RETURN_IF_ERROR(
       RunPostSchedulingPipelines(module, schedule_metadata.scheduler_mem_limit,
                                  gpu_device_info, alias_info.get()));
