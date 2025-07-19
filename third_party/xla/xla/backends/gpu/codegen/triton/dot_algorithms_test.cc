@@ -427,6 +427,7 @@ TEST_F(BlasAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
       EXPECT_THAT(kernel_names,
                   ::testing::UnorderedElementsAre(
                       ::testing::HasSubstr("bitcast_convert_subtract"),
+                      ::testing::HasSubstr("bitcast_convert_subtract"),
                       ::testing::HasSubstr("tf32f32")));
       break;
     default:
