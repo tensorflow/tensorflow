@@ -35,8 +35,10 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
+#include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -118,6 +120,10 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
     case Thunk::kCopy:
     case Thunk::kKernel:
       return DebugOptions::FUSION;
+    case Thunk::kWhile:
+      return DebugOptions::WHILE;
+    case Thunk::kConditional:
+      return DebugOptions::CONDITIONAL;
     case Thunk::kGemm:
       return DebugOptions::CUBLAS;
     case Thunk::kAllGatherStart:
@@ -135,15 +141,60 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
   }
 }
 
-bool IsConvertible(Thunk* thunk, const CommandBufferConfig& config) {
+bool AllThunksInSequentialThunkAreConvertible(
+    SequentialThunk* seq_thunk, const CommandBufferConfig& config);
+
+size_t CheckAsyncRegion(absl::Span<std::unique_ptr<Thunk>> thunks,
+                        const CommandBufferConfig& config);
+
+bool IsConvertible(const Thunk* thunk, const CommandBufferConfig& config) {
   if (thunk->IsAsyncDone()) {
     return true;
   }
   auto cmd_type = GetCommandBufferCmdType(thunk->kind());
-  if (!cmd_type.has_value()) {
+  if (!cmd_type.has_value() || !config.enabled_commands.contains(*cmd_type)) {
     return false;  // Thunk kind is not supported for command buffer conversion.
   }
-  return config.enabled_commands.contains(*cmd_type);
+  // We only convert WhileThunk if all of its thunks are convertible.
+  if (thunk->kind() == Thunk::kWhile) {
+    const auto* while_thunk = static_cast<const WhileThunk*>(thunk);
+    return AllThunksInSequentialThunkAreConvertible(
+               while_thunk->body_thunk_sequence(), config) &&
+           AllThunksInSequentialThunkAreConvertible(
+               while_thunk->condition_thunk_sequence(), config);
+  }
+  // We only convert ConditionalThunk if all of its thunks in all branches are
+  // convertible.
+  if (thunk->kind() == Thunk::kConditional) {
+    const auto* conditional_thunk = static_cast<const ConditionalThunk*>(thunk);
+    for (const auto& branch : conditional_thunk->branch_thunks()) {
+      if (!AllThunksInSequentialThunkAreConvertible(branch.get(), config)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  return true;
+}
+
+bool AllThunksInSequentialThunkAreConvertible(
+    SequentialThunk* seq_thunk, const CommandBufferConfig& config) {
+  for (size_t i = 0; i < seq_thunk->thunks().size(); ++i) {
+    auto& thunk = seq_thunk->thunks()[i];
+    if (!IsConvertible(thunk.get(), config)) {
+      return false;
+    }
+    if (thunk->IsAsyncStart()) {
+      size_t region_size = CheckAsyncRegion(
+          absl::MakeSpan(seq_thunk->thunks()).subspan(i), config);
+      if (region_size == 0) {
+        return false;
+      }
+      i += region_size - 1;
+    }
+  }
+  return true;
 }
 
 // Collect the sequence of thunks that contains the async start and its
@@ -160,11 +211,10 @@ bool IsConvertible(Thunk* thunk, const CommandBufferConfig& config) {
 // The returned sequence will contain async_done_b. So that all async pairs
 // are captured by the same command buffer.
 
-// Returns the shortest non-empty sequence of thunks that form a valid async
-// region as a span. If no such region is found, an empty span is returned.
-absl::Span<std::unique_ptr<Thunk>> CollectAndCheckAsyncRegion(
-    absl::Span<std::unique_ptr<Thunk>> thunks,
-    const CommandBufferConfig& config) {
+// Returns the size of the shortest non-empty sequence of thunks that form a
+// valid async region.
+size_t CheckAsyncRegion(absl::Span<std::unique_ptr<Thunk>> thunks,
+                        const CommandBufferConfig& config) {
   absl::flat_hash_set<AsyncEventsUniqueId> unpaired_ids_of_async_starts;
 
   for (size_t i = 0; i < thunks.size(); ++i) {
@@ -172,7 +222,7 @@ absl::Span<std::unique_ptr<Thunk>> CollectAndCheckAsyncRegion(
 
     // Check if thunk is convertible
     if (!IsConvertible(thunk.get(), config)) {
-      return {};  // All thunks in the region must be convertible.
+      return 0;  // All thunks in the region must be convertible.
     }
 
     // Check if it is async start thunk
@@ -186,19 +236,26 @@ absl::Span<std::unique_ptr<Thunk>> CollectAndCheckAsyncRegion(
       auto it = unpaired_ids_of_async_starts.find(
           thunk->GetAsyncEventsUniqueId().value());
       if (it == unpaired_ids_of_async_starts.end()) {
-        return {};  // We found an async end for an event, whose async
-                    // start is not part of the region
+        return 0;  // We found an async end for an event, whose async
+                   // start is not part of the region
       }
       unpaired_ids_of_async_starts.erase(it);
     }
 
     if (unpaired_ids_of_async_starts.empty()) {
-      return thunks.subspan(
-          0, i + 1);  // We found pairs to all open async events and all thunks
-                      // in between are convertible
+      return i + 1;  // We found pairs to all open async events and all thunks
+                     // in between are convertible
     }
   }
-  return {};  // error didn't find an end for some start
+  return 0;  // error didn't find an end for some start
+}
+
+// Returns the shortest non-empty sequence of thunks that form a valid async
+// region as a span. If no such region is found, an empty span is returned.
+absl::Span<std::unique_ptr<Thunk>> CollectAndCheckAsyncRegion(
+    absl::Span<std::unique_ptr<Thunk>> thunks,
+    const CommandBufferConfig& config) {
+  return thunks.subspan(0, CheckAsyncRegion(thunks, config));
 }
 
 }  // namespace
