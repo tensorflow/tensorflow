@@ -91,6 +91,10 @@ cc_library(
     name = "abstract_tracked_device_buffer",
     srcs = ["abstract_tracked_device_buffer.cc"],
     hdrs = ["abstract_tracked_device_buffer.h"],
+    visibility = [
+        "//third_party/torch_tpu/pjrt:__pkg__",
+        "//xla:internal",
+    ],
     deps = [
         ":device_event",
         ":pjrt_client",
@@ -120,6 +124,10 @@ cc_library(
         "common_pjrt_client.h",
         "host_to_device_transfer_manager.h",
     ],
+    visibility = internal_visibility([
+        ":friends",
+        "//third_party/torch_tpu:__pkg__",
+    ]),
     deps = [
         ":abstract_tracked_device_buffer",
         ":async_work_runner",
