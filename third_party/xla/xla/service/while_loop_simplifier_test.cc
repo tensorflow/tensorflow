@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/while_loop_simplifier.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 
 #include <gmock/gmock.h>
