@@ -68,19 +68,19 @@ tt.func @fold_squeeze_of_expand_swapping(%arg0: tensor<4x1x8xf32>) -> tensor<1x4
 }
 
 // CHECK-LABEL: func @squeeze_reshape
-tt.func @squeeze_reshape(%arg0: tensor<4x1x1xf32>) -> tensor<4xf32> {
-  // CHECK: triton_xla.squeeze_dims {{.*}} {axis = 1 : i32} : tensor<4x1x1xf32> -> tensor<4x1xf32>
-  // CHECK: triton_xla.squeeze_dims {{.*}} {axis = 1 : i32} : tensor<4x1xf32> -> tensor<4xf32>
-  %0 = tt.reshape %arg0 : tensor<4x1x1xf32> -> tensor<4xf32>
-  tt.return %0 : tensor<4xf32>
+tt.func @squeeze_reshape(%arg0: tensor<4x1x1x8xf32>) -> tensor<4x8xf32> {
+  // CHECK: triton_xla.squeeze_dims {{.*}} {axis = 1 : i32} : tensor<4x1x1x8xf32> -> tensor<4x1x8xf32>
+  // CHECK: triton_xla.squeeze_dims {{.*}} {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
+  %0 = tt.reshape %arg0 : tensor<4x1x1x8xf32> -> tensor<4x8xf32>
+  tt.return %0 : tensor<4x8xf32>
 }
 
 // CHECK-LABEL: func @expand_reshape
-tt.func @expand_reshape(%arg0: tensor<4xf32>) -> tensor<4x1x1xf32> {
-  %0 = tt.reshape %arg0 : tensor<4xf32> -> tensor<4x1x1xf32>
-  // CHECK: tt.expand_dims {{.*}} {axis = 1 : i32} : tensor<4xf32> -> tensor<4x1xf32>
-  // CHECK: tt.expand_dims {{.*}} {axis = 1 : i32} : tensor<4x1xf32> -> tensor<4x1x1xf32>
-  tt.return %0 : tensor<4x1x1xf32>
+tt.func @expand_reshape(%arg0: tensor<4x8xf32>) -> tensor<4x1x1x8xf32> {
+  %0 = tt.reshape %arg0 : tensor<4x8xf32> -> tensor<4x1x1x8xf32>
+  // CHECK: tt.expand_dims {{.*}} {axis = 1 : i32} : tensor<4x8xf32> -> tensor<4x1x8xf32>
+  // CHECK: tt.expand_dims {{.*}} {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x1x1x8xf32>
+  tt.return %0 : tensor<4x1x1x8xf32>
 }
 
 // CHECK-LABEL: func @skip_reshape_with_attr
@@ -91,16 +91,16 @@ tt.func @skip_reshape_with_attr(%arg0: tensor<4x1xf32>) -> tensor<4xf32> {
   tt.return %0 : tensor<4xf32>
 }
 
-#arg_enc = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [1, 32], warpsPerCTA = [1, 1], order = [1, 0]}>
-#res_enc = #ttg.blocked<{sizePerThread = [1], threadsPerWarp = [32], warpsPerCTA = [1], order = [0]}>
+#arg_enc = #ttg.blocked<{sizePerThread = [1, 1, 1], threadsPerWarp = [1, 4, 8], warpsPerCTA = [1, 1, 1], order = [2, 1, 0]}>
+#res_enc = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [4, 8], warpsPerCTA = [1, 1], order = [1, 0]}>
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32} {
 // CHECK-LABEL: func @reshape_with_encoding
-// CHECK-SAME:    tensor<1x32xf32, #[[ARG_ENC:.+]]>) -> tensor<32xf32, #[[RES_ENC:.+]]>
-tt.func @reshape_with_encoding(%arg0: tensor<1x32xf32, #arg_enc>) -> tensor<32xf32, #res_enc> {
+// CHECK-SAME:    tensor<1x4x8xf32, #[[ARG_ENC:.+]]>) -> tensor<4x8xf32, #[[RES_ENC:.+]]>
+tt.func @reshape_with_encoding(%arg0: tensor<1x4x8xf32, #arg_enc>) -> tensor<4x8xf32, #res_enc> {
   // CHECK: triton_xla.squeeze_dims {{.*}} {axis = 0 : i32} :
-  // CHECK-SAME: tensor<1x32xf32, #[[ARG_ENC]]> -> tensor<32xf32, #[[RES_ENC]]>
-  %0 = tt.reshape %arg0 : tensor<1x32xf32, #arg_enc> -> tensor<32xf32, #res_enc>
-  tt.return %0 : tensor<32xf32, #res_enc>
+  // CHECK-SAME: tensor<1x4x8xf32, #[[ARG_ENC]]> -> tensor<4x8xf32, #[[RES_ENC]]>
+  %0 = tt.reshape %arg0 : tensor<1x4x8xf32, #arg_enc> -> tensor<4x8xf32, #res_enc>
+  tt.return %0 : tensor<4x8xf32, #res_enc>
 }
 }
 
@@ -170,13 +170,13 @@ tt.func @squeeze_store(%arg0: !tt.ptr<f32>, %arg1: tensor<4x1x8xf32>) {
 }
 
 // CHECK-LABEL: func @squeeze_store_unit_tensor
-tt.func @squeeze_store_unit_tensor(%arg0: !tt.ptr<f32>, %arg1: tensor<1x1xf32>) {
+tt.func @squeeze_store_unit_tensor(%arg0: !tt.ptr<f32>, %arg1: tensor<1x1x1xf32>) {
   %c0_i32 = arith.constant 0 : i32
   %c1_i64 = arith.constant 1 : i64
-  %0 = tt.make_tensor_ptr %arg0, [%c1_i64, %c1_i64], [%c1_i64, %c1_i64], [%c0_i32, %c0_i32] {order = array<i32: 0>} : <tensor<1x1xf32>>
+  %0 = tt.make_tensor_ptr %arg0, [%c1_i64, %c1_i64, %c1_i64], [%c1_i64, %c1_i64, %c1_i64], [%c0_i32, %c0_i32, %c0_i32] {order = array<i32: 0>} : <tensor<1x1x1xf32>>
   // CHECK: triton_xla.squeeze_dims
-  // CHECK: tt.store {{.*}} : !tt.ptr<tensor<1xf32>>
-  tt.store %0, %arg1 : !tt.ptr<tensor<1x1xf32>>
+  // CHECK: tt.store {{.*}} : !tt.ptr<tensor<1x1xf32>>
+  tt.store %0, %arg1 : !tt.ptr<tensor<1x1x1xf32>>
   tt.return
 }
 
