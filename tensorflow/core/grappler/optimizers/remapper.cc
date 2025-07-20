@@ -3975,7 +3975,7 @@ absl::Status AddMklLayerNorm(RemapperContext* ctx,
   return absl::OkStatus();
 }
 
-Status AddFusedMatMulBiasMulAddAndElu(
+absl::Status AddFusedMatMulBiasMulAddAndElu(
     RemapperContext* ctx, const std::map<string, int>& matched_nodes_map,
     const std::set<int>& remove_node_indices,
     std::vector<bool>* invalidated_nodes, std::vector<bool>* nodes_to_delete) {
