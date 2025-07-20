@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/collective_opt_utils.h"
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <utility>
@@ -22,11 +23,14 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -389,6 +393,7 @@ std::optional<SplitDimSpec> ExtractSplitDimSpec(
     num_dims++;
     VLOG(2) << "select dim: " << dim;
     spec.split_dim = dim;
+    spec.split_dim_size = dynamic_slice.dynamic_slice_sizes()[dim];
   }
   if (spec.split_dim != -1 && num_dims == 1) {
     // No recomputation needed if dynamic-slice has unique dimension to slice.
@@ -416,8 +421,212 @@ std::optional<SplitDimSpec> ExtractSplitDimSpec(
       continue;
     }
     spec.split_dim = dim;
+    spec.split_dim_size = dynamic_slice.dynamic_slice_sizes()[dim];
   }
   return spec;
+}
+
+std::optional<PartitionOffsetSpec> ExtractPartitionOffsetSpec(
+    const HloAllGatherInstruction* ag, int64_t num_partitions) {
+  VLOG(1) << "Extracting partition offset spec for: " << ag->ToString()
+          << " with num_partitions = " << num_partitions;
+  PartitionOffsetSpec spec;
+  int64_t all_gather_shard_size =
+      ag->operand(0)->shape().dimensions(ag->all_gather_dimension());
+  VLOG(5) << "AG: " << ag->ToString() << ", num_partitions: " << num_partitions
+          << ", all_gather_shard_size: " << all_gather_shard_size;
+  if (all_gather_shard_size <= 0) {
+    VLOG(5) << "AG does not have valid all gather shard size "
+            << ag->ToString();
+    return std::nullopt;
+  }
+
+  if (ag->replica_groups().empty()) {
+    VLOG(5) << "AG " << ag->ToString()
+            << " has no replica groups, assuming iota.";
+    spec.per_replica_group_offsets.resize(1);
+    OffsetToIdMap& offset_map = spec.per_replica_group_offsets[0];
+    for (int64_t i = 0; i < num_partitions; ++i) {
+      int64_t offset = i * all_gather_shard_size;
+      int64_t partition_id = i;
+      VLOG(5) << "  - group 0, partition_id " << partition_id << " -> offset "
+              << offset;
+      if (!offset_map.try_emplace(offset, partition_id).second) {
+        VLOG(2) << "Duplicate offset " << offset << " in replica group 0"
+                << " for partition " << partition_id << " in AG "
+                << ag->ToString();
+        return std::nullopt;
+      }
+    }
+    VLOG(3) << "Successfully extracted partition offset spec for "
+            << ag->ToString();
+    return spec;
+  }
+
+  spec.per_replica_group_offsets.resize(ag->replica_groups().size());
+  for (int64_t group_idx = 0; group_idx < ag->replica_groups().size();
+       ++group_idx) {
+    VLOG(5) << "Processing replica group " << group_idx;
+    const auto& group = ag->replica_groups()[group_idx];
+    for (int64_t replica_idx = 0; replica_idx < group.replica_ids_size();
+         ++replica_idx) {
+      int64_t offset = replica_idx * all_gather_shard_size;
+      int64_t partition_id = group.replica_ids(replica_idx);
+      VLOG(5) << "  - group " << group_idx << ", partition_id " << partition_id
+              << " -> offset " << offset;
+      if (spec.per_replica_group_offsets[group_idx].contains(offset)) {
+        VLOG(5) << "Duplicate offset " << offset << " in replica group "
+                << group_idx << " in AG " << ag->ToString();
+        return std::nullopt;
+      }
+      spec.per_replica_group_offsets[group_idx].emplace(offset, partition_id);
+    }
+  }
+  VLOG(10) << "Successfully extracted partition offset spec.";
+  return spec;
+}
+
+std::optional<AllGatherDynamicSliceMatchSpec> MatchAllGatherDynamicSliceOffset(
+    const HloAllGatherInstruction* ag, const HloInstruction* ds,
+    const PartitionOffsetSpec& ag_shard_offset_spec,
+    PartitionOffsetSpec& ds_offset_dest_id_spec, int64_t num_partitions) {
+  AllGatherDynamicSliceMatchSpec spec;
+
+  if (ag_shard_offset_spec.per_replica_group_offsets.size() !=
+      ds_offset_dest_id_spec.per_replica_group_offsets.size()) {
+    VLOG(2) << "AG " << ag->ToString() << " and DS " << ds->ToString()
+            << " have different replica group sizes: "
+            << ag_shard_offset_spec.per_replica_group_offsets.size() << " vs "
+            << ds_offset_dest_id_spec.per_replica_group_offsets.size() << ".";
+    return std::nullopt;
+  }
+  for (int i = 0; i < ag_shard_offset_spec.per_replica_group_offsets.size();
+       ++i) {
+    const auto& ag_offset_map =
+        ag_shard_offset_spec.per_replica_group_offsets[i];
+    // `rg_local_offset_to_src_id_map` is the offset->source_partition_id map.
+    // `indices_spec` is the offset->target_partition_id map.
+    absl::flat_hash_map<int64_t, int64_t> rg_local_offset_to_src_id_map;
+    for (const auto& [offset, partition_id] : ag_offset_map) {
+      if (!rg_local_offset_to_src_id_map.try_emplace(offset, partition_id)
+               .second) {
+        VLOG(2) << "Duplicate offset " << offset << " in replica group " << i
+                << " in AG " << ag->ToString() << " for partition id "
+                << partition_id;
+        return std::nullopt;
+      }
+    }
+
+    if (rg_local_offset_to_src_id_map.size() !=
+        ds_offset_dest_id_spec.per_replica_group_offsets[i].size()) {
+      VLOG(2) << "AG does not have valid partition offset spec "
+              << ag->ToString() << " for replica group " << i;
+      return std::nullopt;
+    }
+    for (const auto& [offset, src_id] : rg_local_offset_to_src_id_map) {
+      if (!ds_offset_dest_id_spec.per_replica_group_offsets[i].contains(
+              offset)) {
+        VLOG(2) << "AG does not have valid partition offset spec "
+                << ag->ToString() << " for replica group " << i
+                << " for DS offset " << ds->ToString();
+        return std::nullopt;
+      }
+      spec.permutation_pairs.push_back(std::make_pair(
+          src_id,
+          ds_offset_dest_id_spec.per_replica_group_offsets[i].at(offset)));
+    }
+  }
+  return spec;
+}
+
+std::optional<AllGatherDynamicSliceMatchSpec>
+MatchPermutedSliceAndPartitionOffset(const HloAllGatherInstruction* ag,
+                                     int64_t num_partitions,
+                                     int64_t num_replicas,
+                                     HloPredicate match_partition_id,
+                                     bool allow_multiple_users) {
+  // Section 1: basic checks.
+  // Only matches for multi-partition cases.
+  if (num_replicas > 1 || num_partitions <= 1) {
+    VLOG(2) << "Only supports single-replica, multi-partition cases, but got "
+            << "num_replicas=" << num_replicas
+            << ", num_partitions=" << num_partitions << ".";
+    return std::nullopt;
+  }
+
+  // Only matches for kFlattenedID collective mode.
+  absl::StatusOr<CollectiveOpGroupMode> mode = GetCollectiveOpGroupMode(ag);
+
+  if (!mode.ok() || mode.value() != CollectiveOpGroupMode::kFlattenedID) {
+    VLOG(2) << "AG does not use global device ids or channel id "
+            << ag->ToString();
+    return std::nullopt;
+  }
+
+  // Section 2: Extract the dynamic slice using ag.
+  std::optional<CollectiveUsers> collective_users =
+      FindUniqueDynamicSliceUserFromCollective(
+          ag, allow_multiple_users, /*allow_intervening_reshape*/ true,
+          /*allow_intervening_bitcast*/ true);
+
+  if (!collective_users.has_value() || !collective_users->dynamic_slice) {
+    VLOG(2) << "AG user is not dynamic slice " << ag->ToString();
+    return std::nullopt;
+  }
+  HloInstruction* dynamic_slice = collective_users->dynamic_slice;
+
+  // Extract the split dim spec from ds.
+  // check that we only support single split dymension.
+  std::optional<SplitDimSpec> split_dim_spec =
+      ExtractSplitDimSpec(*dynamic_slice, /*allow_multiple_split_dims*/ false);
+  if (!split_dim_spec.has_value() || split_dim_spec->split_dims.size() > 1) {
+    VLOG(2) << "Failed to extract a single split dimension from dynamic-slice "
+            << dynamic_slice->ToString();
+    return std::nullopt;
+  }
+  // Check the split dimension matches the all-gather dimension
+  // and the dynamic-slice split dimension size matches
+  // the all-gather shard size.
+  if (split_dim_spec->split_dim != ag->all_gather_dimension() ||
+      dynamic_slice->shape().dimensions(split_dim_spec->split_dim) !=
+          ag->operand(0)->shape().dimensions(ag->all_gather_dimension())) {
+    VLOG(2) << "AG does not have valid split dim spec " << ag->ToString()
+            << " for DS " << dynamic_slice->ToString() << " on split_dim"
+            << split_dim_spec->split_dim;
+    return std::nullopt;
+  }
+  MapIdToTableOffset map_partition_id = [&](const HloInstruction* hlo,
+                                            int64_t id) {
+    return HloPredicateIsOp<HloOpcode::kPartitionId>(hlo) ? id : -1;
+  };
+
+  VLOG(0) << "dynamic slice: " << dynamic_slice->ToString()
+          << " split dim: " << split_dim_spec->split_dim;
+  // Section 3: extract the offset spec from dynamic slice and ag.
+  std::optional<PartitionOffsetSpec> ds_offset_spec =
+      GetIndicesSpecForDynamicSlice(
+          ag, dynamic_slice->operand(split_dim_spec->split_dim + 1),
+          map_partition_id);
+  if (!ds_offset_spec.has_value()) {
+    VLOG(2) << "AG does not have valid indices spec " << ag->ToString()
+            << " for DS " << dynamic_slice->ToString() << " on split_dim"
+            << split_dim_spec->split_dim;
+    return std::nullopt;
+  }
+
+  std::optional<PartitionOffsetSpec> ag_offset_spec =
+      ExtractPartitionOffsetSpec(ag, num_partitions);
+
+  if (!ag_offset_spec.has_value()) {
+    VLOG(2) << "AG does not have valid partition offset spec " << ag->ToString()
+            << " for num_partitions " << num_partitions;
+    return std::nullopt;
+  }
+
+  // Section 4: match the offset spec from dynamic slice and ag.
+  return MatchAllGatherDynamicSliceOffset(
+      ag, dynamic_slice, ag_offset_spec.value(), ds_offset_spec.value(),
+      num_partitions);
 }
 
 bool CheckUniformReplicaGroups(const HloChannelInstruction* instruction) {
@@ -685,26 +894,37 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
   return spec;
 }
 
-std::optional<IndicesSpec> GetIndicesSpecForDynamicSlice(
+std::optional<PartitionOffsetSpec> GetIndicesSpecForDynamicSlice(
     const HloAllGatherInstruction* absl_nonnull ag_instr,
     const HloInstruction* absl_nonnull offset_hlo,
     const std::function<int64_t(const HloInstruction*, int64_t)>& map_id) {
   if (!ag_instr || !offset_hlo) {
     return std::nullopt;
   }
-  IndicesSpec indices_spec;
+  PartitionOffsetSpec indices_spec;
   if (ag_instr->replica_groups().empty()) {
     return std::nullopt;
   }
+  indices_spec.per_replica_group_offsets.resize(
+      ag_instr->replica_groups().size());
 
   if (!IsTableLookup(offset_hlo)) {
     return std::nullopt;
   }
   VLOG(2) << "GetIndicesSpecForDynamicSlice: offset_hlo is a table lookup, "
              "table operand: "
-          << offset_hlo->operand(0)->ToString();
+          << offset_hlo->operand(0)->ToString()
+          << " offset_hlo: " << offset_hlo->ToString();
 
-  for (const ReplicaGroup& group : ag_instr->replica_groups()) {
+  while (offset_hlo->opcode() == HloOpcode::kBitcast ||
+         offset_hlo->opcode() == HloOpcode::kReshape ||
+         offset_hlo->opcode() == HloOpcode::kCopy) {
+    offset_hlo = offset_hlo->operand(0);
+  }
+  CHECK_EQ(offset_hlo->opcode(), HloOpcode::kDynamicSlice);
+  for (int64_t group_idx = 0; group_idx < ag_instr->replica_groups().size();
+       ++group_idx) {
+    const ReplicaGroup& group = ag_instr->replica_groups()[group_idx];
     for (int64_t partition_id : group.replica_ids()) {
       if (offset_hlo->operand_count() < 2) {
         VLOG(2) << "offset_hlo->operand_count() is "
@@ -713,9 +933,12 @@ std::optional<IndicesSpec> GetIndicesSpecForDynamicSlice(
       }
       int64_t table_index =
           GetIndexForId(offset_hlo->operand(1), partition_id, map_id);
+      VLOG(0) << "offset_hlo: " << offset_hlo->ToString();
+      VLOG(0) << "table_index: " << table_index;
+      VLOG(0) << offset_hlo->operand(0)->literal().ToString();
       if (table_index < 0) {
         VLOG(2) << "Failed to infer table index from "
-                << offset_hlo->operand(1)->ToString();
+                << offset_hlo->operand(1);
         return std::nullopt;
       }
 
@@ -726,7 +949,10 @@ std::optional<IndicesSpec> GetIndicesSpecForDynamicSlice(
         slice_offset =
             *offset_hlo->operand(0)->literal().GetIntegralAsS64({table_index});
       }
-      if (!indices_spec.try_emplace(slice_offset, partition_id).second) {
+      VLOG(0) << "slice_offset: " << slice_offset;
+      if (!indices_spec.per_replica_group_offsets[group_idx]
+               .try_emplace(slice_offset, partition_id)
+               .second) {
         VLOG(2) << "slice_offset:" << slice_offset
                 << " already exists in the map.";
         return std::nullopt;
