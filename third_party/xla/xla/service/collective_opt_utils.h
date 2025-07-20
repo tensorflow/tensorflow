@@ -17,13 +17,17 @@ limitations under the License.
 #define XLA_SERVICE_COLLECTIVE_OPT_UTILS_H_
 
 #include <cstdint>
+#include <functional>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/util.h"
 
 namespace xla {
 
@@ -37,12 +41,29 @@ struct ReduceScatterSpec {
 };
 
 struct SplitDimSpec {
-  int64_t split_dim = -1;
   std::vector<int64_t> split_dims = {};
+  int64_t split_dim = -1;
+  int64_t split_dim_size = -1;
 };
 
-// A map from a slice offset to its corresponding partition ID(flattened-id).
-using IndicesSpec = absl::flat_hash_map<int64_t, int64_t>;
+// A map from a partitioned offset to its corresponding partition ID.
+using OffsetToIdMap = absl::flat_hash_map<int64_t, int64_t>;
+
+// Represents the mapping of partition offsets to partition IDs for each replica
+// group. This can be derived from either a dynamic-slice or an all-gather
+// operation.
+struct PartitionOffsetSpec {
+  // A list of OffsetToIdMap, one for each replica group.
+  std::vector<OffsetToIdMap> per_replica_group_offsets;
+};
+
+// A list of pairs mapping a source partition ID to a destination partition ID
+// for a collective permute operation.
+using PermutationPairs = std::vector<std::pair<int64_t, int64_t>>;
+
+struct AllGatherDynamicSliceMatchSpec {
+  PermutationPairs permutation_pairs;
+};
 
 // Matches the given all-reduce operation to a reduce-scatter pattern.
 std::optional<ReduceScatterSpec> MatchReduceScatter(
@@ -53,7 +74,7 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
     HloPredicate match_replica_id = HloPredicateIsOp<HloOpcode::kReplicaId>,
     bool allow_intervening_bitcast = false);
 
-// Check whether AG(ICI) and its user DS(ICI) can be canceled out.
+// Checks whether AG(ICI) and its user DS(ICI) can be canceled out.
 std::optional<ReduceScatterSpec> AllGatherDynamicSliceCancellation(
     const HloAllGatherInstruction* ag, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims = false,
@@ -61,6 +82,48 @@ std::optional<ReduceScatterSpec> AllGatherDynamicSliceCancellation(
     HloPredicate match_partition_id = HloPredicateIsOp<HloOpcode::kPartitionId>,
     HloPredicate match_replica_id = HloPredicateIsOp<HloOpcode::kReplicaId>,
     bool allow_intervening_bitcast = false, bool allow_multiple_users = false);
+
+// Matches an all-gather with a dynamic slice whose offset matches a permuted
+// partition offset.
+//
+// This pattern is commonly used to implement permutations or data permuted
+// across partitions. An all-gather collects data from all partitions, and then
+// a dynamic-slice on each partition selects a slice from a remote partition,
+// effectively permuting the data. This function identifies such patterns and
+// extracts the permutation pairs (source partition, destination partition).
+//
+// The function matches a specific pattern:
+//   - All-gather with flattened-id mode.
+//   - Partitioning with `num_partitions > 1` and `num_replicas = 1`.
+//   - AG Sharding and dynamic-sloce slicing on same dimension.
+//
+// For example, the following HLO performs a reverse permutation across 8
+// partitions (partition `i` gets data from partition `7-i`):
+//
+// HloModule module
+// ENTRY entry {
+//   p = f32[32,8,128] parameter(0)
+//   ag = f32[256,8,128] all-gather(p), replica_groups={{0,1,2,3,4,5,6,7}},
+//     dimensions={0}, channel_id=1, use_global_device_ids=true
+//   pid = u32[] partition-id()
+//   permuted_index_list = s32[8]{0} constant({224,192,160,128,96,64,32,0})
+//   offset = s32[1] dynamic-slice(permuted_index_list, pid),
+//   dynamic_slice_sizes={1} offset_reshape = s32[] reshape(offset) zero = s32[]
+//   constant(0) ROOT ds = f32[32,8,128] dynamic-slice(ag, offset_reshape, zero,
+//   zero),
+//     dynamic_slice_sizes={32,8,128}
+// }
+//
+// This function would match this pattern and return permutation pairs like
+// {{0,7}, {1,6}, ..., {7,0}}.
+//
+
+std::optional<AllGatherDynamicSliceMatchSpec>
+MatchPermutedSliceAndPartitionOffset(const HloAllGatherInstruction* ag,
+                                     int64_t num_partitions,
+                                     int64_t num_replicas,
+                                     HloPredicate match_partition_id,
+                                     bool allow_multiple_users);
 
 // Checks whether the replica groups in the given channel instruction are
 // of the same size.
@@ -109,10 +172,14 @@ std::optional<SplitDimSpec> ExtractSplitDimSpec(
 
 // Extracts the mapping from slice offsets to partition IDs from a dynamic-slice
 // instruction that is fed by an all-gather.
-std::optional<IndicesSpec> GetIndicesSpecForDynamicSlice(
+std::optional<PartitionOffsetSpec> GetIndicesSpecForDynamicSlice(
     const HloAllGatherInstruction* absl_nonnull ag_instr,
     const HloInstruction* absl_nonnull offset_hlo,
     const std::function<int64_t(const HloInstruction*, int64_t)>& map_id);
+
+// Extracts the PartitionOffsetSpec from an all-gather instruction.
+std::optional<PartitionOffsetSpec> ExtractPartitionOffsetSpec(
+    const HloAllGatherInstruction* ag, int64_t num_partitions);
 
 }  // namespace xla
 
