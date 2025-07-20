@@ -703,9 +703,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
     kernels_.push_back(
         {kernel_spec.name(), std::move(kernel_source).thread_safe_module()});
 
-    return MakeKernelThunkSequence(
-        instruction, std::move(kernel_spec),
-        /*min_alignment=*/cpu_function_runtime::MinAlign());
+    return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
+                                   /*min_alignment=*/MinAlign());
   } else {
     TF_ASSIGN_OR_RETURN(
         ThunkSequence called_sequence,
@@ -736,9 +735,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConcatenateKernelThunk(
                             backend_config.llvm_kernel_options());
   }
 
-  return MakeKernelThunkSequence(
-      instruction, std::move(kernel_spec),
-      /*min_alignment=*/cpu_function_runtime::MinAlign());
+  return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
+                                 /*min_alignment=*/MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitGetDimensionSizeThunk(
@@ -846,9 +844,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(
             target_machine_features_));
   }
 
-  return MakeKernelThunkSequence(
-      instruction, std::move(kernel_spec),
-      /*min_alignment=*/cpu_function_runtime::MinAlign());
+  return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
+                                 /*min_alignment=*/MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPadKernelThunk(
@@ -857,9 +854,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPadKernelThunk(
   TF_ASSIGN_OR_RETURN(auto kernel, ir_emitter_.EmitPadHostKernel(padInstr));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(padInstr));
 
-  return MakeKernelThunkSequence(
-      padInstr, buffers, kernel,
-      /*min_alignment=*/cpu_function_runtime::MinAlign());
+  return MakeKernelThunkSequence(padInstr, buffers, kernel,
+                                 /*min_alignment=*/MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
@@ -883,9 +879,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
     kernels_.push_back({kernel_spec.name(),
                         std::move(llvm_ir_kernel_source).thread_safe_module()});
 
-    return MakeKernelThunkSequence(
-        instruction, std::move(kernel_spec),
-        /*min_alignment=*/cpu_function_runtime::MinAlign());
+    return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
+                                   /*min_alignment=*/MinAlign());
   }
 
   // We currently only support loop fusion & the dot implementation is currently
@@ -911,17 +906,15 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
     kernels_.push_back({kernel_spec.name(),
                         std::move(llvm_ir_kernel_source).thread_safe_module()});
 
-    return MakeKernelThunkSequence(
-        instruction, std::move(kernel_spec),
-        /*min_alignment=*/cpu_function_runtime::MinAlign());
+    return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
+                                   /*min_alignment=*/MinAlign());
   }
 
   TF_ASSIGN_OR_RETURN(auto kernel, ir_emitter_.EmitFusionHostKernel(fusion));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
-  return MakeKernelThunkSequence(
-      instruction, buffers, kernel,
-      /*min_alignment=*/cpu_function_runtime::MinAlign());
+  return MakeKernelThunkSequence(instruction, buffers, kernel,
+                                 /*min_alignment=*/MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
@@ -1090,9 +1083,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
       kernels_.push_back(
           {kernel_spec.name(), std::move(kernel_source).thread_safe_module()});
 
-      return MakeKernelThunkSequence(
-          instruction, std::move(kernel_spec),
-          /*min_alignment=*/cpu_function_runtime::MinAlign());
+      return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
+                                     /*min_alignment=*/MinAlign());
     }
 
     // Emit DotThunk implementing dot instruction as a library call.
@@ -1306,9 +1298,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamicThunk(
                       ir_emitter_.EmitSliceToDynamicHostKernel(instruction));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
-  return MakeKernelThunkSequence(
-      instruction, buffers, kernel,
-      /*min_alignment=*/cpu_function_runtime::MinAlign());
+  return MakeKernelThunkSequence(instruction, buffers, kernel,
+                                 /*min_alignment=*/MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceThunk(
