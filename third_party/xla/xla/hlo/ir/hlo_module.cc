@@ -1290,6 +1290,8 @@ std::unique_ptr<HloModule> HloModule::Clone(
   module->buffer_donor_config() = buffer_donor_config();
   module->set_is_dynamic(is_dynamic());
   module->set_frontend_attributes(frontend_attributes());
+  module->set_layout_canonicalization_callback(
+      layout_canonicalization_callback());
   if (has_schedule() && schedule().Verify().ok()) {
     HloSchedule clone_schedule(module.get());
     for (HloComputation* computation : computations()) {
