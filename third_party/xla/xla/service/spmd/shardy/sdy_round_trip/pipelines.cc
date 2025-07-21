@@ -72,14 +72,14 @@ namespace {
 
 struct SdyRoundTripImportPipelineOptions
     : public PassPipelineOptions<SdyRoundTripImportPipelineOptions> {
-  Option<bool> enable_constant_import{*this, "enable-constant-import",
-                                      llvm::cl::desc("Enable constant import."),
-                                      llvm::cl::init(true)};
+  Option<bool> enableConstantImport{*this, "enable-constant-import",
+                                    llvm::cl::desc("Enable constant import."),
+                                    llvm::cl::init(true)};
 };
 
 void sdyRoundTripImportPipeline(
     mlir::OpPassManager& pm, const SdyRoundTripImportPipelineOptions& options) {
-  addSdyRoundTripImportPipeline(pm, options.enable_constant_import);
+  addSdyRoundTripImportPipeline(pm, options.enableConstantImport);
 }
 
 }  // namespace
