@@ -419,6 +419,7 @@ py_strict_library(
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
     # "//ads/adsml/ab:__subpackages__",
+    # "//ads/adsml/ab:atls_configs",
     # "//smartass:__subpackages__",
     # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
     # "//third_party/mlperf:__subpackages__",
