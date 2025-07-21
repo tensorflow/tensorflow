@@ -30,9 +30,15 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/hlo_runner.h"
+#include "xla/service/platform_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
@@ -52,6 +58,8 @@ namespace xla::gpu {
 namespace {
 
 using ::stream_executor::gpu::AllReduceStrategy;
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 se::StreamExecutor* GetGpuExecutor(int64_t device_ordinal) {
   auto* platform =
@@ -295,6 +303,39 @@ INSTANTIATE_TEST_SUITE_P(
       return absl::StrFormat("%v_%d", info.param.all_reduce_strategy,
                              info.param.num_elements);
     });
+
+class AllReduceHloTest : public HloHardwareIndependentTestBase {};
+
+TEST_F(AllReduceHloTest, NullDeviceAssnWithHloRunner) {
+  // xla::HloRunner passes a null device assignment to the XLA executable.
+  // Test this returns an error gracefully.
+  const char* const hlo_string = R"(
+    HloModule module, replica_count=2
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY test {
+      param = f32[1024] parameter(0)
+      ROOT result = f32[1024] all-reduce(param), to_apply=add, replica_groups={{0,1}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloRunner runner(PlatformUtil::GetDefaultPlatform().value());
+  Literal input = LiteralUtil::CreateR1<float>(std::vector<float>(1, 2));
+
+  EXPECT_THAT(
+      runner.Execute(std::move(module), {std::move(input)}),
+      StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("Device assignment is null, but must be specified when "
+                    "running a collective thunk.")));
+}
 
 }  // namespace
 }  // namespace xla::gpu
