@@ -143,10 +143,11 @@ char PjRtCompatibleArray::ID = 0;
 char PjRtArray::ID = 0;
 
 MemoryKind MakeMemoryKindFromPjRtBuffer(PjRtBuffer* pjrt_buffer) {
-  if (pjrt_buffer->memory_space() == nullptr) {
+  PjRtMemorySpace* memory_space = pjrt_buffer->memory_space();
+  if (memory_space == nullptr) {
     return MemoryKind();
   }
-  return MemoryKind(pjrt_buffer->memory_space()->kind());
+  return MemoryKind(memory_space->kind());
 }
 
 absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
