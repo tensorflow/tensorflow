@@ -79,6 +79,8 @@ struct DotCanonicalDims {
 
   // True if the output matrix is column major.
   bool output_column_major;
+
+  auto operator<=>(const DotCanonicalDims& other) const = default;
 };
 
 // Returns buffer uses of the dot operation.
