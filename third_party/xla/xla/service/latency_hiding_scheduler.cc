@@ -3212,7 +3212,10 @@ LatencyHidingScheduler::ScheduleWithPreferences(
 
   ComputationScheduleInfo schedule_info;
   schedule_info.total_wasted_cycles = stats.GetTotalWastedCycles();
-  schedule_info.peak_memory = scheduler_core_->GetMemoryPeak();
+
+  // Return the peak memory of this computation instead of the whole module
+  // to allow heuristic to optimize this functions memory usage.
+  schedule_info.peak_memory = stats.memory_pressure_peak;
 
   return std::make_pair(new_schedule, schedule_info);
 }
