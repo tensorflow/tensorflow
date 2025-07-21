@@ -37,12 +37,6 @@ class HostStream : public StreamCommon {
   explicit HostStream(StreamExecutor* executor);
   ~HostStream() override;
 
-  // TODO(ezhulenev): This is unused and must be deleted.
-  virtual bool EnqueueTaskWithStatus(
-      absl::AnyInvocable<absl::Status() &&> task) {
-    return true;
-  };
-
   absl::Status BlockHostUntilDone() override { return absl::OkStatus(); }
 
   absl::Status WaitFor(Stream* other) override;
