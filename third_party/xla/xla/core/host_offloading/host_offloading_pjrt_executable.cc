@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/core/host_offloading/host_offloading_pjrt_executable.h"
 
 #include <cstddef>
-#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -37,6 +36,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/core/host_offloading/host_offloading_buffer.h"
 #include "xla/core/host_offloading/host_offloading_executable.h"
+#include "xla/core/host_offloading/host_offloading_executable.pb.h"
 #include "xla/core/host_offloading/host_offloading_layout_analysis.h"
 #include "xla/core/host_offloading/host_offloading_transforms.h"
 #include "xla/hlo/builder/xla_computation.h"
