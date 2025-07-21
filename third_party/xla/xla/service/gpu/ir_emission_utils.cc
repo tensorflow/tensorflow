@@ -81,7 +81,7 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
   int num_matrix_operands = 0;
   for (int operand : {0, 1}) {
     TF_ASSIGN_OR_RETURN(DotOperandDims dims,
-                        DotOperandDims::FromDot(&dot, operand));
+                        DotOperandDims::FromDotOperand(&dot, operand));
     // cuBLAS only supports single contracting dimension.
     if (dims.DimensionCount(DotOperandDims::kContracting) != 1) {
       return false;
