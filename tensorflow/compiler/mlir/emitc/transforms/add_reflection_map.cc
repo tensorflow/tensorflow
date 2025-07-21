@@ -82,12 +82,12 @@ void AddReflectionMapPass::runOnOperation() {
     }
   });
 
-  std::string mapInitializer = "{{";
+  std::string mapInitializer = "{";
   for (size_t i = 0; i < fieldNames.size(); ++i) {
-    mapInitializer += "\"" + fieldNames[i] + "\", " +
+    mapInitializer += "{\"" + fieldNames[i] + "\", " +
                       "reinterpret_cast<char*>(&" + fieldNames[i] + ")",
         mapInitializer += "}";
-    if (i < fieldNames.size() - 1) mapInitializer += ", {";
+    if (i < fieldNames.size() - 1) mapInitializer += ", ";
   }
   mapInitializer += "}";
 
@@ -98,9 +98,7 @@ void AddReflectionMapPass::runOnOperation() {
       classOp.getLoc(), mapType,
       emitc::OpaqueAttr::get(context, mapInitializer));
 
-  // 6. Get the function argument
   mlir::Value nameArg = getBufferFunc.getArgument(0);
-
   emitc::CallOpaqueOp it = builder.create<emitc::CallOpaqueOp>(
       classOp.getLoc(), iteratorType, builder.getStringAttr("find"),
       mlir::ValueRange{bufferMap.getResult(), nameArg});
@@ -116,12 +114,10 @@ void AddReflectionMapPass::runOnOperation() {
   emitc::CallOpaqueOp second = builder.create<emitc::CallOpaqueOp>(
       classOp.getLoc(), charPtrType, "second", it.getResult(0));
 
-  // 12. Create the conditional
   emitc::ConditionalOp result = builder.create<emitc::ConditionalOp>(
       classOp.getLoc(), charPtrType, isEnd.getResult(0), nullPtr.getResult(),
       second.getResult(0));
 
-  // 13. Create return
   builder.create<emitc::ReturnOp>(classOp.getLoc(), result.getResult());
 }
 
