@@ -118,9 +118,9 @@ absl::StatusOr<absl::Duration> DCNCollectiveDuration(
     }
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart: {
-      result +=
-          gpu_performance_model.EstimateRunTimeForInstruction(&instr, &analysis)
-              .compute_time;
+      result += gpu_performance_model.Get()
+                    .EstimateRunTimeForInstruction(&instr, &analysis)
+                    .compute_time;
       TF_ASSIGN_OR_RETURN(
           absl::Duration runtime,
           sol_model.RingLatency(msg_size, num_participating_hosts,
@@ -130,9 +130,9 @@ absl::StatusOr<absl::Duration> DCNCollectiveDuration(
       break;
     }
     case HloOpcode::kReduceScatter: {
-      result +=
-          gpu_performance_model.EstimateRunTimeForInstruction(&instr, &analysis)
-              .compute_time;
+      result += gpu_performance_model.Get()
+                    .EstimateRunTimeForInstruction(&instr, &analysis)
+                    .compute_time;
       TF_ASSIGN_OR_RETURN(
           absl::Duration runtime,
           sol_model.RingLatency(msg_size, num_participating_hosts,
@@ -143,7 +143,7 @@ absl::StatusOr<absl::Duration> DCNCollectiveDuration(
     }
     case HloOpcode::kAsyncStart: {
       if (instr.async_wrapped_opcode() == HloOpcode::kReduceScatter) {
-        result += gpu_performance_model
+        result += gpu_performance_model.Get()
                       .EstimateRunTimeForInstruction(
                           instr.async_wrapped_instruction(), &analysis)
                       .compute_time;
@@ -401,7 +401,7 @@ LatencyEstimator::TimeCost SolLatencyEstimator::NodeCost(
   // sure we can achieve overlap (even at the cost of overextension).
   if (instr->IsLoopFusion() || instr->IsInputFusion()) {
     absl::Duration total_estimated_time =
-        gpu_performance_model_
+        gpu_performance_model_.Get()
             .EstimateRunTimeForInstruction(instr, &*cost_analysis_)
             .exec_time;
     cost_in_us = absl::ToDoubleMicroseconds(total_estimated_time);
