@@ -58,8 +58,19 @@ namespace xla::gpu {
 //
 // (tid0, tid1)[ts1] -> offsets [17 * tid0 + tid1 * ts1] sizes [ts1] strides [1]
 //              upper bounds [17 * tid0]
+struct DimTile {
+  mlir::AffineExpr offset;
+  mlir::AffineExpr size;
+  mlir::AffineExpr stride;
+  mlir::AffineExpr upper_bound;
+};
+
 class ExperimentalSymbolicTile {
  public:
+  ExperimentalSymbolicTile(mlir::MLIRContext* mlir_context,
+                           int64_t num_tile_ids, int64_t num_rt_vars,
+                           llvm::SmallVector<DimTile> one_dim_tiles);
+
   ExperimentalSymbolicTile(mlir::MLIRContext* mlir_context,
                            int64_t num_tile_ids, int64_t num_rt_vars,
                            llvm::ArrayRef<mlir::AffineExpr> offsets,
@@ -69,12 +80,11 @@ class ExperimentalSymbolicTile {
 
   std::string ToString() const;
 
-  llvm::ArrayRef<mlir::AffineExpr> offsets() const { return offsets_; }
-  llvm::ArrayRef<mlir::AffineExpr> sizes() const { return sizes_; }
-  llvm::ArrayRef<mlir::AffineExpr> strides() const { return strides_; }
-  llvm::ArrayRef<mlir::AffineExpr> upper_bounds() const {
-    return upper_bounds_;
-  }
+  llvm::SmallVector<mlir::AffineExpr> offsets() const;
+  llvm::SmallVector<mlir::AffineExpr> sizes() const;
+  llvm::SmallVector<mlir::AffineExpr> strides() const;
+  llvm::SmallVector<mlir::AffineExpr> upper_bounds() const;
+  llvm::SmallVector<DimTile> one_dim_tiles() const { return one_dim_tiles_; }
 
   int64_t num_tile_ids() const { return num_tile_ids_; }
   int64_t num_result_dims() const { return offsets().size(); }
@@ -92,10 +102,7 @@ class ExperimentalSymbolicTile {
   mlir::MLIRContext* mlir_context_;
   int64_t num_tile_ids_;
   int64_t num_rt_vars_;
-  llvm::SmallVector<mlir::AffineExpr> offsets_;
-  llvm::SmallVector<mlir::AffineExpr> sizes_;
-  llvm::SmallVector<mlir::AffineExpr> strides_;
-  llvm::SmallVector<mlir::AffineExpr> upper_bounds_;
+  llvm::SmallVector<DimTile> one_dim_tiles_;
 };
 
 }  // namespace xla::gpu
