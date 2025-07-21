@@ -1616,8 +1616,7 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
       if (ready_chosen.node == nullptr) {
         skipped_nodes_and_reasons.push_back(
             {ready_node, SkipNodeReason::kShouldSkipNodeFunction});
-        VLOG(2) << "Skipped due to kShouldSkipNodeFunction: "
-                << SkipNodeReasonString(skipped_nodes_and_reasons.back().second)
+        VLOG(2) << SkipNodeReasonString(skipped_nodes_and_reasons.back().second)
                 << " node: " << ready_node->GetInstr().name();
       }
       continue;
@@ -1630,8 +1629,7 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
       if (ready_chosen.node == nullptr) {
         skipped_nodes_and_reasons.push_back(
             {ready_node, SkipNodeReason::kAnnotationGroupNotReady});
-        VLOG(2) << "Skipped due to kShouldSkipNodeFunction: "
-                << SkipNodeReasonString(skipped_nodes_and_reasons.back().second)
+        VLOG(2) << SkipNodeReasonString(skipped_nodes_and_reasons.back().second)
                 << " node: " << ready_node->GetInstr().name();
       }
       continue;
@@ -1643,8 +1641,7 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
       if (ready_chosen.node == nullptr) {
         skipped_nodes_and_reasons.push_back(
             {ready_node, SkipNodeReason::kExceedsOverlapLimit});
-        VLOG(2) << "Skipped due to kShouldSkipNodeFunction: "
-                << SkipNodeReasonString(skipped_nodes_and_reasons.back().second)
+        VLOG(2) << SkipNodeReasonString(skipped_nodes_and_reasons.back().second)
                 << " node: " << ready_node->GetInstr().name();
       }
       continue;
