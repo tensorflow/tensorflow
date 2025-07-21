@@ -81,8 +81,9 @@ int ComputeUnrollFactor(const HloFusionAnalysis& analysis,
 ConcatenateFusion::ConcatenateFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis),
       largest_shape_(GetLargestConcatOperandShape(analysis_)),
-      config_(ComputeLoopFusionConfig(analysis_, largest_shape_)),
-      unroll_factor_(ComputeUnrollFactor(analysis_, config_.unroll_factor)) {}
+      config_(ComputeLoopFusionConfig(analysis_, largest_shape_)) {
+  config_.unroll_factor = ComputeUnrollFactor(analysis_, config_.unroll_factor);
+}
 
 LaunchDimensions ConcatenateFusion::launch_dimensions() const {
   return CalculateLaunchDimensions(largest_shape_, analysis_.device_info(),
@@ -98,8 +99,8 @@ std::optional<IndexingMap> ConcatenateFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     mlir::MLIRContext* ctx) const {
   // TODO(b/331356433): Add constraints depending on the `hero_operand_index`.
-  return GetDefaultThreadIdIndexingMap(launch_dimensions(), unroll_factor_,
-                                       largest_shape_, ctx);
+  return GetDefaultThreadIdIndexingMap(
+      launch_dimensions(), config_.unroll_factor, largest_shape_, ctx);
 }
 
 std::vector<emitters::EpilogueSpecification> ConcatenateFusion::GetEpilogues(
