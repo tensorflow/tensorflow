@@ -103,8 +103,13 @@ const int kMaximumTrials = 1000;
 }  // namespace
 
 int PickUnusedPortOrDie() {
-  static std::unordered_set<int> chosen_ports;
+  int port = PickUnusedPort();
+  CHECK_GT(port, 0) << "PickUnusedPort() failed";
+  return port;
+}
 
+int PickUnusedPort() {
+  static std::unordered_set<int> chosen_ports;
   // Type of port to first pick in the next iteration.
   bool is_tcp = true;
   int trial = 0;
@@ -114,8 +119,10 @@ int PickUnusedPortOrDie() {
   while (true) {
     int port;
     trial++;
-    CHECK_LE(trial, kMaximumTrials)
-        << "Failed to pick an unused port for testing.";
+    if (trial > kMaximumTrials) {
+      LOG(ERROR) << "Failed to pick an unused port for testing.";
+      return -1;
+    }
     if (trial == 1) {
       port = getpid() % (MAX_EPHEMERAL_PORT - MIN_EPHEMERAL_PORT) +
              MIN_EPHEMERAL_PORT;
@@ -131,8 +138,9 @@ int PickUnusedPortOrDie() {
     if (!IsPortAvailable(&port, is_tcp)) {
       continue;
     }
-
-    CHECK_GT(port, 0);
+    if (port <= 0) {
+      return -1;
+    }
     if (!IsPortAvailable(&port, !is_tcp)) {
       is_tcp = !is_tcp;
       continue;
@@ -142,7 +150,7 @@ int PickUnusedPortOrDie() {
     return port;
   }
 
-  return 0;
+  return -1;
 }
 
 }  // namespace internal

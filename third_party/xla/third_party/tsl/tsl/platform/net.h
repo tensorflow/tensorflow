@@ -19,6 +19,12 @@ limitations under the License.
 namespace tsl {
 namespace internal {
 
+// Return a port number that is not currently bound to any TCP or UDP port.
+// On success returns the assigned port number. Otherwise returns -1.
+int PickUnusedPort();
+
+// Same as PickUnusedPort(), but fails a CHECK() if a port can't be found. In
+// that case, the error message is logged to FATAL.
 int PickUnusedPortOrDie();
 
 }  // namespace internal
