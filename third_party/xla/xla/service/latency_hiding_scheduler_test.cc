@@ -190,7 +190,19 @@ absl::StatusOr<bool> RunScheduler(
   return value;
 }
 
-}  // namespace
+int64_t ShapeSizeBytes(const Shape& shape) {
+  int64_t shape_size = 0;
+  if (shape.IsToken()) {
+    return 0;
+  }
+  if (shape.IsTuple()) {
+    for (auto& sub_shape : shape.tuple_shapes()) {
+      shape_size += ShapeSizeBytes(sub_shape);
+    }
+    return shape_size;
+  }
+  return ShapeUtil::ByteSizeOfElements(shape);
+}
 
 class LatencyHidingSchedulerTest : public HloHardwareIndependentTestBase {
  public:
@@ -198,6 +210,37 @@ class LatencyHidingSchedulerTest : public HloHardwareIndependentTestBase {
       absl::string_view hlo_string) {
     return ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest());
   }
+
+ protected:
+  absl::StatusOr<std::unique_ptr<LatencyHidingScheduler>> SetupScheduler(
+      HloModule* module, SchedulerConfig sched_config = GetDefaultSchedConfig(),
+      std::unique_ptr<LatencyEstimator> latency_estimator =
+          std::make_unique<ApproximateLatencyEstimator>(),
+      std::unique_ptr<AsyncTracker> async_tracker = nullptr) {
+    AsyncCollectiveCreator::CollectiveCreatorConfig config{
+        /*convert_all_reduce=*/HloPredicateTrue,
+        /*convert_all_gather=*/HloPredicateTrue,
+        /*convert_collective_broadcast=*/HloPredicateTrue,
+        /*convert_collective_permute=*/HloPredicateTrue};
+    TF_ASSIGN_OR_RETURN(bool value,
+                        AsyncCollectiveCreator(std::move(config)).Run(module));
+    TF_ASSIGN_OR_RETURN(value, LegalizeSchedulingAnnotations(
+                                   LegalizeSchedulingAnnotations::Config())
+                                   .Run(module));
+
+    if (!async_tracker) {
+      async_tracker = std::make_unique<AsyncTracker>(sched_config);
+    }
+    std::shared_ptr<const SchedulingContext> scheduling_context =
+        std::make_shared<const SchedulingContext>(
+            module, std::move(latency_estimator), std::move(async_tracker),
+            &alias_info_, ShapeSizeBytes);
+    auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
+        scheduling_context, sched_config);
+    return std::make_unique<LatencyHidingScheduler>(scheduling_context,
+                                                    std::move(scheduler_core));
+  }
+  AliasInfo alias_info_;
 };
 
 TEST_F(LatencyHidingSchedulerTest, AllGatherAsyncSimple) {
@@ -4452,50 +4495,6 @@ ENTRY entry {
             GetIndex(new_instruction_sequence, "cp2d"));
 }
 
-int64_t ShapeSizeBytes(const Shape& shape) {
-  int64_t shape_size = 0;
-  if (shape.IsToken()) {
-    return 0;
-  }
-  if (shape.IsTuple()) {
-    for (auto& sub_shape : shape.tuple_shapes()) {
-      shape_size += ShapeSizeBytes(sub_shape);
-    }
-    return shape_size;
-  }
-  return ShapeUtil::ByteSizeOfElements(shape);
-}
-
-absl::StatusOr<std::unique_ptr<LatencyHidingScheduler>> SetupScheduler(
-    HloModule* module, SchedulerConfig sched_config = GetDefaultSchedConfig(),
-    std::unique_ptr<LatencyEstimator> latency_estimator =
-        std::make_unique<ApproximateLatencyEstimator>(),
-    std::unique_ptr<AsyncTracker> async_tracker = nullptr) {
-  AsyncCollectiveCreator::CollectiveCreatorConfig config{
-      /*convert_all_reduce=*/HloPredicateTrue,
-      /*convert_all_gather=*/HloPredicateTrue,
-      /*convert_collective_broadcast=*/HloPredicateTrue,
-      /*convert_collective_permute=*/HloPredicateTrue};
-  TF_ASSIGN_OR_RETURN(bool value,
-                      AsyncCollectiveCreator(std::move(config)).Run(module));
-  TF_ASSIGN_OR_RETURN(value, LegalizeSchedulingAnnotations(
-                                 LegalizeSchedulingAnnotations::Config())
-                                 .Run(module));
-
-  if (!async_tracker) {
-    async_tracker = std::make_unique<AsyncTracker>(sched_config);
-  }
-  AliasInfo alias_info;
-  std::shared_ptr<const SchedulingContext> scheduling_context =
-      std::make_shared<const SchedulingContext>(
-          module, std::move(latency_estimator), std::move(async_tracker),
-          &alias_info, ShapeSizeBytes);
-  auto scheduler_core =
-      std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
-  return std::make_unique<LatencyHidingScheduler>(scheduling_context,
-                                                  std::move(scheduler_core));
-}
-
 TEST_F(LatencyHidingSchedulerTest, ValidScheduleWithRandomPreferences) {
   constexpr absl::string_view hlo_string = R"(
     HloModule module, is_scheduled=true
@@ -4668,4 +4667,5 @@ ROOT tuple.2 = (f32[16,2048,2048]{2,1,0}, f32[8,128,128]{2,1,0}, f32[16,2048,204
             GetIndex(new_instruction_sequence, "cp1d"));
 }
 
+}  // namespace
 }  // namespace xla
