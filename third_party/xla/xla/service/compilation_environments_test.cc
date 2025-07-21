@@ -20,10 +20,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/test_compilation_environment.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/protobuf.h"

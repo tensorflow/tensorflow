@@ -560,9 +560,9 @@ cc_library(
     hdrs = ["status_matchers.h"],
     deps = [
         ":status",
-        ":statusor",
         ":test",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
