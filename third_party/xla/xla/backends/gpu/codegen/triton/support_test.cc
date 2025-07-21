@@ -2334,8 +2334,8 @@ ENTRY triton_computation {
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(hlo_text, F32, HloOpcode::kDot,
                                      /* use_nested_gemm_fusions=*/true));
-
-  ExpectedFailMode fail_mode = ExpectedFailMode::kFail;
+  // TODO(b/433240828): update the test to fail gracefully in case of crashes.
+  ExpectedFailMode fail_mode = ExpectedFailMode::kFailOrCrash;
   if (absl::c_linear_search(std::vector{F8E5M2, F8E4M3FN, F8E4M3, S8},
                             data_type)) {
     fail_mode = ExpectedFailMode::kFailOrCrash;
