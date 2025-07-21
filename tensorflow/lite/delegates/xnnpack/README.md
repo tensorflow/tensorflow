@@ -202,7 +202,7 @@ std::unique_ptr<tflite::Interpreter> interpreter;
 // to an XNNPACK delegate via the options.
 TfLiteXNNPackDelegateOptions xnnpack_options =
   TfLiteXNNPackDelegateOptionsDefault();
-xnnpack_options.weights_cache_file_path = "path/to/the/cache/file";
+xnnpack_options.weight_cache_file_path = "path/to/the/cache/file";
 
 // Modify graph with delegate, as above...
 TfLiteDelegate* delegate = TfLiteXNNPackDelegateCreate(&xnnpack_options);
@@ -232,7 +232,7 @@ std::unique_ptr<tflite::Interpreter> interpreter;
 // to an XNNPACK delegate via the options.
 TfLiteXNNPackDelegateOptions xnnpack_options =
   TfLiteXNNPackDelegateOptionsDefault();
-xnnpack_options.weights_cache_file_path =
+xnnpack_options.weight_cache_file_path =
   TfLiteXNNPackDelegateInMemoryFilePath();
 
 // Modify graph with delegate, as above...
@@ -266,7 +266,7 @@ TfLiteXNNPackDelegateOptions xnnpack_options =
 
 // When sharing an existing cache, the path will be used by the first
 // interpreter that is run to load it or create it.
-xnnpack_options.weights_cache_file_path = /* See previous examples. */;
+xnnpack_options.weight_cache_file_path = /* See previous examples. */;
 // Share the cache.
 xnnpack_options.weight_cache_provider = &weight_cache;
 
