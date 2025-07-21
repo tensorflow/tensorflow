@@ -69,23 +69,18 @@ ExperimentalSymbolicTile GetTestSymbolicTile(MLIRContext* mlir_context,
                                              absl::Span<const int64_t> shape,
                                              int64_t num_rt_vars = 0) {
   int64_t rank = shape.size();
-  SmallVector<AffineExpr> offsets, strides, sizes, upper_bounds;
-  offsets.reserve(rank);
-  sizes.reserve(rank);
-  strides.reserve(rank);
-  upper_bounds.reserve(rank);
+  SmallVector<DimTile> one_dim_tiles;
+  one_dim_tiles.reserve(rank);
   CHECK(mlir_context);
   for (auto [index, dim] : llvm::enumerate(shape)) {
     auto tid = getAffineDimExpr(index, mlir_context);
     auto ts = getAffineSymbolExpr(index, mlir_context);
-    offsets.push_back(tid * ts);
-    sizes.push_back(ts);
-    strides.push_back(mlir::getAffineConstantExpr(index + 1, mlir_context));
-    upper_bounds.push_back(mlir::getAffineConstantExpr(dim, mlir_context));
+    one_dim_tiles.push_back(DimTile{
+        tid * ts, ts, mlir::getAffineConstantExpr(index + 1, mlir_context),
+        mlir::getAffineConstantExpr(dim, mlir_context)});
   }
-  return ExperimentalSymbolicTile{
-      mlir_context, /*num_tile_ids=*/rank, num_rt_vars, offsets, sizes,
-      strides,      upper_bounds};
+  return ExperimentalSymbolicTile{mlir_context, /*num_tile_ids=*/rank,
+                                  num_rt_vars, std::move(one_dim_tiles)};
 }
 
 TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfElementwiseOp) {
