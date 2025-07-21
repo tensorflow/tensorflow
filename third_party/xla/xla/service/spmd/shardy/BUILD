@@ -157,6 +157,5 @@ xla_cc_binary(
         "@llvm-project//mlir:MlirOptLib",
         "@shardy//shardy/dialect/sdy/ir:register",
         "@shardy//shardy/dialect/sdy/transforms:passes",
-        "@shardy//shardy/round_trip_import:pipelines",
     ],
 )
