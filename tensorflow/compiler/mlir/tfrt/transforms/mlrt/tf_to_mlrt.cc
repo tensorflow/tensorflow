@@ -995,7 +995,9 @@ class TfToMlrtPreParallelizationConversionPass
     mlir::func::FuncOp batched = llvm::dyn_cast<mlir::func::FuncOp>(
         symbol_table.lookupSymbolIn(module, batch_op.getF()));
     int used_by_tpu = 0;
+    int num_in_tensors = batch_op.getInTensors().size();
     for (auto arg : batched.getArguments()) {
+      if (arg.getArgNumber() >= num_in_tensors) continue;
       for (auto user : arg.getUsers()) {
         if (llvm::isa<mlir::TF::TPUCompileMlirAndExecuteOp>(user)) {
           used_by_tpu++;
@@ -1004,7 +1006,7 @@ class TfToMlrtPreParallelizationConversionPass
       }
     }
 
-    if (used_by_tpu == batched.getArguments().size()) {
+    if (used_by_tpu == num_in_tensors) {
       mlir::OpBuilder builder(module);
       batch_op->setAttr(kTfMlrtCustomDevice,
                         builder.getStringAttr(kTpuHostDevice));
@@ -1014,7 +1016,7 @@ class TfToMlrtPreParallelizationConversionPass
   void runOnOperation() override {
     auto module = getOperation();
     mlir::SymbolTable symbol_table(module);
-    if (use_tpu_host_allocator_for_inputs_) {
+    if (options_.use_tpu_host_allocator_for_inputs) {
       module.walk([&](mlir::TF::BatchFunctionOp batch_op) {
         maySetTpuHostAllocatorForBatch(batch_op, module, symbol_table);
       });
