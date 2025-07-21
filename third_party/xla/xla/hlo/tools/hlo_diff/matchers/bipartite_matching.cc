@@ -16,12 +16,10 @@ limitations under the License.
 #include "xla/hlo/tools/hlo_diff/matchers/bipartite_matching.h"
 
 #include <algorithm>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -37,8 +35,8 @@ namespace {
 // Match instructions with multiple match candidates using similarity measures.
 void MatchInstructionsWithMultipleCandidates(
     const HloGumgraph& left_graph, const HloGumgraph& right_graph,
-    const absl::flat_hash_set<const HloInstructionNode*>& left_instructions,
-    const absl::flat_hash_set<const HloInstructionNode*>& right_instructions,
+    const std::vector<const HloInstructionNode*>& left_instructions,
+    const std::vector<const HloInstructionNode*>& right_instructions,
     HloGumgraphMappings& mappings, const MatcherType& matcher_type) {
   for (const HloInstructionNode* left : left_instructions) {
     double max_match_score = 0.0;
@@ -61,95 +59,6 @@ void MatchInstructionsWithMultipleCandidates(
     // Avoid matching instructions with multiple candidates.
     if (right_candidates.size() == 1) {
       mappings.MapInstructionsIfAbsent(left, right_candidates[0], matcher_type);
-    }
-  }
-}
-
-// Map instructions with the same shape and metadata op name if its specified.
-// This name is often unique within a computation and specified by the
-// frameworks. Note that for XLA generated computations, the metadata is not
-// consistently specified.
-void MatchInstructionsWithSameMetadataOpName(
-    const std::vector<const HloInstructionNode*>& left_instructions,
-    const std::vector<const HloInstructionNode*>& right_instructions,
-    HloGumgraphMappings& mappings, const MatcherType& matcher_type) {
-  for (const HloInstructionNode* left_instruction : left_instructions) {
-    if (left_instruction->instruction->metadata().op_name().empty()) {
-      continue;
-    }
-    int candidates_found = 0;
-    const HloInstructionNode* candidate = nullptr;
-
-    for (const HloInstructionNode* right_instruction : right_instructions) {
-      bool same_shape = left_instruction->instruction->shape().ToString(
-                            /*print_layout=*/false) ==
-                        right_instruction->instruction->shape().ToString(
-                            /*print_layout=*/false);
-      bool same_op_name = left_instruction->instruction->metadata().op_name() ==
-                          right_instruction->instruction->metadata().op_name();
-      if (same_shape && same_op_name) {
-        ++candidates_found;
-        candidate = right_instruction;
-      }
-    }
-
-    // Avoid matching instructions with multiple candidates.
-    if (candidates_found == 1) {
-      mappings.MapInstructionsIfAbsent(left_instruction, candidate,
-                                       matcher_type);
-    }
-  }
-}
-
-// Match instructions by grouping them by shape.
-// - Match unique instructions with the same shape.
-// - Match instructions with multiple candidates using similarity measures.
-void MatchInstructionsByShape(
-    const HloGumgraph& left_graph, const HloGumgraph& right_graph,
-    const std::vector<const HloInstructionNode*>& left_instructions,
-    const std::vector<const HloInstructionNode*>& right_instructions,
-    HloGumgraphMappings& mappings, const MatcherType& matcher_type) {
-  absl::flat_hash_map<std::string,
-                      absl::flat_hash_set<const HloInstructionNode*>>
-      left_instructions_by_shape;
-  for (const HloInstructionNode* instruction : left_instructions) {
-    if (!mappings.InstructionMapContainsLeft(instruction)) {
-      left_instructions_by_shape[instruction->instruction->shape().ToString(
-                                     /*print_layout=*/false)]
-          .insert(instruction);
-    }
-  }
-
-  absl::flat_hash_map<std::string,
-                      absl::flat_hash_set<const HloInstructionNode*>>
-      right_instructions_by_shape;
-  for (const HloInstructionNode* instruction : right_instructions) {
-    if (!mappings.InstructionMapContainsRight(instruction)) {
-      right_instructions_by_shape[instruction->instruction->shape().ToString(
-                                      /*print_layout=*/false)]
-          .insert(instruction);
-    }
-  }
-
-  for (const auto& [shape, shape_left_instructions] :
-       left_instructions_by_shape) {
-    if (auto it = right_instructions_by_shape.find(shape);
-        it != right_instructions_by_shape.end()) {
-      const absl::flat_hash_set<const HloInstructionNode*>&
-          shape_right_instructions = it->second;
-      // Match unique instructions with the same shape.
-      if (shape_left_instructions.size() == 1 &&
-          shape_right_instructions.size() == 1) {
-        mappings.MapInstructionsIfAbsent(*shape_left_instructions.begin(),
-                                         *shape_right_instructions.begin(),
-                                         matcher_type);
-      } else {
-        // Match instructions with multiple candidates using
-        // similarity measures.
-        MatchInstructionsWithMultipleCandidates(
-            left_graph, right_graph, shape_left_instructions,
-            shape_right_instructions, mappings, matcher_type);
-      }
     }
   }
 }
@@ -216,15 +125,10 @@ void MatchSameOpcodeInstructions(
     return;  // Early return after direct mapping.
   }
 
-  // Phase 1: Match instructions with the same metadata op name.
-  MatchInstructionsWithSameMetadataOpName(left_instructions, right_instructions,
+  MatchInstructionsWithMultipleCandidates(left_graph, right_graph,
+                                          left_instructions, right_instructions,
                                           mappings, matcher_type);
 
-  // Phase 2: Match instructions by shape.
-  MatchInstructionsByShape(left_graph, right_graph, left_instructions,
-                           right_instructions, mappings, matcher_type);
-
-  // Phase 3: Map still unmatched instructions by position.
   if (map_by_position_mode != MapByPositionMode::kNever) {
     MatchInstructionsByPosition(
         left_instructions, right_instructions, mappings, matcher_type,
