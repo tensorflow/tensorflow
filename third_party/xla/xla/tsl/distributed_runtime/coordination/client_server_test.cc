@@ -1146,6 +1146,7 @@ TEST_F(ClientServerTest, GetJobState) {
           }
         });
     done.WaitForNotification();
+    TF_RETURN_IF_ERROR(client->Shutdown());
     return absl::OkStatus();
   };
 

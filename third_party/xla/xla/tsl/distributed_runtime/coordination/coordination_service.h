@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/hash/hash.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -163,9 +164,12 @@ class CoordinationService {
   std::vector<tensorflow::CoordinatedTaskStateInfo> GetTaskState(
       const std::vector<tensorflow::CoordinatedTask>& task);
 
-  // Gets the state and the error status of the job.
-  std::vector<tensorflow::CoordinatedTaskStateInfo> GetJobState(
-      absl::string_view job);
+  // Watches the state and the error status of the job.
+  using WatchJobStateCallback = absl::AnyInvocable<void(
+      std::vector<tensorflow::CoordinatedTaskStateInfo>, int64_t)>;
+  void WatchJobState(absl::string_view job_name,
+                     std::optional<int64_t> version_number,
+                     WatchJobStateCallback);
 
   // Insert a configuration key-value in the coordination service.
   // For now, a key-value can only be inserted once and cannot be updated.
@@ -606,6 +610,17 @@ class CoordinationService {
   static tensorflow::CoordinatedTaskStateInfo CreateTaskStateInfo(
       const tensorflow::CoordinatedTask& task, const TaskState& state);
 
+  // Gets the task states for the provided job.
+  std::vector<tensorflow::CoordinatedTaskStateInfo> GetJobState(
+      absl::string_view job) ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+
+  // Notifies all callbacks registered via WatchJobState.
+  void NotifyWatchJobStateCallbacks() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+
+  // This method should be called whenever the cluster state changes in a way
+  // such that NotifyWatchJobStateCallbacks should be called.
+  void ClusterStateUpdated() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+
   std::unique_ptr<CoordinationClientCache> client_cache_;
   Env& env_;
   const IncarnationId service_incarnation_{random::New64()};
@@ -631,6 +646,9 @@ class CoordinationService {
   absl::Mutex state_mu_;
   absl::flat_hash_map<std::string, std::unique_ptr<TaskState>> cluster_state_
       ABSL_GUARDED_BY(state_mu_);
+  int64_t cluster_state_version_number_ ABSL_GUARDED_BY(state_mu_) = 0;
+  std::vector<std::tuple<std::string, WatchJobStateCallback>>
+      watch_job_state_callbacks_ ABSL_GUARDED_BY(state_mu_);
   tensorflow::DeviceInfo cluster_devices_ ABSL_GUARDED_BY(state_mu_);
 
   KeyValueStore store_;
