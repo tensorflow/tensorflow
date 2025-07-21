@@ -23,7 +23,7 @@ include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/lite/utils/utils.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
-def NotFromDequant : Constraint<CPred<"NotFromDequant($0)">>;
+def NotFromFoldableChain : Constraint<CPred<"NotFromFoldableChain($0)">>;
 
 def IsResultRankEqualTo : Constraint<CPred<
   "llvm::cast<ShapedType>($0.getType().front()).getRank() == "
@@ -72,4 +72,4 @@ def FuseTransposeFCRhsToBatchMatmul : Pat<
    //coverage. This pattern will now work for all the transpose->fc patterns
    //where the fc has not done imlicit reshape of the output
    (IsResultRankEqualTo $output, $lhs),
-   (NotFromDequant $rhs)]>;
+   (NotFromFoldableChain $rhs)]>;
