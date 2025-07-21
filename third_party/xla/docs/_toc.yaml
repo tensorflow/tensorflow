@@ -37,6 +37,8 @@ toc:
     path: /xla/persisted_autotuning
   - title: Shapes and layout
     path: /xla/shapes
+  - title: SparseCore
+    path: /xla/sparsecore
   - title: Testing HLO passes
     path: /xla/test_hlo_passes
   - title: Tiled layout
