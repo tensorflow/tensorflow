@@ -344,8 +344,9 @@ absl::Status runShardingPropagation(HloModule* hloModule,
 
   mlir::PassManager pm(mlirModule->getContext());
   pm.enableVerifier(enableVerifier);
-  // TODO(tomnatan): add dump index and remove hard coded in name.
-  pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir, "00.input_module"));
+  int dumpIndex = 0;
+  pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir, "input_module",
+                                               dumpIndex++));
 
   if (importMhloShardings) {
     auto spanToArrayRef = [](absl::Span<const bool> span) {
@@ -367,10 +368,10 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   // since the TOAST cost model cannot account for split axes or padding.
   options.dumpDirectory = shardyDir;
   options.conservativePropagation = hloModule->use_auto_spmd_partitioning();
-  mlir::sdy::addPropagationPipeline(pm, options);
+  mlir::sdy::addPropagationPipeline(pm, dumpIndex, options);
   addStablehloExportPipeline(pm);
-  // TODO(tomnatan): add dump index and remove hard coded in name.
-  pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir, "04.output_module"));
+  pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir, "output_module",
+                                               dumpIndex++));
   tsl::StatusScopedDiagnosticHandler diagnosticHandler(
       mlirModule->getContext());
   return diagnosticHandler.consumeStatus(pm.run(mlirModule));
