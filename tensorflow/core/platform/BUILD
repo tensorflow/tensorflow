@@ -760,13 +760,7 @@ cc_library(
     name = "status_matchers",
     testonly = 1,
     hdrs = ["status_matchers.h"],
-    deps = [
-        ":status",
-        ":statusor",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "@local_tsl//tsl/platform:status_matchers",
-    ],
+    deps = ["@local_xla//xla/tsl/platform:status_matchers"],
 )
 
 cc_library(

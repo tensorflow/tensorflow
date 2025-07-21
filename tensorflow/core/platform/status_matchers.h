@@ -15,27 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_STATUS_MATCHERS_H_
 #define TENSORFLOW_CORE_PLATFORM_STATUS_MATCHERS_H_
 
-
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/status_matchers.h"
 
 namespace tensorflow {
-// NOLINTBEGIN(misc-unused-using-decls)
-
 namespace testing {
-namespace internal_status {
-using tsl::testing::internal_status::GetStatus;
-using tsl::testing::internal_status::IsOkAndHoldsMatcher;
-using tsl::testing::internal_status::IsOkAndHoldsMatcherImpl;
-using tsl::testing::internal_status::IsOkMatcher;
-using tsl::testing::internal_status::MonoIsOkMatcherImpl;
-using tsl::testing::internal_status::MonoStatusIsMatcherImpl;
-using tsl::testing::internal_status::StatusIsMatcher;
-using tsl::testing::internal_status::StatusIsMatcherCommonImpl;
-}  // namespace internal_status
+// NOLINTBEGIN(misc-unused-using-decls)
 using tsl::testing::IsOk;
 using tsl::testing::IsOkAndHolds;
 using tsl::testing::StatusIs;
