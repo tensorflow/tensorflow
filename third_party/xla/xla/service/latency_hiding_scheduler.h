@@ -1199,8 +1199,9 @@ class ModulePressureState {
   void UpdatePressureStateForComputation(
       const HloComputation* comp,
       MemoryPressureTracker::MemoryPressureState state) {
-    memory_pressure_states_[comp] = state;
-    if (memory_pressure_states_.contains(comp)) {
+    auto [it, inserted] = memory_pressure_states_.insert_or_assign(comp, state);
+
+    if (!inserted) {
       // Rescheduling computation that has already been scheduled
       // can only happen during preference/heuristic rescheduling.
       // Recalculate memory peak.
