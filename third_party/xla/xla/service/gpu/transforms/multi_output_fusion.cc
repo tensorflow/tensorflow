@@ -210,7 +210,7 @@ FusionDecision ProducerCandidateIsFusible(
   }
 
   GpuPerformanceModel::RunTimes t =
-      gpu_performance_model.EstimateRunTimesForMultiOutputFusion(
+      gpu_performance_model.Get().EstimateRunTimesForMultiOutputFusion(
           &producer, &consumer, cost_analysis);
   if (t.time_fused > t.time_unfused) {
     return FusionDecision::Forbid("will execute slower if fused");

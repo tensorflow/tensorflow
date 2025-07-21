@@ -323,7 +323,7 @@ EstimateOptimizedHloRunTimeWithoutSoftMaxRewriterTriton(
 
   GpuPerformanceModelOwning gpu_performance_model(device_info);
   for (const HloInstruction* instr : entry_computation->instructions()) {
-    total_run_time += gpu_performance_model
+    total_run_time += gpu_performance_model.Get()
                           .EstimateRunTimeForInstruction(instr, &cost_analysis)
                           .exec_time;
   }

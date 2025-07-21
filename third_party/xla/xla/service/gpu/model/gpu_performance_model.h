@@ -85,21 +85,13 @@ class GpuPerformanceModel : public GpuPerformanceModelBase {
 // owning model should be used.
 class GpuPerformanceModelOwning {
  public:
-  explicit GpuPerformanceModelOwning(const se::DeviceDescription& device_info);
+  explicit GpuPerformanceModelOwning(const se::DeviceDescription& device_info)
+      : fusion_analysis_cache_(device_info),
+        gpu_performance_model_(std::make_unique<GpuPerformanceModel>(
+            device_info, fusion_analysis_cache_,
+            gpu_performance_model_cache_)) {};
 
-  // Wrapper over GpuPerformanceModel::RecordEstimatedRunTime
-  void RecordEstimatedRunTime(HloInstruction* instruction,
-                              const GpuHloCostAnalysis* cost_analysis) const;
-
-  // Wrapper over GpuPerformanceModel::EstimateRunTimeForInstruction.
-  EstimateRunTimeData EstimateRunTimeForInstruction(
-      const HloInstruction* instr,
-      const GpuHloCostAnalysis* cost_analysis) const;
-
-  // Wrapper over GpuPerformanceModel::EstimateRunTimesForMultiOutputFusion.
-  GpuPerformanceModel::RunTimes EstimateRunTimesForMultiOutputFusion(
-      const HloInstruction* producer, const HloInstruction* consumer,
-      const GpuHloCostAnalysis* cost_analysis) const;
+  GpuPerformanceModel& Get() const { return *gpu_performance_model_; }
 
  private:
   HloFusionAnalysisCache fusion_analysis_cache_;
