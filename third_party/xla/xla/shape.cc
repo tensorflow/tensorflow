@@ -409,16 +409,17 @@ Shape* Shape::add_tuple_shapes() {
 bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
   if (lhs.IsTuple()) {
     return rhs.IsTuple() &&
-           absl::c_equal(
-               lhs.tuple_shapes(), rhs.tuple_shapes(),
-               [=](const Shape& l, const Shape& r) { return (*this)(l, r); });
+           absl::c_equal(lhs.tuple_shapes(), rhs.tuple_shapes(),
+                         [this](const Shape& l, const Shape& r) {
+                           return (*this)(l, r);
+                         });
   }
   if (lhs.IsBuffer() || rhs.IsBuffer()) {
     if (!ignore_buffer_) {
       return lhs.IsBuffer() && rhs.IsBuffer() &&
              (*this)(lhs.buffer_shape(), rhs.buffer_shape());
     }
-    const auto underlying_shape = [](const Shape& shape) -> const Shape& {
+    auto underlying_shape = [](const Shape& shape) -> const Shape& {
       return shape.IsBuffer() ? shape.buffer_shape() : shape;
     };
     return (*this)(underlying_shape(lhs), underlying_shape(rhs));
@@ -448,13 +449,13 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
       VLOG(3) << "CompareShapes: lhs rank != rhs rank";
       return false;
     }
-    for (int i = 0; i < lhs.dimensions().size(); ++i) {
-      if (ignore_dynamic_dimension_ &&
-          (lhs.is_unbounded_dynamic_dimension(i) ||
-           rhs.is_unbounded_dynamic_dimension(i))) {
-        continue;
-      }
-      if (lhs.dimensions(i) != rhs.dimensions(i)) {
+    for (auto l = lhs.dimensions().begin(), r = rhs.dimensions().begin();
+         l < lhs.dimensions().end(); ++l, ++r) {
+      if (*l != *r) {
+        if (ignore_dynamic_dimension_ &&
+            (*l == kUnboundedSize || *r == kUnboundedSize)) {
+          continue;
+        }
         VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
         return false;
       }
@@ -498,12 +499,10 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
   }
 
   if (!ignore_dynamic_dimension_) {
-    for (int i = 0; i < lhs.dimensions().size(); ++i) {
-      if (lhs.is_dynamic_dimension(i) != rhs.is_dynamic_dimension(i)) {
-        VLOG(3) << "CompareShapes: lhs and rhs have different dynamic "
-                   "dimensions.";
-        return false;
-      }
+    if (lhs.dynamic_dimensions() != rhs.dynamic_dimensions()) {
+      VLOG(3) << "CompareShapes: lhs and rhs have different dynamic "
+                 "dimensions.";
+      return false;
     }
   }
   return true;
