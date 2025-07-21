@@ -432,13 +432,6 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
   // region containing the composition.
   let regions = (region VariadicRegion<AnyRegion>:$body);
 
-  let skipDefaultBuilders = 1;
-
-  let builders = [
-    OpBuilder<(ins "StringRef":$name, "FunctionType":$type,
-      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>
-  ];
-
   let extraClassDeclaration = [{
     LogicalResult verifyType() { return success(); }
 
