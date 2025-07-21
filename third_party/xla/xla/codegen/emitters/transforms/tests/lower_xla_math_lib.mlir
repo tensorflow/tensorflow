@@ -78,3 +78,32 @@ module {
 // CHECK-NOT: math.erf
 // CHECK: %[[ERF_CALL:.*]] = call @erf
 // CHECK: return %[[ERF_CALL]]
+
+
+// -----
+
+module {
+  func.func @rsqrt(%arg0: f32) -> f32 {
+    %ret = math.rsqrt %arg0 : f32
+    return %ret : f32
+  }
+}
+
+// CHECK-LABEL: @local_xla.rsqrt.f32
+// CHECK-NOT: math.rsqrt
+// CHECK: %[[RSQRT_CALL:.*]] = call @local_xla.rsqrt.f32
+// CHECK: return %[[RSQRT_CALL]]
+
+// -----
+
+module {
+  func.func @rsqrt(%arg0: f64) -> f64 {
+    %ret = math.rsqrt %arg0 : f64
+    return %ret : f64
+  }
+}
+
+// CHECK-LABEL: @local_xla.rsqrt.f64
+// CHECK-NOT: math.rsqrt
+// CHECK: %[[RSQRT_CALL:.*]] = call @local_xla.rsqrt.f64
+// CHECK: return %[[RSQRT_CALL]]

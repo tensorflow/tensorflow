@@ -71,6 +71,7 @@ limitations under the License.
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/codegen/math/ldexp.h"
 #include "xla/codegen/math/log1p.h"
+#include "xla/codegen/math/rsqrt.h"
 #include "xla/codegen/math/string_interner.h"
 #include "xla/codegen/math/vec_name_mangler.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -97,16 +98,30 @@ template <typename Intrinsic>
 class IntrinsicAdapter : public MathFunction {
  public:
   absl::string_view FunctionName() const override { return Intrinsic::kName; }
-  std::vector<std::vector<Type>> SupportedVectorTypes() const override {
-    return Intrinsic::SupportedVectorTypes();
+  std::vector<std::vector<Type>> SupportedVectorTypes(
+      llvm::TargetMachine* target_machine) const override {
+    if constexpr (std::is_invocable_v<decltype(Intrinsic::SupportedVectorTypes),
+                                      llvm::TargetMachine*>) {
+      return Intrinsic::SupportedVectorTypes(target_machine);
+    } else {
+      return Intrinsic::SupportedVectorTypes();
+    }
   }
 
   llvm::Function* CreateDefinition(
-      llvm::Module& module, absl::string_view name,
+      llvm::Module& module, llvm::TargetMachine* target_machine,
       absl::Span<const Type> types) const override {
     return apply_vector<Intrinsic::kNumArgs>(
                [&](auto... args) {
-                 return Intrinsic::CreateDefinition(&module, args...);
+                 if constexpr (std::is_invocable_v<
+                                   decltype(Intrinsic::CreateDefinition),
+                                   llvm::Module*, llvm::TargetMachine*,
+                                   decltype(args)...>) {
+                   return Intrinsic::CreateDefinition(&module, target_machine,
+                                                      args...);
+                 } else {
+                   return Intrinsic::CreateDefinition(&module, args...);
+                 }
                },
                types)
         .value();
@@ -138,7 +153,8 @@ class IntrinsicAdapter : public MathFunction {
   }
 };
 
-MathFunctionLib::MathFunctionLib() {
+MathFunctionLib::MathFunctionLib(llvm::TargetMachine* target_machine)
+    : target_machine_(target_machine) {
   math_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::Ldexp>>());
   math_functions_.push_back(
@@ -149,6 +165,8 @@ MathFunctionLib::MathFunctionLib() {
       std::make_unique<IntrinsicAdapter<intrinsics::Log1p>>());
   math_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::Erf>>());
+  math_functions_.push_back(
+      std::make_unique<IntrinsicAdapter<intrinsics::Rsqrt>>());
 }
 
 namespace {
@@ -193,8 +211,10 @@ std::vector<llvm::VecDesc> MathFunctionLib::Vectorizations() {
   for (const auto& math_func : math_functions_) {
     // For each floating point type supported, we add all vector widths to every
     // other vector width as a possible vectorization.
-    for (const auto& target_types : math_func->SupportedVectorTypes()) {
-      for (const auto& vector_types : math_func->SupportedVectorTypes()) {
+    for (const auto& target_types :
+         math_func->SupportedVectorTypes(target_machine_)) {
+      for (const auto& vector_types :
+           math_func->SupportedVectorTypes(target_machine_)) {
         if (target_types.front().element_type() !=
             vector_types.front().element_type()) {
           continue;
@@ -203,6 +223,7 @@ std::vector<llvm::VecDesc> MathFunctionLib::Vectorizations() {
             math_func->GenerateVectorizedFunctionName(target_types));
         absl::string_view vec_name = math::StringInterner::Get().Intern(
             math_func->GenerateVectorizedFunctionName(vector_types));
+        targets_[vec_name] = math_func->FunctionName();
         if (target_name == vec_name) {
           continue;
         }
@@ -216,7 +237,6 @@ std::vector<llvm::VecDesc> MathFunctionLib::Vectorizations() {
                 math_func->GenerateMangledSimdPrefix(vector_types)),
             std::nullopt};
         vec_descs.push_back(vec_desc);
-        targets_[vec_name] = math_func->FunctionName();
       }
     }
   }
@@ -226,6 +246,7 @@ std::vector<llvm::VecDesc> MathFunctionLib::Vectorizations() {
 void CreateDefinitionAndReplaceDeclaration(llvm::Module& module,
                                            absl::string_view name,
                                            absl::Span<const Type> types,
+                                           llvm::TargetMachine* target_machine,
                                            MathFunction& math_func) {
   // The Vectorization pass may have already inserted a declaration
   // of this function that we need to rename and later remove to avoid
@@ -234,7 +255,8 @@ void CreateDefinitionAndReplaceDeclaration(llvm::Module& module,
   if (existing_func && existing_func->isDeclaration()) {
     existing_func->setName(std::string(name) + ".old_decl");
   }
-  llvm::Function* definition = math_func.CreateDefinition(module, name, types);
+  llvm::Function* definition =
+      math_func.CreateDefinition(module, target_machine, types);
   definition->setLinkage(llvm::Function::InternalLinkage);
   definition->addFnAttr(llvm::Attribute::AlwaysInline);
   llvm::verifyFunction(*definition);
@@ -257,13 +279,14 @@ absl::flat_hash_set<absl::string_view> MathFunctionLib::RewriteMathFunctions(
        GetCalledApproximatableFunctions(module, targets_)) {
     for (const auto& math_func : math_functions_) {
       if (math_func->FunctionName() == function_name) {
-        for (const auto& types : math_func->SupportedVectorTypes()) {
+        for (const auto& types :
+             math_func->SupportedVectorTypes(target_machine_)) {
           auto vector_type = types.front();
           if (dtypes.contains(vector_type.element_type())) {
             absl::string_view name = math::StringInterner::Get().Intern(
                 math_func->GenerateVectorizedFunctionName(types));
             CreateDefinitionAndReplaceDeclaration(module, name, types,
-                                                  *math_func);
+                                                  target_machine_, *math_func);
             replaced_functions.insert(name);
           }
         }
