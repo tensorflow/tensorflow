@@ -17,11 +17,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/base/thread_annotations.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -51,6 +53,7 @@ namespace tsl {
 namespace {
 
 using ::testing::Each;
+using ::testing::Ge;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Matcher;
@@ -123,7 +126,6 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(ResetTask);
   UNIMPLEMENTED(ReportErrorToService);
   UNIMPLEMENTED(GetTaskState);
-  UNIMPLEMENTED(GetJobState);
   UNIMPLEMENTED(InsertKeyValue);
   UNIMPLEMENTED(TryGetKeyValue);
   UNIMPLEMENTED(GetKeyValueDir);
@@ -144,6 +146,7 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED_WITH_CALL_OPTS(Heartbeat);
   UNIMPLEMENTED_WITH_CALL_OPTS(ShutdownTask);
   UNIMPLEMENTED_WITH_CALL_OPTS(PollForError);
+  UNIMPLEMENTED_WITH_CALL_OPTS(WatchJobState);
 #undef UNIMPLEMENTED_WITH_CALL_OPTS
 
  private:
@@ -629,44 +632,71 @@ TEST_F(CoordinateTwoTasksTest, TestTaskRestart) {
   EXPECT_THAT(client_0_.GetStatus(), StatusIs(absl::StatusCode::kAborted));
 }
 
-TEST_F(CoordinateTwoTasksTest, GetJobStateSucceeds) {
-  // This test calls GetJobState on two successfully connected tasks.
+tensorflow::CoordinatedTaskStateInfo info(
+    const tensorflow::CoordinatedTask& task, IncarnationId incarnation_id,
+    tensorflow::CoordinatedTaskState state) {
+  tensorflow::CoordinatedTaskStateInfo info;
+  *info.mutable_task() = task;
+  info.set_incarnation(incarnation_id.value());
+  info.set_state(state);
+  return info;
+}
+
+TEST_F(CoordinateTwoTasksTest, WatchJobStateSucceeds) {
+  // This test calls WatchJobState on two successfully connected tasks.
+
+  // Connect the tasks.
   EnableCoordinationService();
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
 
-  std::vector<tensorflow::CoordinatedTaskStateInfo> want(2);
-  *want[0].mutable_task() = task_0_;
-  want[0].set_incarnation(incarnation_0_.value());
-  want[0].set_state(tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
-  *want[1].mutable_task() = task_1_;
-  want[1].set_incarnation(incarnation_1_.value());
-  want[1].set_state(tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
-  EXPECT_THAT(coord_service_->GetJobState("worker"),
-              UnorderedElementsAre(EqualsProto(want[0]), EqualsProto(want[1])));
+  // Watch the job state, which should return immediately.
+  absl::Notification done;
+  coord_service_->WatchJobState(
+      "worker", std::nullopt,
+      [&, this](std::vector<tensorflow::CoordinatedTaskStateInfo> got,
+                int64_t version_number) {
+        using State = tensorflow::CoordinatedTaskState;
+        std::vector<tensorflow::CoordinatedTaskStateInfo> want(2);
+        want[0] = info(task_0_, incarnation_0_, State::TASKSTATE_CONNECTED);
+        want[1] = info(task_1_, incarnation_1_, State::TASKSTATE_CONNECTED);
+        EXPECT_THAT(got, UnorderedElementsAre(EqualsProto(want[0]),
+                                              EqualsProto(want[1])));
+        done.Notify();
+      });
+  done.WaitForNotification();
 }
 
-TEST_F(CoordinateTwoTasksTest, GetJobStateReturnsDisconnected) {
-  // This test calls GetJobState on one successfully connected task and one
+TEST_F(CoordinateTwoTasksTest, WatchJobStateReturnsDisconnected) {
+  // This test calls WatchJobState on one successfully connected task and one
   // disconnected task.
+
+  // Connect the tasks. Disconnect task 1.
   EnableCoordinationService();
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   ASSERT_OK(coord_service_->ResetTask(task_1_));
 
-  std::vector<tensorflow::CoordinatedTaskStateInfo> want(2);
-  *want[0].mutable_task() = task_0_;
-  want[0].set_incarnation(incarnation_0_.value());
-  want[0].set_state(tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
-  *want[1].mutable_task() = task_1_;
-  want[1].set_incarnation(incarnation_1_.value());
-  want[1].set_state(tensorflow::CoordinatedTaskState::TASKSTATE_DISCONNECTED);
-  EXPECT_THAT(coord_service_->GetJobState("worker"),
-              UnorderedElementsAre(EqualsProto(want[0]), EqualsProto(want[1])));
+  // Watch the job state, which should return immediately.
+  absl::Notification done;
+  coord_service_->WatchJobState(
+      "worker", std::nullopt,
+      [&, this](std::vector<tensorflow::CoordinatedTaskStateInfo> got,
+                int64_t version_number) {
+        using State = tensorflow::CoordinatedTaskState;
+        std::vector<tensorflow::CoordinatedTaskStateInfo> want(2);
+        want[0] = info(task_0_, incarnation_0_, State::TASKSTATE_CONNECTED);
+        want[1] = info(task_1_, incarnation_1_, State::TASKSTATE_DISCONNECTED);
+        EXPECT_THAT(got, UnorderedElementsAre(EqualsProto(want[0]),
+                                              EqualsProto(want[1])));
+        EXPECT_THAT(version_number, Ge(0));
+        done.Notify();
+      });
+  done.WaitForNotification();
 }
 
-TEST_F(CoordinateTwoTasksTest, GetJobStateReturnsNewIncarnation) {
-  // This test calls GetJobState after one task has restarted with a new
+TEST_F(CoordinateTwoTasksTest, WatchJobStateReturnsNewIncarnation) {
+  // This test calls WatchJobState after one task has restarted with a new
   // incarnation.
   EnableCoordinationService();
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
@@ -674,15 +704,116 @@ TEST_F(CoordinateTwoTasksTest, GetJobStateReturnsNewIncarnation) {
   ASSERT_OK(coord_service_->ResetTask(task_1_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_ + 1));
 
-  std::vector<tensorflow::CoordinatedTaskStateInfo> want(2);
-  *want[0].mutable_task() = task_0_;
-  want[0].set_incarnation(incarnation_0_.value());
-  want[0].set_state(tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
-  *want[1].mutable_task() = task_1_;
-  want[1].set_incarnation((incarnation_1_ + 1).value());
-  want[1].set_state(tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
-  EXPECT_THAT(coord_service_->GetJobState("worker"),
-              UnorderedElementsAre(EqualsProto(want[0]), EqualsProto(want[1])));
+  // Watch the job state, which should return immediately.
+  absl::Notification done;
+  coord_service_->WatchJobState(
+      "worker", std::nullopt,
+      [&, this](std::vector<tensorflow::CoordinatedTaskStateInfo> got,
+                int64_t version_number) {
+        using State = tensorflow::CoordinatedTaskState;
+        std::vector<tensorflow::CoordinatedTaskStateInfo> want(2);
+        want[0] = info(task_0_, incarnation_0_, State::TASKSTATE_CONNECTED);
+        want[1] = info(task_1_, incarnation_1_ + 1, State::TASKSTATE_CONNECTED);
+        EXPECT_THAT(got, UnorderedElementsAre(EqualsProto(want[0]),
+                                              EqualsProto(want[1])));
+        EXPECT_THAT(version_number, Ge(0));
+        done.Notify();
+      });
+  done.WaitForNotification();
+}
+
+TEST_F(CoordinateTwoTasksTest, WatchJobStateBlocksUntilChange) {
+  // This test calls checks that WatchJobState blocks until the job state
+  // changes.
+
+  // Connect the tasks. Disconnect task 1.
+  EnableCoordinationService();
+  ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+
+  // Watch the job state, which should return immediately.
+  absl::Notification done_1;
+  int64_t version_number = -1;
+  coord_service_->WatchJobState(
+      "worker", std::nullopt,
+      [&](std::vector<tensorflow::CoordinatedTaskStateInfo> got, int64_t v) {
+        EXPECT_THAT(v, Ge(0));
+        version_number = v;
+        done_1.Notify();
+      });
+  done_1.WaitForNotification();
+
+  // Watch the job state again, which should block.
+  absl::Notification done_2;
+  coord_service_->WatchJobState(
+      "worker", version_number,
+      [&, this](std::vector<tensorflow::CoordinatedTaskStateInfo> got,
+                int64_t v) {
+        using State = tensorflow::CoordinatedTaskState;
+        std::vector<tensorflow::CoordinatedTaskStateInfo> want(2);
+        want[0] = info(task_0_, incarnation_0_, State::TASKSTATE_CONNECTED);
+        want[1] = info(task_1_, incarnation_1_, State::TASKSTATE_DISCONNECTED);
+        EXPECT_THAT(got, UnorderedElementsAre(EqualsProto(want[0]),
+                                              EqualsProto(want[1])));
+        EXPECT_THAT(v, Ge(version_number));
+        done_2.Notify();
+      });
+  bool notified = done_2.WaitForNotificationWithTimeout(absl::Seconds(1));
+  ASSERT_FALSE(notified);
+
+  // Disconnect task 1.
+  ASSERT_OK(coord_service_->ResetTask(task_1_));
+
+  done_2.WaitForNotification();
+}
+
+TEST_F(CoordinateTwoTasksTest, WatchJobStateAfterTwoStateChanges) {
+  // This test calls WatchJobState after two state changes.
+  EnableCoordinationService();
+  ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+
+  // Watch the job state, which should return immediately.
+  absl::Notification done_1;
+  int64_t version_number = -1;
+  coord_service_->WatchJobState(
+      "worker", std::nullopt,
+      [&, this](std::vector<tensorflow::CoordinatedTaskStateInfo> got,
+                int64_t v) {
+        using State = tensorflow::CoordinatedTaskState;
+        std::vector<tensorflow::CoordinatedTaskStateInfo> want(2);
+        want[0] = info(task_0_, incarnation_0_, State::TASKSTATE_CONNECTED);
+        want[1] = info(task_1_, incarnation_1_, State::TASKSTATE_CONNECTED);
+        EXPECT_THAT(got, UnorderedElementsAre(EqualsProto(want[0]),
+                                              EqualsProto(want[1])));
+        EXPECT_THAT(v, Ge(0));
+        version_number = v;
+        done_1.Notify();
+      });
+  done_1.WaitForNotification();
+
+  // Restart task 1. This leads to two state changes: the task is disconnected
+  // and then reconnected.
+  ASSERT_OK(coord_service_->ResetTask(task_1_));
+  ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_ + 1));
+
+  // Watch the job state, which should return immediately because the state has
+  // already changed.
+  absl::Notification done_2;
+  coord_service_->WatchJobState(
+      "worker", version_number,
+      [&, this](std::vector<tensorflow::CoordinatedTaskStateInfo> got,
+                int64_t v) {
+        using State = tensorflow::CoordinatedTaskState;
+        std::vector<tensorflow::CoordinatedTaskStateInfo> want(2);
+        want[0] = info(task_0_, incarnation_0_, State::TASKSTATE_CONNECTED);
+        want[1] = info(task_1_, incarnation_1_ + 1, State::TASKSTATE_CONNECTED);
+        EXPECT_THAT(got, UnorderedElementsAre(EqualsProto(want[0]),
+                                              EqualsProto(want[1])));
+        EXPECT_THAT(v, Ge(version_number));
+        done_2.Notify();
+      });
+  done_2.WaitForNotification();
 }
 
 TEST_F(CoordinateTwoTasksTest, InsertKeyValue_Duplicate_Fail) {

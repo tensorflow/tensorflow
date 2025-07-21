@@ -162,13 +162,50 @@ message GetTaskStateResponse {
   repeated CoordinatedTaskStateInfo task_state = 1;
 }
 
-// Request and response messages for getting state of a remote job.
-message GetJobStateRequest {
+// Request and response messages for watching the state of a remote job.
+//
+// The state of a job may change over time. For example, a task might fail and
+// later rejoin. Every time the job state changes, the new job state is given a
+// unique, non-negative, and increasing version number.
+//
+// For example, the initial job state might have version 0. Imagine a task then
+// fails. This new job state has version 10. Another task fails, leading to job
+// state 22.
+//
+// A WatchJobStateRequest with version_number v blocks until the latest job
+// state has a version number greater than v. It then returns the latest job
+// state along with its version number.
+//
+// This API can be used to (1) get the latest job state immediately or (2) watch
+// the job state for changes.
+//
+//     1. To get the latest job state, issue a WatchJobStateRequest with a
+//        version number of -1.
+//     2. To watch the job state for changes, issue a WatchJobStateRequest with
+//        the version number returned by the previous WatchJobStateResponse.
+//
+// Though version numbers are ints, they should be treated as opaque ids. The
+// only valid version numbers are -1 and the version numbers returned in a
+// WatchJobStateResponse. You should NOT issue a WatchJobStateRequest with some
+// arbitrarily chosen version number.
+//
+// Note the following two subtleties with this API:
+//
+//     1. This API *cannot* be used to witness *every* change in job state. If
+//        you issue a WatchJobStateRequest with version v, you may receive a job
+//        state that has changed multiple times since version v.
+//     2. If you issue a WatchJobStateRequest with version number v, the job
+//        state you receive may not be different than the job state at version
+//        v.  For example, a task may have failed and later recovered leading to
+//        an identical job state.
+message WatchJobStateRequest {
   string job_name = 1;
+  int64 version_number = 2;
 }
 
-message GetJobStateResponse {
+message WatchJobStateResponse {
   repeated CoordinatedTaskStateInfo task_state = 1;
+  int64 version_number = 2;
 }
 
 // Message for configuration key value.
@@ -327,8 +364,8 @@ service CoordinationService {
   // non-OK error code, non-empty error message and error payload.
   rpc GetTaskState(GetTaskStateRequest) returns (GetTaskStateResponse);
 
-  // Get the state of every task in a remote job.
-  rpc GetJobState(GetJobStateRequest) returns (GetJobStateResponse);
+  // Watches the state of every task in a remote job.
+  rpc WatchJobState(WatchJobStateRequest) returns (WatchJobStateResponse);
 
   // Insert configuration key-value that will be accessible to all cluster
   // tasks. The key can be formatted as Unix file path with hierarchy. The
