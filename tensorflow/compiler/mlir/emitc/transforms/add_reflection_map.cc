@@ -82,14 +82,14 @@ void AddReflectionMapPass::runOnOperation() {
     }
   });
 
-  std::string mapInitializer = "{";
+  std::string mapInitializer = "{ ";
   for (size_t i = 0; i < fieldNames.size(); ++i) {
-    mapInitializer += "{\"" + fieldNames[i] + "\", " +
+    mapInitializer += " { \"" + fieldNames[i] + "\", " +
                       "reinterpret_cast<char*>(&" + fieldNames[i] + ")",
-        mapInitializer += "}";
+        mapInitializer += " }";
     if (i < fieldNames.size() - 1) mapInitializer += ", ";
   }
-  mapInitializer += "}";
+  mapInitializer += " }";
 
   emitc::OpaqueType iteratorType = mlir::emitc::OpaqueType::get(
       context, "std::map<std::string, char*>::const_iterator");
