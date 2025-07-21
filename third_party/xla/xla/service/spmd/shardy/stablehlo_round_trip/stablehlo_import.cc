@@ -463,11 +463,9 @@ TensorShardingAttr convertToSdySharding(
   // device.
   if (hloSharding.HasUniqueDevice()) {
     if (inlineMesh) {
-      // TODO (tomnatan): Replace by MeshAttr::getMaximal when shardy pin is
-      // bumped.
       return TensorShardingAttr::getFullyClosed(
           ctx, /*rank=*/0,
-          MeshAttr::get(ctx, /*axes=*/{}, hloSharding.GetUniqueDevice()));
+          MeshAttr::getMaximal(ctx, hloSharding.GetUniqueDevice()));
     }
     return TensorShardingAttr::getFullyClosed(
         ctx, /*rank=*/0,
@@ -688,7 +686,7 @@ class ImportShardingsPass
       std::string meshName = absl::StrCat("maximal_mesh_", deviceId);
       auto meshOp = opBuilder.create<MeshOp>(
           moduleOp.getLoc(), meshName,
-          MeshAttr::get(moduleOp.getContext(), {}, deviceId));
+          MeshAttr::getMaximal(moduleOp.getContext(), deviceId));
       symbolTable.insert(meshOp);
       deviceIdToMaximalMeshName[deviceId] = meshOp.getSymName();
     }
