@@ -64,7 +64,6 @@ class ConcatenateFusion : public EmitterBase {
   const HloFusionAnalysis& analysis_;
   Shape largest_shape_;
   LaunchDimensionsConfig config_;
-  int unroll_factor_;
 };
 
 }  // namespace gpu
