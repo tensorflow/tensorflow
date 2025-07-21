@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tsl/platform/platform.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 namespace thread {
@@ -352,6 +353,10 @@ TEST(ThreadPool, ParallelForWithWorkerId) {
 }
 
 TEST(ThreadPool, Parallelism) {
+  // TODO: b/433244133 - Re-enable this test once the flakiness is fixed.
+#if defined(PLATFORM_WINDOWS)
+  GTEST_SKIP() << "Skipping test on Windows due to flakiness.";
+#endif
   // Test that if we have N threads and schedule N tasks,
   // all tasks will be scheduled at the same time.
   // Failure mode for this test will be episodic timeouts (does not terminate).
