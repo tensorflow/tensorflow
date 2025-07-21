@@ -2443,15 +2443,14 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
     }
 
     // TupleAllToAll has identical result and operand shapes.
-    for (size_t i = 0; i < operands.size(); ++i) {
-      auto rankedOperand = dyn_cast<RankedTensorType>(operands[i].getType());
+    for (auto operand : operands) {
+      auto rankedOperand = dyn_cast<RankedTensorType>(operand.getType());
       if (rankedOperand)
         inferredReturnShapes.emplace_back(rankedOperand.getShape(),
                                           rankedOperand.getElementType(),
                                           rankedOperand.getEncoding());
       else
-        inferredReturnShapes.emplace_back(
-            cast<ShapedType>(operands[i].getType()));
+        inferredReturnShapes.emplace_back(cast<ShapedType>(operand.getType()));
     }
 
     return success();
@@ -3301,8 +3300,7 @@ LogicalResult ConcatenateOp::reifyReturnTypeShapes(
   };
 
   SmallVector<SmallVector<Value, 4>, 4> allShapeValues;
-  for (size_t inputId = 0; inputId < inputs.size(); ++inputId) {
-    Value operand = inputs[inputId];
+  for (auto operand : inputs) {
     auto operandType = dyn_cast<RankedTensorType>(operand.getType());
     if (!operandType) return failure();
 
@@ -6819,7 +6817,7 @@ static ParseResult parseStruct(
 template <typename T>
 static void printField(AsmPrinter& printer, StringRef name, T field,
                        StringRef& separator) {
-  if (field != 0) {
+  if (field != nullptr) {
     printer << separator << name << " = " << field;
     separator = ", ";
   }
