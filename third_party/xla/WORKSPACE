@@ -54,6 +54,17 @@ load(":workspace0.bzl", "xla_workspace0")
 xla_workspace0()
 
 load(
+    "@rules_ml_toolchain//cc_toolchain/deps:cc_toolchain_deps.bzl",
+    "cc_toolchain_deps",
+)
+
+cc_toolchain_deps()
+
+register_toolchains("@rules_ml_toolchain//cc_toolchain:lx64_lx64")
+
+register_toolchains("@rules_ml_toolchain//cc_toolchain:lx64_lx64_cuda")
+
+load(
     "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",
     "cuda_json_init_repository",
 )
@@ -126,14 +137,3 @@ load(
 )
 
 nvshmem_configure(name = "local_config_nvshmem")
-
-load(
-    "@rules_ml_toolchain//cc_toolchain/deps:cc_toolchain_deps.bzl",
-    "cc_toolchain_deps",
-)
-
-cc_toolchain_deps()
-
-register_toolchains("@rules_ml_toolchain//cc_toolchain:lx64_lx64")
-
-register_toolchains("@rules_ml_toolchain//cc_toolchain:lx64_lx64_cuda")
