@@ -19,8 +19,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 
@@ -105,7 +105,7 @@ inline void PrintTo(const tsl::error::Code code, std::ostream* os) {
 }
 
 template <typename T>
-void PrintTo(const StatusOr<T>& status_or, std::ostream* os) {
+void PrintTo(const absl::StatusOr<T>& status_or, std::ostream* os) {
   *os << ::testing::PrintToString(status_or.status());
   if (status_or.ok()) {
     *os << ": " << ::testing::PrintToString(status_or.value());
@@ -120,7 +120,7 @@ inline const absl::Status& GetStatus(const absl::Status& status) {
 }
 
 template <typename T>
-inline const absl::Status& GetStatus(const StatusOr<T>& status) {
+inline const absl::Status& GetStatus(const absl::StatusOr<T>& status) {
   return status.status();
 }
 
