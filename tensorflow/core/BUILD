@@ -1939,32 +1939,6 @@ tf_cc_tests(
 )
 
 tf_cc_tests(
-    name = "legacy_lib_core_tests",
-    size = "medium",
-    srcs = [
-        "//tensorflow/core/lib/core:legacy_lib_core_all_tests",
-    ],
-    deps = [
-        ":lib",
-        ":lib_internal",
-        ":lib_test_internal",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        "//tensorflow/core/platform:scanner",
-        "//tensorflow/core/platform:str_util",
-        "//tensorflow/core/platform:strcat",
-        "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/core/platform:stringprintf",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
-        "@eigen_archive//:eigen3",
-        "@zlib",
-    ],
-)
-
-tf_cc_tests(
     name = "cell_reader_test",
     size = "small",
     srcs = [
