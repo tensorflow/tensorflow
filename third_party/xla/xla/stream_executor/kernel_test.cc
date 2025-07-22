@@ -21,6 +21,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "benchmark/benchmark.h"
 #include "xla/stream_executor/device_memory.h"
