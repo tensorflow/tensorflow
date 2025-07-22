@@ -376,7 +376,6 @@ absl::Status XlaComputationLaunchContext::PopulateOutputs(
   if (!output.on_host_shape().IsTuple()) {
     ShapedBuffer nontuple_buffer = output.release();
     ShapedBuffer buffer(
-        xla::ShapeUtil::MakeTupleShape({nontuple_buffer.on_host_shape()}),
         xla::ShapeUtil::MakeTupleShape({nontuple_buffer.on_device_shape()}),
         output.device_ordinal());
     buffer.buffers().CopySubtreeFrom(nontuple_buffer.buffers(),
