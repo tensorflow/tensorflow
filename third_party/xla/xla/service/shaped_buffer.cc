@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "xla/service/shaped_buffer.h"
 
-#include <memory>
+#include <ostream>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/shape.h"
@@ -27,9 +28,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -40,7 +40,9 @@ ShapedBuffer::ShapedBuffer(Shape on_device_shape, int device_ordinal,
       buffers_(&on_device_shape_) {
   physical_device_ordinal_ =
       physical_device_ordinal == -1 ? device_ordinal_ : physical_device_ordinal;
-  on_host_shape_ = ShapeUtil::DeviceShapeToHostShape(on_device_shape_);
+  if (!ShapeUtil::DeviceShapeIsHostShape(on_device_shape_)) {
+    on_host_shape_ = ShapeUtil::DeviceShapeToHostShape(on_device_shape_);
+  }
 }
 
 ShapedBuffer::ShapedBuffer(Shape on_host_shape, Shape on_device_shape,
