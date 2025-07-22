@@ -31,6 +31,7 @@ namespace xla::cpu {
 struct DotLibraryRewriterOptions {
   bool use_onednn = false;
   bool use_xnnpack = false;
+  const tsl::protobuf::RepeatedField<int>* onednn_fusion_types = nullptr;
   const tsl::protobuf::RepeatedField<int>* xnn_fusion_types = nullptr;
 };
 
