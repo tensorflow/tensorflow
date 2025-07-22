@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/transforms/alias_passthrough_params.h"
 #include "xla/service/gpu/transforms/copy_fusion.h"
-#include "xla/service/gpu/transforms/horizontal_loop_fusion.h"
 #include "xla/service/gpu/transforms/sanitize_constant_names.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
