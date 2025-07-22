@@ -1770,5 +1770,67 @@ ENTRY MyModule {
                            instruction_names_in_order.end(), "op_1")));
 }
 
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       PeakFirstRematerializesSmallValuesAndSubComputations) {
+  const std::string& hlo_string = R"(
+HloModule fusion, is_scheduled=true
+
+%call_convoluted (param_0: f32[1024], param_1: f32[1024]) -> f32[1024] {
+  %constant_source_8 = f32[] constant(8)
+  %constant_source_8_user = f32[1024]{0} broadcast(%constant_source_8), dimensions={}
+  %param_0 = f32[1024]{0} parameter(0)
+  %param_1 = f32[1024]{0} parameter(1)
+  %res_param_add = f32[1024]{0} add(%param_0, %param_1)
+  %constant.anon = f32[] constant(1)
+  %constant_0 = f32[16384]{0} broadcast(%constant.anon), dimensions={}
+  %op_1 = f32[16384]{0} tanh(%constant_0)
+  %op_2 = f32[16384]{0} tanh(%op_1)
+  %op_3 = f32[16384]{0} tanh(%op_2)
+  %op_4 = f32[16384]{0} tanh(%op_3)
+  %tan_res = f32[1024]{0} slice(%op_4), slice={[0:1024]}
+  %res_1 = f32[1024]{0} add(%res_param_add, %tan_res)
+  %res_3 = f32[1024]{0} add(%constant_source_8_user, %res_1)
+  %constant_x = f32[1024]{0} broadcast(%constant_source_8), dimensions={}
+  %constant_x_and_res_param_add = f32[1024]{0} add(%constant_x, %res_param_add)
+  ROOT %res = f32[1024]{0} add(%res_3, %constant_x_and_res_param_add)
+}
+
+%call_comp (p: f32[1024], p_2: f32[1024]) -> f32[1024] {
+  %p = f32[1024]{0} parameter(0)
+  %p_2 = f32[1024]{0} parameter(1)
+  %call_convoluted = f32[1024]{0} call(%p, %p_2), to_apply=%call_convoluted
+  ROOT %n = f32[1024]{0} negate(%call_convoluted)
+}
+
+%add_mul_comp (p0: f32[], p1: f32[]) -> f32[1024] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %p0_bcast = f32[1024]{0} broadcast(%p0), dimensions={}
+  %p1_bcast = f32[1024]{0} broadcast(%p1), dimensions={}
+  %res_comp = f32[1024]{0} call(%p0_bcast, %p1_bcast), to_apply=%call_comp
+  ROOT %res_mul = f32[1024]{0} multiply(%res_comp, %res_comp)
+}
+
+ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
+  %param.0 = f32[] parameter(0)
+  %param.1 = f32[] parameter(1)
+  %res = f32[1024]{0} call(%param.0, %param.1), to_apply=%add_mul_comp
+  ROOT %res_2 = f32[1024]{0} negate(%res)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  // Rematerialize with a low memory limit and min_remat_size.
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, RunHloRematerialization(
+                        /*memory_limit_bytes=*/0, module.get(),
+                        /*min_remat_size=*/0,
+                        HloRematerialization::RematAlgorithm::kPeakPriority));
+
+  EXPECT_TRUE(changed);
+}
+
 }  // namespace
 }  // namespace xla
