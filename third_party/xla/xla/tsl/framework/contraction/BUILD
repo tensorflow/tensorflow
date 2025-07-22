@@ -1,6 +1,7 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//xla/tsl/mkl:build_defs.bzl", "mkl_deps")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -117,6 +118,7 @@ cc_library(
         "//xla/tsl:linux_ppc64le": [],
         "//xla/tsl:linux_s390x": [],
         "//xla/tsl:macos_arm64": [],
+        "//xla/tsl:linux_x86_64_with_onednn_async": ["@onednn_async//:mkl_dnn"],
         "//conditions:default": ["@onednn//:mkl_dnn"],
     }),
 )
