@@ -390,7 +390,9 @@ TEST(ParseRepeatedEnumFlagsTest, GenericTritonEmitterFeatures) {
       debug_options.xla_gpu_unsupported_generic_triton_emitter_features();
 
   // Check that the default setting is empty.
-  ASSERT_THAT(enabled_features, IsEmpty());
+  ASSERT_THAT(
+      enabled_features,
+      ElementsAre(DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM));
 
   // Initialize the flag objects.
   std::vector<tsl::Flag> flag_objects;
@@ -398,8 +400,8 @@ TEST(ParseRepeatedEnumFlagsTest, GenericTritonEmitterFeatures) {
 
   // Adding options.
   SetXlaFlagsEnvVar(
-      "--xla_gpu_unsupported_generic_triton_emitter_features=+enable_nested_"
-      "gemm,+allow_all_gemm_shapes");
+      "--xla_gpu_unsupported_generic_triton_emitter_features=+allow_all_gemm_"
+      "shapes");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
   EXPECT_EQ(enabled_features.size(), 2);
   EXPECT_THAT(

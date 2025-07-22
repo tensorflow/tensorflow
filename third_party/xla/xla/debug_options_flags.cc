@@ -321,6 +321,10 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_enable_triton_gemm(true);
   opts.clear_xla_gpu_unsupported_generic_triton_emitter_features();
+  // When changing the default value of the flag, please make sure to update the
+  // default value of the command line flag in `MakeDebugOptionsFlags`.
+  opts.add_xla_gpu_unsupported_generic_triton_emitter_features(
+      DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
   opts.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(true);
@@ -827,6 +831,17 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         debug_options->set_xla_gpu_pgle_accuracy_checker(strictness_level);
         return true;
       };
+
+  auto xla_gpu_generic_triton_emitter_features_to_string =
+      [](tsl::protobuf::RepeatedField<int> values) -> std::string {
+    struct Formatter {
+      void operator()(std::string* out, int type) const {
+        absl::StrAppend(out,
+                        DebugOptions::GenericTritonEmitterFeature_Name(type));
+      }
+    };
+    return absl::StrJoin(values, ",", Formatter());
+  };
 
   // Don't use an initializer list for initializing the vector; this would
   // create a temporary copy, and exceeds the stack space when compiling with
@@ -1837,7 +1852,8 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::GenericTritonEmitterFeature_Parse,
           debug_options
               ->mutable_xla_gpu_unsupported_generic_triton_emitter_features()),
-      "",
+      xla_gpu_generic_triton_emitter_features_to_string(
+          debug_options->xla_gpu_unsupported_generic_triton_emitter_features()),
       "Comma-separated list of individual features of generic Triton emitter. "
       "Use +/- prefix to modify the default list, or list features to enable "
       "explicitly - that will override the defaults."));
@@ -2554,7 +2570,8 @@ FlagStatus GetFlagStatus(absl::string_view flag_name) {
           "xla_gpu_all_reduce_combine_threshold_bytes",
           "xla_gpu_autotune_level",
           "xla_gpu_collective_permute_decomposer_threshold",
-          "xla_gpu_cublas_fallback", "xla_gpu_dot_merger_threshold_mb",
+          "xla_gpu_cublas_fallback",
+          "xla_gpu_dot_merger_threshold_mb",
           "xla_gpu_enable_dynamic_slice_fusion",
           "xla_gpu_enable_latency_hiding_scheduler",
           "xla_gpu_enable_pipelined_all_gather",
