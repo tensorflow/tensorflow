@@ -463,7 +463,7 @@ TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
     GTEST_SKIP() << "This test is for CPU only.";
   }
 
-  alignas(cpu_function_runtime::MinAlign()) std::array<int32_t, 4> data;
+  alignas(cpu::MinAlign()) std::array<int32_t, 4> data;
   data.fill(0);
   auto* data_ptr = data.data();
   Shape shape = ShapeUtil::MakeShape(S32, {4});
@@ -510,7 +510,7 @@ TEST(PjRtClientTest, CreateViewOfUnalignedBufferReturnsErrorCpuOnly) {
     GTEST_SKIP() << "This test is for CPU only.";
   }
 
-  alignas(cpu_function_runtime::MinAlign()) std::array<int32_t, 5> data;
+  alignas(cpu::MinAlign()) std::array<int32_t, 5> data;
   auto* data_ptr = data.data();
 
   // Pointer to the second element is always unaligned, because it's shifted by
