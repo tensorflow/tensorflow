@@ -16,8 +16,6 @@ limitations under the License.
 #include "xla/backends/cpu/transforms/dot_library_rewriter.h"
 
 #include <memory>
-#include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -48,6 +46,32 @@ bool IsCustomFusionWithKind(const HloInstruction* instr,
   return instr->IsCustomFusion() &&
          instr->backend_config<BackendConfig>()->fusion_config().kind() ==
              fusion_kind;
+}
+
+// Creates a new custom library fusion instruction containing a single
+// instruction `instr`, with the given name prefix and kind. Returns the pointer
+// to the newly created fusion instruction.
+absl::StatusOr<HloFusionInstruction*> CreateLibraryFusion(
+    HloInstruction* instr, absl::string_view fusion_name_prefix,
+    absl::string_view fusion_kind) {
+  // Start a new fusion.
+  HloComputation* computation = instr->parent();
+  HloFusionInstruction* fusion = Cast<HloFusionInstruction>(
+      computation->AddInstruction(HloInstruction::CreateFusion(
+          instr->shape(), HloInstruction::FusionKind::kCustom, instr,
+          fusion_name_prefix)));
+
+  // Set the fusion kind.
+  BackendConfig backend_config;
+  FusionBackendConfig* fusion_config = backend_config.mutable_fusion_config();
+  fusion_config->set_kind(fusion_kind);
+  TF_RETURN_IF_ERROR(fusion->set_backend_config(backend_config));
+
+  // Replace the instruction.
+  TF_RETURN_IF_ERROR(
+      computation->ReplaceInstructionWithDifferentShape(instr, fusion));
+
+  return fusion;
 }
 
 // Fuses a consumer `to_fuse` into `fusion` as the new fusion root.
@@ -100,6 +124,17 @@ absl::Status FuseConsumerInstruction(HloFusionInstruction* fusion,
 
   TF_RETURN_IF_ERROR(
       fusion->parent()->ReplaceInstructionWithDifferentShape(to_fuse, fusion));
+  return absl::OkStatus();
+}
+
+absl::Status AddConvertNode(HloFusionInstruction* fusion,
+                            PrimitiveType out_dtype) {
+  HloComputation* fused_computation = fusion->fused_instructions_computation();
+  HloInstruction* root = fusion->fused_expression_root();
+  root->mutable_shape()->set_element_type(out_dtype);
+  HloInstruction* convert = fused_computation->AddInstruction(
+      HloInstruction::CreateConvert(fusion->shape(), root));
+  fused_computation->set_root_instruction(convert);
   return absl::OkStatus();
 }
 
@@ -165,23 +200,9 @@ class DotLibraryRewriteVisitor : public DfsHloRewriteVisitor {
       PrimitiveType lib_out_dtype = lib->LibraryOpOutputType(instr);
       if (fusion == nullptr) {
         // Start a new fusion.
-        HloComputation* computation = instr->parent();
-        fusion = Cast<HloFusionInstruction>(
-            computation->AddInstruction(HloInstruction::CreateFusion(
-                instr->shape(), HloInstruction::FusionKind::kCustom, instr,
-                lib->fusion_prefix())));
-
-        // Set the fusion kind.
-        BackendConfig backend_config;
-        FusionBackendConfig* fusion_config =
-            backend_config.mutable_fusion_config();
-        fusion_config->set_kind(lib->fusion_kind());
-        TF_RETURN_IF_ERROR(fusion->set_backend_config(backend_config));
-
-        // Replace the instruction.
-        TF_RETURN_IF_ERROR(
-            computation->ReplaceInstructionWithDifferentShape(instr, fusion));
-
+        TF_ASSIGN_OR_RETURN(fusion,
+                            CreateLibraryFusion(instr, lib->fusion_prefix(),
+                                                lib->fusion_kind()));
       } else {
         // One of the operands is a fusion. Fuse with it.
         TF_RETURN_IF_ERROR(FuseConsumerInstruction(fusion, instr));
@@ -191,13 +212,7 @@ class DotLibraryRewriteVisitor : public DfsHloRewriteVisitor {
       // to what the library supports, and add a convert node to change to the
       // desired type.
       if (out_dtype != lib_out_dtype) {
-        HloComputation* fused_computation =
-            fusion->fused_instructions_computation();
-        HloInstruction* root = fusion->fused_expression_root();
-        root->mutable_shape()->set_element_type(lib_out_dtype);
-        HloInstruction* convert = fused_computation->AddInstruction(
-            HloInstruction::CreateConvert(fusion->shape(), root));
-        fused_computation->set_root_instruction(convert);
+        TF_RETURN_IF_ERROR(AddConvertNode(fusion, lib_out_dtype));
       }
       MarkAsChanged();
       return absl::OkStatus();
