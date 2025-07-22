@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/backends/cpu/xnn_fusion.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/xla.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla::cpu {
 
@@ -34,17 +34,7 @@ class XnnMatcher : public LibraryMatcher {
  public:
   explicit XnnMatcher(const TargetMachineFeatures* target_machine_features,
                       const tsl::protobuf::RepeatedField<int>* fusion_types)
-      : LibraryMatcher(target_machine_features) {
-    for (auto it = fusion_types->begin(); it != fusion_types->end(); ++it) {
-      switch (*it) {
-        case DebugOptions::LIBRARY_FUSION_TYPE_DOT:
-          fuse_dot_ = true;
-          break;
-        case DebugOptions::LIBRARY_FUSION_TYPE_ELTWISE:
-          fuse_eltwise_ = true;
-      }
-    }
-  }
+      : LibraryMatcher(target_machine_features, fusion_types) {}
   ~XnnMatcher() override = default;
 
   // Returns the set of supported HLO instructions.
@@ -103,8 +93,6 @@ class XnnMatcher : public LibraryMatcher {
   absl::string_view fusion_kind() const override { return kXnnFusionKind; }
 
  private:
-  bool fuse_dot_ = false;
-  bool fuse_eltwise_ = false;
   absl::flat_hash_set<DebugOptions::LibraryFusionType> fusion_types_;
 };
 

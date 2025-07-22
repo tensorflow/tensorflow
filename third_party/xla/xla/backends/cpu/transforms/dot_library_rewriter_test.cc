@@ -89,11 +89,14 @@ class CpuDotLibraryTest
     if (spec.fusion_mode == "greedy") {
       fusion_types.Add(DebugOptions::LIBRARY_FUSION_TYPE_ELTWISE);
     }
+    tsl::protobuf::RepeatedField<int> empty_fusion_types;
     bool use_onednn = spec.lib == "onednn";
     bool use_xnnpack = spec.lib == "xnn";
     DotLibraryRewriterOptions options = {
         use_onednn, use_xnnpack,
-        /*xnn_fusion_types=*/use_xnnpack ? &fusion_types : nullptr};
+        /*onednn_fusion_types=*/
+        use_onednn ? &fusion_types : &empty_fusion_types,
+        /*xnn_fusion_types=*/use_xnnpack ? &fusion_types : &empty_fusion_types};
     DotLibraryRewriter rewriter(features.get(), options);
     EXPECT_EQ(expected.changed, rewriter.Run(module.get()).value());
     if (!expected.changed) {
