@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter.h"
 
 #include <cstdint>
-#include <utility>
 #include <vector>
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
