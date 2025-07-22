@@ -30,6 +30,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/macros.h"
+#include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
@@ -830,21 +831,21 @@ inline Shape::BufferState& Shape::buffer_state() {
 
 inline const Shape::ArrayState& Shape::array_state_maybe_underneath_buffer()
     const {
-  if (auto* const state = if_array_state()) {
-    return *state;
+  if (const ArrayState* array = if_array_state(); ABSL_PREDICT_TRUE(array)) {
+    return *array;
   }
-  auto* const state = if_buffer_state();
-  CHECK_NE(state, nullptr);
-  return *state->buffer_shape->if_array_state();
+  const BufferState* buffer = if_buffer_state();
+  CHECK_NE(buffer, nullptr);
+  return *buffer->buffer_shape->if_array_state();
 }
 
 inline Shape::ArrayState& Shape::array_state_maybe_underneath_buffer() {
-  if (auto* state = if_array_state()) {
-    return *state;
+  if (ArrayState* array = if_array_state(); ABSL_PREDICT_TRUE(array)) {
+    return *array;
   }
-  BufferState* state = if_buffer_state();
-  CHECK_NE(state, nullptr);
-  return *state->buffer_shape->if_array_state();
+  BufferState* buffer = if_buffer_state();
+  CHECK_NE(buffer, nullptr);
+  return *buffer->buffer_shape->if_array_state();
 }
 
 inline ABSL_ATTRIBUTE_ALWAYS_INLINE const Shape& Shape::tuple_shapes(
