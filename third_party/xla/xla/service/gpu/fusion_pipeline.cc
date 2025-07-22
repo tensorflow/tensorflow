@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
-#include "xla/service/gpu/transforms/horizontal_loop_fusion.h"
 #include "xla/service/gpu/transforms/multi_output_fusion.h"
 #include "xla/service/gpu/transforms/priority_fusion.h"
 #include "xla/service/gpu/transforms/variadic_op_splitter.h"
@@ -77,18 +76,6 @@ HloPassPipeline FusionPipeline(
   fusion.AddPass<HloDCE>();
 
   return std::move(fusion);
-}
-
-HloPassPipeline HorizontalFusionPipeline(
-    const se::DeviceDescription& gpu_device_info) {
-  HloPassFix<HloPassPipeline> horizontal_fusion("horizontal fusion");
-  horizontal_fusion.AddPass<HorizontalLoopFusion>(gpu_device_info);
-  horizontal_fusion.AddPass<HloCSE>(
-      /*is_layout_sensitive=*/true, /*ignore_control_dependencies=*/false,
-      /*should_eliminate_computation=*/&HloComputation::IsFusionComputation);
-  horizontal_fusion.AddPass<HloDCE>();
-
-  return std::move(horizontal_fusion);
 }
 
 }  // namespace gpu
