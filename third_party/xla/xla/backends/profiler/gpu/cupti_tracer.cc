@@ -1534,6 +1534,15 @@ void CuptiTracer::ConfigureActivityUnifiedMemoryCounter(bool enable) {
 }
 
 void CuptiTracer::RequestActivityBuffer(uint8_t **buffer, size_t *size) {
+  // TODO: b/422262733 - This check won't be needed anymore once the deadlock
+  // bug is fixed.
+  if (activity_buffers_ == nullptr) {
+    LOG(WARNING) << "CUPTI activity buffer is not initialized.";
+    *buffer = nullptr;
+    *size = 0;
+    return;
+  }
+
   *buffer = activity_buffers_->GetOrCreateBuffer();
   if (*buffer == nullptr) {
     LOG(WARNING)
