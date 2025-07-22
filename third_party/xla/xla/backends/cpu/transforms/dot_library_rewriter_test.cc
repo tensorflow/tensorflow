@@ -40,7 +40,7 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-struct XnnDotRewriteTestSpec {
+struct DotRewriteTestSpec {
   std::string lib;
   std::string in_dtype;
   std::string out_dtype;
@@ -51,10 +51,10 @@ struct XnnDotRewriteTestSpec {
 
 class CpuDotLibraryTest
     : public TargetMachineTestBase,
-      public ::testing::WithParamInterface<XnnDotRewriteTestSpec> {
+      public ::testing::WithParamInterface<DotRewriteTestSpec> {
  public:
   static std::string Name(
-      const ::testing::TestParamInfo<XnnDotRewriteTestSpec>& info) {
+      const ::testing::TestParamInfo<DotRewriteTestSpec>& info) {
     return absl::StrCat(info.param.lib, "_", info.param.fusion_mode, "_",
                         info.param.in_dtype, "_", info.param.out_dtype, "_",
                         info.param.cpu_name);
@@ -70,7 +70,7 @@ class CpuDotLibraryTest
 
   void RunTest(absl::string_view hlo_template, FusionProperties expected) {
     // Create TargetMachineFeatures.
-    XnnDotRewriteTestSpec spec = GetParam();
+    DotRewriteTestSpec spec = GetParam();
     std::unique_ptr<TargetMachineFeatures> features =
         CreateTargetMachineFeatures(
             /*triple_string=*/"x86_64-unknown-linux-gnu", spec.cpu_name,
@@ -126,7 +126,7 @@ class CpuDotLibraryTest
   }
 
   bool IsDotEnabledOnCPU() {
-    XnnDotRewriteTestSpec spec = GetParam();
+    DotRewriteTestSpec spec = GetParam();
     bool bf16_dot_supported = absl::StrContains(spec.features, "+avx512bf16");
     return spec.in_dtype != "bf16" || bf16_dot_supported;
   }
@@ -145,7 +145,7 @@ TEST_P(CpuDotLibraryTest, AddMatMul) {
                   lhs_contracting_dims={1}, rhs_contracting_dims={0}
     })";
 
-  XnnDotRewriteTestSpec spec = GetParam();
+  DotRewriteTestSpec spec = GetParam();
   FusionProperties expected = {HloOpcode::kDot, 0, 0, false};
   if (spec.fusion_mode == "greedy") {
     expected = IsDotEnabledOnCPU()
@@ -210,7 +210,7 @@ TEST_P(CpuDotLibraryTest, MatMulAddSubMulSameInputs) {
       ROOT %mul = $out_dtype[64,262144]{1,0} multiply(%sub, %addend)
     })";
 
-  XnnDotRewriteTestSpec spec = GetParam();
+  DotRewriteTestSpec spec = GetParam();
   FusionProperties expected = {HloOpcode::kMultiply, 0, 0, false};
   if (IsDotEnabledOnCPU()) {
     // {Dot, Add, Sub, Mul} for XNN, {Dot, Add} for oneDNN.
@@ -241,7 +241,7 @@ TEST_P(CpuDotLibraryTest, MatMulAddSubMulDifferentInputs) {
       ROOT %mul = $out_dtype[64,262144]{1,0} multiply(%sub, %multiplier)
     })";
 
-  XnnDotRewriteTestSpec spec = GetParam();
+  DotRewriteTestSpec spec = GetParam();
   FusionProperties expected = {HloOpcode::kMultiply, 0, 0, false};
   if (IsDotEnabledOnCPU()) {
     // {Dot, Add, Sub, Mul} for XNN, {Dot, Add} for oneDNN.
@@ -280,7 +280,7 @@ TEST_P(CpuDotLibraryTest, MatMulAddMinExpSort) {
     })";
 
   // Sort is not supported by xnn_emitter and should not be in the fusion.
-  XnnDotRewriteTestSpec spec = GetParam();
+  DotRewriteTestSpec spec = GetParam();
   FusionProperties expected = {HloOpcode::kExp, 0, 0, false};
   if (IsDotEnabledOnCPU()) {
     // {Dot, Add, Min, Exp} for XNN, {Dot, Add} for oneDNN.
@@ -313,7 +313,7 @@ TEST_P(CpuDotLibraryTest, DoNotFuseMultiOutputs) {
     })";
 
   // Many cases will have multiple fusions. We only check the first one.
-  XnnDotRewriteTestSpec spec = GetParam();
+  DotRewriteTestSpec spec = GetParam();
   FusionProperties expected = {HloOpcode::kAdd, 0, 0, false};
   if (IsDotEnabledOnCPU()) {
     // {Dot, Add} fusion has 2 users, so we cannot fuse further.
@@ -325,7 +325,7 @@ TEST_P(CpuDotLibraryTest, DoNotFuseMultiOutputs) {
   RunTest(hlo_template, expected);
 }
 
-std::vector<XnnDotRewriteTestSpec> GetXnnDotRewriteTestSpecs() {
+std::vector<DotRewriteTestSpec> GetDotRewriteTestSpecs() {
   // CPUs to test with.
   absl::flat_hash_map<std::string, std::string> cpu_to_features = {
       {"znver3", "+avx,+avx2"},
@@ -350,7 +350,7 @@ std::vector<XnnDotRewriteTestSpec> GetXnnDotRewriteTestSpecs() {
       {"onednn", {"dot"}},
   };
 
-  std::vector<XnnDotRewriteTestSpec> specs;
+  std::vector<DotRewriteTestSpec> specs;
   for (auto& [lib_cpu, dtype_pairs] : dtype_map) {
     auto& [lib, cpu] = lib_cpu;
     for (auto& [in_dtype, out_dtype] : dtype_pairs) {
@@ -359,8 +359,8 @@ std::vector<XnnDotRewriteTestSpec> GetXnnDotRewriteTestSpecs() {
       }
       std::string& features = cpu_to_features.at(cpu);
       for (auto& fusion_mode : fusion_modes.at(lib)) {
-        specs.push_back(XnnDotRewriteTestSpec{lib, in_dtype, out_dtype, cpu,
-                                              features, fusion_mode});
+        specs.push_back(DotRewriteTestSpec{lib, in_dtype, out_dtype, cpu,
+                                           features, fusion_mode});
       }
     }
   }
@@ -368,7 +368,7 @@ std::vector<XnnDotRewriteTestSpec> GetXnnDotRewriteTestSpecs() {
 }
 
 INSTANTIATE_TEST_SUITE_P(CpuDotLibraryTestSuite, CpuDotLibraryTest,
-                         ::testing::ValuesIn(GetXnnDotRewriteTestSpecs()),
+                         ::testing::ValuesIn(GetDotRewriteTestSpecs()),
                          CpuDotLibraryTest::Name);
 
 }  // namespace
