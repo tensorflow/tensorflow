@@ -109,7 +109,6 @@ class GenericHostToLLVMPass
     // Vector patterns.
     vector::populateVectorMaskMaterializationPatterns(patterns, true);
     vector::populateVectorTransferLoweringPatterns(patterns);
-    populateVectorToLLVMMatrixConversionPatterns(typeConverter, patterns);
     populateVectorToLLVMConversionPatterns(typeConverter, patterns);
     if (enableAvx2) {
       configureX86VectorLegalizeForExportTarget(target);

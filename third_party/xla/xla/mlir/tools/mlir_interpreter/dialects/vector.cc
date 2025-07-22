@@ -328,20 +328,6 @@ InterpreterValue ExtractSlice(InterpreterState& state,
   return out;
 }
 
-InterpreterValue FlatTranspose(InterpreterState&,
-                               vector::FlatTransposeOp transpose,
-                               const InterpreterValue& vector) {
-  auto out = vector.Clone();
-  // We currently only implement -matrix-default-layout=column-major.
-  int64_t rows = transpose.getRows();
-  int64_t cols = transpose.getColumns();
-  for (int64_t i = 0; i < rows * cols; ++i) {
-    int64_t src_index = (i % cols) * rows + (i / cols);
-    out.InsertElement({i}, vector.ExtractElement({src_index}));
-  }
-  return out;
-}
-
 InterpreterValue FusedMultiplyAdd(InterpreterState&, vector::FMAOp op,
                                   const InterpreterValue& lhs,
                                   const InterpreterValue& rhs,
@@ -852,7 +838,6 @@ REGISTER_MLIR_INTERPRETER_OP(Extract);
 REGISTER_MLIR_INTERPRETER_OP(ExtractElement);
 REGISTER_MLIR_INTERPRETER_OP(ExtractSlice);
 REGISTER_MLIR_INTERPRETER_OP(FusedMultiplyAdd);
-REGISTER_MLIR_INTERPRETER_OP(FlatTranspose);
 REGISTER_MLIR_INTERPRETER_OP(Gather);
 REGISTER_MLIR_INTERPRETER_OP(Insert);
 REGISTER_MLIR_INTERPRETER_OP(InsertElement);

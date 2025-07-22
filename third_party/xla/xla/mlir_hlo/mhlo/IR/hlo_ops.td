@@ -1195,11 +1195,6 @@ def MHLO_SendOp : MHLO_Op<"send",
   );
 
   let results = (outs MHLO_Token);
-  let builders = [
-    OpBuilder<(ins
-      "::mlir::Type":$result_type, "::mlir::Value":$operand,
-      "::mlir::mhlo::ChannelHandleAttr":$channel_handle,
-      "::mlir::DenseIntElementsAttr":$source_target_pairs)>];
   let hasCustomHLOConverter = 1;
 }
 
@@ -1231,11 +1226,6 @@ def MHLO_RecvOp : MHLO_Op<"recv", []> {
   );
 
   let results = (outs Variadic<MHLO_StaticShapeTensorOrToken>);
-  let builders = [
-    OpBuilder<(ins
-      "::mlir::Type":$result_type, "::mlir::Value":$operand,
-      "::mlir::mhlo::ChannelHandleAttr":$channel_handle,
-      "::mlir::DenseIntElementsAttr":$source_target_pairs)>];
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
 }
