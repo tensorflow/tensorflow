@@ -711,3 +711,29 @@ ENTRY main {
   y = f32[2, 3] parameter(1)
   ROOT sort = (s32[2, 3], f32[2, 3]) sort(x, y), dimensions={1}, to_apply=compare
 }
+
+// -----
+
+HloModule TestModule, is_scheduled=true
+
+compare {
+  p.0.lhs = f64[] parameter(0)
+  p.0.rhs = f64[] parameter(1)
+  p.1.lhs = f64[] parameter(2)
+  p.1.rhs = f64[] parameter(3)
+  p.2.lhs = f64[] parameter(4)
+  p.2.rhs = f64[] parameter(5)
+  p.3.lhs = f64[] parameter(6)
+  p.3.rhs = f64[] parameter(7)
+  ROOT lt = pred[] compare(p.1.lhs, p.1.rhs), direction=LT
+}
+
+ENTRY main {
+  param0 = f64[2, 2048] parameter(0)
+  param1 = f64[2, 2048] parameter(1)
+  param2 = f64[2, 2048] parameter(2)
+  param3 = f64[2, 2048] parameter(3)
+  ROOT sort = (f64[2, 2048], f64[2, 2048], f64[2, 2048], f64[2, 2048]) sort(param0, param1, param2, param3), dimensions={1}, to_apply=compare
+}
+// Check that we have a tile size of 1024.
+// CHECK:         getelementptr [1024 x double], ptr addrspace(3) @sort_tile_param_0
