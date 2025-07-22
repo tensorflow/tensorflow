@@ -20,17 +20,17 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/internal/optimized/batch_matmul.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -45,12 +45,6 @@ static const int kOutputTensor = 0;
 
 static const int kNumTempTensorsForAdjoints = 2;
 static const int kNumTempTensorsForHybrid = 5;
-
-// This file has two implementations of Transpose.
-enum KernelType {
-  kReference,
-  kGenericOptimized,
-};
 
 struct OpData {
   // The scaling factor from input to output (aka the 'real multiplier') can
@@ -202,8 +196,8 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
   // If we have to perform on-the-fly quantization (with quantized weights and
   // float inputs) first we need to quantize the inputs. Allocate temporary
   // buffer to store the intermediate quantized values, the batch scaling
-  // factors, the accumulator buffer (optimized version), the input offsets,
-  // and the sums of the rows for each weights matrix.
+  // factors, the input offsets, and the sums of the rows for each weights
+  // matrix.
   // RHS = weights, LHS = inputs
   if (is_hybrid) {
     // Calculate the total number of LHS batches.
@@ -368,7 +362,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const RuntimeShape extended_rhs_shape =
       RuntimeShape::ExtendedShape(output_rank, GetTensorShape(rhs_data));
 
-  // Ensure any batch dimensions obey broacasting rules.
+  // Ensure any batch dimensions obey broadcasting rules.
   for (int i = 0; i < output_rank - 2; ++i) {
     const int lhs_dim = extended_lhs_shape.Dims(i);
     const int rhs_dim = extended_rhs_shape.Dims(i);
@@ -529,14 +523,13 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node, OpData* data,
   return kTfLiteOk;
 }
 
-template <KernelType kernel_type>
 TfLiteStatus EvalInt8Int8(TfLiteContext* context, const OpData* data,
                           const RuntimeShape& lhs_shape,
                           const TfLiteTensor* lhs,
                           const RuntimeShape& rhs_shape,
                           const TfLiteTensor* rhs,
                           const RuntimeShape& output_shape,
-                          TfLiteTensor* output, bool transpose_lhs) {
+                          TfLiteTensor* output) {
   // Reuse params struct from FullyConnected Op.
   FullyConnectedParams op_params;
   int32_t input_offset = -lhs->params.zero_point;
@@ -552,22 +545,14 @@ TfLiteStatus EvalInt8Int8(TfLiteContext* context, const OpData* data,
   op_params.lhs_cacheable = IsConstantTensor(lhs);
   op_params.rhs_cacheable = IsConstantTensor(rhs);
 
-  if (kernel_type == kReference) {
-    reference_ops::BatchMatMul<int8_t, int32_t>(
-        op_params, rhs_shape, GetTensorData<int8_t>(rhs), lhs_shape,
-        GetTensorData<int8_t>(lhs), GetTensorShape(output),
-        GetTensorData<int8_t>(output));
-  } else {
-    optimized_ops::BatchMatMul(
-        op_params, rhs_shape, GetTensorData<int8_t>(rhs), lhs_shape,
-        GetTensorData<int8_t>(lhs), GetTensorShape(output),
-        GetTensorData<int8_t>(output),
-        CpuBackendContext::GetFromContext(context), transpose_lhs);
-  }
+  reference_ops::BatchMatMul<int8_t, int32_t>(
+      op_params, rhs_shape, GetTensorData<int8_t>(rhs), lhs_shape,
+      GetTensorData<int8_t>(lhs), GetTensorShape(output),
+      GetTensorData<int8_t>(output));
+
   return kTfLiteOk;
 }
 
-template <KernelType kernel_type>
 TfLiteStatus EvalInt8Int32(TfLiteContext* context, const OpData* data,
                            const RuntimeShape& lhs_shape,
                            const TfLiteTensor* lhs,
@@ -583,7 +568,6 @@ TfLiteStatus EvalInt8Int32(TfLiteContext* context, const OpData* data,
   return kTfLiteOk;
 }
 
-template <KernelType kernel_type>
 TfLiteStatus EvalInt16(TfLiteContext* context, const OpData* data,
                        const RuntimeShape& lhs_shape, const TfLiteTensor* lhs,
                        const RuntimeShape& rhs_shape, const TfLiteTensor* rhs,
@@ -601,8 +585,6 @@ TfLiteStatus EvalInt16(TfLiteContext* context, const OpData* data,
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
 
-  // optimized_ops not yet implemented for int16_t, use reference_ops in all
-  // cases.
   reference_ops::BatchMatMul<int16_t, int64_t>(
       op_params, rhs_shape, GetTensorData<int16_t>(rhs), lhs_shape,
       GetTensorData<int16_t>(lhs), GetTensorShape(output),
@@ -610,13 +592,11 @@ TfLiteStatus EvalInt16(TfLiteContext* context, const OpData* data,
   return kTfLiteOk;
 }
 
-template <KernelType kernel_type>
 TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                            OpData* data, const RuntimeShape& lhs_shape,
                            const TfLiteTensor* lhs,
                            const RuntimeShape& rhs_shape,
-                           const TfLiteTensor* rhs, TfLiteTensor* output,
-                           bool transpose_lhs) {
+                           const TfLiteTensor* rhs, TfLiteTensor* output) {
   if (lhs->type == kTfLiteFloat32 && rhs->type == kTfLiteInt8) {
     TfLiteTensor* input_quantized;
     TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, /*index=*/2,
@@ -638,17 +618,15 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                       input_offsets, output);
   } else if (lhs->type == kTfLiteInt8 && rhs->type == kTfLiteInt8) {
     if (output->type == kTfLiteInt8) {
-      return EvalInt8Int8<kernel_type>(context, data, lhs_shape, lhs, rhs_shape,
-                                       rhs, GetTensorShape(output), output,
-                                       transpose_lhs);
+      return EvalInt8Int8(context, data, lhs_shape, lhs, rhs_shape, rhs,
+                          GetTensorShape(output), output);
     } else {
-      return EvalInt8Int32<kernel_type>(context, data, lhs_shape, lhs,
-                                        rhs_shape, rhs, GetTensorShape(output),
-                                        output);
+      return EvalInt8Int32(context, data, lhs_shape, lhs, rhs_shape, rhs,
+                           GetTensorShape(output), output);
     }
   } else if (lhs->type == kTfLiteInt16 && rhs->type == kTfLiteInt16) {
-    return EvalInt16<kernel_type>(context, data, lhs_shape, lhs, rhs_shape, rhs,
-                                  GetTensorShape(output), output);
+    return EvalInt16(context, data, lhs_shape, lhs, rhs_shape, rhs,
+                     GetTensorShape(output), output);
   } else {
     TF_LITE_KERNEL_LOG(
         context,
@@ -733,7 +711,6 @@ TfLiteTensor* GetTempLhs(TfLiteContext* context, TfLiteNode* node,
 // RHS <..., C, B> X LHS <..., B, A>
 // where output is a C X A column-oriented, which is equivalent to
 // A X C row-oriented.
-template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
@@ -775,19 +752,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
   rhs_dims_count = orig_rhs_shape.DimensionsCount();
   lhs_dims_count = orig_lhs_shape.DimensionsCount();
-  const TfLiteTensor* rhs_tensor = rhs;
-  bool implicit_transpose_possible = true;
-  if (lhs->type == kTfLiteFloat32 || kernel_type == kReference ||
-      rhs->type == kTfLiteInt16 ||
-      (rhs->type == kTfLiteInt8 && output->type == kTfLiteInt32)) {
-    implicit_transpose_possible = false;
-  }
-  bool do_implicit_transpose = !adj_y && implicit_transpose_possible;
-  if (!adj_y && !implicit_transpose_possible) {
-    rhs_tensor = GetTempRhs(context, node, rhs);
-  }
   const TfLiteTensor* lhs_tensor = adj_x ? GetTempLhs(context, node, lhs) : lhs;
-  if (!adj_y && !implicit_transpose_possible) {
+  const TfLiteTensor* rhs_tensor = adj_y ? rhs : GetTempRhs(context, node, rhs);
+  if (!adj_y) {
     // TODO(b/154760341) Constant tensors should already be transposed, but
     // we transpose once if necessary for now.
     if (!(IsConstantTensor(rhs) && op_data->rhs_transposed)) {
@@ -798,9 +765,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   if (adj_x) {
     TransposeRowsColumns(context, lhs, GetTemporary(context, node, 0));
   }
-  RuntimeShape rhs_shape = (adj_y && !do_implicit_transpose)
-                               ? orig_rhs_shape
-                               : SwapRowColumnDims(orig_rhs_shape);
+  RuntimeShape rhs_shape =
+      adj_y ? orig_rhs_shape : SwapRowColumnDims(orig_rhs_shape);
   RuntimeShape lhs_shape =
       adj_x ? orig_lhs_shape : SwapRowColumnDims(orig_lhs_shape);
 
@@ -814,9 +780,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     case kTfLiteInt8:
     case kTfLiteInt16:
-      EvalQuantized<kernel_type>(context, node, op_data, lhs_shape, lhs_tensor,
-                                 rhs_shape, rhs_tensor, output,
-                                 do_implicit_transpose);
+      EvalQuantized(context, node, op_data, lhs_shape, lhs_tensor, rhs_shape,
+                    rhs_tensor, output);
       break;
     default:
       TF_LITE_KERNEL_LOG(context,
@@ -831,20 +796,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteRegistration* Register_BATCH_MATMUL_REF() {
   static TfLiteRegistration r = {batch_matmul::Init, batch_matmul::Free,
-                                 batch_matmul::Prepare,
-                                 batch_matmul::Eval<batch_matmul::kReference>};
-  return &r;
-}
-
-TfLiteRegistration* Register_BATCH_MATMUL_GENERIC_OPTIMIZED() {
-  static TfLiteRegistration r = {
-      batch_matmul::Init, batch_matmul::Free, batch_matmul::Prepare,
-      batch_matmul::Eval<batch_matmul::kGenericOptimized>};
+                                 batch_matmul::Prepare, batch_matmul::Eval};
   return &r;
 }
 
 TfLiteRegistration* Register_BATCH_MATMUL() {
-  return Register_BATCH_MATMUL_GENERIC_OPTIMIZED();
+  return Register_BATCH_MATMUL_REF();
 }
 
 }  // namespace builtin
