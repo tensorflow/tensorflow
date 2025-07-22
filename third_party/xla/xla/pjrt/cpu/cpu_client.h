@@ -364,22 +364,7 @@ class PjRtCpuExecutable final : public PjRtLoadedExecutable {
     return Unimplemented("GetOutputMemoryKinds is not supported.");
   }
 
-  absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
-    CompiledMemoryStats memory_stats = CompiledMemoryStats();
-    memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
-    const BufferAssignmentProto* proto =
-        cpu_executable_->buffer_assignment_proto();
-    if (!proto) {
-      return tsl::errors::FailedPrecondition(
-          "cpu_executable_ has no buffer_assignment_proto.");
-    }
-    memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
-    memory_stats.PopulateBufferStatsFromAllocations(
-        cpu_executable_->GetAllocations());
-    TF_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(*proto));
-    memory_stats.peak_memory_in_bytes = peak_memory;
-    return memory_stats;
-  }
+  absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override;
 
   using PjRtLoadedExecutable::Execute;
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(

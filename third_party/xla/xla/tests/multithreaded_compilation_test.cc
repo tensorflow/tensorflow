@@ -64,6 +64,9 @@ TEST_F(MultithreadedCompilation, EightModuleCompilation) {
   for (int i = 0; i < num_threads; i++) {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                             ParseAndReturnVerifiedModule(hlo_text, config));
+    module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_embed_ir_in_executable(true);
     modules[i] = std::move(module);
   }
 
