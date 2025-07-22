@@ -1789,10 +1789,32 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
   // sorting/comparison loop if the comparisons happen within a
   // small block of the array. To make this work, we collect all
   // consecutive masks that are smaller than our chosen power of 2
-  // tile size, and pass them to SortInPlace. Each thread then
+  // tile size, and pass them to SortInPlace. Each block then
   // processes one tile of data.
 
-  const uint64_t kTileSize = std::min(2048ULL, 1ULL << num_stages);
+  const uint64_t kUnrollFactor = 2;
+  // Determine the total element size of all sort operands. We need to choose a
+  // tile size such that we have enough shared memory to store a tile of
+  // elements from each operand.
+  uint64_t total_element_size = 0;
+  for (int64_t i = 0; i < sort->operand_count(); ++i) {
+    total_element_size += ShapeUtil::ByteSizeOfPrimitiveType(
+        sort->operand(i)->shape().element_type());
+  }
+  const uint64_t kMaxSharedMemoryPerBlock =
+      ir_emitter_context_->gpu_device_info().shared_memory_per_block();
+  uint64_t max_tile_size_fitting_into_shared_memory =
+      kMaxSharedMemoryPerBlock / total_element_size;
+  const uint64_t kMaxThreadsPerBlock =
+      ir_emitter_context_->gpu_device_info().threads_per_block_limit();
+  // Choose the tile size based on actual amount of elements to sort, the amount
+  // of shared memory avaiable, and the maximum number of threads per block.
+  uint64_t tile_size =
+      std::min(std::min(kMaxThreadsPerBlock * kUnrollFactor,
+                        max_tile_size_fitting_into_shared_memory),
+               uint64_t{1} << num_stages);
+  // The tile size needs to be a power of 2.
+  tile_size = uint64_t{1} << Log2Floor(tile_size);
 
   // If we cannot combine several xor masks together, we don't use
   // tiling, so we calculate the standard launch dimensions for the
@@ -1809,9 +1831,9 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
 
   // Calculate the launch dimensions for the case where we use
   // tiling. We split the dimension that should be sorted into tiles
-  // of size 'kTileSize'. This means we first need to round
+  // of size 'tile_size'. This means we first need to round
   // 'dimension_to_sort_bound' up to be a multiple of the tile size.
-  int64_t rounded_bound = RoundUpTo(dimension_to_sort_bound, kTileSize);
+  int64_t rounded_bound = RoundUpTo(dimension_to_sort_bound, tile_size);
   Shape iteration_shape = keys_shape;
 
   // We iterate through the element pairs that should be compared.
@@ -1819,36 +1841,12 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
   iteration_shape.set_dimensions(dimension_to_sort, num_iterations_in_sort_dim);
   uint64_t num_iterations = ShapeUtil::ElementsIn(iteration_shape);
 
-  // For correctness reasons we need exactly 'kTileSize' / 2 many
+  // For correctness reasons we need exactly `tile_size` / `kUnrollFactor` many
   // threads per block. Each thread is responsible for copying
-  // exactly two adjacent elements into shared memory, and then does
-  // a comparison of two possibly different elements taken from
-  // shared memory.
-  const uint64_t kThreadsPerBlock = kTileSize / 2;
-
-  // Check whether we should use any tiling. We might not be able to
-  // use it if we have not enough threads, or not enough shared
+  // exactly `kUnrollFactor` many adjacent elements into shared memory, and then
+  // does `kUnrollFactor` / 2 many comparisons of two elements taken from shared
   // memory.
-  int64_t total_shared_memory_needed = 0;
-  for (int64_t i = 0; i < sort->operand_count(); ++i) {
-    total_shared_memory_needed +=
-        kTileSize * ShapeUtil::ByteSizeOfPrimitiveType(
-                        sort->operand(i)->shape().element_type());
-  }
-  bool no_tiling =
-      kThreadsPerBlock >
-          ir_emitter_context_->gpu_device_info().threads_per_block_limit() ||
-      total_shared_memory_needed >
-          ir_emitter_context_->gpu_device_info().shared_memory_per_block();
-  VLOG(2) << absl::StreamFormat(
-      "%s %s use tiling. No tiling if any of the following is "
-      "true: "
-      "kThreadsPerBlock=%d > threads_per_block_limit=%d, "
-      "total_shared_memory_needed=%d > shared_memory_per_block=%d",
-      op_name, (no_tiling ? "won't" : "will"), kThreadsPerBlock,
-      ir_emitter_context_->gpu_device_info().threads_per_block_limit(),
-      total_shared_memory_needed,
-      ir_emitter_context_->gpu_device_info().shared_memory_per_block());
+  const uint64_t kThreadsPerBlock = tile_size / kUnrollFactor;
 
   uint64_t num_blocks = CeilOfRatio(num_iterations, kThreadsPerBlock);
   LaunchDimensions tiled_launch_dimensions(num_blocks, kThreadsPerBlock);
@@ -1873,7 +1871,7 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
         launch_dimensions,
         xor_masks.size() > 1 ? num_iterations_in_sort_dim
                              : standard_num_iterations_in_sort_dim,
-        kTileSize,
+        tile_size,
         [&](absl::Span<llvm::Value* const> operands, llvm::Value* output) {
           return CallNestedComputation(&b_, *ir_emitter_context_, *comparator,
                                        operands, output);
@@ -1888,7 +1886,7 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
       } else {
         xor_mask = 1LL << mask;
       }
-      if (xor_mask >= kTileSize || no_tiling) {
+      if (xor_mask >= tile_size) {
         if (!xor_masks.empty()) {
           TF_RETURN_IF_ERROR(emit_kernel(xor_masks));
           xor_masks.clear();
