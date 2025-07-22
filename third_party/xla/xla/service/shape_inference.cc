@@ -2578,7 +2578,7 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
         "The 'a' argument to TriangularSolve must have rank >= 2, got shape %s",
         a.ToString());
   }
-  if (b.dimensions_size() != a.dimensions_size()) {
+  if (b.dimensions_size() != a.dimensions().size()) {
     return InvalidArgument(
         "Arguments to triangular solve must have equal rank; got %s and %s.",
         b.ToString(), a.ToString());
