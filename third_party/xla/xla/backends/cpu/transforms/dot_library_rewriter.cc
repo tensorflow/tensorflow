@@ -111,9 +111,10 @@ class DotLibraryRewriteVisitor : public DfsHloRewriteVisitor {
       const TargetMachineFeatures* target_machine_features,
       const DotLibraryRewriterOptions& options)
       : target_machine_features_(target_machine_features), options_(options) {
-    if (options.use_onednn) {
-      libs_.push_back(
-          std::make_unique<OneDnnMatcher>(target_machine_features_));
+    if (options.use_onednn && options_.onednn_fusion_types != nullptr &&
+        !options_.onednn_fusion_types->empty()) {
+      libs_.push_back(std::make_unique<OneDnnMatcher>(
+          target_machine_features_, options_.onednn_fusion_types));
     }
     if (options.use_xnnpack && options_.xnn_fusion_types != nullptr &&
         !options_.xnn_fusion_types->empty()) {

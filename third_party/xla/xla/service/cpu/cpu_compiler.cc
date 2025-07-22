@@ -581,6 +581,10 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   DotLibraryRewriterOptions options = {
       /*use_onednn=*/module->config().debug_options().xla_cpu_use_onednn(),
       /*use_xnnpack=*/module->config().debug_options().xla_cpu_use_xnnpack(),
+      /*onednn_fusion_types=*/
+      &module->config()
+           .debug_options()
+           .xla_cpu_experimental_onednn_fusion_type(),
       /*xnn_fusion_types=*/
       &module->config().debug_options().xla_cpu_experimental_xnn_fusion_type()};
   if (options.use_onednn || options.use_xnnpack) {
