@@ -208,9 +208,10 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32) {
       stream_executor::CudaComputeCapability::CudaComputeCapabilities;
   switch (cc.major) {
     case CudaComputeCapabilities::kBlackwell:
-      GTEST_SKIP()
-          << "CudaComputeCapabilities::kBlackwell has the kernel name: "
-          << kernel_names[0];
+      EXPECT_THAT(kernel_names, ::testing::UnorderedElementsAre(
+                                    ::testing::Eq("wrapped_convert"),
+                                    ::testing::Eq("wrapped_convert_1"),
+                                    ::testing::HasSubstr("nvjet")));
       break;
     case CudaComputeCapabilities::kAmpere:
       EXPECT_THAT(kernel_names, ::testing::UnorderedElementsAre(
@@ -302,13 +303,19 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32_X3) {
       stream_executor::CudaComputeCapability::CudaComputeCapabilities;
   switch (cc.major) {
     case CudaComputeCapabilities::kBlackwell:
-      GTEST_SKIP()
-          << "CudaComputeCapabilities::kBlackwell has the kernel name: "
-          << kernel_names[0];
+      EXPECT_THAT(kernel_names, ::testing::UnorderedElementsAre(
+                                    ::testing::HasSubstr("loop_convert_fusion"),
+                                    ::testing::HasSubstr("loop_convert_fusion"),
+                                    ::testing::HasSubstr("loop_select_fusion"),
+                                    ::testing::HasSubstr("nvjet"),
+                                    ::testing::HasSubstr("nvjet")));
       break;
     case CudaComputeCapabilities::kAmpere:
-      ASSERT_EQ(kernel_names.size(), 1);
-      EXPECT_THAT(kernel_names[0], ::testing::Eq("loop_convert_fusion_1"));
+      EXPECT_THAT(kernel_names, ::testing::UnorderedElementsAre(
+                                    ::testing::HasSubstr("loop_convert_fusion"),
+                                    ::testing::HasSubstr("loop_convert_fusion"),
+                                    ::testing::HasSubstr("loop_select_fusion"),
+                                    ::testing::HasSubstr("gemm_bf16_")));
       break;
     case CudaComputeCapabilities::kHopper:
       EXPECT_THAT(kernel_names,
@@ -358,13 +365,21 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32_X6) {
       stream_executor::CudaComputeCapability::CudaComputeCapabilities;
   switch (cc.major) {
     case CudaComputeCapabilities::kBlackwell:
-      GTEST_SKIP()
-          << "CudaComputeCapabilities::kBlackwell has the kernel name: "
-          << kernel_names[0];
+      EXPECT_THAT(kernel_names, ::testing::UnorderedElementsAre(
+                                    ::testing::HasSubstr("loop_convert_fusion"),
+                                    ::testing::HasSubstr("loop_convert_fusion"),
+                                    ::testing::HasSubstr("loop_select_fusion"),
+                                    ::testing::HasSubstr("wrapped_add"),
+                                    ::testing::HasSubstr("nvjet"),
+                                    ::testing::HasSubstr("nvjet")));
       break;
     case CudaComputeCapabilities::kAmpere:
-      ASSERT_EQ(kernel_names.size(), 1);
-      EXPECT_THAT(kernel_names[0], ::testing::Eq("loop_convert_fusion_1"));
+      EXPECT_THAT(kernel_names, ::testing::UnorderedElementsAre(
+                                    ::testing::HasSubstr("loop_convert_fusion"),
+                                    ::testing::HasSubstr("loop_convert_fusion"),
+                                    ::testing::HasSubstr("loop_select_fusion"),
+                                    ::testing::HasSubstr("wrapped_add"),
+                                    ::testing::HasSubstr("gemm_bf16_")));
       break;
     case CudaComputeCapabilities::kHopper:
       EXPECT_THAT(
@@ -415,18 +430,27 @@ TEST_F(BlasAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
       stream_executor::CudaComputeCapability::CudaComputeCapabilities;
   switch (cc.major) {
     case CudaComputeCapabilities::kBlackwell:
-      GTEST_SKIP()
-          << "CudaComputeCapabilities::kBlackwell has the kernel name: "
-          << kernel_names[0];
+      EXPECT_THAT(kernel_names,
+                  ::testing::UnorderedElementsAre(
+                      ::testing::HasSubstr("bitcast_convert_subtract"),
+                      ::testing::HasSubstr("bitcast_convert_subtract"),
+                      ::testing::HasSubstr("loop_select_fusion"),
+                      ::testing::HasSubstr("tf32gemm")));
       break;
     case CudaComputeCapabilities::kAmpere:
-      EXPECT_THAT(kernel_names, ::testing::Contains(::testing::HasSubstr(
-                                    "bitcast_convert_subtract")));
+      EXPECT_THAT(kernel_names,
+                  ::testing::UnorderedElementsAre(
+                      ::testing::HasSubstr("bitcast_convert_subtract"),
+                      ::testing::HasSubstr("bitcast_convert_subtract"),
+                      ::testing::HasSubstr("loop_select_fusion"),
+                      ::testing::HasSubstr("cutlass_80")));
       break;
     case CudaComputeCapabilities::kHopper:
       EXPECT_THAT(kernel_names,
                   ::testing::UnorderedElementsAre(
                       ::testing::HasSubstr("bitcast_convert_subtract"),
+                      ::testing::HasSubstr("bitcast_convert_subtract"),
+                      ::testing::HasSubstr("loop_select_fusion"),
                       ::testing::HasSubstr("tf32f32")));
       break;
     default:

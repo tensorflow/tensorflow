@@ -652,11 +652,12 @@ xla_test(
 
 xla_test(
     name = "dot_algorithms_test",
-    srcs = if_gpu_is_configured(["dot_algorithms_test.cc"]),
+    srcs = ["dot_algorithms_test.cc"],
     backend_args = if_google(
         {
-            "h100": ["--heap_check="],
+            "b200": ["--heap_check="],
             "a100": ["--heap_check="],
+            "h100": ["--heap_check="],
         },
         {},
     ),
@@ -717,11 +718,12 @@ xla_test(
 # TODO(b/393299275): Remove this target once the legacy emitter is removed.
 xla_test(
     name = "dot_algorithms_legacy_test",
-    srcs = if_gpu_is_configured(["dot_algorithms_legacy_test.cc"]),
+    srcs = ["dot_algorithms_legacy_test.cc"],
     backend_args = if_google(
         {
-            "h100": ["--heap_check="],
+            "b200": ["--heap_check="],
             "a100": ["--heap_check="],
+            "h100": ["--heap_check="],
         },
         {},
     ),
