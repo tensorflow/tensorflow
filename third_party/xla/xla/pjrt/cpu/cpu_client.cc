@@ -929,6 +929,23 @@ absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> PjRtCpuClient::LinearizeInto(
       ->CopyFromLiteral(literal, layout, async_work_runner());
 }
 
+absl::StatusOr<CompiledMemoryStats> PjRtCpuExecutable::GetCompiledMemoryStats()
+    const {
+  auto cpu_executable_ptr =
+      tsl::down_cast<cpu::CpuExecutable*>(cpu_executable_.get());
+  const auto& buffer_assignment = cpu_executable_ptr->buffer_assignment();
+  auto proto = buffer_assignment.ToProto();
+
+  CompiledMemoryStats memory_stats = CompiledMemoryStats();
+  memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
+  memory_stats.serialized_buffer_assignment = proto.SerializeAsString();
+  memory_stats.PopulateBufferStatsFromAllocations(
+      cpu_executable_->GetAllocations());
+  TF_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(proto));
+  memory_stats.peak_memory_in_bytes = peak_memory;
+  return memory_stats;
+}
+
 absl::StatusOr<std::pair<tsl::RCReference<PjRtDeviceEventPromise>,
                          tsl::RCReference<PjRtDeviceEvent>>>
 PjRtCpuClient::CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
