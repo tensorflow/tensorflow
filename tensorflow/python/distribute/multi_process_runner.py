@@ -254,16 +254,19 @@ class MultiProcessRunner(object):
 
   def _continuously_readline_from_sub(self, pipe_r, task_type, task_id):
     """Function to continuously read lines from subprocesses."""
-    with os.fdopen(pipe_r.fileno(), 'r', closefd=False) as reader:
-      for line in reader:
-        task_string = '[{}-{}]:'.format(task_type, task_id)
-        formatted_line = '{} {}'.format(task_string.ljust(14), line)
-        if self._stream_output:
-          # TODO(rchao): Use a lock here to ensure the printed lines are not
-          # broken.
-          print(formatted_line, end='', flush=True)
-        if self._return_output:
-          self._streaming_queue.put(formatted_line)
+    try:
+      with os.fdopen(pipe_r.fileno(), 'r', closefd=False) as reader:
+        for line in reader:
+          task_string = '[{}-{}]:'.format(task_type, task_id)
+          formatted_line = '{} {}'.format(task_string.ljust(14), line)
+          if self._stream_output:
+            # TODO(rchao): Use a lock here to ensure the printed lines are not
+            # broken.
+            print(formatted_line, end='', flush=True)
+          if self._return_output:
+            self._streaming_queue.put(formatted_line)
+    except Exception as e:
+      print(f"[Thread Error] {e}")
 
   def _start_subprocess_and_reading_thread(self,
                                            task_type,
@@ -318,7 +321,9 @@ class MultiProcessRunner(object):
         target=_ProcFunc(),
         args=(resources, test_env, fn, args, kwargs, self._use_dill_for_args),
         daemon=self._daemon)
+    print("From _start_subprocess_.... - pre p.start")
     p.start()
+    print("From _start_subprocess_.... - after p.start")
     self._processes[(task_type, task_id)] = p
     self._terminated.discard((task_type, task_id))
 
@@ -327,9 +332,16 @@ class MultiProcessRunner(object):
     thread = threading.Thread(  # pylint: disable=unexpected-keyword-arg
         target=self._continuously_readline_from_sub,
         args=(pipe_r, task_type, task_id))
-    thread.start()
+    print("From _start_subprocess_.... - pre thread.start")
+    try:
+      thread.start()
+    except Exception as e:
+      print(f"[Thread Start Error] {e}")
+    print("From _start_subprocess_.... - after thread.start")
     self._reading_threads.append(thread)
-
+    print("_reading_threads: ")
+    print(self._reading_threads)
+    
     if self._watchdog_thread is None or not self._watchdog_thread.is_alive():
       self._watchdog_thread = threading.Thread(target=self._process_watchdog)
       self._watchdog_thread.start()
@@ -772,7 +784,9 @@ class _ProcFunc(object):
     # TODO(rchao): Remove this once parent uses SIGKILL to terminate subprocess.
     while True:
       try:
+        print(f"[{os.getpid()}] Waiting for message...")
         message = self._resources.parent_to_sub_queue.get(block=False)
+        print(f"[{os.getpid()}] Received message: {message}")
 
         # Currently the only possible message is termination.
         if not message.startswith('terminate'):
@@ -846,6 +860,8 @@ class _ProcFunc(object):
         target=self._message_checking_func,
         args=(test_env.task_type, test_env.task_id),
         daemon=True).start()
+
+    print(f"[{os.getpid()}] From Proc() - Thread created, checks from parent.")
 
     if test_env.v2_enabled:
       v2_compat.enable_v2_behavior()
@@ -1307,7 +1323,7 @@ def run(fn,
         raise ValueError('Task type {}, task id {} is errors out'.format(
             resolver.task_type, resolver.task_id))
 
-      with self.assertRaisesRegex(ValueError,
+      with self.assertRaisesRegexp(ValueError,
                                    'Task type worker, task id 0 is errors out'):
         cluster_spec = (
             tf.__internal__.distribute.multi_process_runner.create_cluster_spec(
