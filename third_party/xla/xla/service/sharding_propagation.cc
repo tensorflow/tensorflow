@@ -16,14 +16,13 @@ limitations under the License.
 #include "xla/service/sharding_propagation.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <iterator>
-#include <list>
 #include <map>
 #include <memory>
 #include <optional>
-#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -34,6 +33,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -57,11 +57,10 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/sharding_op_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -3117,6 +3116,10 @@ std::vector<HloInstruction*> ShardingPropagation::GetRelatedInstructions(
 absl::StatusOr<bool> ShardingPropagation::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  LOG(WARNING) << "GSPMD sharding propagation is going to be deprecated and "
+                  "not supported in the future. Please consider migrating to "
+                  "Shardy (https://openxla.org/shardy). For reference, Shardy "
+                  "is already the default partitioner in JAX.";
   // Register custom-call partitioner for SharBarrierFrom and ShardBarrierTo.
   ABSL_CONST_INIT static absl::once_flag did_registration;
   absl::call_once(did_registration, [] {
