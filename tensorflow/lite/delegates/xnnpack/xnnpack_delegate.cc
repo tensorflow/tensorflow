@@ -3242,8 +3242,10 @@ class Subgraph {
       const std::unordered_map<int, uint32_t>& input_output_tensors) {
     // Check the input tensor types.
     const TfLiteTensor& input_a = tensors[node->inputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
-        logging_context, input_a, node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
+        delegate, logging_context, input_a, node->inputs->data[0], node_index));
+    const xnn_datatype input_a_datatype =
+        GetXNNPackDatatype(logging_context, input_a, node->inputs->data[0]);
     const TfLiteTensor& input_b = tensors[node->inputs->data[1]];
     TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQCInt8Type(
         delegate, logging_context, input_b,
@@ -3251,6 +3253,8 @@ class Subgraph {
             ? NumDimensions(&input_b) - 2
             : NumDimensions(&input_b) - 1,
         node->inputs->data[1], node_index));
+    const xnn_datatype input_b_datatype =
+        GetXNNPackDatatype(logging_context, input_b, node->inputs->data[1]);
 
     // Check whether input_a will be quantized dynamically.
     const bool dynamically_quantized =
@@ -3258,8 +3262,16 @@ class Subgraph {
 
     // Check the output tensor type.
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
-        logging_context, output_tensor, node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
+                                       node->outputs->data[0], node_index));
+
+    if ((input_a_datatype != input_b_datatype) && !dynamically_quantized) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "unsupported mixed types in BATCH_MATMUL operator #%d", node_index);
+      return kTfLiteError;
+    }
 
     // Check whether the dimensions are compatible.
     const int num_dims_a = NumDimensions(&input_a);
@@ -3294,9 +3306,23 @@ class Subgraph {
         for (int i = 0; i < num_dims_a; ++i) {
           dims[i] = input_a.dims->data[i];
         }
-        xnn_status status = xnn_define_tensor_value(
-            subgraph, xnn_datatype_fp32, num_dims_a, dims.data(),
-            /*data=*/nullptr, XNN_INVALID_VALUE_ID, /*flags=*/0, &new_id);
+        xnn_status status = xnn_status_invalid_state;
+        if (input_a.type == kTfLiteInt8) {
+          const TfLiteAffineQuantization* quantization_params =
+              static_cast<const TfLiteAffineQuantization*>(
+                  input_a.quantization.params);
+          int32_t zero_point = quantization_params->zero_point->data[0];
+          status = xnn_define_quantized_tensor_value(
+              subgraph, xnn_datatype_qint8, zero_point,
+              quantization_params->scale->data[0], num_dims_a, dims.data(),
+              /*data=*/nullptr, XNN_INVALID_VALUE_ID,
+              /*flags=*/0, &new_id);
+        } else {
+          status = xnn_define_tensor_value(
+              subgraph, xnn_datatype_fp32, num_dims_a, dims.data(),
+              /*data=*/nullptr, XNN_INVALID_VALUE_ID, /*flags=*/0, &new_id);
+        }
+
         if (status != xnn_status_success) {
           return kTfLiteError;
         }
