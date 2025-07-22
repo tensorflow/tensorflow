@@ -1,11 +1,11 @@
 diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-index eb887a2e04a2..3ca71bc623e3 100644
+index 37e79db376b4..058788948f94 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -274,14 +274,6 @@ cc_library(
-     deps = [
+@@ -321,14 +321,6 @@ cc_library(
          ":config",
          ":Demangle",
+         "//third-party/siphash",
 -        # We unconditionally depend on the custom LLVM zlib wrapper. This will
 -        # be an empty library unless zlib is enabled, in which case it will
 -        # both provide the necessary dependencies and configuration defines.
