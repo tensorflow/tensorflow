@@ -54,7 +54,7 @@ void KernelNameTracerCuda::start() {
   cupti_collector_ = profiler::CreateCuptiCollector(
       collector_options, start_walltime_ns, start_gputime_ns);
   profiler::CuptiTracerOptions options;
-  options.activities_selected = {CUPTI_ACTIVITY_KIND_KERNEL};
+  options.activities_selected = {CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL};
   cupti_tracer_->Enable(options, cupti_collector_.get()).IgnoreError();
 }
 
