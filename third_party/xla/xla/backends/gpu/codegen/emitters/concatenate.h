@@ -18,17 +18,21 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape.h"
@@ -36,7 +40,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-class ConcatenateFusion : public EmitterBase {
+class ConcatenateFusion final : public EmitterBase {
  public:
   explicit ConcatenateFusion(const HloFusionAnalysis& analysis);
 
@@ -50,15 +54,18 @@ class ConcatenateFusion : public EmitterBase {
       mlir::MLIRContext* ctx) const override;
 
  protected:
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(
+      mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+      const std::string& entry_function_name,
+      const BufferAssignment* buffer_assignment) const override;
+
   absl::Status EmitEntryFunction(
       const emitters::PartitionedComputations& computations,
       const emitters::CallTargetProvider& call_targets,
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const override;
 
-  std::vector<emitters::EpilogueSpecification> GetEpilogues(
-      const HloFusionInstruction& fusion,
-      mlir::MLIRContext* mlir_context) const override;
+  WorkDimensions GetWorkDimensions() const;
 
  private:
   const HloFusionAnalysis& analysis_;

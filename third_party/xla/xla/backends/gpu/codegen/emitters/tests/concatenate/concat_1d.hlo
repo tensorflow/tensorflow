@@ -19,8 +19,8 @@ fusion {
 // CHECK-SAME:    %[[ARG_2:[a-zA-Z0-9]*]]: {{[^,]*}},
 // CHECK-SAME:    %[[OUTPUT:[a-zA-Z0-9]*]]: {{[^,]*}}
 
-// CHECK: %[[THREAD_ID:.*]] = gpu.thread_id x
-// CHECK: %[[BLOCK_ID:.*]] = gpu.block_id x
+// CHECK: %[[WORKGROUP_ID:.*]] = xla.workgroup_id x
+// CHECK: scf.forall (%[[THREAD_ID:.*]]) in (128)
 
 // CHECK: xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in #[[LOOPMAP_1]]
 // CHECK:   xla.apply_indexing #[[MAP]]
