@@ -2562,15 +2562,6 @@ absl::Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
     return HandleElementwise(hlo);
   }
 
-  if (!hlo->sharding().IsTileMaximal()) {
-    VLOG(1) << "Not partitioned in SPMD mode (DefaultAction):"
-            << hlo->ToString();
-    for (int64_t i = 0; i < hlo->operand_count(); ++i) {
-      VLOG(1) << "  operand " << i
-              << " sharding:" << hlo->operand(i)->sharding().ToString();
-    }
-  }
-
   // The base sharding is a non-tuple sharding that is either assigned to a
   // specific device or replicated.
   const HloSharding base_sharding = [&]() {
@@ -3210,11 +3201,7 @@ absl::Status SpmdPartitioningVisitor::HandleTranspose(HloInstruction* hlo) {
 }
 
 absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
-  // TODO(b/397731516). Add cache even though the sharding is maximal.
   const HloSharding& sharding = hlo->sharding();
-  if (sharding.IsTileMaximal()) {
-    return DefaultAction(hlo);
-  }
 
   const Shape& in_shape = hlo->operand(0)->shape();
   const Shape& out_shape = hlo->shape();
