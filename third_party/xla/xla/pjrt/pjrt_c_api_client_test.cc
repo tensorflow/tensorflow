@@ -192,7 +192,7 @@ TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetCApiClient("cpu"));
   ASSERT_GT(client->addressable_devices().size(), 1);
-  alignas(cpu_function_runtime::MinAlign()) std::array<int32_t, 4> data;
+  alignas(cpu::MinAlign()) std::array<int32_t, 4> data;
   data.fill(0);
   auto* data_ptr = data.data();
   Shape shape = ShapeUtil::MakeShape(S32, {4});
