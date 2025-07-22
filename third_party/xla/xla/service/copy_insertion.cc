@@ -1468,6 +1468,12 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
           continue;
         }
 
+        // Don't remove a copy in a copy kernel.
+        if (instruction == computation->root_instruction() &&
+            computation->instruction_count() == 2 &&
+            !computation->IsMainThread()) {
+          continue;
+        }
         // The region_analysis_cost_now is always set to
         // use_region_based_live_range_analysis_ if it is < 0, in which case the
         // analysis is always performed.
