@@ -687,6 +687,7 @@ cc_library(
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:denormal",
         "@local_tsl//tsl/platform:setround",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
