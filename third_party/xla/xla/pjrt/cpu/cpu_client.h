@@ -313,37 +313,6 @@ class PjRtCpuClient final : public CommonPjRtClient {
   std::function<void(HloModuleConfig&)> customize_hlo_module_config_;
 };
 
-class PjRtCpuBuffer final : public AbstractCpuBuffer {
- public:
-  PjRtCpuBuffer(Shape on_device_shape,
-                std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer,
-                PjRtMemorySpace* memory_space);
-
-  PjRtCpuBuffer(const PjRtCpuBuffer&) = delete;
-  PjRtCpuBuffer(PjRtCpuBuffer&&) = delete;
-  PjRtCpuBuffer& operator=(const PjRtCpuBuffer&) = delete;
-  PjRtCpuBuffer& operator=(PjRtCpuBuffer&&) = delete;
-
-  PjRtMemorySpace* memory_space() const override { return memory_space_; }
-  PjRtCpuDevice* device() const override;
-  PjRtCpuClient* client() const override;
-
-  PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
-                             int64_t transfer_size) override;
-
-  using PjRtBuffer::ToLiteralSync;
-  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
-  PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
-      override;
-
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
-      PjRtMemorySpace* dst_memory_space) override;
-
- private:
-  absl::string_view buffer_name() const override { return "PjRtCpuBuffer"; }
-};
-
 class PjRtCpuExecutable final : public PjRtLoadedExecutable {
  public:
   PjRtCpuExecutable(

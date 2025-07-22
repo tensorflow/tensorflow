@@ -66,7 +66,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/pjrt/abstract_tracked_device_buffer.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/cpu/abstract_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_async_execution_tracker.h"
 #include "xla/pjrt/cpu/cpu_device.h"
@@ -880,7 +880,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::CreateErrorBuffer(
   // regardless of whether the definition event is an error.
   TF_ASSIGN_OR_RETURN(auto buffer,
                       CpuDeviceMemory::Allocate(ShapeUtil::ByteSizeOf(shape)));
-  return std::make_unique<PjRtCpuBuffer>(
+  return std::make_unique<CommonPjRtBufferImpl>(
       shape,
       std::make_unique<TrackedCpuDeviceBuffer>(
           /*owns_buffers=*/true, std::move(buffer),
@@ -952,7 +952,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::DefineBuffer(
     definition_events.push_back(
         tsl::down_cast<CpuTrackedDeviceEvent*>(ev.get())->event());
   }
-  return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtCpuBuffer>(
+  return std::unique_ptr<PjRtBuffer>(std::make_unique<CommonPjRtBufferImpl>(
       on_device_shape,
       std::make_unique<TrackedCpuDeviceBuffer>(
           /*owns_buffers=*/raw_buffer_is_mutable,
@@ -982,13 +982,6 @@ absl::StatusOr<xla::Shape> PjRtCpuClient::MakeDefaultShapeForMemorySpace(
   return MakeDefaultCpuBufferShape(std::move(shape), layout);
 }
 
-PjRtCpuBuffer::PjRtCpuBuffer(
-    Shape on_device_shape,
-    std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer,
-    PjRtMemorySpace* memory_space)
-    : AbstractCpuBuffer(std::move(on_device_shape),
-                        std::move(tracked_device_buffer), memory_space) {}
-
 static std::vector<tsl::RCReference<tsl::AsyncValue>> CopyAsyncValues(
     absl::Span<const tsl::RCReference<tsl::AsyncValue>> events) {
   std::vector<tsl::RCReference<tsl::AsyncValue>> avs;
@@ -997,58 +990,6 @@ static std::vector<tsl::RCReference<tsl::AsyncValue>> CopyAsyncValues(
     avs.push_back(ev.CopyRef());
   }
   return avs;
-}
-
-PjRtCpuDevice* PjRtCpuBuffer::device() const {
-  CHECK_EQ(memory_space_->devices().size(), 1);
-  return tensorflow::down_cast<PjRtCpuDevice*>(memory_space_->devices()[0]);
-}
-
-PjRtCpuClient* PjRtCpuBuffer::client() const {
-  return tensorflow::down_cast<PjRtCpuClient*>(memory_space_->client());
-}
-
-PjRtFuture<> PjRtCpuBuffer::CopyRawToHost(void* dst, int64_t offset,
-                                          int64_t transfer_size) {
-  return CopyRawToHostHelper(dst, offset, transfer_size,
-                             client()->async_work_runner());
-}
-
-PjRtFuture<> PjRtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
-  return ToLiteralHelper(literal, client()->async_work_runner());
-}
-
-PjRtFuture<> PjRtCpuBuffer::LazyToLiteral(
-    absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator) {
-  auto buffer = std::move(generator)();
-  if (!buffer.ok()) {
-    return PjRtFuture<>(buffer.status());
-  }
-  return ToLiteralHelper(buffer.value(), client()->async_work_runner());
-}
-
-absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuBuffer::CopyToMemorySpace(
-    PjRtMemorySpace* dst_memory_space) {
-  CHECK_EQ(dst_memory_space->devices().size(), 1);
-  PjRtDevice* dst_device = dst_memory_space->devices().front();
-  tsl::profiler::TraceMe traceme("PjRtCpuBuffer::CopyToDevice");
-
-  // Copying across PjRtClients involves a copy through the host.
-  if (dst_device->client() != client()) {
-    return CopyToDeviceAcrossClients(dst_device);
-  }
-
-  if (!dst_device->IsAddressable()) {
-    return InvalidArgument("Cannot copy array to non-addressable device %s",
-                           dst_device->DebugString());
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer,
-      CopyToDeviceHelper(client()->async_work_runner()));
-
-  return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtCpuBuffer>(
-      on_device_shape_, std::move(tracked_device_buffer), dst_memory_space));
 }
 
 PjRtCpuExecutable::PjRtCpuExecutable(
@@ -1792,7 +1733,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
               result_buffers_info[i].owns_buffer,
               std::move(result_buffers_info[i].buffer),
               result_buffers_info[i].buffer_size, std::move(definition_events));
-      auto leaf_buffer = std::make_unique<PjRtCpuBuffer>(
+      auto leaf_buffer = std::make_unique<CommonPjRtBufferImpl>(
           result_shape.tuple_shapes(i), std::move(leaf_tracked_device_buffer),
           *device->default_memory_space());
       res.push_back(std::move(leaf_buffer));
@@ -1805,7 +1746,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
         std::move(result_buffers_info[0].buffer),
         result_buffers_info[0].buffer_size,
         /*definition_event=*/execute_event);
-    auto output_buffer = std::make_unique<PjRtCpuBuffer>(
+    auto output_buffer = std::make_unique<CommonPjRtBufferImpl>(
         result_shape, std::move(tracked_device_buffer),
         *device->default_memory_space());
     res.push_back(std::move(output_buffer));
