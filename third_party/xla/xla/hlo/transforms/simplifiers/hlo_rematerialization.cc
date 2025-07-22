@@ -2744,10 +2744,8 @@ HloRematerialization::RematerializeCalledComputationsPeakPriority(
                                          execution_threads)) {
       // Memory limit for the subcomputation is the memory limit less the
       // amount of memory used at this point in the computation.
-      int64_t subcomputation_memory_limit_bytes =
-          (memory_limit_bytes > memory_tracker_memory_usage)
-              ? (memory_limit_bytes - memory_tracker_memory_usage)
-              : cost_estimate_memory_limit_bytes;
+      int64_t subcomputation_memory_limit_bytes = std::max<int64_t>(
+          0, memory_limit_bytes - memory_tracker_memory_usage);
 
       TF_ASSIGN_OR_RETURN(
           bool subcomputation_changed,
