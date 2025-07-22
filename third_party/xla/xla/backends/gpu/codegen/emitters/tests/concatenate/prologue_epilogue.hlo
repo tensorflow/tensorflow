@@ -10,7 +10,7 @@ fusion {
   concat = f32[192] concatenate(log, exp), dimensions={0}
   ROOT neg = f32[192] negate(concat)
 }
-// CHECK: %[[THREAD_ID:.*]] = gpu.thread_id x
+// CHECK: scf.forall (%[[THREAD_ID:.*]]) in (128)
 
 // CHECK: xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in
 // CHECK:   %[[VAL_1_1:.*]] = xla.pure_call @fusion_log({{.*}}, %[[THREAD_ID]])

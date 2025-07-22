@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Builders.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/symbol_name_util.h"
+#include "xla/codegen/emitters/concatenate_kernel_emitter.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/emitters/loop_kernel_emitter.h"
@@ -42,6 +44,7 @@ limitations under the License.
 #include "xla/codegen/mlir_kernel_definition.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout_util.h"
 #include "xla/runtime/work_cluster.h"
@@ -51,6 +54,7 @@ limitations under the License.
 #include "xla/runtime/work_tile_size.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -66,6 +70,39 @@ static absl::StatusOr<std::string> GetName(const HloFusionInstruction& fusion,
 
   return ConvertToCName(
       absl::StrCat(fusion.GetModule()->name(), "_", fusion.name()));
+}
+
+static HloInstructionAdaptor FindNonTrivialHero(
+    const HloInstructionAdaptor& instr) {
+  HloInstructionAdaptor hero = instr;
+
+  // Go up the chain of trivial element-wise(+bitcast, -copy) operations. Note
+  // that no memoization is needed due to number of operands constraints: we
+  // never have to revisit same nodes.
+  while (IsIntermediate(&hero.instruction(), /*allowed_operand_count=*/1) &&
+         hero.parent().ContainsInstruction(hero.GetOperand(0))) {
+    hero = hero.GetOperand(0);
+  }
+
+  // Try a bit harder to find a concat hero. The concat emitter also work if
+  // there are elementwise ops with more than 1 operand on the path between root
+  // and the root op.
+  auto is_concatenate = [](const HloInstruction& node) {
+    return node.opcode() == HloOpcode::kConcatenate;
+  };
+  if (auto concatenate = FindHero(hero, std::move(is_concatenate))) {
+    return *concatenate;
+  }
+
+  // We just want to use the root for the loop emitter.
+  return instr;
+}
+
+static const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
+  CHECK_NE(instr.opcode(), HloOpcode::kFusion);
+  auto fusion_adaptor = HloFusionAdaptor::ForComputation(instr.parent());
+  HloInstructionAdaptor instr_adaptor(instr, fusion_adaptor.get());
+  return FindNonTrivialHero(instr_adaptor).instruction();
 }
 
 static emitters::KernelArguments::BufferAlignment GetDefaultBufferAlignment() {
@@ -134,6 +171,14 @@ static WorkDimensions GetLoopEmitterWorkDims(const HloFusionInstruction& fusion,
   return GetWorkDimensions(indexing_shape, fusion);
 }
 
+static WorkDimensions GetConcatenateEmitterWorkDims(
+    const HloFusionInstruction& fusion, const HloFusionSpec& fusion_spec) {
+  Shape indexing_shape =
+      emitters::ConcatenateFusionKernelEmitter::GetIndexingShape(fusion_spec);
+
+  return GetWorkDimensions(indexing_shape, fusion);
+}
+
 static HloFusionSpec GetLoopFusionSpec(const HloFusionInstruction& fusion) {
   // Crash OK, this is checked in the caller.
   CHECK(fusion.fusion_kind() == HloFusionInstruction::FusionKind::kLoop);
@@ -145,11 +190,63 @@ static HloFusionSpec GetLoopFusionSpec(const HloFusionInstruction& fusion) {
   // GPU code to get the non-trivial hero instructions.
   absl::InlinedVector<HloInstructionAdaptor, 2> roots =
       fusion_adaptor->GetRoots();
-  absl::InlinedVector<HloInstructionAdaptor, 2> heroes =
-      fusion_adaptor->GetRoots();
+  absl::InlinedVector<HloInstructionAdaptor, 2> heroes = {
+      FindNonTrivialHero(fusion_adaptor->GetRoots().front())};
 
   return HloFusionSpec(std::move(fusion_adaptor), std::move(roots),
                        std::move(heroes));
+}
+
+static absl::StatusOr<MlirKernelDefinition> EmitLoopFusionKernel(
+    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+    const BufferAssignment* buffer_assignment, absl::string_view name) {
+  VLOG(2) << "Emitting loop fusion kernel: " << name;
+  HloFusionSpec fusion_spec = GetLoopFusionSpec(fusion);
+  auto work_dimensions = GetLoopEmitterWorkDims(fusion, fusion_spec);
+
+  emitters::LoopFusionKernelEmitter loop_fusion_emitter(
+      context, fusion, std::move(fusion_spec), buffer_assignment,
+      GetDefaultBufferAlignment(), work_dimensions, name, BackendKind::kCpu);
+  TF_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
+                      loop_fusion_emitter.EmitKernelDefinition());
+
+  // We have to release otherwise the source wouldn't be mutable, and we
+  // wouldn't be able to set the CpuMemoryRegionNameAttr.
+  auto [kernel_spec, kernel_source] =
+      std::move(mlir_kernel_definition).ReleaseStorage();
+
+  mlir::OpBuilder builder(&context);
+  kernel_source.module().getOperation()->setAttr(
+      xla::CpuMemoryRegionNameAttr::name,
+      builder.getStringAttr(
+          BuildModuleMemoryRegionName(loop_fusion_emitter.name(), &fusion)));
+  return MlirKernelDefinition(std::move(kernel_spec), std::move(kernel_source));
+}
+
+static absl::StatusOr<MlirKernelDefinition> EmitConcatenateFusionKernel(
+    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+    const BufferAssignment* buffer_assignment, absl::string_view name) {
+  VLOG(2) << "Emitting concatenate fusion kernel: " << name;
+  HloFusionSpec fusion_spec = GetLoopFusionSpec(fusion);
+  auto work_dimensions = GetConcatenateEmitterWorkDims(fusion, fusion_spec);
+
+  emitters::ConcatenateFusionKernelEmitter concatenate_fusion_emitter(
+      context, fusion, std::move(fusion_spec), buffer_assignment,
+      GetDefaultBufferAlignment(), work_dimensions, name, BackendKind::kCpu);
+  TF_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
+                      concatenate_fusion_emitter.EmitKernelDefinition());
+
+  // We have to release otherwise the source wouldn't be mutable, and we
+  // wouldn't be able to set the CpuMemoryRegionNameAttr.
+  auto [kernel_spec, kernel_source] =
+      std::move(mlir_kernel_definition).ReleaseStorage();
+
+  mlir::OpBuilder builder(&context);
+  kernel_source.module().getOperation()->setAttr(
+      xla::CpuMemoryRegionNameAttr::name,
+      builder.getStringAttr(BuildModuleMemoryRegionName(
+          concatenate_fusion_emitter.name(), &fusion)));
+  return MlirKernelDefinition(std::move(kernel_spec), std::move(kernel_source));
 }
 
 absl::StatusOr<MlirKernelDefinition> EmitFusionKernel(
@@ -157,28 +254,13 @@ absl::StatusOr<MlirKernelDefinition> EmitFusionKernel(
     const BufferAssignment* buffer_assignment, bool use_unique_c_name) {
   if (fusion.fusion_kind() == HloFusionInstruction::FusionKind::kLoop) {
     TF_ASSIGN_OR_RETURN(std::string name, GetName(fusion, use_unique_c_name));
-    VLOG(2) << "Emitting loop fusion kernel: " << name;
-    HloFusionSpec fusion_spec = GetLoopFusionSpec(fusion);
-    auto work_dimensions = GetLoopEmitterWorkDims(fusion, fusion_spec);
-
-    emitters::LoopFusionKernelEmitter loop_fusion_emitter(
-        context, fusion, std::move(fusion_spec), buffer_assignment,
-        GetDefaultBufferAlignment(), work_dimensions, name, BackendKind::kCpu);
-    TF_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
-                        loop_fusion_emitter.EmitKernelDefinition());
-
-    // We have to release otherwise the source wouldn't be mutable, and we
-    // wouldn't be able to set the CpuMemoryRegionNameAttr.
-    auto [kernel_spec, kernel_source] =
-        std::move(mlir_kernel_definition).ReleaseStorage();
-
-    mlir::OpBuilder builder(&context);
-    kernel_source.module().getOperation()->setAttr(
-        xla::CpuMemoryRegionNameAttr::name,
-        builder.getStringAttr(
-            BuildModuleMemoryRegionName(loop_fusion_emitter.name(), &fusion)));
-    return MlirKernelDefinition(std::move(kernel_spec),
-                                std::move(kernel_source));
+    const HloInstruction& hero =
+        FindNonTrivialHero(*fusion.fused_expression_root());
+    if (hero.opcode() == HloOpcode::kConcatenate) {
+      return EmitConcatenateFusionKernel(context, fusion, buffer_assignment,
+                                         name);
+    }
+    return EmitLoopFusionKernel(context, fusion, buffer_assignment, name);
   }
 
   return absl::UnimplementedError("Fusion kind not supported.");
