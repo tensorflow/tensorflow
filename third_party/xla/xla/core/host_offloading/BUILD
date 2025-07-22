@@ -256,3 +256,46 @@ strict_cc_test(
         "@local_tsl//tsl/platform:casts",
     ],
 )
+
+cc_library(
+    name = "annotate_host_compute_offload",
+    srcs = [
+        "annotate_host_compute_offload.cc",
+    ],
+    hdrs = [
+        "annotate_host_compute_offload.h",
+    ],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    deps = [
+        "//xla:side_effect_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_module_group",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service:host_offload_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+strict_cc_test(
+    name = "annotate_host_compute_offload_test",
+    srcs = ["annotate_host_compute_offload_test.cc"],
+    deps = [
+        ":annotate_host_compute_offload",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_module_group",
+        "//xla/hlo/pass:hlo_pass_pipeline",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:host_offload_utils",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
