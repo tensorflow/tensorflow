@@ -260,8 +260,8 @@ class XlaCompiledCpuFunction {
   // Aliasing of argument and result buffers is not allowed, and results in
   // undefined behavior.
   void set_arg_data(size_t index, const void* data) {
-    assert((arg_size(index) < xla::cpu_function_runtime::MinAlign() ||
-            (uintptr_t)data % xla::cpu_function_runtime::MinAlign() == 0) &&
+    assert((arg_size(index) < xla::cpu::MinAlign() ||
+            (uintptr_t)data % xla::cpu::MinAlign() == 0) &&
            "Underaligned pointer!");
     // The const_cast is safe because the generated code does not write to arg
     // buffers.
