@@ -74,6 +74,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/denormal.h"
 #include "tsl/platform/setround.h"
+#include "tsl/profiler/lib/traceme.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -326,6 +327,8 @@ absl::Status CpuExecutable::ExecuteThunks(
       &custom_call_execute_params};
 
   auto executed_event = thunks_->Execute(execute_params);
+
+  tsl::profiler::TraceMe trace("BlockUntilReady");
   tsl::BlockUntilReady(executed_event);
 
   if (run_options->execution_profile()) {
@@ -442,6 +445,11 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
 absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ExecutionInput> arguments) {
+  tsl::profiler::TraceMe trace([&] {
+    return tsl::profiler::TraceMeEncode("CpuExecutable::ExecuteAsyncOnStream",
+                                        {{"module_name", module_name_}});
+  });
+
   if (GetRootValueSet().IsAmbiguous()) {
     return Unimplemented("Points-to set of root instruction is ambiguous");
   }
