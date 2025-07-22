@@ -28,9 +28,8 @@ TEST(XlaCompiledCpuFunctionTest, AlignmentValue) {
   // The tfcompile runtime also has a requirement that comes from the xla
   // generated code, on the relation: buffer_size >= 16 ? 2 * sizeof(void*) : 8
   // So any value that we choose must abide by that constraint as well.
-  EXPECT_EQ(xla::cpu_function_runtime::Align(), Allocator::kAllocatorAlignment);
-  EXPECT_LE(xla::cpu_function_runtime::MinAlign(),
-            Allocator::kAllocatorAlignment);
+  EXPECT_EQ(xla::cpu::Align(), Allocator::kAllocatorAlignment);
+  EXPECT_LE(xla::cpu::MinAlign(), Allocator::kAllocatorAlignment);
 }
 
 std::vector<BufferInfo> SizesToBufferInfos(const intptr_t* sizes, size_t n) {
