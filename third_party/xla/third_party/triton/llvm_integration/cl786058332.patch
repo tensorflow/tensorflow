@@ -1,0 +1,43 @@
+
+--- a/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td	2025-06-26 08:27:04.000000000 -0700
++++ b/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td	2025-07-22 17:54:19.000000000 -0700
+@@ -102,12 +102,6 @@
+     DefaultValuedAttr<BoolAttr, "false">:$isVolatile
+   );
+ 
+-  let builders = [
+-      OpBuilder<(ins "Value":$src, "Value":$result,
+-                     "triton::CacheModifier":$cache,
+-                     "triton::EvictionPolicy":$evict, "bool":$isVolatile)>,
+-  ];
+-
+   let results = (outs TTG_AsyncToken:$token);
+ 
+   let extraClassDeclaration = [{
+@@ -361,9 +355,6 @@
+     let arguments = (ins I1:$pred);
+     let results = (outs Variadic<AnyType>:$result);
+     let regions = (region SizedRegion<1>:$region);
+-    let builders = [
+-        OpBuilder<(ins "Value":$pred)>,
+-    ];
+ }
+ 
+ def TTG_MaskReturnOp: TTG_Op<"mask.return",
+
+--- a/third_party/amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUOps.td	2025-06-02 05:51:09.000000000 -0700
++++ b/third_party/amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUOps.td	2025-07-22 17:54:19.000000000 -0700
+@@ -98,13 +98,6 @@
+   );
+   let results = (outs AnyRankedTensor:$result);
+ 
+-  let builders = [
+-      // Build a ExtractSliceOp with static offsets and the same result type
+-      OpBuilder<(ins "RankedTensorType":$resultType,
+-          "Value":$source,
+-          "ArrayRef<int64_t>": $static_offsets)>,
+-  ];
+-
+   let extraClassDeclaration = [{
+     std::array<unsigned, 3> getArrayAttrMaxRanks() {
+       unsigned rank = getSource().getType().getRank();
