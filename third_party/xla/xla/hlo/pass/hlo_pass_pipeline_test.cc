@@ -419,5 +419,38 @@ TEST_F(HloPassPipelineTest, SetHloModuleMetadata) {
   }
 }
 
+class NoOpModulePass : public HloModulePass {
+  absl::string_view name() const override { return "noop"; }
+
+  using HloPassInterface::Run;
+  absl::StatusOr<bool> Run(HloModule* module,
+                           const absl::flat_hash_set<absl::string_view>&
+                               execution_threads) override {
+    return false;
+  }
+};
+
+TEST_F(HloPassPipelineTest, NoCrashOnNoChange) {
+  const std::string module_str = R"(
+HloModule ModuleGroupPassOnModule
+
+ENTRY main {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT foo = f32[] multiply(a, b)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_unsupported_crash_on_hlo_pass_silent_hlo_change(true);
+  HloPassPipeline pipeline(TestName());
+  pipeline.AddPass<NoOpModulePass>();
+
+  absl::Status status = pipeline.Run(module.get()).status();
+  TF_EXPECT_OK(status);
+}
+
 }  // namespace
 }  // namespace xla
