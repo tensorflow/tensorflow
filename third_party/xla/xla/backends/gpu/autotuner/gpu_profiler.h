@@ -37,7 +37,8 @@ class GpuProfiler : public Profiler {
   static std::unique_ptr<GpuProfiler> Create(
       stream_executor::StreamExecutor* stream_executor, ProfileOptions options);
 
-  absl::StatusOr<std::vector<ProfileResult>> ProfileWithSharedBuffers(
+  absl::StatusOr<std::vector<absl::StatusOr<ProfileResult>>>
+  ProfileWithSharedBuffers(
       std::vector<std::unique_ptr<Executable>> executables) override;
 
  private:

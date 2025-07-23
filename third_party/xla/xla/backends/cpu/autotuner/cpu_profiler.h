@@ -33,7 +33,8 @@ class CpuProfiler : public Profiler {
  public:
   static std::unique_ptr<Profiler> Create(ProfileOptions options);
 
-  absl::StatusOr<std::vector<ProfileResult>> ProfileWithSharedBuffers(
+  absl::StatusOr<std::vector<absl::StatusOr<ProfileResult>>>
+  ProfileWithSharedBuffers(
       std::vector<std::unique_ptr<Executable>> executables) override;
 
  protected:
