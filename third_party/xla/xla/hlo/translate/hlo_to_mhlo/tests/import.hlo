@@ -2106,3 +2106,11 @@ add {
 
 // FLATTEN-CHECK-LABEL:  func private @test_topk
 // FLATTEN-CHECK-SAME:  ([[ARG:%.*]]: tensor<4x4xf32>) -> (tensor<4x2xf32>, tensor<4x2xi32>)
+
+// Test HLO original value
+// CHECK-LABEL:  func private @test_original_value
+%test_original_value (Arg_0: f32[192]) -> f32[1,17,17,192] {
+  %Arg_0 = f32[192]{0} parameter(0)
+  // CHECK: "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<3> : tensor<1xi64>}> {mhlo.original_value = "{{[{][{]}}\22broadcast.2342\22{{[}][}]}}"} : (tensor<192xf32>) -> tensor<1x17x17x192xf32>
+  ROOT %broadcast.2342 = f32[1,17,17,192]{3,2,1,0} broadcast(f32[192]{0} %Arg_0), dimensions={3}, origin={{"broadcast.2342"}}
+}

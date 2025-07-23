@@ -4966,6 +4966,11 @@ absl::StatusOr<XlaOp> XlaBuilder::AddInstruction(
   if (sharding_) {
     TF_RETURN_IF_ERROR(NormalizeAndAssignSharing(&instr, *sharding_));
   }
+
+  if (original_value_) {
+    *instr.mutable_original_value() = *original_value_;
+  }
+
   *instr.mutable_frontend_attributes() = frontend_attributes_;
 
   handle_to_index_[handle] = instructions_.size();

@@ -267,6 +267,8 @@ class HloParserImpl : public HloParser {
   absl::StatusOr<Shape> ParseShapeOnly();
   absl::StatusOr<Layout> ParseLayoutOnly();
   absl::StatusOr<HloSharding> ParseShardingOnly();
+  absl::StatusOr<std::shared_ptr<OriginalValue>> ParseOriginalValueOnly(
+      Shape shape);
   absl::StatusOr<FrontendAttributes> ParseFrontendAttributesOnly();
   absl::StatusOr<StatisticsViz> ParseStatisticsVizOnly();
   absl::StatusOr<std::vector<bool>> ParseParameterReplicationOnly();
@@ -7199,6 +7201,20 @@ absl::StatusOr<HloSharding> HloParserImpl::ParseShardingOnly() {
   return std::move(*sharding);
 }
 
+absl::StatusOr<std::shared_ptr<OriginalValue>>
+HloParserImpl::ParseOriginalValueOnly(Shape shape) {
+  lexer_.Lex();
+  std::shared_ptr<OriginalValue> original_value =
+      std::make_shared<OriginalValue>(shape);
+  if (!ParseOriginalValue(original_value)) {
+    return InvalidArgument("Syntax error:\n%s", GetError());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument("Syntax error:\nExtra content after original value");
+  }
+  return original_value;
+}
+
 absl::StatusOr<FrontendAttributes>
 HloParserImpl::ParseFrontendAttributesOnly() {
   lexer_.Lex();
@@ -7390,6 +7406,12 @@ absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
 absl::StatusOr<HloSharding> ParseSharding(absl::string_view str) {
   HloParserImpl parser(str);
   return parser.ParseShardingOnly();
+}
+
+absl::StatusOr<std::shared_ptr<OriginalValue>> ParseOriginalValue(
+    absl::string_view str, const Shape& shape) {
+  HloParserImpl parser(str);
+  return parser.ParseOriginalValueOnly(shape);
 }
 
 absl::StatusOr<FrontendAttributes> ParseFrontendAttributes(
