@@ -57,7 +57,7 @@ class Profiler {
       std::unique_ptr<Executable> executable) {
     std::vector<std::unique_ptr<Executable>> executables;
     executables.push_back(std::move(executable));
-    TF_ASSIGN_OR_RETURN(std::vector<ProfileResult> results,
+    TF_ASSIGN_OR_RETURN(auto results,
                         ProfileWithSharedBuffers(std::move(executables)));
     CHECK_EQ(results.size(), 1);
     return std::move(results[0]);
@@ -66,7 +66,10 @@ class Profiler {
   // Profiles multiple executables with shared buffers. This guarantees that
   // the provided executables have same arguments. This is important for
   // autotuning as we run same instruction with different configs.
-  virtual absl::StatusOr<std::vector<ProfileResult>> ProfileWithSharedBuffers(
+  // Note that an executable can still fail during runtime even if it compiled
+  // successfully, which is why the return type is a vector of StatusOr.
+  virtual absl::StatusOr<std::vector<absl::StatusOr<ProfileResult>>>
+  ProfileWithSharedBuffers(
       std::vector<std::unique_ptr<Executable>> executables) = 0;
 };
 }  // namespace xla

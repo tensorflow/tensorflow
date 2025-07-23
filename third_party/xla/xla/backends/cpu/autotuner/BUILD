@@ -72,6 +72,7 @@ xla_cc_test(
         "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service/cpu:cpu_compiler_pure",
+        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",

@@ -78,21 +78,18 @@ std::unique_ptr<Profiler> CpuProfiler::Create(ProfileOptions options) {
   return absl::WrapUnique(new CpuProfiler(options));
 }
 
-absl::StatusOr<std::vector<ProfileResult>>
+absl::StatusOr<std::vector<absl::StatusOr<ProfileResult>>>
 CpuProfiler::ProfileWithSharedBuffers(
     std::vector<std::unique_ptr<Executable>> executables) {
-  std::vector<ProfileResult> results;
+  std::vector<absl::StatusOr<ProfileResult>> results;
   if (executables.empty()) {
     return results;
   }
   TF_ASSIGN_OR_RETURN(LiteralBackedBuffers backed_buffers,
                       CreateExecutableBuffers(executables[0].get()));
   for (auto& executable : executables) {
-    TF_ASSIGN_OR_RETURN(
-        ProfileResult result,
-        ProfileInternal(executable.get(),
-                        absl::MakeSpan(backed_buffers.buffers)));
-    results.push_back(std::move(result));
+    results.push_back(ProfileInternal(executable.get(),
+                                      absl::MakeSpan(backed_buffers.buffers)));
   }
 
   return results;

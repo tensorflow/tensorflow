@@ -81,35 +81,45 @@ absl::StatusOr<Autotuner::Config> Autotuner::GetBestConfig(
   std::vector<absl::StatusOr<std::unique_ptr<Executable>>> executables =
       CompileAll(instr, supported_configs);
 
-  std::vector<Config> valid_configs;
-  std::vector<std::unique_ptr<Executable>> valid_executables;
+  std::vector<Config> compiled_configs;
+  std::vector<std::unique_ptr<Executable>> compiled_executables;
   for (int i = 0; i < supported_configs.size(); ++i) {
     if (executables[i].ok()) {
-      valid_configs.push_back(std::move(supported_configs[i]));
-      valid_executables.push_back(std::move(executables[i].value()));
+      compiled_configs.push_back(std::move(supported_configs[i]));
+      compiled_executables.push_back(std::move(executables[i].value()));
     } else {
       VLOG(2) << "Failed to compile config " << i << ": "
               << executables[i].status();
     }
   }
-  VLOG(1) << "Successfully compiled " << valid_configs.size()
+  VLOG(1) << "Successfully compiled " << compiled_configs.size()
           << " configs out of " << supported_configs.size() << " configs.";
 
   TF_ASSIGN_OR_RETURN(
-      std::vector<ProfileResult> results,
-      profiler_->ProfileWithSharedBuffers(std::move(valid_executables)));
+      std::vector<absl::StatusOr<ProfileResult>> results,
+      profiler_->ProfileWithSharedBuffers(std::move(compiled_executables)));
+  VLOG(1) << "Profiling results: " << results.size();
+  CHECK_EQ(results.size(), compiled_configs.size());
+
   absl::Duration min_duration = absl::InfiniteDuration();
   Config best_config{nullptr, nullptr};
   for (int i = 0; i < results.size(); ++i) {
-    if (results[i].duration < min_duration) {
-      min_duration = results[i].duration;
-      best_config = std::move(valid_configs[i]);
+    if (!results[i].ok()) {
+      VLOG(2) << "Failed to profile config " << i << ": "
+              << results[i].status();
+      continue;
+    }
+    VLOG(3) << "Config " << i << " ("
+            << compiled_configs[i].backend_config->ShortDebugString()
+            << ") duration: " << results[i].value().duration;
+    if (results[i].value().duration < min_duration) {
+      min_duration = results[i].value().duration;
+      best_config = std::move(compiled_configs[i]);
     }
   }
   if (best_config.codegen_backend == nullptr) {
     return absl::InternalError("No valid config found!");
   }
-  CHECK(best_config.backend_config != nullptr);
   return best_config;
 }
 

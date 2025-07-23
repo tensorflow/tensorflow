@@ -78,10 +78,10 @@ std::unique_ptr<GpuProfiler> GpuProfiler::Create(
       std::move(stream.value()), options));
 }
 
-absl::StatusOr<std::vector<ProfileResult>>
+absl::StatusOr<std::vector<absl::StatusOr<ProfileResult>>>
 GpuProfiler::ProfileWithSharedBuffers(
     std::vector<std::unique_ptr<Executable>> executables) {
-  std::vector<ProfileResult> results;
+  std::vector<absl::StatusOr<ProfileResult>> results;
   if (executables.empty()) {
     return results;
   }
@@ -93,8 +93,11 @@ GpuProfiler::ProfileWithSharedBuffers(
           options_.should_init_buffers,
           /*should_check_correctness=*/true, options_.redzone_padding_bytes));
   for (auto& executable : executables) {
-    TF_ASSIGN_OR_RETURN(ProfileResult result,
-                        ProfileInternal(executable.get(), buffers));
+    absl::StatusOr<ProfileResult> result =
+        ProfileInternal(executable.get(), buffers);
+    if (!result.ok()) {
+      VLOG(1) << "Failed to profile executable: " << result.status();
+    }
     results.push_back(std::move(result));
   }
   return results;
