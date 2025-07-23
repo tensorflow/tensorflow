@@ -114,9 +114,7 @@ class DeviceCompilationCache {
           }
 
           const mutex_lock entry_lock(entry->mu);
-          if (entry->compilation_result != nullptr) {
-            entry->compilation_result->computation.reset();
-          }
+          entry->compilation_result->computation.reset();
 
           return false;
         });
