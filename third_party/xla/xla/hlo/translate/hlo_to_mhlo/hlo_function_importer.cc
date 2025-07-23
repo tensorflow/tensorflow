@@ -69,6 +69,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
+#include "xla/hlo/translate/attributes.h"
 #include "xla/hlo/translate/hlo_to_mhlo/async_importer.h"
 #include "xla/hlo/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/hlo/translate/hlo_to_mhlo/custom_call_importer.h"
@@ -102,10 +103,6 @@ using mlir::func::FuncOp;
 namespace xla {
 
 namespace {
-
-constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
-constexpr char kShardingAttr[] = "mhlo.sharding";
-constexpr char kParameterReplicationAttr[] = "mhlo.parameter_replication";
 
 // Note: This sanitization function causes an irreversible many-to-one mapping
 // and any solution to mitigate this would cause issues with the reverse
@@ -717,6 +714,13 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
   if (instruction->has_sharding()) {
     attributes.push_back(builder_->getNamedAttr(
         kShardingAttr, ConvertSharding(instruction->sharding(), builder_)));
+  }
+
+  if (instruction->original_value()) {
+    attributes.push_back(builder_->getNamedAttr(
+        kOriginalValueAttr,
+        builder_->getStringAttr(
+            "{" + instruction->original_value()->ToString() + "}")));
   }
 
   llvm::SmallVector<NamedAttribute, 4> frontend_attributes;

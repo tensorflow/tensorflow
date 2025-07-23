@@ -116,3 +116,9 @@ cc_library(
         "@stablehlo//:stablehlo_passes",
     ],
 )
+
+cc_library(
+    name = "attributes",
+    hdrs = ["attributes.h"],
+    compatible_with = get_compatible_with_portable(),
+)

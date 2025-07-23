@@ -82,6 +82,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/translate/attributes.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/hlo/translate/mhlo_to_hlo/layout_util.h"
@@ -148,13 +149,10 @@ constexpr char kTopK[] = "top_k";
 
 // MHLO attributes. Module level attributes require namespacing.
 constexpr char kMhloCrossProgramPrefetches[] = "mhlo.cross_program_prefetches";
-constexpr char kMhloFrontendAttributes[] = "mhlo.frontend_attributes";
 constexpr char kMhloInputOutputAlias[] = "mhlo.input_output_alias";
 constexpr char kMhloIsDynamic[] = "mhlo.is_dynamic";
 constexpr char kMhloLiteral[] = "mhlo.literal";
-constexpr char kMhloParameterReplication[] = "mhlo.parameter_replication";
 constexpr char kMhloReplication[] = "mhlo.is_same_data_across_replicas";
-constexpr char kMhloSharding[] = "mhlo.sharding";
 constexpr char kMhloSpmdOutputSharding[] = "mhlo.spmd_output_sharding";
 constexpr char kMhloSpmdParametersShardings[] =
     "mhlo.spmd_parameters_shardings";
@@ -893,9 +891,26 @@ static xla::ResultAccuracy Convert_result_accuracy(
 // returns std::nullopt.
 static std::optional<xla::OpSharding> CreateOpShardingFromAttribute(
     mlir::Operation* op) {
-  auto shardingAttr = op->getAttrOfType<mlir::StringAttr>(kMhloSharding);
+  auto shardingAttr = op->getAttrOfType<mlir::StringAttr>(kShardingAttr);
   if (!shardingAttr) return std::nullopt;
   return xla::ConvertSharding(shardingAttr.getValue());
+}
+
+// Returns an OriginalValueProto from the "original_value" attribute of the op.
+// Returns std::nullopt if the op doesn't have the attribute.
+static std::optional<xla::OriginalValueProto> CreateOriginalValueFromOp(
+    mlir::Operation* op) {
+  auto original_value_attr =
+      op->getAttrOfType<mlir::StringAttr>(kOriginalValueAttr);
+  if (!original_value_attr) {
+    return std::nullopt;
+  }
+  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(op);
+  if (failed(shape_or)) {
+    return std::nullopt;
+  }
+  return xla::ConvertOriginalValue(original_value_attr.getValue(),
+                                   shape_or.value());
 }
 
 // Returns a FrontendAttributes proto from the "frontend_attributes" attribute
@@ -923,7 +938,7 @@ static xla::FrontendAttributes CreateXlaFrontendAttributesFromOp(
     mlir::Operation* op) {
   xla::FrontendAttributes frontend_attributes;
   auto frontend_attributes_dict =
-      op->getAttrOfType<mlir::DictionaryAttr>(kMhloFrontendAttributes);
+      op->getAttrOfType<mlir::DictionaryAttr>(kFrontendAttributesAttr);
   if (!frontend_attributes_dict) return frontend_attributes;
   CreateFrontendAttributes(frontend_attributes_dict, frontend_attributes);
   return frontend_attributes;
@@ -935,7 +950,7 @@ static void ExtractFrontendAttributesFromFunction(
   fe_attrs->resize(function.getNumArguments(), std::nullopt);
   for (int i = 0, end = function.getNumArguments(); i < end; ++i)
     if (auto fe_attr = function.getArgAttrOfType<mlir::DictionaryAttr>(
-            i, kMhloFrontendAttributes)) {
+            i, kFrontendAttributesAttr)) {
       xla::FrontendAttributes frontend_attributes;
       CreateFrontendAttributes(fe_attr, frontend_attributes);
       (*fe_attrs)[i] = frontend_attributes;
@@ -959,15 +974,17 @@ static void ExtractShardingsFromFunction(
                         std::optional<xla::OpSharding>());
   for (int i = 0, end = function.getNumArguments(); i < end; ++i)
     if (auto sharding =
-            function.getArgAttrOfType<mlir::StringAttr>(i, kMhloSharding))
+            function.getArgAttrOfType<mlir::StringAttr>(i, kShardingAttr)) {
       (*arg_shardings)[i] = xla::ConvertSharding(sharding.getValue());
+    }
 
   ret_shardings->resize(function.getNumResults(),
                         std::optional<xla::OpSharding>());
   for (int i = 0, end = function.getNumResults(); i < end; ++i)
     if (auto sharding =
-            function.getResultAttrOfType<mlir::StringAttr>(i, kMhloSharding))
+            function.getResultAttrOfType<mlir::StringAttr>(i, kShardingAttr)) {
       (*ret_shardings)[i] = xla::ConvertSharding(sharding.getValue());
+    }
 }
 
 // Creates a tuple sharding with the given shardings if at least one is present.
@@ -2524,7 +2541,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
       auto name = attr.getName();
       return name == kCallTargetName || name == kBackendConfig ||
              name == kApiVersion || name == kCalledComputations ||
-             name == kHasSideEffect || name == kMhloSharding;
+             name == kHasSideEffect || name == kShardingAttr;
     };
     for (const auto& attr : op->getAttrs()) {
       if (!isSupportedAttrName(attr))
@@ -4231,8 +4248,8 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
       auto name = attr.getName();
       return name == kCallTargetName || name == kBackendConfig ||
              name == kApiVersion || name == kCalledComputations ||
-             name == kHasSideEffect || name == kMhloSharding ||
-             name == kMhloFrontendAttributes;
+             name == kHasSideEffect || name == kShardingAttr ||
+             name == kFrontendAttributesAttr;
     };
     for (const auto& attr : op->getAttrs()) {
       if (!isSupportedAttrName(attr))
@@ -5880,7 +5897,7 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
   absl::flat_hash_map<int, std::vector<bool>> parameter_replication;
   for (int i = 0; i < f.getNumArguments(); ++i) {
     if (auto pr =
-            f.getArgAttrOfType<mlir::ArrayAttr>(i, kMhloParameterReplication)) {
+            f.getArgAttrOfType<mlir::ArrayAttr>(i, kParameterReplicationAttr)) {
       auto& replicated_at_leaf_buffers = parameter_replication[i];
       for (auto b : pr.getValue()) {
         replicated_at_leaf_buffers.push_back(
@@ -6253,7 +6270,7 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
     hlo_module.set_is_dynamic(is_dynamic.getValue());
   }
   if (auto frontend_attributes =
-          module->getAttrOfType<DictionaryAttr>(kMhloFrontendAttributes)) {
+          module->getAttrOfType<DictionaryAttr>(kFrontendAttributesAttr)) {
     CreateFrontendAttributes(frontend_attributes,
                              *hlo_module.mutable_frontend_attributes());
   }

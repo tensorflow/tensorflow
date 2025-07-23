@@ -104,6 +104,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/translate:attributes",
         "//xla/mlir_hlo",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:errors",
