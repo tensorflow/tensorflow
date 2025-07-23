@@ -295,6 +295,7 @@ cc_library(
         "//xla/hlo/transforms/expanders:op_expander_pass",
         "//xla/service:hlo_creation_utils",
         "//xla/service:shape_inference",
+        "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",

@@ -335,8 +335,14 @@ message CustomCallBackendConfig {
   }
 }
 
+// Backend config for block scaled dot custom call instruction.
+message BlockScaledDotBackendConfig {
+  // Block size for the block scaled dot op.
+  int32 block_size = 1;
+}
+
 // Generic backend config for XLA:GPU
-// Next-Id: 13
+// Next-Id: 14
 message GpuBackendConfig {
   // Specifies which operation queue the current instruction will run on.
   // A backend may have multiple operation queues to run instructions
@@ -366,6 +372,8 @@ message GpuBackendConfig {
     CudnnfMHABackendConfig cudnn_fmha_backend_config = 9;
 
     CustomCallBackendConfig custom_call_backend_config = 11;
+
+    BlockScaledDotBackendConfig block_scaled_dot_backend_config = 13;
   }
 
   // This attribute instructs the latency-hiding scheduler to

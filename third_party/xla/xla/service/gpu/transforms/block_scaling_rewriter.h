@@ -62,6 +62,10 @@ namespace xla::gpu {
 //               lhs_batch_dims={0}, lhs_contracting_dims={2},
 //               rhs_batch_dims={0}, rhs_contracting_dims={2}
 //
+//    Note: the scale tensor may be padded; with cuDNN lowering, the underlying
+//    kernel will handle this correctly, with default lowering the extra values
+//    will be ignored. An explicit block size must be passed in the backend
+//    config if the block scaled dimension is padded.
 class BlockScalingRewriter : public OpExpanderPass {
  public:
   explicit BlockScalingRewriter(bool allow_cudnn)
