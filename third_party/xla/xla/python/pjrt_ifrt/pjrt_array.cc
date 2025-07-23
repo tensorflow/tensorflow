@@ -480,7 +480,6 @@ absl::StatusOr<ArrayRef> PjRtArray::Copy(
     } else {
       PjRtCompatibleDevice* pjrt_device =
           llvm::dyn_cast<PjRtCompatibleDevice>(new_sharding_devices[i]);
-      new_client = llvm::dyn_cast<PjRtCompatibleClient>(pjrt_device->client());
       if (!pjrt_device) {
         return InvalidArgument(
             "The destination device is owned by a non-PjRt-compatible client. "
@@ -488,6 +487,7 @@ absl::StatusOr<ArrayRef> PjRtArray::Copy(
             "first fetched to the host and then sent to the destination "
             "device.");
       }
+      new_client = llvm::dyn_cast<PjRtCompatibleClient>(pjrt_device->client());
       if (!pjrt_device->IsAddressable()) {
         return InvalidArgument("Cannot copy array to non-addressable device %s",
                                pjrt_device->DebugString());
@@ -523,9 +523,11 @@ absl::StatusOr<ArrayRef> PjRtArray::Copy(
   }
   return std::visit(
       [this, new_client, &new_sharding, &buffers](const auto& shape) {
+        std::shared_ptr<const xla::PjRtLayout> buffer_layout =
+            buffers[0]->layout();
         return PjRtArray::Create(new_client, dtype_, shape,
                                  std::move(new_sharding), std::move(buffers),
-                                 layout_);
+                                 std::move(buffer_layout));
       },
       shape_);
 }
