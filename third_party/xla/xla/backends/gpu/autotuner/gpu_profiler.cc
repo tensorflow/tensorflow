@@ -120,9 +120,14 @@ absl::StatusOr<ProfileResult> GpuProfiler::ProfileInternal(
       CreateExecutionInputsFromBuffers(buffers.input_buffers(),
                                        buffers.input_shapes());
 
-  TF_RETURN_IF_ERROR(
-      Execute(executable, std::move(execution_inputs), &profile).status());
+  TF_ASSIGN_OR_RETURN(
+      ExecutionOutput execution_output,
+      Execute(executable, std::move(execution_inputs), &profile));
 
+  if (options_.should_populate_output_buffer) {
+    return ProfileResult{absl::Nanoseconds(profile.compute_time_ns()),
+                         execution_output.Commit().ConsumeResult()};
+  }
   return ProfileResult{absl::Nanoseconds(profile.compute_time_ns())};
 }
 
