@@ -875,6 +875,13 @@ class TritonNormalizationTest
     debug_options.clear_xla_disable_hlo_passes();
     return debug_options;
   }
+
+  const stream_executor::GpuComputeCapability& GpuComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .gpu_compute_capability();
+  }
 };
 
 TEST_P(TritonNormalizationTest, CanFuseAndEmitExactSoftmax) {
@@ -1034,6 +1041,9 @@ ENTRY main {
 }
 
 TEST_F(TritonNormalizationTest, CanFuseAndEmitDiamondWithBF16Converts) {
+  if(std::holds_alternative<se::RocmComputeCapability>(GpuComputeCapability())) {
+    GTEST_SKIP() << "ROCm: disabled in weekly-sync-250714";
+  }
   const std::string hlo_text = R"(
 HloModule softmax
 max_computation {

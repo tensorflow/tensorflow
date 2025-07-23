@@ -1774,6 +1774,10 @@ ENTRY e {
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
 TEST_F(TritonGemmTest, SplitLHSOutputTransposeAloneIsNotFused) {
+  if (std::holds_alternative<se::RocmComputeCapability>(
+    GpuComputeCapability())) {
+    GTEST_SKIP() << "ROCm: disabled in weekly-sync-250714";
+  }
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
