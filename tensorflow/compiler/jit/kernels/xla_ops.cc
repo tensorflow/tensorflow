@@ -604,7 +604,7 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
           done);
       OP_REQUIRES_OK_ASYNC(ctx, LockVariables(absl::MakeSpan(variable_infos)),
                            done);
-      std::map<int, const Tensor*> resource_var_ptrs;
+      absl::flat_hash_map<int, const Tensor*> resource_var_ptrs;
       for (int i = 0; i < resources.size(); i++) {
         resource_var_ptrs[resources[i]] = variable_infos[i].var()->tensor();
       }
@@ -928,7 +928,7 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
   const xla::HloInputOutputAliasConfig& input_output_alias =
       closure.executable()->executable()->module().input_output_alias_config();
   absl::StatusOr<std::vector<xla::ExecutionInput>> execution_inputs;
-  std::map<int, const Tensor*> snapshot_ptrs;
+  absl::flat_hash_map<int, const Tensor*> snapshot_ptrs;
   {
     tsl::profiler::TraceMe hlo_module_activity(
         [&] {
