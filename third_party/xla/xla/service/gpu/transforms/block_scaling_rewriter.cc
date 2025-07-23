@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/shape_inference.h"
@@ -61,8 +62,6 @@ absl::StatusOr<int> GetBlockSize(const Shape& quant_shape,
                                  const Shape& scale_shape) {
   int rank = quant_shape.dimensions().size();
   TF_RET_CHECK(rank >= 1 && rank == scale_shape.dimensions().size());
-  TF_RET_CHECK(quant_shape.dimensions().subspan(0, rank - 1) ==
-               scale_shape.dimensions().subspan(0, rank - 1));
   int m = quant_shape.dimensions(rank - 1);
   int n = scale_shape.dimensions(rank - 1);
   TF_RET_CHECK(m > 0 && n > 0 && m % n == 0);
@@ -135,6 +134,15 @@ absl::StatusOr<HloInstruction*> ExpandQuantizeCustomCall(
     return InvalidArgument("Incorrect output shape for quantize op");
   }
 
+  // Output/scale dimensions should match, except the last one (block scaled).
+  const Shape& output_shape = instruction->shape().tuple_shapes(0);
+  const Shape& scale_shape = instruction->shape().tuple_shapes(1);
+  int64_t rank = output_shape.dimensions().size();
+  if (output_shape.dimensions().subspan(0, rank - 1) !=
+      scale_shape.dimensions().subspan(0, rank - 1)) {
+    return InvalidArgument("Output and scale shape dimensions do not match");
+  }
+
   // Build replacement instruction sequence.
   XlaBuilder builder(std::string(instruction->name()));
   TF_RETURN_IF_ERROR(BuildQuantize(builder, instruction->operand(0)->shape(),
@@ -185,13 +193,21 @@ absl::StatusOr<HloInstruction*> ExpandDequantizeCustomCall(
     return InvalidArgument("Incorrect output shape for dequantize op");
   }
 
+  // Input/scale dimensions should match, except the last one (block scaled).
+  const Shape& input_shape = instruction->operand(0)->shape();
+  const Shape& scale_shape = instruction->operand(1)->shape();
+  int64_t rank = input_shape.dimensions().size();
+  if (input_shape.dimensions().subspan(0, rank - 1) !=
+      scale_shape.dimensions().subspan(0, rank - 1)) {
+    return InvalidArgument("Input and scale shape dimensions do not match");
+  }
+
   // Build replacement instruction sequence.
   XlaBuilder builder(std::string(instruction->name()));
   TF_RETURN_IF_ERROR(
-      BuildDequantize(
-          Parameter(&builder, 0, instruction->operand(0)->shape(), "input"),
-          Parameter(&builder, 1, instruction->operand(1)->shape(), "scale"),
-          instruction->shape().element_type())
+      BuildDequantize(Parameter(&builder, 0, input_shape, "input"),
+                      Parameter(&builder, 1, scale_shape, "scale"),
+                      instruction->shape().element_type())
           .status());
   return ExpandInstructionUsingBuilder(builder, instruction);
 }
@@ -209,26 +225,34 @@ enum class CudnnMxType {
   NVFP4,
 };
 
-CudnnMxType GetCudnnMxType(const Shape& input_shape, const Shape& scale_shape) {
-  // Determine the block size from shapes.
-  int block_size = GetBlockSize(input_shape, scale_shape).value_or(0);
+CudnnMxType GetCudnnMxType(const Shape& input_shape, const Shape& scale_shape,
+                           std::optional<int64_t> block_size) {
+  // Determine the block size from shapes, unless explicitly given.
+  int64_t actual_block_size =
+      block_size.has_value()
+          ? block_size.value()
+          : GetBlockSize(input_shape, scale_shape).value_or(0);
+  int64_t contracting_size = input_shape.dimensions().back();
 
   // MXFP8: the input could be either E4M3FN or E5M2.
   if (input_shape.element_type() == PrimitiveType::F8E4M3FN &&
       scale_shape.element_type() == PrimitiveType::F8E8M0FNU &&
-      block_size == BlockScalingRewriter::kBlockSizeMXFP8) {
+      actual_block_size == BlockScalingRewriter::kBlockSizeMXFP8 &&
+      contracting_size % actual_block_size == 0) {
     return CudnnMxType::MXFP8_E4M3FN;
   }
   if (input_shape.element_type() == PrimitiveType::F8E5M2 &&
       scale_shape.element_type() == PrimitiveType::F8E8M0FNU &&
-      block_size == BlockScalingRewriter::kBlockSizeMXFP8) {
+      actual_block_size == BlockScalingRewriter::kBlockSizeMXFP8 &&
+      contracting_size % actual_block_size == 0) {
     return CudnnMxType::MXFP8_E5M2;
   }
 
   // NVFP4: the input is E2M1FN and the scale is E4M3FN.
   if (input_shape.element_type() == PrimitiveType::F4E2M1FN &&
       scale_shape.element_type() == PrimitiveType::F8E4M3FN &&
-      block_size == BlockScalingRewriter::kBlockSizeNVFP4) {
+      actual_block_size == BlockScalingRewriter::kBlockSizeNVFP4 &&
+      contracting_size % actual_block_size == 0) {
     return CudnnMxType::NVFP4;
   }
 
@@ -246,27 +270,34 @@ bool IsSupportedByCudnn(CudnnMxType lhs, CudnnMxType rhs) {
 }
 
 // Reshape inputs to shapes compatible with cuDNN.
-absl::StatusOr<std::tuple<XlaOp, XlaOp, int64_t>> BuildScaledDotInputs(
-    XlaOp input_op, XlaOp scale_op) {
+absl::StatusOr<std::tuple<XlaOp, XlaOp, int64_t>> BuildCudnnScaledDotInput(
+    XlaOp input_op, XlaOp scale_op, std::optional<int64_t> block_size) {
   // Get shapes from the inputs.
   XlaBuilder& builder = *input_op.builder();
   TF_ASSIGN_OR_RETURN(Shape input_shape, builder.GetShape(input_op));
   TF_ASSIGN_OR_RETURN(Shape scale_shape, builder.GetShape(scale_op));
-  TF_RET_CHECK(input_shape.dimensions().size() == 2 ||
-               input_shape.dimensions().size() == 3);
+  int64_t rank = input_shape.dimensions().size();
+  TF_RET_CHECK(rank == 2 || rank == 3);
 
   // Calculate output shape size.
-  int64_t batch_size =
-      input_shape.dimensions().size() == 3 ? input_shape.dimensions(0) : 1;
+  int64_t batch_size = rank == 3 ? input_shape.dimensions(0) : 1;
   int64_t size_contracting = input_shape.dimensions().back();
-  int64_t size_noncontracting =
-      input_shape.dimensions(input_shape.dimensions().size() - 2);
+  int64_t size_noncontracting = input_shape.dimensions(rank - 2);
   int64_t scale_contracting = scale_shape.dimensions().back();
+  int64_t scale_noncontracting = scale_shape.dimensions(rank - 2);
+
+  // Validate input/shape dimensions.
+  int64_t actual_block_size =
+      block_size.has_value() ? block_size.value()
+                             : GetBlockSize(input_shape, scale_shape).value();
+  TF_RET_CHECK(size_contracting <= scale_contracting * actual_block_size);
+  TF_RET_CHECK(size_noncontracting <= scale_noncontracting);
+  TF_RET_CHECK(rank == 2 || scale_shape.dimensions(0) == batch_size);
 
   // Reshape inputs, if necessary.
-  if (input_shape.dimensions().size() != 3) {
+  if (rank != 3) {
     input_op = Reshape(input_op, {1, size_noncontracting, size_contracting});
-    scale_op = Reshape(scale_op, {1, size_noncontracting, scale_contracting});
+    scale_op = Reshape(scale_op, {1, scale_noncontracting, scale_contracting});
   }
 
   // cuDNN kernel imposes constraints on the input shape sizes.
@@ -282,25 +313,26 @@ absl::StatusOr<std::tuple<XlaOp, XlaOp, int64_t>> BuildScaledDotInputs(
     int64_t padded_contracting =
         RoundUpTo(scale_contracting, kScaleContractingTileSize);
 
-    // Build padding configs.
-    PaddingConfig input_padding_config = MakeNoPaddingConfig(/*rank=*/3);
+    // Pad input tensor, if necessary.
     if (size_noncontracting != padded_noncontracting) {
+      PaddingConfig input_padding_config = MakeNoPaddingConfig(/*rank=*/3);
       input_padding_config.mutable_dimensions(1)->set_edge_padding_high(
           padded_noncontracting - size_noncontracting);
-    }
-    PaddingConfig scale_padding_config = input_padding_config;
-    if (scale_contracting != padded_contracting) {
-      scale_padding_config.mutable_dimensions(2)->set_edge_padding_high(
-          padded_contracting - scale_contracting);
-    }
-
-    // Build padding ops with zero neutral value.
-    if (size_noncontracting != padded_noncontracting) {
       input_op = Pad(input_op, Zero(&builder, input_shape.element_type()),
                      input_padding_config);
     }
-    scale_op = Pad(scale_op, Zero(&builder, scale_shape.element_type()),
-                   scale_padding_config);
+
+    // Pad scale tensor, if necessary.
+    if (scale_noncontracting != padded_noncontracting ||
+        scale_contracting != padded_contracting) {
+      PaddingConfig scale_padding_config = MakeNoPaddingConfig(/*rank=*/3);
+      scale_padding_config.mutable_dimensions(1)->set_edge_padding_high(
+          padded_noncontracting - scale_noncontracting);
+      scale_padding_config.mutable_dimensions(2)->set_edge_padding_high(
+          padded_contracting - scale_contracting);
+      scale_op = Pad(scale_op, Zero(&builder, scale_shape.element_type()),
+                     scale_padding_config);
+    }
   }
 
   // Swizzle scales to match the cuDNN kernel.
@@ -326,14 +358,17 @@ absl::StatusOr<std::tuple<XlaOp, XlaOp, int64_t>> BuildScaledDotInputs(
 absl::StatusOr<XlaOp> BuildCudnnScaledDot(XlaOp lhs_input, XlaOp rhs_input,
                                           XlaOp lhs_scale, XlaOp rhs_scale,
                                           const DotDimensionNumbers& dnums,
-                                          PrimitiveType result_type) {
+                                          PrimitiveType result_type,
+                                          std::optional<int64_t> block_size) {
   // Get inputs from parameters.
-  TF_ASSIGN_OR_RETURN(auto lhs_ops_and_size,
-                      BuildScaledDotInputs(lhs_input, lhs_scale));
+  TF_ASSIGN_OR_RETURN(
+      auto lhs_ops_and_size,
+      BuildCudnnScaledDotInput(lhs_input, lhs_scale, block_size));
   auto [lhs_input_op, lhs_scale_op, lhs_size] = lhs_ops_and_size;
 
-  TF_ASSIGN_OR_RETURN(auto rhs_ops_and_size,
-                      BuildScaledDotInputs(rhs_input, rhs_scale));
+  TF_ASSIGN_OR_RETURN(
+      auto rhs_ops_and_size,
+      BuildCudnnScaledDotInput(rhs_input, rhs_scale, block_size));
   auto [rhs_input_op, rhs_scale_op, rhs_size] = rhs_ops_and_size;
 
   // Calculate output shape.
@@ -364,12 +399,64 @@ absl::StatusOr<XlaOp> BuildCudnnScaledDot(XlaOp lhs_input, XlaOp rhs_input,
 
 // ----- Block scaled dot (general)
 
+// Build HLO for scaled dot op input.
+absl::StatusOr<XlaOp> BuildBlockScaledDotInput(
+    XlaOp input_op, XlaOp scale_op, PrimitiveType result_type,
+    std::optional<int64_t> block_size) {
+  // Get shapes of the input and scales.
+  XlaBuilder& builder = *input_op.builder();
+  TF_ASSIGN_OR_RETURN(Shape input_shape, builder.GetShape(input_op));
+  TF_ASSIGN_OR_RETURN(Shape scale_shape, builder.GetShape(scale_op));
+
+  // Make sure the input and scale shapes are compatible (scales may be padded).
+  int64_t rank = input_shape.dimensions().size();
+  TF_RET_CHECK(scale_shape.dimensions().size() == rank);
+  bool truncate_scale = false;
+
+  // Check the batch dimension.
+  if (rank == 3) {
+    TF_RET_CHECK(input_shape.dimensions(0) == scale_shape.dimensions(0));
+  }
+
+  // Check the noncontracting dimension.
+  int64_t input_noncontracting_size = input_shape.dimensions(rank - 2);
+  int64_t scale_noncontracting_size = scale_shape.dimensions(rank - 2);
+
+  TF_RET_CHECK(input_noncontracting_size <= scale_noncontracting_size);
+  truncate_scale |= input_noncontracting_size < scale_noncontracting_size;
+  scale_shape.set_dimensions(rank - 2, input_noncontracting_size);
+
+  // Check the contracting dimension if explicit block size is passed.
+  if (block_size.has_value()) {
+    int64_t input_contracting_size = input_shape.dimensions(rank - 1);
+    int64_t scale_contracting_size = scale_shape.dimensions(rank - 1);
+    int64_t dq_size = *block_size * scale_contracting_size;
+
+    TF_RET_CHECK(input_contracting_size <= dq_size);
+    truncate_scale |= input_contracting_size < dq_size;
+    scale_shape.set_dimensions(
+        rank - 1, CeilOfRatio(input_contracting_size, *block_size));
+  }
+
+  // Slice the scale tensor to match the input shape.
+  if (truncate_scale) {
+    std::vector<int64_t> start_indices(rank, 0);
+    std::vector<int64_t> limit_indices(scale_shape.dimensions().begin(),
+                                       scale_shape.dimensions().end());
+    std::vector<int64_t> strides(rank, 1);
+    scale_op = Slice(scale_op, start_indices, limit_indices, strides);
+  }
+
+  return BuildDequantize(input_op, scale_op, result_type);
+}
+
 // Build HLO for scaled dot op.
 absl::StatusOr<XlaOp> BuildBlockScaledDot(
     XlaBuilder& builder, const HloInstruction* lhs_input,
     const HloInstruction* rhs_input, const HloInstruction* lhs_scale,
     const HloInstruction* rhs_scale, const DotDimensionNumbers& dnums,
-    PrimitiveType result_type, bool allow_cudnn) {
+    PrimitiveType result_type, std::optional<int64_t> block_size,
+    bool allow_cudnn) {
   // Get dot LHS parameter(s).
   XlaOp lhs_op = Parameter(&builder, 0, lhs_input->shape(), "lhs");
   XlaOp lhs_scale_op = Parameter(&builder, 2, lhs_scale->shape(), "lhs_scale");
@@ -384,18 +471,20 @@ absl::StatusOr<XlaOp> BuildBlockScaledDot(
   // Use cuDNN kernel, if possible.
   if (allow_cudnn && rhs_scale_op.valid() &&
       IsSupportedByCudnn(
-          GetCudnnMxType(lhs_input->shape(), lhs_scale->shape()),
-          GetCudnnMxType(rhs_input->shape(), rhs_scale->shape()))) {
+          GetCudnnMxType(lhs_input->shape(), lhs_scale->shape(), block_size),
+          GetCudnnMxType(rhs_input->shape(), rhs_scale->shape(), block_size))) {
     return BuildCudnnScaledDot(lhs_op, rhs_op, lhs_scale_op, rhs_scale_op,
-                               dnums, result_type);
+                               dnums, result_type, block_size);
   }
 
   // Build general dot op.
-  TF_ASSIGN_OR_RETURN(lhs_op,
-                      BuildDequantize(lhs_op, lhs_scale_op, result_type));
+  TF_ASSIGN_OR_RETURN(
+      lhs_op,
+      BuildBlockScaledDotInput(lhs_op, lhs_scale_op, result_type, block_size));
   if (rhs_scale_op.valid()) {
-    TF_ASSIGN_OR_RETURN(rhs_op,
-                        BuildDequantize(rhs_op, rhs_scale_op, result_type));
+    TF_ASSIGN_OR_RETURN(
+        rhs_op, BuildBlockScaledDotInput(rhs_op, rhs_scale_op, result_type,
+                                         block_size));
   }
   return DotGeneral(lhs_op, rhs_op, dnums, /*precision_config=*/nullptr,
                     /*preferred_element_type=*/result_type);
@@ -430,6 +519,17 @@ absl::StatusOr<HloInstruction*> ExpandBlockScaledDotCustomCall(
     return InvalidArgument("Incorrect output shape for block scaled dot op");
   }
 
+  // If an explicit block size is passed in the backend config, use it.
+  // This is needed when the scale tensor is padded, the block size cannot be
+  // implied in this case.
+  auto backend_config = instruction->backend_config<GpuBackendConfig>();
+  std::optional<int64_t> block_size =
+      backend_config.ok() &&
+              backend_config->has_block_scaled_dot_backend_config()
+          ? std::make_optional(
+                backend_config->block_scaled_dot_backend_config().block_size())
+          : std::nullopt;
+
   // Build replacement instruction sequence.
   XlaBuilder builder(std::string(instruction->name()));
   auto operands = absl::MakeSpan(instruction->operands());
@@ -437,7 +537,7 @@ absl::StatusOr<HloInstruction*> ExpandBlockScaledDotCustomCall(
       XlaOp block_scaled_dot,
       BuildBlockScaledDot(builder, operands[0], operands[1], operands[2],
                           operands.size() == 4 ? operands[3] : nullptr, dnums,
-                          result_type, allow_cudnn));
+                          result_type, block_size, allow_cudnn));
 
   // Reshape to the expected output shape.
   // This should only happen when a unit-sized dimension is added by the pass.
