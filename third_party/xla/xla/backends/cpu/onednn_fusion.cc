@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/onednn_fusion.h"
 
+#include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/dot_lib.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
