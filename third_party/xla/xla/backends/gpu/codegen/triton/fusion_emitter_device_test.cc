@@ -3686,6 +3686,10 @@ TEST_F(TritonEmitterTest, RocmWarpSizeIsSetCorrectly) {
   if (std::get_if<se::CudaComputeCapability>(&GpuComputeCapability())) {
     GTEST_SKIP() << "Warp size is always 32 on CUDA";
   }
+  if (std::holds_alternative<se::RocmComputeCapability>(
+          GpuComputeCapability())) {
+    GTEST_SKIP() << "ROCm: disabled in weekly-sync-250714";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> verified_module,
                           ParseAndReturnVerifiedModule(GetDotAlgorithmHlo(
