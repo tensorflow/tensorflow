@@ -56,6 +56,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -1128,9 +1130,10 @@ class PjRtBuffer {
   // layout.
   absl::StatusOr<std::shared_ptr<Literal>> ToLiteralSync() {
     TF_ASSIGN_OR_RETURN(Shape host_shape, HostShape());
-    auto literal = std::make_shared<Literal>(host_shape);
-    TF_RETURN_IF_ERROR(ToLiteralSync(literal.get()));
-    return literal;
+    TF_ASSIGN_OR_RETURN(auto literal, Literal::Make(host_shape));
+    auto shared_literal = std::make_shared<Literal>(std::move(literal));
+    TF_RETURN_IF_ERROR(ToLiteralSync(shared_literal.get()));
+    return shared_literal;
   }
 
   // Returns the number of bytes of the buffer storage on the device.
