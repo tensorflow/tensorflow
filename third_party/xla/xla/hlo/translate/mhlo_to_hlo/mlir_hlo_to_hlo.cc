@@ -5661,25 +5661,24 @@ LogicalResult ConvertToHloModule::LowerReturn(
     return success();
   }
 
-  if (num_return_values == 1) {
-    Value ret = implicit_results.empty() ? inst->getOperand(0)
-                                         : implicit_results.front();
-    xla::XlaOp operand;
-    if (failed(GetXlaOp(ret, value_map, &operand, inst))) return failure();
+  Value ret =
+      implicit_results.empty() ? inst->getOperand(0) : implicit_results.front();
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(ret, value_map, &operand, inst))) {
+    return failure();
+  }
 
-    if (ret_tuple_sharding) {
-      if (std::optional<xla::OpSharding> sharding =
-              getTupleShardingForSingleElementReturnLowering(operand,
-                                                             builder)) {
-        builder->SetSharding(sharding.value());
-      }
-      auto tuple = Tuple(builder, {operand});
-      builder->SetSharding(*ret_shardings[0]);
-      *return_value = GetTupleElement(tuple, 0);
-      builder->ClearSharding();
-    } else {
-      *return_value = operand;
+  if (ret_tuple_sharding) {
+    if (std::optional<xla::OpSharding> sharding =
+            getTupleShardingForSingleElementReturnLowering(operand, builder)) {
+      builder->SetSharding(sharding.value());
     }
+    auto tuple = Tuple(builder, {operand});
+    builder->SetSharding(*ret_shardings[0]);
+    *return_value = GetTupleElement(tuple, 0);
+    builder->ClearSharding();
+  } else {
+    *return_value = operand;
   }
 
   return success();
