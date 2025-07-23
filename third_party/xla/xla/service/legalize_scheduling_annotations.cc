@@ -121,7 +121,12 @@ absl::Status AttachAnnotation(
   return absl::OkStatus();
 }
 
-bool IsSupportedAsyncOp(HloInstruction* instr) {
+bool IsSupportedAsyncOp(HloInstruction* instr, bool supports_async_start) {
+  if (instr->opcode() == HloOpcode::kAsyncStart && !supports_async_start) {
+    VLOG(1) << "Dropping annotation on async start operation: "
+            << instr->name();
+    return false;
+  }
   return HloPredicateIsOp<
       HloOpcode::kAllGatherDone, HloOpcode::kAllGatherStart,
       HloOpcode::kAllReduceDone, HloOpcode::kAllReduceStart,
@@ -326,7 +331,8 @@ bool LegalizeSchedulingAnnotations::KeepSchedulingAnnotation(
     return false;
   }
 
-  return IsSupportedAsyncOp(instr) || config_.keep_sync_annotation(instr);
+  return IsSupportedAsyncOp(instr, config_.keep_start_annotation) ||
+         config_.keep_sync_annotation(instr);
 }
 
 bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
