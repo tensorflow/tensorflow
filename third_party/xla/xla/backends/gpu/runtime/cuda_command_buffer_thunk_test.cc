@@ -71,9 +71,6 @@ se::StreamExecutor* GpuExecutor() {
   return platform->ExecutorForDevice(0).value();
 }
 
-// Give a short aliases to execution threads.
-constexpr auto s0 = ExecutionStreamId(0);
-
 // Give a short alias to synchronization mode.
 static constexpr auto serialize =
     CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
@@ -147,7 +144,7 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
   auto dnn_graph = std::make_unique<se::gpu::CudnnGraph>(std::move(graph));
   CommandBufferCmdSequence commands;
   commands.Emplace<CuDnnCmd>(
-      s0, args, std::make_shared<se::dnn::LazyDnnGraph>(std::move(dnn_graph)));
+      args, std::make_shared<se::dnn::LazyDnnGraph>(std::move(dnn_graph)));
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
