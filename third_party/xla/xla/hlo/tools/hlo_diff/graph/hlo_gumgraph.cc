@@ -66,7 +66,8 @@ HloPrintOptions CreateHloPrintOptions(
           .set_include_layout_in_shapes(false)
           .set_print_subcomputation_mode(
               HloPrintOptions::PrintSubcomputationMode::kOff)
-          .set_print_parameter_number(false);
+          .set_print_parameter_number(false)
+          .set_print_only_essential_constants(false);
   if (fingerprint_options.ignore_shape) {
     hlo_print_options.set_print_operand_shape(false);
     hlo_print_options.set_print_result_shape(false);
@@ -138,8 +139,9 @@ absl::Status HloGumgraph::ConstructGraph(const HloModule& hlo_module) {
       node->props.fingerprint = GetHloInstructionFingerprint(
           instruction, CreateHloPrintOptions(fingerprint_options_));
       node->props.canonical_fingerprint = GetHloInstructionFingerprint(
-          instruction,
-          HloPrintOptions::Fingerprint().set_print_parameter_number(false));
+          instruction, HloPrintOptions::Fingerprint()
+                           .set_print_parameter_number(false)
+                           .set_print_only_essential_constants(false));
 
       bool inline_called_computations = false;
       switch (instruction->opcode()) {

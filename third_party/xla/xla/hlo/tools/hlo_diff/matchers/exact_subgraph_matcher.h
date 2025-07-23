@@ -25,7 +25,12 @@
 namespace xla {
 namespace hlo_diff {
 
-// Matcher that matches identical subgraphs starting with the tallest.
+// This matcher implements a greedy, top-down strategy for finding and mapping
+// structurally identical subgraphs between two HLO graphs. It iterates through
+// all nodes from the highest to the lowest. At each height level, it groups
+// nodes by their subgraph fingerprint. If a fingerprint is unique for that
+// height in both graphs, the subgraphs are matched. If multiple subgraphs share
+// a fingerprint, it uses already-matched descendants) to resolve the ambiguity.
 class GreedySubGraphExactMatcher : public HloGumgraphMatcher {
  public:
   GreedySubGraphExactMatcher(const HloGumgraph* left, const HloGumgraph* right,
