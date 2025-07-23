@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
