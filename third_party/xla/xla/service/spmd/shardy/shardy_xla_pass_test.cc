@@ -631,8 +631,7 @@ TEST_F(ShardyXLATest, ShardMap) {
   EXPECT_TRUE(dot->sharding().IsManual());
 
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_EQ(root->opcode(), xla::HloOpcode::kCustomCall);
-  EXPECT_EQ(root->custom_call_target(), "SPMDShardToFullShape");
+  EXPECT_TRUE(root->IsCustomCall("SPMDShardToFullShape"));
   EXPECT_THAT(root,
               op::Sharding("{devices=[4,1,2]<=[8] last_tile_dim_replicate}"));
 }
