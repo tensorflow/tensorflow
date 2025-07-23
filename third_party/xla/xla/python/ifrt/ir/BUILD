@@ -165,6 +165,7 @@ cc_library(
     visibility = ["//xla/python/ifrt:users"],
     deps = [
         ":ifrt_ir_compile_options_proto_cc",
+        "//third_party/protobuf/json",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/python/ifrt",
@@ -176,6 +177,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

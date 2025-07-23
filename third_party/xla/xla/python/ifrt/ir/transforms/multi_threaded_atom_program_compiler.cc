@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/transforms/multi_threaded_atom_program_compiler.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,7 +28,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -47,7 +47,6 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
 #include "xla/python/ifrt/shape.h"
-#include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
@@ -147,26 +146,12 @@ MultiThreadedAtomProgramCompiler::GetXlaCompileOptions(
   // compile options.
   auto compile_options_key =
       call_op->getAttrOfType<mlir::StringAttr>(kIfrtCompileOptionsKey);
-  bool has_compile_options = false;
-  if (compile_options_overrides_ != nullptr && compile_options_key != nullptr) {
-    if (auto compile_options_override =
-            compile_options_overrides_->find(compile_options_key.str());
-        compile_options_override != compile_options_overrides_->end()) {
-      if (auto xla_options = llvm::dyn_cast<XlaCompileOptions>(
-              compile_options_override->second.get())) {
-        compile_options = xla_options->compile_options;
-        has_compile_options = true;
-      } else {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "The `", kIfrtCompileOptionsKey.str(), "` compile options key `",
-            compile_options_key.str(),
-            "` has an entry that is not of type `XlaCompileOptions`, but the "
-            "atom program is an XLA program."));
-      }
-    }
-  }
+  TF_ASSIGN_OR_RETURN(
+      std::optional<xla::CompileOptions> compile_options_override,
+      GetModuleXlaCompileOverrides(compile_options_key,
+                                   compile_options_overrides_));
 
-  if (!has_compile_options) {
+  if (!compile_options_override.has_value()) {
     auto& exec_build_options = compile_options.executable_build_options;
     // Executable build options are constructed using logical ids, which are
     // later converted into real Device ids by using the logical ids as
@@ -197,6 +182,8 @@ MultiThreadedAtomProgramCompiler::GetXlaCompileOptions(
             GetOutputShardingPropagation(main_func));
       }
     }
+  } else {
+    return compile_options_override.value();
   }
 
   return compile_options;
@@ -217,13 +204,12 @@ absl::StatusOr<CompileFuture> MultiThreadedAtomProgramCompiler::CompileXla(
       mlir::OwningOpRef<mlir::ModuleOp>(module_op.clone()));
   Promise<AtomProgramCompileResult> promise = CompileFuture::CreatePromise();
   CompileFuture future(promise);
-  ScheduleWork(
-      thread_pool, [this, hlo_program = std::move(hlo_program),
-                    compile_options = std::move(compile_options),
-                    promise = std::move(promise)]() mutable {
-        promise.Set(compiler_->CompileXla(std::move(hlo_program),
-                                          std::move(compile_options)));
-      });
+  ScheduleWork(thread_pool, [this, hlo_program = std::move(hlo_program),
+                             compile_options = std::move(compile_options),
+                             promise = std::move(promise)]() mutable {
+    promise.Set(compiler_->CompileXla(std::move(hlo_program),
+                                      std::move(compile_options)));
+  });
   return future;
 }
 
