@@ -20,6 +20,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
@@ -302,26 +303,24 @@ TEST_P(RandomEighTest, Random) {
                              ErrorSpec(kExpected, 0));
 }
 
-#ifndef XLA_TEST_BACKEND_CPU
+std::vector<EighTestCase> MakeTestCases() {
+  std::vector<EighTestCase> testcases = {0,   1,   2,   3,   8,   16,  32, 77,
+                                         129, 203, 256, 257, 493, 511, 512};
+  if (!test::DeviceTypeIs(test::kCpu)) {
+    // These take too long on CPU.
+    testcases.push_back(513);
+    testcases.push_back(1000);
+  }
+
+  return testcases;
+}
+
 INSTANTIATE_TEST_SUITE_P(
     RandomEighTestInstantiation, RandomEighTest,
-    ::testing::Values(0, 1, 2, 3, 8, 16, 32, 77, 129, 203, 256, 257, 493, 511,
-                      512,
-                      // Large tests are slow on CPU.
-                      513, 1000),
+    ::testing::ValuesIn(MakeTestCases()),
     [](const ::testing::TestParamInfo<EighTestCase>& info) {
       const int64_t size = info.param;
       return absl::StrCat(size);
     });
-#else
-INSTANTIATE_TEST_SUITE_P(
-    RandomEighTestInstantiation, RandomEighTest,
-    ::testing::Values(0, 1, 2, 3, 8, 16, 32, 77, 129, 203, 256, 257, 493, 511,
-                      512),
-    [](const ::testing::TestParamInfo<EighTestCase>& info) {
-      const int64_t size = info.param;
-      return absl::StrCat(size);
-    });
-#endif  // XLA_TEST_BACKEND_CPU
 
 }  // namespace xla
