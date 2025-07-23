@@ -2564,8 +2564,10 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
 }
 
 FlagStatus GetFlagStatus(absl::string_view flag_name) {
+  // NOTE: The explicit internal constructor is needed as an explicitly typed
+  // variable to avoid a method ambiguity error when compiling with GCC.
   static const absl::NoDestructor<absl::flat_hash_set<std::string>>
-      kStableFlags({
+      kStableFlags(absl::flat_hash_set<std::string>{
           // go/keep-sorted start
           "xla_gpu_all_reduce_combine_threshold_bytes",
           "xla_gpu_autotune_level",
@@ -2584,7 +2586,7 @@ FlagStatus GetFlagStatus(absl::string_view flag_name) {
           // go/keep-sorted end
       });
   static const absl::NoDestructor<absl::flat_hash_set<std::string>>
-      kDeprecatedFlags({
+      kDeprecatedFlags(absl::flat_hash_set<std::string>{
           // go/keep-sorted start
           // go/keep-sorted end
       });
