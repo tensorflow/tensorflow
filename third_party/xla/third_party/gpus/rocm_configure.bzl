@@ -3,11 +3,8 @@
 `rocm_configure` depends on the following environment variables:
 
   * `TF_NEED_ROCM`: Whether to enable building with ROCm.
-  * `GCC_HOST_COMPILER_PATH`: The GCC host compiler path.
-  * `TF_ROCM_CLANG`: Whether to use clang for C++ and HIPCC for ROCm compilation.
   * `TF_SYSROOT`: The sysroot to use when compiling.
   * `CLANG_COMPILER_PATH`: The clang compiler path that will be used for
-    host code compilation if TF_ROCM_CLANG is 1.
   * `ROCM_PATH`: The path to the ROCm toolkit. Default is `/opt/rocm`.
   * `TF_ROCM_AMDGPU_TARGETS`: The AMDGPU targets.
 """
@@ -44,8 +41,6 @@ load(
     "enable_sycl",
 )
 
-_GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
-_GCC_HOST_COMPILER_PREFIX = "GCC_HOST_COMPILER_PREFIX"
 _CLANG_COMPILER_PATH = "CLANG_COMPILER_PATH"
 _TF_SYSROOT = "TF_SYSROOT"
 _ROCM_TOOLKIT_PATH = "ROCM_PATH"
@@ -58,10 +53,6 @@ _ROCM_VERSION = "ROCM_VERSION"
 _DEFAULT_ROCM_TOOLKIT_PATH = "/opt/rocm"
 _TF_ROCM_MULTIPLE_PATHS = "TF_ROCM_MULTIPLE_PATHS"
 _LLVM_PATH = "LLVM_PATH"
-
-def _is_clang_enabled(repository_ctx):
-    return get_host_environ(repository_ctx, "TF_ROCM_CLANG") == "1"
-
 
 def verify_build_defines(params):
     """Verify all variables that crosstool/BUILD.rocm.tpl expects are substituted.
@@ -90,15 +81,11 @@ def verify_build_defines(params):
             ".",
         )
 
-def find_cc(repository_ctx, use_rocm_clang):
+def find_cc(repository_ctx):
     """Find the C++ compiler."""
 
-    if use_rocm_clang:
-        target_cc_name = "clang"
-        cc_path_envvar = _CLANG_COMPILER_PATH
-    else:
-        target_cc_name = "gcc"
-        cc_path_envvar = _GCC_HOST_COMPILER_PATH
+    target_cc_name = "clang"
+    cc_path_envvar = _CLANG_COMPILER_PATH
     cc_name = target_cc_name
 
     cc_name_from_env = get_host_environ(repository_ctx, cc_path_envvar)
@@ -258,7 +245,6 @@ def _batch_files_exist(repository_ctx, libs_paths, bash_bin):
             all_paths.append(lib_path)
     return files_exist(repository_ctx, all_paths, bash_bin)
 
-
 def _soversion(repository_ctx, path, bash_bin = None):
     """Returns the soversion of a given library.
 
@@ -286,7 +272,7 @@ def _soversion(repository_ctx, path, bash_bin = None):
             end = row.rfind("]")
             if start == -1 or end <= start + 4:
                 auto_configure_fail("Failed to extract soversion from line: %s" % row)
-            soversion = row[start + 4: end]
+            soversion = row[start + 4:end]
             break
 
     if soversion == "":
@@ -315,8 +301,11 @@ def _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin):
             else:
                 auto_configure_fail("Cannot find rocm library %s" % name)
 
-        libs[name] = struct(file_name = selected_path.basename, path = realpath(repository_ctx, selected_path, bash_bin),
-                            soversion = _soversion(repository_ctx, selected_path, bash_bin))
+        libs[name] = struct(
+            file_name = selected_path.basename,
+            path = realpath(repository_ctx, selected_path, bash_bin),
+            soversion = _soversion(repository_ctx, selected_path, bash_bin),
+        )
 
     return libs
 
@@ -531,10 +520,6 @@ def _genrule(src_dir, genrule_name, command, outs):
 def _flag_enabled(repository_ctx, flag_name):
     return get_host_environ(repository_ctx, flag_name) == "1"
 
-def _use_rocm_clang(repository_ctx):
-    # Returns the flag if we need to use clang for the host.
-    return _flag_enabled(repository_ctx, "TF_ROCM_CLANG")
-
 def _tf_sysroot(repository_ctx):
     return get_host_environ(repository_ctx, _TF_SYSROOT, "")
 
@@ -668,7 +653,6 @@ def _create_local_rocm_repository(repository_ctx):
         "%{rocm_toolkit_path}": str(repository_ctx.path(rocm_config.rocm_toolkit_path)),
     }
 
-    is_rocm_clang = _use_rocm_clang(repository_ctx)
     tf_sysroot = _tf_sysroot(repository_ctx)
 
     if rocm_libs["hipblaslt"] != None:
@@ -695,7 +679,7 @@ def _create_local_rocm_repository(repository_ctx):
     )
 
     # Set up crosstool/
-    cc = find_cc(repository_ctx, is_rocm_clang)
+    cc = find_cc(repository_ctx)
     host_compiler_includes = get_cxx_inc_directories(
         repository_ctx,
         cc,
@@ -706,25 +690,14 @@ def _create_local_rocm_repository(repository_ctx):
 
     rocm_defines = {}
     rocm_defines["%{builtin_sysroot}"] = tf_sysroot
-    rocm_defines["%{compiler}"] = "unknown"
-    if is_rocm_clang:
-        rocm_defines["%{compiler}"] = "clang"
-    host_compiler_prefix = get_host_environ(repository_ctx, _GCC_HOST_COMPILER_PREFIX, "/usr/bin")
+    rocm_defines["%{compiler}"] = "clang"
+    host_compiler_prefix = "/usr/bin"
     rocm_defines["%{host_compiler_prefix}"] = host_compiler_prefix
     rocm_defines["%{linker_bin_path}"] = rocm_config.rocm_toolkit_path + host_compiler_prefix
     rocm_defines["%{extra_no_canonical_prefixes_flags}"] = ""
     rocm_defines["%{unfiltered_compile_flags}"] = ""
     rocm_defines["%{rocm_hipcc_files}"] = "[]"
-
-    if is_rocm_clang:
-        rocm_defines["%{extra_no_canonical_prefixes_flags}"] = "\"-no-canonical-prefixes\""
-    else:
-        # For gcc, do not canonicalize system header paths; some versions of gcc
-        # pick the shortest possible path for system includes when creating the
-        # .d file - given that includes that are prefixed with "../" multiple
-        # time quickly grow longer than the root of the tree, this can lead to
-        # bazel's header check failing.
-        rocm_defines["%{extra_no_canonical_prefixes_flags}"] = "\"-fno-canonical-system-headers\""
+    rocm_defines["%{extra_no_canonical_prefixes_flags}"] = "\"-no-canonical-prefixes\""
 
     rocm_defines["%{unfiltered_compile_flags}"] = to_list_of_strings([
         "-DTENSORFLOW_USE_ROCM=1",
@@ -734,11 +707,10 @@ def _create_local_rocm_repository(repository_ctx):
     ])
 
     rocm_defines["%{link_flags}"] = to_list_of_strings([
-        "-fuse-ld={}".format("lld" if _is_clang_enabled(repository_ctx) else "gold"),
+        "-fuse-ld={}".format("lld"),
     ])
 
     rocm_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
-
     rocm_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(
         host_compiler_includes + _rocm_include_path(repository_ctx, rocm_config, bash_bin),
     )
@@ -765,7 +737,6 @@ def _create_local_rocm_repository(repository_ctx):
         tpl_paths["crosstool:clang/bin/crosstool_wrapper_driver_rocm"],
         {
             "%{cpu_compiler}": str(cc),
-            "%{compiler_is_clang}": "True" if is_rocm_clang else "False",
             "%{hipcc_path}": str(repository_ctx.path(rocm_config.rocm_toolkit_path + "/bin/hipcc")),
             "%{hipcc_env}": _hipcc_env(repository_ctx),
             "%{rocm_path}": str(repository_ctx.path(rocm_config.rocm_toolkit_path)),
@@ -775,7 +746,7 @@ def _create_local_rocm_repository(repository_ctx):
             "%{hip_runtime_library}": "amdhip64",
             "%{crosstool_verbose}": _crosstool_verbose(repository_ctx),
             "%{gcc_host_compiler_path}": str(cc),
-            "%{crosstool_clang}": "1" if _is_clang_enabled(repository_ctx) else "0",
+            "%{crosstool_clang}": "1",
             "%{rocm_amdgpu_targets}": ",".join(
                 ["\"%s\"" % c for c in rocm_config.amdgpu_targets],
             ),
@@ -806,7 +777,7 @@ def _create_local_rocm_repository(repository_ctx):
             "%{hipsparse_soversion_number}": rocm_libs["hipsparse"].soversion,
             "%{roctracer_soversion_number}": rocm_libs["roctracer64"].soversion,
             "%{rocrand_soversion_number}": rocm_libs["rocrand"].soversion,
-          },
+        },
     )
 
     # Set up rocm_config.h, which is used by
@@ -895,8 +866,6 @@ def _rocm_autoconf_impl(repository_ctx):
         _create_local_rocm_repository(repository_ctx)
 
 _ENVIRONS = [
-    _GCC_HOST_COMPILER_PATH,
-    _GCC_HOST_COMPILER_PREFIX,
     "TF_NEED_ROCM",
     "TF_ROCM_CLANG",
     "TF_NEED_CUDA",  # Needed by the `if_gpu_is_configured` macro
