@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
@@ -224,6 +225,8 @@ class PjRtLoadedExecutable final
     return absl::UnimplementedError(
         "PjRtLoadedExecutable::GetDonatableInputIndices is not implemented.");
   }
+
+  UserContextRef user_context() const override { return {}; }
 
   Future<> GetReadyFuture() const override {
     // PjRtCompiler blocks until compilation finishes and returns only the

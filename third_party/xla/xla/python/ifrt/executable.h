@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -160,6 +161,11 @@ class LoadedExecutable
   // Serializes this executable into a string. The compatibility of the
   // serialized executable is implementation-specific.
   virtual absl::StatusOr<std::string> Serialize() const = 0;
+
+  // Returns the user context associated with the creation of this executable.
+  // May be `nullptr` if the user context is unset or the runtime does not
+  // support it.
+  virtual UserContextRef user_context() const = 0;
 
   // Returns a future that becomes ready when the executable is ready to be
   // used for execution.

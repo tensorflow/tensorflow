@@ -157,6 +157,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   ShardingRef shared_ptr_sharding() const override { return sharding_; }
   absl::StatusOr<std::shared_ptr<const PjRtLayout>> pjrt_layout()
       const override;
+  UserContextRef user_context() const override { return {}; }
 
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
   DisassembleIntoSingleDeviceArrays(

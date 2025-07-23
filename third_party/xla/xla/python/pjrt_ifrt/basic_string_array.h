@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -106,6 +107,8 @@ class BasicStringArray final
 
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()
       const override;
+
+  UserContextRef user_context() const override { return {}; }
 
   absl::StatusOr<std::vector<ArrayRef>> DisassembleIntoSingleDeviceArrays(
       ArrayCopySemantics array_copy_semantics,

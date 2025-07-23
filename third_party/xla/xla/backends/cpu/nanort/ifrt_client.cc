@@ -120,6 +120,8 @@ class NanoValue : public llvm::RTTIExtends<Self, Base> {
   // Called by subclasses to get access to client() without having to cast.
   NanoIfrtClient* nano_client() const { return client_; }
 
+  ifrt::UserContextRef user_context() const override { return {}; }
+
   // All nano values are immediately ready.
   ifrt::Future<> GetReadyFuture() const override { return Ready(); }
 
@@ -860,6 +862,8 @@ class NanoExecutable final
   absl::StatusOr<std::string> Serialize() const override {
     return absl::UnimplementedError("Serialize is not implemented.");
   }
+
+  ifrt::UserContextRef user_context() const override { return {}; }
 
   ifrt::Future<> GetReadyFuture() const override { return Ready(); }
 
