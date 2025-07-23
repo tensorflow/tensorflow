@@ -5162,25 +5162,6 @@ LogicalResult ExportXlaOp(MinimumBroadcastShapesOp op, OpLoweringContext ctx) {
 namespace mlir {
 namespace {
 
-// Set the sharding of the created tuple to the sharding of the operand.
-// If operand has no sharding, then we are okay for the tuple to have no
-// sharding either.
-std::optional<xla::OpSharding> getTupleShardingForSingleElementReturnLowering(
-    xla::XlaOp operand, xla::XlaBuilder* builder) {
-  // TODO(b/260756663): Remove this check once we have a better
-  // way to handle token[] operands.
-  if (auto shape_or_status = builder->GetShape(operand);
-      shape_or_status.ok() && shape_or_status.value().IsToken()) {
-    return std::nullopt;
-  }
-  if (absl::StatusOr<std::optional<xla::OpSharding>> in_sharding =
-          operand.builder()->GetOpSharding(operand);
-      in_sharding.ok() && in_sharding.value().has_value()) {
-    return in_sharding.value().value();
-  }
-  return std::nullopt;
-}
-
 LogicalResult ConvertLayout(mlir::Operation* op, const mlir::ArrayAttr& layout,
                             xla::ShapeProto* shape) {
   // In the case of tuples, Shape protos can be nested, and so can the mlir
@@ -5661,25 +5642,19 @@ LogicalResult ConvertToHloModule::LowerReturn(
     return success();
   }
 
-  if (num_return_values == 1) {
-    Value ret = implicit_results.empty() ? inst->getOperand(0)
-                                         : implicit_results.front();
-    xla::XlaOp operand;
-    if (failed(GetXlaOp(ret, value_map, &operand, inst))) return failure();
+  Value ret =
+      implicit_results.empty() ? inst->getOperand(0) : implicit_results.front();
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(ret, value_map, &operand, inst))) {
+    return failure();
+  }
 
-    if (ret_tuple_sharding) {
-      if (std::optional<xla::OpSharding> sharding =
-              getTupleShardingForSingleElementReturnLowering(operand,
-                                                             builder)) {
-        builder->SetSharding(sharding.value());
-      }
-      auto tuple = Tuple(builder, {operand});
-      builder->SetSharding(*ret_shardings[0]);
-      *return_value = GetTupleElement(tuple, 0);
-      builder->ClearSharding();
-    } else {
-      *return_value = operand;
-    }
+  if (ret_tuple_sharding) {
+    builder->SetSharding(*ret_shardings[0]);
+    *return_value = Copy(operand);
+    builder->ClearSharding();
+  } else {
+    *return_value = operand;
   }
 
   return success();
