@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_TSL_FRAMEWORK_FIXEDPOINT_MATMATPRODUCT_H_
 #define XLA_TSL_FRAMEWORK_FIXEDPOINT_MATMATPRODUCT_H_
 
+#include <cstdint>
+
 namespace Eigen {
 namespace internal {
 
@@ -25,6 +27,12 @@ template <>
 struct scalar_product_traits<QInt8, QInt8> {
   enum { Defined = 1 };
   typedef QInt32 ReturnType;
+};
+
+template <>
+struct scalar_product_traits<int8_t, int8_t> {
+  enum { Defined = 1 };
+  using ReturnType = int32_t;
 };
 
 // Accumulate the product of 2 QInt16 inputs on 32 bits to prevent
@@ -128,7 +136,71 @@ gebp_kernel<QInt8, QInt8, Index, DataMapper, mr, nr, ConjugateLhs,
     }
   }
 }
-#endif
+
+#endif  // EIGEN_USE_OPTIMIZED_INT8_INT8_MAT_MAT_PRODUCT
+
+template <bool _ConjLhs, bool _ConjRhs>
+class gebp_traits<int8_t, int8_t, _ConjLhs, _ConjRhs> {
+ public:
+  using LhsScalar = int8_t;
+  using RhsScalar = int8_t;
+  using ResScalar = int32_t;
+
+  typedef typename packet_traits<LhsScalar>::type LhsPacket;
+  typedef LhsPacket LhsPacket4Packing;
+
+  enum {
+    // register block size along the M and N directions
+    // One for the current implementation
+    nr = 1,
+    mr = 1,
+    // Progress made at each iteration of the product loop
+    // also 1 for the current implementation
+    LhsProgress = 1,
+    RhsProgress = 1
+  };
+};
+
+template <typename Index, typename DataMapper, int mr, int nr,
+          bool ConjugateLhs, bool ConjugateRhs>
+struct gebp_kernel<int8_t, int8_t, Index, DataMapper, mr, nr, ConjugateLhs,
+                   ConjugateRhs> {
+  EIGEN_STATIC_ASSERT(!ConjugateLhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
+  EIGEN_STATIC_ASSERT(!ConjugateRhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
+
+  EIGEN_DONT_INLINE
+  void operator()(const DataMapper& res, const int8_t* blockA,
+                  const int8_t* blockB, Index rows, Index depth, Index cols,
+                  int32_t alpha, Index strideA = -1, Index strideB = -1,
+                  Index offsetA = 0, Index offsetB = 0) {
+    EIGEN_STATIC_ASSERT(!ConjugateLhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
+    EIGEN_STATIC_ASSERT(!ConjugateRhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
+
+    eigen_assert(alpha == 1);
+    eigen_assert(strideA == -1);
+    eigen_assert(strideB == -1);
+    eigen_assert(offsetA == 0);
+    eigen_assert(offsetB == 0);
+
+    eigen_assert(rows > 0);
+    eigen_assert(cols > 0);
+    eigen_assert(depth > 0);
+    eigen_assert(blockA);
+    eigen_assert(blockB);
+
+    for (Index j = 0; j < cols; ++j) {
+      Index startB = j * depth;
+
+      for (Index i = 0; i < rows; ++i) {
+        Index startA = i * depth;
+
+        for (Index k = 0; k < depth; ++k) {
+          res(i, j) += blockA[startA + k] * blockB[startB + k];
+        }
+      }
+    }
+  }
+};
 
 // This definition tackle the case where the lhs is encoded using signed 8bit
 // integers and the rhs using unsigned 8bit integers.
