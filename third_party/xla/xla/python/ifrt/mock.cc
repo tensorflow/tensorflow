@@ -60,6 +60,9 @@ using ::testing::_;
 // LINT.IfChange(MockArrayDelegation)
 MockArray::MockArray(xla::ifrt::ArrayRef delegated)
     : delegated_(std::move(delegated)) {
+  ON_CALL(*this, user_context).WillByDefault([this]() {
+    return delegated_->user_context();
+  });
   ON_CALL(*this, GetReadyFuture).WillByDefault([this]() {
     return delegated_->GetReadyFuture();
   });
