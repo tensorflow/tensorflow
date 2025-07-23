@@ -719,11 +719,11 @@ CommonPjRtBufferImpl::CopyToMemorySpaceFallbackThroughLiteral(
   std::unique_ptr<PjRtBuffer> dst_buffer = manager->RetrieveBuffer(0);
 
   auto literal = std::make_unique<Literal>();
-  PjRtFuture<> d2h_future =
-      LazyToLiteral([raw_literal = literal.get(),
-                     shape = std::move(shape)]() -> MutableLiteralBase* {
+  PjRtFuture<> d2h_future = LazyToLiteral(
+      [raw_literal = literal.get(),
+       shape = std::move(shape)]() -> PjRtFuture<MutableLiteralBase*> {
         *raw_literal = Literal(shape);
-        return raw_literal;
+        return PjRtFuture<MutableLiteralBase*>(raw_literal);
       });
   d2h_future.OnReady(
       [manager = std::move(manager),
@@ -777,19 +777,20 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(
 }
 
 PjRtFuture<> CommonPjRtBufferImpl::LazyToLiteral(
-    absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator) {
+    absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator) {
   return ToLiteralImpl(nullptr, std::move(generator));
 }
 
 PjRtFuture<> CommonPjRtBufferImpl::ToLiteral(MutableLiteralBase* literal) {
   return ToLiteralImpl(literal, [] {
-    return FailedPrecondition("ToLiteral generator should never be called");
+    return PjRtFuture<MutableLiteralBase*>(
+        FailedPrecondition("ToLiteral generator should never be called"));
   });
 }
 
 PjRtFuture<> CommonPjRtBufferImpl::ToLiteralImpl(
     MutableLiteralBase* literal,
-    absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator) {
+    absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator) {
   tsl::profiler::TraceMe traceme("CommonPjRtBuffer::ToLiteral");
   VLOG(1) << "CommonPjRtBuffer::ToLiteral";
   auto common_client = tensorflow::down_cast<CommonPjRtClient*>(client());
@@ -852,38 +853,56 @@ PjRtFuture<> CommonPjRtBufferImpl::ToLiteralImpl(
        device_promise = std::move(device_promise), literal,
        generator = std::move(generator),
        promise = std::move(promise)]() mutable {
-        // Notify all pending events with `status`.
-        auto notify_all = [&](absl::Status status) {
-          promise.Set(status);
-          if (device_promise) {
-            device_promise->SetError(status);
-          }
-        };
-        tsl::profiler::TraceMe traceme([&] {
-          return tsl::profiler::TraceMeEncode(
-              "D2H Dispatch",
-              {{"shape", shape.ToString(/*print_layout=*/true)}});
-        });
-        if (literal == nullptr) {
-          absl::StatusOr<MutableLiteralBase*> generated =
-              std::move(generator)();
-          if (!generated.ok()) {
-            notify_all(generated.status());
-            return;
-          }
-          literal = *generated;
-        }
-        DCHECK(ShapeUtil::Compatible(shape, literal->shape()));
-        // Errors in src buffer are surfaced to user.
-        for (const auto& av : src_definition_events_avs) {
-          if (auto* error = av->GetErrorIfPresent()) {
-            notify_all(*error);
-            return;
-          }
-        }
+        auto copy_literal_async =
+            [shape = std::move(shape),
+             src_definition_events_avs = std::move(src_definition_events_avs),
+             raw_buffer = std::move(raw_buffer),
+             device_promise = std::move(device_promise),
+             promise = std::move(promise)](
+                const absl::StatusOr<MutableLiteralBase*>& value) mutable {
+              tsl::profiler::TraceMe traceme([&] {
+                return tsl::profiler::TraceMeEncode(
+                    "D2H Dispatch",
+                    {{"shape", shape.ToString(/*print_layout=*/true)}});
+              });
 
-        raw_buffer->CopyToLiteralAsync(promise, device_promise, literal,
-                                       std::move(shape));
+              // Notify all pending events with `status`.
+              auto notify_all = [&](absl::Status status) {
+                promise.Set(status);
+                if (device_promise) {
+                  device_promise->SetError(status);
+                }
+              };
+
+              if (!value.ok()) {
+                notify_all(value.status());
+                return;
+              }
+              MutableLiteralBase* literal = *std::move(value);
+
+              DCHECK(ShapeUtil::Compatible(shape, literal->shape()));
+              // Errors in src buffer are surfaced to user.
+              for (const auto& av : src_definition_events_avs) {
+                if (auto* error = av->GetErrorIfPresent()) {
+                  notify_all(*error);
+                  return;
+                }
+              }
+
+              raw_buffer->CopyToLiteralAsync(promise, device_promise, literal,
+                                             std::move(shape));
+            };
+
+        if (literal != nullptr) {
+          copy_literal_async(literal);
+        } else {
+          PjRtFuture<MutableLiteralBase*> generated = std::move(generator)();
+          generated.OnReady(
+              [copy_literal_async = std::move(copy_literal_async)](
+                  const absl::StatusOr<MutableLiteralBase*>& value) mutable {
+                copy_literal_async(value);
+              });
+        }
       });
   return result;
 }

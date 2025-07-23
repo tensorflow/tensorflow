@@ -1417,15 +1417,17 @@ void PjRtStreamExecutorBuffer::ConvertUsageHold(
 }
 
 PjRtFuture<> PjRtStreamExecutorBuffer::LazyToLiteral(
-    absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator) {
+    absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator) {
   auto buffer = std::move(generator)();
-  if (!buffer.ok()) {
-    return PjRtFuture<>(buffer.status());
-  }
-  return ToLiteral(buffer.value());
+  return ToLiteralHelper(std::move(buffer));
 }
 
 PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal) {
+  return ToLiteralHelper(PjRtFuture<MutableLiteralBase*>(literal));
+}
+
+PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteralHelper(
+    PjRtFuture<MutableLiteralBase*> literal) {
   VLOG(3) << "PjRtStreamExecutorBuffer::ToLiteral";
   if (IsEmptyTuple()) {
     return PjRtFuture<>(InvalidArgument("ToLiteral called on empty tuple"));
@@ -1463,53 +1465,76 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal) {
   // to ToLiteral.
   device_buffer.ConvertUsageHold(stream, usage_event, /*reference_held=*/true);
 
-  std::shared_ptr<TransposePlan> transpose;
-  if (on_device_shape().IsArray()) {
-    xla::Layout literal_layout;
-    if (literal->shape().has_layout()) {
-      literal_layout = literal->shape().layout();
-    } else {
-      literal_layout = LayoutUtil::MakeDescendingLayout(
-          on_device_shape().dimensions().size());
-    }
+  auto literal_and_transpose_promise =
+      PjRtFuture<std::pair<MutableLiteralBase*,
+                           std::shared_ptr<TransposePlan>>>::CreatePromise();
+  PjRtFuture<std::pair<MutableLiteralBase*, std::shared_ptr<TransposePlan>>>
+      literal_and_transpose_future(literal_and_transpose_promise);
 
-    if (on_device_shape().layout() != literal_layout) {
-      absl::InlinedVector<int64_t, 4> byte_strides(
-          on_device_shape().dimensions().size());
-      absl::Status s = ShapeUtil::ByteStrides(on_device_shape(),
-                                              absl::MakeSpan(byte_strides));
-      if (!s.ok()) {
-        return PjRtFuture<>(s);
-      }
-      absl::Span<const int64_t> dims = on_device_shape().dimensions();
-      absl::InlinedVector<int64_t, 4> permutation(dims.size());
-      absl::c_reverse_copy(literal_layout.minor_to_major(),
-                           permutation.begin());
-      TransposePlan::Options options;
-      options.elem_size_in_bytes =
-          primitive_util::ByteWidth(on_device_shape().element_type());
-      options.dims = on_device_shape().dimensions();
-      options.permutation = permutation;
-      options.input_layout = TransposePlan::Striding{byte_strides};
-      {
-        absl::MutexLock lock(&client_->transpose_mu_);
-        absl::StatusOr<std::shared_ptr<TransposePlan>> t =
-            client_->transpose_cache_.GetOrCreate(options);
-        if (!t.ok()) {
-          return PjRtFuture<>(t.status());
+  literal.OnReady(
+      [client = client_, on_device_shape{on_device_shape_},
+       promise = std::move(literal_and_transpose_promise)](
+          const absl::StatusOr<MutableLiteralBase*>& value) mutable {
+        if (!value.ok()) {
+          promise.Set(value.status());
+          return;
         }
-        transpose = *std::move(t);
-      }
-    }
-  }
+
+        MutableLiteralBase* literal = *std::move(value);
+
+        std::shared_ptr<TransposePlan> transpose;
+        if (on_device_shape.IsArray()) {
+          xla::Layout literal_layout;
+          if (literal->shape().has_layout()) {
+            literal_layout = literal->shape().layout();
+          } else {
+            literal_layout = LayoutUtil::MakeDescendingLayout(
+                on_device_shape.dimensions().size());
+          }
+
+          if (on_device_shape.layout() != literal_layout) {
+            absl::InlinedVector<int64_t, 4> byte_strides(
+                on_device_shape.dimensions().size());
+            absl::Status s = ShapeUtil::ByteStrides(
+                on_device_shape, absl::MakeSpan(byte_strides));
+            if (!s.ok()) {
+              promise.Set(s);
+              return;
+            }
+            absl::Span<const int64_t> dims = on_device_shape.dimensions();
+            absl::InlinedVector<int64_t, 4> permutation(dims.size());
+            absl::c_reverse_copy(literal_layout.minor_to_major(),
+                                 permutation.begin());
+            TransposePlan::Options options;
+            options.elem_size_in_bytes =
+                primitive_util::ByteWidth(on_device_shape.element_type());
+            options.dims = on_device_shape.dimensions();
+            options.permutation = permutation;
+            options.input_layout = TransposePlan::Striding{byte_strides};
+            {
+              absl::MutexLock lock(&client->transpose_mu_);
+              absl::StatusOr<std::shared_ptr<TransposePlan>> t =
+                  client->transpose_cache_.GetOrCreate(options);
+              if (!t.ok()) {
+                promise.Set(t.status());
+                return;
+              }
+              transpose = *std::move(t);
+            }
+          }
+        }
+        promise.Set(std::make_pair(literal, std::move(transpose)));
+      });
 
   auto async_to_literal = [usage_event,
                            device_memory = std::move(device_memory),
                            definition_events = std::move(definition_events),
                            stream, device = device_,
                            transfer_manager = std::move(transfer_manager),
-                           on_device_shape{on_device_shape_}, literal,
-                           transpose, promise, local_device]() mutable {
+                           on_device_shape{on_device_shape_},
+                           literal_and_transpose =
+                               std::move(literal_and_transpose_future),
+                           promise, local_device]() mutable {
     absl::StatusOr<EventPool::Handle> event_or =
         local_device->event_pool().AllocateEvent(stream->parent());
     if (!event_or.ok()) {
@@ -1523,60 +1548,83 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal) {
       return;
     }
 
-    WaitForBufferDefinitionEventsOnStream(absl::MakeSpan(definition_events),
-                                          stream);
-    ShapedBuffer shaped_buffer =
-        device_memory->AsShapedBuffer(device, on_device_shape);
+    literal_and_transpose.OnReady(
+        [usage_event = std::move(usage_event),
+         device_memory = std::move(device_memory),
+         definition_events = std::move(definition_events),
+         stream = std::move(stream), device,
+         transfer_manager = std::move(transfer_manager),
+         on_device_shape = std::move(on_device_shape),
+         promise = std::move(promise), local_device = std::move(local_device),
+         event_or = std::move(event_or)](
+            const absl::StatusOr<
+                std::pair<MutableLiteralBase*, std::shared_ptr<TransposePlan>>>&
+                value) mutable {
+          if (!value.ok()) {
+            promise.Set(value.status());
+            return;
+          }
 
-    GenericTransferManager::LiteralFromDeviceMetadata transfer_metadata;
-    // We never call device functions from the `done` callback.
-    transfer_metadata.callback_is_host_callback_safe = true;
+          auto [literal, transpose] = *std::move(value);
 
-    TransferManager::TransferMetadata* transfer_metadata_ptr =
-        (dynamic_cast<GenericTransferManager*>(transfer_manager) != nullptr)
-            ? &transfer_metadata
-            : nullptr;
+          WaitForBufferDefinitionEventsOnStream(
+              absl::MakeSpan(definition_events), stream);
 
-    if (transpose) {
-      // Copy the device buffer to a temporary literal with descending
-      // layout and transpose to the requested layout.
+          ShapedBuffer shaped_buffer =
+              device_memory->AsShapedBuffer(device, on_device_shape);
 
-      Shape stage_shape = literal->shape();
-      *stage_shape.mutable_layout() =
-          LayoutUtil::MakeDescendingLayout(stage_shape.dimensions().size());
-      auto staged = std::make_shared<Literal>(stage_shape);
+          GenericTransferManager::LiteralFromDeviceMetadata transfer_metadata;
+          // We never call device functions from the `done` callback.
+          transfer_metadata.callback_is_host_callback_safe = true;
 
-      transfer_manager->TransferLiteralFromDevice(
-          stream, shaped_buffer, staged.get(),
-          [transpose, promise, staged, literal](absl::Status status) mutable {
-            if (status.ok()) {
-              transpose->Execute(staged->untyped_data(),
-                                 literal->untyped_data());
-            }
-            promise.Set(std::move(status));
-          },
-          transfer_metadata_ptr);
-    } else {
-      transfer_manager->TransferLiteralFromDevice(
-          stream, shaped_buffer, literal,
-          [promise](absl::Status status) mutable {
-            promise.Set(std::move(status));
-          },
-          transfer_metadata_ptr);
-    }
+          TransferManager::TransferMetadata* transfer_metadata_ptr =
+              (dynamic_cast<GenericTransferManager*>(transfer_manager) !=
+               nullptr)
+                  ? &transfer_metadata
+                  : nullptr;
 
-    local_device->event_pool().ThenRecordEvent(stream, event_or.value());
-    usage_event->SetSequencingEvent(std::move(event_or).value(), stream);
+          if (transpose) {
+            // Copy the device buffer to a temporary literal with descending
+            // layout and transpose to the requested layout.
 
-    defined_status = local_device->ThenRelease(stream, device_memory);
-    if (!defined_status.ok()) {
-      promise.Set(defined_status);
-    }
+            Shape stage_shape = literal->shape();
+            *stage_shape.mutable_layout() = LayoutUtil::MakeDescendingLayout(
+                stage_shape.dimensions().size());
+            auto staged = std::make_shared<Literal>(stage_shape);
+
+            transfer_manager->TransferLiteralFromDevice(
+                stream, shaped_buffer, staged.get(),
+                [transpose = std::move(transpose), promise, staged,
+                 literal = std::move(literal)](absl::Status status) mutable {
+                  if (status.ok()) {
+                    transpose->Execute(staged->untyped_data(),
+                                       literal->untyped_data());
+                  }
+                  promise.Set(std::move(status));
+                },
+                transfer_metadata_ptr);
+          } else {
+            transfer_manager->TransferLiteralFromDevice(
+                stream, shaped_buffer, literal,
+                [promise](absl::Status status) mutable {
+                  promise.Set(std::move(status));
+                },
+                transfer_metadata_ptr);
+          }
+
+          local_device->event_pool().ThenRecordEvent(stream, event_or.value());
+          usage_event->SetSequencingEvent(std::move(event_or).value(), stream);
+
+          absl::Status defined_status =
+              local_device->ThenRelease(stream, device_memory);
+          if (!defined_status.ok()) {
+            promise.Set(defined_status);
+          }
+        });
   };
 
   first_definition_event->ExecuteOrAddToFutureTasks(
-      absl::StrFormat("async_to_literal_%p", literal),
-      std::move(async_to_literal));
+      "async_to_literal", std::move(async_to_literal));
 
   return PjRtFuture<>(
       std::move(promise),

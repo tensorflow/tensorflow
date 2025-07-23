@@ -81,7 +81,7 @@ class TfPjRtBuffer : public PjRtBuffer {
     return wrapped_->ToLiteral(literal);
   }
   PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
+      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator)
       override {
     return wrapped_->LazyToLiteral(std::move(generator));
   }
