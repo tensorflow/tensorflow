@@ -62,23 +62,13 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
     return gpu_topology_->platform_version();
   }
 
+  static void SetupDeviceDescription(
+      PjRtStreamExecutorDeviceDescription& description, int local_device_id,
+      const std::string& device_vendor, const std::string& compute_capability,
+      int core_count, int64_t shared_memory_per_block_optin, int slice_index);
+
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
-      const override {
-    std::vector<std::unique_ptr<const PjRtDeviceDescription>> devices;
-    devices.reserve(gpu_topology_->number_of_devices());
-    int32_t num_devices_per_host = gpu_topology_->num_devices_per_host();
-    for (const int device_id : gpu_topology_->device_ids()) {
-      // The process index of a device can be inferred from its global device id
-      // because global device ids are always assigned to each node in the
-      // topology in the order they appear in the input when constructing the
-      // global view.
-      const int process_index =
-          num_devices_per_host == -1 ? 0 : (device_id / num_devices_per_host);
-      devices.push_back(std::make_unique<PjRtStreamExecutorDeviceDescription>(
-          device_id, process_index, std::string(platform_version())));
-    }
-    return devices;
-  }
+      const override;
 
   const GpuTopology& gpu_topology() const { return *gpu_topology_; }
   const GpuTopology* gpu_topology_ptr() const { return gpu_topology_.get(); }

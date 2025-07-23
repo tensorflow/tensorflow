@@ -14,14 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 
+#include <array>
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_stream_executor_device_description.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -29,6 +37,66 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+/*static*/ void StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
+    PjRtStreamExecutorDeviceDescription& description, int local_device_id,
+    const std::string& device_vendor, const std::string& compute_capability,
+    int core_count, int64_t shared_memory_per_block_optin, int slice_index) {
+  std::array<int, 1> coords = {local_device_id};
+  description.SetCoords(coords);
+  std::vector<int64_t> v_coords(description.coords().begin(),
+                                description.coords().end());
+
+  description.SetAttributes(
+      {{"coords", xla::PjRtDeviceAttribute(v_coords)},
+       {"device_vendor", device_vendor},
+       {"slice_index", static_cast<int64_t>(slice_index)},
+       {"compute_capability", xla::PjRtDeviceAttribute(compute_capability)},
+       {"shared_memory_per_block_optin", shared_memory_per_block_optin},
+       {"core_count", static_cast<int64_t>(core_count)}});
+  description.SetToString(absl::StrFormat(
+      "StreamExecutorGpuDevice(device_kind=%s, id=%i, process_index=%i, "
+      "slice_index=%i))",
+      description.device_kind(), description.id(), description.process_index(),
+      slice_index));
+  description.SetDebugString(absl::StrFormat(
+      "%s_%i(process=%i,(%i))", description.device_kind(), description.id(),
+      description.process_index(), v_coords[0]));
+}
+
+std::vector<std::unique_ptr<const PjRtDeviceDescription>>
+StreamExecutorGpuTopologyDescription::DeviceDescriptions() const {
+  std::vector<std::unique_ptr<const PjRtDeviceDescription>> devices;
+  devices.reserve(gpu_topology_->number_of_devices());
+  int32_t num_devices_per_host = gpu_topology_->num_devices_per_host();
+  for (const int device_id : gpu_topology_->device_ids()) {
+    // The process index of a device can be inferred from its global device id
+    // because global device ids are always assigned to each node in the
+    // topology in the order they appear in the input when constructing the
+    // global view.
+    const int process_index =
+        num_devices_per_host == -1 ? 0 : (device_id / num_devices_per_host);
+    auto description = std::make_unique<PjRtStreamExecutorDeviceDescription>(
+        device_id, process_index, std::string(platform_version()));
+    if (target_config_.has_value()) {
+      std::string compute_capability = "<unknown compute-capability>";
+      std::string gpu_vendor = "<unknown gpu vendor>";
+      if (target_config_->gpu_device_info().has_cuda_compute_capability()) {
+        const auto& cap =
+            target_config_->gpu_device_info().cuda_compute_capability();
+        compute_capability = absl::StrCat(cap.major(), ".", cap.minor());
+        gpu_vendor = "NVIDIA Corporation";
+      }
+
+      StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
+          *description, -1, gpu_vendor, compute_capability,
+          target_config_->gpu_device_info().core_count(),
+          target_config_->gpu_device_info().shared_memory_per_block_optin(), 0);
+    }
+    devices.push_back(std::move(description));
+  }
+  return devices;
+}
 
 absl::StatusOr<std::string> StreamExecutorGpuTopologyDescription::Serialize()
     const {
