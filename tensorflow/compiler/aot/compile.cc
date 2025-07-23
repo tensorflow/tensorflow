@@ -131,9 +131,15 @@ absl::Status ConfigureKernelNamingConvention(
 
   TF_ASSIGN_OR_RETURN(std::string class_name_as_valid_c_name,
                       xla::cpu::ConvertToCName(cpp_class));
+
+  // Prefix the computation name. We use this to blacklist the generated symbols
+  // from dfsan instrumentation.
+  constexpr absl::string_view kModuleNameGeneratorPrefix =
+      "tfcompile_xla_generated";
   // Rename proto to ensure unique symbol names.
   *computation.mutable_proto()->mutable_name() =
-      absl::StrCat(computation.proto().name(), "_", class_name_as_valid_c_name);
+      absl::StrCat(kModuleNameGeneratorPrefix, "_", computation.proto().name(),
+                   "_", class_name_as_valid_c_name);
 
   return absl::OkStatus();
 }
