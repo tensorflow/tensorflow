@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "Eigen/Core"
 #include "xla/array3d.h"
 #include "xla/error_spec.h"
@@ -37,22 +38,17 @@ limitations under the License.
 namespace xla {
 namespace {
 
-#if XLA_TEST_BACKEND_GPU
-// XLA:GPU sometimes uses FFT convolution which isn't as precise as spatial
-// convolution. So relax the absolute error threshold.
-constexpr ErrorSpec kErrorSpec(1e-2, 1e-3);
-#else
-constexpr ErrorSpec kErrorSpec(1e-4, 1e-3);
-#endif
+ErrorSpec MakeErrorSpec() {
+  // XLA:GPU sometimes uses FFT convolution which isn't as precise as spatial
+  // convolution. So relax the absolute error threshold.
+  return test::DeviceTypeIs(test::kGpu) ? ErrorSpec(1e-2, 1e-3)
+                                        : ErrorSpec(1e-4, 1e-3);
+}
 
 using ConvolutionTest = ClientLibraryTestRunnerMixin<
     HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
-#ifdef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
-using TestTypes = ::testing::Types<float>;
-#else
 using TestTypes = ::testing::Types<float, Eigen::half>;
-#endif
 
 struct Convolve1DTestParam {
   int64_t input_feature;
@@ -117,7 +113,7 @@ class Convolve1D1WindowTestBase
         expected_r1.Reshape({batch, num_windows, output_feature}).value();
 
     ComputeAndCompareLiteral(&builder, expected_r3, {&input_r3, &filter_r3},
-                             kErrorSpec);
+                             MakeErrorSpec());
   }
 };
 
@@ -156,7 +152,6 @@ INSTANTIATE_TEST_CASE_P(
 
 );
 
-#if (XLA_TEST_BACKEND_GPU || XLA_TEST_BACKEND_CPU)
 class Convolve1D1WindowTestHalf : public Convolve1D1WindowTestBase {};
 
 TEST_P(Convolve1D1WindowTestHalf, Convolve1D1Window) {
@@ -165,34 +160,36 @@ TEST_P(Convolve1D1WindowTestHalf, Convolve1D1Window) {
 
 INSTANTIATE_TEST_CASE_P(
     Convolve1D1WindowTest_Instantiation, Convolve1D1WindowTestHalf,
-    ::testing::Values(Convolve1DTestParam{1, 1, 1, 1, 2},
-                      Convolve1DTestParam{160, 1, 1, 5, 1},
-                      Convolve1DTestParam{24, 1, 1, 20, 1},
-                      Convolve1DTestParam{30, 1, 1, 20, 1},
-                      Convolve1DTestParam{23, 1, 1, 20, 20},
-                      Convolve1DTestParam{25, 1, 1, 20, 1},
-                      Convolve1DTestParam{24, 1, 1, 10, 5},
-                      Convolve1DTestParam{160, 1, 1, 10, 1},
-                      Convolve1DTestParam{255, 1, 1, 3, 1},
-                      Convolve1DTestParam{130, 1, 1, 1, 3},
-                      Convolve1DTestParam{64, 1, 1, 1, 1},
-                      Convolve1DTestParam{128, 1, 1, 1, 1},
-                      Convolve1DTestParam{139, 1, 1, 128, 1},
-                      Convolve1DTestParam{640, 3, 3, 128, 1},
-                      // Convolve1DTestParam{900, 1, 1, 10, 1}, b/195348220
-                      Convolve1DTestParam{1, 10, 10, 1, 10},
-                      Convolve1DTestParam{1, 10, 130, 1, 1},
-                      Convolve1DTestParam{1, 10, 130, 1, 2},
-                      Convolve1DTestParam{1, 64, 64, 1, 10},
-                      Convolve1DTestParam{1, 65, 65, 1, 1},
-                      Convolve1DTestParam{1, 128, 128, 1, 1},
-                      Convolve1DTestParam{128, 128, 128, 128, 1},
-                      Convolve1DTestParam{1, 128, 128, 1, 1},
-                      Convolve1DTestParam{2, 2, 2, 2, 1},
-                      Convolve1DTestParam{161, 1, 1, 10, 1})
+    test::DeviceTypeIsOneOf({test::kGpu, test::kCpu})
+        ? ::testing::Values(
+              Convolve1DTestParam{1, 1, 1, 1, 2},
+              Convolve1DTestParam{160, 1, 1, 5, 1},
+              Convolve1DTestParam{24, 1, 1, 20, 1},
+              Convolve1DTestParam{30, 1, 1, 20, 1},
+              Convolve1DTestParam{23, 1, 1, 20, 20},
+              Convolve1DTestParam{25, 1, 1, 20, 1},
+              Convolve1DTestParam{24, 1, 1, 10, 5},
+              Convolve1DTestParam{160, 1, 1, 10, 1},
+              Convolve1DTestParam{255, 1, 1, 3, 1},
+              Convolve1DTestParam{130, 1, 1, 1, 3},
+              Convolve1DTestParam{64, 1, 1, 1, 1},
+              Convolve1DTestParam{128, 1, 1, 1, 1},
+              Convolve1DTestParam{139, 1, 1, 128, 1},
+              Convolve1DTestParam{640, 3, 3, 128, 1},
+              // Convolve1DTestParam{900, 1, 1, 10, 1}, b/195348220
+              Convolve1DTestParam{1, 10, 10, 1, 10},
+              Convolve1DTestParam{1, 10, 130, 1, 1},
+              Convolve1DTestParam{1, 10, 130, 1, 2},
+              Convolve1DTestParam{1, 64, 64, 1, 10},
+              Convolve1DTestParam{1, 65, 65, 1, 1},
+              Convolve1DTestParam{1, 128, 128, 1, 1},
+              Convolve1DTestParam{128, 128, 128, 128, 1},
+              Convolve1DTestParam{1, 128, 128, 1, 1},
+              Convolve1DTestParam{2, 2, 2, 2, 1},
+              Convolve1DTestParam{161, 1, 1, 10, 1})
+        : test::Empty<Convolve1DTestParam>()
 
 );
-#endif
 
 TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_Valid) {
   XlaBuilder builder(TestName());
@@ -212,14 +209,17 @@ TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_Valid) {
   const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
   const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
-  ComputeAndCompareR3<float>(&builder, expected,
-                             {&input_literal, &filter_literal}, kErrorSpec);
+  ComputeAndCompareR3<float>(
+      &builder, expected, {&input_literal, &filter_literal}, MakeErrorSpec());
 }
 
 template <typename T>
 class Convolve1D_1x2x5_1x2x2_WithRHSDilation : public ConvolutionTest {
  public:
   void RunTest() {
+    if (std::is_same_v<Eigen::half, T> && test::DeviceTypeIs(test::kTpu)) {
+      GTEST_SKIP();
+    }
     XlaBuilder builder(TestName());
     {
       Shape input_shape = ShapeUtil::MakeShapeWithType<T>({1, 2, 5});
@@ -243,7 +243,7 @@ class Convolve1D_1x2x5_1x2x2_WithRHSDilation : public ConvolutionTest {
     const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
     ComputeAndCompareR3<T>(&builder, expected,
-                           {&input_literal, &filter_literal}, kErrorSpec);
+                           {&input_literal, &filter_literal}, MakeErrorSpec());
   }
 };  // namespace
 
@@ -273,8 +273,8 @@ TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_FullPadding) {
   const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
   const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
-  ComputeAndCompareR3<float>(&builder, expected,
-                             {&input_literal, &filter_literal}, kErrorSpec);
+  ComputeAndCompareR3<float>(
+      &builder, expected, {&input_literal, &filter_literal}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_NoPadding) {
@@ -298,8 +298,8 @@ TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_NoPadding) {
   const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
   const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
-  ComputeAndCompareR3<float>(&builder, expected,
-                             {&input_literal, &filter_literal}, kErrorSpec);
+  ComputeAndCompareR3<float>(
+      &builder, expected, {&input_literal, &filter_literal}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_HalfPadding) {
@@ -323,8 +323,8 @@ TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_HalfPadding) {
   const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
   const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
-  ComputeAndCompareR3<float>(&builder, expected,
-                             {&input_literal, &filter_literal}, kErrorSpec);
+  ComputeAndCompareR3<float>(
+      &builder, expected, {&input_literal, &filter_literal}, MakeErrorSpec());
 }
 
 // Test multiple output channels.
@@ -350,8 +350,8 @@ TEST_F(ConvolutionTest, Convolve1D_1x1x5_2x1x3_WithLHSDilation) {
   const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
   const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
-  ComputeAndCompareR3<float>(&builder, expected,
-                             {&input_literal, &filter_literal}, kErrorSpec);
+  ComputeAndCompareR3<float>(
+      &builder, expected, {&input_literal, &filter_literal}, MakeErrorSpec());
 }
 
 // Test multiple input channels.
@@ -377,8 +377,8 @@ TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x3_WithLHSDilation) {
   const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
   const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
-  ComputeAndCompareR3<float>(&builder, expected,
-                             {&input_literal, &filter_literal}, kErrorSpec);
+  ComputeAndCompareR3<float>(
+      &builder, expected, {&input_literal, &filter_literal}, MakeErrorSpec());
 }
 
 // Batched version of the above test.
@@ -409,8 +409,8 @@ TEST_F(ConvolutionTest, Convolve1D_3x2x5_1x2x3_WithLHSDilation) {
   const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
   const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
-  ComputeAndCompareR3<float>(&builder, expected,
-                             {&input_literal, &filter_literal}, kErrorSpec);
+  ComputeAndCompareR3<float>(
+      &builder, expected, {&input_literal, &filter_literal}, MakeErrorSpec());
 }
 
 // Test all together: batched, multiple input and output channels.
@@ -445,8 +445,8 @@ TEST_F(ConvolutionTest, Convolve1D_3x2x5_2x2x3_WithLHSDilation) {
   const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
   const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
-  ComputeAndCompareR3<float>(&builder, expected,
-                             {&input_literal, &filter_literal}, kErrorSpec);
+  ComputeAndCompareR3<float>(
+      &builder, expected, {&input_literal, &filter_literal}, MakeErrorSpec());
 }
 
 // Test LHS dilation (i.e. transposed convolution) and window strides at the
@@ -474,8 +474,8 @@ TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilationAndStrides) {
   const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
   const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
-  ComputeAndCompareR3<float>(&builder, expected,
-                             {&input_literal, &filter_literal}, kErrorSpec);
+  ComputeAndCompareR3<float>(
+      &builder, expected, {&input_literal, &filter_literal}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithLHSAndRHSDilation) {
@@ -500,14 +500,17 @@ TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithLHSAndRHSDilation) {
   const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
   const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
-  ComputeAndCompareR3<float>(&builder, expected,
-                             {&input_literal, &filter_literal}, kErrorSpec);
+  ComputeAndCompareR3<float>(
+      &builder, expected, {&input_literal, &filter_literal}, MakeErrorSpec());
 }
 
 template <typename T>
 class Convolve1D_1x2x5_1x2x2_WithPadding : public ConvolutionTest {
  public:
   void RunTest() {
+    if (std::is_same_v<Eigen::half, T> && test::DeviceTypeIs(test::kTpu)) {
+      GTEST_SKIP();
+    }
     XlaBuilder builder(TestName());
     {
       Shape input_shape = ShapeUtil::MakeShapeWithType<T>({1, 2, 5});
@@ -532,7 +535,7 @@ class Convolve1D_1x2x5_1x2x2_WithPadding : public ConvolutionTest {
     const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
     ComputeAndCompareR3<T>(&builder, expected,
-                           {&input_literal, &filter_literal}, kErrorSpec);
+                           {&input_literal, &filter_literal}, MakeErrorSpec());
   }
 };
 

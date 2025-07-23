@@ -632,6 +632,7 @@ xla_test(
         "//xla/tests:client_library_test_runner_mixin",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:xla_test_backend_predicates",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
