@@ -1256,7 +1256,9 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), call_target_name,
         registration->bundle, std::move(operands), std::move(results),
         std::move(attributes),
-        called_computations.empty() ? nullptr : called_computations[0]);
+        called_computations.empty()
+            ? nullptr
+            : called_computations[0]->Clone(/*suffix=*/""));
   };
 
   auto legacy_thunk =
