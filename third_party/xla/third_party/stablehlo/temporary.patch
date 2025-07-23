@@ -102,9 +102,40 @@ diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.cpp b/stablehlo/stablehl
    p.printRegion(cond, /*printEntryBlockArgs=*/false);
    p << " do ";
    p.printRegion(body, /*printEntryBlockArgs=*/false);
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -2201,14 +2201,14 @@
+   locs.reserve(numValues);
+   for (auto i : inputs) {
+     auto iType = cast<ShapedType>(i.getType());
+-    blockArgTypes.push_back(iType.cloneWith(
+-        llvm::ArrayRef<int64_t>(std::nullopt), iType.getElementType()));
++    blockArgTypes.push_back(
++        iType.cloneWith(llvm::ArrayRef<int64_t>(), iType.getElementType()));
+     locs.push_back(i.getLoc());
+   }
+   for (auto i : init_values) {
+     auto iType = cast<ShapedType>(i.getType());
+-    blockArgTypes.push_back(iType.cloneWith(
+-        llvm::ArrayRef<int64_t>(std::nullopt), iType.getElementType()));
++    blockArgTypes.push_back(
++        iType.cloneWith(llvm::ArrayRef<int64_t>(), iType.getElementType()));
+     locs.push_back(i.getLoc());
+   }
+ 
 diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
 --- stablehlo/stablehlo/dialect/TypeInference.cpp
 +++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -1147,7 +1147,7 @@
+       *paddingOrErr,
+       /*lhsDilation=*/baseDilations.value_or(SmallVector<int64_t, 0>{}),
+       /*rhsDilation=*/windowDilations.value_or(SmallVector<int64_t, 0>{}),
+-      /*windowReversal=*/std::nullopt, location);
++      /*windowReversal=*/{}, location);
+   if (failed(windowOrErr)) return failure();
+ 
+   windowDims.append(windowDimensions.begin(), windowDimensions.end());
 @@ -2248,6 +2248,22 @@
    return success();
  }
