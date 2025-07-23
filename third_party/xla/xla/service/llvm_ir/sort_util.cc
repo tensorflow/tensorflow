@@ -69,16 +69,21 @@ absl::Status EmitCompareLoopBody(
   };
   // The 'xor_mask' determines which elements are compared against each other.
   // Index 'current_keys_index' will be compared with 'current_keys_index' xor
-  // 'xor_mask'. This means that we will always compare a block of consecutive
+  // 'xor_mask'. 'xor_mask' is either a power of 2, or 2^k - 1 (for some value
+  // of k). This means that we will always compare a block of consecutive
   // elements against elements from the adjacent block of the same size. When
   // 'xor_mask' is a power of 2, it immediately identifies the size of such a
-  // block. We can also have 'xor_mask' being 2^k - 1 (for some value of k). In
-  // that case, we essentially flip the last 'k' - 1 bits when computing the
-  // position of the element to compare to, so the block size is 2^(k - 1).
+  // block. If 'xor_mask' is 2^k - 1, we essentially flip the last 'k' - 1 bits
+  // when computing the position of the element to compare to, so the block size
+  // is 2^(k - 1).
   int64_t block_size = xor_mask;
   // Check if it is a value 2^k - 1.
   if (xor_mask > 1 && (xor_mask & (xor_mask + 1)) == 0) {
     block_size = (xor_mask + 1) / 2;
+  }
+  if (block_size >= iteration_bound) {
+    // There is no adjacent block inside bounds with which to compare elements.
+    return absl::OkStatus();
   }
   auto current_keys_index = element_pair_index;
   if (block_size == 1) {
@@ -104,22 +109,32 @@ absl::Status EmitCompareLoopBody(
         b->CreateMul(block_id, index_typed_constant(2 * block_size));
     current_keys_index =
         b->CreateAdd(first_element_in_block, index_within_block);
+  } else {
+    // If block_size * 2 >= iteration_bound, `current_keys_index` could be part
+    // of the "right" block, so the computed `compare_keys_index` could be
+    // smaller than `current_keys_index`. We do not want to do a comparison in
+    // such a case, because another thread will have `compare_keys_index` as its
+    // `current_keys_index`, and the two threads would interfere. So in that
+    // case, we set `current_keys_index` to `iteration_bound` ^ `xor_mask`, so
+    // that the computed `compare_keys_index` will be equal to
+    // `iteration_bound` and therefore out of bounds.
+    llvm::Value* is_within_left_block =
+        b->CreateICmpSLT(current_keys_index, index_typed_constant(block_size));
+    current_keys_index =
+        b->CreateSelect(is_within_left_block, current_keys_index,
+                        index_typed_constant(iteration_bound ^ xor_mask));
   }
   auto compare_keys_index =
       b->CreateXor(current_keys_index, index_typed_constant(xor_mask));
-  // current_keys_index < compare_keys_index
-  llvm::Value* is_smaller_index =
-      b->CreateICmpSLT(current_keys_index, compare_keys_index);
-  // compare_keys_index < iteration_bound
-  llvm::Value* index_is_inbounds = b->CreateICmpSLT(
-      compare_keys_index, index_typed_constant(iteration_bound));
-  llvm::Value* do_comparison =
-      needs_bounds_checks ? b->CreateAnd(is_smaller_index, index_is_inbounds)
-                          : b->getInt1(true);
+  llvm::Value* index_is_inbounds =
+      needs_bounds_checks
+          ? b->CreateICmpSLT(compare_keys_index,
+                             index_typed_constant(iteration_bound))
+          : b->getInt1(true);
 
-  // if (is_smaller_index && index_is_inbounds)
+  // if (index_is_inbounds)
   KernelSupportLibrary ksl(b);
-  return ksl.IfWithStatus("smaller_comparison_index", do_comparison, [&]() {
+  return ksl.IfWithStatus("smaller_comparison_index", index_is_inbounds, [&]() {
     std::vector<llvm::Value*> values_to_compare;
     std::vector<llvm::Type*> values_to_compare_types;
     for (int i = 0; i < num_values; ++i) {
