@@ -2107,7 +2107,10 @@ def tf_kernel_library(
 
 register_extension_info(
     extension = tf_kernel_library,
-    label_regex_for_dep = "{extension_name}",
+    label_regex_map = {
+        "deps": "deps:{extension_name}",
+        "gpu_deps": "deps:{extension_name}_gpu",
+    },
 )
 
 def tf_mkl_kernel_library(
