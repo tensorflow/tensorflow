@@ -2743,9 +2743,19 @@ DefaultSchedulerCore::GetNumResourcesNeededForAnnotation(
   for (const HloInstruction* instr : instrs) {
     auto num_resources_needed_per_instr =
         sched_state.async_tracker->GetNumResourcesPerInstruction(*instr);
-    // The minimum number of resources needed for the annotation group is the
-    // maximum number of resources needed for any instruction in the group.
     for (const auto& [resource, usage] : num_resources_needed_per_instr) {
+      if (instr->opcode() == HloOpcode::kAsyncDone) {
+        // Special case: if a async-done op's matching start op is not in the
+        // same annotation group, then the live range of the resources used
+        // by this async-done op extends beyond this annotation group.
+        const HloInstruction* start = instr->operand(0);
+        if (std::find(instrs.begin(), instrs.end(), start) == instrs.end()) {
+          num_resources_needed[resource] += usage;
+          continue;
+        }
+      }
+      // The minimum number of resources needed for the annotation group is the
+      // maximum number of resources needed for any instruction in the group.
       num_resources_needed[resource] =
           std::max(num_resources_needed[resource], usage);
     }

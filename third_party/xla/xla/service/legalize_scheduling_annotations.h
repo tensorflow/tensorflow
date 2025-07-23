@@ -43,6 +43,7 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
     bool check_start_done_annotation_consistency = true;
     bool remove_loop_iteration_annotation_only = false;
     bool run_verification = false;
+    bool keep_start_annotation = true;
   };
 
   explicit LegalizeSchedulingAnnotations(Config config)
