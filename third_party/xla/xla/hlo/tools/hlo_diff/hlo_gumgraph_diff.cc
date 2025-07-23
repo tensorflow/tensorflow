@@ -68,8 +68,6 @@ absl::StatusOr<std::unique_ptr<const HloGumgraphMappings>> FindMappings(
   std::vector<std::unique_ptr<HloGumgraphMatcher>> matchers;
   matchers.push_back(
       std::make_unique<GreedySubGraphExactMatcher>(&left, &right));
-  matchers.push_back(std::make_unique<GreedyTopDownMatcher>(
-      &left, &right, options.debug_mode, /*require_same_children=*/true));
   matchers.push_back(std::make_unique<GreedyLimitedCandidatesBottomUpMatcher>(
       &left, &right, options.debug_mode));
   if (options.use_top_down_matcher) {
