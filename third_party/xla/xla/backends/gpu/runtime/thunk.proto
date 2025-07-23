@@ -113,6 +113,9 @@ message CudnnThunkProto {
   optional int64 sdpa_dropout_seed = 3;
 }
 
+message HostExecuteStartThunkProto {}
+message HostExecuteDoneThunkProto {}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -131,6 +134,8 @@ message ThunkProto {
     DeviceToDeviceCopyThunkProto device_to_device_copy_thunk = 13;
     PartitionIdThunkProto partition_id_thunk = 14;
     CudnnThunkProto cudnn_thunk = 15;
+    HostExecuteStartThunkProto host_execute_start_thunk = 16;
+    HostExecuteDoneThunkProto host_execute_done_thunk = 17;
   }
 }
 
