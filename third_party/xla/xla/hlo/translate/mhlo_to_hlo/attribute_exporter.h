@@ -79,6 +79,11 @@ ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr);
 // Will fail if both attempts at parsing failed.
 std::optional<xla::OpSharding> ConvertSharding(mlir::StringRef sharding);
 
+// Returns an OriginalValueProto that represents a value in the unoptimized HLO
+// graph.
+std::optional<xla::OriginalValueProto> ConvertOriginalValue(
+    llvm::StringRef original_value, const xla::Shape& shape);
+
 std::optional<xla::HloInputOutputAliasProto> ConvertInputOutputAlias(
     llvm::ArrayRef<mlir::Attribute> aliasing);
 

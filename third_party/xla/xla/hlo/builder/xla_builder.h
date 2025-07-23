@@ -324,6 +324,12 @@ class XlaBuilder {
   // Sets an OpSharding that will be attached to all instructions until cleared.
   void SetSharding(const OpSharding& sharding) { sharding_ = sharding; }
 
+  // Sets an OriginalValueProto that will be attached to all instructions until
+  // cleared.
+  void SetOriginalValue(const OriginalValueProto& original_value) {
+    original_value_ = original_value;
+  }
+
   // Sets the FrontendAttributes that will be added to all instructions until
   // cleared.
   //
@@ -357,6 +363,9 @@ class XlaBuilder {
   // Clears the sharding. Ops will be sharded according to the default placement
   // policy.
   void ClearSharding() { sharding_ = std::nullopt; }
+
+  // Clears the original value.
+  void ClearOriginalValue() { original_value_ = std::nullopt; }
 
   // Returns the OpSharding that will be attached to all instructions.
   const std::optional<OpSharding>& sharding() const { return sharding_; }
@@ -1305,6 +1314,9 @@ class XlaBuilder {
   // in order to simplify client code, similar to metadata_.
   std::optional<OpSharding> sharding_;
 
+  // The original value for this operator.
+  std::optional<OriginalValueProto> original_value_;
+
   // Mode bit that indicates whether to die when a first error is encountered.
   bool die_immediately_on_error_ = false;
 
@@ -1925,6 +1937,31 @@ class XlaScopedShardingAssignment {
     }
   }
 
+  xla::XlaBuilder* const builder_;
+  std::optional<OpSharding> prev_sharding_;
+};
+
+// RAII-style object: sets the current original value assignment in builder on
+// construction, and resets on destruction.
+class XlaScopedOriginalValueAssignment {
+ public:
+  XlaScopedOriginalValueAssignment(
+      xla::XlaBuilder* builder,
+      std::optional<OriginalValueProto> original_value_proto)
+      : builder_(builder) {
+    if (original_value_proto.has_value()) {
+      builder_->SetOriginalValue(original_value_proto.value());
+    }
+  }
+
+  XlaScopedOriginalValueAssignment(const XlaScopedOriginalValueAssignment&) =
+      delete;
+  XlaScopedOriginalValueAssignment& operator=(
+      const XlaScopedOriginalValueAssignment&) = delete;
+
+  ~XlaScopedOriginalValueAssignment() { builder_->ClearOriginalValue(); }
+
+ private:
   xla::XlaBuilder* const builder_;
   std::optional<OpSharding> prev_sharding_;
 };
