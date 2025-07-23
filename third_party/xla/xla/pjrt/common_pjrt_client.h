@@ -260,7 +260,7 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
   using PjRtBuffer::ToLiteralSync;
   PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
   PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
+      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator)
       override;
 
   absl::StatusOr<tsl::RCReference<PjRtRawBuffer>> CreateRawAliasOfBuffer();
@@ -283,7 +283,7 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
   // null, will call the function in the generator.
   PjRtFuture<> ToLiteralImpl(
       MutableLiteralBase* literal,
-      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator);
+      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator);
 
  private:
   const Shape on_device_shape_;

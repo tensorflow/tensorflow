@@ -2797,6 +2797,11 @@ TfrtGpuBuffer::ReleaseDeviceMemoryOwnership(
 PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
   VLOG(3) << "TfrtGpuBuffer::ToLiteral for a tensor of shape "
           << literal->shape().ToString();
+  return ToLiteralHelper(PjRtFuture<MutableLiteralBase*>(literal));
+}
+
+PjRtFuture<> TfrtGpuBuffer::ToLiteralHelper(
+    PjRtFuture<MutableLiteralBase*> literal) {
   tsl::profiler::TraceMe traceme("TfrtGpuBuffer::ToLiteral");
   auto promise = PjRtFuture<>::CreatePromise();
   auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
@@ -2810,50 +2815,72 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
   bool unpack_subbyte_types =
       client_->xla_client()->backend().transfer_manager()->PackSubbyteTypes();
 
-  std::shared_ptr<TransposePlan> transpose;
-  if (on_device_shape().IsArray()) {
-    xla::Layout literal_layout;
-    if (literal->shape().has_layout()) {
-      literal_layout = literal->shape().layout();
-    } else {
-      literal_layout = LayoutUtil::MakeDescendingLayout(
-          on_device_shape().dimensions().size());
-    }
-
-    if (on_device_shape().layout() != literal_layout) {
-      absl::InlinedVector<int64_t, 4> byte_strides(
-          on_device_shape().dimensions().size());
-      absl::Status s = ShapeUtil::ByteStrides(on_device_shape(),
-                                              absl::MakeSpan(byte_strides));
-      if (!s.ok()) {
-        return PjRtFuture<>(s);
-      }
-      absl::Span<const int64_t> dims = on_device_shape().dimensions();
-      absl::InlinedVector<int64_t, 4> permutation(dims.size());
-      absl::c_reverse_copy(literal_layout.minor_to_major(),
-                           permutation.begin());
-      TransposePlan::Options options;
-      options.elem_size_in_bytes =
-          primitive_util::ByteWidth(on_device_shape().element_type());
-      options.dims = on_device_shape().dimensions();
-      options.permutation = permutation;
-      options.input_layout = TransposePlan::Striding{byte_strides};
-      {
-        absl::MutexLock lock(&client_->transpose_mu_);
-        absl::StatusOr<std::shared_ptr<TransposePlan>> t =
-            client_->transpose_cache_.GetOrCreate(options);
-        if (!t.ok()) {
-          return PjRtFuture<>(t.status());
+  auto literal_and_transpose_promise =
+      PjRtFuture<std::pair<MutableLiteralBase*,
+                           std::shared_ptr<TransposePlan>>>::CreatePromise();
+  PjRtFuture<std::pair<MutableLiteralBase*, std::shared_ptr<TransposePlan>>>
+      literal_and_transpose_future(literal_and_transpose_promise);
+  literal.OnReady(
+      [client = client_, on_device_shape{on_device_shape_},
+       promise = std::move(literal_and_transpose_promise)](
+          const absl::StatusOr<MutableLiteralBase*>& value) mutable {
+        if (!value.ok()) {
+          promise.Set(value.status());
+          return;
         }
-        transpose = *std::move(t);
-      }
-    }
-  }
+
+        MutableLiteralBase* literal = *std::move(value);
+
+        std::shared_ptr<TransposePlan> transpose;
+        if (on_device_shape.IsArray()) {
+          xla::Layout literal_layout;
+          if (literal->shape().has_layout()) {
+            literal_layout = literal->shape().layout();
+          } else {
+            literal_layout = LayoutUtil::MakeDescendingLayout(
+                on_device_shape.dimensions().size());
+          }
+
+          if (on_device_shape.layout() != literal_layout) {
+            absl::InlinedVector<int64_t, 4> byte_strides(
+                on_device_shape.dimensions().size());
+            absl::Status s = ShapeUtil::ByteStrides(
+                on_device_shape, absl::MakeSpan(byte_strides));
+            if (!s.ok()) {
+              promise.Set(s);
+              return;
+            }
+            absl::Span<const int64_t> dims = on_device_shape.dimensions();
+            absl::InlinedVector<int64_t, 4> permutation(dims.size());
+            absl::c_reverse_copy(literal_layout.minor_to_major(),
+                                 permutation.begin());
+            TransposePlan::Options options;
+            options.elem_size_in_bytes =
+                primitive_util::ByteWidth(on_device_shape.element_type());
+            options.dims = on_device_shape.dimensions();
+            options.permutation = permutation;
+            options.input_layout = TransposePlan::Striding{byte_strides};
+            {
+              absl::MutexLock lock(&client->transpose_mu_);
+              absl::StatusOr<std::shared_ptr<TransposePlan>> t =
+                  client->transpose_cache_.GetOrCreate(options);
+              if (!t.ok()) {
+                promise.Set(t.status());
+                return;
+              }
+              transpose = *std::move(t);
+            }
+          }
+        }
+        promise.Set(std::make_pair(literal, std::move(transpose)));
+      });
 
   auto copy_to_host = [device(device_), device_buffer,
-                       usage_event(std::move(usage_event)), literal, promise,
+                       usage_event(std::move(usage_event)), promise,
                        client = client_, on_device_shape{on_device_shape_},
-                       unpack_subbyte_types, transpose]() mutable {
+                       unpack_subbyte_types,
+                       literal_and_transpose =
+                           std::move(literal_and_transpose_future)]() mutable {
     tsl::profiler::TraceMe traceme("ToLiteral::D2H_copy");
     if (device_buffer->definition_event().IsError()) {
       usage_event.SetStateConcrete();
@@ -2869,75 +2896,97 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
     bool should_unpack =
         unpack_subbyte_types && primitive_util::IsSubByteNonPredType(type);
 
-    HostMemoryAllocator::OwnedPtr staging_buffer;
-    void* buffer_ptr;
-    if (on_device_shape.IsArray()) {
-      staging_buffer = client->host_memory_allocator()->Allocate(byte_size);
-      buffer_ptr = staging_buffer.get();
-    } else {
-      CHECK_EQ(byte_size, 0);
-      buffer_ptr = nullptr;
-    }
+    literal_and_transpose.OnReady(
+        [device = std::move(device), device_buffer = std::move(device_buffer),
+         usage_event = std::move(usage_event), promise = std::move(promise),
+         client = std::move(client),
+         on_device_shape = std::move(on_device_shape), should_unpack,
+         byte_size](
+            const absl::StatusOr<
+                std::pair<MutableLiteralBase*, std::shared_ptr<TransposePlan>>>&
+                value) mutable {
+          if (!value.ok()) {
+            usage_event.SetStateConcrete();
+            promise.Set(value.status());
+            return;
+          }
 
-    {
-      tsl::profiler::TraceMe traceme2([&] {
-        return tsl::profiler::TraceMeEncode("ToLiteral::D2H_GPU_copy",
-                                            {
-                                                {"device", device->id()},
-                                                {"size", byte_size},
-                                            });
-      });
-      MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
+          auto [literal, transpose] = *std::move(value);
+          HostMemoryAllocator::OwnedPtr staging_buffer;
+          void* buffer_ptr;
+          if (on_device_shape.IsArray()) {
+            staging_buffer =
+                client->host_memory_allocator()->Allocate(byte_size);
+            buffer_ptr = staging_buffer.get();
+          } else {
+            CHECK_EQ(byte_size, 0);
+            buffer_ptr = nullptr;
+          }
 
-      auto stream = device->stream();
+          {
+            tsl::profiler::TraceMe traceme2([&] {
+              return tsl::profiler::TraceMeEncode("ToLiteral::D2H_GPU_copy",
+                                                  {
+                                                      {"device", device->id()},
+                                                      {"size", byte_size},
+                                                  });
+            });
+            MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
 
-      VLOG(3) << "D2H copy: " << device_buffer->buffer()->buffer().opaque()
-              << " -> " << buffer_ptr << " (" << byte_size << " bytes)";
-      CHECK_OK(stream->Memcpy(buffer_ptr, device_buffer->buffer()->buffer(),
-                              byte_size))
-          << "stream->Memcpy failed copying from GPU to host";
+            auto stream = device->stream();
 
-      absl::Status status;
-      {
-        tsl::profiler::TraceMe traceme("BlockHostUntilDone");
-        status = stream->BlockHostUntilDone();
-      }
-      VLOG(3) << "D2H copy done. " << status;
-      if (!status.ok()) {
-        VLOG(3) << "stream->BlockHostUntilDone failed: " << status;
-        promise.Set(status);
-        return;
-      }
-    }
-    void* buffer;
-    if (should_unpack) {
-      tsl::profiler::TraceMe traceme("ToLiteral::D2H_staging_copy");
-      int64_t unpacked_size = ShapeUtil::ElementsIn(on_device_shape);
-      if (transpose != nullptr) {
-        buffer = tsl::port::AlignedMalloc(unpacked_size,
-                                          tsl::Allocator::kAllocatorAlignment);
-      } else {
-        buffer = literal->untyped_data();
-      }
-      primitive_util::UnpackIntN(
-          on_device_shape.element_type(),
-          absl::MakeConstSpan(static_cast<const char*>(buffer_ptr), byte_size),
-          absl::MakeSpan(static_cast<char*>(buffer), unpacked_size));
-      VLOG(3) << "D2H staging copy done";
-    } else {
-      buffer = buffer_ptr;
-    }
-    if (transpose != nullptr) {
-      tsl::profiler::TraceMe traceme("Transpose");
-      transpose->Execute(buffer, static_cast<char*>(literal->untyped_data()));
-      if (should_unpack) {
-        tsl::port::AlignedFree(buffer);
-      }
-    }
-    if (on_device_shape.IsArray() && !should_unpack && transpose == nullptr) {
-      std::memcpy(literal->untyped_data(), buffer, byte_size);
-    }
-    promise.Set(absl::OkStatus());
+            VLOG(3) << "D2H copy: "
+                    << device_buffer->buffer()->buffer().opaque() << " -> "
+                    << buffer_ptr << " (" << byte_size << " bytes)";
+            CHECK_OK(stream->Memcpy(
+                buffer_ptr, device_buffer->buffer()->buffer(), byte_size))
+                << "stream->Memcpy failed copying from GPU to host";
+
+            absl::Status status;
+            {
+              tsl::profiler::TraceMe traceme("BlockHostUntilDone");
+              status = stream->BlockHostUntilDone();
+            }
+            VLOG(3) << "D2H copy done. " << status;
+            if (!status.ok()) {
+              VLOG(3) << "stream->BlockHostUntilDone failed: " << status;
+              promise.Set(status);
+              return;
+            }
+          }
+          void* buffer;
+          if (should_unpack) {
+            tsl::profiler::TraceMe traceme("ToLiteral::D2H_staging_copy");
+            int64_t unpacked_size = ShapeUtil::ElementsIn(on_device_shape);
+            if (transpose != nullptr) {
+              buffer = tsl::port::AlignedMalloc(
+                  unpacked_size, tsl::Allocator::kAllocatorAlignment);
+            } else {
+              buffer = literal->untyped_data();
+            }
+            primitive_util::UnpackIntN(
+                on_device_shape.element_type(),
+                absl::MakeConstSpan(static_cast<const char*>(buffer_ptr),
+                                    byte_size),
+                absl::MakeSpan(static_cast<char*>(buffer), unpacked_size));
+            VLOG(3) << "D2H staging copy done";
+          } else {
+            buffer = buffer_ptr;
+          }
+          if (transpose != nullptr) {
+            tsl::profiler::TraceMe traceme("Transpose");
+            transpose->Execute(buffer,
+                               static_cast<char*>(literal->untyped_data()));
+            if (should_unpack) {
+              tsl::port::AlignedFree(buffer);
+            }
+          }
+          if (on_device_shape.IsArray() && !should_unpack &&
+              transpose == nullptr) {
+            std::memcpy(literal->untyped_data(), buffer, byte_size);
+          }
+          promise.Set(absl::OkStatus());
+        });
   };
   EnqueueWorkWhenReady(client_->blocking_thread_pool(),
                        {device_buffer->definition_event().CopyRCRef()},
@@ -2960,12 +3009,10 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
 }
 
 PjRtFuture<> TfrtGpuBuffer::LazyToLiteral(
-    absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator) {
+    absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator) {
+  VLOG(3) << "TfrtGpuBuffer::LazyToLiteral";
   auto buffer = std::move(generator)();
-  if (!buffer.ok()) {
-    return PjRtFuture<>(buffer.status());
-  }
-  return ToLiteral(buffer.value());
+  return ToLiteralHelper(std::move(buffer));
 }
 
 PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,

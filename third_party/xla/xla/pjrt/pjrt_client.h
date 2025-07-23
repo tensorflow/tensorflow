@@ -1078,8 +1078,7 @@ class PjRtBuffer {
   // might be done eagerly, but it is guaranteed to be earlier than when the
   // returned future becomes ready.
   virtual PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&>
-          generator) = 0;
+      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator) = 0;
 
   // Synchronous overload of ToLiteral, as a convenience.
   absl::Status ToLiteralSync(MutableLiteralBase* literal) {
