@@ -159,6 +159,8 @@ class Thunk {
     kGemm,
     kGroupDone,
     kGroupStart,
+    kHostExecuteDone,
+    kHostExecuteStart,
     kHostRecv,
     kHostRecvDone,
     kHostSend,
@@ -432,6 +434,8 @@ class Thunk {
 
     bool mock_collectives = false;
 
+    int64_t execution_id = 0;
+
    private:
     friend class CommandBufferThunk;
 
@@ -445,7 +449,7 @@ class Thunk {
                   RecvDeviceMemoryFunction* recv_device_memory_function,
                   const ffi::ExecutionContext* ffi_execution_context,
                   ExecutionStreamIdMap additional_compute_streams = {},
-                  bool mock_collectives = false);
+                  bool mock_collectives = false, int64_t execution_id = 0);
   };
 
   //===--------------------------------------------------------------------===//
