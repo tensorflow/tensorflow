@@ -2285,12 +2285,13 @@ absl::StatusOr<std::vector<int64_t>> PjRtCApiBuffer::logical_dimensions() {
 }
 
 PjRtFuture<> PjRtCApiBuffer::LazyToLiteral(
-    absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator) {
-  auto buffer = std::move(generator)();
-  if (!buffer.ok()) {
-    return PjRtFuture<>(buffer.status());
+    absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator) {
+  PjRtFuture<MutableLiteralBase*> future = std::move(generator)();
+  const absl::StatusOr<MutableLiteralBase*>& literal = future.Await();
+  if (!literal.ok()) {
+    return PjRtFuture<>(literal.status());
   }
-  return ToLiteral(buffer.value());
+  return ToLiteral(literal.value());
 }
 
 PjRtFuture<> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {

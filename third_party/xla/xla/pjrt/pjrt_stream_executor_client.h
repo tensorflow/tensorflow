@@ -584,7 +584,7 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBuffer {
   using PjRtBuffer::ToLiteralSync;
   PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
   PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
+      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator)
       override;
 
   absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
@@ -672,6 +672,8 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBuffer {
                      const TrackedDeviceBuffer& src_device_buffer);
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDeviceMemorySpace(
       PjRtDevice* dst_device, PjRtMemorySpace* dst_memory_space = nullptr);
+
+  PjRtFuture<> ToLiteralHelper(PjRtFuture<MutableLiteralBase*> literal);
 
   PjRtStreamExecutorClient* const client_;
   const Shape on_device_shape_;
