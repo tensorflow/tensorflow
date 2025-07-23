@@ -31,8 +31,8 @@ class GreedyTopDownMatcher : public HloGumgraphMatcher {
                        bool debug_mode = false,
                        bool require_same_children = false)
       : HloGumgraphMatcher(require_same_children
-                               ? MatcherType::kGreedyTopDownMatcher
-                               : MatcherType::kStrictGreedyTopDownMatcher,
+                               ? MatcherType::kStrictGreedyTopDownMatcher
+                               : MatcherType::kGreedyTopDownMatcher,
                            debug_mode),
         left_(*ABSL_DIE_IF_NULL(left)),
         right_(*ABSL_DIE_IF_NULL(right)),
