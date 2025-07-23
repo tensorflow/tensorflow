@@ -60,13 +60,14 @@ class DotThunk final : public Thunk {
   using DoneCallback = absl::AnyInvocable<void()>;
 
   // Col-major x Col-major MatMul implementation as Eigen contraction.
-  template <typename T, Eigen::AlignmentType alignment>
-  static void MatMul(const Eigen::ThreadPoolDevice* device, T* out, T* lhs,
-                     T* rhs, int64_t m, int64_t n, int64_t k,
-                     int32_t transpose_lhs, int32_t transpose_rhs,
+  template <typename LhsType, typename RhsType, typename OutType,
+            Eigen::AlignmentType alignment>
+  static void MatMul(const Eigen::ThreadPoolDevice* device, OutType* out,
+                     LhsType* lhs, RhsType* rhs, int64_t m, int64_t n,
+                     int64_t k, int32_t transpose_lhs, int32_t transpose_rhs,
                      DoneCallback done);
 
-  template <typename T>
+  template <typename LhsType, typename RhsType, typename OutType>
   static void TypedMatMul(const Eigen::ThreadPoolDevice* device, void* out,
                           void* lhs, void* rhs, int64_t m, int64_t n, int64_t k,
                           bool transpose_lhs, bool transpose_rhs,
@@ -86,10 +87,11 @@ class DotThunk final : public Thunk {
 // DotThunk implementation details.
 //===----------------------------------------------------------------------===//
 
-template <typename T, Eigen::AlignmentType alignment>
-void DotThunk::MatMul(const Eigen::ThreadPoolDevice* device, T* out, T* lhs,
-                      T* rhs, int64_t m, int64_t n, int64_t k,
-                      int32_t transpose_lhs, int32_t transpose_rhs,
+template <typename LhsType, typename RhsType, typename OutType,
+          Eigen::AlignmentType alignment>
+void DotThunk::MatMul(const Eigen::ThreadPoolDevice* device, OutType* out,
+                      LhsType* lhs, RhsType* rhs, int64_t m, int64_t n,
+                      int64_t k, int32_t transpose_lhs, int32_t transpose_rhs,
                       DoneCallback done) {
   int64_t lhs_rows = m;
   int64_t lhs_cols = k;
@@ -99,26 +101,27 @@ void DotThunk::MatMul(const Eigen::ThreadPoolDevice* device, T* out, T* lhs,
   int64_t rhs_cols = n;
   if (transpose_rhs) std::swap(rhs_rows, rhs_cols);
 
-  const Eigen::TensorMap<Eigen::Tensor<const T, 2>, alignment> a(lhs, lhs_rows,
-                                                                 lhs_cols);
-  const Eigen::TensorMap<Eigen::Tensor<const T, 2>, alignment> b(rhs, rhs_rows,
-                                                                 rhs_cols);
-  Eigen::TensorMap<Eigen::Tensor<T, 2>, alignment> c(out, m, n);
+  const Eigen::TensorMap<Eigen::Tensor<const LhsType, 2>, alignment> a(
+      lhs, lhs_rows, lhs_cols);
+  const Eigen::TensorMap<Eigen::Tensor<const RhsType, 2>, alignment> b(
+      rhs, rhs_rows, rhs_cols);
+  Eigen::TensorMap<Eigen::Tensor<OutType, 2>, alignment> c(out, m, n);
 
-  typedef typename Eigen::Tensor<T, 2>::DimensionPair DimPair;
+  typedef typename Eigen::Tensor<LhsType, 2>::DimensionPair DimPair;
   int lhs_contract_dim = transpose_lhs ? 0 : 1;
   int rhs_contract_dim = transpose_rhs ? 1 : 0;
   std::array<DimPair, 1> dims({DimPair(lhs_contract_dim, rhs_contract_dim)});
 
   if (device != nullptr) {
-    c.device(*device, std::move(done)) = a.contract(b, dims);
+    c.device(*device, std::move(done)) =
+        a.contract(b, dims).template cast<OutType>();
   } else {
-    c = a.contract(b, dims);
+    c = a.contract(b, dims).template cast<OutType>();
     done();
   }
 }
 
-template <typename T>
+template <typename LhsType, typename RhsType, typename OutType>
 void DotThunk::TypedMatMul(const Eigen::ThreadPoolDevice* device, void* out,
                            void* lhs, void* rhs, int64_t m, int64_t n,
                            int64_t k, bool transpose_lhs, bool transpose_rhs,
@@ -131,22 +134,22 @@ void DotThunk::TypedMatMul(const Eigen::ThreadPoolDevice* device, void* out,
                     is_16_byte_aligned(out);
 
   if (ABSL_PREDICT_TRUE(is_aligned)) {
-    MatMul<T, Eigen::Aligned16>(device, static_cast<T*>(out),
-                                static_cast<T*>(lhs), static_cast<T*>(rhs), m,
-                                n, k, transpose_lhs, transpose_rhs,
-                                std::move(done));
+    MatMul<LhsType, RhsType, OutType, Eigen::Aligned16>(
+        device, static_cast<OutType*>(out), static_cast<LhsType*>(lhs),
+        static_cast<RhsType*>(rhs), m, n, k, transpose_lhs, transpose_rhs,
+        std::move(done));
   } else {
-    MatMul<T, Eigen::Unaligned>(device, static_cast<T*>(out),
-                                static_cast<T*>(lhs), static_cast<T*>(rhs), m,
-                                n, k, transpose_lhs, transpose_rhs,
-                                std::move(done));
+    MatMul<LhsType, RhsType, OutType, Eigen::Unaligned>(
+        device, static_cast<OutType*>(out), static_cast<LhsType*>(lhs),
+        static_cast<RhsType*>(rhs), m, n, k, transpose_lhs, transpose_rhs,
+        std::move(done));
   }
 }
 
 // Extern DotThunk::TypedMatMul template for all supported data types to enable
 // parallel compilation.
 #define DOT_THUNK_EXTERN_MATMUL_TEMPLATE(T)                                    \
-  extern template void DotThunk::TypedMatMul<T>(                               \
+  extern template void DotThunk::TypedMatMul<T, T, T>(                         \
       const Eigen::ThreadPoolDevice* device, void* out, void* lhs, void* rhs,  \
       int64_t m, int64_t n, int64_t k, bool transpose_lhs, bool transpose_rhs, \
       DoneCallback done)
@@ -157,6 +160,15 @@ DOT_THUNK_EXTERN_MATMUL_TEMPLATE(double);
 DOT_THUNK_EXTERN_MATMUL_TEMPLATE(int32_t);
 DOT_THUNK_EXTERN_MATMUL_TEMPLATE(std::complex<float>);
 DOT_THUNK_EXTERN_MATMUL_TEMPLATE(std::complex<double>);
+
+#define DOT_THUNK_EXTERN_MATMUL_MIXED_PRECISION_TEMPLATE(LhsType, RhsType,     \
+                                                         OutType)              \
+  extern template void DotThunk::TypedMatMul<LhsType, RhsType, OutType>(       \
+      const Eigen::ThreadPoolDevice* device, void* out, void* lhs, void* rhs,  \
+      int64_t m, int64_t n, int64_t k, bool transpose_lhs, bool transpose_rhs, \
+      DoneCallback done)
+
+DOT_THUNK_EXTERN_MATMUL_MIXED_PRECISION_TEMPLATE(int8_t, int8_t, int32_t);
 
 #undef DOT_THUNK_EXTERN_MATMUL_TEMPLATE
 

@@ -752,6 +752,7 @@ cc_library(
         "dot_thunk_f32.cc",
         "dot_thunk_f64.cc",
         "dot_thunk_s32.cc",
+        "dot_thunk_s8.cc",
     ],
     hdrs = ["dot_thunk.h"],
     deps = [
