@@ -17,26 +17,34 @@ limitations under the License.
 #define XLA_BACKENDS_AUTOTUNER_PROFILER_H_
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "xla/service/executable.h"
+#include "xla/service/shaped_buffer.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
 struct ProfileOptions {
   // Padding around the buffers to check for out-of-bounds reads/writes.
-  int redzone_padding_bytes;
+  int redzone_padding_bytes = 0;
   // Whether to initialize the buffers with random data or leave them
   // uninitialized.
-  bool should_init_buffers;
+  bool should_init_buffers = false;
+  // Whether to populate the output_buffer in the ProfileResult with the result
+  // of the execution. This is to avoid data copies if the caller doesn't need
+  // the output buffer.
+  bool should_populate_output_buffer = false;
 };
 
 struct ProfileResult {
-  absl::Duration duration;
+  absl::Duration duration = absl::ZeroDuration();
+  std::optional<ScopedShapedBuffer> output_buffer = std::nullopt;
 };
 
 // Interface to run and profile XLA compiled executables for autotuning.
@@ -51,7 +59,8 @@ class Profiler {
     executables.push_back(std::move(executable));
     TF_ASSIGN_OR_RETURN(std::vector<ProfileResult> results,
                         ProfileWithSharedBuffers(std::move(executables)));
-    return results[0];
+    CHECK_EQ(results.size(), 1);
+    return std::move(results[0]);
   }
 
   // Profiles multiple executables with shared buffers. This guarantees that
