@@ -1638,27 +1638,10 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
                                std::move(device_kind)),
       device_vendor_(std::move(device_vendor)),
       slice_index_(slice_index) {
-  std::array<int, 1> coords = {local_device_id().value()};
-  description().SetCoords(coords);
-  std::vector<int64_t> v_coords(description().coords().begin(),
-                                description().coords().end());
-
-  description().SetAttributes({
-      {"coords", xla::PjRtDeviceAttribute(v_coords)},
-      {"device_vendor", device_vendor_},
-      {"slice_index", static_cast<int64_t>(slice_index)},
-      {"compute_capability", xla::PjRtDeviceAttribute(compute_capability)},
-      {"core_count", static_cast<int64_t>(core_count)},
-      {"shared_memory_per_block_optin",
-       static_cast<int64_t>(shared_memory_per_block_optin)},
-  });
-  description().SetToString(absl::StrFormat(
-      "StreamExecutorGpuDevice(device_kind=%s, id=%i, process_index=%i, "
-      "slice_index=%i))",
-      description().device_kind(), id, process_index(), slice_index));
-  description().SetDebugString(absl::StrFormat("%s_%i(process=%i,(%i))",
-                                               description().device_kind(), id,
-                                               process_index(), v_coords[0]));
+  StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
+      description(), local_device_id().value(), device_vendor_,
+      compute_capability, core_count,
+      static_cast<int64_t>(shared_memory_per_block_optin), slice_index);
 }
 
 int StreamExecutorGpuDevice::slice_index() const { return slice_index_; }
