@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -43,6 +44,7 @@ namespace gpu {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::Eq;
 using ::testing::Field;
 
 class MockExecutable : public Executable {
@@ -98,6 +100,32 @@ TEST_F(GpuProfilerTest, ProfileWithSharedBuffers) {
       profiles,
       ElementsAre(Field(&ProfileResult::duration, absl::Nanoseconds(1000)),
                   Field(&ProfileResult::duration, absl::Nanoseconds(2000))));
+  EXPECT_THAT(
+      profiles,
+      ElementsAre(Field(&ProfileResult::output_buffer, Eq(std::nullopt)),
+                  Field(&ProfileResult::output_buffer, Eq(std::nullopt))));
+}
+
+TEST_F(GpuProfilerTest, ProfileWithSharedBuffersWithOutputBuffer) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule module
+    ENTRY main {
+      ROOT c = s32[] constant(1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  std::vector<std::unique_ptr<Executable>> executables;
+  executables.push_back(std::make_unique<MockExecutable>(module, 1));
+
+  ProfileOptions options;
+  options.should_populate_output_buffer = true;
+  auto profiler = GpuProfiler::Create(stream_exec_, ProfileOptions());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<ProfileResult> profiles,
+      profiler->ProfileWithSharedBuffers(std::move(executables)));
+  EXPECT_THAT(profiles, ElementsAre(Field(&ProfileResult::output_buffer,
+                                          Eq(std::nullopt))));
 }
 
 }  // namespace
