@@ -98,15 +98,17 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
  public:
   PjRtStreamExecutorDevice(int id,
                            std::unique_ptr<LocalDeviceState> local_device_state,
-                           int process_index, std::string device_kind)
-      : description_(id, process_index, std::move(device_kind)),
-        local_device_id_(local_device_state
+                           int process_index, int slice_index,
+                           std::string device_kind)
+      : local_device_id_(local_device_state
                              ? local_device_state->local_device_id()
                              : PjRtLocalDeviceId(-1)),
         local_hardware_id_(local_device_state
                                ? local_device_state->local_hardware_id()
                                : PjRtLocalHardwareId(-1)),
-        local_device_state_(std::move(local_device_state)) {}
+        local_device_state_(std::move(local_device_state)),
+        description_(id, local_device_id_.value(), process_index, slice_index,
+                     std::move(device_kind)) {}
   ~PjRtStreamExecutorDevice() override = default;
 
   // Must set client exactly once.
@@ -182,10 +184,10 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
   }
 
  private:
-  PjRtStreamExecutorDeviceDescription description_;
   const PjRtLocalDeviceId local_device_id_;
   const PjRtLocalHardwareId local_hardware_id_;
   const std::unique_ptr<LocalDeviceState> local_device_state_;
+  PjRtStreamExecutorDeviceDescription description_;
   PjRtClient* client_ = nullptr;
   absl::InlinedVector<PjRtMemorySpace*, 1> memory_spaces_;
   absl::flat_hash_map<int, PjRtMemorySpace*> memory_spaces_by_id_;

@@ -1634,13 +1634,12 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
     std::string compute_capability, int core_count,
     int shared_memory_per_block_optin, int node_id, int slice_index)
     : PjRtStreamExecutorDevice(id, std::move(local_device_state),
-                               /*process_index=*/node_id,
+                               /*process_index=*/node_id, slice_index,
                                std::move(device_kind)),
       device_vendor_(std::move(device_vendor)),
       slice_index_(slice_index) {
   StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
-      description(), local_device_id().value(), device_vendor_,
-      compute_capability, core_count,
+      description(), device_vendor_, compute_capability, core_count,
       static_cast<int64_t>(shared_memory_per_block_optin), slice_index);
 }
 
