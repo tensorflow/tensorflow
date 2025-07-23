@@ -163,9 +163,9 @@ TEST_F(HloSimilarityTest, ParamPropertySimilarity) {
   // Create right module with entry computation containing the following
   // structure:
   // [Param foo_R] ------> ┌-------┐
-  //                       | add_1 | ---> ┌------------┐      ┌------┐
-  // [Constant bar_R] ---> └-------┘      | subtract_0 | ---> | ROOT |
-  // [Param baz_R] ---------------------> └------------┘      └------┘
+  //                       | add_1 | ---> ┌-------┐      ┌------┐
+  // [Constant bar_R] ---> └-------┘      | add_0 | ---> | ROOT |
+  // [Param baz_R] ---------------------> └-------┘      └------┘
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
                           ParseAndReturnVerifiedModule(R"(
   HloModule module, is_scheduled=true
@@ -175,7 +175,7 @@ TEST_F(HloSimilarityTest, ParamPropertySimilarity) {
     bar_R = f32[8,2048]{1,0:T(8,128)} constant(0)
     baz_R = f32[8,2048]{1,0:T(8,128)} parameter(1)
     add_1 = f32[8,2048]{1,0:T(8,128)} add(foo_R, bar_R)
-    subtract_0 = f32[8,2048]{1,0:T(8,128)} subtract(add_1, baz_R)
+    subtract_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz_R)
   }
   )"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,

@@ -118,7 +118,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
         "//xla/hlo/tools/hlo_diff/graph/utils:hlo_gumgraph_bfs",
-        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:function_ref",
     ],
