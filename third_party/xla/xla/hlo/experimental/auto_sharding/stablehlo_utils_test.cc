@@ -158,10 +158,10 @@ TEST_F(StablehloUtilsTest, ConvertShardyToHloDataFlowEdge) {
   )MLIR";
 
   const std::string kExpectedHloPattern = R"(
-  CHECK: %region_0.7 (Arg_.4: s64[4]) -> s64[4]
-  CHECK: %region_1.11 (Arg_.8: s64[4]) -> s64[4]
-  CHECK: ENTRY %main.13 (Arg_0.1: s32[], Arg_1.2: s64[4], Arg_2.3: s64[4]) -> s64[4]
-  CHECK: ROOT %conditional.12 = s64[4]{0} conditional(%Arg_0.1, %Arg_1.2, %Arg_2.3), branch_computations={%region_0.7, %region_1.11}, sharding={replicated}
+  CHECK: %region_0.5 (Arg_.4: s64[4]) -> s64[4]
+  CHECK: %region_1.7 (Arg_.6: s64[4]) -> s64[4]
+  CHECK: ENTRY %main.9 (Arg_0.1: s32[], Arg_1.2: s64[4], Arg_2.3: s64[4]) -> s64[4]
+  CHECK: ROOT %conditional.8 = s64[4]{0} conditional(%Arg_0.1, %Arg_1.2, %Arg_2.3), branch_computations={%region_0.5, %region_1.7}, sharding={replicated}
   )";
 
   ConvertShardyAndCompare(kShardyMlirString, kExpectedHloPattern);

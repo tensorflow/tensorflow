@@ -67,6 +67,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/RegionUtils.h"
+#include "third_party/protobuf/util/message_differencer.h"
 #include "stablehlo/dialect/Base.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/transforms/Passes.h"
@@ -5183,25 +5184,6 @@ LogicalResult ExportXlaOp(MinimumBroadcastShapesOp op, OpLoweringContext ctx) {
 namespace mlir {
 namespace {
 
-// Set the sharding of the created tuple to the sharding of the operand.
-// If operand has no sharding, then we are okay for the tuple to have no
-// sharding either.
-std::optional<xla::OpSharding> getTupleShardingForSingleElementReturnLowering(
-    xla::XlaOp operand, xla::XlaBuilder* builder) {
-  // TODO(b/260756663): Remove this check once we have a better
-  // way to handle token[] operands.
-  if (auto shape_or_status = builder->GetShape(operand);
-      shape_or_status.ok() && shape_or_status.value().IsToken()) {
-    return std::nullopt;
-  }
-  if (absl::StatusOr<std::optional<xla::OpSharding>> in_sharding =
-          operand.builder()->GetOpSharding(operand);
-      in_sharding.ok() && in_sharding.value().has_value()) {
-    return in_sharding.value().value();
-  }
-  return std::nullopt;
-}
-
 LogicalResult ConvertLayout(mlir::Operation* op, const mlir::ArrayAttr& layout,
                             xla::ShapeProto* shape) {
   // In the case of tuples, Shape protos can be nested, and so can the mlir
@@ -5662,17 +5644,30 @@ LogicalResult ConvertToHloModule::LowerReturn(
     return failure();
   }
 
-  if (ret_tuple_sharding) {
-    if (std::optional<xla::OpSharding> sharding =
-            getTupleShardingForSingleElementReturnLowering(operand, builder)) {
-      builder->SetSharding(sharding.value());
+  *return_value = operand;
+  if (!ret_tuple_sharding) {
+    return success();
+  }
+
+  absl::StatusOr<std::optional<xla::OpSharding>> old_sharding =
+      builder->GetOpSharding(operand);
+  if (!old_sharding.ok()) {
+    return inst->emitError() << old_sharding.status().message();
+  }
+
+  const std::optional<xla::OpSharding>& new_sharding = ret_shardings[0];
+  if (!old_sharding->has_value()) {
+    absl::Status status =
+        builder->SetInstructionSharding(operand, new_sharding);
+    if (!status.ok()) {
+      return inst->emitError() << status.message();
     }
-    auto tuple = Tuple(builder, {operand});
-    builder->SetSharding(*ret_shardings[0]);
-    *return_value = GetTupleElement(tuple, 0);
+  } else if (!google::protobuf::util::MessageDifferencer::Equals(old_sharding->value(),
+                                                       *new_sharding)) {
+    // We create a copy to keep both old and new shardings.
+    builder->SetSharding(*new_sharding);
+    *return_value = Copy(operand);
     builder->ClearSharding();
-  } else {
-    *return_value = operand;
   }
 
   return success();

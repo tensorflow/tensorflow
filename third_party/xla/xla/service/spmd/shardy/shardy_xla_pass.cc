@@ -492,11 +492,6 @@ absl::StatusOr<bool> ShardyXLA::Run(
   TF_RETURN_IF_ERROR(
       createFromProtoAndReplaceComputations(hloModule, hloProto.hlo_module()));
 
-  // If the module returns a single tensor as result with sharding,
-  // ConvertMlirHloToHlo still generates the tuple and get-tuple-element as the
-  // root instructions. We use the TupleSimplifier as a temporary solution.
-  CHECK_OK(TupleSimplifier().Run(hloModule));
-
   // Restore entry computation layout.
   *hloModule->mutable_entry_computation_layout() =
       std::move(flattenedEntryComputationLayout);
