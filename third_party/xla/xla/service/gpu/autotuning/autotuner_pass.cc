@@ -44,13 +44,25 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
     std::vector<std::unique_ptr<CodegenBackend>> backends,
     stream_executor::StreamExecutor* stream_executor,
     tsl::thread::ThreadPool* thread_pool) {
-  std::unique_ptr<GpuProfiler> profiler =
-      GpuProfiler::Create(stream_executor, ProfileOptions());
+  CHECK(stream_executor != nullptr);
+  auto profiler = GpuProfiler::Create(stream_executor, ProfileOptions());
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Autotuner> autotuner,
       Autotuner::Create(std::move(backends), std::move(profiler),
                         AutotuneConfig(), thread_pool));
-  return absl::WrapUnique(new AutotunerPass(std::move(autotuner)));
+  return absl::WrapUnique(
+      new AutotunerPass(std::move(autotuner), /*is_deviceless=*/false));
+}
+
+absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::CreateDeviceless(
+    std::vector<std::unique_ptr<CodegenBackend>> backends,
+    tsl::thread::ThreadPool* thread_pool) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Autotuner> autotuner,
+      Autotuner::Create(std::move(backends), /*profiler=*/nullptr,
+                        AutotuneConfig(), thread_pool));
+  return absl::WrapUnique(
+      new AutotunerPass(std::move(autotuner), /*is_deviceless=*/true));
 }
 
 absl::StatusOr<bool> AutotunerPass::Run(
@@ -67,7 +79,14 @@ absl::StatusOr<bool> AutotunerPass::Run(
     return false;
   };
 
-  TF_RETURN_IF_ERROR(autotuner_->Autotune(module, should_autotune));
+  if (is_deviceless_) {
+    VLOG(1) << "Deviceless mode, applying default configs.";
+    TF_RETURN_IF_ERROR(
+        autotuner_->ApplyDefaultConfigs(module, should_autotune));
+  } else {
+    VLOG(1) << "Deviceful mode, running full autotuning.";
+    TF_RETURN_IF_ERROR(autotuner_->Autotune(module, should_autotune));
+  }
   return true;
 }
 

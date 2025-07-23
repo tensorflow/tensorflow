@@ -25,9 +25,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
@@ -35,9 +36,15 @@ namespace gpu {
 
 class AutotunerPass : public HloModulePass {
  public:
+  // Create for deviceful autotuning.
   static absl::StatusOr<std::unique_ptr<AutotunerPass>> Create(
       std::vector<std::unique_ptr<CodegenBackend>> backends,
       stream_executor::StreamExecutor* stream_executor,
+      tsl::thread::ThreadPool* thread_pool);
+
+  // Create for deviceless compilation (applies default configs).
+  static absl::StatusOr<std::unique_ptr<AutotunerPass>> CreateDeviceless(
+      std::vector<std::unique_ptr<CodegenBackend>> backends,
       tsl::thread::ThreadPool* thread_pool);
 
   absl::string_view name() const override { return "autotuner"; }
@@ -48,10 +55,11 @@ class AutotunerPass : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  explicit AutotunerPass(std::unique_ptr<Autotuner> autotuner)
-      : autotuner_(std::move(autotuner)) {}
+  AutotunerPass(std::unique_ptr<Autotuner> autotuner, bool is_deviceless)
+      : autotuner_(std::move(autotuner)), is_deviceless_(is_deviceless) {}
 
   std::unique_ptr<Autotuner> autotuner_;
+  const bool is_deviceless_;
 };
 
 }  // namespace gpu

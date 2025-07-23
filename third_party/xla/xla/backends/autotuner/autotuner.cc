@@ -160,6 +160,34 @@ absl::Status Autotuner::Autotune(HloModule* module,
   return absl::OkStatus();
 }
 
+absl::Status Autotuner::ApplyDefaultConfigs(
+    HloModule* module, const InstructionFilterFn& should_autotune) {
+  VLOG(1) << "Applying default configs to HLO module " << module->name();
+  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+    for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
+      if (should_autotune(*instr)) {
+        VLOG(1) << "Applying default config to instruction: "
+                << instr->ToString();
+        bool applied_config = false;
+        for (auto& codegen_backend : codegen_backends_) {
+          auto default_config = codegen_backend->GetDefaultConfig(*instr);
+          if (default_config.ok()) {
+            TF_RETURN_IF_ERROR(
+                codegen_backend->ApplyConfig(*instr, *default_config.value()));
+            applied_config = true;
+            break;  // Stop after the first backend that can handle it.
+          }
+        }
+        if (!applied_config) {
+          VLOG(1) << "No backend could provide a default config for: "
+                  << instr->ToString();
+        }
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::vector<Autotuner::Config>> Autotuner::GetSupportedConfigs(
     HloInstruction* instr) {
   std::vector<Config> configs;

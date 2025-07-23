@@ -61,6 +61,12 @@ class Autotuner {
   absl::Status Autotune(HloModule* module,
                         const InstructionFilterFn& should_autotune);
 
+  // Apply default configs to all instructions in the module for which the
+  // filter function returns true. This is useful for deviceless compilation
+  // where profiling is not possible.
+  absl::Status ApplyDefaultConfigs(HloModule* module,
+                                   const InstructionFilterFn& should_autotune);
+
  private:
   using InstructionsByFingerprint =
       absl::flat_hash_map<tsl::Fprint128, std::vector<HloInstruction*>,

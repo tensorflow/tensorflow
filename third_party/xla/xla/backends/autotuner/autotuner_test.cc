@@ -122,7 +122,7 @@ absl::StatusOr<std::unique_ptr<Autotuner>> SetupAutotunerWithExpectations(
 
 constexpr absl::string_view kHlo = R"(
   HloModule test_module
-  
+
   ENTRY main {
     p0 = f32[] parameter(0)
     add = f32[] add(p0, p0)
@@ -290,6 +290,33 @@ TEST_F(AutotunerTest, AutotuneModuleWithDuplicateInstructions) {
           /*instr_to_apply_config_and_count=*/{HloOpcode::kAdd, 2}));
 
   EXPECT_THAT(autotuner->Autotune(module.get(), should_autotune), IsOk());
+}
+
+TEST_F(AutotunerTest, ApplyDefaultConfigs) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+
+  auto should_autotune = [](const HloInstruction& instruction) {
+    return instruction.opcode() == HloOpcode::kAdd;
+  };
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, GetDefaultConfig(InstructionMatcher(HloOpcode::kAdd)))
+      .WillRepeatedly([](const HloInstruction& instr) {
+        return GetTestConfig("default_config");
+      });
+  EXPECT_CALL(*backend, ApplyConfig(InstructionMatcher(HloOpcode::kAdd),
+                                    ConfigMatcher("default_config")))
+      .Times(2);
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto autotuner,
+      Autotuner::Create(std::move(backends), nullptr, AutotuneConfig()));
+
+  EXPECT_THAT(autotuner->ApplyDefaultConfigs(module.get(), should_autotune),
+              IsOk());
 }
 
 }  // namespace
