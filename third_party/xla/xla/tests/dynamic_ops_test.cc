@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
@@ -777,8 +778,10 @@ TEST_F(DynamicOpsTest, AddOfDUS) {
 // disabling them when the backend is not a GPU. These tests verify that single
 // and multiple output fusions of dynamic update slices produce the right
 // results. On some backends (e.g. GPU), this is done inplace.
-#ifdef XLA_TEST_BACKEND_GPU
 TEST_F(DynamicOpsTest, MultipleOutputFusedDynamicUpdateSlices) {
+  if (!test::DeviceTypeIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   const char* hlo_string = R"(
 HloModule MultipleInplaceDus, input_output_alias={ {0}: (0, {}), {1}: (2, {}) }
 
@@ -810,6 +813,9 @@ ENTRY main {
 
 TEST_F(DynamicOpsTest,
        MultipleOutputFusedDynamicUpdateSlicesWithTransposeBitcastedRoot) {
+  if (!test::DeviceTypeIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   const char* hlo_string = R"(
 HloModule MultipleInplaceDusWithTransposeBitcastToTheRoot, input_output_alias={ {0}: (0, {}), {1}: (2, {}) }
 
@@ -842,6 +848,9 @@ ENTRY main {
 
 TEST_F(DynamicOpsTest,
        SingleFusedDynamicUpdateSliceWithTransposeBitcastedRoot) {
+  if (!test::DeviceTypeIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   const char* hlo_string = R"(
 HloModule SingleInplaceDusWithTransposeBitcastToTheRoot, input_output_alias={ {}: (0, {}) }
 
@@ -869,6 +878,9 @@ ENTRY main {
 }
 
 TEST_F(DynamicOpsTest, SingleFusedDynamicUpdateSliceWithReshapeBitcastedRoot) {
+  if (!test::DeviceTypeIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   const char* hlo_string = R"(
 HloModule SingleInplaceDusWithReshapeBitcastToTheRoot, input_output_alias={ {}: (0, {}) }
 
@@ -897,6 +909,9 @@ ENTRY main {
 
 TEST_F(DynamicOpsTest,
        SingleFusedDynamicUpdateSliceWithBitcastedRootAndParameter) {
+  if (!test::DeviceTypeIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   const char* hlo_string = R"(
 HloModule SingleInplaceDusWithBitcastToTheRootAndFromTheParameter, input_output_alias={ {}: (0, {}) }
 
@@ -927,6 +942,9 @@ ENTRY main {
 
 TEST_F(DynamicOpsTest,
        SingleFusedDynamicUpdateSliceWithSameDynamicSliceAccess) {
+  if (!test::DeviceTypeIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   const char* hlo_string = R"(
 HloModule fusion, input_output_alias={ {}: (0, {}) }
 
@@ -954,6 +972,9 @@ ENTRY main {
 
 TEST_F(DynamicOpsTest,
        SingleFusedDynamicUpdateSliceWithDynamicSliceAccessSlicesOfSizeOne) {
+  if (!test::DeviceTypeIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   const char* hlo_string = R"(
 HloModule fusion, input_output_alias={ {}: (0, {}) }
 
@@ -978,7 +999,6 @@ ENTRY main {
 )";
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_string, ErrorSpec{0, 0}));
 }
-#endif
 
 void BM_DynamicSlice(::testing::benchmark::State& state) {
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();

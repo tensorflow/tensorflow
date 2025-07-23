@@ -1426,9 +1426,9 @@ ENTRY main {
 }
 
 TEST_F(LlvmIrGenTestBase, LargeDynamicInput) {
-#ifndef XLA_TEST_BACKEND_GPU
-  GTEST_SKIP();
-#endif
+  if (!test::DeviceTypeIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   const std::string hlo_text = R"( // NOLINT: Will be executed for GPU.
 HloModule LargeDynamicInput
 
