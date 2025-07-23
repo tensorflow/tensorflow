@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
@@ -127,7 +128,7 @@ XlaComputationLaunchContext::XlaComputationLaunchContext(
 
 // Fills in `execution_input` with `buffer` for `index`.
 static void PopulateExecutionInputBuffer(xla::ExecutionInput& execution_input,
-                                         xla::ShapeIndex index,
+                                         const xla::ShapeIndex& index,
                                          se::DeviceMemoryBase buffer,
                                          bool donate_buffer, int device_ordinal,
                                          se::DeviceMemoryAllocator* allocator) {
@@ -149,11 +150,13 @@ absl::StatusOr<std::vector<xla::ExecutionInput>>
 XlaComputationLaunchContext::PopulateInputs(
     OpKernelContext* ctx,
     const XlaCompiler::CompilationResult* compilation_result,
-    const std::map<int, const Tensor*>& resource_vars,
+    const absl::flat_hash_map<int, const Tensor*>& resource_vars,
     int missing_ctx_input_prefix,
     const xla::HloInputOutputAliasConfig& input_output_alias) {
   std::vector<xla::ExecutionInput> arguments;
   arguments.reserve(compilation_result->xla_input_shapes.size());
+
+  xla::ShapeIndex root_index = {};
 
   for (int i = 0; i < compilation_result->xla_input_shapes.size(); ++i) {
     int arg_num = compilation_result->input_mapping[i];
@@ -176,9 +179,8 @@ XlaComputationLaunchContext::PopulateInputs(
                           ? resource_var_it->second
                           : &(ctx->input(arg_num - missing_ctx_input_prefix));
     CHECK(t);
-    bool donate_buffer =
-        t->RefCountIsOne() && is_updated_resource_variable &&
-        input_output_alias.ParameterHasAlias(i, xla::ShapeIndex{});
+    bool donate_buffer = t->RefCountIsOne() && is_updated_resource_variable &&
+                         input_output_alias.ParameterHasAlias(i, root_index);
     VLOG(3) << "Processing input: " << i
             << "; is_resource_variable=" << is_resource_variable
             << "; is_updated_resource_variable=" << is_updated_resource_variable
@@ -196,7 +198,7 @@ XlaComputationLaunchContext::PopulateInputs(
     arguments.emplace_back(&device_shape);
     xla::ExecutionInput& execution_input = arguments.back();
     se::DeviceMemoryBase dmem = XlaTensor::DeviceMemoryFromTensor(*t);
-    PopulateExecutionInputBuffer(execution_input, xla::ShapeIndex{}, dmem,
+    PopulateExecutionInputBuffer(execution_input, root_index, dmem,
                                  donate_buffer, device_ordinal_,
                                  xla_allocator_);
   }
@@ -222,7 +224,7 @@ static absl::StatusOr<Tensor> GetOrCreateTensorForOutput(
     int missing_ctx_input_prefix,
     const xla::HloInputOutputAliasConfig& input_output_alias,
     absl::Span<const int> input_mapping,
-    const std::map<int, const Tensor*>& resource_vars_snapshots,
+    const absl::flat_hash_map<int, const Tensor*>& resource_vars_snapshots,
     DataType output_dtype, const TensorShape& output_shape,
     Allocator* output_allocator, bool allocate_xla_tensors, se::Stream* stream,
     bool use_multiple_streams, std::shared_ptr<se::Event> definition_event) {
@@ -359,7 +361,7 @@ absl::Status XlaComputationLaunchContext::PopulateOutputs(
     ScopedShapedBuffer output, int missing_ctx_input_prefix,
     absl::Span<VariableInfo> variable_infos,
     const xla::HloInputOutputAliasConfig& input_output_alias,
-    const std::map<int, const Tensor*>& resource_vars) {
+    const absl::flat_hash_map<int, const Tensor*>& resource_vars) {
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
   Allocator* allocator = ctx->device()->GetAllocator({});
