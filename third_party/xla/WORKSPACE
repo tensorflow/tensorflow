@@ -137,3 +137,5 @@ load(
 )
 
 nvshmem_configure(name = "local_config_nvshmem")
+
+# NVSHMEM_REDISTRIBUTIONS TEST
