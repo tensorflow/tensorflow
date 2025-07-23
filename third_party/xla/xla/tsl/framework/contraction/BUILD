@@ -1,6 +1,10 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
+)
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -144,6 +148,17 @@ cc_library(
         "//xla/tsl/framework/fixedpoint",
         "//xla/tsl/platform:dynamic_annotations",
         "@com_google_absl//absl/base",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+tsl_cc_test(
+    name = "eigen_contraction_kernel_test",
+    srcs = ["eigen_contraction_kernel_test.cc"],
+    deps = [
+        ":eigen_contraction_kernel",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
     ],
 )
