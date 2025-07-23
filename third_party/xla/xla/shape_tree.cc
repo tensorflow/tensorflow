@@ -16,32 +16,22 @@ limitations under the License.
 #include "xla/shape_tree.h"
 
 #include <cstddef>
-#include <cstdint>
 
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
-#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 
-namespace xla {
-namespace internal {
+namespace xla::internal {
 
-// Computes the total size of all nested tuples in the given shape.
-//
-// If `is_known_tuple` is true, then the shape is known to be a tuple, and we
-// can skip the run time check for `IsTuple()`.
-template <bool is_known_tuple = false>
+// Computes the total size of all nested tuples in the given tuple shape.
 static size_t IndexTableTuplesSize(const Shape& shape) {
-  if (!is_known_tuple && ABSL_PREDICT_TRUE(!shape.IsTuple())) {
-    return 0;
-  }
+  DCHECK(shape.IsTuple()) << "Shape must be a tuple";
 
   size_t size = shape.tuple_shapes().size();
   for (const Shape& subshape : shape.tuple_shapes()) {
     if (ABSL_PREDICT_FALSE(subshape.IsTuple())) {
-      size += IndexTableTuplesSize</*is_known_tuple=*/true>(subshape);
+      size += IndexTableTuplesSize(subshape);
     }
   }
 
@@ -75,22 +65,18 @@ static void InitializeIndexTable(const Shape& shape,
   }
 }
 
-IndexTable::IndexTable(const Shape& shape)
-    : entries_(1 + IndexTableTuplesSize(shape)) {
+IndexTable::IndexTable(const Shape& shape) {
+  if (!shape.IsTuple()) {
+    return;
+  }
+
+  // Allocate storage for the index table.
+  entries_.emplace(1 + IndexTableTuplesSize(shape));
+
   size_t next_node_id = 0;
   size_t next_children_start_index = 1;
-  InitializeIndexTable(shape, absl::MakeSpan(entries_), 0, next_node_id,
+  InitializeIndexTable(shape, absl::MakeSpan(*entries_), 0, next_node_id,
                        next_children_start_index);
 }
 
-const IndexTable::Entry& IndexTable::operator[](ShapeIndexView index) const {
-  const Entry* result = &entries_.front();
-  for (int64_t i : index) {
-    CHECK_GE(result->children_start_id, 0);
-    result = &entries_[result->children_start_id + i];
-  }
-  return *result;
-}
-
-}  // namespace internal
-}  // namespace xla
+}  // namespace xla::internal
