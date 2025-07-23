@@ -42,16 +42,16 @@ bool ShouldSkipMatching(const HloInstructionNode& left_node,
   return false;
 }
 
-// Returns the unmatched children of the given node. The returned children are
-// ensured to be deduplicated.
+// Returns the unmatched children of a given node. It takes a predicate to
+// determine if a child is already mapped.
+template <typename IsMappedPredicate>
 std::vector<HloInstructionNode*> GetUnmatchedChildren(
     const std::vector<HloInstructionNode*>& children,
-    const HloGumgraphMappings& mappings) {
+    IsMappedPredicate is_mapped) {
   std::vector<HloInstructionNode*> unmatched_children;
   absl::flat_hash_set<const HloInstructionNode*> visited;
   for (HloInstructionNode* child : children) {
-    if (!mappings.InstructionMapContainsLeft(child) &&
-        !visited.contains(child)) {
+    if (!is_mapped(child) && !visited.contains(child)) {
       unmatched_children.push_back(child);
       visited.insert(child);
     }
@@ -78,10 +78,16 @@ void GreedyTopDownMatcher::Match(HloGumgraphMappings& mappings) const {
           return;
         }
 
-        std::vector<HloInstructionNode*> left_children =
-            GetUnmatchedChildren(left_node.children, mappings);
-        std::vector<HloInstructionNode*> right_children =
-            GetUnmatchedChildren((*right_node)->children, mappings);
+        std::vector<HloInstructionNode*> left_children = GetUnmatchedChildren(
+            left_node.children, [&mappings](const HloInstructionNode* node) {
+              return mappings.InstructionMapContainsRight(node);
+            });
+
+        std::vector<HloInstructionNode*> right_children = GetUnmatchedChildren(
+            (*right_node)->children,
+            [&mappings](const HloInstructionNode* node) {
+              return mappings.InstructionMapContainsLeft(node);
+            });
 
         MatchInstructions(left_, right_, left_children, right_children,
                           mappings, type_, MapByPositionMode::kAlways);
