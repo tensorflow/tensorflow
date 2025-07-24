@@ -124,6 +124,44 @@ TEST_F(TilingSpaceTest, SingleOutputReductionDim) {
   )"));
 }
 
+TEST_F(TilingSpaceTest, VariadicReduce) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule m
+    min {
+      tmp_0 = f32[] parameter(0)
+      tmp_1 = f32[] parameter(2)
+      tmp_2 = s32[] parameter(1)
+      tmp_3 = s32[] parameter(3)
+      cmp = pred[] compare(tmp_0, tmp_1), direction=GE
+      select1 = f32[] select(cmp, tmp_0, tmp_1)
+      select2 = s32[] select(cmp, tmp_2, tmp_3)
+      ROOT tmp_4 = (f32[], s32[]) tuple(select1, select2)
+    }
+    ENTRY e {
+      p0 = f32[256,10] parameter(0)
+      p0_init = f32[] constant(-inf)
+      p1 = s32[256,10] parameter(1)
+      p1_init = s32[] constant(0)
+      ROOT reduce = (f32[10], s32[10]) reduce(p0, p1, p0_init, p1_init),
+        dimensions={0}, to_apply=min
+    }
+
+  )");
+  CHECK_OK(module);
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module.value()->entry_computation()->root_instruction());
+  TilingSpace tiling_space = TilingSpace::Create(*fusion_adaptor);
+  EXPECT_THAT(tiling_space, MatchString(R"(
+    Dimensions:
+      0 type: parallel size: 10 dim ID:0 hlo:
+        %reduce = (f32[10]{0}, s32[10]{0}) reduce(%p0, %p1, %p0_init, %p1_init),
+        dimensions={0}, to_apply=%min
+      1 type: sequential size: 256 dim ID:1 hlo:
+        %reduce = (f32[10]{0}, s32[10]{0}) reduce(%p0, %p1, %p0_init, %p1_init),
+        dimensions={0}, to_apply=%min
+  )"));
+}
+
 TEST_F(TilingSpaceTest, DynamicSlice) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
