@@ -607,6 +607,7 @@ xla_cc_binary(
         ":factory",
         ":gpu_profiler",
         "//xla:debug_options_flags",
+        "//xla:xla_proto_cc",
         "//xla/backends/autotuner",
         "//xla/backends/autotuner:profiler",
         "//xla/hlo/ir:hlo",
