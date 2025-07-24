@@ -51,17 +51,21 @@ namespace xla::gpu {
 // retrieves the event when it is executed.
 class HostExecuteAsyncEvents {
  public:
-  absl::Status AddEvent(
-      se::StreamExecutor* executor, RunId run_id,
-      tsl::AsyncValueRef<HostOffloadingExecutable::ExecuteEvent> event);
+  // The async value will be awaited for by the HostExecuteDoneThunk, while the
+  // given event will be awaited on by the compute stream which requires the
+  // published results.
+  using HostExecuteEvent = tsl::AsyncValueRef<std::unique_ptr<se::Event>>;
 
-  absl::StatusOr<tsl::AsyncValueRef<HostOffloadingExecutable::ExecuteEvent>>
-  ExtractEvent(se::StreamExecutor* executor, RunId run_id);
+  // Creates an event for the given executor and run id and returns it to the
+  // user if the event was created successfully.
+  absl::StatusOr<HostExecuteEvent> CreateEvent(se::StreamExecutor* executor,
+                                               RunId run_id);
+
+  absl::StatusOr<HostExecuteEvent> ExtractEvent(se::StreamExecutor* executor,
+                                                RunId run_id);
 
  private:
-  absl::flat_hash_map<
-      std::pair<se::StreamExecutor*, RunId>,
-      tsl::AsyncValueRef<HostOffloadingExecutable::ExecuteEvent>>
+  absl::flat_hash_map<std::pair<se::StreamExecutor*, RunId>, HostExecuteEvent>
       events_;
 };
 
