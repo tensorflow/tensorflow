@@ -43,6 +43,14 @@ ExecutionInput::~ExecutionInput() {
   }
 }
 
+ExecutionInput::ExecutionInput(ExecutionInput&& rhs) noexcept
+    : buffers_(std::move(rhs.buffers_)),
+      unowned_indices_(std::move(rhs.unowned_indices_)),
+      dynamic_shape_(std::move(rhs.dynamic_shape_)),
+      host_shape_(std::move(rhs.host_shape_)) {
+  unowned_indices_.clear();
+}
+
 absl::Status ExecutionInput::SetDynamicShape(Shape dynamic_shape) {
   const Shape& input_shape = shape();
   if (!ShapeUtil::DynamicShapeIsCompatible(input_shape, dynamic_shape)) {
