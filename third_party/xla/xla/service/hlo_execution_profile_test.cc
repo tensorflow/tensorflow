@@ -14,9 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/service/hlo_execution_profile.h"
+
+#include <cstdint>
+#include <memory>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo_profile_printer_data.pb.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {

@@ -15,7 +15,17 @@ limitations under the License.
 
 #include "xla/service/hlo_phi_graph.h"
 
+#include <iterator>
+#include <memory>
 #include <queue>
+#include <string>
+
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 
 namespace xla {
 HloValue::Id PhiGraph::GetOptimizedId(const HloValue& value) {
