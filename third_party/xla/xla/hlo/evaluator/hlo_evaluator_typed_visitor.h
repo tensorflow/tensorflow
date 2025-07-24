@@ -1294,23 +1294,10 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
         rhs_literal.Convert(dot->shape().element_type()).value());
   }
 
-  // This is currently only implemented for the ragged dimension being a non-
-  // contracting dimension. For other modes, this will throw an unimplemented
-  // error.
-  absl::Status HandleRaggedDot(const HloInstruction* dot) override {
-    auto lhs = dot->operand(0);
-    auto rhs = dot->operand(1);
-    auto group_sizes = dot->operand(2);
-
-    CHECK(dot->shape().IsArray());
-    CHECK(lhs->shape().IsArray());
-    CHECK(rhs->shape().IsArray());
-    CHECK(group_sizes->shape().IsArray());
-
-    const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
-    const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
-    const Literal& gs_literal = parent_->GetEvaluatedLiteralFor(group_sizes);
-
+  absl::Status HandleRaggedDotWithLiterals(const HloInstruction* dot,
+                                           const Literal& lhs_literal,
+                                           const Literal& rhs_literal,
+                                           const Literal& gs_literal) {
     auto ragged_dims = dot->ragged_dot_dimension_numbers();
     auto dot_dims = ragged_dims.dot_dimension_numbers();
 
@@ -1426,6 +1413,47 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
 
     parent_->SetEvaluatedLiteralFor(dot, std::move(result));
     return absl::OkStatus();
+  }
+
+  // This is currently only implemented for the ragged dimension being a non-
+  // contracting dimension. For other modes, this will throw an unimplemented
+  // error.
+  absl::Status HandleRaggedDot(const HloInstruction* dot) override {
+    auto lhs = dot->operand(0);
+    auto rhs = dot->operand(1);
+    auto group_sizes = dot->operand(2);
+
+    CHECK(dot->shape().IsArray());
+    CHECK(lhs->shape().IsArray());
+    CHECK(rhs->shape().IsArray());
+    CHECK(group_sizes->shape().IsArray());
+
+    const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
+    const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
+    const Literal& gs_literal = parent_->GetEvaluatedLiteralFor(group_sizes);
+
+    // LHS and RHS may have a different initial precision than our output.
+    const bool lhs_same =
+        ShapeUtil::SameElementType(lhs->shape(), dot->shape());
+    const bool rhs_same =
+        ShapeUtil::SameElementType(rhs->shape(), dot->shape());
+    // Upcast group sizes to S64, since they could be e.g. S32.
+    const bool gs_same =
+        group_sizes->shape().element_type() == PrimitiveType::S64;
+
+    return HandleRaggedDotWithLiterals(
+        dot,
+        lhs_same
+            ? lhs_literal
+            : static_cast<const Literal&>(
+                  lhs_literal.Convert(dot->shape().element_type()).value()),
+        rhs_same
+            ? rhs_literal
+            : static_cast<const Literal&>(
+                  rhs_literal.Convert(dot->shape().element_type()).value()),
+        gs_same ? gs_literal
+                : static_cast<const Literal&>(
+                      gs_literal.Convert(PrimitiveType::S64).value()));
   }
 
   absl::Status HandlePad(const HloInstruction* pad) override {
