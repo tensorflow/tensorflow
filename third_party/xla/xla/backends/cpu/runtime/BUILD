@@ -74,6 +74,7 @@ cc_library(
     hdrs = ["thread_pool_task_runner.h"],
     deps = [
         ":thunk",
+        "@com_google_absl//absl/base:core_headers",
         "@eigen_archive//:eigen3",
     ],
 )
