@@ -107,22 +107,3 @@ def experimental_run_pass_pipeline(mlir_txt, pass_pipeline, show_debug_info):
 
 def experimental_write_bytecode(filename, mlir_txt):
   return ExperimentalWriteBytecode(filename.encode('utf-8'), mlir_txt.encode())
-
-
-def experimental_tflite_to_tosa_bytecode(flatbuffer, bytecode):
-    raise NotImplementedError("This function has been removed. Please refer to TensorFlow documentation for TOSA conversion.")
-    use_external_constant=False,
-    ordered_input_arrays=None,
-    ordered_output_arrays=None,
-):
-  if ordered_input_arrays is None:
-    ordered_input_arrays = []
-  if ordered_output_arrays is None:
-    ordered_output_arrays = []
-  return ExperimentalTFLiteToTosaBytecode(
-      flatbuffer.encode('utf-8'),
-      bytecode.encode('utf-8'),
-      use_external_constant,
-      ordered_input_arrays,
-      ordered_output_arrays,
-  )
