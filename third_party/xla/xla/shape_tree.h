@@ -392,11 +392,15 @@ class ShapeTree {
   template <typename... Ts>
   ShapeTree(absl::in_place_t, const Shape* shape, Ts&&... args)
       : index_table_(*shape), shape_(shape) {
-    nodes_.reserve(ShapeUtil::SubshapeCount(*shape));
-    ShapeUtil::ForEachSubshape(
-        *shape, [&](const Shape&, const ShapeIndex& index) {
-          nodes_.emplace_back(index, T(std::forward<Ts>(args)...));
-        });
+    if (!shape->IsTuple()) {
+      nodes_.emplace_back(ShapeIndex(), T(std::forward<Ts>(args)...));
+    } else {
+      nodes_.reserve(ShapeUtil::SubshapeCount(*shape));
+      ShapeUtil::ForEachSubshape(
+          *shape, [&](const Shape&, const ShapeIndex& index) {
+            nodes_.emplace_back(index, T(std::forward<Ts>(args)...));
+          });
+    }
   }
 
   // The nodes in this shape tree.
