@@ -285,8 +285,9 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
   absl::c_sort(incarnations);
 
   return GpuCliqueKey(std::move(participants), num_local_participants,
-                      kNoStreamId, stream_kind, std::move(participant_groups),
-                      GlobalDeviceId(-1), incarnations);
+                      xla::gpu::IsP2PStreamKind(stream_kind),
+                      std::move(participant_groups), GlobalDeviceId(-1),
+                      incarnations);
 }
 
 absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
