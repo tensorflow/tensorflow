@@ -286,68 +286,90 @@ func (s *Session) Close() error {
 	return status.Err()
 }
 
-// SessionOptions contains configuration information for a session.
+// SessionOptions specifies options for creating a new TensorFlow session.
+//
+// The preferred way to configure sessions is now via the SessionConfig field, which provides
+// a type-safe, modular API for specifying options. The legacy Config []byte field is still supported
+// for backward compatibility, but is discouraged for new code.
 type SessionOptions struct {
 	// Target indicates the TensorFlow runtime to connect to.
-	//
-	// If 'target' is empty or unspecified, the local TensorFlow runtime
-	// implementation will be used.  Otherwise, the TensorFlow engine
-	// defined by 'target' will be used to perform all computations.
-	//
-	// "target" can be either a single entry or a comma separated list
-	// of entries. Each entry is a resolvable address of one of the
-	// following formats:
-	//   local
-	//   ip:port
-	//   host:port
-	//   ... other system-specific formats to identify tasks and jobs ...
-	//
-	// NOTE: at the moment 'local' maps to an in-process service-based
-	// runtime.
-	//
-	// Upon creation, a single session affines itself to one of the
-	// remote processes, with possible load balancing choices when the
-	// "target" resolves to a list of possible processes.
-	//
-	// If the session disconnects from the remote process during its
-	// lifetime, session calls may fail immediately.
+	// See the original comments for details on valid values.
 	Target string
 
-	// Config is a binary-serialized representation of the
-	// tensorflow.ConfigProto protocol message
-	// (https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto).
+	// Config is a binary-serialized representation of the tensorflow.ConfigProto protocol message.
+	// This field is DEPRECATED and only maintained for backward compatibility. Prefer using SessionConfig.
 	Config []byte
+
+	// SessionConfig provides a type-safe, modular API for session configuration.
+	// If set, this will be used in preference to Config.
+	SessionConfig *SessionConfig
 }
 
-// c converts the SessionOptions to the C API's TF_SessionOptions. Callers must
-// deallocate by calling the returned done() closure.
-func (o *SessionOptions) c() (ret *C.TF_SessionOptions, done func(), err error) {
-	opt := C.TF_NewSessionOptions()
-	if o == nil {
-		return opt, func() { C.TF_DeleteSessionOptions(opt) }, nil
-	}
-	t := C.CString(o.Target)
-	C.TF_SetTarget(opt, t)
-	C.free(unsafe.Pointer(t))
+// NewSessionOptions creates a new SessionOptions struct with default values.
+// By default, no target or configuration is set. Use the builder methods or set fields directly.
+func NewSessionOptions() *SessionOptions {
+	return &SessionOptions{}
+}
 
-	var cConfig unsafe.Pointer
-	if sz := len(o.Config); sz > 0 {
-		status := newStatus()
-		// Copying into C-memory is the simplest thing to do in terms
-		// of memory safety and cgo rules ("C code may not keep a copy
-		// of a Go pointer after the call returns" from
-		// https://golang.org/cmd/cgo/#hdr-Passing_pointers).
-		cConfig = C.CBytes(o.Config)
-		C.TF_SetConfig(opt, cConfig, C.size_t(sz), status.c)
-		if err := status.Err(); err != nil {
-			C.TF_DeleteSessionOptions(opt)
-			return nil, func() {}, fmt.Errorf("invalid SessionOptions.Config: %v", err)
-		}
+// SetTarget sets the TensorFlow runtime target (e.g., "local", "grpc://host:port").
+func (so *SessionOptions) SetTarget(target string) *SessionOptions {
+	so.Target = target
+	return so
+}
+
+// SetConfig sets the session configuration using the new type-safe API.
+func (so *SessionOptions) SetConfig(config *SessionConfig) *SessionOptions {
+	so.SessionConfig = config
+	return so
+}
+
+// SetConfigBytes sets the session configuration using raw protobuf bytes (legacy API).
+func (so *SessionOptions) SetConfigBytes(config []byte) *SessionOptions {
+	so.Config = config
+	return so
+}
+
+// c creates the C.TF_SessionOptions object for use with the TensorFlow C API.
+// This method handles both the new SessionConfig API and the legacy Config []byte API.
+//
+// If SessionConfig is set, it will be serialized and used. Otherwise, Config []byte is used.
+// Returns the C session options object, a cleanup function, and an error if any.
+func (o *SessionOptions) c() (ret *C.TF_SessionOptions, done func(), err error) {
+	ret = C.TF_NewSessionOptions()
+	if ret == nil {
+		return nil, func() {}, errors.New("unable to create session options")
 	}
-	return opt, func() {
-		C.TF_DeleteSessionOptions(opt)
+
+	// Set target if specified
+	if o.Target != "" {
+		cTarget := C.CString(o.Target)
+		C.TF_SetTarget(ret, cTarget)
+		C.free(unsafe.Pointer(cTarget))
+	}
+
+	// Handle configuration
+	var configBytes []byte
+	if o.SessionConfig != nil {
+		// Use new type-safe API
+		var serr error
+		configBytes, serr = o.SessionConfig.ToBytes()
+		if serr != nil {
+			C.TF_DeleteSessionOptions(ret)
+			return nil, func() {}, fmt.Errorf("failed to serialize session config: %v", serr)
+		}
+	} else if o.Config != nil {
+		// Use legacy API
+		configBytes = o.Config
+	}
+
+	// Set configuration if provided
+	if configBytes != nil {
+		cConfig := C.CBytes(configBytes)
+		C.TF_SetConfig(ret, cConfig, C.size_t(len(configBytes)))
 		C.free(cConfig)
-	}, nil
+	}
+
+	return ret, func() { C.TF_DeleteSessionOptions(ret) }, nil
 }
 
 // cRunArgs translates the arguments to Session.Run and PartialRun.Run into
