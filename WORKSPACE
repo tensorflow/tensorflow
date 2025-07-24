@@ -162,10 +162,3 @@ load(
 nvshmem_redist_init_repository(
     nvshmem_redistributions = NVSHMEM_REDISTRIBUTIONS,
 )
-
-load(
-    "@rules_ml_toolchain//third_party/nvshmem/hermetic:nvshmem_configure.bzl",
-    "nvshmem_configure",
-)
-
-nvshmem_configure(name = "local_config_nvshmem")
