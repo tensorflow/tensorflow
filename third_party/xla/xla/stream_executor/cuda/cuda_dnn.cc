@@ -53,7 +53,6 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
-#include "third_party/gpus/cudnn/cudnn_graph.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
@@ -85,6 +84,7 @@ limitations under the License.
 #include "third_party/gpus/cudnn/cudnn_adv.h"
 #include "third_party/gpus/cudnn/cudnn_cnn.h"
 #include "third_party/gpus/cudnn/cudnn_ops.h"
+#include "third_party/gpus/cudnn/cudnn_graph.h"
 #else
 #include "third_party/gpus/cudnn/cudnn_adv_infer.h"
 #include "third_party/gpus/cudnn/cudnn_adv_train.h"
