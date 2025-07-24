@@ -400,12 +400,14 @@ CodegenDecision AreDotAlgorithmInputAndOutputConversionsSupported(
     }
   }
 
-  if (allowed_operands_types_or->size() != 1 &&
-      (lhs_type != rhs_type ||
-       !absl::c_linear_search(*allowed_operands_types_or, lhs_type))) {
+  if (allowed_operands_types_or->size() != 1) {
+    if (lhs_type == rhs_type &&
+        absl::c_linear_search(*allowed_operands_types_or, lhs_type)) {
+      // No conversion necessary.
+      return CodegenDecision::Allow();
+    }
+    // We may need to handle that in the future.
     return forbid("Unsupported operand types");
-  } else if (allowed_operands_types_or->size() == 1) {
-    return CodegenDecision::Allow();
   }
 
   PrimitiveType expected_operands_type = allowed_operands_types_or->front();
