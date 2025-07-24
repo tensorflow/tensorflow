@@ -1,11 +1,7 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
-# Import third party config rules.
 load("@bazel_features//:deps.bzl", "bazel_features_deps")
-load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
 load("@bazel_skylib//lib:versions.bzl", "versions")
-
-# Import external repository rules.
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
 load("@local_xla//third_party/absl:workspace.bzl", absl = "repo")
 load("@local_xla//third_party/benchmark:workspace.bzl", benchmark = "repo")
@@ -14,8 +10,6 @@ load("@local_xla//third_party/dlpack:workspace.bzl", dlpack = "repo")
 load("@local_xla//third_party/ducc:workspace.bzl", ducc = "repo")
 load("@local_xla//third_party/eigen3:workspace.bzl", eigen3 = "repo")
 load("@local_xla//third_party/farmhash:workspace.bzl", farmhash = "repo")
-
-# Import third party repository rules. See go/tfbr-thirdparty.
 load("@local_xla//third_party/FP16:workspace.bzl", FP16 = "repo")
 load("@local_xla//third_party/gemmlowp:workspace.bzl", gemmlowp = "repo")
 load("@local_xla//third_party/git:git_configure.bzl", "git_configure")
@@ -66,7 +60,6 @@ def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
     FP16()
     absl()
-    bazel_skylib_workspace()
     bazel_features_deps()
     benchmark()
     ducc()
@@ -454,13 +447,13 @@ def _tf_repositories():
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
     tf_http_archive(
         name = "com_github_grpc_grpc",
-        sha256 = "afbc5d78d6ba6d509cc6e264de0d49dcd7304db435cbf2d630385bacf49e066c",
-        strip_prefix = "grpc-1.68.2",
+        sha256 = "ae14a0de222485fd6e3baf52028c74acbd9ad8d685c813580401d3832cfae9f1",
+        strip_prefix = "grpc-1.72.2",
         system_build_file = "//third_party/systemlibs:grpc.BUILD",
         patch_file = [
-            "@local_xla//third_party/grpc:grpc.patch",
+            "@local_xla//third_party/grpc:grpc-1.72.2.patch",
         ],
-        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.68.2.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.72.2.tar.gz"),
     )
 
     tf_http_archive(
@@ -776,9 +769,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "pybind11",
-        urls = tf_mirror_urls("https://github.com/pybind/pybind11/archive/v2.13.4.tar.gz"),
-        sha256 = "efc901aa0aab439a3fea6efeaf930b5a349fb06394bf845c64ce15a9cf8f0240",
-        strip_prefix = "pybind11-2.13.4",
+        urls = tf_mirror_urls("https://github.com/pybind/pybind11/archive/v2.13.6.tar.gz"),
+        sha256 = "e08cb87f4773da97fa7b5f035de8763abc656d87d5773e62f6da0587d1f0ec20",
+        strip_prefix = "pybind11-2.13.6",
         build_file = "@local_xla//third_party:pybind11.BUILD",
         system_build_file = "//third_party/systemlibs:pybind11.BUILD",
     )
@@ -840,7 +833,7 @@ def _tf_repositories():
         name = "com_google_ortools",
         sha256 = "f6a0bd5b9f3058aa1a814b798db5d393c31ec9cbb6103486728997b49ab127bc",
         strip_prefix = "or-tools-9.11",
-        patch_file = ["//third_party/ortools:ortools.patch"],
+        patch_file = ["@local_xla//third_party/ortools:ortools-9.11.patch"],
         urls = tf_mirror_urls("https://github.com/google/or-tools/archive/v9.11.tar.gz"),
         repo_mapping = {
             "@com_google_protobuf_cc": "@com_google_protobuf",

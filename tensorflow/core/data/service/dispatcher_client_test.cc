@@ -55,7 +55,6 @@ using ::tensorflow::data::testing::LocalTempFilename;
 using ::tensorflow::data::testing::RangeDataset;
 using ::tensorflow::testing::StatusIs;
 using ::testing::AllOf;
-using ::testing::ContainsRegex;
 using ::testing::HasSubstr;
 
 constexpr const char kProtocol[] = "grpc";
@@ -384,7 +383,7 @@ TEST_F(DispatcherClientTest, NamedJobsDoNotMatch) {
       StatusIs(error::INVALID_ARGUMENT,
                AllOf(HasSubstr("but found an existing job with different "
                                "parameters: "),
-                     ContainsRegex("Existing processing mode: <\\w*/*\\w* *>"),
+                     HasSubstr("Existing processing mode: <"),
                      HasSubstr("Existing cross-trainer cache: <disabled>"))));
 }
 

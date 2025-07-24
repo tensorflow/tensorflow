@@ -55,6 +55,6 @@ py_library(
         "_finfo.py",
         "_iinfo.py",
     ],
+    data = [":_ml_dtypes_ext"],
     imports = ["."],  # Import relative to _this_ directory, not the root.
-    deps = [":_ml_dtypes_ext"],
 )
