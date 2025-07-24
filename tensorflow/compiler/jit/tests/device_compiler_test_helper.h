@@ -21,7 +21,9 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
