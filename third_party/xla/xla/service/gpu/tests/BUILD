@@ -633,6 +633,9 @@ lit_test_suite(
     default_tags = tf_gpu_tests_tags(),
     hermetic_cuda_data_dir = "%S/../../../../../cuda_nvcc",
     tags = ["no-oneapi"],
+    tags_override = {
+        "single_instruction.hlo": ["cuda-only"],
+    },
     tools = [
         "//xla/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
