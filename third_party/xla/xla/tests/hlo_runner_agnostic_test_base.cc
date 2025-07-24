@@ -60,6 +60,20 @@ HloRunnerAgnosticTestBase::HloRunnerAgnosticTestBase(
     absl_nonnull std::unique_ptr<HloRunnerInterface> test_runner,
     DeviceShapeRepresentationFn device_shape_representation_fn,
     DeviceShapeSizeFn device_shape_size_fn,
+    HloRunnerAgnosticTestBaseOptions options)
+    : HloHardwareIndependentTestBase(
+          options.verifier_layout_sensitive,
+          options.allow_mixed_precision_in_hlo_verifier,
+          std::move(options.instruction_can_change_layout_func)),
+      test_runner_(std::move(test_runner)),
+      device_shape_representation_fn_(
+          std::move(device_shape_representation_fn)),
+      device_shape_size_fn_(std::move(device_shape_size_fn)) {}
+
+HloRunnerAgnosticTestBase::HloRunnerAgnosticTestBase(
+    absl_nonnull std::unique_ptr<HloRunnerInterface> test_runner,
+    DeviceShapeRepresentationFn device_shape_representation_fn,
+    DeviceShapeSizeFn device_shape_size_fn,
     const bool verifier_layout_sensitive,
     const bool allow_mixed_precision_in_hlo_verifier,
     const HloPredicate instruction_can_change_layout_func)
