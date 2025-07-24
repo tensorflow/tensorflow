@@ -111,17 +111,7 @@ class Thunk {
   class TaskRunner {
    public:
     virtual ~TaskRunner() = default;
-
     virtual void operator()(Task task) = 0;
-
-    // Returns the current worker id if the caller happens to run on a thread
-    // managed by the task runner. Otherwise returns empty optional. Thunk
-    // executor relies on this information to do a best-effort resource
-    // isolation by making sure that all thunks are executed inside a task
-    // runner, and do not "leak" into arbitrary thread pools in the process,
-    // because by default we resume execution on a thread that completed thunk
-    // execute event AsyncValue, and it can be an external thread pool.
-    virtual std::optional<int64_t> current_worker_id() const = 0;
   };
 
   Thunk(Kind kind, Info info);
@@ -147,10 +137,19 @@ class Thunk {
   using ResourceUses = absl::InlinedVector<ResourceUse, 4>;
   virtual ResourceUses resource_uses() const { return {}; }
 
-  virtual std::vector<std::pair<std::string, const ThunkSequence*>>
-  nested_thunks() const {
-    return {};
-  }
+  // Returns the list of nested thunk sequences together with their names (i.e.
+  // for ConditionalThunk it returns thunk sequences for all branches).
+  using NamedThunkSequence = std::pair<std::string, const ThunkSequence*>;
+  virtual std::vector<NamedThunkSequence> nested_thunks() const { return {}; }
+
+  // Returns `true` if thunk execution uses thread pool(s) not owned by the
+  // XLA:CPU runtime, i.e. thunk execution happens asynchronously on the IO
+  // event manager thread pool. Thunk executor takes extra care to resume
+  // execution using the TaskRunner passed via the ExecuteParams, otherwise we
+  // can accidentally take over the thread pool that we do not own. By default
+  // thunk execution is resumed on a thread that sets the ExecuteEvent async
+  // value concrete.
+  virtual bool async_resume() const { return false; }
 
   //===--------------------------------------------------------------------===//
   // CollectiveExecuteParams

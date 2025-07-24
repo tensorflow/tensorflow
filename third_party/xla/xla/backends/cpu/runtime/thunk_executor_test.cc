@@ -66,34 +66,20 @@ using ::testing::ElementsAre;
 static int64_t shared_resource;
 
 // An adaptor from a lambda that runs tasks and a TaskRunner API.
-template <typename Runner, typename WorkerId>
+template <typename Runner>
 class TaskRunnerAdaptor : public Thunk::TaskRunner {
  public:
-  TaskRunnerAdaptor(Runner runner, WorkerId worker_id)
-      : runner_(std::move(runner)), worker_id_(std::move(worker_id)) {}
+  explicit TaskRunnerAdaptor(Runner runner) : runner_(std::move(runner)) {}
 
   void operator()(Thunk::Task task) final { runner_(std::move(task)); }
 
-  std::optional<int64_t> current_worker_id() const final {
-    return worker_id_();
-  }
-
  private:
   Runner runner_;
-  WorkerId worker_id_;
 };
 
 template <typename Runner>
 auto MakeTaskRunnerFrom(Runner&& runner) {
-  auto no_id = []() { return std::nullopt; };
-  return TaskRunnerAdaptor<Runner, decltype(no_id)>(
-      std::forward<Runner>(runner), no_id);
-}
-
-template <typename Runner, typename WorkerId>
-auto MakeTaskRunnerFrom(Runner&& runner, WorkerId&& worker_id) {
-  return TaskRunnerAdaptor<Runner, WorkerId>(std::forward<Runner>(runner),
-                                             std::forward<WorkerId>(worker_id));
+  return TaskRunnerAdaptor<Runner>(std::forward<Runner>(runner));
 }
 
 // A test-only thunk for verifying thunk executor implementation:
@@ -475,13 +461,10 @@ TEST(ThunkExecutorTest, Execute) {
   auto data = LiteralUtil::CreateFull({20}, int32_t{1});
   BufferAllocations allocations = CreateBufferAllocations(data);
 
-  auto task_runner = MakeTaskRunnerFrom(
-      [&](Thunk::Task task) {
-        trace.push_back("<TaskRunner>");
-        task();
-      },
-      // Always return current worker id as 0.
-      [] { return 0; });
+  auto task_runner = MakeTaskRunnerFrom([&](Thunk::Task task) {
+    trace.push_back("<TaskRunner>");
+    task();
+  });
 
   Thunk::ExecuteParams params = {nullptr, &allocations};
   params.task_runner = &task_runner;
@@ -531,6 +514,8 @@ class NoOpAsyncThunk : public Thunk {
   BufferUses buffer_uses() const override {
     return BufferUses{BufferUse::Write(slice_)};
   }
+
+  bool async_resume() const override { return true; }
 
  private:
   static tsl::thread::ThreadPool* ThreadPool() {
