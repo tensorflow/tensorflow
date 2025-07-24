@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -33,18 +34,44 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
+#include "mlir/Support/WalkResult.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
+#include "stablehlo/dialect/ChloOps.h"
 #include "stablehlo/dialect/Register.h"
 #include "stablehlo/dialect/Serialization.h"
+#include "stablehlo/dialect/StablehloOps.h"
+#include "stablehlo/dialect/Version.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
 #include "tsl/platform/protobuf.h"
 
+namespace vhlo = ::mlir::vhlo;
+
 namespace xla {
 namespace ifrt {
 
 namespace {
+
+// If `module` contains any dialect other than StableHLO or Shardy, returns that
+// dialect name as it is not approved for serialization to VHLO. Otherwise,
+// returns std::nullopt.
+std::optional<mlir::StringRef> findAtomProgramUnappprovedDialect(
+    mlir::ModuleOp module) {
+  std::optional<mlir::StringRef> unapproved_dialect = std::nullopt;
+  module->walk([&](mlir::Operation* op) {
+    if (!llvm::isa<mlir::ModuleOp>(op) &&
+        !llvm::isa<mlir::stablehlo::StablehloDialect, mlir::func::FuncDialect,
+                   mlir::chlo::ChloDialect, mlir::sdy::SdyDialect>(
+            op->getDialect())) {
+      unapproved_dialect = op->getDialect()->getNamespace();
+      return mlir::WalkResult::interrupt();
+    }
+    return mlir::WalkResult::advance();
+  });
+  return unapproved_dialect;
+}
 
 class IfrtAtomProgramsToVhloPass
     : public mlir::PassWrapper<IfrtAtomProgramsToVhloPass,
@@ -133,12 +160,24 @@ void IfrtAtomProgramsToVhloPass::runOnOperation() {
     auto tmp_module = CloneModuleUsingBuilder(stablehlo_module, tmp_builder);
     absl::Cleanup erase_tmp_module = [&]() { tmp_module.erase(); };
     // Convert the tmp module as VHLO.
+    if (auto unapproved_dialect =
+            findAtomProgramUnappprovedDialect(tmp_module)) {
+      return stablehlo_module->emitOpError()
+             << "unapproved dialect for serialization to VHLO: "
+             << *unapproved_dialect;
+    }
     IfrtIrAtomProgramProto* atom_program_proto = atom_programs_->Add();
     atom_program_proto->set_name(atom_program_name);
     atom_program_proto->set_version(vhlo_target_version_);
     llvm::raw_string_ostream os(*atom_program_proto->mutable_program());
+    // We need to pass `allowOtherDialects=true` if
+    // `stablehlo_version >= 1.11.0`, since the lowered module from JAX can
+    // have a mix of StableHLO and Shardy dialects.
+    vhlo::Version mixed_serialization_ok = vhlo::Version(1, 11, 0);
+    bool allow_other_dialects = mixed_serialization_ok <=
+                                vhlo::Version::fromString(vhlo_target_version_);
     if (mlir::failed(mlir::stablehlo::serializePortableArtifact(
-            tmp_module, vhlo_target_version_, os))) {
+            tmp_module, vhlo_target_version_, os, allow_other_dialects))) {
       return stablehlo_module->emitOpError() << "failed to serialize to VHLO";
     }
     return mlir::WalkResult::advance();
