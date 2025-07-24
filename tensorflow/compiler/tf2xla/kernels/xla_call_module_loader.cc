@@ -536,7 +536,9 @@ absl::Status XlaCallModuleLoader::PrepareStablehloForLowering() {
   if (use_shardy_partitioner_) {
     // We need to export shardings because the lowering path go directly to
     // HLO but not the MLIR to HLO path that invokes SdyRoundTripExport.
-    xla::sdy::addSdyRoundTripExportPipeline(pm);
+    // We keep meshes inlined to avoid naming collisions when multiple
+    // XlaCallModules are combined.
+    xla::sdy::addSdyRoundTripExportPipeline(pm, /*keepMeshesInlined=*/true);
   }
 
   if (failed(pm.run(*module_))) {

@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Pass/PassOptions.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
+#include "shardy/dialect/sdy/transforms/import/passes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/spmd/shardy/round_trip_common/export_named_computations.h"
 #include "xla/service/spmd/shardy/round_trip_common/pipeline_passes.h"
@@ -40,7 +41,13 @@ namespace sdy {
 using ::mlir::PassPipelineOptions;
 using ::mlir::PassPipelineRegistration;
 
-void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm) {
+void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
+                                   bool keepMeshesInlined) {
+  // Lift meshes before deduping, since the dedup meshes pass ignores inlined
+  // meshes.
+  if (!keepMeshesInlined) {
+    pm.addPass(mlir::sdy::createLiftInlinedMeshesPass());
+  }
   pm.addPass(createSdyRoundTripDedupMeshesPass());
   pm.addPass(createExportNamedComputationsPass());
   pm.addPass(createSdyRoundTripExportOpsPass());
@@ -60,12 +67,29 @@ void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
   addCommonPostImportPasses(pm);
 }
 
+namespace {
+
+struct SdyRoundTripExportPipelineOptions
+    : public PassPipelineOptions<SdyRoundTripExportPipelineOptions> {
+  Option<bool> keepMeshesInlined{
+      *this, "keep-meshes-inlined",
+      llvm::cl::desc("Whether to keep meshes inlined and not lift them."),
+      llvm::cl::init(false)};
+};
+
+void sdyRoundTripExportPipeline(
+    mlir::OpPassManager& pm, const SdyRoundTripExportPipelineOptions& options) {
+  addSdyRoundTripExportPipeline(pm, options.keepMeshesInlined);
+}
+
+}  // namespace
+
 void registerSdyRoundTripExportPipeline() {
-  PassPipelineRegistration<> exportPipeline(
+  PassPipelineRegistration<SdyRoundTripExportPipelineOptions> exportPipeline(
       "xla-sdy-round-trip-export-pipeline",
       "Run passes to export the SDY (Shardy) dialect into an StableHLO module, "
       "but with the SDY ops/attrs saved for roundtripping.",
-      addSdyRoundTripExportPipeline);
+      sdyRoundTripExportPipeline);
 }
 
 namespace {
