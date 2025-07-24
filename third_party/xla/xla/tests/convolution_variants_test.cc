@@ -24,6 +24,7 @@ limitations under the License.
 #include <random>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/types/span.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
@@ -42,13 +43,12 @@ limitations under the License.
 namespace xla {
 namespace {
 
-#if XLA_TEST_BACKEND_GPU
-// XLA:GPU sometimes uses FFT convolution which isn't as precise as spatial
-// convolution. So relax the absolute error threshold.
-ErrorSpec kErrorSpec(1e-1, 1e-5);
-#else
-ErrorSpec kErrorSpec(1e-4, 1e-2);
-#endif
+ErrorSpec MakeErrorSpec() {
+  // XLA:GPU sometimes uses FFT convolution which isn't as precise as spatial
+  // convolution. So relax the absolute error threshold.
+  return test::DeviceTypeIs(test::kGpu) ? ErrorSpec(1e-1, 1e-5)
+                                        : ErrorSpec(1e-4, 1e-2);
+}
 
 XlaOp ConvWithHighestPrecision(const XlaOp lhs, const XlaOp rhs,
                                absl::Span<const int64_t> window_strides,
@@ -76,7 +76,7 @@ TEST_F(ConvolutionVariantsTest, Minimal) {
   Conv(input, filter, {1, 1}, Padding::kValid);
 
   const Array4D<float> expected(1, 1, 1, 1, {6});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, MinimalWithBatch) {
@@ -91,7 +91,7 @@ TEST_F(ConvolutionVariantsTest, MinimalWithBatch) {
   Conv(input, filter, {1, 1}, Padding::kValid);
 
   const Array4D<float> expected(5, 1, 1, 1, {2, 4, 6, 8, 10});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Flat1x1) {
@@ -108,7 +108,7 @@ TEST_F(ConvolutionVariantsTest, Flat1x1) {
 
   Array4D<float> expected(2, 1, 3, 4);
   expected.FillWithMultiples(2.3);
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Deep1x1) {
@@ -123,7 +123,7 @@ TEST_F(ConvolutionVariantsTest, Deep1x1) {
   Conv(input, filter, {1, 1}, Padding::kValid);
 
   Array4D<float> expected(1, 3, 1, 1, {12, 34, 56});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter1x2in1x2) {
@@ -138,7 +138,7 @@ TEST_F(ConvolutionVariantsTest, Filter1x2in1x2) {
   Conv(input, filter, {1, 1}, Padding::kValid);
 
   Array4D<float> expected(1, 1, 1, 1, {12});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter1x2in1x3) {
@@ -153,7 +153,7 @@ TEST_F(ConvolutionVariantsTest, Filter1x2in1x3) {
   Conv(input, filter, {1, 1}, Padding::kValid);
 
   Array4D<float> expected(1, 1, 1, 2, {12, 23});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter1x2in2x2) {
@@ -168,7 +168,7 @@ TEST_F(ConvolutionVariantsTest, Filter1x2in2x2) {
   Conv(input, filter, {1, 1}, Padding::kValid);
 
   Array4D<float> expected(1, 1, 2, 1, {12, 34});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter2x1in2x2) {
@@ -183,7 +183,7 @@ TEST_F(ConvolutionVariantsTest, Filter2x1in2x2) {
   Conv(input, filter, {1, 1}, Padding::kValid);
 
   Array4D<float> expected(1, 1, 1, 2, {13, 24});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter2x2in2x2) {
@@ -198,7 +198,7 @@ TEST_F(ConvolutionVariantsTest, Filter2x2in2x2) {
   Conv(input, filter, {1, 1}, Padding::kValid);
 
   Array4D<float> expected(1, 1, 1, 1, {1234});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter1x2in2x3WithDepthAndBatch) {
@@ -219,7 +219,7 @@ TEST_F(ConvolutionVariantsTest, Filter1x2in2x3WithDepthAndBatch) {
       2, 2, 2, 2,
       {167, 1278, 3490, 4500, 0.0167, 0.1278, 0.3490, 0.4500,    // plane 0
        334, 2556, 6980, 9000, 0.0334, 0.2556, 0.6980, 0.9000});  // plane 1
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter1x1stride1x2in1x4) {
@@ -234,7 +234,7 @@ TEST_F(ConvolutionVariantsTest, Filter1x1stride1x2in1x4) {
   Conv(input, filter, {1, 2}, Padding::kValid);
 
   Array4D<float> expected(1, 1, 1, 2, {10, 30});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter1x1stride1x2in1x5) {
@@ -249,7 +249,7 @@ TEST_F(ConvolutionVariantsTest, Filter1x1stride1x2in1x5) {
   Conv(input, filter, {1, 2}, Padding::kValid);
 
   Array4D<float> expected(1, 1, 1, 3, {10, 30, 50});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter1x3stride1x2in1x4) {
@@ -264,7 +264,7 @@ TEST_F(ConvolutionVariantsTest, Filter1x3stride1x2in1x4) {
   Conv(input, filter, {1, 2}, Padding::kValid);
 
   Array4D<float> expected(1, 1, 1, 1, {123});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter1x3stride1x2in1x5) {
@@ -279,7 +279,7 @@ TEST_F(ConvolutionVariantsTest, Filter1x3stride1x2in1x5) {
   Conv(input, filter, {1, 2}, Padding::kValid);
 
   Array4D<float> expected(1, 1, 1, 2, {123, 345});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter1x1stride2x2in3x3) {
@@ -294,7 +294,7 @@ TEST_F(ConvolutionVariantsTest, Filter1x1stride2x2in3x3) {
   Conv(input, filter, {2, 2}, Padding::kValid);
 
   Array4D<float> expected(1, 1, 2, 2, {10, 30, 70, 90});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter3x1in1x1Padded) {
@@ -309,7 +309,7 @@ TEST_F(ConvolutionVariantsTest, Filter3x1in1x1Padded) {
   Conv(input, filter, {1, 1}, Padding::kSame);
 
   Array4D<float> expected(1, 1, 1, 1, {20});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter5x1in3x1Padded) {
@@ -324,7 +324,7 @@ TEST_F(ConvolutionVariantsTest, Filter5x1in3x1Padded) {
   Conv(input, filter, {1, 1}, Padding::kSame);
 
   Array4D<float> expected(1, 1, 1, 3, {123, 1230, 12300});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter3x3in2x2Padded) {
@@ -342,7 +342,7 @@ TEST_F(ConvolutionVariantsTest, Filter3x3in2x2Padded) {
   Conv(input, filter, {1, 1}, Padding::kSame);
 
   Array4D<float> expected(1, 1, 2, 2, {104, 230, 2300, 10400});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter1x1in2x1WithPaddingAndDepth) {
@@ -357,7 +357,7 @@ TEST_F(ConvolutionVariantsTest, Filter1x1in2x1WithPaddingAndDepth) {
   Conv(input, filter, {1, 1}, Padding::kSame);
 
   Array4D<float> expected(1, 1, 1, 2, {13, 24});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter2x2Stride1x1Input3x3) {
@@ -372,7 +372,7 @@ TEST_F(ConvolutionVariantsTest, Filter2x2Stride1x1Input3x3) {
   Conv(input, filter, {1, 1}, Padding::kValid);
 
   Array4D<float> expected(1, 1, 2, 2, {216, 276, 396, 456});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter1x2Stride1x1Input1x3) {
@@ -387,7 +387,7 @@ TEST_F(ConvolutionVariantsTest, Filter1x2Stride1x1Input1x3) {
   Conv(input, filter, {1, 1}, Padding::kValid);
 
   Array4D<float> expected(1, 1, 1, 2, {33, 53});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter2x1x8x8Input1x1x8x8) {
@@ -407,7 +407,7 @@ TEST_F(ConvolutionVariantsTest, Filter2x1x8x8Input1x1x8x8) {
   Conv(input, filter, {1, 1}, Padding::kValid);
 
   Array4D<float> expected(1, 2, 1, 1, {2016, 4032});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter1x1x1x1Input16x1x1x1) {
@@ -428,7 +428,7 @@ TEST_F(ConvolutionVariantsTest, Filter1x1x1x1Input16x1x1x1) {
   std::vector<float> expected_data = {1, 2,  3,  4,  5,  6,  7,  8,
                                       9, 10, 11, 12, 13, 14, 15, 16};
   Array4D<float> expected(16, 1, 1, 1, expected_data);
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter1x1x2x2Input16x1x2x2) {
@@ -459,7 +459,7 @@ TEST_F(ConvolutionVariantsTest, Filter1x1x2x2Input16x1x2x2) {
     expected_data[i] = 10 * (i + 1);
   }
   Array4D<float> expected(bs, 1, 1, 1, expected_data);
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter1x1x2x2Input3x1x2x2) {
@@ -491,7 +491,7 @@ TEST_F(ConvolutionVariantsTest, Filter1x1x2x2Input3x1x2x2) {
       43,
   };
   Array4D<float> expected(bs, 1, 1, 1, expected_data);
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter1x1x8x8Input16x1x8x8) {
@@ -519,7 +519,7 @@ TEST_F(ConvolutionVariantsTest, Filter1x1x8x8Input16x1x8x8) {
       36304, 38384, 40464, 42544, 44624, 46704, 48784, 50864,
   };
   Array4D<float> expected(16, 1, 1, 1, expected_data);
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter2x2x8x8Input1x2x8x8) {
@@ -545,7 +545,7 @@ TEST_F(ConvolutionVariantsTest, Filter2x2x8x8Input1x2x8x8) {
   Conv(input, filter, {1, 1}, Padding::kValid);
 
   Array4D<float> expected(1, 2, 1, 1, {14240, 30496});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter2x2x8x8Input2x2x8x8) {
@@ -571,7 +571,7 @@ TEST_F(ConvolutionVariantsTest, Filter2x2x8x8Input2x2x8x8) {
   Conv(input, filter, {1, 1}, Padding::kValid);
 
   Array4D<float> expected(2, 2, 1, 1, {14240, 30496, 38816, 87840});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter2x2x8x8Input32x2x8x8) {
@@ -611,7 +611,7 @@ TEST_F(ConvolutionVariantsTest, Filter2x2x8x8Input32x2x8x8) {
   Array4D<float> expected(32, 2, 1, 1, expected_data);
   // The output elements can be larger than 1e+5, making the absolute error
   // large sometimes. So, we focus on relative errors for this test case.
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter16x16x1x1Input16x16x1x1) {
@@ -637,7 +637,7 @@ TEST_F(ConvolutionVariantsTest, Filter16x16x1x1Input16x16x1x1) {
     }
   }
 
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, FlatRhsDilation) {
@@ -656,7 +656,7 @@ TEST_F(ConvolutionVariantsTest, FlatRhsDilation) {
       XlaBuilder::CreateDefaultConvDimensionNumbers());
 
   Array4D<float> expected(1, 1, 2, 2, {3924, 4257, 5922, 6255});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, FlatLhsDilation1D) {
@@ -675,7 +675,7 @@ TEST_F(ConvolutionVariantsTest, FlatLhsDilation1D) {
       XlaBuilder::CreateDefaultConvDimensionNumbers());
 
   Array4D<float> expected(1, 1, 1, 8, {10, 2, 20, 3, 30, 4, 40, 5});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, FlatLhsDilation) {
@@ -701,7 +701,7 @@ TEST_F(ConvolutionVariantsTest, FlatLhsDilation) {
                           {204, 40, 406, 60, 608,       //
                            1518, 180, 1821, 210, 2124,  //
                            4146, 460, 4651, 510, 5156});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, NegativePaddingOnBothEnds) {
@@ -720,7 +720,7 @@ TEST_F(ConvolutionVariantsTest, NegativePaddingOnBothEnds) {
       XlaBuilder::CreateDefaultConvDimensionNumbers());
 
   Array4D<float> expected(1, 1, 1, 2, {23, 34});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, NegativePaddingLowAndPositivePaddingHigh) {
@@ -739,7 +739,7 @@ TEST_F(ConvolutionVariantsTest, NegativePaddingLowAndPositivePaddingHigh) {
       XlaBuilder::CreateDefaultConvDimensionNumbers());
 
   Array4D<float> expected(1, 1, 1, 5, {23, 34, 45, 50, 0});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, PositivePaddingLowAndNegativePaddingHigh) {
@@ -758,7 +758,7 @@ TEST_F(ConvolutionVariantsTest, PositivePaddingLowAndNegativePaddingHigh) {
       XlaBuilder::CreateDefaultConvDimensionNumbers());
 
   Array4D<float> expected(1, 1, 1, 5, {0, 1, 12, 23, 34});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, PositivePaddingAndDilation) {
@@ -784,7 +784,7 @@ TEST_F(ConvolutionVariantsTest, PositivePaddingAndDilation) {
   //   [10, 1] --dilate-> [10, 0, 1]
   Array4D<float> expected(1, 1, 1, 12,
                           {0, 1, 0, 12, 0, 23, 0, 34, 0, 45, 0, 50});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 TEST_F(ConvolutionVariantsTest, NegativePaddingAndDilation) {
   XlaBuilder builder(TestName());
@@ -808,7 +808,7 @@ TEST_F(ConvolutionVariantsTest, NegativePaddingAndDilation) {
   // filter:
   //   [10, 1] --dilate-> [10, 0, 1]
   Array4D<float> expected(1, 1, 1, 2, {0, 34});
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, RandomData_Input1x1x2x3_Filter2x1x1x2) {
@@ -841,7 +841,7 @@ TEST_F(ConvolutionVariantsTest, RandomData_Input1x1x2x3_Filter2x1x1x2) {
   std::unique_ptr<Array4D<float>> expected = ReferenceUtil::ConvArray4D(
       input_array, filter_array, {1, 1}, Padding::kValid);
 
-  ComputeAndCompareR4<float>(&builder, *expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, *expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, RandomData_Input1x16x1x1_Filter1x16x1x1) {
@@ -874,7 +874,7 @@ TEST_F(ConvolutionVariantsTest, RandomData_Input1x16x1x1_Filter1x16x1x1) {
   std::unique_ptr<Array4D<float>> expected = ReferenceUtil::ConvArray4D(
       input_array, filter_array, {1, 1}, Padding::kValid);
 
-  ComputeAndCompareR4<float>(&builder, *expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, *expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, RandomData_Input16x16x1x1_Filter1x16x1x1) {
@@ -907,7 +907,7 @@ TEST_F(ConvolutionVariantsTest, RandomData_Input16x16x1x1_Filter1x16x1x1) {
   std::unique_ptr<Array4D<float>> expected = ReferenceUtil::ConvArray4D(
       input_array, filter_array, {1, 1}, Padding::kValid);
 
-  ComputeAndCompareR4<float>(&builder, *expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, *expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, RandomData_Input16x16x1x1_Filter16x16x1x1) {
@@ -940,7 +940,7 @@ TEST_F(ConvolutionVariantsTest, RandomData_Input16x16x1x1_Filter16x16x1x1) {
   std::unique_ptr<Array4D<float>> expected = ReferenceUtil::ConvArray4D(
       input_array, filter_array, {1, 1}, Padding::kValid);
 
-  ComputeAndCompareR4<float>(&builder, *expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, *expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, RandomData_Input16x16x16x16_Filter16x16x16x16) {
@@ -973,7 +973,7 @@ TEST_F(ConvolutionVariantsTest, RandomData_Input16x16x16x16_Filter16x16x16x16) {
   std::unique_ptr<Array4D<float>> expected = ReferenceUtil::ConvArray4D(
       input_array, filter_array, {1, 1}, Padding::kValid);
 
-  ComputeAndCompareR4<float>(&builder, *expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, *expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter1x2x1x1Input1x2x3x1GeneralPadding) {
@@ -1017,7 +1017,7 @@ TEST_F(ConvolutionVariantsTest, Filter1x2x1x1Input1x2x3x1GeneralPadding) {
       0, 0, 0,  0,  0, 0, 0   //
   };
   Array4D<float> expected(1, 5, 7, 1, expected_data);
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter1x1x1x1Input1x2x3x1GeneralPadding) {
@@ -1061,7 +1061,7 @@ TEST_F(ConvolutionVariantsTest, Filter1x1x1x1Input1x2x3x1GeneralPadding) {
       0, 0, 0, 0,  0,  0, 0, 0   //
   };
   Array4D<float> expected(1, 5, 8, 1, expected_data);
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter1x1x1x1Input1x2x3x1NoPadding) {
@@ -1102,7 +1102,7 @@ TEST_F(ConvolutionVariantsTest, Filter1x1x1x1Input1x2x3x1NoPadding) {
       8, 10, 12,
   };
   Array4D<float> expected(1, 2, 3, 1, expected_data);
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, Filter1x1x2x3Input1x2x3x2NoPadding) {
@@ -1147,7 +1147,7 @@ TEST_F(ConvolutionVariantsTest, Filter1x1x2x3Input1x2x3x2NoPadding) {
       82, 105, 128,  //
   };
   Array4D<float> expected(1, 2, 3, 3, expected_data);
-  ComputeAndCompareR4<float>(&builder, expected, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, expected, {}, MakeErrorSpec());
 }
 
 // Regression test for b/32034796.
@@ -1167,7 +1167,7 @@ TEST_F(ConvolutionVariantsTest, BackwardInputLowPaddingLessThanHighPadding) {
   ConvWithGeneralPadding(gradients, mirrored_weights,
                          /*window_strides=*/{1, 1},
                          /*padding=*/{{0, 0}, {1, 0}});
-  ComputeAndCompareR4<float>(&builder, {{{{5, 16, 27}}}}, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, {{{{5, 16, 27}}}}, {}, MakeErrorSpec());
 }
 
 // XLA:GPU fuses
@@ -1187,7 +1187,7 @@ TEST_F(ConvolutionVariantsTest, BackwardInputLowPaddingGreaterThanHighPadding) {
                      /*padding=*/{{0, 0}, {0, 3}},
                      /*lhs_dilation=*/{1, 3}, /*rhs_dilation=*/{},
                      XlaBuilder::CreateDefaultConvDimensionNumbers());
-  ComputeAndCompareR4<float>(&builder, {{{{100, 0}}}}, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, {{{{100, 0}}}}, {}, MakeErrorSpec());
 }
 
 // XLA:GPU fuses
@@ -1205,7 +1205,7 @@ TEST_F(ConvolutionVariantsTest, BackwardInputEvenPadding) {
   ConvWithGeneralPadding(gradients, mirrored_weights,
                          /*window_strides=*/{1, 1},
                          /*padding=*/{{0, 0}, {1, 1}});
-  ComputeAndCompareR4<float>(&builder, {{{{10}}}}, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, {{{{10}}}}, {}, MakeErrorSpec());
 }
 
 // HLO pattern
@@ -1227,7 +1227,8 @@ TEST_F(ConvolutionVariantsTest, BackwardInputWithNegativePaddingHigh) {
                          /*window_strides=*/{1, 1},
                          /*padding=*/{{0, 0}, {0, 2}});
 
-  ComputeAndCompareR4<float>(&builder, {{{{12, 23, 30, 0}}}}, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, {{{{12, 23, 30, 0}}}}, {},
+                             MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, BackwardFilterLowPaddingLessThanHighPadding) {
@@ -1250,7 +1251,8 @@ TEST_F(ConvolutionVariantsTest, BackwardFilterLowPaddingLessThanHighPadding) {
                          XlaBuilder::CreateDefaultConvDimensionNumbers());
   Transpose(forward_conv, {0, 1, 2, 3});
 
-  ComputeAndCompareR4<float>(&builder, {{{{24, 130, 240}}}}, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, {{{{24, 130, 240}}}}, {},
+                             MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest,
@@ -1276,7 +1278,7 @@ TEST_F(ConvolutionVariantsTest,
                          XlaBuilder::CreateDefaultConvDimensionNumbers());
   Transpose(forward_conv, {0, 1, 2, 3});
 
-  ComputeAndCompareR4<float>(&builder, {{{{13, 24}}}}, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, {{{{13, 24}}}}, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding) {
@@ -1303,7 +1305,8 @@ TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding) {
                          XlaBuilder::CreateDefaultConvDimensionNumbers());
   Transpose(forward_conv, {0, 1, 2, 3});
 
-  ComputeAndCompareR4<float>(&builder, {{{{13, 24, 130}}}}, {}, kErrorSpec);
+  ComputeAndCompareR4<float>(&builder, {{{{13, 24, 130}}}}, {},
+                             MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, BackwardInputEvenPadding1D) {
@@ -1317,7 +1320,7 @@ TEST_F(ConvolutionVariantsTest, BackwardInputEvenPadding1D) {
   ConvWithGeneralPadding(gradients, mirrored_weights,
                          /*window_strides=*/{1},
                          /*padding=*/{{1, 1}});
-  ComputeAndCompareR3<float>(&builder, {{{10}}}, {}, kErrorSpec);
+  ComputeAndCompareR3<float>(&builder, {{{10}}}, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding1D) {
@@ -1336,7 +1339,7 @@ TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding1D) {
                              /*num_spatial_dims=*/1));
   Transpose(forward_conv, {0, 1, 2});
 
-  ComputeAndCompareR3<float>(&builder, {{{13, 24, 130}}}, {}, kErrorSpec);
+  ComputeAndCompareR3<float>(&builder, {{{13, 24, 130}}}, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, BackwardInputEvenPadding3D) {
@@ -1357,7 +1360,7 @@ TEST_F(ConvolutionVariantsTest, BackwardInputEvenPadding3D) {
   ConvWithGeneralPadding(gradients, mirrored_weights,
                          /*window_strides=*/{1, 1, 1},
                          /*padding=*/{{0, 0}, {0, 0}, {1, 1}});
-  ComputeAndCompareLiteral(&builder, expected_literal, {}, kErrorSpec);
+  ComputeAndCompareLiteral(&builder, expected_literal, {}, MakeErrorSpec());
 }
 
 TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding3D) {
@@ -1382,7 +1385,7 @@ TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding3D) {
                          XlaBuilder::CreateDefaultConvDimensionNumbers(
                              /*num_spatial_dims=*/3));
   Transpose(forward_conv, {0, 1, 2, 3, 4});
-  ComputeAndCompareLiteral(&builder, expected_literal, {}, kErrorSpec);
+  ComputeAndCompareLiteral(&builder, expected_literal, {}, MakeErrorSpec());
 }
 
 }  // namespace
