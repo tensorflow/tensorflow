@@ -1146,7 +1146,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
             operands.push_back(std::nullopt);
             return absl::OkStatus();
           }
-          if (!subshape.IsArrayOrBuffer()) {
+          if (!subshape.IsArray()) {
             return absl::OkStatus();
           }
           TF_ASSIGN_OR_RETURN(auto slice,
@@ -1163,7 +1163,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
           results.push_back(std::nullopt);
           return absl::OkStatus();
         }
-        if (!subshape.IsArrayOrBuffer()) {
+        if (!subshape.IsArray()) {
           return absl::OkStatus();
         }
         TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForHlo(instr, index));
