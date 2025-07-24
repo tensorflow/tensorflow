@@ -1618,6 +1618,9 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, AllReduceConvertAccumulateUse) {
 
 // Test single all reduce and single dynamic update slice.
 TEST_F(WhileLoopAllReduceCodeMotionTest, SingleAllReduceDUS) {
+  // TODO(b/433921585): Re-enable this test after the feature is reenabled.
+  GTEST_SKIP();
+
   constexpr absl::string_view kHloModule = R"(
     HloModule single_all_reduce_dus
 
@@ -1670,6 +1673,9 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, SingleAllReduceDUS) {
 
 // Test single all reduce with convert and multiple dynamic update slices.
 TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleDUSAndConvert) {
+  // TODO(b/433921585): Re-enable this test after the feature is reenabled.
+  GTEST_SKIP();
+
   constexpr absl::string_view kHloModule = R"(
     HloModule multiple_dus_and_convert
 
@@ -1737,6 +1743,9 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleDUSAndConvert) {
 
 // Test multiple all-reduce ops with different types.
 TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleAllReduceDifferentTypes) {
+  // TODO(b/433921585): Re-enable this test after the feature is reenabled.
+  GTEST_SKIP();
+
   constexpr absl::string_view kHloModule = R"(
     HloModule multiple_all_reduce_different_types
 
@@ -1801,6 +1810,9 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleAllReduceDifferentTypes) {
 
 // Test multiple while ops calling the same computation.
 TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleWhileOps) {
+  // TODO(b/433921585): Re-enable this test after the feature is reenabled.
+  GTEST_SKIP();
+
   constexpr absl::string_view kHloModule = R"(
     HloModule multiple_while_ops
 
@@ -1861,6 +1873,9 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleWhileOps) {
 
 // Test single all reduce with reverse indexing.
 TEST_F(WhileLoopAllReduceCodeMotionTest, ReverseIndexing) {
+  // TODO(b/433921585): Re-enable this test after the feature is reenabled.
+  GTEST_SKIP();
+
   constexpr absl::string_view kHloModule = R"(
     HloModule reverse_indexing
 
@@ -1914,6 +1929,9 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, ReverseIndexing) {
 
 // Test that only the loop induction variable may be used for indexing.
 TEST_F(WhileLoopAllReduceCodeMotionTest, InvalidIndexing) {
+  // TODO(b/433921585): Re-enable this test after the feature is reenabled.
+  GTEST_SKIP();
+
   constexpr absl::string_view kHloModule = R"(
     HloModule invalid_indexing
 
@@ -1957,6 +1975,9 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, InvalidIndexing) {
 
 // Test that updates do not overlap (update size is 1).
 TEST_F(WhileLoopAllReduceCodeMotionTest, OverlappingUpdates) {
+  // TODO(b/433921585): Re-enable this test after the feature is reenabled.
+  GTEST_SKIP();
+
   constexpr absl::string_view kHloModule = R"(
     HloModule overlapping_updates
 
@@ -2002,6 +2023,9 @@ class AllReduceCodeMotionLoopTest
       public ::testing::WithParamInterface<std::tuple<int, int>> {};
 
 TEST_P(AllReduceCodeMotionLoopTest, InvalidLoop) {
+  // TODO(b/433921585): Re-enable this test after the feature is reenabled.
+  GTEST_SKIP();
+
   const auto& [start, step] = GetParam();
   std::string hlo_module = absl::Substitute(R"(
     HloModule invalid_loop
@@ -2053,6 +2077,9 @@ class AllReduceCodeMotionUserTest
       public ::testing::WithParamInterface<std::string> {};
 
 TEST_P(AllReduceCodeMotionUserTest, UserPreventsCodeMotion) {
+  // TODO(b/433921585): Re-enable this test after the feature is reenabled.
+  GTEST_SKIP();
+
   // Extract shape, op and optional init.
   std::vector<std::string> shape_and_op =
       absl::StrSplit(GetParam(), absl::MaxSplits(' ', 1));
@@ -2115,6 +2142,9 @@ INSTANTIATE_TEST_SUITE_P(
 
 // Test that users of all-reduce in the loop condition prevent code motion.
 TEST_F(WhileLoopAllReduceCodeMotionTest, LoopConditionUserPreventsCodeMotion) {
+  // TODO(b/433921585): Re-enable this test after the feature is reenabled.
+  GTEST_SKIP();
+
   constexpr absl::string_view kHloModule = R"(
     HloModule loop_condition_user_prevents_code_motion
 
@@ -2156,6 +2186,9 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, LoopConditionUserPreventsCodeMotion) {
 
 // Test that both dynamic update slice and accumulation are supported.
 TEST_F(WhileLoopAllReduceCodeMotionTest, ComputationWithDUSAndAccumulation) {
+  // TODO(b/433921585): Re-enable this test after the feature is reenabled.
+  GTEST_SKIP();
+
   constexpr absl::string_view kHloModule = R"(
     HloModule computation_with_dus_and_accumulation
 
