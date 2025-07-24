@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
@@ -79,7 +80,8 @@ bool IsBufferOnDevice(se::Stream* stream, const void* ptr) {
 class HostExecuteCallFrame {
  public:
   static absl::StatusOr<HostExecuteCallFrame> Create(
-      se::Stream* stream, const BufferAllocations* buffer_allocations,
+      se::Stream* device_to_host_stream, se::Stream* host_to_device_stream,
+      const BufferAllocations* buffer_allocations,
       HostOffloadingAllocator& allocator,
       absl::Span<HostExecuteStartThunk::SliceAndShape> args,
       absl::Span<HostExecuteStartThunk::SliceAndShape> results,
@@ -94,7 +96,8 @@ class HostExecuteCallFrame {
 
  protected:
   HostExecuteCallFrame(
-      se::Stream* stream, const BufferAllocations* buffer_allocations,
+      se::Stream* host_to_device_stream,
+      const BufferAllocations* buffer_allocations,
       std::vector<ShapeTree<HostOffloadingBuffer>> parameters,
       ShapeTree<HostOffloadingBuffer> result,
       absl::Span<HostExecuteStartThunk::SliceAndShape> result_slices,
@@ -106,7 +109,7 @@ class HostExecuteCallFrame {
       const ProgramShape& program_shape);
 
  private:
-  se::Stream* stream_;
+  se::Stream* host_to_device_stream_;
   const BufferAllocations* buffer_allocations_;
   std::vector<ShapeTree<HostOffloadingBuffer>> parameters_;
   ShapeTree<HostOffloadingBuffer> result_;
@@ -173,7 +176,8 @@ absl::Status HostExecuteCallFrame::ValidateArgsAndResults(
 }
 
 absl::StatusOr<HostExecuteCallFrame> HostExecuteCallFrame::Create(
-    se::Stream* stream, const BufferAllocations* buffer_allocations,
+    se::Stream* device_to_host_stream, se::Stream* host_to_device_stream,
+    const BufferAllocations* buffer_allocations,
     HostOffloadingAllocator& allocator,
     absl::Span<HostExecuteStartThunk::SliceAndShape> args,
     absl::Span<HostExecuteStartThunk::SliceAndShape> results,
@@ -187,7 +191,7 @@ absl::StatusOr<HostExecuteCallFrame> HostExecuteCallFrame::Create(
 
   for (const auto& [slice, shape] : args) {
     auto buffer_allocation = buffer_allocations->GetDeviceAddress(slice);
-    if (IsBufferOnDevice(stream, buffer_allocation.opaque())) {
+    if (IsBufferOnDevice(device_to_host_stream, buffer_allocation.opaque())) {
       // Copy device memory to host memory.
       TF_ASSIGN_OR_RETURN(
           buffers.emplace_back(),
@@ -197,9 +201,9 @@ absl::StatusOr<HostExecuteCallFrame> HostExecuteCallFrame::Create(
           shape, HostOffloadingBuffer(buffers.back()->untyped_data(),
                                       buffers.back()->size_bytes())));
 
-      TF_RETURN_IF_ERROR(stream->Memcpy(buffers.back()->untyped_data(),
-                                        buffer_allocation,
-                                        buffers.back()->size_bytes()));
+      TF_RETURN_IF_ERROR(device_to_host_stream->Memcpy(
+          buffers.back()->untyped_data(), buffer_allocation,
+          buffers.back()->size_bytes()));
     } else {
       // We don't allocate as buffer is already in host memory.
       parameters.push_back(ShapeTree<HostOffloadingBuffer>(
@@ -216,36 +220,32 @@ absl::StatusOr<HostExecuteCallFrame> HostExecuteCallFrame::Create(
     const auto& [slice, shape] = results[result_leaf_index++];
     auto buffer_allocation = buffer_allocations->GetDeviceAddress(slice);
 
-    if (IsBufferOnDevice(stream, buffer_allocation.opaque())) {
+    if (IsBufferOnDevice(host_to_device_stream, buffer_allocation.opaque())) {
       TF_ASSIGN_OR_RETURN(
           buffers.emplace_back(),
           allocator.AllocateTransferBuffer(ShapeUtil::ByteSizeOf(shape)));
       result_buffer = HostOffloadingBuffer(buffers.back()->untyped_data(),
                                            buffers.back()->size_bytes());
     } else {
-      // We don't allocate as buffer is already in host
-      // memory.
+      // We don't allocate as buffer is already in host memory.
       result_buffer = HostOffloadingBuffer(buffer_allocation.opaque(),
                                            buffer_allocation.size());
     }
   }
 
-  // Wait for arguments to be copied into host memory.
-  // TODO(basioli): Move blocking to the host callbacks.
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
-
-  return HostExecuteCallFrame(stream, buffer_allocations, std::move(parameters),
-                              std::move(result), std::move(results),
-                              std::move(buffers));
+  return HostExecuteCallFrame(host_to_device_stream, buffer_allocations,
+                              std::move(parameters), std::move(result),
+                              std::move(results), std::move(buffers));
 }
 
 HostExecuteCallFrame::HostExecuteCallFrame(
-    se::Stream* stream, const BufferAllocations* buffer_allocations,
+    se::Stream* host_to_device_stream,
+    const BufferAllocations* buffer_allocations,
     std::vector<ShapeTree<HostOffloadingBuffer>> parameters,
     ShapeTree<HostOffloadingBuffer> result,
     absl::Span<HostExecuteStartThunk::SliceAndShape> result_slices,
     std::vector<std::unique_ptr<HostOffloadingAllocator::Buffer>> buffers)
-    : stream_(stream),
+    : host_to_device_stream_(host_to_device_stream),
       buffer_allocations_(buffer_allocations),
       parameters_(std::move(parameters)),
       result_(std::move(result)),
@@ -257,7 +257,7 @@ absl::Status HostExecuteCallFrame::PublishResult() && {
   for (const auto& [index, buffer] : result_.leaves()) {
     auto result_buffer = buffer_allocations_->GetDeviceAddress(
         result_slices_[result_leaf_index++].slice);
-    if ((!IsBufferOnDevice(stream_, result_buffer.opaque()))) {
+    if (!IsBufferOnDevice(host_to_device_stream_, result_buffer.opaque())) {
       // No need to copy result since the result is expected to be in host
       // memory and should match the buffer used for execution.
       CHECK(result_buffer.opaque() == buffer.opaque_base());
@@ -265,13 +265,16 @@ absl::Status HostExecuteCallFrame::PublishResult() && {
     }
 
     auto shape = ShapeUtil::GetSubshape(result_.shape(), index);
-    TF_RETURN_IF_ERROR(stream_->Memcpy(&result_buffer, buffer.opaque_base(),
-                                       buffer.size_in_bytes()));
+    TF_RETURN_IF_ERROR(host_to_device_stream_->Memcpy(
+        &result_buffer, buffer.opaque_base(), buffer.size_in_bytes()));
   }
 
-  // Wait for results to be copied into device memory.
-  // TODO(basioli): Move blocking to the host callbacks.
-  TF_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+  // Move the backing buffers (allocated_buffers_) to the callback to ensure
+  // that they are only destroyed after the memory copies are done.
+  TF_RETURN_IF_ERROR(host_to_device_stream_->DoHostCallbackWithStatus(
+      [buffers = std::move(allocated_buffers_)]() {
+        return absl::OkStatus();
+      }));
 
   return absl::OkStatus();
 }
@@ -280,27 +283,33 @@ absl::Status HostExecuteCallFrame::PublishResult() && {
 
 // HostExecuteAsyncEvents
 
-absl::Status HostExecuteAsyncEvents::AddEvent(
-    se::StreamExecutor* executor, RunId run_id,
-    tsl::AsyncValueRef<HostOffloadingExecutable::ExecuteEvent> event) {
+absl::StatusOr<HostExecuteAsyncEvents::HostExecuteEvent>
+HostExecuteAsyncEvents::CreateEvent(se::StreamExecutor* executor,
+                                    RunId run_id) {
   VLOG(6) << "Adding event for executor at address " << executor
           << " and event id " << run_id.ToInt();
 
+  TF_ASSIGN_OR_RETURN(auto host_to_device_stream_event,
+                      executor->CreateEvent());
+
+  auto event = tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
+      std::move(host_to_device_stream_event));
+
   auto [it, inserted] =
-      events_.emplace(std::make_pair(executor, run_id), std::move(event));
+      events_.emplace(std::make_pair(executor, run_id), event);
 
   if (!inserted) {
     return FailedPrecondition(
         "Event already exists for executor at address %p and event id %d",
         executor, run_id.ToInt());
   }
-  return absl::OkStatus();
+  return event;
 }
 
-absl::StatusOr<tsl::AsyncValueRef<HostOffloadingExecutable::ExecuteEvent>>
+absl::StatusOr<HostExecuteAsyncEvents::HostExecuteEvent>
 HostExecuteAsyncEvents::ExtractEvent(se::StreamExecutor* executor,
                                      RunId run_id) {
-  VLOG(6) << "Getting event for executor at address " << executor
+  VLOG(6) << "Extracting event for executor at address " << executor
           << " and event id " << run_id.ToInt();
   auto it = events_.find(std::make_pair(executor, run_id));
   if (it == events_.end()) {
@@ -308,7 +317,7 @@ HostExecuteAsyncEvents::ExtractEvent(se::StreamExecutor* executor,
         "Event does not exist for executor at address %p and event id %d",
         executor, run_id.ToInt());
   }
-  auto event = it->second;
+  auto event = std::move(it->second);
   events_.erase(it);
   return event;
 }
@@ -371,27 +380,39 @@ absl::Status HostExecuteStartThunk::Initialize(const InitializeParams& params) {
 
 absl::Status HostExecuteStartThunk::ExecuteOnStream(
     const ExecuteParams& params) {
-  auto event = tsl::MakeConstructedAsyncValueRef<
-      HostOffloadingExecutable::ExecuteEvent>();
-
   TF_ASSIGN_OR_RETURN(
-      se::Stream * stream,
+      se::Stream * compute_stream,
       GetStreamForExecution(Thunk::execution_stream_id(), params));
 
-  TF_RETURN_IF_ERROR(async_events_->AddEvent(
-      stream->parent(), RunId(params.execution_id), event));
+  // Host execute thunk enqueues compute on the device to host stream to allow
+  // for the compute stream to be used for device compute.
+  se::Stream* device_to_host_stream = params.device_to_host_stream;
 
-  GetHostExecuteThreadPool()->Schedule([this, stream, params,
-                                        event = std::move(event)]() mutable {
-    auto call_frame_or_status = HostExecuteCallFrame::Create(
-        stream, params.buffer_allocations, *allocator_, absl::MakeSpan(args_),
-        absl::MakeSpan(results_), executable_->program_shape());
+  // Wait on the compute stream to finish before copying data to host since we
+  // might need to wait for producers to be finished.
+  TF_RETURN_IF_ERROR(device_to_host_stream->WaitFor(compute_stream));
 
-    CHECK(call_frame_or_status.ok())
-        << "Failed to create call frame: " << call_frame_or_status.status();
+  TF_ASSIGN_OR_RETURN(
+      auto execute_event,
+      async_events_->CreateEvent(params.host_to_device_stream->parent(),
+                                 RunId(params.execution_id)));
 
-    auto call_frame = std::move(call_frame_or_status.value());
+  TF_ASSIGN_OR_RETURN(
+      auto tmp_call_frame,
+      HostExecuteCallFrame::Create(
+          params.device_to_host_stream, params.host_to_device_stream,
+          params.buffer_allocations, *allocator_, absl::MakeSpan(args_),
+          absl::MakeSpan(results_), executable_->program_shape()));
 
+  // We are making a shared pointer here because `execute` needs to be
+  // copyable so that it can be scheduled on the thread pool.
+  auto call_frame =
+      std::make_shared<HostExecuteCallFrame>(std::move(tmp_call_frame));
+
+  auto execute = [this, call_frame = std::move(call_frame), params,
+                  shared_execute_event = std::move(execute_event)]() mutable {
+    tsl::profiler::TraceMe trace(
+        "HostExecuteStartThunk::ExecuteOnStream::execute (host_callback)");
     HostOffloadingExecutable::ExecuteOptions execute_options{
         // TODO(basioli): add device index and context when/if needed.
         /*device_index =*/0,
@@ -399,25 +420,33 @@ absl::Status HostExecuteStartThunk::ExecuteOnStream(
         /*context =*/nullptr};
 
     auto execute_event = executable_->Execute(
-        call_frame.parameters(), call_frame.result(), execute_options);
+        call_frame->parameters(), call_frame->result(), execute_options);
 
-    // Publish the result after the event is available.
-    execute_event = execute_event.Map(
-        [call_frame = std::move(call_frame)](
-            const HostOffloadingExecutable::ExecuteEvent& event) mutable {
-          auto status = std::move(call_frame).PublishResult();
-          return event;
-        });
+    tsl::BlockUntilReady(execute_event);
+    if (execute_event.IsError()) {
+      shared_execute_event.SetError(execute_event.GetError());
+      return;
+    }
+    auto publish_result_status = std::move(*call_frame).PublishResult();
+    if (!publish_result_status.ok()) {
+      shared_execute_event.SetError(publish_result_status);
+      return;
+    }
+    auto record_event_status = params.host_to_device_stream->RecordEvent(
+        shared_execute_event.get().get());
+    if (!record_event_status.ok()) {
+      shared_execute_event.SetError(record_event_status);
+      return;
+    }
 
-    // Notify the shared event that the execution is done.
-    execute_event.AndThen([event = std::move(event)](absl::Status status) {
-      if (!status.ok()) {
-        event.SetError(status);
-      } else {
-        event.SetStateConcrete();
-      }
-    });
-  });
+    shared_execute_event.SetStateConcrete();
+  };
+
+  TF_RETURN_IF_ERROR(device_to_host_stream->DoHostCallbackWithStatus(
+      [execute = std::move(execute)] {
+        GetHostExecuteThreadPool()->Schedule(std::move(execute));
+        return absl::OkStatus();
+      }));
 
   return absl::OkStatus();
 }
@@ -454,13 +483,16 @@ absl::Status HostExecuteDoneThunk::ExecuteOnStream(
   TF_ASSIGN_OR_RETURN(
       se::Stream * stream,
       GetStreamForExecution(Thunk::execution_stream_id(), params));
-  TF_ASSIGN_OR_RETURN(auto execute_event,
-                      async_events_->ExtractEvent(stream->parent(),
-                                                  RunId(params.execution_id)));
-  tsl::BlockUntilReady(execute_event);
-  if (execute_event.IsError()) {
-    return execute_event.GetError();
+  TF_ASSIGN_OR_RETURN(auto event, async_events_->ExtractEvent(
+                                      params.host_to_device_stream->parent(),
+                                      RunId(params.execution_id)));
+
+  tsl::BlockUntilReady(event);
+  if (event.IsError()) {
+    return event.GetError();
   }
+  TF_RETURN_IF_ERROR(stream->WaitFor(event.get().get()));
+
   return absl::OkStatus();
 }
 
