@@ -78,7 +78,7 @@ bool CompatibleDimensionSizes(int64_t size_a, int64_t size_b) {
 }
 
 absl::Status ExpectArray(const Shape& shape, absl::string_view op_type) {
-  if (!shape.IsArray()) {
+  if (!shape.IsArrayExcludingBuffer()) {
     return InvalidArgument("Expected array argument for %s, but got %s.",
                            std::string(op_type), ShapeUtil::HumanString(shape));
   }
@@ -98,7 +98,7 @@ absl::Status VerifyReducerShape(
 
   const Shape& accumulator_shape = reducer_shape.result();
   std::vector<const Shape*> accumulator_subshapes;
-  if (accumulator_shape.IsArray()) {
+  if (accumulator_shape.IsArrayExcludingBuffer()) {
     if (inputs != 1) {
       return InvalidArgument(
           "Reduction function must produce a tuple with %d elements, but "
@@ -585,7 +585,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferConvertShape(
     const Shape& operand_shape, PrimitiveType new_element_type) {
-  if (!operand_shape.IsArray() ||
+  if (!operand_shape.IsArrayExcludingBuffer() ||
       !primitive_util::IsArrayType(new_element_type)) {
     // Note: we may want to support tuple conversions via this operation in the
     // future, by recursing into the tuple elements to check all sub-conversions
@@ -608,7 +608,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
                            ShapeUtil::HumanString(operand_shape),
                            PrimitiveType_Name(new_element_type));
   }
-  if (!operand_shape.IsArray() ||
+  if (!operand_shape.IsArrayExcludingBuffer() ||
       !primitive_util::IsArrayType(new_element_type)) {
     // Note: we may want to support tuple conversions via this operation in the
     // future, by recursing into the tuple elements to check all sub-conversions
@@ -725,7 +725,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
 /* static */ absl::StatusOr<Shape> ShapeInference::InferPadShape(
     const Shape& operand_shape, const Shape& padding_value_shape,
     const PaddingConfig& padding_config) {
-  if (!operand_shape.IsArray()) {
+  if (!operand_shape.IsArrayExcludingBuffer()) {
     return InvalidArgument(
         "Pad operation does not support tuple-shape operands.");
   }
@@ -1516,7 +1516,7 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
   // function.
   std::optional<Shape> broadcasted_shape;
   for (const Shape& shape : shapes) {
-    if (!shape.IsArray() || shape.dimensions().empty()) {
+    if (!shape.IsArrayExcludingBuffer() || shape.dimensions().empty()) {
       continue;
     }
     if (!broadcasted_shape.has_value()) {
@@ -3637,7 +3637,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   // Result is s32[<=4].
   ShapeUtil::ForEachMutableSubshape(
       &result, [&](Shape* subshape, const ShapeIndex& index) {
-        if (!subshape->IsArray()) {
+        if (!subshape->IsArrayExcludingBuffer()) {
           return;
         }
         for (int j = 0; j < branch_computations.size(); ++j) {

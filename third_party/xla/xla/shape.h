@@ -118,8 +118,9 @@ class Shape {
   // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
   std::string ToString(bool print_layout = false) const;
 
-  // Returns whether the shape is of the specified category (array, tuple, etc).
-  bool IsArray() const {
+  // Returns whether the shape is an array primitive type, that is, whether the
+  // state of the shape is an ArrayState.
+  bool IsArrayExcludingBuffer() const {
     const bool result = primitive_util::IsArrayType(element_type());
     // We do this check in debug mode only to avoid performance regressions.
     DCHECK_EQ(result, if_array_state() != nullptr)
@@ -127,6 +128,8 @@ class Shape {
         << " has inconsistent element_type and state.";
     return result;
   }
+  // Returns whether the shape is a tuple primitive type, that is, whether the
+  // state of the shape is a TupleState.
   bool IsTuple() const {
     const bool result = element_type() == TUPLE;
     // We do this check in debug mode only to avoid performance regressions.
@@ -135,6 +138,8 @@ class Shape {
         << " has inconsistent element_type and state.";
     return result;
   }
+  // Returns whether the shape is a buffer primitive type, that is, whether the
+  // state of the shape is a BufferState.
   bool IsBuffer() const {
     const bool result = element_type() == BUFFER;
     // We do this check in debug mode only to avoid performance regressions.
@@ -143,6 +148,8 @@ class Shape {
         << " has inconsistent element_type and state.";
     return result;
   }
+  // Returns whether the shape is a token primitive type, that is, whether the
+  // state of the shape is a TokenState.
   bool IsToken() const {
     const bool result = element_type() == TOKEN;
     // We do this check in debug mode only to avoid performance regressions.
@@ -151,6 +158,8 @@ class Shape {
         << " has inconsistent element_type and state.";
     return result;
   }
+  // Returns whether the shape is an opaque primitive type, that is, whether the
+  // state of the shape is an OpaqueState.
   bool IsOpaque() const {
     const bool result = element_type() == OPAQUE_TYPE;
     // We do this check in debug mode only to avoid performance regressions.
@@ -159,7 +168,8 @@ class Shape {
         << " has inconsistent element_type and state.";
     return result;
   }
-  bool IsArrayOrBuffer() const { return IsArray() || IsBuffer(); }
+  // Returns true if the shape is an array or a buffer.
+  bool IsArray() const { return IsArrayExcludingBuffer() || IsBuffer(); }
 
   // Returns whether all elements in the shape are integers.
   // Tuple shapes are traversed recursively.
@@ -257,7 +267,7 @@ class Shape {
   // Returns the primitive type of the array or buffer shape.
   // Precondition: this is an array shape or a buffer shape.
   PrimitiveType array_or_buffer_element_type() const {
-    CHECK(IsArrayOrBuffer());
+    CHECK(IsArray());
     if (const auto* const state = if_buffer_state()) {
       return state->buffer_shape->element_type();
     }
