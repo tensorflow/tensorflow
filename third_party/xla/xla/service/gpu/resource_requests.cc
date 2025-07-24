@@ -116,9 +116,8 @@ ResourceRequests::AcquireCollectiveCliques(
                         params.collectives->GetCliqueIdCallback(
                             params.nccl_clique_id_callback, r.key.is_local()));
 
-    int64_t max_channels = r.key.stream_kind() == AsyncStreamKind::kCollective
-                               ? params.collective_max_nchannels
-                               : params.p2p_max_nchannels;
+    int64_t max_channels = r.key.is_p2p() ? params.p2p_max_nchannels
+                                          : params.collective_max_nchannels;
 
     // Check if we have a persistent clique for this key.
     if (use_persistent_cliques) {
@@ -181,10 +180,6 @@ ResourceRequests::GetOrderedCliqueRequests() {
     // Acquire larger cliques first to be able to split them later.
     if (a.key.devices().size() > b.key.devices().size()) return true;
     if (b.key.devices().size() > a.key.devices().size()) return false;
-
-    // If cliques have the same size prefer cliques with smaller stream id.
-    if (a.key.stream_id().value() < b.key.stream_id().value()) return true;
-    if (b.key.stream_id().value() < a.key.stream_id().value()) return false;
 
     // Prefer cliques with smaller id (comes earlier in execution order).
     return a.id < b.id;
