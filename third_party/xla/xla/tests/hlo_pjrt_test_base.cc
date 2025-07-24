@@ -37,6 +37,16 @@ std::unique_ptr<PjRtClient> GetPjRtClientForTest() {
       << "Failed to create PjRt client. " << client.status();
   return *std::move(client);
 }
+
+HloRunnerAgnosticTestBaseOptions BuildOptions(HloPjRtTestBaseOptions options) {
+  HloRunnerAgnosticTestBaseOptions new_options;
+  new_options.verifier_layout_sensitive = options.verifier_layout_sensitive;
+  new_options.allow_mixed_precision_in_hlo_verifier =
+      options.allow_mixed_precision_in_hlo_verifier;
+  new_options.instruction_can_change_layout_func =
+      std::move(options.instruction_can_change_layout_func);
+  return new_options;
+}
 }  // namespace
 
 HloPjRtTestBase::HloPjRtTestBase(HloPjRtTestBaseOptions options)
@@ -57,8 +67,6 @@ HloPjRtTestBase::HloPjRtTestBase(
     : HloRunnerAgnosticTestBase(
           MakeHloRunnerPjRtSplitPhaseAware(std::move(client)),
           std::move(device_shape_representation_fn),
-          std::move(device_shape_size_fn), options.verifier_layout_sensitive,
-          options.allow_mixed_precision_in_hlo_verifier,
-          options.instruction_can_change_layout_func) {}
+          std::move(device_shape_size_fn), BuildOptions(std::move(options))) {}
 
 }  // namespace xla
