@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -49,17 +50,7 @@ struct DotRewriteTestSpec {
   std::string fusion_mode;
 };
 
-class CpuDotLibraryTest
-    : public TargetMachineTestBase,
-      public ::testing::WithParamInterface<DotRewriteTestSpec> {
- public:
-  static std::string Name(
-      const ::testing::TestParamInfo<DotRewriteTestSpec>& info) {
-    return absl::StrCat(info.param.lib, "_", info.param.fusion_mode, "_",
-                        info.param.in_dtype, "_", info.param.out_dtype, "_",
-                        info.param.cpu_name);
-  }
-
+class CpuLibraryTest : public TargetMachineTestBase {
  protected:
   struct FusionProperties {
     HloOpcode fusion_root;
@@ -68,9 +59,12 @@ class CpuDotLibraryTest
     bool changed;
   };
 
-  void RunTest(absl::string_view hlo_template, FusionProperties expected) {
+  virtual void RunTest(absl::string_view hlo_template,
+                       FusionProperties expected) {}
+
+  void RunTestInternal(DotRewriteTestSpec spec, absl::string_view hlo_template,
+                       FusionProperties expected) {
     // Create TargetMachineFeatures.
-    DotRewriteTestSpec spec = GetParam();
     std::unique_ptr<TargetMachineFeatures> features =
         CreateTargetMachineFeatures(
             /*triple_string=*/"x86_64-unknown-linux-gnu", spec.cpu_name,
@@ -110,19 +104,38 @@ class CpuDotLibraryTest
     HloFusionInstruction* fusion = Cast<HloFusionInstruction>(result);
     EXPECT_EQ(fusion->fusion_kind(), HloInstruction::FusionKind::kCustom);
 
-    // A fusion that ends with dot may have a convert as root if the dot output
-    // must be converted.
-    HloInstruction* fusion_root = fusion->fused_expression_root();
-    if (spec.out_dtype == "bf16") {
+    // Adjust the expected values if a convert is auto-inserted.
+    if (spec.out_dtype == "bf16" &&
+        hlo_query::FindInstruction(fusion->fused_instructions_computation(),
+                                   HloOpcode::kDot)) {
+      ++expected.num_instructions_in_fused_computation;
       if (expected.fusion_root == HloOpcode::kDot) {
         expected.fusion_root = HloOpcode::kConvert;
       }
-      expected.num_instructions_in_fused_computation++;
     }
+    HloInstruction* fusion_root = fusion->fused_expression_root();
     EXPECT_EQ(fusion_root->opcode(), expected.fusion_root);
     EXPECT_EQ(fusion->operand_count(), expected.num_fusion_params);
     EXPECT_EQ(fusion->fused_instructions_computation()->instruction_count(),
               expected.num_instructions_in_fused_computation);
+  }
+};
+
+class CpuLibraryFullParamTest
+    : public CpuLibraryTest,
+      public ::testing::WithParamInterface<DotRewriteTestSpec> {
+ public:
+  static std::string Name(
+      const ::testing::TestParamInfo<DotRewriteTestSpec>& info) {
+    return absl::StrCat(info.param.lib, "_", info.param.fusion_mode, "_",
+                        info.param.in_dtype, "_", info.param.out_dtype, "_",
+                        info.param.cpu_name);
+  }
+
+ protected:
+  void RunTest(absl::string_view hlo_template,
+               FusionProperties expected) override {
+    RunTestInternal(GetParam(), hlo_template, expected);
   }
 
   bool IsDotEnabledOnCPU() {
@@ -132,32 +145,31 @@ class CpuDotLibraryTest
   }
 };
 
-TEST_P(CpuDotLibraryTest, AddMatMul) {
+TEST_P(CpuLibraryFullParamTest, AddMatMul) {
   const absl::string_view hlo_template = R"(
     HloModule matmul
 
     ENTRY %main {
       %a = $in_dtype[64,64] parameter(0)
       %b = $in_dtype[64,64] parameter(1)
-      %weight = $in_dtype[64,262144] parameter(2)
+      %c = $in_dtype[64,64] parameter(2)
       %x = $in_dtype[64,64] add(%a, %b)
-      ROOT %dot = $out_dtype[64,262144]{1,0} dot(%x, %weight),
+      %y = $in_dtype[64,64] add(%a, %c)
+      ROOT %dot = $out_dtype[64,64]{1,0} dot(%x, %y),
                   lhs_contracting_dims={1}, rhs_contracting_dims={0}
     })";
 
   DotRewriteTestSpec spec = GetParam();
   FusionProperties expected = {HloOpcode::kDot, 0, 0, false};
-  if (spec.fusion_mode == "greedy") {
-    expected = IsDotEnabledOnCPU()
-                   ? FusionProperties{HloOpcode::kDot, 3, 5, true}
-                   : FusionProperties{HloOpcode::kAdd, 2, 3, true};
-  } else if (IsDotEnabledOnCPU()) {
-    expected = FusionProperties{HloOpcode::kDot, 2, 3, true};
+  if (IsDotEnabledOnCPU()) {
+    expected = FusionProperties{HloOpcode::kDot, 3, 6, true};
+  } else if (spec.fusion_mode == "greedy") {
+    expected = FusionProperties{HloOpcode::kAdd, 2, 3, true};
   }
   RunTest(hlo_template, expected);
 }
 
-TEST_P(CpuDotLibraryTest, MatMul) {
+TEST_P(CpuLibraryFullParamTest, MatMul) {
   const absl::string_view hlo_template = R"(
     HloModule matmul
 
@@ -171,7 +183,7 @@ TEST_P(CpuDotLibraryTest, MatMul) {
   RunTest(hlo_template, {HloOpcode::kDot, 2, 3, IsDotEnabledOnCPU()});
 }
 
-TEST_P(CpuDotLibraryTest, MatMulAndAdd) {
+TEST_P(CpuLibraryFullParamTest, MatMulAndAdd) {
   const absl::string_view hlo_template = R"(
     HloModule matmul
 
@@ -195,7 +207,7 @@ TEST_P(CpuDotLibraryTest, MatMulAndAdd) {
   RunTest(hlo_template, expected);
 }
 
-TEST_P(CpuDotLibraryTest, MatMulAddSubMulSameInputs) {
+TEST_P(CpuLibraryFullParamTest, MatMulAddSubMulSameInputs) {
   const absl::string_view hlo_template = R"(
     HloModule matmul
 
@@ -224,7 +236,7 @@ TEST_P(CpuDotLibraryTest, MatMulAddSubMulSameInputs) {
   RunTest(hlo_template, expected);
 }
 
-TEST_P(CpuDotLibraryTest, MatMulAddSubMulDifferentInputs) {
+TEST_P(CpuLibraryFullParamTest, MatMulAddSubMulDifferentInputs) {
   const absl::string_view hlo_template = R"(
     HloModule matmul
 
@@ -255,7 +267,7 @@ TEST_P(CpuDotLibraryTest, MatMulAddSubMulDifferentInputs) {
   RunTest(hlo_template, expected);
 }
 
-TEST_P(CpuDotLibraryTest, MatMulAddMinExpSort) {
+TEST_P(CpuLibraryFullParamTest, MatMulAddMinExpSort) {
   const absl::string_view hlo_template = R"(
     HloModule matmul
 
@@ -294,22 +306,28 @@ TEST_P(CpuDotLibraryTest, MatMulAddMinExpSort) {
   RunTest(hlo_template, expected);
 }
 
-TEST_P(CpuDotLibraryTest, DoNotFuseMultiOutputs) {
+TEST_P(CpuLibraryFullParamTest, DoNotFuseMultiOutputs) {
+  //   weight   addend   val2
+  //         \        \     \
+  // input -- dot --- add -- sub2 -- tuple
+  //                      \         /
+  //                val1 -- sub1 ---
   const absl::string_view hlo_template = R"(
     HloModule matmul
 
     ENTRY %main {
-      %input = $in_dtype[64,64]{1,0} parameter(0)
-      %weight = $in_dtype[64,262144]{1,0} parameter(1)
-      %addend = $out_dtype[64,262144]{1,0} parameter(2)
-      %val1 = $out_dtype[64,262144]{1,0} parameter(3)
-      %val2 = $out_dtype[64,262144]{1,0} parameter(4)
-      %dot = $out_dtype[64,262144]{1,0} dot(%input, %weight),
+      %input = $in_dtype[64,64] parameter(0)
+      %weight = $in_dtype[64,262144] parameter(1)
+      %addend = $out_dtype[64,262144] parameter(2)
+      %val1 = $out_dtype[64,262144] parameter(3)
+      %val2 = $out_dtype[64,262144] parameter(4)
+      %dot = $out_dtype[64,262144] dot(%input, %weight),
              lhs_contracting_dims={1}, rhs_contracting_dims={0}
-      %add = $out_dtype[64,262144]{1,0} add(%dot, %addend)
-      %sub1 = $out_dtype[64,262144]{1,0} subtract(%add, %val1)
-      %sub2 = $out_dtype[64,262144]{1,0} subtract(%add, %val2)
-      ROOT %mul = $out_dtype[64,262144]{1,0} multiply(%sub1, %sub2)
+      %add = $out_dtype[64,262144] add(%dot, %addend)
+      %sub1 = $out_dtype[64,262144] subtract(%val1, %add)
+      %sub2 = $out_dtype[64,262144] subtract(%add, %val2)
+      ROOT %tuple = ($out_dtype[64,262144], $out_dtype[64,262144])
+                    tuple(%sub1, %sub2)
     })";
 
   // Many cases will have multiple fusions. We only check the first one.
@@ -320,7 +338,7 @@ TEST_P(CpuDotLibraryTest, DoNotFuseMultiOutputs) {
     expected = {HloOpcode::kAdd, 3, 5, true};
   } else if (spec.fusion_mode == "greedy") {
     // Only {Add} in the fusion.
-    expected = {HloOpcode::kAdd, 2, 3, true};
+    expected = {HloOpcode::kSubtract, 2, 3, true};
   }
   RunTest(hlo_template, expected);
 }
@@ -367,9 +385,136 @@ std::vector<DotRewriteTestSpec> GetDotRewriteTestSpecs() {
   return specs;
 }
 
-INSTANTIATE_TEST_SUITE_P(CpuDotLibraryTestSuite, CpuDotLibraryTest,
+INSTANTIATE_TEST_SUITE_P(CpuLibraryFullParamTestSuite, CpuLibraryFullParamTest,
                          ::testing::ValuesIn(GetDotRewriteTestSpecs()),
-                         CpuDotLibraryTest::Name);
+                         CpuLibraryFullParamTest::Name);
+
+class CpuLibraryFusionTypeTest
+    : public CpuLibraryTest,
+      public ::testing::WithParamInterface<std::string> {
+ public:
+  static std::string Name(const ::testing::TestParamInfo<std::string>& info) {
+    return absl::StrCat(kLib, "_", info.param, "_", kDType, "_", kCpuName);
+  }
+
+ protected:
+  void RunTest(absl::string_view hlo_template,
+               FusionProperties expected) override {
+    DotRewriteTestSpec spec = {std::string(kLib),      std::string(kDType),
+                               std::string(kDType),    std::string(kCpuName),
+                               std::string(kFeatures), GetParam()};
+    RunTestInternal(spec, hlo_template, expected);
+  }
+  static constexpr absl::string_view kLib = "xnn";
+  static constexpr absl::string_view kDType = "f32";
+  static constexpr absl::string_view kCpuName = "znver3";
+  static constexpr absl::string_view kFeatures = "+avx,+avx2";
+};
+
+TEST_P(CpuLibraryFusionTypeTest, AllEltwiseFusion) {
+  //   b    c -- exp
+  //    \           \
+  // a -- mul ------ add
+  const absl::string_view hlo_template = R"(
+    HloModule matmul
+
+    ENTRY %main {
+      %a = $in_dtype[64,64] parameter(0)
+      %b = $in_dtype[64,64] parameter(1)
+      %c = $in_dtype[64,64] parameter(2)
+      %mul = $in_dtype[64,64] multiply(%a, %b)
+      %exp = $in_dtype[64,64] exponential(%c)
+      %add = $in_dtype[64,64] add(%mul, %exp)
+    })";
+
+  RunTest(hlo_template, GetParam() == "greedy"
+                            ? FusionProperties{HloOpcode::kAdd, 3, 6, true}
+                            : FusionProperties{HloOpcode::kAdd, 0, 0, false});
+}
+
+TEST_P(CpuLibraryFusionTypeTest, ForkJoin) {
+  //   b      c
+  //    \      \
+  // a -- mul -- add1 -- exp -- add2
+  //          \________________/
+  const absl::string_view hlo_template = R"(
+    HloModule matmul
+
+    ENTRY %main {
+      %a = $in_dtype[64,64] parameter(0)
+      %b = $in_dtype[64,64] parameter(1)
+      %c = $in_dtype[64,64] parameter(2)
+      %mul = $in_dtype[64,64] multiply(%a, %b)
+      %add1 = $in_dtype[64,64] add(%mul, %c)
+      %exp = $in_dtype[64,64] exponential(%add1)
+      ROOT %add2 = $in_dtype[64,64] add(%mul, %exp)
+    })";
+
+  RunTest(hlo_template, GetParam() == "greedy"
+                            ? FusionProperties{HloOpcode::kAdd, 3, 7, true}
+                            : FusionProperties{HloOpcode::kAdd, 0, 0, false});
+}
+
+TEST_P(CpuLibraryFusionTypeTest, NoCycle) {
+  //   b      c
+  //    \      \
+  // a -- mul -- add1 -- chol -- add2
+  //          \________________/
+  //
+  // `chol` is not supported by libraries. We check that we don't fuse all
+  // {mul, add1, add2} together, which would create a cycle.
+  const absl::string_view hlo_template = R"(
+    HloModule matmul
+
+    ENTRY %main {
+      %a = $in_dtype[64,64] parameter(0)
+      %b = $in_dtype[64,64] parameter(1)
+      %c = $in_dtype[64,64] parameter(2)
+      %mul = $in_dtype[64,64] multiply(%a, %b)
+      %add1 = $in_dtype[64,64] add(%mul, %c)
+      %chol = $in_dtype[64,64] cholesky(%add1)
+      ROOT %add2 = $in_dtype[64,64] add(%mul, %chol)
+    })";
+
+  RunTest(hlo_template, GetParam() == "greedy"
+                            ? FusionProperties{HloOpcode::kAdd, 2, 3, true}
+                            : FusionProperties{HloOpcode::kAdd, 0, 0, false});
+}
+
+TEST_P(CpuLibraryFusionTypeTest, JoiningFusions) {
+  //   b        c ---- add2 ----
+  //    \        \   /          \
+  // a -- add1 -- dot -- exp -- mul
+  //
+  // In "dot" mode, the fusion grown from `dot` will only have {add1, dot} since
+  // it needs multi-output support to include `add2` or `exp`. But in "greedy"
+  // mode, the fusion grown upwards from `mul` will be able to merge with the
+  // dot fusion into a single fusion.
+  const absl::string_view hlo_template = R"(
+    HloModule matmul
+
+    ENTRY %main {
+      %a = $in_dtype[64,64] parameter(0)
+      %b = $in_dtype[64,64] parameter(1)
+      %c = $in_dtype[64,64] parameter(2)
+      %add1 = $in_dtype[64,64] add(%a, %b)
+      %dot = $in_dtype[64,64] dot(%add1, %c), lhs_contracting_dims={1},
+                                              rhs_contracting_dims={0}
+      %exp = $in_dtype[64,64] exponential(%dot)
+      %add2 = $in_dtype[64,64] add(%dot, %c)
+      ROOT %mul = $in_dtype[64,64] multiply(%exp, %add2)
+    })";
+
+  RunTest(hlo_template, GetParam() == "greedy"
+                            ? FusionProperties{HloOpcode::kMultiply, 3, 8, true}
+                            : FusionProperties{HloOpcode::kDot, 3, 5, true});
+}
+
+INSTANTIATE_TEST_SUITE_P(CpuLibraryFusionTypeTestSuite,
+                         CpuLibraryFusionTypeTest,
+                         ::testing::ValuesIn({std::string("dot"),
+                                              std::string("greedy")}),
+                         CpuLibraryFusionTypeTest::Name);
 
 }  // namespace
 }  // namespace xla::cpu
