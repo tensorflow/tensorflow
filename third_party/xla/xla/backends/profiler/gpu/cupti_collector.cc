@@ -260,13 +260,25 @@ class PerDeviceCollector {
       params.attributes.sharedSizeBytes =
           event.kernel_info.static_shared_memory_usage;
       params.attributes.partitionedGCConfig = PARTITIONED_GC_OFF;
-      params.attributes.shmemLimitConfig = FUNC_SHMEM_LIMIT_DEFAULT;
       params.attributes.maxDynamicSharedSizeBytes = 0;
       params.block_size = static_cast<int>(event.kernel_info.block_x *
                                            event.kernel_info.block_y *
                                            event.kernel_info.block_z);
 
       params.dynamic_smem_size = event.kernel_info.dynamic_shared_memory_usage;
+      // For GPUs with compute capability 7.0+, kernel functions can use dynamic
+      // shared memory sizes larger than the default shared memory per block
+      // (48KB). FUNC_SHMEM_LIMIT_OPTIN should be enabled to reflect this
+      // extended configuration. See NVIDIA bug
+      // https://partners.nvidia.com/Bug/ViewBug/5400719.
+      params.attributes.shmemLimitConfig =
+          params.dynamic_smem_size > device_properties_.sharedMemPerBlock
+              ? FUNC_SHMEM_LIMIT_OPTIN
+              : FUNC_SHMEM_LIMIT_DEFAULT;
+      if (params.attributes.shmemLimitConfig != FUNC_SHMEM_LIMIT_DEFAULT) {
+        params.attributes.maxDynamicSharedSizeBytes =
+            device_properties_.sharedMemPerBlockOptin;
+      }
 
       OccupancyStats& occ_stats = occupancy_cache_[params];
       if (occ_stats.occupancy_pct == 0.0) {
