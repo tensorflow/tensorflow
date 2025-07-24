@@ -17,9 +17,13 @@ limitations under the License.
 #define XLA_SERVICE_STREAM_POOL_H_
 
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
@@ -57,8 +61,8 @@ class StreamPool {
 
   absl::Mutex mu_;
   // This stores streams with user-specified priority.
-  std::unordered_map<se::StreamPriority,
-                     std::vector<std::unique_ptr<se::Stream>>>
+  absl::flat_hash_map<se::StreamPriority,
+                      std::vector<std::unique_ptr<se::Stream>>>
       streams_with_pri_ ABSL_GUARDED_BY(mu_);
   se::StreamExecutor* executor_;
 };
