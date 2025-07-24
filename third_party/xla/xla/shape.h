@@ -121,7 +121,8 @@ class Shape {
   // Returns whether the shape is an array primitive type, that is, whether the
   // state of the shape is an ArrayState.
   bool IsArrayExcludingBuffer() const {
-    const bool result = primitive_util::IsArrayType(element_type());
+    const bool result =
+        primitive_util::IsArrayType(element_type_including_buffer());
     // We do this check in debug mode only to avoid performance regressions.
     DCHECK_EQ(result, if_array_state() != nullptr)
         << "Shape " << ToString()
@@ -131,7 +132,7 @@ class Shape {
   // Returns whether the shape is a tuple primitive type, that is, whether the
   // state of the shape is a TupleState.
   bool IsTuple() const {
-    const bool result = element_type() == TUPLE;
+    const bool result = element_type_including_buffer() == TUPLE;
     // We do this check in debug mode only to avoid performance regressions.
     DCHECK_EQ(result, if_tuple_state() != nullptr)
         << "Shape " << ToString()
@@ -141,7 +142,7 @@ class Shape {
   // Returns whether the shape is a buffer primitive type, that is, whether the
   // state of the shape is a BufferState.
   bool IsBuffer() const {
-    const bool result = element_type() == BUFFER;
+    const bool result = element_type_including_buffer() == BUFFER;
     // We do this check in debug mode only to avoid performance regressions.
     DCHECK_EQ(result, if_buffer_state() != nullptr)
         << "Shape " << ToString()
@@ -151,7 +152,7 @@ class Shape {
   // Returns whether the shape is a token primitive type, that is, whether the
   // state of the shape is a TokenState.
   bool IsToken() const {
-    const bool result = element_type() == TOKEN;
+    const bool result = element_type_including_buffer() == TOKEN;
     // We do this check in debug mode only to avoid performance regressions.
     DCHECK_EQ(result, if_token_state() != nullptr)
         << "Shape " << ToString()
@@ -161,7 +162,7 @@ class Shape {
   // Returns whether the shape is an opaque primitive type, that is, whether the
   // state of the shape is an OpaqueState.
   bool IsOpaque() const {
-    const bool result = element_type() == OPAQUE_TYPE;
+    const bool result = element_type_including_buffer() == OPAQUE_TYPE;
     // We do this check in debug mode only to avoid performance regressions.
     DCHECK_EQ(result, if_opaque_state() != nullptr)
         << "Shape " << ToString()
@@ -262,12 +263,11 @@ class Shape {
   void DeleteDimensions(absl::Span<const int64_t> dims_to_delete);
 
   // Returns the primitive type of the shape.
-  PrimitiveType element_type() const { return element_type_; }
+  PrimitiveType element_type_including_buffer() const { return element_type_; }
 
   // Returns the primitive type of the array or buffer shape.
   // Precondition: this is an array shape or a buffer shape.
-  PrimitiveType array_or_buffer_element_type() const {
-    CHECK(IsArray());
+  PrimitiveType element_type() const {
     if (const auto* const state = if_buffer_state()) {
       return state->buffer_shape->element_type();
     }
