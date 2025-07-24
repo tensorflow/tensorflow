@@ -53,7 +53,7 @@ _XLA_DEFAULT_TARGET_PATTERNS = (
     "@local_tsl//tsl/...",
 )
 _XLA_ONEAPI_TARGET_PATTERNS = (
-    "//xla/stream_executor/sycl:stream_executor_sycl",
+    "//xla/stream_executor/sycl:stream_executor_sycl_build_test",
     "//xla/stream_executor/sycl:sycl_status_test",
 )
 _XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
