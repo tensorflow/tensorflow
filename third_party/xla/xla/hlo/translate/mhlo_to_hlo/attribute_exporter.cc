@@ -330,7 +330,9 @@ std::optional<xla::OpSharding> ConvertSharding(llvm::StringRef sharding) {
 std::optional<xla::OriginalValueProto> ConvertOriginalValue(
     llvm::StringRef original_value, const xla::Shape& shape) {
   absl::StatusOr<std::shared_ptr<xla::OriginalValue>> hlo_original_value =
-      xla::ParseOriginalValue(original_value, shape);
+      xla::ParseOriginalValue(
+          absl::string_view(original_value.data(), original_value.size()),
+          shape);
   if (!hlo_original_value.ok()) {
     return std::nullopt;
   }
