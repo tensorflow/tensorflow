@@ -1511,7 +1511,11 @@ class HloInstruction {
   // Returns true whether this instruction is effectively a bitcast. Currently,
   // this means it either is a bitcast, or it is a transpose that is effectively
   // a bitcast.
-  bool IsEffectiveBitcast() const;
+  bool IsEffectiveBitcast() const { return IsEffectiveBitcast(opcode_); }
+  // Like zero-argument IsEffectiveBitcast, except can be faster if the client
+  // already has the opcode for "*this" available.
+  // REQUIRES: opcode == this->opcode()
+  bool IsEffectiveBitcast(HloOpcode opcode) const;
 
   // Returns true if this instruction is asynchronous with the
   // async_execution_thread set to `execution_thread`.
