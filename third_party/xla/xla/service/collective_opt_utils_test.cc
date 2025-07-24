@@ -451,9 +451,10 @@ TEST_F(FindUniqueDynamicSliceUserFromCollectiveTest,
   EXPECT_FALSE(result.has_value());
 }
 
-using GetIndicesSpecForDynamicSliceTest = HloHardwareIndependentTestBase;
+using GetIndicesSpecForDynamicSliceWithMultiplyTest =
+    HloHardwareIndependentTestBase;
 
-TEST_F(GetIndicesSpecForDynamicSliceTest, GetIndicesSpecForDynamicSlice) {
+TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest, SingleRgMatch) {
   constexpr absl::string_view hlo_string = R"(
     HloModule module
     ENTRY main {
@@ -479,16 +480,17 @@ TEST_F(GetIndicesSpecForDynamicSliceTest, GetIndicesSpecForDynamicSlice) {
     return (hlo->opcode() == HloOpcode::kPartitionId) ? id : -1;
   };
   std::optional<PartitionOffsetSpec> indices_spec =
-      GetIndicesSpecForDynamicSlice(Cast<HloAllGatherInstruction>(ag),
-                                    ds_offset, map_id);
+      GetIndicesSpecForDynamicSliceWithMultiply(
+          Cast<HloAllGatherInstruction>(ag), ds_offset, map_id,
+          /*split_dim_size=*/1);
   ASSERT_TRUE(indices_spec.has_value());
   EXPECT_EQ(indices_spec.value().per_replica_group_offsets.size(), 1);
   EXPECT_THAT(
       indices_spec.value().per_replica_group_offsets[0],
       UnorderedElementsAre(Pair(0, 0), Pair(6, 1), Pair(4, 2), Pair(2, 3)));
 }
-TEST_F(GetIndicesSpecForDynamicSliceTest,
-       GetIndicesSpecForDynamicSliceTestReshape) {
+
+TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest, SingleRgWithReshape) {
   constexpr absl::string_view hlo_string = R"(
     HloModule module
     ENTRY main {
@@ -515,8 +517,9 @@ TEST_F(GetIndicesSpecForDynamicSliceTest,
     return (hlo->opcode() == HloOpcode::kPartitionId) ? id : -1;
   };
   std::optional<PartitionOffsetSpec> indices_spec =
-      GetIndicesSpecForDynamicSlice(Cast<HloAllGatherInstruction>(ag),
-                                    ds_offset, map_id);
+      GetIndicesSpecForDynamicSliceWithMultiply(
+          Cast<HloAllGatherInstruction>(ag), ds_offset, map_id,
+          /*split_dim_size=*/1);
   ASSERT_TRUE(indices_spec.has_value());
   EXPECT_EQ(indices_spec.value().per_replica_group_offsets.size(), 1);
   EXPECT_THAT(
@@ -524,41 +527,7 @@ TEST_F(GetIndicesSpecForDynamicSliceTest,
       UnorderedElementsAre(Pair(0, 0), Pair(6, 1), Pair(4, 2), Pair(2, 3)));
 }
 
-TEST_F(GetIndicesSpecForDynamicSliceTest, GetAllGatherShardOffsetTest) {
-  constexpr absl::string_view hlo_string = R"(
-    HloModule module
-    ENTRY main {
-      param = f32[1,1,1024] parameter(0)
-      ag = f32[4,1,1024] all-gather(param), replica_groups={{0,1,2,3}},
-        dimensions={0}
-      const = s32[4]{0} constant({0, 6, 4, 2})
-      pid = u32[] partition-id()
-      ds_offset = s32[] dynamic-slice(const, pid), dynamic_slice_sizes={1}
-      ds_offset_reshape = s32[] reshape(ds_offset)
-      ROOT ds = f32[1,1,1024] dynamic-slice(ag, ds_offset, s32[] constant(0),
-         s32[] constant(0)), dynamic_slice_sizes={1,1,1024}
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
-  HloInstruction* ag =
-      module->entry_computation()->GetInstructionWithName("ag");
-  HloInstruction* ds_offset =
-      module->entry_computation()->GetInstructionWithName("ds_offset");
-  auto map_id = [](const HloInstruction* hlo, int64_t id) {
-    return (hlo->opcode() == HloOpcode::kPartitionId) ? id : -1;
-  };
-  std::optional<PartitionOffsetSpec> indices_spec =
-      GetIndicesSpecForDynamicSlice(Cast<HloAllGatherInstruction>(ag),
-                                    ds_offset, map_id);
-  ASSERT_TRUE(indices_spec.has_value());
-  EXPECT_EQ(indices_spec.value().per_replica_group_offsets.size(), 1);
-  EXPECT_THAT(
-      indices_spec.value().per_replica_group_offsets[0],
-      UnorderedElementsAre(Pair(0, 0), Pair(6, 1), Pair(4, 2), Pair(2, 3)));
-}
-
-TEST_F(GetIndicesSpecForDynamicSliceTest, GetAllGatherShardOffsetMultiRgsTest) {
+TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest, MultiRgsUnordered) {
   constexpr absl::string_view hlo_string = R"(
     HloModule module
     ENTRY main {
@@ -583,8 +552,9 @@ TEST_F(GetIndicesSpecForDynamicSliceTest, GetAllGatherShardOffsetMultiRgsTest) {
     return (hlo->opcode() == HloOpcode::kPartitionId) ? id : -1;
   };
   std::optional<PartitionOffsetSpec> indices_spec =
-      GetIndicesSpecForDynamicSlice(Cast<HloAllGatherInstruction>(ag),
-                                    ds_offset, map_id);
+      GetIndicesSpecForDynamicSliceWithMultiply(
+          Cast<HloAllGatherInstruction>(ag), ds_offset, map_id,
+          /*split_dim_size=*/1);
   ASSERT_TRUE(indices_spec.has_value());
   EXPECT_EQ(indices_spec.value().per_replica_group_offsets.size(), 2);
   EXPECT_THAT(
@@ -595,7 +565,7 @@ TEST_F(GetIndicesSpecForDynamicSliceTest, GetAllGatherShardOffsetMultiRgsTest) {
       UnorderedElementsAre(Pair(0, 4), Pair(6, 6), Pair(4, 5), Pair(2, 7)));
 }
 
-TEST_F(GetIndicesSpecForDynamicSliceTest, GetAllGatherShardOffsetNestedDsTest) {
+TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest, SingleRg8Replicas) {
   constexpr absl::string_view hlo_string = R"(
     HloModule module
     ENTRY entry {
@@ -603,7 +573,7 @@ TEST_F(GetIndicesSpecForDynamicSliceTest, GetAllGatherShardOffsetNestedDsTest) {
       ag = f32[256,8,128] all-gather(p), replica_groups={{0,1,2,3,4,5,6,7}},
         dimensions={0}, channel_id=1, use_global_device_ids=true
       pid = u32[] partition-id()
-      permuted_idx_list = s32[8]{0} constant({224,192,160,128,96, 64,32,0})
+      permuted_idx_list = s32[8]{0} constant({224,192,160,128,96,64,32,0})
       offset = s32[1] dynamic-slice(permuted_idx_list, pid),
         dynamic_slice_sizes={1}
       offset_reshape = s32[] reshape(offset)
@@ -622,14 +592,202 @@ TEST_F(GetIndicesSpecForDynamicSliceTest, GetAllGatherShardOffsetNestedDsTest) {
     return (hlo->opcode() == HloOpcode::kPartitionId) ? id : -1;
   };
   std::optional<PartitionOffsetSpec> indices_spec =
-      GetIndicesSpecForDynamicSlice(Cast<HloAllGatherInstruction>(ag),
-                                    ds_offset, map_id);
+      GetIndicesSpecForDynamicSliceWithMultiply(
+          Cast<HloAllGatherInstruction>(ag), ds_offset, map_id,
+          /*split_dim_size=*/32);
   ASSERT_TRUE(indices_spec.has_value());
   EXPECT_EQ(indices_spec.value().per_replica_group_offsets.size(), 1);
   EXPECT_THAT(indices_spec.value().per_replica_group_offsets[0],
               UnorderedElementsAre(Pair(0, 7), Pair(32, 6), Pair(64, 5),
                                    Pair(96, 4), Pair(128, 3), Pair(160, 2),
                                    Pair(192, 1), Pair(224, 0)));
+}
+
+TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest, SingleRgMultiply) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule module
+    ENTRY main {
+      param = f32[2,1,1024] parameter(0)
+      ag = f32[8,1,1024] all-gather(param), replica_groups={{0,1,2,3}},
+        dimensions={0}
+      const = s32[4]{0} constant({3, 2, 1, 0})
+      pid = u32[] partition-id()
+      ds_offset = s32[1]{0} dynamic-slice(const, pid), dynamic_slice_sizes={1}
+      constant.2 = s32[1]{0} constant({2})
+      ds_offset_mul = s32[1]{0} multiply(ds_offset, constant.2)
+      reshape = s32[] reshape(ds_offset_mul)
+      ROOT ds = f32[2,1,1024] dynamic-slice(ag, reshape, s32[] constant(0),
+        s32[] constant(0)), dynamic_slice_sizes={2,1,1024}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloInstruction* ag =
+      module->entry_computation()->GetInstructionWithName("ag");
+  ASSERT_NE(ag, nullptr);
+  HloInstruction* ds_offset =
+      module->entry_computation()->GetInstructionWithName("reshape");
+  ASSERT_NE(ds_offset, nullptr);
+  auto map_id = [](const HloInstruction* hlo, int64_t id) {
+    return (hlo->opcode() == HloOpcode::kPartitionId) ? id : -1;
+  };
+  std::optional<PartitionOffsetSpec> indices_spec =
+      GetIndicesSpecForDynamicSliceWithMultiply(
+          Cast<HloAllGatherInstruction>(ag), ds_offset, map_id,
+          /*split_dim_size=*/2);
+  ASSERT_TRUE(indices_spec.has_value());
+  EXPECT_EQ(indices_spec.value().per_replica_group_offsets.size(), 1);
+  EXPECT_THAT(
+      indices_spec.value().per_replica_group_offsets[0],
+      UnorderedElementsAre(Pair(6, 0), Pair(4, 1), Pair(2, 2), Pair(0, 3)));
+}
+
+TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest, UnmatchedNotMultiply) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule module
+    ENTRY main {
+      param = f32[2,1,1024] parameter(0)
+      ag = f32[8,1,1024] all-gather(param), replica_groups={{0,1,2,3}},
+        dimensions={0}
+      const = s32[4]{0} constant({3, 2, 1, 0})
+      pid = u32[] partition-id()
+      ds_offset = s32[1]{0} dynamic-slice(const, pid), dynamic_slice_sizes={1}
+      constant.2 = s32[1]{0} constant({2})
+      ds_offset_add = s32[1]{0} add(ds_offset, constant.2)
+      reshape = s32[] reshape(ds_offset_add)
+      ROOT ds = f32[2,1,1024] dynamic-slice(ag, reshape, s32[] constant(0),
+        s32[] constant(0)), dynamic_slice_sizes={2,1,1024}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloInstruction* ag =
+      module->entry_computation()->GetInstructionWithName("ag");
+  ASSERT_NE(ag, nullptr);
+  HloInstruction* ds_offset =
+      module->entry_computation()->GetInstructionWithName("reshape");
+  ASSERT_NE(ds_offset, nullptr);
+  auto map_id = [](const HloInstruction* hlo, int64_t id) {
+    return (hlo->opcode() == HloOpcode::kPartitionId) ? id : -1;
+  };
+  std::optional<PartitionOffsetSpec> indices_spec =
+      GetIndicesSpecForDynamicSliceWithMultiply(
+          Cast<HloAllGatherInstruction>(ag), ds_offset, map_id,
+          /*split_dim_size=*/2);
+  ASSERT_FALSE(indices_spec.has_value());
+}
+
+TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest, MultiRgsWithMultiply) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule module
+    ENTRY main {
+      param = f32[4,1,1024] parameter(0)
+      ag = f32[16,1,1024] all-gather(param),
+        replica_groups={{0,1,2,3},{4,5,6,7}}, dimensions={0}
+      const = s32[8]{0} constant({2, 3, 1, 0, 3, 2, 1, 0})
+      pid = u32[] partition-id()
+      ds_offset = s32[] dynamic-slice(const, pid), dynamic_slice_sizes={1}
+      constant.4 = s32[1]{0} constant({4})
+      ds_offset_mul = s32[1]{0} multiply(ds_offset, constant.4)
+      reshape = s32[] reshape(ds_offset_mul)
+      ROOT ds = f32[4,1,1024] dynamic-slice(ag, reshape,
+        s32[] constant(0), s32[] constant(0)), dynamic_slice_sizes={4,1,1024}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloInstruction* ag =
+      module->entry_computation()->GetInstructionWithName("ag");
+  HloInstruction* ds_offset =
+      module->entry_computation()->GetInstructionWithName("reshape");
+  auto map_id = [](const HloInstruction* hlo, int64_t id) {
+    return (hlo->opcode() == HloOpcode::kPartitionId) ? id : -1;
+  };
+  std::optional<PartitionOffsetSpec> indices_spec =
+      GetIndicesSpecForDynamicSliceWithMultiply(
+          Cast<HloAllGatherInstruction>(ag), ds_offset, map_id,
+          /*split_dim_size=*/4);
+  ASSERT_TRUE(indices_spec.has_value());
+  EXPECT_EQ(indices_spec.value().per_replica_group_offsets.size(), 2);
+  EXPECT_THAT(
+      indices_spec.value().per_replica_group_offsets[0],
+      UnorderedElementsAre(Pair(8, 0), Pair(12, 1), Pair(4, 2), Pair(0, 3)));
+  EXPECT_THAT(
+      indices_spec.value().per_replica_group_offsets[1],
+      UnorderedElementsAre(Pair(12, 4), Pair(8, 5), Pair(4, 6), Pair(0, 7)));
+}
+
+TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest,
+       UnmatchedNotMultiplyArray) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule module
+    ENTRY main {
+      param = f32[2,1,1024] parameter(0)
+      ag = f32[8,1,1024] all-gather(param), replica_groups={{0,1,2,3}},
+        dimensions={0}
+      const = s32[4]{0} constant({3, 2, 1, 0})
+      pid = u32[] partition-id()
+      ds_offset = s32[1]{0} dynamic-slice(const, pid), dynamic_slice_sizes={1}
+      constant.2 = s32[1]{0} constant({2})
+      constant.3 = s32[1]{0} constant({10})
+      ds_offset_add = s32[1]{0} multiply(constant.3, constant.2)
+      reshape = s32[] reshape(ds_offset_add)
+      ROOT ds = f32[2,1,1024] dynamic-slice(ag, reshape, s32[] constant(0),
+        s32[] constant(0)), dynamic_slice_sizes={2,1,1024}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloInstruction* ag =
+      module->entry_computation()->GetInstructionWithName("ag");
+  ASSERT_NE(ag, nullptr);
+  HloInstruction* ds_offset =
+      module->entry_computation()->GetInstructionWithName("reshape");
+  ASSERT_NE(ds_offset, nullptr);
+  auto map_id = [](const HloInstruction* hlo, int64_t id) {
+    return (hlo->opcode() == HloOpcode::kPartitionId) ? id : -1;
+  };
+  std::optional<PartitionOffsetSpec> indices_spec =
+      GetIndicesSpecForDynamicSliceWithMultiply(
+          Cast<HloAllGatherInstruction>(ag), ds_offset, map_id,
+          /*split_dim_size=*/2);
+  ASSERT_FALSE(indices_spec.has_value());
+}
+
+TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest,
+       UnmatchedNotMultiplyNonShardSize) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule module
+    ENTRY main {
+      param = f32[2,1,1024] parameter(0)
+      ag = f32[8,1,1024] all-gather(param), replica_groups={{0,1,2,3}},
+        dimensions={0}
+      const = s32[4]{0} constant({3, 2, 1, 0})
+      pid = u32[] partition-id()
+      ds_offset = s32[1]{0} dynamic-slice(const, pid), dynamic_slice_sizes={1}
+      constant.2 = s32[1]{0} constant({3})
+      ds_offset_add = s32[1]{0} multiply(ds_offset, constant.2)
+      reshape = s32[] reshape(ds_offset_add)
+      ROOT ds = f32[2,1,1024] dynamic-slice(ag, reshape, s32[] constant(0),
+        s32[] constant(0)), dynamic_slice_sizes={2,1,1024}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloInstruction* ag =
+      module->entry_computation()->GetInstructionWithName("ag");
+  ASSERT_NE(ag, nullptr);
+  HloInstruction* ds_offset =
+      module->entry_computation()->GetInstructionWithName("reshape");
+  ASSERT_NE(ds_offset, nullptr);
+  auto map_id = [](const HloInstruction* hlo, int64_t id) {
+    return (hlo->opcode() == HloOpcode::kPartitionId) ? id : -1;
+  };
+  std::optional<PartitionOffsetSpec> indices_spec =
+      GetIndicesSpecForDynamicSliceWithMultiply(
+          Cast<HloAllGatherInstruction>(ag), ds_offset, map_id,
+          /*split_dim_size=*/2);
+  ASSERT_FALSE(indices_spec.has_value());
 }
 
 class MatchPermutedSliceAndPartitionOffsetTest

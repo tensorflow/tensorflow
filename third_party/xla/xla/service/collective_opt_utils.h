@@ -47,7 +47,7 @@ struct SplitDimSpec {
 };
 
 // A map from a partitioned offset to its corresponding partition ID.
-using OffsetToIdMap = absl::flat_hash_map<int64_t, int64_t>;
+using OffsetToIdMap = absl::btree_map<int64_t, int64_t>;
 
 // Represents the mapping of partition offsets to partition IDs for each replica
 // group. This can be derived from either a dynamic-slice or an all-gather
@@ -64,6 +64,13 @@ using PermutationPairs = std::vector<std::pair<int64_t, int64_t>>;
 struct AllGatherDynamicSliceMatchSpec {
   PermutationPairs permutation_pairs;
 };
+
+// Function to map a replica/partition/global ID to an offset in the offset
+// table, based on the given scalar offset HLO. For example, if the HLO is
+// kPartitionId but the all-reduce uses global IDs, then the function maps
+// global IDs to partition IDs. It returns -1 if the HLO cannot be understood.
+using MapIdToTableOffset =
+    std::function<int64_t(const HloInstruction*, int64_t)>;
 
 // Matches the given all-reduce operation to a reduce-scatter pattern.
 std::optional<ReduceScatterSpec> MatchReduceScatter(
@@ -176,6 +183,15 @@ std::optional<PartitionOffsetSpec> GetIndicesSpecForDynamicSlice(
     const HloAllGatherInstruction* absl_nonnull ag_instr,
     const HloInstruction* absl_nonnull offset_hlo,
     const std::function<int64_t(const HloInstruction*, int64_t)>& map_id);
+
+// Extracts the mapping from slice offsets to partition IDs from a dynamic-slice
+// instruction that is fed by an all-gather where the dynamic-slice's offset
+// allows one multiply instruction.
+std::optional<PartitionOffsetSpec> GetIndicesSpecForDynamicSliceWithMultiply(
+    const HloAllGatherInstruction* absl_nonnull ag_instr,
+    const HloInstruction* absl_nonnull offset_hlo,
+    const std::function<int64_t(const HloInstruction*, int64_t)>& map_id,
+    int64_t split_dim_size);
 
 // Extracts the PartitionOffsetSpec from an all-gather instruction.
 std::optional<PartitionOffsetSpec> ExtractPartitionOffsetSpec(

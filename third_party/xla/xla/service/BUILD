@@ -104,6 +104,8 @@ cc_library(
     hdrs = ["collective_opt_utils.h"],
     deps = [
         ":collective_ops_utils",
+        ":pattern_matcher",
+        "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/tsl/platform:statusor",

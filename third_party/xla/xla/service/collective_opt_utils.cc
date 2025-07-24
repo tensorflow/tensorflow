@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -76,12 +77,6 @@ std::optional<int64_t> GetScalarInt64Value(const HloInstruction* constant) {
   return constant->literal().GetIntegralAsS64(multi_index);
 }
 
-// Function to map a replica/partition/global ID to an offset in the offset
-// table, based on the given scalar offset HLO. For example, if the HLO is
-// kPartitionId but the all-reduce uses global IDs, then the function maps
-// global IDs to partition IDs. It returns -1 if the HLO cannot be understood.
-using MapIdToTableOffset =
-    std::function<int64_t(const HloInstruction*, int64_t)>;
 
 // Computes an index into a lookup table for a given device
 // ID (partition-id/replica-id/flattened-id) recursively.
@@ -604,9 +599,9 @@ MatchPermutedSliceAndPartitionOffset(const HloAllGatherInstruction* ag,
           << " split dim: " << split_dim_spec->split_dim;
   // Section 3: extract the offset spec from dynamic slice and ag.
   std::optional<PartitionOffsetSpec> ds_offset_spec =
-      GetIndicesSpecForDynamicSlice(
+      GetIndicesSpecForDynamicSliceWithMultiply(
           ag, dynamic_slice->operand(split_dim_spec->split_dim + 1),
-          map_partition_id);
+          map_partition_id, split_dim_spec->split_dim_size);
   if (!ds_offset_spec.has_value()) {
     VLOG(2) << "AG does not have valid indices spec " << ag->ToString()
             << " for DS " << dynamic_slice->ToString() << " on split_dim"
@@ -894,6 +889,26 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
   return spec;
 }
 
+// Generates a new PartitionOffsetSpec where the offsets are multiplied by the
+// multiplier.
+PartitionOffsetSpec GenerateMultipliedPartitionOffsetSpec(
+    const PartitionOffsetSpec& offset_partition_spec, int64_t multiplier) {
+  PartitionOffsetSpec multiplied_indices_spec;
+  multiplied_indices_spec.per_replica_group_offsets.resize(
+      offset_partition_spec.per_replica_group_offsets.size());
+  for (int64_t rg_idx = 0;
+       rg_idx < offset_partition_spec.per_replica_group_offsets.size();
+       ++rg_idx) {
+    for (const auto& [offset, partition_id] :
+         offset_partition_spec.per_replica_group_offsets[rg_idx]) {
+      multiplied_indices_spec
+          .per_replica_group_offsets[rg_idx][offset * multiplier] =
+          partition_id;
+    }
+  }
+  return multiplied_indices_spec;
+}
+
 std::optional<PartitionOffsetSpec> GetIndicesSpecForDynamicSlice(
     const HloAllGatherInstruction* absl_nonnull ag_instr,
     const HloInstruction* absl_nonnull offset_hlo,
@@ -961,6 +976,66 @@ std::optional<PartitionOffsetSpec> GetIndicesSpecForDynamicSlice(
   }
 
   return indices_spec;
+}
+
+std::optional<PartitionOffsetSpec> GetIndicesSpecForDynamicSliceWithMultiply(
+    const HloAllGatherInstruction* absl_nonnull ag_instr,
+    const HloInstruction* absl_nonnull offset_hlo,
+    const std::function<int64_t(const HloInstruction*, int64_t)>& map_id,
+    int64_t split_dim_size) {
+  if (!ag_instr || !offset_hlo) {
+    return std::nullopt;
+  }
+  if (ag_instr->replica_groups().empty()) {
+    return std::nullopt;
+  }
+  // Traverses up the instruction graph for layout instructions.
+  while (offset_hlo->opcode() == HloOpcode::kBitcast ||
+         offset_hlo->opcode() == HloOpcode::kReshape ||
+         offset_hlo->opcode() == HloOpcode::kCopy) {
+    offset_hlo = offset_hlo->operand(0);
+  }
+  if (offset_hlo->opcode() == HloOpcode::kMultiply) {
+    if (!ShapeUtil::IsEffectiveScalar(offset_hlo->shape())) {
+      VLOG(2) << "Offset is not a scalar " << offset_hlo->ToString();
+      return std::nullopt;
+    }
+    int64_t const_operand_idx = -1;
+    if (offset_hlo->operand(0)->IsConstant()) {
+      const_operand_idx = 0;
+    } else if (offset_hlo->operand(1)->IsConstant()) {
+      const_operand_idx = 1;
+    } else {
+      VLOG(2) << "Offset is not multiple(const, ...) "
+              << offset_hlo->ToString();
+      return std::nullopt;
+    }
+    std::optional<int64_t> multiplier =
+        GetScalarInt64Value(offset_hlo->operand(const_operand_idx));
+
+    if (!multiplier || split_dim_size % *multiplier != 0) {
+      VLOG(2)
+          << "Multiplier is unknown or cannot evenly divide split_dim_size: "
+          << split_dim_size << " multiplier:" << *multiplier << "offset_hlo:"
+          << offset_hlo->operand(const_operand_idx)->ToString();
+      return std::nullopt;
+    }
+
+    VLOG(10) << "detected valid multiplier: " << *multiplier;
+    std::optional<PartitionOffsetSpec> offset_partition_spec =
+        GetIndicesSpecForDynamicSlice(
+            ag_instr, offset_hlo->operand(1 - const_operand_idx), map_id);
+    if (!offset_partition_spec.has_value()) {
+      VLOG(2) << "Failed to get indices spec for dynamic slice "
+              << offset_hlo->operand(1 - const_operand_idx)->ToString();
+      return std::nullopt;
+    }
+    PartitionOffsetSpec multiplied_spec = GenerateMultipliedPartitionOffsetSpec(
+        offset_partition_spec.value(), *multiplier);
+    return multiplied_spec;
+  }
+  // Falls back to non-multiply handling when multiply is not found.
+  return GetIndicesSpecForDynamicSlice(ag_instr, offset_hlo, map_id);
 }
 
 }  // namespace xla
