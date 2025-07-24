@@ -602,7 +602,7 @@ ENTRY main {
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
-       EstimateRunTimeForTiledFusion_RegisterSpill_ReturnsInfinite) {
+       EstimateRunTimeForTiledFusion_Softmax_RegisterSpill_ReturnsInfinite) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
@@ -639,6 +639,59 @@ ENTRY main {
                               *fusion_adaptor, /*launch_dimensions=*/{8, 32},
                               /*output_tile_sizes=*/{{2, 16000}}));
   EXPECT_TRUE(res2.IsInfinite());
+}
+
+TEST_F(
+    GpuIndexingPerformanceModelTest,
+    EstimateRunTimeForTiledFusion_BroadcastReduce_RegisterSpill_ReturnsInfinite) {  // NOLINT(whitespace/line_length)
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  param_0 = s32[] parameter(1)
+  param_1 = s32[] parameter(0)
+  ROOT add = s32[] add(param_0, param_1)
+}
+
+fused_reduce {
+  param_0 = pred[4096,32]{1,0} parameter(0)
+  convert.0 = s32[4096,32]{1,0} convert(param_0)
+  transpose = s32[32,4096]{1,0} transpose(convert.0), dimensions={1,0}
+  broadcast.0 = s32[4096,32,4096]{2,1,0} broadcast(transpose), dimensions={1,2}
+  iota.0 = s32[4096,4096]{1,0} iota(), iota_dimension=0
+  iota.1 = s32[4096,4096]{1,0} iota(), iota_dimension=1
+  compare.1 = pred[4096,4096]{1,0} compare(iota.0, iota.1), direction=GE
+  convert.1 = s32[4096,4096]{1,0} convert(compare.1)
+  broadcast.1 = s32[4096,32,4096]{2,1,0} broadcast(convert.1), dimensions={0,2}
+  multiply = s32[4096,32,4096]{2,1,0} multiply(broadcast.0, broadcast.1)
+  c0 = s32[] constant(0)
+  ROOT reduce.4552.1 = s32[4096,32]{1,0} reduce(multiply, c0), dimensions={2}, to_apply=add
+}
+
+ENTRY main {
+  param_0 = pred[4096,32]{1,0} parameter(0)
+  ROOT input_reduce_fusion = s32[4096,32]{1,0} fusion(param_0), kind=kCustom, calls=fused_reduce
+})"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto res1,
+                          indexing_cost_model_.EstimateRunTimeForTiledFusion(
+                              *fusion_adaptor, /*launch_dimensions=*/{1024, 8},
+                              /*output_tile_sizes=*/{{4, 4}}));
+  EXPECT_NEAR(absl::ToDoubleMicroseconds(res1.exec_time), 412, 1);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto res2,
+                          indexing_cost_model_.EstimateRunTimeForTiledFusion(
+                              *fusion_adaptor, /*launch_dimensions=*/{512, 8},
+                              /*output_tile_sizes=*/{{8, 4}}));
+  EXPECT_TRUE(res2.IsInfinite());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto res3,
+                          indexing_cost_model_.EstimateRunTimeForTiledFusion(
+                              *fusion_adaptor, /*launch_dimensions=*/{1024, 4},
+                              /*output_tile_sizes=*/{{4, 8}}));
+  EXPECT_TRUE(res3.IsInfinite());
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
