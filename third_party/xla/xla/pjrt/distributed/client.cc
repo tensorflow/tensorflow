@@ -101,7 +101,8 @@ DistributedRuntimeCoordinationServiceClient::
   coord_agent_ = tsl::CreateCoordinationServiceAgent();
   const absl::Status status = coord_agent_->Initialize(
       options.env, "jax_worker", options.node_id, config,
-      std::move(leader_client), options.missed_heartbeat_callback);
+      std::move(leader_client), options.missed_heartbeat_callback,
+      options.recoverable);
   if (!status.ok()) {
     LOG(ERROR) << "Coordination agent failed to initialize: " << status;
   }

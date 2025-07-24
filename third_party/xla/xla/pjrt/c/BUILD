@@ -256,6 +256,7 @@ cc_library(
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service:computation_placer_hdr",
+        "//xla/service:global_device_id",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/platform:errors",
@@ -425,6 +426,7 @@ cc_library(
         "//xla/pjrt/gpu:gpu_topology",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/pjrt/gpu:se_gpu_pjrt_compiler",  # buildcleaner: keep to register GPU AOT compiler
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_pjrt_client",
         "//xla/python:custom_call_batch_partitioner",
         "//xla/python:custom_partition_callback",
         "//xla/python:debug_callback_partitioner",  # To register "DebugCallbackCustomCallPartitioner" custom partitioning handler.

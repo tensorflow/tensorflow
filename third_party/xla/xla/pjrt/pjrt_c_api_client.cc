@@ -1834,6 +1834,16 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
       non_donatable_input_indices_storage.data();
   args.num_devices = argument_handles.size();
 
+  std::vector<int> task_ids;
+  std::vector<int64_t> incarnation_ids;
+  for (const auto& [task_id, incarnation_id] : options.incarnations) {
+    task_ids.push_back(task_id);
+    incarnation_ids.push_back(incarnation_id.value());
+  }
+  args.options->num_tasks = options.incarnations.size();
+  args.options->task_ids = task_ids.data();
+  args.options->incarnation_ids = incarnation_ids.data();
+
   // If the executable has no addressable devices, `num_args` cannot be
   // determined but it is unused. 0 serves as a placeholder.
   args.num_args = (args.num_devices > 0) ? argument_handles[0].size() : 0;

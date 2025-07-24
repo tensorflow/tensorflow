@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.74
+
+* Add incarnations to `PJRT_ExecuteOptions`.
+
 ## 0.73
 
 * Added `PJRT_Client_UpdateGlobalProcessInfo`.
