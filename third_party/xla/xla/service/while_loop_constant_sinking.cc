@@ -213,9 +213,9 @@ absl::StatusOr<bool> WhileLoopConstantSinking::Run(
       }
     }
   }
-  TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
 
   if (changed) {
+    TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
     VLOG(2) << "HLO module after WhileLoopConstantSinking:";
     XLA_VLOG_LINES(2, module->ToString());
   } else {
