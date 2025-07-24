@@ -4350,8 +4350,14 @@ cc_library(
     srcs = ["stream_pool.cc"],
     hdrs = ["stream_pool.h"],
     deps = [
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -4361,10 +4367,13 @@ xla_cc_test(
     deps = [
         ":stream_pool",
         "//xla/hlo/testlib:test_helpers",
+        "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/host:host_platform",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
