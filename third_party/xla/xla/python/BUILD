@@ -49,6 +49,7 @@ pytype_strict_library(
         ":_hlo_pass",
         ":_ops",
         ":_profiler",
+        ":_profile_data",
         ":_xla_builder",
         "//third_party/py/jax/jaxlib:xla_client",
         "@ml_dtypes_py//ml_dtypes",
@@ -392,6 +393,38 @@ nanobind_pywrap_extension(
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
+)
+
+nanobind_pywrap_extension(
+    name = "_profile_data",
+    srcs = ["profile_data.cc"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    pytype_srcs = ["_profile_data.pyi"],
+    deps = [
+        "//xla/python/profiler:profile_data_lib",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@nanobind",
+    ],
+)
+
+py_strict_test(
+    name = "profile_data_test",
+    srcs = ["profile_data_test.py"],
+    main = "profile_data_test.py",
+    tags = [
+        "no_oss",
+        "optonly",
+    ],
+    deps =
+        if_google([
+            "//third_party/py/jax",
+            "//pyglib:gfile",
+            "@absl_py//absl/testing:absltest",
+        ]),
 )
 
 cc_library(
