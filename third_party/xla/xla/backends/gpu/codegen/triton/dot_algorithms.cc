@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/dot_algorithms.h"
 
-#include <cstdint>
 #include <limits>
 #include <optional>
 #include <string>
