@@ -1823,8 +1823,9 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
   // because each iteration compares one pair of elements.
   Shape standard_iteration_shape = keys_shape;
   uint64_t standard_num_iterations_in_sort_dim = 1ULL << (num_stages - 1);
-  standard_iteration_shape.set_dimensions(dimension_to_sort,
-                                          standard_num_iterations_in_sort_dim);
+  standard_iteration_shape.set_dimensions(
+      dimension_to_sort,
+      CeilOfRatio(standard_num_iterations_in_sort_dim, kUnrollFactor));
 
   LaunchDimensions standard_launch_dimensions = CalculateLaunchDimensions(
       standard_iteration_shape, ir_emitter_context_->gpu_device_info());
@@ -1833,11 +1834,12 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
   // tiling. We split the dimension that should be sorted into tiles
   // of size 'tile_size'. This means we first need to round
   // 'dimension_to_sort_bound' up to be a multiple of the tile size.
-  int64_t rounded_bound = RoundUpTo(dimension_to_sort_bound, tile_size);
+  uint64_t rounded_bound = RoundUpTo(dimension_to_sort_bound, tile_size);
   Shape iteration_shape = keys_shape;
 
   // We iterate through the element pairs that should be compared.
-  uint64_t num_iterations_in_sort_dim = rounded_bound / 2;
+  uint64_t num_iterations_in_sort_dim =
+      CeilOfRatio(rounded_bound, kUnrollFactor);
   iteration_shape.set_dimensions(dimension_to_sort, num_iterations_in_sort_dim);
   uint64_t num_iterations = ShapeUtil::ElementsIn(iteration_shape);
 
@@ -1846,7 +1848,8 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
   // exactly `kUnrollFactor` many adjacent elements into shared memory, and then
   // does `kUnrollFactor` / 2 many comparisons of two elements taken from shared
   // memory.
-  const uint64_t kThreadsPerBlock = tile_size / kUnrollFactor;
+  const uint64_t kThreadsPerBlock =
+      std::max(uint64_t{1}, tile_size / kUnrollFactor);
 
   uint64_t num_blocks = CeilOfRatio(num_iterations, kThreadsPerBlock);
   LaunchDimensions tiled_launch_dimensions(num_blocks, kThreadsPerBlock);
@@ -1871,7 +1874,7 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
         launch_dimensions,
         xor_masks.size() > 1 ? num_iterations_in_sort_dim
                              : standard_num_iterations_in_sort_dim,
-        tile_size,
+        tile_size, kUnrollFactor,
         [&](absl::Span<llvm::Value* const> operands, llvm::Value* output) {
           return CallNestedComputation(&b_, *ir_emitter_context_, *comparator,
                                        operands, output);
