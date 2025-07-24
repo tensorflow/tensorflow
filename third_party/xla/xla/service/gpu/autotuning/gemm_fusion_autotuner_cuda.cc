@@ -83,6 +83,26 @@ std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
   auto compute_capability =
       std::get<se::CudaComputeCapability>(GetComputeCapability());
 
+  if (compute_capability.IsAtLeastBlackwell()) {
+    return {Config(128, 128, 32, 1, 4, 4), Config(128, 128, 64, 1, 1, 8),
+            Config(128, 128, 64, 8, 3, 4), Config(128, 16, 16, 512, 4, 2),
+            Config(128, 16, 32, 16, 3, 2), Config(128, 16, 64, 1, 5, 4),
+            Config(128, 16, 64, 16, 3, 4), Config(128, 16, 64, 64, 1, 2),
+            Config(128, 256, 64, 1, 4, 8), Config(128, 256, 64, 2, 4, 8),
+            Config(128, 256, 64, 4, 3, 8), Config(128, 64, 64, 1, 3, 4),
+            Config(128, 64, 64, 16, 4, 8), Config(128, 64, 64, 8, 4, 4),
+            Config(16, 16, 128, 1, 3, 2),  Config(16, 16, 16, 1, 1, 2),
+            Config(16, 16, 64, 8, 3, 2),   Config(16, 32, 64, 1, 3, 2),
+            Config(256, 128, 64, 1, 3, 8), Config(256, 16, 16, 1, 1, 2),
+            Config(256, 32, 32, 16, 3, 4), Config(32, 16, 32, 1, 4, 2),
+            Config(32, 16, 512, 1, 1, 4),  Config(32, 16, 64, 1, 1, 2),
+            Config(32, 16, 64, 1, 4, 2),   Config(64, 128, 16, 1, 1, 16),
+            Config(64, 128, 16, 1, 3, 2),  Config(64, 128, 64, 1, 4, 4),
+            Config(64, 16, 64, 1, 2, 2),   Config(64, 32, 128, 1, 3, 2),
+            Config(64, 32, 32, 1, 4, 2),   Config(64, 32, 64, 64, 3, 2),
+            Config(64, 64, 128, 8, 1, 8),  Config(64, 64, 16, 1, 1, 2),
+            Config(64, 64, 16, 1, 3, 2)};
+  }
   if (compute_capability.IsHopper() || compute_capability.IsAmpere()) {
     std::vector<TritonGemmConfig> configs = {
         Config(16, 16, 64, 1, 4, 2),    Config(16, 16, 128, 1, 4, 4),
