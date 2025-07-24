@@ -130,6 +130,16 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
       raise RuntimeError("Serving on TPU is not yet supported.")
 
   @property
+  def variables(
+      self,
+  ) -> Dict[
+      tpu_embedding_v2_utils.TableConfig, Dict[str, tf_variables.Variable]
+  ]:
+    """Returns a dict of variables, keyed by `TableConfig`, then by slot name."""
+    self._maybe_build()
+    return self._variables
+
+  @property
   def embedding_tables(
       self,
   ) -> Dict[tpu_embedding_v2_utils.TableConfig, tf_variables.Variable]:
