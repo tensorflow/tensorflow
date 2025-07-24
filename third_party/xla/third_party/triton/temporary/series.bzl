@@ -17,5 +17,6 @@ temporary_patch_list = [
     "//third_party/triton:temporary/mem_sync_scope_agent_to_device.patch",
     "//third_party/triton:temporary/convert_layout_heuristic.patch",
     "//third_party/triton:temporary/fix_test_core_h100_target.patch",
+    "//third_party/triton:temporary/a100_atomic_cas_op_pattern_adjustment.patch",
     # Add new patches just above this line
 ]
