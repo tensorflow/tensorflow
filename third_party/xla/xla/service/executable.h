@@ -16,18 +16,18 @@ limitations under the License.
 #ifndef XLA_SERVICE_EXECUTABLE_H_
 #define XLA_SERVICE_EXECUTABLE_H_
 
-#include <cstdint>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "absl/types/variant.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -130,9 +131,7 @@ class ExecutionInput {
     unowned_indices_.erase(index);
   }
 
-  const absl::flat_hash_set<ShapeIndex>& unowned_indices() {
-    return unowned_indices_;
-  }
+  const std::set<ShapeIndex>& unowned_indices() { return unowned_indices_; }
 
   const ShapeTree<MaybeOwningDeviceMemory>& Buffers() const { return buffers_; }
 
@@ -156,7 +155,7 @@ class ExecutionInput {
   ShapeTree<MaybeOwningDeviceMemory> buffers_;
   // Set of indices of buffers that should be returned to the caller if an error
   // occurs when enqueuing the computation.
-  absl::flat_hash_set<ShapeIndex> unowned_indices_;
+  std::set<ShapeIndex> unowned_indices_;
   std::unique_ptr<Shape> dynamic_shape_;
   std::unique_ptr<Shape> host_shape_;
 };
