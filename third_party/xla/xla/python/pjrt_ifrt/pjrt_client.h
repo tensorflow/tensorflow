@@ -320,6 +320,9 @@ class PjRtClient final
     return tsl::RCReference<UserContext>();
   }
 
+  // DO_NOT_SUBMIT: mwhittaker - Document.
+  absl::StatusOr<absl::flat_hash_map<int, IncarnationId>> Incarnations() const;
+
   static char ID;  // NOLINT
 
  private:
