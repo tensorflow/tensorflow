@@ -13,7 +13,6 @@ load(
 load(
     "//xla/tsl:tsl.default.bzl",
     "if_cuda_libs",
-    "if_nvshmem_libs",
 )
 load("//xla/tsl/cuda:stub.bzl", "cuda_stub")
 
@@ -386,6 +385,6 @@ cc_library(
 
 alias(
     name = "nvshmem_stub",
-    actual = if_nvshmem_libs("@nvidia_nvshmem//:nvshmem", ":nvshmem"),
+    actual = if_cuda_libs("@nvidia_nvshmem//:nvshmem", ":nvshmem"),
     visibility = ["//visibility:public"],
 )

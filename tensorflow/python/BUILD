@@ -1517,6 +1517,7 @@ cc_library(
         if_true = (
             if_cuda_is_configured([
                 "@local_xla//xla/tsl/cuda:cupti",
+                "@local_xla//xla/tsl/cuda:nvshmem_stub",
             ]) + if_nccl([
                 "@local_config_nccl//:nccl",
             ])
