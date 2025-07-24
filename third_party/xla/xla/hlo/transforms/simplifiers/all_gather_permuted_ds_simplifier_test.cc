@@ -159,6 +159,41 @@ TEST_F(AllGatherPermutedDsSimplifierTest,
 }
 
 TEST_F(AllGatherPermutedDsSimplifierTest,
+       AllPartitionsPermutedMultipleRgsWithMultiply) {
+  absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY entry {
+      p = f32[1,4,32] parameter(0)
+      ag = f32[1,16,32] all-gather(p), replica_groups={{0,1,2,3},{4,5,6,7}},
+        dimensions={1}, channel_id=1, use_global_device_ids=true
+      pid = u32[] partition-id()
+      permuteed_idx_list = s32[8]{0} constant({3,2,1,0,3,2,1,0})
+      offset = s32[1] dynamic-slice(permuteed_idx_list, pid),
+        dynamic_slice_sizes={1}
+      multiplier = s32[1]{0} constant(4)
+      offset_mul = s32[1]{0} multiply(offset, multiplier)
+      offset_reshape = s32[] reshape(offset_mul)
+      zero = s32[] constant(0)
+      ROOT ds = f32[1,4,32] dynamic-slice(ag, zero, offset_reshape, zero),
+        dynamic_slice_sizes={1,4,32}
+    }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          RunPass(hlo_string,
+                                  /*num_replicas=*/1,
+                                  /*num_partitions=*/8,
+                                  /*expect_change=*/true));
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::CollectivePermute(op::Parameter(0)));
+  EXPECT_THAT(
+      root->source_target_pairs(),
+      (UnorderedElementsAreArray<std::pair<int64_t, int64_t>>(
+          {{0, 3}, {1, 2}, {2, 1}, {3, 0}, {4, 7}, {5, 6}, {6, 5}, {7, 4}})));
+}
+
+TEST_F(AllGatherPermutedDsSimplifierTest,
        NoChangeWhenUseGlobalDeviceIdsIsFalse) {
   absl::string_view hlo_string = R"(
     HloModule module
