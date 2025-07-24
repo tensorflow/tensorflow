@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/array.h"
 #include "xla/hlo/ir/tile_assignment.h"  // IWYU pragma: export
 #include "xla/printer.h"
+#include "xla/service/spmd/shardy/constants.h"  // IWYU pragma: export
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"

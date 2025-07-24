@@ -385,6 +385,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":file_util",
+        ":windows_util",
         "//tensorflow/lite:minimal_logging",
     ],
 )
@@ -408,6 +409,17 @@ cc_library(
     deps = [
         "//tensorflow/lite:minimal_logging",
     ],
+)
+
+cc_library(
+    name = "windows_util",
+    srcs = ["windows_util.cc"],
+    hdrs = ["windows_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    tags = [
+        "keep_dep",  # Build cleaner will want to remove this because it doesn't check for Windows builds.
+    ],
+    deps = [],
 )
 
 ################################ Tester classes ################################
