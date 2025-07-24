@@ -1,4 +1,4 @@
-/* Copyright 2019 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,10 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/profiler/profile_data.h"
-
-#include <nanobind/nanobind.h>
-#include <nanobind/stl/string.h>  // IWYU pragma: keep. For automatic conversion of std::string to Python string.
+#include "xla/python/profiler/profile_data_lib.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -25,6 +22,8 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "nanobind/nanobind.h"
+#include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
