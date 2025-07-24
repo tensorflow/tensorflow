@@ -350,22 +350,23 @@ ThunkExecutor::ExecuteSequential(const Thunk::ExecuteParams& params) {
     // resume sequential execution starting from the next thunk.
     if (ABSL_PREDICT_FALSE(!execute_event.IsAvailable())) {
       auto event = tsl::MakeConstructedAsyncValueRef<ExecuteEvent>();
-      execute_event.AndThen([this, &params, it, event](absl::Status status) {
-        Thunk::TaskRunner* runner = params.task_runner;
+      execute_event.AndThen(
+          [this, &params, &thunk, it, event](absl::Status status) {
+            Thunk::TaskRunner* runner = params.task_runner;
 
-        if (ABSL_PREDICT_FALSE(!status.ok())) {
-          event.SetError(std::move(status));
-        } else if (ABSL_PREDICT_TRUE(!runner || runner->current_worker_id())) {
-          // Resume execution in the current thread if we are already running
-          // on a thread managed by the task runner.
-          ResumeExecuteSequential(it + 1, params, std::move(event));
-        } else {
-          // Resume execution in the task runner to avoid thread "leaks".
-          (*runner)([this, &params, it, event = std::move(event)] {
-            ResumeExecuteSequential(it + 1, params, std::move(event));
+            if (ABSL_PREDICT_FALSE(!status.ok())) {
+              event.SetError(std::move(status));
+            } else if (ABSL_PREDICT_FALSE(thunk.async_resume() && runner)) {
+              // Resume execution using the task runner to avoid executing
+              // remaining thunks on a thread pool that we don't own.
+              (*runner)([this, &params, it, event = std::move(event)] {
+                ResumeExecuteSequential(it + 1, params, std::move(event));
+              });
+            } else {
+              // Resume execution on a thread that completed thunk execution.
+              ResumeExecuteSequential(it + 1, params, std::move(event));
+            }
           });
-        }
-      });
       return event;
     }
 
@@ -373,6 +374,10 @@ ThunkExecutor::ExecuteSequential(const Thunk::ExecuteParams& params) {
     if (ABSL_PREDICT_FALSE(execute_event.IsError())) {
       return execute_event;
     }
+
+    // At this point execute_event must be concrete (completed successfully),
+    // and we can move on to the next thunk.
+    DCHECK(execute_event.IsConcrete());
   }
 
   // If we got to the end of the sequence it means that all thunks have
@@ -395,21 +400,21 @@ void ThunkExecutor::ResumeExecuteSequential(
     // If thunk execution is not completed yet, attach a continuation to
     // resume sequential execution starting from the next thunk.
     if (ABSL_PREDICT_FALSE(!execute_event.IsAvailable())) {
-      execute_event.AndThen([this, &params, it,
+      execute_event.AndThen([this, &params, &thunk, it,
                              event = std::move(event)](absl::Status status) {
         Thunk::TaskRunner* runner = params.task_runner;
 
         if (ABSL_PREDICT_FALSE(!status.ok())) {
           event.SetError(std::move(status));
-        } else if (ABSL_PREDICT_TRUE(!runner || runner->current_worker_id())) {
-          // Resume execution in the current thread if we are already
-          // running on a thread managed by the task runner.
-          ResumeExecuteSequential(it + 1, params, std::move(event));
-        } else {
-          // Resume execution in the task runner to avoid thread "leaks".
+        } else if (ABSL_PREDICT_FALSE(thunk.async_resume() && runner)) {
+          // Resume execution using the task runner to avoid executing
+          // remaining thunks on a thread pool that we don't own.
           (*runner)([this, &params, it, event = std::move(event)] {
             ResumeExecuteSequential(it + 1, params, std::move(event));
           });
+        } else {
+          // Resume execution on a thread that completed thunk execution.
+          ResumeExecuteSequential(it + 1, params, std::move(event));
         }
       });
       return;
@@ -420,6 +425,10 @@ void ThunkExecutor::ResumeExecuteSequential(
       event.SetError(execute_event.GetError());
       return;
     }
+
+    // At this point execute_event must be concrete (completed successfully),
+    // and we can move on to the next thunk.
+    DCHECK(execute_event.IsConcrete());
   }
 
   // If we got to the end of the sequence it means that all thunks have
@@ -498,7 +507,8 @@ void ThunkExecutor::Execute(ExecuteState* state,
       // execute session. If we happen to process the last thunk in the ready
       // queue, we will forward the lock that we already hold (note that the
       // lock might be empty, if `Execute` was called by the main thread).
-      execute_event.AndThen([&params, &node, state, is_sink, inc_pending_nodes,
+      execute_event.AndThen([&params, &node, &thunk, state, is_sink,
+                             inc_pending_nodes,
                              execute_event = execute_event.AsPtr(),
                              ready_queue = ready_queue.CreateEmptyReadyQueue(),
                              lock = ready_queue.Empty()
@@ -520,18 +530,18 @@ void ThunkExecutor::Execute(ExecuteState* state,
         }
 
         Thunk::TaskRunner* runner = state->runner;
-        if (ABSL_PREDICT_TRUE(!runner || runner->current_worker_id())) {
-          // Resume execution in the current thread if we are already
-          // running on a thread managed by the task runner.
-          state->executor->Execute(state, params, std::move(ready_queue),
-                                   std::move(lock));
-        } else {
-          // Resume execution in the task runner to avoid thread "leaks".
+        if (ABSL_PREDICT_FALSE(thunk.async_resume() && runner)) {
+          // Resume execution using the task runner to avoid executing
+          // remaining thunks on a thread pool that we don't own.
           (*runner)([state, &params, ready_queue = std::move(ready_queue),
                      lock = std::move(lock)] {
             state->executor->Execute(state, params, std::move(ready_queue),
                                      std::move(lock));
           });
+        } else {
+          // Resume execution on a thread that completed thunk execution.
+          state->executor->Execute(state, params, std::move(ready_queue),
+                                   std::move(lock));
         }
       });
     }
