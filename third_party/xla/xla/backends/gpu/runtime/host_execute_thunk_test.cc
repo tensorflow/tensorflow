@@ -91,11 +91,17 @@ TEST(HostExecuteStartThunkTest, SingleArgSingleResult) {
                               {{slice_result, ShapeUtil::MakeShape(S32, {})}});
 
   se::StreamExecutorMemoryAllocator allocator(stream_executor);
-  ServiceExecutableRunOptions run_options;
+  ExecutableRunOptions executable_run_options;
+  executable_run_options.set_device_to_host_stream(stream.get());
+  executable_run_options.set_host_to_device_stream(stream.get());
+  ServiceExecutableRunOptions service_executable_run_options(
+      executable_run_options);
+
   BufferAllocations allocations({arg, result}, 0, &allocator);
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+      service_executable_run_options, allocations, stream.get(), stream.get(),
+      nullptr, nullptr);
 
   TF_ASSERT_OK(
       thunk.Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
@@ -104,8 +110,11 @@ TEST(HostExecuteStartThunkTest, SingleArgSingleResult) {
   TF_ASSERT_OK_AND_ASSIGN(auto execute_event,
                           thunk.async_events()->ExtractEvent(
                               stream_executor, RunId(params.execution_id)));
+
   tsl::BlockUntilReady(execute_event);
   EXPECT_FALSE(execute_event.IsError());
+  TF_ASSERT_OK(stream->WaitFor(execute_event.get().get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   xla::Literal result_literal(ShapeUtil::MakeShape(S32, {}));
   TF_ASSERT_OK(
@@ -160,11 +169,16 @@ TEST(HostExecuteStartThunkTest, MultiArgMultipleResult) {
                                {slice_result1, ShapeUtil::MakeShape(S32, {})}});
 
   se::StreamExecutorMemoryAllocator allocator(stream_executor);
-  ServiceExecutableRunOptions run_options;
+  ExecutableRunOptions executable_run_options;
+  executable_run_options.set_device_to_host_stream(stream.get());
+  executable_run_options.set_host_to_device_stream(stream.get());
+  ServiceExecutableRunOptions service_executable_run_options(
+      executable_run_options);
   BufferAllocations allocations({arg0, result0, arg1, result1}, 0, &allocator);
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+      service_executable_run_options, allocations, stream.get(), stream.get(),
+      nullptr, nullptr);
 
   TF_ASSERT_OK(
       thunk.Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
@@ -173,8 +187,11 @@ TEST(HostExecuteStartThunkTest, MultiArgMultipleResult) {
   TF_ASSERT_OK_AND_ASSIGN(auto execute_event,
                           thunk.async_events()->ExtractEvent(
                               stream_executor, RunId(params.execution_id)));
+
   tsl::BlockUntilReady(execute_event);
   EXPECT_FALSE(execute_event.IsError());
+  TF_ASSERT_OK(stream->WaitFor(execute_event.get().get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   xla::Literal result_literal0(ShapeUtil::MakeShape(S32, {}));
   TF_ASSERT_OK(
@@ -232,11 +249,16 @@ TEST(HostExecuteStartThunkTest, ArgAndResultPinnedOnHost) {
                               {{slice_result, ShapeUtil::MakeShape(S32, {})}});
 
   se::StreamExecutorMemoryAllocator allocator(stream_executor);
-  ServiceExecutableRunOptions run_options;
+  ExecutableRunOptions executable_run_options;
+  executable_run_options.set_device_to_host_stream(stream.get());
+  executable_run_options.set_host_to_device_stream(stream.get());
+  ServiceExecutableRunOptions service_executable_run_options(
+      executable_run_options);
   BufferAllocations allocations({arg, result}, 0, &allocator);
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+      service_executable_run_options, allocations, stream.get(), stream.get(),
+      nullptr, nullptr);
 
   TF_ASSERT_OK(
       thunk.Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
@@ -247,6 +269,8 @@ TEST(HostExecuteStartThunkTest, ArgAndResultPinnedOnHost) {
                               stream_executor, RunId(params.execution_id)));
   tsl::BlockUntilReady(execute_event);
   EXPECT_FALSE(execute_event.IsError());
+  TF_ASSERT_OK(stream->WaitFor(execute_event.get().get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   EXPECT_EQ(*static_cast<int32_t*>(result_memory_allocation->opaque()), 10);
 }
@@ -284,11 +308,16 @@ TEST(HostExecuteStartThunkTest, ArgAndResultNonRegisteredHostMemory) {
                               {{slice_result, ShapeUtil::MakeShape(S32, {})}});
 
   se::StreamExecutorMemoryAllocator allocator(stream_executor);
-  ServiceExecutableRunOptions run_options;
+  ExecutableRunOptions executable_run_options;
+  executable_run_options.set_device_to_host_stream(stream.get());
+  executable_run_options.set_host_to_device_stream(stream.get());
+  ServiceExecutableRunOptions service_executable_run_options(
+      executable_run_options);
   BufferAllocations allocations({arg, result}, 0, &allocator);
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+      service_executable_run_options, allocations, stream.get(), stream.get(),
+      nullptr, nullptr);
 
   TF_ASSERT_OK(
       thunk.Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
@@ -299,6 +328,8 @@ TEST(HostExecuteStartThunkTest, ArgAndResultNonRegisteredHostMemory) {
                               stream_executor, RunId(params.execution_id)));
   tsl::BlockUntilReady(execute_event);
   EXPECT_FALSE(execute_event.IsError());
+  TF_ASSERT_OK(stream->WaitFor(execute_event.get().get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   EXPECT_EQ(result_value, 10);
 }
@@ -344,11 +375,16 @@ TEST(HostExecuteStartThunkTest, TestErrorPropagationFromExecuteEvent) {
                               {{slice_result, ShapeUtil::MakeShape(S32, {})}});
 
   se::StreamExecutorMemoryAllocator allocator(stream_executor);
-  ServiceExecutableRunOptions run_options;
+  ExecutableRunOptions executable_run_options;
+  executable_run_options.set_device_to_host_stream(stream.get());
+  executable_run_options.set_host_to_device_stream(stream.get());
+  ServiceExecutableRunOptions service_executable_run_options(
+      executable_run_options);
   BufferAllocations allocations({arg, result}, 0, &allocator);
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+      service_executable_run_options, allocations, stream.get(), stream.get(),
+      nullptr, nullptr);
 
   TF_ASSERT_OK(
       thunk.Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
@@ -368,19 +404,23 @@ TEST(HostExecuteDoneThunkTest, WaitingOnAvailableEvent) {
   auto async_events = std::make_shared<HostExecuteAsyncEvents>();
 
   HostExecuteDoneThunk thunk(Thunk::ThunkInfo(), async_events);
-  ServiceExecutableRunOptions run_options;
+  ExecutableRunOptions executable_run_options;
+  executable_run_options.set_device_to_host_stream(stream.get());
+  executable_run_options.set_host_to_device_stream(stream.get());
+  ServiceExecutableRunOptions service_executable_run_options(
+      executable_run_options);
 
   BufferAllocations allocations({}, 0, nullptr);
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+      service_executable_run_options, allocations, stream.get(), stream.get(),
+      nullptr, nullptr);
   {
-    auto available_event = tsl::MakeAvailableAsyncValueRef<
-        HostOffloadingExecutable::ExecuteEvent>();
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto available_event,
+        async_events->CreateEvent(stream_executor, RunId(params.execution_id)));
 
-    TF_ASSERT_OK(async_events->AddEvent(stream_executor,
-                                        RunId(params.execution_id),
-                                        std::move(available_event)));
+    available_event.SetStateConcrete();
   }
 
   TF_ASSERT_OK(
@@ -395,19 +435,22 @@ TEST(HostExecuteDoneThunkTest, WaitingOnErrorEvent) {
   auto async_events = std::make_shared<HostExecuteAsyncEvents>();
 
   HostExecuteDoneThunk thunk(Thunk::ThunkInfo(), async_events);
-  ServiceExecutableRunOptions run_options;
+  ExecutableRunOptions executable_run_options;
+  executable_run_options.set_device_to_host_stream(stream.get());
+  executable_run_options.set_host_to_device_stream(stream.get());
+  ServiceExecutableRunOptions service_executable_run_options(
+      executable_run_options);
 
   BufferAllocations allocations({}, 0, nullptr);
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+      service_executable_run_options, allocations, stream.get(), stream.get(),
+      nullptr, nullptr);
   {
-    auto error_event = tsl::MakeUnconstructedAsyncValueRef<
-        HostOffloadingExecutable::ExecuteEvent>();
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto error_event,
+        async_events->CreateEvent(stream_executor, RunId(params.execution_id)));
     error_event.SetError(Internal("Test error"));
-
-    TF_ASSERT_OK(async_events->AddEvent(
-        stream_executor, RunId(params.execution_id), std::move(error_event)));
   }
 
   TF_ASSERT_OK(
