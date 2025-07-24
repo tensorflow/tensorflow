@@ -338,11 +338,12 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
         ar, num_partitions, num_replicas, min_rank, ar->constrain_layout(),
         ar->use_global_device_ids(), ar->channel_id().has_value());
   }
+  bool is_cross_module =
+      ar->channel_id() && ar->opcode() == HloOpcode::kAllReduce;
   auto spec = MatchWithDynamicSlice(
       ar, num_partitions, num_replicas, allow_multiple_split_dims,
       allow_intervening_reshape, min_rank, match_partition_id, match_replica_id,
-      ar->constrain_layout(), ar->use_global_device_ids(),
-      ar->channel_id() && ar->opcode() == HloOpcode::kAllReduce,
+      ar->constrain_layout(), ar->use_global_device_ids(), is_cross_module,
       allow_intervening_bitcast);
   return spec;
 }
@@ -353,11 +354,12 @@ std::optional<ReduceScatterSpec> AllGatherDynamicSliceCancellation(
     bool allow_intervening_reshape, int64_t min_rank,
     HloPredicate match_partition_id, HloPredicate match_replica_id,
     bool allow_intervening_bitcast, bool allow_multiple_users) {
+  bool is_cross_module =
+      ag->channel_id() && ag->opcode() == HloOpcode::kAllGather;
   auto spec = MatchWithDynamicSlice(
       ag, num_partitions, num_replicas, allow_multiple_split_dims,
       allow_intervening_reshape, min_rank, match_partition_id, match_replica_id,
-      ag->constrain_layout(), ag->use_global_device_ids(),
-      ag->channel_id() && ag->opcode() == HloOpcode::kAllGather,
+      ag->constrain_layout(), ag->use_global_device_ids(), is_cross_module,
       allow_intervening_bitcast, allow_multiple_users);
 
   if (!spec.has_value()) {
@@ -693,9 +695,7 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
     HloPredicate match_partition_id, HloPredicate match_replica_id,
     bool is_constrain_layout, bool use_global_device_ids, bool is_cross_module,
     bool allow_intervening_bitcast, bool allow_multiple_users) {
-  if (!instruction->shape().IsArray() || is_constrain_layout ||
-      (is_cross_module &&
-       !instruction->GetModule()->config().use_spmd_partitioning())) {
+  if (!instruction->shape().IsArray() || is_constrain_layout) {
     VLOG(2) << "Unsupported collective: " << instruction->ToString();
     return std::nullopt;
   }
@@ -763,7 +763,8 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
         }
       }
     }
-    map_id = [&, orthogonal_replicas](const HloInstruction* hlo, int64_t id) {
+    map_id = [&, orthogonal_replicas](const HloInstruction* hlo,
+                                      int64_t id) -> int64_t {
       if (match_replica_id(hlo)) {
         return num_partitions == 1 ? id : -1;
       }
@@ -789,7 +790,7 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
             is_replica_mul_num_partitions(hlo->operand(0))))) {
         return id;
       }
-      return int64_t{-1};
+      return -1;
     };
   } else {
     // Right now all cross-partition all-reduces' subgroups refer to replicas
