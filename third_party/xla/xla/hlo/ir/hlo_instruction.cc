@@ -3045,9 +3045,15 @@ bool HloInstruction::IdenticalInternal(
                          : ShapeUtil::Compatible(shape(), other.shape()))) {
     return false;
   }
-  if (sharding_sensitive && has_sharding() && other.has_sharding() &&
-      sharding() != other.sharding()) {
-    return false;
+  if (sharding_sensitive) {
+    if (has_sharding() && other.has_sharding() &&
+        sharding() != other.sharding()) {
+      return false;
+    }
+    if (get_frontend_attribute(HloSharding::ShardingFrontendAttrName()) !=
+        other.get_frontend_attribute(HloSharding::ShardingFrontendAttrName())) {
+      return false;
+    }
   }
   if (operands().size() != other.operands().size()) {
     return false;
