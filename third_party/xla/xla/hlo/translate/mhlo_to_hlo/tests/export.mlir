@@ -19,7 +19,7 @@ func.func @main(%arg0: tensor<2xi1>) -> tensor<2xi1> {
 
 // CHECK:  ENTRY
 // CHECK:  %[[ARG:.*]] = pred[2] parameter(0)
-// CHECK:  ROOT %[[RESULT:.*]] = pred[2] xor(%[[ARG]], %[[ARG]])
+// CHECK:  ROOT %[[RESULT:.*]] = pred[2] add(%[[ARG]], %[[ARG]])
 
 // -----
 
