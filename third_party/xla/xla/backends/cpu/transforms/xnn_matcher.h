@@ -60,6 +60,9 @@ class XnnMatcher : public LibraryMatcher {
           instr->dot_dimension_numbers(), instr->operand(0)->shape(),
           instr->operand(1)->shape(), instr->shape(), target_machine_features_);
     }
+    if (instr->IsConstant()) {
+      return IsConstantSupportedByXnn(instr);
+    }
     if (instr->IsElementwise()) {
       return IsElementwiseOpSupportedByXnn(instr);
     }
