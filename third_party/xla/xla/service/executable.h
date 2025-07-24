@@ -99,7 +99,7 @@ class ExecutionInput {
     }
   }
 
-  ExecutionInput(ExecutionInput&&) = default;
+  ExecutionInput(ExecutionInput&&) noexcept;
 
   ~ExecutionInput();
 
@@ -154,9 +154,11 @@ class ExecutionInput {
   }
 
   ShapeTree<MaybeOwningDeviceMemory> buffers_;
+
   // Set of indices of buffers that should be returned to the caller if an error
   // occurs when enqueuing the computation.
   absl::flat_hash_set<ShapeIndex> unowned_indices_;
+
   std::unique_ptr<Shape> dynamic_shape_;
   std::unique_ptr<Shape> host_shape_;
 };
