@@ -137,7 +137,7 @@ def SameOperandsAndResultsScale : OpInterface<"SameScalesOpInterface"> {
   ];
 
   let verify = [{
-    return TFL::VerifySameScales($_op);
+    return mlir::TFL::VerifySameScales($_op);
   }];
 }
 
