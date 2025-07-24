@@ -109,9 +109,8 @@ def experimental_write_bytecode(filename, mlir_txt):
   return ExperimentalWriteBytecode(filename.encode('utf-8'), mlir_txt.encode())
 
 
-def experimental_tflite_to_tosa_bytecode(
-    flatbuffer,
-    bytecode,
+def experimental_tflite_to_tosa_bytecode(flatbuffer, bytecode):
+    raise NotImplementedError("This function has been removed. Please refer to TensorFlow documentation for TOSA conversion.")
     use_external_constant=False,
     ordered_input_arrays=None,
     ordered_output_arrays=None,
