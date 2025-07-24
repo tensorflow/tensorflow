@@ -41,6 +41,18 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "op_or_arg_name_mapper_test",
+    srcs = ["op_or_arg_name_mapper_test.cc"],
+    deps = [
+        ":op_or_arg_name_mapper",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
 cc_library(
     name = "tf_mlir_opt_main",
     testonly = True,

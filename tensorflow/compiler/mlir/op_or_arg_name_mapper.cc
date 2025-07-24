@@ -87,6 +87,9 @@ std::optional<llvm::StringRef> OpOrArgNameMapper::GetMappedName(
 
 std::optional<absl::string_view> OpOrArgNameMapper::GetMappedNameView(
     OpOrVal op_or_val) {
+  if (!op_or_val_to_name_.contains(op_or_val)) {
+    return std::nullopt;
+  }
   auto& name = op_or_val_to_name_[op_or_val];
   if (!name.empty()) return name;
   return std::nullopt;
