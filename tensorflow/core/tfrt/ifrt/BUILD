@@ -291,6 +291,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:protobuf",
+        "@local_xla//xla/pjrt:pjrt_executable",
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/tsl/platform:env",
         "@local_xla//xla/tsl/platform:errors",

@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
@@ -76,7 +77,9 @@ class IfrtServingExecutable {
       tensorflow::DeviceMgr* device_mgr,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
       IfrtServingCoreSelector* ifrt_serving_core_selector,
-      tsl::protobuf::Message* compilation_environment_proto,
+      std::variant<tsl::protobuf::Message*,
+                   xla::CompileOptions::EnvironmentOptionOverrides>
+          compilation_env_or_overrides,
       TfToHloCompiler* tf_to_hlo_compiler,
       IfrtPersistentCompilationCache* persistent_compilation_cache);
 
@@ -152,7 +155,9 @@ class IfrtServingExecutable {
       IfrtServingCoreSelector* ifrt_serving_core_selector,
       tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata,
       xla::ifrt::DeviceListRef assigned_device_list,
-      tsl::protobuf::Message* compilation_environment_proto,
+      std::variant<tsl::protobuf::Message*,
+                   xla::CompileOptions::EnvironmentOptionOverrides>
+          compilation_env_or_overrides,
       TfToHloCompiler* tf_to_hlo_compiler,
       IfrtPersistentCompilationCache* persistent_compilation_cache)
       : program_id_(program_id),
@@ -169,7 +174,7 @@ class IfrtServingExecutable {
         device_mgr_(device_mgr),
         shape_representation_fn_(std::move(shape_representation_fn)),
         ifrt_serving_core_selector_(std::move(ifrt_serving_core_selector)),
-        compilation_environment_proto_(compilation_environment_proto),
+        compilation_env_or_overrides_(compilation_env_or_overrides),
         tf_to_hlo_compiler_(tf_to_hlo_compiler),
         persistent_compilation_cache_(persistent_compilation_cache) {}
 
@@ -196,8 +201,9 @@ class IfrtServingExecutable {
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
   IfrtServingCoreSelector* ifrt_serving_core_selector_;
 
-  tsl::protobuf::Message*
-      compilation_environment_proto_;  // NOT OWNED. can be nullptr.
+  std::variant<tsl::protobuf::Message*,
+               xla::CompileOptions::EnvironmentOptionOverrides>
+      compilation_env_or_overrides_;  // proto is NOT OWNED. can be nullptr.
 
   mutable absl::Mutex mutex_;
   absl::flat_hash_map<Key, xla::ifrt::Future<SharedCachedExecutableBundle>>
