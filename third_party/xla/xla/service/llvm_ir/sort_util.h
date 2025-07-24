@@ -42,6 +42,7 @@ absl::Status EmitSortInPlace(
     absl::string_view name, absl::Span<const int64_t> xor_masks,
     llvm::IRBuilderBase* b, const gpu::LaunchDimensions& launch_dimensions,
     int64_t num_iterations_in_sort_dim, int64_t tile_size,
+    int64_t unroll_factor,
     const EmitCallToNestedComputationCallback& emit_compare_callback);
 }  // namespace llvm_ir
 }  // namespace xla
