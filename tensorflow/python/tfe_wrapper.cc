@@ -810,6 +810,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
       py::return_value_policy::reference);
   m.def("TFE_DeleteContext", [](py::handle& o) {
     TFE_DeleteContext(tensorflow::InputTFE_Context(o));
+    PyCapsule_SetDestructor(o.ptr(), nullptr);
   });
   m.def(
       "TFE_ContextListDevices",
