@@ -413,5 +413,94 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfDotOp) {
   )")));
 }
 
+TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfReduceOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    max {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT max = f32[] maximum(p0, p1)
+    }
+    ENTRY e {
+      p0 = f32[150, 20, 10, 50] parameter(0)
+      p0_init = f32[] constant(-inf)
+      ROOT reduce = f32[150, 10] reduce(p0, p0_init),
+        dimensions={3, 1}, to_apply=max
+    }
+  )");
+  auto tiling_space =
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root));
+
+  MLIRContext mlir_context;
+  auto symbolic_tile = GetTestSymbolicTile(
+      &mlir_context, GetFirstShape(root).dimensions(), /*num_rt_vars=*/0);
+  symbolic_tile = ExperimentalSymbolicTile{&mlir_context,
+                                           /*num_tile_ids=*/4,
+                                           /*num_rt_vars=*/0,
+                                           symbolic_tile.offsets(),
+                                           symbolic_tile.sizes(),
+                                           symbolic_tile.strides(),
+                                           symbolic_tile.upper_bounds()};
+  std::optional<TiledOperands> tiled_operands =
+      PropagateTileToInput(tiling_space, *root, symbolic_tile, 0);
+  EXPECT_THAT(tiled_operands, Optional(MatchString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3)[ts_0, ts_1, ts_2, ts_3]
+      -> offsets [tid_0 * ts_0, tid_2 * ts_2, tid_1 * ts_1, tid_3 * ts_3]
+        sizes [ts_0, ts_2, ts_1, ts_3]
+        strides [1, 1, 2, 1]
+        upper bounds [150, 20, 10, 50]
+    1) (tid_0, tid_1, tid_2, tid_3)[ts_0, ts_1, ts_2, ts_3]
+      -> offsets [] sizes [] strides [] upper bounds []
+  )")));
+}
+
+TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfVariadicReduceOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+   HloModule m
+    min {
+      tmp_0 = f32[] parameter(0)
+      tmp_1 = f32[] parameter(2)
+      tmp_2 = s32[] parameter(1)
+      tmp_3 = s32[] parameter(3)
+      cmp = pred[] compare(tmp_0, tmp_1), direction=GE
+      select1 = f32[] select(cmp, tmp_0, tmp_1)
+      select2 = s32[] select(cmp, tmp_2, tmp_3)
+      ROOT tmp_4 = (f32[], s32[]) tuple(select1, select2)
+    }
+    ENTRY e {
+      p0 = f32[256,10] parameter(0)
+      p0_init = f32[] constant(-inf)
+      p1 = s32[256,10] parameter(1)
+      p1_init = s32[] constant(0)
+      ROOT reduce = (f32[10], s32[10]) reduce(p0, p1, p0_init, p1_init),
+        dimensions={0}, to_apply=min
+    }
+  )");
+  auto tiling_space =
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root));
+  MLIRContext mlir_context;
+  auto symbolic_tile = GetTestSymbolicTile(
+      &mlir_context, GetFirstShape(root).dimensions(), /*num_rt_vars=*/0);
+  symbolic_tile = ExperimentalSymbolicTile{&mlir_context,
+                                           /*num_tile_ids=*/2,
+                                           /*num_rt_vars=*/0,
+                                           symbolic_tile.offsets(),
+                                           symbolic_tile.sizes(),
+                                           symbolic_tile.strides(),
+                                           symbolic_tile.upper_bounds()};
+  std::optional<TiledOperands> tiled_operands =
+      PropagateTileToInput(tiling_space, *root, symbolic_tile, 0);
+  EXPECT_THAT(tiled_operands, Optional(MatchString(R"(
+    0) (tid_0, tid_1)[ts_0, ts_1] -> offsets [tid_1 * ts_1, tid_0 * ts_0]
+      sizes [ts_1, ts_0] strides [1, 1] upper bounds [256, 10]
+    1) (tid_0, tid_1)[ts_0, ts_1] -> offsets [tid_1 * ts_1, tid_0 * ts_0]
+      sizes [ts_1, ts_0] strides [1, 1] upper bounds [256, 10]
+    2) (tid_0, tid_1)[ts_0, ts_1]
+      -> offsets [] sizes [] strides [] upper bounds []
+    3) (tid_0, tid_1)[ts_0, ts_1]
+      -> offsets [] sizes [] strides [] upper bounds []
+  )")));
+}
+
 }  // namespace
 }  // namespace xla::gpu
