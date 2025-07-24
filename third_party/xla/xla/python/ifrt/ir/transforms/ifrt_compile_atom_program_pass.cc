@@ -149,17 +149,11 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
             return mlir::WalkResult::advance();
           }
 
-          if (call_op->hasAttr(kIsSdyPartitioned)) {
+          // TODO(b/433244129) - remove after 6 months bwd compatibility window.
+          if (sdy_meshes_round_trip_attr &&
+              call_op->hasAttr(kIsSdyPartitioned)) {
             // Add the meshes roundtrip attribute to the callee module if the
             // atom program was partitioned with sdy.
-            if (!sdy_meshes_round_trip_attr) {
-              call_op_to_error.try_emplace(
-                  call_op,
-                  "requires meshes roundtrip attribute to be set on the "
-                  "program module if the atom program was partitioned with "
-                  "sdy.");
-              return mlir::WalkResult::advance();
-            }
             xla::sdy::setFrontendAttribute(callee_module,
                                            xla::sdy::kMeshesRoundTripAttr,
                                            sdy_meshes_round_trip_attr);

@@ -68,6 +68,7 @@ cc_library(
         "//xla/client:executable_build_options",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
+        "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
@@ -122,6 +123,7 @@ cc_library(
         "@stablehlo//:register",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_serialization",
+        "@stablehlo//:version",
     ],
 )
 
