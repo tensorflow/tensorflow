@@ -22,9 +22,8 @@ def repo():
             "//third_party/absl:nullability_macros.patch",
             "//third_party/absl:rules_cc.patch",
         ],
-        # @com_google_googletest is now @googletest. Create a mapping to avoid breaking existing
-        # users.
         repo_mapping = {
+            "@google_benchmark": "@com_google_benchmark",
             "@googletest": "@com_google_googletest",
         },
     )
