@@ -420,9 +420,8 @@ ShapeUtil::MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
     }
     dims[i] = shape.dimensions(dim);
   }
-  TF_ASSIGN_OR_RETURN(Shape new_shape,
-                      MakeValidatedShapeWithDescendingLayout(
-                          shape.array_or_buffer_element_type(), dims));
+  TF_ASSIGN_OR_RETURN(Shape new_shape, MakeValidatedShapeWithDescendingLayout(
+                                           shape.element_type(), dims));
   if (shape.IsBuffer()) {
     TF_ASSIGN_OR_RETURN(new_shape, MakeValidatedBufferShape(new_shape));
   }
@@ -1075,14 +1074,15 @@ absl::Status ValidateDimensions(const Shape& shape) {
 // Validates all of the non-layout properties of the shape -- this is a helper
 // used by both the layout-optional and layout-required public method.
 absl::Status ValidateNonLayoutProperties(const Shape& shape) {
+  PrimitiveType element_type = shape.element_type_including_buffer();
   // Make sure the element type is valid.
-  if (shape.element_type() == PRIMITIVE_TYPE_INVALID ||
-      !PrimitiveType_IsValid(shape.element_type())) {
+  if (element_type == PRIMITIVE_TYPE_INVALID ||
+      !PrimitiveType_IsValid(element_type)) {
     return ShapeError(shape, "Invalid element type.");
   }
 
   // Validate tuple shapes.
-  if (shape.element_type() == TUPLE) {
+  if (element_type == TUPLE) {
     if (!shape.if_tuple_state()) {
       return ShapeError(shape, "This type must have a tuple state.");
     }
@@ -1092,7 +1092,7 @@ absl::Status ValidateNonLayoutProperties(const Shape& shape) {
     return absl::OkStatus();
   }
 
-  if (shape.element_type() == BUFFER) {
+  if (element_type == BUFFER) {
     if (!shape.if_buffer_state()) {
       return ShapeError(shape, "This type must have a buffer state.");
     }
@@ -1100,7 +1100,7 @@ absl::Status ValidateNonLayoutProperties(const Shape& shape) {
   }
 
   // Validate token shapes.
-  if (shape.element_type() == TOKEN) {
+  if (element_type == TOKEN) {
     if (!shape.if_token_state()) {
       return ShapeError(shape, "This type must have a token state.");
     }
@@ -1108,7 +1108,7 @@ absl::Status ValidateNonLayoutProperties(const Shape& shape) {
   }
 
   // Validate opaque shapes.
-  if (shape.element_type() == OPAQUE_TYPE) {
+  if (element_type == OPAQUE_TYPE) {
     if (!shape.if_opaque_state()) {
       return ShapeError(shape, "This type must have an opaque state.");
     }
@@ -1116,7 +1116,7 @@ absl::Status ValidateNonLayoutProperties(const Shape& shape) {
   }
 
   // Validate array shapes.
-  if (primitive_util::IsArrayType(shape.element_type())) {
+  if (primitive_util::IsArrayType(element_type)) {
     if (!shape.if_array_state()) {
       return ShapeError(shape, "This type must have an array state.");
     }
