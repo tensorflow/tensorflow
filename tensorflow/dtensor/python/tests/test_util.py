@@ -177,6 +177,7 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
     # Make sure all async ops finish.
     try:
       context.async_wait()
+      context._context.ensure_uninitialized()
     finally:
       # TODO(hthu): Remove the reset once we fixed the CopyToMesh with
       # DefaultMesh placement issue.
