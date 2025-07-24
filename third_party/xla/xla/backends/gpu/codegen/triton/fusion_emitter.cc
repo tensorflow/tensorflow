@@ -1447,21 +1447,8 @@ absl::StatusOr<ScalarOrTensor> EmitScope(
 }
 }  // namespace
 
-namespace {
+namespace ir_emitter_triton_internal {
 
-using ::xla::gpu::ir_emitter_triton_internal::DumpTritonIR;
-
-// Given a tiling specification for a fusion and an annotated fusion, derives a
-// tiling for the annotated fusion.
-//
-// Note that the tiling extracted here is voluntarily not checked against the
-// specification, which means that it could be invalid. This should only be the
-// case, though, if this logic gets stale, or if the fusion does not contain
-// the required annotations. Checking constraints is not cheap, so we left it up
-// to the caller to decide when to check the constraints.
-//
-// TODO(b/421837868): this belongs near/in `BlockLevelParameters`, but we start
-// with this here in order to allow an incremental replacement.
 absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
     const HloFusionInstruction* fusion,
     const SymbolicTileAnalysis& symbolic_tile_analysis,
@@ -1514,6 +1501,12 @@ absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
   return Tiling(std::move(tile_mapping));
 }
 
+}  // namespace ir_emitter_triton_internal
+
+namespace {
+
+using ::xla::gpu::ir_emitter_triton_internal::DumpTritonIR;
+
 // Generate Triton IR inside 'fn', using the given block_level_parameters.
 // TODO(b/421837868): `BlockLevelParameters` should hold all the necessary
 // tiling information.
@@ -1542,9 +1535,10 @@ absl::StatusOr<SmallVector<Value>> EmitGeneric(
 
   // TODO(b/421837868): unify the logic to extract tiling parameters with
   // `BlockLevelParameters`.
-  TF_ASSIGN_OR_RETURN(Tiling tiling,
-                      TilingFromAnnotatedFusion(fusion, symbolic_tile_analysis,
-                                                block_level_parameters));
+  TF_ASSIGN_OR_RETURN(
+      Tiling tiling,
+      ir_emitter_triton_internal::TilingFromAnnotatedFusion(
+          fusion, symbolic_tile_analysis, block_level_parameters));
 
   // TODO(b/372454662): Decide which root to use. Currently, we only support
   // "simple" multi-output fusions that have just one root without users. This
