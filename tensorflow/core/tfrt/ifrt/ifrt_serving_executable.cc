@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/WalkResult.h"  // from @llvm-project
 #include "shardy/dialect/sdy/transforms/import/passes.h"  // from @shardy
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
@@ -287,7 +289,9 @@ IfrtServingExecutable::Create(
     tensorflow::DeviceMgr* device_mgr,
     tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     IfrtServingCoreSelector* ifrt_serving_core_selector,
-    tsl::protobuf::Message* compilation_environment_proto,
+    std::variant<tsl::protobuf::Message*,
+                 xla::CompileOptions::EnvironmentOptionOverrides>
+        compilation_env_or_overrides,
     TfToHloCompiler* tf_to_hlo_compiler,
     IfrtPersistentCompilationCache* persistent_compilation_cache) {
   TF_ASSIGN_OR_RETURN(
@@ -305,7 +309,7 @@ IfrtServingExecutable::Create(
       thread_pool, ifrt_loaded_variable_registry, ifrt_restore,
       checkpoint_loader_queue, device_mgr, std::move(shape_representation_fn),
       ifrt_serving_core_selector, std::move(original_compile_metadata),
-      client->MakeDeviceList(assigned_devices), compilation_environment_proto,
+      client->MakeDeviceList(assigned_devices), compilation_env_or_overrides,
       tf_to_hlo_compiler, persistent_compilation_cache));
 
   return executable;
@@ -535,13 +539,29 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   }
 
   xla::CompileOptions xla_compile_options;
-  if (compilation_environment_proto_) {
-    tsl::protobuf::Message* comp_env_copy =
-        compilation_environment_proto_->New();
-    comp_env_copy->CopyFrom(*compilation_environment_proto_);
-    TF_RETURN_IF_ERROR(
-        xla_compile_options.executable_build_options.mutable_comp_envs()
-            ->AddEnv(absl::WrapUnique<tsl::protobuf::Message>(comp_env_copy)));
+  if (std::holds_alternative<tsl::protobuf::Message*>(
+          compilation_env_or_overrides_)) {
+    tsl::protobuf::Message* compilation_environment_proto_ =
+        std::get<tsl::protobuf::Message*>(compilation_env_or_overrides_);
+    if (compilation_environment_proto_) {
+      tsl::protobuf::Message* comp_env_copy =
+          compilation_environment_proto_->New();
+      comp_env_copy->CopyFrom(*compilation_environment_proto_);
+      TF_RETURN_IF_ERROR(
+          xla_compile_options.executable_build_options.mutable_comp_envs()
+              ->AddEnv(
+                  absl::WrapUnique<tsl::protobuf::Message>(comp_env_copy)));
+    }
+  } else if (std::holds_alternative<
+                 xla::CompileOptions::EnvironmentOptionOverrides>(
+                 compilation_env_or_overrides_)) {
+    xla_compile_options.env_option_overrides =
+        std::get<xla::CompileOptions::EnvironmentOptionOverrides>(
+            compilation_env_or_overrides_);
+  } else {
+    return absl::NotFoundError(
+        "Either compilation_environment_proto or env_option_overrides is "
+        "expected.");
   }
 
   xla_compile_options.executable_build_options.set_num_replicas(num_replicas);
