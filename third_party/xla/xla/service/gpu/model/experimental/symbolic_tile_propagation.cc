@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
@@ -363,6 +364,55 @@ TiledOperands PropagateTileToInputForDotOp(
       ConstraintExpression::GetAlwaysSatisfied()};
 }
 
+TiledOperands PropagateTileToInputForReduceOp(
+    const TilingSpace& tiling_space, const HloReduceInstruction& reduce,
+    const ExperimentalSymbolicTile& result_tile) {
+  MLIRContext* ctx = result_tile.mlir_context();
+  absl::flat_hash_set<int64_t> reduce_dims_ids(reduce.dimensions().begin(),
+                                               reduce.dimensions().end());
+
+  const Shape& input_shape = reduce.operand(0)->shape();
+  const int64_t output_rank = GetFirstShape(&reduce).dimensions().size();
+
+  SmallVector<DimTile> input_one_dim_tiles(input_shape.dimensions().size());
+  int64_t output_dim_id = 0;
+  int64_t reduction_dim_count = 0;
+  for (auto [input_dim_id, input_dim] :
+       llvm::enumerate(input_shape.dimensions())) {
+    if (reduce_dims_ids.contains(input_dim_id)) {
+      const TilingSpace::DimensionInfo& reduction_dim_info =
+          tiling_space.GetDimensionInfo(reduce,
+                                        output_rank + reduction_dim_count++);
+      CHECK(reduction_dim_info.type ==
+            TilingSpace::DimensionSemantics::kSequential)
+          << "Expected a sequential dimension info for contracting dimension "
+          << input_dim_id << " in reduce op " << reduce.ToString();
+
+      AffineExpr tile_id = getAffineDimExpr(reduction_dim_info.id, ctx);
+      AffineExpr tile_size = getAffineSymbolExpr(reduction_dim_info.id, ctx);
+      AffineExpr c1 = getAffineConstantExpr(1, ctx);
+
+      input_one_dim_tiles[input_dim_id] = DimTile{
+          tile_id * tile_size, tile_size, c1,
+          getAffineConstantExpr(input_shape.dimensions(input_dim_id), ctx)};
+      continue;
+    }
+    input_one_dim_tiles[input_dim_id] =
+        result_tile.one_dim_tiles()[output_dim_id++];
+  }
+  ExperimentalSymbolicTile init_value_tile{
+      ctx, result_tile.num_tile_ids(), {}, {}, {}, {}, {}};
+
+  SymbolicTiles operand_tiles(
+      reduce.input_count(),
+      ExperimentalSymbolicTile{ctx, result_tile.num_tile_ids(),
+                               result_tile.num_rt_vars(),
+                               std::move(input_one_dim_tiles)});
+  operand_tiles.append(SymbolicTiles(reduce.input_count(), init_value_tile));
+  return TiledOperands{std::move(operand_tiles),
+                       ConstraintExpression::GetAlwaysSatisfied()};
+}
+
 }  // namespace
 
 std::string TiledOperands::ToString() const {
@@ -402,6 +452,10 @@ std::optional<TiledOperands> PropagateTileToInput(
   if (hlo.opcode() == HloOpcode::kPad) {
     const HloPadInstruction& pad = *Cast<HloPadInstruction>(&hlo);
     return PropagateTileToInputForPadOp(pad, result_tile);
+  }
+  if (hlo.opcode() == HloOpcode::kReduce) {
+    const HloReduceInstruction& reduce = *Cast<HloReduceInstruction>(&hlo);
+    return PropagateTileToInputForReduceOp(tiling_space, reduce, result_tile);
   }
   if (hlo.opcode() == HloOpcode::kTranspose) {
     return PropagateTileToInputForTransposeOp(hlo, result_tile);

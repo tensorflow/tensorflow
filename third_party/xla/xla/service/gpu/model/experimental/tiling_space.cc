@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -71,7 +72,7 @@ void TilingSpace::ProcessDot(const HloInstruction& hlo) {
 void TilingSpace::ProcessReduce(const HloInstruction& hlo) {
   auto reduce = Cast<HloReduceInstruction>(&hlo);
   const Shape& input_shape = reduce->operand(0)->shape();
-  int64_t output_rank = reduce->shape().dimensions().size();
+  int64_t output_rank = GetFirstShape(reduce).dimensions().size();
   for (auto [index, reduction_dim_id] : llvm::enumerate(reduce->dimensions())) {
     AppendDimension(hlo, output_rank + index,
                     input_shape.dimensions(reduction_dim_id),
@@ -91,6 +92,12 @@ void TilingSpace::ProcessDynamicSlice(const HloInstruction& hlo) {
     AppendRTVar(hlo, dim + first_index_num, *ds->operand(dim + first_index_num),
                 input_shape.dimensions(dim) - slice_size);
   }
+}
+
+const Shape& GetFirstShape(const HloInstruction* instr, int64_t index) {
+  return instr->shape().IsTuple()
+             ? ShapeUtil::GetSubshape(instr->shape(), {index})
+             : instr->shape();
 }
 
 std::string TilingSpace::ToString() const {
@@ -133,13 +140,15 @@ TilingSpace TilingSpace::Create(const HloFusionAdaptor& fusion) {
   TilingSpace tiling_space;
   auto roots = fusion.GetRoots();
   for (const HloInstructionAdaptor& root : roots) {
-    if (root.shape().IsArray()) {
-      for (auto [index, dim] : llvm::enumerate(root.shape().dimensions())) {
-        tiling_space.AppendDimension(root.instruction(), index, dim,
-                                     DimensionSemantics::kParallel);
-      }
-    } else {
-      LOG(FATAL) << "Unsupported root shape: " << root.shape().ToString();
+    const Shape& root_shape = root.shape();
+    if (!root.shape().IsArray() && root.opcode() != HloOpcode::kReduce) {
+      LOG(FATAL) << "Unsupported root shape: " << root_shape.ToString();
+    }
+    absl::Span<const int64_t> dims =
+        GetFirstShape(&root.instruction()).dimensions();
+    for (auto [index, dim] : llvm::enumerate(dims)) {
+      tiling_space.AppendDimension(root.instruction(), index, dim,
+                                   DimensionSemantics::kParallel);
     }
   }
   // Iterator in reversed post-order (use-before-def).

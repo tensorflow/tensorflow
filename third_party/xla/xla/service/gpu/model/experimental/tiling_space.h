@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/shape.h"
 
 namespace xla::gpu {
 
@@ -111,6 +112,10 @@ class TilingSpace {
   // The deque is used to guarantee the pointer stability.
   std::deque<RTVarInfo> rt_vars_;
 };
+
+// If the shape is a tuple, return the shape at the given index.
+// Otherwise, return the shape itself.
+const Shape& GetFirstShape(const HloInstruction* instr, int64_t index = 0);
 
 }  // namespace xla::gpu
 
