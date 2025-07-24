@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cassert>
 #include <cstdint>
+#include <iostream>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -50,11 +51,13 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
     const CudaComputeCapability& cc, const std::string& ptx, GpuAsmOpts options,
     bool cancel_if_reg_spill) {
   if (IsLibNvPtxCompilerSupported()) {
+    std::cout << "!!!!!!!!!!!!!Compiling GPU ASM with libnvptxcompiler";
     VLOG(3) << "Compiling GPU ASM with libnvptxcompiler";
     return CompileGpuAsmUsingLibNvPtxCompiler(cc, ptx, options,
                                               cancel_if_reg_spill);
   }
 
+  std::cout << "!!!!!!!!!!!!!Compiling GPU ASM with PTXAS";
   VLOG(3) << "Compiling GPU ASM with PTXAS. Libnvptxcompiler compilation "
              "not supported.";
   return CompileGpuAsmUsingPtxAs(cc, ptx, options, cancel_if_reg_spill);
