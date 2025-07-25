@@ -276,6 +276,9 @@ message DebugOptions {
     // Do not restrict the shapes of the operands and the result of the dot
     // instruction.
     GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES = 4;
+    // Fail in autotuner if any of the configs are not supported.
+    // Otherwise, the autotuner will silenly ignore configs that are regected.
+    GENERIC_TRITON_EMITTER_MUST_ACCEPT_ALL_AUTOTUNER_CONFIGS = 5;
   }
 
   // Experimental optimizations for SPMD-based pipeline parallelism on GPU.
