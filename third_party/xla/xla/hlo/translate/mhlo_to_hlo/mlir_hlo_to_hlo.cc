@@ -896,23 +896,6 @@ static std::optional<xla::OpSharding> CreateOpShardingFromAttribute(
   return xla::ConvertSharding(shardingAttr.getValue());
 }
 
-// Returns an OriginalValueProto from the "original_value" attribute of the op.
-// Returns std::nullopt if the op doesn't have the attribute.
-static std::optional<xla::OriginalValueProto> CreateOriginalValueFromOp(
-    mlir::Operation* op) {
-  auto original_value_attr =
-      op->getAttrOfType<mlir::StringAttr>(kOriginalValueAttr);
-  if (!original_value_attr) {
-    return std::nullopt;
-  }
-  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(op);
-  if (failed(shape_or)) {
-    return std::nullopt;
-  }
-  return xla::ConvertOriginalValue(original_value_attr.getValue(),
-                                   shape_or.value());
-}
-
 // Returns a FrontendAttributes proto from the "frontend_attributes" attribute
 // of the op. An empty FrontendAttributes proto is returned if an op does not
 // have frontend attributes.
@@ -6376,6 +6359,21 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   options.use_tuple_args = use_tuple_args;
   options.return_tuple = return_tuple;
   return ConvertMlirHloToHlo(module, hlo_proto, options);
+}
+
+std::optional<xla::OriginalValueProto> CreateOriginalValueFromOp(
+    mlir::Operation* op) {
+  auto original_value_attr =
+      op->getAttrOfType<mlir::StringAttr>(kOriginalValueAttr);
+  if (!original_value_attr) {
+    return std::nullopt;
+  }
+  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(op);
+  if (failed(shape_or)) {
+    return std::nullopt;
+  }
+  return xla::ConvertOriginalValue(original_value_attr.getValue(),
+                                   shape_or.value());
 }
 
 }  // namespace mlir
