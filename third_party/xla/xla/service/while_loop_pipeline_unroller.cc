@@ -48,7 +48,7 @@ int64_t WhileLoopPipelineUnroller::ComputeWhileLoopPipelineDepth(
   absl::flat_hash_map<int64_t, int64_t> loop_permutations;
   HloInstruction* while_param = while_body->parameter_instruction(0);
   HloInstruction* while_root = while_body->root_instruction();
-  CHECK_EQ(while_root->opcode(), HloOpcode::kTuple)
+  CHECK(while_root->shape().IsTuple())
       << "While Instruction has not been canonicalized to have a tuple shape";
   for (int64_t output_index = 0; output_index < while_root->operand_count();
        ++output_index) {
