@@ -214,7 +214,7 @@ func.func @testSinWithWrongInputType(tensor<?xi32>) -> tensor<?xi32> {
 // test invalid Sqrt input
 func.func @testSqrtWithWrongInputType(tensor<? x i32>) -> tensor<? x i32> {
 ^bb0(%arg0: tensor<? x i32>):
-  // expected-error @+1 {{tfl.sqrt' op operand #0 must be tensor of 32-bit float values}}
+  // expected-error @+1 {{'tfl.sqrt' op operand #0 must be tensor of 32-bit float or QI8 type or QI16 type values}}
   %0 = "tfl.sqrt"(%arg0): (tensor<? x i32>) -> tensor<? x i32>
   func.return %0#0 : tensor<? x i32>
 }
@@ -245,6 +245,18 @@ func.func @testSqrt(tensor<? x f32>) -> tensor<? x f32> {
   // CHECK: "tfl.sqrt"(%arg0)
   %0 = "tfl.sqrt"(%arg0): (tensor<? x f32>) -> tensor<? x f32>
   func.return %0 : tensor<? x f32>
+}
+
+// CHECK-LABEL: testSqrtQuant
+func.func @testSqrtQuant(%arg0: tensor<1x80x1x!quant.uniform<i8:f32, 0.04:-128>>) -> tensor<1x80x1x!quant.uniform<i8:f32, 0.006:-128>> {
+  %0 = "tfl.sqrt"(%arg0) : (tensor<1x80x1x!quant.uniform<i8:f32, 0.04:-128>>) -> tensor<1x80x1x!quant.uniform<i8:f32, 0.006:-128>>
+  func.return %0 : tensor<1x80x1x!quant.uniform<i8:f32, 0.006:-128>>
+}
+
+// CHECK-LABEL: testSqrtQuantWithQI16
+func.func @testSqrtQuantWithQI16(%arg0: tensor<1x80x1x!quant.uniform<i16:f32, 0.04:0>>) -> tensor<1x80x1x!quant.uniform<i16:f32, 0.006:0>> {
+  %0 = "tfl.sqrt"(%arg0) : (tensor<1x80x1x!quant.uniform<i16:f32, 0.04:0>>) -> tensor<1x80x1x!quant.uniform<i16:f32, 0.006:0>>
+  func.return %0 : tensor<1x80x1x!quant.uniform<i16:f32, 0.006:0>>
 }
 
 // CHECK-LABEL: testSquare
