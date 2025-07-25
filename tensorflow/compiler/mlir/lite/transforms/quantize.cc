@@ -764,7 +764,9 @@ void QuantizePass::runOnOperation() {
                                                                   quant_params);
   }
 
-  (void)applyPatternsGreedily(func, std::move(patterns));
+  GreedyRewriteConfig config;
+  config.enableFolding(false);
+  (void)applyPatternsGreedily(func, std::move(patterns), config);
 
   // Constant quantization is a lossy transformation, so they are applied only
   // after all the other patterns have been aplied.
@@ -773,7 +775,7 @@ void QuantizePass::runOnOperation() {
   if (quant_params.numeric_verify_spec.whole_model_verify) {
     patterns_2.add<RemoveDebugAttrPattern>(ctx);
   }
-  (void)applyPatternsGreedily(func, std::move(patterns_2));
+  (void)applyPatternsGreedily(func, std::move(patterns_2), config);
 }
 }  // namespace
 

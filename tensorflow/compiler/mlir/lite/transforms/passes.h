@@ -126,6 +126,8 @@ std::unique_ptr<OperationPass<ModuleOp>> CreatePropagateQsvPass();
 
 std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateBiasQuantizerPass();
 
+std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateFuseQDQPass();
+
 // Overloading of CreateQuantizePass which takes only necessary flags to reduce
 // the binary size.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
