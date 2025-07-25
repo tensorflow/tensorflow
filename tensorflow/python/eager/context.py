@@ -764,6 +764,7 @@ class Context:
       if self._is_global_context:
         pywrap_tfe.TFE_Py_SetCEagerContext(None)
 
+      pywrap_tfe.TFE_DeleteContext(self._context_handle)
       self._context_handle = None
 
   def mark_as_global_context(self):
