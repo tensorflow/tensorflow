@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -59,12 +60,8 @@ absl::StatusOr<bool> AutotunerPass::Run(
   VLOG(1) << "Running Autotuner Pass";
 
   auto should_autotune = [](const HloInstruction& instruction) -> bool {
-    if ((instruction.opcode() == HloOpcode::kFusion &&
-         instruction.fusion_kind() == HloInstruction::FusionKind::kCustom) ||
-        instruction.opcode() == HloOpcode::kCustomCall) {
-      return true;
-    }
-    return false;
+    return instruction.opcode() == HloOpcode::kCustomCall &&
+           IsCublasGemm(instruction);
   };
 
   TF_RETURN_IF_ERROR(autotuner_->Autotune(module, should_autotune));

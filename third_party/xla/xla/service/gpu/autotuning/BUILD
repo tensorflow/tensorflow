@@ -772,6 +772,7 @@ cc_library(
         "//xla/backends/gpu/autotuner:gpu_profiler",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/service/gpu:cublas_cudnn",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:env",
