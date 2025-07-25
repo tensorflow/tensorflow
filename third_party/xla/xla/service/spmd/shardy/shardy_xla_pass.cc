@@ -298,11 +298,14 @@ void removeFrontendAttributes(HloModule* hloModule,
 std::string getShardyDirIfShouldDump(const DebugOptions& debugOptions,
                                      absl::string_view passName) {
   std::string shardyDir = debugOptions.xla_dump_to();
+  std::string regex = debugOptions.xla_dump_hlo_pass_re();
   if (shardyDir.empty()) {
     return "";
   }
-  if (debugOptions.xla_dump_hlo_pass_re().empty() ||
-      !RE2::PartialMatch(passName, debugOptions.xla_dump_hlo_pass_re())) {
+  if (regex == kShardyVerbose) {
+    return shardyDir;
+  }
+  if (regex.empty() || !RE2::PartialMatch(passName, regex)) {
     return "";
   }
   return shardyDir;
@@ -330,6 +333,10 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   }
 
   if (!shardyDir.empty()) {
+    if (debugOptions.xla_dump_hlo_pass_re() == kShardyVerbose) {
+      options.debugPropagationEdgeSharding = true;
+      options.debugShardingOrigins = true;
+    }
     shardyDir =
         tsl::io::JoinPath(shardyDir, "shardy", uniqueModuleName(*hloModule));
     LOG(INFO) << "Using Shardy output directory: " << shardyDir;
