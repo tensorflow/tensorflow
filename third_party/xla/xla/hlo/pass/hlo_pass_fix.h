@@ -82,9 +82,9 @@ class HloPassFix : public Pass {
       VLOG(3) << "changed_this_iteration: " << changed_this_iteration;
       ++iteration_count;
       if (iteration_count == kIterationLimit) {
-        if (module_group->module(0)
-                .config()
-                .debug_options()
+        const DebugOptions& debug_options =
+            module_group->module(0).config().debug_options();
+        if (debug_options
                 .xla_unsupported_crash_on_hlo_pass_fix_max_iterations()) {
           LOG(FATAL) << "Unexpectedly high number of iterations "
                      << iteration_count << " in HLO pass '" << Pass::name()
@@ -92,6 +92,12 @@ class HloPassFix : public Pass {
         }
         VLOG(1) << "Unexpectedly high number of iterations in HLO passes, "
                    "exiting fixed point loop.";
+        if (debug_options
+                .xla_unsupported_crash_on_hlo_pass_silent_hlo_change()) {
+          // When crash on silent HLO changes is enabled, we can't lie about not
+          // changing the module, as that will lead to an immediate crash.
+          return changed;
+        }
         // Return false in case this is fixed point is nested.
         return false;
       }
@@ -126,8 +132,8 @@ class HloPassFix : public Pass {
               << !run_state->changed_this_iteration.empty();
       run_state->IncrementIteration();
       if (run_state->iteration == kIterationLimit) {
-        if (module->config()
-                .debug_options()
+        const DebugOptions& debug_options = module->config().debug_options();
+        if (debug_options
                 .xla_unsupported_crash_on_hlo_pass_fix_max_iterations()) {
           LOG(FATAL) << "Unexpectedly high number of iterations "
                      << kIterationLimit << " in HLO pass '" << Pass::name()
@@ -136,8 +142,13 @@ class HloPassFix : public Pass {
         VLOG(1) << "Unexpectedly high number of iterations in HLO passes '"
                 << Pass::name() << "' for module '" << module->name()
                 << "'. Exiting fixed point loop.";
-        // Clear changed and abort in case this is fixed point is nested.
-        run_state->changed.clear();
+        // When crash on silent HLO changes is enabled, we can't lie about not
+        // changing the module, as that will lead to an immediate crash.
+        if (!debug_options
+                 .xla_unsupported_crash_on_hlo_pass_silent_hlo_change()) {
+          // Clear changed and abort in case this is fixed point is nested.
+          run_state->changed.clear();
+        }
         break;
       }
     }
