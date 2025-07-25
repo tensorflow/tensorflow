@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Attributes.h"
