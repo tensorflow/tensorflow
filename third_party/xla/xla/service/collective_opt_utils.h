@@ -197,6 +197,12 @@ std::optional<PartitionOffsetSpec> GetIndicesSpecForDynamicSliceWithMultiply(
 std::optional<PartitionOffsetSpec> ExtractPartitionOffsetSpec(
     const HloAllGatherInstruction* ag, int64_t num_partitions);
 
+// Extracts pattern dynamic-slice(pad(all-gather)).
+// Returns true if the pattern is found, and set pad_hlo and ag_hlo.
+// Otherwise, returns false.
+bool MatchDsPadAllGather(HloInstruction* ds_hlo, HloInstruction** pad_hlo,
+                         HloInstruction** ag_hlo);
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_COLLECTIVE_OPT_UTILS_H_

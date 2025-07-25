@@ -864,5 +864,102 @@ TEST_F(MatchPermutedSliceAndPartitionOffsetTest,
       UnorderedElementsAre(Pair(0, 3), Pair(1, 2), Pair(2, 1), Pair(3, 0),
                            Pair(4, 7), Pair(5, 5), Pair(6, 4), Pair(7, 6)));
 }
+using MatchDsPadAllGatherTest = HloHardwareIndependentTestBase;
+
+TEST_F(MatchDsPadAllGatherTest, MatchDsPadAllGather) {
+  absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY entry {
+      param = f64[1,2,40]{2,1,0} parameter(0)
+      zero = f64[] constant(0)
+      zero_idx = s32[] constant(0)
+      const.24 = s32[1]{0} constant({24})
+      all-gather = f64[1,8,40]{2,1,0} all-gather(param), channel_id=4,
+        replica_groups={{0,1,2,3,4,5,6,7}},
+        dimensions={1}, use_global_device_ids=true
+      pad = f64[1,96,40]{2,1,0} pad(all-gather, zero), padding=0_0x0_88x0_0
+      const.list = s32[8]{0} constant({0, 1, 2, 3, 0, 1, 2, 3})
+      partition-id = u32[] partition-id()
+      ds1 = s32[1]{0} dynamic-slice(const.list, partition-id),
+        dynamic_slice_sizes={1}
+      multiply.8 = s32[1]{0} multiply(ds1, const.24)
+      reshape.15 = s32[] reshape(multiply.8)
+      ROOT ds = f64[1,24,40]{2,1,0} dynamic-slice(pad, zero_idx,
+        reshape.15, zero_idx), dynamic_slice_sizes={1,24,40}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_EQ(root->name(), "ds");
+  HloInstruction* pad_hlo = nullptr;
+  HloInstruction* ag_hlo = nullptr;
+  EXPECT_TRUE(MatchDsPadAllGather(root, &pad_hlo, &ag_hlo));
+  ASSERT_NE(pad_hlo, nullptr);
+  EXPECT_EQ(pad_hlo->name(), "pad");
+  ASSERT_NE(ag_hlo, nullptr);
+  EXPECT_EQ(ag_hlo->name(), "all-gather");
+}
+
+TEST_F(MatchDsPadAllGatherTest, MatchDsPadAllGatherNoPad) {
+  absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY entry {
+      param = f64[1,2,40]{2,1,0} parameter(0)
+      zero_idx = s32[] constant(0)
+      const.24 = s32[1]{0} constant({24})
+      all-gather = f64[1,8,40]{2,1,0} all-gather(param), channel_id=4,
+        replica_groups={{0,1,2,3,4,5,6,7}}, dimensions={1},
+        use_global_device_ids=true
+      const.list = s32[8]{0} constant({0, 1, 2, 3, 0, 1, 2, 3})
+      partition-id = u32[] partition-id()
+      ds1 = s32[1]{0} dynamic-slice(const.list, partition-id),
+        dynamic_slice_sizes={1}
+      multiply.8 = s32[1]{0} multiply(ds1, const.24)
+      reshape.15 = s32[] reshape(multiply.8)
+      ROOT ds = f64[1,2,40]{2,1,0} dynamic-slice(all-gather,
+        zero_idx, reshape.15, zero_idx), dynamic_slice_sizes={1,2,40}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_EQ(root->name(), "ds");
+  HloInstruction* pad_hlo = nullptr;
+  HloInstruction* ag_hlo = nullptr;
+  EXPECT_FALSE(MatchDsPadAllGather(root, &pad_hlo, &ag_hlo));
+}
+
+TEST_F(MatchDsPadAllGatherTest, MatchDsPadAllGatherNoAllGather) {
+  absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY entry {
+      param = f64[1,8,40]{2,1,0} parameter(0)
+      zero = f64[] constant(0)
+      zero_idx = s32[] constant(0)
+      const.24 = s32[1]{0} constant({24})
+      pad = f64[1,96,40]{2,1,0} pad(param, zero), padding=0_0x0_88x0_0
+      const.list = s32[8]{0} constant({0, 1, 2, 3, 0, 1, 2, 3})
+      partition-id = u32[] partition-id()
+      ds1 = s32[1]{0} dynamic-slice(const.list, partition-id),
+        dynamic_slice_sizes={1}
+      multiply.8 = s32[1]{0} multiply(ds1, const.24)
+      reshape.15 = s32[] reshape(multiply.8)
+      ROOT ds = f64[1,24,40]{2,1,0} dynamic-slice(pad, zero_idx,
+        reshape.15, zero_idx), dynamic_slice_sizes={1,24,40}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_EQ(root->name(), "ds");
+  HloInstruction* pad_hlo = nullptr;
+  HloInstruction* ag_hlo = nullptr;
+  EXPECT_FALSE(MatchDsPadAllGather(root, &pad_hlo, &ag_hlo));
+}
+
 }  // namespace
 }  // namespace xla
