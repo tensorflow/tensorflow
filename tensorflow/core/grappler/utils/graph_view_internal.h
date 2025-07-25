@@ -796,7 +796,7 @@ inline void UpdateName(NewNode<GraphViewT>* new_node, absl::string_view name) {
   if (name.empty()) {
     new_node->node.clear_name();
   } else {
-    new_node->node.set_name(string(name));
+    new_node->node.set_name(name);
   }
 }
 
@@ -806,7 +806,7 @@ inline void UpdateOp(NewNode<GraphViewT>* new_node, absl::string_view op) {
   if (op.empty()) {
     new_node->node.clear_op();
   } else {
-    new_node->node.set_op(string(op));
+    new_node->node.set_op(op);
   }
 }
 
@@ -817,7 +817,7 @@ inline void UpdateDevice(NewNode<GraphViewT>* new_node,
   if (device.empty()) {
     new_node->node.clear_device();
   } else {
-    new_node->node.set_device(string(device));
+    new_node->node.set_device(device);
   }
 }
 

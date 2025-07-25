@@ -48,7 +48,7 @@ GraphDef SimpleTestGraph() {
 }
 
 template <typename T>
-const string GetGraphViewTypeAsString() {
+string GetGraphViewTypeAsString() {
   return std::is_same<T, class GraphView>::value ? "GraphView"
                                                  : "MutableGraphView";
 }
