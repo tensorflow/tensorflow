@@ -95,12 +95,6 @@ absl::Status FileSystem::HasAtomicMove(const string& path,
   return absl::OkStatus();
 }
 
-absl::Status FileSystem::CanCreateTempFile(const std::string& fname,
-                                           bool* can_create_temp_file) {
-  *can_create_temp_file = true;
-  return absl::OkStatus();
-}
-
 void FileSystem::FlushCaches(TransactionToken* token) {}
 
 bool FileSystem::FilesExist(const std::vector<string>& files,
