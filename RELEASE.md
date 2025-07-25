@@ -19,6 +19,9 @@
 
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
+* `tf.lite`
+    * Adds int8 and int16x8 support for SQRT operator.
+
 ### Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
