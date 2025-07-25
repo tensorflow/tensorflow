@@ -68,7 +68,8 @@ HloRunnerAgnosticTestBase::HloRunnerAgnosticTestBase(
       test_runner_(std::move(test_runner)),
       device_shape_representation_fn_(
           std::move(device_shape_representation_fn)),
-      device_shape_size_fn_(std::move(device_shape_size_fn)) {}
+      device_shape_size_fn_(std::move(device_shape_size_fn)),
+      swallow_execution_errors_(options.swallow_execution_errors) {}
 
 HloRunnerAgnosticTestBase::HloRunnerAgnosticTestBase(
     absl_nonnull std::unique_ptr<HloRunnerInterface> test_runner,
@@ -234,7 +235,7 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
 
   const absl::StatusOr<Literal> output =
       test_runner_->Execute(std::move(module), fake_arguments, run_hlo_passes);
-  return output.ok()
+  return swallow_execution_errors_ || output.ok()
              ? ::testing::AssertionSuccess()
              : ::testing::AssertionFailure() << output.status().message();
 }
@@ -483,10 +484,11 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
     return ::testing::AssertionFailure()
            << "Error while preprocessing module: " << status;
   }
-  auto output = test_runner_->Execute(*std::move(module), fake_argument_ptrs,
-                                      /*run_hlo_passes=*/run_hlo_passes);
 
-  return output.ok()
+  const absl::StatusOr<Literal> output =
+      test_runner_->Execute(*std::move(module), fake_argument_ptrs,
+                            /*run_hlo_passes=*/run_hlo_passes);
+  return swallow_execution_errors_ || output.ok()
              ? ::testing::AssertionSuccess()
              : ::testing::AssertionFailure() << output.status().message();
 }
@@ -532,7 +534,7 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
   }
   const absl::StatusOr<std::vector<Literal>> output =
       test_runner_->ExecuteReplicated(*std::move(module), std::move(options));
-  if (output.ok()) {
+  if (swallow_execution_errors_ || output.ok()) {
     return ::testing::AssertionSuccess();
   }
   return ::testing::AssertionFailure() << output.status().message();
@@ -584,11 +586,12 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
   for (int i = 0; i < num_runs; ++i) {
     absl::StatusOr<Literal> output = test_runner_->ExecuteWithExecutable(
         executables[i].get(), fake_arguments[i]);
-    if (!output.ok()) {
+    if (!swallow_execution_errors_ && !output.ok()) {
       return ::testing::AssertionFailure() << output.status().message();
     }
 
-    if (assert_determinism) {
+    // Swallowing errors implies determinism.
+    if (assert_determinism && !swallow_execution_errors_) {
       if (!canonical_output.has_value()) {
         canonical_output = *std::move(output);
       } else {
@@ -615,14 +618,25 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesInternalReplicated(
   TF_RETURN_IF_ERROR(verifier().Run(module_1.get()).status());
 
   // Execute the two modules.
-  TF_ASSIGN_OR_RETURN(
-      const std::vector<Literal> test_0,
-      test_runner_->ExecuteReplicated(std::move(module_0), options));
-  TF_ASSIGN_OR_RETURN(
-      const std::vector<Literal> test_1,
-      test_runner_->ExecuteReplicated(std::move(module_1), options));
+  const absl::StatusOr<std::vector<Literal>> test_0 =
+      test_runner_->ExecuteReplicated(std::move(module_0), options);
+  if (!swallow_execution_errors_ && !test_0.ok()) {
+    // Exit early if we aren't swallowing errors.
+    return test_0.status();
+  }
+  const absl::StatusOr<std::vector<Literal>> test_1 =
+      test_runner_->ExecuteReplicated(std::move(module_1), options);
+  if (swallow_execution_errors_ && !test_0.ok()) {
+    return ::testing::AssertionSuccess();
+  }
+  if (!test_1.ok()) {
+    if (swallow_execution_errors_) {
+      return ::testing::AssertionSuccess();
+    }
+    return test_1.status();
+  }
 
-  for (const auto& [expected, actual] : llvm::zip_equal(test_0, test_1)) {
+  for (const auto& [expected, actual] : llvm::zip_equal(*test_0, *test_1)) {
     if (::testing::AssertionResult result =
             LiteralTestUtil::NearOrEqual(expected, actual, error);
         !result) {
@@ -651,12 +665,25 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesInternal(
       const std::unique_ptr<OpaqueExecutable> executable_1,
       test_runner_->CreateExecutable(std::move(module_1), run_hlo_passes));
 
-  TF_ASSIGN_OR_RETURN(const Literal test_0, test_runner_->ExecuteWithExecutable(
-                                                executable_0.get(), arguments));
-  TF_ASSIGN_OR_RETURN(const Literal test_1, test_runner_->ExecuteWithExecutable(
-                                                executable_1.get(), arguments));
+  const absl::StatusOr<Literal> test_0 =
+      test_runner_->ExecuteWithExecutable(executable_0.get(), arguments);
+  if (!swallow_execution_errors_ && !test_0.ok()) {
+    // Exit early if we aren't swallowing errors.
+    return test_0.status();
+  }
+  const absl::StatusOr<Literal> test_1 =
+      test_runner_->ExecuteWithExecutable(executable_1.get(), arguments);
+  if (swallow_execution_errors_ && !test_0.ok()) {
+    return ::testing::AssertionSuccess();
+  }
+  if (!test_1.ok()) {
+    if (swallow_execution_errors_) {
+      return ::testing::AssertionSuccess();
+    }
+    return test_1.status();
+  }
 
-  return LiteralTestUtil::NearOrEqual(/*expected=*/test_0, /*actual=*/test_1,
+  return LiteralTestUtil::NearOrEqual(/*expected=*/*test_0, /*actual=*/*test_1,
                                       error);
 }
 
