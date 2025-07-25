@@ -23,28 +23,33 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/autotuner/profiler.h"
+#include "xla/literal.h"
 #include "xla/service/executable.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
+struct LiteralBackedCpuBuffers : public InputBuffers {
+  std::vector<Literal> backing_literals;
+  std::vector<MaybeOwningDeviceMemory> buffers;
+};
+
 class CpuProfiler : public Profiler {
  public:
   static std::unique_ptr<Profiler> Create(ProfileOptions options);
 
-  absl::StatusOr<std::vector<absl::StatusOr<ProfileResult>>>
-  ProfileWithSharedBuffers(
-      std::vector<std::unique_ptr<Executable>> executables) override;
+  absl::StatusOr<std::unique_ptr<InputBuffers>> CreateInputBuffers(
+      const Executable* executable) override;
+
+  absl::StatusOr<ProfileResult> Profile(Executable* executable,
+                                        const InputBuffers& buffers) override;
 
  protected:
   explicit CpuProfiler(ProfileOptions options) : options_(options) {}
 
-  absl::StatusOr<ProfileResult> ProfileInternal(
-      Executable* executable, absl::Span<MaybeOwningDeviceMemory> buffers);
-
   absl::Status Execute(Executable* executable,
-                       absl::Span<MaybeOwningDeviceMemory> buffers,
+                       absl::Span<const MaybeOwningDeviceMemory> buffers,
                        ExecutionProfile* profile);
 
  private:

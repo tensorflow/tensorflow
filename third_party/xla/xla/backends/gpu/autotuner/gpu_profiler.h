@@ -32,14 +32,20 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+struct GpuInputBuffers : public InputBuffers {
+  RedzoneBuffers redzone_buffers;
+};
+
 class GpuProfiler : public Profiler {
  public:
   static std::unique_ptr<GpuProfiler> Create(
       stream_executor::StreamExecutor* stream_executor, ProfileOptions options);
 
-  absl::StatusOr<std::vector<absl::StatusOr<ProfileResult>>>
-  ProfileWithSharedBuffers(
-      std::vector<std::unique_ptr<Executable>> executables) override;
+  absl::StatusOr<std::unique_ptr<InputBuffers>> CreateInputBuffers(
+      const Executable* executable) override;
+
+  absl::StatusOr<ProfileResult> Profile(Executable* executable,
+                                        const InputBuffers& buffers) override;
 
  private:
   explicit GpuProfiler(
@@ -54,12 +60,6 @@ class GpuProfiler : public Profiler {
   absl::StatusOr<ExecutionOutput> Execute(Executable* executable,
                                           std::vector<ExecutionInput> inputs,
                                           ExecutionProfile* profile);
-
-  absl::StatusOr<RedzoneBuffers> CreateInputBuffers(
-      const Executable* executable);
-
-  absl::StatusOr<ProfileResult> ProfileInternal(Executable* executable,
-                                                RedzoneBuffers& buffers);
 
   stream_executor::StreamExecutor* stream_executor_;
   std::unique_ptr<stream_executor::DeviceMemoryAllocator> allocator_;
