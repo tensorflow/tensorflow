@@ -181,20 +181,20 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     return MatMulModelWithSmallWeights()
 
-  def _getSqrtModel(self):
-    """Returns a model with only one sqrt op, to test non-quantizable op."""
+  def _getCeilModel(self):
+    """Returns a model with only one ceil op, to test non-quantizable op."""
 
     @def_function.function(input_signature=[
         tensor_spec.TensorSpec(shape=(1, 10), dtype=dtypes.float32)
     ])
-    def sqrt(x):
-      return math_ops.sqrt(x)
+    def ceil(x):
+      return math_ops.ceil(x)
 
     def calibration_gen():
       for _ in range(5):
         yield [np.random.uniform(0, 16, size=(1, 10)).astype(np.float32)]
 
-    return sqrt, calibration_gen
+    return ceil, calibration_gen
 
   def _assertValidDebugInfo(self, debug_info):
     """Verify the DebugInfo is valid."""

@@ -3401,18 +3401,28 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
 
 def TFL_SqrtOp: TFL_Op<"sqrt", [
     Pure,
-    TF_SameOperandsAndResultTypeResolveRef]> {
+    QuantizableResult,
+    TFL_SameFirstOperandAndFirstResultElementType,
+    SameOperandsAndResultShape]> {
   let summary = "Square root operator";
 
   let description = [{
     Computes element-wise Square root of input
   }];
 
-  let arguments = (ins TFL_FpTensor:$x);
+  let arguments = (ins TFL_TensorOf<[F32, QI8, QI16]>:$x);
 
-  let results = (outs TFL_FpTensor:$y);
+  let results = (outs TFL_TensorOf<[F32, QI8, QI16]>:$y);
 
   let hasFolder = 1;
+
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.

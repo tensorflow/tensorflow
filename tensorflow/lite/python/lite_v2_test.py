@@ -435,7 +435,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       ('DisableMlirQuantizer', False),
   )  # disable mlir quantizer
   def testQuantizationRemovesQDQsForFloatIO(self, mlir_quantizer):
-    func, calibration_gen = self._getSqrtModel()
+    func, calibration_gen = self._getCeilModel()
     converter = lite.TFLiteConverterV2.from_concrete_functions(
         [func.get_concrete_function()]
     )
@@ -454,7 +454,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     # The model should have only one sqrt op.
     op_details = interp._get_ops_details()
     self.assertLen(op_details, 1)
-    self.assertEqual(op_details[0]['op_name'], 'SQRT')
+    self.assertEqual(op_details[0]['op_name'], 'CEIL')
 
   @parameterized.named_parameters(
       ('_Default', False, False, dtypes.float32),
@@ -1564,7 +1564,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertIsNone(metadata)
 
   def testConversionMetadataForDynamicRange(self):
-    func, _ = self._getSqrtModel()
+    func, _ = self._getCeilModel()
     converter = lite.TFLiteConverterV2.from_concrete_functions(
         [func.get_concrete_function()]
     )
