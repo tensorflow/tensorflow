@@ -101,6 +101,11 @@ absl::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
                                  std::vector<xla::XlaOp>& returns,
                                  MlirToHloConversionOptions options = {});
 
+// Returns an OriginalValueProto from the "original_value" attribute of the op.
+// Returns std::nullopt if the op doesn't have the attribute.
+std::optional<xla::OriginalValueProto> CreateOriginalValueFromOp(
+    mlir::Operation* op);
+
 }  // namespace mlir
 
 #endif  // XLA_HLO_TRANSLATE_MHLO_TO_HLO_MLIR_HLO_TO_HLO_H_
