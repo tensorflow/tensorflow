@@ -2700,8 +2700,8 @@ void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
 
   std::vector<int64> strides_int64;
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides" &strides_int64));
-  for(const auto& strid : strides_int64) {
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides_int64));
+  for(const auto& stride : strides_int64) {
 	  if(stride > INT32_MAX || stride < INT32_MIN) {
 		  return errors::InvalidArgumentError("Stride value ",stride," out of range for int32");
 	  }
@@ -2716,6 +2716,7 @@ void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
         }
   	dilations.push_back(static_cast<int32>(dilation));
   }
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
   // Get all attributes from old node.
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
