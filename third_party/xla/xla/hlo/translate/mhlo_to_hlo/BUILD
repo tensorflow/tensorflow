@@ -29,6 +29,7 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/stream_executor:dnn",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
