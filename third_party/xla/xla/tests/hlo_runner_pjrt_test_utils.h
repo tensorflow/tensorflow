@@ -29,6 +29,8 @@ namespace xla {
 // returns a standard HloRunnerPjRt.
 std::unique_ptr<HloRunnerPjRt> MakeHloRunnerPjRtSplitPhaseAware(
     std::unique_ptr<PjRtClient> client);
+
+bool HasPjRtSplitPhaseAwareSwallowExecutionErrors();
 }  // namespace xla
 
 #endif  // XLA_TESTS_HLO_RUNNER_PJRT_TEST_UTILS_H_

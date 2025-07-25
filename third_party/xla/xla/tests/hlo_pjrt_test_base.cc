@@ -45,6 +45,8 @@ HloRunnerAgnosticTestBaseOptions BuildOptions(HloPjRtTestBaseOptions options) {
       options.allow_mixed_precision_in_hlo_verifier;
   new_options.instruction_can_change_layout_func =
       std::move(options.instruction_can_change_layout_func);
+  new_options.swallow_execution_errors =
+      HasPjRtSplitPhaseAwareSwallowExecutionErrors();
   return new_options;
 }
 }  // namespace
