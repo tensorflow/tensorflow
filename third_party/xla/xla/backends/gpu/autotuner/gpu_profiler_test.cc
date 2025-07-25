@@ -170,6 +170,25 @@ TEST_F(GpuProfilerTest, FailingExecutablesReturnStatus) {
                                               absl::Nanoseconds(3000))));
 }
 
+TEST_F(GpuProfilerTest, CreateInputBuffersAndProfile) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule module
+    ENTRY main {
+      ROOT c = s32[] constant(1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  MockExecutable mock_executable(module, 1000);
+
+  auto profiler = GpuProfiler::Create(stream_exec_, ProfileOptions());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<InputBuffers> buffers,
+                          profiler->CreateInputBuffers(&mock_executable));
+  TF_ASSERT_OK_AND_ASSIGN(ProfileResult profile,
+                          profiler->Profile(&mock_executable, *buffers));
+  EXPECT_EQ(profile.duration, absl::Nanoseconds(1000));
+}
+
 }  // namespace
 
 }  // namespace gpu
