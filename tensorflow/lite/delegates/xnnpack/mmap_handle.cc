@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/mmap_handle.h"
 
 #if defined(_MSC_VER)
+#include <io.h>
+#include <windows.h>
 #else
 #include <sys/mman.h>
 #include <unistd.h>
@@ -29,6 +31,7 @@ limitations under the License.
 #include <cstring>
 
 #include "tensorflow/lite/delegates/xnnpack/file_util.h"
+#include "tensorflow/lite/delegates/xnnpack/windows_util.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 
@@ -90,12 +93,53 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
   ScopeGuard unmap_on_error([this] { UnMap(); });
   size_ = file_stats.st_size - offset;
   offset_ = offset;
-#if defined(_MSC_VER) || defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
+#if defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
   // This allocation is freed in UnMap and in the destructor.
   data_ = new uint8_t[size_];
   fd.SetPos(offset);
   XNNPACK_RETURN_CHECK(fd.Read(data_, size_), "could not read file ('%s'): %s.",
                        path, strerror(errno));
+#elif defined(_MSC_VER)
+  HANDLE osf_handle = reinterpret_cast<HANDLE>(_get_osfhandle(fd.Value()));
+  XNNPACK_RETURN_CHECK(osf_handle != INVALID_HANDLE_VALUE,
+                       "could not convert file descriptor to file handle.");
+
+  std::string name = path;
+  if (name == kUnspecifiedPath) {
+    name.clear();
+  } else {
+    for (int i = 0; i < name.size(); ++i) {
+      if (name[i] == '\\') {
+        name[i] = '_';
+      }
+    }
+  }
+  file_mapping_ =
+      CreateFileMappingA(osf_handle, /*lpFileMappingAttributes=*/nullptr,
+                         /*flProtect=*/PAGE_READONLY, /*dwMaximumSizeHigh=*/0,
+                         /*dwMaximumSizeLow=*/0, /*lpName=*/name.c_str());
+  XNNPACK_RETURN_CHECK(file_mapping_ != INVALID_HANDLE_VALUE,
+                       "could not create a file mapping: %s.",
+                       GetLastErrorString().c_str());
+
+  SYSTEM_INFO sys_info;
+  GetSystemInfo(&sys_info);
+
+  offset_page_adjustment_ = offset_ % sys_info.dwAllocationGranularity;
+
+  const size_t adjusted_offset = offset - offset_page_adjustment_;
+  const DWORD file_offset_high =
+      sizeof(DWORD) < sizeof(adjusted_offset)
+          ? (adjusted_offset >> CHAR_BIT * sizeof(DWORD))
+          : 0;
+  const DWORD file_offset_low = static_cast<DWORD>(adjusted_offset);
+
+  data_ = static_cast<uint8_t*>(MapViewOfFile(file_mapping_, FILE_MAP_READ,
+                                              file_offset_high, file_offset_low,
+                                              /*dwNumberOfBytesToMap=*/0));
+
+  XNNPACK_RETURN_CHECK(data_ != nullptr, "could not map file (%s): %s.", path,
+                       GetLastErrorString().c_str());
 #else
   offset_page_adjustment_ = offset_ % getpagesize();
   data_ = static_cast<uint8_t*>(
@@ -130,8 +174,11 @@ bool MMapHandle::Resize(size_t new_size) {
 
 void MMapHandle::UnMap() {
   if (data_) {
-#if defined(_MSC_VER) || defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
+#if defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
     delete[] data_;
+#elif defined(_MSC_VER)
+    UnmapViewOfFile(data_);
+    CloseHandle(file_mapping_);
 #else
     munmap(data_, size_);
 #endif

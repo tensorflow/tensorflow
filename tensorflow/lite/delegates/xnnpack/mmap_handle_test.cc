@@ -24,7 +24,10 @@ limitations under the License.
 #if defined(_MSC_VER)
 #include <io.h>
 #define ftruncate64 _chsize_s
-#elif defined(__APPLE__)
+#else
+#include <unistd.h>
+#endif
+#if defined(__APPLE__)
 #define ftruncate64 ftruncate
 #endif
 
@@ -37,6 +40,7 @@ namespace {
 
 using testing::ElementsAreArray;
 using testing::Ge;
+using testing::Gt;
 
 TEST(MMapHandleTest, DefaultConstructs) {
   MMapHandle handle;
@@ -129,16 +133,71 @@ TEST(MMapHandleTest, MapWithOffset) {
   const std::string payload2 = "Some other data appended to the the offset.";
 
   TempFileDesc tmp_file;
+  // We want to create a file that is bigger than the mapping granularity to
+  // test how alignment behaves.
+  const int64_t min_mapping_granularity = [] {
+#ifdef _MSC_VER
+    SYSTEM_INFO sys_info;
+    GetSystemInfo(&sys_info);
+    return sys_info.dwAllocationGranularity;
+#else
+    return getpagesize();
+#endif
+  }();
   ASSERT_TRUE(tmp_file.IsValid());
+  ASSERT_EQ(ftruncate64(tmp_file.Value(), min_mapping_granularity + 1), 0);
+  tmp_file.SetPos(0);
   ASSERT_TRUE(tmp_file.Write(payload.c_str(), size(payload)));
+  tmp_file.SetPosFromEnd(0);
+  ASSERT_THAT(tmp_file.GetPos(), Gt(min_mapping_granularity));
   ASSERT_TRUE(tmp_file.Write(payload2.c_str(), size(payload2)));
   tmp_file.Close();
 
   MMapHandle handle;
-  ASSERT_TRUE(handle.Map(tmp_file.GetCPath(), /*offset=*/size(payload)));
+  ASSERT_TRUE(
+      handle.Map(tmp_file.GetCPath(), /*offset=*/min_mapping_granularity + 1));
   EXPECT_EQ(handle.size(), size(payload2));
   EXPECT_THAT(std::string((const char*)handle.data(), handle.size()),
               testing::StrEq(payload2));
+}
+
+// This test case is geared towards Windows that supports both forward slashes
+// and backslashes as path separators.
+TEST(MMapHandleTest, MapWorksWithBackslashInPath) {
+  const std::string payload = "This is some data in the file.";
+
+  TempFileDesc tmp_file;
+  ASSERT_TRUE(tmp_file.IsValid());
+  ASSERT_TRUE(tmp_file.Write(payload.c_str(), size(payload)));
+
+  MMapHandle handle;
+  ASSERT_TRUE(
+      handle.Map(tmp_file, /*offset=*/0, "C:\\\\A\\path\\with\\backslashes"));
+}
+
+TEST(MMapHandleTest, MapWorksWithUnspecifiedFilePath) {
+  const std::string payload = "This is some data in the file.";
+
+  TempFileDesc tmp_file;
+  ASSERT_TRUE(tmp_file.IsValid());
+  ASSERT_TRUE(tmp_file.Write(payload.c_str(), size(payload)));
+
+  MMapHandle handle;
+  ASSERT_TRUE(handle.Map(tmp_file, /*offset=*/0));
+}
+
+// This test case is geared towards Windows that supports both forward slashes
+// and backslashes as path separators.
+TEST(MMapHandleTest, MapWorksWithForwardSlashInPath) {
+  const std::string payload = "This is some data in the file.";
+
+  TempFileDesc tmp_file;
+  ASSERT_TRUE(tmp_file.IsValid());
+  ASSERT_TRUE(tmp_file.Write(payload.c_str(), size(payload)));
+
+  MMapHandle handle;
+  ASSERT_TRUE(
+      handle.Map(tmp_file, /*offset=*/0, "C:/A/path/with/forward/slashes"));
 }
 
 TEST(MMapHandleTest, ResizeMapWithOffset) {
