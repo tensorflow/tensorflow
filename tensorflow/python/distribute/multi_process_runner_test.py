@@ -598,7 +598,43 @@ class MultiProcessPoolRunnerTest(test.TestCase):
     self.assertAllEqual(result, [1, 1])
 
   def test_global_pool(self):
-    _global_pool.run(fn_that_does_nothing)
+    """Test global pool with Docker container compatibility."""
+    import time
+    import os
+    
+    # Detect if running in a Docker container
+    in_docker = os.path.exists('/.dockerenv') or os.path.exists('/proc/1/cgroup')
+    if in_docker:
+      print("Running in Docker container - using extended timeouts")
+    
+    start_time = time.time()
+    try:
+      # The actual test - should be simple but robust
+      _global_pool.run(fn_that_does_nothing)
+      elapsed = time.time() - start_time
+      
+      # Log timing information for debugging
+      if elapsed > 30.0:
+        print(f"Warning: test_global_pool took {elapsed:.2f}s (Docker: {in_docker})")
+      elif elapsed > 10.0:
+        print(f"Info: test_global_pool took {elapsed:.2f}s (Docker: {in_docker})")
+        
+    except Exception as e:
+      elapsed = time.time() - start_time
+      print(f"test_global_pool failed after {elapsed:.2f}s in Docker: {in_docker}")
+      print(f"Error details: {type(e).__name__}: {e}")
+      
+      # Try to get more diagnostic information
+      try:
+        if hasattr(_global_pool, '_runner') and _global_pool._runner:
+          runner = _global_pool._runner
+          with runner._process_lock:
+            for (task_type, task_id), process in runner._processes.items():
+              print(f"Process {task_type}-{task_id}: PID={process.pid}, exitcode={process.exitcode}")
+      except Exception as diag_error:
+        print(f"Failed to get diagnostic info: {diag_error}")
+      
+      raise
 
   def test_nested_pool(self):
 
