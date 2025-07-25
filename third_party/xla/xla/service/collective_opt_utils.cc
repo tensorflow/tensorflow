@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 
@@ -1037,6 +1038,14 @@ std::optional<PartitionOffsetSpec> GetIndicesSpecForDynamicSliceWithMultiply(
   }
   // Falls back to non-multiply handling when multiply is not found.
   return GetIndicesSpecForDynamicSlice(ag_instr, offset_hlo, map_id);
+}
+
+bool MatchDsPadAllGather(HloInstruction* ds_hlo, HloInstruction** pad_hlo,
+                         HloInstruction** ag_hlo) {
+  namespace m = ::xla::match;
+  return Match(ds_hlo,
+               m::DynamicSlice().WithOperand(
+                   0, m::Pad(pad_hlo, m::AllGather(ag_hlo), m::Constant())));
 }
 
 }  // namespace xla
