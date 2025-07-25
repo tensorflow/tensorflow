@@ -105,7 +105,7 @@ class AlphaNum {
   AlphaNum(bfloat16 bf)  // NOLINT(runtime/explicit)
       : piece_(digits_, FloatToBuffer(static_cast<float>(bf), digits_)) {}
 
-  AlphaNum(Hex hex);  // NOLINT(runtime/explicit)
+  AlphaNum(absl::Hex hex);  // NOLINT(runtime/explicit)
 
   AlphaNum(const char *c_str) : piece_(c_str) {}  // NOLINT(runtime/explicit)
   AlphaNum(const absl::string_view &pc)
