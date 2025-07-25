@@ -3082,7 +3082,8 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
     if (use_staging) {
       status = stream->DoHostCallback(
           [dst, staging_buffer = std::move(staging_buffer), transfer_size,
-           promise]() mutable {
+           promise,
+           usage_event_holder = std::move(usage_event_holder)]() mutable {
             tsl::profiler::TraceMe traceme3(
                 "CopyRawToHostFuture::D2H_staging_copy");
             std::memcpy(dst, staging_buffer.get(), transfer_size);
@@ -3092,7 +3093,10 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
           });
     } else {
       status = stream->DoHostCallback(
-          [promise]() mutable { promise.Set(absl::OkStatus()); });
+          [promise,
+           usage_event_holder = std::move(usage_event_holder)]() mutable {
+            promise.Set(absl::OkStatus());
+          });
     }
 
     if (!status.ok()) {
