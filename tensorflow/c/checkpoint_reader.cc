@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/c/checkpoint_reader.h"
 
-#include <memory>
 #include <unordered_set>
 #include <utility>
 
@@ -42,8 +41,8 @@ CheckpointReader::CheckpointReader(const string& filename, TF_Status* status)
   std::vector<string> v2_path;
   if (Env::Default()->GetMatchingPaths(MetaFilename(filename), &v2_path).ok() &&
       !v2_path.empty()) {
-    v2_reader_ = std::make_unique<BundleReader>(
-        Env::Default(), filename /* prefix to a V2 ckpt */);
+    v2_reader_.reset(
+        new BundleReader(Env::Default(), filename /* prefix to a V2 ckpt */));
     if (!v2_reader_->status().ok()) {
       tsl::Set_TF_Status_from_Status(status, v2_reader_->status());
       return;
@@ -52,16 +51,15 @@ CheckpointReader::CheckpointReader(const string& filename, TF_Status* status)
     var_to_shape_map_.swap(result.first);
     var_to_data_type_map_.swap(result.second);
   } else {
-    reader_ = std::make_unique<TensorSliceReader>(filename);
+    reader_.reset(new TensorSliceReader(filename));
     if (!reader_->status().ok()) {
       tsl::Set_TF_Status_from_Status(status, reader_->status());
       return;
     }
-    var_to_shape_map_ = std::make_unique<TensorSliceReader::VarToShapeMap>(
-        reader_->GetVariableToShapeMap());
-    var_to_data_type_map_ =
-        std::make_unique<TensorSliceReader::VarToDataTypeMap>(
-            reader_->GetVariableToDataTypeMap());
+    var_to_shape_map_.reset(
+        new TensorSliceReader::VarToShapeMap(reader_->GetVariableToShapeMap()));
+    var_to_data_type_map_.reset(new TensorSliceReader::VarToDataTypeMap(
+        reader_->GetVariableToDataTypeMap()));
   }
 }
 
@@ -100,7 +98,7 @@ void CheckpointReader::GetTensor(
     tensorflow::TensorShape shape;
     status = v2_reader_->LookupDtypeAndShape(name, &dtype, &shape);
     if (status.ok()) {
-      *out_tensor = std::make_unique<Tensor>(dtype, shape);
+      out_tensor->reset(new Tensor(dtype, shape));
       status = v2_reader_->Lookup(name, out_tensor->get());
       if (!status.ok()) out_tensor->reset();
     }

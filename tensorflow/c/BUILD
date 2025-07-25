@@ -713,6 +713,7 @@ tf_cuda_library(
     hdrs = ["checkpoint_reader.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":tf_status",
         ":tf_status_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
