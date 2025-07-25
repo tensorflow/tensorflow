@@ -61,7 +61,8 @@ absl::Status CollectDataToRepository(const ProfileRequest& request,
   response->set_empty_trace(IsEmpty(xspace));
 
   return SaveXSpace(request.repository_root(), request.session_id(),
-                    request.host_name(), xspace);
+                    request.host_name(), xspace,
+                    response->mutable_output_path());
 }
 
 class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {

@@ -51,7 +51,8 @@ absl::Status SaveGzippedToolData(const std::string& repository_root,
 // Save XSpace to <repository_root>/<run>/<host>_<port>.<kXPlanePb>.
 absl::Status SaveXSpace(const std::string& repository_root,
                         const std::string& run, const std::string& host,
-                        const tensorflow::profiler::XSpace& xspace);
+                        const tensorflow::profiler::XSpace& xspace,
+                        std::string* output_file_path = nullptr);
 
 }  // namespace profiler
 }  // namespace tsl
