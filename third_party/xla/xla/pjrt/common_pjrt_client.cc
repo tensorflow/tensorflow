@@ -880,7 +880,12 @@ PjRtFuture<> CommonPjRtBufferImpl::ToLiteralImpl(
               }
               MutableLiteralBase* literal = *std::move(value);
 
-              DCHECK(ShapeUtil::Compatible(shape, literal->shape()));
+              if (!ShapeUtil::Compatible(shape, literal->shape())) {
+                notify_all(absl::InternalError(absl::StrFormat(
+                    "Shape mismatch during ToLiteral conversion %s vs %s",
+                    shape.ToString(), literal->shape().ToString())));
+                return;
+              }
               // Errors in src buffer are surfaced to user.
               for (const auto& av : src_definition_events_avs) {
                 if (auto* error = av->GetErrorIfPresent()) {
