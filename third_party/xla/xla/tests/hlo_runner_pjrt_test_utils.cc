@@ -110,4 +110,11 @@ std::unique_ptr<HloRunnerPjRt> MakeHloRunnerPjRtSplitPhaseAware(
   return nullptr;  // Should not reach here.
 }
 
+// Execution errors are swallowed if and only if the split phase mode is set to
+// kCompile.
+bool HasPjRtSplitPhaseAwareSwallowExecutionErrors() {
+  return absl::GetFlag(FLAGS_xla_pjrt_split_phase_mode) ==
+         SplitPhaseMode::kCompile;
+}
+
 }  // namespace xla

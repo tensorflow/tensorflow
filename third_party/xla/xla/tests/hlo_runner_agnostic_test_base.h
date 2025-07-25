@@ -53,6 +53,10 @@ struct HloRunnerAgnosticTestBaseOptions {
   bool verifier_layout_sensitive = false;
   bool allow_mixed_precision_in_hlo_verifier = true;
   HloPredicate instruction_can_change_layout_func;
+  // If true, execution errors (any non-OK absl::StatusOr originating from the
+  // test runner) are swallowed. This only applies to the Run* methods, as these
+  // do not return literals themselves.
+  bool swallow_execution_errors = false;
 };
 
 // A base class for tests which build and/or run HLO code. The class includes
@@ -286,6 +290,7 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   }
 
   HloRunnerInterface& test_runner() const { return *test_runner_; }
+  bool swallow_execution_errors() const { return swallow_execution_errors_; }
 
  private:
   // Runs the two module with or without running hlo oasses and compares
@@ -308,6 +313,7 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   std::unique_ptr<HloRunnerInterface> test_runner_;
   DeviceShapeRepresentationFn device_shape_representation_fn_;
   DeviceShapeSizeFn device_shape_size_fn_;
+  bool swallow_execution_errors_ = false;
 };
 
 }  // namespace xla
