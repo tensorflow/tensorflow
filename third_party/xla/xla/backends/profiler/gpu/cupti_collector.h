@@ -65,6 +65,9 @@ class PmSamples {
       : metrics_(std::move(metrics)),
         sampler_ranges_(std::move(sampler_ranges)) {}
   void PopulateCounterLine(tsl::profiler::XPlaneBuilder* plane);
+  size_t GetNumSamples() const;
+  const std::vector<std::string>& GetMetrics() const;
+  const std::vector<SamplerRange>& GetSamplerRanges() const;
 
  private:
   std::vector<std::string> metrics_;
