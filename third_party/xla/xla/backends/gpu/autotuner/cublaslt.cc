@@ -143,7 +143,7 @@ CublasLtBackend::GetDefaultConfig(const HloInstruction& instr) {
   }
 
   AutotuneResult::GemmKey gemm_key;
-  gemm_key.set_algorithm(se::blas::kDefaultAlgorithm);
+  gemm_key.set_algorithm(0);
   return std::make_unique<CublasLtBackendConfig>(gemm_key);
 }
 
