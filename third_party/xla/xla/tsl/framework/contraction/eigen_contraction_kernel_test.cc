@@ -36,22 +36,22 @@ static void ExpectClose(Eigen::Tensor<T, 2> res, Eigen::Tensor<T, 2> expected) {
   }
 }
 
-template <typename LHS, typename RHS, typename OUT>
+template <typename LhsType, typename RhsType, typename OutType>
 void RunEigenMatMul(int m, int k, int n) {
-  Eigen::Tensor<LHS, 2> lhs(m, k);
-  Eigen::Tensor<RHS, 2> rhs(k, n);
-  Eigen::Tensor<OUT, 2> out(m, n);
+  Eigen::Tensor<LhsType, 2> lhs(m, k);
+  Eigen::Tensor<RhsType, 2> rhs(k, n);
+  Eigen::Tensor<OutType, 2> out(m, n);
 
   lhs.setRandom();
   rhs.setRandom();
   out.setZero();
 
-  using DimPair = typename Eigen::Tensor<LHS, 2>::DimensionPair;
+  using DimPair = typename Eigen::Tensor<LhsType, 2>::DimensionPair;
   std::array<DimPair, 1> dims({DimPair(1, 0)});
   out = lhs.contract(rhs, dims);
 
-  Eigen::Tensor<OUT, 2> expected =
-      lhs.template cast<OUT>().contract(rhs.template cast<OUT>(), dims);
+  Eigen::Tensor<OutType, 2> expected =
+      lhs.template cast<OutType>().contract(rhs.template cast<OutType>(), dims);
 
   ExpectClose(out, expected);
 }
