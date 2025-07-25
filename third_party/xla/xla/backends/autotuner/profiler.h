@@ -47,6 +47,10 @@ struct ProfileResult {
   std::optional<ScopedShapedBuffer> output_buffer = std::nullopt;
 };
 
+struct InputBuffers {
+  virtual ~InputBuffers() = default;
+};
+
 // Interface to run and profile XLA compiled executables for autotuning.
 class Profiler {
  public:
@@ -55,12 +59,9 @@ class Profiler {
   // Profiles a single executable.
   virtual absl::StatusOr<ProfileResult> Profile(
       std::unique_ptr<Executable> executable) {
-    std::vector<std::unique_ptr<Executable>> executables;
-    executables.push_back(std::move(executable));
-    TF_ASSIGN_OR_RETURN(auto results,
-                        ProfileWithSharedBuffers(std::move(executables)));
-    CHECK_EQ(results.size(), 1);
-    return std::move(results[0]);
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> buffers,
+                        CreateInputBuffers(executable.get()));
+    return Profile(executable.get(), *buffers);
   }
 
   // Profiles multiple executables with shared buffers. This guarantees that
@@ -70,7 +71,28 @@ class Profiler {
   // successfully, which is why the return type is a vector of StatusOr.
   virtual absl::StatusOr<std::vector<absl::StatusOr<ProfileResult>>>
   ProfileWithSharedBuffers(
-      std::vector<std::unique_ptr<Executable>> executables) = 0;
+      std::vector<std::unique_ptr<Executable>> executables) {
+    std::vector<absl::StatusOr<ProfileResult>> results;
+    if (executables.empty()) {
+      return results;
+    }
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> buffers,
+                        CreateInputBuffers(executables[0].get()));
+    for (auto& executable : executables) {
+      results.push_back(Profile(executable.get(), *buffers));
+    }
+    return results;
+  }
+
+  // Creates Input buffers for a given executable on the device. The buffers
+  // are created with the same shape as the input parameters of the executable.
+  virtual absl::StatusOr<std::unique_ptr<InputBuffers>> CreateInputBuffers(
+      const Executable* executable) = 0;
+
+  // Profiles a single executable with the provided buffers. The buffers
+  // must be created by calling CreateInputBuffers from the same profiler.
+  virtual absl::StatusOr<ProfileResult> Profile(
+      Executable* executable, const InputBuffers& buffers) = 0;
 };
 }  // namespace xla
 

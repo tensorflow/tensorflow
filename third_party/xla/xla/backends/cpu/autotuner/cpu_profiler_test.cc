@@ -83,6 +83,24 @@ TEST_F(CpuProfilerTest, ProfileWithSharedBuffersWithoutExecutable) {
   EXPECT_EQ(profiles.size(), 0);
 }
 
+TEST_F(CpuProfilerTest, CreateInputBuffersAndProfile) {
+  constexpr absl::string_view kHloModule = R"(
+        HloModule module
+        ENTRY main {
+          ROOT c = s32[] constant(1)
+        }
+      )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                          CompileHloModule(std::move(hlo_module)));
+  auto profiler = CpuProfiler::Create(ProfileOptions());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<InputBuffers> buffers,
+                          profiler->CreateInputBuffers(executable.get()));
+  TF_ASSERT_OK_AND_ASSIGN(ProfileResult profile,
+                          profiler->Profile(executable.get(), *buffers));
+}
+
 }  // namespace
 
 }  // namespace xla::cpu

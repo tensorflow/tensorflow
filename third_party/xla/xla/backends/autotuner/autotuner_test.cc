@@ -79,6 +79,11 @@ class MockProfiler : public Profiler {
               ProfileWithSharedBuffers,
               (std::vector<std::unique_ptr<Executable>> executables),
               (override));
+  MOCK_METHOD(absl::StatusOr<ProfileResult>, Profile,
+              (Executable * executable, const InputBuffers& buffers),
+              (override));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<InputBuffers>>, CreateInputBuffers,
+              (const Executable* executable), (override));
 };
 
 using ::testing::_;

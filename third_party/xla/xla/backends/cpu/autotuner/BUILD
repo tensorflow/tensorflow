@@ -51,7 +51,6 @@ cc_library(
         "//xla/service:maybe_owning_device_memory",
         "//xla/service/cpu:cpu_executable",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

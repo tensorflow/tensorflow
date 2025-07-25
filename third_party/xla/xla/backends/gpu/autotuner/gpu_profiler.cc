@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/casts.h"
 
 namespace xla {
 
@@ -78,38 +79,30 @@ std::unique_ptr<GpuProfiler> GpuProfiler::Create(
       std::move(stream.value()), options));
 }
 
-absl::StatusOr<std::vector<absl::StatusOr<ProfileResult>>>
-GpuProfiler::ProfileWithSharedBuffers(
-    std::vector<std::unique_ptr<Executable>> executables) {
-  std::vector<absl::StatusOr<ProfileResult>> results;
-  if (executables.empty()) {
-    return results;
-  }
+absl::StatusOr<std::unique_ptr<InputBuffers>> GpuProfiler::CreateInputBuffers(
+    const Executable* executable) {
   TF_ASSIGN_OR_RETURN(
       RedzoneBuffers buffers,
       RedzoneBuffers::FromComputation(
-          *executables[0]->module().entry_computation(), allocator_.get(),
+          *executable->module().entry_computation(), allocator_.get(),
           stream_.get(), RedzoneBuffers::BuffersToCreate::kAllInputsAllOutputs,
           options_.should_init_buffers,
           /*should_check_correctness=*/true, options_.redzone_padding_bytes));
-  for (auto& executable : executables) {
-    absl::StatusOr<ProfileResult> result =
-        ProfileInternal(executable.get(), buffers);
-    if (!result.ok()) {
-      VLOG(1) << "Failed to profile executable: " << result.status();
-    }
-    results.push_back(std::move(result));
-  }
-  return results;
+  auto gpu_buffers = std::make_unique<GpuInputBuffers>();
+  gpu_buffers->redzone_buffers = std::move(buffers);
+  return gpu_buffers;
 }
 
-absl::StatusOr<ProfileResult> GpuProfiler::ProfileInternal(
-    Executable* executable, RedzoneBuffers& buffers) {
+absl::StatusOr<ProfileResult> GpuProfiler::Profile(
+    Executable* executable, const InputBuffers& buffers) {
+  const GpuInputBuffers& gpu_buffers =
+      tsl::down_cast<const GpuInputBuffers&>(buffers);
+  const RedzoneBuffers& rz_buffers = gpu_buffers.redzone_buffers;
   {
     // Warm up run.
     std::vector<ExecutionInput> execution_inputs =
-        CreateExecutionInputsFromBuffers(buffers.input_buffers(),
-                                         buffers.input_shapes());
+        CreateExecutionInputsFromBuffers(rz_buffers.input_buffers(),
+                                         rz_buffers.input_shapes());
     TF_RETURN_IF_ERROR(Execute(executable, std::move(execution_inputs),
                                /*profile=*/nullptr)
                            .status());
@@ -120,8 +113,8 @@ absl::StatusOr<ProfileResult> GpuProfiler::ProfileInternal(
   ExecutionProfile profile;
   profile.set_warmup_run_executed(true);
   std::vector<ExecutionInput> execution_inputs =
-      CreateExecutionInputsFromBuffers(buffers.input_buffers(),
-                                       buffers.input_shapes());
+      CreateExecutionInputsFromBuffers(rz_buffers.input_buffers(),
+                                       rz_buffers.input_shapes());
 
   TF_ASSIGN_OR_RETURN(
       ExecutionOutput execution_output,
