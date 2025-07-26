@@ -14,14 +14,25 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "base/tracer.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
 
 namespace tensorflow {

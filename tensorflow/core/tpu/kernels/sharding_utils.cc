@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/sharding_utils.h"
 
 #include <cstdint>
-#include <functional>
 #include <vector>
 
 #include "absl/status/status.h"
