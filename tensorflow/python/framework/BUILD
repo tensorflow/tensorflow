@@ -24,6 +24,7 @@ load(
     "//tensorflow/tools/test:performance.bzl",
     "cuda_py_benchmark_test",
 )
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 
 visibility = tf_python_framework_friends()  # buildifier: disable=package-on-top
 

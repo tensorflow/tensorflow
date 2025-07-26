@@ -1,6 +1,7 @@
 # python/lib/core package
 
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_external_workspace_visible", "tf_python_pybind_extension")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",

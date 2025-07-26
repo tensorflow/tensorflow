@@ -15,6 +15,7 @@ load(
     "tf_portable_full_lite_protos",
 )
 load("//tensorflow/compiler/mlir/lite:special_rules.bzl", "flex_portable_tensorflow_deps")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 
 # LINT.IfChange
 
@@ -114,7 +115,7 @@ def tflite_flex_cc_library(
 
         # Define a custom tensorflow_lib with selective registration.
         # The library will only contain ops exist in provided models.
-        native.cc_library(
+        cc_library(
             name = "%s_tensorflow_lib" % name,
             srcs = if_mobile([
                 clean_dep("//tensorflow/core:portable_op_registrations_and_gradients"),
@@ -157,7 +158,7 @@ def tflite_flex_cc_library(
         delegate_symbol.append(clean_dep("//tensorflow/lite/delegates/flex:delegate_symbol"))
 
     # Define a custom flex delegate with above tensorflow_lib.
-    native.cc_library(
+    cc_library(
         name = name,
         hdrs = [
             clean_dep("//tensorflow/lite/delegates/flex:delegate.h"),

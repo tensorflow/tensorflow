@@ -34,7 +34,10 @@ config_setting(
 bzl_library(
     name = "build_defs",
     srcs = ["build_defs.bzl"],
-    deps = ["//xla/tsl:package_groups_bzl"],
+    deps = [
+        "//third_party/bazel_rules/rules_cc/cc:core_rules",
+        "//xla/tsl:package_groups_bzl",
+    ],
 )
 
 # Add
