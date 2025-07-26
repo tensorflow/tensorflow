@@ -20,7 +20,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -28,8 +31,13 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -71,6 +79,36 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, mlir::ModuleOp module,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
+  xla::DebugOptions debug_options =
+      options.executable_build_options.debug_options();
+  if (debug_options.has_xla_dump_to()) {
+    std::string dump_path = debug_options.xla_dump_to();
+    if (dump_path != "") {
+      // Dump stablehlo module to file.
+      std::string file_name = absl::StrCat(
+          "mlir_module_", std::to_string(tsl::Env::Default()->NowMicros()),
+          ".mlir");
+      std::string file_path = absl::StrCat(dump_path, "/", file_name);
+      std::string serialized_module;
+      TF_ASSIGN_OR_RETURN(
+          std::string serialized,
+          xla::Serialize(module,
+                         xla::GetDefaultStablehloVersion(PJRT_API_MINOR),
+                         /*plugin_version=*/PJRT_API_MINOR));
+      TF_RETURN_IF_ERROR(
+          tsl::WriteStringToFile(tsl::Env::Default(), file_path, serialized));
+
+      // Dump compile options to file.
+      std::string options_file_name = absl::StrCat(
+          "compile_options_", std::to_string(tsl::Env::Default()->NowMicros()),
+          ".txt");
+      std::string options_file_path =
+          absl::StrCat(dump_path, "/", options_file_name);
+      TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
+          tsl::Env::Default(), options_file_path,
+          options.ToProto().value().SerializeAsString()));
+    }
+  }
   auto topology_compiler = topology.compiler();
   if (topology_compiler.has_value()) {
     return (*topology_compiler)
