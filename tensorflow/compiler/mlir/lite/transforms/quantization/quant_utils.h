@@ -36,6 +36,9 @@ namespace mlir::TFL {
 
 inline constexpr char kPropagatedQuantizeOpAttr[] = "propagated";
 
+std::optional<quant::QuantizedType> GetPropagatedType(
+    SameScalesOpInterface same_scales_op);
+
 // If `value` is the result of a DequantizeOp, returns the quantized type of the
 // DequantizeOp's input. Otherwise, returns std::nullopt.
 // The IR pattern looks like:

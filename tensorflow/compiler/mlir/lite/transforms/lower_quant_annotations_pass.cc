@@ -394,7 +394,7 @@ void LowerQuantAnnotationsPass::runOnOperation() {
   prepare_patterns.add<RemovePreventGradient, RemoveIdentity>(&ctx);
 
   GreedyRewriteConfig greedy_config;
-  greedy_config.enableFolding(true);
+  greedy_config.enableFolding(false);
   if (failed(applyPatternsGreedily(module, std::move(prepare_patterns),
                                    greedy_config))) {
     module.emitError(
