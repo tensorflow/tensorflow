@@ -241,6 +241,7 @@ tf_python_pybind_extension(
         "_pywrap_converter_api.pyi",
     ],
     visibility = [
+        "//tensorflow/lite/python:__pkg__",
         "//tensorflow/python:__pkg__",
     ],
     deps = [

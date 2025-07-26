@@ -659,6 +659,7 @@ py_strict_library(
     name = "tflite_pywrap_deps",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/mlir/lite/python:_pywrap_converter_api",
         "//tensorflow/lite/experimental/genai:pywrap_genai_ops",
         "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
         "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
@@ -682,7 +683,7 @@ pywrap_library(
             "//conditions:default": "pywrap_tflite_common.lds",
         }),
     },
-    pywrap_count = 8,
+    pywrap_count = 9,
     visibility = ["//visibility:public"],
     deps = [
         ":tflite_pywrap_deps",
