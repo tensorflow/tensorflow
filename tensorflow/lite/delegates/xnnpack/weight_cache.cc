@@ -377,8 +377,7 @@ bool MMapWeightCacheProvider::Load() {
   ScopeGuard unmap_on_fail([this] { mmap_handles_.clear(); });
 
   if (file_descriptor_.IsValid()) {
-    XNNPACK_RETURN_CHECK(mmap_handle.Map(file_descriptor_,
-                                         /*offset=*/0, file_path_.c_str()));
+    XNNPACK_RETURN_CHECK(mmap_handle.Map(file_descriptor_, /*offset=*/0));
   } else {
     XNNPACK_ABORT_CHECK(!file_path_.empty(),
                         "Path wasn't provided to weight cache provider.");
@@ -532,8 +531,8 @@ bool MMapWeightCacheProvider::StopBuildStep() {
     // Sync mmap_handles_.data() with the content updated by
     // builder_.StopBuildStep().
     XNNPACK_RETURN_CHECK(file_descriptor_.IsValid());
-    XNNPACK_RETURN_CHECK(mmap_handles_.front().Map(
-        file_descriptor_, /*offset=*/0, file_path_.c_str()));
+    XNNPACK_RETURN_CHECK(
+        mmap_handles_.front().Map(file_descriptor_, /*offset=*/0));
   }
 #endif
   is_build_step_ = false;
