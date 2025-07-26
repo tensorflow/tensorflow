@@ -263,9 +263,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         max_output_size_value, iou_threshold, score_threshold, soft_nms_sigma,
         output_selected_indices->data.i32, output_selected_scores->data.f,
         output_num_selected_indices->data.i32);
-    ResetUnusedElementsToZeroes(
-        max_output_size_value, *output_num_selected_indices->data.i32,
-        output_selected_indices->data.i32, output_selected_scores->data.f);
+    auto num_selected_indices = *output_num_selected_indices->data.i32;
+    if (is_max_output_size_const) {
+      ResetUnusedElementsToZeroes(max_output_size_value, num_selected_indices,
+                                  output_selected_indices->data.i32,
+                                  output_selected_scores->data.f);
+    } else {
+      SetTensorSizes(context, output_selected_indices, {num_selected_indices});
+      SetTensorSizes(context, output_selected_scores, {num_selected_indices});
+    }
   } else {
     TF_LITE_ENSURE_OK(
         context, GetOutputSafe(context, node, kNMSOutputTensorSelectedIndices,
@@ -281,9 +287,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         max_output_size_value, iou_threshold, score_threshold, /**sigma=**/ 0.0,
         output_selected_indices->data.i32, /**selected_scores=**/ nullptr,
         output_num_selected_indices->data.i32);
-    ResetUnusedElementsToZeroes(max_output_size_value,
-                                *output_num_selected_indices->data.i32,
-                                output_selected_indices->data.i32, nullptr);
+    auto num_selected_indices = *output_num_selected_indices->data.i32;
+    if (is_max_output_size_const) {
+      ResetUnusedElementsToZeroes(max_output_size_value, num_selected_indices,
+                                  output_selected_indices->data.i32, nullptr);
+    } else {
+      SetTensorSizes(context, output_selected_indices, {num_selected_indices});
+      SetTensorSizes(context, output_selected_scores, {num_selected_indices});
+    }
   }
 
   return kTfLiteOk;
