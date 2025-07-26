@@ -311,8 +311,9 @@ void LogComputationGroup(const ComputationGroup& computation_group) {
         "L: %s", computation_group.left_computations[i]->name());
   }
   for (int i = 0; i < computation_group.right_computations.size(); ++i) {
-    computations_str[i] = absl::StrFormat(
-        "R: %s", computation_group.right_computations[i]->name());
+    computations_str[computation_group.left_computations.size() + i] =
+        absl::StrFormat("R: %s",
+                        computation_group.right_computations[i]->name());
   }
   LOG(INFO) << absl::StrJoin(computations_str, ", ");
 }
