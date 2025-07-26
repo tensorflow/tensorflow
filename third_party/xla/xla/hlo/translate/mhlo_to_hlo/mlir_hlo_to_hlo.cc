@@ -2524,7 +2524,8 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
       auto name = attr.getName();
       return name == kCallTargetName || name == kBackendConfig ||
              name == kApiVersion || name == kCalledComputations ||
-             name == kHasSideEffect || name == kShardingAttr;
+             name == kHasSideEffect || name == kShardingAttr ||
+             name == kFrontendAttributesAttr;
     };
     for (const auto& attr : op->getAttrs()) {
       if (!isSupportedAttrName(attr))
@@ -2608,7 +2609,25 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   }
 
   xla::XlaOp custom_call;
-  if (op.getCalledComputations().size() == 1) {
+  if (op.getCalledComputations().size() == 1 && op.getOperandLayouts() &&
+      op.getResultLayouts()) {
+    mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
+        mlir::cast<FlatSymbolRefAttr>(op.getCalledComputations()[0]));
+    if (failed(ctx.converter->RunOnFunction(callee))) {
+      return failure();
+    }
+    xla::XlaComputationId computation =
+        ctx.converter->GetLoweredComputation(callee);
+    auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
+        op.getOperandTypes(), op.getOperandLayouts().value());
+    SetLayout(result_shape, op.getResultLayouts().value());
+
+    custom_call = xla::CustomCallWithComputationAndLayouts(
+        ctx.builder, call_target_name, args, computation, result_shape,
+        operand_shapes_with_layout, backend_config, op.getHasSideEffect(),
+        output_operand_aliasing, literal_ptr, custom_call_schedule,
+        *xla_api_version);
+  } else if (op.getCalledComputations().size() == 1) {
     mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
         mlir::cast<FlatSymbolRefAttr>(op.getCalledComputations()[0]));
     if (failed(ctx.converter->RunOnFunction(callee))) return failure();
