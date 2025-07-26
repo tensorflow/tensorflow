@@ -32,9 +32,10 @@ using ::tsl::testing::StatusIs;
 
 TEST(SymbolFinderTest, FindSymbolInProcess) {
   // `malloc` should be available on every platform
-  EXPECT_THAT(FindSymbolInProcess("malloc"), IsOkAndHolds(NotNull()));
+  EXPECT_THAT(FindSymbolInProcess("malloc"),
+              absl_testing::IsOkAndHolds(NotNull()));
   EXPECT_THAT(FindSymbolInProcess("surely_this_does_not_exist"),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 }  // namespace

@@ -153,8 +153,9 @@ TEST(DynamicShapeTest, SizeMismatch) {
   Shape shape({1, 2, 3});
   BoundedDynamicShapeTag tag({true, true});
   EXPECT_THAT(DynamicShape::Create(shape, tag),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("must have the same number of dimensions")));
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("must have the same number of dimensions")));
 }
 
 TEST(DynamicShapeTest, Equality) {

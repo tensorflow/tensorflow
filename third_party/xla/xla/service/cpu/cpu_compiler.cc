@@ -1857,7 +1857,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   XLA_SCOPED_LOGGING_TIMER(
       absl::StrFormat("Compiling [%s] for CPU using JIT", module->name()));
   std::string slow_compilation_msg =
-      absl::StrCat("Compiling module ", module->name());
+      absl::StrCat("Compiling module ", module->name(), " for CPU");
   auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
   auto llvm_options = llvm_ir::ExtractXlaBackendExtraOptions(
       module->config().debug_options().xla_backend_extra_options());
