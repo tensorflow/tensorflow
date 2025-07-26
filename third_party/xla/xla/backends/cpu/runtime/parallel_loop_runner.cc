@@ -18,8 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
-#include <cstdint>
-#include <limits>
 #include <tuple>
 #include <utility>
 
