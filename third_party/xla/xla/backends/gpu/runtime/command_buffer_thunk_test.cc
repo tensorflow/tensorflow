@@ -984,12 +984,12 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
   CommandBufferCmdSequence commands;
   commands.Emplace<CublasLtCmd>(
       s0, CublasLtMatmulThunk(
-              nullptr, config.value(), se::gpu::BlasLt::Epilogue::kDefault, 0,
-              slice_a, slice_b, slice_c, slice_d, BufferAllocation::Slice(),
+              Thunk::ThunkInfo(), /*canonical_hlo=*/"", config.value(),
+              se::gpu::BlasLt::Epilogue::kDefault, 0, slice_a, slice_b, slice_c,
+              slice_d, BufferAllocation::Slice(), BufferAllocation::Slice(),
               BufferAllocation::Slice(), BufferAllocation::Slice(),
               BufferAllocation::Slice(), BufferAllocation::Slice(),
-              BufferAllocation::Slice(), BufferAllocation::Slice(),
-              slice_workspace));
+              BufferAllocation::Slice(), slice_workspace));
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
