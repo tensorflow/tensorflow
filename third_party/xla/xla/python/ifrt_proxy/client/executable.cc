@@ -497,6 +497,8 @@ LoadedExecutable::~LoadedExecutable() {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointLoadedExecutableDestruct");
 
+  metadata_future_.Await();
+
   auto req = std::make_unique<LoadedExecutableDestructRequest>();
   req->set_loaded_executable_handle(handle_);
 
