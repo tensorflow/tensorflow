@@ -63,9 +63,9 @@ SmallVector<uint32_t> GetDimsToSqueeze(RankedTensorType type) {
       result.push_back(dim);
     }
   }
-  if (result.size() == type.getRank()) {
-    result.pop_back();  // Keep one unit dimension.
-  }
+  // Keep at least two dimensions. Triton cannot handle zero dimensions and
+  // for one dimension it may generate slow code.
+  result.truncate(std::clamp<int64_t>(type.getRank() - 2, 0, result.size()));
   return result;
 }
 
