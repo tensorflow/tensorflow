@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 
+#include <memory>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -37,7 +39,7 @@ class DeviceResolverLocalTest : public ::testing::Test {
     std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices));
     device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
-    drl_.reset(new DeviceResolverLocal(device_mgr_.get()));
+    drl_ = std::make_unique<DeviceResolverLocal>(device_mgr_.get());
   }
 
   std::unique_ptr<DeviceMgr> device_mgr_;
