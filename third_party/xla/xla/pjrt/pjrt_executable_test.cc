@@ -59,7 +59,7 @@ TEST(CompileOptionsTest, MultiSliceConfigNotSupported) {
 
   EXPECT_THAT(
       option.status(),
-      StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kUnimplemented,
           "multi_slice_config not supported in CompileOptions::FromProto."));
 }
@@ -90,8 +90,9 @@ TEST(ExecuteOptionsTest, SendRecvNotSupported) {
 
   EXPECT_THAT(
       options.ToProto(),
-      StatusIs(absl::StatusCode::kUnimplemented,
-               "ExecuteOptions with send/recv calbacks is not serializable"));
+      absl_testing::StatusIs(
+          absl::StatusCode::kUnimplemented,
+          "ExecuteOptions with send/recv calbacks is not serializable"));
 }
 
 TEST(ExecuteOptionsTest, ApplyOptionsCanParseStringsAndEnums) {

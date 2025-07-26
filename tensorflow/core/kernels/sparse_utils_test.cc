@@ -371,8 +371,9 @@ TEST_P(ValidateSparseTensorTest, InvalidIndicesRankFails) {
     const Tensor shape = Tensor(DT_INT64, TensorShape({kNumDims}));
     EXPECT_THAT((ValidateSparseTensor<int64_t>(indices, values, shape,
                                                index_validation)),
-                StatusIs(error::INVALID_ARGUMENT,
-                         MatchesRegex("Sparse indices must be rank 2 .*")));
+                absl_testing::StatusIs(
+                    error::INVALID_ARGUMENT,
+                    MatchesRegex("Sparse indices must be rank 2 .*")));
   }
 }
 
@@ -389,8 +390,9 @@ TEST_P(ValidateSparseTensorTest, InvalidValuesRankFails) {
     const Tensor shape = Tensor(DT_INT64, TensorShape({kNumDims}));
     EXPECT_THAT((ValidateSparseTensor<int64_t>(indices, values, shape,
                                                index_validation)),
-                StatusIs(error::INVALID_ARGUMENT,
-                         MatchesRegex("Sparse values must be rank 1 .*")));
+                absl_testing::StatusIs(
+                    error::INVALID_ARGUMENT,
+                    MatchesRegex("Sparse values must be rank 1 .*")));
   }
 }
 
@@ -405,10 +407,11 @@ TEST_P(ValidateSparseTensorTest, InvalidShapeRankFails) {
         Tensor(DT_INT64, TensorShape({kNumNonZeros, kNumDims}));
     const Tensor values = Tensor(DT_FLOAT, TensorShape({kNumNonZeros}));
     const Tensor shape = Tensor(DT_INT64, invalid_shape);
-    EXPECT_THAT((ValidateSparseTensor<int64_t>(indices, values, shape,
-                                               index_validation)),
-                StatusIs(error::INVALID_ARGUMENT,
-                         MatchesRegex("Sparse shape must be rank 1 .*")));
+    EXPECT_THAT(
+        (ValidateSparseTensor<int64_t>(indices, values, shape,
+                                       index_validation)),
+        absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                               MatchesRegex("Sparse shape must be rank 1 .*")));
   }
 }
 
@@ -426,9 +429,10 @@ TEST_P(ValidateSparseTensorTest, IncompatibleShapesFails) {
         Tensor(DT_INT64, TensorShape({kNumNonZeros + 1, kNumDims}));
     EXPECT_THAT((ValidateSparseTensor<int64_t>(indices, values, shape,
                                                index_validation)),
-                StatusIs(error::INVALID_ARGUMENT,
-                         MatchesRegex("Number of elements in indices .* and "
-                                      "values .* do not match")));
+                absl_testing::StatusIs(
+                    error::INVALID_ARGUMENT,
+                    MatchesRegex("Number of elements in indices .* and "
+                                 "values .* do not match")));
   }
 
   // Each index tuple must have the same size in dimension 1 as the dense
@@ -439,8 +443,9 @@ TEST_P(ValidateSparseTensorTest, IncompatibleShapesFails) {
     EXPECT_THAT(
         (ValidateSparseTensor<int64_t>(indices, values, shape,
                                        index_validation)),
-        StatusIs(error::INVALID_ARGUMENT,
-                 MatchesRegex("Index rank .* and shape rank .* do not match")));
+        absl_testing::StatusIs(
+            error::INVALID_ARGUMENT,
+            MatchesRegex("Index rank .* and shape rank .* do not match")));
   }
 }
 
@@ -473,8 +478,9 @@ TEST_P(ValidateSparseTensorTest, IndexOutOfBoundsFails) {
         } else {
           EXPECT_THAT(
               indices_valid,
-              StatusIs(error::INVALID_ARGUMENT,
-                       MatchesRegex("Sparse index tuple .* is out of bounds")))
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  MatchesRegex("Sparse index tuple .* is out of bounds")))
               << indices_mat;
         }
       }
@@ -514,10 +520,10 @@ TEST_P(ValidateSparseTensorTest, IndexOutOfOrderFailsForOrderedValidation) {
       absl::Status indices_valid = ValidateSparseTensor<int64_t>(
           indices, values, shape, index_validation);
       if (ordered) {
-        EXPECT_THAT(
-            indices_valid,
-            StatusIs(error::INVALID_ARGUMENT,
-                     MatchesRegex("Sparse index tuple .* is out of order")));
+        EXPECT_THAT(indices_valid,
+                    absl_testing::StatusIs(
+                        error::INVALID_ARGUMENT,
+                        MatchesRegex("Sparse index tuple .* is out of order")));
       } else {
         TF_EXPECT_OK(indices_valid);
       }
