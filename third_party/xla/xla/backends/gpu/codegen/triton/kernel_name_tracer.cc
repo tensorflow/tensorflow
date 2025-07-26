@@ -1,4 +1,4 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,12 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/backends/gpu/codegen/triton/kernel_name_tracer.h"
+
 #include <memory>
 
-#include "xla/backends/gpu/codegen/triton/kernel_name_tracer.h"
+#include "absl/status/statusor.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform/platform_object_registry.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
-std::unique_ptr<KernelNameTracer> KernelNameTracer::Create() { return nullptr; }
+absl::StatusOr<std::unique_ptr<KernelNameTracer>> KernelNameTracer::Create(
+    const stream_executor::Platform::Id& platform_id) {
+  auto& registry = stream_executor::PlatformObjectRegistry::GetGlobalRegistry();
+  TF_ASSIGN_OR_RETURN(
+      details::KernelNameTracerFactory::Type func,
+      registry.FindObject<details::KernelNameTracerFactory>(platform_id));
+  return func();
+}
 
 }  // namespace xla::gpu
