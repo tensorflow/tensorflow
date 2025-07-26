@@ -144,6 +144,11 @@ cc_library(
         "//tensorflow/core/platform:refcount",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:unbounded_work_queue",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -2423,11 +2428,13 @@ tf_cuda_cc_test(
         ":core_cpu_internal",
         ":process_util",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:blocking_counter",
+        "@com_google_absl//absl/status",
     ],
 )
 
