@@ -1021,11 +1021,10 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
                               std::numeric_limits<int>::max()),
       last_collective_launch_event_(
           tsl::MakeAvailableAsyncValueRef<GpuEvent>()),
-      description_(options.id, options.process_index, options.platform_version),
+      description_(options.id, local_device_id_.value(), options.process_index,
+                   options.slice_index, options.platform_version),
       max_inflight_computations_semaphore_(
           /*capacity=*/options.max_inflight_computations) {
-  std::array<int, 1> coords = {local_device_id_.value()};
-  description_.SetCoords(coords);
   std::vector<int64_t> v_coords(description_.coords().begin(),
                                 description_.coords().end());
 
