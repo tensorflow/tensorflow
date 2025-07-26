@@ -363,7 +363,11 @@ enum StatType {
   kCudaGraphMapValueId,
   kCudaGraphNodeMapId,
   kGraphMetadataLineId,
-  kLastStatType = kGraphMetadataLineId,
+  kMetadataCudaVersion,
+  kMetadataJaxVersion,
+  kMetadataJaxlibVersion,
+  kMetadataLibtpuVersion,
+  kLastStatType = kMetadataLibtpuVersion,
 };
 
 enum MegaScaleStatType : uint8_t {

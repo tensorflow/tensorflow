@@ -47,6 +47,7 @@ tsl_gpu_library(
         ":cupti_collector",
         ":cupti_tracer",
         ":cupti_wrapper",
+        ":gpu_metadata",
     ]) + if_rocm([
         # keep sorted
         ":rocm_collector",
@@ -454,5 +455,20 @@ xla_test(
     deps = [
         ":nvtx_with_cuda_kernels",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tsl_gpu_library(
+    name = "gpu_metadata",
+    srcs = if_cuda(["gpu_metadata.cc"]),
+    hdrs = if_cuda(["gpu_metadata.h"]),
+    copts = tf_profiler_copts() + tsl_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/tsl/profiler/utils:xplane_builder",
+        "//xla/tsl/profiler/utils:xplane_schema",
+        "//xla/tsl/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
