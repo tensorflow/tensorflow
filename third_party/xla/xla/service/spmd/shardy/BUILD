@@ -61,6 +61,10 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:path",
         "@shardy//shardy/common:file_utils",
+        "@shardy//shardy/dialect/mpmd/transforms/export:passes",
+        "@shardy//shardy/dialect/mpmd/transforms/import:passes",
+        "@shardy//shardy/dialect/mpmd/transforms/optimize:passes",
+        "@shardy//shardy/dialect/mpmd/transforms/sharding_propagation:passes",
         "@shardy//shardy/dialect/sdy/transforms/propagation:passes",
     ],
 )
