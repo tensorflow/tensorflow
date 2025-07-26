@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/python/ifrt/test_util.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
@@ -28,9 +30,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -119,6 +123,30 @@ absl::StatusOr<DeviceListRef> GetAddressableDevices(
     devices.push_back(client_devices[device_index]);
   }
   return client->MakeDeviceList(std::move(devices));
+}
+
+namespace {
+
+class TestUserContext : public llvm::RTTIExtends<TestUserContext, UserContext> {
+ public:
+  explicit TestUserContext(uint64_t id) : id_(id) {}
+
+  uint64_t Fingerprint() const override { return id_; }
+
+  std::string DebugString() const override {
+    return absl::StrCat("TestUserContext(", id_, ")");
+  }
+
+  // No new `ID` is not defined because tests below do not exercise RTTI.
+
+ private:
+  uint64_t id_;
+};
+
+}  // namespace
+
+UserContextRef MakeUserContext(uint64_t id) {
+  return tsl::MakeRef<TestUserContext>(id);
 }
 
 }  // namespace test_util

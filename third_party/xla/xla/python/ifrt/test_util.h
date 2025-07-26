@@ -1,8 +1,3 @@
-#include <optional>
-
-#include "absl/status/statusor.h"
-#include "xla/python/ifrt/device_list.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 /* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,19 +16,26 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_TEST_UTIL_H_
 #define XLA_PYTHON_IFRT_TEST_UTIL_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -93,6 +95,10 @@ absl::StatusOr<DeviceListRef> GetDevices(Client* client,
 // indexes (not ids) within `client.addressable_devices()`.
 absl::StatusOr<DeviceListRef> GetAddressableDevices(
     Client* client, absl::Span<const int> device_indices);
+
+// Returns a new `UserContext` for testing. The created `UserContext` has a
+// fingerprint equal to `id`.
+UserContextRef MakeUserContext(uint64_t id);
 
 }  // namespace test_util
 }  // namespace ifrt

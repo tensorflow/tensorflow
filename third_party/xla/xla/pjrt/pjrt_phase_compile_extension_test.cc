@@ -244,9 +244,10 @@ TEST_F(PhaseCompileExtensionTest,
   auto partial_programs_out = phase_compile_extension_wrapper_->RunPhases(
       xla::CompileOptions(), partial_programs_in, *topology_description_,
       phases_to_run);
-  EXPECT_THAT(partial_programs_out,
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("Phases to run cannot be empty")));
+  EXPECT_THAT(
+      partial_programs_out,
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("Phases to run cannot be empty")));
 }
 
 // Plugin-agnostic validation: Test the RunPhases API with an incompatible
@@ -265,15 +266,17 @@ TEST_F(PhaseCompileExtensionTest,
       phases_to_run);
   EXPECT_THAT(
       partial_programs_out,
-      StatusIs(absl::StatusCode::kInvalidArgument,
-               HasSubstr("Input partial programs cannot be compiled by a phase "
-                         "with name")));
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("Input partial programs cannot be compiled by a phase "
+                    "with name")));
 }
 
 // Test the correct usage of the GetPhaseNames API.
 TEST_F(PhaseCompileExtensionTest, TestPhaseCompileExtensionForGetPhaseNames) {
   auto phase_names_status = phase_compile_extension_wrapper_->GetPhaseNames();
-  EXPECT_THAT(phase_names_status, IsOkAndHolds(ElementsAre(kPhaseName)));
+  EXPECT_THAT(phase_names_status,
+              absl_testing::IsOkAndHolds(ElementsAre(kPhaseName)));
 }
 
 }  // namespace
