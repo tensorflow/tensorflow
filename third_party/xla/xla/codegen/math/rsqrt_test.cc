@@ -13,14 +13,19 @@ limitations under the License.
 
 #include <array>
 #include <cmath>
+#include <complex>
 #include <cstddef>
+#include <iostream>
 #include <limits>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "Eigen/Core"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/IR/BasicBlock.h"
@@ -69,8 +74,11 @@ void AddOneOverSqrt(llvm::LLVMContext& context, llvm::Module& module,
 JitRunner CreateJitRunnerWithRsqrt(Type type) {
   auto context = std::make_unique<llvm::LLVMContext>();
   auto module = std::make_unique<llvm::Module>("test_module", *context);
+
+  std::unique_ptr<llvm::TargetMachine> target_machine =
+      xla::codegen::math::CreateHostTargetMachine();
   llvm::Function* rsqrt_func =
-      Rsqrt::CreateDefinition(module.get(), type).value();
+      Rsqrt::CreateDefinition(module.get(), target_machine.get(), type).value();
   rsqrt_func->setLinkage(llvm::Function::ExternalLinkage);
   EXPECT_FALSE(llvm::verifyFunction(*rsqrt_func));
 
@@ -78,18 +86,23 @@ JitRunner CreateJitRunnerWithRsqrt(Type type) {
   return JitRunner(std::move(module), std::move(context));
 }
 
-bool isX86() {
+bool hasAvx() {
   llvm::StringMap<bool> HostFeatures = llvm::sys::getHostCPUFeatures();
-  return HostFeatures.lookup("x86");
+  return HostFeatures.lookup("avx");
 }
 
-bool hasAVX512Support() {
+bool hasAvx512Support() {
   llvm::StringMap<bool> HostFeatures = llvm::sys::getHostCPUFeatures();
   return HostFeatures.lookup("avx512f");
 }
 
+TEST(FeaturesTest, HostFeatures) {
+  std::cout << "Host features x86:" << hasAvx()
+            << ", avx512f:" << hasAvx512Support() << "\n";
+}
+
 TEST(RsqrtTest, EmitRsqrtF32) {
-  if (isX86()) {
+  if (hasAvx()) {
     Type type = Type::S(F32);
     JitRunner jit = CreateJitRunnerWithRsqrt(type);
     auto rsqrt = jit.GetScalarFn<float(float)>(Rsqrt::Name(type));
@@ -147,17 +160,17 @@ void TestRsqrt_Vectors() {
 }
 
 TEST(RsqrtTest, EmitRsqrtF32_Vectors) {
-  if (isX86()) {
+  if (hasAvx()) {
     TestRsqrt_Vectors<4, F32>();
     TestRsqrt_Vectors<8, F32>();
-    if (hasAVX512Support()) {
+    if (hasAvx512Support()) {
       TestRsqrt_Vectors<16, F32>();
     }
   }
 }
 
 TEST(RsqrtTest, EmitRsqrtF64_Vectors) {
-  if (hasAVX512Support()) {
+  if (hasAvx512Support()) {
     TestRsqrt_Vectors<2, F64>();
     TestRsqrt_Vectors<4, F64>();
     TestRsqrt_Vectors<8, F64>();
@@ -165,7 +178,7 @@ TEST(RsqrtTest, EmitRsqrtF64_Vectors) {
 }
 
 TEST(RsqrtTest, EmitRsqrtF32_EdgeCases) {
-  if (isX86()) {
+  if (hasAvx()) {
     Type type = Type::S(F32);
     JitRunner jit = CreateJitRunnerWithRsqrt(type);
     auto rsqrt = jit.GetScalarFn<float(float)>(Rsqrt::Name(type));
@@ -184,6 +197,105 @@ TEST(RsqrtTest, EmitRsqrtF32_EdgeCases) {
     float expected_small = 1.0f / std::sqrt(small_val);
     EXPECT_THAT(actual_small, NearUlps<float>(expected_small, 1));
   }
+}
+
+TEST(RsqrtTest, EmitRsqrtF64) {
+  if (hasAvx()) {
+    Type type = Type::S(F64);
+    JitRunner jit = CreateJitRunnerWithRsqrt(type);
+    auto rsqrt = jit.GetScalarFn<double(double)>(Rsqrt::Name(type));
+    auto one_over_sqrt = jit.GetScalarFn<double(double)>("one_over_sqrt");
+
+    EXPECT_THAT(rsqrt(1234.0), NearUlps<double>(one_over_sqrt(1234.0), 1));
+  }
+}
+
+TEST(RsqrtTest, EmitRsqrtF64_EdgeCasesAvxFallback) {
+  if (hasAvx() && !hasAvx512Support()) {
+    Type type = Type::S(F64);
+    JitRunner jit = CreateJitRunnerWithRsqrt(type);
+    auto rsqrt = jit.GetScalarFn<double(double)>(Rsqrt::Name(type));
+    EXPECT_THAT(rsqrt(std::numeric_limits<double>::infinity()),
+                NearUlps<double>(0.0, 1));
+    // NB: The fallback 1/ sqrt(x) doesn't return 0 for max double.
+    // EXPECT_THAT(rsqrt(std::numeric_limits<double>::max()),
+    //             NearUlps<double>(0.0, 1));
+  }
+}
+
+TEST(RsqrtTest, EmitRsqrtF64_EdgeCasesHasAvx) {
+  if (hasAvx512Support()) {
+    Type type = Type::S(F64);
+    JitRunner jit = CreateJitRunnerWithRsqrt(type);
+    auto rsqrt = jit.GetScalarFn<double(double)>(Rsqrt::Name(type));
+    auto one_over_sqrt = jit.GetScalarFn<double(double)>("one_over_sqrt");
+    EXPECT_THAT(rsqrt(std::numeric_limits<double>::infinity()),
+                NearUlps<double>(0.0, 1));
+    double max = std::numeric_limits<double>::max();
+    EXPECT_THAT(rsqrt(max), NearUlps<double>(one_over_sqrt(max), 1));
+  }
+}
+
+template <size_t kN>
+void TestRsqrtF64EdgeCases() {
+  if (hasAvx512Support()) {
+    Type type = Type::V(F64, kN);
+    JitRunner jit = CreateJitRunnerWithRsqrt(type);
+    using NativeType = double;
+    auto rsqrt =
+        jit.GetVectorizedFn<kN, NativeType, NativeType>(Rsqrt::Name(type));
+    auto one_over_sqrt =
+        jit.GetVectorizedFn<kN, NativeType, NativeType>("one_over_sqrt");
+    std::vector<NativeType> val_vec = {
+        std::numeric_limits<double>::denorm_min(),
+        std::numeric_limits<double>::max()};
+    std::array<NativeType, kN> vals;
+    for (size_t i = 0; i < kN; ++i) {
+      vals[i] = val_vec[i % val_vec.size()];
+    }
+    std::array<NativeType, kN> actuals = rsqrt(vals);
+    std::array<NativeType, kN> expected = one_over_sqrt(vals);
+    for (int i = 0; i < kN; ++i) {
+      EXPECT_THAT(actuals[i], NearUlps<NativeType>(expected[i], 1))
+          << "i = " << i << " val = " << vals[i] << " kN= " << kN;
+    }
+
+    std::array<NativeType, kN> map_to_zero = {
+        8.5390423905955551e+307, std::numeric_limits<double>::infinity()};
+    std::array<NativeType, kN> map_to_zero_vals;
+    for (size_t i = 0; i < kN; ++i) {
+      map_to_zero_vals[i] = map_to_zero[i % map_to_zero.size()];
+    }
+    std::array<NativeType, kN> actual_zero = rsqrt(map_to_zero_vals);
+    std::array<NativeType, kN> expected_zero = one_over_sqrt(map_to_zero_vals);
+    for (size_t i = 0; i < kN; ++i) {
+      EXPECT_THAT(actual_zero[i], NearUlps<NativeType>(expected_zero[i], 1))
+          << "i = " << i << " val = " << map_to_zero_vals[i] << " kN= " << kN;
+    }
+  }
+}
+
+TEST(RsqrtTest, EmitRsqrtF64_EdgeCases_Vectors) {
+  if (hasAvx512Support()) {
+    TestRsqrtF64EdgeCases<2>();
+    TestRsqrtF64EdgeCases<4>();
+    TestRsqrtF64EdgeCases<8>();
+  }
+}
+
+TEST(RsqrtComplex, StdSqrt) {
+  std::complex<double> x =
+      std::complex<double>(8.5390423905955551e+307, 1.6179238213760051e+308);
+  std::complex<double> y = std::complex<double>(1, 0) / std::sqrt(x);
+  EXPECT_EQ(y, std::complex<double>(0, 0));
+}
+
+TEST(RsqrtComplex, EigenSqrt) {
+  std::complex<double> x(8.5390423905955551e+307, 1.6179238213760051e+308);
+  Eigen::Array<std::complex<double>, 1, 1> x_eigen;
+  x_eigen << x;
+  Eigen::Array<std::complex<double>, 1, 1> y_eigen = 1.0 / x_eigen.sqrt();
+  EXPECT_EQ(y_eigen(0), std::complex<double>(0, 0));
 }
 
 }  // namespace
