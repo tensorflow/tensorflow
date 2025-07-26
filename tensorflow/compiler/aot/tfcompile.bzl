@@ -23,6 +23,8 @@ load(
     "tf_copts",
 )
 load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_abilists", "tfcompile_dfsan_enabled", "tfcompile_friends", "tfcompile_target_cpu")
+load("//third_party/bazel_rules/rules_cc/cc:cc_binary.bzl", "cc_binary")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 
 visibility(tfcompile_friends())
 
@@ -313,7 +315,7 @@ def _tf_library(
 
     # The cc_library rule packaging up the header and object file, and needed
     # kernel implementations.
-    native.cc_library(
+    cc_library(
         name = name,
         srcs = [tfcompile_gen_object_files],
         hdrs = [header_file],
@@ -444,7 +446,7 @@ def _tf_library(
         #    --copt=-fvisibility=hidden
         #    --copt=-D_LIBCPP_TYPE_VIS=_LIBCPP_HIDDEN
         #    --copt=-D_LIBCPP_EXCEPTION_ABI=_LIBCPP_HIDDEN
-        native.cc_binary(
+        cc_binary(
             name = benchmark_name,
             srcs = [benchmark_file],
             testonly = testonly,
