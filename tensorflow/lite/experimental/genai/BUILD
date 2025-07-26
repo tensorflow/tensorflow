@@ -2,6 +2,8 @@
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
+load("//third_party/bazel_rules/rules_cc/cc:cc_test.bzl", "cc_test")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 

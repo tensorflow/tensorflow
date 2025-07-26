@@ -13,6 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 load("//tensorflow/lite/experimental/acceleration/mini_benchmark:special_rules.bzl", "libjpeg_handle_deps", "register_selected_ops_deps")
+load("//third_party/bazel_rules/rules_cc/cc:cc_binary.bzl", "cc_binary")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
+load("//third_party/bazel_rules/rules_cc/cc:cc_test.bzl", "cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
