@@ -58,22 +58,6 @@ namespace xla {
 namespace spmd {
 namespace sdy = ::mlir::sdy;
 
-void RegisterDialectDependencies(mlir::DialectRegistry& registry) {
-  // We are loading all dialects here, otherwise the pass will fail in
-  // multi-threaded pass manager execution.
-  registry.insert<mlir::func::FuncDialect, mlir::mhlo::MhloDialect,
-                  mlir::chlo::ChloDialect, sdy::SdyDialect,
-                  mlir::stablehlo::StablehloDialect, mlir::shape::ShapeDialect,
-                  mlir::tensor::TensorDialect, mlir::arith::ArithDialect,
-                  mlir::ub::UBDialect>();
-  mlir::func::registerAllExtensions(registry);
-  mlir::stablehlo::registerAllDialects(registry);
-  mlir::func::registerAllExtensions(registry);
-  mlir::mhlo::registerAllMhloDialects(registry);
-  registry.insert<mlir::tensor::TensorDialect, mlir::arith::ArithDialect,
-                  mlir::shape::ShapeDialect>();
-}
-
 namespace {
 
 using ::mlir::ModuleOp;
@@ -173,7 +157,19 @@ class AutoShardingWrapperPass
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
-    RegisterDialectDependencies(registry);
+    // We are loading all dialects here, otherwise the pass will fail in
+    // multi-threaded pass manager execution.
+    registry.insert<mlir::func::FuncDialect, mlir::mhlo::MhloDialect,
+                    mlir::chlo::ChloDialect, sdy::SdyDialect,
+                    mlir::stablehlo::StablehloDialect,
+                    mlir::shape::ShapeDialect, mlir::tensor::TensorDialect,
+                    mlir::arith::ArithDialect, mlir::ub::UBDialect>();
+    mlir::func::registerAllExtensions(registry);
+    mlir::stablehlo::registerAllDialects(registry);
+    mlir::func::registerAllExtensions(registry);
+    mlir::mhlo::registerAllMhloDialects(registry);
+    registry.insert<mlir::tensor::TensorDialect, mlir::arith::ArithDialect,
+                    mlir::shape::ShapeDialect>();
   }
 };
 
@@ -188,9 +184,7 @@ void AddAutoShardingToPipeline(mlir::OpPassManager& pm) {
 }
 
 void RegisterAutoSharding() {
-  sdy::AutoPartitionerRegistry::setCallback(
-      /*callback=*/&AddAutoShardingToPipeline,
-      /*dialectsDependenciesCallback=*/&RegisterDialectDependencies);
+  sdy::AutoPartitionerRegistry::setCallback(&AddAutoShardingToPipeline);
 }
 
 void RegisterAutoShardingIfRegistryEmpty() {

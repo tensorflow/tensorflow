@@ -16,12 +16,10 @@ limitations under the License.
 #ifndef XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_STABLEHLO_PASS_H_
 #define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_STABLEHLO_PASS_H_
 
-#include "mlir/IR/DialectRegistry.h"
 #include "mlir/Pass/PassManager.h"
 
 namespace xla {
 namespace spmd {
-void RegisterDialectDependencies(mlir::DialectRegistry& registry);
 void AddAutoShardingToPipeline(mlir::OpPassManager& pm);
 void RegisterAutoSharding();
 // Register Alpa auto partitioner in case no other auto partitioner is already
