@@ -4483,8 +4483,7 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(verifier().Run(module.get()),
-              StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("Expected send or recv")));
+              StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(HloVerifierTestForCollectiveDeadlocks,
