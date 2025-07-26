@@ -6,6 +6,8 @@ load(
     "tf_shared_library_deps",
 )
 
+load("@io_bazel_rules_go//go:def.bzl", "go_test")
+
 package(
     default_visibility = ["//visibility:private"],
 )
@@ -24,6 +26,19 @@ sh_test(
     ] + tf_shared_library_deps(),
     # TODO: Enable this test again once protos are supported by bazel.
     tags = ["manual"],
+)
+
+# ------------------------------------------------------------------------------
+# go_default_test: Runs all Go tests in this package, including new session config tests.
+# This target ensures that all *_test.go files are executed as part of the Bazel test suite.
+# ------------------------------------------------------------------------------
+go_test(
+    name = "go_default_test",
+    srcs = glob(["*_test.go"]),
+    embed = [":go_default_library"],
+    deps = [
+        # Add any extra dependencies here if needed
+    ],
 )
 
 filegroup(
