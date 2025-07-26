@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/codegen/math/fptrunc.h"
 
 #include <optional>
-#include <string>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/FloatingPointMode.h"
