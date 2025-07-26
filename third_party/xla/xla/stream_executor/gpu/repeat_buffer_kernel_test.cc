@@ -82,7 +82,7 @@ TEST_F(RepeatBufferKernelTest, CreateRepeatedBufferAndTestResult) {
           static_cast<const DeviceMemoryBase&>(buffer),
           static_cast<int64_t>(kNumberOfRepeatedElements * sizeof(float)),
           static_cast<int64_t>(kNumberOfTotalElements * sizeof(float))),
-      IsOk());
+      absl_testing::IsOk());
 
   std::array<float, kNumberOfTotalElements> result_buffer{};
   absl::Span<const float> result = absl::MakeConstSpan(result_buffer);

@@ -540,7 +540,8 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithDifferentDevices) {
   } else {
     status = result.status();
   }
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(status,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithDifferentMemoryKinds) {
@@ -595,7 +596,8 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithDifferentMemoryKinds) {
   } else {
     status = result.status();
   }
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(status,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(ArrayImplTest, MakeArrayFromHostBufferAndCopyToHostBufferWithString) {
@@ -775,9 +777,9 @@ TEST(ArrayImplTest, MakeErrorArrays) {
   ASSERT_EQ(arrays.size(), 2);
 
   EXPECT_THAT(arrays[0]->GetReadyFuture().Await(),
-              StatusIs(_, HasSubstr("injected error")));
+              absl_testing::StatusIs(_, HasSubstr("injected error")));
   EXPECT_THAT(arrays[1]->GetReadyFuture().Await(),
-              StatusIs(_, HasSubstr("injected error")));
+              absl_testing::StatusIs(_, HasSubstr("injected error")));
 }
 
 TEST(ArrayImplTest, MakeErrorArraysWithAddressableAndNonAddressableDevice) {
@@ -812,9 +814,9 @@ TEST(ArrayImplTest, MakeErrorArraysWithAddressableAndNonAddressableDevice) {
   ASSERT_EQ(arrays.size(), 2);
 
   EXPECT_THAT(arrays[0]->GetReadyFuture().Await(),
-              StatusIs(_, HasSubstr("injected error")));
+              absl_testing::StatusIs(_, HasSubstr("injected error")));
   EXPECT_THAT(arrays[1]->GetReadyFuture().Await(),
-              StatusIs(_, HasSubstr("injected error")));
+              absl_testing::StatusIs(_, HasSubstr("injected error")));
 }
 
 TEST(ArrayImplTest, AssembleArray) {
@@ -1167,7 +1169,7 @@ TEST(ArrayImplTest, CopyMixedSourceDevices) {
                   ->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
                                MemoryKind(), ArrayCopySemantics::kAlwaysCopy)
                   .status(),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(ArrayImplTest, CopyMixedSourceMemoryKind) {
@@ -1201,7 +1203,7 @@ TEST(ArrayImplTest, CopyMixedSourceMemoryKind) {
                   ->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
                                MemoryKind(), ArrayCopySemantics::kAlwaysCopy)
                   .status(),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(ArrayImplTest, GetReadyFuture) {
