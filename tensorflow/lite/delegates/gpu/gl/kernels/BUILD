@@ -8,6 +8,8 @@ load(
     "tflite_portable_test_suite_combined",
 )
 load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "tflite_angle_heapcheck_deps")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
+load("//third_party/bazel_rules/rules_cc/cc:cc_test.bzl", "cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
