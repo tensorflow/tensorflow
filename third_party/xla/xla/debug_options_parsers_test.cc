@@ -334,20 +334,21 @@ TEST(ParsingDebugOptionsTest, EnvOverwritesDebugOptionsFile) {
 
 TEST(ParseRepeatedEnumModifiersTest, Replace) {
   EXPECT_THAT(ParseRepeatedEnumModifiers("a,b"),
-              IsOkAndHolds(ElementsAre(
+              absl_testing::IsOkAndHolds(ElementsAre(
                   RepeatedFlagModifier{RepeatedFlagModifier::Op::kClear, ""},
                   RepeatedFlagModifier{RepeatedFlagModifier::Op::kAdd, "A"},
                   RepeatedFlagModifier{RepeatedFlagModifier::Op::kAdd, "B"})));
 }
 
 TEST(ParseRepeatedEnumModifiersTest, Empty) {
-  EXPECT_THAT(ParseRepeatedEnumModifiers(" "), IsOkAndHolds(IsEmpty()));
+  EXPECT_THAT(ParseRepeatedEnumModifiers(" "),
+              absl_testing::IsOkAndHolds(IsEmpty()));
 }
 
 TEST(ParseRepeatedEnumModifiersTest, ReplaceWithPrefix) {
   EXPECT_THAT(
       ParseRepeatedEnumModifiers("a,b", "PRE_"),
-      IsOkAndHolds(ElementsAre(
+      absl_testing::IsOkAndHolds(ElementsAre(
           RepeatedFlagModifier{RepeatedFlagModifier::Op::kClear, ""},
           RepeatedFlagModifier{RepeatedFlagModifier::Op::kAdd, "PRE_A"},
           RepeatedFlagModifier{RepeatedFlagModifier::Op::kAdd, "PRE_B"})));
@@ -356,7 +357,7 @@ TEST(ParseRepeatedEnumModifiersTest, ReplaceWithPrefix) {
 TEST(ParseRepeatedEnumModifiersTest, ReplaceWithPrefixAlreadyPresent) {
   EXPECT_THAT(
       ParseRepeatedEnumModifiers("PRE_A,b", "pre_"),
-      IsOkAndHolds(ElementsAre(
+      absl_testing::IsOkAndHolds(ElementsAre(
           RepeatedFlagModifier{RepeatedFlagModifier::Op::kClear, ""},
           RepeatedFlagModifier{RepeatedFlagModifier::Op::kAdd, "PRE_A"},
           RepeatedFlagModifier{RepeatedFlagModifier::Op::kAdd, "PRE_B"})));
@@ -364,7 +365,7 @@ TEST(ParseRepeatedEnumModifiersTest, ReplaceWithPrefixAlreadyPresent) {
 
 TEST(ParseRepeatedEnumModifiersTest, AddRemove) {
   EXPECT_THAT(ParseRepeatedEnumModifiers("+a,-b,+c"),
-              IsOkAndHolds(ElementsAre(
+              absl_testing::IsOkAndHolds(ElementsAre(
                   RepeatedFlagModifier{RepeatedFlagModifier::Op::kAdd, "A"},
                   RepeatedFlagModifier{RepeatedFlagModifier::Op::kRemove, "B"},
                   RepeatedFlagModifier{RepeatedFlagModifier::Op::kAdd, "C"})));
@@ -373,7 +374,7 @@ TEST(ParseRepeatedEnumModifiersTest, AddRemove) {
 TEST(ParseRepeatedEnumModifiersTest, AddRemoveWithPrefix) {
   EXPECT_THAT(
       ParseRepeatedEnumModifiers("+a,-b,+c", "pre_"),
-      IsOkAndHolds(ElementsAre(
+      absl_testing::IsOkAndHolds(ElementsAre(
           RepeatedFlagModifier{RepeatedFlagModifier::Op::kAdd, "PRE_A"},
           RepeatedFlagModifier{RepeatedFlagModifier::Op::kRemove, "PRE_B"},
           RepeatedFlagModifier{RepeatedFlagModifier::Op::kAdd, "PRE_C"})));
@@ -381,7 +382,7 @@ TEST(ParseRepeatedEnumModifiersTest, AddRemoveWithPrefix) {
 
 TEST(ParseRepeatedEnumModifiersTest, Invalid) {
   EXPECT_THAT(ParseRepeatedEnumModifiers("+a,b"),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(ParseRepeatedEnumFlagsTest, GenericTritonEmitterFeatures) {

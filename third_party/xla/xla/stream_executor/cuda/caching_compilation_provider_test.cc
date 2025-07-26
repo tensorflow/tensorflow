@@ -53,10 +53,10 @@ TEST(CachingCompilationProviderTest, CachingCompileCallsWorks) {
 
   EXPECT_THAT(caching_compilation_provider.Compile(CudaComputeCapability{10, 0},
                                                    "ptx", CompilationOptions()),
-              IsOkAndHolds(kAssembly));
+              absl_testing::IsOkAndHolds(kAssembly));
   EXPECT_THAT(caching_compilation_provider.Compile(CudaComputeCapability{10, 0},
                                                    "ptx", CompilationOptions()),
-              IsOkAndHolds(kAssembly));
+              absl_testing::IsOkAndHolds(kAssembly));
 }
 
 TEST(CachingCompilationProviderTest,
@@ -75,10 +75,10 @@ TEST(CachingCompilationProviderTest,
 
   EXPECT_THAT(caching_compilation_provider.CompileToRelocatableModule(
                   CudaComputeCapability{10, 0}, "ptx", CompilationOptions()),
-              IsOkAndHolds(kModule));
+              absl_testing::IsOkAndHolds(kModule));
   EXPECT_THAT(caching_compilation_provider.CompileToRelocatableModule(
                   CudaComputeCapability{10, 0}, "ptx", CompilationOptions()),
-              IsOkAndHolds(kModule));
+              absl_testing::IsOkAndHolds(kModule));
 }
 
 TEST(CachingCompilationProviderTest, ComputeCapabilityMattersInCompileCall) {
@@ -98,10 +98,10 @@ TEST(CachingCompilationProviderTest, ComputeCapabilityMattersInCompileCall) {
 
   EXPECT_THAT(caching_compilation_provider.Compile(CudaComputeCapability{10, 0},
                                                    "ptx", CompilationOptions()),
-              IsOkAndHolds(kAssembly1));
+              absl_testing::IsOkAndHolds(kAssembly1));
   EXPECT_THAT(caching_compilation_provider.Compile(CudaComputeCapability{11, 0},
                                                    "ptx", CompilationOptions()),
-              IsOkAndHolds(kAssembly2));
+              absl_testing::IsOkAndHolds(kAssembly2));
 }
 
 TEST(CachingCompilationProviderTest,
@@ -122,10 +122,10 @@ TEST(CachingCompilationProviderTest,
 
   EXPECT_THAT(caching_compilation_provider.CompileToRelocatableModule(
                   CudaComputeCapability{10, 0}, "ptx", CompilationOptions()),
-              IsOkAndHolds(kModule1));
+              absl_testing::IsOkAndHolds(kModule1));
   EXPECT_THAT(caching_compilation_provider.CompileToRelocatableModule(
                   CudaComputeCapability{11, 0}, "ptx", CompilationOptions()),
-              IsOkAndHolds(kModule2));
+              absl_testing::IsOkAndHolds(kModule2));
 }
 
 TEST(CachingCompilationProviderTest, PtxMattersInCompileCall) {
@@ -145,10 +145,10 @@ TEST(CachingCompilationProviderTest, PtxMattersInCompileCall) {
 
   EXPECT_THAT(caching_compilation_provider.Compile(
                   CudaComputeCapability{10, 0}, "ptx1", CompilationOptions()),
-              IsOkAndHolds(kAssembly1));
+              absl_testing::IsOkAndHolds(kAssembly1));
   EXPECT_THAT(caching_compilation_provider.Compile(
                   CudaComputeCapability{10, 0}, "ptx2", CompilationOptions()),
-              IsOkAndHolds(kAssembly2));
+              absl_testing::IsOkAndHolds(kAssembly2));
 }
 
 TEST(CachingCompilationProviderTest,
@@ -169,10 +169,10 @@ TEST(CachingCompilationProviderTest,
 
   EXPECT_THAT(caching_compilation_provider.CompileToRelocatableModule(
                   CudaComputeCapability{10, 0}, "ptx1", CompilationOptions()),
-              IsOkAndHolds(kModule1));
+              absl_testing::IsOkAndHolds(kModule1));
   EXPECT_THAT(caching_compilation_provider.CompileToRelocatableModule(
                   CudaComputeCapability{10, 0}, "ptx2", CompilationOptions()),
-              IsOkAndHolds(kModule2));
+              absl_testing::IsOkAndHolds(kModule2));
 }
 
 TEST(CachingCompilationProviderTest, CompileOptionsMatterInCompileCall) {
@@ -193,13 +193,13 @@ TEST(CachingCompilationProviderTest, CompileOptionsMatterInCompileCall) {
   CompilationOptions options1;
   EXPECT_THAT(caching_compilation_provider.Compile(CudaComputeCapability{10, 0},
                                                    "ptx", options1),
-              IsOkAndHolds(kAssembly1));
+              absl_testing::IsOkAndHolds(kAssembly1));
 
   CompilationOptions options2;
   options2.cancel_if_reg_spill = true;
   EXPECT_THAT(caching_compilation_provider.Compile(CudaComputeCapability{10, 0},
                                                    "ptx", options2),
-              IsOkAndHolds(kAssembly2));
+              absl_testing::IsOkAndHolds(kAssembly2));
 }
 
 TEST(CachingCompilationProviderTest,
@@ -221,13 +221,13 @@ TEST(CachingCompilationProviderTest,
   CompilationOptions options1;
   EXPECT_THAT(caching_compilation_provider.CompileToRelocatableModule(
                   CudaComputeCapability{10, 0}, "ptx", options1),
-              IsOkAndHolds(kModule1));
+              absl_testing::IsOkAndHolds(kModule1));
 
   CompilationOptions options2;
   options2.cancel_if_reg_spill = true;
   EXPECT_THAT(caching_compilation_provider.CompileToRelocatableModule(
                   CudaComputeCapability{10, 0}, "ptx", options2),
-              IsOkAndHolds(kModule2));
+              absl_testing::IsOkAndHolds(kModule2));
 }
 
 TEST(CachingCompilationProviderTest, CompileAndLinkCachesCompilationStep) {
@@ -259,12 +259,12 @@ TEST(CachingCompilationProviderTest, CompileAndLinkCachesCompilationStep) {
       caching_compilation_provider.CompileAndLink(
           CudaComputeCapability{10, 0},
           {Ptx{"ptx"}, kPrecompiledRelocatableModule}, CompilationOptions()),
-      IsOkAndHolds(kAssembly));
+      absl_testing::IsOkAndHolds(kAssembly));
   EXPECT_THAT(
       caching_compilation_provider.CompileAndLink(
           CudaComputeCapability{10, 0},
           {Ptx{"ptx"}, kPrecompiledRelocatableModule}, CompilationOptions()),
-      IsOkAndHolds(kAssembly));
+      absl_testing::IsOkAndHolds(kAssembly));
 }
 
 TEST(CachingCompilationProviderTest, ParallelCompilationWorks) {
@@ -291,7 +291,7 @@ TEST(CachingCompilationProviderTest, ParallelCompilationWorks) {
       EXPECT_THAT(
           caching_compilation_provider.Compile(CudaComputeCapability{10, 0},
                                                "ptx", CompilationOptions()),
-          IsOkAndHolds(kAssembly));
+          absl_testing::IsOkAndHolds(kAssembly));
     });
   }
 }
@@ -321,7 +321,7 @@ TEST(CachingCompilationProviderTest,
       EXPECT_THAT(
           caching_compilation_provider.CompileToRelocatableModule(
               CudaComputeCapability{10, 0}, "ptx", CompilationOptions()),
-          IsOkAndHolds(kModule));
+          absl_testing::IsOkAndHolds(kModule));
     });
   }
 }
@@ -351,7 +351,7 @@ TEST(CachingCompilationProviderTest, CompilationInterlockWorks) {
   pool.Schedule([&]() {
     EXPECT_THAT(caching_compilation_provider.Compile(
                     CudaComputeCapability{10, 0}, "ptx", CompilationOptions()),
-                IsOkAndHolds(kAssembly));
+                absl_testing::IsOkAndHolds(kAssembly));
   });
   pool.Schedule([&]() {
     {
@@ -364,7 +364,7 @@ TEST(CachingCompilationProviderTest, CompilationInterlockWorks) {
     // still running.
     EXPECT_THAT(caching_compilation_provider.Compile(
                     CudaComputeCapability{10, 0}, "ptx2", CompilationOptions()),
-                IsOkAndHolds(kAssembly));
+                absl_testing::IsOkAndHolds(kAssembly));
     // Then we let the other compilation finish
     absl::MutexLock lock(&mutex);
     compilation_supposed_to_be_done = true;
@@ -397,7 +397,7 @@ TEST(CachingCompilationProviderTest,
   pool.Schedule([&]() {
     EXPECT_THAT(caching_compilation_provider.CompileToRelocatableModule(
                     CudaComputeCapability{10, 0}, "ptx", CompilationOptions()),
-                IsOkAndHolds(kModule));
+                absl_testing::IsOkAndHolds(kModule));
   });
   pool.Schedule([&]() {
     {
@@ -410,7 +410,7 @@ TEST(CachingCompilationProviderTest,
     // still running.
     EXPECT_THAT(caching_compilation_provider.CompileToRelocatableModule(
                     CudaComputeCapability{10, 0}, "ptx2", CompilationOptions()),
-                IsOkAndHolds(kModule));
+                absl_testing::IsOkAndHolds(kModule));
     // Then we let the other compilation finish
     absl::MutexLock lock(&mutex);
     compilation_supposed_to_be_done = true;
