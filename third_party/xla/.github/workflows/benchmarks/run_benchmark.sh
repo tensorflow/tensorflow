@@ -36,7 +36,43 @@ echo "XLA Flags JSON: $XLA_FLAGS_JSON"
 echo "Runtime Flags JSON: $RUNTIME_FLAGS_JSON"
 echo "Commit SHA: $COMMIT_SHA"
 echo "Workflow Run ID: $WORKFLOW_RUN_ID"
+echo "GITHUB_LABELS: $GITHUB_LABELS"
 
+# The results.json file is expected to be created by this script and consumed by the workflow.
+RESULTS_JSON_FILE="$OUTPUT_DIR/results.json"
+
+if [[ -n "${GITHUB_LABELS:-}" && " ${GITHUB_LABELS} " == *" skip_performance_presubmit "* ]]; then
+    echo "--- Found 'skip_performance_presubmit' label. Skipping benchmark execution. ---"
+
+    # Create a minimal results.json indicating that the benchmark was skipped.
+    jq -n \
+      --arg bn "$BENCHMARK_NAME" \
+      --arg cid "$CONFIG_ID" \
+      --arg hc "$HARDWARE_CATEGORY" \
+      --arg rs "SKIPPED_BY_LABEL" \
+      --arg em "Benchmark run skipped due to 'skip_performance_presubmit' label." \
+      --arg cs "$COMMIT_SHA" \
+      --arg wrid "$WORKFLOW_RUN_ID" \
+      --argjson metrics "{}" \
+      '{
+         benchmark_name: $bn,
+         config_id: $cid,
+         hardware_category: $hc,
+         run_status: $rs,
+         error_message: $em,
+         commit_sha: $cs,
+         workflow_run_id: $wrid,
+         metrics: $metrics
+       }' > "$RESULTS_JSON_FILE"
+
+    if [ $? -eq 0 ]; then
+        echo "Generated skipped results.json at $RESULTS_JSON_FILE."
+    else
+        echo "::error::FATAL: Failed to create skipped results.json for '$BENCHMARK_NAME'."
+        exit 1
+    fi
+    exit 0
+fi
 
 # --- Validate Inputs ---
 if [ -z "$LOCAL_ARTIFACT_PATH" ] || [ ! -f "$LOCAL_ARTIFACT_PATH" ]; then echo "::error::LOCAL_ARTIFACT_PATH path is invalid or file not found: '$LOCAL_ARTIFACT_PATH'"; exit 1; fi
@@ -47,7 +83,6 @@ if ! command -v jq &> /dev/null; then echo "::error::jq command not found."; exi
 
 RUNNER_STDOUT_FILE="$OUTPUT_DIR/runner_stdout.txt"
 XSPACE_FILE_PATH="$OUTPUT_DIR/xspace.pb"
-RESULTS_JSON_FILE="$OUTPUT_DIR/results.json"
 
 # --- Prepare flags ---
 declare -a xla_flags_array=()
@@ -181,15 +216,15 @@ if [ -f "$XSPACE_FILE_PATH" ] && [ $RUNNER_EXIT_CODE -eq 0 ]; then
         echo "::warning::Could not construct valid JSON from stats output. Metrics object will be empty."
         echo "Problematic metrics string constructed: $metrics_obj_str"
         METRICS_JSON_CONTENT="{}"
-        STATS_RUN_SUCCESSFUL=false 
+        STATS_RUN_SUCCESSFUL=false
     fi
   else
     echo "::warning::compute_xspace_stats_main failed with code $STATS_EXIT_CODE. No metrics will be parsed from its output."
   fi
 else
-   if [ $RUNNER_EXIT_CODE -ne 0 ]; then 
+   if [ $RUNNER_EXIT_CODE -ne 0 ]; then
       echo "::warning::Runner failed (Exit Code: $RUNNER_EXIT_CODE), skipping stats processing."
-   else 
+   else
      echo "::warning::XSpace file missing at $XSPACE_FILE_PATH, skipping stats processing."
    fi
 fi
@@ -238,7 +273,7 @@ if [ $? -eq 0 ]; then
 else
     echo "::error::FATAL: Failed to create final results.json using jq."
     echo "FATAL JQ ERROR. Benchmark Name: $BENCHMARK_NAME, Run Status: $RUN_STATUS_MSG, Error: $ERROR_MSG_CONTENT" > "$RESULTS_JSON_FILE.txt"
-    exit 1 
+    exit 1
 fi
 
 # --- Debug: Verify file creation ---
