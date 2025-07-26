@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -158,7 +157,7 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
   absl::StatusOr<ifrt::Device*> LookupAddressableDevice(
       int local_hardware_id) const override;
 
-  ifrt::DeviceListRef MakeDeviceList(
+  absl::StatusOr<ifrt::DeviceListRef> MakeDeviceList(
       absl::Span<ifrt::Device* const> devices) const override;
 
   ifrt::Compiler* GetDefaultCompiler() override;

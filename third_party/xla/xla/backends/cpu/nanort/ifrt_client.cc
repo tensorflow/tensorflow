@@ -1412,7 +1412,7 @@ absl::StatusOr<ifrt::Device*> NanoIfrtClient::LookupAddressableDevice(
   return devices_[local_hardware_id];
 }
 
-ifrt::DeviceListRef NanoIfrtClient::MakeDeviceList(
+absl::StatusOr<ifrt::DeviceListRef> NanoIfrtClient::MakeDeviceList(
     absl::Span<ifrt::Device* const> devices) const {
   return ifrt::BasicDeviceList::Create(devices);
 }

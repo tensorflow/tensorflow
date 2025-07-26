@@ -437,7 +437,7 @@ absl::StatusOr<DeviceAssignment> Client::GetDefaultDeviceAssignment(
   return *std::move(assignment_to_return);
 }
 
-xla::ifrt::DeviceListRef Client::MakeDeviceList(
+absl::StatusOr<xla::ifrt::DeviceListRef> Client::MakeDeviceList(
     absl::Span<xla::ifrt::Device* const> devices) const {
   return xla::ifrt::BasicDeviceList::Create(devices);
 }

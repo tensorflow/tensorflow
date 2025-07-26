@@ -122,8 +122,10 @@ TEST(ArrayImplTest,
   devices.reserve(2);
   devices.push_back(non_addressable_devices.at(0));
   devices.push_back(client->addressable_devices().at(0));
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                          client->MakeDeviceList(devices));
   ShardingRef sharding = xla::ifrt::ConcreteEvenSharding::Create(
-      client->MakeDeviceList(devices), xla::ifrt::MemoryKind(), shape,
+      std::move(device_list), xla::ifrt::MemoryKind(), shape,
       /*shard_shape=*/shape,
       /*is_fully_replicated=*/true);
 
@@ -367,8 +369,10 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferReplicated) {
   auto data = std::make_unique<std::vector<float>>(6);
   std::iota(data->begin(), data->end(), 0);
   absl::Span<Device* const> devices = client->addressable_devices();
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                          client->MakeDeviceList(devices));
   ShardingRef sharding = ConcreteEvenSharding::Create(
-      client->MakeDeviceList(devices), MemoryKind(), shape,
+      std::move(device_list), MemoryKind(), shape,
       /*shard_shape=*/shape, /*is_fully_replicated=*/true);
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -418,13 +422,15 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsAndCopyToHostBuffer) {
   std::iota(data1->begin(), data1->end(), 3);
   absl::Span<Device* const> devices =
       client->addressable_devices().subspan(0, 2);
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                          client->MakeDeviceList(devices));
   TF_ASSERT_OK_AND_ASSIGN(
       ShardingRef sharding,
       ShardingParamSharding::Create(
           ShardingParam(
               /*dim_shards=*/{2, 1},
               {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 1}}),
-          client->MakeDeviceList(devices), MemoryKind()));
+          std::move(device_list), MemoryKind()));
 
   std::vector<Client::MakeArraysFromHostBufferShardsSpec> specs;
   // Create two arrays with the same sharding, but swapped host buffers (data0
@@ -662,13 +668,15 @@ TEST(ArrayImplTest,
 
   absl::Span<Device* const> devices =
       absl::MakeConstSpan(cpu_devices).subspan(0, 2);
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                          client->MakeDeviceList(devices));
   TF_ASSERT_OK_AND_ASSIGN(
       ShardingRef sharding,
       ShardingParamSharding::Create(
           ShardingParam(
               /*dim_shards=*/{2, 1},
               {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 1}}),
-          client->MakeDeviceList(devices), MemoryKind()));
+          std::move(device_list), MemoryKind()));
 
   std::vector<Client::MakeArraysFromHostBufferShardsSpec> specs;
   // Create two arrays with the same sharding, but swapped host buffers (data0
@@ -750,8 +758,9 @@ TEST(ArrayImplTest,
 
 TEST(ArrayImplTest, MakeErrorArrays) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-  xla::ifrt::DeviceListRef device_list =
-      client->MakeDeviceList(client->addressable_devices());
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::ifrt::DeviceListRef device_list,
+      client->MakeDeviceList(client->addressable_devices()));
 
   Shape shape({2, 2});
   ArraySpec array_spec = {
@@ -791,10 +800,11 @@ TEST(ArrayImplTest, MakeErrorArraysWithAddressableAndNonAddressableDevice) {
   devices.reserve(2);
   devices.push_back(client->addressable_devices().at(0));
   devices.push_back(non_addressable_devices.at(0));
-  ShardingRef sharding =
-      ConcreteEvenSharding::Create(client->MakeDeviceList(devices),
-                                   MemoryKind(), shape, /*shard_shape=*/shape,
-                                   /*is_fully_replicated=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                          client->MakeDeviceList(devices));
+  ShardingRef sharding = ConcreteEvenSharding::Create(
+      std::move(device_list), MemoryKind(), shape, /*shard_shape=*/shape,
+      /*is_fully_replicated=*/true);
 
   ArraySpec array_spec = {/*dtype=*/xla::ifrt::DType(xla::ifrt::DType::kS8),
                           /*shape=*/shape,
@@ -840,10 +850,13 @@ TEST(ArrayImplTest, AssembleArray) {
 
   std::vector<ArrayRef> arrays({array0, array1});
   Shape assembled_shape({4, 3});
-  ShardingRef assembled_sharding = OpaqueSharding::Create(
-      client->MakeDeviceList({array0->sharding().devices()->devices().front(),
-                              array1->sharding().devices()->devices().front()}),
-      MemoryKind());
+  TF_ASSERT_OK_AND_ASSIGN(
+      DeviceListRef device_list,
+      client->MakeDeviceList(
+          {array0->sharding().devices()->devices().front(),
+           array1->sharding().devices()->devices().front()}));
+  ShardingRef assembled_sharding =
+      OpaqueSharding::Create(std::move(device_list), MemoryKind());
   TF_ASSERT_OK_AND_ASSIGN(
       auto assembled_array,
       client->AssembleArrayFromSingleDeviceArrays(
@@ -886,9 +899,11 @@ TEST(ArrayImplTest, AssembleAndDisassembleArray) {
   Shape assembled_shape({4, 3});
   ShardingParam sharding_param(
       /*dim_shards=*/{2, 1}, {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 1}});
-  auto ifrt_device_list =
-      client->MakeDeviceList({array0->sharding().devices()->devices().front(),
-                              array1->sharding().devices()->devices().front()});
+  TF_ASSERT_OK_AND_ASSIGN(
+      DeviceListRef ifrt_device_list,
+      client->MakeDeviceList(
+          {array0->sharding().devices()->devices().front(),
+           array1->sharding().devices()->devices().front()}));
   TF_ASSERT_OK_AND_ASSIGN(
       ShardingRef sharding_param_sharding,
       ShardingParamSharding::Create(std::move(sharding_param), ifrt_device_list,
@@ -1022,8 +1037,10 @@ TEST(ArrayImplTest, AssembleAndDisassembleNonAddressableArray) {
   for (auto* device : client->addressable_devices()) {
     addressable_device_ids.insert(device->Id());
   }
-  auto ifrt_device_list = client->MakeDeviceList(
-      absl::MakeConstSpan(non_addressable_devices).subspan(0, 2));
+  TF_ASSERT_OK_AND_ASSIGN(
+      DeviceListRef ifrt_device_list,
+      client->MakeDeviceList(
+          absl::MakeConstSpan(non_addressable_devices).subspan(0, 2)));
   TF_ASSERT_OK_AND_ASSIGN(
       ShardingRef sharding_param_sharding,
       ShardingParamSharding::Create(std::move(sharding_param), ifrt_device_list,
@@ -1052,7 +1069,9 @@ TEST(ArrayImplTest, AssembleAndDisassembleNonAddressableArray) {
 
 TEST(ArrayImplTest, CopyToDifferentDevice) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-  DeviceListRef devices = client->MakeDeviceList(client->addressable_devices());
+  TF_ASSERT_OK_AND_ASSIGN(
+      DeviceListRef devices,
+      client->MakeDeviceList(client->addressable_devices()));
 
   DType dtype(DType::kF32);
   Shape shape({2, 3});
@@ -1099,17 +1118,17 @@ TEST(ArrayImplTest, CopyToDifferentDevice) {
        ++it) {
     new_devices.push_back(*it);
   }
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                          client->MakeDeviceList(new_devices));
   TF_ASSERT_OK_AND_ASSIGN(
       auto new_arrays,
-      client->CopyArrays(absl::MakeSpan(arrays),
-                         client->MakeDeviceList(new_devices), MemoryKind(),
+      client->CopyArrays(absl::MakeSpan(arrays), device_list, MemoryKind(),
                          ArrayCopySemantics::kAlwaysCopy));
 
   for (int i = 0; i < arrays.size(); ++i) {
     TF_ASSERT_OK_AND_ASSIGN(
         auto expected_sharding,
-        arrays[i]->sharding().WithDeviceAssignment(
-            client->MakeDeviceList(new_devices), MemoryKind()));
+        arrays[i]->sharding().WithDeviceAssignment(device_list, MemoryKind()));
     EXPECT_EQ(new_arrays[i]->sharding(), *expected_sharding);
 
     TF_ASSERT_OK_AND_ASSIGN(
@@ -1148,9 +1167,10 @@ TEST(ArrayImplTest, CopyMixedSourceDevices) {
   }
 
   Device* new_device = client->addressable_devices().at(1);
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                          client->MakeDeviceList({new_device}));
   EXPECT_THAT(client
-                  ->CopyArrays(absl::MakeSpan(arrays),
-                               client->MakeDeviceList({new_device}),
+                  ->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
                                MemoryKind(), ArrayCopySemantics::kAlwaysCopy)
                   .status(),
               StatusIs(absl::StatusCode::kInvalidArgument));
@@ -1181,9 +1201,10 @@ TEST(ArrayImplTest, CopyMixedSourceMemoryKind) {
   }
 
   Device* new_device = client->addressable_devices().at(1);
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                          client->MakeDeviceList({new_device}));
   EXPECT_THAT(client
-                  ->CopyArrays(absl::MakeSpan(arrays),
-                               client->MakeDeviceList({new_device}),
+                  ->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
                                MemoryKind(), ArrayCopySemantics::kAlwaysCopy)
                   .status(),
               StatusIs(absl::StatusCode::kInvalidArgument));

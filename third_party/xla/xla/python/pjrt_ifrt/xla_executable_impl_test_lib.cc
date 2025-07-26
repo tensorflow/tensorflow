@@ -81,8 +81,9 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
   DeviceListRef device_list;
   if (devices.empty()) {
     compile_options.compile_portable_executable = true;
-    device_list =
-        client->MakeDeviceList({client->addressable_devices().front()});
+    TF_ASSIGN_OR_RETURN(
+        device_list,
+        client->MakeDeviceList({client->addressable_devices().front()}));
   } else {
     build_options.set_device_ordinal(devices.front()->Id().value());
     if (replicated) {
@@ -107,7 +108,7 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
       }
       build_options.set_device_assignment(device_assignment);
     }
-    device_list = client->MakeDeviceList(devices);
+    TF_ASSIGN_OR_RETURN(device_list, client->MakeDeviceList(devices));
   }
   auto xla_compile_options = std::make_unique<XlaCompileOptions>(
       compile_options, std::move(device_list));
@@ -218,12 +219,14 @@ TEST(LoadedExecutableImplTest, CompileAndExecutePortable) {
                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                       /*on_done_with_host_buffer=*/{}));
 
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                          client->MakeDeviceList({device}));
   ExecuteOptions execute_options;
   execute_options.fill_status = true;
   TF_ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
       loaded_executable->Execute(absl::MakeSpan(&array, 1), execute_options,
-                                 /*devices=*/client->MakeDeviceList({device})));
+                                 /*devices=*/std::move(device_list)));
   TF_ASSERT_OK(result.status.Await());
   EXPECT_THAT(result.outputs, SizeIs(1));
 
