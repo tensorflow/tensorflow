@@ -16,7 +16,9 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/jit_compiler.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
