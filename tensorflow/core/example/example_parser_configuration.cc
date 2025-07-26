@@ -16,8 +16,11 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/example/example_parser_configuration.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"
