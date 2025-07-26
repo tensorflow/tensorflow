@@ -58,6 +58,11 @@ cc_library(
         %{comment}"%{libcupti_minor_version}",
         %{comment}"2024.0",
         %{comment}["include/cupti_common.h"],
+    %{comment}) + if_version_equal_or_greater_than(
+        %{comment}"%{libcupti_minor_version}",
+        %{comment}"2024.3",
+        %{comment}["include/cupti_pmsampling.h",
+        %{comment}"include/cupti_profiler_host.h"],
     %{comment}),
     include_prefix = "third_party/gpus/cuda/extras/CUPTI/include",
     includes = ["include/"],
