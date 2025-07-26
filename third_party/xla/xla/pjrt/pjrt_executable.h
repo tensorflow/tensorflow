@@ -26,6 +26,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/pjrt/proto/execute_options.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -274,6 +276,9 @@ struct ExecuteOptions {
   // executed in program order.  Executions with different execution stream IDs
   // may be executed in any order and concurrently.
   int64_t execution_stream_id = 0;
+
+  // The latest known incarnation ids for all alive tasks, keyed by task id.
+  absl::flat_hash_map<int, IncarnationId> incarnations;
 
   absl::StatusOr<ExecuteOptionsProto> ToProto() const;
   static absl::StatusOr<ExecuteOptions> FromProto(
