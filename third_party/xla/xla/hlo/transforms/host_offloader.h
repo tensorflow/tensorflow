@@ -122,6 +122,11 @@ class HostOffloader : public HloModulePass {
   // host memory parameter in the entry computation.
   absl::StatusOr<bool> HandleInputStreaming(HloComputation* entry_computation);
 
+  // If a Pallas kernel has an output in host memory space, we will set the
+  // output to host memory space and walk down the graph setting all users to
+  // host memory space. Returns true if the module was changed.
+  absl::StatusOr<bool> HandlePallasKernels(HloModule* module);
+
   // Walks down the graph and does "host memory offloading" starting from every
   // MoveToHost custom call.
   absl::StatusOr<bool> HandleMoveToHostCustomCall(
