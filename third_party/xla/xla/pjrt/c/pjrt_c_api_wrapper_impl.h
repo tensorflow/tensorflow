@@ -291,6 +291,8 @@ PJRT_Error* PJRT_Client_CreateBuffersForAsyncHostToDevice(
     PJRT_Client_CreateBuffersForAsyncHostToDevice_Args* args);
 PJRT_Error* PJRT_Client_DmaMap(PJRT_Client_DmaMap_Args* args);
 PJRT_Error* PJRT_Client_DmaUnmap(PJRT_Client_DmaUnmap_Args* args);
+PJRT_Error* PJRT_Client_MakeCrossHostReceiveBuffers(
+    PJRT_Client_MakeCrossHostReceiveBuffers_Args* args);
 PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_Destroy(
     PJRT_AsyncHostToDeviceTransferManager_Destroy_Args* args);
 PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_TransferData(
@@ -403,6 +405,7 @@ PJRT_Error* PJRT_Buffer_DecreaseExternalReferenceCount(
     PJRT_Buffer_DecreaseExternalReferenceCount_Args* args);
 PJRT_Error* PJRT_Buffer_OpaqueDeviceMemoryDataPointer(
     PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args* args);
+void PJRT_Buffer_CopyToRemoteDevice(PJRT_Buffer_CopyToRemoteDevice_Args* args);
 
 PJRT_Error* PJRT_CopyToDeviceStream_Destroy(
     PJRT_CopyToDeviceStream_Destroy_Args* args);

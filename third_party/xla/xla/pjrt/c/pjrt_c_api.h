@@ -61,6 +61,8 @@ typedef enum {
   PJRT_Extension_Type_FFI,
   PJRT_Extension_Type_MemoryDescriptions,
   PJRT_Extension_Type_Triton,
+  PJRT_Extension_Type_MakeCrossHostReceiveBuffers,
+  PJRT_Extension_Type_CopyToRemoteDevice,
   PJRT_Extension_Type_RawBuffer,     // Experimental.
   PJRT_Extension_Type_PhaseCompile,  // Experimental.
   PJRT_Extension_Type_Example,
@@ -99,7 +101,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 73
+#define PJRT_API_MINOR 74
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1100,6 +1102,39 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_CreateBuffersForAsyncHostToDevice_Args,
                           transfer_manager);
 typedef PJRT_Error* PJRT_Client_CreateBuffersForAsyncHostToDevice(
     PJRT_Client_CreateBuffersForAsyncHostToDevice_Args* args);
+
+typedef void (*PJRT_CrossHostRecvNotifier)(PJRT_Error* error,
+                                           const char** serialized_descriptors,
+                                           size_t* descriptors_sizes,
+                                           size_t num_descriptors,
+                                           void* user_arg);
+
+struct PJRT_CrossHostRecvNotifierInfo {
+  void* user_arg;
+  PJRT_CrossHostRecvNotifier notifier;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_CrossHostRecvNotifierInfo, notifier);
+
+struct PJRT_Client_MakeCrossHostReceiveBuffers_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Client* client;
+  size_t num_shapes;
+  size_t* shape_num_dims;
+  const int64_t** num_dims;
+  PJRT_Buffer_Type* element_types;
+  PJRT_Buffer_MemoryLayout** layouts;
+  PJRT_Device* device;
+  PJRT_CrossHostRecvNotifierInfo notifier;
+  PJRT_Buffer** buffers;  // out
+  size_t num_buffers;     // out
+};
+
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_MakeCrossHostReceiveBuffers_Args,
+                          num_buffers);
+
+typedef PJRT_Error* PJRT_Client_MakeCrossHostReceiveBuffers(
+    PJRT_Client_MakeCrossHostReceiveBuffers_Args* args);
 
 // -------------------------- Device Descriptions ------------------------------
 
@@ -2205,6 +2240,19 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args,
 typedef PJRT_Error* PJRT_Buffer_OpaqueDeviceMemoryDataPointer(
     PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args* args);
 
+struct PJRT_Buffer_CopyToRemoteDevice_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Buffer* buffer;
+  const char* serialized_descriptor;
+  size_t serialized_descriptor_size;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_CopyToRemoteDevice_Args,
+                          serialized_descriptor_size);
+
+typedef void PJRT_Buffer_CopyToRemoteDevice(
+    PJRT_Buffer_CopyToRemoteDevice_Args* args);
+
 // ---------------------------- CopyToDeviceStream -----------------------------
 
 struct PJRT_CopyToDeviceStream_Destroy_Args {
@@ -2570,11 +2618,14 @@ typedef struct PJRT_Api {
 
   _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateUninitializedBuffer);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_UpdateGlobalProcessInfo);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyToRemoteDevice);
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_MakeCrossHostReceiveBuffers);
 } PJRT_Api;
 
 enum {
   PJRT_Api_STRUCT_SIZE =
-      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Client_UpdateGlobalProcessInfo)
+      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Client_MakeCrossHostReceiveBuffers)
 };
 
 #undef _PJRT_API_STRUCT_FIELD

@@ -935,6 +935,10 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
     if (minor_version >= 73) {
       add_field("PJRT_Client_UpdateGlobalProcessInfo", kFnPtrSize);
     }
+    if (minor_version >= 74) {
+      add_field("PJRT_Buffer_CopyToRemoteDevice", kFnPtrSize);
+      add_field("PJRT_Client_MakeCrossHostReceiveBuffers", kFnPtrSize);
+    }
     return version_offsets_and_sizes;
   }
   LOG(FATAL) << "Unsupported API version: " << major_version << "."
@@ -1314,6 +1318,12 @@ TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
           {"PJRT_Client_UpdateGlobalProcessInfo",
            {offsetof(PJRT_Api, PJRT_Client_UpdateGlobalProcessInfo),
             sizeof(PJRT_Api::PJRT_Client_UpdateGlobalProcessInfo)}},
+          {"PJRT_Buffer_CopyToRemoteDevice",
+           {offsetof(PJRT_Api, PJRT_Buffer_CopyToRemoteDevice),
+            sizeof(PJRT_Api::PJRT_Buffer_CopyToRemoteDevice)}},
+          {"PJRT_Client_MakeCrossHostReceiveBuffers",
+           {offsetof(PJRT_Api, PJRT_Client_MakeCrossHostReceiveBuffers),
+            sizeof(PJRT_Api::PJRT_Client_MakeCrossHostReceiveBuffers)}},
       };
   ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
   ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);

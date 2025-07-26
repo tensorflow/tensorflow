@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.74
+
+* Added `PJRT_Client_MakeCrossHostReceiveBuffers` and `PJRT_Buffer_CopyToRemoteDevice`.
+
 ## 0.73
 
 * Added `PJRT_Client_UpdateGlobalProcessInfo`.
