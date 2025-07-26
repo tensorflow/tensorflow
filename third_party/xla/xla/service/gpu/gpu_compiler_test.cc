@@ -1815,17 +1815,18 @@ TEST_F(GpuCompilerTest,
     // CHECK:        %[[bitcast:.+]] = {{.+}} bitcast(%[[rs]])
     // CHECK:        ROOT {{.+}} = {{.+}} dynamic-update-slice({{.+}}, %[[bitcast]], {{.+}})
     // CHECK:      ENTRY
+    // CHECK:        %[[wrapped_transpose:.+]] = {{.+}} fusion({{.+}}), kind=kInput
+    // CHECK:        %[[input_reduce_fusion:.+]] = {{.+}} fusion({{.+}}), kind=kInput
     // CHECK:        %[[fusion_start:.+]] = {{.+}} fusion-start({{.+}}), kind=kCustom, {{.+}}"name":"dynamic_address_computation"
-    // CHECK-NEXT:   %[[wrapped_dot:.+]] = {{.+}} fusion({{.+}}), kind=kLoop
     // CHECK-NEXT:   %[[fusion_done:.+]] = {{.+}} fusion-done(%[[fusion_start]]), {{.+}}"name":"dynamic_address_computation"
-    // CHECK:        ROOT {{.+}} = {{.+}} tuple(%[[fusion_done]], %[[wrapped_dot]])
+    // CHECK:        ROOT {{.+}} = {{.+}} tuple(%[[fusion_done]], %[[input_reduce_fusion]])
   )";
-  EXPECT_THAT(
-      RunFileCheck(exec->module().ToString(HloPrintOptions{}
-                                               .set_print_operand_shape(false)
-                                               .set_print_metadata(false)),
-                   kExpected),
-      ::tsl::testing::IsOkAndHolds(true));
+  auto output = exec->module().ToString(
+      HloPrintOptions{}.set_print_operand_shape(false).set_print_metadata(
+          false));
+  VLOG(0) << "output: " << output;
+  EXPECT_THAT(RunFileCheck(output, kExpected),
+              ::tsl::testing::IsOkAndHolds(true));
 
   if (test_runner().device_count() < 2) {
     GTEST_SKIP() << "Skipping test as it requires at least 2 devices.";
