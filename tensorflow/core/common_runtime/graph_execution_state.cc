@@ -173,7 +173,7 @@ GraphExecutionState::~GraphExecutionState() {
       ConvertGraphDefToGraph({}, std::move(temp), base_graph.get()));
 
   // Rewrite the graph before placement.
-  ret->rewrite_metadata_.reset(new subgraph::RewriteGraphMetadata);
+  ret->rewrite_metadata_ = std::make_unique<subgraph::RewriteGraphMetadata>();
   TF_RETURN_IF_ERROR(ret->PruneGraph(subgraph_options, base_graph.get(),
                                      ret->rewrite_metadata_.get()));
   TF_RETURN_IF_ERROR(ret->InitBaseGraph(std::move(base_graph)));
@@ -840,7 +840,7 @@ absl::Status GraphExecutionState::OptimizeGraph(
         TF_RETURN_IF_ERROR((*optimized_flib)->AddFunctionDef(fdef));
       }
     }
-    optimized_graph->reset(new Graph(OpRegistry::Global()));
+    *optimized_graph = std::make_unique<Graph>(OpRegistry::Global());
 
     // Convert the optimized GraphDef back to a Graph.
     GraphConstructorOptions opts;
@@ -883,7 +883,7 @@ absl::Status GraphExecutionState::BuildGraph(
     VLOG(2) << "Grappler optimization failed. Error: " << s.message();
     // Simply copy the original graph and the function library if we couldn't
     // optimize it.
-    optimized_graph.reset(new Graph(flib_def_.get()));
+    optimized_graph = std::make_unique<Graph>(flib_def_.get());
     CopyGraph(*graph_, optimized_graph.get());
     optimized_flib = std::make_unique<FunctionLibraryDefinition>(*flib_def_);
   }

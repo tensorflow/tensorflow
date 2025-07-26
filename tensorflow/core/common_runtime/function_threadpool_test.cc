@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <atomic>
+#include <memory>
 #include <utility>
 
 #include "tensorflow/cc/ops/array_ops_internal.h"
@@ -59,10 +60,11 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
 
     FunctionDefLibrary proto;
     for (const auto& fdef : flib) *(proto.add_function()) = fdef;
-    lib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), proto));
+    lib_def_ = std::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(),
+                                                           proto);
     OptimizerOptions opts;
     device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
-    pflr_.reset(new ProcessFunctionLibraryRuntime(
+    pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
         device_mgr_.get(), Env::Default(), /*config=*/nullptr,
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, default_thread_pool,
         /*parent=*/nullptr, /*session_metadata=*/nullptr,
@@ -71,7 +73,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
           *r = tsl::core::RefCountPtr<Rendezvous>(
               new IntraProcessRendezvous(device_mgr));
           return absl::OkStatus();
-        }}));
+        }});
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
   }
 

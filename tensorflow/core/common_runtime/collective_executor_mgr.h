@@ -31,7 +31,7 @@ class CollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
       std::unique_ptr<ParamResolverInterface> param_resolver,
       std::unique_ptr<NcclCommunicatorInterface> nccl_communicator);
 
-  virtual ~CollectiveExecutorMgr();
+  ~CollectiveExecutorMgr() override;
 
   CollectiveExecutor* FindOrCreate(int64_t step_id) override;
 
