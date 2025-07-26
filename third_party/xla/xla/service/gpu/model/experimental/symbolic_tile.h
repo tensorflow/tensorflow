@@ -69,7 +69,7 @@ class ExperimentalSymbolicTile {
  public:
   ExperimentalSymbolicTile(mlir::MLIRContext* mlir_context,
                            int64_t num_tile_ids, int64_t num_rt_vars,
-                           llvm::SmallVector<DimTile> one_dim_tiles);
+                           llvm::SmallVector<DimTile> dim_tiles);
 
   ExperimentalSymbolicTile(mlir::MLIRContext* mlir_context,
                            int64_t num_tile_ids, int64_t num_rt_vars,
@@ -84,7 +84,7 @@ class ExperimentalSymbolicTile {
   llvm::SmallVector<mlir::AffineExpr> sizes() const;
   llvm::SmallVector<mlir::AffineExpr> strides() const;
   llvm::SmallVector<mlir::AffineExpr> upper_bounds() const;
-  llvm::SmallVector<DimTile> one_dim_tiles() const { return one_dim_tiles_; }
+  llvm::SmallVector<DimTile> dim_tiles() const { return dim_tiles_; }
 
   int64_t num_tile_ids() const { return num_tile_ids_; }
   int64_t num_result_dims() const { return offsets().size(); }
@@ -102,7 +102,7 @@ class ExperimentalSymbolicTile {
   mlir::MLIRContext* mlir_context_;
   int64_t num_tile_ids_;
   int64_t num_rt_vars_;
-  llvm::SmallVector<DimTile> one_dim_tiles_;
+  llvm::SmallVector<DimTile> dim_tiles_;
 };
 
 }  // namespace xla::gpu
