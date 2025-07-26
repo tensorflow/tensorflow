@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/container/node_hash_map.h"
+#include "absl/log/check.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -180,12 +181,17 @@ Value LRUCache<Key, Value, Hash, Eq>::GetOrCreateIfAbsent(
   // Evict an LRU entry if we are over capacity.
   if (lru_list_->size_ > lru_list_->capacity_) {
     Entry* to_remove = static_cast<Entry*>(lru_head.next);
-    to_remove->next->prev = &lru_head;
-    lru_head.next = to_remove->next;
     // Extract instead of erase in case the kv pair contains python objects
     // whose destruction could call back into this code. Extract causes the
     // dtor to be delayed until the kv pair is fully removed from the map.
-    to_remove->container->entries_.extract(*to_remove->key);
+    //
+    // TODO: mwhittaker - Add a check that node is equal to to_remove. If it's
+    // not, then the user has probably mutated a key, which is undefined
+    // behavior.
+    auto node = to_remove->container->entries_.extract(*to_remove->key);
+    CHECK(!node.empty());
+    node.mapped().next->prev = node.mapped().prev;
+    node.mapped().prev->next = node.mapped().next;
     --lru_list_->size_;
   }
   return v;
