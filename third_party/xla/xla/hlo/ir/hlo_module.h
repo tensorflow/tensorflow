@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <random>
@@ -836,12 +837,14 @@ class HloModule {
     // Adds an entry to the original value recovery table.
     // XLA may replace some instructions in the HLO graph to improve
     // performance. This adds an entry to the recovery table to record the
-    // computation that can be used to recover the removed original value due to
-    // the replacement from the replacing instruction.
+    // computation that can be used to recover the replaced original value due
+    // to the replacement from the replacing instruction.
     void AddRecoveryComputation(
-        const std::shared_ptr<OriginalValue>& removed_original_value,
-        HloInstruction* replacing_inst,
-        std::unique_ptr<HloModule> recovery_module);
+        const HloInstruction* replaced_inst, HloInstruction* replacing_inst,
+        const std::function<HloInstruction*(
+            xla::HloComputation::Builder& builder,
+            const xla::Shape& input_shape, const xla::Shape& output_shape)>&
+            recovery_computation);
   };
 
   const OriginalValueRecoveryTable& original_value_recovery_table() const {
