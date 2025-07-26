@@ -6,6 +6,7 @@ load(
     "tf_python_pybind_extension",
 )
 load("//tensorflow/compiler/mlir/quantization/stablehlo:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 
 package_group(
     name = "internal_visibility_allowlist_package",

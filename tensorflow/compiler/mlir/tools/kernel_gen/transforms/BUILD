@@ -8,6 +8,7 @@ load(
     "if_cuda_is_configured",
 )
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
