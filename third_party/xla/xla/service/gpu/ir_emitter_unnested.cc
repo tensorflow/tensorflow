@@ -1792,7 +1792,7 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
   // tile size, and pass them to SortInPlace. Each block then
   // processes one tile of data.
 
-  const uint64_t kUnrollFactor = 2;
+  const uint64_t kUnrollFactor = 4;
   // Determine the total element size of all sort operands. We need to choose a
   // tile size such that we have enough shared memory to store a tile of
   // elements from each operand.
