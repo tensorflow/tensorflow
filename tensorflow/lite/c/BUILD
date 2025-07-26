@@ -11,6 +11,8 @@ load(
 )
 load("//tensorflow/lite:special_rules.bzl", "c_api_opaque_internal_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite_with_c_headers_test")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
+load("//third_party/bazel_rules/rules_cc/cc:cc_test.bzl", "cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
