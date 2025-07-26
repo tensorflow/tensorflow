@@ -1,6 +1,7 @@
 """Rules for generating unit-tests using hexagon delegates."""
 
 load("//tensorflow/lite:special_rules.bzl", "tflite_hexagon_mobile_test")  #'@unused'
+load("//third_party/bazel_rules/rules_cc/cc:cc_test.bzl", "cc_test")
 
 def hexagon_op_tests(
         srcs = [],
@@ -14,7 +15,7 @@ def hexagon_op_tests(
 
     for src in srcs:
         parts = src.split(".cc")
-        native.cc_test(
+        cc_test(
             name = "hexagon_" + parts[0],
             srcs = [src],
             deps = deps,
@@ -27,7 +28,7 @@ def hexagon_op_tests(
         )
 
     all_ops_test_name = "hexagon_op_tests_all"
-    native.cc_test(
+    cc_test(
         name = all_ops_test_name,
         srcs = srcs,
         deps = deps,
