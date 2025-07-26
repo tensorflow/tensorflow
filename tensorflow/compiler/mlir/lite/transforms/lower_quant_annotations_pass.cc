@@ -104,9 +104,9 @@ class RewriteQuantizeCompositeOp
     RankedTensorType output_type = RankedTensorType::get(
         input_shaped_type.getShape(), quantized_element_type);
     TFL::QuantizeOp tfl_quantize_op =
-        rewriter.create<TFL::QuantizeOp>(op.getLoc(), output_type,
-                                         /*input=*/op.getOperand(0),
-                                         /*qtype=*/TypeAttr::get(output_type));
+        TFL::QuantizeOp::create(rewriter, op.getLoc(), output_type,
+                                /*input=*/op.getOperand(0),
+                                /*qtype=*/TypeAttr::get(output_type));
 
     rewriter.replaceAllOpUsesWith(op, tfl_quantize_op.getOutput());
     rewriter.eraseOp(op);
@@ -244,8 +244,8 @@ class RewriteDequantizeCompositeOp
     }
 
     TFL::DequantizeOp tfl_dequantize_op =
-        rewriter.create<TFL::DequantizeOp>(composite_op.getLoc(), output_type,
-                                           /*input=*/tfl_quantize_input);
+        TFL::DequantizeOp::create(rewriter, composite_op.getLoc(), output_type,
+                                  /*input=*/tfl_quantize_input);
     rewriter.replaceAllOpUsesWith(composite_op, tfl_dequantize_op.getOutput());
     rewriter.eraseOp(composite_op);
 
@@ -311,14 +311,14 @@ class RewriteFakeQuantCompositeOp
     }
     RankedTensorType intermediate_type = RankedTensorType::get(
         input_shaped_type.getShape(), quantized_element_type);
-    TFL::QuantizeOp tfl_quantize_op = rewriter.create<TFL::QuantizeOp>(
-        op.getLoc(), intermediate_type,
-        /*input=*/op.getOperand(num_operands - 1),
-        /*qtype=*/TypeAttr::get(intermediate_type));
+    TFL::QuantizeOp tfl_quantize_op =
+        TFL::QuantizeOp::create(rewriter, op.getLoc(), intermediate_type,
+                                /*input=*/op.getOperand(num_operands - 1),
+                                /*qtype=*/TypeAttr::get(intermediate_type));
 
     Type output_type = op.getType(0);
-    TFL::DequantizeOp tfl_dequantize_op = rewriter.create<TFL::DequantizeOp>(
-        op.getLoc(), output_type, /*input=*/tfl_quantize_op);
+    TFL::DequantizeOp tfl_dequantize_op = TFL::DequantizeOp::create(
+        rewriter, op.getLoc(), output_type, /*input=*/tfl_quantize_op);
 
     rewriter.replaceAllOpUsesWith(op, tfl_dequantize_op.getOutput());
     rewriter.eraseOp(op);

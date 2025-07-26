@@ -48,8 +48,8 @@ class LeagalizeDimensionSizeOp
 
     auto shaped_op_type =
         RankedTensorType::get({operand_type.getRank()}, rewriter.getI64Type());
-    Value shape_op = rewriter.create<TFL::ShapeOp>(op.getLoc(), shaped_op_type,
-                                                   op.getOperand());
+    Value shape_op = TFL::ShapeOp::create(rewriter, op.getLoc(), shaped_op_type,
+                                          op.getOperand());
 
     Value size = BuildIntArrayConstOp<arith::ConstantOp>(builder, rewriter, {1},
                                                          rewriter.getI64Type());
@@ -60,13 +60,13 @@ class LeagalizeDimensionSizeOp
         rewriter.getI64Type());
 
     auto slice_type = RankedTensorType::get({1}, rewriter.getI64Type());
-    Value slice = rewriter.create<TFL::SliceOp>(op.getLoc(), slice_type,
-                                                shape_op, begin, size);
+    Value slice = TFL::SliceOp::create(rewriter, op.getLoc(), slice_type,
+                                       shape_op, begin, size);
 
     auto op_el_type = llvm::cast<ShapedType>(op.getType()).getElementType();
     if (op_el_type != slice_type.getElementType()) {
-      slice = rewriter.create<TFL::CastOp>(op->getLoc(),
-                                           slice_type.clone(op_el_type), slice);
+      slice = TFL::CastOp::create(rewriter, op->getLoc(),
+                                  slice_type.clone(op_el_type), slice);
     }
 
     rewriter.replaceOpWithNewOp<TFL::SqueezeOp>(op, op.getType(), slice,
