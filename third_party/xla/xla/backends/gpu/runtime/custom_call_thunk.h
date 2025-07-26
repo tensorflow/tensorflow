@@ -80,7 +80,7 @@ class CustomCallThunk : public Thunk {
       ThunkInfo thunk_info, std::string target_name,
       XLA_FFI_Handler_Bundle bundle, std::vector<std::optional<Slice>> operands,
       std::vector<std::optional<Slice>> results, AttributesMap attributes,
-      const HloComputation* called_computation);
+      std::unique_ptr<HloComputation> called_computation);
 
   absl::Status Prepare(const PrepareParams& params,
                        ResourceRequestsInterface& resource_requests) override;
@@ -114,7 +114,7 @@ class CustomCallThunk : public Thunk {
                   std::vector<std::optional<Slice>> results,
                   ffi::CallFrame call_frame,
                   std::unique_ptr<ffi::ExecutionState> execution_state,
-                  const HloComputation* called_computation);
+                  std::unique_ptr<HloComputation> called_computation);
 
   absl::Status ExecuteCustomCall(const ExecuteParams& params);
 
@@ -149,15 +149,12 @@ class CustomCallThunk : public Thunk {
   // Execution state bound to the FFI handler. Optional.
   std::unique_ptr<ffi::ExecutionState> execution_state_;
 
-  // TODO(ezhulenev): Currently we assume that HloModule that owns this
-  // computation is owned by a GpuExecutable and stays alive for as long as
-  // thunk is alive, however in general it might not be true and we can destroy
-  // underlying HloModule. We have to make a copy of HloComputation for a thunk,
-  // and also pass some form of relatively-ABI-stable representation to external
-  // custom calls, i.e. we can pass it as HloComputationProto or as MLIR
-  // bytecode of the computation serialized to StableHLO. Today we assume that
-  // custom calls that access called computation can only be linked statically.
-  const HloComputation* called_computation_ = nullptr;
+  // TODO(ezhulenev): We have to pass some form of relatively-ABI-stable
+  // representation to external custom calls, i.e. we can pass it as
+  // HloComputationProto or as MLIR bytecode of the computation serialized to
+  // StableHLO. Today we assume that custom calls that access called computation
+  // can only be linked statically.
+  std::unique_ptr<HloComputation> called_computation_;
 };
 
 }  // namespace gpu

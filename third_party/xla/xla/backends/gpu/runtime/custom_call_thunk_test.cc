@@ -17,12 +17,21 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
+#include "xla/ffi/api/c_api.h"
+#include "xla/ffi/ffi.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/literal_util.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/platform_util.h"
@@ -31,9 +40,8 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -101,6 +109,48 @@ TEST(CustomCallThunkTest, CustomCallOnCustomStream) {
   thunk->set_execution_stream_id(ExecutionStreamId(1));
   EXPECT_THAT(thunk->ExecuteOnStream(Thunk::ExecuteParams(params)),
               ::tsl::testing::IsOk());
+}
+
+TEST(CustomCallThunkTest, HloComputationGetsPassedToFfiHandler) {
+  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          executor->CreateStream());
+
+  XLA_FFI_DEFINE_HANDLER(
+      verifier,
+      [](const HloComputation* called_computation) -> absl::Status {
+        EXPECT_THAT(called_computation,
+                    ::testing::Pointee(::testing::Property(
+                        &HloComputation::name, "hlo_computation_name")));
+        return absl::InternalError("verifier called");
+      },
+      ffi::Ffi::Bind().Ctx<ffi::CalledComputation>());
+
+  XLA_FFI_Handler_Bundle bundle = {
+      /*instantiate=*/nullptr,
+      /*prepare=*/nullptr,
+      /*initialize=*/nullptr,
+      /*execute=*/verifier,
+  };
+
+  HloComputation::Builder builder("hlo_computation_name");
+  HloInstruction* root = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+  std::unique_ptr<HloComputation> computation = builder.Build(root);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk,
+      CustomCallThunk::Create(Thunk::ThunkInfo(), "target_name", bundle, {}, {},
+                              {}, std::move(computation)));
+  thunk->set_execution_stream_id(ExecutionStreamId(0));
+  se::StreamExecutorMemoryAllocator allocator(executor);
+  BufferAllocations buffer_allocations({}, 0, &allocator);
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      ServiceExecutableRunOptions(), buffer_allocations, stream.get(),
+      stream.get(), nullptr, nullptr);
+  EXPECT_THAT(
+      thunk->ExecuteOnStream(Thunk::ExecuteParams(params)),
+      absl_testing::StatusIs(absl::StatusCode::kInternal, "verifier called"));
 }
 
 }  // namespace
