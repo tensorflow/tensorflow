@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 
 # Regression tests for bridge.
 load(":roundtrip.bzl", "glob_roundtrip_tests")
