@@ -79,42 +79,38 @@ static auto ArgsAccess(const std::vector<bool>& written) {
 static absl::StatusOr<Command> Convert(const KernelThunk& thunk,
                                        ResourceUseVector resources) {
   return std::make_unique<LaunchCmd>(
-      thunk.execution_stream_id(), thunk.kernel_name(), thunk.arguments(),
-      ArgsAccess(thunk.written()), thunk.launch_dimensions(),
-      thunk.shmem_bytes(), resources);
+      thunk.kernel_name(), thunk.arguments(), ArgsAccess(thunk.written()),
+      thunk.launch_dimensions(), thunk.shmem_bytes(), resources);
 }
 
 static absl::StatusOr<Command> Convert(const CustomKernelThunk& thunk,
                                        ResourceUseVector resources) {
   return std::make_unique<CustomKernelLaunchCmd>(
-      thunk.execution_stream_id(), thunk.arguments(),
-      ArgsAccess(thunk.written()), thunk.custom_kernel(), resources);
+      thunk.arguments(), ArgsAccess(thunk.written()), thunk.custom_kernel(),
+      resources);
 }
 
 static absl::StatusOr<Command> Convert(const DeviceToDeviceCopyThunk& thunk,
                                        ResourceUseVector resources) {
   return std::make_unique<MemcpyDeviceToDeviceCmd>(
-      thunk.execution_stream_id(), thunk.destination(), thunk.source(),
-      thunk.size_bytes(), resources);
+      thunk.destination(), thunk.source(), thunk.size_bytes(), resources);
 }
 
 static absl::StatusOr<Command> Convert(const DynamicMemcpyThunk& thunk,
                                        ResourceUseVector resources) {
   return std::make_unique<DynamicSliceCopyFusionCmd>(
-      thunk.execution_stream_id(), thunk.source(), thunk.destination(),
-      thunk.mem_size(), thunk.offsets(), resources);
+      thunk.source(), thunk.destination(), thunk.mem_size(), thunk.offsets(),
+      resources);
 }
 
 static absl::StatusOr<Command> Convert(const MemzeroThunk& thunk,
                                        ResourceUseVector resources) {
-  return std::make_unique<MemzeroCmd>(thunk.execution_stream_id(),
-                                      thunk.destination(), resources);
+  return std::make_unique<MemzeroCmd>(thunk.destination(), resources);
 }
 
 static absl::StatusOr<Command> Convert(const Memset32BitValueThunk& thunk,
                                        ResourceUseVector resources) {
-  return std::make_unique<Memset32Cmd>(thunk.execution_stream_id(),
-                                       thunk.destination(), thunk.value(),
+  return std::make_unique<Memset32Cmd>(thunk.destination(), thunk.value(),
                                        resources);
 }
 
@@ -128,9 +124,9 @@ static absl::StatusOr<Command> Convert(
       CommandBufferCmdExecutor body_cmds,
       ConvertToCommands(thunk.body_thunk_sequence()->thunks(), options));
 
-  return std::make_unique<WhileCmd>(
-      thunk.execution_stream_id(), thunk.condition_result_buffer(),
-      std::move(cond_cmds), std::move(body_cmds), resources);
+  return std::make_unique<WhileCmd>(thunk.condition_result_buffer(),
+                                    std::move(cond_cmds), std::move(body_cmds),
+                                    resources);
 }
 
 static absl::StatusOr<Command> Convert(const GemmThunk& thunk,
@@ -139,10 +135,10 @@ static absl::StatusOr<Command> Convert(const GemmThunk& thunk,
     return absl::InternalError(
         "Gemm thunk does not contain a workspace buffer");
   }
-  return std::make_unique<GemmCmd>(
-      thunk.execution_stream_id(), thunk.config(), thunk.lhs_buffer(),
-      thunk.rhs_buffer(), thunk.output_buffer(), thunk.workspace().value(),
-      thunk.deterministic(), resources);
+  return std::make_unique<GemmCmd>(thunk.config(), thunk.lhs_buffer(),
+                                   thunk.rhs_buffer(), thunk.output_buffer(),
+                                   thunk.workspace().value(),
+                                   thunk.deterministic(), resources);
 }
 
 static absl::StatusOr<Command> Convert(const CublasLtMatmulThunk& thunk,
@@ -151,8 +147,7 @@ static absl::StatusOr<Command> Convert(const CublasLtMatmulThunk& thunk,
     return absl::InternalError(
         "Gemm thunk does not contain a workspace buffer");
   }
-  return std::make_unique<CublasLtCmd>(thunk.execution_stream_id(), thunk,
-                                       resources);
+  return std::make_unique<CublasLtCmd>(thunk, resources);
 }
 
 static absl::StatusOr<Command> Convert(
@@ -177,37 +172,33 @@ static absl::StatusOr<Command> Convert(
       branch_cmds.emplace_back(std::move(cmds));
     }
   }
-  return std::make_unique<CaseCmd>(
-      thunk.execution_stream_id(), thunk.branch_index_buffer(),
-      thunk.branch_index_is_bool(), std::move(branch_cmds), resources);
+  return std::make_unique<CaseCmd>(thunk.branch_index_buffer(),
+                                   thunk.branch_index_is_bool(),
+                                   std::move(branch_cmds), resources);
 }
 
 static absl::StatusOr<Command> Convert(const AllReduceStartThunk& thunk,
                                        ResourceUseVector resources) {
-  return std::make_unique<AllReduceCmd>(
-      thunk.nccl_execution_stream_id(), thunk.execution_stream_id(),
-      thunk.config(), thunk.reduction_kind(), thunk.buffers(), resources);
+  return std::make_unique<AllReduceCmd>(thunk.config(), thunk.reduction_kind(),
+                                        thunk.buffers(), resources);
 }
 
 static absl::StatusOr<Command> Convert(const ReduceScatterStartThunk& thunk,
                                        ResourceUseVector resources) {
   return std::make_unique<ReduceScatterCmd>(
-      thunk.nccl_execution_stream_id(), thunk.execution_stream_id(),
       thunk.config(), thunk.reduction_kind(), thunk.buffers(), resources);
 }
 
 static absl::StatusOr<Command> Convert(const AllToAllStartThunk& thunk,
                                        ResourceUseVector resources) {
   return std::make_unique<AllToAllCmd>(
-      thunk.nccl_execution_stream_id(), thunk.execution_stream_id(),
       thunk.config(), thunk.has_split_dimension(), thunk.buffers(), resources);
 }
 
 static absl::StatusOr<Command> Convert(const AllGatherStartThunk& thunk,
                                        ResourceUseVector resources) {
-  return std::make_unique<AllGatherCmd>(
-      thunk.nccl_execution_stream_id(), thunk.execution_stream_id(),
-      thunk.config(), thunk.buffers(), resources);
+  return std::make_unique<AllGatherCmd>(thunk.config(), thunk.buffers(),
+                                        resources);
 }
 
 static absl::StatusOr<Command> Convert(
@@ -224,44 +215,41 @@ static absl::StatusOr<Command> Convert(
     fake_allocations.push_back(std::make_unique<BufferAllocation>(**it));
   }
   return std::make_unique<DynamicSliceFusionCmd>(
-      thunk.execution_stream_id(), std::move(embedded_cmds),
-      thunk.get_arguments(), std::move(fake_allocations), thunk.get_offsets(),
-      thunk.get_orig_shapes(), thunk.get_sliced_shapes(),
-      thunk.get_offset_byte_sizes(), resources);
+      std::move(embedded_cmds), thunk.get_arguments(),
+      std::move(fake_allocations), thunk.get_offsets(), thunk.get_orig_shapes(),
+      thunk.get_sliced_shapes(), thunk.get_offset_byte_sizes(), resources);
 }
 
 static absl::StatusOr<Command> Convert(const PartitionIdThunk& thunk,
                                        ResourceUseVector resources) {
   return std::make_unique<ComputationIdCmd>(
-      thunk.execution_stream_id(), thunk.dest(),
-      ComputationIdCmd::Kind::kPartition, resources);
+      thunk.dest(), ComputationIdCmd::Kind::kPartition, resources);
 }
 
 static absl::StatusOr<Command> Convert(const ReplicaIdThunk& thunk,
                                        ResourceUseVector resources) {
   return std::make_unique<ComputationIdCmd>(
-      thunk.execution_stream_id(), thunk.dest(),
-      ComputationIdCmd::Kind::kReplica, resources);
+      thunk.dest(), ComputationIdCmd::Kind::kReplica, resources);
 }
 
 static absl::StatusOr<Command> Convert(const CustomCallThunk& thunk,
                                        ResourceUseVector resources) {
   if (auto bundle = thunk.bundle(); bundle.has_value()) {
     return std::make_unique<CustomCallCmd>(
-        thunk.execution_stream_id(), thunk.target_name(), bundle->execute,
-        thunk.operands(), thunk.results(), *thunk.call_frame(),
+        thunk.target_name(), bundle->execute, thunk.operands(), thunk.results(),
+        *thunk.call_frame(),
         /*called_computation=*/nullptr);  // TODO(b/342285364)
   } else {
     return std::make_unique<CustomCallCmd>(
-        thunk.execution_stream_id(), thunk.target_name(), thunk.call_target(),
-        thunk.operands(), thunk.results(), thunk.opaque(), resources);
+        thunk.target_name(), thunk.call_target(), thunk.operands(),
+        thunk.results(), thunk.opaque(), resources);
   }
 }
 
 static absl::StatusOr<Command> Convert(const CuDnnThunk& thunk,
                                        ResourceUseVector resources) {
-  return std::make_unique<CuDnnCmd>(
-      thunk.execution_stream_id(), thunk.arguments(), thunk.graph(), resources);
+  return std::make_unique<CuDnnCmd>(thunk.arguments(), thunk.graph(),
+                                    resources);
 }
 
 //===----------------------------------------------------------------------===//
@@ -357,8 +345,8 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
         // If there control dependencies between these thunks, we will create an
         // empty command act as dependency nodes.
         VLOG(0) << "Add empty command for asyndone synchronization";
-        return append(absl::StatusOr<Command>(std::make_unique<EmptyCmd>(
-            thunk.execution_stream_id(), resources)));
+        return append(
+            absl::StatusOr<Command>(std::make_unique<EmptyCmd>(resources)));
       }
 
     case Thunk::Kind::kCommandBuffer:

@@ -60,9 +60,6 @@ static se::StreamExecutor* GpuExecutor() {
   return platform->ExecutorForDevice(0).value();
 }
 
-// Give a short alias to execution thread.
-static constexpr auto s0 = ExecutionStreamId(0);
-
 // Give a short alias to synchronization mode.
 static constexpr auto serialize =
     CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
@@ -71,10 +68,8 @@ static constexpr auto serialize =
 // buffer cmd commands. We never execute this command, we need it only to pass
 // buffer usage vector to the command buffer cmd commands.
 struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
-  TestOnlyCommandBufferCmd(ExecutionStreamId execution_stream_id,
-                           BufferUseVector buffer_usage)
-      : CommandBufferCmd(CommandBufferCmdType::kUnknownCmd, execution_stream_id,
-                         {}),
+  TestOnlyCommandBufferCmd(BufferUseVector buffer_usage)
+      : CommandBufferCmd(CommandBufferCmdType::kUnknownCmd, {}),
         buffer_usage(buffer_usage) {}
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
@@ -90,9 +85,8 @@ struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
 
 class FakeCmd : public CommandBufferCmd {
  public:
-  explicit FakeCmd(ExecutionStreamId execution_stream_id)
-      : CommandBufferCmd(CommandBufferCmdType::kTracedCommandBufferCmd,
-                         execution_stream_id, {}) {}
+  explicit FakeCmd()
+      : CommandBufferCmd(CommandBufferCmdType::kTracedCommandBufferCmd, {}) {}
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams&, const RecordParams&, RecordAction,
@@ -156,8 +150,8 @@ TEST(CommandBufferCmdTest, SerializeExecution) {
   auto use1 = BufferUse(slice1, BufferUse::kRead);
 
   CommandBufferCmdSequence commands;
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use1});
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
@@ -176,8 +170,8 @@ TEST(CommandBufferCmdTest, NoReadBarrier) {
   auto use1 = BufferUse(slice1, BufferUse::kRead);
 
   CommandBufferCmdSequence commands;
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use1});
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
@@ -196,8 +190,8 @@ TEST(CommandBufferCmdTest, NoWriteBarrier) {
   auto use1 = BufferUse(slice1, BufferUse::kWrite);
 
   CommandBufferCmdSequence commands;
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use1});
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
@@ -218,9 +212,9 @@ TEST(CommandBufferCmdTest, WriteConflictBarrier) {
   auto use2 = BufferUse(slice1, BufferUse::kWrite);
 
   CommandBufferCmdSequence commands;
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
-  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use2});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use1});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use2});
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
@@ -253,7 +247,7 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
-  commands.Emplace<MemcpyDeviceToDeviceCmd>(s0, slice_b, slice_a, byte_length);
+  commands.Emplace<MemcpyDeviceToDeviceCmd>(slice_b, slice_a, byte_length);
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
@@ -312,7 +306,7 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
-  commands.Emplace<LaunchCmd>(s0, "AddI32", args, args_access,
+  commands.Emplace<LaunchCmd>("AddI32", args, args_access,
                               LaunchDimensions(1, 4),
                               /*shmem_bytes=*/0);
   TF_ASSERT_OK_AND_ASSIGN(
@@ -381,7 +375,7 @@ TEST(CommandBufferCmdTest, LaunchCmdWithPriority) {
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
-  commands.Emplace<LaunchCmd>(s0, "AddI32", args, args_access,
+  commands.Emplace<LaunchCmd>("AddI32", args, args_access,
                               LaunchDimensions(1, 4),
                               /*shmem_bytes=*/0);
   commands.back()->set_priority(se::StreamPriority::Highest);
@@ -452,7 +446,7 @@ TEST(CommandBufferCmdTest, DynamicSliceCopyFusionCmd) {
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
   commands.Emplace<DynamicSliceCopyFusionCmd>(
-      s0, slice_a, slice_b, 16, DynamicMemcpyThunk::Offsets{false, {16}, {16}});
+      slice_a, slice_b, 16, DynamicMemcpyThunk::Offsets{false, {16}, {16}});
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
@@ -488,7 +482,7 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
     se::StreamExecutor* executor = GpuExecutor();
 
     auto stream = executor->CreateStream().value();
-    auto traced_cmd = FakeCmd(ExecutionStreamId(0));
+    auto traced_cmd = FakeCmd();
     BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
     BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);
 
@@ -603,7 +597,7 @@ static void BM_GetOrTraceCommandBuffer(benchmark::State& state) {
   };
 
   int32_t index = 0;
-  auto traced_cmd = FakeCmd(ExecutionStreamId(0));
+  auto traced_cmd = FakeCmd();
   TracedCommandBuffer traced_cmd_buffer(&traced_cmd, buffers);
 
   auto trace = [](se::Stream*) { return absl::OkStatus(); };
