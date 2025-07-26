@@ -2220,3 +2220,20 @@ def DegenerateFCtoMul : Pat<
    (IsLastDimensionEqualOne $input),
    (SameElementType $input, $filter),
    (IsNoneType $bias)]>;
+
+// Replace matmul where inputs & weights have inner dimension of 1 with an
+// elementwise multiplication that broadcasts, i.e. replace:
+//   const [a, 1] @ [1, b] => [a, b]
+// with:
+//   [1, b] * const [a, 1] => [a, b]
+def BMMAsBroadCastMultoMul : Pat<
+  (TFL_BatchMatMulOp
+    (Arith_ConstantOp:$const_input $constInputVal),
+    $filter, ConstBoolAttrFalse, ConstBoolAttrFalse, $_),
+  (TFL_MulOp
+    $filter, $const_input,
+    TFL_AF_None),
+  [(HasRank<2> $const_input),
+   (HasRank<2> $filter),
+   (IsLastDimensionEqualOne $const_input),
+   (SameElementType $const_input, $filter)]>;
