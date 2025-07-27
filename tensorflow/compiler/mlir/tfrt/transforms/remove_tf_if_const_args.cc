@@ -135,8 +135,8 @@ class RemoveTfIfConstArgs
         absl::StrCat(branch.getSymName().str(), branch_suffix);
     // Create the wrapper function with the new arguments that calls the
     // original branch.
-    auto new_branch = builder.create<mlir::func::FuncOp>(
-        branch.getLoc(), new_branch_name, new_branch_type);
+    auto new_branch = mlir::func::FuncOp::create(
+        builder, branch.getLoc(), new_branch_name, new_branch_type);
     new_branch.setVisibility(mlir::func::FuncOp::Visibility::Private);
 
     // In its function body, we will add the corresponding const ops and call
@@ -168,13 +168,13 @@ class RemoveTfIfConstArgs
     }
 
     // Now create the call op to the original branch.
-    auto call_op = builder.create<mlir::TF::StatefulPartitionedCallOp>(
-        new_branch.getLoc(), new_branch_type.getResults(), call_args,
+    auto call_op = mlir::TF::StatefulPartitionedCallOp::create(
+        builder, new_branch.getLoc(), new_branch_type.getResults(), call_args,
         /*args_attrs=*/nullptr, /*res_attrs=*/nullptr, branch.getSymName(), "",
         "", "");
     // Note that the outputs are not changed.
-    builder.create<mlir::func::ReturnOp>(new_branch.getLoc(),
-                                         call_op.getOutput());
+    mlir::func::ReturnOp::create(builder, new_branch.getLoc(),
+                                 call_op.getOutput());
 
     return new_branch.getSymName();
   }
