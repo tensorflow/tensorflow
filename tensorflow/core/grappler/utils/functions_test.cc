@@ -15,12 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/utils/functions.h"
 
+#include <cstdint>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/test.h"
