@@ -304,9 +304,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "com_google_protobuf",
         patch_file = ["//third_party/protobuf:protobuf.patch"],
-        sha256 = "f645e6e42745ce922ca5388b1883ca583bafe4366cc74cf35c3c9299005136e2",
-        strip_prefix = "protobuf-5.28.3",
-        urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/archive/refs/tags/v5.28.3.zip"),
+        sha256 = "a308b4f209483a0ae32b26e3a26253f8a9f45d9f35a9caf42bc611e2193d1eb8",
+        strip_prefix = "protobuf-5.29.4",
+        urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/archive/refs/tags/v5.29.4.zip"),
     )
 
     tf_http_archive(
