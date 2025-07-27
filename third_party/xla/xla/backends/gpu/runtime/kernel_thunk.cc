@@ -130,8 +130,9 @@ absl::StatusOr<std::unique_ptr<KernelThunk>> KernelThunk::FromProto(
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                         BufferAllocation::Slice::FromProto(proto.args().at(i),
                                                            buffer_allocations));
-    bool written = proto.written().at(i);
-    arguments.push_back(emitters::KernelArgument{Shape{}, slice, written});
+    emitters::KernelArgument argument{Shape{}, slice};
+    argument.set_written(proto.written().at(i));
+    arguments.push_back(std::move(argument));
   }
 
   std::optional<stream_executor::gpu::TmaMetadata> tma_metadata;

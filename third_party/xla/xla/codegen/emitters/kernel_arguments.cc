@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
@@ -34,73 +33,34 @@ limitations under the License.
 
 namespace xla::emitters {
 
-absl::StatusOr<KernelArguments> KernelArguments::Create(
-    const BufferAssignment& buffer_assignment,
-    const BufferAlignment& buffer_alignment,
-    const HloInstruction* hlo_instruction, bool dedup) {
-  std::vector<KernelArgument> kernel_arguments;
-  for (const HloInstruction* operand : hlo_instruction->operands()) {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                        buffer_assignment.GetUniqueSlice(operand, {}));
-    kernel_arguments.emplace_back(
-        KernelArgument(operand->shape(), slice, /*written=*/false));
-  }
+namespace {
 
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      hlo_instruction->shape(),
-      [&](const Shape& subshape, const ShapeIndex& index) {
-        if (!subshape.IsArray()) return absl::OkStatus();
-
-        TF_ASSIGN_OR_RETURN(
-            BufferAllocation::Slice slice,
-            buffer_assignment.GetUniqueSlice(hlo_instruction, index));
-
-        kernel_arguments.emplace_back(
-            KernelArgument(subshape, slice, /*written=*/true));
-        return absl::OkStatus();
-      }));
-
-  return KernelArguments{std::move(kernel_arguments), buffer_alignment, dedup};
-}
-
-std::vector<KernelArgument> KernelArguments::ProcessArguments(
-    std::vector<KernelArgument> kernel_arguments,
-    const BufferAlignment& buffer_alignment, bool dedup) {
-  absl::flat_hash_set<BufferAllocation::Slice> buffers_written;
-  for (const KernelArgument& kernel_argument : kernel_arguments) {
-    if (kernel_argument.written()) {
-      buffers_written.insert(kernel_argument.slice());
-    }
-  }
-
-  absl::flat_hash_map<BufferAllocation::Slice, std::optional<int64_t>>
-      first_indices_for_slices;
-  int next_llvm_arg_index = 0;
-  for (int i = 0; i < static_cast<int>(kernel_arguments.size()); ++i) {
+void FillKernelArgumentAttributes(
+    std::vector<KernelArgument>& kernel_arguments,
+    const KernelArguments::BufferAlignment& buffer_alignment,
+    const absl::flat_hash_set<BufferAllocation::Slice>& buffers_written) {
+  for (int64_t i = 0; i < kernel_arguments.size(); ++i) {
     KernelArgument& kernel_argument = kernel_arguments[i];
 
-    auto& first_index = first_indices_for_slices[kernel_argument.slice_];
-    if (dedup && first_index) {
-      const KernelArgument& same = kernel_arguments[*first_index];
-      kernel_argument.first_with_same_slice_ = first_index;
-      kernel_argument.alignment_ = same.alignment_;
-      kernel_argument.aliased_ = same.aliased_;
-      kernel_argument.written_ = same.written_;
-      kernel_argument.llvm_arg_index_ = same.llvm_arg_index_;
+    if (kernel_argument.first_with_same_slice().has_value()) {
+      KernelArgument& first_with_same_slice =
+          kernel_arguments[*kernel_argument.first_with_same_slice()];
+      kernel_argument.set_alignment(first_with_same_slice.alignment());
+      kernel_argument.set_written(first_with_same_slice.written());
+      kernel_argument.set_aliased(first_with_same_slice.aliased());
       continue;
-    } else {
-      first_index = i;
-      kernel_argument.llvm_arg_index_ = next_llvm_arg_index++;
     }
 
     const BufferAllocation* alloc = kernel_argument.slice().allocation();
     if (alloc->is_entry_computation_parameter()) {
-      kernel_argument.alignment_ = buffer_alignment.entry_parameter_align_bytes;
+      kernel_argument.set_alignment(
+          buffer_alignment.entry_parameter_align_bytes);
     } else if (alloc->is_constant()) {
-      kernel_argument.alignment_ = buffer_alignment.constant_buffer_align_bytes;
+      kernel_argument.set_alignment(
+          buffer_alignment.constant_buffer_align_bytes);
     } else {
-      kernel_argument.alignment_ =
-          buffer_alignment.xla_allocated_buffer_align_bytes;
+      kernel_argument.set_alignment(
+          buffer_alignment.xla_allocated_buffer_align_bytes);
     }
 
     // Note: This code here doesn't check if any partially overlapping buffers
@@ -111,20 +71,83 @@ std::vector<KernelArgument> KernelArguments::ProcessArguments(
     //
     // kernel_argument.written =
     //   OverlapsAny(buffers_written, kernel_argument.slice);
-    kernel_argument.written_ = buffers_written.contains(kernel_argument.slice_);
+    kernel_argument.set_written(
+        buffers_written.contains(kernel_argument.slice()));
 
-    kernel_argument.aliased_ = kernel_argument.written_ && [&] {
+    kernel_argument.set_aliased(kernel_argument.written() && [&] {
       for (size_t j = 0; j < kernel_arguments.size(); ++j) {
+        if (i == j) {
+          continue;
+        }
+
         const KernelArgument& other_kernel_argument = kernel_arguments[j];
-        if (i != j && kernel_argument.slice_ != other_kernel_argument.slice_ &&
-            kernel_argument.slice_.OverlapsWith(other_kernel_argument.slice_)) {
+        if (kernel_argument.slice() != other_kernel_argument.slice() &&
+            kernel_argument.slice().OverlapsWith(
+                other_kernel_argument.slice())) {
           return true;
         }
       }
       return false;
-    }();
+    }());
   }
-  return kernel_arguments;
+}
+
+void SetLlvmArgIndicesAndMaybeDeduplicate(
+    std::vector<KernelArgument>& kernel_arguments, bool dedup) {
+  absl::flat_hash_map<BufferAllocation::Slice, std::optional<int64_t>>
+      first_indices_for_slices;
+  int next_llvm_arg_index = 0;
+
+  for (int64_t i = 0; i < kernel_arguments.size(); ++i) {
+    KernelArgument& kernel_argument = kernel_arguments[i];
+
+    auto& first_index = first_indices_for_slices[kernel_argument.slice()];
+    if (dedup && first_index) {
+      const KernelArgument& same = kernel_arguments[*first_index];
+
+      kernel_argument.set_first_with_same_slice(*first_index);
+      kernel_argument.set_llvm_arg_index(same.llvm_arg_index());
+    } else {
+      first_index = i;
+      kernel_argument.set_llvm_arg_index(next_llvm_arg_index);
+      next_llvm_arg_index++;
+    }
+  }
+}
+
+}  // namespace
+
+absl::StatusOr<KernelArguments> KernelArguments::Create(
+    const BufferAssignment& buffer_assignment,
+    const BufferAlignment& buffer_alignment,
+    const HloInstruction* hlo_instruction, bool dedup) {
+  std::vector<KernelArgument> kernel_arguments;
+  for (const HloInstruction* operand : hlo_instruction->operands()) {
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                        buffer_assignment.GetUniqueSlice(operand, {}));
+    kernel_arguments.emplace_back(KernelArgument(operand->shape(), slice));
+  }
+
+  absl::flat_hash_set<BufferAllocation::Slice> buffers_written;
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      hlo_instruction->shape(),
+      [&](const Shape& subshape, const ShapeIndex& index) {
+        if (!subshape.IsArray()) return absl::OkStatus();
+
+        TF_ASSIGN_OR_RETURN(
+            BufferAllocation::Slice slice,
+            buffer_assignment.GetUniqueSlice(hlo_instruction, index));
+
+        kernel_arguments.emplace_back(KernelArgument(subshape, slice));
+        buffers_written.insert(slice);
+        return absl::OkStatus();
+      }));
+
+  SetLlvmArgIndicesAndMaybeDeduplicate(kernel_arguments, dedup);
+  FillKernelArgumentAttributes(kernel_arguments, buffer_alignment,
+                               buffers_written);
+
+  return KernelArguments{std::move(kernel_arguments)};
 }
 
 }  // namespace xla::emitters

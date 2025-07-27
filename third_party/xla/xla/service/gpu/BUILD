@@ -692,7 +692,6 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":ir_emission_utils_proto_cc",
-        ":matmul_indexing_utils",
         ":target_util",
         "//xla:literal",
         "//xla:permutation_util",
@@ -704,6 +703,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:buffer_assignment",
+        "//xla/service:matmul_indexing_utils",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
         "//xla/tsl/lib/strings:proto_serialization",
@@ -867,7 +867,6 @@ cc_library(
     hdrs = ["triton_fusion_analysis.h"],
     deps = [
         ":cudnn_support_utils",
-        ":matmul_indexing_utils",
         ":triton_tiling_propagation",
         "//xla:autotuning_proto_cc",
         "//xla:status_macros",
@@ -876,6 +875,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
         "//xla/service:instruction_fusion",
+        "//xla/service:matmul_indexing_utils",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -914,7 +914,6 @@ cc_library(
     hdrs = ["split_k_gemm_rewriter.h"],
     deps = [
         ":ir_emission_utils",
-        ":matmul_indexing_utils",
         ":matmul_utils",
         ":triton_fusion_analysis",
         ":triton_tiling_propagation",
@@ -928,6 +927,7 @@ cc_library(
         "//xla/hlo/utils:hlo_query",
         "//xla/service:algorithm_util",
         "//xla/service:hlo_creation_utils",
+        "//xla/service:matmul_indexing_utils",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -968,53 +968,11 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "matmul_indexing_utils",
-    srcs = ["matmul_indexing_utils.cc"],
-    hdrs = ["matmul_indexing_utils.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//xla:autotuning_proto_cc",
-        "//xla:permutation_util",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-xla_cc_test(
-    name = "matmul_indexing_utils_test",
-    srcs = ["matmul_indexing_utils_test.cc"],
-    deps = [
-        ":matmul_indexing_utils",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/testlib:test",
-        "//xla/tests:xla_internal_test_main",  # build_cleaner: keep
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:status_matchers",
-    ],
-)
-
-cc_library(
     name = "matmul_utils",
     srcs = ["matmul_utils.cc"],
     hdrs = ["matmul_utils.h"],
     deps = [
         ":backend_configs_cc",
-        ":matmul_indexing_utils",
         "//xla:autotuning_proto_cc",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -1023,6 +981,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:algorithm_util",
+        "//xla/service:matmul_indexing_utils",
         "//xla/service/gpu/transforms:dot_algorithm_rewriter",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_description",

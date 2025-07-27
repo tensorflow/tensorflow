@@ -56,7 +56,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/service/gpu:matmul_indexing_utils",
+        "//xla/service:matmul_indexing_utils",
         "//xla/service/gpu/model:constraint_expression",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",

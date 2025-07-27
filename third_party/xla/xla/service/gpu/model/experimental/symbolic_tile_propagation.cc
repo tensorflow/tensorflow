@@ -39,10 +39,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
 #include "xla/permutation_util.h"
-#include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/model/constraint_expression.h"
 #include "xla/service/gpu/model/experimental/symbolic_tile.h"
 #include "xla/service/gpu/model/experimental/tiling_space.h"
+#include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
