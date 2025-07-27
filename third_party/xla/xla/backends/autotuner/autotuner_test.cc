@@ -140,7 +140,8 @@ class AutotunerTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(AutotunerTest, NoCodegenBackend) {
   auto autotuner = Autotuner::Create({}, nullptr, AutotuneConfig());
-  EXPECT_THAT(autotuner, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(autotuner,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(AutotunerTest, AutotuneButNoSupportedConfigs) {
@@ -156,7 +157,7 @@ TEST_F(AutotunerTest, AutotuneButNoSupportedConfigs) {
       Autotuner::Create(std::move(backends), nullptr, AutotuneConfig()));
   auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
   EXPECT_THAT(autotuner->Autotune(dummy_instr.get()),
-              StatusIs(absl::StatusCode::kInternal));
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(AutotunerTest, AutotuneButNoValidConfigs) {
@@ -180,7 +181,7 @@ TEST_F(AutotunerTest, AutotuneButNoValidConfigs) {
                                         std::move(profiler), AutotuneConfig()));
   auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
   EXPECT_THAT(autotuner->Autotune(dummy_instr.get()),
-              StatusIs(absl::StatusCode::kInternal));
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(AutotunerTest, AutotuneAppliesBestConfigAndSkipsInvalidConfig) {
@@ -212,7 +213,7 @@ TEST_F(AutotunerTest, AutotuneAppliesBestConfigAndSkipsInvalidConfig) {
       auto autotuner, Autotuner::Create(std::move(backends),
                                         std::move(profiler), AutotuneConfig()));
   auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
-  EXPECT_THAT(autotuner->Autotune(dummy_instr.get()), IsOk());
+  EXPECT_THAT(autotuner->Autotune(dummy_instr.get()), absl_testing::IsOk());
 }
 
 TEST_F(AutotunerTest, AutotuneAppliesBestConfigUsingThreadPool) {
@@ -245,7 +246,7 @@ TEST_F(AutotunerTest, AutotuneAppliesBestConfigUsingThreadPool) {
       Autotuner::Create(std::move(backends), std::move(profiler),
                         AutotuneConfig(), &thread_pool));
   auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
-  EXPECT_THAT(autotuner->Autotune(dummy_instr.get()), IsOk());
+  EXPECT_THAT(autotuner->Autotune(dummy_instr.get()), absl_testing::IsOk());
 }
 
 TEST_F(AutotunerTest, AutotuneModuleFindsNoInstructionsToAutotune) {
@@ -261,7 +262,7 @@ TEST_F(AutotunerTest, AutotuneModuleFindsNoInstructionsToAutotune) {
                           ParseAndReturnVerifiedModule(kHlo));
   EXPECT_THAT(autotuner->Autotune(
                   module.get(), [](const HloInstruction& _) { return false; }),
-              IsOk());
+              absl_testing::IsOk());
 }
 
 TEST_F(AutotunerTest, AutotuneModuleFollowsFilter) {
@@ -278,7 +279,8 @@ TEST_F(AutotunerTest, AutotuneModuleFollowsFilter) {
           /*instr_to_autotune=*/HloOpcode::kCopy,
           /*instr_to_apply_config_and_count=*/{HloOpcode::kCopy, 1}));
 
-  EXPECT_THAT(autotuner->Autotune(module.get(), should_autotune), IsOk());
+  EXPECT_THAT(autotuner->Autotune(module.get(), should_autotune),
+              absl_testing::IsOk());
 }
 
 TEST_F(AutotunerTest, AutotuneModuleWithDuplicateInstructions) {
@@ -294,7 +296,8 @@ TEST_F(AutotunerTest, AutotuneModuleWithDuplicateInstructions) {
           /*instr_to_autotune=*/HloOpcode::kAdd,
           /*instr_to_apply_config_and_count=*/{HloOpcode::kAdd, 2}));
 
-  EXPECT_THAT(autotuner->Autotune(module.get(), should_autotune), IsOk());
+  EXPECT_THAT(autotuner->Autotune(module.get(), should_autotune),
+              absl_testing::IsOk());
 }
 
 }  // namespace
