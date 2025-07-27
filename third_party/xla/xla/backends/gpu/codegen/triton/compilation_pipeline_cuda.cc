@@ -15,11 +15,13 @@ limitations under the License.
 
 #include <string>
 
+#include "nvidia/hopper/include/Transforms/Passes.h"
 #include "nvidia/include/NVGPUToLLVM/Passes.h"
 #include "nvidia/include/TritonNVIDIAGPUToLLVM/Passes.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+#include "mlir/Conversion/NVVMToLLVM/NVVMToLLVM.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
@@ -85,7 +87,17 @@ absl::Status CreateTritonPipeline(
       mt::gpu::createTritonGPUOptimizeDotOperands({cc.IsAtLeastAmpere()}));
   pm->addPass(ttng::createTritonNvidiaGPUOptimizeDescriptorEncodingPass());
   pm->addPass(mt::createTritonLoopAwareCSE());
-  if (cc.IsAtLeastBlackwell()) {
+  if (cc.IsAmpere() || cc.IsHopper()) {
+    pm->addPass(mt::gpu::createTritonGPUFuseNestedLoops());
+    pm->addPass(mlir::createCanonicalizerPass());
+    pm->addPass(mlir::createLoopInvariantCodeMotionPass());
+    pm->addPass(mlir::createCanonicalizerPass());
+    pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
+    pm->addPass(mlir::createNVGPUWarpSpecialization({num_stages}));
+    pm->addPass(mt::gpu::createTritonGPUAssignLatencies({num_stages}));
+    pm->addPass(mt::gpu::createTritonGPUScheduleLoops());
+    pm->addPass(mt::gpu::createTritonGPUPipeline({num_stages}));
+  } else if (cc.IsAtLeastBlackwell()) {
     pm->addPass(mt::gpu::createTritonGPUFuseNestedLoops());
     pm->addPass(mlir::createCanonicalizerPass());
     pm->addPass(mlir::createLoopInvariantCodeMotionPass());
@@ -99,17 +111,6 @@ absl::Status CreateTritonPipeline(
     pm->addPass(mt::gpu::createTritonGPUPipeline({num_stages}));
     pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
     pm->addPass(ttng::createTritonNvidiaGPURemoveTMEMTokensPass());
-  } else if (cc.IsAtLeastAmpere()) {
-    // Even though we don't run on pre-Ampere architectures anymore, we keep
-    // this check for consistency with the upstream pipeline
-    pm->addPass(mt::gpu::createTritonGPUFuseNestedLoops());
-    pm->addPass(mlir::createCanonicalizerPass());
-    pm->addPass(mlir::createLoopInvariantCodeMotionPass());
-    pm->addPass(mlir::createCanonicalizerPass());
-    pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
-    pm->addPass(mt::gpu::createTritonGPUAssignLatencies({num_stages}));
-    pm->addPass(mt::gpu::createTritonGPUScheduleLoops());
-    pm->addPass(mt::gpu::createTritonGPUPipeline({num_stages}));
   } else {
     pm->addPass(mlir::createLoopInvariantCodeMotionPass());
   }
@@ -128,8 +129,10 @@ absl::Status CreateTritonPipeline(
   pm->addPass(mlir::createSymbolDCEPass());
   if (cc.IsAtLeastHopper()) {
     pm->addPass(ttng::createTritonNvidiaGPUTMALoweringPass());
-    pm->addPass(ttng::createTritonGPUFenceInsertion({ccAsInt}));
   }
+  pm->addPass(ttng::createTritonGPUFenceInsertion({ccAsInt}));
+  pm->addPass(ttng::createTritonNvidiaGPUMMALoweringPass());
+  pm->addPass(mlir::createSCCPPass());
   pm->addPass(mlir::createCanonicalizerPass());
 
   // Corresponds to "mod.get_tensordesc_metadata()"
@@ -138,13 +141,15 @@ absl::Status CreateTritonPipeline(
 
   // Based on make_llir() in
   // @triton//:third_party/nvidia/backend/compiler.py
-  pm->addPass(ttng::createTritonNvidiaGPUMMALoweringPass());
   pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
   pm->addPass(mt::gpu::createTritonGPUAllocateWarpGroups());
   pm->addPass(mlir::createSCFToControlFlowPass());
   pm->addPass(mt::gpu::createAllocateSharedMemory());
   pm->addPass(ttng::createTritonTensorMemoryAllocationPass());
+  // We could add a flag to XLA to optionally enable the following pass:
+  // pm->addPass(mt::instrument::createTritonInstrumentConcurrencySanitizer());
   pm->addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
+  pm->addPass(ttng::createTritonGPUProxyFenceInsertion({ccAsInt}));
   pm->addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt));
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
@@ -154,6 +159,7 @@ absl::Status CreateTritonPipeline(
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createSymbolDCEPass());
+  pm->addPass(mlir::createConvertNVVMToLLVMPass());
   // Note: translateTritonGPUToLLVMIR adds line info with LLVMDIScopePass.
 
   return absl::OkStatus();

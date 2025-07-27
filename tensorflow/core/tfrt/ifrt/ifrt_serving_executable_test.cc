@@ -177,7 +177,8 @@ TEST_F(IfrtServingExecutableTest, ReturnFailOnUncompiledShapeAfterFrozen) {
   std::vector<tensorflow::Tensor> outputs2;
   auto status = executable->Execute(absl::MakeSpan(inputs2), {});
 
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(status,
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST_F(IfrtServingExecutableTest, Spmd) {
@@ -248,10 +249,11 @@ TEST_F(IfrtServingExecutableTest, SpmdXlaCallModuleInconsistentShardy) {
   std::vector<tensorflow::Tensor> inputs{x, y};
   auto result = executable->Execute(absl::MakeSpan(inputs), {});
 
-  EXPECT_THAT(result, StatusIs(absl::StatusCode::kFailedPrecondition,
-                               ::testing::HasSubstr(
-                                   "use_shardy_partitioner is not consistent "
-                                   "across XlaCallModuleOps")));
+  EXPECT_THAT(result, absl_testing::StatusIs(
+                          absl::StatusCode::kFailedPrecondition,
+                          ::testing::HasSubstr(
+                              "use_shardy_partitioner is not consistent "
+                              "across XlaCallModuleOps")));
 }
 
 TEST_F(IfrtServingExecutableTest, SpmdXlaCallModuleNoShardy) {
