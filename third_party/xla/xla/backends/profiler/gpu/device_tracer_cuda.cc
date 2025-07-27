@@ -46,7 +46,10 @@ using tsl::ReadBoolFromEnvVar;
 // GpuTracer for GPU.
 class GpuTracer : public tsl::profiler::ProfilerInterface {
  public:
-  explicit GpuTracer(CuptiTracer* cupti_tracer) : cupti_tracer_(cupti_tracer) {
+  explicit GpuTracer(
+      CuptiTracer* cupti_tracer,
+      std::optional<ProfileOptions> profile_options = std::nullopt)
+      : cupti_tracer_(cupti_tracer), profile_options_(profile_options) {
     VLOG(1) << "GpuTracer created.";
   }
   ~GpuTracer() override {}
@@ -60,6 +63,31 @@ class GpuTracer : public tsl::profiler::ProfilerInterface {
   absl::Status DoStart();
   absl::Status DoStop();
 
+  template <typename T>
+  std::optional<T> GetAdvancedConfigValue(const std::string& key) const {
+    if (!profile_options_.has_value()) {
+      return std::nullopt;
+    }
+    const auto& advanced_config = profile_options_->advanced_configuration();
+    if (auto it = advanced_config.find(key); it != advanced_config.end()) {
+      const auto& config_value = it->second;
+      if constexpr (std::is_same_v<T, int64_t>) {
+        if (config_value.has_int64_value()) {
+          return config_value.int64_value();
+        }
+      } else if constexpr (std::is_same_v<T, bool>) {
+        if (config_value.has_bool_value()) {
+          return config_value.bool_value();
+        }
+      } else if constexpr (std::is_same_v<T, std::string>) {
+        if (config_value.has_string_value()) {
+          return config_value.string_value();
+        }
+      }
+    }
+    return std::nullopt;
+  }
+
   enum State {
     kNotStarted,
     kStartedOk,
@@ -72,6 +100,7 @@ class GpuTracer : public tsl::profiler::ProfilerInterface {
   CuptiTracer* cupti_tracer_;
   CuptiTracerOptions options_;
   std::unique_ptr<CuptiTraceCollector> cupti_collector_;
+  std::optional<ProfileOptions> profile_options_;
 };
 
 absl::Status GpuTracer::DoStart() {
@@ -100,6 +129,38 @@ absl::Status GpuTracer::DoStart() {
 
   CuptiTracerCollectorOptions collector_options;
   collector_options.num_gpus = cupti_tracer_->NumGpus();
+
+  if (profile_options_.has_value()) {
+    LOG(INFO) << "Applying advanced configuration from ProfileOptions.";
+    // Map fields from advanced_configuration to CuptiTracerCollectorOptions
+    if (auto val =
+            GetAdvancedConfigValue<int64_t>("gpu_max_callback_api_events");
+        val.has_value()) {
+      collector_options.max_callback_api_events = *val;
+    }
+    if (auto val =
+            GetAdvancedConfigValue<int64_t>("gpu_max_activity_api_events");
+        val.has_value()) {
+      collector_options.max_activity_api_events = *val;
+    }
+    if (auto val =
+            GetAdvancedConfigValue<int64_t>("gpu_max_annotation_strings");
+        val.has_value()) {
+      collector_options.max_annotation_strings = *val;
+    }
+    if (auto val = GetAdvancedConfigValue<bool>("gpu_dump_graph_node_mapping");
+        val.has_value()) {
+      collector_options.dump_graph_nope_mapping = *val;
+    }
+    if (auto val = GetAdvancedConfigValue<bool>("gpu_enable_nvtx_tracking");
+        val.has_value()) {
+      options_.enable_nvtx_tracking = *val;
+    }
+  } else {
+    LOG(INFO)
+        << "No ProfileOptions set, using default CuptiTracerCollectorOptions.";
+  }
+
   uint64_t start_gputime_ns = CuptiTracer::GetTimestamp();
   uint64_t start_walltime_ns = tsl::profiler::GetCurrentTimeNanos();
   cupti_collector_ = CreateCuptiCollector(collector_options, start_walltime_ns,
@@ -180,7 +241,8 @@ std::unique_ptr<tsl::profiler::ProfilerInterface> CreateGpuTracer(
   if (!cupti_tracer->IsAvailable()) {
     return nullptr;
   }
-  return std::make_unique<profiler::GpuTracer>(cupti_tracer);
+  LOG(INFO) << options.DebugString();
+  return std::make_unique<profiler::GpuTracer>(cupti_tracer, options);
 }
 
 auto register_gpu_tracer_factory = [] {
