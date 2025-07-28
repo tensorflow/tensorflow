@@ -2220,3 +2220,20 @@ def DegenerateFCtoMul : Pat<
    (IsLastDimensionEqualOne $input),
    (SameElementType $input, $filter),
    (IsNoneType $bias)]>;
+
+// Reorder operands of BMM with LHS constant input to the RHS.
+def BMMMoveConstantInputToRHS : Pat<
+  (TFL_BatchMatMulOp:$bmm_out
+    (Arith_ConstantOp:$const_input $constInputVal),
+    $filter, ConstBoolAttrFalse, ConstBoolAttrFalse, $asymmetric_quantize_inputs),
+  (TFL_TransposeOp
+    (TFL_BatchMatMulOp
+      $filter,
+      $const_input,
+      ConstBoolAttrTrue, ConstBoolAttrTrue, $asymmetric_quantize_inputs,
+       (returnType (GetTransposedType<"{1, 0}"> $bmm_out))),
+    (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[2]>, "{1,0}">)),
+  [(HasRank<2> $const_input),
+   (HasRank<2> $filter),
+   (IsLastDimensionEqualOne $const_input),
+   (SameElementType $const_input, $filter)]>;
