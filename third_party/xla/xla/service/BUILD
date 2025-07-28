@@ -15,7 +15,7 @@ load(
     "xla_py_proto_library",
 )
 load("//xla/service:xla_compile.bzl", "xla_aot_compile_cpu", "xla_aot_compile_gpu", "xla_aot_compile_gpu_runtime_autotuning")
-load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
+load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm_is_configured", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "if_libtpu", "internal_visibility", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable", "internal_hlo_deps")
@@ -5734,22 +5734,22 @@ xla_cc_binary(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:types",
-    ] + if_cuda_is_configured([
+    ] + if_cuda_or_rocm_is_configured([
         # keep sorted
+        ":gpu_plugin",
         "//xla/service/gpu:executable_proto_cc",
         "//xla/service/gpu:gpu_compiler",
+        "//xla/stream_executor/gpu:gpu_init",
+    ]) + if_cuda_is_configured([
+        # keep sorted
         "//xla/service/gpu:nvptx_compiler",
         "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor/cuda:all_runtime",
         "//xla/stream_executor/cuda:cuda_platform",
-        "//xla/stream_executor/gpu:gpu_init",
     ]) + if_rocm_is_configured([
         # keep sorted
         "//xla/service/gpu:amdgpu_compiler",
         "//xla/service/gpu:amdgpu_compiler_impl",
-        "//xla/service/gpu:executable_proto_cc",
-        "//xla/service/gpu:gpu_compiler",
-        "//xla/stream_executor/gpu:gpu_init",
         "//xla/stream_executor/rocm:all_runtime",
         "//xla/stream_executor/rocm:rocm_platform",
     ]) + xla_internal(["tools:xsymbol_repository"]),
