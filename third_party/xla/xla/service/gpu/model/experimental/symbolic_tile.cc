@@ -55,20 +55,20 @@ ExperimentalSymbolicTile::ExperimentalSymbolicTile(
     : mlir_context_(mlir_context),
       num_tile_ids_(num_tile_ids),
       num_rt_vars_(num_rt_vars) {
-  one_dim_tiles_.reserve(offsets.size());
+  dim_tiles_.reserve(offsets.size());
   for (auto [offset, size, stride, upper_bound] :
        llvm::zip(offsets, sizes, strides, upper_bounds)) {
-    one_dim_tiles_.push_back(DimTile{offset, size, stride, upper_bound});
+    dim_tiles_.push_back(DimTile{offset, size, stride, upper_bound});
   }
 }
 
 ExperimentalSymbolicTile::ExperimentalSymbolicTile(
     mlir::MLIRContext* mlir_context, int64_t num_tile_ids, int64_t num_rt_vars,
-    llvm::SmallVector<DimTile> one_dim_tiles)
+    llvm::SmallVector<DimTile> dim_tiles)
     : mlir_context_(mlir_context),
       num_tile_ids_(num_tile_ids),
       num_rt_vars_(num_rt_vars),
-      one_dim_tiles_(std::move(one_dim_tiles)) {}
+      dim_tiles_(std::move(dim_tiles)) {}
 
 std::string ExperimentalSymbolicTile::ToString() const {
   auto tid_names = GetVarNames(num_tile_ids(), "tid_");
@@ -109,8 +109,8 @@ std::string ExperimentalSymbolicTile::ToString() const {
 SmallVector<mlir::AffineExpr> ExperimentalSymbolicTile::offsets() const {
   SmallVector<mlir::AffineExpr> offsets;
   offsets.reserve(offsets.size());
-  for (const DimTile& one_dim_tile : one_dim_tiles_) {
-    offsets.push_back(one_dim_tile.offset);
+  for (const DimTile& dim_tile : dim_tiles_) {
+    offsets.push_back(dim_tile.offset);
   }
   return offsets;
 }
@@ -118,8 +118,8 @@ SmallVector<mlir::AffineExpr> ExperimentalSymbolicTile::offsets() const {
 SmallVector<mlir::AffineExpr> ExperimentalSymbolicTile::sizes() const {
   SmallVector<mlir::AffineExpr> sizes;
   sizes.reserve(sizes.size());
-  for (const DimTile& one_dim_tile : one_dim_tiles_) {
-    sizes.push_back(one_dim_tile.size);
+  for (const DimTile& dim_tile : dim_tiles_) {
+    sizes.push_back(dim_tile.size);
   }
   return sizes;
 }
@@ -127,8 +127,8 @@ SmallVector<mlir::AffineExpr> ExperimentalSymbolicTile::sizes() const {
 SmallVector<mlir::AffineExpr> ExperimentalSymbolicTile::strides() const {
   SmallVector<mlir::AffineExpr> strides;
   strides.reserve(strides.size());
-  for (const DimTile& one_dim_tile : one_dim_tiles_) {
-    strides.push_back(one_dim_tile.stride);
+  for (const DimTile& dim_tile : dim_tiles_) {
+    strides.push_back(dim_tile.stride);
   }
   return strides;
 }
@@ -136,8 +136,8 @@ SmallVector<mlir::AffineExpr> ExperimentalSymbolicTile::strides() const {
 SmallVector<mlir::AffineExpr> ExperimentalSymbolicTile::upper_bounds() const {
   SmallVector<mlir::AffineExpr> upper_bounds;
   upper_bounds.reserve(upper_bounds.size());
-  for (const DimTile& one_dim_tile : one_dim_tiles_) {
-    upper_bounds.push_back(one_dim_tile.upper_bound);
+  for (const DimTile& dim_tile : dim_tiles_) {
+    upper_bounds.push_back(dim_tile.upper_bound);
   }
   return upper_bounds;
 }
