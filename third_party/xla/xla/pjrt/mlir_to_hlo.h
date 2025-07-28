@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 
@@ -64,6 +65,12 @@ absl::Status ExportShardyForHloRoundTrip(mlir::ModuleOp module);
 // export loaded a GSPMD checkpoint.
 // TODO(b/420837831): delete this once we don't fall back to GSPMD.
 absl::Status ExportShardyForGSPMD(mlir::ModuleOp module);
+
+// If `module` contains any dialect other than StableHLO or Shardy, returns that
+// dialect name as it is not approved for serialization to VHLO. Otherwise,
+// returns std::nullopt.
+std::optional<mlir::StringRef> FindPotentiallyUnstableDialects(
+    mlir::ModuleOp module);
 
 // Returns a version of StableHLO ~12w old, for forward compatibility with PJRT
 // plugins on a quarterly update cycle.
