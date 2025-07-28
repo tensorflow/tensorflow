@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -4666,6 +4667,86 @@ ROOT tuple.2 = (f32[16,2048,2048]{2,1,0}, f32[8,128,128]{2,1,0}, f32[16,2048,204
   EXPECT_LT(GetIndex(new_instruction_sequence, "c0"),
             GetIndex(new_instruction_sequence, "cp1d"));
 }
+
+class LatencyHidingSchedulerBenchmark : public LatencyHidingSchedulerTest {
+ public:
+  void TestBody() override {}
+};
+
+class BMHelper : public HloHardwareIndependentTestBase {
+ public:
+  void TestBody() override {}
+  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> ParseForBM(
+      absl::string_view hlo, const HloModuleConfig& config) {
+    return ParseAndReturnVerifiedModule(hlo, config);
+  }
+};
+
+static void BM_FindAndExtractBestNodeAvailable(
+    ::testing::benchmark::State& state) {
+  // This benchmark takes a parameter, and we make an HLO graph with
+  // approximately this many independent instructions that are all
+  // schedulable simultaneously.  This exercises the scheduling code
+  // with a large number of candidates in the ready set, which is not
+  // uncommon when compiling large Hlo programs.
+  std::string hlo = R"(
+    HloModule serial_collective_permute_test, is_scheduled=true
+    ENTRY after_optimizations_test {
+    %parameter.1 = bf16[8]{0} parameter(0)
+    after-all = token[] after-all()
+    send = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, u32[], token[]) send(%parameter.1, after-all), channel_id=1246
+    recv = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, u32[], token[]) recv(after-all), channel_id=1247
+    recv-done = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, token[]) recv-done(recv), channel_id=1247
+    get-tuple-element = bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)} get-tuple-element(recv-done), index=0
+    send-done = token[] send-done(send), channel_id=1246, control-predecessors={recv-done}
+)";
+  for (int i = 0; i < state.range(0); i++) {
+    absl::StrAppend(&hlo, "%add.", i + 2,
+                    " = bf16[8]{0} add(%parameter.1, %parameter.1)\n");
+  }
+  hlo +=
+      "ROOT %collective-permute.1 = bf16[8]{0} collective-permute(bf16[8]{0} "
+      "parameter.1), source_target_pairs={{0,1},{1,2},{2,3}}, channel_id=1\n";
+  hlo += "}\n";
+
+  const int replica_count = 1;
+  const int num_partitions = 1;
+
+  auto debug_options = GetDebugOptionsFromFlags();
+  // TODO(b/38354253): Change tests to use Parameters instead of Constants.
+  debug_options.add_xla_disable_hlo_passes("constant_folding");
+  debug_options.set_xla_hlo_evaluator_use_fast_path(true);
+  debug_options.set_xla_cpu_emitter_verification_level(1);
+
+  DeviceAssignment device_assignment(replica_count, num_partitions);
+  device_assignment.FillIota(0);
+
+  HloModuleConfig config;
+  config.set_debug_options(debug_options);
+  config.set_replica_count(replica_count);
+  config.set_num_partitions(num_partitions);
+  std::unique_ptr<DeviceAssignment> default_device_assignment =
+      std::make_unique<DeviceAssignment>(device_assignment);
+  config.set_static_device_assignment(*default_device_assignment);
+
+  BMHelper bm;
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, bm.ParseForBM(hlo, config));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  for (auto s : state) {
+    auto sched_config = GetDefaultSchedConfig();
+    sched_config.flexible_scheduling_annotation_scheduling = true;
+    sched_config.aggressive_scheduling_policies = true;
+    TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                              std::make_unique<TestLatencyEstimator>()));
+    EXPECT_TRUE(hlo_module->has_entry_computation());
+  }
+}
+BENCHMARK(BM_FindAndExtractBestNodeAvailable)
+    ->Arg(1)
+    ->Arg(100)
+    ->Arg(1000)
+    ->Arg(10000)
+    ->Arg(40000);
 
 }  // namespace
 }  // namespace xla

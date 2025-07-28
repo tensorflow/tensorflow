@@ -269,7 +269,6 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
         ->Clear();
   }
 
-
   bool verifier_layout_sensitive() const { return verifier_layout_sensitive_; }
   void set_verifier_layout_sensitive(bool verifier_layout_sensitive) {
     verifier_layout_sensitive_ = verifier_layout_sensitive;
@@ -292,7 +291,8 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   }
 
   static std::string TestName() {
-    return ::testing::UnitTest::GetInstance()->current_test_info()->name();
+    auto* test_info = ::testing::UnitTest::GetInstance()->current_test_info();
+    return test_info ? test_info->name() : std::string("unknown_test_name");
   }
 
   // Updates the entry computation layout to match the program shape. Useful
