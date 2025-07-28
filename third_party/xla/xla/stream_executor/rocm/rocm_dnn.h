@@ -284,7 +284,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemoryBase output_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       ScratchAllocator* scratch_allocator,
-      std::vector<dnn::ProfileResult>* out_algorithms);
+      std::vector<dnn::ProfileResult>* out_algorithms) override;
 
   absl::Status GetMIOpenConvolveAlgorithmsImmediateMode(
       dnn::ConvolutionKind kind, dnn::DataType input_type,
