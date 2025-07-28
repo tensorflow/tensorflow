@@ -3061,6 +3061,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
+        "//xla/hlo/transforms/simplifiers:flatten_call_graph",
         "//xla/hlo/transforms/simplifiers:hlo_constant_folding",
         "//xla/hlo/utils:hlo_query",
         "//xla/service:hlo_creation_utils",

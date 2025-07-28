@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
-#include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
@@ -317,9 +316,6 @@ absl::StatusOr<bool> UnrollInternal(HloInstruction* while_op,
   TF_RETURN_IF_ERROR(
       computation->ReplaceInstruction(while_op, unrolled_body_call_op));
 
-  // Needed for the nested while loops in which the outer loop has been
-  // unrolled which leaves the call graph non-flat.
-  TF_RETURN_IF_ERROR(FlattenCallGraph().Run(module).status());
   return true;
 }
 
@@ -373,9 +369,6 @@ absl::StatusOr<UnrollResult> UnrollInternalWrappedAndReturnReplacement(
   while_op->SetupDerivedInstruction(new_while_op);
   CHECK_OK(computation->ReplaceInstruction(while_op, new_while_op));
 
-  // Needed for the nested while loops in which the outer loop has been
-  // unrolled which leaves the call graph non-flat.
-  TF_RETURN_IF_ERROR(FlattenCallGraph().Run(module).status());
   UnrollResult result;
   result.unrolled = true;
   result.new_while_op = new_while_op;
@@ -1424,9 +1417,9 @@ WhileLoopUnroller::UnrollAndReturnReplacement(
                         UnrollInternal(while_op, config.value()));
   }
 
-  // We need to inline the calls created for unrolling since later passes rely
-  // on the calls to be inlined.
   if (result.unrolled) {
+    // We need to inline the calls created for unrolling since later passes rely
+    // on the calls to be inlined.
     TF_RETURN_IF_ERROR(CallInliner().Run(module).status());
   }
 
