@@ -69,6 +69,8 @@ class GpuCodegenBackend : public CodegenBackend {
     TF_RETURN_IF_ERROR(ApplyConfig(*root_instruction, config));
 
     hlo_module->mutable_config().set_debug_options(debug_options_);
+    hlo_module->mutable_config().mutable_debug_options().set_xla_enable_dumping(
+        false);
 
     Compiler::CompileOptions options;
     TF_ASSIGN_OR_RETURN(auto optimized_module,
