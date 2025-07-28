@@ -39,14 +39,28 @@ cmake_policy(SET CMP0028 NEW)
 cmake_policy(SET CMP0042 NEW)
 project(tensorflow-lite C CXX)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+# Use FetchContent to download TensorFlow if not provided
+include(FetchContent)
+
 set(TENSORFLOW_SOURCE_DIR "" CACHE PATH
   "Directory that contains the TensorFlow project"
 )
 if(NOT TENSORFLOW_SOURCE_DIR)
-  get_filename_component(TENSORFLOW_SOURCE_DIR
-    "${CMAKE_CURRENT_LIST_DIR}/../../"
-    ABSOLUTE
+  message(STATUS "Downloading TensorFlow repository...")
+  FetchContent_Declare(
+    tensorflow
+    GIT_REPOSITORY https://github.com/tensorflow/tensorflow.git
+    GIT_TAG v2.19.0
+    GIT_SHALLOW TRUE
+    GIT_PROGRESS TRUE
+    SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/tensorflow-src
   )
+  FetchContent_GetProperties(tensorflow)
+  if(NOT tensorflow_POPULATED)
+    FetchContent_Populate(tensorflow)
+  endif()
+  set(TENSORFLOW_SOURCE_DIR "${tensorflow_SOURCE_DIR}")
 endif()
 set(TF_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/tensorflow")
 set(TSL_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/third_party/xla/third_party/tsl")
@@ -534,7 +548,16 @@ if(TFLITE_ENABLE_XNNPACK)
       -o "${PROJECT_BINARY_DIR}/tensorflow/lite/delegates/xnnpack/"
       --gen-mutable --gen-object-api
       "${TFLITE_SOURCE_DIR}/delegates/xnnpack/weight_cache_schema.fbs"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${PROJECT_BINARY_DIR}/tflite/delegates/xnnpack"
+    COMMAND ${CMAKE_COMMAND} -E copy
+      "${PROJECT_BINARY_DIR}/tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
+      "${PROJECT_BINARY_DIR}/tflite/delegates/xnnpack/weight_cache_schema_generated.h"
     DEPENDS "${FLATC_TARGET}" "${TFLITE_SOURCE_DIR}/delegates/xnnpack/weight_cache_schema.fbs"
+  )
+
+  add_custom_target(
+      xnnpack_weight_cache_schema_cc_fbs
+      DEPENDS "${PROJECT_BINARY_DIR}/tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
   )
 
   add_library(xnnpack-delegate STATIC
@@ -544,7 +567,12 @@ if(TFLITE_ENABLE_XNNPACK)
   target_include_directories(xnnpack-delegate
     PUBLIC $<BUILD_INTERFACE:${TENSORFLOW_SOURCE_DIR}> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE "${PROJECT_BINARY_DIR}"
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/.."
+    PRIVATE "${PROJECT_BINARY_DIR}/tensorflow"
+    PRIVATE "${CMAKE_CURRENT_BINARY_DIR}"
+    PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/tflite"
   )
+  add_dependencies(xnnpack-delegate xnnpack_weight_cache_schema_cc_fbs)
   target_link_libraries(xnnpack-delegate
     Eigen3::Eigen
     flatbuffers::flatbuffers
@@ -722,6 +750,8 @@ set(_ALL_TFLITE_HDRS ${_ALL_TFLITE_SRCS})
 list(FILTER _ALL_TFLITE_HDRS INCLUDE REGEX ".*\\.h$")
 target_include_directories(tensorflow-lite
   PUBLIC $<BUILD_INTERFACE:${TENSORFLOW_SOURCE_DIR}> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+  PUBLIC ${CMAKE_CURRENT_BINARY_DIR}
+  PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..
 )
 target_link_libraries(tensorflow-lite
   PUBLIC
@@ -749,6 +779,13 @@ endif()
 target_compile_options(tensorflow-lite
   PUBLIC ${TFLITE_TARGET_PUBLIC_OPTIONS}
   PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}
+)
+target_compile_definitions(tensorflow-lite
+  PRIVATE
+    TF_MAJOR_VERSION=2
+    TF_MINOR_VERSION=19
+    TF_PATCH_VERSION=0
+    TF_VERSION_SUFFIX=""
 )
 add_library(${PROJECT_NAME}::tensorflowlite ALIAS tensorflow-lite)
 
