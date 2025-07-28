@@ -23,10 +23,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/time/time.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/include/nvtx3/nvToolsExt.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
+#include "xla/backends/profiler/gpu/cupti_pm_sampler.h"
 #include "tsl/platform/types.h"
 
 namespace xla {
@@ -49,6 +51,10 @@ struct CuptiTracerOptions {
   bool sync_devices_before_stop = false;
   // Whether to enable NVTX tracking, we need this for TensorRT tracking.
   bool enable_nvtx_tracking = false;
+  // PM sampling configuration (defaults are 2khz rate, 100ms decode)
+  // Only read during creation of a PM sampling object, later changes have
+  // no effect
+  CuptiPmSamplerOptions pm_sampler_options;
 };
 
 class CuptiTracer;
@@ -188,6 +194,7 @@ class CuptiTracer {
   bool need_root_access_ = false;
 
   bool api_tracing_enabled_ = false;
+  bool pm_sampling_enabled_ = false;
   // Cupti handle for driver or runtime API callbacks. Cupti permits a single
   // subscriber to be active at any time and can be used to trace Cuda runtime
   // as and driver calls for all contexts and devices.
@@ -196,6 +203,8 @@ class CuptiTracer {
   bool activity_tracing_enabled_ = false;
 
   std::unique_ptr<CuptiDriverApiHook> cupti_driver_api_hook_;
+
+  std::unique_ptr<CuptiPmSampler> pm_sampler_;
 };
 
 }  // namespace profiler
