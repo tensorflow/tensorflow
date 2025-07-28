@@ -240,6 +240,22 @@ absl::Status ExportShardyForGSPMD(mlir::ModuleOp module) {
   return absl::OkStatus();
 }
 
+std::optional<mlir::StringRef> FindPotentiallyUnstableDialects(
+    mlir::ModuleOp module) {
+  std::optional<mlir::StringRef> unstable_dialect = std::nullopt;
+  module->walk([&](mlir::Operation* op) {
+    if (!llvm::isa<mlir::ModuleOp>(op) &&
+        !llvm::isa<mlir::stablehlo::StablehloDialect, mlir::func::FuncDialect,
+                   mlir::chlo::ChloDialect, mlir::sdy::SdyDialect>(
+            op->getDialect())) {
+      unstable_dialect = op->getDialect()->getNamespace();
+      return mlir::WalkResult::interrupt();
+    }
+    return mlir::WalkResult::advance();
+  });
+  return unstable_dialect;
+}
+
 absl::StatusOr<std::string> SerializeUsingNativeBytecode(
     mlir::ModuleOp module) {
   std::string bytecode;
@@ -364,18 +380,7 @@ absl::StatusOr<std::string> Serialize(mlir::ModuleOp module,
   // Current PJRT users expect 12 weeks forward compat, VHLO provides this
   // compat.
   // TODO (b/344930098): Allow VHLO interop and remove the all_stablehlo check
-  bool all_stablehlo_or_shardy = true;
-  module->walk([&](mlir::Operation* op) {
-    if (!llvm::isa<mlir::ModuleOp>(op) &&
-        !llvm::isa<mlir::stablehlo::StablehloDialect, mlir::func::FuncDialect,
-                   mlir::chlo::ChloDialect, mlir::sdy::SdyDialect>(
-            op->getDialect())) {
-      all_stablehlo_or_shardy = false;
-      return mlir::WalkResult::interrupt();
-    }
-    return mlir::WalkResult::advance();
-  });
-  if (!all_stablehlo_or_shardy) {
+  if (FindPotentiallyUnstableDialects(module).has_value()) {
     return SerializeUsingNativeBytecode(module);
   }
   // All Shardy and StableHLO has compatibility even with mixed serialization
