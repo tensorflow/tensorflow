@@ -30,6 +30,7 @@ limitations under the License.
 #include <optional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -1879,6 +1880,13 @@ absl::Status MsaAlgorithm::ProcessColoredBuffers() {
     const int64_t memory_space = buffer_coloring.memory_space;
     HloValue& value = alias_analysis_.dataflow_analysis().GetUniqueValueAt(
         position.instruction, position.index);
+
+    if (finalized_values_.contains(&value)) {
+      VLOG(1) << "Skip coloring position: " << position.ToString()
+              << " because it is already finalized.";
+      continue;
+    }
+
     TF_ASSIGN_OR_RETURN(const MemorySpace memory_space_enum,
                         GetMemorySpaceEnum(memory_space, options_));
     // TODO(b/422220095): For async operations, make sure the coloring start and
@@ -2006,6 +2014,189 @@ absl::Status MsaAlgorithm::ProcessColoredBuffers() {
   return absl::OkStatus();
 }
 
+bool MsaAlgorithm::IsBufferPinnedToAlternateMemory(const HloBuffer& buffer) const {
+  // Check if all values in the buffer are pinned to the alternate memory.
+  for (const HloValue* value : buffer.values()) {
+    if (!value->shape().has_layout() ||
+        value->shape().layout().memory_space() !=
+            options_.alternate_memory_space) {
+      return false;
+    }
+    HloInstruction* defining_instruction = value->defining_instruction();
+    // VMEM colored inputs are for cross program prefetching.
+    if (defining_instruction->parent()->IsEntryComputation() &&
+        defining_instruction->opcode() == HloOpcode::kParameter) {
+      return false;
+    }
+    // VMEM colored outputs are for cross program prefetching.
+    if (value->IsRootOf(
+            defining_instruction->GetModule()->entry_computation())) {
+      return false;
+    }
+  }
+  return true;
+}
+
+absl::Status MsaAlgorithm::ProcessBuffersPinnedToAlternateMemory() {
+  const absl::flat_hash_map<const HloInstruction*, int64_t>&
+      instruction_schedule = hlo_live_range_.instruction_schedule();
+  absl::flat_hash_set<const HloBuffer*> processed_buffers;
+  struct BufferInfo {
+    int64_t first_definition_time;
+    int64_t last_use_time;
+    int64_t id;
+    int64_t size;
+  };
+  std::vector<std::pair<const HloBuffer*, BufferInfo>> pinned_buffers;
+  for (HloComputation* computation : module_->MakeNonfusionComputations()) {
+    for (HloInstruction* instruction :
+         computation->MakeInstructionPostOrder()) {
+      ShapeUtil::ForEachLeafShape(
+          instruction->shape(),
+          [&](const Shape& shape, const ShapeIndex& index) {
+            const HloBuffer& buffer =
+                alias_analysis_.GetUniqueBufferAt(instruction, index);
+            if (processed_buffers.contains(&buffer)) {
+              return;
+            }
+            processed_buffers.insert(&buffer);
+            if (!IsBufferPinnedToAlternateMemory(buffer)) {
+              return;
+            }
+            BufferInfo buffer_info;
+            buffer_info.first_definition_time =
+                std::numeric_limits<int64_t>::max();
+            buffer_info.last_use_time = std::numeric_limits<int64_t>::min();
+            buffer_info.id = buffer.id();
+            buffer_info.size = std::numeric_limits<int64_t>::min();
+            bool buffer_used = false;
+            for (const HloValue* value : buffer.values()) {
+              if (!buffer_intervals_.contains(value)) {
+                continue;
+              }
+              buffer_info.size =
+                  std::max(buffer_info.size, buffer_intervals_.at(value).size);
+              buffer_info.first_definition_time = std::min(
+                  buffer_info.first_definition_time,
+                  instruction_schedule.at(value->defining_instruction()));
+              for (const HloUse& use : value->GetUses()) {
+                buffer_used = true;
+                buffer_info.last_use_time =
+                    std::max(buffer_info.last_use_time,
+                             instruction_schedule.at(use.instruction));
+              }
+            }
+            if (buffer_used) {
+              pinned_buffers.push_back(std::make_pair(&buffer, buffer_info));
+            }
+          });
+    }
+  }
+  // Sort buffers first by definition time, then by use time, then by id
+  absl::c_sort(pinned_buffers,
+               [&](const std::pair<const HloBuffer*, BufferInfo>& buffer1,
+                   const std::pair<const HloBuffer*, BufferInfo>& buffer2) {
+                 const auto& info1 = buffer1.second;
+                 const auto& info2 = buffer2.second;
+                 return std::forward_as_tuple(info1.first_definition_time,
+                                              info1.last_use_time, info1.id) <
+                        std::forward_as_tuple(info2.first_definition_time,
+                                              info2.last_use_time, info2.id);
+               });
+
+  VLOG(1) << "Number of buffers pinned to alternate memory: "
+          << pinned_buffers.size();
+  for (const auto& [buffer, buffer_info] : pinned_buffers) {
+    VLOG(3) << "Pinned buffer: " << buffer->ToString()
+            << " first_definition_time: " << buffer_info.first_definition_time
+            << " last_use_time: " << buffer_info.last_use_time
+            << " id: " << buffer_info.id << " size: " << buffer_info.size;
+
+    // Find the chunk candidate for the buffer for the entire buffer live range.
+    int64_t buffer_start_time = buffer_info.first_definition_time;
+    int64_t buffer_end_time = buffer_info.last_use_time;
+    int64_t buffer_size = buffer_info.size;
+    MsaBufferInterval interval = MsaBufferInterval{/*buffer=*/nullptr,
+                                                   /*size=*/buffer_size,
+                                                   /*start=*/buffer_start_time,
+                                                   /*end=*/buffer_end_time,
+                                                   /*colocations=*/{},
+                                                   /*need_allocation=*/true};
+    Chunk chunk_candidate = FindChunkCandidate(interval);
+    if (chunk_candidate.chunk_end() > options_.max_size_in_bytes) {
+      return FailedPrecondition(
+          "%s",
+          absl::StrCat(
+              "Too many buffers are pinned to the alternate memory. Could not "
+              "reserve alternate memory for pinned buffer ",
+              buffer->ToString()));
+    }
+    // Bookkeeping Checklist:
+    // Commit the chunk to the alternate memory.
+    // Add entries to operands in alternate memory map.
+    // Add the value to the finalized values set.
+    // Add the repack allocation block to the repack allocation blocks list.
+    // Clear the pending chunks.
+
+    // Commit the chunk to the alternate memory.
+    AddToPendingChunks(interval, chunk_candidate);
+
+    HloPosition buffer_defining_position;
+    std::vector<Allocation*> buffer_values_allocations;
+
+    for (const HloValue* value : buffer->values()) {
+      if (!buffer_intervals_.contains(value)) {
+        continue;
+      }
+      HloPosition defining_position = value->defining_position();
+      int64_t definition_time =
+          instruction_schedule.at(defining_position.instruction);
+      if (definition_time == buffer_start_time) {
+        buffer_defining_position = defining_position;
+      }
+      int64_t last_use_time = definition_time;
+      for (const HloUse& use : value->GetUses()) {
+        last_use_time =
+            std::max(last_use_time, instruction_schedule.at(use.instruction));
+      }
+      allocations_->push_back(std::make_unique<PinnedAllocation>(
+          defining_position, MemorySpace::kAlternate, chunk_candidate,
+          definition_time, last_use_time));
+      for (const HloUse& use : value->GetUses()) {
+        allocations_->back()->AddUse(use);
+        // Add entries to operands in alternate memory map.
+        operands_in_alternate_memory_map_[use.instruction].insert(
+            std::make_pair(use.operand_number, use.operand_index));
+      }
+      // Add the values to the finalized values set.
+      finalized_values_.insert(value);
+      buffer_values_allocations.push_back(allocations_->back().get());
+    }
+
+    // Add a pinned allocation for the entire buffer so we can add a big repack
+    // allocation block that covers the entire buffer and all its uses. This is
+    // also optimal since repacking would not need to check for
+    // colocations.
+    reserved_allocations_for_pinned_buffers_.push_back(
+        std::make_unique<ReservedAllocation>(buffer_defining_position,
+                                             chunk_candidate, buffer_start_time,
+                                             buffer_end_time));
+    ReservedAllocation* reserved_allocation =
+        reserved_allocations_for_pinned_buffers_.back().get();
+    // Add a repack allocation block to the repack allocation blocks list.
+    repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
+        buffer_start_time, buffer_end_time, chunk_candidate.size,
+        chunk_candidate.offset, reserved_allocation));
+    repack_allocation_blocks_.back().next_colocated =
+        &(repack_allocation_blocks_.back());
+    reserved_pinned_allocations_to_allocations_.insert(
+        {reserved_allocation, buffer_values_allocations});
+  }
+  // Clear the pending chunks.
+  ClearPendingChunks();
+  return absl::OkStatus();
+}
+
 absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   // Note: Memory Space Assignment creates a HeapSimulator and passes an
   // MsaAlgorithm object to it. buffer_intervals_ is populated by calling the
@@ -2019,6 +2210,8 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
                                                                  : "disabled");
 
   AllocateReservedScopedAllocations();
+  TF_RETURN_IF_ERROR(ProcessBuffersPinnedToAlternateMemory());
+  TF_RETURN_IF_ERROR(ProcessColoredBuffers());
   std::vector<MsaBufferInterval> sorted_buffer_intervals =
       GetSortedBufferIntervals();
   memory_space_assignment::CustomizeSortedBufferInterval(
@@ -2097,7 +2290,6 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   VLOG(1) << "Assigning buffers to alternate memory. Max heap size = "
           << options_.max_size_in_bytes;
 
-  TF_RETURN_IF_ERROR(ProcessColoredBuffers());
   // Process colored buffers before input and output required assignments are
   // added to avoid adding conflicting required assignments.
   AddInputAndOutputRequiredAssignments();
@@ -4083,6 +4275,12 @@ void MsaAlgorithm::AllocateCrossProgramPrefetchBuffer(
 void MsaAlgorithm::AllocateReservedScopedAllocations() {
   const std::vector<HloInstruction*>& instruction_sequence =
       hlo_live_range_.flattened_instruction_sequence().instructions();
+  if (options_.allocate_reserved_scoped_memory_at_same_offset) {
+    // If we are co-locating scoped allocations, then we need to make sure that
+    // the repack allocation blocks are empty, because we mark all the repack
+    // allocation blocks as co-located in a loop below.
+    CHECK(repack_allocation_blocks_.empty());
+  }
   for (BreadthFirstMidpointIterator it(0, instruction_sequence.size() - 1);
        !it.End(); it.Next()) {
     HloInstruction* instruction = instruction_sequence[it.value()];
@@ -4640,6 +4838,15 @@ void MsaAlgorithm::ImportRepackedNonSlicedAllocation(
   VLOG(3) << "Repacking move. offset: " << original_offset << " -> "
           << repacked_offset << "; size: " << block.size
           << "; Allocation: " << allocation->ToString();
+
+  if (reserved_pinned_allocations_to_allocations_.contains(allocation)) {
+    for (Allocation* value_allocation :
+         reserved_pinned_allocations_to_allocations_[allocation]) {
+      VLOG(3) << "Setting offset for value allocation: "
+              << value_allocation->ToString() << " to " << repacked_offset;
+      value_allocation->set_offset(repacked_offset);
+    }
+  }
 }
 
 void MsaAlgorithm::ImportRepackedSlicedAllocation(

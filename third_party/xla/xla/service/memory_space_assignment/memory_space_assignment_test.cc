@@ -7974,8 +7974,241 @@ TEST_F(MemorySpaceAssignmentTest, PrecoloredBufferOOM) {
       status_or.status(),
       tsl::testing::StatusIs(
           tsl::error::FAILED_PRECONDITION,
-          ::testing::HasSubstr("requires allocation in the alternate memory, "
-                               "which could not be satisfied")));
+          ::testing::HasSubstr(
+              "Too many buffers are pinned to the alternate memory. Could not "
+              "reserve alternate memory for pinned buffer ")));
+}
+
+TEST_F(MemorySpaceAssignmentTest, PrecoloredBufferOOMBugPassesWithSortOrder) {
+  // Same as above but there is one 96-byte value and one 32-byte value that are
+  // pinned to the alternate memory. The size of the alternate memory is 128
+  // bytes which is just enough to satisfy these requirements.
+  // The sort order is such that the 96-byte value is pinned before the 32-byte
+  // value, the vmem is empty, it gets offset 0.
+  // The 32 byte value can then be pinned too and the program fits.
+
+  // Pinned buffer a is allocated first, we reserve a an allocation till its
+  // first use at instruction d, we get an offset of 0 because vmem is empty.
+
+  // .............................   offset 96
+  // .......#####.................   offset 64
+  // .......#####.................   offset 32
+  // .......#####.................   offset 0
+
+  // Then we try to extend the allocation for buffer a to the its use at
+  // instruction r and we are able to do so.
+
+  // .............................   offset 96
+  // .......#################.....   offset 64
+  // .......#################.....   offset 32
+  // .......#################.....   offset 0
+
+  // Then we try to allocate for pinned buffer k. We get an offset of 96 because
+  // we have already pinned a 96 byte buffer for a at offset 0.
+
+  // ................###..........   offset 96
+  // .......#################.....   offset 64
+  // .......#################.....   offset 32
+  // .......#################.....   offset 0
+
+  absl::string_view hlo_string = R"(
+  HloModule bug, is_scheduled=true
+
+  ENTRY Entry {
+    param0 = f32[8,3] parameter(0)
+    param1 = f32[2,4] parameter(1)
+    a = f32[8,3]{1,0:S(1)} cosine(param0)
+    b = f32[2,4] negate(param1)
+    d = f32[8,3] negate(a)
+    c = f32[2,4] negate(b)
+    e = f32[2,4] negate(c)
+    f = f32[8,3] negate(d)
+    g = f32[2,4] negate(e)
+    h = f32[2,4] negate(g)
+    i = f32[2,4] negate(h)
+    j = f32[2,4] negate(i)
+    k = f32[2,4]{1,0:S(1)} sine(j)
+    l = f32[2,4] negate(k)
+    m = f32[2,4] negate(l)
+    n = f32[2,4] negate(m)
+    o = f32[8,3] negate(f)
+    p = f32[2,4] negate(n)
+    q = f32[8,3] add(f, o)
+    r = f32[8,3] add(q, a)
+    ROOT tuple = (f32[2,4], f32[8,3]) tuple(p, r)
+  }
+  )";
+
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& a, const MsaBufferInterval& b) {
+        auto get_opcode_priority = [](const HloOpcode& opcode) {
+          switch (opcode) {
+            case HloOpcode::kCos:
+              return 0;
+            case HloOpcode::kSin:
+              return 1;
+            default:
+              return 2;
+          }
+        };
+
+        return get_opcode_priority(a.buffer->defining_instruction()->opcode()) <
+               get_opcode_priority(b.buffer->defining_instruction()->opcode());
+      };
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
+  Options options = DefaultMemorySpaceOptions();
+
+  // 128 bytes of alternate memory.
+  // Pinning a takes 4*8*3 = 96 bytes.
+  // Remanining bytes = 128 - 96 = 32 bytes.
+  // Pinning k requires 4*2*4 = 32 bytes.
+  // So it can be pinned as well.
+  options.max_size_in_bytes = 128;
+  std::unique_ptr<PresetAssignments> preset_assignments =
+      AssignMemorySpace(module.get(), options, buffer_interval_compare,
+                        &prefetch_interval_picker);
+
+  const HloInstruction* r = FindInstruction(module.get(), "r");
+  const HloInstruction* d = FindInstruction(module.get(), "d");
+  const HloInstruction* a = FindInstruction(module.get(), "a");
+  const HloInstruction* k = FindInstruction(module.get(), "k");
+  const HloInstruction* l = FindInstruction(module.get(), "l");
+  // Make sure the r, d and l operands aren't prefetched.
+  EXPECT_EQ(r->operand(1), a);
+  EXPECT_EQ(d->operand(0), a);
+  EXPECT_EQ(l->operand(0), k);
+  // Make sure a and k are allocated in the alternate memory.
+  EXPECT_EQ(a->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(k->shape().layout().memory_space(), kAlternateMemorySpace);
+  // Make sure the buffers a and k have an entry in the preset assignments.
+  auto a_entry = std::find_if(
+      preset_assignments->chunks().begin(), preset_assignments->chunks().end(),
+      [&](std::pair<HloPosition, HeapSimulator::Chunk> position_and_chunk) {
+        return position_and_chunk.first.instruction == a;
+      });
+  EXPECT_NE(a_entry, preset_assignments->chunks().end());
+  auto k_entry = std::find_if(
+      preset_assignments->chunks().begin(), preset_assignments->chunks().end(),
+      [&](std::pair<HloPosition, HeapSimulator::Chunk> position_and_chunk) {
+        return position_and_chunk.first.instruction == k;
+      });
+  EXPECT_NE(k_entry, preset_assignments->chunks().end());
+}
+
+TEST_F(MemorySpaceAssignmentTest, PrecoloredBufferOOMBug) {
+  // Same as above, with a different sort order. There is one 96-byte value and
+  // one 32-byte value that are pinned to the alternate memory. The size of the
+  // alternate memory is 128 bytes which is just enough to satisfy these
+  // requirements. The sort order is such that the 32-byte value is pinned
+  // before the 96-byte value, the vmem is empty, it gets offset 0. Then the 96
+  // byte value is pinned and it gets offset 32.
+
+  // Then we try to allocate for pinned buffer k. It has only one use at l. We
+  // get an offset of 0 because vmem is empty.
+
+  // .............................   offset 96
+  // .............................   offset 64
+  // .............................   offset 32
+  // ................###..........   offset 0
+
+  // We then allocate the 96 byte buffer for the entire live range of a in the
+  // alternate memory in one go.
+
+  // .......#################.....   offset 96
+  // .......#################.....   offset 64
+  // .......#################.....   offset 32
+  // ................###..........   offset 0
+
+  absl::string_view hlo_string = R"(
+  HloModule bug, is_scheduled=true
+
+  ENTRY Entry {
+    param0 = f32[8,3] parameter(0)
+    param1 = f32[2,4] parameter(1)
+    a = f32[8,3]{1,0:S(1)} cosine(param0)
+    b = f32[2,4] negate(param1)
+    d = f32[8,3] negate(a)
+    c = f32[2,4] negate(b)
+    e = f32[2,4] negate(c)
+    f = f32[8,3] negate(d)
+    g = f32[2,4] negate(e)
+    h = f32[2,4] negate(g)
+    i = f32[2,4] negate(h)
+    j = f32[2,4] negate(i)
+    k = f32[2,4]{1,0:S(1)} sine(j)
+    l = f32[2,4] negate(k)
+    m = f32[2,4] negate(l)
+    n = f32[2,4] negate(m)
+    o = f32[8,3] negate(f)
+    p = f32[2,4] negate(n)
+    q = f32[8,3] add(f, o)
+    r = f32[8,3] add(q, a)
+    ROOT tuple = (f32[2,4], f32[8,3]) tuple(p, r)
+  }
+  )";
+
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& a, const MsaBufferInterval& b) {
+        auto get_opcode_priority = [](const HloOpcode& opcode) {
+          switch (opcode) {
+            case HloOpcode::kSin:
+              return 0;
+            case HloOpcode::kCos:
+              return 1;
+            default:
+              return 2;
+          }
+        };
+
+        return get_opcode_priority(a.buffer->defining_instruction()->opcode()) <
+               get_opcode_priority(b.buffer->defining_instruction()->opcode());
+      };
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
+  Options options = DefaultMemorySpaceOptions();
+
+  // 128 bytes of alternate memory.
+  // Pinning k requires 4*2*4 = 32 bytes.
+  // Remanining bytes = 128 - 32 = 96 bytes.
+  // Pinning a takes 4*8*3 = 96 bytes.
+  // So it can be pinned as well.
+
+  // 128 bytes is just enough to pin both the buffers.
+  options.max_size_in_bytes = 128;
+  std::unique_ptr<PresetAssignments> preset_assignments =
+      AssignMemorySpace(module.get(), options, buffer_interval_compare,
+                        &prefetch_interval_picker);
+
+  const HloInstruction* r = FindInstruction(module.get(), "r");
+  const HloInstruction* d = FindInstruction(module.get(), "d");
+  const HloInstruction* a = FindInstruction(module.get(), "a");
+  const HloInstruction* k = FindInstruction(module.get(), "k");
+  const HloInstruction* l = FindInstruction(module.get(), "l");
+  // Make sure the r, d and l operands aren't prefetched.
+  EXPECT_EQ(r->operand(1), a);
+  EXPECT_EQ(d->operand(0), a);
+  EXPECT_EQ(l->operand(0), k);
+  // Make sure a and k are allocated in the alternate memory.
+  EXPECT_EQ(a->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(k->shape().layout().memory_space(), kAlternateMemorySpace);
+  // Make sure the buffers a and k have an entry in the preset assignments.
+  auto a_entry = std::find_if(
+      preset_assignments->chunks().begin(), preset_assignments->chunks().end(),
+      [&](std::pair<HloPosition, HeapSimulator::Chunk> position_and_chunk) {
+        return position_and_chunk.first.instruction == a;
+      });
+  EXPECT_NE(a_entry, preset_assignments->chunks().end());
+  auto k_entry = std::find_if(
+      preset_assignments->chunks().begin(), preset_assignments->chunks().end(),
+      [&](std::pair<HloPosition, HeapSimulator::Chunk> position_and_chunk) {
+        return position_and_chunk.first.instruction == k;
+      });
+  EXPECT_NE(k_entry, preset_assignments->chunks().end());
 }
 
 TEST_F(MemorySpaceAssignmentTest, AsyncOpShortLiveRange) {
