@@ -162,12 +162,6 @@ class MklMatMulOp : public OpKernel {
     char char_transb = transb ? 'T' : 'N';
     VLOG(2) << "MKL DNN SGEMM called";
 #ifndef ENABLE_ONEDNN_OPENMP
-    // Create the oneDNN wrapper over Eigen threadpool and set max threads
-    // in oneDNN.
-    Eigen::ThreadPoolInterface* eigen_interface =
-        EigenThreadPoolFromTfContext(ctx);
-    tsl::OneDnnThreadPool eigen_tp(eigen_interface,
-                                   ThreadPoolUseCallerThread());
     // With threadpool , the runtime overhead is comparable to the kernel
     // execution for small kernel sizes. For such sizes, it may be better to run
     // the kernel single threaded. Here we are coming up with a cost model based
@@ -178,6 +172,12 @@ class MklMatMulOp : public OpKernel {
       dnnl::threadpool_interop::sgemm(char_transa, char_transb, m, n, k, alpha,
                                       a, lda, b, ldb, beta, c, ldc, nullptr);
     } else {
+      // Create the oneDNN wrapper over Eigen threadpool and set max threads
+      // in oneDNN.
+      Eigen::ThreadPoolInterface* eigen_interface =
+          EigenThreadPoolFromTfContext(ctx);
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       dnnl::threadpool_interop::sgemm(char_transa, char_transb, m, n, k, alpha,
                                       a, lda, b, ldb, beta, c, ldc, &eigen_tp);
     }
