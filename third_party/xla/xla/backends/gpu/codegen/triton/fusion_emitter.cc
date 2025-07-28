@@ -1854,9 +1854,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
                          ->config()
                          .debug_options()
                          .xla_gpu_unsupported_annotate_with_emitter_loc()));
-    std::string fusion_suffix = absl::StrCat(hlo_computation->name(), ".hlo");
-    DumpToFileInDirOrStdout(*hlo_computation->parent(), "", fusion_suffix,
-                            hlo_computation->ToString());
+    std::string fusion_suffix = absl::StrCat(fusion->name(), ".hlo");
+    DumpToFileInDirOrStdout(
+        *hlo_computation->parent(), "", fusion_suffix,
+        ExtractInstructionIntoNewModule(*fusion)->ToString());
   }
 
   if (mlir::failed(mlir::verify(*triton_module))) {
