@@ -648,6 +648,10 @@ message DebugOptions {
   // gemm_fusion_autotuner.
   optional bool xla_gpu_experimental_use_autotuner_pass = 396;
 
+  // If true, use the ragged dot fusion emitter rather than expanding to a
+  // regular dot.
+  optional bool xla_gpu_experimental_use_ragged_dot_fusion = 401;
+
   // If true, PTX compilation will fail if a kernel spills registers.
   // This is meant for debugging and only applies to CUDA PTX compilation.
   optional bool xla_gpu_fail_ptx_compilation_on_register_spilling = 353;
@@ -1287,7 +1291,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 401
+  // Next id: 402
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
