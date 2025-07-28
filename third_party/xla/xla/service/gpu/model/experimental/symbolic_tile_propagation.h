@@ -48,6 +48,10 @@ std::optional<TiledOperands> PropagateTileToInput(
     const TilingSpace& tiling_space, const HloInstruction& hlo,
     const ExperimentalSymbolicTile& result_tile, int64_t result_index);
 
+std::optional<TiledOperands> PropagateTileToOutput(
+    const TilingSpace& tiling_space, const HloInstruction& hlo,
+    const ExperimentalSymbolicTile& input_tile, int64_t input_index);
+
 }  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_TILE_PROPAGATION_H_
