@@ -1412,6 +1412,16 @@ class TotalOrderTest : public ClientLibraryTestRunnerMixin<
 
     this->ComputeAndCompareR1<bool>(&builder, results, {});
   }
+
+ protected:
+  void SetUp() override {
+    if ((std::is_same_v<T, tsl::float4_e2m1fn> ||
+         std::is_same_v<T, tsl::float8_e8m0fnu>) &&
+        test::DeviceTypeIs(test::kTpu)) {
+      // TODO(b/385004399): Run tests on these types on TPU.
+      GTEST_SKIP();
+    }
+  }
 };
 
 using Types =
@@ -1427,10 +1437,7 @@ using Types =
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
                      double,
 #endif
-#if !defined(XLA_TEST_BACKEND_TPU)
-                     // TODO(b/385004399): Run tests on these types on TPU.
                      tsl::float4_e2m1fn, tsl::float8_e8m0fnu,
-#endif
                      float>;
 
 TYPED_TEST_SUITE(TotalOrderTest, Types);

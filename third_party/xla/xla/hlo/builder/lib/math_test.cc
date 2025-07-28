@@ -207,6 +207,15 @@ class MathTypedTest : public MathTest {
 
     ComputeAndCompareR1<T>(&b, expected, {&param0}, kErrorSpec);
   }
+
+ protected:
+  void SetUp() override {
+    if (std::is_same_v<T, tsl::float4_e2m1fn> &&
+        test::DeviceTypeIs(test::kTpu)) {
+      // TODO(b/385004399): Run tests on these types on TPU.
+      GTEST_SKIP();
+    }
+  }
 };
 
 using TestTypes =
@@ -222,10 +231,7 @@ using TestTypes =
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64
                      double,
 #endif
-#ifndef XLA_TEST_BACKEND_TPU
-                     // TODO(b/385004399): Run tests on these types on TPU.
                      tsl::float4_e2m1fn,
-#endif
                      float>;
 
 TYPED_TEST_CASE(MathTypedTest, TestTypes);
