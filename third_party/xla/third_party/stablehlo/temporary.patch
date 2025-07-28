@@ -520,17 +520,20 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/InterpreterOp
 diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stablehlo/stablehlo/integrations/python/tests/stablehlo.py
 --- stablehlo/stablehlo/integrations/python/tests/stablehlo.py
 +++ stablehlo/stablehlo/integrations/python/tests/stablehlo.py
-@@ -18,7 +18,9 @@
+@@ -18,7 +18,12 @@
  # pylint: disable=wildcard-import,undefined-variable
  
  import io
 +import os
  import re
 +import tempfile
++
++from jax.interpreters import mlir
++import jax.numpy as jnp
  from mlir import ir
  from mlir import passmanager as pm
  from mlir.dialects import stablehlo
-@@ -28,6 +30,7 @@
+@@ -28,6 +33,7 @@
  def run(f):
    with ir.Context() as context:
      stablehlo.register_dialect(context)
@@ -538,7 +541,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stable
      f()
    return f
  
-@@ -44,7 +47,7 @@
+@@ -44,7 +50,7 @@
  def test_comparison_direction_attr():
    attr = stablehlo.ComparisonDirectionAttr.get("EQ")
    assert attr is not None
@@ -547,7 +550,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stable
    assert attr.value == "EQ"
  
  
-@@ -52,7 +55,7 @@
+@@ -52,7 +58,7 @@
  def test_comparison_type_attr():
    attr = stablehlo.ComparisonTypeAttr.get("FLOAT")
    assert attr is not None
@@ -556,7 +559,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stable
    assert attr.value == "FLOAT"
  
  
-@@ -67,9 +70,11 @@
+@@ -67,9 +73,11 @@
        kernel_spatial_dimensions=[2, 3],
        output_batch_dimension=0,
        output_feature_dimension=1,
@@ -571,7 +574,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stable
    assert attr is not None
    assert attr.input_batch_dimension == 0
    assert attr.input_feature_dimension == 1
-@@ -92,13 +97,16 @@
+@@ -92,13 +100,16 @@
        lhs_component_count=1,
        rhs_component_count=1,
        num_primitive_operations=3,
@@ -595,7 +598,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stable
    assert isinstance(attr.lhs_precision_type, ir.BF16Type)
    assert isinstance(attr.rhs_precision_type, ir.BF16Type)
    assert isinstance(attr.accumulation_type, ir.F32Type)
-@@ -114,12 +122,15 @@
+@@ -114,12 +125,15 @@
        lhs_batching_dimensions=[0, 1],
        rhs_batching_dimensions=[2, 3],
        lhs_contracting_dimensions=[4, 5],
@@ -617,7 +620,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stable
    assert attr.lhs_batching_dimensions == [0, 1]
    assert attr.rhs_batching_dimensions == [2, 3]
    assert attr.lhs_contracting_dimensions == [4, 5]
-@@ -130,7 +141,7 @@
+@@ -130,7 +144,7 @@
  def test_fft_type_attr():
    attr = stablehlo.FftTypeAttr.get("FFT")
    assert attr is not None
@@ -626,7 +629,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stable
    assert attr.value == "FFT"
  
  
-@@ -164,13 +175,14 @@
+@@ -164,13 +178,14 @@
  @run
  def test_output_operand_alias():
    attr = stablehlo.OutputOperandAlias.get(
@@ -648,7 +651,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stable
    assert attr.output_tuple_indices == [0]
    assert attr.operand_index == 0
    assert attr.operand_tuple_indices == [1]
-@@ -180,7 +192,7 @@
+@@ -180,7 +195,7 @@
  def test_precision_attr():
    attr = stablehlo.PrecisionAttr.get("DEFAULT")
    assert attr is not None
@@ -657,7 +660,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stable
    assert attr.value == "DEFAULT"
  
  
-@@ -188,7 +200,7 @@
+@@ -188,7 +203,7 @@
  def test_rng_algorithm_attr():
    attr = stablehlo.RngAlgorithmAttr.get("DEFAULT")
    assert attr is not None
@@ -666,7 +669,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stable
    assert attr.value == "DEFAULT"
  
  
-@@ -196,7 +208,7 @@
+@@ -196,7 +211,7 @@
  def test_rng_distribution_attr():
    attr = stablehlo.RngDistributionAttr.get("UNIFORM")
    assert attr is not None
@@ -675,7 +678,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stable
    assert attr.value == "UNIFORM"
  
  
-@@ -231,7 +243,7 @@
+@@ -231,7 +246,7 @@
  def test_transpose_attr():
    attr = stablehlo.TransposeAttr.get("TRANSPOSE")
    assert attr is not None
@@ -684,7 +687,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stable
    assert attr.value == "TRANSPOSE"
  
  
-@@ -293,24 +305,32 @@
+@@ -293,24 +308,32 @@
  }}
  """
  
@@ -729,7 +732,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stable
    ]
    for test in tests:
      tensor_type, arg = test
-@@ -390,20 +410,45 @@
+@@ -390,20 +413,65 @@
  
  @run
  def test_result_accuracy_attr_default():
@@ -758,26 +761,46 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stable
    assert attr.ulps == 2
  
 +
-+@run
-+def test_reference_api_with_probe():
-+  """Tests that probe files are created in the specified directory."""
++def _run_probe_test(tensor_type, arg):
++  """Helper to run a probe test and verify output files."""
 +  test_tmpdir_base = os.environ.get("TEST_TMPDIR")
 +  with tempfile.TemporaryDirectory(dir=test_tmpdir_base) as tmpdir:
-+    tensor_type = "f32"
-+    arg = np.asarray(2, np.float32)
 +    m = ir.Module.parse(_ASM_FORMAT_WITH_PROBE.format(tensor_type))
-+    args = [ir.DenseElementsAttr.get(arg)]
++
++    # bfloat16 requires special handling for DenseElementsAttr creation
++    if arg.dtype == jnp.bfloat16:
++      element_type = mlir.dtype_to_ir_type(arg.dtype)
++      shaped_type = ir.RankedTensorType.get(
++          arg.shape, element_type, loc=ir.Location.unknown(context=ir.Context())
++      )
++      args = [ir.DenseElementsAttr.get(arg, type=shaped_type)]
++    else:
++      args = [ir.DenseElementsAttr.get(arg)]
 +
 +    # Call eval_module, directing probe outputs to the temporary directory.
 +    stablehlo.eval_module(m, args, probe_instrumentation_dir=tmpdir)
 +
-+    # Verify that the expected probe files were created.
++    # Verify that the expected probe files were created. The interpreter names
++    # probe files probe1.npy, probe2.npy, etc. The `probe_id` is used as
++    # metadata in `index.csv`.
 +    probe_file = os.path.join(tmpdir, "probe1.npy")
 +    metadata_file = os.path.join(tmpdir, "index.csv")
 +    assert os.path.exists(probe_file), f"Probe file not found: {probe_file}"
 +    assert os.path.exists(
 +        metadata_file
 +    ), f"Metadata file not found: {metadata_file}"
++
++
++@run
++def test_reference_api_with_probe():
++  """Tests that probe files are created in the specified directory."""
++  _run_probe_test("f32", np.asarray(2, np.float32))
++
++
++@run
++def test_reference_api_with_probe_bf16():
++  """Tests that probe files are created for bf16 tensors."""
++  _run_probe_test("bf16", np.asarray(2, jnp.bfloat16))
 diff --ruN a/stablehlo/stablehlo/reference/InterpreterInstrumentWithProbe.cpp b/stablehlo/stablehlo/reference/InterpreterInstrumentWithProbe.cpp
 --- stablehlo/stablehlo/reference/InterpreterInstrumentWithProbe.cpp
 +++ stablehlo/stablehlo/reference/InterpreterInstrumentWithProbe.cpp
@@ -808,6 +831,17 @@ diff --ruN a/stablehlo/stablehlo/reference/InterpreterInstrumentWithProbe.cpp b/
  }
  
  }  // namespace
+diff --ruN a/stablehlo/stablehlo/reference/NumPy.cpp b/stablehlo/stablehlo/reference/NumPy.cpp
+--- stablehlo/stablehlo/reference/NumPy.cpp
++++ stablehlo/stablehlo/reference/NumPy.cpp
+@@ -319,6 +319,7 @@
+   if (type.isF16()) return Functor<uint16_t>()(std::forward<Args>(args)...);
+   if (type.isF32()) return Functor<float>()(std::forward<Args>(args)...);
+   if (type.isF64()) return Functor<double>()(std::forward<Args>(args)...);
++  if (type.isBF16()) return Functor<uint16_t>()(std::forward<Args>(args)...);
+   if (auto complexTy = dyn_cast<ComplexType>(type)) {
+     auto complexElemTy = complexTy.getElementType();
+ 
 diff --ruN a/stablehlo/stablehlo/tests/infer_stablehlo.mlir b/stablehlo/stablehlo/tests/infer_stablehlo.mlir
 --- stablehlo/stablehlo/tests/infer_stablehlo.mlir
 +++ stablehlo/stablehlo/tests/infer_stablehlo.mlir
@@ -827,6 +861,27 @@ diff --ruN a/stablehlo/stablehlo/tests/infer_stablehlo.mlir b/stablehlo/stablehl
  // CHECK-LABEL: func @dot_general_c12
  // CHECK-SAME: (%[[ARG0:.*]]: tensor<?x?x?xf32>, %[[ARG1:.*]]: tensor<?x?x?xf32>
  func.func @dot_general_c12(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) -> tensor<3xindex> {
+diff --ruN a/stablehlo/stablehlo/tests/interpret/probe.mlir b/stablehlo/stablehlo/tests/interpret/probe.mlir
+--- stablehlo/stablehlo/tests/interpret/probe.mlir
++++ stablehlo/stablehlo/tests/interpret/probe.mlir
+@@ -43,6 +43,17 @@
+   %2 = stablehlo.add %0, %1 : tensor<3xf64>
+   %3 = interpreter.probe %2, probe_id = "probe_f64" : tensor<3xf64>
+   check.expect_serialized_eq %3, probe_id = "probe_f64" : tensor<3xf64>
++  func.return
++}
++
++// -----
++
++func.func @probe_bf16() {
++  %0 = stablehlo.constant dense<[1.0, 2.5, -3.0]> : tensor<3xbf16>
++  %1 = stablehlo.constant dense<[0.5, 1.5, 0.0]> : tensor<3xbf16>
++  %2 = stablehlo.add %0, %1 : tensor<3xbf16>
++  %3 = interpreter.probe %2, probe_id = "probe_bf16" : tensor<3xbf16>
++  check.expect_serialized_eq %3, probe_id = "probe_bf16" : tensor<3xbf16>
+   func.return
+ }
+ 
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
