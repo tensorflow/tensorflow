@@ -32,9 +32,7 @@ go_test(
     name = "go_default_test",
     srcs = glob(["*_test.go"]),
     embed = [":go_default_library"],
-    deps = [
-        # Add any extra dependencies here if needed
-    ],
+    deps = [],
 )
 
 filegroup(
