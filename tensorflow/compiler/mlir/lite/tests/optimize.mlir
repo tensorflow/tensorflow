@@ -4902,3 +4902,16 @@ func.func @DegerateFCNegative(%input_ok: tensor<5x3x1xf32>, %input_too_many_dims
 
   // CHECK-NOT: tfl.mul
 }
+
+// CHECK-LABEL: @BMMLHSConstnat
+func.func @BMMLHSConstnat(%arg0: tensor<1x3xf32>) -> tensor<2x3xf32> {
+  %cst = arith.constant dense<[[1.0], [2.0]]> : tensor<2x1xf32>
+  %0 = "tfl.batch_matmul"(%cst, %arg0) {adj_x = false, adj_y = false} : (tensor<2x1xf32>, tensor<1x3xf32>) -> tensor<2x3xf32>
+  func.return %0: tensor<2x3xf32>
+
+  // CHECK: %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
+  // CHECK: %cst_0 = arith.constant dense
+  // CHECK: %0 = "tfl.batch_matmul"(%arg0, %cst_0) <{adj_x = true, adj_y = true}> : (tensor<1x3xf32>, tensor<2x1xf32>) -> tensor<3x2xf32>
+  // CHECK: %1 = "tfl.transpose"(%0, %cst) : (tensor<3x2xf32>, tensor<2xi32>) -> tensor<2x3xf32>
+  // CHECK: return %1 : tensor<2x3xf32>
+}
