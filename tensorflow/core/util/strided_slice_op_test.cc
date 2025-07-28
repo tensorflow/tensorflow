@@ -468,7 +468,7 @@ TEST(ValidateStridedSliceOpTest, ZeroStrideFails) {
           begin_mask_spec, end_mask_spec, ellipsis_mask, new_axis_mask,
           shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
           &is_simple_slice, &slice_dim0, &begin, &end, &strides, &shape_spec),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::Code::INVALID_ARGUMENT,
           ::testing::ContainsRegex("strides.* must be non-zero")));
 }
@@ -524,7 +524,7 @@ TEST(ValidateStridedSliceOpTest, ShrinkSliceOutOfBoundsFails) {
           begin_mask_spec, end_mask_spec, ellipsis_mask, new_axis_mask,
           shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
           &is_simple_slice, &slice_dim0, &begin, &end, &strides, &shape_spec),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::Code::INVALID_ARGUMENT,
           ::testing::ContainsRegex("slice index .* out of bounds")));
 }
@@ -553,7 +553,7 @@ TEST(ValidateStridedSliceOpTest, ShrinkAxisNegativeStrideFails) {
           begin_mask_spec, end_mask_spec, ellipsis_mask, new_axis_mask,
           shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
           &is_simple_slice, &slice_dim0, &begin, &end, &strides, &shape_spec),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::Code::INVALID_ARGUMENT,
           ::testing::ContainsRegex("only stride 1 allowed")));
 }
@@ -635,7 +635,7 @@ TEST(ValidateStridedSliceOpTest, MultipleEllipsisFails) {
           begin_mask_spec, end_mask_spec, ellipsis_mask, new_axis_mask,
           shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
           &is_simple_slice, &slice_dim0, &begin, &end, &strides, &shape_spec),
-      tsl::testing::StatusIs(tsl::error::Code::INVALID_ARGUMENT,
+      absl_testing::StatusIs(tsl::error::Code::INVALID_ARGUMENT,
                              "Multiple ellipses in slice spec not allowed"));
 }
 
@@ -662,7 +662,7 @@ TEST(ValidateStridedSliceOpTest, WrongBeginTensorFails) {
           begin_mask_spec, end_mask_spec, ellipsis_mask, new_axis_mask,
           shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
           &is_simple_slice, &slice_dim0, &begin, &end, &strides, &shape_spec),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::Code::INVALID_ARGUMENT,
           ::testing::ContainsRegex("Expected .* equal size tensors")));
 }
@@ -689,7 +689,7 @@ TEST(ValidateStridedSliceOpTest, WrongStridesTensorWithNullBeginFails) {
           begin_mask_spec, end_mask_spec, ellipsis_mask, new_axis_mask,
           shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
           &is_simple_slice, &slice_dim0, &begin, &end, &strides, &shape_spec),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::Code::INVALID_ARGUMENT,
           ::testing::ContainsRegex("Expected .* equal size tensors")));
 }
@@ -742,7 +742,7 @@ TEST(ValidateStridedSliceOpTest, UnknownInputRankFails) {
           begin_mask_spec, end_mask_spec, ellipsis_mask, new_axis_mask,
           shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
           &is_simple_slice, &slice_dim0, &begin, &end, &strides, &shape_spec),
-      tsl::testing::StatusIs(tsl::error::Code::INVALID_ARGUMENT,
+      absl_testing::StatusIs(tsl::error::Code::INVALID_ARGUMENT,
                              ::testing::ContainsRegex("unknown rank")));
 }
 
