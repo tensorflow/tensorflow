@@ -18,13 +18,15 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tsl/platform/regexp.h"
 
@@ -36,10 +38,10 @@ const absl::string_view kCheckpointCallbackManagerResourceName =
 
 namespace {
 
-const absl::string_view kCheckpointFileRegex = "^part-[0-9]*-of-[0-9]*";
-const absl::string_view kCheckpointTempDirRegex = "-[0-9]*_temp$";
-const absl::string_view kCheckpointDirRegex = "-[0-9]*$";
-const absl::string_view kCheckpointTempDirSuffix = "_temp";
+constexpr LazyRE2 kCheckpointFileRegex = {"^part-[0-9]*-of-[0-9]*"};
+constexpr LazyRE2 kCheckpointTempDirRegex = {"-[0-9]*_temp$"};
+constexpr LazyRE2 kCheckpointDirRegex = {"-[0-9]*$"};
+constexpr absl::string_view kCheckpointTempDirSuffix = "_temp";
 
 void TriggerSaveCallbackIfFileNotExist(absl::string_view checkpoint_id,
                                        absl::string_view checkpoint_dir,
@@ -120,10 +122,10 @@ CheckpointCallbackManager::GetCheckpointIdAndPathFromPrefix(
     if (basename.empty()) break;
 
     // Skip known checkpoint file: e.g., part-00000-of-00001
-    if (RE2::PartialMatch(basename, kCheckpointFileRegex)) continue;
+    if (RE2::PartialMatch(basename, *kCheckpointFileRegex)) continue;
 
     // With _temp suffix: e.g., checkpoint-1_temp
-    if (RE2::PartialMatch(basename, kCheckpointTempDirRegex)) {
+    if (RE2::PartialMatch(basename, *kCheckpointTempDirRegex)) {
       // Trim suffix, "_temp".
       return std::make_pair(
           std::string(basename.substr(
@@ -132,7 +134,7 @@ CheckpointCallbackManager::GetCheckpointIdAndPathFromPrefix(
     }
 
     // Without _temp suffix: e.g., checkpoint-1
-    if (RE2::PartialMatch(basename, kCheckpointDirRegex)) {
+    if (RE2::PartialMatch(basename, *kCheckpointDirRegex)) {
       return std::make_pair(std::string(basename),
                             std::string(io::Dirname(path)));
     }
