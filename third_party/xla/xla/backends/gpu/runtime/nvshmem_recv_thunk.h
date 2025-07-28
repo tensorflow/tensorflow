@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"

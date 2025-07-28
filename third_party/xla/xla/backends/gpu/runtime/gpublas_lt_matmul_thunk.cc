@@ -19,9 +19,9 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "absl/container/node_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
