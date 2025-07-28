@@ -90,6 +90,8 @@ TEST_F(KernelArgumentsTest, GetArgumentBufferSlices) {
                   // The output is last in KernelArguments.
                   BufferAllocation::Slice(&assignment->Allocations()[0],
                                           /*offset=*/0, kExpectedBufferSize)));
+  EXPECT_THAT(kernel_arguments.GetArgumentOutputFlags(),
+              ElementsAre(false, false, true));
 }
 
 }  // namespace

@@ -40,6 +40,8 @@ TEST(CuDnnThunkTest, TestSerializationDeserialization) {
         fingerprint: "fingerprint"
         args { offset: 123 size: 456 }
         args { offset: 789 size: 1011 }
+        output_args: false
+        output_args: true
         sdpa_dropout_seed: 123456789
       )pb",
       &cudnn_thunk_proto));
