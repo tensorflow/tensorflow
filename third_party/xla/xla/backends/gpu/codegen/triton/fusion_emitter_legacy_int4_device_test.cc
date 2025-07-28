@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -57,6 +58,7 @@ class TritonTest : public GpuCodegenTest {
     debug_options.set_xla_gpu_enable_split_k_autotuning(false);
     // Always rewrite Gemms with Triton regardless of size.
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
+    debug_options.clear_xla_gpu_unsupported_generic_triton_emitter_features();
     debug_options
         .set_xla_gpu_experimental_enable_subchannel_dequantisation_fusion(true);
     return debug_options;
@@ -95,33 +97,57 @@ TEST_F(TritonTest, DotForInt4vsIdentityBF16ReturnsCorrectResult) {
 
     ENTRY entry_computation {
       w.s4 = s4[32,32]{1,0:E(4)} parameter(0)
-      w.s8 = s8[32,32] convert(w.s4)
-      w.b16 = bf16[32,32] convert(w.s8)
+      w.f32 = f32[32,32] convert(w.s4)
 
       a = f32[32,32] parameter(1)
-      a.bf16 = bf16[32,32] convert(a)
-      ROOT dot = f32[32,32] dot(w.b16, a.bf16),
+      ROOT dot = f32[32,32] dot(w.f32, a),
         lhs_contracting_dims={1},
         rhs_contracting_dims={0}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+
+  // We check that conversion was fused into gemm fusion.
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+    CHECK:  %[[weight_s4:.*]] = s4[32,32]{1,0:E(4)} parameter(0)
+    CHECK:  %[[weight_f32:.*]] = f32[32,32]{1,0} convert(%[[weight_s4]])
+    CHECK:  %[[a_f32:.*]] = f32[32,32]{1,0} parameter(1)
+    CHECK:  ROOT %[[dot:.*]] = f32[32,32]{1,0} dot(%[[weight_f32]], %[[a_f32]])
+  )"));
+
+  // LHS is a int4 matrix with a clear pattern.
+  // RHS is a constant identity matrix.
+  // The result is a matrix with a clear pattern.
   TF_ASSERT_OK_AND_ASSIGN(auto lhs,
                           (LiteralUtil::CreateLiteralWithGenerator<S4, s4>(
                               ShapeUtil::MakeShape(S4, {32, 32}),
                               [](absl::Span<const int64_t> indices) {
                                 return static_cast<s4>(indices[0] % 16 - 8);
                               })));
-  // LHS is a int4 matrix with a clear pattern.
-  // RHS is a constant identity matrix.
-  // The result is a matrix with a clear pattern.
   TF_ASSERT_OK_AND_ASSIGN(auto rhs,
                           (LiteralUtil::CreateLiteralWithGenerator<F32, float>(
                               ShapeUtil::MakeShape(F32, {32, 32}),
                               [](absl::Span<const int64_t> indices) {
                                 return indices[0] == indices[1] ? 1.0f : 0.0f;
                               })));
-  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), {&lhs, &rhs}, {}));
+  auto computation =
+      module->GetComputationWithName("gemm_fusion_dot_computation");
+  ASSERT_NE(computation, nullptr);
+
+  constexpr absl::string_view ttir_expectations = R"(
+    CHECK:  %[[lhs:.*]] = tt.load %[[lhs_ptr:.*]] : !tt.ptr<tensor<[[lhs_shape:.*]]xi4>>
+    CHECK:  %[[rhs:.*]] = tt.load %[[rhs_ptr:.*]] : !tt.ptr<tensor<[[rhs_shape:.*]]xf32>>
+    CHECK:  %[[lhs_i8:.*]] = arith.extsi %[[lhs]] : tensor<[[lhs_shape]]xi4> to tensor<[[lhs_shape]]xi8>
+    CHECK:  %[[lhs_f32:.*]] = arith.sitofp %[[lhs_i8]] : tensor<[[lhs_shape]]xi8> to tensor<[[lhs_shape]]xf32>
+    CHECK:  %[[dot:.*]] = tt.dot %[[lhs_f32]], %[[rhs]], %cst, inputPrecision = tf32 : tensor<[[lhs_shape]]xf32> * tensor<[[rhs_shape]]xf32> -> tensor<[[output_shape:.*]]xf32>
+  )";
+  EXPECT_TRUE(
+      CreateTritonIrAndFileCheckForDot(*computation, ttir_expectations).ok());
+
+  // LHS is a int4 matrix with a clear pattern.
+  // RHS is a constant identity matrix.
+  // The result is a matrix with a clear pattern.
+  EXPECT_TRUE(RunAndCompare(std::move(module), {&lhs, &rhs}, {}));
 }
 
 // The following tests are for the channel and subchannel dequantization
