@@ -529,7 +529,7 @@ llvm_ir::IrArray KernelApiIrBuilder::EmitKernelArgument(
 
   // All buffers passed to host kernels are expected to be properly aligned,
   // emit metadata to allow LLVM to use that information for optimization.
-  llvm_ir::SetAlignmentMetadataForLoad(data, cpu_function_runtime::MinAlign());
+  llvm_ir::SetAlignmentMetadataForLoad(data, MinAlign());
 
   // All buffers pointers passed to host kernels are expected to be
   // dereferenceable.
