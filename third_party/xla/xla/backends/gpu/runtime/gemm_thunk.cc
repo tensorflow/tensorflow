@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
