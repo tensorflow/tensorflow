@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stdalign.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
