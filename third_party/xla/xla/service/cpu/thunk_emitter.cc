@@ -1109,7 +1109,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
       if (use_xnn) {
         TF_ASSIGN_OR_RETURN(
             use_xnn, IsDotSupportedByXnn(dnums, lhs->shape(), rhs->shape(),
-                                         instruction->shape()));
+                                         instruction->shape(),
+                                         &target_machine_features_));
       }
 
       if (use_xnn) {
