@@ -382,6 +382,9 @@ DeviceCompiler<ExecutableType, ClientType>::CompileStrict(
   cache_->Store(sig, cache_value.compile_state, cache_value.compilation_status,
                 std::move(out_compilation_result), std::move(out_executable));
 
+  // Finalize the cache to release the XlaComputation after it was compiled.
+  cache_->Finalize();
+
   const uint64 compile_end_us = env->NowMicros();
   const uint64 compile_time_us = compile_end_us - compile_start_us;
 

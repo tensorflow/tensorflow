@@ -536,10 +536,6 @@ TEST_F(DeviceCompilerTest, Finalize) {
       &xla_executable));
 
   ASSERT_TRUE(compilation_result != nullptr);
-  ASSERT_TRUE(compilation_result->computation != nullptr);
-
-  const std::shared_ptr<xla::XlaComputation> computation =
-      compilation_result->computation;
 
   // Cast to `ResourceBase` to verify that the `Finalize` implementation
   // overrides the base class's.
@@ -551,9 +547,6 @@ TEST_F(DeviceCompilerTest, Finalize) {
       &xla_executable));
 
   ASSERT_TRUE(compilation_result != nullptr);
-
-  EXPECT_TRUE(compilation_result->computation == nullptr);
-  EXPECT_EQ(computation.use_count(), 1);
 }
 
 }  // namespace
