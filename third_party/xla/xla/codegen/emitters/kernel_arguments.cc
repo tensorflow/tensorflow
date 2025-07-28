@@ -97,6 +97,7 @@ std::vector<KernelArgument> KernelArguments::ProcessArguments(
       kernel_argument.aliased_ = same.aliased_;
       kernel_argument.written_ = same.written_;
       kernel_argument.llvm_arg_index_ = same.llvm_arg_index_;
+      CHECK(false);
       continue;
     } else {
       first_index = i;
