@@ -199,7 +199,7 @@ TYPED_TEST(StablehloCaseTestFloat, CaseFloatMul) {
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<Float>(),
-              ElementsAreArray({Float(30.25), Float(6.25)}));
+              Pointwise(FloatingPointEq(), {Float(30.25), Float(6.25)}));
 }
 
 TYPED_TEST(StablehloCaseTestFloat, CaseFloatAdd) {
@@ -219,9 +219,9 @@ TYPED_TEST(StablehloCaseTestFloat, CaseFloatAdd) {
                         {static_cast<Float>(5), static_cast<Float>(2)});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
-  EXPECT_THAT(
-      model.GetOutput<Float>(),
-      ElementsAreArray({static_cast<Float>(10.5), static_cast<Float>(4.4)}));
+  EXPECT_THAT(model.GetOutput<Float>(),
+              Pointwise(FloatingPointEq(),
+                        {static_cast<Float>(10.5), static_cast<Float>(4.4)}));
 }
 
 template <typename Int>
