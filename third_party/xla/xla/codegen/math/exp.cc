@@ -132,7 +132,7 @@ absl::StatusOr<llvm::Function*> Exp::CreateDefinition(llvm::Module* module,
   llvm::Value* n = builder.CreateFMul(x_clamped, kVecLog2ef, "x_mul_log2ef");
   n = builder.CreateFAdd(n, kVecHalf, "add_half_for_round");
 
-  llvm::Function* floor_fn = llvm::Intrinsic::getDeclaration(
+  llvm::Function* floor_fn = llvm::Intrinsic::getOrInsertDeclaration(
       module, llvm::Intrinsic::floor, {input_type});
   n = builder.CreateCall(floor_fn, {n}, "n_float_val");
 
