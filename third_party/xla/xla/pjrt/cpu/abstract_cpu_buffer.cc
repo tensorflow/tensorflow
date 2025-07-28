@@ -148,8 +148,7 @@ AbstractCpuBuffer::AllocateTrackedDeviceBuffer(
   // can simply point to the input array's data without any further copies. At
   // the time of writing we require a 16-byte alignment because XLA may generate
   // code which requires it.
-  if ((absl::bit_cast<std::uintptr_t>(data) &
-       (cpu_function_runtime::MinAlign() - 1)) != 0) {
+  if ((absl::bit_cast<std::uintptr_t>(data) & (cpu::MinAlign() - 1)) != 0) {
     return false;
   }
   return true;
