@@ -49,18 +49,25 @@ using ConstantsTest = ClientLibraryTestRunnerMixin<
     HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 template <typename T>
-class ConstantsFloatTest : public ConstantsTest {};
+class ConstantsFloatTest : public ConstantsTest {
+ protected:
+  void SetUp() override {
+    if ((std::is_same_v<T, tsl::float4_e2m1fn> ||
+         std::is_same_v<T, tsl::float8_e8m0fnu>) &&
+        test::DeviceTypeIs(test::kTpu)) {
+      // TODO(b/385004399): Run tests on these types on TPU.
+      GTEST_SKIP();
+    }
+  }
+};
 
 using FloatTypes =
     ::testing::Types<float, half, tsl::float8_e3m4, tsl::float8_e4m3,
                      tsl::float8_e4m3fn, tsl::float8_e4m3b11fnuz,
                      tsl::float8_e4m3fnuz, tsl::float8_e5m2,
                      tsl::float8_e5m2fnuz
-#ifndef XLA_TEST_BACKEND_TPU
-                     // TODO(b/385004399): Run tests on these types on TPU.
                      ,
                      tsl::float4_e2m1fn, tsl::float8_e8m0fnu
-#endif
                      >;
 
 TYPED_TEST_SUITE(ConstantsFloatTest, FloatTypes);
