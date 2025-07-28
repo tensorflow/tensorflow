@@ -68,6 +68,10 @@ test:nonpip_multi_gpu --config=nonpip_filters_multi_gpu -- \
 //tensorflow/python/kernel_tests:collective_ops_test_2gpu \
 //tensorflow/python/ops:collective_ops_gpu_test_2gpu \
 //tensorflow/python/ops:nccl_ops_test_2gpu \
+//tensorflow/dtensor/python/tests:multi_client_test_2gpus \
+//tensorflow/dtensor/python/tests:multi_client_test_nccl_2gpus \
+//tensorflow/dtensor/python/tests:multi_client_test_nccl_local_2gpus \
+//tensorflow/python/distribute/experimental:multi_worker_mirrored_strategy_test_2gpus \
 
 
 # For building libtensorflow archives
@@ -85,7 +89,7 @@ build:rbe --config=rbe_linux_cuda
 test:pycpp_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-cuda-only
 test:pycpp_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-cuda-only
 test:pycpp_filters --test_lang_filters=cc,py --test_size_filters=small,medium
-test:pycpp --config=pycpp_filters -- //tensorflow/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/dtensor/python/tests:multi_client_test_2gpus -//tensorflow/dtensor/python/tests:multi_client_test_nccl_2gpus -//tensorflow/python/distribute/experimental:multi_worker_mirrored_strategy_test_2gpus
+test:pycpp --config=pycpp_filters -- //tensorflow/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/dtensor/python/tests:multi_client_test_2gpus -//tensorflow/dtensor/python/tests:multi_client_test_nccl_2gpus -//tensorflow/dtensor/python/tests:multi_client_test_nccl_local_2gpus -//tensorflow/python/distribute/experimental:multi_worker_mirrored_strategy_test_2gpus
 
 # For XLA (rocm)
 test:xla_cpp_filters --test_tag_filters=gpu,requires-gpu-amd,-requires-gpu-nvidia,-no_oss,-oss_excluded,-oss_serial,-no_gpu,-cuda-only,-requires-gpu-sm60,-requires-gpu-sm60-only,-requires-gpu-sm70,-requires-gpu-sm70-only,-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm86,-requires-gpu-sm86-only,-requires-gpu-sm89,-requires-gpu-sm89-only,-requires-gpu-sm90,-requires-gpu-sm90-only --keep_going
