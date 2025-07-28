@@ -1,5 +1,6 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
@@ -386,17 +387,15 @@ tsl_gpu_library(
     alwayslink = 1,
 )
 
-xla_test(
+xla_cc_test(
     name = "cupti_buffer_events_test",
-    size = "small",
     srcs = ["cupti_buffer_events_test.cc"],
-    backends = ["cpu"],
-    copts = tf_profiler_copts() + tsl_copts(),
     tags = [
         "no_mac",
     ],
     deps = [
         ":cupti_buffer_events",
+        ":cupti_collector",  # buildcleaner: keep
         ":cupti_utils",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
@@ -410,6 +409,7 @@ xla_test(
     backends = ["gpu"],
     copts = tf_profiler_copts() + tsl_copts(),
     tags = [
+        "config-cuda-only",
         "cuda-only",
         "no_mac",
     ],
