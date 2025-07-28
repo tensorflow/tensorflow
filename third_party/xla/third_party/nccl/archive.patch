@@ -19,7 +19,6 @@ diff --git a/src/device/common.h b/src/device/common.h
  struct ncclShmemGroup {
    ncclConnInfo *recvConns[NCCL_MAX_ARITY];
 diff --git a/src/device/generate.py b/src/device/generate.py
-index a0d2259..62d6014 100755
 --- a/src/device/generate.py
 +++ b/src/device/generate.py
 @@ -194,8 +194,8 @@ kernel_funcs = sorted(set(best_kernel(*fn) for fn in primary_funcs))
@@ -110,3 +109,16 @@ index a0d2259..62d6014 100755
    out("LIB_OBJS_GEN = $(patsubst %, $(OBJDIR)/genobj/%.o, {names})\n"
        .format(names=" ".join(names)))
    out("\n")
+diff --git a/src/ras/ras.cc b/src/ras/ras.cc
+--- a/src/ras/ras.cc
++++ b/src/ras/ras.cc
+@@ -5,7 +5,9 @@
+  ************************************************************************/
+ 
+ // Workaround for libstdc++ trying to force public visibility of std:: symbols.  We don't want to do that in libnccl.so.
++#if defined(__GLIBCXX__)
+ #include <bits/c++config.h>
++#endif
+ #undef _GLIBCXX_VISIBILITY
+ #define _GLIBCXX_VISIBILITY(V)
+ #include <cstddef>
