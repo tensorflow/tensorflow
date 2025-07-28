@@ -2361,8 +2361,8 @@ TEST(XlaBuilderTest,
       /*broadcast_dimensions=*/{1, 2}, output_shape);
   EXPECT_THAT(
       BuildHloModule(b),
-      StatusIs(_,
-               HasSubstr("output_dimensions must be an integer type f32[3]")));
+      absl_testing::StatusIs(
+          _, HasSubstr("output_dimensions must be an integer type f32[3]")));
 }
 
 TEST(XlaBuilderTest, MhloDynamicBroadcastInDimInvalidOutputDimensionsRank) {
@@ -2377,8 +2377,8 @@ TEST(XlaBuilderTest, MhloDynamicBroadcastInDimInvalidOutputDimensionsRank) {
       /*broadcast_dimensions=*/{1, 2}, output_shape);
   EXPECT_THAT(
       BuildHloModule(b),
-      StatusIs(_,
-               HasSubstr("output_dimensions must be rank 1 but got rank 2")));
+      absl_testing::StatusIs(
+          _, HasSubstr("output_dimensions must be rank 1 but got rank 2")));
 }
 
 TEST(XlaBuilderTest, MhloDynamicBroadcastInDimIncompatibleBroadcastSize) {
@@ -2392,8 +2392,9 @@ TEST(XlaBuilderTest, MhloDynamicBroadcastInDimIncompatibleBroadcastSize) {
       /*broadcast_dimensions=*/{1, 2}, output_shape);
   EXPECT_THAT(
       BuildHloModule(b),
-      StatusIs(_, HasSubstr("size of operand dimension 0 (2) is not compatible "
-                            "with size of result dimension 1 (3)")));
+      absl_testing::StatusIs(
+          _, HasSubstr("size of operand dimension 0 (2) is not compatible "
+                       "with size of result dimension 1 (3)")));
 }
 
 TEST(XlaBuilderTest, MhloDynamicReshapeExportSuccess) {
@@ -2422,8 +2423,9 @@ TEST(XlaBuilderTest, MhloDynamicReshapeIncompatibleElementType) {
       /*output_shape=*/Parameter(&b, 1, output_shape, "output_shape"),
       /*shape=*/shape);
   EXPECT_THAT(BuildHloModule(b),
-              StatusIs(_, HasSubstr("Element type of operand f32[?,15] and "
-                                    "output s32[?,15] must match")));
+              absl_testing::StatusIs(
+                  _, HasSubstr("Element type of operand f32[?,15] and "
+                               "output s32[?,15] must match")));
 }
 
 TEST(XlaBuilderTest, MhloDynamicReshapeElementCountMismatch) {
@@ -2435,10 +2437,11 @@ TEST(XlaBuilderTest, MhloDynamicReshapeElementCountMismatch) {
       /*operand=*/Parameter(&b, 0, operand, "operand"),
       /*output_shape=*/Parameter(&b, 1, output_shape, "output_shape"),
       /*shape=*/shape);
-  EXPECT_THAT(BuildHloModule(b),
-              StatusIs(_, HasSubstr("MhloDynamicReshape has mismatched "
-                                    "element counts: from=45 (f32[3,15]) "
-                                    "to=60 (f32[4,15])")));
+  EXPECT_THAT(
+      BuildHloModule(b),
+      absl_testing::StatusIs(_, HasSubstr("MhloDynamicReshape has mismatched "
+                                          "element counts: from=45 (f32[3,15]) "
+                                          "to=60 (f32[4,15])")));
 }
 
 TEST(XlaBuilderTest, MhloDynamicReshapeRankMismatch) {
@@ -2452,8 +2455,9 @@ TEST(XlaBuilderTest, MhloDynamicReshapeRankMismatch) {
       /*shape=*/shape);
   EXPECT_THAT(
       BuildHloModule(b),
-      StatusIs(_, HasSubstr("output_shape dimension size=3 (s32[3]) and rank "
-                            "of shape=2 (f32[?,15]) must match")));
+      absl_testing::StatusIs(
+          _, HasSubstr("output_shape dimension size=3 (s32[3]) and rank "
+                       "of shape=2 (f32[?,15]) must match")));
 }
 
 TEST(XlaBuilderTest, ConvertSpmdShardToFullShape) {
@@ -2549,7 +2553,8 @@ TEST_P(XlaBuilderUnboundedBinaryOpTest, UnboundedBinaryOpTest) {
                 GmockMatch(m::Op().WithShapeEqualTo(&expected)));
   } else {
     ASSERT_TRUE(GetParam().error_message.has_value());
-    EXPECT_THAT(result, StatusIs(_, HasSubstr(*GetParam().error_message)));
+    EXPECT_THAT(result, absl_testing::StatusIs(
+                            _, HasSubstr(*GetParam().error_message)));
   }
 }
 
@@ -2584,8 +2589,9 @@ TEST(XlaBuilderTest, UnboundedAddUnsupportedImplicitBroadcast) {
   TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
   Add(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
       /*broadcast_dimensions=*/zero_array);
-  EXPECT_THAT(BuildHloModule(b),
-              StatusIs(_, HasSubstr(kBroadcastDimensionMismatch)));
+  EXPECT_THAT(
+      BuildHloModule(b),
+      absl_testing::StatusIs(_, HasSubstr(kBroadcastDimensionMismatch)));
 }
 
 TEST(XlaBuilderTest, UnboundedAllGather) {
@@ -2691,9 +2697,9 @@ TEST(XlaBuilderTest, UnboundedAllToAllTupleVariadicUnsupported) {
                     /*replica_groups=*/{}));
   EXPECT_THAT(
       BuildHloModule(b),
-      StatusIs(_,
-               HasSubstr(
-                   "AllToAllTuple does not support unbounded dynamic shapes")));
+      absl_testing::StatusIs(
+          _, HasSubstr(
+                 "AllToAllTuple does not support unbounded dynamic shapes")));
 }
 
 TEST(XlaBuilderTest, UnboundedAllToAllTupleUnsupported) {
@@ -2707,9 +2713,9 @@ TEST(XlaBuilderTest, UnboundedAllToAllTupleUnsupported) {
                     /*replica_groups=*/{}));
   EXPECT_THAT(
       BuildHloModule(b),
-      StatusIs(_,
-               HasSubstr(
-                   "AllToAllTuple does not support unbounded dynamic shapes")));
+      absl_testing::StatusIs(
+          _, HasSubstr(
+                 "AllToAllTuple does not support unbounded dynamic shapes")));
 }
 
 TEST(XlaBuilderTest, BoundedAllToAllTupleUnsupported) {
@@ -2723,8 +2729,8 @@ TEST(XlaBuilderTest, BoundedAllToAllTupleUnsupported) {
                     /*replica_groups=*/{}));
   EXPECT_THAT(
       BuildHloModule(b),
-      StatusIs(_,
-               HasSubstr("AllToAll does not support bounded dynamic shapes")));
+      absl_testing::StatusIs(
+          _, HasSubstr("AllToAll does not support bounded dynamic shapes")));
 }
 
 TEST(XlaBuilderTest, BoundedAllToAllUnsupported) {
@@ -2738,8 +2744,8 @@ TEST(XlaBuilderTest, BoundedAllToAllUnsupported) {
                     /*replica_groups=*/{}));
   EXPECT_THAT(
       BuildHloModule(b),
-      StatusIs(_,
-               HasSubstr("AllToAll does not support bounded dynamic shapes")));
+      absl_testing::StatusIs(
+          _, HasSubstr("AllToAll does not support bounded dynamic shapes")));
 }
 
 TEST(XlaBuilderTest, UnboundedAnd) {
@@ -2828,7 +2834,7 @@ TEST(XlaBuilderTest, UnboundedBroadcastUnsupportedOperand) {
   TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[<=3, ?]"));
   Broadcast(Parameter(&b, 0, operand, "operand"), /*broadcast_sizes=*/{1});
   EXPECT_THAT(BuildHloModule(b),
-              StatusIs(_, HasSubstr("is_unbounded_dynamic")));
+              absl_testing::StatusIs(_, HasSubstr("is_unbounded_dynamic")));
 }
 
 TEST(XlaBuilderTest, UnboundedBroadcastUnsupportedBroadcastSize) {
@@ -2838,7 +2844,8 @@ TEST(XlaBuilderTest, UnboundedBroadcastUnsupportedBroadcastSize) {
             /*broadcast_sizes=*/{Shape::kUnboundedSize});
   EXPECT_THAT(
       BuildHloModule(b),
-      StatusIs(_, HasSubstr("Non-broadcast dimensions must not be dynamic.")));
+      absl_testing::StatusIs(
+          _, HasSubstr("Non-broadcast dimensions must not be dynamic.")));
 }
 
 TEST(XlaBuilderTest, UnboundedBroadcastInDim) {
@@ -2859,9 +2866,10 @@ TEST(XlaBuilderTest, UnboundedBroadcastInDimUnsupported) {
   BroadcastInDim(Parameter(&b, 0, operand, "operand"),
                  /*out_dim_size=*/{2, 3, Shape::kUnboundedSize},
                  /*broadcast_dimensions=*/{0, 2});
-  EXPECT_THAT(BuildHloModule(b),
-              StatusIs(_, HasSubstr("BroadcastInDim output must shape be "
-                                    "static or bounded dynamic")));
+  EXPECT_THAT(
+      BuildHloModule(b),
+      absl_testing::StatusIs(_, HasSubstr("BroadcastInDim output must shape be "
+                                          "static or bounded dynamic")));
 }
 
 TEST(XlaBuilderTest, UnboundedCall) {
@@ -2976,7 +2984,8 @@ TEST(XlaBuilderTest,
   Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
         Parameter(&b, 2, ehs, "ehs"));
   EXPECT_THAT(BuildHloModule(b),
-              StatusIs(_, HasSubstr("Unimplemented implicit broadcast.")));
+              absl_testing::StatusIs(
+                  _, HasSubstr("Unimplemented implicit broadcast.")));
 }
 
 TEST(XlaBuilderTest, UnboundedCollectiveBroadcast) {
@@ -3472,9 +3481,9 @@ TEST(XlaBuilderTest, UnboundedReshapeUnsupportedOutputShape) {
           /*dimensions=*/{Shape::kUnboundedSize, Shape::kUnboundedSize});
   EXPECT_THAT(
       BuildHloModule(b),
-      StatusIs(_,
-               HasSubstr(
-                   "Reshaping with unbounded result shape is not supported.")));
+      absl_testing::StatusIs(
+          _, HasSubstr(
+                 "Reshaping with unbounded result shape is not supported.")));
 }
 
 TEST(XlaBuilderTest, UnboundedReshapeUnsupportedInferredShape) {
@@ -3483,9 +3492,9 @@ TEST(XlaBuilderTest, UnboundedReshapeUnsupportedInferredShape) {
   Reshape(operand, Parameter(&b, 0, operand, "operand"));
   EXPECT_THAT(
       BuildHloModule(b),
-      StatusIs(_,
-               HasSubstr(
-                   "Reshaping with unbounded result shape is not supported.")));
+      absl_testing::StatusIs(
+          _, HasSubstr(
+                 "Reshaping with unbounded result shape is not supported.")));
 }
 
 TEST(XlaBuilderTest, UnboundedReverse) {
@@ -3652,7 +3661,8 @@ TEST(XlaBuilderTest,
   Select(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
          Parameter(&b, 2, ehs, "ehs"));
   EXPECT_THAT(BuildHloModule(b),
-              StatusIs(_, HasSubstr("Unimplemented implicit broadcast.")));
+              absl_testing::StatusIs(
+                  _, HasSubstr("Unimplemented implicit broadcast.")));
 }
 
 TEST(XlaBuilderTest, UnboundedSelectAndScatter) {
