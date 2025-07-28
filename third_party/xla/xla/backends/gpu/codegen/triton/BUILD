@@ -630,6 +630,7 @@ xla_test(
         "no_mac",
     ],
     deps = [
+        ":test_utils",
         "//xla:autotuning_proto_cc",
         "//xla:error_spec",
         "//xla:literal_util",
