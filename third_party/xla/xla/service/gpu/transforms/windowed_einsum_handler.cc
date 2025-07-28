@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
@@ -1435,6 +1436,12 @@ absl::StatusOr<bool> WindowedEinsumHandler::Run(
             /*force_unroll=*/false));
 
     if (result.unrolled) {
+      // Needed for the nested while loops in which the outer loop has been
+      // unrolled which leaves the call graph non-flat. This is likely not the
+      // optimal way to do things, but it preserves the previous behavior of
+      // UnrollAndReturnReplacement which used to do it internally.
+      TF_RETURN_IF_ERROR(FlattenCallGraph().Run(module).status());
+
       result.new_while_op->while_body()->SetAndSanitizeName(
           absl::StrCat("unrolled_", original_body_name));
       result.new_while_op->while_condition()->SetAndSanitizeName(
