@@ -34,6 +34,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout_util.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/gpu/target_util.h"
@@ -54,8 +55,9 @@ namespace {
 
 // Adds the inner comparison loop body where we compare elements.
 absl::Status EmitCompareLoopBody(
-    int64_t iteration_bound, int64_t unroll_factor, int64_t num_values,
-    llvm::Value* element_pair_index, int64_t xor_mask, llvm::Type* index_type,
+    int64_t iteration_bound, int64_t num_threads, int64_t unroll_factor,
+    int64_t num_values, llvm::Value* element_pair_index, int64_t xor_mask,
+    llvm::Type* index_type,
     std::function<llvm::Value*(int64_t operand, llvm::Value* index)>
         element_address,
     std::function<llvm::Type*(int64_t operand, llvm::Value* index)>
@@ -85,13 +87,42 @@ absl::Status EmitCompareLoopBody(
     // There is no adjacent block inside bounds with which to compare elements.
     return absl::OkStatus();
   }
-  element_pair_index =
-      b->CreateMul(element_pair_index, index_typed_constant(unroll_factor),
-                   "element_pair_index", /*HasNUW=*/true, /*HasNSW=*/true);
+  if (num_threads % gpu::kNumShmemBanks == 0 && unroll_factor > 1) {
+    // We want to avoid bank conflicts, therefore we want to make sure that
+    // a thread keeps the same bank offsets for each element pair it processes.
+    // We can do that by (implicitly) subdividing our index space into blocks of
+    // size `kNumShmemBanks`, and letting a thread handle element pairs from
+    // different adjacent such blocks. We do not need to consider the bitwidth
+    // of the element types involved, as long as the number of threads per warp
+    // is equal to the number of shared memory banks. Otherwise, we may need to
+    // choose a bigger block size for data types with bitwidth smaller than the
+    // bitwidth of a shared memory bank.
+    auto bank_row_id = b->CreateUDiv(element_pair_index,
+                                     index_typed_constant(gpu::kNumShmemBanks));
+    auto offset = b->CreateURem(element_pair_index,
+                                index_typed_constant(gpu::kNumShmemBanks));
+    auto first_in_bank_row = b->CreateMul(
+        bank_row_id, index_typed_constant(unroll_factor * gpu::kNumShmemBanks),
+        "first_in_bank_row", /*HasNUW=*/true, /*HasNSW=*/true);
+    element_pair_index =
+        b->CreateAdd(first_in_bank_row, offset, "element_pair_index",
+                     /*HasNUW=*/true, /*HasNSW=*/true);
+  } else {
+    element_pair_index =
+        b->CreateMul(element_pair_index, index_typed_constant(unroll_factor),
+                     "element_pair_index", /*HasNUW=*/true, /*HasNSW=*/true);
+  }
   for (int64_t i = 0; i < unroll_factor; ++i) {
-    auto current_keys_index =
-        b->CreateAdd(element_pair_index, index_typed_constant(i),
-                     "current_keys_index", /*hasNUW=*/true, /*HasNSW=*/true);
+    llvm::Value* current_keys_index;
+    if (num_threads % gpu::kNumShmemBanks == 0) {
+      current_keys_index = b->CreateAdd(
+          element_pair_index, index_typed_constant(i * gpu::kNumShmemBanks),
+          "current_keys_index", /*hasNUW=*/true, /*HasNSW=*/true);
+    } else {
+      current_keys_index =
+          b->CreateAdd(element_pair_index, index_typed_constant(i),
+                       "current_keys_index", /*hasNUW=*/true, /*HasNSW=*/true);
+    }
     if (block_size == 1) {
       // If the block size is 1, we take every second element and compare it to
       // the next one.
@@ -186,8 +217,8 @@ absl::Status EmitCompareLoopBody(
 
 absl::Status EmitTiledCompareLoop(
     const IrArray::Index& tiled_keys_index, int64_t dimension_to_sort,
-    int64_t dimension_to_sort_bound, absl::Span<const int64_t> xor_masks,
-    const std::vector<IrArray>& params,
+    int64_t dimension_to_sort_bound, int64_t num_threads,
+    absl::Span<const int64_t> xor_masks, const std::vector<IrArray>& params,
     const std::vector<llvm::GlobalVariable*>& param_shmem_buffers,
     int64_t tile_size, int64_t unroll_factor,
     const EmitCallToNestedComputationCallback& emit_compare_callback,
@@ -195,7 +226,7 @@ absl::Status EmitTiledCompareLoop(
   KernelSupportLibrary ksl(b);
   llvm::Value* thread_id = gpu::EmitCallToTargetIntrinsic(
       gpu::TargetIntrinsicID::kThreadIdx, {}, {}, b);
-  llvm_ir::AddRangeMetadata(0, std::max(int64_t{1}, tile_size / unroll_factor),
+  llvm_ir::AddRangeMetadata(0, num_threads,
                             llvm::cast<llvm::Instruction>(thread_id),
                             b->GetInsertBlock()->getModule());
   thread_id = b->CreateIntCast(thread_id, tiled_keys_index.GetType(),
@@ -298,25 +329,26 @@ absl::Status EmitTiledCompareLoop(
                   RoundDownTo(dimension_to_sort_bound, tile_size))),
           [&]() {
             return EmitCompareLoopBody(
-                dimension_to_sort_bound % tile_size, unroll_factor / 2,
-                params.size(), element_pair_index, xor_mask,
+                dimension_to_sort_bound % tile_size, num_threads,
+                unroll_factor / 2, params.size(), element_pair_index, xor_mask,
                 tiled_keys_index.GetType(), element_address,
                 element_address_pointee_type, write_element,
                 emit_compare_callback, b);
           },
           [&]() {
             return EmitCompareLoopBody(
-                tile_size, unroll_factor / 2, params.size(), element_pair_index,
-                xor_mask, tiled_keys_index.GetType(), element_address,
-                element_address_pointee_type, write_element,
+                tile_size, num_threads, unroll_factor / 2, params.size(),
+                element_pair_index, xor_mask, tiled_keys_index.GetType(),
+                element_address, element_address_pointee_type, write_element,
                 emit_compare_callback, b,
                 /*needs_bounds_checks=*/false);
           }));
     } else {
       TF_RETURN_IF_ERROR(EmitCompareLoopBody(
-          tile_size, unroll_factor / 2, params.size(), element_pair_index,
-          xor_mask, tiled_keys_index.GetType(), element_address,
-          element_address_pointee_type, write_element, emit_compare_callback, b,
+          tile_size, num_threads, unroll_factor / 2, params.size(),
+          element_pair_index, xor_mask, tiled_keys_index.GetType(),
+          element_address, element_address_pointee_type, write_element,
+          emit_compare_callback, b,
           /*needs_bounds_checks=*/false));
     }
     // Wait until all comparisons have happened.
@@ -371,6 +403,7 @@ absl::Status EmitSortInPlace(
 
   const Shape& keys_shape = values_arrays[0].GetShape();
   int64_t rank = keys_shape.dimensions().size();
+  int64_t num_threads = std::max(int64_t{1}, tile_size / unroll_factor);
   int64_t dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
   std::vector<int64_t> dimensions_in_iteration_order(rank);
   std::vector<int64_t> iteration_order_to_logical_order(rank);
@@ -427,9 +460,9 @@ absl::Status EmitSortInPlace(
       IrArray::Index keys_index(keys_multi_index, values_arrays[0].GetShape(),
                                 tiles_index.GetType());
       TF_RETURN_IF_ERROR(EmitTiledCompareLoop(
-          keys_index, dimension_to_sort, dimension_to_sort_bound, xor_masks,
-          values_arrays, param_shmem_buffers, tile_size, unroll_factor,
-          emit_compare_callback, b));
+          keys_index, dimension_to_sort, dimension_to_sort_bound, num_threads,
+          xor_masks, values_arrays, param_shmem_buffers, tile_size,
+          unroll_factor, emit_compare_callback, b));
     } else {
       auto element_address = [&](int64_t operand, llvm::Value* index) {
         keys_multi_index[dimension_to_sort] = index;
@@ -450,10 +483,10 @@ absl::Status EmitSortInPlace(
         values_arrays[operand].EmitWriteArrayElement(keys_index, value, b);
       };
       TF_RETURN_IF_ERROR(EmitCompareLoopBody(
-          dimension_to_sort_bound, unroll_factor / 2, values_arrays.size(),
-          tiles_index[rank - 1], xor_masks[0], tiles_index.GetType(),
-          element_address, element_address_pointee_type, write_element,
-          emit_compare_callback, b));
+          dimension_to_sort_bound, /*num_threads=*/1, unroll_factor / 2,
+          values_arrays.size(), tiles_index[rank - 1], xor_masks[0],
+          tiles_index.GetType(), element_address, element_address_pointee_type,
+          write_element, emit_compare_callback, b));
     }
     return absl::OkStatus();
   };
