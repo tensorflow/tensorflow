@@ -451,7 +451,7 @@ def _tf_repositories():
         strip_prefix = "grpc-1.72.2",
         system_build_file = "//third_party/systemlibs:grpc.BUILD",
         patch_file = [
-            "@local_xla//third_party/grpc:grpc-1.72.2.patch",
+            "@local_xla//third_party/grpc:grpc.patch",
         ],
         urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.72.2.tar.gz"),
     )
@@ -833,7 +833,7 @@ def _tf_repositories():
         name = "com_google_ortools",
         sha256 = "f6a0bd5b9f3058aa1a814b798db5d393c31ec9cbb6103486728997b49ab127bc",
         strip_prefix = "or-tools-9.11",
-        patch_file = ["@local_xla//third_party/ortools:ortools-9.11.patch"],
+        patch_file = ["@local_xla//third_party/ortools:ortools.patch"],
         urls = tf_mirror_urls("https://github.com/google/or-tools/archive/v9.11.tar.gz"),
         repo_mapping = {
             "@com_google_protobuf_cc": "@com_google_protobuf",

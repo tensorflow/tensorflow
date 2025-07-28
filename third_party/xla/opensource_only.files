@@ -146,7 +146,6 @@ xla/third_party/nvshmem/nvshmem.BUILD:
 xla/third_party/nvshmem/workspace.bzl:
 xla/third_party/nvtx/LICENSE:
 xla/third_party/ortools/glpk.BUILD:
-xla/third_party/ortools/ortools-9.11.patch:
 xla/third_party/ortools/ortools.patch:
 xla/third_party/pybind11.BUILD:
 xla/third_party/six.BUILD:
