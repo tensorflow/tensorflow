@@ -778,6 +778,36 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stable
 +    assert os.path.exists(
 +        metadata_file
 +    ), f"Metadata file not found: {metadata_file}"
+diff --ruN a/stablehlo/stablehlo/reference/InterpreterInstrumentWithProbe.cpp b/stablehlo/stablehlo/reference/InterpreterInstrumentWithProbe.cpp
+--- stablehlo/stablehlo/reference/InterpreterInstrumentWithProbe.cpp
++++ stablehlo/stablehlo/reference/InterpreterInstrumentWithProbe.cpp
+@@ -43,7 +43,7 @@
+   InterpreterInstrumentWithProbePass(
+       const InterpreterInstrumentWithProbePassOptions& opts)
+       : InterpreterInstrumentWithProbePassBase<
+-            InterpreterInstrumentWithProbePass>(opts){};
++            InterpreterInstrumentWithProbePass>(opts) {};
+   void runOnOperation() override;
+ 
+  private:
+@@ -122,7 +122,16 @@
+ }
+ 
+ bool InterpreterInstrumentWithProbePass::shouldProbeValue(Value value) const {
+-  return isa<TensorType>(value.getType());
++  // Check if the value's type is a RankedTensorType.
++  auto tensorType = dyn_cast<RankedTensorType>(value.getType());
++  if (!tensorType) return false;
++
++  // Check if the RankedTensorType has a static shape.
++  if (!tensorType.hasStaticShape()) return false;
++
++  Type elementType = tensorType.getElementType();
++
++  return elementType.isIntOrFloat() || isa<ComplexType>(elementType);
+ }
+ 
+ }  // namespace
 diff --ruN a/stablehlo/stablehlo/tests/infer_stablehlo.mlir b/stablehlo/stablehlo/tests/infer_stablehlo.mlir
 --- stablehlo/stablehlo/tests/infer_stablehlo.mlir
 +++ stablehlo/stablehlo/tests/infer_stablehlo.mlir
@@ -853,6 +883,30 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.ml
  }
  
  // -----
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_probe_instrumentation.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_probe_instrumentation.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_probe_instrumentation.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_probe_instrumentation.mlir
+@@ -1,4 +1,4 @@
+-// RUN: stablehlo-opt --interpreter-instrument-with-probe="useDebugInfo=true" --split-input-file --verify-diagnostics %s | FileCheck %s
++// RUN: stablehlo-opt --allow-unregistered-dialect --interpreter-instrument-with-probe="useDebugInfo=true" --split-input-file --verify-diagnostics %s | FileCheck %s
+ 
+ // CHECK-LABEL: func @instrument_basic_no_location
+ func.func @instrument_basic_no_location(%arg0: tensor<1x2xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
+@@ -98,3 +98,14 @@
+ 
+   func.return %results1 : tensor<i64>
+ }
++
++// -----
++
++// CHECK-LABEL: func @test_string_type
++func.func @test_string_type() -> tensor<!tf_type.string> {
++  // CHECK: "tf.Const"
++  // CHECK-NOT: interpreter.probe
++  // CHECK-NEXT: return
++  %0 = "tf.Const"() {value = dense<"hello"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
++  return %0 : tensor<!tf_type.string>
++}
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
 --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
 +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
