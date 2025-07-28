@@ -3447,6 +3447,7 @@ func.func @test_sparse_to_dense(%arg0 : tensor<?x2xi64>, %arg1 : tensor<?xi64>) 
 // CHECK-DAG: %[[VAR3:.*]] = tosa.reduce_sum %[[VAR2:.*]] {axis = 1 : i32} : (tensor<1x2xi32>)
 // CHECK-DAG: %[[VAR5:.*]] = tosa.scatter %[[VAR1:.*]], %[[VAR3:.*]], %arg0 : (tensor<1x224x512xf32>, tensor<1x1xi32>, tensor<1x1x512xf32>)
 // CHECK: return %[[VAR5]]
+// CHECK-NOT: tosa.add
 func.func @test_scatter_nd(%arg0: tensor<1x1x512xf32>) -> tensor<1x224x512xf32> {
   %shape = "tfl.pseudo_const"() <{value = dense<[1, 224, 512]> : tensor<3xi32>}> : () -> tensor<3xi32>
   %indices = "tfl.pseudo_const"() <{value = dense<[[[0, 0]]]> : tensor<1x1x2xi32>}> : () -> tensor<1x1x2xi32>
@@ -3457,20 +3458,19 @@ func.func @test_scatter_nd(%arg0: tensor<1x1x512xf32>) -> tensor<1x224x512xf32> 
 // -----
 
 // CHECK-LABEL: test_scatter_nd_reshape
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() <{values = dense<{{\[\[}}8, 4, 1]]> : tensor<1x3xi32>}> : ()
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1x16x4xf32>}> : ()
-// CHECK-DAG: %[[VAR3:.*]] = "tosa.const"() <{values = dense<{{\[\[}}0, 0, 0], [0, 0, 1], [0, 0, 2], [0, 0, 3], [1, 0, 0], [1, 0, 1], [1, 0, 2], [1, 0, 3]]> : tensor<8x3xi32>}> : ()
-// CHECK-DAG: %[[SHIFT:.*]] = "tosa.const"() <{values = dense<0> : tensor<1xi8>}>
-// CHECK-DAG: %[[NEW_SHAPE:.*]] = tosa.const_shape {values = dense<[1, 8, 4]> : tensor<3xindex>}
-// CHECK-DAG: %[[NEW_SHAPE1:.*]] = tosa.const_shape {values = dense<[1, 8]> : tensor<2xindex>}
-// CHECK-DAG: %[[NEW_SHAPE2:.*]] = tosa.const_shape {values = dense<[2, 2, 4, 4]> : tensor<4xindex>}
-// CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %arg0, %[[NEW_SHAPE]] : (tensor<2x2x2x4xf32>, !tosa.shape<3>)
-// CHECK-DAG: %[[VAR5:.*]] = tosa.mul %[[VAR3]], %[[VAR1]], %[[SHIFT]] : (tensor<8x3xi32>, tensor<1x3xi32>, tensor<1xi8>)
-// CHECK-DAG: %[[VAR6:.*]] = tosa.reduce_sum %[[VAR5]] {axis = 1 : i32} : (tensor<8x3xi32>)
-// CHECK-DAG: %[[VAR7:.*]] = tosa.reshape %[[VAR6]], %[[NEW_SHAPE1]] : (tensor<8x1xi32>, !tosa.shape<2>)
-// CHECK-DAG: %[[VAR8:.*]] = tosa.scatter %[[VAR2]], %[[VAR7]], %[[VAR4]] : (tensor<1x16x4xf32>, tensor<1x8xi32>, tensor<1x8x4xf32>)
-// CHECK-DAG: %[[VAR9:.*]] = tosa.reshape %[[VAR8]], %[[NEW_SHAPE2]] : (tensor<1x16x4xf32>, !tosa.shape<4>)
-// CHECK-DAG: return %[[VAR9]]
+// CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape  {values = dense<[2, 2, 4, 4]> : tensor<4xindex>}
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1x16x4xf32>}>
+// CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape  {values = dense<[1, 8]> : tensor<2xindex>}
+// CHECK-DAG: %[[VAR4:.*]] = "tosa.const"() <{values = dense<0> : tensor<1xi8>}>
+// CHECK-DAG: %[[VAR6:.*]] = "tosa.const"() <{values = dense<{{\[\[8}}, 4, 1]]> : tensor<1x3xi32>}>
+// CHECK-DAG: %[[VAR8:.*]] = "tosa.const"() <{values = dense<{{\[\[}}0, 0, 0], [0, 0, 1], [0, 0, 2], [0, 0, 3], [1, 0, 0], [1, 0, 1], [1, 0, 2], [1, 0, 3]]> : tensor<8x3xi32>}>
+// CHECK-DAG: %[[VAR10:.*]] = tosa.reshape %arg0, %[[VAR9:.*]] : (tensor<2x2x2x4xf32>, !tosa.shape<3>)
+// CHECK-DAG: %[[VAR13:.*]] = tosa.mul %[[VAR8]], %[[VAR6]], %[[VAR4]] : (tensor<8x3xi32>, tensor<1x3xi32>, tensor<1xi8>)
+// CHECK-DAG: %[[VAR14:.*]] = tosa.reduce_sum %[[VAR13]] {axis = 1 : i32} : (tensor<8x3xi32>)
+// CHECK-DAG: %[[VAR15:.*]] = tosa.reshape %[[VAR14]], %[[VAR3]] : (tensor<8x1xi32>, !tosa.shape<2>)
+// CHECK-DAG: %[[VAR16:.*]] = tosa.scatter %[[VAR2]], %[[VAR15]], %[[VAR10]] : (tensor<1x16x4xf32>, tensor<1x8xi32>, tensor<1x8x4xf32>)
+// CHECK-DAG: %[[VAR17:.*]] = tosa.reshape %[[VAR16]], %[[VAR1]] : (tensor<1x16x4xf32>, !tosa.shape<4>)
+// CHECK-NOT: tosa.add
 func.func @test_scatter_nd_reshape(%arg0: tensor<2x2x2x4xf32>) -> tensor<2x2x4x4xf32> {
   %shape = "tfl.pseudo_const"() <{value = dense<[2, 2, 4, 4]> : tensor<4xi32>}> : () -> tensor<4xi32>
   %indices = "tfl.pseudo_const"() <{value = dense<[[[[0, 0, 0], [0, 0, 1]], [[0, 0, 2], [0, 0, 3]]], [[[1, 0, 0], [1, 0, 1]], [[1, 0, 2], [1, 0, 3]]]]> : tensor<2x2x2x3xi32>}> : () -> tensor<2x2x2x3xi32>
@@ -3486,6 +3486,7 @@ func.func @test_scatter_nd_reshape(%arg0: tensor<2x2x2x4xf32>) -> tensor<2x2x4x4
 // CHECK-DAG: %[[VAR3:.*]] = tosa.reduce_sum %[[VAR2:.*]] {axis = 1 : i32} : (tensor<1x2xi32>)
 // CHECK-DAG: %[[VAR4:.*]] = tosa.scatter %[[VAR1:.*]], %[[VAR3:.*]], %arg0 : (tensor<1x224x512x!quant.uniform<i8:f32, 1.000000e-01:-128>>, tensor<1x1xi32>, tensor<1x1x512x!quant.uniform<i8:f32, 1.000000e-01:-128>>)
 // CHECK: return %[[VAR4]]
+// CHECK-NOT: tosa.add
 func.func @test_scatter_nd_qi8(%arg0: tensor<1x1x512x!quant.uniform<i8:f32, 0.1:-128>>) -> tensor<1x224x512x!quant.uniform<i8:f32, 0.1:-128>> {
   %shape = "tfl.pseudo_const"() <{value = dense<[1, 224, 512]> : tensor<3xi32>}> : () -> tensor<3xi32>
   %indices = "tfl.pseudo_const"() <{value = dense<[[[0, 0]]]> : tensor<1x1x2xi32>}> : () -> tensor<1x1x2xi32>
@@ -3496,12 +3497,80 @@ func.func @test_scatter_nd_qi8(%arg0: tensor<1x1x512x!quant.uniform<i8:f32, 0.1:
 // -----
 
 // CHECK-LABEL: test_scatter_nd_duplicate_indices
-// CHECK: tfl.scatter_nd
+// CHECK: %[[IDX_8:.*]]    = "tosa.const"()         {{.*}}tensor<1x1xi32>
+// CHECK: %[[INDICES:.*]] = "tosa.const"() <{values = dense<{{\[\[}}0, 1, 2, 3, 8, 10, 11{{\]\]}}> : tensor<1x7xi32>}> : () -> tensor<1x7xi32>
+// CHECK: %[[ZERO:.*]]     = "tosa.const"()         {{.*}}tensor<1x16x4xf32>
+// CHECK: %[[CONCAT:.*]] = tosa.concat {{.*}} -> tensor<1x7x4xf32>
+// CHECK: %[[SCAT_A:.*]] = tosa.scatter %[[ZERO]],  %[[INDICES]], %[[CONCAT]]
+// CHECK: %[[SLICE_B:.*]] = tosa.slice {{.*}} -> tensor<1x1x4xf32>
+// CHECK: %[[SCAT_B:.*]] = tosa.scatter %[[ZERO]],  %[[IDX_8]],  %[[SLICE_B]]
+// CHECK: %[[ADD:.*]]    = tosa.add     %[[SCAT_A]], %[[SCAT_B]]
+// CHECK: %[[OUT:.*]] = tosa.reshape %[[ADD]], {{.*}} -> tensor<2x2x4x4xf32>
+// CHECK: return %[[OUT]]
 func.func @test_scatter_nd_duplicate_indices(%arg0: tensor<2x2x2x4xf32>) -> tensor<2x2x4x4xf32> {
   %shape = "tfl.pseudo_const"() <{value = dense<[2, 2, 4, 4]> : tensor<4xi32>}> : () -> tensor<4xi32>
   %indices = "tfl.pseudo_const"() <{value = dense<[[[[0, 0, 0], [0, 0, 1]], [[0, 0, 2], [0, 0, 3]]], [[[1, 0, 0], [1, 0, 0]], [[1, 0, 2], [1, 0, 3]]]]> : tensor<2x2x2x3xi32>}> : () -> tensor<2x2x2x3xi32>
   %0 = "tfl.scatter_nd"(%indices, %arg0, %shape) : (tensor<2x2x2x3xi32>, tensor<2x2x2x4xf32>, tensor<4xi32>) -> tensor<2x2x4x4xf32>
   func.return %0 : tensor<2x2x4x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_scatter_nd_duplicate_indices_qi8
+// CHECK: %[[IDX_0:.*]]  = "tosa.const"() {{.*}} -> tensor<1x1xi32>
+// CHECK: %[[ZERO:.*]]   = "tosa.const"() {{.*}} ->  tensor<1x4x4x!quant.uniform<i8:f32, 1.000000e-01:-128>>
+// CHECK: %[[RESHAPE:.*]] = tosa.reshape %arg0, {{.*}}
+// CHECK: %[[CAST_ZERO:.*]] = tosa.cast %[[ZERO]] {{.*}} -> tensor<1x4x4xi32>
+// CHECK: %[[UPD_A:.*]]  = tosa.slice %[[RESHAPE]], {{.*}} -> tensor<1x1x4x!quant.uniform<i8:f32, 1.000000e-01:-128>>
+// CHECK: %[[SCAT_A:.*]] = tosa.scatter %[[ZERO]], %[[IDX_0]], %[[UPD_A]] {{.*}}
+// CHECK: %[[CAST_A:.*]] = tosa.cast %[[SCAT_A]] {{.*}} -> tensor<1x4x4xi32>
+// CHECK: %[[ACC_A:.*]]  = tosa.add %[[CAST_ZERO]], %[[CAST_A]] {{.*}} -> tensor<1x4x4xi32>
+// CHECK: %[[UPD_B:.*]]  = tosa.slice %[[RESHAPE]], {{.*}} -> tensor<1x1x4x!quant.uniform<i8:f32, 1.000000e-01:-128>>
+// CHECK: %[[SCAT_B:.*]] = tosa.scatter %[[ZERO]], %[[IDX_0]], %[[UPD_B]] {{.*}}
+// CHECK: %[[CAST_B:.*]] = tosa.cast %[[SCAT_B]] {{.*}} -> tensor<1x4x4xi32>
+// CHECK: %[[ACC_B:.*]]  = tosa.add %[[ACC_A]], %[[CAST_B]] {{.*}} -> tensor<1x4x4xi32>
+// CHECK: %[[RESULT:.*]] = tosa.cast %[[ACC_B]] {{.*}} -> tensor<1x4x4x!quant.uniform<i8:f32, 1.000000e-01:-128>>
+// CHECK: return %[[RESULT]]
+
+func.func @test_scatter_nd_duplicate_indices_qi8(
+    %arg0: tensor<2x1x4x!quant.uniform<i8:f32, 0.1:-128>>
+  ) -> tensor<1x4x4x!quant.uniform<i8:f32, 0.1:-128>> {
+  %shape = "tfl.pseudo_const"() <{value = dense<[1, 4, 4]> : tensor<3xi32>}> : () -> tensor<3xi32>
+  %indices = "tfl.pseudo_const"() <{
+      value = dense<[[[0, 0]], [[0, 0]]]> : tensor<2x1x2xi32>
+    }> : () -> tensor<2x1x2xi32>
+  %0 = "tfl.scatter_nd"(%indices, %arg0, %shape)
+         : (tensor<2x1x2xi32>,
+            tensor<2x1x4x!quant.uniform<i8:f32, 0.1:-128>>,
+            tensor<3xi32>)
+           -> tensor<1x4x4x!quant.uniform<i8:f32, 0.1:-128>>
+  func.return %0 : tensor<1x4x4x!quant.uniform<i8:f32, 0.1:-128>>
+}
+
+// -----
+
+// CHECK-LABEL: test_scatter_nd_duplicate_indices_fp8e4m3
+// CHECK: %[[IDX_0:.*]]   = "tosa.const"() {{.*}}tensor<1x1xi32>
+// CHECK: %[[ZERO:.*]]    = "tosa.const"() {{.*}}tensor<1x4x4xf8E4M3FN>
+// CHECK: %[[RESHAPE:.*]] = tosa.reshape %arg0, {{.*}} -> tensor<1x2x4xf8E4M3FN>
+// CHECK: %[[SLICE_A:.*]] = tosa.slice %[[RESHAPE]], {{.*}} -> tensor<1x1x4xf8E4M3FN>
+// CHECK: %[[SCAT_A:.*]]  = tosa.scatter %[[ZERO]], %[[IDX_0]], %[[SLICE_A]]
+// CHECK: %[[CAST_A:.*]]  = tosa.cast %[[SCAT_A]] {{.*}} -> tensor<1x4x4xf32>
+// CHECK: %[[SLICE_B:.*]] = tosa.slice %[[RESHAPE]], {{.*}} -> tensor<1x1x4xf8E4M3FN>
+// CHECK: %[[SCAT_B:.*]]  = tosa.scatter %[[ZERO]], %[[IDX_0]], %[[SLICE_B]]
+// CHECK: %[[CAST_B:.*]]  = tosa.cast %[[SCAT_B]] {{.*}} -> tensor<1x4x4xf32>
+// CHECK: %[[ADD:.*]]     = tosa.add %[[CAST_A]], %[[CAST_B]]
+// CHECK: %[[RESULT:.*]]  = tosa.cast %[[ADD]] {{.*}} -> tensor<1x4x4xf8E4M3FN>
+// CHECK: return %[[RESULT]]
+func.func @test_scatter_nd_duplicate_indices_fp8e4m3(
+    %arg0: tensor<2x1x4xf8E4M3FN>
+  ) -> tensor<1x4x4xf8E4M3FN> {
+  %shape   = "tfl.pseudo_const"() <{value = dense<[1, 4, 4]> : tensor<3xi32>}> : () -> tensor<3xi32>
+  %indices = "tfl.pseudo_const"() <{value = dense<[[[0, 0]], [[0, 0]]]> : tensor<2x1x2xi32>}> : () -> tensor<2x1x2xi32>
+  %0 = "tfl.scatter_nd"(%indices, %arg0, %shape)
+       : (tensor<2x1x2xi32>, tensor<2x1x4xf8E4M3FN>, tensor<3xi32>)
+         -> tensor<1x4x4xf8E4M3FN>
+  func.return %0 : tensor<1x4x4xf8E4M3FN>
 }
 
 // -----
