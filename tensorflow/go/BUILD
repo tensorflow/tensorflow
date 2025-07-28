@@ -28,10 +28,6 @@ sh_test(
     tags = ["manual"],
 )
 
-# ------------------------------------------------------------------------------
-# go_default_test: Runs all Go tests in this package, including new session config tests.
-# This target ensures that all *_test.go files are executed as part of the Bazel test suite.
-# ------------------------------------------------------------------------------
 go_test(
     name = "go_default_test",
     srcs = glob(["*_test.go"]),
