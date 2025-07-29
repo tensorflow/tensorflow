@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/service/gpu/model/experimental/symbolic_tile.h"
+#include "xla/service/gpu/model/experimental/tiling_space.h"
 
 namespace xla::gpu::experimental {
 
@@ -33,8 +34,8 @@ MATCHER_P(MatchString, symbolic_tile_string, "") {
 }
 
 SymbolicTile GetTestSymbolicTile(mlir::MLIRContext* mlir_context,
-                                 absl::Span<const int64_t> shape,
-                                 int64_t num_rt_vars = 0);
+                                 const TilingSpace& tiling_space,
+                                 absl::Span<const int64_t> shape);
 
 }  // namespace xla::gpu::experimental
 

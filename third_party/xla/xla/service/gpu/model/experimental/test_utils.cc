@@ -34,8 +34,8 @@ using ::mlir::getAffineSymbolExpr;
 using ::mlir::MLIRContext;
 
 SymbolicTile GetTestSymbolicTile(MLIRContext* mlir_context,
-                                 absl::Span<const int64_t> shape,
-                                 int64_t num_rt_vars) {
+                                 const TilingSpace& tiling_space,
+                                 absl::Span<const int64_t> shape) {
   int64_t rank = shape.size();
   SmallVector<DimTile> dim_tiles;
   dim_tiles.reserve(rank);
@@ -47,7 +47,7 @@ SymbolicTile GetTestSymbolicTile(MLIRContext* mlir_context,
         tid * ts, ts, mlir::getAffineConstantExpr(index + 1, mlir_context),
         mlir::getAffineConstantExpr(dim, mlir_context)});
   }
-  return SymbolicTile{mlir_context, /*num_tile_ids=*/rank, num_rt_vars,
-                      std::move(dim_tiles)};
+  return SymbolicTile{mlir_context, tiling_space, std::move(dim_tiles)};
 }
+
 }  // namespace xla::gpu::experimental

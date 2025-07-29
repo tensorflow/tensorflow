@@ -34,24 +34,31 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
+namespace {
 
-void TilingSpace::AppendDimension(const HloInstruction& hlo,
+std::string HloPtrToString(const HloInstruction* hlo) {
+  return hlo == nullptr ? "nullptr" : hlo->ToString();
+}
+
+}  // namespace
+
+void TilingSpace::AppendDimension(const HloInstruction* hlo,
                                   int64_t dim_position, int64_t dim_size,
                                   DimensionSemantics dim_type) {
   dimensions_.push_back(DimensionInfo{static_cast<ID>(dimensions_.size()),
-                                      dim_size, dim_type, &hlo, dim_position});
-  hlo_to_dimension_[std::make_pair(&hlo, dim_position)] = &dimensions_.back();
+                                      dim_size, dim_type, hlo, dim_position});
+  hlo_to_dimension_[std::make_pair(hlo, dim_position)] = &dimensions_.back();
 }
 
-void TilingSpace::AppendRTVar(const HloInstruction& hlo, int64_t operand_id,
-                              const HloInstruction& rt_var,
+void TilingSpace::AppendRTVar(const HloInstruction* hlo, int64_t operand_id,
+                              const HloInstruction* rt_var,
                               int64_t upper_bound) {
   rt_vars_.push_back(RTVarInfo{
       static_cast<ID>(rt_vars_.size()),
       Interval{0, upper_bound},
-      &rt_var,
+      rt_var,
   });
-  hlo_to_rt_var_[std::make_pair(&hlo, operand_id)] = &rt_vars_.back();
+  hlo_to_rt_var_[std::make_pair(hlo, operand_id)] = &rt_vars_.back();
 }
 
 // Add dot contraction dimensions in the order of contracting dimensions.
@@ -62,7 +69,7 @@ void TilingSpace::ProcessDot(const HloInstruction& hlo) {
   int64_t output_rank = dot->shape().dimensions().size();
   for (auto [index, contracting_dim_id] :
        llvm::enumerate(dim_numbers.lhs_contracting_dimensions())) {
-    AppendDimension(hlo, output_rank + index,
+    AppendDimension(&hlo, output_rank + index,
                     lhs_shape.dimensions(contracting_dim_id),
                     DimensionSemantics::kSequential);
   }
@@ -74,7 +81,7 @@ void TilingSpace::ProcessReduce(const HloInstruction& hlo) {
   const Shape& input_shape = reduce->operand(0)->shape();
   int64_t output_rank = GetFirstShape(reduce).dimensions().size();
   for (auto [index, reduction_dim_id] : llvm::enumerate(reduce->dimensions())) {
-    AppendDimension(hlo, output_rank + index,
+    AppendDimension(&hlo, output_rank + index,
                     input_shape.dimensions(reduction_dim_id),
                     DimensionSemantics::kSequential);
   }
@@ -89,7 +96,7 @@ void TilingSpace::ProcessDynamicSlice(const HloInstruction& hlo) {
 
   const Shape& input_shape = ds->operand(0)->shape();
   for (auto [dim, slice_size] : llvm::enumerate(ds->dynamic_slice_sizes())) {
-    AppendRTVar(hlo, dim + first_index_num, *ds->operand(dim + first_index_num),
+    AppendRTVar(&hlo, dim + first_index_num, ds->operand(dim + first_index_num),
                 input_shape.dimensions(dim) - slice_size);
   }
 }
@@ -108,13 +115,13 @@ std::string TilingSpace::ToString() const {
        << (dim.type == DimensionSemantics::kParallel ? "parallel"
                                                      : "sequential")
        << " size: " << dim.dimension_size << " dim ID:" << dim.dim_position
-       << " hlo: " << dim.hlo->ToString() << "\n";
+       << " hlo: " << HloPtrToString(dim.hlo) << "\n";
   }
   if (!rt_vars_.empty()) {
     ss << "Runtime variables:\n";
     for (const auto& rt_var : rt_vars_) {
       ss << rt_var.id << " bounds: " << rt_var.bounds
-         << " hlo: " << rt_var.hlo->ToString() << "\n";
+         << " hlo: " << HloPtrToString(rt_var.hlo) << "\n";
     }
   }
   return ss.str();
@@ -147,7 +154,7 @@ TilingSpace TilingSpace::Create(const HloFusionAdaptor& fusion) {
     absl::Span<const int64_t> dims =
         GetFirstShape(&root.instruction()).dimensions();
     for (auto [index, dim] : llvm::enumerate(dims)) {
-      tiling_space.AppendDimension(root.instruction(), index, dim,
+      tiling_space.AppendDimension(&root.instruction(), index, dim,
                                    DimensionSemantics::kParallel);
     }
   }

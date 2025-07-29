@@ -88,12 +88,15 @@ class TilingSpace {
   const RTVarInfo& GetRTVarInfo(const HloInstruction& hlo,
                                 int64_t operand_id) const;
 
- private:
-  void AppendDimension(const HloInstruction& hlo, int64_t dim_position,
-                       int64_t dim_size, DimensionSemantics dim_type);
-  void AppendRTVar(const HloInstruction& hlo, int64_t operand_id,
-                   const HloInstruction& rt_var, int64_t upper_bound);
+  int64_t num_dimensions() const { return dimensions_.size(); }
+  int64_t num_rt_vars() const { return rt_vars_.size(); }
 
+  void AppendDimension(const HloInstruction* hlo, int64_t dim_position,
+                       int64_t dim_size, DimensionSemantics dim_type);
+  void AppendRTVar(const HloInstruction* hlo, int64_t operand_id,
+                   const HloInstruction* rt_var, int64_t upper_bound);
+
+ private:
   void ProcessDot(const HloInstruction& hlo);
   void ProcessReduce(const HloInstruction& hlo);
   void ProcessDynamicSlice(const HloInstruction& hlo);

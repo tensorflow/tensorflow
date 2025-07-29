@@ -83,8 +83,8 @@ TiledOperands PropagateTileToInputForBroadcastOp(
   for (auto broadcast_dim : bcast.dimensions()) {
     dim_tiles.push_back(output_tile.dim_tiles()[broadcast_dim]);
   }
-  SymbolicTile operand_tile{ctx, output_tile.num_tile_ids(),
-                            output_tile.num_rt_vars(), std::move(dim_tiles)};
+  SymbolicTile operand_tile{ctx, output_tile.tiling_space(),
+                            std::move(dim_tiles)};
 
   return TiledOperands{SymbolicTiles{operand_tile},
                        ConstraintExpression::GetAlwaysSatisfied()};
@@ -113,8 +113,8 @@ TiledOperands PropagateTileToOutputForBroadcastOp(
     dim_tiles.push_back(
         input_tile.dim_tiles()[std::distance(bcast_dims.begin(), bcast_dim)]);
   }
-  SymbolicTile output_tile{ctx, input_tile.num_tile_ids(),
-                           input_tile.num_rt_vars(), std::move(dim_tiles)};
+  SymbolicTile output_tile{ctx, input_tile.tiling_space(),
+                           std::move(dim_tiles)};
   return TiledOperands{SymbolicTiles{output_tile},
                        ConstraintExpression::GetAlwaysSatisfied()};
 }
@@ -151,8 +151,8 @@ std::optional<TiledOperands> PropagateTileToInputForConcatenateOp(
         std::max(int64_t{0},
                  std::min(upper_bound.getValue() - offset, operand_dim_size)),
         ctx);
-    SymbolicTile operand_tile{ctx, output_tile.num_tile_ids(),
-                              output_tile.num_rt_vars(), std::move(dim_tiles)};
+    SymbolicTile operand_tile{ctx, output_tile.tiling_space(),
+                              std::move(dim_tiles)};
     symbolic_tiles.push_back(operand_tile);
     offset += operand_dim_size;
   }
@@ -172,10 +172,10 @@ SymbolicTile PropagateTileToInputForSliceImpl(
     ArrayRef<AffineExpr> slice_offsets, ArrayRef<int64_t> slice_strides,
     const SymbolicTile& output_tile) {
   MLIRContext* ctx = output_tile.mlir_context();
-  int64_t num_result_dims = output_tile.num_result_dims();
+  int64_t num_dim_tiles = output_tile.num_dim_tiles();
 
   SmallVector<DimTile> dim_tiles;
-  dim_tiles.reserve(num_result_dims);
+  dim_tiles.reserve(num_dim_tiles);
 
   for (const auto& [dim, result_dim_tile] :
        llvm::enumerate(output_tile.dim_tiles())) {
@@ -196,8 +196,7 @@ SymbolicTile PropagateTileToInputForSliceImpl(
         result_dim_tile.upper_bound * slice_strides[dim] + slice_offsets[dim];
     dim_tiles.push_back(std::move(dim_tile));
   }
-  return SymbolicTile{ctx, output_tile.num_tile_ids(),
-                      output_tile.num_rt_vars(), std::move(dim_tiles)};
+  return SymbolicTile{ctx, output_tile.tiling_space(), std::move(dim_tiles)};
 }
 
 TiledOperands PropagateTileToInputForSliceOp(const HloInstruction& slice,
@@ -237,9 +236,9 @@ TiledOperands PropagateTileToInputForDynamicSliceOp(
             .empty())
       << "b/118437727: Old form, not supported.";
   MLIRContext* ctx = output_tile.mlir_context();
-  int64_t num_result_dims = output_tile.num_result_dims();
+  int64_t num_dim_tiles = output_tile.num_dim_tiles();
 
-  SmallVector<AffineExpr, 3> slice_offset_exprs(num_result_dims);
+  SmallVector<AffineExpr, 3> slice_offset_exprs(num_dim_tiles);
   for (auto [dim, slice_size] :
        llvm::enumerate(dynamic_slice.dynamic_slice_sizes())) {
     auto slice_offset = dynamic_slice.operand(dim + first_index_operand_number);
@@ -254,15 +253,14 @@ TiledOperands PropagateTileToInputForDynamicSliceOp(
       continue;
     }
     slice_offset_exprs[dim] = mlir::getAffineSymbolExpr(
-        rt_var_info.id + output_tile.num_tile_ids(), ctx);
+        rt_var_info.id + output_tile.tiling_space().num_dimensions(), ctx);
   }
 
   SymbolicTiles operand_tiles{PropagateTileToInputForSliceImpl(
-      slice_offset_exprs, SmallVector<int64_t>(num_result_dims, 1),
-      output_tile)};
-  SymbolicTile scalar_tensor_tile{
-      ctx, output_tile.num_tile_ids(), /*num_rt_vars=*/0, {}, {}, {}, {}};
-  for (int i = 0; i < num_result_dims; ++i) {
+      slice_offset_exprs, SmallVector<int64_t>(num_dim_tiles, 1), output_tile)};
+  SymbolicTile scalar_tensor_tile{ctx, output_tile.tiling_space(), {}, {}, {},
+                                  {}};
+  for (int i = 0; i < num_dim_tiles; ++i) {
     operand_tiles.push_back(scalar_tensor_tile);
   }
   return TiledOperands{std::move(operand_tiles),
@@ -276,7 +274,7 @@ std::optional<TiledOperands> PropagateTileToInputForPadOp(
 
   // For each dimension, the low padding is subtracted from the offsets.
   SmallVector<DimTile> dim_tiles;
-  dim_tiles.reserve(output_tile.num_result_dims());
+  dim_tiles.reserve(output_tile.num_dim_tiles());
   for (const auto [result_dim_tile, padding_dim, operand_dim] :
        llvm::zip(output_tile.dim_tiles(), padding_config.dimensions(),
                  pad.operand(0)->shape().dimensions())) {
@@ -290,13 +288,13 @@ std::optional<TiledOperands> PropagateTileToInputForPadOp(
                 result_dim_tile.size, result_dim_tile.stride,
                 mlir::getAffineConstantExpr(operand_dim, ctx)});
   }
-  SymbolicTile operand_tile{ctx, output_tile.num_tile_ids(),
-                            output_tile.num_rt_vars(), std::move(dim_tiles)};
+  SymbolicTile operand_tile{ctx, output_tile.tiling_space(),
+                            std::move(dim_tiles)};
 
   // Pad also has a padding value, but it is a scalar, therefore we only need
   // to propagate the inputs.
-  SymbolicTile padding_value_tile{
-      ctx, output_tile.num_tile_ids(), {}, {}, {}, {}, {}};
+  SymbolicTile padding_value_tile{ctx, output_tile.tiling_space(), {}, {}, {},
+                                  {}};
 
   return TiledOperands{SymbolicTiles{operand_tile, padding_value_tile},
                        ConstraintExpression::GetAlwaysSatisfied()};
@@ -305,12 +303,11 @@ std::optional<TiledOperands> PropagateTileToInputForPadOp(
 SymbolicTile PropagateTileThroughTransposeOp(
     const SymbolicTile& tile, absl::Span<const int64_t> permutation) {
   MLIRContext* ctx = tile.mlir_context();
-  SmallVector<DimTile> dim_tiles(tile.num_result_dims());
+  SmallVector<DimTile> dim_tiles(tile.num_dim_tiles());
   for (const auto [dim, permutated_dim] : llvm::enumerate(permutation)) {
     dim_tiles[permutated_dim] = tile.dim_tiles()[dim];
   }
-  return SymbolicTile{ctx, tile.num_tile_ids(), tile.num_rt_vars(),
-                      std::move(dim_tiles)};
+  return SymbolicTile{ctx, tile.tiling_space(), std::move(dim_tiles)};
 }
 
 TiledOperands PropagateTileToInputForTransposeOp(
@@ -403,11 +400,10 @@ TiledOperands PropagateTileToInputForDotOp(const TilingSpace& tiling_space,
                                       ctx)};
   }
   return TiledOperands{
-      SymbolicTiles{
-          SymbolicTile{ctx, output_tile.num_tile_ids(),
-                       output_tile.num_rt_vars(), std::move(lhs_dim_tiles)},
-          SymbolicTile{ctx, output_tile.num_tile_ids(),
-                       output_tile.num_rt_vars(), std::move(rhs_dim_tiles)}},
+      SymbolicTiles{SymbolicTile{ctx, output_tile.tiling_space(),
+                                 std::move(lhs_dim_tiles)},
+                    SymbolicTile{ctx, output_tile.tiling_space(),
+                                 std::move(rhs_dim_tiles)}},
       ConstraintExpression::GetAlwaysSatisfied()};
 }
 
@@ -446,13 +442,11 @@ TiledOperands PropagateTileToInputForReduceOp(
     }
     input_dim_tiles[input_dim_id] = output_tile.dim_tiles()[output_dim_id++];
   }
-  SymbolicTile init_value_tile{ctx, output_tile.num_tile_ids(), {}, {}, {}, {},
-                               {}};
+  SymbolicTile init_value_tile{ctx, output_tile.tiling_space(), {}, {}, {}, {}};
 
-  SymbolicTiles operand_tiles(
-      reduce.input_count(),
-      SymbolicTile{ctx, output_tile.num_tile_ids(), output_tile.num_rt_vars(),
-                   std::move(input_dim_tiles)});
+  SymbolicTiles operand_tiles(reduce.input_count(),
+                              SymbolicTile{ctx, output_tile.tiling_space(),
+                                           std::move(input_dim_tiles)});
   operand_tiles.append(SymbolicTiles(reduce.input_count(), init_value_tile));
   return TiledOperands{std::move(operand_tiles),
                        ConstraintExpression::GetAlwaysSatisfied()};
