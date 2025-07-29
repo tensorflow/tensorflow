@@ -77,18 +77,17 @@ TEST(KernelThunkTest, CreateAndGettersAndToString) {
   BufferAllocation alloc1(/*index=*/0, /*size=*/256, /*color=*/0);
   BufferAllocation::Slice slice1(&alloc1, /*offset=*/0, /*size=*/256);
 
-  std::vector<emitters::KernelArgument> kernel_arguments = {
-      emitters::KernelArgument(ShapeUtil::MakeShape(F32, {1024}), slice0,
-                               /*written=*/false),
-      emitters::KernelArgument(ShapeUtil::MakeShape(F32, {256}), slice1,
-                               /*written=*/true)};
+  emitters::KernelArgument arg0(ShapeUtil::MakeShape(F32, {1024}), slice0);
+  emitters::KernelArgument arg1(ShapeUtil::MakeShape(F32, {256}), slice1);
+  arg0.set_written(false);
+  arg1.set_written(true);
 
   LaunchDimensions launch_dimensions(se::BlockDim(32, 31, 30),
                                      se::ThreadDim(256, 255, 254));
 
   KernelThunk thunk(thunk_info,
                     /*kernel_name=*/"kernel123",
-                    /*kernel_arguments=*/kernel_arguments,
+                    /*kernel_arguments=*/{arg0, arg1},
                     /*launch_dimensions=*/launch_dimensions,
                     /*cluster_dim=*/se::ClusterDim(8, 7, 6),
                     /*shmem_bytes=*/1024,
@@ -120,11 +119,10 @@ TEST(KernelThunkTest, ToProto) {
   BufferAllocation alloc1(/*index=*/0, /*size=*/256, /*color=*/0);
   BufferAllocation::Slice slice1(&alloc1, /*offset=*/0, /*size=*/256);
 
-  std::vector<emitters::KernelArgument> kernel_arguments = {
-      emitters::KernelArgument(ShapeUtil::MakeShape(F32, {1024}), slice0,
-                               /*written=*/false),
-      emitters::KernelArgument(ShapeUtil::MakeShape(F32, {256}), slice1,
-                               /*written=*/true)};
+  emitters::KernelArgument arg0(ShapeUtil::MakeShape(F32, {1024}), slice0);
+  emitters::KernelArgument arg1(ShapeUtil::MakeShape(F32, {256}), slice1);
+  arg0.set_written(false);
+  arg1.set_written(true);
 
   LaunchDimensions launch_dimensions(se::BlockDim(32, 31, 30),
                                      se::ThreadDim(256, 255, 254));
@@ -141,8 +139,9 @@ TEST(KernelThunkTest, ToProto) {
                                              std::move(descriptor));
 
   KernelThunk thunk(thunk_info,
-                    /*kernel_name=*/"kernel123", kernel_arguments,
-                    launch_dimensions, se::ClusterDim(8, 7, 6),
+                    /*kernel_name=*/"kernel123",
+                    /*kernel_arguments=*/{arg0, arg1}, launch_dimensions,
+                    se::ClusterDim(8, 7, 6),
                     /*shmem_bytes=*/1024,
                     /*tma_metadata=*/tma_metadata);
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
@@ -200,11 +199,10 @@ TEST(KernelThunkTest, ToAndFromProto) {
   BufferAllocation::Slice slice1(&allocations.at(1), /*offset=*/0,
                                  /*size=*/256);
 
-  std::vector<emitters::KernelArgument> kernel_arguments = {
-      emitters::KernelArgument(ShapeUtil::MakeShape(F32, {1024}), slice0,
-                               /*written=*/false),
-      emitters::KernelArgument(ShapeUtil::MakeShape(F32, {256}), slice1,
-                               /*written=*/true)};
+  emitters::KernelArgument arg0(ShapeUtil::MakeShape(F32, {1024}), slice0);
+  emitters::KernelArgument arg1(ShapeUtil::MakeShape(F32, {256}), slice1);
+  arg0.set_written(false);
+  arg1.set_written(true);
 
   LaunchDimensions launch_dimensions(se::BlockDim(32, 31, 30),
                                      se::ThreadDim(256, 255, 254));
@@ -223,9 +221,9 @@ TEST(KernelThunkTest, ToAndFromProto) {
   tma_metadata.arg_index_to_tma_info.emplace(/*arg_index=*/0,
                                              std::move(descriptor));
 
-  KernelThunk thunk(thunk_info, std::string{kKernelName}, kernel_arguments,
-                    launch_dimensions, cluster_dim, kSharedMemoryBytes,
-                    tma_metadata);
+  KernelThunk thunk(thunk_info, std::string{kKernelName},
+                    /*kernel_arguments=*/{arg0, arg1}, launch_dimensions,
+                    cluster_dim, kSharedMemoryBytes, tma_metadata);
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   ASSERT_TRUE(proto.has_kernel_thunk());
   TF_ASSERT_OK_AND_ASSIGN(
