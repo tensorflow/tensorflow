@@ -1276,6 +1276,39 @@ ENTRY e {
   EXPECT_FALSE(GemmFusion(gpu_version_).Run(module.get()).value());
 }
 
+TEST_F(GemmFusionTest, RaggedDotBecomesFusion) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY main {
+  p0 = f32[16,8]{1,0} parameter(0)
+  p1 = f32[4,8,8]{2,1,0} parameter(1)
+  p2 = s64[4]{0} parameter(2)
+  ROOT ragged-dot = f32[16,8]{1,0} ragged-dot(p0, p1, p2),
+                      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+                      lhs_ragged_dims={0}, rhs_group_dims={0}
+}
+)")
+                    .value();
+  EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())));
+  MatchHloModule(*module, R"(
+; CHECK-DAG: %[[LHS:.*]] = f32[16,8]{1,0} parameter(0)
+; CHECK-DAG: %[[RHS:.*]] = f32[4,8,8]{2,1,0} parameter(1)
+; CHECK-DAG: %[[GS:.*]] = s64[4]{0} parameter(2)
+; CHECK: ROOT {{.*}} = f32[16,8]{1,0} ragged-dot(%[[LHS]], %[[RHS]], %[[GS]])
+; CHECK: ENTRY
+; CHECK-DAG: %[[LHS_F:.*]] = f32[16,8]{1,0} parameter(0)
+; CHECK-DAG: %[[RHS_F:.*]] = f32[4,8,8]{2,1,0} parameter(1)
+; CHECK-DAG: %[[GS_F:.*]] = s64[4]{0} parameter(2)
+; CHECK: ROOT {{.*}} = f32[16,8]{1,0} fusion(%[[LHS_F]], %[[RHS_F]], %[[GS_F]])
+; CHECK-SAME: kind=kCustom
+; CHECK-SAME: "__triton_ragged_dot"
+)");
+}
+
 // A test fixture class for testing the threshold for small matrices.
 class SmallDotGemmFusionTest : public GemmFusionTest {
  public:
