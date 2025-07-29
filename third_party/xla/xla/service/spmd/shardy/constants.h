@@ -157,6 +157,9 @@ inline constexpr llvm::StringRef kLocalToGlobalShapeCallTargetName =
 // The name of the global mesh.
 inline constexpr llvm::StringRef kGlobalMeshName = "mesh";
 
+// Keyword for enabling the dumping of propagation debug information.
+inline constexpr llvm::StringRef kShardyVerbose = "shardy-verbose";
+
 }  //  namespace sdy
 }  //  namespace xla
 
