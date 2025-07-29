@@ -21,7 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
@@ -32,17 +31,29 @@ namespace xla::emitters {
 // Thread-safe.
 class KernelArgument {
  public:
-  KernelArgument(Shape shape, BufferAllocation::Slice slice, bool written)
-      : shape_(shape), slice_(slice), written_(written) {}
+  KernelArgument(Shape shape, BufferAllocation::Slice slice)
+      : shape_(shape), slice_(slice) {}
   const Shape& shape() const { return shape_; }
   const BufferAllocation::Slice& slice() const { return slice_; }
+
   bool written() const { return written_; }
+  void set_written(bool written) { written_ = written; }
+
   int64_t alignment() const { return alignment_; }
+  void set_alignment(int64_t alignment) { alignment_ = alignment; }
+
   std::optional<int> first_with_same_slice() const {
     return first_with_same_slice_;
   }
+  void set_first_with_same_slice(int index) { first_with_same_slice_ = index; }
+
   bool aliased() const { return aliased_; }
+  void set_aliased(bool aliased) { aliased_ = aliased; }
+
   int llvm_arg_index() const { return llvm_arg_index_; }
+  void set_llvm_arg_index(int llvm_arg_index) {
+    llvm_arg_index_ = llvm_arg_index;
+  }
 
  private:
   Shape shape_;
@@ -89,14 +100,8 @@ class KernelArguments {
   }
 
  private:
-  explicit KernelArguments(std::vector<KernelArgument> args,
-                           const BufferAlignment& buffer_alignment,
-                           bool dedup = true)
-      : args_(ProcessArguments(std::move(args), buffer_alignment, dedup)) {}
-
-  static std::vector<KernelArgument> ProcessArguments(
-      std::vector<KernelArgument> kernel_arguments,
-      const BufferAlignment& buffer_alignment, bool dedup);
+  explicit KernelArguments(std::vector<KernelArgument> args)
+      : args_(std::move(args)) {}
 
   std::vector<KernelArgument> args_;
 };
