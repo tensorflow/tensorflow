@@ -676,9 +676,9 @@ Value CheckConstraint(Value constrained_value, Interval range,
     return b.create<CmpIOp>(CmpIPredicate::eq, constrained_value, lb);
   }
   auto ub = b.create<ConstantOp>(b.getIndexAttr(range.upper));
-  return b.create<AndIOp>(
-      b.create<CmpIOp>(CmpIPredicate::sge, constrained_value, lb),
-      b.create<CmpIOp>(CmpIPredicate::sle, constrained_value, ub));
+  auto ge_than_lb = b.create<CmpIOp>(CmpIPredicate::sge, constrained_value, lb);
+  auto le_than_ub = b.create<CmpIOp>(CmpIPredicate::sle, constrained_value, ub);
+  return b.create<AndIOp>(ge_than_lb, le_than_ub);
 }
 
 Value CheckConstraints(const IndexingMap& map, ValueRange dims,
