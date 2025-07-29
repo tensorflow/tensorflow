@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 
+#include <memory>
+
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/platform/test.h"
 
