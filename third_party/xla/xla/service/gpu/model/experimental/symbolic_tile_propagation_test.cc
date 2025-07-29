@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/model/experimental/symbolic_tile_propagation.h"
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -24,33 +23,25 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/model/experimental/symbolic_tile.h"
+#include "xla/service/gpu/model/experimental/test_utils.h"
 #include "xla/service/gpu/model/experimental/tiling_space.h"
 
-namespace xla::gpu {
+namespace xla::gpu::experimental {
 namespace {
 
 using ::llvm::SmallVector;
 using ::mlir::AffineExpr;
 using ::mlir::MLIRContext;
 using ::testing::Optional;
-
-MATCHER_P(MatchString, symbolic_tile_string, "") {
-  return ExplainMatchResult(
-      true, ApproximateMatch(symbolic_tile_string, arg.ToString()),
-      result_listener);
-}
 
 class SymbolicTilePropagationTest : public HloHardwareIndependentTestBase {
  public:
@@ -64,24 +55,6 @@ class SymbolicTilePropagationTest : public HloHardwareIndependentTestBase {
   mlir::MLIRContext mlir_context_;
   std::unique_ptr<VerifiedHloModule> module_;
 };
-
-ExperimentalSymbolicTile GetTestSymbolicTile(MLIRContext* mlir_context,
-                                             absl::Span<const int64_t> shape,
-                                             int64_t num_rt_vars = 0) {
-  int64_t rank = shape.size();
-  SmallVector<DimTile> dim_tiles;
-  dim_tiles.reserve(rank);
-  CHECK(mlir_context);
-  for (auto [index, dim] : llvm::enumerate(shape)) {
-    auto tid = getAffineDimExpr(index, mlir_context);
-    auto ts = getAffineSymbolExpr(index, mlir_context);
-    dim_tiles.push_back(DimTile{
-        tid * ts, ts, mlir::getAffineConstantExpr(index + 1, mlir_context),
-        mlir::getAffineConstantExpr(dim, mlir_context)});
-  }
-  return ExperimentalSymbolicTile{mlir_context, /*num_tile_ids=*/rank,
-                                  num_rt_vars, std::move(dim_tiles)};
-}
 
 TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfElementwiseOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
@@ -234,12 +207,12 @@ TEST_F(SymbolicTilePropagationTest,
   )");
   auto tiling_space =
       TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root));
-  ExperimentalSymbolicTile symbolic_tile =
+  MLIRContext mlir_context_;
+  SymbolicTile symbolic_tile =
       GetTestSymbolicTile(&mlir_context_, root->shape().dimensions());
   llvm::SmallVector<AffineExpr, 1> upper_bounds{
       mlir::getAffineConstantExpr(25, &mlir_context_)};
-  symbolic_tile =
-      ExperimentalSymbolicTile{&mlir_context_,        /*num_tile_ids=*/1,
+  symbolic_tile = SymbolicTile{&mlir_context_,        /*num_tile_ids=*/1,
                                /*num_rt_vars=*/0,     symbolic_tile.offsets(),
                                symbolic_tile.sizes(), symbolic_tile.strides(),
                                upper_bounds};
@@ -277,12 +250,12 @@ TEST_F(SymbolicTilePropagationTest,
   )");
   auto tiling_space =
       TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root));
-  ExperimentalSymbolicTile symbolic_tile =
+  MLIRContext mlir_context_;
+  SymbolicTile symbolic_tile =
       GetTestSymbolicTile(&mlir_context_, root->shape().dimensions());
   llvm::SmallVector<AffineExpr, 1> upper_bounds{
       mlir::getAffineDimExpr(0, &mlir_context_) * 30};
-  symbolic_tile =
-      ExperimentalSymbolicTile{&mlir_context_,        /*num_tile_ids=*/1,
+  symbolic_tile = SymbolicTile{&mlir_context_,        /*num_tile_ids=*/1,
                                /*num_rt_vars=*/0,     symbolic_tile.offsets(),
                                symbolic_tile.sizes(), symbolic_tile.strides(),
                                upper_bounds};
@@ -453,13 +426,13 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfDotOp) {
       TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root));
   auto symbolic_tile = GetTestSymbolicTile(
       &mlir_context_, root->shape().dimensions(), /*num_rt_vars=*/0);
-  symbolic_tile = ExperimentalSymbolicTile{&mlir_context_,
-                                           /*num_tile_ids=*/8,
-                                           /*num_rt_vars=*/0,
-                                           symbolic_tile.offsets(),
-                                           symbolic_tile.sizes(),
-                                           symbolic_tile.strides(),
-                                           symbolic_tile.upper_bounds()};
+  symbolic_tile = SymbolicTile{&mlir_context_,
+                               /*num_tile_ids=*/8,
+                               /*num_rt_vars=*/0,
+                               symbolic_tile.offsets(),
+                               symbolic_tile.sizes(),
+                               symbolic_tile.strides(),
+                               symbolic_tile.upper_bounds()};
   std::optional<TiledOperands> tiled_operands =
       PropagateTileToInput(tiling_space, *root, symbolic_tile, 0);
   EXPECT_THAT(tiled_operands, Optional(MatchString(R"(
@@ -500,13 +473,13 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfReduceOp) {
 
   auto symbolic_tile = GetTestSymbolicTile(
       &mlir_context_, GetFirstShape(root).dimensions(), /*num_rt_vars=*/0);
-  symbolic_tile = ExperimentalSymbolicTile{&mlir_context_,
-                                           /*num_tile_ids=*/4,
-                                           /*num_rt_vars=*/0,
-                                           symbolic_tile.offsets(),
-                                           symbolic_tile.sizes(),
-                                           symbolic_tile.strides(),
-                                           symbolic_tile.upper_bounds()};
+  symbolic_tile = SymbolicTile{&mlir_context_,
+                               /*num_tile_ids=*/4,
+                               /*num_rt_vars=*/0,
+                               symbolic_tile.offsets(),
+                               symbolic_tile.sizes(),
+                               symbolic_tile.strides(),
+                               symbolic_tile.upper_bounds()};
   std::optional<TiledOperands> tiled_operands =
       PropagateTileToInput(tiling_space, *root, symbolic_tile, 0);
   EXPECT_THAT(tiled_operands, Optional(MatchString(R"(
@@ -544,16 +517,15 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfVariadicReduceOp) {
   )");
   auto tiling_space =
       TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root));
-  MLIRContext mlir_context;
   auto symbolic_tile = GetTestSymbolicTile(
       &mlir_context_, GetFirstShape(root).dimensions(), /*num_rt_vars=*/0);
-  symbolic_tile = ExperimentalSymbolicTile{&mlir_context_,
-                                           /*num_tile_ids=*/2,
-                                           /*num_rt_vars=*/0,
-                                           symbolic_tile.offsets(),
-                                           symbolic_tile.sizes(),
-                                           symbolic_tile.strides(),
-                                           symbolic_tile.upper_bounds()};
+  symbolic_tile = SymbolicTile{&mlir_context_,
+                               /*num_tile_ids=*/2,
+                               /*num_rt_vars=*/0,
+                               symbolic_tile.offsets(),
+                               symbolic_tile.sizes(),
+                               symbolic_tile.strides(),
+                               symbolic_tile.upper_bounds()};
   std::optional<TiledOperands> tiled_operands =
       PropagateTileToInput(tiling_space, *root, symbolic_tile, 0);
   EXPECT_THAT(tiled_operands, Optional(MatchString(R"(
@@ -569,4 +541,4 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfVariadicReduceOp) {
 }
 
 }  // namespace
-}  // namespace xla::gpu
+}  // namespace xla::gpu::experimental

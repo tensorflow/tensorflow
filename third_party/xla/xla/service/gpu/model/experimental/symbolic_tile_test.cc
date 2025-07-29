@@ -23,7 +23,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
-namespace xla::gpu {
+namespace xla::gpu::experimental {
 namespace {
 
 using ::mlir::AffineExpr;
@@ -39,11 +39,11 @@ TEST_F(SymbolicTileTest, StringFormat) {
   auto c16 = mlir::getAffineConstantExpr(16, &mlir_context);
   auto c32 = mlir::getAffineConstantExpr(32, &mlir_context);
 
-  ExperimentalSymbolicTile tile{&mlir_context,
-                                /*num_tile_ids=*/2,
-                                /*num_rt_vars=*/1,
-                                {DimTile{tid0 * ts0, ts0, c1, c16},
-                                 DimTile{rt + tid1 * ts1, ts1, c1, c32}}};
+  SymbolicTile tile{&mlir_context,
+                    /*num_tile_ids=*/2,
+                    /*num_rt_vars=*/1,
+                    {DimTile{tid0 * ts0, ts0, c1, c16},
+                     DimTile{rt + tid1 * ts1, ts1, c1, c32}}};
 
   EXPECT_THAT(tile.ToString(), MatchIndexingString(R"(
     (tid_0, tid_1)[ts_0, ts_1]{rt_0} ->
@@ -55,4 +55,4 @@ TEST_F(SymbolicTileTest, StringFormat) {
 }
 
 }  // namespace
-}  // namespace xla::gpu
+}  // namespace xla::gpu::experimental
