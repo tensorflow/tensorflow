@@ -2070,7 +2070,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<llvm::Module> ll_triton_module,
         TranslateLLVMToLLVMIR(&llvm_module->getContext(), triton_module));
-    VLogModule(5, *ll_triton_module);
+
+    XLA_VLOG_LINES(5, llvm_ir::DumpToString(ll_triton_module.get()));
     if (should_verify) {
       VerifyModule(*ll_triton_module);
     }
@@ -2091,7 +2092,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
         !llvm::Linker::linkModules(*llvm_module, std::move(ll_triton_module),
                                    llvm::Linker::Flags::OverrideFromSrc));
 
-    VLogModule(5, *llvm_module);
+    XLA_VLOG_LINES(5, llvm_ir::DumpToString(llvm_module));
     if (should_verify) {
       VerifyModule(*llvm_module);
     }
