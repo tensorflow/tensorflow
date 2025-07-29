@@ -1586,7 +1586,8 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
           device_proto.global_device_id(), std::move(local_device),
           device_proto.name(), device_proto.vendor(),
           device_proto.compute_capability(), device_proto.core_count(),
-          device_proto.shared_memory_per_block_optin(), node.node_id(),
+          device_proto.shared_memory_per_block_optin(),
+          device_proto.local_device_ordinal(), node.node_id(),
           device_proto.slice_index());
       devices.push_back(std::move(device));
     }
@@ -1632,15 +1633,15 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
     int id, std::unique_ptr<LocalDeviceState> local_device_state,
     std::string device_kind, std::string device_vendor,
     std::string compute_capability, int core_count,
-    int shared_memory_per_block_optin, int node_id, int slice_index)
-    : PjRtStreamExecutorDevice(id, std::move(local_device_state),
-                               /*process_index=*/node_id,
-                               std::move(device_kind)),
+    int shared_memory_per_block_optin, int local_device_id, int node_id,
+    int slice_index)
+    : PjRtStreamExecutorDevice(
+          id, std::move(local_device_state), local_device_id,
+          /*process_index=*/node_id, slice_index, std::move(device_kind)),
       device_vendor_(std::move(device_vendor)),
       slice_index_(slice_index) {
   StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
-      description(), local_device_id().value(), device_vendor_,
-      compute_capability, core_count,
+      description(), device_vendor_, compute_capability, core_count,
       static_cast<int64_t>(shared_memory_per_block_optin), slice_index);
 }
 
@@ -1761,7 +1762,8 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
     auto device = std::make_unique<StreamExecutorGpuDevice>(
         ordinal_and_device.first, std::move(ordinal_and_device.second),
         desc.name(), desc.device_vendor(), MakeComputeCapabilityString(&desc),
-        desc.core_count(), desc.shared_memory_per_block_optin(), node_id);
+        desc.core_count(), desc.shared_memory_per_block_optin(),
+        ordinal_and_device.second->local_device_id().value(), node_id);
     devices.push_back(std::move(device));
   }
   return devices;

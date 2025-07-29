@@ -67,7 +67,8 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
                           std::unique_ptr<LocalDeviceState> local_device_state,
                           std::string device_kind, std::string device_vendor,
                           std::string compute_capability, int core_count,
-                          int shared_memory_per_block_optin, int node_id,
+                          int shared_memory_per_block_optin,
+                          int local_device_id, int node_id,
                           int slice_index = 0);
 
   int slice_index() const;
