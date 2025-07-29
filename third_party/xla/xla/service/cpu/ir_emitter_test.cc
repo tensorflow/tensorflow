@@ -286,9 +286,7 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
                       ScheduleModule(&module, *scheduler));
   TF_RETURN_IF_ERROR(module.set_schedule(schedule));
 
-  auto memory_alignment = [](LogicalBuffer::Color) {
-    return cpu_function_runtime::MinAlign();
-  };
+  auto memory_alignment = [](LogicalBuffer::Color) { return MinAlign(); };
   // Run buffer allocation on the HLO graph.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
