@@ -515,7 +515,7 @@ class NoOpAsyncThunk : public Thunk {
     return BufferUses{BufferUse::Write(slice_)};
   }
 
-  bool async_resume() const override { return true; }
+  bool ExecutesOnExternalThreadPool() const override { return true; }
 
  private:
   static tsl::thread::ThreadPool* ThreadPool() {

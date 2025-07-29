@@ -142,15 +142,6 @@ class Thunk {
   using NamedThunkSequence = std::pair<std::string, const ThunkSequence*>;
   virtual std::vector<NamedThunkSequence> nested_thunks() const { return {}; }
 
-  // Returns `true` if thunk execution uses thread pool(s) not owned by the
-  // XLA:CPU runtime, i.e. thunk execution happens asynchronously on the IO
-  // event manager thread pool. Thunk executor takes extra care to resume
-  // execution using the TaskRunner passed via the ExecuteParams, otherwise we
-  // can accidentally take over the thread pool that we do not own. By default
-  // thunk execution is resumed on a thread that sets the ExecuteEvent async
-  // value concrete.
-  virtual bool async_resume() const { return false; }
-
   //===--------------------------------------------------------------------===//
   // CollectiveExecuteParams
   //===--------------------------------------------------------------------===//
@@ -288,6 +279,15 @@ class Thunk {
   // Thunk execution completion must be reported via the `ExecuteEvent`.
   virtual tsl::AsyncValueRef<ExecuteEvent> Execute(
       const ExecuteParams& params) = 0;
+
+  // Returns `true` if thunk execution uses thread pool(s) not owned by the
+  // XLA:CPU runtime, i.e. thunk execution happens asynchronously on the IO
+  // event manager thread pool. Thunk executor takes extra care to resume
+  // execution using the TaskRunner passed via the ExecuteParams, otherwise we
+  // can accidentally take over the thread pool that we do not own. By default
+  // thunk execution is resumed on a thread that sets the ExecuteEvent async
+  // value concrete.
+  virtual bool ExecutesOnExternalThreadPool() const { return false; }
 
  protected:
   // Returns `true` if thunk should check buffer slices bounds, alignment, etc.
