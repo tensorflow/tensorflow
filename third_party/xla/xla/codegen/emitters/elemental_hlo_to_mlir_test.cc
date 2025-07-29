@@ -496,12 +496,12 @@ TEST_F(ElementalHloToMlirTest, Pad) {
     // CHECK:        %[[CONSTRAINT_VAL:.*]] = xla.apply_indexing
     // CHECK-SAME:     <"(d0) -> ((d0 - 1) mod 2), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:        %[[CONSTRAINT:.*]] = arith.cmpi eq, %[[CONSTRAINT_VAL]], %[[C0]]
-    // CHECK-DAG:        %[[X_L:.*]] = arith.cmpi sge, %[[X]], %[[C1]]
-    // CHECK-DAG:        %[[X_H:.*]] = arith.cmpi sle, %[[X]], %[[C7]]
+    // CHECK:        %[[X_L:.*]] = arith.cmpi sge, %[[X]], %[[C1]]
+    // CHECK:        %[[X_H:.*]] = arith.cmpi sle, %[[X]], %[[C7]]
     // CHECK:        %[[X_BOUNDS:.*]] = arith.andi %[[X_L]], %[[X_H]]
     // CHECK:        %[[X_AND_CONSTRAINT:.*]] = arith.andi %[[CONSTRAINT]], %[[X_BOUNDS]]
-    // CHECK-DAG:        %[[Y_L:.*]] = arith.cmpi sge, %[[Y]], %[[C4]]
-    // CHECK-DAG:        %[[Y_H:.*]] = arith.cmpi sle, %[[Y]], %[[C7]]
+    // CHECK:        %[[Y_L:.*]] = arith.cmpi sge, %[[Y]], %[[C4]]
+    // CHECK:        %[[Y_H:.*]] = arith.cmpi sle, %[[Y]], %[[C7]]
     // CHECK:        %[[Y_BOUNDS:.*]] = arith.andi %[[Y_L]], %[[Y_H]]
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
@@ -538,12 +538,12 @@ TEST_F(ElementalHloToMlirTest, PadUnsigned) {
     // CHECK:        %[[CONSTRAINT_VAL:.*]] = xla.apply_indexing
     // CHECK-SAME:     <"(d0) -> ((d0 - 1) mod 2), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:        %[[CONSTRAINT:.*]] = arith.cmpi eq, %[[CONSTRAINT_VAL]], %[[C0]]
-    // CHECK-DAG:        %[[X_L:.*]] = arith.cmpi sge, %[[X]], %[[C1]]
-    // CHECK-DAG:        %[[X_H:.*]] = arith.cmpi sle, %[[X]], %[[C7]]
+    // CHECK:        %[[X_L:.*]] = arith.cmpi sge, %[[X]], %[[C1]]
+    // CHECK:        %[[X_H:.*]] = arith.cmpi sle, %[[X]], %[[C7]]
     // CHECK:        %[[X_BOUNDS:.*]] = arith.andi %[[X_L]], %[[X_H]]
     // CHECK:        %[[X_AND_CONSTRAINT:.*]] = arith.andi %[[CONSTRAINT]], %[[X_BOUNDS]]
-    // CHECK-DAG:        %[[Y_L:.*]] = arith.cmpi sge, %[[Y]], %[[C4]]
-    // CHECK-DAG:        %[[Y_H:.*]] = arith.cmpi sle, %[[Y]], %[[C7]]
+    // CHECK:        %[[Y_L:.*]] = arith.cmpi sge, %[[Y]], %[[C4]]
+    // CHECK:        %[[Y_H:.*]] = arith.cmpi sle, %[[Y]], %[[C7]]
     // CHECK:        %[[Y_BOUNDS:.*]] = arith.andi %[[Y_L]], %[[Y_H]]
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
@@ -582,13 +582,13 @@ TEST_F(ElementalHloToMlirTest, DotWithF32Type) {
     // CHECK-DAG:    %[[C4:.*]] = arith.constant 4 : index
     // CHECK:        %[[FOR0:.*]] = scf.for %[[K:.*]] = %[[C0]] to %[[C4]] step %[[C1]]
     // CHECK-SAME:   iter_args(%[[ACCUM:.*]] = %[[ACCUM_INIT]]) -> (f32) {
-    // CHECK-DAG:      %[[CMPI0:.*]] = arith.cmpi sge, %[[I]], %[[C0]] : index
-    // CHECK-DAG:      %[[CMPI1:.*]] = arith.cmpi sle, %[[I]], %[[C2]] : index
-    // CHECK-DAG:      %[[I_IN_RANGE:.*]] = arith.andi %[[CMPI0]], %[[CMPI1]] : i1
-    // CHECK-DAG:      %[[CMPI2:.*]] = arith.cmpi sge, %[[J]], %[[C0]] : index
-    // CHECK-DAG:      %[[CMPI3:.*]] = arith.cmpi sle, %[[J]], %[[C4]] : index
-    // CHECK-DAG:      %[[J_IN_RANGE:.*]] = arith.andi %[[CMPI2]], %[[CMPI3]] : i1
-    // CHECK-DAG:      %[[I_J_IN_RANGE:.*]] = arith.andi %[[I_IN_RANGE]], %[[J_IN_RANGE]] : i1
+    // CHECK:          %[[CMPI0:.*]] = arith.cmpi sge, %[[I]], %[[C0]] : index
+    // CHECK:          %[[CMPI1:.*]] = arith.cmpi sle, %[[I]], %[[C2]] : index
+    // CHECK:          %[[I_IN_RANGE:.*]] = arith.andi %[[CMPI0]], %[[CMPI1]] : i1
+    // CHECK:          %[[CMPI2:.*]] = arith.cmpi sge, %[[J]], %[[C0]] : index
+    // CHECK:          %[[CMPI3:.*]] = arith.cmpi sle, %[[J]], %[[C4]] : index
+    // CHECK:          %[[J_IN_RANGE:.*]] = arith.andi %[[CMPI2]], %[[CMPI3]] : i1
+    // CHECK:          %[[I_J_IN_RANGE:.*]] = arith.andi %[[I_IN_RANGE]], %[[J_IN_RANGE]] : i1
     // CHECK:          %[[IF0:.*]] = scf.if %[[I_J_IN_RANGE]] -> (f32) {
     // CHECK-DAG:        %[[A_I_K:.*]] = tensor.extract %[[A]][%[[I]], %[[K]]] : tensor<3x4xf32>
     // CHECK-DAG:        %[[B_K_J:.*]] = tensor.extract %[[B]][%[[K]], %[[J]]] : tensor<4x5xf32>
@@ -626,13 +626,13 @@ TEST_F(ElementalHloToMlirTest, DotWithBF16Type) {
     // CHECK-DAG:    %[[C4:.*]] = arith.constant 4 : index
     // CHECK:        %[[FOR0:.*]] = scf.for %[[K:.*]] = %[[C0]] to %[[C4]] step %[[C1]]
     // CHECK-SAME:   iter_args(%[[ACCUM:.*]] = %[[ACCUM_INIT]]) -> (f32) {
-    // CHECK-DAG:      %[[CMPI0:.*]] = arith.cmpi sge, %[[I]], %[[C0]] : index
-    // CHECK-DAG:      %[[CMPI1:.*]] = arith.cmpi sle, %[[I]], %[[C2]] : index
-    // CHECK-DAG:      %[[I_IN_RANGE:.*]] = arith.andi %[[CMPI0]], %[[CMPI1]] : i1
-    // CHECK-DAG:      %[[CMPI2:.*]] = arith.cmpi sge, %[[J]], %[[C0]] : index
-    // CHECK-DAG:      %[[CMPI3:.*]] = arith.cmpi sle, %[[J]], %[[C4]] : index
-    // CHECK-DAG:      %[[J_IN_RANGE:.*]] = arith.andi %[[CMPI2]], %[[CMPI3]] : i1
-    // CHECK-DAG:      %[[I_J_IN_RANGE:.*]] = arith.andi %[[I_IN_RANGE]], %[[J_IN_RANGE]] : i1
+    // CHECK:          %[[CMPI0:.*]] = arith.cmpi sge, %[[I]], %[[C0]] : index
+    // CHECK:          %[[CMPI1:.*]] = arith.cmpi sle, %[[I]], %[[C2]] : index
+    // CHECK:          %[[I_IN_RANGE:.*]] = arith.andi %[[CMPI0]], %[[CMPI1]] : i1
+    // CHECK:          %[[CMPI2:.*]] = arith.cmpi sge, %[[J]], %[[C0]] : index
+    // CHECK:          %[[CMPI3:.*]] = arith.cmpi sle, %[[J]], %[[C4]] : index
+    // CHECK:          %[[J_IN_RANGE:.*]] = arith.andi %[[CMPI2]], %[[CMPI3]] : i1
+    // CHECK:          %[[I_J_IN_RANGE:.*]] = arith.andi %[[I_IN_RANGE]], %[[J_IN_RANGE]] : i1
     // CHECK:          %[[IF0:.*]] = scf.if %[[I_J_IN_RANGE]] -> (f32) {
     // CHECK-DAG:        %[[A_I_K:.*]] = tensor.extract %[[A]][%[[I]], %[[K]]] : tensor<3x4xbf16>
     // CHECK-DAG:        %[[B_K_J:.*]] = tensor.extract %[[B]][%[[K]], %[[J]]] : tensor<4x5xbf16>
@@ -673,13 +673,13 @@ TEST_F(ElementalHloToMlirTest, DotWithS32Type) {
     // CHECK-DAG:    %[[C4:.*]] = arith.constant 4 : index
     // CHECK:        %[[FOR0:.*]] = scf.for %[[K:.*]] = %[[C0]] to %[[C4]] step %[[C1]]
     // CHECK-SAME:   iter_args(%[[ACCUM:.*]] = %[[ACCUM_INIT]]) -> (i32) {
-    // CHECK-DAG:      %[[CMPI0:.*]] = arith.cmpi sge, %[[I]], %[[C0]] : index
-    // CHECK-DAG:      %[[CMPI1:.*]] = arith.cmpi sle, %[[I]], %[[C2]] : index
-    // CHECK-DAG:      %[[I_IN_RANGE:.*]] = arith.andi %[[CMPI0]], %[[CMPI1]] : i1
-    // CHECK-DAG:      %[[CMPI2:.*]] = arith.cmpi sge, %[[J]], %[[C0]] : index
-    // CHECK-DAG:      %[[CMPI3:.*]] = arith.cmpi sle, %[[J]], %[[C4]] : index
-    // CHECK-DAG:      %[[J_IN_RANGE:.*]] = arith.andi %[[CMPI2]], %[[CMPI3]] : i1
-    // CHECK-DAG:      %[[I_J_IN_RANGE:.*]] = arith.andi %[[I_IN_RANGE]], %[[J_IN_RANGE]] : i1
+    // CHECK:          %[[CMPI0:.*]] = arith.cmpi sge, %[[I]], %[[C0]] : index
+    // CHECK:          %[[CMPI1:.*]] = arith.cmpi sle, %[[I]], %[[C2]] : index
+    // CHECK:          %[[I_IN_RANGE:.*]] = arith.andi %[[CMPI0]], %[[CMPI1]] : i1
+    // CHECK:          %[[CMPI2:.*]] = arith.cmpi sge, %[[J]], %[[C0]] : index
+    // CHECK:          %[[CMPI3:.*]] = arith.cmpi sle, %[[J]], %[[C4]] : index
+    // CHECK:          %[[J_IN_RANGE:.*]] = arith.andi %[[CMPI2]], %[[CMPI3]] : i1
+    // CHECK:          %[[I_J_IN_RANGE:.*]] = arith.andi %[[I_IN_RANGE]], %[[J_IN_RANGE]] : i1
     // CHECK:          %[[IF0:.*]] = scf.if %[[I_J_IN_RANGE]] -> (i32) {
     // CHECK-DAG:        %[[A_I_K:.*]] = tensor.extract %[[A]][%[[I]], %[[K]]] : tensor<3x4xi32>
     // CHECK-DAG:        %[[B_K_J:.*]] = tensor.extract %[[B]][%[[K]], %[[J]]] : tensor<4x5xi32>
@@ -717,13 +717,13 @@ TEST_F(ElementalHloToMlirTest, DotWithU32Type) {
     // CHECK-DAG:    %[[C4:.*]] = arith.constant 4 : index
     // CHECK:        %[[FOR0:.*]] = scf.for %[[K:.*]] = %[[C0]] to %[[C4]] step %[[C1]]
     // CHECK-SAME:   iter_args(%[[ACCUM:.*]] = %[[ACCUM_INIT]]) -> (i32) {
-    // CHECK-DAG:      %[[CMPI0:.*]] = arith.cmpi sge, %[[I]], %[[C0]] : index
-    // CHECK-DAG:      %[[CMPI1:.*]] = arith.cmpi sle, %[[I]], %[[C2]] : index
-    // CHECK-DAG:      %[[I_IN_RANGE:.*]] = arith.andi %[[CMPI0]], %[[CMPI1]] : i1
-    // CHECK-DAG:      %[[CMPI2:.*]] = arith.cmpi sge, %[[J]], %[[C0]] : index
-    // CHECK-DAG:      %[[CMPI3:.*]] = arith.cmpi sle, %[[J]], %[[C4]] : index
-    // CHECK-DAG:      %[[J_IN_RANGE:.*]] = arith.andi %[[CMPI2]], %[[CMPI3]] : i1
-    // CHECK-DAG:      %[[I_J_IN_RANGE:.*]] = arith.andi %[[I_IN_RANGE]], %[[J_IN_RANGE]] : i1
+    // CHECK:          %[[CMPI0:.*]] = arith.cmpi sge, %[[I]], %[[C0]] : index
+    // CHECK:          %[[CMPI1:.*]] = arith.cmpi sle, %[[I]], %[[C2]] : index
+    // CHECK:          %[[I_IN_RANGE:.*]] = arith.andi %[[CMPI0]], %[[CMPI1]] : i1
+    // CHECK:          %[[CMPI2:.*]] = arith.cmpi sge, %[[J]], %[[C0]] : index
+    // CHECK:          %[[CMPI3:.*]] = arith.cmpi sle, %[[J]], %[[C4]] : index
+    // CHECK:          %[[J_IN_RANGE:.*]] = arith.andi %[[CMPI2]], %[[CMPI3]] : i1
+    // CHECK:          %[[I_J_IN_RANGE:.*]] = arith.andi %[[I_IN_RANGE]], %[[J_IN_RANGE]] : i1
     // CHECK:          %[[IF0:.*]] = scf.if %[[I_J_IN_RANGE]] -> (i32) {
     // CHECK-DAG:        %[[A_I_K:.*]] = tensor.extract %[[A]][%[[I]], %[[K]]] : tensor<3x4xi32>
     // CHECK-DAG:        %[[B_K_J:.*]] = tensor.extract %[[B]][%[[K]], %[[J]]] : tensor<4x5xi32>
@@ -761,13 +761,13 @@ TEST_F(ElementalHloToMlirTest, DotWithPredType) {
     // CHECK-DAG:    %[[C4:.*]] = arith.constant 4 : index
     // CHECK:        %[[FOR0:.*]] = scf.for %[[K:.*]] = %[[C0]] to %[[C4]] step %[[C1]]
     // CHECK-SAME:   iter_args(%[[ACCUM:.*]] = %[[ACCUM_INIT]]) -> (i8) {
-    // CHECK-DAG:      %[[CMPI0:.*]] = arith.cmpi sge, %[[I]], %[[C0]] : index
-    // CHECK-DAG:      %[[CMPI1:.*]] = arith.cmpi sle, %[[I]], %[[C2]] : index
-    // CHECK-DAG:      %[[I_IN_RANGE:.*]] = arith.andi %[[CMPI0]], %[[CMPI1]] : i1
-    // CHECK-DAG:      %[[CMPI2:.*]] = arith.cmpi sge, %[[J]], %[[C0]] : index
-    // CHECK-DAG:      %[[CMPI3:.*]] = arith.cmpi sle, %[[J]], %[[C4]] : index
-    // CHECK-DAG:      %[[J_IN_RANGE:.*]] = arith.andi %[[CMPI2]], %[[CMPI3]] : i1
-    // CHECK-DAG:      %[[I_J_IN_RANGE:.*]] = arith.andi %[[I_IN_RANGE]], %[[J_IN_RANGE]] : i1
+    // CHECK:          %[[CMPI0:.*]] = arith.cmpi sge, %[[I]], %[[C0]] : index
+    // CHECK:          %[[CMPI1:.*]] = arith.cmpi sle, %[[I]], %[[C2]] : index
+    // CHECK:          %[[I_IN_RANGE:.*]] = arith.andi %[[CMPI0]], %[[CMPI1]] : i1
+    // CHECK:          %[[CMPI2:.*]] = arith.cmpi sge, %[[J]], %[[C0]] : index
+    // CHECK:          %[[CMPI3:.*]] = arith.cmpi sle, %[[J]], %[[C4]] : index
+    // CHECK:          %[[J_IN_RANGE:.*]] = arith.andi %[[CMPI2]], %[[CMPI3]] : i1
+    // CHECK:          %[[I_J_IN_RANGE:.*]] = arith.andi %[[I_IN_RANGE]], %[[J_IN_RANGE]] : i1
     // CHECK:          %[[IF0:.*]] = scf.if %[[I_J_IN_RANGE]] -> (i8) {
     // CHECK-DAG:        %[[A_I_K:.*]] = tensor.extract %[[A]][%[[I]], %[[K]]] : tensor<3x4xi8>
     // CHECK-DAG:        %[[B_K_J:.*]] = tensor.extract %[[B]][%[[K]], %[[J]]] : tensor<4x5xi8>
@@ -812,17 +812,17 @@ TEST_F(ElementalHloToMlirTest, DotWithBatchAnd2ContractingDims) {
     // CHECK-SAME:   iter_args(%[[ACCUM0:.*]] = %[[C0F]]) -> (f32) {
     // CHECK:          %[[FOR1:.*]] = scf.for %[[L:.*]] = %[[C0]] to %[[C5]] step %[[C1]]
     // CHECK-SAME:     iter_args(%[[ACCUM1:.*]] = %[[ACCUM0]]) -> (f32) {
-    // CHECK-DAG:        %[[CMPI0:.*]] = arith.cmpi sge, %[[N]], %[[C0]] : index
-    // CHECK-DAG:        %[[CMPI1:.*]] = arith.cmpi sle, %[[N]], %[[C6]] : index
-    // CHECK-DAG:        %[[N_IN_RANGE:.*]] = arith.andi %[[CMPI0]], %[[CMPI1]] : i1
-    // CHECK-DAG:        %[[CMPI2:.*]] = arith.cmpi sge, %[[I]], %[[C0]] : index
-    // CHECK-DAG:        %[[CMPI3:.*]] = arith.cmpi sle, %[[I]], %[[C2]] : index
-    // CHECK-DAG:        %[[I_IN_RANGE:.*]] = arith.andi %[[CMPI2]], %[[CMPI3]] : i1
-    // CHECK-DAG:        %[[N_I_IN_RANGE:.*]] = arith.andi %[[N_IN_RANGE]], %[[I_IN_RANGE]] : i1
-    // CHECK-DAG:        %[[CMPI4:.*]] = arith.cmpi sge, %[[J]], %[[C0]] : index
-    // CHECK-DAG:        %[[CMPI5:.*]] = arith.cmpi sle, %[[J]], %[[C5]] : index
-    // CHECK-DAG:        %[[J_IN_RANGE:.*]] = arith.andi %[[CMPI4]], %[[CMPI5]] : i1
-    // CHECK-DAG:        %[[N_I_J_IN_RANGE:.*]] = arith.andi %[[N_I_IN_RANGE]], %[[J_IN_RANGE]] : i1
+    // CHECK:            %[[CMPI0:.*]] = arith.cmpi sge, %[[N]], %[[C0]] : index
+    // CHECK:            %[[CMPI1:.*]] = arith.cmpi sle, %[[N]], %[[C6]] : index
+    // CHECK:            %[[N_IN_RANGE:.*]] = arith.andi %[[CMPI0]], %[[CMPI1]] : i1
+    // CHECK:            %[[CMPI2:.*]] = arith.cmpi sge, %[[I]], %[[C0]] : index
+    // CHECK:            %[[CMPI3:.*]] = arith.cmpi sle, %[[I]], %[[C2]] : index
+    // CHECK:            %[[I_IN_RANGE:.*]] = arith.andi %[[CMPI2]], %[[CMPI3]] : i1
+    // CHECK:            %[[N_I_IN_RANGE:.*]] = arith.andi %[[N_IN_RANGE]], %[[I_IN_RANGE]] : i1
+    // CHECK:            %[[CMPI4:.*]] = arith.cmpi sge, %[[J]], %[[C0]] : index
+    // CHECK:            %[[CMPI5:.*]] = arith.cmpi sle, %[[J]], %[[C5]] : index
+    // CHECK:            %[[J_IN_RANGE:.*]] = arith.andi %[[CMPI4]], %[[CMPI5]] : i1
+    // CHECK:            %[[N_I_J_IN_RANGE:.*]] = arith.andi %[[N_I_IN_RANGE]], %[[J_IN_RANGE]] : i1
     // CHECK:            %[[IF0:.*]] = scf.if %[[N_I_J_IN_RANGE]] -> (f32) {
     // CHECK-DAG:          %[[A_N_I_K_L:.*]] = tensor.extract %[[A]][%[[N]], %[[I]], %[[K]], %[[L]]] : tensor<7x3x4x5xf32>
     // CHECK-DAG:          %[[B_L_J_K_N:.*]] = tensor.extract %[[B]][%[[L]], %[[J]], %[[K]], %[[N]]] : tensor<5x6x4x7xf32>
