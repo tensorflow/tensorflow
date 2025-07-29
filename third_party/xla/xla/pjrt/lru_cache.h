@@ -133,7 +133,10 @@ void LRUCache<Key, Value, Hash, Eq>::Clear() {
     l->prev->next = l->next;
     --lru_list_->size_;
   }
-  entries_.clear();
+  // Deleting a cache entry may reentrantly trigger other calls into, say,
+  // Clear().
+  std::unordered_map<Key, Entry, Hash, Eq> entries;
+  std::swap(entries, entries_);
 }
 
 template <typename Key, typename Value, typename Hash, typename Eq>
