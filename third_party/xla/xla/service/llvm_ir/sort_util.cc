@@ -218,7 +218,7 @@ absl::Status EmitCompareLoopBody(
 absl::Status EmitTiledCompareLoop(
     const IrArray::Index& tiled_keys_index, int64_t dimension_to_sort,
     int64_t dimension_to_sort_bound, int64_t num_threads,
-    absl::Span<const int64_t> xor_masks, const std::vector<IrArray>& params,
+    absl::Span<const int64_t> xor_masks, absl::Span<const IrArray> params,
     const std::vector<llvm::GlobalVariable*>& param_shmem_buffers,
     int64_t tile_size, int64_t unroll_factor,
     const EmitCallToNestedComputationCallback& emit_compare_callback,
@@ -386,7 +386,7 @@ absl::Status EmitTiledCompareLoop(
 }  // namespace
 
 absl::Status EmitSortInPlace(
-    int64_t dimension_to_sort, const std::vector<IrArray>& values_arrays,
+    int64_t dimension_to_sort, absl::Span<const IrArray> values_arrays,
     absl::string_view name, absl::Span<const int64_t> xor_masks,
     llvm::IRBuilderBase* b, const gpu::LaunchDimensions& launch_dimensions,
     int64_t num_iterations_in_sort_dim, int64_t tile_size,
