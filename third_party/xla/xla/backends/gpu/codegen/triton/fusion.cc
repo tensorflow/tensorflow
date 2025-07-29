@@ -219,13 +219,12 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     TF_RET_CHECK(impl_fn);
 
     llvm::Function* kernel;
-    std::vector<llvm_ir::IrArray> inputs;
-    std::vector<llvm_ir::IrArray> outputs;
+    std::vector<llvm_ir::IrArray> ir_arrays;
     TF_ASSIGN_OR_RETURN(
-        std::tie(kernel, inputs, outputs),
+        std::tie(kernel, ir_arrays),
         BuildKernelPrototype(ir_emitter_context, impl_fn_name,
                              suggested_kernel_name, kernel_arguments.args(),
-                             impl_fn->arg_size(), launch_dimensions, &builder));
+                             launch_dimensions, &builder));
 
     PopulateNvvmAnnotations(ir_emitter_context.llvm_module(), kernel,
                             triton_wrapper_result);
@@ -233,7 +232,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     // Move function body into kernel prototype.
     llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
     prototype_func->splice(prototype_func->begin(), impl_fn);
-    for (const auto& [arg, ir_array] : llvm::zip(impl_fn->args(), inputs)) {
+    for (const auto& [arg, ir_array] : llvm::zip(impl_fn->args(), ir_arrays)) {
       arg.replaceAllUsesWith(ir_array.GetBasePointer());
     }
     // Triton's kernel ABI expects an additional scratchpad global memory.

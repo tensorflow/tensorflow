@@ -100,23 +100,19 @@ class KernelFusionInterface : public FusionInterface {
       const Shape& shape, mlir::MLIRContext* ctx);
 };
 
-absl::StatusOr<
-    std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray /*inputs*/>,
-               std::vector<llvm_ir::IrArray> /*outputs*/>>
+absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>>>
 BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
                      const std::string& impl_fn_name,
                      const std::string& suggested_name,
                      absl::Span<const emitters::KernelArgument> arguments,
-                     size_t num_inputs,
                      const LaunchDimensions& launch_dimensions,
                      llvm::IRBuilderBase* builder);
-absl::StatusOr<
-    std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray /*inputs*/>,
-               std::vector<llvm_ir::IrArray> /*outputs*/>>
+
+absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>>>
 BuildKernelPrototypeFromUniqueName(
     IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
     const std::string& unique_name,
-    absl::Span<const emitters::KernelArgument> arguments, size_t num_inputs,
+    absl::Span<const emitters::KernelArgument> arguments,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder);
 
 // Compute the kernel name. The opcode string may contain "-" which cannot be

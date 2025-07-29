@@ -314,24 +314,21 @@ absl::Status IrEmitterUnnested::EmitPadToStatic(
 
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
       input_shape, ir_emitter_context_->gpu_device_info(), {unroll_factor});
-  std::vector<llvm_ir::IrArray> input_arrays;
-  std::vector<llvm_ir::IrArray> output_arrays;
-  TF_ASSIGN_OR_RETURN(std::tie(input_arrays, output_arrays),
+  TF_ASSIGN_OR_RETURN(std::vector<llvm_ir::IrArray> ir_arrays,
                       BuildKernelThunkForNonFusionOp(instr, instr->operands(),
                                                      launch_dimensions));
 
-  CHECK_EQ(output_arrays.size(), 0);
-  const llvm_ir::IrArray source_array = input_arrays[0];
-  const llvm_ir::IrArray output_array = input_arrays[1];
+  const llvm_ir::IrArray& source_array = ir_arrays[0];
+  const llvm_ir::IrArray& output_array = ir_arrays[1];
   auto output_dim_arrays =
-      absl::Span<const llvm_ir::IrArray>(input_arrays).subspan(2);
+      absl::Span<const llvm_ir::IrArray>(ir_arrays).subspan(2);
 
   llvm::Type* index_ty =
       GetIndexTypeForKernel(instr, launch_dimensions.launch_bound(), &b_);
 
   // pseudo code for PadToStatic on a 2d array
-  //   int* source_array = input[0];
-  //   int* dest_array = output[0];
+  //   int* source_array = args[0];
+  //   int* dest_array = args[1];
   llvm::Value* source_buffer = source_array.GetBasePointer();
 
   // TODO(jurahul): input_shape here is the static shape of the
@@ -450,8 +447,7 @@ absl::Status IrEmitterUnnested::EmitSliceToDynamic(
       input_shape, ir_emitter_context_->gpu_device_info(), {unroll_factor});
   llvm::Type* index_ty =
       GetIndexTypeForKernel(instr, launch_dimensions.launch_bound(), &b_);
-  std::vector<llvm_ir::IrArray> input_arrays, output_arrays;
-  TF_ASSIGN_OR_RETURN(std::tie(input_arrays, output_arrays),
+  TF_ASSIGN_OR_RETURN(std::vector<llvm_ir::IrArray> ir_arrays,
                       BuildKernelThunkForNonFusionOp(instr, instr->operands(),
                                                      launch_dimensions));
 
@@ -472,18 +468,17 @@ absl::Status IrEmitterUnnested::EmitSliceToDynamic(
   int32_t raw_data_size = ShapeUtil::ByteSizeOf(data_shape);
 
   // pseudo code for sliceToDynamic on a 2d array
-  //   int* source_array = input[0];
-  //   int* dest_array = output[0];
-  const llvm_ir::IrArray data_array = input_arrays.back();
+  //   int* source_array = args[0];
+  //   int* dest_array = args.back();
+  const llvm_ir::IrArray& data_array = ir_arrays.back();
   llvm::Value* dest_buffer = data_array.GetBasePointer();
 
   // Load dynamic dimensions from memory.
   std::vector<llvm::Value*> dynamic_dims;
   int alignment = raw_data_size % sizeof(int32_t);
   for (int64_t i = 1; i < instr->operand_count(); ++i) {
-    llvm::Value* source_buffer = input_arrays[i].GetBasePointer();
-    llvm::Type* source_buffer_pointee_type =
-        input_arrays[i].GetBasePointeeType();
+    llvm::Value* source_buffer = ir_arrays[i].GetBasePointer();
+    llvm::Type* source_buffer_pointee_type = ir_arrays[i].GetBasePointeeType();
     llvm::LoadInst* dyn_dim_size =
         Load(source_buffer_pointee_type, source_buffer, "dyn_dim_size");
     dynamic_dims.push_back(dyn_dim_size);
@@ -547,8 +542,8 @@ absl::Status IrEmitterUnnested::EmitSliceToDynamic(
 
     data_array.EmitWriteArrayElement(
         array_index,
-        input_arrays[0].EmitReadArrayElement(dyn_index, &b_, /*name=*/"",
-                                             /*use_linear_index=*/false),
+        ir_arrays[0].EmitReadArrayElement(dyn_index, &b_, /*name=*/"",
+                                          /*use_linear_index=*/false),
         &b_);
     return absl::OkStatus();
   };
@@ -1451,7 +1446,6 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
     TF_RET_CHECK(triton_fn)
         << "Call name not found in the Triton module: " << call.name;
     triton_fn.setName(kernel_name);
-    size_t arg_size = triton_fn.getNumArguments();
 
     HloModule* hlo_module = instr->GetModule();
     // If emit_kernels if false (i.e., when deserializing an already
@@ -1500,18 +1494,17 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
       llvm::IRBuilder builder(ir_emitter_context_->llvm_module()->getContext());
 
       llvm::Function* kernel;
-      std::vector<llvm_ir::IrArray> inputs;
-      std::vector<llvm_ir::IrArray> outputs;
-      TF_ASSIGN_OR_RETURN(std::tie(kernel, inputs, outputs),
+      std::vector<llvm_ir::IrArray> ir_arrays;
+      TF_ASSIGN_OR_RETURN(std::tie(kernel, ir_arrays),
                           BuildKernelPrototypeFromUniqueName(
                               *ir_emitter_context_, impl_fn->getName().str(),
                               sanitized_kernel_name, kernel_arguments.args(),
-                              arg_size, launch_dimensions, &builder));
+                              launch_dimensions, &builder));
 
       // Move function body into kernel prototype.
       llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
       prototype_func->splice(prototype_func->begin(), impl_fn);
-      for (const auto& [arg, input] : llvm::zip(impl_fn->args(), inputs)) {
+      for (const auto& [arg, input] : llvm::zip(impl_fn->args(), ir_arrays)) {
         arg.replaceAllUsesWith(input.GetBasePointer());
       }
       // Triton's kernel ABI expects an additional scratchpad global
@@ -1708,10 +1701,9 @@ absl::Status IrEmitterUnnested::EmitRngGetAndUpdateState(
   // algorithm.
   TF_ASSIGN_OR_RETURN(auto ir_arrays, BuildKernelThunkForNonFusionOp(
                                           instr, {}, LaunchDimensions()));
-  auto& [inputs, outputs] = ir_arrays;
   llvm::Value* old_state =
       llvm_ir::RngGetAndUpdateState(instr->delta(), module_, &b_);
-  llvm::Value* output_address = inputs[0].EmitArrayElementAddress(
+  llvm::Value* output_address = ir_arrays[0].EmitArrayElementAddress(
       llvm_ir::IrArray::Index(
           /*linear=*/b_.getInt64(0), instr->shape(), &b_),
       &b_, "rng_state_address");
@@ -1867,10 +1859,9 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
     TF_ASSIGN_OR_RETURN(auto ir_arrays, BuildKernelThunkForNonFusionOp(
                                             sort, {}, launch_dimensions));
 
-    auto& [inputs, outputs] = ir_arrays;
     auto* comparator = sort->called_computations().front();
     return llvm_ir::EmitSortInPlace(
-        dimension_to_sort, inputs, llvm_ir::IrName(op_name), xor_masks, &b_,
+        dimension_to_sort, ir_arrays, llvm_ir::IrName(op_name), xor_masks, &b_,
         launch_dimensions,
         xor_masks.size() > 1 ? num_iterations_in_sort_dim
                              : standard_num_iterations_in_sort_dim,
@@ -2553,8 +2544,7 @@ absl::Status IrEmitterUnnested::EmitOutfeed(
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
-                         std::vector<llvm_ir::IrArray> /*outputs*/>>
+absl::StatusOr<std::vector<llvm_ir::IrArray>>
 IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
     const HloInstruction* instr,
     absl::Span<const HloInstruction* const> needed_operands,
@@ -2569,14 +2559,12 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
   VLOG(3) << "Generating (without reuse check): " << suggested_kernel_name;
 
   llvm::Function* kernel;
-  std::vector<llvm_ir::IrArray> inputs;
-  std::vector<llvm_ir::IrArray> outputs;
+  std::vector<llvm_ir::IrArray> ir_arrays;
   TF_ASSIGN_OR_RETURN(
-      std::tie(kernel, inputs, outputs),
+      std::tie(kernel, ir_arrays),
       BuildKernelPrototype(*ir_emitter_context_, suggested_kernel_name,
                            suggested_kernel_name, kernel_arguments.args(),
-                           kernel_arguments.args().size(), launch_dimensions,
-                           &b_));
+                           launch_dimensions, &b_));
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), kernel->getName().str(),
@@ -2584,7 +2572,7 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
       /*cluster_dim=*/std::nullopt,
       /*shmem_bytes=*/0));
 
-  return {{inputs, outputs}};
+  return ir_arrays;
 }
 
 absl::StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
