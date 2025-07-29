@@ -153,7 +153,7 @@ TEST_F(ArrayTest, FullyReplicatedShard) {
       sharding_, ArrayHandle{1234}, /*layout=*/nullptr);
 
   EXPECT_THAT(array->FullyReplicatedShard(ArrayCopySemantics::kAlwaysCopy),
-              IsOk());
+              absl_testing::IsOk());
   auto req = requests_queue.Pop().fully_replicated_shard_request();
   EXPECT_EQ(req.array_handle(), 1234);
   EXPECT_EQ(req.result_handle(), 1);
