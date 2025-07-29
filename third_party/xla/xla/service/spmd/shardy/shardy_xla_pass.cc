@@ -300,11 +300,8 @@ std::string getShardyDirIfShouldDump(const DebugOptions& debugOptions,
                                      absl::string_view passName,
                                      bool isShardyVerbose) {
   std::string shardyDir = debugOptions.xla_dump_to();
-  std::string regex = debugOptions.xla_dump_hlo_pass_re();
-  if (shardyDir.empty()) {
-    return "";
-  }
-  if (isShardyVerbose) {
+  absl::string_view regex = debugOptions.xla_dump_hlo_pass_re();
+  if (shardyDir.empty() || isShardyVerbose) {
     return shardyDir;
   }
   if (regex.empty() || !RE2::PartialMatch(passName, regex)) {
@@ -337,11 +334,12 @@ absl::Status runShardingPropagation(HloModule* hloModule,
     }
   }
 
+  if (isShardyVerbose) {
+    options.debugPropagationEdgeSharding = true;
+    options.debugShardingOrigins = true;
+  }
+
   if (!shardyDir.empty()) {
-    if (isShardyVerbose) {
-      options.debugPropagationEdgeSharding = true;
-      options.debugShardingOrigins = true;
-    }
     shardyDir =
         tsl::io::JoinPath(shardyDir, "shardy", uniqueModuleName(*hloModule));
     LOG(INFO) << "Using Shardy output directory: " << shardyDir;
