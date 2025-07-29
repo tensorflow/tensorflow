@@ -286,7 +286,8 @@ PartitionedComputation::PartitionedComputation(
           HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kConstant,
                            HloOpcode::kIota, HloOpcode::kParameter,
                            HloOpcode::kReshape, HloOpcode::kReverse,
-                           HloOpcode::kTranspose>(instruction);
+                           HloOpcode::kTranspose, HloOpcode::kBroadcast,
+                           HloOpcode::kSlice, HloOpcode::kCopy>(instruction);
       if (id_to_subgraph_data[instr_to_id[instruction]].is_root) {
         roots.push_back(instruction);
         if (first_root_shape) {
