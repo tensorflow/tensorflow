@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/c/pjrt_c_api_ffi_internal.h"
+#include <string>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/ffi/api/c_api.h"
 #include "xla/ffi/execution_context.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/ffi/type_id_registry.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_ffi_extension.h"
@@ -68,6 +70,28 @@ static PJRT_Error* PJRT_FFI_UserData_Add(PJRT_FFI_UserData_Add_Args* args) {
   return nullptr;
 }
 
+static PJRT_Error* PJRT_FFI_Register_Handler(
+    PJRT_FFI_Register_Handler_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_FFI_Register_Handler_Args",
+      PJRT_FFI_Register_Handler_Args_STRUCT_SIZE, args->struct_size));
+  std::string target_name(args->target_name, args->target_name_size);
+  std::string platform_name(args->platform_name, args->platform_name_size);
+
+  // Validate that handler is not null
+  if (args->handler == nullptr) {
+    return new PJRT_Error{
+        absl::InvalidArgumentError("FFI handler cannot be null")};
+  }
+
+  // Only support typed FFI handlers
+  xla::ffi::Ffi::RegisterStaticHandler(
+      xla::ffi::GetXlaFfiApi(), target_name, platform_name,
+      reinterpret_cast<XLA_FFI_Handler*>(args->handler),
+      static_cast<XLA_FFI_Handler_TraitsBits>(args->traits));
+  return nullptr;
+}
+
 PJRT_FFI_Extension CreateFfiExtension(PJRT_Extension_Base* next) {
   return {
       PJRT_Extension_Base{
@@ -77,6 +101,7 @@ PJRT_FFI_Extension CreateFfiExtension(PJRT_Extension_Base* next) {
       },
       /*type_id_register=*/PJRT_FFI_TypeID_Register,
       /*user_data_add=*/PJRT_FFI_UserData_Add,
+      /*register_handler=*/PJRT_FFI_Register_Handler,
   };
 }
 
