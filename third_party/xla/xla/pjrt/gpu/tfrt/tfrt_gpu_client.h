@@ -150,7 +150,7 @@ class TfrtGpuDevice final : public PjRtDevice {
 
   PjRtClient* client() const override;
 
-  bool IsAddressable() const override { return local_device_id_ != -1; }
+  bool IsAddressable() const override { return executor_ != nullptr; }
 
   int id() const override { return id_; }
 
