@@ -60,9 +60,11 @@ TEST_F(SymbolicTiledHloTest, TestPrinting) {
   )");
   auto tiling_space =
       TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root));
-  std::optional<TiledOperands> tiled_operands = PropagateTileToInput(
-      tiling_space, *root,
-      GetTestSymbolicTile(&mlir_context_, root->shape().dimensions()), 0);
+  std::optional<TiledOperands> tiled_operands =
+      PropagateTileToInput(tiling_space, *root,
+                           GetTestSymbolicTile(&mlir_context_, tiling_space,
+                                               root->shape().dimensions()),
+                           0);
 
   ASSERT_TRUE(tiled_operands.has_value());
   SymbolicTiledHloInstruction tiled_hlo_instruction(root,
