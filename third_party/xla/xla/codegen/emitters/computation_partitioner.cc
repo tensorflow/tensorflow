@@ -92,6 +92,14 @@ std::vector<IndexingMapSet> ComputeOperandIndexingMaps(
   return indexing_maps_per_operand;
 }
 
+bool HasNoCompute(const HloInstruction* instr) {
+  return HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kConstant,
+                          HloOpcode::kIota, HloOpcode::kParameter,
+                          HloOpcode::kReshape, HloOpcode::kReverse,
+                          HloOpcode::kTranspose, HloOpcode::kBroadcast,
+                          HloOpcode::kSlice, HloOpcode::kCopy>(instr);
+}
+
 }  // namespace
 
 EpilogueSpecification EpilogueSpecification::FromIdentityIndexing(
@@ -282,12 +290,7 @@ PartitionedComputation::PartitionedComputation(
     const xla::Shape* first_root_shape = nullptr;
     bool has_no_compute = true;
     for (auto* instruction : instructions) {
-      has_no_compute &=
-          HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kConstant,
-                           HloOpcode::kIota, HloOpcode::kParameter,
-                           HloOpcode::kReshape, HloOpcode::kReverse,
-                           HloOpcode::kTranspose, HloOpcode::kBroadcast,
-                           HloOpcode::kSlice, HloOpcode::kCopy>(instruction);
+      has_no_compute &= HasNoCompute(instruction);
       if (id_to_subgraph_data[instr_to_id[instruction]].is_root) {
         roots.push_back(instruction);
         if (first_root_shape) {
@@ -361,9 +364,11 @@ PartitionedComputation::Subgraph PartitionedComputation::Subgraph::ForEpilogue(
 
   absl::flat_hash_set<const HloInstruction*> seen;
   std::function<void(const HloInstruction*)> visit;
+  bool has_no_compute = true;
   visit = [&](const HloInstruction* instruction) {
     if (subgraph.injected_value_starts.contains(instruction)) return;
     if (!seen.insert(instruction).second) return;
+    has_no_compute &= HasNoCompute(instruction);
     for (auto [index, operand] : llvm::enumerate(instruction->operands())) {
       visit(operand);
     }
@@ -373,6 +378,7 @@ PartitionedComputation::Subgraph PartitionedComputation::Subgraph::ForEpilogue(
   subgraph.instructions = std::move(seen);
   subgraph.index_ranges = epilogue.index_ranges;
   subgraph.root_indexing = epilogue.root_indexing;
+  subgraph.has_no_compute = has_no_compute;
   return subgraph;
 }
 
