@@ -64,3 +64,7 @@ message SerializedXlaExecutableMetadata {
 
   repeated ParameterSpec parameter_specs = 6;
 }
+
+message SerializedXlaExecutable {
+  bytes pjrt_executable = 1 [ctype = CORD];
+}
