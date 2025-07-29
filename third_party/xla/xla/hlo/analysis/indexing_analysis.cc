@@ -53,7 +53,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout.h"
 #include "xla/permutation_util.h"
-#include "xla/service/gpu/matmul_indexing_utils.h"
+#include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -361,8 +361,8 @@ HloInstructionIndexing ComputeOutputToInputDotOpIndexing(
   }
 
   // lhs_non_contracting_dims
-  auto lhs_non_contracting_dims = gpu::GetNonContractingDims(
-      lhs_shape, lhs_batch_dims, lhs_contracting_dims);
+  auto lhs_non_contracting_dims =
+      GetNonContractingDims(lhs_shape, lhs_batch_dims, lhs_contracting_dims);
   assert(lhs_non_contracting_dims.ok());
 
   for (int64_t lhs_non_contracting_dim : lhs_non_contracting_dims.value()) {
@@ -371,8 +371,8 @@ HloInstructionIndexing ComputeOutputToInputDotOpIndexing(
   }
 
   // rhs_non_contracting_dims
-  auto rhs_non_contracting_dims = gpu::GetNonContractingDims(
-      rhs_shape, rhs_batch_dims, rhs_contracting_dims);
+  auto rhs_non_contracting_dims =
+      GetNonContractingDims(rhs_shape, rhs_batch_dims, rhs_contracting_dims);
   assert(rhs_non_contracting_dims.ok());
   for (int64_t rhs_non_contracting_dim : rhs_non_contracting_dims.value()) {
     rhs_exprs[rhs_non_contracting_dim] =

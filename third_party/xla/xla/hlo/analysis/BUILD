@@ -600,7 +600,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms/simplifiers:gather_simplifier",
         "//xla/hlo/utils:hlo_traversal",
-        "//xla/service/gpu:matmul_indexing_utils",
+        "//xla/service:matmul_indexing_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
