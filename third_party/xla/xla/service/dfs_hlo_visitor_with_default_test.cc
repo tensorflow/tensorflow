@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 
+#include <memory>
+#include <string>
+
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"

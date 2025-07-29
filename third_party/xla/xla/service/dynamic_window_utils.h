@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
 namespace xla {
 struct DynamicWindowDims {
   HloInstruction* padding_before;
