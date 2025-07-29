@@ -205,6 +205,7 @@ cc_library(
         "//xla:util",
         "//xla/backends/cpu/runtime:function_library",
         "//xla/service/cpu:orc_jit_memory_mapper",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -39,15 +40,16 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorAddress.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
+#include "llvm/ExecutionEngine/Orc/SymbolStringPool.h"
+#include "llvm/ExecutionEngine/Orc/TaskDispatch.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "xla/backends/cpu/codegen/compiled_function_library.h"
-#include "xla/backends/cpu/codegen/contiguous_section_memory_manager.h"
 #include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/runtime/function_library.h"
-#include "xla/service/cpu/orc_jit_memory_mapper.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
