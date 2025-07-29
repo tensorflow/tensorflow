@@ -314,8 +314,7 @@ absl::Status IrEmitterUnnested::EmitPadToStatic(
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
       input_shape, ir_emitter_context_->gpu_device_info(), {unroll_factor});
   TF_ASSIGN_OR_RETURN(std::vector<llvm_ir::IrArray> ir_arrays,
-                      BuildKernelThunkForNonFusionOp(instr, instr->operands(),
-                                                     launch_dimensions));
+                      BuildKernelThunkForNonFusionOp(instr, launch_dimensions));
 
   const llvm_ir::IrArray& source_array = ir_arrays[0];
   const llvm_ir::IrArray& output_array = ir_arrays[1];
@@ -447,8 +446,7 @@ absl::Status IrEmitterUnnested::EmitSliceToDynamic(
   llvm::Type* index_ty =
       GetIndexTypeForKernel(instr, launch_dimensions.launch_bound(), &b_);
   TF_ASSIGN_OR_RETURN(std::vector<llvm_ir::IrArray> ir_arrays,
-                      BuildKernelThunkForNonFusionOp(instr, instr->operands(),
-                                                     launch_dimensions));
+                      BuildKernelThunkForNonFusionOp(instr, launch_dimensions));
 
   const Shape& data_shape = ShapeUtil::MakeStaticShape(instr->shape());
   TF_RET_CHECK(data_shape.IsArray());
@@ -963,11 +961,10 @@ absl::Status IrEmitterUnnested::EmitNormThunk(
 
 absl::Status IrEmitterUnnested::EmitCuDnnThunk(
     const HloCustomCallInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(
-      auto kernel_arguments,
-      emitters::KernelArguments::Create(
-          ir_emitter_context_->buffer_assignment(), GetDefaultBufferAlignment(),
-          instr, instr->operands()));
+  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
+                      emitters::KernelArguments::Create(
+                          ir_emitter_context_->buffer_assignment(),
+                          GetDefaultBufferAlignment(), instr));
   TF_ASSIGN_OR_RETURN(const std::string fingerprint,
                       FingerprintWithBackendConfig<GpuBackendConfig>(*instr));
   // check if sdpa dropout is enabled
@@ -1407,7 +1404,7 @@ absl::Status IrEmitterUnnested::EmitTopKCustomCall(
   TF_ASSIGN_OR_RETURN(auto kernel_arguments,
                       emitters::KernelArguments::Create(
                           ir_emitter_context_->buffer_assignment(),
-                          GetDefaultBufferAlignment(), instr, operands));
+                          GetDefaultBufferAlignment(), instr));
 
   auto thunk = std::make_unique<CustomKernelThunk>(
       instr, std::move(kernel), std::move(kernel_arguments.args()));
@@ -1468,12 +1465,11 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
                             ir_emitter_context_->llvm_module(), mlir_context,
                             /*is_xla_fusion=*/false, emit_kernels));
 
-    TF_ASSIGN_OR_RETURN(
-        auto kernel_arguments,
-        emitters::KernelArguments::Create(
-            ir_emitter_context_->buffer_assignment(),
-            GetDefaultBufferAlignment(), instr, instr->operands(),
-            /*dedup=*/false));
+    TF_ASSIGN_OR_RETURN(auto kernel_arguments,
+                        emitters::KernelArguments::Create(
+                            ir_emitter_context_->buffer_assignment(),
+                            GetDefaultBufferAlignment(), instr,
+                            /*dedup=*/false));
     auto launch_dimensions = LaunchDimensions(
         se::BlockDim(call.grid_x, call.grid_y, call.grid_z),
         se::ThreadDim(
@@ -1539,7 +1535,7 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
   TF_ASSIGN_OR_RETURN(auto kernel_arguments,
                       emitters::KernelArguments::Create(
                           ir_emitter_context_->buffer_assignment(),
-                          GetDefaultBufferAlignment(), instr, instr->operands(),
+                          GetDefaultBufferAlignment(), instr,
                           /*dedup=*/false));
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
@@ -1698,9 +1694,8 @@ absl::Status IrEmitterUnnested::EmitRngGetAndUpdateState(
     const HloRngGetAndUpdateStateInstruction* instr) {
   // Emit a kernel to increment the global state for Philox RNG
   // algorithm.
-  TF_ASSIGN_OR_RETURN(auto ir_arrays,
-                      BuildKernelThunkForNonFusionOp(instr, instr->operands(),
-                                                     LaunchDimensions()));
+  TF_ASSIGN_OR_RETURN(auto ir_arrays, BuildKernelThunkForNonFusionOp(
+                                          instr, LaunchDimensions()));
   llvm::Value* old_state =
       llvm_ir::RngGetAndUpdateState(instr->delta(), module_, &b_);
   llvm::Value* output_address = ir_arrays[0].EmitArrayElementAddress(
@@ -1856,9 +1851,9 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
     LaunchDimensions launch_dimensions = xor_masks.size() > 1
                                              ? tiled_launch_dimensions
                                              : standard_launch_dimensions;
-    TF_ASSIGN_OR_RETURN(std::vector<llvm_ir::IrArray> ir_arrays,
-                        BuildKernelThunkForNonFusionOp(sort, sort->operands(),
-                                                       launch_dimensions));
+    TF_ASSIGN_OR_RETURN(
+        std::vector<llvm_ir::IrArray> ir_arrays,
+        BuildKernelThunkForNonFusionOp(sort, launch_dimensions));
 
     // The first `operand_count()` elements of `ir_arrays` are the input
     // operands and the rest are the output arrays. Inputs are aliases with
@@ -2554,15 +2549,13 @@ absl::Status IrEmitterUnnested::EmitOutfeed(
 
 absl::StatusOr<std::vector<llvm_ir::IrArray>>
 IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
-    const HloInstruction* instr,
-    absl::Span<const HloInstruction* const> needed_operands,
-    const LaunchDimensions& launch_dimensions) {
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions) {
   std::string suggested_kernel_name(instr->name());
 
   TF_ASSIGN_OR_RETURN(auto kernel_arguments,
                       emitters::KernelArguments::Create(
                           ir_emitter_context_->buffer_assignment(),
-                          GetDefaultBufferAlignment(), instr, needed_operands));
+                          GetDefaultBufferAlignment(), instr));
 
   VLOG(3) << "Generating (without reuse check): " << suggested_kernel_name;
 

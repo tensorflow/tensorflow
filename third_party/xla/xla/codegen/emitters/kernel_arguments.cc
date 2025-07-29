@@ -37,10 +37,9 @@ namespace xla::emitters {
 absl::StatusOr<KernelArguments> KernelArguments::Create(
     const BufferAssignment& buffer_assignment,
     const BufferAlignment& buffer_alignment,
-    const HloInstruction* hlo_instruction,
-    absl::Span<const HloInstruction* const> needed_operands, bool dedup) {
+    const HloInstruction* hlo_instruction, bool dedup) {
   std::vector<KernelArgument> kernel_arguments;
-  for (const HloInstruction* operand : needed_operands) {
+  for (const HloInstruction* operand : hlo_instruction->operands()) {
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                         buffer_assignment.GetUniqueSlice(operand, {}));
     kernel_arguments.emplace_back(
@@ -62,15 +61,6 @@ absl::StatusOr<KernelArguments> KernelArguments::Create(
       }));
 
   return KernelArguments{std::move(kernel_arguments), buffer_alignment, dedup};
-}
-
-absl::StatusOr<KernelArguments> KernelArguments::Create(
-    const BufferAssignment& buffer_assignment,
-    const BufferAlignment& buffer_alignment,
-    const HloInstruction* hlo_instruction) {
-  return KernelArguments::Create(buffer_assignment, buffer_alignment,
-                                 hlo_instruction, hlo_instruction->operands(),
-                                 /*dedup=*/true);
 }
 
 std::vector<KernelArgument> KernelArguments::ProcessArguments(

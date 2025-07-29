@@ -75,14 +75,7 @@ class KernelArguments {
   static absl::StatusOr<KernelArguments> Create(
       const BufferAssignment& buffer_assignment,
       const BufferAlignment& buffer_alignment,
-      const HloInstruction* hlo_instruction);
-
-  static absl::StatusOr<KernelArguments> Create(
-      const BufferAssignment& buffer_assignment,
-      const BufferAlignment& buffer_alignment,
-      const HloInstruction* hlo_instruction,
-      absl::Span<const HloInstruction* const> needed_operands,
-      bool dedup = true);
+      const HloInstruction* hlo_instruction, bool dedup = true);
 
   const std::vector<KernelArgument>& args() const { return args_; }
 
