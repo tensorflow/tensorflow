@@ -350,23 +350,23 @@ ThunkExecutor::ExecuteSequential(const Thunk::ExecuteParams& params) {
     // resume sequential execution starting from the next thunk.
     if (ABSL_PREDICT_FALSE(!execute_event.IsAvailable())) {
       auto event = tsl::MakeConstructedAsyncValueRef<ExecuteEvent>();
-      execute_event.AndThen(
-          [this, &params, &thunk, it, event](absl::Status status) {
-            Thunk::TaskRunner* runner = params.task_runner;
-
-            if (ABSL_PREDICT_FALSE(!status.ok())) {
-              event.SetError(std::move(status));
-            } else if (ABSL_PREDICT_FALSE(thunk.async_resume() && runner)) {
-              // Resume execution using the task runner to avoid executing
-              // remaining thunks on a thread pool that we don't own.
-              (*runner)([this, &params, it, event = std::move(event)] {
-                ResumeExecuteSequential(it + 1, params, std::move(event));
-              });
-            } else {
-              // Resume execution on a thread that completed thunk execution.
-              ResumeExecuteSequential(it + 1, params, std::move(event));
-            }
+      execute_event.AndThen([this, &params, &thunk, it,
+                             event](absl::Status status) {
+        if (ABSL_PREDICT_FALSE(!status.ok())) {
+          event.SetError(std::move(status));
+        } else if (Thunk::TaskRunner* runner = params.task_runner;
+                   ABSL_PREDICT_FALSE(thunk.ExecutesOnExternalThreadPool() &&
+                                      runner != nullptr)) {
+          // Resume execution using the task runner to avoid executing
+          // remaining thunks on a thread pool that we don't own.
+          (*runner)([this, &params, it, event = std::move(event)] {
+            ResumeExecuteSequential(it + 1, params, std::move(event));
           });
+        } else {
+          // Resume execution on a thread that completed thunk execution.
+          ResumeExecuteSequential(it + 1, params, std::move(event));
+        }
+      });
       return event;
     }
 
@@ -402,11 +402,11 @@ void ThunkExecutor::ResumeExecuteSequential(
     if (ABSL_PREDICT_FALSE(!execute_event.IsAvailable())) {
       execute_event.AndThen([this, &params, &thunk, it,
                              event = std::move(event)](absl::Status status) {
-        Thunk::TaskRunner* runner = params.task_runner;
-
         if (ABSL_PREDICT_FALSE(!status.ok())) {
           event.SetError(std::move(status));
-        } else if (ABSL_PREDICT_FALSE(thunk.async_resume() && runner)) {
+        } else if (Thunk::TaskRunner* runner = params.task_runner;
+                   ABSL_PREDICT_FALSE(thunk.ExecutesOnExternalThreadPool() &&
+                                      runner != nullptr)) {
           // Resume execution using the task runner to avoid executing
           // remaining thunks on a thread pool that we don't own.
           (*runner)([this, &params, it, event = std::move(event)] {
@@ -529,8 +529,8 @@ void ThunkExecutor::Execute(ExecuteState* state,
           return;
         }
 
-        Thunk::TaskRunner* runner = state->runner;
-        if (ABSL_PREDICT_FALSE(thunk.async_resume() && runner)) {
+        if (Thunk::TaskRunner* runner = state->runner; ABSL_PREDICT_FALSE(
+                thunk.ExecutesOnExternalThreadPool() && runner != nullptr)) {
           // Resume execution using the task runner to avoid executing
           // remaining thunks on a thread pool that we don't own.
           (*runner)([state, &params, ready_queue = std::move(ready_queue),
