@@ -121,27 +121,24 @@ std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,
       llvm_ir::SanitizeFunctionName(suggested_name));
 }
 
-absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,
-                          std::vector<llvm_ir::IrArray>>>
+absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>>>
 BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
                      const std::string& impl_fn_name,
                      const std::string& suggested_name,
                      absl::Span<const emitters::KernelArgument> arguments,
-                     size_t num_inputs,
                      const LaunchDimensions& launch_dimensions,
                      llvm::IRBuilderBase* builder) {
   return BuildKernelPrototypeFromUniqueName(
       ir_emitter_context, impl_fn_name,
       GetSanitizedUniqueName(ir_emitter_context, suggested_name), arguments,
-      num_inputs, launch_dimensions, builder);
+      launch_dimensions, builder);
 }
 
-absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,
-                          std::vector<llvm_ir::IrArray>>>
+absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>>>
 BuildKernelPrototypeFromUniqueName(
     IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
     const std::string& unique_kernel_name,
-    absl::Span<const emitters::KernelArgument> arguments, size_t num_inputs,
+    absl::Span<const emitters::KernelArgument> arguments,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder) {
   // If some arguments have the same buffer, we will pass them only once.
   llvm::SmallVector<int> to_llvm_arg_no(arguments.size());
@@ -222,7 +219,8 @@ BuildKernelPrototypeFromUniqueName(
     }
   }
 
-  std::vector<llvm_ir::IrArray> inputs, outputs;
+  std::vector<llvm_ir::IrArray> ir_arrays;
+  ir_arrays.reserve(arguments.size());
   for (size_t arg_no = 0; arg_no < arguments.size(); ++arg_no) {
     const emitters::KernelArgument& kernel_argument = arguments[arg_no];
     llvm::Argument& llvm_arg = *kernel->getArg(to_llvm_arg_no[arg_no]);
@@ -235,10 +233,10 @@ BuildKernelPrototypeFromUniqueName(
       ir_array.MarkInvariantOverWholeProgram(&llvm_arg.getContext());
     }
 
-    (arg_no < num_inputs ? inputs : outputs).push_back(ir_array);
+    ir_arrays.push_back(ir_array);
   }
 
-  return {{kernel, std::move(inputs), std::move(outputs)}};
+  return {{kernel, std::move(ir_arrays)}};
 }
 
 }  // namespace gpu

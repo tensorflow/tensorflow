@@ -316,9 +316,7 @@ class IrEmitterUnnested : public IrEmitter {
   //   ```
   absl::Status EmitSliceToDynamic(const HloCustomCallInstruction* instr);
 
-  absl::StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
-                           std::vector<llvm_ir::IrArray> /*outputs*/>>
-  BuildKernelThunkForNonFusionOp(
+  absl::StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunkForNonFusionOp(
       const HloInstruction* instr,
       absl::Span<const HloInstruction* const> needed_operands,
       const LaunchDimensions& launch_dimensions);
