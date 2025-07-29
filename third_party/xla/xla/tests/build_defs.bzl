@@ -334,7 +334,6 @@ def xla_test(
                     "//xla/stream_executor/rocm:gpu_test_kernels_rocm",
                     "//xla/stream_executor/rocm:stream_executor_rocm",
                 ]
-            this_backend_copts.append("-DXLA_TEST_BACKEND_GPU=1")
 
             # TODO: b/382779188 - Remove this when all tests are migrated to PjRt.
             if "test_migrated_to_hlo_runner_pjrt" in this_backend_tags:
@@ -365,8 +364,7 @@ def xla_test(
             name = test_name,
             srcs = srcs,
             tags = this_backend_tags,
-            copts = copts + ["-DXLA_TEST_BACKEND_%s=1" % backend.upper()] +
-                    this_backend_copts,
+            copts = copts + this_backend_copts,
             args = args + this_backend_args,
             deps = deps + backend_deps,
             data = data + this_backend_data,
