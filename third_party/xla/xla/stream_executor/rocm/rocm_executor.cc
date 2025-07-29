@@ -418,7 +418,7 @@ void* DeviceAllocate(Context* context, uint64_t bytes) {
   }
 
   ScopedActivateContext activated(context);
-  hipDeviceptr_t result = 0;
+  hipDeviceptr_t result = nullptr;
   hipError_t res = wrap::hipMalloc(&result, bytes);
   if (res != hipSuccess) {
     // LOG(INFO) because this isn't always important to users (e.g. BFCAllocator
