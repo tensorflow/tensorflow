@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -50,6 +51,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+constexpr int64_t kGpuPointerSize = 8;
 
 se::StreamExecutor* GpuExecutor() {
   auto name =
@@ -88,7 +91,8 @@ TEST(HostExecuteStartThunkTest, SingleArgSingleResult) {
 
   HostExecuteStartThunk thunk(Thunk::ThunkInfo(), *hlo_module,
                               {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
-                              {{slice_result, ShapeUtil::MakeShape(S32, {})}});
+                              {{slice_result, ShapeUtil::MakeShape(S32, {})}},
+                              kGpuPointerSize);
 
   se::StreamExecutorMemoryAllocator allocator(stream_executor);
   ExecutableRunOptions executable_run_options;
@@ -166,7 +170,8 @@ TEST(HostExecuteStartThunkTest, MultiArgMultipleResult) {
                               {{slice_arg0, ShapeUtil::MakeShape(S32, {})},
                                {slice_arg1, ShapeUtil::MakeShape(S32, {})}},
                               {{slice_result0, ShapeUtil::MakeShape(S32, {})},
-                               {slice_result1, ShapeUtil::MakeShape(S32, {})}});
+                               {slice_result1, ShapeUtil::MakeShape(S32, {})}},
+                              kGpuPointerSize);
 
   se::StreamExecutorMemoryAllocator allocator(stream_executor);
   ExecutableRunOptions executable_run_options;
@@ -246,7 +251,8 @@ TEST(HostExecuteStartThunkTest, ArgAndResultPinnedOnHost) {
 
   HostExecuteStartThunk thunk(Thunk::ThunkInfo(), *hlo_module,
                               {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
-                              {{slice_result, ShapeUtil::MakeShape(S32, {})}});
+                              {{slice_result, ShapeUtil::MakeShape(S32, {})}},
+                              kGpuPointerSize);
 
   se::StreamExecutorMemoryAllocator allocator(stream_executor);
   ExecutableRunOptions executable_run_options;
@@ -305,7 +311,8 @@ TEST(HostExecuteStartThunkTest, ArgAndResultNonRegisteredHostMemory) {
 
   HostExecuteStartThunk thunk(Thunk::ThunkInfo(), *hlo_module,
                               {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
-                              {{slice_result, ShapeUtil::MakeShape(S32, {})}});
+                              {{slice_result, ShapeUtil::MakeShape(S32, {})}},
+                              kGpuPointerSize);
 
   se::StreamExecutorMemoryAllocator allocator(stream_executor);
   ExecutableRunOptions executable_run_options;
@@ -372,7 +379,8 @@ TEST(HostExecuteStartThunkTest, TestErrorPropagationFromExecuteEvent) {
 
   HostExecuteStartThunk thunk(Thunk::ThunkInfo(), *hlo_module,
                               {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
-                              {{slice_result, ShapeUtil::MakeShape(S32, {})}});
+                              {{slice_result, ShapeUtil::MakeShape(S32, {})}},
+                              kGpuPointerSize);
 
   se::StreamExecutorMemoryAllocator allocator(stream_executor);
   ExecutableRunOptions executable_run_options;
@@ -457,6 +465,88 @@ TEST(HostExecuteDoneThunkTest, WaitingOnErrorEvent) {
       thunk.Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
   EXPECT_THAT(thunk.ExecuteOnStream(params),
               tsl::testing::StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST(HostExecuteStartThunkTest, MultipleResultsSingleAllocation) {
+  se::StreamExecutor* stream_executor = GpuExecutor();
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
+
+  static constexpr char const* kHloModule = R"(
+    HloModule module
+    ENTRY add_inplace {
+      p0 = s64[] parameter(0)
+      p1 = s64[] parameter(1)
+      add = s64[] add(p0, p1)
+      mul = s64[] multiply(p0, p1)
+      ROOT tuple = (s64[], s64[]) tuple(add, mul)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(kHloModule, {}));
+
+  se::DeviceMemoryBase arg0 = stream_executor->Allocate(1 * sizeof(int64_t));
+  se::DeviceMemoryBase arg1 = stream_executor->Allocate(1 * sizeof(int64_t));
+  se::DeviceMemoryBase results = stream_executor->Allocate(2 * sizeof(int64_t));
+
+  TF_ASSERT_OK(stream->Memset32(&arg0, 5, 4));
+  TF_ASSERT_OK(stream->Memset32(&arg1, 3, 4));
+  TF_ASSERT_OK(stream->MemZero(&results, results.size()));
+
+  // Prepare buffer allocations for recording command buffer.
+  BufferAllocation alloc_arg0(/*index=*/0, sizeof(int64_t), /*color=*/0);
+  BufferAllocation alloc_arg1(/*index=*/1, sizeof(int64_t), /*color=*/0);
+  BufferAllocation alloc_results(/*index=*/2, 2 * sizeof(int64_t), /*color=*/0);
+
+  BufferAllocation::Slice slice_arg0(&alloc_arg0, 0, sizeof(int64_t));
+  BufferAllocation::Slice slice_arg1(&alloc_arg1, 0, sizeof(int64_t));
+  BufferAllocation::Slice slice_results(&alloc_results, 0,
+                                        alloc_results.size());
+
+  Shape result_tuple_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(S64, {}), ShapeUtil::MakeShape(S64, {})});
+
+  HostExecuteStartThunk thunk(Thunk::ThunkInfo(), *hlo_module,
+                              {{slice_arg0, ShapeUtil::MakeShape(S64, {})},
+                               {slice_arg1, ShapeUtil::MakeShape(S64, {})}},
+                              {{slice_results, result_tuple_shape}},
+                              kGpuPointerSize);
+
+  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  ExecutableRunOptions executable_run_options;
+  executable_run_options.set_device_to_host_stream(stream.get());
+  executable_run_options.set_host_to_device_stream(stream.get());
+  ServiceExecutableRunOptions service_executable_run_options(
+      executable_run_options);
+  BufferAllocations allocations({arg0, arg1, results}, 0, &allocator);
+
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      service_executable_run_options, allocations, stream.get(), stream.get(),
+      nullptr, nullptr);
+
+  TF_ASSERT_OK(
+      thunk.Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto execute_event,
+                          thunk.async_events()->ExtractEvent(
+                              stream_executor, RunId(params.execution_id)));
+
+  tsl::BlockUntilReady(execute_event);
+  EXPECT_FALSE(execute_event.IsError());
+  TF_ASSERT_OK(stream->WaitFor(execute_event.get().get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  std::vector<int64_t> result_data(2);
+  TF_ASSERT_OK(stream->Memcpy(result_data.data(), results, results.size()));
+  xla::Literal result_literal = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR0<int64_t>(result_data[0]),
+      LiteralUtil::CreateR0<int64_t>(result_data[1]));
+
+  xla::Literal expected_literal = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR0<int64_t>(8), LiteralUtil::CreateR0<int64_t>(15));
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, result_literal));
 }
 
 }  // namespace

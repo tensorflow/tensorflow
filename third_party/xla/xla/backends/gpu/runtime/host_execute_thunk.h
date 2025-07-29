@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_HOST_EXECUTE_THUNK_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -79,7 +80,8 @@ class HostExecuteStartThunk : public Thunk {
   HostExecuteStartThunk(Thunk::ThunkInfo thunk_info,
                         const HloModule& hlo_module,
                         absl::InlinedVector<SliceAndShape, 4> args,
-                        absl::InlinedVector<SliceAndShape, 4> results);
+                        absl::InlinedVector<SliceAndShape, 4> results,
+                        int64_t pointer_size);
   HostExecuteStartThunk(const HostExecuteStartThunk&) = delete;
   HostExecuteStartThunk& operator=(const HostExecuteStartThunk&) = delete;
   ~HostExecuteStartThunk() override = default;
@@ -108,6 +110,7 @@ class HostExecuteStartThunk : public Thunk {
   HostOffloadingExecutableProto executable_proto_;
   HostOffloadingAllocator* allocator_ = nullptr;
   std::shared_ptr<HostExecuteAsyncEvents> async_events_;
+  const int64_t gpu_pointer_size_;
 };
 
 class HostExecuteDoneThunk : public Thunk {

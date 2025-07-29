@@ -84,8 +84,8 @@ class HostExecuteCallFrame {
       const BufferAllocations* buffer_allocations,
       HostOffloadingAllocator& allocator,
       absl::Span<HostExecuteStartThunk::SliceAndShape> args,
-      absl::Span<HostExecuteStartThunk::SliceAndShape> results,
-      const ProgramShape& program_shape);
+      absl::Span<HostExecuteStartThunk::SliceAndShape> result_slices,
+      const ProgramShape& program_shape, int64_t gpu_pointer_size);
 
   absl::Span<const ShapeTree<HostOffloadingBuffer>> parameters() const {
     return parameters_;
@@ -101,11 +101,12 @@ class HostExecuteCallFrame {
       std::vector<ShapeTree<HostOffloadingBuffer>> parameters,
       ShapeTree<HostOffloadingBuffer> result,
       absl::Span<HostExecuteStartThunk::SliceAndShape> result_slices,
-      std::vector<std::unique_ptr<HostOffloadingAllocator::Buffer>> buffers);
+      std::vector<std::unique_ptr<HostOffloadingAllocator::Buffer>> buffers,
+      int64_t gpu_pointer_size);
 
   static absl::Status ValidateArgsAndResults(
       absl::Span<const HostExecuteStartThunk::SliceAndShape> args,
-      absl::Span<const HostExecuteStartThunk::SliceAndShape> results,
+      absl::Span<const HostExecuteStartThunk::SliceAndShape> result_slices,
       const ProgramShape& program_shape);
 
  private:
@@ -120,11 +121,13 @@ class HostExecuteCallFrame {
   // Allocatations used for parameters and results.
   std::vector<std::unique_ptr<HostOffloadingAllocator::Buffer>>
       allocated_buffers_;
+
+  int64_t gpu_pointer_size_;
 };
 
 absl::Status HostExecuteCallFrame::ValidateArgsAndResults(
     absl::Span<const HostExecuteStartThunk::SliceAndShape> args,
-    absl::Span<const HostExecuteStartThunk::SliceAndShape> results,
+    absl::Span<const HostExecuteStartThunk::SliceAndShape> result_slices,
     const ProgramShape& program_shape) {
   if (args.size() != program_shape.parameters_size()) {
     return InvalidArgument("Number of arguments does not match program shape.");
@@ -141,36 +144,46 @@ absl::Status HostExecuteCallFrame::ValidateArgsAndResults(
 
   auto program_result_shape = program_shape.result();
 
-  if (program_result_shape.IsTuple()) {
-    for (int i = 0; i < results.size(); ++i) {
-      if (results[i].shape != program_result_shape.tuple_shapes(i)) {
-        return InvalidArgument(
-            "Result shape %s does not match program shape %s at index %d.",
-            results[i].shape.ToString(/*print_layout=*/true),
-            program_result_shape.tuple_shapes(i).ToString(
-                /*print_layout=*/true),
-            i);
-      }
-    }
-    return absl::OkStatus();
-  }
+  // Iterate through result slices and compare their shapes with the program
+  // result shape. If a result slice has a tuple shape, we iterate through the
+  // tuple shapes and compare them with the program result shape.
+  size_t result_slice_index = 0;
+  size_t slice_tuple_index = 0;
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachLeafShapeWithStatus(
+      program_result_shape,
+      [&result_slices, &slice_tuple_index, &result_slice_index](
+          const Shape& expected_shape,
+          const ShapeIndex& index) -> absl::Status {
+        auto compare_shapes_with_status =
+            [](const Shape& shape1, const Shape& shape2) -> absl::Status {
+          if (!ShapeUtil::Equal(shape1, shape2)) {
+            return InvalidArgument(
+                "Result slice shape %s does not match expected program result "
+                "shape %s.",
+                shape1.ToString(/*print_layout=*/true),
+                shape2.ToString(/*print_layout=*/true));
+          }
+          return absl::OkStatus();
+        };
 
-  if (results.size() != 1) {
-    return InvalidArgument(
-        "Multiple results are not supported for non tupled output results. "
-        "Expected result shape has type %s. "
-        "Expected result shape is %s, but got %d results.",
-        primitive_util::LowercasePrimitiveTypeName(
-            program_result_shape.element_type()),
-        program_result_shape.ToString(/*print_layout=*/true), results.size());
-  }
+        const auto& [slice, slice_shape] = result_slices[result_slice_index];
+        if (slice_shape.IsTuple()) {
+          TF_RETURN_IF_ERROR(compare_shapes_with_status(
+              slice_shape.tuple_shapes(slice_tuple_index++), expected_shape));
+          if (slice_tuple_index == slice_shape.tuple_shapes().size()) {
+            slice_tuple_index = 0;
+          }
+        } else {
+          TF_RETURN_IF_ERROR(
+              compare_shapes_with_status(slice_shape, expected_shape));
+        }
 
-  if (results[0].shape != program_shape.result()) {
-    return InvalidArgument(
-        "Result shape %s does not match program shape %s.",
-        results[0].shape.ToString(/*print_layout=*/true),
-        program_shape.result().ToString(/*print_layout=*/true));
-  }
+        if (slice_tuple_index == 0) {
+          result_slice_index++;
+        }
+
+        return absl::OkStatus();
+      }));
 
   return absl::OkStatus();
 }
@@ -180,14 +193,15 @@ absl::StatusOr<HostExecuteCallFrame> HostExecuteCallFrame::Create(
     const BufferAllocations* buffer_allocations,
     HostOffloadingAllocator& allocator,
     absl::Span<HostExecuteStartThunk::SliceAndShape> args,
-    absl::Span<HostExecuteStartThunk::SliceAndShape> results,
-    const ProgramShape& program_shape) {
-  TF_RETURN_IF_ERROR(ValidateArgsAndResults(args, results, program_shape));
+    absl::Span<HostExecuteStartThunk::SliceAndShape> result_slices,
+    const ProgramShape& program_shape, int64_t gpu_pointer_size) {
+  TF_RETURN_IF_ERROR(
+      ValidateArgsAndResults(args, result_slices, program_shape));
 
   std::vector<ShapeTree<HostOffloadingBuffer>> parameters;
   std::vector<std::unique_ptr<HostOffloadingAllocator::Buffer>> buffers;
   parameters.reserve(args.size());
-  buffers.reserve(args.size() + results.size());
+  buffers.reserve(args.size() + result_slices.size());
 
   for (const auto& [slice, shape] : args) {
     auto buffer_allocation = buffer_allocations->GetDeviceAddress(slice);
@@ -214,28 +228,56 @@ absl::StatusOr<HostExecuteCallFrame> HostExecuteCallFrame::Create(
 
   ShapeTree<HostOffloadingBuffer> result(program_shape.result());
 
-  size_t result_leaf_index = 0;
+  size_t result_slice_index = 0;
+  // We want to consume the entire slice before moving onto the next one.
+  size_t current_slice_offset = 0;
 
-  for (auto& [index, result_buffer] : result.leaves()) {
-    const auto& [slice, shape] = results[result_leaf_index++];
-    auto buffer_allocation = buffer_allocations->GetDeviceAddress(slice);
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachLeafShapeWithStatus(
+      result.shape(),
+      [&result, &result_slice_index, &current_slice_offset, &result_slices,
+       &buffer_allocations, &host_to_device_stream, &buffers, &allocator,
+       &gpu_pointer_size](const Shape& shape,
+                          const ShapeIndex& index) -> absl::Status {
+        const auto& [slice, _] = result_slices[result_slice_index];
+        auto buffer_allocation = buffer_allocations->GetDeviceAddress(slice);
 
-    if (IsBufferOnDevice(host_to_device_stream, buffer_allocation.opaque())) {
-      TF_ASSIGN_OR_RETURN(
-          buffers.emplace_back(),
-          allocator.AllocateTransferBuffer(ShapeUtil::ByteSizeOf(shape)));
-      result_buffer = HostOffloadingBuffer(buffers.back()->untyped_data(),
-                                           buffers.back()->size_bytes());
-    } else {
-      // We don't allocate as buffer is already in host memory.
-      result_buffer = HostOffloadingBuffer(buffer_allocation.opaque(),
-                                           buffer_allocation.size());
-    }
-  }
+        void* buffer_ptr = static_cast<uint8_t*>(buffer_allocation.opaque()) +
+                           current_slice_offset;
+        const int64_t buffer_size = ShapeUtil::ByteSizeOf(shape);
+        current_slice_offset +=
+            std::max(buffer_size, std::min(slice.size(), gpu_pointer_size));
+
+        // If we've consumed the entire slice, move onto the next entry in the
+        // result.
+        if (current_slice_offset == slice.size()) {
+          current_slice_offset = 0;
+          result_slice_index++;
+        } else if (current_slice_offset > slice.size()) {
+          return InvalidArgument(
+              "Current slice offset %d went over the slice size %d.",
+              current_slice_offset, slice.size());
+        }
+
+        if (IsBufferOnDevice(host_to_device_stream,
+                             buffer_allocation.opaque())) {
+          TF_ASSIGN_OR_RETURN(
+              buffers.emplace_back(),
+              allocator.AllocateTransferBuffer(ShapeUtil::ByteSizeOf(shape)));
+          *result.mutable_element(index) = HostOffloadingBuffer(
+              buffers.back()->untyped_data(), buffers.back()->size_bytes());
+        } else {
+          // We don't allocate as buffer is already in host memory.
+          *result.mutable_element(index) =
+              HostOffloadingBuffer(buffer_ptr, buffer_size);
+        }
+
+        return absl::OkStatus();
+      }));
 
   return HostExecuteCallFrame(host_to_device_stream, buffer_allocations,
                               std::move(parameters), std::move(result),
-                              std::move(results), std::move(buffers));
+                              std::move(result_slices), std::move(buffers),
+                              gpu_pointer_size);
 }
 
 HostExecuteCallFrame::HostExecuteCallFrame(
@@ -244,30 +286,59 @@ HostExecuteCallFrame::HostExecuteCallFrame(
     std::vector<ShapeTree<HostOffloadingBuffer>> parameters,
     ShapeTree<HostOffloadingBuffer> result,
     absl::Span<HostExecuteStartThunk::SliceAndShape> result_slices,
-    std::vector<std::unique_ptr<HostOffloadingAllocator::Buffer>> buffers)
+    std::vector<std::unique_ptr<HostOffloadingAllocator::Buffer>> buffers,
+    int64_t gpu_pointer_size)
     : host_to_device_stream_(host_to_device_stream),
       buffer_allocations_(buffer_allocations),
       parameters_(std::move(parameters)),
       result_(std::move(result)),
       result_slices_(result_slices),
-      allocated_buffers_(std::move(buffers)) {}
+      allocated_buffers_(std::move(buffers)),
+      gpu_pointer_size_(gpu_pointer_size) {}
 
 absl::Status HostExecuteCallFrame::PublishResult() && {
-  size_t result_leaf_index = 0;
-  for (const auto& [index, buffer] : result_.leaves()) {
-    auto result_buffer = buffer_allocations_->GetDeviceAddress(
-        result_slices_[result_leaf_index++].slice);
-    if (!IsBufferOnDevice(host_to_device_stream_, result_buffer.opaque())) {
-      // No need to copy result since the result is expected to be in host
-      // memory and should match the buffer used for execution.
-      CHECK(result_buffer.opaque() == buffer.opaque_base());
-      continue;
-    }
+  size_t result_slice_index = 0;
+  size_t current_slice_offset = 0;
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachLeafShapeWithStatus(
+      result_.shape(),
+      [this, &result_slice_index, &current_slice_offset](
+          const Shape& shape, const ShapeIndex& index) -> absl::Status {
+        const auto& [slice, _] = result_slices_[result_slice_index];
+        auto buffer_allocation = buffer_allocations_->GetDeviceAddress(slice);
 
-    auto shape = ShapeUtil::GetSubshape(result_.shape(), index);
-    TF_RETURN_IF_ERROR(host_to_device_stream_->Memcpy(
-        &result_buffer, buffer.opaque_base(), buffer.size_in_bytes()));
-  }
+        void* buffer_ptr = static_cast<uint8_t*>(buffer_allocation.opaque()) +
+                           current_slice_offset;
+        const int64_t buffer_size = ShapeUtil::ByteSizeOf(shape);
+        current_slice_offset +=
+            std::max(buffer_size, std::min(slice.size(), gpu_pointer_size_));
+
+        // If we've consumed the entire slice, move onto the next entry in the
+        // result.
+        if (current_slice_offset == slice.size()) {
+          current_slice_offset = 0;
+          result_slice_index++;
+        } else if (current_slice_offset > slice.size()) {
+          return InvalidArgument(
+              "Current slice offset %d went over the slice size %d.",
+              current_slice_offset, slice.size());
+        }
+
+        if (!IsBufferOnDevice(host_to_device_stream_,
+                              buffer_allocation.opaque())) {
+          // No need to copy result since the result is expected to be in host
+          // memory and should match the buffer used for execution.
+          CHECK(result_.element(index).opaque_base() == buffer_ptr);
+          return absl::OkStatus();
+        }
+
+        se::DeviceMemoryBase result_device_memory(buffer_ptr, buffer_size);
+
+        TF_RETURN_IF_ERROR(host_to_device_stream_->Memcpy(
+            &result_device_memory, result_.element(index).opaque_base(),
+            result_.element(index).size_in_bytes()));
+
+        return absl::OkStatus();
+      }));
 
   // Move the backing buffers (allocated_buffers_) to the callback to ensure
   // that they are only destroyed after the memory copies are done.
@@ -327,11 +398,13 @@ HostExecuteAsyncEvents::ExtractEvent(se::StreamExecutor* executor,
 HostExecuteStartThunk::HostExecuteStartThunk(
     Thunk::ThunkInfo thunk_info, const HloModule& hlo_module,
     absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> args,
-    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> results)
+    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> results,
+    int64_t pointer_size)
     : Thunk(Thunk::Kind::kHostExecuteStart, std::move(thunk_info)),
       args_(std::move(args)),
       results_(std::move(results)),
-      async_events_(std::make_shared<HostExecuteAsyncEvents>()) {
+      async_events_(std::make_shared<HostExecuteAsyncEvents>()),
+      gpu_pointer_size_(pointer_size) {
   HostOffloadingExecutableProto host_offloading_executable_proto;
   *host_offloading_executable_proto.mutable_hlo_module() = hlo_module.ToProto();
   host_offloading_executable_proto.set_executable_type(
@@ -402,7 +475,8 @@ absl::Status HostExecuteStartThunk::ExecuteOnStream(
       HostExecuteCallFrame::Create(
           params.device_to_host_stream, params.host_to_device_stream,
           params.buffer_allocations, *allocator_, absl::MakeSpan(args_),
-          absl::MakeSpan(results_), executable_->program_shape()));
+          absl::MakeSpan(results_), executable_->program_shape(),
+          gpu_pointer_size_));
 
   // We are making a shared pointer here because `execute` needs to be
   // copyable so that it can be scheduled on the thread pool.
