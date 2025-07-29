@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/lru_cache.h"
 
+#include <memory>
 #include <random>
 
 #include "xla/hlo/testlib/test.h"
@@ -113,6 +114,23 @@ TEST(LRUCache, RandomInsertions) {
     EXPECT_TRUE(k == -1 || k == key);
     EXPECT_EQ(v, key * 37);
   }
+}
+
+TEST(LRUCache, ReentrantClear) {
+  struct Value {
+    explicit Value(LRUCache<int, std::shared_ptr<Value>>* cache)
+        : cache(cache) {}
+    ~Value() { cache->Clear(); }
+
+    LRUCache<int, std::shared_ptr<Value>>* cache;
+  };
+
+  LRUCache<int, std::shared_ptr<Value>>::LRUList list(3);
+  LRUCache<int, std::shared_ptr<Value>> cache(&list);
+
+  cache.GetOrCreateIfAbsent(
+      0, [&](int) { return std::make_shared<Value>(&cache); });
+  cache.Clear();
 }
 
 }  // namespace
