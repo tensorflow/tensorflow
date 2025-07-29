@@ -962,6 +962,628 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_probe_instrumentatio
 +  %0 = "tf.Const"() {value = dense<"hello"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
 +  return %0 : tensor<!tf_type.string>
 +}
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
+@@ -19,7 +19,8 @@
+ 
+ // -----
+ 
+-// expected-error@-3{{must have no more than one function or a `main` function to clearly identify which function will be refined}}
++// expected-error@+1{{must have no more than one function or a `main` function to clearly identify which function will be refined}}
++module {
+ func.func @error_too_many_functions(%arg0: tensor<f32>) -> tensor<f32> {
+   %0 = func.call @helper(%arg0) : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+@@ -27,6 +28,7 @@
+ 
+ func.func private @helper(%arg0: tensor<f32>) -> tensor<f32> {
+   return %arg0 : tensor<f32>
++}
+ }
+ 
+ // -----
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.0_16_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.0_16_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.0_16_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.0_16_0.mlir
+@@ -1,6 +1,7 @@
+ // RUN: stablehlo-opt --stablehlo-legalize-to-vhlo --vhlo-to-version='target=0.16.0' --verify-diagnostics --split-input-file %s
+ 
+-// expected-error @-3 {{failed to convert VHLO to v0.16.0}}
++// expected-error @+1 {{failed to convert VHLO to v0.16.0}}
++module {
+ func.func @reduce_with_promotable_types(%arg0: tensor<4x4xf32>, %arg1 : tensor<f32>)
+     -> (tensor<4xf64>) {
+ 
+@@ -15,10 +16,12 @@
+ 
+   func.return %0: tensor<4xf64>
+ }
++}
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v0.16.0}}
++// expected-error @+1 {{failed to convert VHLO to v0.16.0}}
++module {
+ func.func @all_reduce_with_promotable_types(%operand: tensor<f32>) -> tensor<f64> {
+ 
+   // expected-error @+1 {{failed to legalize operation 'vhlo.all_reduce_v2' that was explicitly marked illegal}}
+@@ -33,10 +36,12 @@
+ 
+   func.return %result : tensor<f64>
+ }
++}
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v0.16.0}}
++// expected-error @+1 {{failed to convert VHLO to v0.16.0}}
++module {
+ func.func @reduce_scatter_with_promotable_types(%data: tensor<4x16xf32>) -> tensor<4x4xf64> {
+ 
+   // expected-error @+1 {{failed to legalize operation 'vhlo.reduce_scatter_v1' that was explicitly marked illegal}}
+@@ -50,10 +55,12 @@
+       use_global_device_ids} : (tensor<4x16xf32>) -> tensor<4x4xf64>
+   func.return %0 : tensor<4x4xf64>
+ }
++}
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v0.16.0}}
++// expected-error @+1 {{failed to convert VHLO to v0.16.0}}
++module {
+ func.func @reduce_window_with_promotable_types(%arg0: tensor<4x2xf32>,
+     %arg1: tensor<4x2xf32>, %init0: tensor<f32>, %init1: tensor<f32>) ->
+     (tensor<2x2xf64>, tensor<2x2xf32>) {
+@@ -73,10 +80,12 @@
+               (tensor<2x2xf64>, tensor<2x2xf32>)
+   func.return %0#0, %0#1 : tensor<2x2xf64>, tensor<2x2xf32>
+ }
++}
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v0.16.0}}
++// expected-error @+1 {{failed to convert VHLO to v0.16.0}}
++module {
+ func.func @scatter_with_promotable_types(%input_tensor: tensor<200x100x300xf32>,
+     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
+       tensor<200x100x300xf64> {
+@@ -99,10 +108,12 @@
+       tensor<200x100x300xf64>
+   func.return %0 : tensor<200x100x300xf64>
+ }
++}
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v0.16.0}}
++// expected-error @+1 {{failed to convert VHLO to v0.16.0}}
++module {
+ func.func @select_and_scatter_with_promotable_types(
+     %arg0: tensor<10x24x24x64xf32>,
+     %arg1: tensor<10x12x12x64xf32>) -> () {
+@@ -127,3 +138,4 @@
+         tensor<10x24x24x64xf64>
+   func.return
+ }
++}
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.0_9_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.0_9_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.0_9_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.0_9_0.mlir
+@@ -1,17 +1,21 @@
+ // RUN: stablehlo-opt --stablehlo-legalize-to-vhlo --vhlo-to-version='target=0.9.0' --verify-diagnostics --split-input-file %s
+ 
+-// expected-error @-3 {{failed to convert VHLO to v0.9.0}}
+-// expected-error @+1 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++// expected-error @+2 {{failed to convert VHLO to v0.9.0}}
++// expected-error @+2 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++module {
+ func.func @type_fp8_E5M2FNUZ(%arg0: tensor<f8E5M2FNUZ>) -> tensor<f8E5M2FNUZ> {
+   %0 = stablehlo.add %arg0, %arg0 : tensor<f8E5M2FNUZ>
+   func.return %0 : tensor<f8E5M2FNUZ>
+ }
++}
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v0.9.0}}
+-// expected-error @+1 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++// expected-error @+2 {{failed to convert VHLO to v0.9.0}}
++// expected-error @+2 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++module {
+ func.func @type_fp8_E4M3FNUZ(%arg0: tensor<f8E4M3FNUZ>) -> tensor<f8E4M3FNUZ> {
+   %0 = stablehlo.add %arg0, %arg0 : tensor<f8E4M3FNUZ>
+   func.return %0 : tensor<f8E4M3FNUZ>
+ }
++}
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_11_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_11_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_11_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_11_0.mlir
+@@ -1,6 +1,7 @@
+ // RUN: stablehlo-opt --stablehlo-legalize-to-vhlo --vhlo-to-version='target=1.11.0' --verify-diagnostics --split-input-file %s
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.11.0}}
++// expected-error @+1 {{failed to convert VHLO to v1.11.0}}
++module {
+ func.func public @send_op(%arg0: tensor<f32>, %arg1: !stablehlo.token) -> !stablehlo.token {
+   // expected-error @+1 {{failed to legalize operation 'vhlo.send_v2' that was explicitly marked illegal}}
+   %0 = "stablehlo.send"(%arg0, %arg1) {
+@@ -10,10 +11,12 @@
+   } : (tensor<f32>, !stablehlo.token) -> !stablehlo.token
+   func.return %0 : !stablehlo.token
+ }
++}
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.11.0}}
++// expected-error @+1 {{failed to convert VHLO to v1.11.0}}
++module {
+ func.func public @recv_op(%arg0: !stablehlo.token) -> (tensor<f32>, !stablehlo.token) {
+   // expected-error @+1 {{failed to legalize operation 'vhlo.recv_v2' that was explicitly marked illegal}}
+   %0:2 = "stablehlo.recv"(%arg0) {
+@@ -23,3 +26,4 @@
+   } : (!stablehlo.token) -> (tensor<f32>, !stablehlo.token)
+   func.return %0#0, %0#1 : tensor<f32>, !stablehlo.token
+ }
++}
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_1_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_1_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_1_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_1_0.mlir
+@@ -1,17 +1,21 @@
+ // RUN: stablehlo-opt --stablehlo-legalize-to-vhlo --vhlo-to-version='target=1.1.0' --verify-diagnostics --split-input-file %s
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.1.0}}
+-// expected-error @+1 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++// expected-error @+2 {{failed to convert VHLO to v1.1.0}}
++// expected-error @+2 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++module {
+ func.func @type_i2(%arg0: tensor<i2>) -> tensor<i2> {
+   %0 = stablehlo.add %arg0, %arg0 : tensor<i2>
+   func.return %0 : tensor<i2>
+ }
++}
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.1.0}}
+-// expected-error @+1 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++// expected-error @+2 {{failed to convert VHLO to v1.1.0}}
++// expected-error @+2 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++module {
+ func.func @type_ui2(%arg0: tensor<ui2>) -> tensor<ui2> {
+   %0 = stablehlo.add %arg0, %arg0 : tensor<ui2>
+   func.return %0 : tensor<ui2>
+ }
++}
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_2_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_2_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_2_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_2_0.mlir
+@@ -1,6 +1,7 @@
+ // RUN: stablehlo-opt --stablehlo-legalize-to-vhlo --vhlo-to-version='target=1.2.0' --verify-diagnostics --split-input-file %s
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.2.0}}
++// expected-error @+1 {{failed to convert VHLO to v1.2.0}}
++module {
+ func.func @custom_call_dictionary_attr(%arg0: tensor<f32>) -> tensor<f32> {
+ // expected-error @+1 {{failed to legalize operation 'vhlo.custom_call_v1' that was explicitly marked illegal}}
+ %0 = "stablehlo.custom_call"(%arg0) {
+@@ -10,10 +11,12 @@
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+ }
++}
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.2.0}}
++// expected-error @+1 {{failed to convert VHLO to v1.2.0}}
++module {
+ func.func @custom_call_dictionary_attr(%arg0: tensor<f32>) -> tensor<f32> {
+ // expected-error @+1 {{failed to legalize operation 'vhlo.custom_call_v1' that was explicitly marked illegal}}
+ %0 = "stablehlo.custom_call"(%arg0) {
+@@ -22,3 +25,4 @@
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+ }
++}
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_4_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_4_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_4_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_4_0.mlir
+@@ -1,6 +1,7 @@
+ // RUN: stablehlo-opt --stablehlo-legalize-to-vhlo --vhlo-to-version='target=1.4.0' --verify-diagnostics --split-input-file %s
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.4.0}}
++// expected-error @+1 {{failed to convert VHLO to v1.4.0}}
++module {
+ func.func @all_reduce_variadic(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
+   // expected-error @+1 {{failed to legalize operation 'vhlo.all_reduce_v2' that was explicitly marked illegal}}
+   %0:2 = "stablehlo.all_reduce"(%arg0, %arg1) ({
+@@ -12,10 +13,12 @@
+   } : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
+   func.return %0#0, %0#1 : tensor<f32>, tensor<f32>
+ }
++}
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.4.0}}
++// expected-error @+1 {{failed to convert VHLO to v1.4.0}}
++module {
+ func.func @all_gather_variadic(%arg0: tensor<16x8xf32>, %arg1: tensor<16x8xf32>) -> (tensor<16x16xf32>, tensor<16x16xf32>) {
+   // expected-error @+1 {{failed to legalize operation 'vhlo.all_gather_v2' that was explicitly marked illegal}}
+   %0:2 = "stablehlo.all_gather"(%arg0, %arg1) {
+@@ -24,10 +27,12 @@
+   } : (tensor<16x8xf32>, tensor<16x8xf32>) -> (tensor<16x16xf32>, tensor<16x16xf32>)
+   func.return %0#0, %0#1 : tensor<16x16xf32>, tensor<16x16xf32>
+ }
++}
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.4.0}}
++// expected-error @+1 {{failed to convert VHLO to v1.4.0}}
++module {
+ func.func @all_to_all_variadic(%arg0: tensor<4x16xf32>, %arg1: tensor<5x16xf32>) -> (tensor<16x4xf32>, tensor<20x4xf32>) {
+   // expected-error @+1 {{failed to legalize operation 'vhlo.all_to_all_v2' that was explicitly marked illegal}}
+   %0:2 = "stablehlo.all_to_all"(%arg0, %arg1) {
+@@ -39,3 +44,4 @@
+   } : (tensor<4x16xf32>, tensor<5x16xf32>) -> (tensor<16x4xf32>, tensor<20x4xf32>)
+   func.return %0#0, %0#1 : tensor<16x4xf32>, tensor<20x4xf32>
+ }
++}
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_5_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_5_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_5_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_5_0.mlir
+@@ -1,6 +1,7 @@
+ // RUN: stablehlo-opt --stablehlo-legalize-to-vhlo --vhlo-to-version='target=1.5.0' --verify-diagnostics --split-input-file %s
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.5.0}}
++// expected-error @+1 {{failed to convert VHLO to v1.5.0}}
++module {
+ func.func @dot_general_algorithm(%arg0: tensor<2x2x2xi64>, %arg1: tensor<2x2x2xi64>) -> tensor<2x2x2xi64> {
+   // expected-error @+1 {{failed to legalize operation 'vhlo.dot_general_v2' that was explicitly marked illegal}}
+   %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
+@@ -9,19 +10,24 @@
+     algorithm = #stablehlo.dot_algorithm<lhs_precision_type = tf32, rhs_precision_type = tf32, accumulation_type = f32, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 1, allow_imprecise_accumulation = false>
+   }> : (tensor<2x2x2xi64>, tensor<2x2x2xi64>) -> tensor<2x2x2xi64>  return %0 : tensor<2x2x2xi64>
+ }
+-
+-// -----
+-
+-// expected-error @-3 {{failed to convert VHLO to v1.5.0}}
+-// expected-error @+1 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
+-func.func @none_type() attributes {stablehlo.attr = none } {
+-  return
+ }
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.5.0}}
+-// expected-error @+1 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++// expected-error @+2 {{failed to convert VHLO to v1.5.0}}
++// expected-error @+2 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++module {
++func.func @none_type() attributes {stablehlo.attr = none } {
++  return
++}
++}
++
++// -----
++
++// expected-error @+2 {{failed to convert VHLO to v1.5.0}}
++// expected-error @+2 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++module {
+ func.func @tf32_type() attributes {stablehlo.attr = tf32 } {
+   return
+ }
++}
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_6_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_6_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_6_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_6_0.mlir
+@@ -1,17 +1,21 @@
+ // RUN: stablehlo-opt --stablehlo-legalize-to-vhlo --vhlo-to-version='target=1.6.0' --verify-diagnostics --split-input-file %s
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.6.0}}
+-// expected-error @+1 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++// expected-error @+2 {{failed to convert VHLO to v1.6.0}}
++// expected-error @+2 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++module {
+ func.func @type_f8E4M3(%arg0: tensor<f8E4M3>) -> tensor<f8E4M3> {
+   %0 = stablehlo.add %arg0, %arg0 : tensor<f8E4M3>
+   func.return %0 : tensor<f8E4M3>
+ }
++}
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.6.0}}
+-// expected-error @+1 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++// expected-error @+2 {{failed to convert VHLO to v1.6.0}}
++// expected-error @+2 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++module {
+ func.func @type_f8E3M4(%arg0: tensor<f8E3M4>) -> tensor<f8E3M4> {
+   %0 = stablehlo.add %arg0, %arg0 : tensor<f8E3M4>
+   func.return %0 : tensor<f8E3M4>
+ }
++}
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_7_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_7_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_7_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_7_0.mlir
+@@ -1,35 +1,43 @@
+ // RUN: stablehlo-opt --stablehlo-legalize-to-vhlo --vhlo-to-version='target=1.7.0' --verify-diagnostics --split-input-file %s
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.7.0}}
+-// expected-error @+1 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++// expected-error @+2 {{failed to convert VHLO to v1.7.0}}
++// expected-error @+2 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++module {
+ func.func @type_f4E2M1FN(%arg0: tensor<f4E2M1FN>, %arg1: tensor<f4E2M1FN>) -> tensor<f4E2M1FN> {
+   %0 = "stablehlo.add"(%arg0, %arg1) : (tensor<f4E2M1FN>, tensor<f4E2M1FN>) -> tensor<f4E2M1FN>
+   func.return %0 : tensor<f4E2M1FN>
+ }
++}
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.7.0}}
+-// expected-error @+1 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++// expected-error @+2 {{failed to convert VHLO to v1.7.0}}
++// expected-error @+2 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++module {
+ func.func @type_f6E2M3FN(%arg0: tensor<f6E2M3FN>, %arg1: tensor<f6E2M3FN>) -> tensor<f6E2M3FN> {
+   %0 = "stablehlo.add"(%arg0, %arg1) : (tensor<f6E2M3FN>, tensor<f6E2M3FN>) -> tensor<f6E2M3FN>
+   func.return %0 : tensor<f6E2M3FN>
+ }
++}
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.7.0}}
+-// expected-error @+1 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++// expected-error @+2 {{failed to convert VHLO to v1.7.0}}
++// expected-error @+2 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++module {
+ func.func @type_f6E3M2FN(%arg0: tensor<f6E3M2FN>, %arg1: tensor<f6E3M2FN>) -> tensor<f6E3M2FN> {
+   %0 = "stablehlo.add"(%arg0, %arg1) : (tensor<f6E3M2FN>, tensor<f6E3M2FN>) -> tensor<f6E3M2FN>
+   func.return %0 : tensor<f6E3M2FN>
+ }
++}
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.7.0}}
+-// expected-error @+1 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++// expected-error @+2 {{failed to convert VHLO to v1.7.0}}
++// expected-error @+2 {{failed to legalize operation 'vhlo.func_v1' that was explicitly marked illegal}}
++module {
+ func.func @type_f8E8M0FNU(%arg0: tensor<f8E8M0FNU>, %arg1: tensor<f8E8M0FNU>) -> tensor<f8E8M0FNU> {
+   %0 = "stablehlo.add"(%arg0, %arg1) : (tensor<f8E8M0FNU>, tensor<f8E8M0FNU>) -> tensor<f8E8M0FNU>
+   func.return %0 : tensor<f8E8M0FNU>
+ }
++}
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_8_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_8_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_8_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_8_0.mlir
+@@ -11,7 +11,8 @@
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.8.0}}
++// expected-error @+1 {{failed to convert VHLO to v1.8.0}}
++module {
+ func.func @attr_result_accuracy_highest(%arg0: tensor<f32>) -> tensor<f32> {
+   // expected-error @+1 {{failed to legalize operation 'vhlo.exponential_v2' that was explicitly marked illegal}}
+   %0 = "stablehlo.exponential"(%arg0) {
+@@ -19,4 +20,5 @@
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+ }
++}
+ 
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_9_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_9_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_9_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_9_0.mlir
+@@ -11,7 +11,8 @@
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.9.0}}
++// expected-error @+1 {{failed to convert VHLO to v1.9.0}}
++module {
+ func.func @cbrt_invalid(%arg0: tensor<f32>) -> tensor<f32> {
+   // expected-error @+1 {{failed to legalize operation 'vhlo.cbrt_v2' that was explicitly marked illegal}}
+   %0 = "stablehlo.cbrt"(%arg0) {
+@@ -19,6 +20,7 @@
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+ }
++}
+ 
+ // -----
+ 
+@@ -32,7 +34,8 @@
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.9.0}}
++// expected-error @+1 {{failed to convert VHLO to v1.9.0}}
++module {
+ func.func @cosine_invalid(%arg0: tensor<f32>) -> tensor<f32> {
+   // expected-error @+1 {{failed to legalize operation 'vhlo.cosine_v2' that was explicitly marked illegal}}
+   %0 = "stablehlo.cosine"(%arg0) {
+@@ -40,6 +43,7 @@
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+ }
++}
+ 
+ // -----
+ 
+@@ -53,7 +57,8 @@
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.9.0}}
++// expected-error @+1 {{failed to convert VHLO to v1.9.0}}
++module {
+ func.func @exponential_minus_one_invalid(%arg0: tensor<f32>) -> tensor<f32> {
+   // expected-error @+1 {{failed to legalize operation 'vhlo.exponential_minus_one_v2' that was explicitly marked illegal}}
+   %0 = "stablehlo.exponential_minus_one"(%arg0) {
+@@ -61,6 +66,7 @@
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+ }
++}
+ 
+ // -----
+ 
+@@ -74,7 +80,8 @@
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.9.0}}
++// expected-error @+1 {{failed to convert VHLO to v1.9.0}}
++module {
+ func.func @log_invalid(%arg0: tensor<f32>) -> tensor<f32> {
+   // expected-error @+1 {{failed to legalize operation 'vhlo.log_v2' that was explicitly marked illegal}}
+   %0 = "stablehlo.log"(%arg0) {
+@@ -82,6 +89,7 @@
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+ }
++}
+ 
+ // -----
+ 
+@@ -95,7 +103,8 @@
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.9.0}}
++// expected-error @+1 {{failed to convert VHLO to v1.9.0}}
++module {
+ func.func @log_plus_one_invalid(%arg0: tensor<f32>) -> tensor<f32> {
+   // expected-error @+1 {{failed to legalize operation 'vhlo.log_plus_one_v2' that was explicitly marked illegal}}
+   %0 = "stablehlo.log_plus_one"(%arg0) {
+@@ -103,6 +112,7 @@
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+ }
++}
+ 
+ // -----
+ 
+@@ -116,7 +126,8 @@
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.9.0}}
++// expected-error @+1 {{failed to convert VHLO to v1.9.0}}
++module {
+ func.func @logistic_invalid(%arg0: tensor<f32>) -> tensor<f32> {
+   // expected-error @+1 {{failed to legalize operation 'vhlo.logistic_v2' that was explicitly marked illegal}}
+   %0 = "stablehlo.logistic"(%arg0) {
+@@ -124,6 +135,7 @@
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+ }
++}
+ 
+ // -----
+ 
+@@ -137,7 +149,8 @@
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.9.0}}
++// expected-error @+1 {{failed to convert VHLO to v1.9.0}}
++module {
+ func.func @rsqrt_invalid(%arg0: tensor<f32>) -> tensor<f32> {
+   // expected-error @+1 {{failed to legalize operation 'vhlo.rsqrt_v2' that was explicitly marked illegal}}
+   %0 = "stablehlo.rsqrt"(%arg0) {
+@@ -145,6 +158,7 @@
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+ }
++}
+ 
+ // -----
+ 
+@@ -158,7 +172,8 @@
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.9.0}}
++// expected-error @+1 {{failed to convert VHLO to v1.9.0}}
++module {
+ func.func @sine_invalid(%arg0: tensor<f32>) -> tensor<f32> {
+   // expected-error @+1 {{failed to legalize operation 'vhlo.sine_v2' that was explicitly marked illegal}}
+   %0 = "stablehlo.sine"(%arg0) {
+@@ -166,6 +181,7 @@
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+ }
++}
+ 
+ // -----
+ 
+@@ -179,7 +195,8 @@
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.9.0}}
++// expected-error @+1 {{failed to convert VHLO to v1.9.0}}
++module {
+ func.func @sqrt_invalid(%arg0: tensor<f32>) -> tensor<f32> {
+   // expected-error @+1 {{failed to legalize operation 'vhlo.sqrt_v2' that was explicitly marked illegal}}
+   %0 = "stablehlo.sqrt"(%arg0) {
+@@ -187,6 +204,7 @@
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+ }
++}
+ 
+ // -----
+ 
+@@ -200,7 +218,8 @@
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.9.0}}
++// expected-error @+1 {{failed to convert VHLO to v1.9.0}}
++module {
+ func.func @tan_invalid(%arg0: tensor<f32>) -> tensor<f32> {
+   // expected-error @+1 {{failed to legalize operation 'vhlo.tan_v2' that was explicitly marked illegal}}
+   %0 = "stablehlo.tan"(%arg0) {
+@@ -208,6 +227,7 @@
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+ }
++}
+ 
+ // -----
+ 
+@@ -221,7 +241,8 @@
+ 
+ // -----
+ 
+-// expected-error @-3 {{failed to convert VHLO to v1.9.0}}
++// expected-error @+1 {{failed to convert VHLO to v1.9.0}}
++module {
+ func.func @tanh_invalid(%arg0: tensor<f32>) -> tensor<f32> {
+   // expected-error @+1 {{failed to legalize operation 'vhlo.tanh_v2' that was explicitly marked illegal}}
+   %0 = "stablehlo.tanh"(%arg0) {
+@@ -229,4 +250,5 @@
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+ }
+-
++}
++
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
 --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
 +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
