@@ -724,7 +724,7 @@ absl::Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
     // `padding_list` attribute is used by Fused int8 convolutions to support
     // explicit paddings.
     absl::Status s_p_list = c->GetAttr("padding_list", &p_list);
-    if (!s_p_list.ok() && !errors::IsNotFound(s_p_list)) {
+    if (!s_p_list.ok() && !absl::IsNotFound(s_p_list)) {
       return s_p_list;
     }
     if (s_p_list.ok() && !p_list.empty()) {
