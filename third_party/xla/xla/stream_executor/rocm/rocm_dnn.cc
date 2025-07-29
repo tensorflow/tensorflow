@@ -811,9 +811,9 @@ absl::Status MIOpenSupport::Init() {
   std::unique_ptr<ActivateContext> context = parent_->Activate();
   miopenHandle_t miopen_handle = nullptr;
   auto status = wrap::miopenCreateWithStream(
-      reinterpret_cast<miopenHandle_t*>(&miopen_handle), (hipStream_t)(0));
+      reinterpret_cast<miopenHandle_t*>(&miopen_handle), (hipStream_t) nullptr);
   if (status == miopenStatusSuccess) {
-    miopen_.reset(new MIOpenAccess(miopen_handle));
+    miopen_ = std::make_unique<MIOpenAccess>(miopen_handle);
     return absl::OkStatus();
   }
 
@@ -2146,8 +2146,8 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
         data_type_(data_type),
         algorithm_config_(algorithm_config) {
     // Create the dropout handle
-    miopen_dropout_desc_.reset(new MIOpenDropoutDescriptor(
-        miopen_handle, dropout, seed, state_allocator));
+    miopen_dropout_desc_ = std::make_unique<MIOpenDropoutDescriptor>(
+        miopen_handle, dropout, seed, state_allocator);
     // Create the RNN handle
     auto status = wrap::miopenCreateRNNDescriptor(&rnn_desc_);
     RETURN_IF_MIOPEN_ERROR(status, "Unable to create RNN descriptor");
@@ -2160,8 +2160,8 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
         miopenRNNdefault /*algo*/, data_type /*dataType*/);
     RETURN_IF_MIOPEN_ERROR(status, "Unable to update RNN descriptor");
     // Create the params handle.
-    miopen_params_desc_.reset(
-        new MIOpenRnnParamsDescriptor(miopen_handle, *this));
+    miopen_params_desc_ =
+        std::make_unique<MIOpenRnnParamsDescriptor>(miopen_handle, *this);
     if (!miopen_params_desc_->ok()) {
       SetFailure(miopen_params_desc_->Status());
       return;
@@ -4452,7 +4452,7 @@ absl::Status MIOpenSupport::DoPoolForward(
           ToString(status)));
     }
     if (workspace_size != 0) {
-      PoolingWorkspaceDescriptor* pdesc = 0;
+      PoolingWorkspaceDescriptor* pdesc = nullptr;
       bool cache_hit =
           m_pooling_cache_allowed &&
           m_pooling_cache.find(input_data.opaque(), input_dimensions,
@@ -4501,7 +4501,7 @@ bool PoolingWorkspaceCache::find(
     const dnn::BatchDescriptor& output_dimensions,
     const dnn::PoolingDescriptor& pooling_dimensions, int _type,
     PoolingWorkspaceDescriptor*& pdesc) {
-  pdesc = 0;
+  pdesc = nullptr;
   auto it = cache.find(p);
   if (it == cache.end()) {
     return false;
@@ -4520,7 +4520,7 @@ void PoolingWorkspaceCache::insert(
     const dnn::PoolingDescriptor& pooling_dimensions, int _type,
     ScopedDeviceMemory<uint8_t>& workspace, size_t wsp_size,
     hipStream_t hip_stream) {
-  PoolingWorkspaceDescriptor* desc = 0;
+  PoolingWorkspaceDescriptor* desc = nullptr;
   auto it = cache.find(p);
   if (it != cache.end()) {
     // replacing an entry with the same pointer but different attributes
@@ -4594,9 +4594,9 @@ absl::Status MIOpenSupport::DoPoolBackward(
   TF_ASSIGN_OR_RETURN(auto dest_desc, scope(output_dimensions, miopen_dtype));
   TF_ASSIGN_OR_RETURN(auto pooling_desc, scope(pooling_dimensions));
 
-  uint8_t* workspace_ptr = 0;
+  uint8_t* workspace_ptr = nullptr;
   DeviceMemory<uint8_t> workspace;
-  PoolingWorkspaceDescriptor* pdesc = 0;
+  PoolingWorkspaceDescriptor* pdesc = nullptr;
 
   size_t workspace_size_in_bytes = 0;
   auto status = wrap::miopenPoolingGetWorkSpaceSizeV2(
@@ -4614,7 +4614,7 @@ absl::Status MIOpenSupport::DoPoolBackward(
                                           output_dimensions, pooling_dimensions,
                                           miopen_dtype, pdesc);
     if (cache_hit) {
-      assert(pdesc != 0);
+      assert(pdesc != nullptr);
       workspace_ptr =
           reinterpret_cast<uint8_t*>(pdesc->workspace.ptr()->opaque());
       VLOG(1) << "Pooling cache hit";
