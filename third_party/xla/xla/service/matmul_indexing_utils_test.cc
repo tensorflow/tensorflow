@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/matmul_indexing_utils.h"
+#include "xla/service/matmul_indexing_utils.h"
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
@@ -25,7 +25,6 @@ limitations under the License.
 #include "tsl/platform/status_matchers.h"
 
 namespace xla {
-namespace gpu {
 namespace {
 
 using ::testing::ElementsAre;
@@ -241,5 +240,4 @@ TEST(DotOperandDimsTest, InsertDimensionIntoMiddleCategory) {
 }
 
 }  // namespace
-}  // namespace gpu
 }  // namespace xla

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MATMUL_INDEXING_UTILS_H_
-#define XLA_SERVICE_GPU_MATMUL_INDEXING_UTILS_H_
+#ifndef XLA_SERVICE_MATMUL_INDEXING_UTILS_H_
+#define XLA_SERVICE_MATMUL_INDEXING_UTILS_H_
 
 #include <array>
 #include <cstdint>
@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
-namespace gpu {
 
 // Ordered non-contracting dimensions for a dot instruction operand.
 absl::StatusOr<std::vector<int64_t>> GetNonContractingDims(
@@ -114,7 +113,6 @@ class DotOperandDims {
   std::array<std::vector<int64_t>, 3> dim_numbers_;
 };
 
-}  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_MATMUL_INDEXING_UTILS_H_
+#endif  // XLA_SERVICE_MATMUL_INDEXING_UTILS_H_

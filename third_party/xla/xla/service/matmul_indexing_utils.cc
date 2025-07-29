@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/matmul_indexing_utils.h"
+#include "xla/service/matmul_indexing_utils.h"
 
 #include <array>
 #include <cstdint>
@@ -37,7 +37,6 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace xla {
-namespace gpu {
 
 absl::StatusOr<std::vector<int64_t>> GetNonContractingDims(
     const Shape& shape, absl::Span<const int64_t> batch_dims,
@@ -271,5 +270,4 @@ absl::StatusOr<int64_t> DotOperandDims::LocalIndex(
   return iter - dims.begin();
 }
 
-}  // namespace gpu
 }  // namespace xla
