@@ -19,14 +19,11 @@ limitations under the License.
 #include <cstddef>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
@@ -49,6 +46,9 @@ class ObjectLoader {
       size_t num_dylibs, const llvm::DataLayout& data_layout,
       ExecutionEngine::DefinitionGenerator definition_generator);
   explicit ObjectLoader(std::unique_ptr<ExecutionEngine> execution_engine);
+
+  ObjectLoader(ObjectLoader&& other) = default;
+  ObjectLoader& operator=(ObjectLoader&& other) = default;
 
   absl::Status AddObjFile(const std::string& obj_file,
                           const std::string& memory_buffer_name,
@@ -87,8 +87,6 @@ class ObjectLoader {
 
   // Non-owning pointers to dynamic libraries created for the execution session.
   std::vector<llvm::orc::JITDylib*> dylibs_;
-
-  // std::shared_ptr<llvm::TargetMachine> target_machine_;
 };
 
 }  // namespace xla::cpu
