@@ -56,52 +56,64 @@ absl::StatusOr<int64_t> NonContractingDimensionIndex(const HloInstruction& dot,
 // A class to handle the dimensions of an operand of a dot instruction.
 class DotOperandDims {
  public:
+  enum Category { kBatch, kNonContracting, kContracting };
+
   DotOperandDims() = default;
   DotOperandDims(Shape shape, absl::Span<const int64_t> batch_dims,
                  absl::Span<const int64_t> non_contracting_dims,
                  absl::Span<const int64_t> contracting_dims);
 
-  enum Category { kBatch, kNonContracting, kContracting };
   // Creates a DotOperandDims from a dot instruction.
   static absl::StatusOr<std::array<DotOperandDims, 2>> FromDot(
       const HloInstruction* dot);
+
   // Creates a DotOperandDims from a dot instruction and operand index (0 or 1).
   static absl::StatusOr<DotOperandDims> FromDotOperand(
       const HloInstruction* dot, int operand_idx);
+
   // Converts two DotOperandDims to a DotDimensionNumbers.
   static absl::StatusOr<DotDimensionNumbers> IntoDotDimensionNumbers(
       const DotOperandDims& lhs_dims, const DotOperandDims& rhs_dims);
+
   // Computes the output shape of the dot instruction.
   static absl::StatusOr<Shape> IntoOutputShape(PrimitiveType element_type,
                                                const DotOperandDims& lhs_dims,
                                                const DotOperandDims& rhs_dims);
+
   // Returns the indices of the dimensions of the category.
-  absl::Span<const int64_t> Indices(Category category) const {
+  absl::Span<const int64_t> DimensionIndices(Category category) const {
     return dim_numbers_[category];
   }
+
   // Returns the category size (number of dimensions).
   int64_t DimensionCount(Category category) const {
     return dim_numbers_[category].size();
   }
+
   // Returns the dimension sizes of the category.
   std::vector<int64_t> DimensionSizes(Category category) const;
+
   // Permute the dimensions of the category.
   // The permutation is in the same format as you'd pass to the transpose
   // instruction. The corresponding dimension numbers are updated.
   void Permute(absl::Span<const int64_t> permutation);
+
   // Collapses the dimensions of the category. Returns error if the dimensions
   // are not consecutive (but can be permuted).
   // If the dimensions are empty (i.e. the product of sizes is 1), then all
   // dimensions are removed if remove_if_empty; otherwise one dimension is kept
   // (if there was any).
   absl::Status Collapse(Category category, bool remove_if_empty);
+
   // Removes the dimensions in the range [start, end).
   absl::Status EraseDimensions(int64_t start, int64_t end);
+
   // Inserts a dimension at the given index. The dimension is assigned the given
   // category. Within the category, the dimension is inserted before the first
   // dimension with index >= dim_idx (to keep sorted order).
   absl::Status InsertDimension(Category category, int64_t dim_idx,
                                int64_t dim_size);
+
   // Returns the shape of the operand.
   const Shape& shape() const { return shape_; }
   // Converts the shape dimension index to the category dimension index.

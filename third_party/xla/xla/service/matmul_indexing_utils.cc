@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -31,10 +32,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -125,20 +124,22 @@ absl::StatusOr<DotOperandDims> DotOperandDims::FromDotOperand(
 absl::StatusOr<DotDimensionNumbers> DotOperandDims::IntoDotDimensionNumbers(
     const DotOperandDims& lhs_dims, const DotOperandDims& rhs_dims) {
   DotDimensionNumbers dot_dim_numbers;
-  TF_RET_CHECK(lhs_dims.Indices(kBatch).size() ==
-               rhs_dims.Indices(kBatch).size());
-  TF_RET_CHECK(lhs_dims.Indices(kContracting).size() ==
-               rhs_dims.Indices(kContracting).size());
+  TF_RET_CHECK(lhs_dims.DimensionIndices(kBatch).size() ==
+               rhs_dims.DimensionIndices(kBatch).size());
+  TF_RET_CHECK(lhs_dims.DimensionIndices(kContracting).size() ==
+               rhs_dims.DimensionIndices(kContracting).size());
   dot_dim_numbers.mutable_lhs_batch_dimensions()->Assign(
-      lhs_dims.Indices(kBatch).begin(), lhs_dims.Indices(kBatch).end());
+      lhs_dims.DimensionIndices(kBatch).begin(),
+      lhs_dims.DimensionIndices(kBatch).end());
   dot_dim_numbers.mutable_rhs_batch_dimensions()->Assign(
-      rhs_dims.Indices(kBatch).begin(), rhs_dims.Indices(kBatch).end());
+      rhs_dims.DimensionIndices(kBatch).begin(),
+      rhs_dims.DimensionIndices(kBatch).end());
   dot_dim_numbers.mutable_lhs_contracting_dimensions()->Assign(
-      lhs_dims.Indices(kContracting).begin(),
-      lhs_dims.Indices(kContracting).end());
+      lhs_dims.DimensionIndices(kContracting).begin(),
+      lhs_dims.DimensionIndices(kContracting).end());
   dot_dim_numbers.mutable_rhs_contracting_dimensions()->Assign(
-      rhs_dims.Indices(kContracting).begin(),
-      rhs_dims.Indices(kContracting).end());
+      rhs_dims.DimensionIndices(kContracting).begin(),
+      rhs_dims.DimensionIndices(kContracting).end());
   return dot_dim_numbers;
 }
 
@@ -146,16 +147,16 @@ absl::StatusOr<DotDimensionNumbers> DotOperandDims::IntoDotDimensionNumbers(
 absl::StatusOr<Shape> DotOperandDims::IntoOutputShape(
     PrimitiveType element_type, const DotOperandDims& lhs_dims,
     const DotOperandDims& rhs_dims) {
-  TF_RET_CHECK(lhs_dims.Indices(kBatch).size() ==
-               rhs_dims.Indices(kBatch).size());
-  TF_RET_CHECK(lhs_dims.Indices(kContracting).size() ==
-               rhs_dims.Indices(kContracting).size());
+  TF_RET_CHECK(lhs_dims.DimensionIndices(kBatch).size() ==
+               rhs_dims.DimensionIndices(kBatch).size());
+  TF_RET_CHECK(lhs_dims.DimensionIndices(kContracting).size() ==
+               rhs_dims.DimensionIndices(kContracting).size());
   std::vector<int64_t> output_dimensions;
   std::vector<bool> output_dynamic_dimensions;
 
-  for (int64_t i = 0; i < lhs_dims.Indices(kBatch).size(); ++i) {
-    int64_t lhs_batch_dim = lhs_dims.Indices(kBatch)[i];
-    int64_t rhs_batch_dim = rhs_dims.Indices(kBatch)[i];
+  for (int64_t i = 0; i < lhs_dims.DimensionIndices(kBatch).size(); ++i) {
+    int64_t lhs_batch_dim = lhs_dims.DimensionIndices(kBatch)[i];
+    int64_t rhs_batch_dim = rhs_dims.DimensionIndices(kBatch)[i];
     TF_RET_CHECK(lhs_dims.shape_.dimensions(lhs_batch_dim) ==
                  rhs_dims.shape_.dimensions(rhs_batch_dim));
     output_dimensions.push_back(lhs_dims.shape_.dimensions(lhs_batch_dim));
@@ -165,7 +166,7 @@ absl::StatusOr<Shape> DotOperandDims::IntoOutputShape(
         lhs_dims.shape_.is_dynamic_dimension(lhs_batch_dim));
   }
   for (auto& operand : {lhs_dims, rhs_dims}) {
-    for (int64_t nc_dim : operand.Indices(kNonContracting)) {
+    for (int64_t nc_dim : operand.DimensionIndices(kNonContracting)) {
       output_dimensions.push_back(operand.shape_.dimensions(nc_dim));
       output_dynamic_dimensions.push_back(
           operand.shape_.is_dynamic_dimension(nc_dim));
