@@ -42,6 +42,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallBitVector.h"
@@ -339,7 +340,7 @@ absl::StatusOr<IndexingMap> ComputeTileOffsetIndexing(
 
   // TODO(b/419026602): update reduce to not have symbols. After that we might
   // be able to remove symbol constraints.
-  llvm::DenseMap<mlir::AffineExpr, Interval> updated_constraints;
+  llvm::MapVector<mlir::AffineExpr, Interval> updated_constraints;
   for (const auto& [expr, interval] : tile_offset_indexing.GetConstraints()) {
     mlir::AffineExpr updated_expr = expr.replaceDimsAndSymbols(
         /*dimReplacements=*/{},

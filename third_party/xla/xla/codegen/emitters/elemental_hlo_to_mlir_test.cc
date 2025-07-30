@@ -960,14 +960,14 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithPadding) {
     // CHECK:      %[[R0:.+]] = scf.for %[[X:.+]] = %[[C0]] to %[[C3]] step %[[C1]] iter_args(%[[A0:.+]] = %[[INIT]]) -> (f32) {
     // CHECK-NEXT: %[[R1:.+]] = scf.for %[[Y:.+]] = %[[C0]] to %[[C5]] step %[[C1]] iter_args(%[[A1:.+]] = %[[A0]]) -> (f32) {
     // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A1]]) -> (f32) {
-    // CHECK-DAG:  %[[TESTX:.+]] = xla.apply_indexing #xla.indexing_map<"(d0, d1) -> (d0 + d1), domain: d0 in [0, 7], d1 in [0, 2]">(%[[W]], %[[X]])
-    // CHECK-DAG:  %[[TXGE:.+]] = arith.cmpi sge, %[[TESTX]], %[[C1]] : index
-    // CHECK-DAG:  %[[TXLE:.+]] = arith.cmpi sle, %[[TESTX]], %[[C8]] : index
-    // CHECK-DAG:  %[[TX:.+]] = arith.andi %[[TXGE]], %[[TXLE]] : i1
-    // CHECK-DAG:  %[[TESTY:.+]] = xla.apply_indexing #xla.indexing_map<"(d0, d1) -> (d0 + d1), domain: d0 in [0, 11], d1 in [0, 4]">(%[[H]], %[[Y]])
-    // CHECK-DAG:  %[[TYGE:.+]] = arith.cmpi sge, %[[TESTY]], %[[C2]] : index
-    // CHECK-DAG:  %[[TYLE:.+]] = arith.cmpi sle, %[[TESTY]], %[[C13]] : index
-    // CHECK-DAG:  %[[TY:.+]] = arith.andi %[[TYGE]], %[[TYLE]] : i1
+    // CHECK:      %[[TESTX:.+]] = xla.apply_indexing #xla.indexing_map<"(d0, d1) -> (d0 + d1), domain: d0 in [0, 7], d1 in [0, 2]">(%[[W]], %[[X]])
+    // CHECK:      %[[TESTY:.+]] = xla.apply_indexing #xla.indexing_map<"(d0, d1) -> (d0 + d1), domain: d0 in [0, 11], d1 in [0, 4]">(%[[H]], %[[Y]])
+    // CHECK:      %[[TXGE:.+]] = arith.cmpi sge, %[[TESTX]], %[[C1]] : index
+    // CHECK:      %[[TXLE:.+]] = arith.cmpi sle, %[[TESTX]], %[[C8]] : index
+    // CHECK:      %[[TX:.+]] = arith.andi %[[TXGE]], %[[TXLE]] : i1
+    // CHECK:      %[[TYGE:.+]] = arith.cmpi sge, %[[TESTY]], %[[C2]] : index
+    // CHECK:      %[[TYLE:.+]] = arith.cmpi sle, %[[TESTY]], %[[C13]] : index
+    // CHECK:      %[[TY:.+]] = arith.andi %[[TYGE]], %[[TYLE]] : i1
     // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
     // CHECK:        %[[XX0:.+]] = xla.apply_indexing
     // CHECK-SAME:     #xla.indexing_map<"(d0, d1) -> (d0 + d1 - 1),
