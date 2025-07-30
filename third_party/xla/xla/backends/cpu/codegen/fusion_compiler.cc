@@ -103,10 +103,13 @@ static std::unique_ptr<::mlir::Pass> CreateConvertMathToLLVMPass() {
 }
 
 static std::unique_ptr<::mlir::Pass> CreateInlinerAndCsePass() {
-  return mlir::createInlinerPass({}, [&](mlir::OpPassManager& pm) {
-    // CSE after inlining because inlining can introduce duplicates.
-    pm.addPass(mlir::createCSEPass());
-  });
+  return mlir::createCompositeFixedPointPass(
+      "Inliner", [](mlir::OpPassManager& pm) {
+        pm.addPass(mlir::createInlinerPass({}, [](mlir::OpPassManager& pm) {
+          // CSE after inlining because inlining can introduce duplicates.
+          pm.addPass(mlir::createCSEPass());
+        }));
+      });
 }
 
 static void AddXlaOpsOptimizationPasses(mlir::OpPassManager& pm) {
