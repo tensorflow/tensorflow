@@ -120,7 +120,7 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
   TF_ASSERT_OK(graph.Prepare(dnn_support, se::NumericOptions{}));
   TF_ASSERT_OK(graph.Build(dnn_support, /*plan_id=*/std::nullopt));
   EXPECT_THAT(graph.SupportsExplicitCommandBufferConstruction(),
-              tsl::testing::IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 
   std::vector<BufferAllocation::Slice> args;
   BufferAllocation alloc_input(/*index=*/0, kTotalElements, /*color=*/0);
