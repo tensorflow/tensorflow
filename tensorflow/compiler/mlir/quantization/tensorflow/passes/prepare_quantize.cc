@@ -219,9 +219,10 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
             builder.getF64FloatAttr(min_max.second.value()),
             /*quant_dim=*/-1, num_bits, narrow_range, is_signed);
         builder.setInsertionPoint(block, insertion_point);
-        auto q_op = builder.create<QuantizeCastOp>(loc, params.getValue(), arg);
-        auto dq_op =
-            builder.create<DequantizeCastOp>(loc, input_type, q_op.getResult());
+        auto q_op =
+            QuantizeCastOp::create(builder, loc, params.getValue(), arg);
+        auto dq_op = DequantizeCastOp::create(builder, loc, input_type,
+                                              q_op.getResult());
         arg.replaceAllUsesWith(dq_op.getResult());
         q_op.setOperand(arg);
       }
@@ -345,8 +346,8 @@ class MergeConsecutiveQuantizeCast
     auto preceding_qcast = q_op.getArg().getDefiningOp<QuantizeCastOp>();
     if (!preceding_qcast) return failure();
 
-    auto new_qcast = rewriter.create<QuantizeCastOp>(
-        q_op.getLoc(), q_op.getType(), preceding_qcast.getArg());
+    auto new_qcast = QuantizeCastOp::create(
+        rewriter, q_op.getLoc(), q_op.getType(), preceding_qcast.getArg());
     new_qcast->setAttr(kVolatileOpAttrName, rewriter.getUnitAttr());
     q_op->replaceAllUsesWith(new_qcast);
     return success();

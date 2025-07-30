@@ -214,17 +214,17 @@ IslandOp CreateFilePrefixIdentityOp(const BlockArgument main_file_prefix_arg,
   auto builder = OpBuilder::atBlockTerminator(&main_graph_op.GetBody());
   // Create an IslandOp that will wrap the IdentityOp. Add a control dependency
   // for the newly copied save function.
-  auto wrapper_island_op = builder.create<IslandOp>(
-      name_loc, TypeRange{main_file_prefix_arg.getType()},
+  auto wrapper_island_op = IslandOp::create(
+      builder, name_loc, TypeRange{main_file_prefix_arg.getType()},
       tf_executor::ControlType::get(&ctx), ValueRange(control_inputs));
   wrapper_island_op.getBody().emplaceBlock();
 
   builder.setInsertionPointToStart(&wrapper_island_op.GetBody());
-  auto identity_op = builder.create<TF::IdentityOp>(
-      name_loc, /*result_types=*/main_file_prefix_arg.getType(),
+  auto identity_op = TF::IdentityOp::create(
+      builder, name_loc, /*result_types=*/main_file_prefix_arg.getType(),
       /*input=*/main_file_prefix_arg);
 
-  builder.create<tf_executor::YieldOp>(name_loc, identity_op.getResult());
+  tf_executor::YieldOp::create(builder, name_loc, identity_op.getResult());
 
   return wrapper_island_op;
 }
@@ -236,7 +236,7 @@ void AppendValueToFetch(GraphOp graph_op, Value value) {
   fetches.emplace_back(value);
 
   auto builder = OpBuilder::atBlockTerminator(&graph_op.GetBody());
-  builder.create<FetchOp>(old_main_fetch.getLoc(), std::move(fetches));
+  FetchOp::create(builder, old_main_fetch.getLoc(), std::move(fetches));
   old_main_fetch.erase();
 }
 
