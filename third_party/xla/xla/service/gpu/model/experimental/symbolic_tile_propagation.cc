@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
 #include "xla/permutation_util.h"
-#include "xla/service/gpu/model/constraint_expression.h"
 #include "xla/service/gpu/model/experimental/symbolic_tile.h"
 #include "xla/service/gpu/model/experimental/tiling_space.h"
 #include "xla/service/matmul_indexing_utils.h"
@@ -53,32 +52,28 @@ using ::llvm::SmallVector;
 using ::mlir::AffineExpr;
 using ::mlir::MLIRContext;
 
-TiledOperands PropagateTileToInputForCwiseOp(const HloInstruction& hlo,
+SymbolicTiles PropagateTileToInputForCwiseOp(const HloInstruction& hlo,
                                              const SymbolicTile& input_tile) {
-  return TiledOperands{SymbolicTiles(hlo.operand_count(), input_tile),
-                       ConstraintExpression::GetAlwaysSatisfied()};
-}
+  return SymbolicTiles(hlo.operand_count(), input_tile);
+};
 
-TiledOperands PropagateTileToOutputForCwiseOp(const HloInstruction& hlo,
+SymbolicTiles PropagateTileToOutputForCwiseOp(const HloInstruction& hlo,
                                               const SymbolicTile& output_tile) {
-  return TiledOperands{SymbolicTiles{output_tile},
-                       ConstraintExpression::GetAlwaysSatisfied()};
+  return {output_tile};
 }
 
-TiledOperands PropagateTileToInputForBroadcastOp(
+SymbolicTiles PropagateTileToInputForBroadcastOp(
     const HloBroadcastInstruction& bcast, const SymbolicTile& output_tile) {
   SmallVector<DimTile> dim_tiles;
   dim_tiles.reserve(bcast.operand(0)->shape().dimensions().size());
   for (auto broadcast_dim : bcast.dimensions()) {
     dim_tiles.push_back(output_tile.dim_tiles()[broadcast_dim]);
-  }
-  SymbolicTile operand_tile{output_tile.tiling_space(), std::move(dim_tiles)};
+  };
 
-  return TiledOperands{SymbolicTiles{operand_tile},
-                       ConstraintExpression::GetAlwaysSatisfied()};
+  return {SymbolicTile{output_tile.tiling_space(), std::move(dim_tiles)}};
 }
 
-TiledOperands PropagateTileToOutputForBroadcastOp(
+SymbolicTiles PropagateTileToOutputForBroadcastOp(
     const HloBroadcastInstruction& bcast, const SymbolicTile& input_tile) {
   absl::Span<const int64_t> bcast_dims = bcast.dimensions();
   const Shape& output_shape = bcast.shape();
@@ -100,12 +95,10 @@ TiledOperands PropagateTileToOutputForBroadcastOp(
     dim_tiles.push_back(
         input_tile.dim_tiles()[std::distance(bcast_dims.begin(), bcast_dim)]);
   }
-  SymbolicTile output_tile{input_tile.tiling_space(), std::move(dim_tiles)};
-  return TiledOperands{SymbolicTiles{output_tile},
-                       ConstraintExpression::GetAlwaysSatisfied()};
+  return {SymbolicTile{input_tile.tiling_space(), std::move(dim_tiles)}};
 }
 
-std::optional<TiledOperands> PropagateTileToInputForConcatenateOp(
+std::optional<SymbolicTiles> PropagateTileToInputForConcatenateOp(
     const HloConcatenateInstruction& concatenate,
     const SymbolicTile& output_tile) {
   int64_t num_operands = concatenate.operand_count();
@@ -139,8 +132,7 @@ std::optional<TiledOperands> PropagateTileToInputForConcatenateOp(
     symbolic_tiles.push_back(operand_tile);
     offset += operand_dim_size;
   }
-  return TiledOperands{symbolic_tiles,
-                       ConstraintExpression::GetAlwaysSatisfied()};
+  return symbolic_tiles;
 }
 
 template <typename T>
@@ -181,7 +173,7 @@ SymbolicTile PropagateTileToInputForSliceImpl(
   return SymbolicTile{output_tile.tiling_space(), std::move(dim_tiles)};
 }
 
-TiledOperands PropagateTileToInputForSliceOp(const HloInstruction& slice,
+SymbolicTiles PropagateTileToInputForSliceOp(const HloInstruction& slice,
                                              const SymbolicTile& output_tile) {
   SmallVector<AffineExpr, 3> slice_offset_exprs;
   slice_offset_exprs.reserve(slice.shape().dimensions().size());
@@ -191,9 +183,7 @@ TiledOperands PropagateTileToInputForSliceOp(const HloInstruction& slice,
   }
   auto operand_tile = SymbolicTiles{PropagateTileToInputForSliceImpl(
       slice_offset_exprs, slice.slice_strides(), output_tile)};
-
-  return TiledOperands{{operand_tile},
-                       ConstraintExpression::GetAlwaysSatisfied()};
+  return {operand_tile};
 }
 
 std::optional<int64_t> GetInt64FromConstant(const HloInstruction& hlo) {
@@ -204,7 +194,7 @@ std::optional<int64_t> GetInt64FromConstant(const HloInstruction& hlo) {
   return std::nullopt;
 }
 
-TiledOperands PropagateTileToInputForDynamicSliceOp(
+SymbolicTiles PropagateTileToInputForDynamicSliceOp(
     const TilingSpace& tiling_space,
     const HloDynamicSliceInstruction& dynamic_slice,
     const SymbolicTile& output_tile) {
@@ -242,11 +232,10 @@ TiledOperands PropagateTileToInputForDynamicSliceOp(
   for (int i = 0; i < num_dim_tiles; ++i) {
     operand_tiles.push_back(scalar_tensor_tile);
   }
-  return TiledOperands{std::move(operand_tiles),
-                       ConstraintExpression::GetAlwaysSatisfied()};
+  return operand_tiles;
 }
 
-std::optional<TiledOperands> PropagateTileToInputForPadOp(
+std::optional<SymbolicTiles> PropagateTileToInputForPadOp(
     const HloPadInstruction& pad, const SymbolicTile& output_tile) {
   MLIRContext* ctx = output_tile.mlir_context();
   const PaddingConfig& padding_config = pad.padding_config();
@@ -273,8 +262,7 @@ std::optional<TiledOperands> PropagateTileToInputForPadOp(
   // to propagate the inputs.
   SymbolicTile padding_value_tile{output_tile.tiling_space(), {}, {}, {}, {}};
 
-  return TiledOperands{SymbolicTiles{operand_tile, padding_value_tile},
-                       ConstraintExpression::GetAlwaysSatisfied()};
+  return SymbolicTiles{operand_tile, padding_value_tile};
 }
 
 SymbolicTile PropagateTileThroughTransposeOp(
@@ -286,23 +274,21 @@ SymbolicTile PropagateTileThroughTransposeOp(
   return SymbolicTile{tile.tiling_space(), std::move(dim_tiles)};
 }
 
-TiledOperands PropagateTileToInputForTransposeOp(
+SymbolicTiles PropagateTileToInputForTransposeOp(
     const HloInstruction& transpose, const SymbolicTile& output_tile) {
   auto operand_tile =
       PropagateTileThroughTransposeOp(output_tile, transpose.dimensions());
-  return TiledOperands{SymbolicTiles{operand_tile},
-                       ConstraintExpression::GetAlwaysSatisfied()};
+  return {operand_tile};
 }
 
-TiledOperands PropagateTileToOutputForTransposeOp(
+SymbolicTiles PropagateTileToOutputForTransposeOp(
     const HloInstruction& transpose, const SymbolicTile& input_tile) {
   auto output_tile = PropagateTileThroughTransposeOp(
       input_tile, InversePermutation(transpose.dimensions()));
-  return TiledOperands{SymbolicTiles{output_tile},
-                       ConstraintExpression::GetAlwaysSatisfied()};
+  return {output_tile};
 }
 
-TiledOperands PropagateTileToInputForDotOp(const TilingSpace& tiling_space,
+SymbolicTiles PropagateTileToInputForDotOp(const TilingSpace& tiling_space,
                                            const HloDotInstruction& dot,
                                            const SymbolicTile& output_tile) {
   MLIRContext* ctx = output_tile.mlir_context();
@@ -370,14 +356,12 @@ TiledOperands PropagateTileToInputForDotOp(const TilingSpace& tiling_space,
         GetDefaultDimTile(contracting_dim_info.id,
                           contracting_dim_info.dimension_size, ctx);
   }
-  return TiledOperands{
-      SymbolicTiles{
-          SymbolicTile{output_tile.tiling_space(), std::move(lhs_dim_tiles)},
-          SymbolicTile{output_tile.tiling_space(), std::move(rhs_dim_tiles)}},
-      ConstraintExpression::GetAlwaysSatisfied()};
+  return SymbolicTiles{
+      SymbolicTile{output_tile.tiling_space(), std::move(lhs_dim_tiles)},
+      SymbolicTile{output_tile.tiling_space(), std::move(rhs_dim_tiles)}};
 }
 
-TiledOperands PropagateTileToInputForReduceOp(
+SymbolicTiles PropagateTileToInputForReduceOp(
     const TilingSpace& tiling_space, const HloReduceInstruction& reduce,
     const SymbolicTile& output_tile) {
   MLIRContext* ctx = output_tile.mlir_context();
@@ -413,29 +397,25 @@ TiledOperands PropagateTileToInputForReduceOp(
       reduce.input_count(),
       SymbolicTile{output_tile.tiling_space(), std::move(input_dim_tiles)});
   operand_tiles.append(SymbolicTiles(reduce.input_count(), init_value_tile));
-  return TiledOperands{std::move(operand_tiles),
-                       ConstraintExpression::GetAlwaysSatisfied()};
+  return SymbolicTiles{std::move(operand_tiles)};
 }
 
 }  // namespace
 
-std::string TiledOperands::ToString() const {
+std::string ToString(const SymbolicTiles& tiles) {
   std::stringstream ss;
   for (const auto& [index, tile] : llvm::enumerate(tiles)) {
     ss << index << ") " << tile.ToString() << "\n";
   }
-  if (!constraint.IsAlwaysSatisfied()) {
-    ss << "constraint: " << constraint.ToString() << "\n";
-  }
   return ss.str();
 }
 
-std::optional<TiledOperands> PropagateTileToInput(
+std::optional<SymbolicTiles> PropagateTileToInput(
     const TilingSpace& tiling_space, const HloInstruction& hlo,
-    const SymbolicTile& output_tile, int64_t result_index) {
+    const SymbolicTile& output_tile, int64_t output_index) {
   if (HloInstruction::IsOpElementwise(hlo.opcode()) ||
       hlo.opcode() == HloOpcode::kMap) {
-    return PropagateTileToInputForCwiseOp(hlo, output_tile);
+    return {PropagateTileToInputForCwiseOp(hlo, output_tile)};
   }
   if (hlo.opcode() == HloOpcode::kBroadcast) {
     return PropagateTileToInputForBroadcastOp(
@@ -472,7 +452,7 @@ std::optional<TiledOperands> PropagateTileToInput(
   return std::nullopt;
 }
 
-std::optional<TiledOperands> PropagateTileToOutput(
+std::optional<SymbolicTiles> PropagateTileToOutput(
     const TilingSpace& tiling_space, const HloInstruction& hlo,
     const SymbolicTile& input_tile, int64_t input_index) {
   if (HloInstruction::IsOpElementwise(hlo.opcode()) ||

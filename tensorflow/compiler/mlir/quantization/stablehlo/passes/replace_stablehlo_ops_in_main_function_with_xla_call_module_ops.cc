@@ -173,8 +173,8 @@ void CreateXlaCallModuleOp(ValueRange inputs, ValueRange outputs,
       ctx,
       {StringAttr::get(ctx, kPlatformCpu), StringAttr::get(ctx, kPlatformTpu)});
 
-  auto xla_call_module_op = builder.create<TF::XlaCallModuleOp>(
-      module_op.getLoc(), /*output=*/result_types,
+  auto xla_call_module_op = TF::XlaCallModuleOp::create(
+      builder, module_op.getLoc(), /*output=*/result_types,
       /*args=*/inputs,
       /*version=*/kDefaultVersion, /*module=*/"",
       /*Sout=*/ArrayAttr::get(ctx, shape_attrs),
@@ -234,9 +234,10 @@ void ReplaceStablehloOpsWithXlaCallModuleOp(
 
   // 1) Create FuncOp for the StableHLO ops. They will be separate subgraphs.
   builder.setInsertionPoint(&*module_op.begin());
-  auto stablehlo_func_op = builder.create<func::FuncOp>(
-      module_op.getLoc(), CreateStablehloFunctionName(stablehlo_func_id),
-      FunctionType::get(ctx, arg_types, result_types));
+  auto stablehlo_func_op =
+      func::FuncOp::create(builder, module_op.getLoc(),
+                           CreateStablehloFunctionName(stablehlo_func_id),
+                           FunctionType::get(ctx, arg_types, result_types));
   stablehlo_func_op.setVisibility(SymbolTable::Visibility::Private);
   stablehlo_func_op->setAttr(TF::kFromXlaCallModuleAttrName,
                              builder.getUnitAttr());
@@ -262,7 +263,7 @@ void ReplaceStablehloOpsWithXlaCallModuleOp(
     // outputs in the original function.
     result_values.push_back(mapper.lookup(original_output_value));
   }
-  builder.create<func::ReturnOp>(module_op.getLoc(), result_values);
+  func::ReturnOp::create(builder, module_op.getLoc(), result_values);
 
   // 2) Create XlaCallModuleOp (with ops mapped).
   CreateXlaCallModuleOp(inputs, outputs, result_types, reverse_subgraph,

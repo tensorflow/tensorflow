@@ -399,6 +399,12 @@ CodegenDecision AreDotAlgorithmInputAndOutputConversionsSupported(
     }
   }
 
+  if (algorithm == PrecisionConfig::ALG_DOT_F64_F64_F64 &&
+      primitive_util::BitWidth(lhs_type) < 32 &&
+      !std::get<se::CudaComputeCapability>(gpu_version).IsAtLeastBlackwell()) {
+    return forbid("Unsupported BF16 on GPUs before Blackwell");
+  }
+
   if (allowed_operands_types_or->size() != 1) {
     if (lhs_type == rhs_type &&
         absl::c_linear_search(*allowed_operands_types_or, lhs_type)) {
