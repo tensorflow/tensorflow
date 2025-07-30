@@ -60,9 +60,6 @@ class CpuInstructionFusion : public InstructionFusion {
   HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
                                   HloInstruction* producer) override;
 
-  // Returns if a constant is large enough to be considered a large constant.
-  bool IsLargeConstant(const HloInstruction* constant) const;
-
   bool ShouldSkip(const HloInstruction* inst) const;
   void ComputeInstructionsToSkip(
       HloModule* module,
