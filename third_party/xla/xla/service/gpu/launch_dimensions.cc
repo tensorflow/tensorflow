@@ -54,7 +54,8 @@ LaunchDimensions CalculateLaunchDimensions(
   num_elements = CeilOfRatio(num_elements, int64_t{dim_config.unroll_factor});
   const int kWarpSchedulers = 4;
 
-  if (xla::PlatformUtil::CanonicalPlatformName("gpu").value() == "rocm") {
+  if ((xla::PlatformUtil::CanonicalPlatformName("gpu").value() == "rocm")  &&
+      (gpu_device_info.runtime_version() < stream_executor::SemanticVersion{6, 4, 0})) {
     int64_t threads_per_block_x = std::min<int64_t>(
         gpu_device_info.threads_per_warp() * kWarpSchedulers, num_elements);
 

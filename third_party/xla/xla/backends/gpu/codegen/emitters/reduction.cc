@@ -793,6 +793,7 @@ RowReductionFusion::RowReductionFusion(const HloFusionAnalysis& analysis)
   CHECK(reduction_dimensions_.is_row_reduction);
   Vector3 shape = reduction_dimensions_.dimensions;
   int64_t kMinorReducedElementsPerThread = 8;
+  auto rt_ver = analysis.device_info().runtime_version();
 
   do {
     kMinorReducedElementsPerThread *= 2;
@@ -847,7 +848,8 @@ RowReductionFusion::RowReductionFusion(const HloFusionAnalysis& analysis)
     /* ROCm hipModuleLaunchKernel limitation
      * https://rocm.docs.amd.com/projects/HIP/en/latest/doxygen/html/group___module.html#ga2e4de5937aa8171e9eda16c881ed0674
      */
-  } while (xla::PlatformUtil::CanonicalPlatformName("gpu").value() == "rocm" &&
+  } while ((xla::PlatformUtil::CanonicalPlatformName("gpu").value() == "rocm" &&
+            (rt_ver < stream_executor::SemanticVersion{6, 4, 0})) &&
            kMinorReducedElementsPerThread < 65536 &&
            ((Product(num_blocks_) * Product(num_threads_)) >
             std::numeric_limits<uint32_t>::max()));
