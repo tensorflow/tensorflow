@@ -132,6 +132,35 @@ TEST_F(ShardyXLATest, ElementWise) {
               op::Sharding("{devices=[2,1]<=[2]}"));
 }
 
+TEST_F(ShardyXLATest, NonFlatGraph) {
+  const char* const hloString = R"(
+    HloModule module
+
+    %bar {
+      %arg = f32[6,3] parameter(0)
+      %multiply = f32[6,3] multiply(arg, arg)
+      ROOT result = f32[6,3] copy(%multiply)
+    }
+
+    %foo {
+      %arg = f32[6,3] parameter(0)
+      %multiply = f32[6,3] call(%arg), to_apply=%bar
+      %add = f32[6,3] add(multiply, multiply)
+      ROOT result = f32[6,3] copy(%add)
+    }
+
+    ENTRY %entry {
+      %p0 = f32[6,3] parameter(0), sharding={devices=[2,1]<=[2]}
+      %foores = f32[6,3] call(%p0), to_apply=%foo
+      %barres = f32[6,3] call(%foores), to_apply=%bar
+      ROOT result = f32[6,3] copy(%barres)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithStablehloImport(module.get());
+  EXPECT_EQ(module->computation_count(), 1);
+}
+
 TEST_F(ShardyXLATest, CostantSplitter) {
   const char* const hloString = R"(
     HloModule module
