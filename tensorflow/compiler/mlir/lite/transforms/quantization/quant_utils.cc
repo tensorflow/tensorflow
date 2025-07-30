@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/transforms/quantization/quant_utils.h"
 
+#include <algorithm>
 #include <optional>
+#include <tuple>
+#include <vector>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
@@ -35,9 +38,105 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_interface.h.inc"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
 
 namespace mlir::TFL {
+
+namespace {
+
+struct PropagatedQuantType {
+  quant::QuantizedType qtype;
+  bool is_from_result;
+  bool is_propagated;
+
+  // For sorting. Higher priority comes first.
+  // Priority 1: non-propagated > propagated
+  // Priority 2: result > operand
+  bool operator<(const PropagatedQuantType& other) const {
+    return std::make_tuple(!is_propagated, is_from_result) >
+           std::make_tuple(!other.is_propagated, other.is_from_result);
+  }
+};
+
+// A struct to hold the quantization information for a value.
+struct QuantInfo {
+  quant::QuantizedType qtype;
+  // Whether the quantize op has the "propagated" attribute.
+  bool is_propagated;
+};
+
+// Returns the quantized type from a `tfl.quantize` op if it is the only user
+// of `value`.
+//
+//   value -> tfl.quantize
+//
+std::optional<QuantInfo> GetDefiningQuantInfo(mlir::Value value) {
+  // If `value` has multiple uses, the `tfl.quantize` op cannot be fused with
+  // `value`'s defining op. In this case, quantization parameter propagation is
+  // not beneficial, so this function returns `std::nullopt`.
+  if (!value.hasOneUse()) {
+    return std::nullopt;
+  }
+  auto q_op = dyn_cast_or_null<TFL::QuantizeOp>(value.use_begin().getUser());
+  if (!q_op) {
+    return std::nullopt;
+  }
+  auto qtype = cast<quant::QuantizedType>(q_op.getQtype().getElementType());
+  bool is_propagated = q_op->hasAttr(kPropagatedQuantizeOpAttr);
+  return {{qtype, is_propagated}};
+}
+
+// Returns the quantized type and whether it is propagated if the value is
+// an output of a Dequantize op.
+//
+//  QuantizeOp -> DequantizeOp -> value
+//
+// This function returns the quantized type of the QuantizeOp and whether it is
+// propagated.
+std::optional<QuantInfo> GetProducingQuantInfo(mlir::Value value) {
+  auto dq_op = dyn_cast_or_null<TFL::DequantizeOp>(value.getDefiningOp());
+  if (!dq_op) {
+    return std::nullopt;
+  }
+  auto q_op =
+      dyn_cast_or_null<TFL::QuantizeOp>(dq_op.getInput().getDefiningOp());
+  if (!q_op) {
+    // It can be a constant with quantized type. This is not a propagated Q.
+    if (auto qtype = dyn_cast<quant::QuantizedType>(
+            getElementTypeOrSelf(dq_op.getInput().getType()))) {
+      return {{qtype, /*is_propagated=*/false}};
+    }
+    return std::nullopt;
+  }
+
+  auto qtype = cast<quant::QuantizedType>(q_op.getQtype().getElementType());
+  bool is_propagated = q_op->hasAttr(kPropagatedQuantizeOpAttr);
+  return {{qtype, is_propagated}};
+}
+
+std::vector<PropagatedQuantType> GetPropagatedQuantTypes(
+    SameScalesOpInterface same_scales_op) {
+  std::vector<PropagatedQuantType> propagated_types;
+  mlir::Operation* op = same_scales_op.getOperation();
+
+  for (mlir::Value result : op->getResults()) {
+    if (auto res = GetDefiningQuantInfo(result)) {
+      propagated_types.push_back(
+          {res->qtype, /*is_from_result=*/true, res->is_propagated});
+    }
+  }
+
+  for (mlir::Value operand : op->getOperands()) {
+    if (auto res = GetProducingQuantInfo(operand)) {
+      propagated_types.push_back(
+          {res->qtype, /*is_from_result=*/false, res->is_propagated});
+    }
+  }
+  return propagated_types;
+}
+
+}  // namespace
 
 std::optional<quant::QuantizedType> GetQTypeFromDefiningDequantize(
     mlir::Value value) {
@@ -62,6 +161,14 @@ std::optional<quant::QuantizedType> GetQTypeFromConsumingQuantize(
   }
   // The element type of the result of the quantize op is the quantized type.
   return cast<quant::QuantizedType>(getElementTypeOrSelf(q_op.getType()));
+}
+
+std::optional<quant::QuantizedType> GetPropagatedType(
+    SameScalesOpInterface same_scales_op) {
+  auto propagated_types = GetPropagatedQuantTypes(same_scales_op);
+  if (propagated_types.empty()) return std::nullopt;
+  std::sort(propagated_types.begin(), propagated_types.end());
+  return propagated_types.front().qtype;
 }
 
 // Sets the insertion point for the rewriter safely. If the value is an op
