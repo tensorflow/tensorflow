@@ -326,8 +326,8 @@ IrArray::Index IrArray::Index::SourceIndexOfSlice(
 IrArray::Index IrArray::Index::SourceIndexOfTranspose(
     const Shape& shape, const Shape& operand_shape,
     absl::Span<const int64_t> dimension_mapping) const {
-  std::vector<llvm::Value*> operand_multidim_index =
-      PermuteInverse(multidim(), dimension_mapping);
+  auto operand_multidim_index =
+      PermuteInverse<std::vector<llvm::Value*>>(multidim(), dimension_mapping);
 
   if (linear() != nullptr && LayoutUtil::HasLayout(operand_shape) &&
       LayoutUtil::HasLayout(shape) &&
