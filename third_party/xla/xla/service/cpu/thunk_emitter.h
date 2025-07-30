@@ -261,6 +261,8 @@ class ThunkEmitter {
 
   FusionCompiler fusion_compiler_;
   std::unique_ptr<mlir::MLIRContext> mlir_context_;
+
+  absl::flat_hash_map<std::string, KernelSpec> kernel_spec_cache_;
 };
 
 }  // namespace xla::cpu

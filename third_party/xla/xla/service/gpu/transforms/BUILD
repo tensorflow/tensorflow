@@ -752,6 +752,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:comparison_util",
         "//xla:util",
+        "//xla/codegen/emitters:computation_fingerprint",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
         "//xla/hlo/pass:hlo_pass",

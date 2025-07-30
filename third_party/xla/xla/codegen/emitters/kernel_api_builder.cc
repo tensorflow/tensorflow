@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/emitters/type_util.h"
+#include "xla/codegen/kernel_spec.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -376,6 +378,53 @@ absl::StatusOr<CallTargetProvider> EmitPartitionedComputations(
   }
 
   return call_targets;
+}
+
+absl::StatusOr<KernelSpec> GetKernelSpec(
+    absl::string_view entry_function_name,
+    const HloInstruction& hlo_instruction,
+    const BufferAssignment* buffer_assignment,
+    const WorkDimensions& work_dimensions) {
+  if (buffer_assignment == nullptr) {
+    return KernelSpec(entry_function_name, work_dimensions,
+                      KernelSpec::Buffers(), KernelSpec::Buffers(),
+                      absl::flat_hash_set<int64_t>());
+  }
+
+  KernelSpec::Buffers result_buffers;
+  for (auto& indexed : ShapeUtil::GetLeafShapes(hlo_instruction.shape())) {
+    TF_ASSIGN_OR_RETURN(
+        BufferAllocation::Slice slice,
+        buffer_assignment->GetUniqueSlice(&hlo_instruction, indexed.index));
+    result_buffers.push_back(std::move(slice));
+  }
+
+  KernelSpec::Buffers argument_buffers;
+  absl::flat_hash_set<int64_t> invariant_arguments;
+  int64_t operand_index = 0;
+  for (HloInstruction* operand : hlo_instruction.operands()) {
+    for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
+      TF_ASSIGN_OR_RETURN(
+          BufferAllocation::Slice slice,
+          buffer_assignment->GetUniqueSlice(operand, indexed.index));
+
+      bool invariant = absl::c_none_of(
+          result_buffers,
+          [&slice](const BufferAllocation::Slice& result_slice) {
+            return result_slice.OverlapsWith(slice);
+          });
+      if (invariant) {
+        invariant_arguments.insert(operand_index);
+      }
+
+      argument_buffers.push_back(std::move(slice));
+      ++operand_index;
+    }
+  }
+
+  return KernelSpec(entry_function_name, work_dimensions,
+                    std::move(argument_buffers), std::move(result_buffers),
+                    std::move(invariant_arguments));
 }
 
 }  // namespace xla::emitters
