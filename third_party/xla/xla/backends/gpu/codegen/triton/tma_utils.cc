@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/tma_utils.h"
 
 #include <cstdint>
+#include <variant>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -23,6 +24,8 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -131,6 +134,13 @@ absl::StatusOr<TmaDescriptor> CreateTmaDescriptor(
   return CreateTmaDescriptor(global_shape, tile_shape, tile_strides, layout,
                              element_byte_size,
                              GetTmaSwizzleMode(swizzle_mode));
+}
+
+bool IsTmaEnabledForDevice(
+    const stream_executor::DeviceDescription& device_info) {
+  bool is_cuda = std::holds_alternative<stream_executor::CudaComputeCapability>(
+      device_info.gpu_compute_capability());
+  return is_cuda && device_info.cuda_compute_capability().IsAtLeastHopper();
 }
 
 }  // namespace xla::gpu

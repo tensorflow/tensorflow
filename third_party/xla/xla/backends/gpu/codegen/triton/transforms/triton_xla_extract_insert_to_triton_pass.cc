@@ -53,6 +53,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
+#include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
@@ -96,13 +97,6 @@ SmallVector<Value> IndexCastUI(::xla::EmitterLocOpBuilder& builder, Type type,
   return result;
 }
 
-bool TmaIsEnabledForDevice(
-    const stream_executor::DeviceDescription& device_info) {
-  bool is_cuda = std::holds_alternative<stream_executor::CudaComputeCapability>(
-      device_info.gpu_compute_capability());
-  return is_cuda && device_info.cuda_compute_capability().IsAtLeastHopper();
-}
-
 // Canonicalizes tile strides. If a tile stride is 0, and the corresponding
 // tile shape or original shape value at the same index is 1, then the tile
 // stride is set to 1. Otherwise, it returns an error.
@@ -133,7 +127,7 @@ bool CanUseTMA(::xla::EmitterLocOpBuilder& builder, bool tma_enabled,
   if (!tma_enabled) {
     return false;
   }
-  if (!TmaIsEnabledForDevice(device_description)) {
+  if (!::xla::gpu::IsTmaEnabledForDevice(device_description)) {
     return false;
   }
 

@@ -43,6 +43,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/backends/gpu/runtime/buffer_comparator.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -842,17 +843,8 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
       debug_options_.xla_gpu_enable_split_k_autotuning();
 
   // Allow TMA tuning for Hopper+ devices when TMA flag is passed.
-  auto is_tma_enabled_for_device =
-      [](const stream_executor::DeviceDescription& device_info) {
-        bool is_cuda =
-            std::holds_alternative<stream_executor::CudaComputeCapability>(
-                device_info.gpu_compute_capability());
-        return is_cuda &&
-               device_info.cuda_compute_capability().IsAtLeastHopper();
-      };
   bool autotune_tma = debug_options_.xla_gpu_experimental_enable_triton_tma() &&
-                      is_tma_enabled_for_device(config_.GetDeviceDescription());
-
+                      IsTmaEnabledForDevice(config_.GetDeviceDescription());
   TritonDotFusionSearchSpace search_space(config_.GetDeviceDescription(), &dot);
   VLOG(1) << "Generating configs from search space: "
           << search_space.ToString();
