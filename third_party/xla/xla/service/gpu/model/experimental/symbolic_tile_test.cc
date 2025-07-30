@@ -56,8 +56,7 @@ TEST_F(SymbolicTileTest, StringFormat) {
 
   TilingSpace tiling_space =
       GetFakeTilingSpace(/*num_dims=*/2, /*num_rt_vars=*/1);
-  SymbolicTile tile{&mlir_context,
-                    tiling_space,
+  SymbolicTile tile{tiling_space,
                     {DimTile{tid0 * ts0, ts0, c1, c16},
                      DimTile{rt + tid1 * ts1, ts1, c1, c32}}};
 

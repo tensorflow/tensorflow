@@ -15,20 +15,24 @@ limitations under the License.
 
 #include "xla/service/gpu/model/experimental/tiling_space.h"
 
+#include <memory>
+#include <utility>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 
-namespace xla::gpu {
+namespace xla::gpu::experimental {
 namespace {
 
-using TilingSpaceTest = HloHardwareIndependentTestBase;
+using ::mlir::MLIRContext;
 
 MATCHER_P(MatchString, tiling_space_string, "") {
   return ExplainMatchResult(
@@ -36,29 +40,44 @@ MATCHER_P(MatchString, tiling_space_string, "") {
       result_listener);
 }
 
+class TilingSpaceTest : public HloHardwareIndependentTestBase {
+ public:
+  HloInstruction* ParseAndGetRoot(absl::string_view hlo_string) {
+    auto module_or = ParseAndReturnVerifiedModule(hlo_string);
+    CHECK_OK(module_or);
+    module_ = std::move(module_or.value());
+    return module_->entry_computation()->root_instruction();
+  }
+
+  MLIRContext mlir_context_;
+  std::unique_ptr<VerifiedHloModule> module_;
+};
+
 TEST_F(TilingSpaceTest, SingleOutputParallelDim) {
-  auto module = ParseAndReturnVerifiedModule(R"(
+  auto root = ParseAndGetRoot(R"(
       HloModule m
       ENTRY e {
         p0 = f32[1000, 10] parameter(0)
         ROOT a0 = f32[1000, 10] exponential(p0)
       }
   )");
-  CHECK_OK(module);
-  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
-      module.value()->entry_computation()->root_instruction());
-  TilingSpace tiling_space = TilingSpace::Create(*fusion_adaptor);
-  EXPECT_THAT(tiling_space, MatchString(R"(
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+  EXPECT_THAT(*tiling_space, MatchString(R"(
     Dimensions:
         0 type: parallel size: 1000 dim ID:0
           hlo: %a0 = f32[1000,10]{1,0} exponential(%p0)
         1 type: parallel size: 10 dim ID:1
           hlo: %a0 = f32[1000,10]{1,0} exponential(%p0)
+    Root tiles:
+      0 root tile: (tid_0, tid_1)[ts_0, ts_1]
+        -> offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+           strides [1, 1] upper bounds [1000, 10]
   )"));
 }
 
 TEST_F(TilingSpaceTest, SingleOutputContractionDim) {
-  auto module = ParseAndReturnVerifiedModule(R"(
+  auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
       p0 = bf16[2304,16,768]{2,1,0} parameter(0)
@@ -68,11 +87,9 @@ TEST_F(TilingSpaceTest, SingleOutputContractionDim) {
           rhs_batch_dims={1}, rhs_contracting_dims={2}
     }
   )");
-  CHECK_OK(module);
-  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
-      module.value()->entry_computation()->root_instruction());
-  TilingSpace tiling_space = TilingSpace::Create(*fusion_adaptor);
-  EXPECT_THAT(tiling_space, MatchString(R"(
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+  EXPECT_THAT(*tiling_space, MatchString(R"(
     Dimensions:
       0 type: parallel size: 16 dim ID:0
         hlo: %dot = bf16[16,2304,16]{2,1,0} dot(%p0, %p1), lhs_batch_dims={1},
@@ -86,11 +103,17 @@ TEST_F(TilingSpaceTest, SingleOutputContractionDim) {
       3 type: sequential size: 768 dim ID:3
         hlo: %dot = bf16[16,2304,16]{2,1,0} dot(%p0, %p1), lhs_batch_dims={1},
         lhs_contracting_dims={2}, rhs_batch_dims={1}, rhs_contracting_dims={2}
+    Root tiles:
+      0 root tile: (tid_0, tid_1, tid_2, tid_3)[ts_0, ts_1, ts_2, ts_3]
+        -> offsets [tid_0 * ts_0, tid_1 * ts_1, tid_2 * ts_2]
+           sizes [ts_0, ts_1, ts_2]
+           strides [1, 1, 1]
+           upper bounds [16, 2304, 16]
   )"));
 }
 
 TEST_F(TilingSpaceTest, SingleOutputReductionDim) {
-  auto module = ParseAndReturnVerifiedModule(R"(
+  auto root = ParseAndGetRoot(R"(
     HloModule m
     max {
       p0 = f32[] parameter(0)
@@ -103,29 +126,31 @@ TEST_F(TilingSpaceTest, SingleOutputReductionDim) {
       ROOT reduce = f32[150,10] reduce(p0, p1), dimensions={3,1}, to_apply=max
     }
   )");
-  CHECK_OK(module);
-  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
-      module.value()->entry_computation()->root_instruction());
-  TilingSpace tiling_space = TilingSpace::Create(*fusion_adaptor);
-  EXPECT_THAT(tiling_space, MatchString(R"(
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+  EXPECT_THAT(*tiling_space, MatchString(R"(
     Dimensions:
-    0 type: parallel size: 150 dim ID:0
-      hlo: %reduce = f32[150,10]{1,0} reduce(%p0.1, %p1.1), dimensions={3,1},
-      to_apply=%max
-    1 type: parallel size: 10 dim ID:1
-      hlo: %reduce = f32[150,10]{1,0} reduce(%p0.1, %p1.1), dimensions={3,1},
-      to_apply=%max
-    2 type: sequential size: 50 dim ID:2
-      hlo: %reduce = f32[150,10]{1,0} reduce(%p0.1, %p1.1), dimensions={3,1},
-      to_apply=%max
-    3 type: sequential size: 20 dim ID:3
-      hlo: %reduce = f32[150,10]{1,0} reduce(%p0.1, %p1.1), dimensions={3,1},
-      to_apply=%max
+      0 type: parallel size: 150 dim ID:0
+        hlo: %reduce = f32[150,10]{1,0} reduce(%p0.1, %p1.1), dimensions={3,1},
+        to_apply=%max
+      1 type: parallel size: 10 dim ID:1
+        hlo: %reduce = f32[150,10]{1,0} reduce(%p0.1, %p1.1), dimensions={3,1},
+        to_apply=%max
+      2 type: sequential size: 50 dim ID:2
+        hlo: %reduce = f32[150,10]{1,0} reduce(%p0.1, %p1.1), dimensions={3,1},
+        to_apply=%max
+      3 type: sequential size: 20 dim ID:3
+        hlo: %reduce = f32[150,10]{1,0} reduce(%p0.1, %p1.1), dimensions={3,1},
+        to_apply=%max
+    Root tiles:
+      0 root tile: (tid_0, tid_1, tid_2, tid_3)[ts_0, ts_1, ts_2, ts_3]
+        -> offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+           strides [1, 1] upper bounds [150, 10]
   )"));
 }
 
 TEST_F(TilingSpaceTest, VariadicReduce) {
-  auto module = ParseAndReturnVerifiedModule(R"(
+  auto root = ParseAndGetRoot(R"(
     HloModule m
     min {
       tmp_0 = f32[] parameter(0)
@@ -147,11 +172,10 @@ TEST_F(TilingSpaceTest, VariadicReduce) {
     }
 
   )");
-  CHECK_OK(module);
-  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
-      module.value()->entry_computation()->root_instruction());
-  TilingSpace tiling_space = TilingSpace::Create(*fusion_adaptor);
-  EXPECT_THAT(tiling_space, MatchString(R"(
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+
+  auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+  EXPECT_THAT(*tiling_space, MatchString(R"(
     Dimensions:
       0 type: parallel size: 10 dim ID:0 hlo:
         %reduce = (f32[10]{0}, s32[10]{0}) reduce(%p0, %p1, %p0_init, %p1_init),
@@ -159,11 +183,16 @@ TEST_F(TilingSpaceTest, VariadicReduce) {
       1 type: sequential size: 256 dim ID:1 hlo:
         %reduce = (f32[10]{0}, s32[10]{0}) reduce(%p0, %p1, %p0_init, %p1_init),
         dimensions={0}, to_apply=%min
+    Root tiles:
+      0 root tile: (tid_0, tid_1)[ts_0, ts_1] ->
+        offsets [tid_0 * ts_0] sizes [ts_0] strides [1] upper bounds [10]
+      1 root tile: (tid_0, tid_1)[ts_0, ts_1] ->
+        offsets [tid_0 * ts_0] sizes [ts_0] strides [1] upper bounds [10]
   )"));
 }
 
 TEST_F(TilingSpaceTest, DynamicSlice) {
-  auto module = ParseAndReturnVerifiedModule(R"(
+  auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
       %src = s32[2,2,258] parameter(0)
@@ -175,11 +204,10 @@ TEST_F(TilingSpaceTest, DynamicSlice) {
         dynamic_slice_sizes={1, 2, 32}
     }
   )");
-  CHECK_OK(module);
-  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
-      module.value()->entry_computation()->root_instruction());
-  TilingSpace tiling_space = TilingSpace::Create(*fusion_adaptor);
-  EXPECT_THAT(tiling_space, MatchString(R"(
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+
+  auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+  EXPECT_THAT(*tiling_space, MatchString(R"(
     Dimensions:
         0 type: parallel size: 1 dim ID:0
           hlo: %ds = s32[1,2,32]{2,1,0} dynamic-slice(%src, %of1, %of2, %of3),
@@ -194,11 +222,15 @@ TEST_F(TilingSpaceTest, DynamicSlice) {
         0 bounds: [0, 1] hlo: %of1 = s32[] parameter(1)
         1 bounds: [0, 0] hlo: %of2 = s32[] parameter(2)
         2 bounds: [0, 226] hlo: %of3 = s32[] parameter(3)
+    Root tiles:
+      0 root tile: (tid_0, tid_1, tid_2)[ts_0, ts_1, ts_2]{rt_0, rt_1, rt_2}
+        -> offsets [tid_0 * ts_0, tid_1 * ts_1, tid_2 * ts_2]
+           sizes [ts_0, ts_1, ts_2] strides [1, 1, 1] upper bounds [1, 2, 32]
   )"));
 }
 
 TEST_F(TilingSpaceTest, TwoOutputsParallelDims) {
-  auto module = ParseAndReturnVerifiedModule(R"(
+  auto root = ParseAndGetRoot(R"(
     HloModule m
     f {
       p0 = f32[10,8] parameter(0)
@@ -219,11 +251,9 @@ TEST_F(TilingSpaceTest, TwoOutputsParallelDims) {
         kind=kLoop, calls=f
     }
   )");
-  CHECK_OK(module);
-  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
-      module.value()->entry_computation()->root_instruction());
-  TilingSpace tiling_space = TilingSpace::Create(*fusion_adaptor);
-  EXPECT_THAT(tiling_space, MatchString(R"(
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+  EXPECT_THAT(*tiling_space, MatchString(R"(
     Dimensions:
         0 type: parallel size: 10 dim ID:0
           hlo: %add = f32[10,8]{1,0} add(%p0, %p1)
@@ -233,8 +263,15 @@ TEST_F(TilingSpaceTest, TwoOutputsParallelDims) {
           hlo: %mul = f32[11,9]{1,0} multiply(%p2, %p3)
         3 type: parallel size: 9 dim ID:1
           hlo: %mul = f32[11,9]{1,0} multiply(%p2, %p3)
+    Root tiles:
+        0 root tile: (tid_0, tid_1, tid_2, tid_3)[ts_0, ts_1, ts_2, ts_3]
+          -> offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+             strides [1, 1] upper bounds [10, 8]
+        1 root tile: (tid_0, tid_1, tid_2, tid_3)[ts_0, ts_1, ts_2, ts_3]
+          -> offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+             strides [1, 1] upper bounds [11, 9]
   )"));
 }
 
 }  // namespace
-}  // namespace xla::gpu
+}  // namespace xla::gpu::experimental

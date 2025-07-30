@@ -33,13 +33,13 @@ using ::mlir::getAffineDimExpr;
 using ::mlir::getAffineSymbolExpr;
 using ::mlir::MLIRContext;
 
-SymbolicTile GetTestSymbolicTile(MLIRContext* mlir_context,
-                                 const TilingSpace& tiling_space,
+SymbolicTile GetTestSymbolicTile(const TilingSpace& tiling_space,
                                  absl::Span<const int64_t> shape) {
+  MLIRContext* mlir_context = tiling_space.mlir_context();
+  CHECK(mlir_context != nullptr);
   int64_t rank = shape.size();
   SmallVector<DimTile> dim_tiles;
   dim_tiles.reserve(rank);
-  CHECK(mlir_context);
   for (auto [index, dim] : llvm::enumerate(shape)) {
     auto tid = getAffineDimExpr(index, mlir_context);
     auto ts = getAffineSymbolExpr(index, mlir_context);
@@ -47,7 +47,7 @@ SymbolicTile GetTestSymbolicTile(MLIRContext* mlir_context,
         tid * ts, ts, mlir::getAffineConstantExpr(index + 1, mlir_context),
         mlir::getAffineConstantExpr(dim, mlir_context)});
   }
-  return SymbolicTile{mlir_context, tiling_space, std::move(dim_tiles)};
+  return SymbolicTile{tiling_space, std::move(dim_tiles)};
 }
 
 }  // namespace xla::gpu::experimental
