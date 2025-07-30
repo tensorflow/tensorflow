@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -1058,7 +1059,7 @@ IndexingMap::IndexingMap(
     AffineMap affine_map, std::vector<IndexingMap::Variable> dimensions,
     std::vector<IndexingMap::Variable> range_vars,
     std::vector<IndexingMap::Variable> rt_vars,
-    const llvm::DenseMap<AffineExpr, Interval>& constraints)
+    const llvm::MapVector<AffineExpr, Interval>& constraints)
     : affine_map_(affine_map),
       dim_vars_(std::move(dimensions)),
       range_vars_(std::move(range_vars)),
@@ -1305,12 +1306,30 @@ MLIRContext* IndexingMap::GetMLIRContext() const {
   return IsUndefined() ? nullptr : affine_map_.getContext();
 }
 
+namespace {
+bool EqualConstraints(const llvm::MapVector<mlir::AffineExpr, Interval>& lhs,
+                      const llvm::MapVector<mlir::AffineExpr, Interval>& rhs) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+
+  for (const auto& [key, value] : lhs) {
+    auto it = rhs.find(key);
+    if (it == rhs.end() || it->second != value) {
+      return false;
+    }
+  }
+
+  return true;
+}
+}  // namespace
+
 bool operator==(const IndexingMap& lhs, const IndexingMap& rhs) {
   return lhs.GetAffineMap() == rhs.GetAffineMap() &&
          lhs.GetDimVars() == rhs.GetDimVars() &&
          lhs.GetRangeVars() == rhs.GetRangeVars() &&
          lhs.GetRTVars() == rhs.GetRTVars() &&
-         lhs.GetConstraints() == rhs.GetConstraints();
+         EqualConstraints(lhs.GetConstraints(), rhs.GetConstraints());
 }
 
 IndexingMap operator*(const IndexingMap& lhs, const IndexingMap& rhs) {
@@ -1742,7 +1761,7 @@ bool IndexingMap::MergeModConstraints() {
   bool did_simplify = false;
 
   // Group constraints by LHS.
-  llvm::DenseMap<AffineExpr, llvm::SmallVector<AffineBinaryOpExpr, 2>>
+  llvm::MapVector<AffineExpr, llvm::SmallVector<AffineBinaryOpExpr, 2>>
       grouped_constraints;
   for (const auto& [expr, _] : constraints_) {
     if (expr.getKind() != AffineExprKind::Mod) continue;
@@ -1753,7 +1772,7 @@ bool IndexingMap::MergeModConstraints() {
   // Merge constraints of type MOD.
   // (X mod 3 == 0) & (X mod 2 == 0) => (X mod 6 == 0)
   for (const auto& [lhs, binops] : grouped_constraints) {
-    llvm::DenseMap<int64_t, llvm::SmallVector<AffineBinaryOpExpr, 2>>
+    llvm::MapVector<int64_t, llvm::SmallVector<AffineBinaryOpExpr, 2>>
         mod_groups;
     for (const auto& binop : binops) {
       Interval mod_result = constraints_[binop];
@@ -1949,7 +1968,7 @@ bool IndexingMap::RescaleSymbols() {
     symbol_range.upper = (symbol_range.upper - shift_value) / scaling_factor;
   }
 
-  llvm::DenseMap<mlir::AffineExpr, Interval> new_constraints;
+  llvm::MapVector<mlir::AffineExpr, Interval> new_constraints;
   for (const auto& [expr, range] : constraints_) {
     if (!to_delete.contains(expr)) {
       new_constraints[expr.replace(to_replace)] = range;
