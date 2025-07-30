@@ -465,17 +465,16 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
     // because it includes linearization that may be slow.
     // TODO(misard) assess if it would be preferable to introduce a heuristic
     // to put the transfer into the calling thread for small literals.
-    auto transfer_h2d = [this, buffer_index, transfer_manager,
-                         literal = std::move(literal),
-                         buffer = std::move(buffer),
-                         on_done = std::move(on_done)]() mutable {
+    auto h2d_copy = [this, buffer_index, transfer_manager,
+                     literal = std::move(literal), buffer = std::move(buffer),
+                     on_done = std::move(on_done)]() mutable {
       VLOG(3) << "Start transfer h2d for literal with shape "
               << literal.shape().ToString() << " on device "
               << device_->DebugString();
 
       tsl::profiler::TraceMe traceme(
           "TfrtGpuAsyncHostToDeviceTransferManager::TransferLiteralToBuffer::"
-          "transfer_h2d");
+          "h2d_copy");
 
       // Initiate linearization and transfer of the buffer on the stream.
       ShapedBuffer shaped_buffer =
@@ -499,7 +498,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
       CleanUp(buffer_index, std::move(on_done));
     };
     // Enqueue the transfer to the h2d thread.
-    EnqueueWork(client_->blocking_thread_pool(), std::move(transfer_h2d));
+    EnqueueWork(client_->blocking_thread_pool(), std::move(h2d_copy));
     return absl::OkStatus();
   }
 
@@ -565,16 +564,15 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
       ++transfers_in_flight_[buffer_index];
     }
 
-    auto copy_to_gpu = [transfer_size,
-                        staging_buffer = std::move(staging_buffer), data,
-                        sub_buffer = std::move(sub_buffer), buffer_index,
-                        is_last_transfer, on_done = std::move(on_done),
-                        this]() mutable {
+    auto h2d_copy = [transfer_size, staging_buffer = std::move(staging_buffer),
+                     data, sub_buffer = std::move(sub_buffer), buffer_index,
+                     is_last_transfer, on_done = std::move(on_done),
+                     this]() mutable {
       tsl::profiler::TraceMe traceme([&] {
         return tsl::profiler::TraceMeEncode(
             "TfrtGpuAsyncHostToDeviceTransferManager::"
             "TransferRawDataToSubBuffer::"
-            "copy_to_gpu",
+            "h2d_copy",
             {
                 {"device", device_->id()},
                 {"buffer_index", buffer_index},
@@ -612,7 +610,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
     // Note: The ordering of transfers enqueued via this method is not
     // guaranteed.  If multiple transfers for the same buffer are submitted,
     // their execution order may vary.
-    EnqueueWork(client_->blocking_thread_pool(), std::move(copy_to_gpu));
+    EnqueueWork(client_->blocking_thread_pool(), std::move(h2d_copy));
     return absl::OkStatus();
   }
 
@@ -2051,7 +2049,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
     return staging_buffer;
   };
 
-  auto copy_to_gpu = [device, packed_size, data,
+  auto h2d_do_copy = [device, packed_size, data,
                       copy_event(std::move(copy_event)),
                       dst_definition_event(std::move(dst_definition_event)),
                       gpu_buffer{gpu_buffer.CopyRef()}](
@@ -2096,16 +2094,16 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
   // staging buffer to GPU device.
   auto h2d_copy = [this, use_staging_buffer,
                    copy_to_staging_buffer(std::move(copy_to_staging_buffer)),
-                   copy_to_gpu(std::move(copy_to_gpu))]() mutable {
+                   h2d_do_copy(std::move(h2d_do_copy))]() mutable {
     HostMemoryAllocator::OwnedPtr staging_buffer;
     if (use_staging_buffer) {
       staging_buffer = copy_to_staging_buffer();
     }
 
     EnqueueWork(blocking_thread_pool_.get(),
-                [copy_to_gpu(std::move(copy_to_gpu)),
+                [h2d_do_copy(std::move(h2d_do_copy)),
                  staging_buffer(std::move(staging_buffer))]() mutable {
-                  copy_to_gpu(std::move(staging_buffer));
+                  h2d_do_copy(std::move(staging_buffer));
                 });
   };
 
@@ -2874,12 +2872,12 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteralHelper(
         promise.Set(std::make_pair(literal, std::move(transpose)));
       });
 
-  auto copy_to_host = [device(device_), device_buffer,
-                       usage_event(std::move(usage_event)), promise,
-                       client = client_, on_device_shape{on_device_shape_},
-                       unpack_subbyte_types,
-                       literal_and_transpose =
-                           std::move(literal_and_transpose_future)]() mutable {
+  auto d2h_copy = [device(device_), device_buffer,
+                   usage_event(std::move(usage_event)), promise,
+                   client = client_, on_device_shape{on_device_shape_},
+                   unpack_subbyte_types,
+                   literal_and_transpose =
+                       std::move(literal_and_transpose_future)]() mutable {
     tsl::profiler::TraceMe traceme("ToLiteral::D2H_copy");
     if (device_buffer->definition_event().IsError()) {
       usage_event.SetStateConcrete();
@@ -2989,7 +2987,7 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteralHelper(
   };
   EnqueueWorkWhenReady(client_->blocking_thread_pool(),
                        {device_buffer->definition_event().CopyRCRef()},
-                       std::move(copy_to_host));
+                       std::move(d2h_copy));
 
   return PjRtFuture<>(
       std::move(promise),
@@ -3027,10 +3025,9 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
     return PjRtFuture<>(
         InvalidArgument("ToLiteral() called on deleted or donated buffer"));
   }
-  auto copy_to_host = [device(device_), device_buffer, promise,
-                       usage_event_holder = std::move(usage_event_holder),
-                       client = client_, offset,
-                       transfer_size](void* dst) mutable {
+  auto d2h_copy = [device(device_), device_buffer, promise,
+                   usage_event_holder = std::move(usage_event_holder),
+                   client = client_, offset, transfer_size](void* dst) mutable {
     if (device_buffer->definition_event().IsError()) {
       LOG(ERROR) << "device_buffer->definition_event().GetError(): "
                  << device_buffer->definition_event().GetError();
@@ -3104,21 +3101,21 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
     }
   };
 
-  dst_future.OnReady([client(client_), promise, device_buffer,
-                      copy_to_host = std::move(copy_to_host)](
-                         absl::StatusOr<void*> dst_or) mutable {
-    if (!dst_or.ok()) {
-      promise.Set(dst_or.status());
-      LOG(ERROR) << "dst resolved to an error: " << dst_or.status();
-      return;
-    }
-    EnqueueWorkWhenReady(client->blocking_thread_pool(),
-                         {device_buffer->definition_event().CopyRCRef()},
-                         [dst = std::move(dst_or.value()),
-                          copy_to_host = std::move(copy_to_host)]() mutable {
-                           std::move(copy_to_host)(dst);
-                         });
-  });
+  dst_future.OnReady(
+      [client(client_), promise, device_buffer,
+       d2h_copy = std::move(d2h_copy)](absl::StatusOr<void*> dst_or) mutable {
+        if (!dst_or.ok()) {
+          promise.Set(dst_or.status());
+          LOG(ERROR) << "dst resolved to an error: " << dst_or.status();
+          return;
+        }
+        EnqueueWorkWhenReady(client->blocking_thread_pool(),
+                             {device_buffer->definition_event().CopyRCRef()},
+                             [dst = std::move(dst_or.value()),
+                              d2h_copy = std::move(d2h_copy)]() mutable {
+                               std::move(d2h_copy)(dst);
+                             });
+      });
 
   return PjRtFuture<>(
       std::move(promise),
