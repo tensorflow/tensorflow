@@ -30,6 +30,7 @@ limitations under the License.
 #include <optional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -2021,6 +2022,58 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   AllocateReservedScopedAllocations();
   std::vector<MsaBufferInterval> sorted_buffer_intervals =
       GetSortedBufferIntervals();
+
+  if (options_.explicit_pinning_mode) {
+    const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
+    auto get_instruction_time = [&](const HloInstruction* inst,
+                                    int64_t default_time) {
+      auto it = instruction_schedule.find(inst);
+      if (it == instruction_schedule.end()) {
+        return default_time;
+      }
+      return it->second;
+    };
+    absl::c_stable_sort(
+        sorted_buffer_intervals,
+        [&](const MsaBufferInterval& a, const MsaBufferInterval& b) {
+          const HloValue* a_value = a.buffer;
+          const HloValue* b_value = b.buffer;
+          bool a_is_colored = a_value->shape().has_layout() &&
+                              a_value->shape().layout().memory_space() ==
+                                  options_.alternate_memory_space;
+          bool b_is_colored = b_value->shape().has_layout() &&
+                              b_value->shape().layout().memory_space() ==
+                                  options_.alternate_memory_space;
+          if (!(a_is_colored && b_is_colored)) {
+            return a_is_colored;
+          }
+          // Both buffers are colored, so we want to sort them by definition
+          // time and last use time in that order.
+          int64_t a_definition_time =
+              get_instruction_time(a_value->defining_instruction(),
+                                   std::numeric_limits<int64_t>::max());
+          int64_t b_definition_time =
+              get_instruction_time(b_value->defining_instruction(),
+                                   std::numeric_limits<int64_t>::max());
+          int64_t a_last_use_time = std::numeric_limits<int64_t>::min();
+          for (const HloUse& use : a_value->GetUses()) {
+            a_last_use_time = std::max(
+                a_last_use_time,
+                get_instruction_time(use.instruction,
+                                     std::numeric_limits<int64_t>::min()));
+          }
+          int64_t b_last_use_time = std::numeric_limits<int64_t>::min();
+          for (const HloUse& use : b_value->GetUses()) {
+            b_last_use_time = std::max(
+                b_last_use_time,
+                get_instruction_time(use.instruction,
+                                     std::numeric_limits<int64_t>::min()));
+          }
+          return std::forward_as_tuple(a_definition_time, a_last_use_time) <
+                 std::forward_as_tuple(b_definition_time, b_last_use_time);
+        });
+  }
+
   memory_space_assignment::CustomizeSortedBufferInterval(
       options_.autotuning_config, sorted_buffer_intervals);
 
@@ -3292,9 +3345,9 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
       if (require_no_copy_alternate_mem_allocation) {
         if (allocation->is_copy_allocation() ||
             allocation->memory_space() == MemorySpace::kDefault) {
-          LOG(WARNING) << "Optimized allocation could not be applied "
-                          "because the tensor is pre-colored, allocation: "
-                       << allocation->ToString();
+          VLOG(1) << "Optimized allocation could not be applied "
+                     "because the tensor is pre-colored, allocation: "
+                  << allocation->ToString();
         }
       } else if (allocation->is_copy_allocation()) {
         allow_no_copy_alternate_mem_allocation = true;
@@ -4083,6 +4136,12 @@ void MsaAlgorithm::AllocateCrossProgramPrefetchBuffer(
 void MsaAlgorithm::AllocateReservedScopedAllocations() {
   const std::vector<HloInstruction*>& instruction_sequence =
       hlo_live_range_.flattened_instruction_sequence().instructions();
+  if (options_.allocate_reserved_scoped_memory_at_same_offset) {
+    // If we are co-locating scoped allocations, then we need to make sure that
+    // the repack allocation blocks are empty, because we mark all the repack
+    // allocation blocks as co-located in a loop below.
+    CHECK(repack_allocation_blocks_.empty());
+  }
   for (BreadthFirstMidpointIterator it(0, instruction_sequence.size() - 1);
        !it.End(); it.Next()) {
     HloInstruction* instruction = instruction_sequence[it.value()];
