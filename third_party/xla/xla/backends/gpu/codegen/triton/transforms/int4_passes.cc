@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -53,6 +54,8 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
 
@@ -379,9 +382,11 @@ class OpTypeConversionPattern : public OpConversionPattern<OpType> {
 // do the same thing.
 class ExtSIInt4ToInt8Pattern : public OpConversionPattern<ma::ExtSIOp> {
  public:
-  ExtSIInt4ToInt8Pattern(const I4ToI8Converter &converter, MLIRContext *context)
+  ExtSIInt4ToInt8Pattern(const I4ToI8Converter &converter, MLIRContext *context,
+                         bool bf16x2_enabled)
       : OpConversionPattern<ma::ExtSIOp>(converter, context),
-        converter_(converter) {}
+        converter_(converter),
+        bf16x2_enabled_(bf16x2_enabled) {}
 
   using OpConversionPattern<ma::ExtSIOp>::OpConversionPattern;
 
@@ -489,23 +494,28 @@ class ExtSIInt4ToInt8Pattern : public OpConversionPattern<ma::ExtSIOp> {
       return r.notifyMatchFailure(ext_si_op, "no conversion needed");
     }
 
-    // Here we are looking for the sitofp op users that could be directly
-    // converted from i4 to bf16. When we find sitofp op, we check if the result
-    // type is bf16, if so, we use the RewriteI4ToBf16 function to convert it.
-    // Otherwise, we use the RewriteI4ToI8 function to convert it.
-    // If there are many such sitofp ops, we convert them separately with the
-    // hope that the duplicate instructions will be merged.
-    for (auto user : ext_si_op->getUsers()) {
-      if (auto si_to_fp_op = dyn_cast<ma::SIToFPOp>(user)) {
-        auto result_type = si_to_fp_op->getResultTypes()[0];
-        auto tensor_type = dyn_cast<RankedTensorType>(result_type);
-        if (!tensor_type || !tensor_type.getElementType().isBF16()) {
-          VLOG(5) << "ExtSIInt4ToInt8Pattern: no conversion needed for "
-                  << DumpToString(static_cast<Operation *>(si_to_fp_op));
-          continue;
-        }
-        if (RewriteI4ToBf16(ext_si_op, si_to_fp_op, adaptor, r).failed()) {
-          continue;
+    if (bf16x2_enabled_) {
+      // The RewriteI4ToBf16 inline asm uses bf16x2 instructions, so, if bf16x2
+      // is not enabled, we use the RewriteI4ToI8 function to convert it.
+
+      // Here we are looking for the sitofp op users that could be directly
+      // converted from i4 to bf16. When we find sitofp op, we check if the
+      // result type is bf16, if so, we use the RewriteI4ToBf16 function to
+      // convert it. Otherwise, we use the RewriteI4ToI8 function to convert it.
+      // If there are many such sitofp ops, we convert them separately with the
+      // hope that the duplicate instructions will be merged.
+      for (auto user : ext_si_op->getUsers()) {
+        if (auto si_to_fp_op = dyn_cast<ma::SIToFPOp>(user)) {
+          auto result_type = si_to_fp_op->getResultTypes()[0];
+          auto tensor_type = dyn_cast<RankedTensorType>(result_type);
+          if (!tensor_type || !tensor_type.getElementType().isBF16()) {
+            VLOG(5) << "ExtSIInt4ToInt8Pattern: no conversion needed for "
+                    << DumpToString(static_cast<Operation *>(si_to_fp_op));
+            continue;
+          }
+          if (RewriteI4ToBf16(ext_si_op, si_to_fp_op, adaptor, r).failed()) {
+            continue;
+          }
         }
       }
     }
@@ -514,6 +524,7 @@ class ExtSIInt4ToInt8Pattern : public OpConversionPattern<ma::ExtSIOp> {
 
  private:
   const I4ToI8Converter &converter_;
+  const bool bf16x2_enabled_;
 };
 
 // Traverses the operands of the op passing though the forOp and returns the
@@ -694,8 +705,25 @@ LogicalResult SitofpToExtFpSitofpRewrite(ma::SIToFPOp sitofp_op,
   return success();
 }
 
-struct PlainInt4ToPackedInt4RewritePass
+class PlainInt4ToPackedInt4RewritePass
     : public impl::LoadInt4RewritePassBase<PlainInt4ToPackedInt4RewritePass> {
+ public:
+  using Base::Base;
+  PlainInt4ToPackedInt4RewritePass(
+      const PlainInt4ToPackedInt4RewritePass &other) = default;
+  explicit PlainInt4ToPackedInt4RewritePass(
+      const stream_executor::DeviceDescription &device_description)
+      : bf16x2_enabled_(IsBF16x2Enabled(device_description)) {}
+
+ private:
+  static bool IsBF16x2Enabled(
+      const stream_executor::DeviceDescription &device_description) {
+    bool is_cuda =
+        std::holds_alternative<stream_executor::CudaComputeCapability>(
+            device_description.gpu_compute_capability());
+    return is_cuda &&
+           device_description.cuda_compute_capability().IsAtLeastHopper();
+  }
   // The pass converts the types like tensor<AxBxi4> to tensor<AxB/2xi8>
   // (assuming B is the packed dimension) in the Triton dialect and replaces
   // the ExtSIOp with the unpack sequence that accepts twice smaller i8 tensor
@@ -749,7 +777,7 @@ struct PlainInt4ToPackedInt4RewritePass
     });
     RewritePatternSet patterns(ctx);
     scf::populateSCFStructuralTypeConversions(converter, patterns);
-    patterns.add<ExtSIInt4ToInt8Pattern>(converter, ctx);
+    patterns.add<ExtSIInt4ToInt8Pattern>(converter, ctx, bf16x2_enabled_);
 
     // TODO(b/393299275): LoadOp, AdvanceOp, AddPtrOp, and MakeTensorPtrOp will
     // not be emitted by the generic Triton emitter. Remove these once the
@@ -773,10 +801,18 @@ struct PlainInt4ToPackedInt4RewritePass
       signalPassFailure();
     }
   }
+  // The default value is true, which means that bf16x2 instructions are used
+  // when the device supports them. We need this for the mlir lit tests to pass.
+  const bool bf16x2_enabled_ = true;
 };
 
-std::unique_ptr<Pass> CreateInt4ToPackedInt4RewritePass() {
+std::unique_ptr<mlir::Pass> CreateInt4ToPackedInt4RewritePass() {
   return std::make_unique<PlainInt4ToPackedInt4RewritePass>();
+}
+
+std::unique_ptr<Pass> CreateInt4ToPackedInt4RewritePass(
+    const stream_executor::DeviceDescription &device_description) {
+  return std::make_unique<PlainInt4ToPackedInt4RewritePass>(device_description);
 }
 
 }  // namespace mlir::triton::xla

@@ -248,12 +248,14 @@ TEST_F(TritonTest, FuseSubchannelDequantizationWithTranspose) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(kHloText));
-  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
-    CHECK:    %[[bitcast:.*]] = bf16[2,8,64]{2,1,0} bitcast({{.*}})
-    CHECK:    %[[transpose:.*]] = bf16[2,64,8]{2,1,0} transpose(%[[bitcast]]), dimensions={0,2,1}
-    CHECK:    %[[broadcast:.*]] = bf16[2,64,8,256]{3,2,1,0} broadcast(%[[transpose]]), dimensions={0,1,2}
-    CHECK:    %[[multiply:.*]] = bf16[2,64,8,256]{3,2,1,0} multiply({{.*}}, %[[broadcast]])
-  )"));
+  if (GetCudaComputeCapability().IsAtLeastHopper()) {
+    EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+      CHECK:    %[[bitcast:.*]] = bf16[2,8,64]{2,1,0} bitcast({{.*}})
+      CHECK:    %[[transpose:.*]] = bf16[2,64,8]{2,1,0} transpose(%[[bitcast]]), dimensions={0,2,1}
+      CHECK:    %[[broadcast:.*]] = bf16[2,64,8,256]{3,2,1,0} broadcast(%[[transpose]]), dimensions={0,1,2}
+      CHECK:    %[[multiply:.*]] = bf16[2,64,8,256]{3,2,1,0} multiply({{.*}}, %[[broadcast]])
+    )"));
+  }
   EXPECT_TRUE(*RunFileCheck(module->ToString(), "CHECK: __triton_gemm"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       std::move(module), ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));

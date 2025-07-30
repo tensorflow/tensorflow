@@ -1997,7 +1997,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   }
 
   if (is_xla_fusion) {
-    pm.addPass(mlir::triton::xla::CreateInt4ToPackedInt4RewritePass());
+    pm.addPass(
+        mlir::triton::xla::CreateInt4ToPackedInt4RewritePass(device_info));
   }
 
   pm.addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass(

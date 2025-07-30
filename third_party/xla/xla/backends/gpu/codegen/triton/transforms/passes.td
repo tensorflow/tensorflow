@@ -79,7 +79,6 @@ def LoadInt4RewritePass
   let dependentDialects = [
     "triton::TritonDialect"
   ];
-  let constructor = "CreateInt4ToPackedInt4RewritePass()";
 }
 
 def RoundF32ToTF32ForTf32DotRewritePass
