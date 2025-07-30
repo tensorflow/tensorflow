@@ -228,9 +228,9 @@ class QuantizeSameScaleOpsPattern : public OpRewritePattern<DequantizeCastOp> {
                 dyn_cast_or_null<DequantizeCastOp>(operand.getDefiningOp())) {
           auto dq_arg_type = llvm::cast<TensorType>(dq_op.getArg().getType());
           auto qtype = llvm::cast<QuantizedType>(dq_arg_type.getElementType());
-          auto scast_op = rewriter.create<StorageCastOp>(
-              dq_op->getLoc(), dq_arg_type.clone(qtype.getStorageType()),
-              dq_op.getArg());
+          auto scast_op = StorageCastOp::create(
+              rewriter, dq_op->getLoc(),
+              dq_arg_type.clone(qtype.getStorageType()), dq_op.getArg());
           inputs.push_back(scast_op.getResult());
         } else if (!elem_type.isF32()) {
           // If the operand is an integer tensor, then it doesn't require the
@@ -296,9 +296,9 @@ class QuantizeSameScaleOpsPattern : public OpRewritePattern<DequantizeCastOp> {
       for (const auto& output_index_pair : outputs_replaced) {
         Value output = output_index_pair.getFirst();
         int output_index = output_index_pair.getSecond();
-        auto scast_op = rewriter.create<StorageCastOp>(
-            output.getLoc(), output.getType(),
-            quantized_op->getResult(output_index));
+        auto scast_op =
+            StorageCastOp::create(rewriter, output.getLoc(), output.getType(),
+                                  quantized_op->getResult(output_index));
         output.replaceAllUsesWith(scast_op);
       }
       changed = true;
@@ -440,22 +440,23 @@ struct QuantizeAvgPoolOpPattern : public OpRewritePattern<StorageCastOp> {
     // Cast to float type before the AvgPool op.
     OpBuilder::InsertionGuard g(rewriter);
     rewriter.setInsertionPointAfter(preceding_sc_op);
-    auto fcast_op = rewriter.create<TF::CastOp>(
-        preceding_sc_op->getLoc(), dq_arg_type.clone(rewriter.getF32Type()),
-        preceding_sc_op.getResult());
+    auto fcast_op = TF::CastOp::create(rewriter, preceding_sc_op->getLoc(),
+                                       dq_arg_type.clone(rewriter.getF32Type()),
+                                       preceding_sc_op.getResult());
 
     // Create a new AvgPool op with float type.
-    TF::AvgPoolOp float_avg_pool_op = rewriter.create<TF::AvgPoolOp>(
-        avg_pool_op->getLoc(),
+    TF::AvgPoolOp float_avg_pool_op = TF::AvgPoolOp::create(
+        rewriter, avg_pool_op->getLoc(),
         avg_pool_op.getType().clone(rewriter.getF32Type()),
         /*operands=*/fcast_op.getResult(),
         /*attributes=*/avg_pool_op->getAttrs());
 
     // Cast back to the storage type after AvgPool op.
-    auto round_val = rewriter.create<TF::RoundOp>(
-        sc_op.getLoc(), float_avg_pool_op.getOutput());
-    auto icast_op = rewriter.create<TF::CastOp>(
-        sc_op.getLoc(), q_result_type.clone(qtype.getStorageType()), round_val);
+    auto round_val = TF::RoundOp::create(rewriter, sc_op.getLoc(),
+                                         float_avg_pool_op.getOutput());
+    auto icast_op = TF::CastOp::create(
+        rewriter, sc_op.getLoc(), q_result_type.clone(qtype.getStorageType()),
+        round_val);
     avg_pool_op.getResult().replaceAllUsesWith(icast_op.getResult());
     return success();
   }
