@@ -55,15 +55,15 @@ class LegalizeQDQCustomCallPass
           return;
         }
         builder.setInsertionPointAfter(op);
-        auto q_op = builder.create<stablehlo::UniformQuantizeOp>(
-            op.getLoc(), mlir::parseType(quant_result_ty, context),
+        auto q_op = stablehlo::UniformQuantizeOp::create(
+            builder, op.getLoc(), mlir::parseType(quant_result_ty, context),
             op.getOperand(0));
         op.getResult(0).replaceAllUsesWith(q_op.getResult());
         op.erase();
       } else if (target_name == "odml_torch.uniform_dequantize") {
         builder.setInsertionPointAfter(op);
-        auto dq_op = builder.create<stablehlo::UniformDequantizeOp>(
-            op.getLoc(), op.getResult(0).getType(), op.getOperand(0));
+        auto dq_op = stablehlo::UniformDequantizeOp::create(
+            builder, op.getLoc(), op.getResult(0).getType(), op.getOperand(0));
         op.getResult(0).replaceAllUsesWith(dq_op.getResult());
         op.erase();
       }

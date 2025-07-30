@@ -57,16 +57,16 @@ Value broadcastToFeatureDim(Location loc, RankedTensorType result_type,
         loc, result_type, value1d, shape_value, dims);
   }
   assert(result_type.hasStaticShape());
-  return rewriter.create<mhlo::BroadcastInDimOp>(loc, result_type, value1d,
-                                                 dims);
+  return mhlo::BroadcastInDimOp::create(rewriter, loc, result_type, value1d,
+                                        dims);
 }
 
 // Gets the shape of operand, assuming it is a dynamic shape with static rank.
 Value getShapeValue(Location loc, Value operand, PatternRewriter &rewriter) {
   RankedTensorType resultType =
       mlir::dyn_cast<RankedTensorType>(operand.getType());
-  return rewriter.create<shape::ShapeOfOp>(
-      loc,
+  return shape::ShapeOfOp::create(
+      rewriter, loc,
       RankedTensorType::get(/*shape=*/{resultType.getRank()},
                             rewriter.getIndexType()),
       operand);
@@ -98,11 +98,11 @@ Value materializeEpsilon(Operation *op, FloatAttr epsilon_attr,
   auto scalar_type = RankedTensorType::get(/*shape=*/{}, fp_type);
   auto epsilon_tensor_attr = DenseElementsAttr::get(
       scalar_type, {mlir::cast<Attribute>(epsilon_attr)});
-  Value epsilon = b.create<mhlo::ConstantOp>(epsilon_tensor_attr);
+  Value epsilon = mhlo::ConstantOp::create(b, epsilon_tensor_attr);
   auto dims_type = RankedTensorType::get(/*shape=*/{0}, b.getIntegerType(64));
   auto dims = DenseIntElementsAttr::get(dims_type, SmallVector<int64_t, 1>{});
   if (broadcast_to_type.hasStaticShape()) {
-    return b.create<mhlo::BroadcastInDimOp>(broadcast_to_type, epsilon, dims);
+    return mhlo::BroadcastInDimOp::create(b, broadcast_to_type, epsilon, dims);
   }
   Value shape_value = getShapeValue(op->getLoc(), broadcast_to, rewriter);
   return b.createOrFold<mhlo::DynamicBroadcastInDimOp>(
@@ -135,12 +135,12 @@ class UnfuseBatchNormTrainingPattern
     }
     auto mean_dims = DenseIntElementsAttr::get(dims_type, reduce_dim_axes);
     ::mlir::TF::ConstOp reduce_dim_op =
-        rewriter.create<TF::ConstOp>(bn_op.getLoc(), mean_dims);
+        TF::ConstOp::create(rewriter, bn_op.getLoc(), mean_dims);
     int64_t feature_dim_size = input_type.getDimSize(feature_index);
     auto mean_var_type = RankedTensorType::get(/*shape=*/{feature_dim_size},
                                                rewriter.getF32Type());
-    ::mlir::Value mean = rewriter.create<TF::MeanOp>(
-        bn_op.getLoc(), mean_var_type, inputs, reduce_dim_op,
+    ::mlir::Value mean = TF::MeanOp::create(
+        rewriter, bn_op.getLoc(), mean_var_type, inputs, reduce_dim_op,
         /*keep_dims=*/rewriter.getBoolAttr(false));
 
     // Compute variance
@@ -148,17 +148,17 @@ class UnfuseBatchNormTrainingPattern
         getShapeValue(bn_op.getLoc(), bn_op.getOperand(), rewriter);
     auto broadcast_mean = broadcastToFeatureDim(
         bn_op.getLoc(), input_type, mean, shape_value, feature_index, rewriter);
-    ::mlir::Value square_diff = rewriter.create<TF::SquaredDifferenceOp>(
-        bn_op.getLoc(), inputs, broadcast_mean);
-    ::mlir::Value variance = rewriter.create<TF::MeanOp>(
-        bn_op.getLoc(), mean_var_type, square_diff, reduce_dim_op,
+    ::mlir::Value square_diff = TF::SquaredDifferenceOp::create(
+        rewriter, bn_op.getLoc(), inputs, broadcast_mean);
+    ::mlir::Value variance = TF::MeanOp::create(
+        rewriter, bn_op.getLoc(), mean_var_type, square_diff, reduce_dim_op,
         /*keep_dims=*/rewriter.getBoolAttr(false));
 
     // Invoke BatchNormInferenceOp
     ::mlir::FloatAttr epsilon = bn_op.getEpsilonAttr();
-    ::mlir::Value batch_norm = rewriter.create<mhlo::BatchNormInferenceOp>(
-        bn_op.getLoc(), inputs, bn_op.getScale(), bn_op.getOffset(), mean,
-        variance, epsilon, rewriter.getI64IntegerAttr(feature_index));
+    ::mlir::Value batch_norm = mhlo::BatchNormInferenceOp::create(
+        rewriter, bn_op.getLoc(), inputs, bn_op.getScale(), bn_op.getOffset(),
+        mean, variance, epsilon, rewriter.getI64IntegerAttr(feature_index));
 
     // Return normalized values, mean, variable.
     rewriter.replaceOp(bn_op, ::mlir::ValueRange{batch_norm, mean, variance});
@@ -201,17 +201,17 @@ class UnfuseBatchNormInferencePattern
     }
 
     // Compute multiplier = scale / sqrt(variance + epsilon)
-    Value multiplier = rewriter.create<mhlo::AddOp>(
-        bn_op.getLoc(), bn_op.getVariance(), epsilon);
-    multiplier = rewriter.create<mhlo::RsqrtOp>(bn_op.getLoc(), multiplier);
-    multiplier = rewriter.create<mhlo::MulOp>(bn_op.getLoc(), multiplier,
-                                              bn_op.getScale());
+    Value multiplier = mhlo::AddOp::create(rewriter, bn_op.getLoc(),
+                                           bn_op.getVariance(), epsilon);
+    multiplier = mhlo::RsqrtOp::create(rewriter, bn_op.getLoc(), multiplier);
+    multiplier = mhlo::MulOp::create(rewriter, bn_op.getLoc(), multiplier,
+                                     bn_op.getScale());
 
     // Compute rhs = offset - mean * multiplier
-    Value rhs = rewriter.create<mhlo::MulOp>(bn_op.getLoc(), multiplier,
-                                             bn_op.getMean());
-    rhs = rewriter.create<mhlo::SubtractOp>(bn_op.getLoc(), bn_op.getOffset(),
-                                            rhs);
+    Value rhs = mhlo::MulOp::create(rewriter, bn_op.getLoc(), multiplier,
+                                    bn_op.getMean());
+    rhs = mhlo::SubtractOp::create(rewriter, bn_op.getLoc(), bn_op.getOffset(),
+                                   rhs);
 
     // Broadcast `multiplier` and `rhs`
     Value shape_value;
@@ -224,8 +224,8 @@ class UnfuseBatchNormInferencePattern
                               shape_value, feature_dim, rewriter);
 
     // Computes x * multiplier + rhs
-    Value lhs = rewriter.create<mhlo::MulOp>(bn_op.getLoc(), bn_op.getOperand(),
-                                             broadcast_multiplier);
+    Value lhs = mhlo::MulOp::create(rewriter, bn_op.getLoc(),
+                                    bn_op.getOperand(), broadcast_multiplier);
     auto broadcast_rhs = broadcastToFeatureDim(
         bn_op.getLoc(), input_type, rhs, shape_value, feature_dim, rewriter);
     rewriter.replaceOpWithNewOp<mhlo::AddOp>(bn_op, lhs, broadcast_rhs);
