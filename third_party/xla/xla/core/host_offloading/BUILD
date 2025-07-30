@@ -102,6 +102,7 @@ strict_cc_test(
     deps = [
         ":host_offloading_transforms",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tsl/lib/core:status_test_util",
@@ -236,6 +237,7 @@ strict_cc_test(
         "//xla:literal_util",
         "//xla:shape_tree",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/nanort:nanort_executable",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
