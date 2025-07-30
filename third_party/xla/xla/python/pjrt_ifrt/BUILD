@@ -123,6 +123,21 @@ xla_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "executable_metadata_proto",
+    srcs = ["executable_metadata.proto"],
+    protodeps = [
+        "//xla:xla_data_proto",
+        "//xla/python/ifrt:dtype_proto",
+        "//xla/python/ifrt:layout_proto",
+        "//xla/python/ifrt:shape_proto",
+    ],
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+    ]),
+)
+
 # TODO(hyeontaek): Move this target out of pjrt_ifrt.
 cc_library(
     name = "xla_executable_impl_test_lib",

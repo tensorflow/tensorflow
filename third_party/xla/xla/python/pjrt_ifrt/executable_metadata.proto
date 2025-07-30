@@ -1,0 +1,66 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla.ifrt;
+
+import "xla/python/ifrt/dtype.proto";
+import "xla/python/ifrt/layout.proto";
+import "xla/python/ifrt/shape.proto";
+import "xla/xla_data.proto";
+
+message SerializedXlaExecutableMetadata {
+  // IFRT version
+  int32 ifrt_version_number = 1;
+
+  // IFRT runtime that created this executable. Loading executables across
+  // runtimes are supported.
+  string runtime_name = 2;
+
+  // ID that identifies the platform (CPU/GPU/TPU). This corresponds to
+  // xla::PjRtPlatformId.
+  fixed64 platform_id = 3;
+
+  // ABI version of the runtime that this executable is compatible with.
+  // Note: Also present within the serialized executable for PjRt TPU.
+  bytes runtime_abi_version = 4;
+
+  // Below fields are artifacts gathered from the compiled executable required
+  // for the IFRT runtimes to be able to construct an IFRT executable without a
+  // local PjRtClient such that executions can be dispatched asynchronously.
+  //
+  // Debug APIs that use information from (unloaded) PjRtExecutable will block
+  // until the executable is loaded on a PjRtClient - HloModules, CostAnalysis
+  // and MemoryAnalysis. Primarily because it is expensive to store HloModule in
+  // serialized executable and the APIs are debug only.
+
+  message OutputSpec {
+    ifrt.ShapeProto shard_shape = 1;
+    ifrt.DTypeProto dtype = 2;
+    ifrt.LayoutProto layout = 3;
+    string memory_kind = 4;
+    xla.OpSharding op_sharding = 5;
+  }
+
+  repeated OutputSpec output_specs = 5;
+
+  message ParameterSpec {
+    ifrt.LayoutProto layout = 1;
+    xla.OpSharding op_sharding = 2;
+  }
+
+  repeated ParameterSpec parameter_specs = 6;
+}
