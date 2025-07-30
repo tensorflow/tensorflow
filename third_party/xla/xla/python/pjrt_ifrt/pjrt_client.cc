@@ -904,7 +904,7 @@ absl::StatusOr<Device*> PjRtClient::LookupAddressableDevice(
   return LookupPjRtDevice(pjrt_device);
 }
 
-DeviceListRef PjRtClient::MakeDeviceList(
+absl::StatusOr<DeviceListRef> PjRtClient::MakeDeviceList(
     absl::Span<Device* const> devices) const {
   return xla::ifrt::BasicDeviceList::Create(devices);
 }

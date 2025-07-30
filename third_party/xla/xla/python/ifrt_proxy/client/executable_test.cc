@@ -53,15 +53,12 @@
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::Pointee;
 using ::testing::Return;
 using ::testing::SizeIs;
-using ::testing::StrEq;
 using ::tsl::protobuf::TextFormat;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
@@ -172,13 +169,13 @@ TEST_F(LoadedExecutableTest, Metadata) {
                           executable.GetParameterLayouts());
   ASSERT_EQ(parameter_layouts.size(), 2);
   EXPECT_EQ(parameter_layouts[0]->xla_layout(),
-            xla::LayoutUtil::MakeDescendingLayout(/*rank=*/1));
+            xla::LayoutUtil::MakeDescendingLayout(/*num_dims=*/1));
   EXPECT_EQ(parameter_layouts[1]->xla_layout(),
-            xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2));
+            xla::LayoutUtil::MakeDescendingLayout(/*num_dims=*/2));
   TF_ASSERT_OK_AND_ASSIGN(auto output_layouts, executable.GetOutputLayouts());
   ASSERT_EQ(output_layouts.size(), 1);
   EXPECT_EQ(output_layouts[0]->xla_layout(),
-            xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2));
+            xla::LayoutUtil::MakeDescendingLayout(/*num_dims=*/2));
   EXPECT_THAT(executable.GetOutputMemoryKinds(),
               IsOkAndHolds(ElementsAre(ElementsAre("foo"))));
 }

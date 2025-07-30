@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -30,6 +31,7 @@
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
@@ -377,10 +379,11 @@ TEST_P(ClientTest, CopyArraysDefaultLayoutSuccess) {
       .WillRepeatedly(MockClientSessionReturnResponse(IfrtResponse()));
 
   std::vector<tsl::RCReference<xla::ifrt::Array>> arrays = {array0, array1};
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                          client_->MakeDeviceList({device_}));
   TF_ASSERT_OK_AND_ASSIGN(
       auto copied_arrays,
-      client_->CopyArrays(absl::MakeSpan(arrays),
-                          client_->MakeDeviceList({device_}),
+      client_->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
                           MemoryKind("mock"), ArrayCopySemantics::kAlwaysCopy));
   ASSERT_THAT(copied_arrays, SizeIs(2));
   EXPECT_EQ(llvm::cast<Array>(copied_arrays[0].get())->custom_layout(),
@@ -412,10 +415,11 @@ TEST_P(ClientTest, CopyArraysCustomLayoutSuccess) {
       .WillRepeatedly(MockClientSessionReturnResponse(IfrtResponse()));
 
   std::vector<tsl::RCReference<xla::ifrt::Array>> arrays = {array0, array1};
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                          client_->MakeDeviceList({device_}));
   TF_ASSERT_OK_AND_ASSIGN(
       auto copied_arrays,
-      client_->CopyArrays(absl::MakeSpan(arrays),
-                          client_->MakeDeviceList({device_}),
+      client_->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
                           MemoryKind("mock"), ArrayCopySemantics::kAlwaysCopy));
   ASSERT_THAT(copied_arrays, SizeIs(2));
   EXPECT_EQ(

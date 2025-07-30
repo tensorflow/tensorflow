@@ -24,7 +24,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -46,11 +45,14 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
+#include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
@@ -58,8 +60,8 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -309,7 +311,7 @@ class CompileOnlyIfRtClient final
         "LookupAddressableDevice not available with compile-only client.");
   }
 
-  ifrt::DeviceListRef MakeDeviceList(
+  absl::StatusOr<ifrt::DeviceListRef> MakeDeviceList(
       absl::Span<ifrt::Device* const> devices) const override {
     return ifrt::BasicDeviceList::Create(devices);
   }

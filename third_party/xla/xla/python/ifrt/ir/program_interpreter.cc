@@ -96,11 +96,12 @@ absl::StatusOr<xla::ifrt::ShardingRef> GetSharding(
   TF_RET_CHECK(sharding_param_attr != nullptr)
       << "Array type: " << mlir::debugString(array_type)
       << " if not of type `IfrtShardingParamAttr`";
+  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
+                      client->MakeDeviceList(std::move(out_devices)));
   TF_ASSIGN_OR_RETURN(auto sharding,
                       xla::ifrt::ShardingParamSharding::Create(
                           sharding_param_attr.getSharding(),
-                          client->MakeDeviceList(std::move(out_devices)),
-                          array_type.MemoryKind()));
+                          std::move(device_list), array_type.MemoryKind()));
   return sharding;
 }
 
