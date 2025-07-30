@@ -2982,7 +2982,8 @@ def reduce_min_v1(input_tensor,
 
 @tf_export("math.reduce_min", "reduce_min", v1=[])
 @dispatch.add_dispatch_support
-def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
+def reduce_min(input_tensor, axis=None, keepdims=False, name=None,
+               deterministic=False):
   """Computes the `tf.math.minimum` of elements across dimensions of a tensor.
 
   This is the reduction operation for the elementwise `tf.math.minimum` op.
@@ -3028,6 +3029,8 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
       rank(input_tensor))`.
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
+    deterministic: If true, the reduction is deterministic, which means
+      that the gradient is not split between tied elements.
 
   Returns:
     The reduced tensor.
@@ -3041,7 +3044,7 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
       keepdims, axis,
       gen_math_ops._min(
           input_tensor, _ReductionDims(input_tensor, axis), keepdims,
-          name=name))
+          name=name, deterministic=deterministic))
 
 
 @tf_export(v1=["math.reduce_max", "reduce_max"])

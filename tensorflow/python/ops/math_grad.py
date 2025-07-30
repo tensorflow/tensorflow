@@ -221,14 +221,29 @@ def _MinOrMaxGrad(op, grad):
   else:
     output_shape_kept_dims = array_ops.shape(y)
 
-  # Compute the number of selected (maximum or minimum) elements in each
-  # reduction dimension. If there are multiple minimum or maximum elements
-  # then the gradient will be divided between them.
-  indicators = math_ops.cast(math_ops.equal(y, op.inputs[0]), grad.dtype)
-  num_selected = array_ops.reshape(
-      math_ops.reduce_sum(indicators, op.inputs[1]), output_shape_kept_dims)
+  if op.get_attr("deterministic"):
+    # Re-broadcast the output `y` to the input shape.
+    y_broadcast = array_ops.broadcast_to(y, input_shape)
+    # Get the indices of the values that are equal to the maximum.
+    max_indices = math_ops.equal(y_broadcast, op.inputs[0])
+    # Get the indices of the first maximum value.
+    first_max_indices = math_ops.cast(
+        gen_array_ops.one_hot(
+            math_ops.argmin(
+                math_ops.cast(max_indices, dtype=dtypes.int32),
+                axis=op.inputs[1]),
+            depth=array_ops.shape(op.inputs[0])[op.inputs[1]]),
+        grad.dtype)
+    return [first_max_indices * grad, None]
+  else:
+    # Compute the number of selected (maximum or minimum) elements in each
+    # reduction dimension. If there are multiple minimum or maximum elements
+    # then the gradient will be divided between them.
+    indicators = math_ops.cast(math_ops.equal(y, op.inputs[0]), grad.dtype)
+    num_selected = array_ops.reshape(
+        math_ops.reduce_sum(indicators, op.inputs[1]), output_shape_kept_dims)
 
-  return [math_ops.divide(indicators, num_selected) * grad, None]
+    return [math_ops.divide(indicators, num_selected) * grad, None]
 
 
 @ops.RegisterGradient("Max")

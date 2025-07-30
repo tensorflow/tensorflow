@@ -879,6 +879,14 @@ class MinReductionTest(test.TestCase):
       error = gradient_checker.compute_gradient_error(x, [0, 3], y, [0])
       self.assertEqual(error, 0)
 
+  @test_util.run_deprecated_v1
+  def testDeterministicGradient(self):
+    with self.cached_session():
+      x = constant_op.constant([[1, 2, 2], [1, 2, 2]], dtype=dtypes.float32)
+      y = math_ops.reduce_min(x, axis=1, deterministic=True)
+      error = gradient_checker.compute_gradient_error(x, [2, 3], y, [2])
+      self.assertLess(error, 1e-4)
+
 
 class MaxReductionTest(test.TestCase):
 
