@@ -69,6 +69,18 @@ PJRT_Memory* PjRtCApiRawBuffer_GetMemorySpace(
   return args.memory_space;
 }
 
+void* PjRtCApiRawBuffer_GetHostPointer(
+    const PJRT_Api* c_api, const PJRT_RawBuffer_Extension* extension,
+    PJRT_RawBuffer* buffer) {
+  PJRT_RawBuffer_GetHostPointer_Args args;
+  args.struct_size = PJRT_RawBuffer_GetHostPointer_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.buffer = buffer;
+  pjrt::LogFatalIfPjrtError(extension->PJRT_RawBuffer_GetHostPointer(&args),
+                            c_api);
+  return args.host_pointer;
+}
+
 size_t PjRtCApiRawBuffer_GetOnDeviceSizeInBytes(
     const PJRT_Api* c_api, const PJRT_RawBuffer_Extension* extension,
     PJRT_RawBuffer* buffer) {
@@ -138,6 +150,11 @@ PjRtCApiRawBuffer::~PjRtCApiRawBuffer() {
 PjRtMemorySpace* PjRtCApiRawBuffer::memory_space() const {
   return client_->GetCppMemory(
       pjrt::PjRtCApiRawBuffer_GetMemorySpace(c_api_, c_extension_, c_buffer_));
+}
+
+void* PjRtCApiRawBuffer::GetHostPointer() const {
+  return pjrt::PjRtCApiRawBuffer_GetHostPointer(c_api_, c_extension_,
+                                                c_buffer_);
 }
 
 size_t PjRtCApiRawBuffer::GetOnDeviceSizeInBytes() const {
