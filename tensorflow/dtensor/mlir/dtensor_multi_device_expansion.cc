@@ -248,8 +248,8 @@ mlir::LogicalResult MakeParallelExecute(
   // Build the ParallelExecuteOp.
   mlir::Location loc = launch_op.getLoc();
   mlir::tf_device::ParallelExecuteOp parallel_execute_op =
-      builder.create<mlir::tf_device::ParallelExecuteOp>(loc, num_devices,
-                                                         result_types);
+      mlir::tf_device::ParallelExecuteOp::create(builder, loc, num_devices,
+                                                 result_types);
 
   // Clone the LaunchOp for each of the devices.
   for (unsigned dev_idx = 0; dev_idx < num_devices; ++dev_idx) {
@@ -259,7 +259,7 @@ mlir::LogicalResult MakeParallelExecute(
     mlir::Operation* clone =
         builder.clone(*((mlir::Operation*)launch_op), mapping);
     clone->setAttr(kDeviceAttr, builder.getStringAttr(devices[dev_idx]));
-    builder.create<mlir::tf_device::ReturnOp>(loc, clone->getResults());
+    mlir::tf_device::ReturnOp::create(builder, loc, clone->getResults());
   }
 
   // Map the results of the LaunchOp to the ParallelExecuteOp.
@@ -342,7 +342,7 @@ mlir::LogicalResult RewriteTPUFunction(mlir::func::FuncOp func,
         }
       }
 
-      builder.create<mlir::func::ReturnOp>(op->getLoc(), results);
+      mlir::func::ReturnOp::create(builder, op->getLoc(), results);
     } else {
       // Clone the operation across all the devices.
       for (unsigned dev_idx = 0; dev_idx < num_devices; ++dev_idx) {
@@ -438,12 +438,13 @@ mlir::LogicalResult ExpandTPUOperation(
     }
   }
 
-  auto call_op = builder.create<OperationType>(
-      op->getLoc(), func_type.getResults(), operands, /*args_attrs=*/nullptr,
-      /*res_attrs=*/nullptr, op.getFAttr(),
-      /*config=*/builder.getStringAttr(""),
-      /*config_proto=*/builder.getStringAttr(""),
-      /*executor_type=*/builder.getStringAttr(""));
+  auto call_op =
+      OperationType::create(builder, op->getLoc(), func_type.getResults(),
+                            operands, /*args_attrs=*/nullptr,
+                            /*res_attrs=*/nullptr, op.getFAttr(),
+                            /*config=*/builder.getStringAttr(""),
+                            /*config_proto=*/builder.getStringAttr(""),
+                            /*executor_type=*/builder.getStringAttr(""));
   const absl::Span<const std::string> devices = GetDevices(target_mesh);
   const size_t num_devices = devices.size();
 
@@ -461,8 +462,8 @@ mlir::LogicalResult ExpandTPUOperation(
         for (int j = 0; j < num_devices; j++) {
           // Find the corresponding expanded output within the new op.
           mlir::Value result = call_op->getResult(i * num_devices + j);
-          auto identity_op = builder.create<mlir::TF::IdentityOp>(
-              result.getLoc(), result.getType(), result);
+          auto identity_op = mlir::TF::IdentityOp::create(
+              builder, result.getLoc(), result.getType(), result);
           expanded_results[result_index].insert(
               (mlir::Value)identity_op.getResult());
         }
@@ -504,12 +505,13 @@ mlir::LogicalResult ExpandOperation(
       }
     }
 
-    auto new_op = builder.create<Operation>(
-        op->getLoc(), op->getResultTypes(), operands, /*args_attrs=*/nullptr,
-        /*res_attrs=*/nullptr, op.getFAttr(),
-        /*config=*/builder.getStringAttr(""),
-        /*config_proto=*/builder.getStringAttr(""),
-        /*executor_type=*/builder.getStringAttr(""));
+    auto new_op =
+        Operation::create(builder, op->getLoc(), op->getResultTypes(), operands,
+                          /*args_attrs=*/nullptr,
+                          /*res_attrs=*/nullptr, op.getFAttr(),
+                          /*config=*/builder.getStringAttr(""),
+                          /*config_proto=*/builder.getStringAttr(""),
+                          /*executor_type=*/builder.getStringAttr(""));
 
     // Set the "is_stateless" attribute to ensure that side-effect analysis
     // does not set the per-device call ops to depend on one another (see
@@ -613,7 +615,7 @@ StatusOr<absl::Span<mlir::Value>> GetExpandedArguments(
           const auto value_attr = mlir::DenseIntElementsAttr::get<int>(
               mlir::RankedTensorType::get({}, builder.getI32Type()), {i});
           replications.emplace_back(
-              builder.create<mlir::TF::ConstOp>(arg.getLoc(), value_attr));
+              mlir::TF::ConstOp::create(builder, arg.getLoc(), value_attr));
         }
       } else {
         mlir::TensorType tensor_type =
@@ -702,8 +704,8 @@ mlir::LogicalResult BuildOuterMainFunc(
   // Get the type of the translated function.
   mlir::FunctionType func_type = translated_func.getFunctionType();
   // Then build a call op targeting it (reflecting its result types)
-  auto expanded_call_op = builder.create<CallOp>(
-      call_ops[0].getLoc(), func_type.getResults(), inputs,
+  auto expanded_call_op = CallOp::create(
+      builder, call_ops[0].getLoc(), func_type.getResults(), inputs,
       /*args_attrs=*/nullptr, /*res_attrs=*/nullptr,
       translated_func.getSymName(),
       /*config=*/builder.getStringAttr(""),
@@ -735,7 +737,7 @@ mlir::LogicalResult BuildOuterMainFunc(
   mlir::Operation::result_range outputs = expanded_call_op.getResults();
   if (return_op || outputs.empty()) {
     mlir::Location loc = return_op ? return_op.getLoc() : main_func.getLoc();
-    builder.create<mlir::func::ReturnOp>(loc, outputs);
+    mlir::func::ReturnOp::create(builder, loc, outputs);
   } else {
     call_ops[0]->emitOpError("Call had results, but they were not used.");
     return mlir::failure();
@@ -805,7 +807,7 @@ struct DTensorMultiDeviceExpansion
     // build the entry block and return op of the translated function
     builder.setInsertionPointToEnd(translated_func.addEntryBlock());
     auto translated_terminator_op =
-        builder.create<mlir::func::ReturnOp>(main_func.getLoc());
+        mlir::func::ReturnOp::create(builder, main_func.getLoc());
 
     // so the function has a "terminator" and we can insert it into the module
     translated_func.setVisibility(mlir::SymbolTable::Visibility::Private);
