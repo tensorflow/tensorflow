@@ -16,16 +16,17 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_HOST_EXECUTE_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_HOST_EXECUTE_THUNK_H_
 
-#include <cstddef>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/base/call_once.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/concurrency/chain.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/util.h"
 
@@ -65,8 +65,9 @@ class HostExecuteAsyncEvents {
                                                 RunId run_id);
 
  private:
+  absl::Mutex events_mu_;
   absl::flat_hash_map<std::pair<se::StreamExecutor*, RunId>, HostExecuteEvent>
-      events_;
+      events_ ABSL_GUARDED_BY(events_mu_);
 };
 
 class HostExecuteStartThunk : public Thunk {
