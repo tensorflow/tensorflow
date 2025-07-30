@@ -957,16 +957,16 @@ ENTRY main {
                      HloOpcode::kParameter, HloOpcode::kAdd, HloOpcode::kAdd});
 }
 
-TEST_F(OpcodeFusionTest, SmallConstantInFusion) {
+TEST_F(OpcodeFusionTest, ScalarConstantInFusion) {
   absl::string_view module_string = R"(
 HloModule module
 
 ENTRY main {
-  a = f32[10,10]{1,0} parameter(0)
-  b = f32[10,10]{1,0} constant({...})
-  a_plus_b = f32[10,10]{1,0} add(a, b)
-  c = f32[10,10]{1,0} constant({...})
-  ROOT result = f32[10,10]{1,0} add(a_plus_b, c)
+  a = f32[1] parameter(0)
+  b = f32[1] constant({...})
+  a_plus_b = f32[1] add(a, b)
+  c = f32[1] constant({...})
+  ROOT result = f32[1] add(a_plus_b, c)
 }
 )";
 

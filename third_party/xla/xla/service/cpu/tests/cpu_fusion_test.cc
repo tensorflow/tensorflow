@@ -279,9 +279,9 @@ TEST_F(CpuFusionTest, TestOperandOrderToAvoidDuplication) {
   EXPECT_EQ(4, fusion1->fused_instruction_count());
   EXPECT_EQ(4, fusion2->fused_instruction_count());
 
-  // The fusion has no parameters, everything is fused including constants.
-  EXPECT_EQ(0, fusion1->operand_count());
-  EXPECT_EQ(0, fusion2->operand_count());
+  // The fusion has a single constant parameter.
+  EXPECT_EQ(1, fusion1->operand_count());
+  EXPECT_EQ(1, fusion2->operand_count());
 }
 
 TEST_F(CpuFusionTest, DoNotDuplicateExpensiveOps) {
