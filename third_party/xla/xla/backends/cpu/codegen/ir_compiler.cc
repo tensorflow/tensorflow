@@ -248,6 +248,10 @@ IrCompiler::TargetMachineBuilder IrCompiler::InferTargetMachineBuilder(
 
 llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
     llvm::Module& module) {
+  absl::string_view module_name = module.getName();
+  XLA_SCOPED_LOGGING_TIMER_LEVEL(
+      absl::StrCat("Compiled LLVM module: ", module_name), 1);
+
   VLOG(2) << "IR before optimizations";
   XLA_VLOG_LINES(2, llvm_ir::DumpToString(&module));
 
