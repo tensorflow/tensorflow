@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/codegen/math/fptrunc.h"
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/codegen/math/log1p.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace emitters {
