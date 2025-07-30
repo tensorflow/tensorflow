@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -58,6 +59,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_permute_cycle.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/matmul_indexing_utils.h"
 #include "xla/service/shape_inference.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
@@ -66,7 +68,6 @@ limitations under the License.
 #include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -255,6 +256,92 @@ absl::Status ShapeVerifier::HandleRaggedDot(HloInstruction* ragged_dot) {
           ragged_dot->ragged_dot_dimension_numbers(),
           /*preferred_element_type=*/ragged_dot->shape().element_type()));
   return CheckShape(ragged_dot, expected);
+}
+
+absl::Status ScalesShapeVerifier(
+    HloInstruction* dot, const std::array<DotOperandDims, 4>& dim_numbers,
+    int64_t operand_number, int64_t scale_operand_number) {
+  const HloInstruction* scale_operand = dot->operand(scale_operand_number);
+  if (scale_operand->opcode() == HloOpcode::kConstant &&
+      scale_operand->shape().dimensions().size() == 0) {
+    return absl::OkStatus();
+  }
+  if (dim_numbers[operand_number].DimensionCount(
+          DotOperandDims::kContracting) != 1) {
+    return Internal(
+        "Contracting dimensions of operand %d must have exactly one dimension "
+        "in instruction %s",
+        operand_number, dot->ToString());
+  }
+  if (dim_numbers[operand_number].DimensionCount(
+          DotOperandDims::kNonContracting) != 1) {
+    return Internal(
+        "Non-contracting dimension of operand %d must have exactly one "
+        "dimension in instruction %s",
+        operand_number, dot->ToString());
+  }
+  if (dim_numbers[operand_number].DimensionCount(
+          DotOperandDims::kNonContracting) !=
+      dim_numbers[scale_operand_number].DimensionCount(
+          DotOperandDims::kNonContracting)) {
+    return Internal(
+        "Non-contracting dimension of scale operand %d must have the same "
+        "number of dimensions as operand %d in instruction %s",
+        scale_operand_number, operand_number, dot->ToString());
+  }
+  const auto non_contracting_dim_size =
+      dim_numbers[operand_number].DimensionSizes(
+          DotOperandDims::kNonContracting);
+  const auto scale_non_contracting_dim_size =
+      dim_numbers[scale_operand_number].DimensionSizes(
+          DotOperandDims::kNonContracting);
+  if (non_contracting_dim_size[0] != scale_non_contracting_dim_size[0]) {
+    return Internal(
+        "Non-contracting dimensions for operand %d and scale operand %d do "
+        "not match in instruction %s",
+        operand_number, scale_operand_number, dot->ToString());
+  }
+  const int contracting_dim_size = dim_numbers[operand_number].DimensionSizes(
+      DotOperandDims::kContracting)[0];
+  const int64_t scale_contracting_dim_size =
+      dim_numbers[scale_operand_number].DimensionSizes(
+          DotOperandDims::kContracting)[0];
+  if (contracting_dim_size % scale_contracting_dim_size) {
+    return Internal(
+        "operand %d with the contracting dimension size %d must be a multiple "
+        "of contracting dimension size %d of the scale operand %d in "
+        "instruction %s",
+        operand_number, contracting_dim_size, scale_contracting_dim_size,
+        scale_operand_number, dot->ToString());
+  }
+  const auto batch_dims =
+      dim_numbers[operand_number].DimensionSizes(DotOperandDims::kBatch);
+  const auto scale_batch_dims =
+      dim_numbers[scale_operand_number].DimensionSizes(DotOperandDims::kBatch);
+  if (batch_dims != scale_batch_dims) {
+    return Internal(
+        "Batch dimensions for operand %d and scale operand %d do not match in "
+        "instruction %s",
+        operand_number, scale_operand_number, dot->ToString());
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ShapeVerifier::HandleScaledDot(HloInstruction* scaled_dot) {
+  TF_RETURN_IF_ERROR(
+      CheckOperandCount(scaled_dot, HloScaledDotInstruction::kOperands));
+
+  TF_ASSIGN_OR_RETURN(auto dim_numbers,
+                      DotOperandDims::FromScaledDot(scaled_dot));
+  TF_RETURN_IF_ERROR(ScalesShapeVerifier(scaled_dot, dim_numbers, 0, 1));
+  TF_RETURN_IF_ERROR(ScalesShapeVerifier(scaled_dot, dim_numbers, 2, 3));
+  TF_ASSIGN_OR_RETURN(
+      const Shape expected,
+      ShapeInference::InferDotOpShape(
+          scaled_dot->operand(0)->shape(), scaled_dot->operand(2)->shape(),
+          scaled_dot->dot_dimension_numbers(),
+          /*preferred_element_type=*/scaled_dot->shape().element_type()));
+  return CheckShape(scaled_dot, expected);
 }
 
 absl::Status ShapeVerifier::HandleConvolution(HloInstruction* convolution) {

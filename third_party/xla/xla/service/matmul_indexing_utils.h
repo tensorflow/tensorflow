@@ -29,6 +29,8 @@ limitations under the License.
 
 namespace xla {
 
+enum class Side { kInferFromOperand, kLhs, kRhs };
+
 // Ordered non-contracting dimensions for a dot instruction operand.
 absl::StatusOr<std::vector<int64_t>> GetNonContractingDims(
     const Shape& shape, absl::Span<const int64_t> batch_dims,
@@ -37,21 +39,25 @@ absl::StatusOr<std::vector<int64_t>> GetNonContractingDims(
 // Batch dimensions of an operand of a dot instruction.
 // Just an unified accessor to lhs_batch_dimensions and rhs_batch_dimensions.
 const tsl::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
-    const HloInstruction& dot, int operand_number);
+    const HloInstruction& dot, int operand_number,
+    Side side = Side::kInferFromOperand);
 
 // Contracting dimensions of an operand of a dot instruction.
 // Just an unified accessor to lhs_contracting_dimensions and
 // rhs_contracting_dimensions.
 const tsl::protobuf::RepeatedField<int64_t>& ContractingDimensionsForOperand(
-    const HloInstruction& dot, int operand_number);
+    const HloInstruction& dot, int operand_number,
+    Side side = Side::kInferFromOperand);
 
 // Index of the only contracting dimension of dot instruction operand.
-absl::StatusOr<int64_t> ContractingDimensionIndex(const HloInstruction& dot,
-                                                  int operand_number);
+absl::StatusOr<int64_t> ContractingDimensionIndex(
+    const HloInstruction& dot, int operand_number,
+    Side side = Side::kInferFromOperand);
 
 // Index of the only non-contracting dimension of dot instruction operand.
-absl::StatusOr<int64_t> NonContractingDimensionIndex(const HloInstruction& dot,
-                                                     int operand_number);
+absl::StatusOr<int64_t> NonContractingDimensionIndex(
+    const HloInstruction& dot, int operand_number,
+    Side side = Side::kInferFromOperand);
 
 // A class to handle the dimensions of an operand of a dot instruction.
 class DotOperandDims {
@@ -67,9 +73,13 @@ class DotOperandDims {
   static absl::StatusOr<std::array<DotOperandDims, 2>> FromDot(
       const HloInstruction* dot);
 
+  static absl::StatusOr<std::array<DotOperandDims, 4>> FromScaledDot(
+      const HloInstruction* scaled_dot);
+
   // Creates a DotOperandDims from a dot instruction and operand index (0 or 1).
   static absl::StatusOr<DotOperandDims> FromDotOperand(
-      const HloInstruction* dot, int operand_idx);
+      const HloInstruction* dot, int operand_number,
+      Side operand = Side::kInferFromOperand);
 
   // Converts two DotOperandDims to a DotDimensionNumbers.
   static absl::StatusOr<DotDimensionNumbers> IntoDotDimensionNumbers(

@@ -4625,5 +4625,126 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks, VerifySendRecvNoDeadlocks) {
   EXPECT_THAT(verifier().Run(module.get()), IsOkAndHolds(false));
 }
 
+TEST_F(HloVerifierTest, ScaledDotWithNoScales) {
+  static constexpr absl::string_view kScaledDotHloString = R"(
+    HloModule module
+    ENTRY entry_computation {
+      a = f32[2,10] parameter(0)
+      b = f32[10,2] parameter(1)
+      a_scale = f32[] constant(1)
+      b_scale = f32[] constant(2)
+      ROOT dot = f32[2,2] scaled-dot(a, a_scale, b, b_scale),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kScaledDotHloString));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_TRUE(status.ok()) << status;
+}
+
+TEST_F(HloVerifierTest, ScaledDotWithScales) {
+  static constexpr absl::string_view kScaledDotHloString = R"(
+    HloModule module
+    ENTRY entry_computation {
+      a = f32[2,10] parameter(0)
+      b = f32[10,2] parameter(1)
+      a_scale = f32[] constant(2)
+      b_scale = f32[] constant(2)
+      a_scale_broadcast = f32[2,2] broadcast(a_scale), dimensions={}
+      b_scale_broadcast = f32[2,2] broadcast(b_scale), dimensions={}
+      ROOT dot = f32[2,2] scaled-dot(a, a_scale_broadcast, b, b_scale_broadcast),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kScaledDotHloString));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_TRUE(status.ok()) << status;
+}
+
+TEST_F(HloVerifierTest, ScaledDotInvalidScaleShape) {
+  static constexpr absl::string_view kScaledDotHloString = R"(
+    HloModule module
+    ENTRY entry_computation {
+      a = f32[2,10] parameter(0)
+      b = f32[10,2] parameter(1)
+      a_scale = f32[] constant(2)
+      b_scale = f32[] constant(2)
+      a_scale_broadcast = f32[2,2,2] broadcast(a_scale), dimensions={}
+      b_scale_broadcast = f32[2,2,2] broadcast(b_scale), dimensions={}
+      ROOT dot = f32[2,2] scaled-dot(a, a_scale_broadcast, b, b_scale_broadcast),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kScaledDotHloString));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_THAT(
+      status,
+      StatusIs(absl::StatusCode::kInternal,
+               HasSubstr("must have the same number of dimensions as operand")))
+      << status;
+}
+
+TEST_F(HloVerifierTest, ScaledDotInvalidScaleContractingDimSize) {
+  static constexpr absl::string_view kScaledDotHloString = R"(
+    HloModule module
+    ENTRY entry_computation {
+      a = f32[2,10] parameter(0)
+      b = f32[10,2] parameter(1)
+      a_scale = f32[] constant(2)
+      b_scale = f32[] constant(2)
+      a_scale_broadcast = f32[2,6] broadcast(a_scale), dimensions={}
+      b_scale_broadcast = f32[6,2] broadcast(b_scale), dimensions={}
+      ROOT dot = f32[2,2] scaled-dot(a, a_scale_broadcast, b, b_scale_broadcast),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kScaledDotHloString));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_THAT(
+      status,
+      StatusIs(absl::StatusCode::kInternal,
+               HasSubstr("must be a multiple of contracting dimension size")))
+      << status;
+}
+
+TEST_F(HloVerifierTest, ScaledDotInvalidScaleNonContractingDimSize) {
+  static constexpr absl::string_view kScaledDotHloString = R"(
+    HloModule module
+    ENTRY entry_computation {
+      a = f32[2,10] parameter(0)
+      b = f32[10,2] parameter(1)
+      a_scale = f32[] constant(2)
+      b_scale = f32[] constant(2)
+      a_scale_broadcast = f32[1,5] broadcast(a_scale), dimensions={}
+      b_scale_broadcast = f32[5,1] broadcast(b_scale), dimensions={}
+      ROOT dot = f32[2,2] scaled-dot(a, a_scale_broadcast, b, b_scale_broadcast),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kScaledDotHloString));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_THAT(
+      status,
+      StatusIs(absl::StatusCode::kInternal,
+               HasSubstr("Non-contracting dimensions for operand 0 and scale "
+                         "operand 1 do not match in instruction")))
+      << status;
+}
+
 }  // namespace
 }  // namespace xla
