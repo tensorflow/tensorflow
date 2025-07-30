@@ -802,6 +802,7 @@ EXPORTS
   ?clear_value@AttrValue@tensorflow@@QEAAXXZ
   ?cost@PyListChecker@py_dispatch@tensorflow@@UEBAHXZ
   ?cost@PyUnionChecker@py_dispatch@tensorflow@@UEBAHXZ
+  ?create@ModuleOp@mlir@@SA?AV12@AEAVOpBuilder@2@VLocation@2@V?$optional@VStringRef@llvm@@@std@@@Z
   ?create@OpBuilder@mlir@@QEAAPEAVOperation@2@AEBUOperationState@2@@Z
   ?deallocate_buffer@llvm@@YAXPEAX_K1@Z
   ?def@Node@tensorflow@@QEBAAEBVNodeDef@2@XZ
