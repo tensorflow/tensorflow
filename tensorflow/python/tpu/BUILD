@@ -1151,6 +1151,7 @@ tpu_py_strict_test(
     # copybara:uncomment disable_v4i = True,
     # copybara:uncomment disable_v5 = False,
     # copybara:uncomment disable_v5_grm = True,
+    # copybara:uncomment disable_v6e = False,
     env = {
         "TF_XLA_FLAGS": (
             "--tf_mlir_enable_mlir_bridge=true " +
@@ -1201,6 +1202,7 @@ tpu_py_strict_test(
     # copybara:uncomment disable_v4i = True,
     # copybara:uncomment disable_v5 = False,
     # copybara:uncomment disable_v5_grm = True,
+    # copybara:uncomment disable_v6e = False,
     deps = [
         ":tpu_embedding_v2_utils",
         ":tpu_embedding_v3",
