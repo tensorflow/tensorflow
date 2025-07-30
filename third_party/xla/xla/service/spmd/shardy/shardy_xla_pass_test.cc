@@ -29,7 +29,9 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/spmd/shardy/constants.h"
+#include "xla/shape.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -680,6 +682,40 @@ TEST_F(ShardyXLATest, TestUseTuplesTrue) {
   EXPECT_EQ(module->entry_computation_layout().ToString(),
             "((f32[8,16]{1,0:T(8,128)}, f32[16,32]{1,0:T(8,128)}, "
             "f32[8,32]{1,0:T(8,128)}))->f32[8,32]{1,0:T(8,128)}");
+}
+
+// Even with no layout set (just the shapes specified with no layout), we should
+// still wrap the entry computation layout into a tuple.
+TEST_F(ShardyXLATest, TestUseTuplesTrueNoSetLayout) {
+  const char* const hloString = R"(
+    HloModule pjit_f, allow_spmd_sharding_propagation_to_parameters={false,false,false}, num_partitions=8, frontend_attributes={xla.sdy.use_tuple_args="t"}
+
+    ENTRY %main.7 (Arg_0.1: f32[8,16], Arg_1.2: f32[16,32], Arg_2.3: f32[8,32]) -> f32[8,32] {
+      %Arg_0.1 = f32[8,16] parameter(0)
+      %Arg_1.2 = f32[16,32] parameter(1)
+      %dot.4 = f32[8,32] dot(f32[8,16]{1,0} %Arg_0.1, f32[16,32]{1,0} %Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %Arg_2.3 = f32[8,32] parameter(2)
+      ROOT %add.5 = f32[8,32] add(f32[8,32] %dot.4, f32[8,32] %Arg_2.3)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+
+  // Parser sets a default layout, so we need to clear it.
+  ProgramShape shape = module->entry_computation_layout().ComputeProgramShape();
+  for (int i = 0; i < shape.parameters_size(); ++i) {
+    shape.mutable_parameters(i)->clear_layout();
+  }
+  shape.mutable_result()->clear_layout();
+  *module->mutable_entry_computation_layout() =
+      ComputationLayout(shape, /*ignore_layouts=*/false);
+  ASSERT_FALSE(module->entry_computation_layout().AnyLayoutSet());
+
+  runShardyWithStablehloImport(module.get());
+
+  EXPECT_EQ(module->entry_computation()->parameter_instructions().size(), 1);
+  EXPECT_FALSE(module->entry_computation_layout().AnyLayoutSet());
+  EXPECT_EQ(module->entry_computation_layout().ToString(),
+            "((f32[8,16], f32[16,32], f32[8,32]))->f32[8,32]");
 }
 
 TEST_F(ShardyXLATest, TestRunShardingPropagationFalseUseTuplesFalse) {
