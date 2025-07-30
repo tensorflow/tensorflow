@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
