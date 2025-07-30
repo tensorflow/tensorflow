@@ -188,9 +188,7 @@ void AddAutoShardingToPipeline(mlir::OpPassManager& pm) {
 }
 
 void RegisterAutoSharding() {
-  sdy::AutoPartitionerRegistry::setCallback(
-      /*callback=*/&AddAutoShardingToPipeline,
-      /*dialectsDependenciesCallback=*/&RegisterDialectDependencies);
+  sdy::AutoPartitionerRegistry::setCallback(&AddAutoShardingToPipeline);
 }
 
 void RegisterAutoShardingIfRegistryEmpty() {
