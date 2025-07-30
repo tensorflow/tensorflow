@@ -35,33 +35,47 @@ namespace xla::emitters {
 
 namespace {
 
+int64_t GetAlignment(const BufferAllocation* alloc,
+                     const KernelArguments::BufferAlignment& buffer_alignment) {
+  if (alloc->is_entry_computation_parameter()) {
+    return buffer_alignment.entry_parameter_align_bytes;
+  }
+
+  if (alloc->is_constant()) {
+    return buffer_alignment.constant_buffer_align_bytes;
+  }
+
+  return buffer_alignment.xla_allocated_buffer_align_bytes;
+}
+
 void FillKernelArgumentAttributes(
     std::vector<KernelArgument>& kernel_arguments,
     const KernelArguments::BufferAlignment& buffer_alignment,
     const absl::flat_hash_set<BufferAllocation::Slice>& buffers_written) {
+  absl::flat_hash_map<BufferAllocation::Slice, std::optional<int64_t>>
+      first_indices_for_slices;
+  int64_t next_slice_index = 0;
+
   for (int64_t i = 0; i < kernel_arguments.size(); ++i) {
     KernelArgument& kernel_argument = kernel_arguments[i];
 
-    if (kernel_argument.first_with_same_slice().has_value()) {
-      KernelArgument& first_with_same_slice =
-          kernel_arguments[*kernel_argument.first_with_same_slice()];
+    auto& first_index = first_indices_for_slices[kernel_argument.slice()];
+    if (first_index.has_value()) {
+      KernelArgument& first_with_same_slice = kernel_arguments[*first_index];
+
+      kernel_argument.set_slice_index(first_with_same_slice.slice_index());
       kernel_argument.set_alignment(first_with_same_slice.alignment());
       kernel_argument.set_written(first_with_same_slice.written());
       kernel_argument.set_aliased(first_with_same_slice.aliased());
       continue;
     }
 
-    const BufferAllocation* alloc = kernel_argument.slice().allocation();
-    if (alloc->is_entry_computation_parameter()) {
-      kernel_argument.set_alignment(
-          buffer_alignment.entry_parameter_align_bytes);
-    } else if (alloc->is_constant()) {
-      kernel_argument.set_alignment(
-          buffer_alignment.constant_buffer_align_bytes);
-    } else {
-      kernel_argument.set_alignment(
-          buffer_alignment.xla_allocated_buffer_align_bytes);
-    }
+    first_index = i;
+    kernel_argument.set_slice_index(next_slice_index);
+    next_slice_index++;
+
+    kernel_argument.set_alignment(
+        GetAlignment(kernel_argument.slice().allocation(), buffer_alignment));
 
     // Note: This code here doesn't check if any partially overlapping buffers
     // are written. Our investigation shows that HloDataflowAnalysis only
@@ -81,8 +95,11 @@ void FillKernelArgumentAttributes(
         }
 
         const KernelArgument& other_kernel_argument = kernel_arguments[j];
-        if (kernel_argument.slice() != other_kernel_argument.slice() &&
-            kernel_argument.slice().OverlapsWith(
+        if (kernel_argument.slice() == other_kernel_argument.slice()) {
+          continue;
+        }
+
+        if (kernel_argument.slice().OverlapsWith(
                 other_kernel_argument.slice())) {
           return true;
         }
@@ -92,35 +109,12 @@ void FillKernelArgumentAttributes(
   }
 }
 
-void SetLlvmArgIndicesAndMaybeDeduplicate(
-    std::vector<KernelArgument>& kernel_arguments, bool dedup) {
-  absl::flat_hash_map<BufferAllocation::Slice, std::optional<int64_t>>
-      first_indices_for_slices;
-  int next_llvm_arg_index = 0;
-
-  for (int64_t i = 0; i < kernel_arguments.size(); ++i) {
-    KernelArgument& kernel_argument = kernel_arguments[i];
-
-    auto& first_index = first_indices_for_slices[kernel_argument.slice()];
-    if (dedup && first_index) {
-      const KernelArgument& same = kernel_arguments[*first_index];
-
-      kernel_argument.set_first_with_same_slice(*first_index);
-      kernel_argument.set_llvm_arg_index(same.llvm_arg_index());
-    } else {
-      first_index = i;
-      kernel_argument.set_llvm_arg_index(next_llvm_arg_index);
-      next_llvm_arg_index++;
-    }
-  }
-}
-
 }  // namespace
 
 absl::StatusOr<KernelArguments> KernelArguments::Create(
     const BufferAssignment& buffer_assignment,
     const BufferAlignment& buffer_alignment,
-    const HloInstruction* hlo_instruction, bool dedup) {
+    const HloInstruction* hlo_instruction) {
   std::vector<KernelArgument> kernel_arguments;
   for (const HloInstruction* operand : hlo_instruction->operands()) {
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
@@ -143,7 +137,6 @@ absl::StatusOr<KernelArguments> KernelArguments::Create(
         return absl::OkStatus();
       }));
 
-  SetLlvmArgIndicesAndMaybeDeduplicate(kernel_arguments, dedup);
   FillKernelArgumentAttributes(kernel_arguments, buffer_alignment,
                                buffers_written);
 
