@@ -9631,12 +9631,6 @@ AlgebraicSimplifierVisitor::PromoteConvolutionToF32IfNotOnednnCompatible(
 
 absl::StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
     HloInstruction* convolution) {
-  auto* lhs = convolution->mutable_operand(0);
-  auto* rhs = convolution->mutable_operand(1);
-  const auto& window = convolution->window();
-  const ConvolutionDimensionNumbers& dnums =
-      convolution->convolution_dimension_numbers();
-
   if (!options_.enable_conv_simplification()) {
     return false;
   }
@@ -9646,6 +9640,12 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
     return false;
   }
 
+  auto* lhs = convolution->mutable_operand(0);
+  auto* rhs = convolution->mutable_operand(1);
+  const auto& window = convolution->window();
+  const ConvolutionDimensionNumbers& dnums =
+      convolution->convolution_dimension_numbers();
+
   const Shape& input_shape = lhs->shape();
   const Shape& filter_shape = rhs->shape();
   const Shape& convolution_shape = convolution->shape();
@@ -9654,8 +9654,8 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
   TF_RET_CHECK(LayoutUtil::HasLayout(convolution_shape));
 
   // Require the spatial dimensions in the kernel to have a bound of one.
-  for (int64_t i = 0; i < dnums.kernel_spatial_dimensions_size(); ++i) {
-    if (filter_shape.dimensions(dnums.kernel_spatial_dimensions(i)) != 1) {
+  for (int64_t spatial_dim : dnums.kernel_spatial_dimensions()) {
+    if (filter_shape.dimensions(spatial_dim) != 1) {
       return false;
     }
   }
