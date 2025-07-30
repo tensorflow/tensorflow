@@ -454,7 +454,17 @@ class TPUEmbeddingLayerV2Test(parameterized.TestCase, test.TestCase):
     total_sc_shards = (
         replicas * cores_per_replica * mid_level_api._num_sc_per_chip
     )
-    padded_vocab = 8 * total_sc_shards
+    def get_padded_vocab_size(total_sc_shards, vocab_size):
+      # multiple of (8 * total_sc_shards) which is greater than or equal to
+      # vocab size
+      result = 0
+      while result < vocab_size:
+        result += 8 * total_sc_shards
+      return result
+
+    padded_vocab = get_padded_vocab_size(
+        total_sc_shards, table1.vocabulary_size
+    )
     unsharded_full_value = cpu_embedding._variables['table1']['parameters']
     shard_shape = [padded_vocab // total_sc_shards, 8]
     offset = 0
