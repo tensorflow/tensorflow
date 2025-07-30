@@ -673,10 +673,10 @@ py_strict_library(
 pywrap_library(
     name = "pywrap_tflite",
     common_lib_def_files_or_filters = {
-        "third_party/tensorflow/lite/python/pywrap_tflite_common": "pywrap_tflite_common.json",
+        "tensorflow/lite/python/pywrap_tflite_common": "pywrap_tflite_common.json",
     },
     common_lib_version_scripts = {
-        "third_party/tensorflow/lite/python/pywrap_tflite_common": select({
+        "tensorflow/lite/python/pywrap_tflite_common": select({
             "@bazel_tools//src/conditions:windows": None,
             "@bazel_tools//src/conditions:darwin": "pywrap_tflite_common_darwin.lds",
             "//conditions:default": "pywrap_tflite_common.lds",
