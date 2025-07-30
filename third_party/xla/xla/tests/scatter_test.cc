@@ -900,11 +900,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-// TODO(b/230137437): Enable this on GPU once mhlo allows variadic scatter.
 TEST_F(ScatterTest, Multioutput) {
-  if (test::DeviceTypeIs(test::kGpu)) {
-    GTEST_SKIP();
-  }
   constexpr char hlo_text[] = R"(
 HloModule MultioutputScatter
 
@@ -943,6 +939,45 @@ ENTRY main {
   Literal updates1 = LiteralUtil::CreateR2<float>({{-11, 11}, {-41, 41}});
   RunTest(hlo_text,
           {&operand0, &operand1, &scatter_indices, &updates0, &updates1});
+}
+
+TEST_F(ScatterTest, MultioutputSameOperand) {
+  // TODO(b/435078848): Currently only works on GPU and Interpreter.
+  if (!test::DeviceTypeIsOneOf({test::kGpu, test::kInterpreter})) {
+    GTEST_SKIP();
+  }
+  constexpr char hlo_text[] = R"(
+HloModule MultioutputScatter
+
+update {
+  lhs0 = s32[] parameter(0)
+  lhs1 = s32[] parameter(1)
+  rhs0 = s32[] parameter(2)
+  rhs1 = s32[] parameter(3)
+  ROOT tuple = (s32[], s32[]) tuple(rhs0, rhs1)
+}
+
+ENTRY main {
+  operand = s32[3,3,2] parameter(0)
+  indices = s32[2,2] parameter(1)
+  updates0 = s32[2,2] parameter(2)
+  updates1 = s32[2,2] parameter(3)
+  ROOT scatter = (s32[3,3,2], s32[3,3,2]) scatter(operand, operand, indices, updates0, updates1),
+      to_apply=update,
+      update_window_dims={1},
+      inserted_window_dims={0,1},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=1
+}
+)";
+  Literal operand =
+      LiteralUtil::CreateR3<int32_t>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                      {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                      {{-7, 7}, {-8, 8}, {-9, 9}}});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32_t>({{0, 0}, {1, 0}});
+  Literal updates0 = LiteralUtil::CreateR2<int32_t>({{-10, 10}, {-40, 40}});
+  Literal updates1 = LiteralUtil::CreateR2<int32_t>({{-11, 11}, {-41, 41}});
+  RunTest(hlo_text, {&operand, &scatter_indices, &updates0, &updates1});
 }
 
 TEST_F(ScatterTest, TensorFlowScatter_Max_F32) {
