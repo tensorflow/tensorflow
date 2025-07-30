@@ -18,12 +18,13 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 
@@ -34,6 +35,8 @@ namespace emitters {
 #include "xla/codegen/emitters/transforms/passes.h.inc"
 
 namespace {
+
+static constexpr absl::string_view kXlaEntryAttr = "xla.entry";
 
 class MergePointersToSameSlicePass
     : public impl::MergePointersToSameSlicePassBase<
@@ -80,9 +83,14 @@ struct PackedArgs {
       }
     }
 
-    auto res = op.eraseArguments(args_to_erase);
-    (void)res;
-    assert(llvm::succeeded(res));
+    // Do not pack arguments for the entry function, because that will change
+    // kernel launch interface.
+    if (!op->hasAttr(kXlaEntryAttr)) {
+      auto res = op.eraseArguments(args_to_erase);
+      (void)res;
+      assert(llvm::succeeded(res));
+    }
+
     for (int i = 0; i < op.getNumArguments(); ++i) {
       if (op.getArgAttr(i, "xla.slice_index")) {
         op.removeArgAttr(i, "xla.slice_index");
@@ -96,8 +104,6 @@ struct PackedArgs {
 };
 
 void MergePointersToSameSlicePass::runOnOperation() {
-  mlir::func::FuncOp entry;
-
   absl::flat_hash_map<std::string, PackedArgs> args_to_pack;
   getOperation()->walk([&](mlir::func::FuncOp func) {
     args_to_pack[func.getName()] = PackedArgs(func);

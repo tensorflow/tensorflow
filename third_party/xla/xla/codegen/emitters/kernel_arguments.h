@@ -16,7 +16,6 @@ limitations under the License.
 #define XLA_CODEGEN_EMITTERS_KERNEL_ARGUMENTS_H_
 
 #include <cstdint>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -42,18 +41,11 @@ class KernelArgument {
   int64_t alignment() const { return alignment_; }
   void set_alignment(int64_t alignment) { alignment_ = alignment; }
 
-  std::optional<int> first_with_same_slice() const {
-    return first_with_same_slice_;
-  }
-  void set_first_with_same_slice(int index) { first_with_same_slice_ = index; }
-
   bool aliased() const { return aliased_; }
   void set_aliased(bool aliased) { aliased_ = aliased; }
 
-  int llvm_arg_index() const { return llvm_arg_index_; }
-  void set_llvm_arg_index(int llvm_arg_index) {
-    llvm_arg_index_ = llvm_arg_index;
-  }
+  int64_t slice_index() const { return slice_index_; }
+  void set_slice_index(int64_t slice_index) { slice_index_ = slice_index; }
 
  private:
   Shape shape_;
@@ -61,10 +53,14 @@ class KernelArgument {
   bool aliased_ = true;
   int64_t alignment_ = 1;
   bool written_ = true;
-  int llvm_arg_index_;
-  // Holds the index of the first argument which has the same slice as this,
-  // if this is not the first such argument.
-  std::optional<int> first_with_same_slice_;
+
+  // The index of the unique slice in the kernel argument list. When the kernel
+  // is called, runtime will pass the same buffer to arguments with the same
+  // slice index.
+  //
+  // This index is used as a hint to XLA emitters to merge uses of arguments
+  // with the same slice index into a single argument.
+  int64_t slice_index_;
 
   friend class KernelArguments;
 };
@@ -86,7 +82,7 @@ class KernelArguments {
   static absl::StatusOr<KernelArguments> Create(
       const BufferAssignment& buffer_assignment,
       const BufferAlignment& buffer_alignment,
-      const HloInstruction* hlo_instruction, bool dedup = true);
+      const HloInstruction* hlo_instruction);
 
   const std::vector<KernelArgument>& args() const { return args_; }
 

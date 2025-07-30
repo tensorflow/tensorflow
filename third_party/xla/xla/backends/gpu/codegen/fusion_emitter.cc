@@ -140,22 +140,6 @@ BuildKernelPrototypeFromUniqueName(
     const std::string& unique_kernel_name,
     absl::Span<const emitters::KernelArgument> arguments,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder) {
-  // If some arguments have the same buffer, we will pass them only once.
-  llvm::SmallVector<int> to_llvm_arg_no(arguments.size());
-  llvm::SmallVector<int> to_arg_no;
-  to_arg_no.reserve(arguments.size());
-  for (const auto& [arg_no, argument] : llvm::enumerate(arguments)) {
-    if (argument.first_with_same_slice().has_value()) {
-      to_llvm_arg_no[arg_no] =
-          to_llvm_arg_no[argument.first_with_same_slice().value()];
-      continue;
-    }
-
-    to_llvm_arg_no[arg_no] = to_arg_no.size();
-    to_arg_no.push_back(arg_no);
-  }
-  const int kNumLlvmArgs = to_arg_no.size();
-
   // Create the kernel and add it to the module.
   auto* llvm_module = ir_emitter_context.llvm_module();
   llvm::LLVMContext& context = llvm_module->getContext();
@@ -163,7 +147,7 @@ BuildKernelPrototypeFromUniqueName(
   int addrspace = llvm::Triple(llvm_module->getTargetTriple()).isSPIR() ? 1 : 0;
   llvm::FunctionType* kernel_type = llvm::FunctionType::get(
       /*Result=*/llvm::Type::getVoidTy(context),
-      std::vector<llvm::Type*>(kNumLlvmArgs, builder->getPtrTy(addrspace)),
+      std::vector<llvm::Type*>(arguments.size(), builder->getPtrTy(addrspace)),
       /*isVarArg=*/false);
   llvm::Function* kernel =
       llvm::Function::Create(kernel_type, llvm::GlobalValue::ExternalLinkage,
@@ -183,47 +167,39 @@ BuildKernelPrototypeFromUniqueName(
   builder->SetInsertPoint(llvm::ReturnInst::Create(context, entry_bb));
   // Get the original function to extract attributes.
   auto impl_func = llvm_module->getFunction(impl_fn_name);
+  std::vector<llvm_ir::IrArray> ir_arrays;
+  ir_arrays.reserve(arguments.size());
 
-  for (size_t llvm_arg_no = 0; llvm_arg_no < kernel->arg_size();
-       ++llvm_arg_no) {
-    const emitters::KernelArgument& kernel_argument =
-        arguments[to_arg_no[llvm_arg_no]];
+  for (size_t arg_idx = 0; arg_idx < arguments.size(); ++arg_idx) {
+    const emitters::KernelArgument& kernel_argument = arguments[arg_idx];
     // Get the original argument to extract attributes from if they exist.
-    llvm::Argument* impl_arg =
-        impl_func ? impl_func->getArg(llvm_arg_no) : nullptr;
-    llvm::Argument& new_arg = *kernel->getArg(llvm_arg_no);
-    new_arg.setName(absl::StrCat("arg", llvm_arg_no));
+    llvm::Argument* impl_arg = impl_func ? impl_func->getArg(arg_idx) : nullptr;
+    llvm::Argument& llvm_arg = *kernel->getArg(arg_idx);
+    llvm_arg.setName(absl::StrCat("arg", arg_idx));
 
     if (impl_arg && impl_arg->hasByValAttr()) {
-      kernel->addParamAttr(llvm_arg_no,
+      kernel->addParamAttr(arg_idx,
                            impl_arg->getAttribute(llvm::Attribute::ByVal));
     } else {
-      kernel->addDereferenceableParamAttr(llvm_arg_no,
+      kernel->addDereferenceableParamAttr(arg_idx,
                                           kernel_argument.slice().size());
     }
     // If the alignment has been specified in the original function, use it.
     // Otherwise, use the alignment from the kernel argument.
     if (impl_arg && impl_arg->hasAttribute(llvm::Attribute::Alignment)) {
-      kernel->addParamAttr(llvm_arg_no,
+      kernel->addParamAttr(arg_idx,
                            impl_arg->getAttribute(llvm::Attribute::Alignment));
     } else {
-      kernel->addParamAttr(
-          llvm_arg_no,
-          llvm::Attribute::get(new_arg.getContext(), llvm::Attribute::Alignment,
-                               kernel_argument.alignment()));
+      kernel->addParamAttr(arg_idx,
+                           llvm::Attribute::get(llvm_arg.getContext(),
+                                                llvm::Attribute::Alignment,
+                                                kernel_argument.alignment()));
     }
     if (!kernel_argument.aliased()) {
-      kernel->addParamAttr(
-          llvm_arg_no,
-          llvm::Attribute::get(new_arg.getContext(), llvm::Attribute::NoAlias));
+      kernel->addParamAttr(arg_idx,
+                           llvm::Attribute::get(llvm_arg.getContext(),
+                                                llvm::Attribute::NoAlias));
     }
-  }
-
-  std::vector<llvm_ir::IrArray> ir_arrays;
-  ir_arrays.reserve(arguments.size());
-  for (size_t arg_no = 0; arg_no < arguments.size(); ++arg_no) {
-    const emitters::KernelArgument& kernel_argument = arguments[arg_no];
-    llvm::Argument& llvm_arg = *kernel->getArg(to_llvm_arg_no[arg_no]);
 
     llvm::Type* ir_type =
         llvm_ir::ShapeToIrType(kernel_argument.shape(), context);

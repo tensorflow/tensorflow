@@ -45,23 +45,20 @@ namespace {
 // checking reusability.
 //
 // For example 2 arguments that are aligned to 16 bytes, aliased and also
-// written by the kernel will be represented as "16aw,16aw".
+// written by the kernel will be represented as "0x16aw,0x16aw".
 //
 // Overlapping arguments are only marked aliased, if at least one of them is
-// written and their buffers are not exactly the same. If 2 arguments'
-// buffers are exactly the same, then they are not marked aliased, but marked
-// as duplicates, for example like this: "16,=0,16w,=2". The example means
-// that the 1st argument is the same as the 0th and the 3rd is the same as
-// the 2nd. These duplicated parameters are passed to the kernel only once.
+// written and their buffers are not exactly the same.
+// If 2 arguments' buffers are exactly the same, then they are not marked
+// aliased, but have the same slice index, for example like this:
+// "0x16,0x16,1x16w,1x16w". The example means that the 1st argument is the same
+// as the 0th and the 3rd is the same as the 2nd.
 std::string GetArgumentFingerprint(
     absl::Span<const emitters::KernelArgument> kernel_arguments) {
   return absl::StrJoin(kernel_arguments, ",",
                        [](std::string* s, const emitters::KernelArgument& arg) {
-                         if (arg.first_with_same_slice().has_value()) {
-                           absl::StrAppend(s, "=",
-                                           arg.first_with_same_slice().value());
-                           return;
-                         }
+                         absl::StrAppend(s, arg.slice_index());
+                         absl::StrAppend(s, "x");
                          absl::StrAppend(s, arg.alignment());
                          if (arg.aliased()) {
                            absl::StrAppend(s, "a");

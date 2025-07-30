@@ -70,10 +70,8 @@ KernelThunk::KernelThunk(
   args_.reserve(kernel_arguments.size());
   written_.reserve(kernel_arguments.size());
   for (const emitters::KernelArgument& kernel_argument : kernel_arguments) {
-    if (!kernel_argument.first_with_same_slice().has_value()) {
-      args_.push_back(kernel_argument.slice());
-      written_.push_back(kernel_argument.written());
-    }
+    args_.push_back(kernel_argument.slice());
+    written_.push_back(kernel_argument.written());
   }
 }
 
@@ -268,10 +266,8 @@ CustomKernelThunk::CustomKernelThunk(
   args_.reserve(kernel_arguments.size());
   written_.reserve(kernel_arguments.size());
   for (const emitters::KernelArgument& kernel_argument : kernel_arguments) {
-    if (!kernel_argument.first_with_same_slice().has_value()) {
-      args_.push_back(kernel_argument.slice());
-      written_.push_back(kernel_argument.written());
-    }
+    args_.push_back(kernel_argument.slice());
+    written_.push_back(kernel_argument.written());
   }
 }
 

@@ -16,7 +16,7 @@ module {
   func.func @tensorcall(%arg0: tensor<43xf32> {xla.slice_index = 0},
                         %arg1: tensor<43xf32> {xla.slice_index = 1, xla.invariant},
                         %arg2: tensor<43xf32> {xla.slice_index = 0},
-                        %arg3: index) -> f32 {
+                        %arg3: index) -> f32 attributes {xla.entry} {
     %call = func.call @tensorargs(%arg0, %arg1, %arg2, %arg3) :
       (tensor<43xf32>, tensor<43xf32>, tensor<43xf32>, index) -> f32
     func.return %call : f32
@@ -34,7 +34,8 @@ module {
 // CHECK:        %[[GEP2:.*]] = llvm.getelementptr inbounds %[[ARG0]]
 
 // CHECK:      func.func @tensorcall
-// CHECK-SAME:   %[[ARG0:.*]]: !llvm.ptr {llvm.noalias},
-// CHECK-SAME:   %[[ARG1:.*]]: !llvm.ptr {llvm.noalias, xla.invariant},
-// CHECK-SAME:   %[[ARG2:.*]]: index) -> f32 {
-// CHECK:        call @tensorargs(%[[ARG0]], %[[ARG1]], %[[ARG2]])
+// CHECK-SAME:   %[[ARG0:[a-z0-9]+]]: !llvm.ptr {llvm.noalias},
+// CHECK-SAME:   %[[ARG1:[a-z0-9]+]]: !llvm.ptr {llvm.noalias, xla.invariant},
+// CHECK-SAME:   %[[ARG2:[a-z0-9]+]]: !llvm.ptr {llvm.noalias},
+// CHECK-SAME:   %[[ARG3:[a-z0-9]+]]: index) -> f32 attributes {xla.entry} {
+// CHECK:        call @tensorargs(%[[ARG0]], %[[ARG1]], %[[ARG3]])
