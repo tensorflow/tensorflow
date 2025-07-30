@@ -2250,6 +2250,10 @@ std::optional<PartitionedHlo> PartitionedHlo::TryComplexReshardHandling(
         return std::nullopt;
       }
     }
+
+    // SplitReshapeHelper and MergeReshapeHelper may change the base shape. We
+    // need to recover it.
+    reshaped.set_base_shape(base_shape());
     return reshaped;
   }
   if (auto intermediate_target =

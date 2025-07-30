@@ -532,9 +532,6 @@ class PartitionedHlo {
   // Returns the SPMD instruction's number of dimensions.
   int64_t num_dimensions() const { return base_shape_.dimensions().size(); }
 
-  // Original full shape of the data.
-  const Shape& base_shape() const { return base_shape_; }
-
   int64_t NewChannel() const { return (*state_.next_channel_id)++; }
 
   // Reshards the HLO to a usable partitioned input for a windowed user. Could
@@ -543,8 +540,6 @@ class PartitionedHlo {
       const Window& window, const HloSharding& target,
       HloInstruction* pad_value, bool mask_invalid_region = true,
       bool force_mask_in_compact = false);
-
-  const PartitioningState& state() const { return state_; }
 
   void AddReshardCache(const HloSharding& sharding, const PartitionedHlo& phlo);
 
@@ -555,7 +550,10 @@ class PartitionedHlo {
   // Helper function to replicate the data for partitions along the given dims.
   HloInstruction* ReplicatePartial(absl::Span<const int64_t> dims) const;
 
-  // Set state of the partitoned HLO.
+  const Shape& base_shape() const { return base_shape_; }
+  void set_base_shape(const Shape& base_shape) { base_shape_ = base_shape; }
+
+  const PartitioningState& state() const { return state_; }
   void set_state(PartitioningState state) { state_ = std::move(state); }
 
  private:
