@@ -383,14 +383,8 @@ absl::StatusOr<std::string> Serialize(mlir::ModuleOp module,
   if (FindPotentiallyUnstableDialects(module).has_value()) {
     return SerializeUsingNativeBytecode(module);
   }
-  // All Shardy and StableHLO has compatibility even with mixed serialization
-  // if plugin version >= 70.
-  // TODO(b/422690222): remove the plugin version check once the forward
-  // compatibility window is passed.
   return SerializeUsingVersionedStablehlo(module, target, inplace,
-                                          !plugin_version.has_value() ||
-                                              *plugin_version == 0 ||
-                                              *plugin_version >= 70);
+                                          /*allow_mixed_serialization=*/true);
 }
 
 }  // namespace xla

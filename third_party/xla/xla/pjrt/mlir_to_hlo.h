@@ -81,11 +81,6 @@ std::string GetDefaultStablehloVersion(
 // backward compatiblity of the dialects used. If passing StableHLO with forward
 // or backward compatibility requirements, use SerializeUsingVersionedStablehlo.
 //
-// If `plugin_version >= 70`, the serialization will be done using the versioned
-// StableHLO bytecode format as long as the module doesn't contain any unknown
-// dialects (see implementation for details). Else, native MLIR bytecode format
-// will be used.
-//
 // VHLO support was added in PJRT plugin version 41.
 //   For plugin_version < 41, returns `SerializeUsingNativeBytecode`.
 //   For plugin_version >= 41, returns `SerializeUsingVersionedStablehlo`.
