@@ -87,9 +87,10 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
       return false;
     }
     // cuBLAS doesn't support minor batch dimension.
-    if (absl::c_any_of(dims.Indices(DotOperandDims::kBatch), [&](int64_t dim) {
-          return dim == dims.shape().dimensions().size() - 1;
-        })) {
+    if (absl::c_any_of(dims.DimensionIndices(DotOperandDims::kBatch),
+                       [&](int64_t dim) {
+                         return dim == dims.shape().dimensions().size() - 1;
+                       })) {
       return false;
     }
     // cuBLAS supports up to one non-contracting dimension.
@@ -598,6 +599,10 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
   auto fusion_adaptor = HloFusionAdaptor::ForComputation(instr.parent());
   HloInstructionAdaptor instr_adaptor(instr, fusion_adaptor.get());
   return FindNonTrivialHero(instr_adaptor).instruction();
+}
+
+void VLogModule(int level, const llvm::Module& module) {
+  XLA_VLOG_LINES(level, llvm_ir::DumpToString(&module));
 }
 
 void VerifyModule(const llvm::Module& module) {

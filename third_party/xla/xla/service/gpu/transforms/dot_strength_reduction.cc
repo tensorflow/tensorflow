@@ -61,7 +61,7 @@ HloInstruction* PermuteDotOperandDimensions(HloInstruction* operand,
   std::vector<int64_t> permutation;
   for (auto kind : {DotOperandDims::kBatch, DotOperandDims::kNonContracting,
                     DotOperandDims::kContracting}) {
-    for (auto index : dims->Indices(kind)) {
+    for (auto index : dims->DimensionIndices(kind)) {
       permutation.push_back(index);
     }
   }
