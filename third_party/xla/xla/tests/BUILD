@@ -3700,6 +3700,13 @@ cc_library(
     testonly = True,
     srcs = ["xla_test_backend_predicates.cc"],
     hdrs = ["xla_test_backend_predicates.h"],
+    tags = if_google([
+        "avoid_dep",
+        "alt_dep=" + xla_internal(
+            ["tests:xla_test_backend_predicates"],
+            [""],
+        )[0],
+    ]),
     visibility = if_google(
         xla_internal(["tests:__pkg__"]),
         ["//visibility:public"],
