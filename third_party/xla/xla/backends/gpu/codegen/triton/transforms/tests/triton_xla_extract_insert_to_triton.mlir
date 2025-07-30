@@ -242,3 +242,49 @@ func.func @extract_insert_with_zero_stride(%arg0: tensor<512x128xbf16>,
 
 // CHECK-TMA-LABEL: tt.func @extract_insert_with_zero_stride
 // CHECK-TMA-SAME:  %[[ARG_0:.*]]: !tt.tensordesc{{.*}} tile_strides = [1, 1], {{.*}} %[[ARG_1:.*]]: !tt.tensordesc{{.*}} tile_strides = [1, 1]
+
+// -----
+
+func.func @incompatible_tma_const_offset_not_divisible_by_16_bytes(%arg0: tensor<512x128xbf16>,
+          %arg1: tensor<256x256xbf16>) -> tensor<256x256xbf16> {
+  %extracted_tensor = triton_xla.extract %arg0 [0, 15] [1, 64] [1, 1]
+    {layout = array<i64:1, 0>} : tensor<512x128xbf16> to tensor<1x64xbf16>
+  %updated_tensor = triton_xla.insert %extracted_tensor into
+    %arg1 [0, 16] [1, 64] [1, 1] {layout = array<i64:1, 0>}
+    : tensor<1x64xbf16> into tensor<256x256xbf16>
+  func.return %updated_tensor : tensor<256x256xbf16>
+}
+
+// CHECK-TMA-LABEL: tt.func @incompatible_tma_const_offset_not_divisible_by_16_bytes
+// CHECK-TMA:   tt.make_tensor_ptr
+// CHECK-TMA:   tt.load
+// CHECK-TMA:   tt.descriptor_store
+
+// -----
+
+#indexing_map = #xla.indexing_map<"(pid_0) -> ((pid_0 mod 9) * 16 + (pid_0 floordiv 9) * 130), domain: pid_0 in [0, 575]">
+#indexing_map1 = #xla.indexing_map<"(pid_0) -> (pid_0 floordiv 9), domain: pid_0 in [0, 575]">
+#indexing_map2 = #xla.indexing_map<"(pid_0) -> ((pid_0 mod 9) * 16), domain: pid_0 in [0, 575]">
+module {
+  func.func @incompatible_tma_dynamic_offset_not_divisible_by_16_bytes(
+            %arg0: tensor<4x8320xbf16>, %arg1: tensor<4x64x130xbf16>)
+            -> tensor<4x64x130xbf16> {
+    %0 = tt.get_program_id x : i32
+    %1 = arith.extsi %0 : i32 to i64
+    %2 = arith.index_castui %1 : i64 to index
+    %3 = xla.apply_indexing #indexing_map(%2)
+    %extracted_tile = triton_xla.extract %arg0[0, %3] [16, 16] [1, 1]
+      {layout = array<i64: 1, 0>} : tensor<4x8320xbf16> to tensor<16x16xbf16>
+    %4 = tt.reshape %extracted_tile : tensor<16x16xbf16> -> tensor<16x1x16xbf16>
+    %5 = xla.apply_indexing #indexing_map1(%2)
+    %6 = xla.apply_indexing #indexing_map2(%2)
+    %inserted_tile = triton_xla.insert %4 into %arg1[0, %5, %6] [16, 1, 16] [1, 1, 1]
+      {layout = array<i64: 2, 1, 0>}
+      : tensor<16x1x16xbf16> into tensor<4x64x130xbf16>
+    return %inserted_tile : tensor<4x64x130xbf16>
+  }
+}
+
+// CHECK-TMA-LABEL: tt.func @incompatible_tma_dynamic_offset_not_divisible_by_16_bytes
+// CHECK-TMA:   tt.make_tensor_ptr
+// CHECK-TMA:   tt.load
