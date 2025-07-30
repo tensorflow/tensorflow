@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/block_level_emitter.h"
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 
@@ -42,6 +43,16 @@ namespace gpu {
 using ::tsl::proto_testing::EqualsProto;
 using ::tsl::testing::IsOk;
 
+// Counts the number of configs with is_tma_allowed set to true.
+int CountTmaAllowed(
+    const std::vector<std::unique_ptr<BackendConfig>>& configs) {
+  return std::count_if(configs.begin(), configs.end(), [](auto& config) {
+    const BlockLevelFusionConfig& actual_config =
+        static_cast<const BlockLevelFusionConfig&>(*config);
+    return actual_config.is_tma_allowed();
+  });
+}
+
 // Test fixture for the TritonBlockLevelFusionEmitterBackend.
 //
 // Inherits from HloHardwareIndependentTestBase to use XLA utilities like
@@ -55,7 +66,11 @@ class TritonBlockLevelFusionEmitterBackendTest
                      .value()
                      ->ExecutorForDevice(0)
                      .value(),
-                 &debug_options_, &compiler_) {}
+                 &debug_options_, &compiler_) {
+    // TODO(b/315957220): Remove the experimental flags once TMA is enabled by
+    // default.
+    debug_options_.set_xla_gpu_experimental_enable_triton_tma(true);
+  }
 
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;
@@ -300,17 +315,33 @@ ENTRY %main {
       backend_.GetSupportedConfigs(
           *(module->entry_computation()->root_instruction())));
 
-  // The backend should generate 35 combinations (7 x 5).
-  // Expect 35 total configurations:
+  // If device supports TMA, the backend should generate 70 combinations:
+  // (7 x 5) x 2.
+  // Expect 70 total configurations:
   // - 7 choices for d0 (output dim 0 = 64): 1, 2, 4, 8, 16, 32, 64
   // - 5 choices for d2 (output dim 2 = 16): 1, 2, 4, 8, 16
+  // - 2 choices for is_tma_allowed: true, false
   // The middle dimension (d1 = 1) must always have tile size 1.
-  ASSERT_EQ(configs.size(), 35);
+  //
+  // If device doesn't support TMA, we currently expect half the number (35).
+  bool is_tma_supported = backend_.target_config()
+                              .device_description.cuda_compute_capability()
+                              .IsAtLeastHopper();
+  if (is_tma_supported) {
+    ASSERT_EQ(configs.size(), 70);
+    // The current TMA autotuning duplicates the given configurations with
+    // is_tma_allowed set to true.
+    EXPECT_EQ(CountTmaAllowed(configs), configs.size() / 2);
+  } else {
+    ASSERT_EQ(configs.size(), 35);
+  }
 
   int config_idx = 0;
 
   // Iterate over all expected tile size combinations for d0 and d2.
   // (d1 is fixed at 1 as per the input shape [16,1,64]).
+  // TMA configurations repeat in the 2nd half of the configs. We already
+  // checked them, so we don't inspect them here.
   for (int d0 : {1, 2, 4, 8, 16, 32, 64}) {
     for (int d2 : {1, 2, 4, 8, 16}) {
       ASSERT_EQ(configs[config_idx]->GetDescriptor(),
@@ -332,9 +363,9 @@ ENTRY %main {
                         num_warps: 1
                         num_ctas: 1
                         num_stages: 1
+                        is_tma_allowed: $2
                       )pb",
-                      d0, d2)));
-
+                      d0, d2, false)));
       ++config_idx;
     }
   }
@@ -373,16 +404,31 @@ backend_config={"fusion_backend_config":{"kind":"__triton"}}
       backend_.GetSupportedConfigs(
           *(module->entry_computation()->root_instruction())));
 
-  // Expect 20 total configurations:
+  // If device supports TMA, expect 40 total configurations:
   // - 5 choices for d0 (output dim 0 = 10): 1, 2, 4, 8, 16
   // - 4 choices for d2 (output dim 2 = 8): 1, 2, 4, 8
+  // - 2 choices for is_tma_allowed: true, false
   // The middle dimension (d1 = 0) must always have tile size 0.
-  ASSERT_EQ(configs.size(), 20);
+  //
+  // If device doesn't support TMA, we currently expect half the number (20).
+  bool is_tma_supported = backend_.target_config()
+                              .device_description.cuda_compute_capability()
+                              .IsAtLeastHopper();
+  if (is_tma_supported) {
+    ASSERT_EQ(configs.size(), 40);
+    // The current TMA autotuning duplicates the given configurations with
+    // is_tma_allowed set to true.
+    EXPECT_EQ(CountTmaAllowed(configs), configs.size() / 2);
+  } else {
+    ASSERT_EQ(configs.size(), 20);
+  }
 
   int i = 0;
 
   // Iterate over tile size combinations for dimensions 0 and 2.
   // Dimension 1 (middle) is zero-sized, so its tile size is fixed to 0.
+  // TMA configurations repeat in the 2nd half of the configs. We already
+  // checked them, so we don't inspect them here.
   for (int d0 : {1, 2, 4, 8, 16}) {
     for (int d2 : {1, 2, 4, 8}) {
       ASSERT_EQ(configs[i]->GetDescriptor(),
