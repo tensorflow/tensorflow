@@ -41,7 +41,7 @@ using ::tsl::testing::StatusIs;
 
 TEST(CompositeCompilationProviderTest, CreateFailsWithNoProviders) {
   EXPECT_THAT(CompositeCompilationProvider::Create({}),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(CompositeCompilationProviderTest, Name) {
@@ -128,7 +128,7 @@ TEST(CompositeCompilationProviderTest, Compile) {
       CompositeCompilationProvider::Create(std::move(providers)));
   EXPECT_THAT(combining_provider->Compile(CudaComputeCapability{10, 0}, "ptx",
                                           CompilationOptions{}),
-              IsOk());
+              absl_testing::IsOk());
 }
 
 TEST(CompositeCompilationProviderTest, CompileToRelocatableModule) {
@@ -162,7 +162,7 @@ TEST(CompositeCompilationProviderTest, CompileToRelocatableModule) {
       CompositeCompilationProvider::Create(std::move(providers)));
   EXPECT_THAT(combining_provider->CompileToRelocatableModule(
                   CudaComputeCapability{10, 0}, "ptx", CompilationOptions{}),
-              IsOk());
+              absl_testing::IsOk());
 }
 
 TEST(CompositeCompilationProviderTest, CompileAndLink) {
@@ -194,7 +194,7 @@ TEST(CompositeCompilationProviderTest, CompileAndLink) {
   EXPECT_THAT(
       combining_provider->CompileAndLink(CudaComputeCapability{10, 0},
                                          {Ptx{"ptx"}}, CompilationOptions{}),
-      IsOk());
+      absl_testing::IsOk());
 }
 
 }  // namespace

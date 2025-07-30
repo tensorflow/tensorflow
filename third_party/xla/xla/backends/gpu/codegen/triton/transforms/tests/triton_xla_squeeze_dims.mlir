@@ -12,6 +12,14 @@ tt.func @push_squeeze_dims_up_through_elementwise(%arg0: tensor<4x1x8xf32>) -> t
   tt.return %1 : tensor<4x8xf32>
 }
 
+// CHECK-LABEL: func @push_squeeze_dims_up_through_multiple_results
+tt.func @push_squeeze_dims_up_through_multiple_results(%arg0: tensor<4x1x8xf32>) -> tensor<4x8xf32> {
+  // CHECK: tt.elementwise_inline_asm {{.*}} : tensor<4x8xf32> -> tensor<4x8xf32>, tensor<4x8xf32>
+  %0:2 = tt.elementwise_inline_asm "" {constraints = "", packed_element = 1 : i32, pure = true} %arg0 : tensor<4x1x8xf32> -> tensor<4x1x8xf32>, tensor<4x1x8xf32>
+  %1 = triton_xla.squeeze_dims %0#0 {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
+  tt.return %1 : tensor<4x8xf32>
+}
+
 // CHECK-LABEL: func @push_squeeze_dims_up_through_broadcast
 tt.func @push_squeeze_dims_up_through_broadcast(%arg0: tensor<1x4x1x8xf32>) -> tensor<4x16x8xf32> {
   // CHECK: tt.broadcast {{.*}} : tensor<4x1x8xf32> -> tensor<4x16x8xf32>
