@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/Support/TypeSize.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // IWYU pragma: keep
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
@@ -105,7 +105,7 @@ class AddLoopUnrollFlagsPass
       }
     };
 
-    for (auto* op : for_op.getInductionVar().getUsers()) {
+    for_op.walk([&](mlir::Operation* op) {
       if (auto extract_op = mlir::dyn_cast<mlir::tensor::ExtractOp>(op)) {
         update_min_element_bits(extract_op.getResult().getType());
       }
@@ -113,7 +113,7 @@ class AddLoopUnrollFlagsPass
       if (auto insert_op = mlir::dyn_cast<mlir::tensor::InsertOp>(op)) {
         update_min_element_bits(insert_op.getScalar().getType());
       }
-    }
+    });
 
     return min_element_bits ? *min_element_bits : 0;
   }
