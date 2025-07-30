@@ -206,13 +206,13 @@ LogicalResult InsertQDQ(mlir::Value value, quant::QuantizedType qtype,
   RankedTensorType result_type =
       RankedTensorType::get(shaped_type.getShape(), qtype);
 
-  auto quantize = rewriter.create<TFL::QuantizeOp>(
-      value.getLoc(), result_type, value, TypeAttr::get(result_type));
+  auto quantize = TFL::QuantizeOp::create(rewriter, value.getLoc(), result_type,
+                                          value, TypeAttr::get(result_type));
   // mark this quantize as a propagated Quantize.
   quantize->setAttr(kPropagatedQuantizeOpAttr, rewriter.getUnitAttr());
 
-  auto dequantize = rewriter.create<TFL::DequantizeOp>(
-      value.getLoc(), value.getType(), quantize);
+  auto dequantize = TFL::DequantizeOp::create(rewriter, value.getLoc(),
+                                              value.getType(), quantize);
 
   rewriter.replaceUsesWithIf(value, dequantize, [&](OpOperand& use) {
     // we have value -> Q -> dequantize so Q is already a "use" which we
