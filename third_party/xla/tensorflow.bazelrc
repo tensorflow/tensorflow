@@ -295,7 +295,6 @@ build:sycl --repo_env=SYCL_BUILD_HERMETIC=0
 build:sycl --config=clang_local
 
 # Enable Clang for host and icpx for SYCL
-build:icpx_clang --config=sycl
 build:icpx_clang --repo_env TF_ICPX_CLANG=1
 build:icpx_clang --linkopt="-fuse-ld=lld"
 build:icpx_clang --linkopt="-lm"
