@@ -100,18 +100,15 @@ class KernelFusionInterface : public FusionInterface {
       const Shape& shape, mlir::MLIRContext* ctx);
 };
 
-absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>>>
-BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
-                     const std::string& impl_fn_name,
-                     const std::string& suggested_name,
-                     absl::Span<const emitters::KernelArgument> arguments,
-                     const LaunchDimensions& launch_dimensions,
-                     llvm::IRBuilderBase* builder);
-
-absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>>>
-BuildKernelPrototypeFromUniqueName(
+absl::StatusOr<llvm::Function*> BuildKernelPrototype(
     IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
-    const std::string& unique_name,
+    const std::string& suggested_name,
+    absl::Span<const emitters::KernelArgument> arguments,
+    const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder);
+
+absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
+    IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
+    const std::string& unique_kernel_name,
     absl::Span<const emitters::KernelArgument> arguments,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder);
 

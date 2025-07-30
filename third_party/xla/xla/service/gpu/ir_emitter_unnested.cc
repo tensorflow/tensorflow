@@ -1487,9 +1487,7 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
 
       llvm::IRBuilder builder(ir_emitter_context_->llvm_module()->getContext());
 
-      llvm::Function* kernel;
-      std::vector<llvm_ir::IrArray> ir_arrays;
-      TF_ASSIGN_OR_RETURN(std::tie(kernel, ir_arrays),
+      TF_ASSIGN_OR_RETURN(llvm::Function * kernel,
                           BuildKernelPrototypeFromUniqueName(
                               *ir_emitter_context_, impl_fn->getName().str(),
                               sanitized_kernel_name, kernel_arguments.args(),
@@ -1498,8 +1496,9 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
       // Move function body into kernel prototype.
       llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
       prototype_func->splice(prototype_func->begin(), impl_fn);
-      for (const auto& [arg, input] : llvm::zip(impl_fn->args(), ir_arrays)) {
-        arg.replaceAllUsesWith(input.GetBasePointer());
+      for (const auto& [impl_fn_arg, kernel_arg] :
+           llvm::zip(impl_fn->args(), kernel->args())) {
+        impl_fn_arg.replaceAllUsesWith(&kernel_arg);
       }
       // Triton's kernel ABI expects an additional scratchpad global
       // memory. For now it is only used for on-device creation of
@@ -2557,10 +2556,8 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
 
   VLOG(3) << "Generating (without reuse check): " << suggested_kernel_name;
 
-  llvm::Function* kernel;
-  std::vector<llvm_ir::IrArray> ir_arrays;
   TF_ASSIGN_OR_RETURN(
-      std::tie(kernel, ir_arrays),
+      llvm::Function * kernel,
       BuildKernelPrototype(*ir_emitter_context_, suggested_kernel_name,
                            suggested_kernel_name, kernel_arguments.args(),
                            launch_dimensions, &b_));
@@ -2570,6 +2567,21 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
       kernel_arguments.args(), launch_dimensions,
       /*cluster_dim=*/std::nullopt,
       /*shmem_bytes=*/0));
+
+  std::vector<llvm_ir::IrArray> ir_arrays;
+  ir_arrays.reserve(kernel_arguments.args().size());
+  for (const auto& [kernel_argument, llvm_arg] :
+       llvm::zip(kernel_arguments.args(), kernel->args())) {
+    llvm::Type* ir_type =
+        llvm_ir::ShapeToIrType(kernel_argument.shape(), llvm_arg.getContext());
+    llvm_ir::IrArray ir_array(&llvm_arg, ir_type, kernel_argument.shape());
+
+    if (!kernel_argument.written()) {
+      ir_array.MarkInvariantOverWholeProgram(&llvm_arg.getContext());
+    }
+
+    ir_arrays.push_back(ir_array);
+  }
 
   return ir_arrays;
 }

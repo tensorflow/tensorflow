@@ -15,10 +15,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 
 #include <cstddef>
-#include <optional>
 #include <string>
-#include <tuple>
-#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -27,7 +24,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/Attributes.h"
@@ -43,22 +39,18 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
-#include "mlir/IR/BuiltinAttributes.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/layout_util.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/target_util.h"
-#include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/util.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
@@ -121,21 +113,18 @@ std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,
       llvm_ir::SanitizeFunctionName(suggested_name));
 }
 
-absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>>>
-BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
-                     const std::string& impl_fn_name,
-                     const std::string& suggested_name,
-                     absl::Span<const emitters::KernelArgument> arguments,
-                     const LaunchDimensions& launch_dimensions,
-                     llvm::IRBuilderBase* builder) {
+absl::StatusOr<llvm::Function*> BuildKernelPrototype(
+    IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
+    const std::string& suggested_name,
+    absl::Span<const emitters::KernelArgument> arguments,
+    const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder) {
   return BuildKernelPrototypeFromUniqueName(
       ir_emitter_context, impl_fn_name,
       GetSanitizedUniqueName(ir_emitter_context, suggested_name), arguments,
       launch_dimensions, builder);
 }
 
-absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>>>
-BuildKernelPrototypeFromUniqueName(
+absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
     IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
     const std::string& unique_kernel_name,
     absl::Span<const emitters::KernelArgument> arguments,
@@ -167,8 +156,6 @@ BuildKernelPrototypeFromUniqueName(
   builder->SetInsertPoint(llvm::ReturnInst::Create(context, entry_bb));
   // Get the original function to extract attributes.
   auto impl_func = llvm_module->getFunction(impl_fn_name);
-  std::vector<llvm_ir::IrArray> ir_arrays;
-  ir_arrays.reserve(arguments.size());
 
   for (size_t arg_idx = 0; arg_idx < arguments.size(); ++arg_idx) {
     const emitters::KernelArgument& kernel_argument = arguments[arg_idx];
@@ -200,19 +187,9 @@ BuildKernelPrototypeFromUniqueName(
                            llvm::Attribute::get(llvm_arg.getContext(),
                                                 llvm::Attribute::NoAlias));
     }
-
-    llvm::Type* ir_type =
-        llvm_ir::ShapeToIrType(kernel_argument.shape(), context);
-    llvm_ir::IrArray ir_array(&llvm_arg, ir_type, kernel_argument.shape());
-
-    if (!kernel_argument.written()) {
-      ir_array.MarkInvariantOverWholeProgram(&llvm_arg.getContext());
-    }
-
-    ir_arrays.push_back(ir_array);
   }
 
-  return {{kernel, std::move(ir_arrays)}};
+  return kernel;
 }
 
 }  // namespace gpu
