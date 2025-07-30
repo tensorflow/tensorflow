@@ -287,32 +287,43 @@ bool RawBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
             return;
           }
           for (size_t i = 0; i * xfer_size < buf_size; ++i) {
-            DmaCopyChunk blob;
-            blob.copy_fn = [buffer](
-                               void* dst, int64_t offset,
-                               int64_t transfer_size) -> xla::PjRtFuture<> {
-              return buffer->CopyRawDeviceToHost(dst, offset, transfer_size);
-            };
-            blob.buffer_id = bid;
-            blob.offset = i * xfer_size;
-            blob.size = std::min(xfer_size, buf_size - blob.offset);
-            bool is_largest = blob.size + blob.offset == buf_size;
-            copier_state->ScheduleCopy(
-                std::move(blob),
-                [req_id, state, copier_state, is_largest](
-                    PremappedCopierState* copier_state_ptr,
-                    absl::StatusOr<void*> buf, const DmaCopyChunk& chunk) {
-                  if (!buf.ok()) {
-                    state->SendError(req_id, chunk.offset, chunk.size,
-                                     is_largest, buf.status());
-                    return;
-                  }
-                  CHECK_OK(buf.status());
-                  state->Send(req_id, buf.value(), chunk.offset, chunk.size,
-                              is_largest, [copier_state, buf = buf.value()]() {
-                                copier_state->ReturnBuffer(buf);
-                              });
-                });
+            size_t offset = i * xfer_size;
+            size_t size = std::min(xfer_size, buf_size - offset);
+            bool is_largest = size + offset == buf_size;
+            if (auto* host_pointer = buffer->GetHostPointer()) {
+              size_t offset = i * xfer_size;
+              size_t size = std::min(xfer_size, buf_size - offset);
+              state->Send(req_id,
+                          reinterpret_cast<char*>(host_pointer) + offset,
+                          offset, size, is_largest, [buffer]() {});
+            } else {
+              DmaCopyChunk blob;
+              blob.copy_fn = [buffer](
+                                 void* dst, int64_t offset,
+                                 int64_t transfer_size) -> xla::PjRtFuture<> {
+                return buffer->CopyRawDeviceToHost(dst, offset, transfer_size);
+              };
+              blob.buffer_id = bid;
+              blob.offset = offset;
+              blob.size = size;
+              copier_state->ScheduleCopy(
+                  std::move(blob),
+                  [req_id, state, copier_state, is_largest](
+                      PremappedCopierState* copier_state_ptr,
+                      absl::StatusOr<void*> buf, const DmaCopyChunk& chunk) {
+                    if (!buf.ok()) {
+                      state->SendError(req_id, chunk.offset, chunk.size,
+                                       is_largest, buf.status());
+                      return;
+                    }
+                    CHECK_OK(buf.status());
+                    state->Send(req_id, buf.value(), chunk.offset, chunk.size,
+                                is_largest,
+                                [copier_state, buf = buf.value()]() {
+                                  copier_state->ReturnBuffer(buf);
+                                });
+                  });
+            }
           }
         });
   }
