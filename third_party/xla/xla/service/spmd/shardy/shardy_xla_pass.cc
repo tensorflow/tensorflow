@@ -378,6 +378,7 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   // since the TOAST cost model cannot account for split axes or padding.
   options.dumpDirectory = shardyDir;
   options.conservativePropagation = hloModule->use_auto_spmd_partitioning();
+  options.enableAutoPartitioning = hloModule->use_auto_spmd_partitioning();
   mlir::sdy::addPropagationPipeline(pm, dumpIndex, options);
   addStablehloExportPipeline(pm);
   pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir, "output_module",
