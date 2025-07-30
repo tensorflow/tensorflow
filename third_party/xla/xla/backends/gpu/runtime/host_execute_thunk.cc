@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/host_offloading/gpu_host_offloading_allocator.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -295,6 +296,7 @@ HostExecuteAsyncEvents::CreateEvent(se::StreamExecutor* executor,
   auto event = tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
       std::move(host_to_device_stream_event));
 
+  absl::MutexLock lock(&events_mu_);
   auto [it, inserted] =
       events_.emplace(std::make_pair(executor, run_id), event);
 
@@ -311,6 +313,8 @@ HostExecuteAsyncEvents::ExtractEvent(se::StreamExecutor* executor,
                                      RunId run_id) {
   VLOG(6) << "Extracting event for executor at address " << executor
           << " and event id " << run_id.ToInt();
+
+  absl::MutexLock lock(&events_mu_);
   auto it = events_.find(std::make_pair(executor, run_id));
   if (it == events_.end()) {
     return FailedPrecondition(
@@ -414,8 +418,8 @@ absl::Status HostExecuteStartThunk::ExecuteOnStream(
     tsl::profiler::TraceMe trace(
         "HostExecuteStartThunk::ExecuteOnStream::execute (host_callback)");
     HostOffloadingExecutable::ExecuteOptions execute_options{
-        // TODO(basioli): add device index and context when/if needed.
-        /*device_index =*/0,
+        // TODO(basioli): add context when/if needed.
+        /*device_index =*/params.stream->parent()->device_ordinal(),
         /*launch_id =*/static_cast<int32_t>(params.execution_id),
         /*context =*/nullptr};
 
