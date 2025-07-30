@@ -218,10 +218,8 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
         ir_emitter_context.llvm_module()->getFunction(impl_fn_name);
     TF_RET_CHECK(impl_fn);
 
-    llvm::Function* kernel;
-    std::vector<llvm_ir::IrArray> ir_arrays;
     TF_ASSIGN_OR_RETURN(
-        std::tie(kernel, ir_arrays),
+        llvm::Function * kernel,
         BuildKernelPrototype(ir_emitter_context, impl_fn_name,
                              suggested_kernel_name, kernel_arguments.args(),
                              launch_dimensions, &builder));
@@ -232,8 +230,9 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     // Move function body into kernel prototype.
     llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
     prototype_func->splice(prototype_func->begin(), impl_fn);
-    for (const auto& [arg, ir_array] : llvm::zip(impl_fn->args(), ir_arrays)) {
-      arg.replaceAllUsesWith(ir_array.GetBasePointer());
+    for (const auto& [impl_fn_arg, kernel_arg] :
+         llvm::zip(impl_fn->args(), kernel->args())) {
+      impl_fn_arg.replaceAllUsesWith(&kernel_arg);
     }
     // Triton's kernel ABI expects an additional scratchpad global memory.
     // For now it is only used for on-device creation of TMA descriptors, which
