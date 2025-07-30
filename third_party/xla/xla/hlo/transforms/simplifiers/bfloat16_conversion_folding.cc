@@ -185,6 +185,7 @@ absl::Status BFloat16ConversionFoldingVisitor::DefaultAction(
       hlo->opcode() == HloOpcode::kConditional ||                       //
       hlo->opcode() == HloOpcode::kAsyncStart ||                        //
       hlo->opcode() == HloOpcode::kAsyncDone ||                         //
+      hlo->opcode() == HloOpcode::kOptimizationBarrier ||               //
       !HloDataflowAnalysis::GetInPlaceInputOutputPairs(hlo).empty() ||  //
       hlo->HasSideEffectNoRecurse()) {
     return absl::OkStatus();
