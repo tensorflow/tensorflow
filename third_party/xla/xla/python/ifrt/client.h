@@ -337,7 +337,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
       int local_hardware_id) const = 0;
 
   // Creates a device list from the given list of devices.
-  virtual DeviceListRef MakeDeviceList(
+  virtual absl::StatusOr<DeviceListRef> MakeDeviceList(
       absl::Span<Device* const> devices) const = 0;
 
   // TODO(hyeontaek): Potentially remove this method to encourage supporting

@@ -334,7 +334,6 @@ cc_library(
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/tpu/kernels:sharding_utils",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:inlined_vector",

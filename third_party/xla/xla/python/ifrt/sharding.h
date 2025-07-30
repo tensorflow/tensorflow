@@ -262,7 +262,8 @@ class SingleDeviceSharding final
   static char ID;  // NOLINT
 
  private:
-  explicit SingleDeviceSharding(Device* device, MemoryKind memory_kind);
+  explicit SingleDeviceSharding(DeviceListRef device_list,
+                                MemoryKind memory_kind);
 
   void Hash(absl::HashState state) const override;
 };

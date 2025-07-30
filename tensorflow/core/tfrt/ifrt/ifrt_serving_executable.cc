@@ -304,13 +304,15 @@ IfrtServingExecutable::Create(
                          original_compile_metadata.num_replicas(),
                          original_compile_metadata.num_cores_per_replica()));
 
+  TF_ASSIGN_OR_RETURN(xla::ifrt::DeviceListRef device_list,
+                      client->MakeDeviceList(assigned_devices));
   auto executable = absl::WrapUnique(new IfrtServingExecutable(
       program_id, model_name, signature_name, std::move(module), client,
       thread_pool, ifrt_loaded_variable_registry, ifrt_restore,
       checkpoint_loader_queue, device_mgr, std::move(shape_representation_fn),
       ifrt_serving_core_selector, std::move(original_compile_metadata),
-      client->MakeDeviceList(assigned_devices), compilation_env_or_overrides,
-      tf_to_hlo_compiler, persistent_compilation_cache));
+      std::move(device_list), compilation_env_or_overrides, tf_to_hlo_compiler,
+      persistent_compilation_cache));
 
   return executable;
 }
@@ -741,7 +743,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     TF_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
                         ifrt_client_->LookupDevice(xla::ifrt::DeviceId(
                             device_reservation.device_index())));
-    device_list = ifrt_client_->MakeDeviceList({device});
+    TF_ASSIGN_OR_RETURN(device_list, ifrt_client_->MakeDeviceList({device}));
   } else {
     device_list = assigned_device_list_;
   }

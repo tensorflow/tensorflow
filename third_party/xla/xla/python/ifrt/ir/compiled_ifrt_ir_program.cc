@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
@@ -80,11 +81,12 @@ absl::StatusOr<xla::ifrt::ArraySpec> ToArraySpec(
   auto sharding_attr =
       mlir::dyn_cast<xla::ifrt::IfrtShardingParamAttr>(array.getShardingAttr());
   TF_RET_CHECK(sharding_attr != nullptr);
-  TF_ASSIGN_OR_RETURN(
-      xla::ifrt::ShardingRef sharding,
-      xla::ifrt::ShardingParamSharding::Create(
-          sharding_attr.getSharding(), client->MakeDeviceList(client_devices),
-          array.MemoryKind()));
+  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
+                      client->MakeDeviceList(client_devices));
+  TF_ASSIGN_OR_RETURN(xla::ifrt::ShardingRef sharding,
+                      xla::ifrt::ShardingParamSharding::Create(
+                          sharding_attr.getSharding(), std::move(device_list),
+                          array.MemoryKind()));
   return xla::ifrt::ArraySpec{
       /*dtype=*/dtype,
       /*shape=*/xla::ifrt::Shape(array.getShape().getShape()),

@@ -132,10 +132,12 @@ absl::StatusOr<ArrayRef> CreateArray(Client* client,
             /*on_done_with_host_buffer=*/{}));
   }
 
-  ShardingRef assembled_sharding = ConcreteEvenSharding::Create(
-      client->MakeDeviceList(devices), MemoryKind(),
-      /*shape=*/shape,
-      /*shard_shape=*/std::move(shard_shape));
+  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
+                      client->MakeDeviceList(devices));
+  ShardingRef assembled_sharding =
+      ConcreteEvenSharding::Create(std::move(device_list), MemoryKind(),
+                                   /*shape=*/shape,
+                                   /*shard_shape=*/std::move(shard_shape));
   absl::Span<ArrayRef> arrays = absl::MakeSpan(shards);
   return client->AssembleArrayFromSingleDeviceArrays(
       arrays.at(0)->dtype(), std::move(shape), std::move(assembled_sharding),
