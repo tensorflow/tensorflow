@@ -193,15 +193,17 @@ class IsLastSemaphore {
     bool is_last;
     {
       absl::MutexLock l(&mu_);
-      if (is_poisoned_) {
+      if (is_done_) {
         return absl::OkStatus();
       }
       guard_counter_ -= value;
       is_last = guard_counter_ == 0;
       if (is_last) {
         // Wait if we happen to slip in between guard_counter and counter.
+        is_done_ = true;
         auto cond = [this, value]() { return counter_ == value; };
         mu_.Await(absl::Condition(&cond));
+        // Prevent racing calls to poison.
       }
     }
     auto cleanup = absl::MakeCleanup([&]() {
@@ -211,16 +213,21 @@ class IsLastSemaphore {
     return cb(is_last);
   }
 
-  void Poison() {
+  // Return true if this is the first call to poison.
+  bool Poison() {
     absl::MutexLock l(&mu_);
-    is_poisoned_ = true;
+    if (is_done_) {
+      return false;
+    }
+    is_done_ = true;
     auto cond = [this]() { return counter_ == guard_counter_; };
     mu_.Await(absl::Condition(&cond));
+    return true;
   }
 
  private:
   absl::Mutex mu_;
-  bool is_poisoned_ = false;
+  bool is_done_ = false;
   ssize_t guard_counter_;
   ssize_t counter_;
 };

@@ -218,12 +218,13 @@ class DmaDestination : public ChunkDestination {
   absl::Status Put(const void* data, int64_t offset, size_t size,
                    absl::AnyInvocable<void() &&> on_done) override {
     if (offset < 0 || offset > buffer_size_ || buffer_size_ - offset < size) {
-      semaphore_.Poison();
-      atm_->SetBufferError(buffer_index_,
-                           absl::InvalidArgumentError(absl::StrFormat(
-                               "Invalid slicing of buffer size %lld with "
-                               "invalid offset %lld, slice size %lld",
-                               buffer_size_, offset, size)));
+      if (semaphore_.Poison()) {
+        atm_->SetBufferError(buffer_index_,
+                             absl::InvalidArgumentError(absl::StrFormat(
+                                 "Invalid slicing of buffer size %lld with "
+                                 "invalid offset %lld, slice size %lld",
+                                 buffer_size_, offset, size)));
+      }
       return absl::OkStatus();
     }
     return semaphore_.DoWork(size, [&](bool is_last_transfer) {
@@ -234,8 +235,9 @@ class DmaDestination : public ChunkDestination {
   }
 
   void Poison(absl::Status s) override {
-    semaphore_.Poison();
-    atm_->SetBufferError(buffer_index_, std::move(s));
+    if (semaphore_.Poison()) {
+      atm_->SetBufferError(buffer_index_, std::move(s));
+    }
   }
 
  private:

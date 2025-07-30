@@ -216,5 +216,13 @@ TEST(Semaphore, Async) {
       }));
 }
 
+TEST(Semaphore, Poison) {
+  internal::IsLastSemaphore o_semaphore(16);
+
+  EXPECT_TRUE(o_semaphore.Poison());
+  EXPECT_FALSE(o_semaphore.Poison());
+  EXPECT_FALSE(o_semaphore.Poison());
+}
+
 }  // namespace
 }  // namespace aux
