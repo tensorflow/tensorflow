@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
@@ -37,6 +38,10 @@ namespace {
 using ::llvm::ArrayRef;
 using ::llvm::SmallVector;
 using ::mlir::AffineExpr;
+using ::mlir::getAffineConstantExpr;
+using ::mlir::getAffineDimExpr;
+using ::mlir::getAffineSymbolExpr;
+using ::mlir::MLIRContext;
 
 SmallVector<std::string> GetVarNames(int64_t num_vars, llvm::StringRef prefix) {
   SmallVector<std::string> var_names;
@@ -49,18 +54,31 @@ SmallVector<std::string> GetVarNames(int64_t num_vars, llvm::StringRef prefix) {
 
 }  // namespace
 
+DimTile GetFullDimTile(int64_t dim_size, MLIRContext* ctx) {
+  return DimTile{getAffineConstantExpr(0, ctx),
+                 getAffineConstantExpr(llvm::PowerOf2Ceil(dim_size), ctx),
+                 getAffineConstantExpr(1, ctx),
+                 getAffineConstantExpr(dim_size, ctx)};
+}
+
+DimTile GetDefaultDimTile(int64_t id, int64_t dim_size, MLIRContext* ctx) {
+  auto tile_id = getAffineDimExpr(id, ctx);
+  auto tile_size = getAffineSymbolExpr(id, ctx);
+  return DimTile{tile_id * tile_size, tile_size, getAffineConstantExpr(1, ctx),
+                 getAffineConstantExpr(dim_size, ctx)};
+}
+
 bool DimTile::operator==(const DimTile& other) const {
   return offset == other.offset && size == other.size &&
          stride == other.stride && upper_bound == other.upper_bound;
 }
 
-SymbolicTile::SymbolicTile(mlir::MLIRContext* mlir_context,
-                           const TilingSpace& tiling_space,
+SymbolicTile::SymbolicTile(const TilingSpace& tiling_space,
                            ArrayRef<AffineExpr> offsets,
                            ArrayRef<AffineExpr> sizes,
                            ArrayRef<AffineExpr> strides,
                            ArrayRef<AffineExpr> upper_bounds)
-    : mlir_context_(mlir_context), tiling_space_(&tiling_space) {
+    : tiling_space_(&tiling_space) {
   dim_tiles_.reserve(offsets.size());
   for (auto [offset, size, stride, upper_bound] :
        llvm::zip(offsets, sizes, strides, upper_bounds)) {
@@ -68,12 +86,13 @@ SymbolicTile::SymbolicTile(mlir::MLIRContext* mlir_context,
   }
 }
 
-SymbolicTile::SymbolicTile(mlir::MLIRContext* mlir_context,
-                           const TilingSpace& tiling_space,
+SymbolicTile::SymbolicTile(const TilingSpace& tiling_space,
                            llvm::SmallVector<DimTile> dim_tiles)
-    : mlir_context_(mlir_context),
-      tiling_space_(&tiling_space),
-      dim_tiles_(std::move(dim_tiles)) {}
+    : tiling_space_(&tiling_space), dim_tiles_(std::move(dim_tiles)) {}
+
+MLIRContext* SymbolicTile::mlir_context() const {
+  return tiling_space_->mlir_context();
+}
 
 std::string SymbolicTile::ToString() const {
   int64_t num_dimensions = tiling_space_->num_dimensions();
@@ -112,8 +131,8 @@ std::string SymbolicTile::ToString() const {
   return s;
 }
 
-SmallVector<mlir::AffineExpr> SymbolicTile::offsets() const {
-  SmallVector<mlir::AffineExpr> offsets;
+SmallVector<AffineExpr> SymbolicTile::offsets() const {
+  SmallVector<AffineExpr> offsets;
   offsets.reserve(offsets.size());
   for (const DimTile& dim_tile : dim_tiles_) {
     offsets.push_back(dim_tile.offset);
@@ -121,8 +140,8 @@ SmallVector<mlir::AffineExpr> SymbolicTile::offsets() const {
   return offsets;
 }
 
-SmallVector<mlir::AffineExpr> SymbolicTile::sizes() const {
-  SmallVector<mlir::AffineExpr> sizes;
+SmallVector<AffineExpr> SymbolicTile::sizes() const {
+  SmallVector<AffineExpr> sizes;
   sizes.reserve(sizes.size());
   for (const DimTile& dim_tile : dim_tiles_) {
     sizes.push_back(dim_tile.size);
@@ -130,8 +149,8 @@ SmallVector<mlir::AffineExpr> SymbolicTile::sizes() const {
   return sizes;
 }
 
-SmallVector<mlir::AffineExpr> SymbolicTile::strides() const {
-  SmallVector<mlir::AffineExpr> strides;
+SmallVector<AffineExpr> SymbolicTile::strides() const {
+  SmallVector<AffineExpr> strides;
   strides.reserve(strides.size());
   for (const DimTile& dim_tile : dim_tiles_) {
     strides.push_back(dim_tile.stride);
@@ -139,8 +158,8 @@ SmallVector<mlir::AffineExpr> SymbolicTile::strides() const {
   return strides;
 }
 
-SmallVector<mlir::AffineExpr> SymbolicTile::upper_bounds() const {
-  SmallVector<mlir::AffineExpr> upper_bounds;
+SmallVector<AffineExpr> SymbolicTile::upper_bounds() const {
+  SmallVector<AffineExpr> upper_bounds;
   upper_bounds.reserve(upper_bounds.size());
   for (const DimTile& dim_tile : dim_tiles_) {
     upper_bounds.push_back(dim_tile.upper_bound);

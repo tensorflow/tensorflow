@@ -23,9 +23,10 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
-#include "xla/service/gpu/model/experimental/tiling_space.h"
 
 namespace xla::gpu::experimental {
+
+class TilingSpace;
 
 // A map from tile IDs, sizes and runtime variables to tile's offsets, sizes,
 // strides and upper bounds. Offsets-sizes-strides define what slice to extract,
@@ -68,10 +69,10 @@ struct DimTile {
 
 class SymbolicTile {
  public:
-  SymbolicTile(mlir::MLIRContext* mlir_context, const TilingSpace& tiling_space,
+  SymbolicTile(const TilingSpace& tiling_space,
                llvm::SmallVector<DimTile> dim_tiles);
 
-  SymbolicTile(mlir::MLIRContext* mlir_context, const TilingSpace& tiling_space,
+  SymbolicTile(const TilingSpace& tiling_space,
                llvm::ArrayRef<mlir::AffineExpr> offsets,
                llvm::ArrayRef<mlir::AffineExpr> sizes,
                llvm::ArrayRef<mlir::AffineExpr> strides,
@@ -87,7 +88,7 @@ class SymbolicTile {
   int64_t num_dim_tiles() const { return dim_tiles_.size(); }
 
   const TilingSpace& tiling_space() const { return *tiling_space_; }
-  mlir::MLIRContext* mlir_context() const { return mlir_context_; }
+  mlir::MLIRContext* mlir_context() const;
 
   bool operator==(const SymbolicTile& other) const;
 
@@ -98,10 +99,18 @@ class SymbolicTile {
   }
 
  private:
-  mlir::MLIRContext* mlir_context_;
   const TilingSpace* tiling_space_;
   llvm::SmallVector<DimTile> dim_tiles_;
 };
+
+// Returns a DimTile that covers the entire dimension, i.e.
+// offset 0, size = next_power_of_2(dim_size), stride 1, upper_bound = dim_size.
+DimTile GetFullDimTile(int64_t dim_size, mlir::MLIRContext* ctx);
+
+// Returns a DimTile that covers the entire dimension, i.e.
+//  offset = AffineDimExpr(id) * AffineSymbolExpr(id),
+//  size = AffineSymbolExpr(id), stride 1, upper_bound = dim_size.
+DimTile GetDefaultDimTile(int64_t id, int64_t dim_size, mlir::MLIRContext* ctx);
 
 }  // namespace xla::gpu::experimental
 

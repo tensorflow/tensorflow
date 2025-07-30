@@ -33,8 +33,7 @@ MATCHER_P(MatchString, symbolic_tile_string, "") {
       result_listener);
 }
 
-SymbolicTile GetTestSymbolicTile(mlir::MLIRContext* mlir_context,
-                                 const TilingSpace& tiling_space,
+SymbolicTile GetTestSymbolicTile(const TilingSpace& tiling_space,
                                  absl::Span<const int64_t> shape);
 
 }  // namespace xla::gpu::experimental

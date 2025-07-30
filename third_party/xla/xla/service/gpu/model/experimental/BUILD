@@ -16,11 +16,23 @@ package_group(
 
 cc_library(
     name = "symbolic_tile",
-    srcs = ["symbolic_tile.cc"],
-    hdrs = ["symbolic_tile.h"],
+    srcs = [
+        "symbolic_tile.cc",
+        "tiling_space.cc",
+    ],
+    hdrs = [
+        "symbolic_tile.h",
+        "tiling_space.h",
+    ],
     deps = [
-        ":tiling_space",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_traversal",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -35,7 +47,6 @@ xla_cc_test(
     srcs = ["symbolic_tile_test.cc"],
     deps = [
         ":symbolic_tile",
-        ":tiling_space",
         "//xla/hlo/analysis:indexing_test_utils",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tests:xla_internal_test_main",
@@ -50,7 +61,6 @@ cc_library(
     hdrs = ["symbolic_tile_propagation.h"],
     deps = [
         ":symbolic_tile",
-        ":tiling_space",
         "//xla:literal_util",
         "//xla:permutation_util",
         "//xla:shape_util",
@@ -74,36 +84,15 @@ xla_cc_test(
         ":symbolic_tile",
         ":symbolic_tile_propagation",
         ":test_utils",
-        ":tiling_space",
-        "//xla/hlo/analysis:indexing_test_utils",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/utils:hlo_traversal",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
-    name = "tiling_space",
-    srcs = ["tiling_space.cc"],
-    hdrs = ["tiling_space.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_traversal",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -111,7 +100,7 @@ xla_cc_test(
     name = "tiling_space_test",
     srcs = ["tiling_space_test.cc"],
     deps = [
-        ":tiling_space",
+        ":symbolic_tile",
         "//xla/hlo/analysis:indexing_test_utils",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -120,8 +109,7 @@ xla_cc_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -144,10 +132,10 @@ xla_cc_test(
     name = "symbolic_tiled_hlo_test",
     srcs = ["symbolic_tiled_hlo_test.cc"],
     deps = [
+        ":symbolic_tile",
         ":symbolic_tile_propagation",
         ":symbolic_tiled_hlo",
         ":test_utils",
-        ":tiling_space",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
@@ -166,7 +154,6 @@ cc_library(
     hdrs = ["test_utils.h"],
     deps = [
         ":symbolic_tile",
-        ":tiling_space",
         "//xla/hlo/analysis:indexing_test_utils",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
