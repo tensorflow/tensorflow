@@ -183,9 +183,6 @@ Shape getFlattenedShape(const Shape& shape) {
 // parameter.
 ComputationLayout getFlattenedComputationLayout(
     const ComputationLayout& computationLayout, bool useTupleArgs) {
-  if (!computationLayout.AnyLayoutSet()) {
-    return computationLayout;
-  }
   // Flatten the result layout.
   ComputationLayout flattenedComputationLayout = ComputationLayout(
       ShapeLayout(getFlattenedShape(computationLayout.result_shape())));
