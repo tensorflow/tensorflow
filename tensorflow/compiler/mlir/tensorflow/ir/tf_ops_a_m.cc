@@ -1359,7 +1359,7 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
       return failure();
 
     // All checks are passes, and we now prepare for rewrite.
-    auto identity_const = rewriter.create<TF::ConstOp>(loc, const_attr);
+    auto identity_const = TF::ConstOp::create(rewriter, loc, const_attr);
     for (const auto& kv : exceptions) {
       assert(!hoist_params->lhs_args[kv.second]);
       assert(!hoist_params->rhs_args[kv.second]);
@@ -1396,7 +1396,7 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
       assert(axis_type.getElementType().isInteger(64));
       attr = DenseIntElementsAttr::get(axis_type, axis);
     }
-    auto axis_const = rewriter.create<TF::ConstOp>(loc, attr);
+    auto axis_const = TF::ConstOp::create(rewriter, loc, attr);
 
     auto concat =
         CreateTfOp<ConcatV2Op>(rewriter, op, result_type, args, axis_const);
@@ -2060,8 +2060,8 @@ LogicalResult Conv2DBackpropFilterOp::UpdateDataFormat(StringRef data_format) {
 
   // Permute filter sizes operand.
   OpBuilder builder(getOperation());
-  auto filter_sizes_permuted = builder.create<TF::DataFormatVecPermuteOp>(
-      getLoc(), getFilterSizes(),
+  auto filter_sizes_permuted = TF::DataFormatVecPermuteOp::create(
+      builder, getLoc(), getFilterSizes(),
       StringAttr::get(getContext(), src_data_format),
       StringAttr::get(getContext(), data_format));
   setOperand(1, filter_sizes_permuted);
@@ -2135,8 +2135,9 @@ LogicalResult Conv2DBackpropInputOp::UpdateDataFormat(StringRef data_format) {
 
   // Permute input sizes operand.
   OpBuilder builder(getOperation());
-  auto input_sizes_permuted = builder.create<TF::DataFormatVecPermuteOp>(
-      getLoc(), getInputSizes(), StringAttr::get(getContext(), src_data_format),
+  auto input_sizes_permuted = TF::DataFormatVecPermuteOp::create(
+      builder, getLoc(), getInputSizes(),
+      StringAttr::get(getContext(), src_data_format),
       StringAttr::get(getContext(), data_format));
   setOperand(0, input_sizes_permuted);
 
@@ -3229,8 +3230,8 @@ LogicalResult FoldConstantIfRegionOp::matchAndRewrite(
     Type result_type = std::get<0>(it);
     if (result_type != updated_result.getType()) {
       updated_result =
-          rewriter.create<TF::CastOp>(op.getLoc(), result_type, updated_result,
-                                      /*Truncate=*/rewriter.getBoolAttr(false));
+          TF::CastOp::create(rewriter, op.getLoc(), result_type, updated_result,
+                             /*Truncate=*/rewriter.getBoolAttr(false));
     }
   }
   // Inline the region into the block containing the IfRegion.
@@ -3568,7 +3569,7 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
       {static_cast<int64_t>(shuffled_reduction.size())},
       builder.getIntegerType(32));
   auto values = mlir::DenseIntElementsAttr::get(type, shuffled_reduction);
-  auto shuffled_reduction_op = builder.create<TF::ConstOp>(getLoc(), values);
+  auto shuffled_reduction_op = TF::ConstOp::create(builder, getLoc(), values);
 
   // Use new reduction indices.
   setOperand(1, shuffled_reduction_op);

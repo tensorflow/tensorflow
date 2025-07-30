@@ -70,8 +70,8 @@ StatusOr<mlir::Operation*> IdentityNSPMDExpander::ExpandOp(
   }
 
   builder.setInsertionPointAfter(last_op_after_splitting);
-  auto identity_op = builder.create<mlir::TF::IdentityNOp>(
-      op->getLoc(), generated_types, generated_outputs);
+  auto identity_op = mlir::TF::IdentityNOp::create(
+      builder, op->getLoc(), generated_types, generated_outputs);
 
   for (int i = 0; i < layouts.size(); ++i)
     op->getOpResult(i).replaceAllUsesExcept(identity_op.getResult(i),
