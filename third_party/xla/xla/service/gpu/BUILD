@@ -2023,6 +2023,7 @@ xla_cc_test(
     ]),
     deps = if_cuda_is_configured([
         ":nvptx_compiler_impl",
+        "//xla/stream_executor:cuda_platform",
     ]) + if_rocm_is_configured([
         ":amdgpu_compiler_impl",
     ]) + [
