@@ -153,9 +153,9 @@ def _tf_repositories():
     # LINT.IfChange(xnnpack)
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "70ff0edaaabd0092d0315c5da75572d36f70ea4c0d9c2e3d9c147f18bdd65fff",
-        strip_prefix = "XNNPACK-7566fefb2d5d035c9bb375f9aca5370a13a2b6c1",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/7566fefb2d5d035c9bb375f9aca5370a13a2b6c1.zip"),
+        sha256 = "36a2d2bac5cf50c6c88fe46b0a3c175e42984353090b61d1e0fe97da254f5381",
+        strip_prefix = "XNNPACK-643b2101ef2bafa5c7427704beee3ff604b4fb02",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/643b2101ef2bafa5c7427704beee3ff604b4fb02.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
