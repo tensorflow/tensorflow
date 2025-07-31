@@ -423,7 +423,7 @@ TEST(ThunkProtoDeserializationTest, EmptyThunkImplReturnsAnError) {
       &proto));
 
   EXPECT_THAT(DeserializeThunkProto(proto, /*buffer_allocations=*/{}),
-              tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

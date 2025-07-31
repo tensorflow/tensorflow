@@ -185,7 +185,7 @@ TEST_F(KnownTripCountWhileThunkTest, CurrentLoopIterationKnownTripCountTest) {
       /*body_thunk_sequence_=*/std::move(body_thunk),
       /*trip_count=*/5);
 
-  EXPECT_THAT(ExecuteThunk(while_thunk), IsOk());
+  EXPECT_THAT(ExecuteThunk(while_thunk), absl_testing::IsOk());
   EXPECT_THAT(logger->logged_counters(), ElementsAre(0, 1, 2, 3, 4));
 }
 
@@ -221,7 +221,7 @@ TEST_F(KnownTripCountWhileThunkTest, CurrentLoopIterationNestedTest) {
       /*body_thunk_sequence_=*/std::move(outer_body_thunk),
       /*trip_count=*/3);
 
-  EXPECT_THAT(ExecuteThunk(outer_while_thunk), IsOk());
+  EXPECT_THAT(ExecuteThunk(outer_while_thunk), absl_testing::IsOk());
   EXPECT_THAT(logger->logged_counters(), ElementsAre(0, 0, 1, 1, 2, 2));
 }
 
@@ -243,7 +243,7 @@ TEST_F(KnownTripCountWhileThunkTest, CurrentLoopIterationUnknownLoopTest) {
       /*body_thunk_sequence_=*/std::move(body_thunk),
       /*trip_count=*/3);
 
-  EXPECT_THAT(ExecuteThunk(while_thunk), IsOk());
+  EXPECT_THAT(ExecuteThunk(while_thunk), absl_testing::IsOk());
   EXPECT_THAT(logger->logged_counters(),
               ElementsAre(std::nullopt, std::nullopt, std::nullopt));
 }

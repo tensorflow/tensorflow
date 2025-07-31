@@ -456,7 +456,7 @@ TEST(HostExecuteDoneThunkTest, WaitingOnErrorEvent) {
   TF_ASSERT_OK(
       thunk.Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
   EXPECT_THAT(thunk.ExecuteOnStream(params),
-              tsl::testing::StatusIs(absl::StatusCode::kInternal));
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
 }
 
 }  // namespace

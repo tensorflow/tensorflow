@@ -67,7 +67,7 @@ TEST(CustomCallThunkTest, SimpleCustomCall) {
       ServiceExecutableRunOptions(), BufferAllocations({}, 0, &allocator),
       stream.get(), stream.get(), nullptr, nullptr);
   EXPECT_THAT(thunk->ExecuteOnStream(Thunk::ExecuteParams(params)),
-              ::tsl::testing::IsOk());
+              absl_testing::IsOk());
   EXPECT_TRUE(was_called);
 }
 
@@ -100,7 +100,7 @@ TEST(CustomCallThunkTest, CustomCallOnCustomStream) {
   // Setting this tells the thunk to dispatch on one of the additional streams.
   thunk->set_execution_stream_id(ExecutionStreamId(1));
   EXPECT_THAT(thunk->ExecuteOnStream(Thunk::ExecuteParams(params)),
-              ::tsl::testing::IsOk());
+              absl_testing::IsOk());
 }
 
 }  // namespace

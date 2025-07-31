@@ -56,13 +56,13 @@ TEST(MakeBatchPointersTest, Basic) {
   constexpr int kN = 8;
 
   EXPECT_THAT(MakeBatchPointers(stream.get(), base, kStride, kN, ptrs_out),
-              IsOk());
+              absl_testing::IsOk());
 
   std::array<void*, kN> result = {};
 
   EXPECT_THAT(
       executor->SynchronousMemcpy(result.data(), ptrs_out, kN * sizeof(void*)),
-      IsOk());
+      absl_testing::IsOk());
 
   std::array<void*, kN> expected = {
       base.base() + 0 * kStride, base.base() + 1 * kStride,
