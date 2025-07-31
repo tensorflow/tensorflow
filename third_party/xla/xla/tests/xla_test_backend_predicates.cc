@@ -110,4 +110,7 @@ bool BackendIsStrict(absl::string_view device) {
   return device_matches && modifiers_match;
 }
 
+bool BackendSupportsFloat64() { return !DeviceTypeIs(kTpu); }
+bool BackendSupportsComplex128() { return !DeviceTypeIs(kTpu); }
+
 }  // namespace xla::test
