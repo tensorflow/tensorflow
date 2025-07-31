@@ -189,7 +189,7 @@ TEST_F(MockArrayTest, ReadyFutureWaitsUntilReady) {
   EXPECT_FALSE(ready.IsReady());
 
   wait_ready.Notify();
-  EXPECT_THAT(ready.Await(), IsOk());
+  EXPECT_THAT(ready.Await(), absl_testing::IsOk());
 }
 
 TEST_F(MockArrayTest, ReadyFuturePropagatesError) {
@@ -202,7 +202,7 @@ TEST_F(MockArrayTest, ReadyFuturePropagatesError) {
     get_ready_hook_ = [&]() { return absl::InternalError("testing"); };
   }
 
-  EXPECT_THAT(arr->GetReadyFuture().Await(), StatusIs(kInternal));
+  EXPECT_THAT(arr->GetReadyFuture().Await(), absl_testing::StatusIs(kInternal));
 }
 
 TEST_F(MockArrayTest, CopyToHostFutureWaitsUntilCopied) {
@@ -226,7 +226,7 @@ TEST_F(MockArrayTest, CopyToHostFutureWaitsUntilCopied) {
   EXPECT_FALSE(copied.IsReady());
 
   wait_ready.Notify();
-  EXPECT_THAT(copied.Await(), IsOk());
+  EXPECT_THAT(copied.Await(), absl_testing::IsOk());
 }
 
 TEST_F(MockArrayTest, CopyToHostFuturePropagatesError) {
@@ -243,7 +243,7 @@ TEST_F(MockArrayTest, CopyToHostFuturePropagatesError) {
   auto copied = arr->CopyToHostBuffer(data, /*byte_strides=*/std::nullopt,
                                       ArrayCopySemantics::kAlwaysCopy);
 
-  EXPECT_THAT(copied.Await(), StatusIs(kInternal));
+  EXPECT_THAT(copied.Await(), absl_testing::StatusIs(kInternal));
 }
 
 }  // namespace
