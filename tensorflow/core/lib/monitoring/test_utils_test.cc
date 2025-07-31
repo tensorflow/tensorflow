@@ -123,7 +123,7 @@ TEST(HistogramTest, ReverseSubtract) {
 
   EXPECT_THAT(
       Histogram(histogram2).Subtract(Histogram(histogram1)),
-      StatusIs(
+      absl_testing::StatusIs(
           error::INVALID_ARGUMENT,
           HasSubstr("Failed to subtract a histogram by a larger histogram.")));
 }
@@ -310,8 +310,9 @@ TEST(HistogramTest, DifferentBuckets) {
 
   EXPECT_THAT(
       Histogram(histogram1).Subtract(Histogram(histogram2)),
-      StatusIs(error::INVALID_ARGUMENT,
-               HasSubstr("Subtracting a histogram with different buckets.")));
+      absl_testing::StatusIs(
+          error::INVALID_ARGUMENT,
+          HasSubstr("Subtracting a histogram with different buckets.")));
 }
 
 TEST(PercentilesTest, Percentiles) {
