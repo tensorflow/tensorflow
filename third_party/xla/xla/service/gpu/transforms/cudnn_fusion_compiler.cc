@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cudnn/cudnn_version.h"
+#include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/matmul_indexing_utils.h"
@@ -723,8 +723,8 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
 
     if (IsWorkspaceAllocationRoot(*hlo->fused_expression_root())) {
       // The graph already has a workspace.
-      const std::string fingerprint =
-          GetComputationFingerprint(hlo->fused_instructions_computation(), {});
+      const std::string fingerprint = emitters::GetComputationFingerprint(
+          hlo->fused_instructions_computation(), {});
       if (auto it = compilation_results_.find(fingerprint);
           it == compilation_results_.cend()) {
         TF_ASSIGN_OR_RETURN(const se::gpu::CudnnGraph graph, compile_graph());
@@ -744,7 +744,8 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
     };
 
     const std::string fingerprint_without_workspace =
-        GetComputationFingerprint(hlo->fused_instructions_computation(), {});
+        emitters::GetComputationFingerprint(
+            hlo->fused_instructions_computation(), {});
 
     auto workspace_size_it =
         workspace_sizes_.find(fingerprint_without_workspace);
@@ -755,7 +756,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
                               {fingerprint_without_workspace, workspace_size});
       TF_RETURN_IF_ERROR(add_workspace(workspace_size));
       TF_ASSIGN_OR_RETURN(const std::string serialized, serialize_graph(graph));
-      compilation_results_[GetComputationFingerprint(
+      compilation_results_[emitters::GetComputationFingerprint(
           hlo->fused_instructions_computation(), {})] = serialized;
     } else {
       VLOG(4) << "Cache hit.";

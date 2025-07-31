@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/base/nullability.h"
 #include "absl/log/check.h"
@@ -178,6 +179,10 @@ static llvm::PipelineTuningOptions GetPipelineTuningOptions(
   return pto_from_options(with_overrides);
 }
 
+static bool FunctionHasInternalLinkage(const llvm::Function& function) {
+  return function.hasInternalLinkage();
+}
+
 std::unique_ptr<IrCompiler> IrCompiler::Create(
     llvm::TargetOptions target_options, Options options,
     CompilationHooks hooks) {
@@ -313,6 +318,10 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
 
 llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
                                     llvm::TargetMachine* target_machine) const {
+  if (absl::c_any_of(module.getFunctionList(), FunctionHasInternalLinkage)) {
+    codegen::math::RunInlineAndOptPasses(module);
+  }
+
   llvm::PipelineTuningOptions pto =
       GetPipelineTuningOptions(module, options_, target_machine);
   llvm::LoopAnalysisManager lam;
