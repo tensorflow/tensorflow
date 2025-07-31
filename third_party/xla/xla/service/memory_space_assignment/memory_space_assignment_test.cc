@@ -7972,7 +7972,7 @@ TEST_F(MemorySpaceAssignmentTest, PrecoloredBufferOOM) {
                                                     &prefetch_interval_picker);
   EXPECT_THAT(
       status_or.status(),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::FAILED_PRECONDITION,
           ::testing::HasSubstr("requires allocation in the alternate memory, "
                                "which could not be satisfied")));
