@@ -118,18 +118,6 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
       std::optional<absl::Span<const int64_t>> byte_strides,
       ShardingRef sharding, HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) = 0;
-  // TODO(b/318709106): Remove this overload. This is a temporary overload to
-  // submit XLA and JAX changes in quick succession.
-  absl::StatusOr<ArrayRef> MakeArrayFromHostBuffer(
-      const void* data, DType dtype, Shape shape,
-      std::optional<absl::Span<const int64_t>> byte_strides,
-      ShardingRef sharding, HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer,
-      UserContextRef user_context) {
-    UserContextScope user_context_scope(std::move(user_context));
-    return MakeArrayFromHostBuffer(data, dtype, shape, byte_strides, sharding,
-                                   semantics, on_done_with_host_buffer);
-  }
   // Represents a host buffer.
   //
   // TODO(hyeontaek): Consider evolving this structure to `Literal` once it is
@@ -197,27 +185,11 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   virtual absl::StatusOr<std::vector<ArrayRef>> MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
       HostBufferSemantics semantics) = 0;
-  // TODO(b/318709106): Remove this overload. This is a temporary overload to
-  // submit XLA and JAX changes in quick succession.
-  absl::StatusOr<std::vector<ArrayRef>> MakeArraysFromHostBufferShards(
-      absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
-      HostBufferSemantics semantics, UserContextRef user_context) {
-    UserContextScope user_context_scope(std::move(user_context));
-    return MakeArraysFromHostBufferShards(specs, semantics);
-  }
 
   // Creates new arrays that will be fulfilled with the given error status. The
   // status must not be OK.
   virtual absl::StatusOr<std::vector<ArrayRef>> MakeErrorArrays(
       const absl::Status& error, absl::Span<const ArraySpec> array_specs) = 0;
-  // TODO(b/318709106): Remove this overload. This is a temporary overload to
-  // submit XLA and JAX changes in quick succession.
-  absl::StatusOr<std::vector<ArrayRef>> MakeErrorArrays(
-      const absl::Status& error, absl::Span<const ArraySpec> array_specs,
-      UserContextRef user_context) {
-    UserContextScope user_context_scope(std::move(user_context));
-    return MakeErrorArrays(error, array_specs);
-  }
 
   // Builds a larger array out of individual per-device shards.
   // TODO(hyeontaek): Replace this API with the version that takes
