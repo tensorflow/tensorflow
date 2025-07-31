@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/python/literal_type_casters.h"
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
 #include "xla/python/nb_helpers.h"
 #include "xla/python/types.h"  // IWYU pragma: keep
