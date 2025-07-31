@@ -94,7 +94,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotuned) {
       AutotunerPass::Create(std::move(backends), stream_executor_,
                             &thread_pool));
   EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 }  // namespace

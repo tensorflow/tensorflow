@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/gpu/model/constraint_expression.h"
 #include "xla/service/gpu/model/experimental/symbolic_tile.h"
 #include "xla/shape.h"
 
@@ -43,6 +44,8 @@ namespace xla::gpu::experimental {
 // fusion.
 class TilingSpace {
  public:
+  TilingSpace() : constraints_(ConstraintExpression::GetAlwaysSatisfied()) {}
+
   // Unique ID for the dimension or runtime variable.
   using ID = int64_t;
 
@@ -93,6 +96,9 @@ class TilingSpace {
   const RTVarInfo& GetRTVarInfo(const HloInstruction& hlo,
                                 int64_t operand_id) const;
 
+  ConstraintExpression& mutable_constraint() { return constraints_; }
+  const ConstraintExpression& constraint() const { return constraints_; }
+
   mlir::MLIRContext* mlir_context() const { return mlir_context_; }
 
   llvm::ArrayRef<SymbolicTile> tiled_roots() const { return tiled_roots_; }
@@ -126,6 +132,9 @@ class TilingSpace {
 
   // Root instruction of the fusion.
   llvm::SmallVector<SymbolicTile, 2> tiled_roots_;
+
+  // Constraint expression for the tiling space.
+  ConstraintExpression constraints_;
 
   mlir::MLIRContext* mlir_context_;
 };
