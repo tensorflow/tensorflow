@@ -79,19 +79,22 @@ std::optional<uint32_t> GetSqueezeDimsUserAxis(Operation* op) {
   return std::nullopt;
 }
 
-// Replaces 'op' with 'value', which is the op result squeezed along 'axis'.
+// Replaces 'op' with 'values', which is the op result squeezed along 'axis'.
 void ReplaceOpWithExpandDimsOf(PatternRewriter& rewriter, Operation* op,
-                               Value value, uint32_t axis) {
-  // Replace all squeeze_dims users with the new value.
-  for (Operation* user : make_early_inc_range(op->getUsers())) {
-    if (auto op = dyn_cast<SqueezeDimsOp>(user); op && op.getAxis() == axis) {
-      rewriter.replaceOp(user, value);
+                               ValueRange values, uint32_t axis) {
+  for (auto [result, value] : llvm::zip_equal(op->getResults(), values)) {
+    // Replace all squeeze_dims users with the new value.
+    for (Operation* user : make_early_inc_range(result.getUsers())) {
+      if (auto op = dyn_cast<SqueezeDimsOp>(user); op && op.getAxis() == axis) {
+        rewriter.replaceOp(user, value);
+      }
     }
-  }
-  // If any users remain, replace the op with expand_dims.
-  if (!op->use_empty()) {
-    rewriter.replaceOpWithNewOp<ExpandDimsOp>(op, op->getResult(0).getType(),
-                                              value, axis);
+    // If any users remain, replace the op with expand_dims.
+    if (!result.use_empty()) {
+      Value expand_dims = rewriter.create<ExpandDimsOp>(
+          op->getLoc(), result.getType(), value, axis);
+      rewriter.replaceAllUsesWith(result, expand_dims);
+    }
   }
 }
 
@@ -311,31 +314,24 @@ class PushSqueezeDimsUpThroughElementwise final
  private:
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
-    if (op->getNumResults() != 1) {
-      return rewriter.notifyMatchFailure(op, "Expected single result.");
-    }
-
     std::optional<uint32_t> axis = GetSqueezeDimsUserAxis(op);
     if (!axis) {
       return rewriter.notifyMatchFailure(op, "No squeeze_dims users.");
     }
 
-    SmallVector<Value> operands;
-    operands.reserve(op->getOperands().size());
+    OperationState state(op->getLoc(), op->getName());
+    for (Type type : op->getResultTypes()) {
+      state.addTypes(SqueezeTensorType(cast<RankedTensorType>(type), *axis));
+    }
     for (Value operand : op->getOperands()) {
       if (isa<RankedTensorType>(operand.getType())) {
         operand = SqueezeTensorValue(rewriter, operand, *axis);
       }
-      operands.push_back(operand);
+      state.addOperands(operand);
     }
-
-    OperationState state(op->getLoc(), op->getName());
-    state.addOperands(operands);
     state.addAttributes(op->getAttrs());
-    auto type = cast<RankedTensorType>(op->getResult(0).getType());
-    state.addTypes(SqueezeTensorType(type, *axis));
     Operation* new_op = rewriter.create(state);
-    ReplaceOpWithExpandDimsOf(rewriter, op, new_op->getResult(0), *axis);
+    ReplaceOpWithExpandDimsOf(rewriter, op, new_op->getResults(), *axis);
     return success();
   }
 };
