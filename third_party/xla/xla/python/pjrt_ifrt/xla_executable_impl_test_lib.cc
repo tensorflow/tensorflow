@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -177,12 +178,14 @@ TEST(LoadedExecutableImplTest, CompileAndExecute) {
 
   ExecuteOptions execute_options;
   execute_options.fill_status = true;
+  UserContextScope user_context_scope(test_util::MakeUserContext(100));
   TF_ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
       loaded_executable->Execute(absl::MakeSpan(&array, 1), execute_options,
                                  /*devices=*/std::nullopt));
   TF_ASSERT_OK(result.status.Await());
   EXPECT_THAT(result.outputs, SizeIs(1));
+  EXPECT_EQ(result.outputs[0]->user_context()->Fingerprint(), 100);
 
   std::vector<float> out_data(6);
   auto future = result.outputs[0]->CopyToHostBuffer(
@@ -223,12 +226,14 @@ TEST(LoadedExecutableImplTest, CompileAndExecutePortable) {
                           client->MakeDeviceList({device}));
   ExecuteOptions execute_options;
   execute_options.fill_status = true;
+  UserContextScope user_context_scope(test_util::MakeUserContext(100));
   TF_ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
       loaded_executable->Execute(absl::MakeSpan(&array, 1), execute_options,
                                  /*devices=*/std::move(device_list)));
   TF_ASSERT_OK(result.status.Await());
   EXPECT_THAT(result.outputs, SizeIs(1));
+  EXPECT_EQ(result.outputs[0]->user_context()->Fingerprint(), 100);
 
   std::vector<float> out_data(6);
   auto future = result.outputs[0]->CopyToHostBuffer(
@@ -267,12 +272,14 @@ TEST(LoadedExecutableImplTest, DoNotFillStatus) {
 
   ExecuteOptions execute_options;
   execute_options.fill_status = false;
+  UserContextScope user_context_scope(test_util::MakeUserContext(100));
   TF_ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
       loaded_executable->Execute(absl::MakeSpan(&array, 1), execute_options,
                                  /*devices=*/std::nullopt));
   EXPECT_FALSE(result.status.IsValid());
   EXPECT_THAT(result.outputs, SizeIs(1));
+  EXPECT_EQ(result.outputs[0]->user_context()->Fingerprint(), 100);
 
   std::vector<float> out_data(6);
   auto future = result.outputs[0]->CopyToHostBuffer(

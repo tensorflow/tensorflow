@@ -44,8 +44,6 @@ class Value : public tsl::ReferenceCounted<Value>,
   virtual Client* client() const = 0;
 
   // Returns the user context associated with the creation of this array.
-  // May be `nullptr` if the user context is unset or the runtime does not
-  // support it.
   virtual UserContextRef user_context() const = 0;
 
   // Returns a future that becomes ready when the buffer is computed or has an
