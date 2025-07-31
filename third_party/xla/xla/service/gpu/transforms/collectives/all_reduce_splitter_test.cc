@@ -112,7 +112,8 @@ ENTRY main {
       std::unique_ptr<HloModule> module,
       PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
 
-  EXPECT_THAT(AllReduceSplitter().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(AllReduceSplitter().Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
   TF_EXPECT_OK(FileCheck(module->ToString(), R"(
     CHECK-DAG:    %[[P0:.*]] = bf16[2,4096,4096]{2,1,0} parameter(0)
     CHECK:        %[[AR0:.*]] = bf16[2,4096,4096]{2,1,0} all-reduce(%[[P0]])
@@ -159,7 +160,8 @@ ENTRY main {
       std::unique_ptr<HloModule> module,
       PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
 
-  EXPECT_THAT(AllReduceSplitter().Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(AllReduceSplitter().Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
 
   EXPECT_EQ(AllReduceCount(*module), 1);
 }
@@ -198,7 +200,8 @@ ENTRY main {
       std::unique_ptr<HloModule> module,
       PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
 
-  EXPECT_THAT(AllReduceSplitter().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(AllReduceSplitter().Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
   TF_EXPECT_OK(FileCheck(module->ToString(), R"(
     CHECK-DAG:    %[[P0:.*]] = bf16[2,4096,4096]{2,1,0} parameter(0)
     CHECK-DAG:    %[[ZERO:.*]] = bf16[] constant(0)
@@ -252,7 +255,8 @@ ENTRY main {
       std::unique_ptr<HloModule> module,
       PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
 
-  EXPECT_THAT(AllReduceSplitter().Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(AllReduceSplitter().Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
   EXPECT_EQ(AllReduceCount(*module), 1);
 }
 
@@ -287,7 +291,8 @@ ENTRY main {
       std::unique_ptr<HloModule> module,
       PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
 
-  EXPECT_THAT(AllReduceSplitter().Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(AllReduceSplitter().Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
   EXPECT_EQ(AllReduceCount(*module), 2);
 }
 
@@ -324,7 +329,8 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string, config));
 
-  EXPECT_THAT(AllReduceSplitter().Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(AllReduceSplitter().Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
   EXPECT_THAT(AllReduceCount(*module), 2);
 }
 
@@ -359,7 +365,8 @@ ENTRY main {
       std::unique_ptr<HloModule> module,
       PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
 
-  EXPECT_THAT(AllReduceSplitter().Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(AllReduceSplitter().Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
 
   EXPECT_EQ(AllReduceCount(*module), 2);
 }
@@ -395,7 +402,8 @@ ENTRY main {
       std::unique_ptr<HloModule> module,
       PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
 
-  EXPECT_THAT(AllReduceSplitter().Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(AllReduceSplitter().Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
 
   EXPECT_EQ(AllReduceCount(*module), 2);
 }
@@ -435,7 +443,7 @@ ENTRY main {
   HloPassPipeline pipeline("all-reduce-splitter-rewrite");
   pipeline.AddPass<AllReduceSplitter>();
   pipeline.AddPass<ReduceScatterCreator>();
-  EXPECT_THAT(pipeline.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(pipeline.Run(module.get()), absl_testing::IsOkAndHolds(true));
   TF_EXPECT_OK(FileCheck(module->ToString(), R"(
     CHECK-DAG:    %[[P0:.*]] = bf16[2,4096,4096]{2,1,0} parameter(0)
     CHECK:        %[[AR0:.*]] = bf16[2,4096,4096]{2,1,0} all-reduce(%[[P0]])
@@ -486,7 +494,7 @@ ENTRY main {
   HloPassPipeline pipeline("all-reduce-splitter-rewrite");
   pipeline.AddPass<AllReduceSplitter>();
   pipeline.AddPass<ReduceScatterCreator>();
-  EXPECT_THAT(pipeline.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(pipeline.Run(module.get()), absl_testing::IsOkAndHolds(true));
   TF_EXPECT_OK(FileCheck(module->ToString(), R"(
     CHECK-DAG:    %[[P0:.*]] = bf16[2,4096,4096]{2,1,0} parameter(0)
     CHECK-DAG:    %[[ZERO:.*]] = bf16[] constant(0)
