@@ -108,7 +108,7 @@ class BasicStringArray final
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()
       const override;
 
-  UserContextRef user_context() const override { return {}; }
+  UserContextRef user_context() const override { return user_context_; }
 
   absl::StatusOr<std::vector<ArrayRef>> DisassembleIntoSingleDeviceArrays(
       ArrayCopySemantics array_copy_semantics,
@@ -155,6 +155,7 @@ class BasicStringArray final
   Client* client_;
   Shape shape_;
   ShardingRef sharding_;
+  const UserContextRef user_context_;
   Future<Buffers> buffers_;
   Future<> ready_future_;
 

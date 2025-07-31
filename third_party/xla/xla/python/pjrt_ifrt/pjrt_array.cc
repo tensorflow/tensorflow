@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
@@ -285,7 +286,8 @@ PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
       shape_(std::move(shape)),
       sharding_(std::move(sharding)),
       pjrt_buffers_(std::move(pjrt_buffers)),
-      layout_(std::move(layout)) {}
+      layout_(std::move(layout)),
+      user_context_(UserContextScope::current()) {}
 
 PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype,
                      DynamicShape dynamic_shape, ShardingRef sharding,
@@ -296,7 +298,8 @@ PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype,
       shape_(std::move(dynamic_shape)),
       sharding_(std::move(sharding)),
       pjrt_buffers_(std::move(pjrt_buffers)),
-      layout_(std::move(layout)) {}
+      layout_(std::move(layout)),
+      user_context_(UserContextScope::current()) {}
 
 absl::StatusOr<std::vector<ArrayRef>>
 PjRtArray::DisassembleIntoSingleDeviceArrays(
