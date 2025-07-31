@@ -69,8 +69,8 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   TransposeDimensionGrouper dimension_grouper;
   EXPECT_THAT(dimension_grouper.Run(module.get()),
-              StatusIs(tsl::error::FAILED_PRECONDITION,
-                       HasSubstr("Layout normalization")));
+              absl_testing::StatusIs(tsl::error::FAILED_PRECONDITION,
+                                     HasSubstr("Layout normalization")));
 }
 
 TEST_F(TransposeDimensionGrouperTest, NoTranspose3) {
@@ -85,8 +85,8 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   TransposeDimensionGrouper dimension_grouper;
   EXPECT_THAT(dimension_grouper.Run(module.get()),
-              StatusIs(tsl::error::FAILED_PRECONDITION,
-                       HasSubstr("Layout normalization")));
+              absl_testing::StatusIs(tsl::error::FAILED_PRECONDITION,
+                                     HasSubstr("Layout normalization")));
 }
 
 TEST_F(TransposeDimensionGrouperTest, Simple2D) {
