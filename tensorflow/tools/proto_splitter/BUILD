@@ -1,6 +1,7 @@
 # Description:
 #   Utilities for splitting and joining large protos > 2GB.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 
