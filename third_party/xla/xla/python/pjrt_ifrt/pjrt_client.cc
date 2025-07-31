@@ -88,9 +88,13 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -832,6 +836,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
     }
   }
 
+  client->distributed_client_ = std::move(options.distributed_client);
   client->kv_store_ = std::move(options.kv_store);
   client->cross_host_transfer_timeout_ = options.cross_host_transfer_timeout;
   client->transfer_server_factory_ = std::move(options.transfer_server_factory);
@@ -841,6 +846,23 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
     if (attrs.contains("supports_cross_host_transfers")) {
       client->pjrt_supports_cross_host_transfers_ =
           std::get<bool>(attrs.at("supports_cross_host_transfers"));
+    }
+  }
+
+  // Start a background thread to monitor the status of all processes.
+  if (client->distributed_client_) {
+    absl::StatusOr<tsl::CoordinationServiceAgent*> agent =
+        client->distributed_client_->GetCoordinationServiceAgent();
+    if (agent.ok()) {
+      client->global_process_info_thread_.reset(
+          tsl::Env::Default()->StartThread(
+              tsl::ThreadOptions(), "global_process_info",
+              [client = client.get(), agent = *agent]() {
+                absl::Status s = client->WatchGlobalProcessInfo(*agent);
+                if (!s.ok()) {
+                  LOG(ERROR) << s;
+                }
+              }));
     }
   }
 
@@ -860,7 +882,10 @@ PjRtClient::PjRtClient(std::shared_ptr<xla::PjRtClient> pjrt_client)
       default_compiler_(this),
       attributes_(MakeAttributeMap(pjrt_client_.get())) {}
 
-PjRtClient::~PjRtClient() = default;
+PjRtClient::~PjRtClient() {
+  absl::MutexLock lock(&shutting_down_mu_);
+  shutting_down_ = true;
+}
 
 absl::StatusOr<PjRtCompatibleDevice*> PjRtClient::LookupPjRtDevice(
     xla::PjRtDevice* pjrt_device) const {
@@ -1385,6 +1410,82 @@ PjRtClient::CopyArraysForCrossHostFallback(
 }
 
 int64_t PjRtClient::CreateNewTransferKey() { return next_transfer_key_++; }
+
+absl::Status PjRtClient::WatchGlobalProcessInfo(
+    tsl::CoordinationServiceAgent& agent) {
+  TF_ASSIGN_OR_RETURN(tensorflow::CoordinatedTask task, agent.GetOwnTask());
+  VLOG(3) << "Watching global process info for task "
+          << task.ShortDebugString();
+
+  int64_t version_number = -1;  // latest job state version
+  while (true) {
+    // Call WatchJobStateAsync.
+    VLOG(3) << "Calling WatchJobStateAsync for task "
+            << task.ShortDebugString();
+    absl::StatusOr<tensorflow::WatchJobStateResponse> response;
+    bool done = false;
+    std::shared_ptr<tsl::CallOptions> call_opts = agent.WatchJobStateAsync(
+        task.job_name(), version_number,
+        [this, &response,
+         &done](absl::StatusOr<tensorflow::WatchJobStateResponse> r) {
+          response = std::move(r);
+          absl::MutexLock lock(&shutting_down_mu_);
+          done = true;
+        });
+
+    {
+      // Wait for the WatchJobStateAsync call to finish or for us to shut down,
+      // whichever happens first.
+      absl::MutexLock lock(&shutting_down_mu_);
+      auto done_or_shutting_down = [this, &done]() {
+        shutting_down_mu_.AssertHeld();
+        return done || shutting_down_;
+      };
+      shutting_down_mu_.Await(absl::Condition(&done_or_shutting_down));
+
+      if (shutting_down_) {
+        // Cancel the call the WatchJobStateAsync and wait for it to terminate.
+        VLOG(3) << "WatchGlobalProcessInfo shutting down for task "
+                << task.ShortDebugString();
+        call_opts->StartCancel();
+        shutting_down_mu_.Await(absl::Condition(&done));
+        return absl::OkStatus();
+      }
+
+      if (!response.ok()) {
+        // Sleep to avoid repeatedly issuing a request that fails immediately.
+        //
+        // TODO: mwhittaker - Perform exponential backoff.
+        LOG(WARNING) << "WatchJobStateAsync failed for task "
+                     << task.ShortDebugString() << ": " << response.status();
+        shutting_down_mu_.AwaitWithTimeout(absl::Condition(&shutting_down_),
+                                           absl::Seconds(1));
+        continue;
+      }
+    }
+
+    // Parse the response.
+    version_number = response->version_number();
+    std::vector<tensorflow::CoordinatedTaskStateInfo> state(
+        response->task_state().begin(), response->task_state().end());
+    absl::c_sort(state,
+                 [](const tensorflow::CoordinatedTaskStateInfo& x,
+                    const tensorflow::CoordinatedTaskStateInfo& y) -> bool {
+                   return x.task().task_id() < y.task().task_id();
+                 });
+
+    // Pretty print the job state, if VLOG is on.
+    if (VLOG_IS_ON(3)) {
+      VLOG(3) << "Job state for task " << task.ShortDebugString() << ":";
+      for (const auto& info : state) {
+        VLOG(3) << "- " << info.DebugString();
+      }
+    }
+
+    // Update the client with the job state.
+    pjrt_client_->UpdateGlobalProcessInfo(absl::MakeSpan(state));
+  }
+}
 
 absl::Status PjRtClient::CrossHostSendBuffers(
     PjRtBuffers buffers, const std::vector<int64_t>& keys) {
