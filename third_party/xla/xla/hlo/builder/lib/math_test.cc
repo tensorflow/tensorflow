@@ -225,9 +225,7 @@ using TestTypes =
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
                      Eigen::half,
 #endif
-#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_BFLOAT16
                      Eigen::bfloat16,
-#endif
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64
                      double,
 #endif
