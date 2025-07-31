@@ -31,14 +31,14 @@ using ::testing::Combine;
 using ::testing::Values;
 
 // Test fixture to hold the context for all tests.
-class SymbolicExprTest : public ::testing::Test {
+struct SymbolicExprTest : public ::testing::Test {
  protected:
-  SymbolicExprContext ctx_;
+  SymbolicExprContext ctx;
+  SymbolicExpr v0 = ctx.CreateVariable(0);
+  SymbolicExpr v1 = ctx.CreateVariable(1);
 };
 
 TEST_F(SymbolicExprTest, CreateAndPrint) {
-  SymbolicExpr v0 = ctx_.CreateVariable(0);
-  SymbolicExpr v1 = ctx_.CreateVariable(1);
   SymbolicExpr expr = (((v0 + 42) * v1.min(2).max(0)) / 2).ceilDiv(2);
 
   ASSERT_NE(expr, nullptr);
@@ -50,22 +50,20 @@ TEST_F(SymbolicExprTest, CreateAndPrint) {
 TEST_F(SymbolicExprTest, ParseAndPrint) {
   const std::string kStringContainingAllOperators =
       "((((v0 + 42) * max(min(v1, 2), 0)) floordiv 2) ceildiv 2)";
-  SymbolicExpr parsed_expr = ctx_.Parse(kStringContainingAllOperators);
+  SymbolicExpr parsed_expr = ctx.Parse(kStringContainingAllOperators);
   ASSERT_NE(parsed_expr, nullptr);
   EXPECT_THAT(parsed_expr.ToString(),
               MatchIndexingString(kStringContainingAllOperators));
 }
 
 TEST_F(SymbolicExprTest, ParseAndPrint_Invalid) {
-  EXPECT_DEATH(ctx_.Parse("1 + "), "Unexpected end of expression");
-  EXPECT_DEATH(ctx_.Parse("max(1, )"), "Failed to parse expression");
-  EXPECT_DEATH(ctx_.Parse("(1 + 2"), "Missing parenthesis");
-  EXPECT_DEATH(ctx_.Parse("foo(3, 4)"), "Failed to parse expression");
+  EXPECT_DEATH(ctx.Parse("1 + "), "Unexpected end of expression");
+  EXPECT_DEATH(ctx.Parse("max(1, )"), "Failed to parse expression");
+  EXPECT_DEATH(ctx.Parse("(1 + 2"), "Missing parenthesis");
+  EXPECT_DEATH(ctx.Parse("foo(3, 4)"), "Failed to parse expression");
 }
 
 TEST_F(SymbolicExprTest, Evaluate) {
-  SymbolicExpr v0 = ctx_.CreateVariable(0);
-  SymbolicExpr v1 = ctx_.CreateVariable(1);
   SymbolicExpr expr = (((v0 + 42) * v1.min(2).max(0)) / 2).ceilDiv(2);
 
   // ((((5 + 42) * max(min(1, 2), 0)) / 2) ceildiv 2) = 23 ceildiv 2 = 12
@@ -73,8 +71,6 @@ TEST_F(SymbolicExprTest, Evaluate) {
 }
 
 TEST_F(SymbolicExprTest, Evaluate_Invalid) {
-  SymbolicExpr v0 = ctx_.CreateVariable(0);
-  SymbolicExpr v1 = ctx_.CreateVariable(1);
   SymbolicExpr add = v0 + v1;
 
   EXPECT_DEATH(add.Evaluate({5}),
@@ -89,8 +85,8 @@ TEST_P(SymbolicExprEvaluateDivModTest, EvaluateDivMod) {
   const auto& params = GetParam();
   const int64_t numerator_val = std::get<0>(params);
   const int64_t denominator_val = std::get<1>(params);
-  SymbolicExpr numerator = ctx_.CreateConstant(numerator_val);
-  SymbolicExpr denominator = ctx_.CreateConstant(denominator_val);
+  SymbolicExpr numerator = ctx.CreateConstant(numerator_val);
+  SymbolicExpr denominator = ctx.CreateConstant(denominator_val);
 
   if (numerator_val % denominator_val == 0) {
     EXPECT_EQ((numerator % denominator).Evaluate({}), 0);
@@ -107,20 +103,19 @@ INSTANTIATE_TEST_SUITE_P(PositiveAndNegative, SymbolicExprEvaluateDivModTest,
                          Combine(Values(5, -5, 4, -4), Values(2, -2)));
 
 TEST_F(SymbolicExprTest, ReplaceVariables) {
-  SymbolicExpr expr_to_sub = ctx_.Parse("(v0 + v1)");
-  std::vector<SymbolicExpr> substitutions{{}, ctx_.Parse("(v2 * 10)")};
-  SymbolicExpr result = expr_to_sub.ReplaceVariables(substitutions, &ctx_);
+  SymbolicExpr expr_to_sub = ctx.Parse("(v0 + v1)");
+  std::vector<SymbolicExpr> substitutions{{}, ctx.Parse("(v2 * 10)")};
+  SymbolicExpr result = expr_to_sub.ReplaceVariables(substitutions, &ctx);
   EXPECT_EQ(result.ToString(), "(v0 + (v2 * 10))");
 }
 
 TEST_F(SymbolicExprTest, UniquingWorks) {
-  SymbolicExpr c1 = ctx_.CreateConstant(42);
-  SymbolicExpr c2 = ctx_.CreateConstant(42);
+  SymbolicExpr c1 = ctx.CreateConstant(42);
+  SymbolicExpr c2 = ctx.CreateConstant(42);
   EXPECT_EQ(c1, c2);
-  SymbolicExpr c3 = ctx_.CreateConstant(99);
+  SymbolicExpr c3 = ctx.CreateConstant(99);
   EXPECT_NE(c1, c3);
 
-  SymbolicExpr v0 = ctx_.CreateVariable(0);
   SymbolicExpr add1 = v0 + 42;
   SymbolicExpr add2 = v0 + 42;
   EXPECT_EQ(add1, add2);

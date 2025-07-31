@@ -125,11 +125,12 @@ static void SplitNextIteration(Block &block) {
     llvm::SmallVector<Value, 2> new_operands;
     FilterOutBlockArgControlDep(op->getOperands().drop_front(), new_operands);
 
-    auto source_op = builder.create<tf_executor::NextIterationSourceOp>(
-        op->getLoc(), op->getOperand(0).getType());
-    builder.create<tf_executor::NextIterationSinkOp>(
-        op->getLoc(), source_op.getToken(), /*input=*/op->getOperand(0),
-        /*controlInputs=*/new_operands);
+    auto source_op = tf_executor::NextIterationSourceOp::create(
+        builder, op->getLoc(), op->getOperand(0).getType());
+    tf_executor::NextIterationSinkOp::create(builder, op->getLoc(),
+                                             source_op.getToken(),
+                                             /*input=*/op->getOperand(0),
+                                             /*controlInputs=*/new_operands);
     op->replaceAllUsesWith(
         ValueRange({source_op.getOutput(), source_op.getControl()}));
     op->erase();
@@ -149,21 +150,21 @@ class ConvertGraphOp : public OpConversionPattern<tfg::GraphOp> {
     // will be the operations inside the function body rather than representing
     // them in the function signature.
     FunctionType func_type = rewriter.getFunctionType({}, {});
-    func::FuncOp func = rewriter.create<func::FuncOp>(
-        loc, kImportModelDefaultGraphFuncName, func_type);
+    func::FuncOp func = func::FuncOp::create(
+        rewriter, loc, kImportModelDefaultGraphFuncName, func_type);
     rewriter.setInsertionPointToStart(func.addEntryBlock());
     auto executor_graph =
-        rewriter.create<tf_executor::GraphOp>(loc, func_type.getResults());
+        tf_executor::GraphOp::create(rewriter, loc, func_type.getResults());
     rewriter.inlineRegionBefore(graph.getNodes(), executor_graph.getBody(),
                                 executor_graph.getBody().end());
 
     // Add terminator of tf_executor::graph
     rewriter.setInsertionPointToEnd(&executor_graph.getBody().front());
-    rewriter.create<tf_executor::FetchOp>(loc);
+    tf_executor::FetchOp::create(rewriter, loc);
 
     // Add terminator of func
     rewriter.setInsertionPointToEnd(&func.getBody().front());
-    rewriter.create<func::ReturnOp>(loc);
+    func::ReturnOp::create(rewriter, loc);
 
     rewriter.replaceOp(graph.getOperation(), func.getOperation()->getResults());
 
@@ -182,8 +183,8 @@ class ConvertGraphFuncOp : public OpConversionPattern<tfg::GraphFuncOp> {
     Location loc = graph_func.getLoc();
     FunctionType ftype = graph_func.getFunctionType();
 
-    func::FuncOp func = rewriter.create<func::FuncOp>(
-        graph_func.getLoc(),
+    func::FuncOp func = func::FuncOp::create(
+        rewriter, graph_func.getLoc(),
         graph_func->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())
             .getValue(),
         ftype);
@@ -213,8 +214,8 @@ class ConvertGraphFuncOp : public OpConversionPattern<tfg::GraphFuncOp> {
     rewriter.setInsertionPointToStart(func.addEntryBlock());
     // In TFE, the function body is inlined in a GraphOp. Create a GraphOp
     // instance and move the regions from GraphFuncOp to GraphOp.
-    auto executor_graph = rewriter.create<tf_executor::GraphOp>(
-        loc, func.getFunctionType().getResults());
+    auto executor_graph = tf_executor::GraphOp::create(
+        rewriter, loc, func.getFunctionType().getResults());
 
     // Replace the uses of block arguments with function arguments. Note that we
     // can't erase the arguments here because the operations may still use them
@@ -231,8 +232,8 @@ class ConvertGraphFuncOp : public OpConversionPattern<tfg::GraphFuncOp> {
                                 executor_graph.getBody().end());
 
     rewriter.setInsertionPointToEnd(&func.getBody().front());
-    rewriter.create<func::ReturnOp>(
-        loc, executor_graph.getOperation()->getResults());
+    func::ReturnOp::create(rewriter, loc,
+                           executor_graph.getOperation()->getResults());
 
     rewriter.replaceOp(graph_func.getOperation(),
                        func.getOperation()->getResults());
@@ -426,8 +427,8 @@ class ConvertGeneralOp : public ConversionPattern {
       }
     }
 
-    auto island = rewriter.create<tf_executor::IslandOp>(
-        loc, new_types, island_control_operands);
+    auto island = tf_executor::IslandOp::create(rewriter, loc, new_types,
+                                                island_control_operands);
     island.getBody().push_back(new mlir::Block);
 
     rewriter.setInsertionPointToEnd(&island.getBody().front());
@@ -463,13 +464,13 @@ class ConvertGeneralOp : public ConversionPattern {
             op->getAttrOfType<BoolAttr>("_disable_call_shape_inference")
                 .getValue();
       }
-      inner_op = rewriter.create<LegacyCallOp>(
-          loc, new_types, inner_op_operands,
+      inner_op = LegacyCallOp::create(
+          rewriter, loc, new_types, inner_op_operands,
           /*args_attrs=*/nullptr,
           /*res_attrs=*/nullptr, op_name, disable_call_shape_inference);
     }
 
-    rewriter.create<tf_executor::YieldOp>(loc, inner_op->getResults());
+    tf_executor::YieldOp::create(rewriter, loc, inner_op->getResults());
 
     rewriter.replaceOp(op, island.getOperation()->getResults());
 
