@@ -70,46 +70,47 @@ TEST(CompactLayoutTest, ByteSize) {
   {
     TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kToken), Shape({})),
-                IsOkAndHolds(std::nullopt));
+                absl_testing::IsOkAndHolds(std::nullopt));
   }
   {
     TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kOpaque), Shape({})),
-                IsOkAndHolds(std::nullopt));
+                absl_testing::IsOkAndHolds(std::nullopt));
   }
   {
     TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kString), Shape({})),
-                IsOkAndHolds(std::nullopt));
+                absl_testing::IsOkAndHolds(std::nullopt));
   }
   {
     TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kS8), Shape({})),
-                IsOkAndHolds(Optional(1)));
+                absl_testing::IsOkAndHolds(Optional(1)));
   }
   {
     TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kS32), Shape({})),
-                IsOkAndHolds(Optional(4)));
+                absl_testing::IsOkAndHolds(Optional(4)));
   }
   {
     TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({1, 0}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kS32), Shape({3, 2})),
-                IsOkAndHolds(Optional(24)));
+                absl_testing::IsOkAndHolds(Optional(24)));
   }
   {
     TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({1, 0}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kS4), Shape({3, 2})),
-                IsOkAndHolds(Optional(3)));
+                absl_testing::IsOkAndHolds(Optional(3)));
   }
   {
     TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
     EXPECT_THAT(
         layout->ByteSize(DType(DType::kS32), Shape({3, 2})),
-        StatusIs(tsl::error::INVALID_ARGUMENT,
-                 HasSubstr(
-                     "CompactLayout expects Shape with the same number of "
-                     "dimensions as major_to_minor [], but got shard_shape=")));
+        absl_testing::StatusIs(
+            tsl::error::INVALID_ARGUMENT,
+            HasSubstr(
+                "CompactLayout expects Shape with the same number of "
+                "dimensions as major_to_minor [], but got shard_shape=")));
   }
 }
 
@@ -182,14 +183,14 @@ TEST(LayoutTest, EquivalentLayouts) {
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout0,
             DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout1),
-        IsOkAndHolds(false));
+        absl_testing::IsOkAndHolds(false));
     EXPECT_THAT(
         EquivalentLayouts(
             DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout1,
             DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout0),
-        IsOkAndHolds(false));
+        absl_testing::IsOkAndHolds(false));
   }
 
   // Two same concrete layouts are equivalent.
@@ -202,7 +203,7 @@ TEST(LayoutTest, EquivalentLayouts) {
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout0,
             DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout1),
-        IsOkAndHolds(true));
+        absl_testing::IsOkAndHolds(true));
   }
   // Two different concrete layouts are not equivalent.
   {
@@ -214,7 +215,7 @@ TEST(LayoutTest, EquivalentLayouts) {
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout0,
             DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout1),
-        IsOkAndHolds(false));
+        absl_testing::IsOkAndHolds(false));
   }
 
   // Default layouts are equivalent if they resolve to the same concrete layout.
@@ -227,14 +228,14 @@ TEST(LayoutTest, EquivalentLayouts) {
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout0,
             DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout1),
-        IsOkAndHolds(true));
+        absl_testing::IsOkAndHolds(true));
     EXPECT_THAT(
         EquivalentLayouts(
             DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout0,
             DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device1.get(), MemoryKind()), layout1),
-        IsOkAndHolds(true));
+        absl_testing::IsOkAndHolds(true));
   }
   // Default layouts are not equivalent if they resolve to different concrete
   // layouts.
@@ -247,7 +248,7 @@ TEST(LayoutTest, EquivalentLayouts) {
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout0,
             DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device2.get(), MemoryKind()), layout1),
-        IsOkAndHolds(false));
+        absl_testing::IsOkAndHolds(false));
   }
 }
 
