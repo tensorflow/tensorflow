@@ -58,7 +58,7 @@ absl::StatusOr<bool> CreateCollectivesGroupAsyncPair(HloInstruction* instr) {
   HloInstruction* async_start =
       computation->AddInstruction(HloInstruction::CreateAsyncStart(
           ShapeUtil::MakeTupleShape(start_shapes), instr->operands(),
-          new_computation, "explicit"));
+          new_computation, "main"));
   HloInstruction* async_done = computation->AddInstruction(
       HloInstruction::CreateAsyncDone(instr->shape(), async_start));
   // Forward frontend attributes to both async instructions.
