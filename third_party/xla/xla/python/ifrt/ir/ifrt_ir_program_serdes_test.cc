@@ -185,9 +185,10 @@ module {
   auto options = std::make_unique<SerializeIfrtIRProgramOptions>(
       Version::getCurrentVersion().toString(),
       ::mlir::vhlo::Version::getCurrentVersion().toString());
-  EXPECT_THAT(Serialize(*initial_program, std::move(options)),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("Failed to version IFRT IR program")));
+  EXPECT_THAT(
+      Serialize(*initial_program, std::move(options)),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("Failed to version IFRT IR program")));
 }
 
 TEST_P(IfrtIRProgramSerDesTest, DeserializationError) {
@@ -225,9 +226,10 @@ module {
 
   serialized.set_data("invalid data");
 
-  EXPECT_THAT(Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr),
-              StatusIs(Not(absl::StatusCode::kOk),
-                       HasSubstr("Failed to parse IfrtIrProgramProto")));
+  EXPECT_THAT(
+      Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr),
+      absl_testing::StatusIs(Not(absl::StatusCode::kOk),
+                             HasSubstr("Failed to parse IfrtIrProgramProto")));
 }
 
 INSTANTIATE_TEST_SUITE_P(
