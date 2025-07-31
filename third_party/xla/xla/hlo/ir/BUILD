@@ -59,8 +59,6 @@ cc_library(
     ],
     deps = [
         ":backend_config",
-        ":collective_op_group_mode",
-        ":hlo_op_metadata",
         ":hlo_sharding",
         ":ptrvec",
         ":tile_assignment",

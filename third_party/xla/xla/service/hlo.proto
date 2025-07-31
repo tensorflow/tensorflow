@@ -869,7 +869,7 @@ message HloPassMetadata {
 
 message OriginalValueRecoveryTableProto {
   message Entry {
-    OriginalArrayProto removed_original_array = 1;
+    OriginalArrayProto replaced_original_array = 1;
     OriginalArrayProto replacing_original_array = 2;
     HloModuleProto recovery_module = 3;
   }
