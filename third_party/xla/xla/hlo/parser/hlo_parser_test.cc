@@ -4891,7 +4891,7 @@ ENTRY TupleTypo {
 )";
   auto result = ParseAndReturnVerifiedModule(text);
   EXPECT_THAT(result.status(),
-              tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+              absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
                                      HasSubstr("instruction does not exist")));
 }
 
@@ -5133,7 +5133,7 @@ ENTRY test {
   ROOT root = f32[10,10]{1,0:D(X,C)} parameter(0)
 })";
   EXPECT_THAT(ParseAndReturnUnverifiedModule(original).status(),
-              tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("expected a DimLevelType abbreviation")));
 }
@@ -5146,7 +5146,7 @@ ENTRY test {
 })";
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(original).status(),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr(
               "Layout has physical shape, but is not for a sparse array")));
@@ -5328,7 +5328,7 @@ ENTRY AsyncStartMissingOperandWrapper {
   )";
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(hlo_string).status(),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("AsyncStart and AsyncUpdate expect the op shape to be "
                     "in the form of "
@@ -5353,7 +5353,7 @@ ENTRY AsyncUpdateMissingOperandWrapper {
   )";
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(hlo_string).status(),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("AsyncStart and AsyncUpdate expect the op shape to be "
                     "in the form of "
@@ -5377,7 +5377,7 @@ ENTRY AsyncStartAndAsyncDone {
   )";
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(hlo_string).status(),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("AsyncStart and AsyncUpdate expect the op shape to be "
                     "in the form of "
@@ -5397,7 +5397,7 @@ ENTRY AsyncStartAndAsyncDone {
   )";
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(hlo_string).status(),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("AsyncUpdate and AsyncDone expect their operand to be "
                     "the previous async op.")));
@@ -5417,7 +5417,7 @@ ENTRY AsyncStartAndAsyncDone {
   )";
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(hlo_string).status(),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("AsyncUpdate and AsyncDone expect their operand to be "
                     "the previous async op.")));
@@ -5435,7 +5435,7 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 }
   )";
   EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
-              tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("Expect async wrapped opcode to be custom-call, "
                             "but got add")));
@@ -5453,7 +5453,7 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 }
   )";
   EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
-              tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("Expect async wrapped opcode to be custom-call, "
                             "but got add")));
@@ -5478,7 +5478,7 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
   )";
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(hlo_string).status(),
-      tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+      absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
                              HasSubstr("Computation async_wrapped is called by "
                                        "more than one async op")));
 }
@@ -5506,7 +5506,7 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
   )";
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(hlo_string).status(),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("Expect async_wrapped_computation to be async_wrapped.0, "
                     "but got async_wrapped.1")));
@@ -5535,7 +5535,7 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
   )";
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(hlo_string).status(),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("Expect async_wrapped_computation to be async_wrapped.0, "
                     "but got async_wrapped.1")));
@@ -5553,7 +5553,7 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 }
   )";
   EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
-              tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("Expect async_execution_thread to be main, "
                             "but got foo_thread")));
@@ -5571,7 +5571,7 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 }
   )";
   EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
-              tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("Expect async_execution_thread to be main, "
                             "but got foo_thread")));
@@ -5695,7 +5695,7 @@ ENTRY %test {
 
 )";
   EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
-              tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+              absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
                                      HasSubstr("expects instruction shape")));
 }
 
@@ -5765,7 +5765,7 @@ TEST_F(HloParserTest, TranscendentalAccuracyModeError) {
   }
   )";
   ASSERT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
-              ::tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   absl::StatusCode::kInvalidArgument,
                   HasSubstr("expects ResultAccuracy type but sees: high")));
 }
