@@ -2016,9 +2016,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
 
   auto copy_to_staging_buffer = [allocator = host_memory_allocator(), data,
                                  byte_size, type, packed_size,
-                                 transpose{std::move(transpose)}, should_pack,
-                                 on_done_with_host_buffer = std::move(
-                                     on_done_with_host_buffer)]() mutable {
+                                 transpose{std::move(transpose)},
+                                 should_pack]() mutable {
     tsl::profiler::TraceMe traceme("BufferFromHostBuffer::H2D_staging_copy");
 
     HostMemoryAllocator::OwnedPtr staging_buffer =
@@ -2041,9 +2040,6 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
     }
     if (data_ptr != buffer) {
       std::memcpy(buffer, data_ptr, byte_size);
-    }
-    if (on_done_with_host_buffer) {
-      std::move(on_done_with_host_buffer)();
     }
     VLOG(3) << "H2D staging copy done";
     return staging_buffer;
@@ -2093,17 +2089,30 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
   // Define H2D copy lambda. First, copy host data to staging buffer, then copy
   // staging buffer to GPU device.
   auto h2d_copy = [this, use_staging_buffer,
+                   on_done_with_host_buffer =
+                       std::move(on_done_with_host_buffer),
                    copy_to_staging_buffer(std::move(copy_to_staging_buffer)),
                    h2d_do_copy(std::move(h2d_do_copy))]() mutable {
     HostMemoryAllocator::OwnedPtr staging_buffer;
+
     if (use_staging_buffer) {
       staging_buffer = copy_to_staging_buffer();
+
+      if (on_done_with_host_buffer) {
+        std::move(on_done_with_host_buffer)();
+      }
     }
 
     EnqueueWork(blocking_thread_pool_.get(),
                 [h2d_do_copy(std::move(h2d_do_copy)),
-                 staging_buffer(std::move(staging_buffer))]() mutable {
+                 staging_buffer(std::move(staging_buffer)),
+                 on_done_with_host_buffer =
+                     std::move(on_done_with_host_buffer)]() mutable {
                   h2d_do_copy(std::move(staging_buffer));
+
+                  if (on_done_with_host_buffer) {
+                    std::move(on_done_with_host_buffer)();
+                  }
                 });
   };
 
