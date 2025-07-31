@@ -165,15 +165,16 @@ TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshot) {
   SnapshotWriterParams writer_params{snapshot_path, /*stream_index=*/0,
                                      Compression(), Env::Default()};
   SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
-  EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
+  EXPECT_THAT(snapshot_writer.Wait(), absl_testing::IsOkAndHolds(true));
 
   // The data is written to the committed chunks directory. The uncommitted
   // files are deleted.
   EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, Compression()),
-              IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+              absl_testing::IsOkAndHolds(
+                  UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
   EXPECT_THAT(
       GetChildren(writer_params.UncommittedChunksDirectory(), Env::Default()),
-      IsOkAndHolds(IsEmpty()));
+      absl_testing::IsOkAndHolds(IsEmpty()));
 
   // Writes at least 10 elements of 8 bytes.
   EXPECT_GE(cell_reader.Delta(), 80);
@@ -188,16 +189,18 @@ TEST_P(SnapshotStreamWriterParameterizedTest, StreamAlreadyCompleted) {
   SnapshotWriterParams writer_params{snapshot_path, /*stream_index=*/0,
                                      Compression(), Env::Default()};
   SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
-  EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
+  EXPECT_THAT(snapshot_writer.Wait(), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, Compression()),
-              IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+              absl_testing::IsOkAndHolds(
+                  UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 
   // Writes the same snapshot.
   TF_ASSERT_OK_AND_ASSIGN(iterator, TestIterator(testing::RangeDataset(range)));
   SnapshotStreamWriter duplicate_writer(writer_params, std::move(iterator));
-  EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
+  EXPECT_THAT(snapshot_writer.Wait(), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, Compression()),
-              IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+              absl_testing::IsOkAndHolds(
+                  UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 }
 
 TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshotChunks) {
@@ -210,14 +213,15 @@ TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshotChunks) {
                                      Compression(), Env::Default(),
                                      /*max_chunk_size=*/ByteSize::Bytes(1)};
   SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
-  EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
+  EXPECT_THAT(snapshot_writer.Wait(), absl_testing::IsOkAndHolds(true));
 
   // There should be `range` chunks, each containing one element.
   EXPECT_THAT(
       GetChildren(writer_params.CommittedChunksDirectory(), Env::Default()),
-      IsOkAndHolds(SizeIs(range)));
+      absl_testing::IsOkAndHolds(SizeIs(range)));
   EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, Compression()),
-              IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+              absl_testing::IsOkAndHolds(
+                  UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 }
 
 TEST_P(SnapshotStreamWriterParameterizedTest, WriteDoneFile) {
@@ -232,18 +236,18 @@ TEST_P(SnapshotStreamWriterParameterizedTest, WriteDoneFile) {
       StreamDirectory(snapshot_path, /*stream_index=*/0), "ERROR");
 
   EXPECT_THAT(Env::Default()->FileExists(done_file_path),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
   EXPECT_THAT(Env::Default()->FileExists(error_file_path),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
   SnapshotWriterParams writer_params{snapshot_path, /*stream_index=*/0,
                                      Compression(), Env::Default(),
                                      /*max_chunk_size=*/ByteSize::Bytes(1)};
   SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
-  EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
+  EXPECT_THAT(snapshot_writer.Wait(), absl_testing::IsOkAndHolds(true));
   TF_EXPECT_OK(Env::Default()->FileExists(done_file_path));
   EXPECT_THAT(Env::Default()->FileExists(error_file_path),
-              StatusIs(absl::StatusCode::kNotFound));
-  EXPECT_THAT(snapshot_writer.Completed(), IsOkAndHolds(true));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
+  EXPECT_THAT(snapshot_writer.Completed(), absl_testing::IsOkAndHolds(true));
 }
 
 TEST_P(SnapshotStreamWriterParameterizedTest, WriteErrorFile) {
@@ -259,23 +263,23 @@ TEST_P(SnapshotStreamWriterParameterizedTest, WriteErrorFile) {
       StreamDirectory(snapshot_path, /*stream_index=*/0), "ERROR");
 
   EXPECT_THAT(Env::Default()->FileExists(done_file_path),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
   EXPECT_THAT(Env::Default()->FileExists(error_file_path),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
   SnapshotWriterParams writer_params{snapshot_path, /*stream_index=*/0,
                                      Compression(), Env::Default(),
                                      /*max_chunk_size=*/ByteSize::Bytes(1)};
   SnapshotStreamWriter snapshot_writer(writer_params,
                                        std::move(error_iterator));
   EXPECT_THAT(snapshot_writer.Wait(),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(Env::Default()->FileExists(done_file_path),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
   TF_EXPECT_OK(Env::Default()->FileExists(error_file_path));
   EXPECT_THAT(ReadStringFromFile(error_file_path),
-              IsOkAndHolds(HasSubstr("Invalid argument")));
+              absl_testing::IsOkAndHolds(HasSubstr("Invalid argument")));
   EXPECT_THAT(snapshot_writer.Completed(),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 INSTANTIATE_TEST_SUITE_P(Compression, SnapshotStreamWriterParameterizedTest,
@@ -293,10 +297,10 @@ TEST(SnapshotStreamWriterTest, EmptyDataset) {
                                      tsl::io::compression::kSnappy,
                                      Env::Default()};
   SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
-  EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
+  EXPECT_THAT(snapshot_writer.Wait(), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path,
                                              tsl::io::compression::kSnappy),
-              IsOkAndHolds(IsEmpty()));
+              absl_testing::IsOkAndHolds(IsEmpty()));
 }
 
 TEST(SnapshotStreamWriterTest, Cancel) {
@@ -310,7 +314,8 @@ TEST(SnapshotStreamWriterTest, Cancel) {
                                      Env::Default()};
   SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
   snapshot_writer.Cancel();
-  EXPECT_THAT(snapshot_writer.Wait(), StatusIs(absl::StatusCode::kCancelled));
+  EXPECT_THAT(snapshot_writer.Wait(),
+              absl_testing::StatusIs(absl::StatusCode::kCancelled));
 }
 
 }  // namespace
