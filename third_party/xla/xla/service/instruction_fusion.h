@@ -223,12 +223,16 @@ class InstructionFusion : public HloModulePass {
   // Returns whether a 'producer' at given operand index can be fused into the
   // consumer. It uses the provided function to check the legality of a possible
   // fusion when either the producer or the consumer contains an operation which
-  // updates an operand in place.
+  // updates an operand in place. If legality_check_only is true, only strict
+  // legality check is performed and factors such as operand duplication and
+  // profitability are not taken into account. Legality checks ensure that
+  // fusions formed are semantically correct and they are lowerable.
   virtual FusionDecision ShouldFuse(
       HloInstruction* consumer, int64_t operand_index,
       std::function<FusionDecision(const HloInstruction*, const HloInstruction*,
                                    std::optional<const InPlaceFusionOptions>)>
-          inplace_op_fusion_decider);
+          inplace_op_fusion_decider,
+      bool legality_check_only = false);
 
   // Returns whether multi-output fusion can be applied to fuse `producer` into
   // `consumer`. In contrast to "regular" fusion, the `producer` is not
