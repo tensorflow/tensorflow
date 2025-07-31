@@ -59,6 +59,10 @@ struct PackedArgs {
       replacement_args.push_back(i);
     }
 
+    // Do not erase arguments for the entry function, because that will change
+    // kernel launch interface.
+    bool is_entry_func = func->hasAttr(kXlaEntryAttr);
+
     for (auto [idx, operand] : llvm::enumerate(func.getArguments())) {
       auto slice_index = func.getArgAttr(idx, "xla.slice_index");
       if (!slice_index) {
@@ -69,7 +73,7 @@ struct PackedArgs {
           mlir::cast<mlir::IntegerAttr>(slice_index).getInt())];
       if (target_index) {
         replacement_args[idx] = *target_index;
-        args_to_erase[idx] = true;
+        args_to_erase[idx] = !is_entry_func;
       } else {
         target_index = idx;
       }
@@ -83,13 +87,8 @@ struct PackedArgs {
       }
     }
 
-    // Do not pack arguments for the entry function, because that will change
-    // kernel launch interface.
-    if (!op->hasAttr(kXlaEntryAttr)) {
-      auto res = op.eraseArguments(args_to_erase);
-      (void)res;
-      assert(llvm::succeeded(res));
-    }
+    [[maybe_unused]] auto res = op.eraseArguments(args_to_erase);
+    assert(llvm::succeeded(res));
 
     for (int i = 0; i < op.getNumArguments(); ++i) {
       if (op.getArgAttr(i, "xla.slice_index")) {
