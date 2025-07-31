@@ -1037,7 +1037,7 @@ TEST_F(HloCseTest, ResultAccuracyCseKey) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   HloCSE cse(/*is_layout_sensitive=*/false);
   // same result accuracy, so one of the exponentials should be dropped
-  EXPECT_THAT(cse.Run(m.get()), IsOkAndHolds(true));
+  EXPECT_THAT(cse.Run(m.get()), absl_testing::IsOkAndHolds(true));
   HloInstruction* root = m->entry_computation()->root_instruction();
   ASSERT_EQ(root->operand_count(), 4);
   EXPECT_NE(root->operand(0), root->operand(1));
@@ -1066,7 +1066,7 @@ ENTRY main {
         // Ignore that doing this is generally unsafe.
         return instruction->IsCustomCall("custom_call");
       });
-  EXPECT_THAT(cse.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(cse.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
   // Same custom call should used for each tuple element.
   HloInstruction* root = module->entry_computation()->root_instruction();

@@ -462,7 +462,7 @@ TEST_F(LegalizeSchedulingAnnotationsTest, ProgagateAnnotationToGap) {
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   VLOG(1) << "module after: " << hlo_module->ToString();
   HloInstruction* slice =
       hlo_module->entry_computation()->GetInstructionWithName("slice");
@@ -493,7 +493,7 @@ TEST_F(SchedulingAnnotationPropagationTest, NothingToPropagate) {
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(SchedulingAnnotationPropagationTest, NoDataDependentGap) {
@@ -517,7 +517,7 @@ TEST_F(SchedulingAnnotationPropagationTest, NoDataDependentGap) {
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(SchedulingAnnotationPropagationTest, GapDueToControlDependency) {
@@ -541,7 +541,7 @@ TEST_F(SchedulingAnnotationPropagationTest, GapDueToControlDependency) {
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   VLOG(1) << "module after: " << hlo_module->ToString();
   HloInstruction* c0 =
       hlo_module->entry_computation()->GetInstructionWithName("c0");
@@ -582,7 +582,7 @@ TEST_F(SchedulingAnnotationPropagationTest, GapDueToControlDependency2) {
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   VLOG(1) << "module after: " << hlo_module->ToString();
   HloInstruction* slice =
       hlo_module->entry_computation()->GetInstructionWithName("slice");
@@ -625,7 +625,7 @@ TEST_F(SchedulingAnnotationPropagationTest, TwoGroups) {
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   VLOG(1) << "module after: " << hlo_module->ToString();
   HloInstruction* slice =
       hlo_module->entry_computation()->GetInstructionWithName("slice");
@@ -676,7 +676,7 @@ TEST_F(SchedulingAnnotationPropagationTest, CrossComputationAnnotation) {
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   VLOG(1) << "module after: " << hlo_module->ToString();
   HloInstruction* slice = hlo_module->GetComputationWithName("while_body")
                               ->GetInstructionWithName("slice");

@@ -357,7 +357,7 @@ TEST_F(ShapeInferenceTest, Atan2FailsWithIntegerInput) {
       ShapeInference::InferBinaryOpShape(HloOpcode::kAtan2, input, input, {});
   EXPECT_THAT(
       inferred_shape.status(),
-      tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+      absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
                              HasSubstr("Expected input element type to be "
                                        "floating or complex for atan2")));
 }
@@ -409,7 +409,7 @@ TEST_F(ShapeInferenceTest, ComplexCbrtIsNotSupported) {
       ShapeInference::InferUnaryOpShape(HloOpcode::kCbrt, input);
   EXPECT_THAT(
       inferred_shape.status(),
-      tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+      absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
                              HasSubstr("Expected element type in shape to be "
                                        "floating for cbrt operation")));
 }
