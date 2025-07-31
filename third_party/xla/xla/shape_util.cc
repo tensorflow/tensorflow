@@ -1663,7 +1663,7 @@ ShapeUtil::DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
       LayoutPerm(input_shape), InversePermutation(LayoutPerm(output_shape)));
 
   std::vector<int64_t> new_dims =
-      ComposePermutations(input_shape.dimensions(), transpose_perm);
+      Permute(input_shape.dimensions(), transpose_perm);
   if (!absl::c_equal(output_shape.dimensions(), new_dims)) {
     return std::nullopt;
   }

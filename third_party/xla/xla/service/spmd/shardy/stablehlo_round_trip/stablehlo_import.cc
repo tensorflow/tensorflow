@@ -74,6 +74,7 @@ limitations under the License.
 #include "xla/service/spmd/shardy/stablehlo_round_trip/shard_map_import.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -360,14 +361,11 @@ struct MeshAxesAndIds {
   SmallVector<int64_t> maximalDeviceIds;
 };
 
-// Collect shardings with the attr name kXlaShardingAttr. Find common axes for
-// these shardings and device ids for maximal shardings.
-MeshAxesAndIds findMeshAxesAndIds(ModuleOp moduleOp) {
+MeshAxesAndIds findMeshAxesAndIds(
+    const absl::flat_hash_set<xla::HloSharding>& oldShardings,
+    mlir::MLIRContext* context) {
   MeshAxesAndIds result;
   auto& [namedAxes, maximalDeviceIds] = result;
-  // 1. Collect old shardings in the format of xla::HloSharding.
-  const absl::flat_hash_set<xla::HloSharding> oldShardings =
-      collectXlaHloShardings(moduleOp);
 
   // 2. Find common axes of old shardings.
   SmallVector<int64_t> axes;
@@ -400,10 +398,8 @@ MeshAxesAndIds findMeshAxesAndIds(ModuleOp moduleOp) {
   //    that we can replace the fake axis names with real axis names later.
   namedAxes.reserve(axes.size());
   for (auto [axisIndex, axisSize] : llvm::enumerate(axes)) {
-    auto name = StringAttr::get(moduleOp->getContext(),
-                                absl::StrCat("_axis_", axisIndex));
-    namedAxes.push_back(
-        MeshAxisAttr::get(moduleOp->getContext(), name, axisSize));
+    auto name = StringAttr::get(context, absl::StrCat("_axis_", axisIndex));
+    namedAxes.push_back(MeshAxisAttr::get(context, name, axisSize));
   }
 
   maximalDeviceIds = llvm::to_vector(maximalDeviceIdSet);
@@ -411,17 +407,41 @@ MeshAxesAndIds findMeshAxesAndIds(ModuleOp moduleOp) {
   return result;
 }
 
-// Returns the first mesh attribute from the module.
+// Collect shardings with the attr name kXlaShardingAttr. Find common axes for
+// these shardings and device ids for maximal shardings.
+MeshAxesAndIds findMeshAxesAndIds(ModuleOp moduleOp) {
+  // 1. Collect old shardings in the format of xla::HloSharding.
+  const absl::flat_hash_set<xla::HloSharding> oldShardings =
+      collectXlaHloShardings(moduleOp);
+  return findMeshAxesAndIds(oldShardings, moduleOp->getContext());
+}
+
+// Returns the first mesh attribute from the module if found, otherwise create
+// mesh with fake axes.
 MeshAttr getMeshAttr(xla::HloModule* module, mlir::MLIRContext* context) {
+  absl::flat_hash_set<xla::HloSharding> oldShardings;
   for (xla::HloComputation* computation : module->computations()) {
     for (xla::HloInstruction* instruction : computation->instructions()) {
-      std::optional<std::string> sharding =
+      std::optional<std::string> sdySharding =
           instruction->get_frontend_attribute(kShardingRoundTripAttr);
-      if (!sharding) {
+
+      if (!sdySharding) {
+        if (!instruction->has_sharding()) {
+          continue;
+        }
+        const xla::HloSharding& hloSharding = instruction->sharding();
+        if (hloSharding.IsTuple()) {
+          for (const xla::HloSharding& elementSharding :
+               hloSharding.tuple_elements()) {
+            oldShardings.insert(elementSharding);
+          }
+        } else {
+          oldShardings.insert(hloSharding);
+        }
         continue;
       }
 
-      mlir::Attribute attr = mlir::parseAttribute(sharding.value(), context);
+      mlir::Attribute attr = mlir::parseAttribute(sdySharding.value(), context);
       mlir::Attribute meshOrRef;
       if (TensorShardingAttr shardingAttr =
               mlir::dyn_cast<TensorShardingAttr>(attr)) {
@@ -441,7 +461,17 @@ MeshAttr getMeshAttr(xla::HloModule* module, mlir::MLIRContext* context) {
       }
     }
   }
-  return MeshAttr::get(context, {});
+
+  // Create fake mesh if no mesh is found.
+  auto [namedAxes, deviceIdsForMaximalMesh] =
+      findMeshAxesAndIds(oldShardings, context);
+  if (namedAxes.empty() && deviceIdsForMaximalMesh.empty()) {
+    // There are no shardings in the module.
+    return MeshAttr::get(context, {});
+  }
+
+  // TODO: Do we need to handle deviceIdsForMaximalMesh ?
+  return MeshAttr::get(context, namedAxes);
 }
 
 }  // namespace
@@ -754,20 +784,21 @@ void registerStablehloImportPipeline() {
                 ArrayRef<bool>(), ArrayRef<bool>()));
 }
 
-// TODO (b/432659630): Add tests
 absl::Status addSdyShardingsToEntryComputation(xla::HloModule* module) {
   mlir::MLIRContext context;
   context.loadDialect<SdyDialect>();
   MeshAttr mesh = getMeshAttr(module, &context);
 
-  auto existingFrontendAttr = [](HloInstruction* instruction) {
+  auto existingFrontendAttr = [](HloInstruction* instruction) -> absl::Status {
     if (instruction->get_frontend_attribute(kShardingRoundTripAttr)
             .has_value()) {
-      LOG(WARNING) << "If instructions of main computation already have "
-                      "sdy.shardings this function should not be called.";
-      return true;
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Instruction ", instruction->name(),
+          " already has sdy.shardings, if instructions of main "
+          "computation already have sdy.shardings this function should not be "
+          "called."));
     }
-    return false;
+    return absl::OkStatus();
   };
 
   auto convertSharding = [mesh](const xla::HloSharding& hloSharding,
@@ -800,9 +831,7 @@ absl::Status addSdyShardingsToEntryComputation(xla::HloModule* module) {
   bool useTupleForArgs = false;
   for (xla::HloInstruction* instruction :
        entryComputation->parameter_instructions()) {
-    if (existingFrontendAttr(instruction)) {
-      return absl::OkStatus();
-    }
+    TF_RETURN_IF_ERROR(existingFrontendAttr(instruction));
     if (instruction->has_sharding() && instruction->sharding().IsTuple()) {
       useTupleForArgs = true;
     }
@@ -854,9 +883,7 @@ absl::Status addSdyShardingsToEntryComputation(xla::HloModule* module) {
   // Handle results
   SmallVector<TensorShardingAttr> resultShardings;
   HloInstruction* rootInstruction = entryComputation->root_instruction();
-  if (existingFrontendAttr(rootInstruction)) {
-    return absl::OkStatus();
-  }
+  TF_RETURN_IF_ERROR(existingFrontendAttr(rootInstruction));
   if (rootInstruction->has_sharding()) {
     const xla::HloSharding& hloSharding = rootInstruction->sharding();
     if (hloSharding.IsTuple()) {
@@ -866,22 +893,19 @@ absl::Status addSdyShardingsToEntryComputation(xla::HloModule* module) {
       int64_t rank = rootInstruction->shape().dimensions().size();
       resultShardings.push_back(convertSharding(hloSharding, rank));
     }
+    module->add_frontend_attribute(
+        kOutTupleShardings.str(),
+        attributeToString(
+            TensorShardingPerValueAttr::get(&context, resultShardings)));
   }
-  module->add_frontend_attribute(
-      kOutTupleShardings.str(),
-      attributeToString(
-          TensorShardingPerValueAttr::get(&context, resultShardings)));
 
   // Handle other instructions
   for (xla::HloInstruction* instruction : entryComputation->instructions()) {
-    if (existingFrontendAttr(instruction)) {
-      return absl::OkStatus();
-    }
-
     if (instruction->opcode() == xla::HloOpcode::kParameter ||
         instruction->IsRoot() || !instruction->has_sharding()) {
       continue;
     }
+    TF_RETURN_IF_ERROR(existingFrontendAttr(instruction));
 
     const xla::HloSharding& hloSharding = instruction->sharding();
     if (hloSharding.IsTuple()) {

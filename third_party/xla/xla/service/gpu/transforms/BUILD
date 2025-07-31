@@ -1219,10 +1219,9 @@ cc_library(
     ],
 )
 
-xla_test(
+xla_cc_test(
     name = "dot_strength_reduction_test",
     srcs = ["dot_strength_reduction_test.cc"],
-    backends = ["gpu"],
     deps = [
         ":dot_strength_reduction",
         "//xla/hlo/ir:hlo",
