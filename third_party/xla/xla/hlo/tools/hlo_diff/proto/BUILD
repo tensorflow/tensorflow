@@ -18,8 +18,3 @@ tf_proto_library(
     name = "diff_result_proto",
     srcs = ["diff_result.proto"],
 )
-
-tf_proto_library(
-    name = "diff_options_proto",
-    srcs = ["diff_options.proto"],
-)
