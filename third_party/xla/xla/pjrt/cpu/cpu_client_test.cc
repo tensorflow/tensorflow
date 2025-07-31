@@ -88,7 +88,6 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$TestError", "Host",
 
 TEST(PjRtCpuClientTest, MemorySpace) {
   CpuClientOptions options;
-  options.legacy_memory_space_behavior = false;
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(std::move(options)));
   ASSERT_GE(client->devices().size(), 1);
 
