@@ -260,7 +260,7 @@ TEST_P(NVPTXCompilationTests, CompileProgram) {
   module->set_config(hlo_module_config);
 
   EXPECT_THAT(CompileExecutable(std::move(module)),
-              tsl::testing::IsOkAndHolds(::testing::NotNull()));
+              absl_testing::IsOkAndHolds(::testing::NotNull()));
 }
 
 MATCHER(MatchesSectionNameAndBinarySize, "") {
@@ -301,8 +301,8 @@ TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
   absl::StatusOr<std::unique_ptr<Executable>> reference =
       compile(PtxCompilationMethod::kPtxas, reference_linking_method);
 
-  ASSERT_THAT(executable, tsl::testing::IsOkAndHolds(::testing::NotNull()));
-  ASSERT_THAT(reference, tsl::testing::IsOkAndHolds(::testing::NotNull()));
+  ASSERT_THAT(executable, absl_testing::IsOkAndHolds(::testing::NotNull()));
+  ASSERT_THAT(reference, absl_testing::IsOkAndHolds(::testing::NotNull()));
 
   absl::Span<const uint8_t> executable_binary =
       static_cast<GpuExecutable*>(executable.value().get())->binary();
