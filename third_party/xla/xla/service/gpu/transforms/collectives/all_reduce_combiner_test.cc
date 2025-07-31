@@ -124,7 +124,7 @@ ENTRY entry {
                                          suggested_threshold_bytes);
   EXPECT_THAT(RunCombiner(module.get(), default_threshold_bytes,
                           default_threshold_bytes),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
   // Pipelined all gathers were combined up to the predefined max available
@@ -209,7 +209,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloString));
   EXPECT_THAT(RunCombiner(module.get(), kDefaultAllGatherCombineThreshold),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
   const absl::string_view kExpected = R"(
@@ -298,7 +298,8 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloString));
-  EXPECT_THAT(RunCombiner(module.get(), threshold_bytes), IsOkAndHolds(true));
+  EXPECT_THAT(RunCombiner(module.get(), threshold_bytes),
+              absl_testing::IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
   // Pipelined all gathers were combined up to the predefined max available
@@ -351,7 +352,7 @@ TEST_F(GpuAllReduceCombinerTest,
   AnnotateWithSuggestedCombinerThreshold(module.get(),
                                          suggested_threshold_bytes);
   EXPECT_THAT(RunCombiner(module.get(), kDefaultAllReduceCombineThreshold),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   Matcher<const HloInstruction*> combined_all_reduce =
       op::AllReduce(op::Parameter(0), op::Parameter(1));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -389,7 +390,8 @@ TEST_F(GpuAllReduceCombinerTest,
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   int64_t threshold_bytes = 10000000000;  // 10GB
-  EXPECT_THAT(RunCombiner(module.get(), threshold_bytes), IsOkAndHolds(false));
+  EXPECT_THAT(RunCombiner(module.get(), threshold_bytes),
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(GpuAllReduceCombinerTest,
@@ -421,7 +423,7 @@ TEST_F(GpuAllReduceCombinerTest,
   AnnotateWithSuggestedCombinerThreshold(module.get(),
                                          suggested_threshold_bytes);
   EXPECT_THAT(RunCombiner(module.get(), kDefaultAllReduceCombineThreshold),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
 }
 
 }  // namespace
