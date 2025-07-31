@@ -1,3 +1,6 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
 # BUILD rules for NNAPI delegate compatibility checking.
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

@@ -148,8 +148,8 @@ LogicalResult HandleWhileOp(
     auto body_ret = body.front().getTerminator();
     auto new_body_returns = llvm::to_vector<8>(body_ret->getOperands());
     for (auto arg : new_args) new_body_returns.push_back(arg);
-    OpBuilder(body_ret).create<func::ReturnOp>(body_ret->getLoc(),
-                                               new_body_returns);
+    OpBuilder builder(body_ret);
+    func::ReturnOp::create(builder, body_ret->getLoc(), new_body_returns);
     body_ret->erase();
   };
   // Handle body.
@@ -178,9 +178,9 @@ LogicalResult HandleWhileOp(
     if (it == data_var_to_size_var.end()) continue;
     new_while_operands.push_back(it->getSecond());
   }
-  auto new_while = builder.create<TF::WhileOp>(
-      while_op.getLoc(), body.getFunctionType().getInputs(), new_while_operands,
-      while_op->getAttrs());
+  auto new_while = TF::WhileOp::create(
+      builder, while_op.getLoc(), body.getFunctionType().getInputs(),
+      new_while_operands, while_op->getAttrs());
   for (int64_t i = 0; i < while_op.getNumResults(); ++i) {
     if (!mlir::isa<TF::ResourceType>(
             getElementTypeOrSelf(while_op.getOperand(i).getType()))) {
@@ -231,9 +231,10 @@ LogicalResult HandleIfOp(
     if (it == data_var_to_size_var.end()) continue;
     new_if_operands.push_back(it->getSecond());
   }
-  auto new_if = OpBuilder(if_op).create<TF::IfOp>(
-      if_op.getLoc(), then_func.getFunctionType().getResults(), new_if_operands,
-      if_op->getAttrs());
+  OpBuilder builder(if_op);
+  auto new_if = TF::IfOp::create(builder, if_op.getLoc(),
+                                 then_func.getFunctionType().getResults(),
+                                 new_if_operands, if_op->getAttrs());
   for (auto result : if_op.getResults()) {
     if (!mlir::isa<TF::ResourceType>(getElementTypeOrSelf(result.getType()))) {
       continue;
@@ -280,9 +281,10 @@ LogicalResult HandlePartitionedCallOp(
       new_operands.push_back(it->getSecond());
     }
     OpBuilder builder(call);
-    auto new_call = builder.create<CallOp>(
-        call.getLoc(), info.decomposed_callee.getFunctionType().getResults(),
-        new_operands, call->getAttrs());
+    auto new_call =
+        CallOp::create(builder, call.getLoc(),
+                       info.decomposed_callee.getFunctionType().getResults(),
+                       new_operands, call->getAttrs());
     new_call->setAttr(
         "f", SymbolRefAttr::get(
                  builder.getContext(),
@@ -376,10 +378,11 @@ LogicalResult HandleStackV2Op(
       {}, TF::ResourceType::get(
               ArrayRef<TensorType>{mlir::cast<TensorType>(buffer.getType())},
               stack.getContext()));
-  auto local_var = builder.create<TF::MlirLocalVarOp>(
-      stack.getLoc(), ArrayRef<Type>{var_type}, ArrayRef<Value>{});
-  auto local_size_var = builder.create<TF::MlirLocalVarOp>(
-      stack.getLoc(), ArrayRef<Type>{size_var_type}, ArrayRef<Value>{});
+  auto local_var = TF::MlirLocalVarOp::create(
+      builder, stack.getLoc(), ArrayRef<Type>{var_type}, ArrayRef<Value>{});
+  auto local_size_var = TF::MlirLocalVarOp::create(
+      builder, stack.getLoc(), ArrayRef<Type>{size_var_type},
+      ArrayRef<Value>{});
   // Zero-initialize the local vars.
   cutil::WriteLocalVariable(local_size_var,
                             cutil::GetR1Const({0LL}, builder, stack.getLoc()),
@@ -411,8 +414,8 @@ LogicalResult HandleStackPushV2Op(
   // Assign the new buffer and size.
   cutil::WriteLocalVariable(push.getHandle(), stack_val, builder,
                             push.getLoc());
-  index = builder.create<TF::AddV2Op>(
-      push.getLoc(), ArrayRef<Type>{index.getType()},
+  index = TF::AddV2Op::create(
+      builder, push.getLoc(), ArrayRef<Type>{index.getType()},
       ArrayRef<Value>{index, cutil::GetR1Const({1}, builder, push.getLoc())});
   cutil::WriteLocalVariable(it->getSecond(), index, builder, push.getLoc());
   push.erase();
@@ -431,8 +434,8 @@ LogicalResult HandleStackPopV2Op(
   auto stack_val =
       cutil::ReadLocalVariable(pop.getHandle(), builder, pop.getLoc());
   auto size = cutil::ReadLocalVariable(it->getSecond(), builder, pop.getLoc());
-  auto new_size = builder.create<TF::SubOp>(
-      pop.getLoc(), ArrayRef<Type>{size.getType()},
+  auto new_size = TF::SubOp::create(
+      builder, pop.getLoc(), ArrayRef<Type>{size.getType()},
       ArrayRef<Value>{size, cutil::GetR1Const({1}, builder, pop.getLoc())});
   auto pop_val = cutil::GetElement(new_size, stack_val, builder, pop.getLoc());
   pop.replaceAllUsesWith(pop_val);

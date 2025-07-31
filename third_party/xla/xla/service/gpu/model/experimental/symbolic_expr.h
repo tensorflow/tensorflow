@@ -17,23 +17,21 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_EXPR_H_
 
 #include <cstdint>
-#include <deque>
-#include <limits>
 #include <string>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseMapInfo.h"
+#include "llvm/ADT/Hashing.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Support/StorageUniquer.h"
 
 namespace xla {
 namespace gpu {
 
 class SymbolicExprContext;
-struct SymbolicExpr;
-struct SymbolicExprStorage;
+class SymbolicExprStorage;
 
 typedef int64_t VariableID;
 
@@ -51,59 +49,107 @@ enum class SymbolicExprType {
   // kIn,  // 'var in [a, b]' .
 };
 
-// TODO(karupayun): This should be modified when implementing
-// SymbolicExprStorage.
 class SymbolicExpr {
  public:
-  SymbolicExpr(SymbolicExpr&&) = default;
-  std::string ToString() const;
-  SymbolicExprType GetType() const { return type_; }
-  SymbolicExpr* GetLHS() const { return lhs_; }
-  SymbolicExpr* GetRHS() const { return rhs_; }
-  int64_t GetValue() const { return value_; }
-  int64_t Evaluate(absl::Span<const int64_t> variable_values) const;
-  SymbolicExpr* ReplaceVariables(absl::Span<SymbolicExpr* const> substitutions,
-                                 SymbolicExprContext* ctx) const;
+  using ImplType = SymbolicExprStorage;
+  /* implicit */ SymbolicExpr(const ImplType* impl = nullptr) : impl_(impl) {}
 
- protected:
-  friend class SymbolicExprContext;
-  SymbolicExpr(SymbolicExprType type, SymbolicExpr* lhs, SymbolicExpr* rhs)
-      : type_(type), lhs_(lhs), rhs_(rhs) {}
-  SymbolicExpr(SymbolicExprType type, int64_t value)
-      : type_(type), value_(value) {}
+  explicit operator bool() const { return impl_ != nullptr; }
+  bool operator!() const { return impl_ == nullptr; }
+  bool operator==(SymbolicExpr other) const { return impl_ == other.impl_; }
+  bool operator!=(SymbolicExpr other) const { return !(*this == other); }
+
+  SymbolicExprContext* GetContext() const;
+  SymbolicExprType GetType() const;
+  SymbolicExpr GetLHS() const;
+  SymbolicExpr GetRHS() const;
+  int64_t GetValue() const;
+  std::string ToString() const;
+  int64_t Evaluate(absl::Span<const int64_t> variable_values) const;
+  SymbolicExpr ReplaceVariables(absl::Span<const SymbolicExpr> substitutions,
+                                SymbolicExprContext* ctx) const;
+
+  SymbolicExpr operator+(int64_t v) const;
+  SymbolicExpr operator+(SymbolicExpr other) const;
+  SymbolicExpr operator-() const;
+  SymbolicExpr operator-(int64_t v) const;
+  SymbolicExpr operator-(SymbolicExpr other) const;
+  SymbolicExpr operator*(int64_t v) const;
+  SymbolicExpr operator*(SymbolicExpr other) const;
+  SymbolicExpr operator/(int64_t v) const { return this->floorDiv(v); }
+  SymbolicExpr operator/(SymbolicExpr other) const {
+    return this->floorDiv(other);
+  }
+  SymbolicExpr operator%(int64_t v) const;
+  SymbolicExpr operator%(SymbolicExpr other) const;
+  SymbolicExpr floorDiv(int64_t v) const;
+  SymbolicExpr floorDiv(SymbolicExpr other) const;
+  SymbolicExpr ceilDiv(int64_t v) const;
+  SymbolicExpr ceilDiv(SymbolicExpr other) const;
+  SymbolicExpr min(int64_t v) const;
+  SymbolicExpr min(SymbolicExpr other) const;
+  SymbolicExpr max(int64_t v) const;
+  SymbolicExpr max(SymbolicExpr other) const;
+
+  const ImplType* GetImpl() const { return impl_; }
 
  private:
-  SymbolicExprType type_;
-  SymbolicExpr* lhs_ = nullptr;
-  SymbolicExpr* rhs_ = nullptr;
-  // Value of the constant or id of the variable.
-  int64_t value_ = std::numeric_limits<int64_t>::min();
+  const ImplType* impl_ = nullptr;
 };
+
+inline ::llvm::hash_code hash_value(SymbolicExpr expr) {
+  return ::llvm::hash_value(expr.GetImpl());
+}
 
 // Maps a set of input variables to a set of output SymbolicExpr trees.
 struct SymbolicMap {
   int64_t num_dimensions;
   int64_t num_ranges;
   int64_t num_symbols;
-  std::vector<SymbolicExpr*> exprs;
+  std::vector<SymbolicExpr> exprs;
 };
 
-struct SymbolicExprContext {
+class SymbolicExprContext {
  public:
-  SymbolicExprContext() = default;
-  SymbolicExpr* Parse(absl::string_view expr_str);
-  SymbolicExpr* CreateConstant(int64_t value);
-  SymbolicExpr* CreateVariable(int64_t var_id);
-  SymbolicExpr* CreateBinaryOp(SymbolicExprType type, SymbolicExpr* lhs,
-                               SymbolicExpr* rhs);
+  SymbolicExprContext();
+  SymbolicExpr Parse(absl::string_view expr_str);
+  SymbolicExpr CreateConstant(int64_t value);
+  SymbolicExpr CreateVariable(int64_t var_id);
+  SymbolicExpr CreateBinaryOp(SymbolicExprType type, SymbolicExpr lhs,
+                              SymbolicExpr rhs);
 
  private:
-  absl::Mutex mutex;
-  // TODO (karupayun): Implement SymbolicExprStorage.
-  std::deque<SymbolicExpr> expr_storage ABSL_GUARDED_BY(mutex);
+  SymbolicExpr GetOrCreate(SymbolicExprType type, int64_t value,
+                           SymbolicExpr lhs, SymbolicExpr rhs);
+  mlir::StorageUniquer uniquer_;
 };
 
 }  // namespace gpu
 }  // namespace xla
+
+namespace llvm {
+
+// SymbolicExpr hash just like pointers
+template <>
+struct DenseMapInfo<xla::gpu::SymbolicExpr> {
+  static xla::gpu::SymbolicExpr getEmptyKey() {
+    auto* pointer = llvm::DenseMapInfo<void*>::getEmptyKey();
+    return xla::gpu::SymbolicExpr(
+        static_cast<xla::gpu::SymbolicExprStorage*>(pointer));
+  }
+  static xla::gpu::SymbolicExpr getTombstoneKey() {
+    auto* pointer = llvm::DenseMapInfo<void*>::getTombstoneKey();
+    return xla::gpu::SymbolicExpr(
+        static_cast<xla::gpu::SymbolicExprStorage*>(pointer));
+  }
+  static unsigned getHashValue(xla::gpu::SymbolicExpr val) {
+    return hash_value(val);
+  }
+  static bool isEqual(xla::gpu::SymbolicExpr LHS, xla::gpu::SymbolicExpr RHS) {
+    return LHS == RHS;
+  }
+};
+
+}  // namespace llvm
 
 #endif  // XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_EXPR_H_

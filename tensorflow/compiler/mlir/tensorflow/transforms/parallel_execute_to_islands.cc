@@ -193,13 +193,13 @@ void CreateIslandsFromParallelExecute(
       island_operands.push_back(execute.getControl());
 
     builder.setInsertionPoint(island_op);
-    auto island_sink = builder.create<tf_executor::IslandOp>(
-        island_op.getLoc(), llvm::ArrayRef<Type>{},
+    auto island_sink = tf_executor::IslandOp::create(
+        builder, island_op.getLoc(), llvm::ArrayRef<Type>{},
         island_op.getControl().getType(), island_operands);
     island_sink.getBody().push_back(new Block);
     builder.setInsertionPointToEnd(&island_sink.GetBody());
-    builder.create<tf_executor::YieldOp>(island_op.getLoc(),
-                                         llvm::ArrayRef<Value>{});
+    tf_executor::YieldOp::create(builder, island_op.getLoc(),
+                                 llvm::ArrayRef<Value>{});
     island_op.getControl().replaceAllUsesWith(island_sink.getControl());
   }
 
@@ -218,7 +218,7 @@ void CreateIslandsFromParallelExecute(
       fetches.append(unused_execute_controls.begin(),
                      unused_execute_controls.end());
       builder.setInsertionPoint(fetch);
-      builder.create<tf_executor::FetchOp>(fetch.getLoc(), fetches);
+      tf_executor::FetchOp::create(builder, fetch.getLoc(), fetches);
       fetch.erase();
     }
   } else {

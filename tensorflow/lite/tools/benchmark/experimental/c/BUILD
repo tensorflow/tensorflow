@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 
 package(

@@ -15,12 +15,9 @@ limitations under the License.
 
 #include "xla/permutation_util.h"
 
-#include <cstddef>
 #include <cstdint>
-#include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/log/check.h"
 #include "absl/types/span.h"
 
 namespace xla {
@@ -34,27 +31,6 @@ bool IsPermutation(absl::Span<const int64_t> permutation) {
     seen[p] = true;
   }
   return true;
-}
-
-std::vector<int64_t> InversePermutation(
-    absl::Span<const int64_t> input_permutation) {
-  DCHECK(IsPermutation(input_permutation));
-  std::vector<int64_t> output_permutation(input_permutation.size(), -1);
-  for (size_t i = 0; i < input_permutation.size(); ++i) {
-    output_permutation[input_permutation[i]] = i;
-  }
-  return output_permutation;
-}
-
-std::vector<int64_t> ComposePermutations(absl::Span<const int64_t> p1,
-                                         absl::Span<const int64_t> p2) {
-  CHECK_EQ(p1.size(), p2.size());
-  std::vector<int64_t> output;
-  output.reserve(p1.size());
-  for (size_t i = 0; i < p1.size(); ++i) {
-    output.push_back(p1.at(p2.at(i)));
-  }
-  return output;
 }
 
 }  // namespace xla
