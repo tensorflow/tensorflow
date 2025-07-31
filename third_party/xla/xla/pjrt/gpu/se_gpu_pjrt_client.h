@@ -25,10 +25,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -187,9 +189,14 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   GetLatestIncarnations();
 
   std::optional<int> num_nodes_;
+  const bool abort_collectives_on_failure_ = false;
   xla::StreamExecutorGpuTopologyDescription topology_;
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
   std::shared_ptr<DistributedRuntimeClient> distributed_client_;
+
+  absl::Mutex task_state_infos_mu_;
+  std::vector<tensorflow::CoordinatedTaskStateInfo> task_state_infos_
+      ABSL_GUARDED_BY(task_state_infos_mu_);
 };
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
