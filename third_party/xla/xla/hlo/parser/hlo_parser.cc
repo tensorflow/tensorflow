@@ -6693,6 +6693,9 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
   optional<std::string> op_name;
   optional<std::string> source_file;
   optional<int32_t> source_line;
+  optional<int32_t> source_end_line;
+  optional<int32_t> source_column;
+  optional<int32_t> source_end_column;
   optional<std::vector<int64_t>> profile_type;
   optional<std::string> deduplicated_name;
   optional<std::string> scheduling_name;
@@ -6700,6 +6703,11 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
   attrs["op_name"] = {/*required=*/false, AttrTy::kString, &op_name};
   attrs["source_file"] = {/*required=*/false, AttrTy::kString, &source_file};
   attrs["source_line"] = {/*required=*/false, AttrTy::kInt32, &source_line};
+  attrs["source_end_line"] = {/*required=*/false, AttrTy::kInt32,
+                              &source_end_line};
+  attrs["source_column"] = {/*required=*/false, AttrTy::kInt32, &source_column};
+  attrs["source_end_column"] = {/*required=*/false, AttrTy::kInt32,
+                                &source_end_column};
   attrs["profile_type"] = {/*required=*/false, AttrTy::kBracedInt64List,
                            &profile_type};
   attrs["deduplicated_name"] = {/*required=*/false, AttrTy::kString,
@@ -6720,6 +6728,15 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
   }
   if (source_line) {
     metadata.set_source_line(*source_line);
+  }
+  if (source_end_line) {
+    metadata.set_source_end_line(*source_end_line);
+  }
+  if (source_column) {
+    metadata.set_source_column(*source_column);
+  }
+  if (source_end_column) {
+    metadata.set_source_end_column(*source_end_column);
   }
   if (profile_type) {
     for (const auto& type : *profile_type) {

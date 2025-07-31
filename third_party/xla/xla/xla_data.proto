@@ -430,6 +430,9 @@ message OpMetadata {
   // e.g. it could be the file and line of user code that generated the op.
   string source_file = 3;
   int32 source_line = 4;
+  int32 source_end_line = 17;
+  int32 source_column = 18;
+  int32 source_end_column = 19;
 
   // Deprecated, use [ProfileInfo][profile_type] instead.
   repeated ProfileType profile_type = 5 [deprecated = true];

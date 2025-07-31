@@ -394,6 +394,21 @@ TEST_F(HloMatchersTest, MetadataMatcher) {
   actual_source_line.set_op_name("op_name1");
   actual_source_line.set_source_line(1);
 
+  OpMetadata actual_source_end_line;
+  actual_source_end_line.set_op_type("op_type1");
+  actual_source_end_line.set_op_name("op_name1");
+  actual_source_end_line.set_source_end_line(1);
+
+  OpMetadata actual_source_column;
+  actual_source_column.set_op_type("op_type1");
+  actual_source_column.set_op_name("op_name1");
+  actual_source_column.set_source_column(1);
+
+  OpMetadata actual_source_end_column;
+  actual_source_end_column.set_op_type("op_type1");
+  actual_source_end_column.set_op_name("op_name1");
+  actual_source_end_column.set_source_end_column(1);
+
   EXPECT_THAT(Explain(p0.get(), op::Metadata(actual_opname)),
               HasSubstr("has wrong metadata (got op_name1, want op_name2)"));
   EXPECT_THAT(Explain(p0.get(), op::Metadata(actual_source_file)),
@@ -405,8 +420,17 @@ TEST_F(HloMatchersTest, MetadataMatcher) {
   EXPECT_THAT(Explain(p0.get(), op::Metadata(actual_source_line)),
               HasSubstr("has wrong metadata (got 0"
                         ", want 1)"));
+  EXPECT_THAT(Explain(p0.get(), op::Metadata(actual_source_end_line)),
+              HasSubstr("has wrong metadata (got 0"
+                        ", want 1)"));
+  EXPECT_THAT(Explain(p0.get(), op::Metadata(actual_source_column)),
+              HasSubstr("has wrong metadata (got 0"
+                        ", want 1)"));
+  EXPECT_THAT(Explain(p0.get(), op::Metadata(actual_source_end_column)),
+              HasSubstr("has wrong metadata (got 0"
+                        ", want 1)"));
   EXPECT_THAT(DescribeHloMatcher(op::Metadata(p0->metadata())),
-              R"( (metadata: op_type1 op_name1  0))");
+              R"( (metadata: op_type1 op_name1  0 0 0 0))");
 }
 }  // namespace
 }  // namespace xla
