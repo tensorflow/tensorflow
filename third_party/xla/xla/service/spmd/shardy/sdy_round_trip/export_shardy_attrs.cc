@@ -106,8 +106,8 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
       // Op's sharding to the FuncOp's result and delete te temporary custom
       // call.
       Value returnValue = returnOperand.get();
-      auto customCallOp = builder.create<CustomCallOp>(
-          returnValue.getLoc(), returnValue.getType(), returnValue);
+      auto customCallOp = CustomCallOp::create(
+          builder, returnValue.getLoc(), returnValue.getType(), returnValue);
       customCallOp.setCallTargetName(kFuncResultShardingTargetName);
       // Want to prevent the canonicalizer from de-duplicating func sharding
       // custom calls which actually may have different sharding attributes.
