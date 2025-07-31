@@ -49,7 +49,6 @@
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt_proxy/client/global_flags.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/array_util.h"
@@ -256,14 +255,12 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
 Array::MakeArraysFromHostBufferShards(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
     absl::Span<xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec> specs,
-    xla::ifrt::Client::HostBufferSemantics semantics,
-    tsl::RCReference<xla::ifrt::UserContext> user_context) {
+    xla::ifrt::Client::HostBufferSemantics semantics) {
   if (rpc_helper->protocol_version() <
       protocol_version::kMakeArraysFromHostBufferShards) {
-    return xla::ifrt::ClientMakeArraysFromHostBufferShards(
-        client, specs, semantics, std::move(user_context));
+    return xla::ifrt::ClientMakeArraysFromHostBufferShards(client, specs,
+                                                           semantics);
   }
-  // TODO(b/407104769): Handle `user_context`.
 
   absl::InlinedVector<absl::InlinedVector<uint64_t, 1>, 1>
       host_buffer_handles_for_specs;
@@ -382,8 +379,7 @@ Array::MakeArraysFromHostBufferShards(
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::MakeErrorArrays(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
-    const absl::Status& error, absl::Span<const ArraySpec> array_specs,
-    tsl::RCReference<UserContext> user_context) {
+    const absl::Status& error, absl::Span<const ArraySpec> array_specs) {
   auto req = std::make_unique<MakeErrorArraysRequest>();
   *req->mutable_error() = tsl::StatusToProto(error);
 

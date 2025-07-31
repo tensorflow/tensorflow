@@ -42,7 +42,6 @@
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
-#include "xla/python/ifrt/user_context.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
@@ -85,8 +84,7 @@ TEST(NanoIfrtClientTest, BigResult) {
   auto a_array = client->MakeArrayFromHostBuffer(
       &a, dtype, shape, std::nullopt, client->default_sharding(),
       ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
-      /*on_done_with_host_buffer=*/nullptr,
-      tsl::RCReference<ifrt::UserContext>());
+      /*on_done_with_host_buffer=*/nullptr);
   CHECK_OK(a_array);
 
   auto result =
@@ -144,7 +142,7 @@ static absl::StatusOr<ifrt::ArrayRef> MakeArrayFromLiteral(
       ifrt::Shape(literal.shape().dimensions()),
       /*byte_strides=*/std::nullopt, std::move(sharding),
       ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
-      /*on_done_with_host_buffer=*/{}, tsl::RCReference<ifrt::UserContext>());
+      /*on_done_with_host_buffer=*/{});
 }
 
 static void BM_IfRtAddScalars(benchmark::State& state) {

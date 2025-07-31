@@ -37,9 +37,7 @@ limitations under the License.
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
-#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -116,9 +114,7 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
                          const void* data, DType dtype, Shape shape,
                          std::optional<absl::Span<const int64_t>> byte_strides,
                          ShardingRef sharding, HostBufferSemantics semantics,
-                         std::function<void()> on_done_with_host_buffer,
-                         tsl::RCReference<UserContext> user_context) {
-        // Currently the `user_context` parameter is ignored.
+                         std::function<void()> on_done_with_host_buffer) {
         return delegated_->MakeArrayFromHostBuffer(
             data, dtype, std::move(shape), byte_strides, std::move(sharding),
             semantics, std::move(on_done_with_host_buffer));
@@ -126,17 +122,13 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
   ON_CALL(*this, MakeArraysFromHostBufferShards)
       .WillByDefault(
           [this](absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
-                 HostBufferSemantics semantics,
-                 tsl::RCReference<UserContext> user_context) {
-            return delegated_->MakeArraysFromHostBufferShards(
-                specs, semantics, std::move(user_context));
+                 HostBufferSemantics semantics) {
+            return delegated_->MakeArraysFromHostBufferShards(specs, semantics);
           });
   ON_CALL(*this, MakeErrorArrays)
       .WillByDefault([this](const absl::Status& error,
-                            absl::Span<const ArraySpec> array_specs,
-                            tsl::RCReference<UserContext> user_context) {
-        return delegated_->MakeErrorArrays(error, array_specs,
-                                           std::move(user_context));
+                            absl::Span<const ArraySpec> array_specs) {
+        return delegated_->MakeErrorArrays(error, array_specs);
       });
   ON_CALL(*this, AssembleArrayFromSingleDeviceArrays(_, _, _, _, _, _))
       .WillByDefault(

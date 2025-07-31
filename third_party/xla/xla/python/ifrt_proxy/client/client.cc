@@ -50,7 +50,6 @@
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/array.h"
 #include "xla/python/ifrt_proxy/client/device.h"
@@ -254,9 +253,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> Client::MakeArrayFromHostBuffer(
     const void* data, DType dtype, Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides, ShardingRef sharding,
     xla::ifrt::Client::HostBufferSemantics semantics,
-    std::function<void()> on_done_with_host_buffer,
-    tsl::RCReference<xla::ifrt::UserContext> user_context) {
-  // TODO(b/407104769): Handle `user_context`.
+    std::function<void()> on_done_with_host_buffer) {
   return Array::MakeArrayFromHostBuffer(
       this, rpc_helper_, data, dtype, std::move(shape), std::move(byte_strides),
       std::move(sharding), semantics, std::move(on_done_with_host_buffer));
@@ -265,18 +262,15 @@ absl::StatusOr<xla::ifrt::ArrayRef> Client::MakeArrayFromHostBuffer(
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
 Client::MakeArraysFromHostBufferShards(
     absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
-    xla::ifrt::Client::HostBufferSemantics semantics,
-    tsl::RCReference<UserContext> user_context) {
-  return Array::MakeArraysFromHostBufferShards(
-      this, rpc_helper_, specs, semantics, std::move(user_context));
+    xla::ifrt::Client::HostBufferSemantics semantics) {
+  return Array::MakeArraysFromHostBufferShards(this, rpc_helper_, specs,
+                                               semantics);
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::MakeErrorArrays(
     const absl::Status& error,
-    absl::Span<const xla::ifrt::ArraySpec> array_specs,
-    tsl::RCReference<xla::ifrt::UserContext> user_context) {
-  return Array::MakeErrorArrays(this, rpc_helper_, error, array_specs,
-                                std::move(user_context));
+    absl::Span<const xla::ifrt::ArraySpec> array_specs) {
+  return Array::MakeErrorArrays(this, rpc_helper_, error, array_specs);
 }
 
 absl::StatusOr<xla::ifrt::ArrayRef> Client::AssembleArrayFromSingleDeviceArrays(

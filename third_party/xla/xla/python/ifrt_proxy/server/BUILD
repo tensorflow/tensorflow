@@ -138,6 +138,7 @@ cc_library(
         "//xla/python/ifrt:serdes_any_version_accessor",
         "//xla/python/ifrt:serdes_version",
         "//xla/python/ifrt:sharding_serdes",
+        "//xla/python/ifrt:user_context",
         "//xla/python/ifrt_proxy/common:array_util",
         "//xla/python/ifrt_proxy/common:common_serdes",
         "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",

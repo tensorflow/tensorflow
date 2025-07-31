@@ -214,7 +214,6 @@ xla_cc_test(
         "//xla/python/ifrt:client_impl_test_lib",
         "//xla/python/ifrt:test_util",
         "//xla/python/ifrt:tuple_impl_test_lib",
-        "//xla/python/ifrt:user_context",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/python/pjrt_ifrt:xla_executable_impl_test_lib",
         "//xla/python/pjrt_ifrt:xla_ifrt",

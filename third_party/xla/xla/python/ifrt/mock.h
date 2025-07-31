@@ -119,19 +119,16 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (const void* data, DType dtype, Shape shape,
                std::optional<absl::Span<const int64_t>> byte_strides,
                ShardingRef sharding, HostBufferSemantics semantics,
-               std::function<void()> on_done_with_host_buffer,
-               tsl::RCReference<UserContext> user_context),
+               std::function<void()> on_done_with_host_buffer),
               (final));
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>,
               MakeArraysFromHostBufferShards,
               (absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
-               HostBufferSemantics semantics,
-               tsl::RCReference<UserContext> user_context),
+               HostBufferSemantics semantics),
               (final));
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>, MakeErrorArrays,
               (const absl::Status& error,
-               absl::Span<const ArraySpec> array_specs,
-               tsl::RCReference<UserContext> user_context),
+               absl::Span<const ArraySpec> array_specs),
               (final));
   MOCK_METHOD(absl::StatusOr<ArrayRef>, AssembleArrayFromSingleDeviceArrays,
               (DType dtype, Shape shape, ShardingRef sharding,
