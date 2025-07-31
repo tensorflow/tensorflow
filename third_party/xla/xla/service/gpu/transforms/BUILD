@@ -752,6 +752,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:comparison_util",
         "//xla:util",
+        "//xla/codegen/emitters:computation_fingerprint",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
         "//xla/hlo/pass:hlo_pass",
@@ -1219,10 +1220,9 @@ cc_library(
     ],
 )
 
-xla_test(
+xla_cc_test(
     name = "dot_strength_reduction_test",
     srcs = ["dot_strength_reduction_test.cc"],
-    backends = ["gpu"],
     deps = [
         ":dot_strength_reduction",
         "//xla/hlo/ir:hlo",
