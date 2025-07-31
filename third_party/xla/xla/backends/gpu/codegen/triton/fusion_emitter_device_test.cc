@@ -755,7 +755,7 @@ ENTRY entry_computation {
       CreateTritonIrAndFileCheck(this, kHloText, "fused_computation", "");
   EXPECT_THAT(
       status,
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::UNIMPLEMENTED,
           ::testing::HasSubstr("Unsupported case of multi-output fusion")));
 }
@@ -1289,7 +1289,7 @@ ENTRY entry {
                                               /*minor=*/0},
                     dev_info, BlockLevelParameters(), &llvm_module,
                     mlir_context),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kFailedPrecondition,
           ::testing::HasSubstr("Triton support is only enabled for Ampere GPUs "
                                "(compute capability 8.0) and up, but got")));
@@ -1351,7 +1351,7 @@ ENTRY entry_computation {
   EXPECT_THAT(
       TritonWrapper("test_fn", triton_fusion, compute_capability, dev_info,
                     block_level_parameters, &llvm_module, mlir_context),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
           ::testing::HasSubstr("Tiling does not satisfy constraints.")));
 }

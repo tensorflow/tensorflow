@@ -553,7 +553,7 @@ CHECK-DAG:   %[[ROW_OFFSET_i64:.*]] = arith.extsi %[[ROW_OFFSET]] : i32 to i64
 CHECK-DAG:   %[[ROW_LIMIT:.*]] = arith.addi %[[ROW_OFFSET_i64]], %[[C5_i64]] : i64
 CHECK-DAG:   tt.make_tensor_ptr %[[DYNAMIC_SLICE_INPUT]], [%[[C2_i64]], %[[ROW_LIMIT]]], [%[[C1_i64]], %[[C2_i64]]], [%[[C0_i32]], %[[ROW_OFFSET]]]
 )"),
-      tsl::testing::IsOk());
+      absl_testing::IsOk());
 }
 
 TEST_F(TritonGemmTest, DoNotUseTensorCoresWithNonDefaultPrecision) {
@@ -725,8 +725,9 @@ ENTRY entry {
   EXPECT_THAT(
       TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(), dev_info,
                     block_level_parameters, &llvm_module, mlir_context),
-      StatusIs(tsl::error::RESOURCE_EXHAUSTED,
-               ::testing::HasSubstr("Shared memory size limit exceeded")));
+      absl_testing::StatusIs(
+          tsl::error::RESOURCE_EXHAUSTED,
+          ::testing::HasSubstr("Shared memory size limit exceeded")));
 
   config.set_block_m(64);
   config.set_block_n(128);
@@ -1318,8 +1319,9 @@ ENTRY entry {
   EXPECT_THAT(
       TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(), dev_info,
                     block_level_parameters, &llvm_module, mlir_context),
-      StatusIs(tsl::error::RESOURCE_EXHAUSTED,
-               "Tiling complexity heuristic exceeded: 147456 > 9000"));
+      absl_testing::StatusIs(
+          tsl::error::RESOURCE_EXHAUSTED,
+          "Tiling complexity heuristic exceeded: 147456 > 9000"));
 
   // Succeeds if the tiling is not too complex.
   config.set_block_m(32);
