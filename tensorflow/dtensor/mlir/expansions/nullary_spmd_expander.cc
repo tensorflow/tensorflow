@@ -103,8 +103,8 @@ StatusOr<mlir::Operation*> NullarySPMDExpander::ExpandOp(mlir::Operation* op) {
     generated_types.emplace_back(output.getType());
   }
 
-  auto identity_op = builder.create<mlir::TF::IdentityNOp>(
-      op->getLoc(), generated_types, generated_outputs);
+  auto identity_op = mlir::TF::IdentityNOp::create(
+      builder, op->getLoc(), generated_types, generated_outputs);
 
   newly_created_ops.insert(identity_op);
   for (int i = 0; i < op_layouts.size(); ++i)

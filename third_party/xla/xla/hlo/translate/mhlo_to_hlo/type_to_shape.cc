@@ -87,50 +87,6 @@ Shape TypeToShape(mlir::Type type) {
     PrimitiveType primitive_type = ConvertMlirTypeToPrimitiveType(element_type);
     if (primitive_type != PrimitiveType::PRIMITIVE_TYPE_INVALID)
       return ShapeUtil::MakeShape(primitive_type, span);
-  } else if (auto m = mlir::dyn_cast<mlir::MemRefType>(type)) {
-    llvm::SmallVector<int64_t, 6> span(m.getShape().begin(),
-                                       m.getShape().end());
-    mlir::Type element_type = m.getElementType();
-    // Treat a memref of a vector as if it was a memref of primitive type with
-    // the vector dimensions at the end.
-    if (auto v = mlir::dyn_cast<mlir::VectorType>(element_type)) {
-      element_type = v.getElementType();
-      span.insert(span.end(), v.getShape().begin(), v.getShape().end());
-    }
-    PrimitiveType primitive_type = ConvertMlirTypeToPrimitiveType(element_type);
-    if (primitive_type == PrimitiveType::PRIMITIVE_TYPE_INVALID) return {};
-    // For the primitive type case, the shape of the memref is similar to the
-    // vector type case (i.e., it is, modulo the layout, the same dimensions
-    // and primitive type).
-    if (m.getLayout().isIdentity())
-      return ShapeUtil::MakeShape(primitive_type, span);
-
-    llvm::SmallVector<int64_t, 4> strides;
-    int64_t offset;
-    if (failed(m.getStridesAndOffset(strides, offset))) return {};
-
-    llvm::SmallVector<std::pair<int64_t, int>, 4> strides_with_indices;
-    for (const auto& e : llvm::enumerate(strides)) {
-      strides_with_indices.push_back({e.value(), e.index()});
-    }
-    std::stable_sort(strides_with_indices.begin(), strides_with_indices.end());
-
-    llvm::SmallVector<int64_t, 4> minor_to_major;
-    int64_t stride = 1;
-    for (const auto& pr : strides_with_indices) {
-      minor_to_major.push_back(pr.second);
-
-      // Either the affine map is not perfectly strided, or the dimensions
-      // recovered from strides don't match the actual dimensions in shapes.
-      if (stride != pr.first && m.getShape()[pr.second] != 1) return {};
-
-      stride *= m.getShape()[pr.second];
-    }
-
-    llvm::SmallVector<int64_t, 4> dimensions(m.getShape().begin(),
-                                             m.getShape().end());
-    return ::xla::ShapeUtil::MakeShapeWithDenseLayout(
-        primitive_type, dimensions, minor_to_major);
   } else if (auto t = mlir::dyn_cast<mlir::RankedTensorType>(type)) {
     // TODO(jpienaar): This is only handling the base case with primitive
     // element type.

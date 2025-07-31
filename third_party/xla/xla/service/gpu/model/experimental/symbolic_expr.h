@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <tuple>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -60,6 +59,7 @@ class SymbolicExpr {
   bool operator==(SymbolicExpr other) const { return impl_ == other.impl_; }
   bool operator!=(SymbolicExpr other) const { return !(*this == other); }
 
+  SymbolicExprContext* GetContext() const;
   SymbolicExprType GetType() const;
   SymbolicExpr GetLHS() const;
   SymbolicExpr GetRHS() const;
@@ -68,6 +68,28 @@ class SymbolicExpr {
   int64_t Evaluate(absl::Span<const int64_t> variable_values) const;
   SymbolicExpr ReplaceVariables(absl::Span<const SymbolicExpr> substitutions,
                                 SymbolicExprContext* ctx) const;
+
+  SymbolicExpr operator+(int64_t v) const;
+  SymbolicExpr operator+(SymbolicExpr other) const;
+  SymbolicExpr operator-() const;
+  SymbolicExpr operator-(int64_t v) const;
+  SymbolicExpr operator-(SymbolicExpr other) const;
+  SymbolicExpr operator*(int64_t v) const;
+  SymbolicExpr operator*(SymbolicExpr other) const;
+  SymbolicExpr operator/(int64_t v) const { return this->floorDiv(v); }
+  SymbolicExpr operator/(SymbolicExpr other) const {
+    return this->floorDiv(other);
+  }
+  SymbolicExpr operator%(int64_t v) const;
+  SymbolicExpr operator%(SymbolicExpr other) const;
+  SymbolicExpr floorDiv(int64_t v) const;
+  SymbolicExpr floorDiv(SymbolicExpr other) const;
+  SymbolicExpr ceilDiv(int64_t v) const;
+  SymbolicExpr ceilDiv(SymbolicExpr other) const;
+  SymbolicExpr min(int64_t v) const;
+  SymbolicExpr min(SymbolicExpr other) const;
+  SymbolicExpr max(int64_t v) const;
+  SymbolicExpr max(SymbolicExpr other) const;
 
   const ImplType* GetImpl() const { return impl_; }
 
@@ -78,30 +100,6 @@ class SymbolicExpr {
 inline ::llvm::hash_code hash_value(SymbolicExpr expr) {
   return ::llvm::hash_value(expr.GetImpl());
 }
-
-class SymbolicExprStorage : public mlir::StorageUniquer::BaseStorage {
- public:
-  using KeyTy =
-      std::tuple<SymbolicExprType, int64_t, SymbolicExpr, SymbolicExpr>;
-
-  static SymbolicExprStorage* construct(
-      mlir::StorageUniquer::StorageAllocator& allocator, const KeyTy& key);
-
-  bool operator==(const KeyTy& key) const;
-
- protected:
-  friend class SymbolicExpr;
-  SymbolicExprType type_;
-  int64_t value_ = 0;
-  SymbolicExpr lhs_;
-  SymbolicExpr rhs_;
-
- private:
-  SymbolicExprStorage(SymbolicExprType type, int64_t value)
-      : type_(type), value_(value) {}
-  SymbolicExprStorage(SymbolicExprType type, SymbolicExpr lhs, SymbolicExpr rhs)
-      : type_(type), lhs_(lhs), rhs_(rhs) {}
-};
 
 // Maps a set of input variables to a set of output SymbolicExpr trees.
 struct SymbolicMap {
