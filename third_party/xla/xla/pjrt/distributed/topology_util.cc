@@ -215,14 +215,23 @@ absl::StatusOr<GlobalTopologyProto> BuildGlobalTopology(
     }
   }
 
-  GlobalTopologyProto global_topology;
-  int next_global_device_id = 0;
-  for (LocalTopologyProto& local : local_topologies) {
-    if (assign_global_device_ids) {
+  if (assign_global_device_ids) {
+    std::map<int, std::set<DeviceProto*>> slice_id_to_devices;
+    for (LocalTopologyProto& local : local_topologies) {
       for (DeviceProto& device : *local.mutable_devices()) {
-        device.set_global_device_id(next_global_device_id++);
+        slice_id_to_devices[device.slice_index()].insert(&device);
       }
     }
+    int next_global_device_id = 0;
+    for (auto& [slice_id, devices] : slice_id_to_devices) {
+      for (DeviceProto* device : devices) {
+        device->set_global_device_id(next_global_device_id++);
+      }
+    }
+  }
+
+  GlobalTopologyProto global_topology;
+  for (LocalTopologyProto& local : local_topologies) {
     global_topology.add_nodes()->Swap(&local);
   }
   return global_topology;
