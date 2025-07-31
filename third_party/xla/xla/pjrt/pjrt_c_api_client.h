@@ -364,12 +364,7 @@ class PjRtCApiClient : public PjRtClient {
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                               PjRtDevice* device,
-                              PjRtCrossHostRecvNotifier notifier) override {
-    return Unimplemented(
-        "PJRT C API does not support MakeCrossHostReceiveBuffers. Please "
-        "report an issue at https://github.com/google/jax/issues if you need "
-        "this feature.");
-  }
+                              PjRtCrossHostRecvNotifier notifier) override;
 
   absl::Status DmaMap(void* data, size_t size) override;
 
@@ -395,6 +390,9 @@ class PjRtCApiClient : public PjRtClient {
       const override {
     return nullptr;
   }
+
+  using CrossHostRecvNotifierFunction =
+      std::function<void(PJRT_Error*, const char**, size_t*, size_t)>;
 
  private:
   void InitDevicesAndMemorySpaces();
@@ -485,11 +483,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
       PjRtMemorySpace* dst_memory_space) override;
 
   void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
-                          RemoteSendCallback on_done) override {
-    LOG(ERROR) << "PJRT C API does not support CopyToRemoteDevice. Please "
-                  "report an issue at https://github.com/google/jax/issues if "
-                  "you need this feature.";
-  }
+                          RemoteSendCallback on_done) override;
 
   PjRtFuture<> GetReadyFuture() override;
 
