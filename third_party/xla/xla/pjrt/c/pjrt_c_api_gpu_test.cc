@@ -245,8 +245,8 @@ TEST_F(PjrtCApiGpuBufferTest, CopyRawToHostWithInvalidOffset) {
       "Copy raw buffer called on buffer size %lld with "
       "invalid offset %lld, transfer size %lld",
       size, args.offset, args.transfer_size);
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument,
-                               HasSubstr(expected_message)));
+  EXPECT_THAT(status, absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                             HasSubstr(expected_message)));
   free(args.dst);
 }
 
@@ -534,7 +534,8 @@ TEST_F(PjrtCApiGpuTransferManagerTest, SetBufferError) {
   ASSERT_EQ(set_buffer_error_error, nullptr);
 
   EXPECT_THAT(buffer_out->buffer->ToLiteralSync(),
-              StatusIs(absl::StatusCode::kInternal, HasSubstr(error_message)));
+              absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                     HasSubstr(error_message)));
 
   PJRT_BufferDeleter buffer_deleter = MakeBufferDeleter(api_);
   buffer_deleter(buffer_out);
@@ -754,7 +755,7 @@ TEST(PjrtCApiGpuAllocatorTest, InvalidAllocatorOptionsParsing) {
   PJRT_Error* error = api->PJRT_Client_Create(&create_arg);
   EXPECT_NE(error, nullptr);
   EXPECT_THAT(error->status,
-              ::tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   absl::StatusCode::kUnimplemented,
                   "Allocator invalid_allocator not supported for PJRT GPU "
                   "plugin. Supported allocator options are: 'default', "
@@ -827,7 +828,7 @@ TEST(PjrtCApiPlatformNameTest, UnavailablePlatformName) {
   PJRT_Error* error = api->PJRT_Client_Create(&create_arg);
   EXPECT_NE(error, nullptr);
   EXPECT_THAT(error->status,
-              ::tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   absl::StatusCode::kNotFound,
                   testing::StartsWith("Could not find registered platform with "
                                       "name: \"invalid_platform_name\". "
