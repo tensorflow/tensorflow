@@ -72,6 +72,15 @@ struct TestParams {
   int64_t num_elements;
 };
 
+template <typename T>
+std::vector<T> ToVector(const Array<T>& array) {
+  std::vector<T> result;
+  result.reserve(array.num_elements());
+  array.Each(
+      [&](absl::Span<const int64_t> indices, T val) { result.push_back(val); });
+  return result;
+}
+
 class AllReduceKernelTest : public ::testing::Test,
                             public ::testing::WithParamInterface<TestParams> {
  public:
@@ -200,7 +209,7 @@ TEST_P(AllReduceKernelTest, KernelTestAddF32) {
       auto results, RunKernel<float>(executors, inputs, ReductionKind::SUM));
 
   for (int i = 0; i < kNumRanks; ++i) {
-    EXPECT_EQ(results[i], expected_output);
+    EXPECT_EQ(ToVector(results[i]), ToVector(expected_output));
   }
 }
 
