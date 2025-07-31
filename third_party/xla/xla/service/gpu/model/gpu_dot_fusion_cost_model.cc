@@ -237,7 +237,7 @@ absl::StatusOr<absl::Duration> CalculateL2Time(
   GpuDotFusionCostModel::DotProblemDimensions dims(*dot);
   int64_t tile_m = tile_shape[0], tile_n = tile_shape[1];
   int64_t threadblock_count = CalculateNumThreadblocks(dot, tile_m, tile_n);
-  double device_l2_bandwidth = 6.65 * 1e12;  // Measured H100 L2 bandwidth.
+  double device_l2_bandwidth = device_info.l2_bandwidth();
 
   return absl::Seconds(1.0f *
                        CalculateL2Bytes(tile_shape, dims.k, threadblock_count) /

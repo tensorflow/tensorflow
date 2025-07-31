@@ -69,12 +69,13 @@ TEST_F(CollectiveBackendAssignerTest, SmallAllReduceUsesNvshmem) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  EXPECT_THAT(RunCollectiveBackendAssigner(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunCollectiveBackendAssigner(module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   const HloInstruction* all_reduce =
       module->entry_computation()->root_instruction();
   EXPECT_THAT(GetCollectiveBackendConfig(all_reduce),
-              IsOkAndHolds(CollectiveBackendConfig::NVSHMEM));
+              absl_testing::IsOkAndHolds(CollectiveBackendConfig::NVSHMEM));
 }
 
 TEST_F(CollectiveBackendAssignerTest, LargeAllReduceUsesDefault) {
@@ -94,12 +95,13 @@ TEST_F(CollectiveBackendAssignerTest, LargeAllReduceUsesDefault) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  EXPECT_THAT(RunCollectiveBackendAssigner(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(RunCollectiveBackendAssigner(module.get()),
+              absl_testing::IsOkAndHolds(false));
 
   const HloInstruction* all_reduce =
       module->entry_computation()->root_instruction();
   EXPECT_THAT(GetCollectiveBackendConfig(all_reduce),
-              IsOkAndHolds(CollectiveBackendConfig::DEFAULT));
+              absl_testing::IsOkAndHolds(CollectiveBackendConfig::DEFAULT));
 }
 
 TEST_F(CollectiveBackendAssignerTest, SmallCollectivePermuteUsesNvshmem) {
@@ -114,12 +116,13 @@ TEST_F(CollectiveBackendAssignerTest, SmallCollectivePermuteUsesNvshmem) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  EXPECT_THAT(RunCollectiveBackendAssigner(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunCollectiveBackendAssigner(module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   const HloInstruction* permute =
       module->entry_computation()->root_instruction();
   EXPECT_THAT(GetCollectiveBackendConfig(permute),
-              IsOkAndHolds(CollectiveBackendConfig::NVSHMEM));
+              absl_testing::IsOkAndHolds(CollectiveBackendConfig::NVSHMEM));
 }
 
 TEST_F(CollectiveBackendAssignerTest, LargeCollectivePermuteUsesDefault) {
@@ -134,12 +137,13 @@ TEST_F(CollectiveBackendAssignerTest, LargeCollectivePermuteUsesDefault) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  EXPECT_THAT(RunCollectiveBackendAssigner(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(RunCollectiveBackendAssigner(module.get()),
+              absl_testing::IsOkAndHolds(false));
 
   const HloInstruction* permute =
       module->entry_computation()->root_instruction();
   EXPECT_THAT(GetCollectiveBackendConfig(permute),
-              IsOkAndHolds(CollectiveBackendConfig::DEFAULT));
+              absl_testing::IsOkAndHolds(CollectiveBackendConfig::DEFAULT));
 }
 
 }  // namespace

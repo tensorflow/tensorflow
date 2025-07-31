@@ -269,6 +269,9 @@ class DeviceDescription {
   // Returns the L2 cache size in bytes.
   int64_t l2_cache_size() const { return l2_cache_size_; }
 
+  // Returns the L2 bandwidth in bytes/sec.
+  float l2_bandwidth() const { return l2_bandwidth_; }
+
   // Returns the device's memory bandwidth in bytes/sec.  (This is for
   // reads/writes to/from the device's own memory, not for transfers between the
   // host and device.)
@@ -436,6 +439,7 @@ class DeviceDescription {
   void set_device_address_bits(int64_t value) { device_address_bits_ = value; }
   void set_device_memory_size(int64_t value) { device_memory_size_ = value; }
   void set_l2_cache_size(int64_t value) { l2_cache_size_ = value; }
+  void set_l2_bandwidth(float value) { l2_bandwidth_ = value; }
   void set_memory_bandwidth(int64_t value) { memory_bandwidth_ = value; }
 
   void set_shared_memory_per_core(int64_t value) {
@@ -493,6 +497,7 @@ class DeviceDescription {
   int64_t device_address_bits_ = kUninitialized<int64_t>;
   int64_t device_memory_size_ = kUninitialized<int64_t>;
   int64_t l2_cache_size_ = kUninitialized<int64_t>;
+  float l2_bandwidth_ = kUninitialized<float>;
   int64_t memory_bandwidth_ = kUninitialized<int64_t>;
 
   // Shared memory limits on a given device.

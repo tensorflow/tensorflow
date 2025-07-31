@@ -39,6 +39,7 @@ DeviceDescription::DeviceDescription(const GpuDeviceInfoProto &proto)
       registers_per_block_limit_(proto.registers_per_block_limit()),
       device_memory_size_(proto.device_memory_size()),
       l2_cache_size_(proto.l2_cache_size()),
+      l2_bandwidth_(proto.l2_bandwidth()),
       memory_bandwidth_(proto.memory_bandwidth()),
       shared_memory_per_core_(proto.shared_memory_per_core()),
       shared_memory_per_block_(proto.shared_memory_per_block()),
@@ -75,6 +76,7 @@ GpuDeviceInfoProto DeviceDescription::ToGpuProto() const {
   proto.set_block_dim_limit_z(block_dim_limit().z);
   proto.set_memory_bandwidth(memory_bandwidth_);
   proto.set_l2_cache_size(l2_cache_size_);
+  proto.set_l2_bandwidth(l2_bandwidth_);
   proto.set_clock_rate_ghz(clock_rate_ghz_);
   proto.set_device_memory_size(device_memory_size_);
   proto.set_registers_per_core_limit(registers_per_core_limit_);

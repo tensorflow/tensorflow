@@ -612,7 +612,7 @@ module {
                   ->CopyToHostBuffer(data.data(), std::nullopt,
                                      ArrayCopySemantics::kAlwaysCopy)
                   .Await(),
-              testing::Not(IsOk()));
+              testing::Not(absl_testing::IsOk()));
 }
 
 TEST_F(IfrtIrExecutableImplTest, DonateOutputOfCall) {

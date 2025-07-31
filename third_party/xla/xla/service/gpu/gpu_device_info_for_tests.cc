@@ -64,6 +64,7 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::RTXH100SXMDeviceInfo(
   b.set_block_dim_limit_z(65535);
   b.set_memory_bandwidth(3'352'320'000'000);
   b.set_l2_cache_size(50 * 1024 * 1024);
+  b.set_l2_bandwidth(6.65 * 1e12);
   b.set_clock_rate_ghz(1.98);
   b.set_device_memory_size(84'978'434'048);
   b.set_registers_per_core_limit(65536);

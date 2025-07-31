@@ -6008,6 +6008,7 @@ xla_cc_test(
         ":instruction_fusion",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],

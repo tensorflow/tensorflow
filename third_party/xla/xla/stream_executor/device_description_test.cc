@@ -31,6 +31,7 @@ TEST(DeviceDescription, DefaultConstruction) {
   EXPECT_EQ(desc.driver_version(), kZeroVersion);
   EXPECT_EQ(desc.runtime_version(), kZeroVersion);
   EXPECT_EQ(desc.pci_bus_id(), "<undefined>");
+  EXPECT_EQ(desc.l2_bandwidth(), -1);
 }
 
 }  // namespace

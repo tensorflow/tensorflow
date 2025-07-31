@@ -46,6 +46,7 @@ message GpuDeviceInfoProto {
   }
   int64 registers_per_core_limit = 18;
   int64 registers_per_block_limit = 19;
+  float l2_bandwidth = 20;
 }
 
 message DnnVersionInfoProto {
