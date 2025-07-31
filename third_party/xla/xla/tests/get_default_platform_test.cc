@@ -35,8 +35,8 @@ using GetDefaultPlatformTest = HloPjRtTestBase;
 // --xla_allow_get_default_platform=false being set in XLA_FLAGS.
 TEST_F(GetDefaultPlatformTest, GetDefaultPlatformFails) {
   EXPECT_THAT(PlatformUtil::GetDefaultPlatform(),
-              StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("allow_get_default_platform")));
+              absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                     HasSubstr("allow_get_default_platform")));
 }
 
 }  // namespace
