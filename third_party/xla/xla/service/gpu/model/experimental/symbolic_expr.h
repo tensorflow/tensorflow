@@ -60,6 +60,7 @@ class SymbolicExpr {
   bool operator==(SymbolicExpr other) const { return impl_ == other.impl_; }
   bool operator!=(SymbolicExpr other) const { return !(*this == other); }
 
+  SymbolicExprContext* GetContext() const;
   SymbolicExprType GetType() const;
   SymbolicExpr GetLHS() const;
   SymbolicExpr GetRHS() const;
@@ -68,6 +69,28 @@ class SymbolicExpr {
   int64_t Evaluate(absl::Span<const int64_t> variable_values) const;
   SymbolicExpr ReplaceVariables(absl::Span<const SymbolicExpr> substitutions,
                                 SymbolicExprContext* ctx) const;
+
+  SymbolicExpr operator+(int64_t v) const;
+  SymbolicExpr operator+(SymbolicExpr other) const;
+  SymbolicExpr operator-() const;
+  SymbolicExpr operator-(int64_t v) const;
+  SymbolicExpr operator-(SymbolicExpr other) const;
+  SymbolicExpr operator*(int64_t v) const;
+  SymbolicExpr operator*(SymbolicExpr other) const;
+  SymbolicExpr operator/(int64_t v) const { return this->floorDiv(v); }
+  SymbolicExpr operator/(SymbolicExpr other) const {
+    return this->floorDiv(other);
+  }
+  SymbolicExpr operator%(int64_t v) const;
+  SymbolicExpr operator%(SymbolicExpr other) const;
+  SymbolicExpr floorDiv(int64_t v) const;
+  SymbolicExpr floorDiv(SymbolicExpr other) const;
+  SymbolicExpr ceilDiv(int64_t v) const;
+  SymbolicExpr ceilDiv(SymbolicExpr other) const;
+  SymbolicExpr min(int64_t v) const;
+  SymbolicExpr min(SymbolicExpr other) const;
+  SymbolicExpr max(int64_t v) const;
+  SymbolicExpr max(SymbolicExpr other) const;
 
   const ImplType* GetImpl() const { return impl_; }
 
@@ -91,10 +114,12 @@ class SymbolicExprStorage : public mlir::StorageUniquer::BaseStorage {
 
  protected:
   friend class SymbolicExpr;
+  friend class SymbolicExprContext;
   SymbolicExprType type_;
   int64_t value_ = 0;
   SymbolicExpr lhs_;
   SymbolicExpr rhs_;
+  SymbolicExprContext* ctx_ = nullptr;
 
  private:
   SymbolicExprStorage(SymbolicExprType type, int64_t value)

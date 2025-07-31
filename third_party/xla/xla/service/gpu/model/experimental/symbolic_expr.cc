@@ -60,9 +60,6 @@ std::string GetBinaryOpString(SymbolicExprType type) {
   }
 }
 
-}  // namespace
-
-namespace {
 // Helper class to manage the state of the parser.
 class Parser {
  public:
@@ -216,6 +213,8 @@ bool SymbolicExprStorage::operator==(const KeyTy& key) const {
   return lhs_ == std::get<2>(key) && rhs_ == std::get<3>(key);
 }
 
+SymbolicExprContext* SymbolicExpr::GetContext() const { return impl_->ctx_; }
+
 SymbolicExprType SymbolicExpr::GetType() const { return impl_->type_; }
 
 SymbolicExpr SymbolicExpr::GetLHS() const { return impl_->lhs_; }
@@ -253,8 +252,10 @@ std::string SymbolicExpr::ToString() const {
 SymbolicExpr SymbolicExprContext::GetOrCreate(SymbolicExprType type,
                                               int64_t value, SymbolicExpr lhs,
                                               SymbolicExpr rhs) {
-  auto empty_init = [&](SymbolicExprStorage* storage) {};
-  return uniquer_.get<SymbolicExprStorage>(empty_init, type, value, lhs, rhs);
+  auto initContext = [&](SymbolicExprStorage* storage) {
+    storage->ctx_ = this;
+  };
+  return uniquer_.get<SymbolicExprStorage>(initContext, type, value, lhs, rhs);
 }
 
 SymbolicExpr SymbolicExprContext::CreateConstant(int64_t value) {
@@ -344,6 +345,66 @@ SymbolicExpr SymbolicExpr::ReplaceVariables(
     default:
       LOG(FATAL) << "Substitute not implemented for this type.";
   }
+}
+
+SymbolicExpr SymbolicExpr::operator+(int64_t v) const {
+  return *this + GetContext()->CreateConstant(v);
+}
+SymbolicExpr SymbolicExpr::operator+(SymbolicExpr other) const {
+  // TODO(b/433693793): This should be modified when we introduce the
+  // simplification logic.
+  return GetContext()->CreateBinaryOp(SymbolicExprType::kAdd, *this, other);
+}
+
+SymbolicExpr SymbolicExpr::operator-() const {
+  return *this * GetContext()->CreateConstant(-1);
+}
+SymbolicExpr SymbolicExpr::operator-(int64_t v) const { return *this + (-v); }
+SymbolicExpr SymbolicExpr::operator-(SymbolicExpr other) const {
+  return *this + (-other);
+}
+
+SymbolicExpr SymbolicExpr::operator*(int64_t v) const {
+  return *this * GetContext()->CreateConstant(v);
+}
+SymbolicExpr SymbolicExpr::operator*(SymbolicExpr other) const {
+  return GetContext()->CreateBinaryOp(SymbolicExprType::kMul, *this, other);
+}
+
+SymbolicExpr SymbolicExpr::operator%(int64_t v) const {
+  return this->operator%(GetContext()->CreateConstant(v));
+}
+SymbolicExpr SymbolicExpr::operator%(SymbolicExpr other) const {
+  return GetContext()->CreateBinaryOp(SymbolicExprType::kMod, *this, other);
+}
+
+SymbolicExpr SymbolicExpr::floorDiv(int64_t v) const {
+  return this->floorDiv(GetContext()->CreateConstant(v));
+}
+SymbolicExpr SymbolicExpr::floorDiv(SymbolicExpr other) const {
+  return GetContext()->CreateBinaryOp(SymbolicExprType::kFloorDiv, *this,
+                                      other);
+}
+
+SymbolicExpr SymbolicExpr::ceilDiv(int64_t v) const {
+  return this->ceilDiv(GetContext()->CreateConstant(v));
+}
+SymbolicExpr SymbolicExpr::ceilDiv(SymbolicExpr other) const {
+  return GetContext()->CreateBinaryOp(SymbolicExprType::kCeilDiv, *this, other);
+}
+
+SymbolicExpr SymbolicExpr::min(int64_t v) const {
+  return this->min(GetContext()->CreateConstant(v));
+}
+SymbolicExpr SymbolicExpr::min(SymbolicExpr other) const {
+  return GetContext()->CreateBinaryOp(SymbolicExprType::kMin, *this, other);
+}
+
+SymbolicExpr SymbolicExpr::max(int64_t v) const {
+  return this->max(GetContext()->CreateConstant(v));
+}
+SymbolicExpr SymbolicExpr::max(SymbolicExpr other) const {
+  return GetContext()->CreateBinaryOp(SymbolicExprType::kMax, *this, other);
 }
 
 SymbolicExprContext::SymbolicExprContext() {
