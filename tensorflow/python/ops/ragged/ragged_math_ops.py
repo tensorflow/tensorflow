@@ -400,7 +400,7 @@ Computes the %(combination)s of elements across dimensions of a `RaggedTensor`.
     A `RaggedTensor` containing the %(combined)s values.  The returned tensor
     has the same dtype as `data`, and its shape is given by removing the
     dimensions specified in `axis` from `input_tensor.shape`.  The `ragged_rank`
-    of the returned tensor is given by substracting any ragged dimensions
+    of the returned tensor is given by subtracting any ragged dimensions
     specified in `axis` from `input_tensor.ragged_rank`.
   Raises:
     ValueError: If `axis` contains a `Tensor` whose value is not constant.
@@ -514,7 +514,7 @@ def ragged_reduce_aggregate(reduce_op,
     A `RaggedTensor` containing the reduced values.  The returned tensor
     has the same dtype as `data`, and its shape is given by removing the
     dimensions specified in `axis` from `rt_input.shape`.  The `ragged_rank`
-    of the returned tensor is given by substracting any ragged dimensions
+    of the returned tensor is given by subtracting any ragged dimensions
     specified in `axis` from `rt_input.ragged_rank`.
   Raises:
     ValueError: If `axis` contains a `Tensor` whose value is not constant.
@@ -1164,7 +1164,7 @@ def tensor_equals(self: ragged_tensor.RaggedOrDense,
     try:
       return math_ops.equal(self, other)
     except (errors.InvalidArgumentError, ValueError):
-      return False  # values are not broadcast-compatbile.
+      return False  # values are not broadcast-compatible.
 
 
 @dispatch.dispatch_for_api(math_ops.tensor_not_equals)
@@ -1179,7 +1179,7 @@ def tensor_not_equals(self: ragged_tensor.RaggedOrDense,
     try:
       return math_ops.not_equal(self, other)
     except (errors.InvalidArgumentError, ValueError):
-      return True  # values are not broadcast-compatbile.
+      return True  # values are not broadcast-compatible.
 
 
 def _use_legacy_mode_for_tensor_equality(self):
