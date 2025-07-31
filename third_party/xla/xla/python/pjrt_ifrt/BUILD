@@ -150,6 +150,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
         "//xla/python/ifrt:test_util",
+        "//xla/python/ifrt:user_context",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
