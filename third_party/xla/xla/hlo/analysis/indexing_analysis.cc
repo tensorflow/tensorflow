@@ -1356,7 +1356,9 @@ bool HloInstructionIndexing::Simplify() {
   for (auto& operand_indexing : indexing_maps) {
     std::vector<OperandIndexing> to_remove, to_add;
     for (OperandIndexing idx : operand_indexing) {
+      auto old_idx = idx;
       if (idx.Simplify()) {
+        to_remove.push_back(old_idx);
         idx.RemoveUnusedSymbols();
         to_add.push_back(idx);
       }

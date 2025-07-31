@@ -92,7 +92,7 @@ ENTRY e {
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
   EXPECT_THAT(MakeDotSplitKBatch(
                   module->entry_computation()->root_instruction(), config),
-              tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   tsl::error::CANCELLED,
                   absl::StrFormat(
                       "Operation non-distributive over addition after dot.")));
@@ -146,7 +146,7 @@ ENTRY e {
   TritonGemmConfig config(16, 16, 16, 2, 1, 2);
   EXPECT_THAT(MakeDotSplitKBatch(
                   module->entry_computation()->root_instruction(), config),
-              tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   tsl::error::CANCELLED,
                   absl::StrFormat(
                       "Sliced contracting dimension is not supported yet.")));
@@ -430,7 +430,7 @@ ENTRY e {
   TritonGemmConfig config(16, 16, 128, 4, 1, 4);
   EXPECT_THAT(MakeDotSplitKBatch(
                   module->entry_computation()->root_instruction(), config),
-              tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   tsl::error::CANCELLED,
                   "Too small divisible part of the contracting dimension."));
 }
@@ -463,7 +463,7 @@ ENTRY e {
   EXPECT_THAT(
       MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
                          config),
-      tsl::testing::StatusIs(tsl::error::CANCELLED,
+      absl_testing::StatusIs(tsl::error::CANCELLED,
                              "Contracting dimension is too fragmented."));
 
   // 8 fits the constraints.
@@ -516,7 +516,7 @@ ENTRY e {
   EXPECT_THAT(
       MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
                          config),
-      tsl::testing::StatusIs(tsl::error::CANCELLED,
+      absl_testing::StatusIs(tsl::error::CANCELLED,
                              "Contracting dimension is too fragmented."));
 }
 

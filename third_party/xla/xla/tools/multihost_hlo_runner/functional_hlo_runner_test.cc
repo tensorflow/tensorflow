@@ -141,7 +141,7 @@ TEST_F(FunctionalHloRunnerTest, GPUProfilerWithEmptyDumpPathReturnsError) {
   std::string empty_profile_dump_path = "";
   EXPECT_THAT(
       HLORunnerProfiler::Create(empty_profile_dump_path, /*keep_xspace=*/true),
-      StatusIs(absl::StatusCode::kInvalidArgument));
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(FunctionalHloRunnerTest, GPUProfilerKeepXSpaceReturnsNonNullXSpace) {
@@ -371,7 +371,8 @@ void CompileAndFilecheck(
     std::string after_opt_hlo;
     TF_ASSERT_OK(
         tsl::ReadFileToString(env, after_opt_hlo_paths[0], &after_opt_hlo));
-    EXPECT_THAT(RunFileCheck(after_opt_hlo, pattern), IsOkAndHolds(true));
+    EXPECT_THAT(RunFileCheck(after_opt_hlo, pattern),
+                absl_testing::IsOkAndHolds(true));
   }
 
   // Check that the LLVM IR has been generated.
