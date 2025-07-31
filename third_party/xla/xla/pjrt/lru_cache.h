@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef XLA_PJRT_LRU_CACHE_H_
 #define XLA_PJRT_LRU_CACHE_H_
 
+#include <functional>
 #include <optional>
 #include <unordered_map>
 
 #include "absl/container/node_hash_map.h"
+#include "absl/log/check.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -94,6 +96,16 @@ class LRUCache {
 
   int Size() const { return entries_.size(); }
   int Capacity() const { return lru_list_->Capacity(); }
+
+  // Calls f on every key-value pair in the cache.
+  void ForEach(std::function<void(const Key&, const Value&)> f) const {
+    for (const auto& [key, entry] : entries_) {
+      // TODO: mwhittaker - entry.value is an optional but it's never nullopt.
+      // In a future CL, I will remove the std::optional.
+      CHECK(entry.value.has_value());
+      f(key, *entry.value);
+    }
+  }
 
   auto begin() const { return entries_.begin(); }
   auto end() const { return entries_.end(); }

@@ -23,6 +23,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <tuple>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -187,31 +188,52 @@ class Parser {
 
 }  // namespace
 
-SymbolicExprStorage* SymbolicExprStorage::construct(
-    mlir::StorageUniquer::StorageAllocator& allocator, const KeyTy& key) {
-  SymbolicExprStorage* storage = allocator.allocate<SymbolicExprStorage>();
-  SymbolicExprType type = std::get<0>(key);
-  if (type == SymbolicExprType::kConstant ||
-      type == SymbolicExprType::kVariable) {
-    return new (storage) SymbolicExprStorage(type, std::get<1>(key));
-  }
-  return new (storage)
-      SymbolicExprStorage(type, std::get<2>(key), std::get<3>(key));
-}
+class SymbolicExprStorage : public mlir::StorageUniquer::BaseStorage {
+ public:
+  using KeyTy =
+      std::tuple<SymbolicExprType, int64_t, SymbolicExpr, SymbolicExpr>;
 
-bool SymbolicExprStorage::operator==(const KeyTy& key) const {
-  SymbolicExprType key_type = std::get<0>(key);
-  if (type_ != key_type) {
-    return false;
+  static SymbolicExprStorage* construct(
+      mlir::StorageUniquer::StorageAllocator& allocator, const KeyTy& key) {
+    SymbolicExprStorage* storage = allocator.allocate<SymbolicExprStorage>();
+    SymbolicExprType type = std::get<0>(key);
+    if (type == SymbolicExprType::kConstant ||
+        type == SymbolicExprType::kVariable) {
+      return new (storage) SymbolicExprStorage(type, std::get<1>(key));
+    }
+    return new (storage)
+        SymbolicExprStorage(type, std::get<2>(key), std::get<3>(key));
   }
 
-  // Based on the type, compare the relevant fields.
-  if (key_type == SymbolicExprType::kConstant ||
-      key_type == SymbolicExprType::kVariable) {
-    return value_ == std::get<1>(key);
+  bool operator==(const KeyTy& key) const {
+    SymbolicExprType key_type = std::get<0>(key);
+    if (type_ != key_type) {
+      return false;
+    }
+
+    // Based on the type, compare the relevant fields.
+    if (key_type == SymbolicExprType::kConstant ||
+        key_type == SymbolicExprType::kVariable) {
+      return value_ == std::get<1>(key);
+    }
+    return lhs_ == std::get<2>(key) && rhs_ == std::get<3>(key);
   }
-  return lhs_ == std::get<2>(key) && rhs_ == std::get<3>(key);
-}
+
+ protected:
+  friend class SymbolicExpr;
+  friend class SymbolicExprContext;
+  SymbolicExprType type_;
+  int64_t value_ = 0;
+  SymbolicExpr lhs_;
+  SymbolicExpr rhs_;
+  SymbolicExprContext* ctx_ = nullptr;
+
+ private:
+  SymbolicExprStorage(SymbolicExprType type, int64_t value)
+      : type_(type), value_(value) {}
+  SymbolicExprStorage(SymbolicExprType type, SymbolicExpr lhs, SymbolicExpr rhs)
+      : type_(type), lhs_(lhs), rhs_(rhs) {}
+};
 
 SymbolicExprContext* SymbolicExpr::GetContext() const { return impl_->ctx_; }
 
@@ -247,35 +269,6 @@ std::string SymbolicExpr::ToString() const {
     default:
       LOG(FATAL) << "unknown type on symbolic expressions";
   }
-}
-
-SymbolicExpr SymbolicExprContext::GetOrCreate(SymbolicExprType type,
-                                              int64_t value, SymbolicExpr lhs,
-                                              SymbolicExpr rhs) {
-  auto initContext = [&](SymbolicExprStorage* storage) {
-    storage->ctx_ = this;
-  };
-  return uniquer_.get<SymbolicExprStorage>(initContext, type, value, lhs, rhs);
-}
-
-SymbolicExpr SymbolicExprContext::CreateConstant(int64_t value) {
-  return GetOrCreate(SymbolicExprType::kConstant, value, SymbolicExpr(),
-                     SymbolicExpr());
-}
-
-SymbolicExpr SymbolicExprContext::CreateVariable(int64_t var_id) {
-  return GetOrCreate(SymbolicExprType::kVariable, var_id, SymbolicExpr(),
-                     SymbolicExpr());
-}
-
-SymbolicExpr SymbolicExprContext::CreateBinaryOp(SymbolicExprType type,
-                                                 SymbolicExpr lhs,
-                                                 SymbolicExpr rhs) {
-  CHECK(type != SymbolicExprType::kConstant &&
-        type != SymbolicExprType::kVariable && lhs && rhs)
-      << "We expect a binary operation and two symbolic expressions as "
-         "children.";
-  return GetOrCreate(type, 0, lhs, rhs);
 }
 
 int64_t SymbolicExpr::Evaluate(
@@ -409,6 +402,35 @@ SymbolicExpr SymbolicExpr::max(SymbolicExpr other) const {
 
 SymbolicExprContext::SymbolicExprContext() {
   uniquer_.registerParametricStorageType<SymbolicExprStorage>();
+}
+
+SymbolicExpr SymbolicExprContext::GetOrCreate(SymbolicExprType type,
+                                              int64_t value, SymbolicExpr lhs,
+                                              SymbolicExpr rhs) {
+  auto initContext = [&](SymbolicExprStorage* storage) {
+    storage->ctx_ = this;
+  };
+  return uniquer_.get<SymbolicExprStorage>(initContext, type, value, lhs, rhs);
+}
+
+SymbolicExpr SymbolicExprContext::CreateConstant(int64_t value) {
+  return GetOrCreate(SymbolicExprType::kConstant, value, SymbolicExpr(),
+                     SymbolicExpr());
+}
+
+SymbolicExpr SymbolicExprContext::CreateVariable(int64_t var_id) {
+  return GetOrCreate(SymbolicExprType::kVariable, var_id, SymbolicExpr(),
+                     SymbolicExpr());
+}
+
+SymbolicExpr SymbolicExprContext::CreateBinaryOp(SymbolicExprType type,
+                                                 SymbolicExpr lhs,
+                                                 SymbolicExpr rhs) {
+  CHECK(type != SymbolicExprType::kConstant &&
+        type != SymbolicExprType::kVariable && lhs && rhs)
+      << "We expect a binary operation and two symbolic expressions as "
+         "children.";
+  return GetOrCreate(type, 0, lhs, rhs);
 }
 
 SymbolicExpr SymbolicExprContext::Parse(absl::string_view expr_str) {

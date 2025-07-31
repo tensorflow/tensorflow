@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <tuple>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -101,32 +100,6 @@ class SymbolicExpr {
 inline ::llvm::hash_code hash_value(SymbolicExpr expr) {
   return ::llvm::hash_value(expr.GetImpl());
 }
-
-class SymbolicExprStorage : public mlir::StorageUniquer::BaseStorage {
- public:
-  using KeyTy =
-      std::tuple<SymbolicExprType, int64_t, SymbolicExpr, SymbolicExpr>;
-
-  static SymbolicExprStorage* construct(
-      mlir::StorageUniquer::StorageAllocator& allocator, const KeyTy& key);
-
-  bool operator==(const KeyTy& key) const;
-
- protected:
-  friend class SymbolicExpr;
-  friend class SymbolicExprContext;
-  SymbolicExprType type_;
-  int64_t value_ = 0;
-  SymbolicExpr lhs_;
-  SymbolicExpr rhs_;
-  SymbolicExprContext* ctx_ = nullptr;
-
- private:
-  SymbolicExprStorage(SymbolicExprType type, int64_t value)
-      : type_(type), value_(value) {}
-  SymbolicExprStorage(SymbolicExprType type, SymbolicExpr lhs, SymbolicExpr rhs)
-      : type_(type), lhs_(lhs), rhs_(rhs) {}
-};
 
 // Maps a set of input variables to a set of output SymbolicExpr trees.
 struct SymbolicMap {

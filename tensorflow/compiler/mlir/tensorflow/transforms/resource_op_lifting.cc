@@ -99,8 +99,8 @@ void SetAllVarIsInitializedToTrue(Block* block) {
        llvm::make_early_inc_range(block->getOps<TF::VarIsInitializedOp>())) {
     builder.setInsertionPoint(op);
     if (!const_true)
-      const_true = builder.create<TF::ConstOp>(
-          op.getLoc(),
+      const_true = TF::ConstOp::create(
+          builder, op.getLoc(),
           DenseIntElementsAttr::get(
               RankedTensorType::get(/*shape=*/{}, builder.getI1Type()), true));
 
@@ -137,9 +137,9 @@ void ForwardStoreToLoad(Block* block) {
       if (read_type != last_store.getValue().getType()) {
         OpBuilder builder(last_store);
         builder.setInsertionPointAfter(last_store);
-        auto cast = builder.create<TF::CastOp>(
-            last_store.getLoc(), read_type, last_store.getValue(),
-            /*Truncate=*/builder.getBoolAttr(false));
+        auto cast = TF::CastOp::create(builder, last_store.getLoc(), read_type,
+                                       last_store.getValue(),
+                                       /*Truncate=*/builder.getBoolAttr(false));
         read_variable_op.getValue().replaceAllUsesWith(cast);
       } else {
         read_variable_op.getValue().replaceAllUsesWith(last_store.getValue());
@@ -382,8 +382,8 @@ void RegionResourceHoister::GenerateHoistedReads() {
     auto& info = resource_it.second;
 
     if (info.is_read) {
-      Operation* read = builder.create<TF::ReadVariableOp>(
-          op_->getLoc(), info.data_type, resource);
+      Operation* read = TF::ReadVariableOp::create(builder, op_->getLoc(),
+                                                   info.data_type, resource);
       read->setAttrs(info.read_attrs ? info.read_attrs : empty_attrs);
       read->removeAttr(kDeviceAttr);
       info.hoisted_read = read->getResult(0);
@@ -481,8 +481,8 @@ void RegionResourceHoister::ReplaceOpWithNewOp() {
   for (Value resource : written_resources_) {
     ResourceInfo& info = resources_[resource];
     Value value_to_write = new_op->getResult(info.result_index);
-    Operation* write = builder.create<TF::AssignVariableOp>(
-        op_->getLoc(), resource, value_to_write);
+    Operation* write = TF::AssignVariableOp::create(builder, op_->getLoc(),
+                                                    resource, value_to_write);
     write->setAttrs(info.write_attrs);
     write->removeAttr(kDeviceAttr);
   }
@@ -822,13 +822,14 @@ void AddLoadsStoresOutsideControlFlowOp(
     int64_t updated_index = entry.getSecond().second;
     auto operand = caller->getOperand(index);
     builder.setInsertionPoint(caller);
-    new_operands[index] = builder.create<TF::ReadVariableOp>(
-        caller->getLoc(), ArrayRef<Type>{new_type}, ArrayRef<Value>{operand});
+    new_operands[index] = TF::ReadVariableOp::create(builder, caller->getLoc(),
+                                                     ArrayRef<Type>{new_type},
+                                                     ArrayRef<Value>{operand});
     caller->setOperand(index, new_operands[index]);
     if (updated_index < 0) continue;
     builder.setInsertionPointAfter(caller);
-    builder.create<TF::AssignVariableOp>(
-        caller->getLoc(), ArrayRef<Type>{},
+    TF::AssignVariableOp::create(
+        builder, caller->getLoc(), ArrayRef<Type>{},
         ArrayRef<Value>{operand, caller->getResult(updated_index)});
   }
 }
@@ -873,8 +874,8 @@ LogicalResult HandleWhileLoop(TF::WhileOp while_op, func::FuncOp body,
   OpBuilder builder(while_op);
   // Now use the filtered original operands, which will be replaced by
   // AddLoadsStoresOutsideControlFlowOp().
-  auto new_while = builder.create<TF::WhileOp>(
-      while_op.getLoc(), body.getFunctionType().getResults(),
+  auto new_while = TF::WhileOp::create(
+      builder, while_op.getLoc(), body.getFunctionType().getResults(),
       FilterRange<Value, OperandRange>(while_op.getOperands(),
                                        resource_arg_uses),
       while_op->getAttrs());
@@ -970,7 +971,7 @@ LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<func::FuncOp> branches) {
     auto old_return = branch.front().getTerminator();
     OpBuilder builder(old_return);
     auto new_return =
-        builder.create<func::ReturnOp>(old_return->getLoc(), new_retvals);
+        func::ReturnOp::create(builder, old_return->getLoc(), new_retvals);
     old_return->erase();
     (void)LiftArgRetResourcesForFunction(
         branch, remaining_resource_data_types, [&](int64_t index, Value value) {
@@ -986,9 +987,9 @@ LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<func::FuncOp> branches) {
       FilterRange<Value, OperandRange>(op.getInput(), resource_arg_uses);
   new_operands.insert(new_operands.begin(), op.getOperand(0));
   func::FuncOp first_func = branches.front();
-  auto new_op = builder.create<CaseOrIfOp>(
-      op.getLoc(), first_func.getFunctionType().getResults(), new_operands,
-      op->getAttrs());
+  auto new_op = CaseOrIfOp::create(builder, op.getLoc(),
+                                   first_func.getFunctionType().getResults(),
+                                   new_operands, op->getAttrs());
   // Prepare for AddLoadsStoresOutsideControlFlowOp()
   llvm::SmallDenseMap<int64_t, std::pair<Type, int64_t>>
       arg_data_type_and_updated_output_index;
@@ -1105,8 +1106,8 @@ LogicalResult HandlePartitionedCallOpCallee(
   old_and_new_retvals.append(new_retvals.begin(), new_retvals.end());
   // Replace old return with the new ones with update values.
   OpBuilder builder(old_return);
-  auto new_return =
-      builder.create<func::ReturnOp>(old_return->getLoc(), old_and_new_retvals);
+  auto new_return = func::ReturnOp::create(builder, old_return->getLoc(),
+                                           old_and_new_retvals);
   old_return->erase();
   callee.setType(FunctionType::get(
       callee.getContext(), callee.getFunctionType().getInputs(),
@@ -1132,8 +1133,8 @@ void UpdatePartitionedCallOpWithNewCallee(
   // AddLoadsStoresOutsideControlFlowOp().
   auto new_operands = FilterRange<Value, OperandRange>(call_op.getArgs(),
                                                        lifting_info.use_info);
-  auto new_call = builder.create<CallOpType>(
-      call_op.getLoc(),
+  auto new_call = CallOpType::create(
+      builder, call_op.getLoc(),
       lifting_info.lifted_callee.getFunctionType().getResults(), new_operands,
       call_op->getAttrs());
   new_call->setAttr("f",

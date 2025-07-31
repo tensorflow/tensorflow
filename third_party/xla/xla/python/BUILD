@@ -127,6 +127,25 @@ cc_library(
 )
 
 cc_library(
+    name = "literal_type_casters",
+    hdrs = ["literal_type_casters.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        ":types",
+        "//xla:literal",
+        "//xla:shape_util",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@nanobind",
+    ],
+)
+
+cc_library(
     name = "pprof_profile_builder",
     srcs = ["pprof_profile_builder.cc"],
     hdrs = ["pprof_profile_builder.h"],
@@ -275,6 +294,7 @@ nanobind_pywrap_extension(
     ],
     pytype_srcs = ["_ops.pyi"],
     deps = [
+        ":literal_type_casters",
         ":nb_absl_span",
         ":nb_helpers",
         ":types",

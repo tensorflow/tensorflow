@@ -226,8 +226,8 @@ StatusOr<mlir::Operation*> ExpandFFTNImpl(
         EmitTransposeRelayout(builder, location, output, intermediate_layout,
                               mesh, perm_axes));
 
-    new_fft_op = builder.create<mlir::TF::FFTOp>(
-        location, transposed_input.getType(), transposed_input);
+    new_fft_op = mlir::TF::FFTOp::create(
+        builder, location, transposed_input.getType(), transposed_input);
     SetSingleLayoutOnOp(new_fft_op, intermediate_layout);
     output = new_fft_op.getOutput();
   }
@@ -273,8 +273,8 @@ StatusOr<mlir::Operation*> ExpandFFTN(mlir::Operation* fft_op,
 
   if (IsComplexFFT(input)) {
     // FFT for the last axis.
-    mlir::TF::FFTOp fft_output_op = builder.create<mlir::TF::FFTOp>(
-        location, intermediate.getType(), intermediate);
+    mlir::TF::FFTOp fft_output_op = mlir::TF::FFTOp::create(
+        builder, location, intermediate.getType(), intermediate);
     transform_axes.pop_back();
     return ExpandFFTNImpl(fft_output_op, fft_op, transform_axes, input_rank,
                           builder, location, intermediate_layout, mesh);
@@ -298,8 +298,8 @@ StatusOr<mlir::Operation*> ExpandFFTN(mlir::Operation* fft_op,
         mlir::dyn_cast<mlir::TensorType>(fft_op->getResult(0).getType())
             .getElementType());
     // Real FFT for the last axis.
-    mlir::TF::RFFTOp rfft_output_op = builder.create<mlir::TF::RFFTOp>(
-        location, output_type, intermediate, fft_length);
+    mlir::TF::RFFTOp rfft_output_op = mlir::TF::RFFTOp::create(
+        builder, location, output_type, intermediate, fft_length);
     transform_axes.pop_back();
     return ExpandFFTNImpl(rfft_output_op, fft_op, transform_axes, input_rank,
                           builder, location, intermediate_layout, mesh);
@@ -353,8 +353,8 @@ StatusOr<mlir::Operation*> ExpandIFFTN(mlir::Operation* ifft_op,
   while (transform_axes.size() > 1) {
     ax = transform_axes[1] - 1;
     transform_axes.erase(transform_axes.begin() + 1);
-    fft_new_op = builder.create<mlir::TF::IFFTOp>(
-        location, transposed_output.getType(), transposed_output);
+    fft_new_op = mlir::TF::IFFTOp::create(
+        builder, location, transposed_output.getType(), transposed_output);
     SetSingleLayoutOnOp(fft_new_op, intermediate_layout);
     transposed_output = fft_new_op.getOutput();
     // Swap and relayout
@@ -367,8 +367,8 @@ StatusOr<mlir::Operation*> ExpandIFFTN(mlir::Operation* ifft_op,
 
   if (IsComplexFFT(ifft_op->getResult(0))) {
     // IFFT for the last axis.
-    mlir::TF::IFFTOp ifft_output_op = builder.create<mlir::TF::IFFTOp>(
-        location, transposed_output.getType(), transposed_output);
+    mlir::TF::IFFTOp ifft_output_op = mlir::TF::IFFTOp::create(
+        builder, location, transposed_output.getType(), transposed_output);
     SetSingleLayoutOnOp(ifft_output_op, intermediate_layout);
     builder.setInsertionPointAfter(ifft_output_op);
 
@@ -382,8 +382,8 @@ StatusOr<mlir::Operation*> ExpandIFFTN(mlir::Operation* ifft_op,
         IntConst(builder, location,
                  (int32)complex_fft_length_vec[num_transform_axes - 1]);
     // IRFFT for the last axis.
-    mlir::TF::IRFFTOp irfft_output_op = builder.create<mlir::TF::IRFFTOp>(
-        location, ifft_op->getResult(0).getType(), transposed_output,
+    mlir::TF::IRFFTOp irfft_output_op = mlir::TF::IRFFTOp::create(
+        builder, location, ifft_op->getResult(0).getType(), transposed_output,
         ifft_length);
     SetSingleLayoutOnOp(irfft_output_op, intermediate_layout);
     builder.setInsertionPointAfter(irfft_output_op);

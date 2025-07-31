@@ -42,7 +42,7 @@ namespace {
 TF::ConstOp GetI64ConstantTensor(PatternRewriter &rewriter,
                                  ArrayRef<int64_t> values, Location location) {
   auto cst_attr = rewriter.getI64TensorAttr(values);
-  return rewriter.create<TF::ConstOp>(location, cst_attr.getType(), cst_attr);
+  return TF::ConstOp::create(rewriter, location, cst_attr.getType(), cst_attr);
 }
 
 // Rewrites broadcast->reshape to a reshape->broadcast that reduces
@@ -123,8 +123,8 @@ class SimplifyBroadcastReshape : public OpRewritePattern<BroadcastToOp> {
         rewriter, ArrayRef<int64_t>(new_reshape_dims), op.getLoc());
     auto new_reshape_type = RankedTensorType::get(new_reshape_dims, el_ty);
     ReshapeOp new_reshape =
-        rewriter.create<ReshapeOp>(new_reshape_shape.getLoc(), new_reshape_type,
-                                   op.getInput(), new_reshape_shape);
+        ReshapeOp::create(rewriter, new_reshape_shape.getLoc(),
+                          new_reshape_type, op.getInput(), new_reshape_shape);
     TF::ConstOp new_broadcast_shape =
         GetI64ConstantTensor(rewriter, reshape_shape, op.getLoc());
     rewriter.replaceOpWithNewOp<BroadcastToOp>(

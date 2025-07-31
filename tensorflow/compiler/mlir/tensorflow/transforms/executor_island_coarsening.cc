@@ -354,8 +354,8 @@ IslandOp CreateNewIsland(const MergedIsland& merged_island,
       ControlType::get(merged_island.insert_point->getContext()));
 
   OpBuilder builder(merged_island.insert_point);
-  auto new_island = builder.create<IslandOp>(
-      merged_island.insert_point->getLoc(), result_types, operands);
+  auto new_island = IslandOp::create(
+      builder, merged_island.insert_point->getLoc(), result_types, operands);
   new_island.getBody().push_back(new Block);
   return new_island;
 }
@@ -377,7 +377,7 @@ YieldOp CreateNewIslandYieldOp(IslandOp new_island,
 
   // Create YieldOp for the new island.
   OpBuilder builder(&new_island.GetBody(), new_island.GetBody().end());
-  return builder.create<YieldOp>(new_island.getLoc(), yield_operands);
+  return YieldOp::create(builder, new_island.getLoc(), yield_operands);
 }
 
 // Moves inner ops (excluding last op/YieldOp) from islands being merged into
@@ -451,13 +451,14 @@ void InsertDummyIslandForFetch(FetchOp fetch) {
       data_types.push_back(value.getType());
     }
   }
-  auto island = OpBuilder(fetch).create<IslandOp>(
-      fetch.getLoc(), data_types,
-      /*control=*/ControlType::get(fetch.getContext()),
-      /*controlInputs=*/control_fetches);
+  OpBuilder builder(fetch);
+  auto island =
+      IslandOp::create(builder, fetch.getLoc(), data_types,
+                       /*control=*/ControlType::get(fetch.getContext()),
+                       /*controlInputs=*/control_fetches);
   island.getBody().push_back(new Block);
-  OpBuilder::atBlockEnd(&island.GetBody())
-      .create<YieldOp>(fetch.getLoc(), data_fetches);
+  builder.setInsertionPointToEnd(&island.GetBody());
+  YieldOp::create(builder, fetch.getLoc(), data_fetches);
   const int fetch_control_idx = data_fetches.size();
   for (int i = 0, e = fetch.getNumOperands(); i < e; i++) {
     // The fetch could have multiple control operands (all at the end of its
