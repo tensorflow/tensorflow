@@ -72,12 +72,12 @@ TEST_F(EmitterLocOpBuilderTest, IRWithAnnotations) {
     EXPECT_THAT(RunFileCheck(ir, R"(
       CHECK: "IRWithAnnotations -> [[FILE:.*_test.cc]]:[[LINE:[0-9]+]]"
     )"),
-                IsOkAndHolds(true));
+                absl_testing::IsOkAndHolds(true));
   } else {
     EXPECT_THAT(RunFileCheck(ir, R"(
       CHECK: "IRWithAnnotations"
     )"),
-                IsOkAndHolds(true));
+                absl_testing::IsOkAndHolds(true));
   }
 }
 
@@ -90,7 +90,7 @@ TEST_F(EmitterLocOpBuilderTest, IRWithoutAnnotations) {
   EXPECT_THAT(RunFileCheck(ir, R"(
     CHECK-NOT: IRWithoutAnnotations
   )"),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 }  // namespace
