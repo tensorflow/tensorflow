@@ -222,9 +222,7 @@ using TestTypes =
     ::testing::Types<tsl::float8_e3m4, tsl::float8_e4m3, tsl::float8_e4m3fnuz,
                      tsl::float8_e4m3b11fnuz, tsl::float8_e5m2,
                      tsl::float8_e5m2fnuz,
-#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
                      Eigen::half,
-#endif
                      Eigen::bfloat16,
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64
                      double,
@@ -441,7 +439,6 @@ TEST_F(MathTest, Lgamma) {
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec{0.001});
 }
 
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
 TEST_F(MathTest, LgammaF16) {
   SetFastMathDisabled(true);
 
@@ -462,7 +459,6 @@ TEST_F(MathTest, LgammaF16) {
   };
   ComputeAndCompareR1<half>(&b, expected, {}, ErrorSpec{0.1});
 }
-#endif
 
 TEST_F(MathTest, Digamma) {
   XlaBuilder builder(TestName());
@@ -531,7 +527,6 @@ TEST_F(MathTest, IgammaSpecialValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, kErrorSpec);
 }
 
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
 TEST_F(MathTest, IgammaF16) {
   SetFastMathDisabled(true);
 
@@ -552,7 +547,6 @@ TEST_F(MathTest, IgammaF16) {
        {half(0.6220287), half(0.6384635), half(0.6152258), half(0.6072449)}}};
   ComputeAndCompareR3<half>(&builder, expected, {}, ErrorSpec{1e-3});
 }
-#endif
 
 TEST_F(MathTest, Igammac) {
   XlaBuilder builder(TestName());
@@ -578,7 +572,6 @@ TEST_F(MathTest, Igammac) {
   ComputeAndCompareR3<float>(&builder, expected, {}, kErrorSpec);
 }
 
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
 TEST_F(MathTest, IgammacF16) {
   SetFastMathDisabled(true);
 
@@ -600,7 +593,6 @@ TEST_F(MathTest, IgammacF16) {
         half(0.39275512)}}};
   ComputeAndCompareR3<half>(&builder, expected, {}, ErrorSpec{1e-4});
 }
-#endif
 
 TEST_F(MathTest, RoundToEven) {
   XlaBuilder builder(TestName());

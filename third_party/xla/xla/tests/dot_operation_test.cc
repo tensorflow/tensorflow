@@ -52,24 +52,18 @@ class DotOperationTest : public ClientLibraryTestBase {
 };
 
 using TypesF16F32 = ::testing::Types<
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
     Eigen::half,
-#endif
     float>;
 
 using TypesF16F32F64 = ::testing::Types<
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
     Eigen::half,
-#endif
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
     double,
 #endif
     float>;
 
 using TypesF16F32F64CF64 = ::testing::Types<
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
     Eigen::half,
-#endif
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
     double, complex64,
 #endif
@@ -501,9 +495,7 @@ std::vector<DotTestParam> CreateDotTestParameters() {
   return params;
 }
 
-#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
 TEST_P(ParametricDotTest, TestF16) { TestImpl<Eigen::half>(); }
-#endif
 TEST_P(ParametricDotTest, TestF32) { TestImpl<float>(); }
 TEST_P(ParametricDotTest, TestF64) {
   if (test::HasModifiers({test::kGrm})) {
@@ -586,11 +578,9 @@ std::vector<DotTestParam> CreateNoLayoutAssignmentDotTestParameters() {
   return params;
 }
 
-#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
 TEST_P(ParametricDotTestWithoutLayoutAssignment, TestF16) {
   TestImpl<Eigen::half>();
 }
-#endif
 TEST_P(ParametricDotTestWithoutLayoutAssignment, TestF32) { TestImpl<float>(); }
 // TODO(b/147505663): Disabled for now.
 TEST_P(ParametricDotTestWithoutLayoutAssignment, DISABLED_TestF64) {
