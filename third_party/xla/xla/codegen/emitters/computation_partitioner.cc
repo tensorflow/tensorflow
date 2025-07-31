@@ -238,6 +238,7 @@ PartitionedComputation::PartitionedComputation(
       instr_subgraph_data.indexings.clear();
       num_ops_per_subgraph.push_back(1);
     } else {
+      // We checked above that `user_subgraph_ids` contains exactly one value.
       instr_subgraph_data.subgraph_id =
           *instr_subgraph_data.user_subgraph_ids.begin();
       ++num_ops_per_subgraph.at(instr_subgraph_data.subgraph_id);
@@ -261,11 +262,15 @@ PartitionedComputation::PartitionedComputation(
       IndexingMap instr_indexing = instr_subgraph_data.indexings.empty()
                                        ? IndexingMap::GetUndefined()
                                        : *instr_subgraph_data.indexings.begin();
+      // Only fusion ops would have several operand maps, and we don't support
+      // nested fusions here.
+      CHECK_EQ(operand_maps.size(), 1);
       IndexingMap composed_indexing =
           instr_subgraph_data.is_root
               ? *operand_maps.begin()
               : ComposeIndexingMaps(instr_indexing, *operand_maps.begin());
       composed_indexing.Simplify();
+      composed_indexing.RemoveUnusedSymbols();
 
       operand_subgraph_data.user_subgraph_ids.insert(
           instr_subgraph_data.subgraph_id);
