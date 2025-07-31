@@ -667,9 +667,10 @@ TEST(ShardingUtilsTest, MismatchRank) {
 
   EXPECT_THAT(MakeArrayFromTensor(*client, input_tensor, device_list,
                                   std::move(sharding), thread_pool),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       "shape must have 2 dimensions, but has 3 dimensions: "
-                       "shape=[2,1,2], sharding={devices=[2,1]<=[2]}"));
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  "shape must have 2 dimensions, but has 3 dimensions: "
+                  "shape=[2,1,2], sharding={devices=[2,1]<=[2]}"));
 }
 
 }  // namespace
