@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/log_severity.h"
 #include "absl/container/inlined_vector.h"
@@ -43,6 +44,26 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+using ::testing::ElementsAre;
+
+TEST(UtilTest, Product) {
+  EXPECT_EQ(Product({}), 1);
+  EXPECT_EQ(Product({1}), 1);
+  EXPECT_EQ(Product({2, 3}), 2 * 3);
+  EXPECT_EQ(Product({2, 7, 9}), 2 * 7 * 9);
+}
+
+TEST(UtilTest, ToMixedRadix) {
+  EXPECT_THAT(ToMixedRadix<std::vector<int64_t>>(0, {2, 3, 4}),
+              ElementsAre(0, 0, 0));
+  EXPECT_THAT(ToMixedRadix<std::vector<int64_t>>(1, {2, 3, 4}),
+              ElementsAre(0, 0, 1));
+  EXPECT_THAT(ToMixedRadix<std::vector<int64_t>>(19, {2, 3, 4}),
+              ElementsAre(19 / (3 * 4), 7 / 4, 3));
+  EXPECT_THAT(ToMixedRadix<std::vector<int64_t>>(23, {3, 2, 4}),
+              ElementsAre(23 / (2 * 4), 7 / 4, 3));
+}
 
 // Verifies that, even with a different number of leading spaces, the
 // Reindent routine turns them into a uniform number of leading spaces.
