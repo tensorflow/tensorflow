@@ -82,10 +82,10 @@ StatusOr<mlir::Operation*> FillSPMDExpander::ExpandOp(mlir::Operation* op) {
 
   auto location = DT_LOC(op);
   auto num_shards =
-      builder.create<mlir::TF::ConstOp>(location, target_type_attr);
+      mlir::TF::ConstOp::create(builder, location, target_type_attr);
   // Divide the global shape by the sharding spec.
-  auto div = builder.create<mlir::TF::DivOp>(location, original_fill.getDims(),
-                                             num_shards.getResult());
+  auto div = mlir::TF::DivOp::create(builder, location, original_fill.getDims(),
+                                     num_shards.getResult());
   // Copy over static shape information if available
   auto global_output_type =
       mlir::cast<mlir::TensorType>(original_fill.getResult().getType());
@@ -93,8 +93,8 @@ StatusOr<mlir::Operation*> FillSPMDExpander::ExpandOp(mlir::Operation* op) {
       auto local_type,
       LocalTypeFromGlobalType(output_layout.value(), global_output_type));
 
-  auto new_fill = builder.create<mlir::TF::FillOp>(
-      location, local_type, div.getResult(), original_fill.getValue());
+  auto new_fill = mlir::TF::FillOp::create(
+      builder, location, local_type, div.getResult(), original_fill.getValue());
   original_fill.getResult().replaceAllUsesWith(new_fill.getOutput());
   original_fill.erase();
   return InferSPMDExpandedLocalShape(new_fill);

@@ -1,4 +1,5 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/python/pjrt_ifrt:pjrt_ifrt.bzl", "pjrt_ifrt_package_groups")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")

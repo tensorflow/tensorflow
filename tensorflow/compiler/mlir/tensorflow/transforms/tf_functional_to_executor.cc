@@ -79,12 +79,12 @@ void FunctionalToExecutorDialectConversion::runOnOperation() {
   }
   // Build GraphOp.
   OpBuilder builder(&body, body.begin());
-  auto graph_op = builder.create<tf_executor::GraphOp>(
-      loc, func.getFunctionType().getResults());
+  auto graph_op = tf_executor::GraphOp::create(
+      builder, loc, func.getFunctionType().getResults());
   graph_op.getBody().push_back(new Block);
   builder.setInsertionPointToEnd(&graph_op.GetBody());
-  auto island = builder.create<tf_executor::IslandOp>(
-      loc, func.getFunctionType().getResults(),
+  auto island = tf_executor::IslandOp::create(
+      builder, loc, func.getFunctionType().getResults(),
       tf_executor::ControlType::get(&getContext()), ArrayRef<Value>());
   // Create Fetch.
   ValueRange to_fetch = island.getResults();
@@ -92,14 +92,14 @@ void FunctionalToExecutorDialectConversion::runOnOperation() {
     // Drop control result for fetch.
     to_fetch = to_fetch.drop_back();
   }
-  builder.create<tf_executor::FetchOp>(loc, to_fetch);
+  tf_executor::FetchOp::create(builder, loc, to_fetch);
   // Build Island.
   island.getBody().push_back(new Block);
   island.getBody().front().getOperations().splice(
       island.getBody().front().begin(), body.getOperations(),
       copy_range.begin(), copy_range.end());
   builder.setInsertionPointToEnd(&island.getBody().front());
-  builder.create<tf_executor::YieldOp>(loc, return_op.getOperands());
+  tf_executor::YieldOp::create(builder, loc, return_op.getOperands());
   for (auto item : llvm::enumerate(graph_op.getResults())) {
     return_op.setOperand(item.index(), item.value());
   }

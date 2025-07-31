@@ -69,7 +69,8 @@ namespace xla {
 //
 // and FromMixedRadix(digits) == n. The mixed radix representation is unique
 // modulo the product of the entries of bounds.
-std::vector<int64_t> ToMixedRadix(int64_t n, absl::Span<const int64_t> bounds);
+template <typename Container = std::vector<int64_t>>
+Container ToMixedRadix(int64_t n, absl::Span<const int64_t> bounds);
 
 // Logs the provided status message with a backtrace.
 //
@@ -1020,8 +1021,6 @@ struct FreeDeleter {
 std::unique_ptr<void, FreeDeleter> AlignedAlloc(std::size_t alignment,
                                                 std::size_t size);
 
-}  // namespace xla
-
 // Note that STRING is evaluated regardless of whether it will be logged.
 #define XLA_LOG_LINES(SEV, STRING) \
   ::xla::LogLines##SEV(STRING, __FILE__, __LINE__)
@@ -1032,5 +1031,32 @@ std::unique_ptr<void, FreeDeleter> AlignedAlloc(std::size_t alignment,
   do {                                                  \
     if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(INFO, STRING); \
   } while (false)
+
+// Implementation details only below here
+
+template <typename Container>
+Container ToMixedRadix(int64_t n, absl::Span<const int64_t> bounds) {
+  if (bounds.empty()) {
+    return {};
+  }
+
+  Container digits;
+  digits.reserve(bounds.size());
+  int64_t divisor = Product(bounds);
+  CHECK_GT(divisor, 0);
+  int64_t remainder = n % divisor;
+  for (const int64_t radix : bounds) {
+    CHECK_GT(radix, 0);
+    divisor /= radix;
+    CHECK_GT(divisor, 0);
+
+    // The divisor is always 1 for the last iteration.
+    digits.push_back(remainder / divisor);
+    remainder = remainder % divisor;
+  }
+  return digits;
+}
+
+}  // namespace xla
 
 #endif  // XLA_UTIL_H_

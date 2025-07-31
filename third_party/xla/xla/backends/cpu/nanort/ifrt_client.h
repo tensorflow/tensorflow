@@ -188,6 +188,10 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
   // Some of the ifrt::Client methods return a span of devices, so we need to
   // keep storage for them here.
   std::vector<ifrt::Device*> devices_;
+
+  // Single-device device lists pre-constructed for all `devices_`. We cache it
+  // in the client to avoid constructing them all the time on a hot path.
+  std::vector<ifrt::DeviceListRef> single_device_lists_;
 };
 
 }  // namespace xla::cpu
