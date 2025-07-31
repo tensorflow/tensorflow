@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla/tests:build_defs.bzl", "xla_test")
 
 package(
