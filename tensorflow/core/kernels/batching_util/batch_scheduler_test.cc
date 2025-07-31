@@ -44,7 +44,7 @@ using ::testing::Property;
 TEST(MixedPriorityBatchingPolicyTest, InvalidAttrValueError) {
   EXPECT_THAT(
       GetMixedPriorityBatchingPolicy("invalid_attr_value"),
-      testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
           ::testing::HasSubstr(
               "Unknown mixed priority batching policy: invalid_attr_value")));
@@ -57,7 +57,7 @@ TEST_P(MixedPriorityBatchingPolicyParameterizedTest,
        GetMixedPriorityBatchingPolicySuccess) {
   auto [attr_name, policy] = GetParam();
   EXPECT_THAT(GetMixedPriorityBatchingPolicy(attr_name),
-              testing::IsOkAndHolds(Eq(policy)));
+              absl_testing::IsOkAndHolds(Eq(policy)));
 }
 
 INSTANTIATE_TEST_SUITE_P(

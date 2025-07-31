@@ -93,27 +93,25 @@ TEST(BoundedExecutorTest, InvalidEmptyEnv) {
   options.num_threads = 2;
   options.env = nullptr;
   EXPECT_THAT(BoundedExecutor::Create(options),
-              ::tensorflow::testing::StatusIs(
-                  error::INVALID_ARGUMENT, "options.env must not be nullptr"));
+              absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                                     "options.env must not be nullptr"));
 }
 
 TEST(BoundedExecutorTest, InvalidNumThreads) {
   {
     BoundedExecutor::Options options;
     options.num_threads = 0;
-    EXPECT_THAT(
-        BoundedExecutor::Create(options),
-        ::tensorflow::testing::StatusIs(
-            error::INVALID_ARGUMENT, "options.num_threads must be positive"));
+    EXPECT_THAT(BoundedExecutor::Create(options),
+                absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                                       "options.num_threads must be positive"));
   }
 
   {
     BoundedExecutor::Options options;
     options.num_threads = -1;
-    EXPECT_THAT(
-        BoundedExecutor::Create(options),
-        ::tensorflow::testing::StatusIs(
-            error::INVALID_ARGUMENT, "options.num_threads must be positive"));
+    EXPECT_THAT(BoundedExecutor::Create(options),
+                absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                                       "options.num_threads must be positive"));
   }
 }
 
