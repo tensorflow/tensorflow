@@ -70,7 +70,8 @@ TEST_F(CollectiveCombinerAnnotatorTest, SynchronousCollectivesNoOverlap) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  EXPECT_THAT(RunCollectiveCombinerAnnotator(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunCollectiveCombinerAnnotator(module.get()),
+              absl_testing::IsOkAndHolds(true));
   const HloInstruction* ar0 =
       module->entry_computation()->root_instruction()->operand(0);
   EXPECT_TRUE(IsCombinableSyncCollective(*ar0));
@@ -109,7 +110,8 @@ TEST_F(CollectiveCombinerAnnotatorTest, SynchronousCollectivesWithOverlap) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  EXPECT_THAT(RunCollectiveCombinerAnnotator(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunCollectiveCombinerAnnotator(module.get()),
+              absl_testing::IsOkAndHolds(true));
   const HloInstruction* ar0 =
       module->entry_computation()->root_instruction()->operand(0);
   EXPECT_FALSE(IsCombinableSyncCollective(*ar0));
@@ -183,7 +185,7 @@ TEST_F(CollectiveCombinerAnnotatorTest,
   // suggested thresholds = device size * slop factor - peak memory
   EXPECT_THAT(RunCollectiveCombinerAnnotator(module.get(),
                                              /*device_memory_size=*/20000),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(SuggestedCombinerThreshold(*module), Optional(6712L));
 }
 
@@ -210,7 +212,8 @@ TEST_F(CollectiveCombinerAnnotatorTest,
   // slop factor = 0.95
   // peak memory = parameters + output = (2*32*32 + 32*32) * 4 bytes = 12288
   // suggested thresholds = device size * slop factor - peak memory
-  EXPECT_THAT(RunCollectiveCombinerAnnotator(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunCollectiveCombinerAnnotator(module.get()),
+              absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(SuggestedCombinerThreshold(*module), Optional(6712L));
 }
 
