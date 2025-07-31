@@ -172,7 +172,7 @@ TEST_F(CompilationEnvironmentsTest, ReplaceExistingEnv) {
     auto env2 = std::make_unique<TestCompilationEnvironment1>();
     env2->set_some_flag(6);
     ASSERT_THAT(envs.AddEnv(std::move(env2)),
-                StatusIs(absl::StatusCode::kAlreadyExists));
+                absl_testing::StatusIs(absl::StatusCode::kAlreadyExists));
   }
   envs.DeleteEnv<TestCompilationEnvironment1>();
   {
