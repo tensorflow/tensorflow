@@ -6653,8 +6653,8 @@ bool HloParserImpl::ParseOriginalValueRecoveryTable(
   }
 
   while (lexer_.GetKind() != TokKind::kRbrace) {
-    OriginalArray removed_original_array, replacing_original_array;
-    if (!ParseOriginalArray(removed_original_array)) {
+    OriginalArray replaced_original_array, replacing_original_array;
+    if (!ParseOriginalArray(replaced_original_array)) {
       return false;
     }
     std::string errmsg =
@@ -6677,7 +6677,7 @@ bool HloParserImpl::ParseOriginalValueRecoveryTable(
     if (!recovery_module.ok()) {
       return false;
     }
-    original_value_recovery_table[removed_original_array] = std::make_pair(
+    original_value_recovery_table[replaced_original_array] = std::make_pair(
         replacing_original_array, std::move(recovery_module.value()));
   }
 
