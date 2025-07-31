@@ -247,7 +247,7 @@ void CreateFunctions(ModuleOp module_op,
     for (Value result : metadata.results) {
       results_after_mapping.push_back(mapping.lookupOrDefault(result));
     }
-    builder.create<func::ReturnOp>(loc, results_after_mapping);
+    func::ReturnOp::create(builder, loc, results_after_mapping);
     symbol_table.insert(func_op, metadata.insertion_point++);
     // Record the actual name. The symbol table might rename the FuncOp if there
     // is name collision.
@@ -281,10 +281,9 @@ void CreateRemoteRunCalls(MLIRContext *context,
       inputs_after_mapping.push_back(mapping.lookupOrDefault(input));
     }
 
-    tf_device::RemoteRunOp remote_run_op =
-        builder.create<tf_device::RemoteRunOp>(loc, result_types, host,
-                                               metadata.partition_name,
-                                               inputs_after_mapping);
+    tf_device::RemoteRunOp remote_run_op = tf_device::RemoteRunOp::create(
+        builder, loc, result_types, host, metadata.partition_name,
+        inputs_after_mapping);
     // Clones the tf_device.remote_run operation to replace its callee args with
     // the results of the other tf_device.remote_run operations using the
     // `mapping` as appropriate.
