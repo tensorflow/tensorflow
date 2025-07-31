@@ -89,6 +89,9 @@ bool BackendIsExactly(absl::string_view device,
 // Returns true only for base variant hardware + emulation.
 bool BackendIsStrict(absl::string_view device);
 
+bool BackendSupportsFloat64();
+bool BackendSupportsComplex128();
+
 // Useful to generate an intentionally empty set of inputs for a parameterized
 // test. This is needed when we are manipulating the inputs based on the
 // backend and would like some backends to receive zero inputs. Usage of this

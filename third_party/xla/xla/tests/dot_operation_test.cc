@@ -513,9 +513,12 @@ TEST_P(ParametricDotTest, TestF64) {
   TestImpl<double>();
 }
 TEST_P(ParametricDotTest, TestC64) { TestImpl<std::complex<float>>(); }
-#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_COMPLEX128
-TEST_P(ParametricDotTest, TestC128) { TestImpl<std::complex<double>>(); }
-#endif
+TEST_P(ParametricDotTest, TestC128) {
+  if (!test::BackendSupportsComplex128()) {
+    GTEST_SKIP();
+  }
+  TestImpl<std::complex<double>>();
+}
 TEST_P(ParametricDotTest, TestS32) { TestImpl<int32_t>(); }
 TEST_P(ParametricDotTest, TestF8E5M2) { TestImpl<tsl::float8_e5m2>(); }
 TEST_P(ParametricDotTest, TestF8E4M3FN) { TestImpl<tsl::float8_e4m3fn>(); }
