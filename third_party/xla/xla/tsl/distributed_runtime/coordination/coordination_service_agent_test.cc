@@ -634,7 +634,7 @@ TEST_F(CoordinationServiceAgentTest, WaitAtBarrier_Ongoing_Fails) {
                              [](const absl::Status& s) {});
 
   EXPECT_THAT(agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), /*tasks=*/{}),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST_F(CoordinationServiceAgentTest,
@@ -654,7 +654,7 @@ TEST_F(CoordinationServiceAgentTest,
   InitializeAgent();
   TF_EXPECT_OK(agent_->Connect());
   EXPECT_THAT(agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), /*tasks=*/{}),
-              StatusIs(absl::StatusCode::kInternal));
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
 
   TF_EXPECT_OK(agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), {}));
 }
@@ -673,7 +673,7 @@ TEST_F(CoordinationServiceAgentTest,
   InitializeAgent();
   TF_EXPECT_OK(agent_->Connect());
   EXPECT_THAT(agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), /*tasks=*/{}),
-              StatusIs(absl::StatusCode::kUnavailable));
+              absl_testing::StatusIs(absl::StatusCode::kUnavailable));
 
   TF_EXPECT_OK(agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), {}));
 }
@@ -692,7 +692,7 @@ TEST_F(CoordinationServiceAgentTest, CancelBarrier_OngoingBarrier_Cancelled) {
                              [](const absl::Status& s) {});
 
   EXPECT_THAT(agent_->CancelBarrier(barrier_id),
-              StatusIs(absl::StatusCode::kOk));
+              absl_testing::StatusIs(absl::StatusCode::kOk));
 }
 
 TEST_F(CoordinationServiceAgentTest, CancelBarrier_NonExistent_Fails) {
@@ -700,7 +700,7 @@ TEST_F(CoordinationServiceAgentTest, CancelBarrier_NonExistent_Fails) {
   TF_EXPECT_OK(agent_->Connect());
 
   EXPECT_THAT(agent_->CancelBarrier("nonexistent_barrier"),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST_F(CoordinationServiceAgentTest, CancelBarrier_CompletedBarrier_Fails) {
@@ -710,7 +710,7 @@ TEST_F(CoordinationServiceAgentTest, CancelBarrier_CompletedBarrier_Fails) {
       agent_->WaitAtBarrier("barrier_id", absl::Seconds(1), /*tasks=*/{}));
 
   EXPECT_THAT(agent_->CancelBarrier("barrier_id"),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST_F(CoordinationServiceAgentTest, CancelBarrier_ErroredBarrier_Fails) {
@@ -720,10 +720,10 @@ TEST_F(CoordinationServiceAgentTest, CancelBarrier_ErroredBarrier_Fails) {
   TF_EXPECT_OK(agent_->Connect());
   ASSERT_THAT(
       agent_->WaitAtBarrier("barrier_id", absl::Seconds(1), /*tasks=*/{}),
-      StatusIs(absl::StatusCode::kInternal));
+      absl_testing::StatusIs(absl::StatusCode::kInternal));
 
   EXPECT_THAT(agent_->CancelBarrier("barrier_id"),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace
