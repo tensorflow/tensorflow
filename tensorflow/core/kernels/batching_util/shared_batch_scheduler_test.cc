@@ -850,11 +850,11 @@ TEST_P(SharedBatchSchedulerTest, ConstMethods) {
     EXPECT_EQ(0, queue->SchedulingCapacity());
 
     // Attempting to enqueue one more task should yield an UNAVAILABLE error.
-    EXPECT_THAT(
-        ScheduleTask(1, queue.get()),
-        testing::StatusIs(error::UNAVAILABLE,
-                          HasSubstr("The batch scheduling queue to which this "
-                                    "task was submitted is full")));
+    EXPECT_THAT(ScheduleTask(1, queue.get()),
+                absl_testing::StatusIs(
+                    error::UNAVAILABLE,
+                    HasSubstr("The batch scheduling queue to which this "
+                              "task was submitted is full")));
 
     EXPECT_EQ(max_enqueued_batches * 2, queue->NumEnqueuedTasks());
     EXPECT_EQ(0, queue->SchedulingCapacity());
@@ -1012,8 +1012,8 @@ TEST_P(SharedBatchSchedulerTest, ZeroQueueRewrittenToOneQueue) {
                                 batch_timeout_micros, max_enqueued_batches,
                                 enable_input_batch_split(), get_split_func()),
                             callback, &queue),
-        testing::StatusIs(error::INVALID_ARGUMENT,
-                          "max_enqueued_batches must be positive; was 0"));
+        absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                               "max_enqueued_batches must be positive; was 0"));
   } else {
     TF_ASSERT_OK(
         scheduler->AddQueue(tensorflow::serving::CreateQueueOptions(
@@ -1143,7 +1143,7 @@ TEST_P(SharedBatchSchedulerPriorityTest,
     EXPECT_THAT(
         ScheduleTask(10, queue.get(),
                      tsl::criticality::Criticality::kSheddablePlus),
-        testing::StatusIs(
+        absl_testing::StatusIs(
             absl::StatusCode::kUnavailable,
             HasSubstr(
                 "The low priority task queue to which this task was submitted "
@@ -1199,7 +1199,7 @@ TEST_P(SharedBatchSchedulerPriorityTest,
   EXPECT_THAT(
       ScheduleTask(1, queue.get(),
                    tsl::criticality::Criticality::kSheddablePlus),
-      testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kUnavailable,
           HasSubstr("The low priority task queue to which this task was "
                     "submitted does not have the capacity to handle this task; "
