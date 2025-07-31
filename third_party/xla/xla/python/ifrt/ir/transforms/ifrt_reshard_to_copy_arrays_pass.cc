@@ -112,8 +112,8 @@ class ReshardToCopyArraysOpPattern
       reshard_output_types.push_back(op.getOutputs()[idx].getType());
     }
     if (!reshard_input_values.empty()) {
-      auto reshard_op = rewriter.create<xla::ifrt::ReshardOp>(
-          op.getLoc(),
+      auto reshard_op = xla::ifrt::ReshardOp::create(
+          rewriter, op.getLoc(),
           /*outputs=*/reshard_output_types,
           /*control_output=*/op.getControlOutput().getType(),
           /*inputs=*/reshard_input_values,
@@ -139,8 +139,8 @@ class ReshardToCopyArraysOpPattern
         copy_input_values.push_back(op.getInputs()[idx]);
         copy_output_types.push_back(op.getOutputs()[idx].getType());
       }
-      auto copy_arrays_op = rewriter.create<xla::ifrt::CopyArraysOp>(
-          op.getLoc(),
+      auto copy_arrays_op = xla::ifrt::CopyArraysOp::create(
+          rewriter, op.getLoc(),
           /*outputs=*/copy_output_types,
           /*control_output=*/op.getControlOutput().getType(),
           /*inputs=*/copy_input_values,

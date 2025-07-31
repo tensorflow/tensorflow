@@ -1431,9 +1431,7 @@ using Types =
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
                      Eigen::half,
 #endif
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_BFLOAT16)
                      Eigen::bfloat16,
-#endif
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
                      double,
 #endif

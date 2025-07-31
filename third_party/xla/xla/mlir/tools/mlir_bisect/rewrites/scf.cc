@@ -55,8 +55,8 @@ llvm::SmallVector<std::function<OwningOpRef<ModuleOp>()>> InlineScfWhile(
       auto wrap_region_in_execute = [&,
                                      loc = op.getLoc()](mlir::Region& region) {
         regions
-            .emplace_back(b.create<ExecuteRegionOp>(
-                loc,
+            .emplace_back(ExecuteRegionOp::create(
+                b, loc,
                 region.getBlocks().front().getTerminator()->getOperandTypes(),
                 mlir::ValueRange{}))
             .getRegion()
