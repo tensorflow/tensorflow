@@ -245,7 +245,7 @@ TEST(TopologyTest, ExchangeTopology_TwiceWithDifferentLocalTopology_Fails) {
                           absl::Seconds(10), /*get_global_topology_timeout=*/
                           absl::Seconds(10), &kv_store, locals[i], &globals[i],
                           /*assign_global_device_ids=*/true),
-                      tsl::testing::StatusIs(absl::StatusCode::kInternal));
+                      absl_testing::StatusIs(absl::StatusCode::kInternal));
         }
       });
     }

@@ -193,7 +193,8 @@ TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto1) {
   AutotuneConfig config = AutotuneConfig::FromDebugOptions(
       DeviceOrDevicelessConfig{DeviceConfig{executor}}, options);
 
-  EXPECT_THAT(AutotunerUtil::IsInCache(key, config), IsOkAndHolds(true));
+  EXPECT_THAT(AutotunerUtil::IsInCache(key, config),
+              absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto2) {
@@ -223,8 +224,8 @@ TEST_F(AutotunerUtilTest, ResultConflictsAreDetected) {
   std::string kFilePath = GetUniqueTempFilePath(".pb");
   TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
   EXPECT_THAT(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath),
-              StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("Duplicate autotuning result")));
+              absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                     HasSubstr("Duplicate autotuning result")));
 }
 
 // Test that when complete AOT autotuning is required, and there is cache miss,
@@ -247,7 +248,7 @@ TEST_F(AutotunerUtilTest, FailIfRequireCompleteAotAutotuning) {
                      return AutotuneResult();
                    }).status();
   EXPECT_THAT(
-      s, StatusIs(
+      s, absl_testing::StatusIs(
              absl::StatusCode::kNotFound,
              HasSubstr("Complete XLA AOT autotuning results are required, but "
                        "no AOT result was found for key: <key model")));
