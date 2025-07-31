@@ -1183,9 +1183,11 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputations(
     const absl::flat_hash_set<absl::string_view>& execution_threads) const {
   std::vector<HloComputation*> result =
       MakeComputationPostOrder(execution_threads);
-  result.erase(std::remove_if(
-                   result.begin(), result.end(),
-                   [](HloComputation* c) { return c->IsFusionComputation(); }),
+  result.erase(std::remove_if(result.begin(), result.end(),
+                              [](HloComputation* c) {
+                                return c->IsFusionComputation() ||
+                                       c->IsDeadComputation();
+                              }),
                result.end());
   return result;
 }
