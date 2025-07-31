@@ -65,6 +65,7 @@
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/common/array_util.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
@@ -936,12 +937,12 @@ IfrtBackend::HandleMakeArraysFromHostBufferShardsRequest(
 
   std::move(cleanup).Invoke();
 
-  TF_ASSIGN_OR_RETURN(std::vector<xla::ifrt::ArrayRef> arrays,
-                      client_->MakeArraysFromHostBufferShards(
-                          absl::MakeSpan(specs),
-                          xla::ifrt::Client::HostBufferSemantics::
-                              kImmutableUntilTransferCompletes,
-                          client_->CreateUserContext()));
+  UserContextScope user_context_scope(client_->CreateUserContext());
+  TF_ASSIGN_OR_RETURN(
+      std::vector<xla::ifrt::ArrayRef> arrays,
+      client_->MakeArraysFromHostBufferShards(
+          absl::MakeSpan(specs), xla::ifrt::Client::HostBufferSemantics::
+                                     kImmutableUntilTransferCompletes));
 
   std::vector<uint64_t> handles;
   handles.reserve(make_arrays_request->specs_size());
@@ -987,9 +988,9 @@ IfrtBackend::HandleMakeErrorArraysRequest(
     array_specs.push_back(std::move(array_spec));
   }
 
+  UserContextScope user_context_scope(client_->CreateUserContext());
   TF_ASSIGN_OR_RETURN(std::vector<IfrtArrayRef> arrays,
-                      client_->MakeErrorArrays(error, array_specs,
-                                               client_->CreateUserContext()));
+                      client_->MakeErrorArrays(error, array_specs));
 
   std::unique_ptr<IfrtResponse> response =
       NewIfrtResponse(request->request_metadata().op_id());

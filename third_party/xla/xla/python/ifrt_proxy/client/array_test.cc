@@ -214,8 +214,7 @@ TEST_F(ArrayTest, MakeArraysFromHostBufferShardsSuccess) {
 
   auto result = Array::MakeArraysFromHostBufferShards(
       mock_client_.get(), rpc_helper_, absl::MakeSpan(specs),
-      xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-      /*user_context=*/tsl::RCReference<xla::ifrt::UserContext>());
+      xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall);
   TF_ASSERT_OK(result.status());
   TF_ASSERT_OK_AND_ASSIGN(auto layout_1, result.value().at(0)->layout());
   EXPECT_EQ(*layout_1, *kLayout1);
@@ -236,10 +235,9 @@ TEST_F(ArrayTest, MakeErrorArraysSuccess) {
   specs.push_back(xla::ifrt::ArraySpec{DType(DType::Kind::kBF16), Shape({}),
                                        sharding_, kLayout1});
 
-  auto result = Array::MakeErrorArrays(
-      mock_client_.get(), rpc_helper_, absl::InternalError("test error"),
-      absl::MakeSpan(specs),
-      /*user_context=*/tsl::RCReference<xla::ifrt::UserContext>());
+  auto result = Array::MakeErrorArrays(mock_client_.get(), rpc_helper_,
+                                       absl::InternalError("test error"),
+                                       absl::MakeSpan(specs));
   TF_ASSERT_OK(result.status());
   TF_ASSERT_OK_AND_ASSIGN(auto layout, result.value().at(0)->layout());
   EXPECT_EQ(*layout, *kLayout1);

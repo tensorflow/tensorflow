@@ -212,24 +212,22 @@ class CompileOnlyIfRtClient final
       const void* data, xla::ifrt::DType dtype, xla::ifrt::Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       xla::ifrt::ShardingRef sharding, HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer,
-      tsl::RCReference<xla::ifrt::UserContext> user_context) override {
+      std::function<void()> on_done_with_host_buffer) override {
     return Unimplemented(
         "MakeArrayFromHostBuffer not available with compile-only client.");
   }
 
   absl::StatusOr<std::vector<ifrt::ArrayRef>> MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
-      HostBufferSemantics semantics,
-      tsl::RCReference<xla::ifrt::UserContext> user_context) override {
+      HostBufferSemantics semantics) override {
     return Unimplemented(
         "MakeArraysFromHostBufferShards not available with compile-only "
         "client.");
   }
 
   absl::StatusOr<std::vector<ifrt::ArrayRef>> MakeErrorArrays(
-      const absl::Status& error, absl::Span<const ifrt::ArraySpec> array_specs,
-      tsl::RCReference<ifrt::UserContext> user_context) override {
+      const absl::Status& error,
+      absl::Span<const ifrt::ArraySpec> array_specs) override {
     return Unimplemented(
         "MakeErrorArrays not available with compile-only client.");
   }

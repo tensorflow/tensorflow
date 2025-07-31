@@ -73,16 +73,14 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
       const void* data, xla::ifrt::DType dtype, xla::ifrt::Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       xla::ifrt::ShardingRef sharding, HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer,
-      tsl::RCReference<xla::ifrt::UserContext> user_context) override;
+      std::function<void()> on_done_with_host_buffer) override;
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
   MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
-      HostBufferSemantics semantics,
-      tsl::RCReference<xla::ifrt::UserContext> user_context) override;
+      HostBufferSemantics semantics) override;
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> MakeErrorArrays(
-      const absl::Status& error, absl::Span<const ArraySpec> array_specs,
-      tsl::RCReference<UserContext> user_context) override;
+      const absl::Status& error,
+      absl::Span<const ArraySpec> array_specs) override;
   absl::StatusOr<xla::ifrt::ArrayRef> AssembleArrayFromSingleDeviceArrays(
       DType dtype, Shape shape, ShardingRef sharding,
       absl::Span<xla::ifrt::ArrayRef> arrays,

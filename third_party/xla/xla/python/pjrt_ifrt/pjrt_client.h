@@ -189,17 +189,15 @@ class PjRtClient final
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       ShardingRef sharding, HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer,
-      tsl::RCReference<UserContext> user_context) override;
+      std::function<void()> on_done_with_host_buffer) override;
 
   absl::StatusOr<std::vector<ArrayRef>> MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
-      HostBufferSemantics semantics,
-      tsl::RCReference<UserContext> user_context) override;
+      HostBufferSemantics semantics) override;
 
   absl::StatusOr<std::vector<ArrayRef>> MakeErrorArrays(
-      const absl::Status& error, absl::Span<const ArraySpec> array_specs,
-      tsl::RCReference<UserContext> user_context) override;
+      const absl::Status& error,
+      absl::Span<const ArraySpec> array_specs) override;
 
   absl::StatusOr<ArrayRef> AssembleArrayFromSingleDeviceArrays(
       DType dtype, Shape shape, ShardingRef sharding,

@@ -92,11 +92,7 @@ bool CanUseMakeArrayFromHostBuffer(
 
 }  // namespace
 
-UserContextRef GetUserContext(Client* client,
-                              UserContextRef per_call_user_context) {
-  if (per_call_user_context != nullptr) {
-    return per_call_user_context;
-  }
+UserContextRef GetUserContext(Client* client) {
   if (UserContextScope::current() != nullptr) {
     return UserContextScope::current();
   }
@@ -106,8 +102,7 @@ UserContextRef GetUserContext(Client* client,
 absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
     Client* client,
     absl::Span<Client::MakeArraysFromHostBufferShardsSpec> specs,
-    Client::HostBufferSemantics semantics,
-    tsl::RCReference<UserContext> user_context) {
+    Client::HostBufferSemantics semantics) {
   for (int i = 1; i < specs.size(); ++i) {
     const Client::MakeArraysFromHostBufferShardsSpec& spec = specs[i];
     if (specs[0].array_spec.sharding->devices() !=
@@ -146,7 +141,7 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
               host_buffer.data, host_buffer.dtype, std::move(host_buffer.shape),
               std::move(host_buffer.byte_strides),
               std::move(spec.array_spec.sharding), semantics,
-              std::move(host_buffer.on_done), user_context));
+              std::move(host_buffer.on_done)));
       arrays.push_back(std::move(array));
       continue;
     }
@@ -196,7 +191,7 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
             shard, client->MakeArrayFromHostBuffer(
                        host_buffer.data, host_buffer.dtype, host_buffer.shape,
                        host_buffer.byte_strides, std::move(sharding), semantics,
-                       on_done_with_host_buffer_per_device, user_context));
+                       on_done_with_host_buffer_per_device));
       }
       num_processed_shards += addressable_shard_indices.size();
     }

@@ -459,8 +459,7 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsAndCopyToHostBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto arrays, client->MakeArraysFromHostBufferShards(
                        absl::MakeSpan(specs),
-                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-                       client->CreateUserContext()));
+                       Client::HostBufferSemantics::kImmutableOnlyDuringCall));
   ASSERT_THAT(arrays, SizeIs(2));
 
   // Once the `Array` has become ready, the host buffer is not accessed.
@@ -533,8 +532,7 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithDifferentDevices) {
   absl::Status status;
   auto result = client->MakeArraysFromHostBufferShards(
       absl::MakeSpan(specs),
-      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-      client->CreateUserContext());
+      Client::HostBufferSemantics::kImmutableOnlyDuringCall);
   if (result.ok()) {
     // Implementations may poison outputs instead of immediately returning an
     // error.
@@ -589,8 +587,7 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithDifferentMemoryKinds) {
   absl::Status status;
   auto result = client->MakeArraysFromHostBufferShards(
       absl::MakeSpan(specs),
-      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-      client->CreateUserContext());
+      Client::HostBufferSemantics::kImmutableOnlyDuringCall);
   if (result.ok()) {
     // Implementations may poison outputs instead of immediately returning an
     // error.
@@ -706,8 +703,7 @@ TEST(ArrayImplTest,
       auto arrays,
       client->MakeArraysFromHostBufferShards(
           absl::MakeSpan(specs),
-          Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
-          client->CreateUserContext()));
+          Client::HostBufferSemantics::kImmutableUntilTransferCompletes));
   ASSERT_THAT(arrays, SizeIs(2));
 
   // Resetting these references does not necessarily destroy host buffers
@@ -775,8 +771,7 @@ TEST(ArrayImplTest, MakeErrorArrays) {
   const absl::Status error = absl::InternalError("injected error");
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<xla::ifrt::ArrayRef> arrays,
-      client->MakeErrorArrays(error, {array_spec, array_spec},
-                              client->CreateUserContext()));
+      client->MakeErrorArrays(error, {array_spec, array_spec}));
   ASSERT_EQ(arrays.size(), 2);
 
   EXPECT_THAT(arrays[0]->GetReadyFuture().Await(),
@@ -813,8 +808,7 @@ TEST(ArrayImplTest, MakeErrorArraysWithAddressableAndNonAddressableDevice) {
   const absl::Status error = absl::InternalError("injected error");
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<xla::ifrt::ArrayRef> arrays,
-      client->MakeErrorArrays(error, {array_spec, array_spec},
-                              client->CreateUserContext()));
+      client->MakeErrorArrays(error, {array_spec, array_spec}));
   ASSERT_EQ(arrays.size(), 2);
 
   EXPECT_THAT(arrays[0]->GetReadyFuture().Await(),
