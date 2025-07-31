@@ -968,6 +968,48 @@ void BufferIntervalTree::ApplyToNodesOverlappingInTime(
   }
 }
 
+void BufferIntervalTree::ApplyToNodesOverlappingInSortedTime(
+    int64_t start, int64_t end,
+    absl::FunctionRef<bool(const BufferIntervalTreeNode*)> fn) const {
+  if (root_ == nullptr) {
+    return;
+  }
+  std::vector<std::pair<const BufferIntervalTreeNode*, bool>> visiting_stack;
+  visiting_stack.emplace_back(root_, false);
+  int64_t prev = -1;
+  while (!visiting_stack.empty()) {
+    auto [top, visited_left] = visiting_stack.back();
+    if (start > top->subtree_end) {
+      visiting_stack.pop_back();
+      continue;
+    }
+    // Ensure that we have first visited the left child.
+    const BufferIntervalTreeNode* left = top->left;
+    if (!visited_left && left != nullptr) {
+      visiting_stack.back().second = true;
+      visiting_stack.emplace_back(left, false);
+      continue;
+    }
+    // Visit current node.
+    const int64_t top_start = top->start;
+    if (top_start <= end && top->end >= start) {
+      CHECK_LE(prev, top_start);
+      prev = top_start;
+      if (fn(top)) {
+        break;
+      }
+    }
+    visiting_stack.pop_back();
+    if (end < top_start) {
+      continue;
+    }
+    // Then visit the right child.
+    if (const BufferIntervalTreeNode* right = top->right; right != nullptr) {
+      visiting_stack.emplace_back(right, false);
+    }
+  }
+}
+
 int BufferIntervalTree::NumChunksOverlappingInTime(int64_t start,
                                                    int64_t end) const {
   int result = 0;
@@ -2346,11 +2388,11 @@ template <typename BufferType>
 typename GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk
 GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
     const GlobalDecreasingSizeBestFitHeap::BufferInterval& buffer_interval,
-    int64_t preferred_offset) const {
+    int64_t preferred_offset, int64_t* eviction_end_time) const {
   const SlicedBufferInterval sliced_buffer_interval =
       SlicedBufferInterval::CreateConstInterval(buffer_interval);
-  std::vector<Chunk> chunks =
-      FindChunkCandidates(sliced_buffer_interval, preferred_offset);
+  std::vector<Chunk> chunks = FindChunkCandidates(
+      sliced_buffer_interval, preferred_offset, eviction_end_time);
   CHECK_EQ(chunks.size(), 1);
   return chunks[0];
 }
@@ -2426,11 +2468,89 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
   return free_chunks;
 }
 
+namespace {
+
+int64_t ComputeAlignedChunkEnd(int64_t chunk_end, int64_t alignment) {
+  int64_t chunk_end_aligned = chunk_end;
+  if (alignment != 1) {
+    if (absl::has_single_bit(static_cast<uint64_t>(alignment))) {
+      // Alignment is 2^n, add 2^n-1 and then zero the last n bits.
+      chunk_end_aligned =
+          (chunk_end_aligned + alignment - 1) & ~(alignment - 1);
+    } else {
+      chunk_end_aligned = RoundUpTo(chunk_end, alignment);
+    }
+  }
+  return chunk_end_aligned;
+}
+
+}  // namespace
+
+template <typename BufferType>
+typename GlobalDecreasingSizeBestFitHeap<BufferType>::FreeChunks
+GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunksForPreferredOffset(
+    const BufferInterval& buffer_interval, int64_t max_colocation_size,
+    int64_t preferred_offset, int64_t* eviction_end_time) const {
+  // Currently, this only works for buffer intervals without colocations, which
+  // is the most common case. If needed this can be extended to handle
+  // multiple colocations.
+  auto colocations = GetTransitiveColocations(buffer_interval);
+  if (!colocations.empty()) {
+    return MakeFreeChunks(buffer_interval, max_colocation_size);
+  }
+
+  std::optional<Chunk> earliest_chunk_after_preferred_offset;
+
+  auto examine_used_chunks = [&](const BufferIntervalTreeNode* node) {
+    const Chunk& used_chunk = node->chunk;
+
+    if (used_chunk.offset < preferred_offset) {
+      int64_t chunk_end_aligned =
+          ComputeAlignedChunkEnd(used_chunk.chunk_end(), alignment_);
+      if (chunk_end_aligned > preferred_offset) {
+        *eviction_end_time = node->start - 1;
+        // If we have found a chunk that covers the preferred offset, stop.
+        return true;
+      }
+    } else {
+      // if (used_chunk.offset < preferred_offset + buffer_interval.size) {
+      //   // If we have found a chunk that covers the preferred offset, stop.
+      //   *eviction_end_time = node->start - 1;
+      //   return true;
+      // }
+      if (!earliest_chunk_after_preferred_offset.has_value() ||
+          earliest_chunk_after_preferred_offset->offset > used_chunk.offset) {
+        earliest_chunk_after_preferred_offset = used_chunk;
+      }
+    }
+    return false;
+  };
+
+  interval_tree_.ApplyToNodesOverlappingInSortedTime(
+      buffer_interval.start, buffer_interval.end, examine_used_chunks);
+
+  // For compatibility with the existing code, return the free chunk containing
+  // preferred_offset and one at the very end (which will be discarded).
+  FreeChunks free_chunks;
+  int64_t last_chunk_end_aligned = 0;
+
+  if (earliest_chunk_after_preferred_offset.has_value()) {
+    auto offset = earliest_chunk_after_preferred_offset->offset;
+    if (offset - last_chunk_end_aligned >= max_colocation_size) {
+      free_chunks.insert({last_chunk_end_aligned, offset});
+    }
+    last_chunk_end_aligned = ComputeAlignedChunkEnd(
+        earliest_chunk_after_preferred_offset->chunk_end(), alignment_);
+  }
+  free_chunks.insert({last_chunk_end_aligned, INT64_MAX});
+  return free_chunks;
+}
+
 template <typename BufferType>
 std::vector<typename GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk>
 GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidates(
     const SlicedBufferInterval& sliced_buffer_interval,
-    int64_t preferred_offset) const {
+    int64_t preferred_offset, int64_t* eviction_end_time) const {
   VLOG(1) << "Finding chunks for sliced buffer interval: "
           << sliced_buffer_interval.ToString();
 
@@ -2441,7 +2561,8 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidates(
           sliced_buffer_interval, max_colocation_size, preferred_offset,
           SliceTimePermutationIterator::CreateForNewAllocation(
               slice_time_permutation_iteration_type_,
-              sliced_buffer_interval.inclusive_start_times()))
+              sliced_buffer_interval.inclusive_start_times()),
+          &SlicedAllocationFinder::AllOffsetsAllowed, eviction_end_time)
           .Find();
   return PostProcessFindChunkCandidatesResult(sliced_buffer_interval,
                                               std::move(chunks));
@@ -2467,7 +2588,8 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::CreateSlicedAllocationFinder(
     int64_t preferred_offset,
     std::unique_ptr<SliceTimePermutationIterator>
         slice_time_permutation_iterator,
-    absl::AnyInvocable<bool(int64_t) const> is_offset_allowed) const {
+    absl::AnyInvocable<bool(int64_t) const> is_offset_allowed,
+    int64_t* eviction_end_time) const {
   // Build up a list of free chunks for each slice time.
   std::vector<FreeChunks> free_chunks_per_slice_time;
   free_chunks_per_slice_time.reserve(sliced_interval.num_slices());
@@ -2482,11 +2604,20 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::CreateSlicedAllocationFinder(
   }
   // We account for colocation size in the last slice time, where we've
   // allocated all the slices.
-  free_chunks_per_slice_time.push_back(MakeFreeChunks(
-      sliced_interval.IntervalForMakeFreeChunks(sliced_interval.num_slices() -
-                                                1),
-      max_colocation_size));
-
+  if (eviction_end_time != nullptr && sliced_interval.num_slices() == 1 &&
+      preferred_offset > 0) {
+    // In this case, we try to find the latest possible eviction end time, for
+    // which the returned chunk is at preferred_offset.
+    free_chunks_per_slice_time.push_back(MakeFreeChunksForPreferredOffset(
+        sliced_interval.IntervalForMakeFreeChunks(sliced_interval.num_slices() -
+                                                  1),
+        max_colocation_size, preferred_offset, eviction_end_time));
+  } else {
+    free_chunks_per_slice_time.push_back(MakeFreeChunks(
+        sliced_interval.IntervalForMakeFreeChunks(sliced_interval.num_slices() -
+                                                  1),
+        max_colocation_size));
+  }
   return SlicedAllocationFinder(
       free_chunks_per_slice_time, sliced_interval.SliceSizesSortedByOffset(),
       max_colocation_size, preferred_offset, alignment_,

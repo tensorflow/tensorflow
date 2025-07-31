@@ -367,6 +367,13 @@ class BufferIntervalTree {
       int64_t start, int64_t end,
       absl::FunctionRef<void(const BufferIntervalTreeNode*)> fn) const;
 
+  // Apply fn to the nodes that overlap with the given time interval. It is
+  // guaranteed that fn is called for non-null nodes in order of non-decreasing
+  // start time. If the callback returns true, then no more nodes are visited.
+  void ApplyToNodesOverlappingInSortedTime(
+      int64_t start, int64_t end,
+      absl::FunctionRef<bool(const BufferIntervalTreeNode*)> fn) const;
+
   // Returns the number of allocated chunks that overlap with the given time
   // interval.
   int NumChunksOverlappingInTime(int64_t start, int64_t end) const;
@@ -898,6 +905,12 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   FreeChunks MakeFreeChunks(const BufferInterval& buffer_interval,
                             int64_t max_colocation_size) const;
 
+  // Same as MakeFreeChunks finding the latest possible eviction end time for
+  // which the returned chunk is at preferred offset.
+  FreeChunks MakeFreeChunksForPreferredOffset(
+      const BufferInterval& buffer_interval, int64_t max_colocation_size,
+      int64_t preferred_offset, int64_t* eviction_end_time = nullptr) const;
+
   // These two methods below are exposed to other heap algorithms that inherit
   // from this class. The Finish() method tries to find a candidate chunk for
   // each BufferInterval, after calling GetSortedBufferIntervals. If a
@@ -906,7 +919,8 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // CommitChunk to associate the chunk with the BufferInterval, if the final
   // heap size is within the limits.
   Chunk FindChunkCandidate(const BufferInterval& buffer_interval,
-                           int64_t preferred_offset = -1) const;
+                           int64_t preferred_offset = -1,
+                           int64_t* eviction_end_time = nullptr) const;
   // FindChunkCandidates is the same as FindChunkCandidate, except it finds
   // spatially contiguous chunks candidates for a sliced buffer interval.
   // Returned chunk i should be copied at slice time i.
@@ -920,7 +934,8 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   //   chunks will be free for the lifetime of the longest-lived slice.
   std::vector<Chunk> FindChunkCandidates(
       const SlicedBufferInterval& sliced_buffer_interval,
-      int64_t preferred_offset = -1) const;
+      int64_t preferred_offset = -1,
+      int64_t* eviction_end_time = nullptr) const;
   // The following 3 methods are used to implement FindChunkCandidates.
   int64_t GetMaxColocationSize(const BufferInterval& buffer_interval) const;
   SlicedAllocationFinder CreateSlicedAllocationFinder(
@@ -929,7 +944,8 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
       std::unique_ptr<SliceTimePermutationIterator>
           slice_time_permutation_iterator,
       absl::AnyInvocable<bool(int64_t) const> is_offset_allowed =
-          &SlicedAllocationFinder::AllOffsetsAllowed) const;
+          &SlicedAllocationFinder::AllOffsetsAllowed,
+      int64_t* eviction_end_time = nullptr) const;
   std::vector<Chunk> PostProcessFindChunkCandidatesResult(
       const SlicedBufferInterval& sliced_interval,
       std::vector<Chunk> chunks) const;
