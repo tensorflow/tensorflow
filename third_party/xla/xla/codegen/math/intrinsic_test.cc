@@ -49,10 +49,11 @@ TEST(IntrinsicTest, TypeVectorWidth) {
 TEST(IntrinsicTest, VerifySameWidth) {
   TF_EXPECT_OK(Type::VerifySameWidth(Type::S(F32), Type::S(F32)));
   TF_EXPECT_OK(Type::VerifySameWidth(Type::V(F32, 4), Type::V(F32, 4)));
-  EXPECT_THAT(Type::VerifySameWidth(Type::S(F32), Type::V(F32, 4)),
-              StatusIs(_, HasSubstr("Expected types of the same kind")));
+  EXPECT_THAT(
+      Type::VerifySameWidth(Type::S(F32), Type::V(F32, 4)),
+      absl_testing::StatusIs(_, HasSubstr("Expected types of the same kind")));
   EXPECT_THAT(Type::VerifySameWidth(Type::V(F32, 2), Type::V(F32, 4)),
-              StatusIs(_, HasSubstr("Expected vector types")));
+              absl_testing::StatusIs(_, HasSubstr("Expected vector types")));
 }
 
 TEST(IntrinsicTest, VerifySameWidthAndElementType) {
@@ -61,10 +62,10 @@ TEST(IntrinsicTest, VerifySameWidthAndElementType) {
       Type::VerifySameWidthAndElementType(Type::V(F32, 4), Type::V(F32, 4)));
   EXPECT_THAT(
       Type::VerifySameWidthAndElementType(Type::S(F32), Type::V(F32, 4)),
-      StatusIs(_, HasSubstr("Expected types of the same kind")));
+      absl_testing::StatusIs(_, HasSubstr("Expected types of the same kind")));
   EXPECT_THAT(
       Type::VerifySameWidthAndElementType(Type::V(F32, 2), Type::V(F32, 4)),
-      StatusIs(_, HasSubstr("Expected vector types")));
+      absl_testing::StatusIs(_, HasSubstr("Expected vector types")));
 }
 
 }  // namespace
