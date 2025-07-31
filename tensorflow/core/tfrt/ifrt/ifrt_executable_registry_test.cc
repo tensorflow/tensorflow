@@ -138,7 +138,7 @@ TEST(IfrtExecutableRegistry, DuplicateRegistrationFails) {
 
   EXPECT_THAT(
       ServingExecutableRegistry::Register(program_id, std::move(executable)),
-      testing::StatusIs(absl::StatusCode::kAlreadyExists));
+      absl_testing::StatusIs(absl::StatusCode::kAlreadyExists));
 }
 
 TEST(IfrtExecutableRegistry, ReleaseOk) {
@@ -202,7 +202,7 @@ TEST(IfrtExecutableRegistry, FreezeFailedProgramNotRegistered) {
   handle.Release();
 
   EXPECT_THAT(handle.Freeze(),
-              testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST(IfrtExecutableRegistry, InvalidProgramIdShallReturnNull) {

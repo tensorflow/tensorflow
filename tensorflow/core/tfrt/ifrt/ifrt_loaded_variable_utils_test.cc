@@ -97,7 +97,7 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableNotFoundWrongName) {
       AsyncLoadRestoredTensorAsIfrtLoadedVariable(
           "var_x", client, thread_pool, restored_tensor_registry,
           loaded_variable_registry, restore_work_queue.get(), sharding_config),
-      StatusIs(absl::StatusCode::kNotFound));
+      absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {

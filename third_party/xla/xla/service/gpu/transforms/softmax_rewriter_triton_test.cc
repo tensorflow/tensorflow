@@ -563,7 +563,7 @@ ENTRY main {
               se::CudaComputeCapability{se::CudaComputeCapability::kVolta, 0}),
           HloCostAnalysis::DefaultShapeSize)
           .Run(module.get()),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::FAILED_PRECONDITION,
           ::testing::HasSubstr("Triton support is only enabled for Ampere GPUs "
                                "(compute capability 8.0) and up, but got")));

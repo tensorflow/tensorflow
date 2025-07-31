@@ -50,7 +50,7 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   TriangularSolveRewriter rewriter;
-  EXPECT_THAT(rewriter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(rewriter.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::GetTupleElement(
@@ -72,7 +72,7 @@ ENTRY %RightLowerNoTranspose (a: f32[4,4], b: f32[3,4]) -> f32[3,4] {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   TriangularSolveRewriter rewriter;
-  EXPECT_THAT(rewriter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(rewriter.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::GetTupleElement(
