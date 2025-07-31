@@ -239,8 +239,8 @@ class WhileToMapFnPass
                   .getType());
         }
 
-        auto map_fn_op = builder.create<tf_mlrt::TFMapFnOp>(
-            while_op.getLoc(), result_types, loop_info.max_iterations,
+        auto map_fn_op = tf_mlrt::TFMapFnOp::create(
+            builder, while_op.getLoc(), result_types, loop_info.max_iterations,
             tensor_list_operands, invariant_arguments,
             map_fn_body_func.getSymName(),
             loop_info.tensor_list_or_flow_in.size());
@@ -747,8 +747,8 @@ class WhileToMapFnPass
     }
     mlir::OpBuilder::InsertionGuard insertion_guard(builder);
     builder.setInsertionPointAfter(while_body_func);
-    auto map_fn_body_func = builder.create<mlir::func::FuncOp>(
-        while_body_func.getLoc(), map_fn_body_name,
+    auto map_fn_body_func = mlir::func::FuncOp::create(
+        builder, while_body_func.getLoc(), map_fn_body_name,
         mlir::FunctionType::get(while_body_func.getContext(),
                                 remapped_input_type, {}));
 
@@ -787,8 +787,8 @@ class WhileToMapFnPass
     mlir::IRMapping mapping;
     std::vector<tf_mlrt::TFAwaitOp> await_ops;
     for (int i = 0; i < loop_info.tensor_list_or_flow_in.size(); i++) {
-      await_ops.push_back(builder.create<tf_mlrt::TFAwaitOp>(
-          while_body_func.getLoc(),
+      await_ops.push_back(tf_mlrt::TFAwaitOp::create(
+          builder, while_body_func.getLoc(),
           while_body_func.getArgument(loop_info.tensor_list_or_flow_in.at(i))
               .getType(),
           map_fn_body_func.getArgument(future_index(i))));
@@ -834,11 +834,12 @@ class WhileToMapFnPass
     // Insert promise right before return
     builder.setInsertionPoint(return_op);
     for (int i = 0; i < await_ops.size(); i++) {
-      builder.create<tf_mlrt::TFPromiseOp>(
-          return_op->getLoc(), map_fn_body_func.getArgument(promise_index(i)),
+      tf_mlrt::TFPromiseOp::create(
+          builder, return_op->getLoc(),
+          map_fn_body_func.getArgument(promise_index(i)),
           return_op->getOperand(loop_info.tensor_list_or_flow_in.at(i)));
     }
-    builder.create<mlir::func::ReturnOp>(return_op->getLoc());
+    mlir::func::ReturnOp::create(builder, return_op->getLoc());
     return_op->erase();
 
     symbol_table.insert(map_fn_body_func);
