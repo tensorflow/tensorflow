@@ -56,7 +56,7 @@ TEST_F(ExplicitCollectivesGroupAsyncWrapperTest, AnnotatedOpIsWrapped) {
   TF_ASSERT_OK_AND_ASSIGN(bool mutated, wrapper_pass.Run(module.get()));
   absl::StatusOr<bool> filecheck_result = RunFileCheck(module->ToString({}), R"(
   // CHECK: %b = f32[1]{0} parameter(0)
-  // CHECK: %tuple-start = ((f32[1]{0}), (f32[1]{0}, f32[1]{0})) async-start(%b), async_execution_thread="explicit", calls=%comms.collectives_group, frontend_attributes={_collectives_group=""}
+  // CHECK: %tuple-start = ((f32[1]{0}), (f32[1]{0}, f32[1]{0})) async-start(%b), calls=%comms.collectives_group, frontend_attributes={_collectives_group=""}
   // CHECK: ROOT %tuple-done = (f32[1]{0}, f32[1]{0}) async-done(%tuple-start), frontend_attributes={_collectives_group=""}
   )");
   TF_ASSERT_OK(filecheck_result.status());
@@ -95,7 +95,7 @@ TEST_F(ExplicitCollectivesGroupAsyncWrapperTest,
   // CHECK-NEXT: %{{.*}} collective-permute({{.*}}), source_target_pairs={{[{][{]0,1[}][}]}}
   // CHECK: ENTRY %main {{.*}}
   // CHECK-NEXT: %[[P0:.*]] = {{.*}} parameter(0)
-  // CHECK-NEXT: %[[P1:.*]] = {{.*}} async-start(%[[P0]]), async_execution_thread="explicit", calls=%comms.collectives_group, frontend_attributes={_collectives_group="",_scheduling_group_id="1"}  
+  // CHECK-NEXT: %[[P1:.*]] = {{.*}} async-start(%[[P0]]), calls=%comms.collectives_group, frontend_attributes={_collectives_group="",_scheduling_group_id="1"}  
   // CHECK-NEXT: ROOT %{{.*}} async-done(%[[P1]]), frontend_attributes={_collectives_group="",_scheduling_group_id="1"}
   )");
   TF_ASSERT_OK(filecheck_result.status());
@@ -130,10 +130,10 @@ TEST_F(ExplicitCollectivesGroupAsyncWrapperTest, ManyCollectivesGroups) {
   TF_ASSERT_OK_AND_ASSIGN(bool mutated, wrapper_pass.Run(module.get()));
   absl::StatusOr<bool> filecheck_result = RunFileCheck(module->ToString({}), R"(
   // CHECK: %b = f32[1]{0} parameter(0)
-  // CHECK: %tuple-start = ((f32[1]{0}), (f32[1]{0}, f32[1]{0})) async-start(%b), async_execution_thread="explicit", calls=%comms.collectives_group, frontend_attributes={_collectives_group=""} 
+  // CHECK: %tuple-start = ((f32[1]{0}), (f32[1]{0}, f32[1]{0})) async-start(%b), calls=%comms.collectives_group, frontend_attributes={_collectives_group=""} 
   // CHECK: %tuple-done = (f32[1]{0}, f32[1]{0}) async-done(%tuple-start), frontend_attributes={_collectives_group=""}
   // CHECK: %c = f32[1]{0} get-tuple-element(%tuple-done), index=0
-  // CHECK: %tuple-start.1 = ((f32[1]{0}), (f32[1]{0}, f32[1]{0})) async-start(%c), async_execution_thread="explicit", calls=%comms.collectives_group.1, frontend_attributes={_collectives_group=""}
+  // CHECK: %tuple-start.1 = ((f32[1]{0}), (f32[1]{0}, f32[1]{0})) async-start(%c), calls=%comms.collectives_group.1, frontend_attributes={_collectives_group=""}
   // CHECK: ROOT %tuple-done.1 = (f32[1]{0}, f32[1]{0}) async-done(%tuple-start.1), frontend_attributes={_collectives_group=""}
   )");
   TF_ASSERT_OK(filecheck_result.status());
