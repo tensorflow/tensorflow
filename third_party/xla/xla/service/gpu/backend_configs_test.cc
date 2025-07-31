@@ -80,7 +80,7 @@ TEST_F(BackendConfigsTest, DefaultGpuBackendConfigParseOpQueue) {
   HloInstruction* add = module->entry_computation()->root_instruction();
   EXPECT_TRUE(add->has_backend_config());
   auto real_gpu_backend_config = add->backend_config<GpuBackendConfig>();
-  EXPECT_THAT(real_gpu_backend_config.status(), IsOk());
+  EXPECT_THAT(real_gpu_backend_config.status(), absl_testing::IsOk());
   EXPECT_EQ(real_gpu_backend_config->operation_queue_id(), 2);
 }
 
@@ -102,7 +102,7 @@ TEST_F(BackendConfigsTest, DefaultGpuBackendConfigParseWaitOnQueue) {
   HloInstruction* add = module->entry_computation()->root_instruction();
   EXPECT_TRUE(add->has_backend_config());
   auto real_gpu_backend_config = add->backend_config<GpuBackendConfig>();
-  EXPECT_THAT(real_gpu_backend_config.status(), IsOk());
+  EXPECT_THAT(real_gpu_backend_config.status(), absl_testing::IsOk());
   std::vector<int64_t> expected_ids = {0, 1};
   EXPECT_EQ(real_gpu_backend_config->wait_on_operation_queues().size(),
             expected_ids.size());
@@ -131,7 +131,8 @@ TEST_F(BackendConfigsTest, DefaultGpuBackendConfigSetOpQueue) {
   EXPECT_FALSE(add->has_backend_config());
   GpuBackendConfig gpu_backend_config;
   gpu_backend_config.set_operation_queue_id(2);
-  EXPECT_THAT(add->set_backend_config(gpu_backend_config), IsOk());
+  EXPECT_THAT(add->set_backend_config(gpu_backend_config),
+              absl_testing::IsOk());
   EXPECT_THAT(
       add->raw_backend_config_string(),
       HasSubstr("{\"operation_queue_id\":\"2\",\"wait_on_operation_queues\":[],"
@@ -159,7 +160,8 @@ TEST_F(BackendConfigsTest, DefaultGpuBackendConfigSetWaitOnQueue) {
   // Wait on queues {0, 1}
   gpu_backend_config.mutable_wait_on_operation_queues()->Add(0);
   gpu_backend_config.mutable_wait_on_operation_queues()->Add(1);
-  EXPECT_THAT(add->set_backend_config(gpu_backend_config), IsOk());
+  EXPECT_THAT(add->set_backend_config(gpu_backend_config),
+              absl_testing::IsOk());
   EXPECT_THAT(
       add->raw_backend_config_string(),
       HasSubstr(
