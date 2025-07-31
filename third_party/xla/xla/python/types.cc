@@ -470,21 +470,6 @@ absl::StatusOr<nb::str> TypeDescriptorForPrimitiveType(PrimitiveType type) {
   }
 }
 
-PrimitiveType Squash64BitTypes(PrimitiveType type) {
-  switch (type) {
-    case S64:
-      return S32;
-    case U64:
-      return U32;
-    case F64:
-      return F32;
-    case C128:
-      return C64;
-    default:
-      return type;
-  }
-}
-
 // Returns the strides for `shape`.
 std::vector<int64_t> ByteStridesForShape(const Shape& shape) {
   std::vector<int64_t> strides;
