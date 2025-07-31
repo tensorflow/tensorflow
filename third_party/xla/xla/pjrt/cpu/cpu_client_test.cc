@@ -99,7 +99,7 @@ TEST(PjRtCpuClientTest, MemorySpace) {
     EXPECT_EQ(default_memory_space->kind(), CpuDeviceMemorySpace::kKind);
     EXPECT_EQ(default_memory_space->kind_id(), CpuDeviceMemorySpace::kKindId);
     EXPECT_THAT(device->memory_space_by_kind(CpuDeviceMemorySpace::kKind),
-                IsOkAndHolds(default_memory_space));
+                absl_testing::IsOkAndHolds(default_memory_space));
 
     TF_ASSERT_OK_AND_ASSIGN(
         auto cpu_device_memory_space,
@@ -130,7 +130,7 @@ TEST(PjRtCpuClientTest, LegacyMemorySpace) {
     EXPECT_EQ(memory_space->kind(), UnpinnedHostMemorySpace::kKind);
     EXPECT_EQ(memory_space->kind_id(), UnpinnedHostMemorySpace::kKindId);
     EXPECT_THAT(device->memory_space_by_kind(UnpinnedHostMemorySpace::kKind),
-                IsOkAndHolds(memory_space));
+                absl_testing::IsOkAndHolds(memory_space));
   }
 }
 
@@ -379,7 +379,7 @@ TEST(PjRtCpuClientTest, AsyncTransferNeverTransferred) {
   transfer_manager.reset();
   EXPECT_THAT(
       buffer->ToLiteralSync(),
-      tsl::testing::StatusIs(tsl::error::INTERNAL,
+      absl_testing::StatusIs(tsl::error::INTERNAL,
                              HasSubstr("Async transfer object was deleted "
                                        "before transfers completed.")));
 }
@@ -426,7 +426,7 @@ TEST(PjRtCpuClientTest, AsyncTransferSetBufferError) {
   transfer_manager->SetBufferError(0, Internal("foobar"));
   EXPECT_THAT(
       buffer->ToLiteralSync(),
-      tsl::testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
+      absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
 }
 
 TEST(PjRtCpuClientTest, CreateErrorBuffer) {
@@ -437,7 +437,7 @@ TEST(PjRtCpuClientTest, CreateErrorBuffer) {
                                              client->memory_spaces()[0]));
   EXPECT_THAT(
       buffer->ToLiteralSync(),
-      tsl::testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
+      absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
 }
 
 TEST(PjRtCpuClientTest, AsyncTransferRawDataToSubBuffer) {
@@ -495,11 +495,11 @@ ENTRY Identity() -> f32[2, 2] {
   auto result = pjrt_executable->Execute(/*argument_handles=*/{{buffer.get()}},
                                          /*options=*/{});
   // Enqueueing the execution should succeed.
-  ASSERT_THAT(result, tsl::testing::StatusIs(tsl::error::OK));
+  ASSERT_THAT(result, absl_testing::StatusIs(tsl::error::OK));
   // However, the buffer is expected to be poisoned.
   EXPECT_THAT(
       result->at(0).at(0)->ToLiteralSync(),
-      tsl::testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
+      absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
 }
 
 TEST(PjRtCpuClientTest, PoisonOutputBufferWithAsyncTransferSetBufferError) {
@@ -532,13 +532,13 @@ ENTRY Identity() -> f32[2, 2] {
   auto result = pjrt_executable->Execute(/*argument_handles=*/{{buffer.get()}},
                                          /*options=*/{});
   // Enqueueing the execution should succeed.
-  ASSERT_THAT(result, tsl::testing::StatusIs(tsl::error::OK));
+  ASSERT_THAT(result, absl_testing::StatusIs(tsl::error::OK));
   // However, the buffer is expected to be poisoned.
   ASSERT_EQ(result->size(), 1);
   ASSERT_EQ(result->at(0).size(), 1);
   EXPECT_THAT(
       result->at(0).at(0)->ToLiteralSync(),
-      tsl::testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
+      absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
 }
 
 TEST(PjRtCpuClientTest, FailedExecutionDoesNotPoisonSubsequentExecution) {
@@ -588,7 +588,7 @@ ENTRY Identity() -> f32[2, 2] {
     PjRtBuffer* buffer = i % 2 == 0 ? valid_buffer.get() : error_buffer.get();
     auto result = pjrt_executable->Execute(/*argument_handles=*/{{buffer}},
                                            /*options=*/{});
-    ASSERT_THAT(result, tsl::testing::StatusIs(tsl::error::OK));
+    ASSERT_THAT(result, absl_testing::StatusIs(tsl::error::OK));
     ASSERT_EQ(result->size(), 1);
     ASSERT_EQ(result->at(0).size(), 1);
     output_buffers.push_back(std::move(result->at(0).at(0)));
@@ -596,11 +596,11 @@ ENTRY Identity() -> f32[2, 2] {
   for (int i = 0; i < output_buffers.size(); ++i) {
     if (i % 2 == 0) {
       EXPECT_THAT(output_buffers[i]->ToLiteralSync(),
-                  tsl::testing::StatusIs(tsl::error::OK));
+                  absl_testing::StatusIs(tsl::error::OK));
     } else {
       EXPECT_THAT(
           output_buffers[i]->ToLiteralSync(),
-          tsl::testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
+          absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
     }
   }
 }
@@ -646,14 +646,14 @@ ENTRY Identity() -> f32[2, 2] {
   // started with the input buffer not defined yet.
   auto poison_result = client->addressable_devices().front()->PoisonExecution(
       kLaunchId, Internal("foobar1"));
-  EXPECT_THAT(poison_result, IsOkAndHolds(true));
+  EXPECT_THAT(poison_result, absl_testing::IsOkAndHolds(true));
 
   // The buffer is expected to be poisoned with the error.
   ASSERT_EQ(result->size(), 1);
   ASSERT_EQ(result->at(0).size(), 1);
   EXPECT_THAT(
       result->at(0).at(0)->ToLiteralSync(),
-      tsl::testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar1")));
+      absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar1")));
 
   // A later error (propagated from the input buffer) would not affect the
   // already poisoned output buffer.
@@ -661,12 +661,12 @@ ENTRY Identity() -> f32[2, 2] {
 
   EXPECT_THAT(
       result->at(0).at(0)->ToLiteralSync(),
-      tsl::testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar1")));
+      absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar1")));
 
   // Attempting to poison a non-existent execution should fail.
   poison_result = client->addressable_devices().front()->PoisonExecution(
       kLaunchId + 12, Internal("foobar3"));
-  EXPECT_THAT(poison_result, IsOkAndHolds(false));
+  EXPECT_THAT(poison_result, absl_testing::IsOkAndHolds(false));
 }
 
 // User-defined data type to be passed to FFI handler via the execute context
