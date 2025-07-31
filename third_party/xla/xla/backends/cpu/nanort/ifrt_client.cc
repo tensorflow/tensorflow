@@ -113,14 +113,15 @@ ifrt::Future<> Ready(absl::Status status = absl::OkStatus()) {
 template <typename Self, typename Base>
 class NanoValue : public llvm::RTTIExtends<Self, Base> {
  public:
-  explicit NanoValue(NanoIfrtClient* client) : client_(client) {}
+  explicit NanoValue(NanoIfrtClient* client)
+      : client_(client), user_context_(ifrt::UserContextScope::current()) {}
 
   ifrt::Client* client() const override { return client_; }
 
   // Called by subclasses to get access to client() without having to cast.
   NanoIfrtClient* nano_client() const { return client_; }
 
-  ifrt::UserContextRef user_context() const override { return {}; }
+  ifrt::UserContextRef user_context() const override { return user_context_; }
 
   // All nano values are immediately ready.
   ifrt::Future<> GetReadyFuture() const override { return Ready(); }
@@ -141,6 +142,7 @@ class NanoValue : public llvm::RTTIExtends<Self, Base> {
 
  private:
   NanoIfrtClient* client_;
+  const ifrt::UserContextRef user_context_;
 };
 
 // Array implementation.
