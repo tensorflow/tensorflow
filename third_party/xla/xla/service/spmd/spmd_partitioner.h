@@ -131,6 +131,9 @@ struct SpmdPartitionerOptions {
   // This combines sizes in bytes of both operands.
   // When it's set, it will override threshold_for_windowed_einsum_mib.
   std::optional<int64_t> total_bytes_windowed_einsum_threshold = std::nullopt;
+
+  // The maximum number of iterations for windowed einsum.
+  int64_t max_windowed_einsum_iteration = 32;
 };
 
 // Class to wrap the computation builder to capture information during SPMD
