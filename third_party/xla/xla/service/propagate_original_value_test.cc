@@ -16,6 +16,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/xla_data.pb.h"
@@ -24,6 +25,7 @@ namespace xla {
 namespace {
 
 using PropagateOriginalValueTest = HloHardwareIndependentTestBase;
+using OriginalValueRecoveryTableTest = HloHardwareIndependentTestBase;
 
 TEST_F(PropagateOriginalValueTest, InstructionFusion) {
   constexpr absl::string_view hlo_string = R"(
@@ -117,6 +119,35 @@ TEST_F(PropagateOriginalValueTest, CallInlinerNoCallInstructionName) {
 
   RunAndFilecheckHloRewrite(hlo_string,
                             CallInliner(/*single_call_site=*/false));
+}
+
+// Test merging reshape and broadcast.
+TEST_F(OriginalValueRecoveryTableTest,
+       AlgebraicSimplifierReshapeAndBroadcastMerged) {
+  constexpr absl::string_view hlo_string = R"(
+
+// CHECK:  HloModule test, entry_computation_layout={(f32[5]{0})->f32[1,2,3,5,1]{4,3,2,1,0}}, origin_recovery_table={
+// CHECK:    {"reshape"} : {"param0"},
+// CHECK:    "
+// CHECK:      ENTRY %recovery_computation (p: f32[5]) -> f32[1,5,1] {
+// CHECK:        %p = f32[5]{0} parameter(0)
+// CHECK:        ROOT %reshape = f32[1,5,1]{2,1,0} reshape(%p)
+// CHECK:      }
+// CHECK:    "
+// CHECK:  }
+
+HloModule test
+
+ENTRY %ReshapeAndBroadcastMerged (param0: f32[5]) -> f32[1,2,3,5,1] {
+  %param0 = f32[5]{0} parameter(0), origin={{"param0"}}
+  %reshape = f32[1,5,1]{2,1,0} reshape(%param0), origin={{"reshape"}}
+  ROOT %broadcast = f32[1,2,3,5,1]{4,3,2,1,0} broadcast(%reshape), dimensions={0,3,4}
+}
+
+  )";
+
+  AlgebraicSimplifierOptions options;
+  RunAndFilecheckHloRewrite(hlo_string, AlgebraicSimplifier(options));
 }
 
 }  // namespace
