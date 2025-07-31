@@ -107,7 +107,7 @@ TEST_F(XnnpackBackendTest, InvalidFusionKind) {
       *module->entry_computation()->root_instruction());
 
   EXPECT_THAT(config,
-              tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   absl::StatusCode::kInvalidArgument,
                   testing::HasSubstr("Backend kind __not_xnn_fusion doesn't "
                                      "match expected kind __xnn_fusion.")));
