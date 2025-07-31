@@ -96,9 +96,6 @@ struct NumpyScalarTypes {
 };
 const NumpyScalarTypes& GetNumpyScalarTypes();
 
-// For S64/U64/F64/C128 types, returns the largest 32-bit equivalent.
-PrimitiveType Squash64BitTypes(PrimitiveType type);
-
 // Returns the strides for `shape`.
 std::vector<int64_t> ByteStridesForShape(const Shape& shape);
 std::vector<int64_t> ByteStridesForShape(PrimitiveType element_type,
