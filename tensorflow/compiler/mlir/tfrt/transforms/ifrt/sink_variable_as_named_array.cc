@@ -97,8 +97,9 @@ class SinkVariableAsNamedArrayPass
           result_types.push_back(read_variable_op.getResult().getType());
 
           builder.setInsertionPointAfter(read_variable_op);
-          auto load_variable_op = builder.create<mlir::TF::IfrtLoadVariableOp>(
-              read_variable_op->getLoc(), result_types, var_handle.getResult());
+          auto load_variable_op = mlir::TF::IfrtLoadVariableOp::create(
+              builder, read_variable_op->getLoc(), result_types,
+              var_handle.getResult());
           read_to_load[read_variable_op] = load_variable_op;
 
           return mlir::WalkResult::advance();
@@ -153,8 +154,8 @@ class SinkVariableAsNamedArrayPass
           }
 
           builder.setInsertionPointAfter(call);
-          auto updated_ifrt_call = builder.create<mlir::TF::IfrtCallOp>(
-              call->getLoc(), call.getResultTypes(), updated_args);
+          auto updated_ifrt_call = mlir::TF::IfrtCallOp::create(
+              builder, call->getLoc(), call.getResultTypes(), updated_args);
 
           updated_ifrt_call->setAttrs(call->getAttrs());
           // Update variable_arg_indices attribute.
