@@ -120,6 +120,7 @@ cc_library(
         "//xla/hlo/tools/hlo_diff/matchers:gumgraph_matcher",
         "//xla/hlo/tools/hlo_diff/matchers:hlo_call_graph_matcher",
         "//xla/hlo/tools/hlo_diff/matchers:hlo_computation_graph_matcher",
+        "//xla/hlo/tools/hlo_diff/matchers:manual_matcher",
         "//xla/hlo/tools/hlo_diff/matchers:top_down_matcher",
         "//xla/service:call_graph",
         "//xla/tsl/platform:errors",
@@ -128,6 +129,8 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

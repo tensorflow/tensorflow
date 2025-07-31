@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -168,129 +169,6 @@ void CoordinationServiceAgent::StopErrorPolling() {
 
 void CoordinationServiceAgent::ResetCancellationManager() {
   error_polling_cancellation_manager_ = std::make_unique<CancellationManager>();
-}
-
-void CoordinationServiceAgent::WatchJobState() {
-  // Converts a CoordinatedTaskStateInfo into a tuple.
-  auto tuplify = [](const CoordinatedTaskStateInfo& x) {
-    return std::make_tuple(x.task().job_name(), x.task().task_id(),
-                           x.task().recoverable(), x.state(), x.error_code(),
-                           x.error_message());
-  };
-
-  // Returns if two CoordinatedTaskStateInfos are equal.
-  auto equal = [&tuplify](const CoordinatedTaskStateInfo& x,
-                          const CoordinatedTaskStateInfo& y) -> bool {
-    return tuplify(x) == tuplify(y);
-  };
-
-  // Returns if x < y, determined by task id.
-  auto less = [](const CoordinatedTaskStateInfo& x,
-                 const CoordinatedTaskStateInfo& y) -> bool {
-    return x.task().task_id() < y.task().task_id();
-  };
-
-  std::vector<CoordinatedTaskStateInfo> state;  // latest job state
-  int64_t version_number = -1;                  // latest job state version
-  WatchJobStateRequest request;
-  WatchJobStateResponse response;
-  request.set_job_name(task_.job_name());
-  request.set_version_number(version_number);
-
-  VLOG(1) << "Starting to watch job state for job " << task_.job_name()
-          << " task " << task_.task_id();
-  while (true) {
-    // Set up cancellation.
-    auto call_opts = std::make_shared<CallOptions>();
-    const CancellationToken token =
-        cancellation_manager_.get_cancellation_token();
-    const bool already_cancelled = !cancellation_manager_.RegisterCallback(
-        token, [call_opts]() { call_opts->StartCancel(); });
-    if (already_cancelled) {
-      VLOG(1) << "Coordination agent is shutting down; stopping watching job "
-                 "state for job "
-              << task_.job_name() << " task " << task_.task_id();
-      return;
-    }
-
-    // Watch the job state.
-    absl::Status status;
-    absl::Notification done;
-    VLOG(3) << "Calling WatchJobStateAsync for " << task_.job_name() << " task "
-            << task_.task_id();
-    leader_client_->WatchJobStateAsync(
-        call_opts.get(), &request, &response, [&, this](const absl::Status& s) {
-          VLOG(3) << "WatchJobStateAsync triggered for " << task_.job_name()
-                  << " task " << task_.task_id();
-          cancellation_manager_.TryDeregisterCallback(token);
-          status = s;
-          done.Notify();
-        });
-
-    // Wait until the WatchJobState call finishes or until we are shutting down.
-    done.WaitForNotification();
-    if (cancellation_manager_.IsCancelling() ||
-        cancellation_manager_.IsCancelled()) {
-      VLOG(1) << "Coordination agent is shutting down; stopping watching job "
-                 "state for job "
-              << task_.job_name() << " task " << task_.task_id();
-      return;
-    }
-
-    // The WatchJobState call terminated but was unsuccessful.
-    if (!status.ok()) {
-      LOG(WARNING) << "Error getting job state for job " << task_.job_name()
-                   << " task " << task_.task_id();
-      continue;
-    }
-
-    // The WatchJobState call succeeded.
-    std::vector<CoordinatedTaskStateInfo> new_state(
-        response.task_state().begin(), response.task_state().end());
-    request.set_version_number(response.version_number());
-
-    // If the state hasn't changed, don't invoke any callbacks.
-    std::sort(new_state.begin(), new_state.end(), less);
-    bool state_changed = !std::equal(state.begin(), state.end(),
-                                     new_state.begin(), new_state.end(), equal);
-    if (!state_changed) {
-      VLOG(3) << "Job state did not change.";
-      continue;
-    }
-
-    // Pretty print the job state, if VLOG is on.
-    if (VLOG_IS_ON(3)) {
-      VLOG(3) << "Previous job state for job " << task_.job_name() << ":";
-      for (const CoordinatedTaskStateInfo& info : state) {
-        VLOG(3) << "- " << info.DebugString();
-      }
-      VLOG(3) << "Current job state for job " << task_.job_name() << ":";
-      for (const CoordinatedTaskStateInfo& info : new_state) {
-        VLOG(3) << "- " << info.DebugString();
-      }
-    }
-
-    // Invoke the callbacks.
-    JobStateUpdate update;
-    update.previous_state = state;
-    update.current_state = new_state;
-    {
-      absl::MutexLock lock(&job_state_watcher_mu_);
-      for (JobStateCallback& callback : job_state_callbacks_) {
-        callback(update);
-      }
-    }
-
-    // Update the state.
-    state = std::move(new_state);
-  }
-}
-
-void CoordinationServiceAgent::StopWatchingJobState() {
-  // Note that cancellation_manager_.StartCancel() must be called before this to
-  // avoid deadlock.
-  absl::MutexLock lock(&job_state_watcher_mu_);
-  job_state_watcher_thread_.reset();
 }
 
 absl::Status CoordinationServiceAgent::Connect() {
@@ -557,25 +435,43 @@ CoordinationServiceAgent::GetTaskState(
   return result;
 }
 
+std::shared_ptr<CallOptions> CoordinationServiceAgent::WatchJobStateAsync(
+    absl::string_view job_name, std::optional<int64_t> version_number,
+    std::function<void(absl::StatusOr<tensorflow::WatchJobStateResponse>)>
+        callback) {
+  auto request = std::make_shared<WatchJobStateRequest>();
+  auto response = std::make_shared<WatchJobStateResponse>();
+  auto call_opts = std::make_shared<CallOptions>();
+  WatchJobStateRequest* request_ptr = request.get();
+  WatchJobStateResponse* response_ptr = response.get();
+  request->set_job_name(job_name);
+  request->set_version_number(version_number.value_or(-1));
+
+  leader_client_->WatchJobStateAsync(
+      call_opts.get(), request_ptr, response_ptr,
+      [request = std::move(request), response = std::move(response),
+       callback = std::move(callback)](const absl::Status& s) mutable {
+        if (s.ok()) {
+          callback(*std::move(response));
+        } else {
+          callback(s);
+        }
+      });
+  return call_opts;
+}
+
 absl::StatusOr<tensorflow::WatchJobStateResponse>
 CoordinationServiceAgent::WatchJobState(absl::string_view job_name,
                                         std::optional<int64_t> version_number) {
-  WatchJobStateRequest request;
-  request.set_job_name(std::string(job_name));
-  request.set_version_number(version_number.value_or(-1));
-  WatchJobStateResponse response;
-  absl::Notification n;
-  absl::Status status;
-  CallOptions call_opts;
-  leader_client_->WatchJobStateAsync(&call_opts, &request, &response,
-                                     [&](const absl::Status& s) {
-                                       status = s;
-                                       n.Notify();
-                                     });
-  n.WaitForNotification();
-  if (!status.ok()) {
-    return status;
-  }
+  absl::StatusOr<tensorflow::WatchJobStateResponse> response;
+  absl::Notification done;
+  WatchJobStateAsync(
+      job_name, version_number,
+      [&response, &done](absl::StatusOr<tensorflow::WatchJobStateResponse> r) {
+        response = std::move(r);
+        done.Notify();
+      });
+  done.WaitForNotification();
   return response;
 }
 
@@ -697,7 +593,6 @@ absl::Status CoordinationServiceAgent::ShutdownInternal() {
 
   // Cancel all pending GetKeyValue() and WaitAtBarrier() RPC calls.
   cancellation_manager_.StartCancel();
-  StopWatchingJobState();
 
   return status;
 }
@@ -1138,18 +1033,6 @@ CoordinationServiceAgent::Incarnations(absl::Span<const int> tasks) const {
     incarnations.push_back(it->second);
   }
   return incarnations;
-}
-
-void CoordinationServiceAgent::AddJobStateCallback(JobStateCallback callback) {
-  // Add the callback.
-  absl::MutexLock lock(&job_state_watcher_mu_);
-  job_state_callbacks_.push_back(std::move(callback));
-
-  // Start the job watching thread, if it hasn't already been started.
-  if (job_state_watcher_thread_ == nullptr) {
-    job_state_watcher_thread_.reset(env_->StartThread(
-        ThreadOptions(), "job_state_watcher", [this]() { WatchJobState(); }));
-  }
 }
 
 // Returns an error if agent is not running.
