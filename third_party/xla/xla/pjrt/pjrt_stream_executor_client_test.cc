@@ -205,7 +205,8 @@ TEST(PjRtStreamExecutorClientTest, ExecuteWithInputError) {
   for (const auto& buf : result[0]) {
     EXPECT_EQ(buf->on_device_shape(), shape);
     EXPECT_THAT(buf->GetReadyFuture().Await(),
-                StatusIs(absl::StatusCode::kInternal, HasSubstr("test error")));
+                absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                       HasSubstr("test error")));
   }
 }
 
