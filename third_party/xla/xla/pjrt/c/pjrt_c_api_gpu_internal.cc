@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_triton_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_triton_internal.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
@@ -453,11 +454,14 @@ const PJRT_Api* GetGpuPjrtApi() {
   static PJRT_Triton_Extension triton_extension =
       pjrt::CreateTritonExtension(&memory_descriptions_extension.base);
 
+  static PJRT_CrossHostTransfers_Extension cross_host_transfers_extension =
+      pjrt::CreateCrossHostTransfersExtension(&triton_extension.base);
+
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       pjrt::gpu_plugin::PJRT_Client_Create,
       pjrt::gpu_plugin::PJRT_ExecuteContext_Create,
       pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
-      pjrt::PJRT_Plugin_Initialize_NoOp, &triton_extension.base,
+      pjrt::PJRT_Plugin_Initialize_NoOp, &cross_host_transfers_extension.base,
       pjrt::PJRT_Plugin_Attributes_Xla);
 
   return &pjrt_api;
