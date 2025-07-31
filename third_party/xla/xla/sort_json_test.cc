@@ -27,24 +27,25 @@ using ::tsl::testing::IsOkAndHolds;
 
 TEST(SortJsonTest, SortsJson) {
   EXPECT_THAT(SortJson(R"({"a": 1, "c": 3,"b": 2, "b": 1,})"),
-              IsOkAndHolds(R"({"a":1,"b":1,"b":2,"c":3})"));
+              absl_testing::IsOkAndHolds(R"({"a":1,"b":1,"b":2,"c":3})"));
 
   EXPECT_THAT(SortJson(R"({"a": 1  , "c": 1,"b": 1  })"),
-              IsOkAndHolds(R"({"a":1,"b":1,"c":1})"));
+              absl_testing::IsOkAndHolds(R"({"a":1,"b":1,"c":1})"));
 
   EXPECT_THAT(SortJson(R"({"a": 1,"c": 3,"b": 2,"b": [3,2,1],})"),
-              IsOkAndHolds(R"({"a":1,"b":2,"b":[3,2,1],"c":3})"));
+              absl_testing::IsOkAndHolds(R"({"a":1,"b":2,"b":[3,2,1],"c":3})"));
 
   EXPECT_THAT(SortJson(R"({"aa": 1, "a": {"c": "c", "b": "b"}})"),
-              IsOkAndHolds(R"({"a":{"b":"b","c":"c"},"aa":1})"));
+              absl_testing::IsOkAndHolds(R"({"a":{"b":"b","c":"c"},"aa":1})"));
 
   EXPECT_THAT(
       SortJson(
           R"({"x": true, "x": false, "x": null, "x": 0, "x": -0.5,"x": "a"})"),
-      IsOkAndHolds(R"({"x":"a","x":-0.5,"x":0,"x":false,"x":null,"x":true})"));
+      absl_testing::IsOkAndHolds(
+          R"({"x":"a","x":-0.5,"x":0,"x":false,"x":null,"x":true})"));
 
   EXPECT_THAT(SortJson(R"({"a": "a}", "a": "a"})"),
-              IsOkAndHolds(R"({"a":"a","a":"a}"})"));
+              absl_testing::IsOkAndHolds(R"({"a":"a","a":"a}"})"));
 }
 
 }  // namespace
