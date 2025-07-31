@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/nvtx_utils.h"
 
 namespace xla {
 namespace gpu {
@@ -63,9 +64,15 @@ absl::Status GemmThunk::ExecuteOnStream(const ExecuteParams& params) {
       se::Stream * stream,
       GetStreamForExecution(Thunk::execution_stream_id(), params));
 
+  // Sanitizer initcheck may return false positives for TMA (DTCS-1123).
+  auto output = allocs.GetDeviceAddress(output_buffer_);
+  tsl::profiler::MarkMemoryInitialized(
+      output.opaque(), output.size(),
+      static_cast<tsl::profiler::StreamHandle>(
+          stream->platform_specific_handle().stream));
+
   return RunGemm(config_, allocs.GetDeviceAddress(lhs_buffer_),
-                 allocs.GetDeviceAddress(rhs_buffer_),
-                 allocs.GetDeviceAddress(output_buffer_), workspace,
+                 allocs.GetDeviceAddress(rhs_buffer_), output, workspace,
                  deterministic_, stream);
 }
 

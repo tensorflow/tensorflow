@@ -565,7 +565,7 @@ StatusOr<mlir::Value> GetMeshCoordinatesFromCluster(
   mlir::Attribute mesh_shape_attr =
       mlir::DenseIntElementsAttr::get(mesh_shape_type, mesh_shape);
   auto mesh_shape_value =
-      builder.create<mlir::TF::ConstOp>(cluster.getLoc(), mesh_shape_attr)
+      mlir::TF::ConstOp::create(builder, cluster.getLoc(), mesh_shape_attr)
           .getResult();
 
   auto running_product_value =
@@ -573,11 +573,11 @@ StatusOr<mlir::Value> GetMeshCoordinatesFromCluster(
 
   TF_ASSIGN_OR_RETURN(mlir::Value device_id, DeviceId(cluster));
 
-  auto div_op = builder.create<mlir::TF::DivOp>(cluster.getLoc(), device_id,
-                                                running_product_value);
+  auto div_op = mlir::TF::DivOp::create(builder, cluster.getLoc(), device_id,
+                                        running_product_value);
 
-  auto mod_op = builder.create<mlir::TF::FloorModOp>(
-      cluster.getLoc(), div_op.getZ(), mesh_shape_value);
+  auto mod_op = mlir::TF::FloorModOp::create(builder, cluster.getLoc(),
+                                             div_op.getZ(), mesh_shape_value);
 
   mod_op->setAttr(kMeshCoordinatesAttr, builder.getStringAttr(serialized_mesh));
   return mod_op.getZ();
@@ -653,8 +653,8 @@ void RemoveUnusedClusterResults(mlir::tf_device::ClusterOp cluster) {
                   [](mlir::Value v) { return v.getType(); });
 
   mlir::OpBuilder builder(cluster);
-  auto new_cluster = builder.create<mlir::tf_device::ClusterOp>(
-      cluster.getLoc(), new_result_types);
+  auto new_cluster = mlir::tf_device::ClusterOp::create(
+      builder, cluster.getLoc(), new_result_types);
   new_cluster->setAttr(kMeshAttr,
                        cluster->getAttrOfType<mlir::StringAttr>(kMeshAttr));
   new_cluster.getBody().push_back(new mlir::Block);
@@ -665,8 +665,8 @@ void RemoveUnusedClusterResults(mlir::tf_device::ClusterOp cluster) {
       std::prev(cluster_body.end()));
 
   builder.setInsertionPointToEnd(&new_cluster.GetBody());
-  builder.create<mlir::tf_device::ReturnOp>(cluster.getLoc(),
-                                            result_producing_values);
+  mlir::tf_device::ReturnOp::create(builder, cluster.getLoc(),
+                                    result_producing_values);
 
   assert(new_cluster.getNumResults() == new_result_values.size());
   for (auto it : llvm::zip(new_result_values, new_cluster.getResults())) {
@@ -726,12 +726,13 @@ absl::Status PrintTensor(mlir::Value value,
   // Scalar string type
   mlir::RankedTensorType scalar_string =
       mlir::RankedTensorType::get({}, builder.getType<mlir::TF::StringType>());
-  mlir::TF::StringFormatOp format = builder.create<mlir::TF::StringFormatOp>(
-      value.getLoc(), scalar_string, mlir::ValueRange({device_id, value}));
+  mlir::TF::StringFormatOp format =
+      mlir::TF::StringFormatOp::create(builder, value.getLoc(), scalar_string,
+                                       mlir::ValueRange({device_id, value}));
   format->setAttr("template", builder.getStringAttr(all_format));
-  builder.create<mlir::TF::PrintV2Op>(value.getLoc(), format.getOutput(),
-                                      /*output_stream=*/"log(info)",
-                                      /*end=*/"\n");
+  mlir::TF::PrintV2Op::create(builder, value.getLoc(), format.getOutput(),
+                              /*output_stream=*/"log(info)",
+                              /*end=*/"\n");
   return absl::OkStatus();
 }
 

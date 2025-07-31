@@ -413,10 +413,10 @@ LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
   auto result_type = mlir::RankedTensorType::get(
       output_shape,
       mlir::cast<RankedTensorType>(input_.getType()).getElementType());
-  lstm_ = builder_.create<mlir::TFL::LSTMOp>(
-      fused_func_op_.getLoc(), result_type, input_, input2input_, input2forget_,
-      input2cell_, input2output_, rec2input_, rec2forget_, rec2cell_,
-      rec2output_, /*cell_to_input_weights*/ none_,
+  lstm_ = mlir::TFL::LSTMOp::create(
+      builder_, fused_func_op_.getLoc(), result_type, input_, input2input_,
+      input2forget_, input2cell_, input2output_, rec2input_, rec2forget_,
+      rec2cell_, rec2output_, /*cell_to_input_weights*/ none_,
       /*cell_to_forget_weights*/ none_,
       /*cell_to_output_weights*/ none_, bias2input_, bias2forget_, bias2cell_,
       bias2output_, proj_weight_, proj_bias_, input_activation_state_,
@@ -440,10 +440,10 @@ LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
       func_output_shape,
       mlir::cast<RankedTensorType>(input_.getType()).getElementType());
 
-  auto tensor_cast = builder_.create<mlir::tensor::CastOp>(
-      fused_func_op_.getLoc(), func_result_type, lstm_.getResult());
-  builder_.create<mlir::func::ReturnOp>(fused_func_op_.getLoc(),
-                                        tensor_cast.getResult());
+  auto tensor_cast = mlir::tensor::CastOp::create(
+      builder_, fused_func_op_.getLoc(), func_result_type, lstm_.getResult());
+  mlir::func::ReturnOp::create(builder_, fused_func_op_.getLoc(),
+                               tensor_cast.getResult());
   return success();
 }
 

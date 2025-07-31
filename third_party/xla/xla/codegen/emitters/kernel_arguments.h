@@ -95,6 +95,15 @@ class KernelArguments {
     return arg_slices;
   }
 
+  std::vector<bool> GetArgumentOutputFlags() const {
+    std::vector<bool> output_flags;
+    output_flags.reserve(args_.size());
+    for (const KernelArgument& arg : args_) {
+      output_flags.push_back(arg.written());
+    }
+    return output_flags;
+  }
+
  private:
   explicit KernelArguments(std::vector<KernelArgument> args)
       : args_(std::move(args)) {}

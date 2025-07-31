@@ -31,4 +31,6 @@ uint64_t RegisterSchema(ProfilerDomainHandle, const void*) { return 0; }
 StringHandle RegisterString(ProfilerDomainHandle, const std::string&) {
   return {};
 }
+void MarkMemoryInitialized(void const* address, size_t size,
+                           StreamHandle stream) {}
 }  // namespace tsl::profiler
