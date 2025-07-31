@@ -1,0 +1,11 @@
+
+--- a/third_party/amd/include/TritonAMDGPUToLLVM/Passes.h	2025-06-02 05:51:09.000000000 -0700
++++ b/third_party/amd/include/TritonAMDGPUToLLVM/Passes.h	2025-07-30 18:11:34.000000000 -0700
+@@ -5,6 +5,7 @@
+ #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+ #include "mlir/Pass/Pass.h"
+ #include "mlir/Transforms/DialectConversion.h"
++#include "llvm/IR/Function.h"
+ 
+ #include <memory>
+ 
