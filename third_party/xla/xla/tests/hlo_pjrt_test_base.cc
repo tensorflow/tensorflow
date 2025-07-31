@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
-#include "xla/tests/hlo_runner_pjrt_test_utils.h"
 #include "xla/tests/pjrt_client_registry.h"
+#include "xla/tests/split_phase_utils.h"
 
 namespace xla {
 namespace {
