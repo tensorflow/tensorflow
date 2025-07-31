@@ -1,7 +1,3 @@
-load(
-    "//xla/tsl:tsl.bzl",
-    "internal_visibility",
-)
 load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -39,8 +35,6 @@ tsl_pybind_extension(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    #TODO(zcrank): remove when cl/786308476 is merged
-    visibility = internal_visibility(["//learning/brain/research/jax/lib:__pkg__"]),
     deps = [
         ":profile_data_lib",
         "@local_tsl//tsl/platform:protobuf",
