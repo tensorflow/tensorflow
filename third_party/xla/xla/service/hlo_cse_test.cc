@@ -558,6 +558,36 @@ ENTRY %entry {
   EXPECT_FALSE(cse.Run(m.get()).value());
 }
 
+TEST_F(HloCseTest, CombineOpsWithSameSdyShardingFrontendAttrs) {
+  const char* const hlo_string = R"(
+HloModule module, frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["model"=2, "data"=8]>}}
+
+ENTRY %entry {
+  constant.68 = s32[1]{0} constant({0})
+  custom-call.82 = s32[1]{0} custom-call(constant.68), custom_call_target="Sharding", frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<@mesh, [{\"data\"}]>]>"}
+  custom-call.1343 = s32[1]{0} custom-call(constant.68), custom_call_target="Sharding", frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<@mesh, [{\"data\"}]>]>"}
+  ROOT tuple = (s32[1]{0}, s32[1]{0}) tuple(custom-call.82, custom-call.1343)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  EXPECT_TRUE(cse.Run(m.get()).value());
+}
+
+TEST_F(HloCseTest, DoNotCombineOpsWithDifferentSdyShardingFrontendAttrs) {
+  const char* const hlo_string = R"(
+HloModule module, frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["model"=2, "data"=8]>}}
+
+ENTRY %entry {
+  constant.68 = s32[1]{0} constant({0})
+  custom-call.82 = s32[1]{0} custom-call(constant.68), custom_call_target="Sharding", frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<@mesh, [{}]>]>"}
+  custom-call.1343 = s32[1]{0} custom-call(constant.68), custom_call_target="Sharding", frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<@mesh, [{\"data\"}]>]>"}
+  ROOT tuple = (s32[1]{0}, s32[1]{0}) tuple(custom-call.82, custom-call.1343)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  EXPECT_FALSE(cse.Run(m.get()).value());
+}
+
 TEST_F(HloCseTest, DoNotCombineCallsToImpureFunctions) {
   // Test that two calls to an impure function are not commoned. RNG
   // is the source of the impurity.
