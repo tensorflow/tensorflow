@@ -17,6 +17,7 @@
 # NO_VISIBILITY_DECLARATION=.bzl file is intentionally exported to, e.g., JAX.
 
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//third_party/py/rules_pywrap:pywrap.impl.bzl",
     "pybind_extension",
@@ -45,7 +46,7 @@ def nanobind_pywrap_extension(
     # We put the entire contents of the extension in a single cc_library, which will become part of
     # the common pywrap library. All the contents of all extensions will end up in the common
     # library.
-    native.cc_library(
+    cc_library(
         name = lib_name,
         srcs = srcs,
         copts = copts,

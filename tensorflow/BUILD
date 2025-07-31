@@ -2,6 +2,7 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
+load("@rules_cc//cc:cc_import.bzl", "cc_import")
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")

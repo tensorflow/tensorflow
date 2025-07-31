@@ -14,6 +14,8 @@ load(
 )
 load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
 load("@rules_python//python:py_library.bzl", "py_library")
+load("//third_party/bazel_rules/rules_cc/cc:cc_binary.bzl", "cc_binary")
+load("//third_party/bazel_rules/rules_cc/cc:cc_test.bzl", "cc_test")
 
 # IMPORTANT: Do not remove this load statement. We rely on that //xla/tsl doesn't exist in g3
 # to prevent g3 .bzl files from loading this file.
@@ -127,7 +129,7 @@ def pyx_library(
     for src in pyx_srcs:
         stem = src.split(".")[0]
         shared_object_name = stem + ".so"
-        native.cc_binary(
+        cc_binary(
             name = shared_object_name,
             srcs = [stem + ".cpp"],
             deps = cc_deps + ["@local_xla//third_party/python_runtime:headers"],
@@ -471,8 +473,7 @@ def strict_cc_test(
             clean_dep("@local_xla//xla/tsl:is_ci_build"): ["--gtest_fail_if_no_test_selected"],
             "//conditions:default": [],
         })
-
-    native.cc_test(
+    cc_test(
         name = name,
         linkstatic = linkstatic,
         args = args,
