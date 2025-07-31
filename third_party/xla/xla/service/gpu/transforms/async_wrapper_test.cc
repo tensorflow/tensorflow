@@ -73,7 +73,8 @@ TEST_F(AsyncWrapperTest, BasicFusion) {
       ParseAndReturnVerifiedModule(hlo_text).value();
 
   AsyncWrapper wrapper(HloPredicateIsOp<HloOpcode::kFusion>);
-  EXPECT_THAT(wrapper.HloModulePass::Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(wrapper.HloModulePass::Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
   EXPECT_EQ(CountAsyncInstructions(module->entry_computation()), 4);
 
   Literal argument = LiteralUtil::CreateR1<float>({1.0});
