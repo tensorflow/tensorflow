@@ -44,6 +44,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/utils.h"
 
@@ -79,16 +80,18 @@ using ::mlir::sdy::TensorShardingPerValueAttr;
 // the `op`.
 void saveOpShardingPerValueAttr(
     Operation* op, TensorShardingPerValueAttr shardingPerValueAttr) {
-  setFrontendAttribute(op, kShardingRoundTripAttr, shardingPerValueAttr);
+  setFrontendAttribute(op, HloSharding::kShardingFrontendAttrName,
+                       shardingPerValueAttr);
 }
 
 // Converts the shardings from `kShardingAttr` into
-// `kShardingRoundTripStringAttr`.
+// `HloSharding::kShardingFrontendAttrName`.
 LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
   for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); ++argNum) {
     if (auto oldSharding = funcOp.getArgAttrOfType<TensorShardingAttr>(
             argNum, kShardingAttr)) {
-      setFrontendAttribute(funcOp, kShardingRoundTripAttr, oldSharding, argNum);
+      setFrontendAttribute(funcOp, HloSharding::kShardingFrontendAttrName,
+                           oldSharding, argNum);
     }
   }
 
@@ -106,8 +109,8 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
       // Op's sharding to the FuncOp's result and delete te temporary custom
       // call.
       Value returnValue = returnOperand.get();
-      auto customCallOp = builder.create<CustomCallOp>(
-          returnValue.getLoc(), returnValue.getType(), returnValue);
+      auto customCallOp = CustomCallOp::create(
+          builder, returnValue.getLoc(), returnValue.getType(), returnValue);
       customCallOp.setCallTargetName(kFuncResultShardingTargetName);
       // Want to prevent the canonicalizer from de-duplicating func sharding
       // custom calls which actually may have different sharding attributes.
@@ -172,8 +175,8 @@ class SdyRoundTripExportShardyAttrsPass
   StringRef getDescription() const override {
     return "Converts the shardy attributes from "
            "kShardingAttr/kShardingRuleAttr to "
-           "kShardingRoundTripAttr/kShardingRuleRoundTripAttr in the HLO "
-           "frontend attributes and saves the mesh symbols as "
+           "HloSharding::kShardingFrontendAttrName/kShardingRuleRoundTripAttr "
+           "in the HLO frontend attributes and saves the mesh symbols as "
            "kMeshesRoundTripAttr in the module frontend attributes.";
   }
 

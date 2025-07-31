@@ -53,7 +53,7 @@ TEST(AssembleCompilationProviderTest,
       /*cuda_data_dir=*/"/does/not/exist",
   };
   EXPECT_THAT(AssembleCompilationProvider(options),
-              StatusIs(absl::StatusCode::kUnavailable));
+              absl_testing::StatusIs(absl::StatusCode::kUnavailable));
 }
 
 TEST(AssembleCompilationProviderTest,

@@ -59,7 +59,8 @@ TEST(CuDnnThunkTest, TestSerializationDeserialization) {
       std::unique_ptr<CuDnnThunk> thunk,
       CuDnnThunk::FromProto(thunk_info, cudnn_thunk_proto, buffer_allocations));
 
-  EXPECT_THAT(thunk->ToProto(), IsOkAndHolds(EqualsProto(thunk_proto)));
+  EXPECT_THAT(thunk->ToProto(),
+              absl_testing::IsOkAndHolds(EqualsProto(thunk_proto)));
 }
 
 }  // namespace

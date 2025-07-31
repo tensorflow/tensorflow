@@ -415,8 +415,8 @@ MeshAxesAndIds findMeshAxesAndIds(ModuleOp moduleOp) {
 MeshAttr getMeshAttr(xla::HloModule* module, mlir::MLIRContext* context) {
   for (xla::HloComputation* computation : module->computations()) {
     for (xla::HloInstruction* instruction : computation->instructions()) {
-      std::optional<std::string> sharding =
-          instruction->get_frontend_attribute(kShardingRoundTripAttr);
+      std::optional<std::string> sharding = instruction->get_frontend_attribute(
+          HloSharding::kShardingFrontendAttrName);
       if (!sharding) {
         continue;
       }
@@ -761,7 +761,8 @@ absl::Status addSdyShardingsToEntryComputation(xla::HloModule* module) {
   MeshAttr mesh = getMeshAttr(module, &context);
 
   auto existingFrontendAttr = [](HloInstruction* instruction) {
-    if (instruction->get_frontend_attribute(kShardingRoundTripAttr)
+    if (instruction
+            ->get_frontend_attribute(HloSharding::kShardingFrontendAttrName)
             .has_value()) {
       LOG(WARNING) << "If instructions of main computation already have "
                       "sdy.shardings this function should not be called.";
@@ -846,7 +847,7 @@ absl::Status addSdyShardingsToEntryComputation(xla::HloModule* module) {
       }
       int64_t rank = instruction->shape().dimensions().size();
       instruction->set_frontend_attribute(
-          kShardingRoundTripAttr.str(),
+          HloSharding::kShardingFrontendAttrName,
           attributeToString(convertSharding(instruction->sharding(), rank)));
     }
   }
@@ -889,13 +890,13 @@ absl::Status addSdyShardingsToEntryComputation(xla::HloModule* module) {
       otherShardings.reserve(hloSharding.tuple_elements().size());
       convertTupleShardings(instruction, otherShardings);
       instruction->set_frontend_attribute(
-          kShardingRoundTripAttr,
+          HloSharding::kShardingFrontendAttrName,
           attributeToString(
               TensorShardingPerValueAttr::get(&context, otherShardings)));
     } else {
       int64_t rank = instruction->shape().dimensions().size();
       instruction->set_frontend_attribute(
-          kShardingRoundTripAttr,
+          HloSharding::kShardingFrontendAttrName,
           attributeToString(TensorShardingPerValueAttr::get(
               &context, convertSharding(hloSharding, rank))));
     }

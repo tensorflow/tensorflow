@@ -81,8 +81,8 @@ class SdyRoundTripShardMapExportPass
           manualCompBody.getArgumentTypes();
       mlir::TypeRange localResultTypes =
           sdy::getBodyTerminatorOpOperandTypes(manualComputation);
-      auto funcOp = rewriter.create<FuncOp>(
-          loc, kManualComputationBodyFuncName,
+      auto funcOp = FuncOp::create(
+          rewriter, loc, kManualComputationBodyFuncName,
           rewriter.getFunctionType(manualCompBodyArgTypes, localResultTypes));
       mlir::StringAttr funcName = symbolTable.insert(funcOp);
 
@@ -90,8 +90,8 @@ class SdyRoundTripShardMapExportPass
       stablehlo::CustomCallOp globalToLocalShape;
       mlir::ValueRange operands = manualComputation->getOperands();
       if (!operands.empty()) {
-        globalToLocalShape = rewriter.create<stablehlo::CustomCallOp>(
-            loc, manualCompBodyArgTypes, operands);
+        globalToLocalShape = stablehlo::CustomCallOp::create(
+            rewriter, loc, manualCompBodyArgTypes, operands);
         globalToLocalShape.setCallTargetName(kGlobalToLocalShapeCallTargetName);
         // We mark `xla.sdy.GlobalToLocalShape` as side-effecting to avoid
         // CSE deduping it with another taking the same operands, as it would
@@ -105,12 +105,13 @@ class SdyRoundTripShardMapExportPass
       }
 
       auto callOp =
-          rewriter.create<CallOp>(loc, localResultTypes, funcName, operands);
+          CallOp::create(rewriter, loc, localResultTypes, funcName, operands);
 
       mlir::ResultRange results = manualComputation->getResults();
       if (!results.empty()) {
-        auto localToGlobalShape = rewriter.create<stablehlo::CustomCallOp>(
-            loc, manualComputation.getResultTypes(), callOp->getResults());
+        auto localToGlobalShape = stablehlo::CustomCallOp::create(
+            rewriter, loc, manualComputation.getResultTypes(),
+            callOp->getResults());
         // We don't mark `xla.sdy.LocalToGlobalShape` as side-effecting, so if
         // any of its results has a dimension of size 0 (i.e. 0 num-elements),
         // it will be replaced with a constant of the same shape.

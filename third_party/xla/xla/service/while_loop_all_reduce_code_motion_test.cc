@@ -1656,7 +1656,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, SingleAllReduceDUS) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule));
   WhileLoopAllReduceCodeMotion pass;
-  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
   HloComputation* entry = module->entry_computation();
   HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
@@ -1668,7 +1668,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, SingleAllReduceDUS) {
     CHECK: %[[ar:.+]] = f32[16]{0} all-reduce(%[[gte]]){{.*}}, to_apply=%reduction
     CHECK: tuple({{.+}}, {{.+}}, %[[ar]])
   )"),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 // Test single all reduce with convert and multiple dynamic update slices.
@@ -1721,7 +1721,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleDUSAndConvert) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule));
   WhileLoopAllReduceCodeMotion pass;
-  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
   HloComputation* entry = module->entry_computation();
   HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
@@ -1738,7 +1738,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleDUSAndConvert) {
     CHECK: %[[dus:.+]] = f32[16,64]{1,0} dynamic-update-slice(%[[gte]], %[[update]], %[[zero]], %[[zero]])
     CHECK: tuple({{.+}}, {{.+}}, {{.+}}, %[[dus]])
   )"),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 // Test multiple all-reduce ops with different types.
@@ -1791,7 +1791,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleAllReduceDifferentTypes) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule));
   WhileLoopAllReduceCodeMotion pass;
-  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
   HloComputation* entry = module->entry_computation();
   HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
@@ -1805,7 +1805,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleAllReduceDifferentTypes) {
     CHECK: %[[ar3:.+]] = f32[16]{0} all-reduce(%[[gte3]]){{.*}}, to_apply=%reduction_mul
     CHECK: tuple({{.+}}, {{.+}}, %[[ar2]], %[[ar3]])
   )"),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 // Test multiple while ops calling the same computation.
@@ -1852,7 +1852,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleWhileOps) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule));
   WhileLoopAllReduceCodeMotion pass;
-  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
   HloComputation* entry = module->entry_computation();
   HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
@@ -1868,7 +1868,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleWhileOps) {
     CHECK: %[[ar1:.+]] = f32[16]{0} all-reduce(%[[res1]]){{.*}}, to_apply=%reduction
     CHECK: tuple({{.+}}, {{.+}}, %[[ar1]])
   )"),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 // Test single all reduce with reverse indexing.
@@ -1912,7 +1912,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, ReverseIndexing) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule));
   WhileLoopAllReduceCodeMotion pass;
-  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
   HloComputation* entry = module->entry_computation();
   HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
@@ -1924,7 +1924,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, ReverseIndexing) {
     CHECK: %[[ar:.+]] = f32[16]{0} all-reduce(%[[gte]]){{.*}}, to_apply=%reduction
     CHECK: tuple({{.+}}, {{.+}}, %[[ar]])
   )"),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 // Test that only the loop induction variable may be used for indexing.
@@ -1970,7 +1970,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, InvalidIndexing) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule));
   WhileLoopAllReduceCodeMotion pass;
-  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
 
 // Test that updates do not overlap (update size is 1).
@@ -2014,7 +2014,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, OverlappingUpdates) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule));
   WhileLoopAllReduceCodeMotion pass;
-  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
 
 // Test that only simple range loops are supported (start=0, step=1).
@@ -2063,7 +2063,7 @@ TEST_P(AllReduceCodeMotionLoopTest, InvalidLoop) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_module));
   WhileLoopAllReduceCodeMotion pass;
-  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -2131,7 +2131,7 @@ TEST_P(AllReduceCodeMotionUserTest, UserPreventsCodeMotion) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_module));
   WhileLoopAllReduceCodeMotion pass;
-  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -2181,7 +2181,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, LoopConditionUserPreventsCodeMotion) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule));
   WhileLoopAllReduceCodeMotion pass;
-  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
 
 // Test that both dynamic update slice and accumulation are supported.
@@ -2231,7 +2231,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, ComputationWithDUSAndAccumulation) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule));
   WhileLoopAllReduceCodeMotion pass;
-  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
   HloComputation* entry = module->entry_computation();
   HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
@@ -2248,7 +2248,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, ComputationWithDUSAndAccumulation) {
     CHECK: %[[ar2:.+]] = f32[16]{0} all-reduce(%[[gte2]]){{.*}}, to_apply=%reduction
     CHECK: tuple({{.+}}, {{.+}}, %[[ar2]], {{.+}})
   )"),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 }  // namespace

@@ -510,12 +510,12 @@ ENTRY entry {
 
   const HloFusionInstruction* fusion1 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
-  EXPECT_THAT(
-      TritonWrapper("test_fn", fusion1, cc, device_info,
-                    module1_and_metadata.block_level_parameters, &llvm_module,
-                    mlir_context),
-      StatusIs(tsl::error::RESOURCE_EXHAUSTED,
-               ::testing::HasSubstr("Shared memory size limit exceeded")));
+  EXPECT_THAT(TritonWrapper("test_fn", fusion1, cc, device_info,
+                            module1_and_metadata.block_level_parameters,
+                            &llvm_module, mlir_context),
+              absl_testing::StatusIs(
+                  tsl::error::RESOURCE_EXHAUSTED,
+                  ::testing::HasSubstr("Shared memory size limit exceeded")));
 
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module2_and_metadata,
                           GetModuleAndNestedFusionMetadata(absl::Substitute(
@@ -859,8 +859,8 @@ ENTRY entry {
   EXPECT_THAT(TritonWrapper("test_fn", fusion1, cc, device_info,
                             module1_and_metadata.block_level_parameters,
                             &llvm_module, mlir_context),
-              StatusIs(tsl::error::RESOURCE_EXHAUSTED,
-                       "Tiling complexity heuristic exceeded"));
+              absl_testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
+                                     "Tiling complexity heuristic exceeded"));
 
   // Succeeds if the tiling is not too complex.
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module2_and_metadata,

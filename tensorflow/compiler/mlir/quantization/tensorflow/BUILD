@@ -1,4 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:strict.default.bzl", "py_strict_binary")
 
 # Placeholder: load py_proto_library

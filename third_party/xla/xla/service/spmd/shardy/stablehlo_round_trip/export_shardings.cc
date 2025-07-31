@@ -260,34 +260,6 @@ class ExportStablehloShardingsPass
   bool addMissingShardingToControlFlow;
 };
 
-HloSharding getHloShardingForOp(
-    Operation* op, ArrayRef<TensorShardingAttr> shardings,
-    std::function<MeshAttr(TensorShardingAttr)> getMeshAttr,
-    ArrayRef<StringAttr> manualAxes) {
-  // TODO(bartchr): pass through a symbol table to `getMesh(...)` below.
-  bool isNoResultMaximal = op->getNumResults() == 0 && shardings.size() == 1 &&
-                           (shardings.front().getMesh(op).isMaximal() ||
-                            shardings.front().isFullyReplicated());
-  CHECK(shardings.size() == op->getNumResults() || isNoResultMaximal);
-  if (op->getNumResults() == 1 || isNoResultMaximal) {
-    return convertToHloSharding(shardings.front(), getMeshAttr, manualAxes);
-  }
-
-  SmallVector<HloSharding> newShardings;
-  llvm::transform(shardings, std::back_inserter(newShardings),
-                  [&](TensorShardingAttr sdySharding) {
-                    return convertToHloSharding(sdySharding, getMeshAttr,
-                                                manualAxes);
-                  });
-
-  std::vector<xla::Shape> shapes;
-  llvm::transform(op->getResultTypes(), std::back_inserter(shapes),
-                  [&](mlir::Type type) { return xla::TypeToShape(type); });
-
-  return HloSharding::Tuple(xla::ShapeUtil::MakeTupleShape(shapes),
-                            newShardings);
-}
-
 }  // namespace
 
 HloSharding convertToHloSharding(
@@ -375,6 +347,33 @@ HloSharding convertToHloSharding(
   return HloSharding::Subgroup(
       xla::TileAssignment(tileAssignmentDims, reshapeDims, transposePerm),
       types);
+}
+
+HloSharding getHloShardingForOp(
+    Operation* op, ArrayRef<TensorShardingAttr> shardings,
+    std::function<MeshAttr(TensorShardingAttr)> getMeshAttr,
+    ArrayRef<StringAttr> manualAxes) {
+  bool isNoResultMaximal = op->getNumResults() == 0 && shardings.size() == 1 &&
+                           (getMeshAttr(shardings.front()).isMaximal() ||
+                            shardings.front().isFullyReplicated());
+  CHECK(shardings.size() == op->getNumResults() || isNoResultMaximal);
+  if (op->getNumResults() == 1 || isNoResultMaximal) {
+    return convertToHloSharding(shardings.front(), getMeshAttr, manualAxes);
+  }
+
+  SmallVector<HloSharding> newShardings;
+  llvm::transform(shardings, std::back_inserter(newShardings),
+                  [&](TensorShardingAttr sdySharding) {
+                    return convertToHloSharding(sdySharding, getMeshAttr,
+                                                manualAxes);
+                  });
+
+  std::vector<xla::Shape> shapes;
+  llvm::transform(op->getResultTypes(), std::back_inserter(shapes),
+                  [&](mlir::Type type) { return xla::TypeToShape(type); });
+
+  return HloSharding::Tuple(xla::ShapeUtil::MakeTupleShape(shapes),
+                            newShardings);
 }
 
 void setHloShardingAttr(Operation* op, ArrayRef<TensorShardingAttr> shardings,
