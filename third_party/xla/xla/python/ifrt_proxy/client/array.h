@@ -109,6 +109,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
         shape_(std::move(shape)),
         sharding_(std::move(sharding)),
         custom_layout_(std::move(layout)),
+        user_context_(UserContextScope::current()),
         handle_(arr_handle) {}
 
   ~Array() override { Destruct(rpc_helper_.get(), handle_); }
@@ -155,7 +156,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   ShardingRef shared_ptr_sharding() const override { return sharding_; }
   absl::StatusOr<std::shared_ptr<const PjRtLayout>> pjrt_layout()
       const override;
-  UserContextRef user_context() const override { return {}; }
+  UserContextRef user_context() const override { return user_context_; }
 
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
   DisassembleIntoSingleDeviceArrays(
@@ -195,6 +196,8 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   // distinguish it from default layouts since some functions
   // behaves differently depending on where the layout came from.
   const std::shared_ptr<const xla::PjRtLayout> custom_layout_;
+
+  const UserContextRef user_context_;
 
   const ArrayHandle handle_
       ABSL_DEPRECATED("Use GetHandle() function instead.");
