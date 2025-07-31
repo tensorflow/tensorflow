@@ -434,9 +434,12 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
       absl::AnyInvocable<void() &&> on_done) override {
     tsl::profiler::TraceMe traceme(
         "AsyncHostToDeviceTransferManager::TransferLiteralToBuffer");
+
     VLOG(3) << "TfrtGpuAsyncHostToDeviceTransferManager::"
                "TransferLiteralToBuffer: this="
-            << this << " buffer_index=" << buffer_index;
+            << this << " buffer_index=" << buffer_index
+            << ", device=" << device_->DebugString();
+
     auto* client = tsl::down_cast<TfrtGpuClient*>(device_->client());
     DCHECK(client);
 
@@ -518,7 +521,8 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
                "TransferRawDataToSubBuffer: this="
             << this << " buffer_index=" << buffer_index << " offset=" << offset
             << " transfer_size=" << transfer_size
-            << " is_last_transfer=" << is_last_transfer;
+            << " is_last_transfer=" << is_last_transfer
+            << " device=" << device_->DebugString();
 
     auto* client = tsl::down_cast<TfrtGpuClient*>(device_->client());
     DCHECK(client);
@@ -592,7 +596,8 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
         const void* host_data_ptr =
             staging_buffer ? staging_buffer.get() : data;
         VLOG(3) << "H2D copy: " << host_data_ptr << " -> "
-                << sub_buffer.opaque() << " (" << transfer_size << " bytes)";
+                << sub_buffer.opaque() << " (" << transfer_size
+                << " bytes) on device " << device_->DebugString();
         TF_CHECK_OK(stream->Memcpy(&sub_buffer, host_data_ptr, transfer_size))
             << "Failed to copy data to GPU";
 
@@ -1934,8 +1939,10 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
 
   tsl::profiler::TraceMe traceme("TfrtGpuClient::BufferFromHostBuffer");
   Shape device_shape = ShapeUtil::MakeShape(type, dims);
-  VLOG(4) << "TfrtGpuClient::BufferFromHostBuffer: shape: "
+
+  VLOG(3) << "TfrtGpuClient::BufferFromHostBuffer: shape: "
           << device_shape.ToString() << " device: " << device->DebugString();
+
   absl::InlinedVector<int64_t, 4> tmp_strides;
   if (!byte_strides) {
     tmp_strides.resize(dims.size());
@@ -2057,7 +2064,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
 
     se::DeviceMemoryBase dest = gpu_buffer->buffer();
     VLOG(3) << "H2D copy: " << src_buf << " -> " << dest.opaque() << " ("
-            << packed_size << " bytes)";
+            << packed_size << " bytes) on device " << device->DebugString();
 
     absl::Status status = stream->Memcpy(&dest, src_buf, packed_size);
 
@@ -2155,8 +2162,10 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
   }
   PjRtDevice* device = memory_space->devices()[0];
   tsl::profiler::TraceMe traceme("TfrtGpuClient::BufferFromHostLiteral");
-  VLOG(4) << "TfrtGpuClient::BufferFromHostLiteral: shape: "
+
+  VLOG(3) << "TfrtGpuClient::BufferFromHostLiteral: shape: "
           << literal.shape().ToString() << " device: " << device->DebugString();
+
   const Shape& shape = literal.shape();
   if (shape.IsTuple()) {
     return Unimplemented(
