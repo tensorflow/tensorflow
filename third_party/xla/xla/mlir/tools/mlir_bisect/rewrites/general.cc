@@ -100,10 +100,9 @@ llvm::SmallVector<std::function<OwningOpRef<ModuleOp>()>> ReplaceOpWithConstant(
         if (attribute.size() != 1) {
           return nullptr;
         }
-        op_clone->getResults()[i].replaceAllUsesWith(
-            b.create<arith::ConstantOp>(
-                op_clone->getLoc(), type,
-                llvm::cast<TypedAttr>(attribute.front())));
+        op_clone->getResults()[i].replaceAllUsesWith(arith::ConstantOp::create(
+            b, op_clone->getLoc(), type,
+            llvm::cast<TypedAttr>(attribute.front())));
       }
       return std::move(module_clone);
     });
@@ -135,8 +134,8 @@ ReplaceOperandWithConstant(BisectState& state, Operation* op) {
         }
         auto [module_clone, op_clone] = CloneModuleFor(op);
         OpBuilder b(op_clone);
-        op_clone->setOperand(i, b.create<arith::ConstantOp>(
-                                    op_clone->getLoc(), type,
+        op_clone->setOperand(i, arith::ConstantOp::create(
+                                    b, op_clone->getLoc(), type,
                                     llvm::cast<TypedAttr>(attribute.front())));
         return std::move(module_clone);
       });

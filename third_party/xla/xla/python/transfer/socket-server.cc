@@ -107,7 +107,7 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
     }
     if (events.revents & POLLIN) {
       ssize_t recv_size =
-          recv(fd_, network_buffer_.get(), 4096 - recv_count_, 0);
+          recv(fd_, network_buffer_.get() + recv_count_, 4096 - recv_count_, 0);
       if (recv_size == 0) {
         {
           absl::MutexLock l(&mu_);
