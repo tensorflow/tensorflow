@@ -62,7 +62,7 @@ TEST(GpuEventTest, AfterAllError) {
   event3.SetStateConcrete();
   EXPECT_TRUE(after_all.IsAvailable());
   EXPECT_THAT(after_all.GetError(),
-              StatusIs(absl::StatusCode::kInternal, "error"));
+              absl_testing::StatusIs(absl::StatusCode::kInternal, "error"));
 }
 
 TEST(TfrtEventSetTest, AfterAllEmpty) {
