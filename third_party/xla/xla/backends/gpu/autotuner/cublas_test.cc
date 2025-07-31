@@ -140,8 +140,9 @@ TEST_F(CublasBackendTest, GetDefaultConfigFromCublasCustomCall) {
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           (*hlo_module->entry_computation()->root_instruction()->operand(0)));
-  EXPECT_THAT(static_cast<const CublasBackendConfig&>(*config.value()),
-              EqualsProto(ExpectedDefaultAlgorithm()));
+  CublasBackendConfig config_proto;
+  ASSERT_TRUE(config.value()->UnpackTo(&config_proto));
+  EXPECT_THAT(config_proto, EqualsProto(ExpectedDefaultAlgorithm()));
 }
 
 TEST_F(CublasBackendTest, ApplyConfig) {
@@ -149,11 +150,13 @@ TEST_F(CublasBackendTest, ApplyConfig) {
                           ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
   CublasBackendConfig config;
   config.set_algorithm(2);
+  google::protobuf::Any any;
+  any.PackFrom(config);
   TF_EXPECT_OK(backend_.ApplyConfig(*hlo_module->entry_computation()
                                          ->root_instruction()
                                          ->mutable_operands()
                                          .at(0),
-                                    config));
+                                    any));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(),
                            "CHECK: \"selected_algorithm\":\"2\""),
               IsOkAndHolds(true));

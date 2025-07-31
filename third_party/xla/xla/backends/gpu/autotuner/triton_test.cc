@@ -100,12 +100,14 @@ TEST_F(TritonBackendTest, GetSupportedConfigs) {
           .IsAtLeastHopper()) {
     auto count_tma_allowed =
         [](const std::vector<std::unique_ptr<BackendConfig>>& configs) {
-          return std::count_if(
-              configs.begin(), configs.end(), [](auto& config) {
-                const TritonBackendConfig& actual_config =
-                    static_cast<const TritonBackendConfig&>(*config);
-                return actual_config.is_tma_allowed();
-              });
+          return std::count_if(configs.begin(), configs.end(),
+                               [](auto& config) {
+                                 TritonBackendConfig actual_config;
+                                 if (!config->UnpackTo(&actual_config)) {
+                                   return false;
+                                 }
+                                 return actual_config.is_tma_allowed();
+                               });
         };
     // The current TMA autotuning duplicates the given configurations with
     // is_tma_allowed set to true.
@@ -137,8 +139,8 @@ TEST_F(TritonBackendTest, GetDefaultConfig) {
           *(module->entry_computation()->root_instruction()));
 
   EXPECT_THAT(config, IsOk());
-  const TritonBackendConfig& actual_config =
-      static_cast<const TritonBackendConfig&>(*config.value());
+  TritonBackendConfig actual_config;
+  ASSERT_TRUE(config.value()->UnpackTo(&actual_config));
   EXPECT_THAT(actual_config, EqualsProto(expected_config));
 }
 
