@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/pjrt/distributed/topology_util.h"
 
-#include <algorithm>
 #include <fstream>
 #include <map>
 #include <set>
@@ -39,14 +38,12 @@ limitations under the License.
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/utils.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -328,7 +325,6 @@ absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
   GpuTopologyProto gpu_topology;
   std::map<int, std::set<int>> slice_id_to_node_ids;
   std::map<int, int> node_id_to_device_count;
-  std::vector<int> device_ids;
   for (int i = 0; i < global_topology.nodes_size(); ++i) {
     const LocalTopologyProto& local_topology = global_topology.nodes(i);
 
@@ -340,7 +336,6 @@ absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
       }
       slice_id_to_node_ids[device.slice_index()].insert(
           local_topology.node_id());
-      device_ids.push_back(device.global_device_id());
     }
   }
 
@@ -357,8 +352,6 @@ absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
     gpu_topology.set_num_hosts_per_slice(-1);
     gpu_topology.set_num_devices_per_host(-1);
   }
-  std::sort(device_ids.begin(), device_ids.end());
-  gpu_topology.mutable_device_ids()->Add(device_ids.begin(), device_ids.end());
   return gpu_topology;
 }
 
