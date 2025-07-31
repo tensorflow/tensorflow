@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -119,6 +120,7 @@ BasicStringArray::BasicStringArray(Client* client, Shape shape,
     : client_(client),
       shape_(std::move(shape)),
       sharding_(std::move(sharding)),
+      user_context_(UserContextScope::current()),
       buffers_(std::move(buffers)),
       ready_future_(std::move(ready_future)),
       on_done_with_buffer_(std::move(on_done_with_buffer)) {}
