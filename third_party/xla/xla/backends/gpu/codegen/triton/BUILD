@@ -148,6 +148,7 @@ cc_library(
         "@llvm-project//mlir:ArithToLLVM",
         "@llvm-project//mlir:ControlFlowToLLVM",
         "@llvm-project//mlir:IndexToLLVM",
+        "@llvm-project//mlir:NVVMToLLVM",
         "@llvm-project//mlir:SCFToControlFlow",
         "@llvm-project//mlir:Transforms",
         "//xla/service:hlo_module_config",
@@ -156,6 +157,7 @@ cc_library(
         "@triton//:TritonDialects",
         "@triton//:TritonGPUToLLVM",
         "@triton//:TritonGPUTransforms",
+        "@triton//:TritonInstrumentTransforms",
         "@triton//:TritonLLVMIR",
         "@triton//:TritonNvidiaGPUTransforms",
         "@triton//:TritonToTritonGPU",
@@ -167,6 +169,7 @@ cc_library(
         "//xla/service/gpu/llvm_gpu_backend:nvptx_libdevice_path",
         "@triton//third_party/nvidia:NVGPUToLLVM",
         "@triton//third_party/nvidia:TritonNVIDIAGPUToLLVM",
+        "@triton//third_party/nvidia:NVHopperTransforms",
     ]) + if_rocm_is_configured([
         "//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
         "//xla/tsl/platform:rocm_rocdl_path",
