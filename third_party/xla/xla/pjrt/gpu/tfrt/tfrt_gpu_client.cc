@@ -2014,17 +2014,17 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
 
   bool use_staging_buffer = must_use_staging_buffer || should_stage_transfers;
 
-  auto copy_to_staging_buffer = [allocator = host_memory_allocator(), data,
-                                 byte_size, type, packed_size,
+  auto copy_to_staging_buffer = [allocator = host_memory_allocator(), byte_size,
+                                 type, packed_size,
                                  transpose{std::move(transpose)},
-                                 should_pack]() mutable {
+                                 should_pack](const void* src_buf) mutable {
     tsl::profiler::TraceMe traceme("BufferFromHostBuffer::H2D_staging_copy");
 
     HostMemoryAllocator::OwnedPtr staging_buffer =
         allocator->Allocate(transpose ? byte_size : packed_size);
     void* buffer = staging_buffer.get();
-    const void* data_ptr = data;
-    VLOG(3) << "H2D staging copy: " << data << " -> " << buffer << "("
+    const void* data_ptr = src_buf;
+    VLOG(3) << "H2D staging copy: " << src_buf << " -> " << buffer << "("
             << byte_size << " -> " << packed_size << " bytes)";
 
     if (transpose) {
@@ -2045,11 +2045,9 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
     return staging_buffer;
   };
 
-  auto h2d_do_copy = [device, packed_size, data,
-                      copy_event(std::move(copy_event)),
+  auto h2d_do_copy = [device, packed_size, copy_event(std::move(copy_event)),
                       dst_definition_event(std::move(dst_definition_event)),
-                      gpu_buffer{gpu_buffer.CopyRef()}](
-                         HostMemoryAllocator::OwnedPtr staging_buffer) {
+                      gpu_buffer{gpu_buffer.CopyRef()}](const void* src_buf) {
     tsl::profiler::TraceMe traceme([&] {
       return tsl::profiler::TraceMeEncode(
           "BufferFromHostBuffer::H2D_GPU_copy",
@@ -2058,25 +2056,23 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
     auto stream = device->stream();
 
     se::DeviceMemoryBase dest = gpu_buffer->buffer();
-    const void* host_data_ptr;
-    if (staging_buffer) {
-      host_data_ptr = staging_buffer.get();
-    } else {
-      host_data_ptr = data;
-    }
-    VLOG(3) << "H2D copy: " << host_data_ptr << " -> " << dest.opaque() << " ("
+    VLOG(3) << "H2D copy: " << src_buf << " -> " << dest.opaque() << " ("
             << packed_size << " bytes)";
-    absl::Status status = stream->Memcpy(&dest, host_data_ptr, packed_size);
+
+    absl::Status status = stream->Memcpy(&dest, src_buf, packed_size);
+
     if (!status.ok()) {
       copy_event.SetError(status);
       dst_definition_event.SetError(status);
       return;
     }
+
     {
       tsl::profiler::TraceMe traceme("BlockHostUntilDone");
       status = stream->BlockHostUntilDone();
     }
     VLOG(3) << "H2D copy done. " << status;
+
     if (status.ok()) {
       copy_event.SetStateConcrete();
       dst_definition_event.SetStateConcrete();
@@ -2088,32 +2084,41 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
 
   // Define H2D copy lambda. First, copy host data to staging buffer, then copy
   // staging buffer to GPU device.
-  auto h2d_copy = [this, use_staging_buffer,
+  auto h2d_copy = [this, use_staging_buffer, data,
                    on_done_with_host_buffer =
                        std::move(on_done_with_host_buffer),
                    copy_to_staging_buffer(std::move(copy_to_staging_buffer)),
                    h2d_do_copy(std::move(h2d_do_copy))]() mutable {
-    HostMemoryAllocator::OwnedPtr staging_buffer;
-
     if (use_staging_buffer) {
-      staging_buffer = copy_to_staging_buffer();
+      // Copy to the target data to staging buffer first.
+      HostMemoryAllocator::OwnedPtr staging_buffer;
+      staging_buffer = copy_to_staging_buffer(data);
 
+      // Call on_done_with_host_buffer to release the data buffer.
       if (on_done_with_host_buffer) {
         std::move(on_done_with_host_buffer)();
       }
+
+      // Copy the data from the staging buffer to GPU.
+      EnqueueWork(blocking_thread_pool_.get(),
+                  [h2d_do_copy(std::move(h2d_do_copy)),
+                   staging_buffer(std::move(staging_buffer))]() {
+                    h2d_do_copy(staging_buffer.get());
+                  });
+    } else {
+      EnqueueWork(blocking_thread_pool_.get(),
+                  [h2d_do_copy(std::move(h2d_do_copy)), data,
+                   on_done_with_host_buffer =
+                       std::move(on_done_with_host_buffer)]() mutable {
+                    // Copy the data directly to GPU.
+                    h2d_do_copy(data);
+
+                    // Call on_done_with_host_buffer to release the data buffer.
+                    if (on_done_with_host_buffer) {
+                      std::move(on_done_with_host_buffer)();
+                    }
+                  });
     }
-
-    EnqueueWork(blocking_thread_pool_.get(),
-                [h2d_do_copy(std::move(h2d_do_copy)),
-                 staging_buffer(std::move(staging_buffer)),
-                 on_done_with_host_buffer =
-                     std::move(on_done_with_host_buffer)]() mutable {
-                  h2d_do_copy(std::move(staging_buffer));
-
-                  if (on_done_with_host_buffer) {
-                    std::move(on_done_with_host_buffer)();
-                  }
-                });
   };
 
   if (host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall) {
