@@ -5860,7 +5860,7 @@ TEST_F(HloParserTest,
     a = s32[] parameter(0), origin={{"v1"}}
     b = s32[] parameter(1), origin={{"v2"}}
     add-start = ((s32[], s32[]), s32[], s32[]) add-start(a, b),
-                metadata={op_type="add" op_name="sample name" source_file="path/to/test.cc" source_line=68},
+                metadata={op_type="add" op_name="sample name" source_file="path/to/test.cc" source_line=68, source_end_line=70, source_column=4, source_end_column=8},
                 backend_config="foo\" bar",
                 frontend_attributes={attr_a="test_a",attr_b="b"},
                 statistics={visualizing_index=1,stat-1=33,stat-2=44}
@@ -5875,6 +5875,9 @@ TEST_F(HloParserTest,
   EXPECT_EQ(wrapped_instr->metadata().op_type(), "add");
   EXPECT_EQ(wrapped_instr->metadata().source_file(), "path/to/test.cc");
   EXPECT_EQ(wrapped_instr->metadata().source_line(), 68);
+  EXPECT_EQ(wrapped_instr->metadata().source_end_line(), 70);
+  EXPECT_EQ(wrapped_instr->metadata().source_column(), 4);
+  EXPECT_EQ(wrapped_instr->metadata().source_end_column(), 8);
   EXPECT_EQ(wrapped_instr->raw_backend_config_string(), "foo\" bar");
   EXPECT_EQ(wrapped_instr->frontend_attributes().map().size(), 2);
   EXPECT_EQ(wrapped_instr->frontend_attributes().map().at("attr_a"), "test_a");

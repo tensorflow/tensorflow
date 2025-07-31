@@ -112,22 +112,32 @@ class ResultAccuracy:
 class OpMetadata:
   """Python representation of a xla.OpMetadata protobuf."""
 
-  __slots__ = ('op_type', 'op_name', 'source_file', 'source_line')
+  __slots__ = ('op_type', 'op_name', 'source_file', 'source_line',
+               'source_end_line', 'source_column', 'source_end_column')
 
-  def __init__(self, op_type='', op_name='', source_file='', source_line=0):
+  def __init__(self, op_type='', op_name='', source_file='', source_line=0,
+               source_end_line=0, source_column=0, source_end_column=0):
     self.op_type = op_type
     self.op_name = op_name
     self.source_file = source_file
     self.source_line = source_line
+    self.source_end_line = source_end_line
+    self.source_column = source_column
+    self.source_end_column = source_end_column
 
 
 def current_source_info_metadata(op_type=None, op_name=None, skip_frames=1):
   """Helper for use in source mapping that returns an OpMetadata object."""
-  full_filename, lineno = inspect.stack()[skip_frames][1:3]
-  filename = os.path.basename(full_filename)
-  return OpMetadata(
-      op_type=op_type, op_name=op_name, source_file=filename, source_line=lineno
-  )
+  frame = inspect.stack()[skip_frames]
+  filename = os.path.basename(frame.filename)
+  if hasattr(frame, 'positions'):
+    lineno, end_lineno, column, end_column = frame.positions
+    return OpMetadata(op_type=op_type, op_name=op_name, source_file=filename,
+                      source_line=lineno, source_end_line=end_lineno,
+                      source_column=column, source_end_column=end_column)
+  else:
+    return OpMetadata(op_type=op_type, op_name=op_name, source_file=filename,
+                      source_line=frame.lineno)
 
 
 def shape_from_pyval(pyval, layout: Sequence[int] | None = None):

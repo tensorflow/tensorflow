@@ -523,8 +523,12 @@ message StackFrameIndexProto {
     int32 function_name_id = 2;
     // Line number.
     int32 line = 3;
+    // End line number.
+    int32 end_line = 5;
     // Column number.
     int32 column = 4;
+    // End column number.
+    int32 end_column = 6;
   }
 
   // Serialization of frame.

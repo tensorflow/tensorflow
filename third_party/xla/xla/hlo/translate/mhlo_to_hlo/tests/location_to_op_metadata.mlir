@@ -40,7 +40,7 @@ func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
 }
 
 // CHECK: after-all
-// CHECK-SAME: metadata={source_file="file_name" source_line=2}
+// CHECK-SAME: metadata={source_file="file_name" source_line=2 source_end_line=2 source_column=8 source_end_column=8}
 
 // -----
 
@@ -62,7 +62,7 @@ func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
 }
 
 // CHECK: after-all
-// CHECK-SAME: metadata={op_name="name(anothername)" source_file="file_name" source_line=2}
+// CHECK-SAME: metadata={op_name="name(anothername)" source_file="file_name" source_line=2 source_end_line=2 source_column=8 source_end_column=8}
 
 // -----
 
@@ -73,7 +73,7 @@ func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
 }
 
 // CHECK: after-all
-// CHECK-SAME: metadata={op_name="fused/location/file" source_file="source.txt" source_line=42}
+// CHECK-SAME: metadata={op_name="fused/location/file" source_file="source.txt" source_line=42 source_end_line=42 source_column=5 source_end_column=5}
 
 // -----
 
@@ -84,7 +84,7 @@ func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
 }
 
 // CHECK: after-all
-// CHECK-SAME: metadata={op_name="name1;name2" source_file="nested_fusion" source_line=5}
+// CHECK-SAME: metadata={op_name="name1;name2" source_file="nested_fusion" source_line=5 source_end_line=5 source_column=42 source_end_column=42}
 
 // -----
 
@@ -95,7 +95,7 @@ func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
 }
 
 // CHECK: after-all
-// CHECK-SAME: metadata={op_name="multiple_sources" source_file="source2" source_line=3}
+// CHECK-SAME: metadata={op_name="multiple_sources" source_file="source2" source_line=3 source_end_line=3 source_column=4 source_end_column=4}
 
 // -----
 
