@@ -7,8 +7,8 @@ def repo():
 
     # Attention: tools parse and update these lines.
     # LINT.IfChange
-    ABSL_COMMIT = "d9e4955c65cd4367dd6bf46f4ccb8cd3d100540b"  # LTS 20250127.1
-    ABSL_SHA256 = "c397cd9cca3f71724a8ddf183e7fa71c19196eaafd1dc2a3c86d3a572613a807"
+    ABSL_COMMIT = "76bb24329e8bf5f39704eb10d21b9a80befa7c81"  # LTS 20250512.1
+    ABSL_SHA256 = "ed8f7d9f39139c449e79fd19765e23c96fdb774172d32d191323d3e3ea06e5ff"
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/abseil-cpp.cmake)
 
     tf_http_archive(
@@ -19,7 +19,7 @@ def repo():
         patch_file = [
             "//third_party/absl:btree.patch",
             "//third_party/absl:build_dll.patch",
-            "//third_party/absl:nullability_macros.patch",
+            "//third_party/absl:endian.patch",
             "//third_party/absl:rules_cc.patch",
         ],
         repo_mapping = {
