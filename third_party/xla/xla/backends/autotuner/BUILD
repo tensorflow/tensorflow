@@ -1,5 +1,8 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//xla/tests:build_defs.bzl", "xla_test")
+load(
+    "//xla:xla.default.bzl",
+    "xla_cc_test",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -52,17 +55,9 @@ cc_library(
     ],
 )
 
-xla_test(
+xla_cc_test(
     name = "autotuner_test",
     srcs = ["autotuner_test.cc"],
-    backends = [
-        "a100",
-        "h100",
-        "b200",
-    ],
-    tags = [
-        "no_mac",
-    ],
     deps = [
         ":autotuner",
         ":codegen_backend",
