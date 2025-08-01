@@ -105,22 +105,23 @@ TEST(SubprocessCompilationTest, FindCudaExecutable) {
 
   std::string ptxas_path = tsl::io::JoinPath(cuda_dir, "bin", "ptxas");
 
-  EXPECT_THAT(FindCudaExecutable("ptxas", cuda_dir), IsOkAndHolds(ptxas_path));
+  EXPECT_THAT(FindCudaExecutable("ptxas", cuda_dir),
+              absl_testing::IsOkAndHolds(ptxas_path));
   EXPECT_THAT(
       FindCudaExecutable("ptxas", cuda_dir, SemanticVersion{0, 0, 0}, {}),
-      IsOkAndHolds(ptxas_path));
+      absl_testing::IsOkAndHolds(ptxas_path));
   EXPECT_THAT(
       FindCudaExecutable("ptxas", cuda_dir, SemanticVersion{111, 2, 3}, {}),
-      IsOkAndHolds(ptxas_path));
+      absl_testing::IsOkAndHolds(ptxas_path));
   EXPECT_THAT(
       FindCudaExecutable("ptxas", cuda_dir, SemanticVersion{111, 2, 4}, {}),
-      StatusIs(absl::StatusCode::kNotFound));
+      absl_testing::StatusIs(absl::StatusCode::kNotFound));
   EXPECT_THAT(FindCudaExecutable("ptxas", cuda_dir, SemanticVersion{0, 0, 0},
                                  {{111, 2, 3}}),
-              Not(IsOkAndHolds(ptxas_path)));
+              Not(absl_testing::IsOkAndHolds(ptxas_path)));
   EXPECT_THAT(FindCudaExecutable("ptxas", cuda_dir, SemanticVersion{99, 0, 0},
                                  {{111, 2, 3}}),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 }  // namespace

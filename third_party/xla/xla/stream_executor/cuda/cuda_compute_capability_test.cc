@@ -33,17 +33,17 @@ TEST(CudaComputeCapabilityTest, ToString) {
 
 TEST(CudaComputeCapabilityTest, FromString) {
   EXPECT_THAT(CudaComputeCapability::FromString("100.52"),
-              IsOkAndHolds(CudaComputeCapability(100, 52)));
+              absl_testing::IsOkAndHolds(CudaComputeCapability(100, 52)));
   EXPECT_THAT(CudaComputeCapability::FromString("1"),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(CudaComputeCapability::FromString("12"),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(CudaComputeCapability::FromString("x"),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(CudaComputeCapability::FromString("1."),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(CudaComputeCapability::FromString("1.x"),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(CudaComputeCapabilityTest, ToProto) {
