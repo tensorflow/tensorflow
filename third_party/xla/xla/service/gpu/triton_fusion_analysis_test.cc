@@ -680,7 +680,7 @@ e {
                                                ->called_computations()[0];
   EXPECT_THAT(
       TritonFusionAnalysis::Execute(dot_computation),
-      tsl::testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+      absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
                              ::testing::HasSubstr("Unsupported broadcast")));
 }
 
