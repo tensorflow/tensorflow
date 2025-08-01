@@ -139,13 +139,9 @@ class ExhaustiveF64UnaryTest : public ExhaustiveUnaryTest<F64>,
   TEST_P(ExhaustiveF32UnaryTest, test_name) \
   __VA_ARGS__
 
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
 #define UNARY_TEST_F64(test_name, ...)      \
   TEST_P(ExhaustiveF64UnaryTest, test_name) \
   __VA_ARGS__
-#else
-#define UNARY_TEST_F64(test_name, ...)
-#endif
 
 #define UNARY_TEST(test_name, ...)            \
   UNARY_TEST_F8E4M3FN(test_name, __VA_ARGS__) \
