@@ -15,7 +15,7 @@ pybind_extension(
     srcs = ["format_converter_wrapper_pybind11.cc"],
     common_lib_packages = [
         "litert/python",
-        "third_party/tensorflow/lite/python",
+        "tensorflow/lite/python",
     ],
     copts = [
         "-fexceptions",

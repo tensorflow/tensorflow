@@ -13,7 +13,7 @@ pybind_extension(
     ],
     common_lib_packages = [
         "litert/python",
-        "third_party/tensorflow/lite/python",
+        "tensorflow/lite/python",
     ],
     enable_stub_generation = True,
     pytype_srcs = [
