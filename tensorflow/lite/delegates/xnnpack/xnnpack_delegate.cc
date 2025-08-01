@@ -627,16 +627,14 @@ class Delegate {
       if (!weight_cache_provider_->IsActive() &&
           (options_.weight_cache_file_path ||
            options_.weight_cache_file_descriptor > 0)) {
-        const char* const file_path = options_.weight_cache_file_path
-                                          ? options_.weight_cache_file_path
-                                          : "unknown path";
         // See TfLiteXNNPackDelegateOptions::weight_cache_file_descriptor
         // comment for > 0 check.
-        FileDescriptor fd(options_.weight_cache_file_descriptor > 0
-                              ? options_.weight_cache_file_descriptor
-                              : -1);
-        if (!weight_cache_provider_->LoadOrStartBuild(file_path,
-                                                      std::move(fd))) {
+        FileDescriptor fd;
+        if (options_.weight_cache_file_descriptor > 0) {
+          fd.Reset(options_.weight_cache_file_descriptor);
+        }
+        if (!weight_cache_provider_->LoadOrStartBuild(
+                options_.weight_cache_file_path, std::move(fd))) {
           TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
                           "XNNPack weight cache could neither be loaded from "
                           "or saved to '%s'. Check that this location is "

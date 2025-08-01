@@ -72,6 +72,7 @@ bool MMapHandle::Map(const char* path, const size_t offset) {
 bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
                      const char* const path) {
   this->UnMap();
+  const char* const safe_path = path != nullptr ? path : "[unspecified]";
 
   XNNPACK_RETURN_CHECK(fd.IsValid(),
                        "cannot mmap invalid file descriptor %d ('%s').",
@@ -81,12 +82,12 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
   struct _stat64 file_stats;
   XNNPACK_RETURN_CHECK(_fstat64(fd.Value(), &file_stats) == 0,
                        "could not access file stats to get size ('%s'): %s.",
-                       path, strerror(errno));
+                       safe_path, strerror(errno));
 #else
   struct stat file_stats;
   XNNPACK_RETURN_CHECK(fstat(fd.Value(), &file_stats) == 0,
                        "could not access file stats to get size ('%s'): %s.",
-                       path, strerror(errno));
+                       safe_path, strerror(errno));
 #endif
 
   // This will reset data_ and size_ on return until it is deactivated.
@@ -98,26 +99,31 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
   data_ = new uint8_t[size_];
   fd.SetPos(offset);
   XNNPACK_RETURN_CHECK(fd.Read(data_, size_), "could not read file ('%s'): %s.",
-                       path, strerror(errno));
+                       safe_path, strerror(errno));
 #elif defined(_MSC_VER)
   HANDLE osf_handle = reinterpret_cast<HANDLE>(_get_osfhandle(fd.Value()));
   XNNPACK_RETURN_CHECK(osf_handle != INVALID_HANDLE_VALUE,
                        "could not convert file descriptor to file handle.");
 
-  std::string name = path;
-  if (name == kUnspecifiedPath) {
+  // Create the handle name, which is either NULL or the path with backslashes
+  // replaced by `_`.
+  std::string name;
+  const char* handle_name = nullptr;
+  if (!path || path[0] == '\0') {
     name.clear();
   } else {
+    name = path;
     for (int i = 0; i < name.size(); ++i) {
       if (name[i] == '\\') {
         name[i] = '_';
       }
     }
+    handle_name = name.c_str();
   }
   file_mapping_ =
       CreateFileMappingA(osf_handle, /*lpFileMappingAttributes=*/nullptr,
                          /*flProtect=*/PAGE_READONLY, /*dwMaximumSizeHigh=*/0,
-                         /*dwMaximumSizeLow=*/0, /*lpName=*/name.c_str());
+                         /*dwMaximumSizeLow=*/0, /*lpName=*/handle_name);
   XNNPACK_RETURN_CHECK(file_mapping_ != INVALID_HANDLE_VALUE,
                        "could not create a file mapping: %s.",
                        GetLastErrorString().c_str());
@@ -138,15 +144,15 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
                                               file_offset_high, file_offset_low,
                                               /*dwNumberOfBytesToMap=*/0));
 
-  XNNPACK_RETURN_CHECK(data_ != nullptr, "could not map file (%s): %s.", path,
-                       GetLastErrorString().c_str());
+  XNNPACK_RETURN_CHECK(data_ != nullptr, "could not map file (%s): %s.",
+                       safe_path, GetLastErrorString().c_str());
 #else
   offset_page_adjustment_ = offset_ % getpagesize();
   data_ = static_cast<uint8_t*>(
       mmap(/*addr=*/nullptr, size_ + offset_page_adjustment_, PROT_READ,
            MAP_SHARED, fd.Value(), offset_ - offset_page_adjustment_));
   XNNPACK_RETURN_CHECK(data_ != MAP_FAILED, "could not mmap file (%s): %s.",
-                       path, strerror(errno));
+                       safe_path, strerror(errno));
 #endif
   unmap_on_error.Deactivate();
   return true;
