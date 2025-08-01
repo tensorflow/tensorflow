@@ -417,6 +417,12 @@ class SpmdPartitioner : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
+  // Postprocess the graph to clean up the HLOs, such as removing unreduced
+  // frontend attributes and set the sharding back to unreduced.
+  absl::Status PostprocessHlos(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
+
   void set_execution_threads(
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
     execution_threads_ = execution_threads;

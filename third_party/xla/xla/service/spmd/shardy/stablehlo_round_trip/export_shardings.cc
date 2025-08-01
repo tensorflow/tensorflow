@@ -168,10 +168,6 @@ LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
 
     if (ArrayRef<TensorShardingAttr> shardings = mlir::sdy::getShardings(op);
         !shardings.empty()) {
-      if (allShardingsUnreduced(shardings)) {
-        setFrontendAttribute(op, kHasUnreducedAxes,
-                             builder.getStringAttr("true"));
-      }
       setHloShardingAttr(op, shardings, getMeshAttr, manualAxes);
       op->removeAttr(kShardingAttr);
     } else if (addMissingShardingToControlFlow &&
@@ -264,6 +260,9 @@ HloSharding getHloShardingForOp(
     Operation* op, ArrayRef<TensorShardingAttr> shardings,
     std::function<MeshAttr(TensorShardingAttr)> getMeshAttr,
     ArrayRef<StringAttr> manualAxes) {
+  if (allShardingsUnreduced(shardings)) {
+    return HloSharding::Unreduced();
+  }
   // TODO(bartchr): pass through a symbol table to `getMesh(...)` below.
   bool isNoResultMaximal = op->getNumResults() == 0 && shardings.size() == 1 &&
                            (shardings.front().getMesh(op).isMaximal() ||
