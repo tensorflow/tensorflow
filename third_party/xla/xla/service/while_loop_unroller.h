@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/while_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
