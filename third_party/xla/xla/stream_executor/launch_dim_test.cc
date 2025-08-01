@@ -49,25 +49,25 @@ TEST(Dim3DTest, FromProto) {
 
   proto.set_x(-1);
   EXPECT_THAT(Dim3D::FromProto(proto),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(ThreadDimTest, ToAndFromProto) {
   ThreadDim thread_dimensions{2, 4, 6};
   EXPECT_THAT(ThreadDim::FromProto(thread_dimensions.ToProto()),
-              IsOkAndHolds(thread_dimensions));
+              absl_testing::IsOkAndHolds(thread_dimensions));
 }
 
 TEST(BlockDimTest, ToAndFromProto) {
   BlockDim block_dimensions{2, 4, 6};
   EXPECT_THAT(BlockDim::FromProto(block_dimensions.ToProto()),
-              IsOkAndHolds(block_dimensions));
+              absl_testing::IsOkAndHolds(block_dimensions));
 }
 
 TEST(ClusterDimTest, ToAndFromProto) {
   ClusterDim cluster_dimensions{2, 4, 6};
   EXPECT_THAT(ClusterDim::FromProto(cluster_dimensions.ToProto()),
-              IsOkAndHolds(cluster_dimensions));
+              absl_testing::IsOkAndHolds(cluster_dimensions));
 }
 
 TEST(ThreadDimTest, FromAndToProto) {

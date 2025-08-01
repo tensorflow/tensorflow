@@ -75,7 +75,7 @@ class TpuFingerprintLookup : public ResourceBase {
   std::string DebugString() const override { return "TpuFingerprintLookup"; }
 
  private:
-  explicit TpuFingerprintLookup() {}
+  explicit TpuFingerprintLookup() = default;
 
   absl::Mutex mu_;
   // Main storage for lookup
