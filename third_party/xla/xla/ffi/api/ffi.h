@@ -1269,7 +1269,7 @@ class ScratchAllocator {
   ~ScratchAllocator();
 
   ScratchAllocator(ScratchAllocator&&) = default;
-  ScratchAllocator& operator=(ScratchAllocator&&) = default;
+  ScratchAllocator& operator=(ScratchAllocator&&) = delete;
 
   std::optional<void*> Allocate(size_t size, size_t alignment = 1);
 
