@@ -1217,6 +1217,10 @@ class AsyncValueOwningRef {
   T& operator*() const { return value_->get(); }
 
  private:
+  static_assert(
+      std::is_trivially_destructible_v<internal::AsyncValueStorage<T>>,
+      "AsyncValueStorage must be trivially destructible");
+
   template <typename U, typename... Args>
   friend AsyncValueOwningRef<U> MakeConstructedAsyncValueRef(
       internal::AsyncValueStorage<U>&, Args&&...);

@@ -24,6 +24,7 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "absl/base/no_destructor.h"
 #include "absl/base/optimization.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
@@ -682,7 +683,7 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
   // promise object.
   //
   // - on_block_start is called before Await starts to block.
-  //  - on_block_end is called after Await finishes blocking.
+  // - on_block_end is called after Await finishes blocking.
   explicit PjRtFuture(
       Promise promise,
       PjRtFutureHelpers::OnBlockStartFn on_block_start = nullptr,
@@ -690,9 +691,26 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
       : Base(promise.release(), std::move(on_block_start),
              std::move(on_block_end)) {}
 
+  // Constructor for a future that is immediately ready with a given status.
+  // For futures that are immediately ready with OK status, we use a global non
+  // reference-counted async value that avoids heap allocation and reference
+  // counting operations on a hot path.
+  explicit PjRtFuture(absl::Status status)
+      : Base(ABSL_PREDICT_TRUE(status.ok())
+                 ? ready_promise_->AsRef()
+                 : tsl::MakeAvailableAsyncValueRef<absl::Status>(
+                       std::move(status)),
+             /*on_block_start=*/nullptr, /*on_block_end=*/nullptr) {}
+
   using Base::Await;
   using Base::BlockUntilReady;
   using Base::OnReady;
+
+ private:
+  // A promise that is immediately ready with OK status. Async value allocated
+  // in the static storage and is not reference-counted.
+  static absl::NoDestructor<tsl::AsyncValueOwningRef<absl::Status>>
+      ready_promise_;
 };
 
 }  // namespace xla
