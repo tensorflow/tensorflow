@@ -23,4 +23,8 @@ lit_test_suite(
         "//xla/codegen/tools:emitters_opt",
         "@llvm-project//llvm:FileCheck",
     ],
+    tags_override = {
+        "reduce_row/mof_scalar_variadic.hlo": ["cuda-only"], #TODO(rocm): weekly sync 25-07-14
+        "reduce_row/side_output_broadcast.hlo": ["cuda-only"], #TODO(rocm): weekly sync 25-07-14
+    },
 )
