@@ -21,11 +21,14 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Value.h"
 #include "xla/codegen/math/exp.h"
 #include "xla/codegen/math/intrinsic.h"
+#include "xla/codegen/math/rsqrt.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/cpu/elemental_math_emitter.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -60,6 +63,19 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitExp(
   }
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::exp, {value},
                                       {value->getType()}, b(), name);
+}
+
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitRsqrt(
+    PrimitiveType prim_type, llvm::Value* value) {
+  if (prim_type == F32 || prim_type == F64) {
+    llvm::Function* rsqrt_fn =
+        xla::codegen::intrinsics::Rsqrt::GetOrInsertDeclaration(
+            module(), Type::S(prim_type));
+    return b()->CreateCall(rsqrt_fn, value);
+  }
+  llvm::CallInst* sqrt = llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::sqrt, {value}, {value->getType()}, b());
+  return FDiv(llvm::ConstantFP::get(sqrt->getType(), 1.0), sqrt);
 }
 
 absl::StatusOr<std::vector<llvm::Value*>>

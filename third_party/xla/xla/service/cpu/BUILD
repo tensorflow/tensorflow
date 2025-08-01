@@ -1990,6 +1990,7 @@ cc_library(
         ":elemental_math_emitter",
         "//xla/codegen/math:exp",
         "//xla/codegen/math:intrinsic",
+        "//xla/codegen/math:rsqrt",
         "//xla/hlo/ir:hlo",
         "//xla/service:elemental_ir_emitter",
         "//xla/service/llvm_ir:llvm_util",
@@ -1998,7 +1999,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
     ],
 )

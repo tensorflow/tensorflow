@@ -17,10 +17,14 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/call_once.h"
+#include "absl/log/log.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
@@ -39,6 +43,7 @@ limitations under the License.
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Errc.h"
 #include "llvm/Support/Error.h"
@@ -46,17 +51,28 @@ limitations under the License.
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/TypeSize.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::codegen::math {
 
+namespace {
+void initializeNativeTargets() {
+  static absl::once_flag once;
+  absl::call_once(once, []() {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+  });
+}
+}  // namespace
+
 JitRunner::JitRunner(std::unique_ptr<llvm::Module> module,
                      std::unique_ptr<llvm::LLVMContext> context) {
-  llvm::InitializeNativeTarget();
-  llvm::InitializeNativeTargetAsmPrinter();
-  llvm::InitializeNativeTargetAsmParser();
-
+  initializeNativeTargets();
   tsc_ = std::make_unique<llvm::orc::ThreadSafeContext>(std::move(context));
   perf_listener_ = llvm::JITEventListener::createPerfJITEventListener();
   auto jit_builder = llvm::orc::LLJITBuilder();
@@ -217,4 +233,26 @@ llvm::Expected<void*> JitRunner::CreateVectorWrapperWithLoop(
   });
 }
 
+std::unique_ptr<llvm::TargetMachine> CreateHostTargetMachine() {
+  initializeNativeTargets();
+  const std::string triple = llvm::sys::getDefaultTargetTriple();
+  llvm::StringRef cpu = llvm::sys::getHostCPUName();
+  llvm::StringMap<bool> features = llvm::sys::getHostCPUFeatures();
+  std::string errors = "";
+  const llvm::Target* target =
+      llvm::TargetRegistry::lookupTarget(llvm::StringRef(triple), errors);
+  LOG_IF(FATAL, !target) << "Failed to lookup target: " << errors;
+  std::string feature_str;
+  for (const auto& [feature, value] : features) {
+    if (value) {
+      feature_str += "+" + feature.str() + ",";
+    }
+  }
+  llvm::TargetOptions target_options;
+  std::unique_ptr<llvm::TargetMachine> target_machine(
+      target->createTargetMachine(llvm::Triple(triple), cpu, feature_str,
+                                  target_options, std::nullopt, std::nullopt));
+  LOG_IF(FATAL, !target_machine) << "Failed to create target machine";
+  return target_machine;
+}
 }  // namespace xla::codegen::math

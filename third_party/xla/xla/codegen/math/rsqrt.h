@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef XLA_CODEGEN_MATH_RSQRT_H_
 #define XLA_CODEGEN_MATH_RSQRT_H_
 
-#include <cstddef>
+#include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Target/TargetMachine.h"
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/xla_data.pb.h"
 
@@ -31,6 +33,24 @@ namespace xla::codegen::intrinsics {
 class Rsqrt : public Intrinsic<Rsqrt> {
  public:
   static constexpr absl::string_view kName = "rsqrt";
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      llvm::TargetMachine* target_machine) {
+    // Always include scalars so that we're able to vectorize from elemental
+    // IR.
+    std::vector<std::vector<Type>> supported_types = {{Type::S(F32)},
+                                                      {Type::S(F64)}};
+    const auto& features = target_machine->getTargetFeatureString();
+    if (features.contains("+avx")) {
+      supported_types.push_back({Type::V(F32, 8)});
+    }
+    if (features.contains("+avx512f")) {
+      supported_types.push_back({Type::V(F32, 16)});
+      supported_types.push_back({Type::V(F64, 2)});
+      supported_types.push_back({Type::V(F64, 4)});
+      supported_types.push_back({Type::V(F64, 8)});
+    }
+    return supported_types;
+  }
 
   // Creates an LLVM function that computes the reciprocal square root
   // (1/sqrt(x)) with high precision (within 1 ULP). Uses the hardware rsqrt
@@ -38,8 +58,8 @@ class Rsqrt : public Intrinsic<Rsqrt> {
   // Based on Eigen's implementations, with some modifications:
   // https://eigen.tuxfamily.org/dox-devel/arch_2AVX512_2MathFunctions_8h_source.html
   // Assumes AVX512 is available for F64 and <16 x float> inputs.
-  static absl::StatusOr<llvm::Function*> CreateDefinition(llvm::Module* module,
-                                                          Type type);
+  static absl::StatusOr<llvm::Function*> CreateDefinition(
+      llvm::Module* module, llvm::TargetMachine* target_machine, Type type);
 };
 
 }  // namespace xla::codegen::intrinsics
