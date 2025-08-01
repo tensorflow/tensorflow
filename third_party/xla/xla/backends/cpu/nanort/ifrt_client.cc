@@ -778,12 +778,6 @@ class NanoExecutable final
     TF_ASSIGN_OR_RETURN(auto nano_executable,
                         client->nano_client()->Compile(computation));
 
-    if (computation.proto().computations().size() != 1) {
-      return InvalidArgument(
-          "NanoRT only supports single-computation programs, got %d",
-          computation.proto().computations().size());
-    }
-
     TF_ASSIGN_OR_RETURN(auto program_shape, computation.GetProgramShape());
     TF_ASSIGN_OR_RETURN(auto proto_input_shardings,
                         GetInputShardings(program_shape, computation));
