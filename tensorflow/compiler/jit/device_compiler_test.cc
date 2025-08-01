@@ -470,8 +470,8 @@ TEST_F(DeviceCompilerTest, CompileStrictPersistentCacheFailedToPersist) {
                   options, fn, args, XlaCompiler::CompileOptions{},
                   DeviceCompileMode::kStrict, profiler_, &compilation_result,
                   &xla_executable),
-              testing::StatusIs(error::FAILED_PRECONDITION,
-                                ::testing::HasSubstr("Random error.")));
+              absl_testing::StatusIs(error::FAILED_PRECONDITION,
+                                     ::testing::HasSubstr("Random error.")));
 
   EXPECT_TRUE(compilation_result == nullptr);
   EXPECT_TRUE(xla_executable == nullptr);

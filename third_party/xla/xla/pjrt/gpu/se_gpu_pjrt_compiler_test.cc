@@ -93,7 +93,7 @@ TEST(StreamExecutorGpuCompilerTest, NoClientXla) {
   TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
   EXPECT_THAT(compiler.Compile(xla::CompileOptions(), computation, topology,
                                /*client=*/nullptr),
-              StatusIs(absl::StatusCode::kUnimplemented));
+              absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 TEST(StreamExecutorGpuCompilerTest, TopologyNotSameXla) {
@@ -107,7 +107,7 @@ TEST(StreamExecutorGpuCompilerTest, TopologyNotSameXla) {
   TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
   EXPECT_THAT(compiler.Compile(xla::CompileOptions(), computation, topology,
                                client.get()),
-              StatusIs(absl::StatusCode::kOk));
+              absl_testing::StatusIs(absl::StatusCode::kOk));
 }
 
 TEST(StreamExecutorGpuCompilerTest, SuccessXla) {
@@ -149,7 +149,7 @@ TEST(StreamExecutorGpuCompilerTest, NoClientMlir) {
   EXPECT_THAT(
       compiler.Compile(xla::CompileOptions(), mlir_module.get(), topology,
                        /*client=*/nullptr),
-      StatusIs(absl::StatusCode::kUnimplemented));
+      absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 TEST(StreamExecutorGpuCompilerTest, TopologyNotSameMlir) {
@@ -169,7 +169,7 @@ TEST(StreamExecutorGpuCompilerTest, TopologyNotSameMlir) {
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   EXPECT_THAT(compiler.Compile(xla::CompileOptions(), mlir_module.get(),
                                topology, client.get()),
-              StatusIs(absl::StatusCode::kOk));
+              absl_testing::StatusIs(absl::StatusCode::kOk));
 }
 
 TEST(StreamExecutorGpuCompilerTest, SuccessMlir) {
