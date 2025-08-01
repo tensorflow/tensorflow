@@ -89,6 +89,8 @@ TEST(ExecutableBuildOptionsTest, ProtoRoundTripWorks) {
   p.set_use_shardy_partitioner(true);
   p.set_process_index(13);
   p.set_process_count(14);
+  p.add_global_device_id_to_slice_id(0);
+  p.add_global_device_id_to_slice_id(1);
 
   TF_ASSERT_OK_AND_ASSIGN(const ExecutableBuildOptions options,
                           ExecutableBuildOptionsFromProto(p));
