@@ -170,7 +170,8 @@ TEST(FunctionBodyTest, FunctionBodyNotUpdatedWithFinalizationFailure) {
   FunctionBody fbody(std::move(record), {DT_INT32}, {DT_INT32}, graph);
 
   // Finalization fails due to missing input to the ret node.
-  EXPECT_THAT(fbody.Finalize(), Not(StatusIs(absl::StatusCode::kOk)));
+  EXPECT_THAT(fbody.Finalize(),
+              Not(absl_testing::StatusIs(absl::StatusCode::kOk)));
 
   // Check the function body properties after finalization.
   EXPECT_THAT(fbody.record, Not(IsNull()));
