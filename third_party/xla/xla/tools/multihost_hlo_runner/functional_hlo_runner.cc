@@ -1177,6 +1177,12 @@ absl::StatusOr<HloModuleAndArguments> LoadHloModuleAndArguments(
           ReadModuleFromUnoptimizedSnapshotTextProtoFile(hlo_file));
       break;
     }
+    case InputFormat::kSerializedPjRtExecutable: {
+      LOG(INFO) << "Skipping loading HLO module and arguments for serialized "
+                   "PjRtExecutable.";
+      return hlo_module_and_arguments;
+      break;
+    }
     default:
       LOG(FATAL) << "Cannot process input format: "
                  << AbslUnparseFlag(input_format);
@@ -1218,33 +1224,53 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> LoadAndRun(
   // Currently there is no mechanism to map the loaded arguments to
   // proper device ID, so loading and executing from HLO snapshot might not
   // replay the original execution.
-  TF_ASSIGN_OR_RETURN(HloModuleAndArguments hlo_module_and_arguments,
-                      LoadHloModuleAndArguments(hlo_file, input_format));
-  // Arguments from `arguments` take precedence over the arguments from a
-  // snapshot.
-  if (!arguments.empty()) {
-    return CompileAndRun(client, debug_options, preproc_options,
-                         compile_options, running_options,
-                         hlo_module_and_arguments.hlo_module.get(), arguments);
-  }
 
-  // Check that the number of shards is not greater than the number of
-  // devices.
-  if (hlo_module_and_arguments.arguments.size() > client.devices().size()) {
-    return absl::InvalidArgumentError(
-        "The number of shards in the given input file is greater than the "
-        "number of devices available on the host.");
-  }
-
+  const PerDeviceLiteralVecType* final_arguments = nullptr;
+  std::unique_ptr<HloModule> hlo_module;
   PerDeviceLiteralVecType loaded_arguments;
-  for (int i = 0; i < hlo_module_and_arguments.arguments.size(); ++i) {
-    loaded_arguments[client.devices()[i]->id()] =
-        std::move(hlo_module_and_arguments.arguments[i]);
+  if (!arguments.empty()) {
+    final_arguments = &arguments;
+  } else {
+    TF_ASSIGN_OR_RETURN(HloModuleAndArguments hlo_module_and_arguments,
+                        LoadHloModuleAndArguments(hlo_file, input_format));
+
+    // Check that the number of shards is not greater than the number of
+    // devices.
+    if (hlo_module_and_arguments.arguments.size() > client.devices().size()) {
+      return absl::InvalidArgumentError(
+          "The number of shards in the given input file is greater than the "
+          "number of devices available on the host.");
+    }
+
+    for (int i = 0; i < hlo_module_and_arguments.arguments.size(); ++i) {
+      loaded_arguments[client.devices()[i]->id()] =
+          std::move(hlo_module_and_arguments.arguments[i]);
+    }
+    hlo_module = std::move(hlo_module_and_arguments.hlo_module);
+    final_arguments = &loaded_arguments;
   }
 
-  return CompileAndRun(
-      client, debug_options, preproc_options, compile_options, running_options,
-      hlo_module_and_arguments.hlo_module.get(), loaded_arguments, engine);
+  if (input_format == InputFormat::kSerializedPjRtExecutable) {
+    std::string serialized_executable;
+    TF_RETURN_IF_ERROR(tsl::ReadFileToString(
+        tsl::Env::Default(), std::string(hlo_file), &serialized_executable));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                        client.LoadSerializedExecutable(
+                            serialized_executable,
+                            /*options=*/std::nullopt, LoadOptions()));
+    return Run(client, executable.get(), *final_arguments, running_options,
+               engine);
+  }
+  if (!hlo_module) {
+    // Load hlo module.
+    TF_ASSIGN_OR_RETURN(HloModuleAndArguments hlo_module_and_arguments,
+                        LoadHloModuleAndArguments(hlo_file, input_format));
+    hlo_module = std::move(hlo_module_and_arguments.hlo_module);
+  }
+
+  return CompileAndRun(client, debug_options, preproc_options, compile_options,
+                       running_options, hlo_module.get(), *final_arguments,
+                       engine);
 }
 
 absl::Status LoadAndCompile(
