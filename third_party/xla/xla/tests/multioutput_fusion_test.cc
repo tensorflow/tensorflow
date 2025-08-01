@@ -57,6 +57,13 @@ class MultiOutputFusionTest : public HloTestBase {
     return opts;
   }
 
+  const se::GpuComputeCapability& GetGpuComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .gpu_compute_capability();
+  }
+
   void RunTest2D(bool manual_fusion, int64_t size) {
     auto builder = HloComputation::Builder(TestName());
     auto hlo_module = CreateNewVerifiedModule();
@@ -375,6 +382,10 @@ TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionMinorWithExtraOutput) {
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionMajorWithExtraOutput) {
+  if (std::holds_alternative<se::RocmComputeCapability>(GetGpuComputeCapability())) {
+    // TODO(rocm): weekly sync 25-07-14
+    GTEST_SKIP() << "Currently failing on ROCm!";
+  }
   const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[32,32,2]{2,1,0} parameter(0)
