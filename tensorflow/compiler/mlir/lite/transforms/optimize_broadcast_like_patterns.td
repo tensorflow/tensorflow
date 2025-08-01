@@ -348,11 +348,11 @@ multiclass ReorderBroadcastToAndUnaryOp<Op UnaryOp> {
 // TFL_CastOp of requires special handling due to not having a builder, it's
 // implemented in native code in ReorderBroadcastToCast.
 foreach UnaryOp = [TFL_AbsOp, TFL_CeilOp, TFL_ComplexAbsOp, TFL_CosOp,
-                   TFL_DequantizeOp, TFL_EluOp, TFL_ExpOp, TFL_FloorOp,
-                   TFL_HardSwishOp, TFL_ImagOp, TFL_LogOp, TFL_LogicalNotOp,
-                   TFL_LogisticOp, TFL_NegOp, TFL_RealOp, TFL_Relu0To1Op,
-                   TFL_Relu1Op, TFL_Relu6Op, TFL_ReluOp, TFL_RoundOp,
-                   TFL_RsqrtOp, TFL_SignOp, TFL_SinOp, TFL_SqrtOp, TFL_SquareOp,
+                   TFL_EluOp, TFL_ExpOp, TFL_FloorOp, TFL_HardSwishOp, 
+                   TFL_ImagOp, TFL_LogOp, TFL_LogicalNotOp, TFL_LogisticOp, 
+                   TFL_NegOp, TFL_RealOp, TFL_Relu0To1Op, TFL_Relu1Op, 
+                   TFL_Relu6Op, TFL_ReluOp, TFL_RoundOp, TFL_RsqrtOp, 
+                   TFL_SignOp, TFL_SinOp, TFL_SqrtOp, TFL_SquareOp, 
                    TFL_TanhOp, TFL_ZerosLikeOp] in {
   defm : ReorderBroadcastToAndUnaryOp<UnaryOp>;
 }
