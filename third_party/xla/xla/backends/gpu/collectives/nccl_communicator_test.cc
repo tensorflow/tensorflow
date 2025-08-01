@@ -56,15 +56,16 @@ using ::tsl::testing::StatusIs;
 constexpr absl::string_view kCudaError = "unhandled cuda error";
 
 void AssertAborted(absl::Status s) {
-  ASSERT_THAT(
-      s, StatusIs(absl::StatusCode::kFailedPrecondition, HasSubstr("aborted")));
+  ASSERT_THAT(s, absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                                        HasSubstr("aborted")));
 };
 
 void AssertEventAborted(tsl::AsyncValueRef<Communicator::Event> event) {
   tsl::BlockUntilReady(event);
   ASSERT_TRUE(event.IsError());
-  ASSERT_THAT(event.GetError(), StatusIs(absl::StatusCode::kFailedPrecondition,
-                                         HasSubstr("aborted")));
+  ASSERT_THAT(event.GetError(),
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                                     HasSubstr("aborted")));
 };
 
 // Creates a non-blocking NCCL communicator.
@@ -111,8 +112,8 @@ TEST(NcclCommunicator, AbortSucceeds) {
     if (comm.status().message() == kCudaError) {
       GTEST_SKIP() << "unhandled cuda error";
     }
-    ASSERT_THAT(comm, IsOk());
-    ASSERT_THAT((*comm)->Abort(), IsOk());
+    ASSERT_THAT(comm, absl_testing::IsOk());
+    ASSERT_THAT((*comm)->Abort(), absl_testing::IsOk());
   }
 }
 
@@ -123,11 +124,11 @@ TEST(NcclCommunicator, DoubleAbortFails) {
     if (comm.status().message() == kCudaError) {
       GTEST_SKIP() << "unhandled cuda error";
     }
-    ASSERT_THAT(comm.status(), IsOk());
-    ASSERT_THAT((*comm)->Abort(), IsOk());
-    ASSERT_THAT(
-        (*comm)->Abort(),
-        StatusIs(absl::StatusCode::kFailedPrecondition, HasSubstr("aborted")));
+    ASSERT_THAT(comm.status(), absl_testing::IsOk());
+    ASSERT_THAT((*comm)->Abort(), absl_testing::IsOk());
+    ASSERT_THAT((*comm)->Abort(),
+                absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                                       HasSubstr("aborted")));
   }
 }
 
@@ -147,8 +148,8 @@ TEST(NcclCommunicator, OperationsFailAfterAbort) {
     if (comm.status().message() == kCudaError) {
       GTEST_SKIP() << "unhandled cuda error";
     }
-    ASSERT_THAT(comm.status(), IsOk());
-    ASSERT_THAT((*comm)->Abort(), IsOk());
+    ASSERT_THAT(comm.status(), absl_testing::IsOk());
+    ASSERT_THAT((*comm)->Abort(), absl_testing::IsOk());
     AssertAborted((*comm)->HealthCheck());
     AssertAborted((*comm)->NumRanks().status());
     AssertAborted((*comm)->RegisterBuffer(buf).status());
