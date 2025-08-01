@@ -75,7 +75,7 @@ pybind_extension(
     additional_exported_symbols = ["GenAIOpsRegisterer"],
     common_lib_packages = [
         "litert/python",
-        "third_party/tensorflow/lite/python",
+        "tensorflow/lite/python",
     ],
     enable_stub_generation = True,
     link_in_framework = True,
