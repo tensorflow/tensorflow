@@ -26,8 +26,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
@@ -256,20 +258,17 @@ class Thunk {
   // An execute event that becomes ready when all tasks are completed.
   using ExecuteEvent = tsl::Chain;
 
-  // Returns non-reference-counted async value ref in constructed state.
-  // Returned async value is a per-process singleton stored in a storage with a
-  // static duration, and can be safely compared using pointer equality.
-  static tsl::AsyncValueRef<ExecuteEvent> OkExecuteEventSingleton();
-
-  // Returns `OkExecuteEventSingleton()` cached by this thunk instance.
-  tsl::AsyncValueRef<ExecuteEvent> OkExecuteEvent() const { return ok_event_; }
+  // Returns ExecuteEvent that is immediately ready with OK status.
+  static tsl::AsyncValueRef<ExecuteEvent> OkExecuteEvent() {
+    return ok_event_->AsRef();
+  }
 
   bool IsOkExecuteEvent(const tsl::AsyncValueRef<ExecuteEvent>& event) const {
-    return event == ok_event_;
+    return event.AsPtr() == ok_event_->AsPtr();
   }
 
   bool IsOkExecuteEvent(tsl::AsyncValuePtr<ExecuteEvent> event) const {
-    return event == ok_event_.AsPtr();
+    return event == ok_event_->AsPtr();
   }
 
   // Thunk execution must be asynchronous and never block the caller thread,
@@ -312,7 +311,8 @@ class Thunk {
   Kind kind_;
   Info info_;
 
-  tsl::AsyncValueRef<ExecuteEvent> ok_event_;
+  // Execute event that is immediately ready with OK status.
+  static absl::NoDestructor<tsl::AsyncValueOwningRef<ExecuteEvent>> ok_event_;
 };
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);

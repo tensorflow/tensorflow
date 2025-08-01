@@ -211,6 +211,7 @@ cc_library(
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
