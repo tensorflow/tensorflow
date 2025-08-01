@@ -335,7 +335,8 @@ class AsyncValue {
   // 2^16-1 are not allowed to be used as type IDs.
   template <typename T>
   static uint16_t GetTypeId() {
-    return internal::ConcreteAsyncValue<T>::concrete_type_id_;
+    static uint16_t type_id = CreateTypeInfoAndReturnTypeId<T>();
+    return type_id;
   }
 
   // Creates a AsyncValue::TypeInfo object for `T` and store it in the global
@@ -343,7 +344,7 @@ class AsyncValue {
   // be one plus the index of this TypeInfo object in the TypeInfo table.
   //
   // This should only be called from the initializer for the static
-  // ConcreteAsyncValue concrete_type_id_ field.
+  // type id in GetTypeId() defined above.
   template <typename T>
   static uint16_t CreateTypeInfoAndReturnTypeId() {
     return CreateTypeInfoAndReturnTypeIdImpl(
@@ -750,13 +751,8 @@ class ConcreteAsyncValue : public AsyncValue {
                   "Offset of ConcreteAsyncValue data payload is assumed to be "
                   "AsyncValue::kDataOffset == 64");
   }
-
-  static const uint16_t concrete_type_id_;
 };
 
-template <typename T>
-const uint16_t ConcreteAsyncValue<T>::concrete_type_id_ =
-    AsyncValue::CreateTypeInfoAndReturnTypeId<T>();
 }  // namespace internal
 
 struct DummyValueForErrorAsyncValue {};
@@ -881,17 +877,23 @@ inline AsyncValue* AsyncValue::AddRef(uint32_t count) {
   // async values is "ref count correct". In optimized builds the async value
   // owner is responsible for destructing the non-reference-counted async value.
 #if defined(NDEBUG)
-  if (!is_refcounted_) return this;
+  // We try hard to make the fast path for non-refcounted async values to be
+  // as fast as possible. It's ok if we mispredict this branch, because atomic
+  // operations below are order of magnitude more expensive.
+  if (ABSL_PREDICT_TRUE(!is_refcounted_)) return this;
 #endif
 
-  if (count > 0) {
-    DCHECK_GT(refcount_.load(std::memory_order_relaxed), 0);
-    // Increasing the reference counter can always be done with
-    // memory_order_relaxed: New references to an object can only be formed from
-    // an existing reference, and passing an existing reference from one thread
-    // to another must already provide any required synchronization.
-    refcount_.fetch_add(count, std::memory_order_relaxed);
+  if (ABSL_PREDICT_FALSE(count == 0)) {
+    return this;
   }
+
+  DCHECK_GT(refcount_.load(std::memory_order_relaxed), 0);
+  // Increasing the reference counter can always be done with
+  // memory_order_relaxed: New references to an object can only be formed from
+  // an existing reference, and passing an existing reference from one thread
+  // to another must already provide any required synchronization.
+  refcount_.fetch_add(count, std::memory_order_relaxed);
+
   return this;
 }
 
@@ -900,8 +902,15 @@ inline void AsyncValue::DropRef(uint32_t count) {
   // async values is "ref count correct". In optimized builds the async value
   // owner is responsible for destructing the non-reference-counted async value.
 #if defined(NDEBUG)
-  if (!is_refcounted_) return;
+  // We try hard to make the fast path for non-refcounted async values to be
+  // as fast as possible. It's ok if we mispredict this branch, because atomic
+  // operations below are order of magnitude more expensive.
+  if (ABSL_PREDICT_TRUE(!is_refcounted_)) return;
 #endif
+
+  if (ABSL_PREDICT_FALSE(count == 0)) {
+    return;
+  }
 
   DCHECK_GT(refcount_.load(std::memory_order_relaxed), 0);
   // We expect that `count` argument will often equal the actual reference count

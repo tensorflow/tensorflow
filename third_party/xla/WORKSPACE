@@ -54,15 +54,15 @@ load(":workspace0.bzl", "xla_workspace0")
 xla_workspace0()
 
 load(
-    "@rules_ml_toolchain//cc_toolchain/deps:cc_toolchain_deps.bzl",
+    "@rules_ml_toolchain//cc/deps:cc_toolchain_deps.bzl",
     "cc_toolchain_deps",
 )
 
 cc_toolchain_deps()
 
-register_toolchains("@rules_ml_toolchain//cc_toolchain:lx64_lx64")
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
 
-register_toolchains("@rules_ml_toolchain//cc_toolchain:lx64_lx64_cuda")
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
 
 load(
     "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",

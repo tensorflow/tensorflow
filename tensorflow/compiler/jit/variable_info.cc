@@ -15,12 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/variable_info.h"
 
-#include <memory>
 #include <optional>
-#include <set>
-#include <utility>
-#include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
