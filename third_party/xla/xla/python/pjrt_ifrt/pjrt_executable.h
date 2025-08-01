@@ -295,6 +295,8 @@ class PjRtLoadedExecutable final
       absl::Span<ArrayRef> args, const ExecuteOptions& options,
       std::optional<DeviceListRef> devices) override;
 
+  const DeviceListRef& devices() const override { return devices_; }
+
   absl::Span<Device* const> addressable_devices() const override {
     DCHECK(this);
     return addressable_devices_;

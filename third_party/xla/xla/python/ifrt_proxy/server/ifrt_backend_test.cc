@@ -1150,7 +1150,7 @@ TEST_P(IfrtBackendHandlerTest, DestructArrayTest) {
 TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
   std::vector<MockDevice> devices(4);
   for (int i = 0; i < 4; ++i) {
-    EXPECT_CALL(devices[i], Id()).WillOnce(Return(DeviceId(i)));
+    EXPECT_CALL(devices[i], Id()).WillRepeatedly(Return(DeviceId(i)));
   }
 
   std::vector<xla::ifrt::Device*> addressable_devices;
@@ -1158,9 +1158,12 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
     addressable_devices.push_back(&devices[i]);
   }
 
+  auto device_list = BasicDeviceList::Create(addressable_devices);
+
   auto executable = std::make_unique<MockLoadedExecutable>();
   EXPECT_CALL(*executable, name()).WillOnce(Return("executable_name"));
   EXPECT_CALL(*executable, num_devices()).WillOnce(Return(4));
+  EXPECT_CALL(*executable, devices()).WillOnce(ReturnRef(device_list));
   EXPECT_CALL(*executable, addressable_devices())
       .WillOnce(Return(absl::MakeSpan(addressable_devices)));
   EXPECT_CALL(*executable, Fingerprint()).WillOnce(Return("fingerprint"));
@@ -1173,6 +1176,7 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
                 name: "executable_name"
                 num_devices: 4
                 addressable_device_ids: [ 0, 1, 2, 3 ]
+                device_ids: [ 0, 1, 2, 3 ]
                 fingerprint_value: "fingerprint"
               )pb")));
   TF_EXPECT_OK(CheckFuture(response.ready_future_handle()));

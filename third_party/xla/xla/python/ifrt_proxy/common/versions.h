@@ -47,6 +47,9 @@ enum {
   // kSerDesVersioning users IFRT SerDes versioning for IFRT types.
   kSerDesVersioning = 15,
 
+  // kExecutableDevices adds a devices() method to Executable.
+  kExecutableDevices,
+
   // kSentiel is used to derive kCurrent below. Keep this as the last value of
   // the enum.
   kSentiel,

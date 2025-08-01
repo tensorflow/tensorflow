@@ -436,6 +436,7 @@ message CompileResponse {
   // `LoadedExecutableMetadataResponse` for the rest of metadata.
   string name = 2;
   int32 num_devices = 3;
+  repeated int32 device_ids = 10;
   repeated int32 addressable_device_ids = 5;
   oneof fingerprint {
     bytes fingerprint_value = 6;

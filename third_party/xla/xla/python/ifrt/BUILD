@@ -126,6 +126,9 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@highwayhash",
+        "@highwayhash//:arch_specific",
+        "@highwayhash//:hh_types",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -575,6 +578,7 @@ cc_library(
         "//xla/pjrt:pjrt_layout",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/framework:allocator",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
