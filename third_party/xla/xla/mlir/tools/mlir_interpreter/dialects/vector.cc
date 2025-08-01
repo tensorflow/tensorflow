@@ -302,20 +302,6 @@ InterpreterValue Extract(InterpreterState& state, vector::ExtractOp extract,
   return result_view.num_dimensions() == 0 ? result.ExtractElement({}) : result;
 }
 
-InterpreterValue ExtractElement(InterpreterState& state,
-                                vector::ExtractElementOp,
-                                const InterpreterValue& vector,
-                                std::optional<int64_t> index) {
-  if (!index) {
-    return vector.ExtractElement({});
-  }
-  if (!vector.View().InBounds(*index)) {
-    state.AddFailure("array index out of bounds");
-    return {};
-  }
-  return vector.ExtractElement(*index);
-}
-
 InterpreterValue ExtractSlice(InterpreterState& state,
                               vector::ExtractStridedSliceOp extract,
                               const InterpreterValue& vector) {
@@ -379,23 +365,6 @@ InterpreterValue Insert(InterpreterState& state, vector::InsertOp insert,
                        "index out of bounds");
   }
   result_slice.Fill([&](auto indices) { return src.ExtractElement(indices); });
-  return result;
-}
-
-InterpreterValue InsertElement(InterpreterState& state, vector::InsertElementOp,
-                               const InterpreterValue& value,
-                               const InterpreterValue& vector,
-                               std::optional<int64_t> index) {
-  auto result = vector.Clone();
-  if (!index) {
-    result.InsertElement({}, value);
-    return result;
-  }
-  if (!result.View().InBounds(*index)) {
-    state.AddFailure("array index out of bounds");
-    return {};
-  }
-  result.InsertElement(*index, value);
   return result;
 }
 
@@ -835,12 +804,10 @@ REGISTER_MLIR_INTERPRETER_OP(Contract);
 REGISTER_MLIR_INTERPRETER_OP(CreateMask);
 REGISTER_MLIR_INTERPRETER_OP(ExpandLoad);
 REGISTER_MLIR_INTERPRETER_OP(Extract);
-REGISTER_MLIR_INTERPRETER_OP(ExtractElement);
 REGISTER_MLIR_INTERPRETER_OP(ExtractSlice);
 REGISTER_MLIR_INTERPRETER_OP(FusedMultiplyAdd);
 REGISTER_MLIR_INTERPRETER_OP(Gather);
 REGISTER_MLIR_INTERPRETER_OP(Insert);
-REGISTER_MLIR_INTERPRETER_OP(InsertElement);
 REGISTER_MLIR_INTERPRETER_OP(InsertSlice);
 REGISTER_MLIR_INTERPRETER_OP(Load);
 REGISTER_MLIR_INTERPRETER_OP(Mask);
