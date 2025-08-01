@@ -1104,7 +1104,8 @@ FusionDecision InstructionFusion::ShouldFuse(
     HloInstruction* consumer, int64_t operand_index,
     std::function<FusionDecision(const HloInstruction*, const HloInstruction*,
                                  std::optional<const InPlaceFusionOptions>)>
-        inplace_op_fusion_decider) {
+        inplace_op_fusion_decider,
+    bool legality_check_only /*=false*/) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
   // Don't fuse across a root instruction.
@@ -1114,7 +1115,7 @@ FusionDecision InstructionFusion::ShouldFuse(
   }
 
   // Cost condition: don't duplicate expensive instructions.
-  if (FusionWouldDuplicate(*producer, *consumer) &&
+  if (!legality_check_only && FusionWouldDuplicate(*producer, *consumer) &&
       (!may_duplicate_ || is_expensive_(*producer)) &&
       !IsAlwaysDuplicable(*producer)) {
     return FusionDecision::Forbid(may_duplicate_
