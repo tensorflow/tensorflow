@@ -27,6 +27,18 @@ limitations under the License.
 
 namespace xla {
 
+TEST(PjRtFutureTest, StatusConstructedFuture) {
+  PjRtFuture<> future = PjRtFuture<>(absl::OkStatus());
+  EXPECT_TRUE(future.IsReady());
+  EXPECT_EQ(future.Await(), absl::OkStatus());
+}
+
+TEST(PjRtFutureTest, ValueConstructedFuture) {
+  PjRtFuture<int32_t> future = PjRtFuture<int32_t>(42);
+  EXPECT_TRUE(future.IsReady());
+  EXPECT_EQ(future.Await(), absl::StatusOr<int32_t>(42));
+}
+
 TEST(PjRtFutureTest, StatelessFuture) {
   auto promise = PjRtFuture<>::CreatePromise();
   PjRtFuture<> future(promise);

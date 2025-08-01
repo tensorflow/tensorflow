@@ -398,6 +398,17 @@ struct Options {
   // alternate memory first, and then run the rest of the algorithm.
   bool explicit_pinning_mode = false;
 
+  // If set, this is the maximum number of concurrent prefetches allowed for
+  // block allocations.
+  int64_t max_outstanding_prefetches_for_block_allocations = 0;
+
+  // If set, this is the size of scoped alternate memory that we require MSA to
+  // allocate for block allocated weights.
+  uint64_t reserved_bytes_for_block_allocated_weights = 0;
+
+  // The list of defining positions of block allocated weights.
+  absl::flat_hash_set<HloPosition> block_allocated_weights_positions;
+
   std::string ToString() const;
 };
 
