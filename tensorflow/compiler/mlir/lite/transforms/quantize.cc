@@ -385,8 +385,8 @@ class StrictQuantizationPattern : public RewritePattern {
             if (!matchPattern(q.getOperand(), m_Constant(&attr))) {
               continue;
             }
-            auto cst = rewriter.create<arith::ConstantOp>(
-                quantized_op->getLoc(), attr);
+            auto cst = arith::ConstantOp::create(rewriter,
+                                                 quantized_op->getLoc(), attr);
             quantizing_op->setOperand(i, cst.getResult());
           }
         }
@@ -606,7 +606,7 @@ class QuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
       }
       if (quantized_attr) {
         auto qconst_op =
-            rewriter.create<QConstOp>(op.getLoc(), qtype, quantized_attr);
+            QConstOp::create(rewriter, op.getLoc(), qtype, quantized_attr);
         if (auto volatile_attr = op->getAttr(kVolatileOpAttrName)) {
           qconst_op->setAttr(kVolatileOpAttrName, volatile_attr);
         }

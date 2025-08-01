@@ -174,13 +174,13 @@ void CrossDeviceTransferPass::runOnOperation() {
       }
 
       mlir::Value chain_in = func_op.getArgument(0);
-      auto get_device_op = builder.create<tfrt::compiler::GetDeviceOp>(
-          op->getLoc(), device_type, chain_in, dst_device);
-      auto get_tensor_type_op =
-          builder.create<tfrt::corert::GetDstTensorTypeOp>(
-              op->getLoc(), tensor_type_type, arg, get_device_op.getResult());
-      auto transfer_op = builder.create<tfrt::corert::TransferOp>(
-          op->getLoc(), arg.getType(), arg, get_device_op.getResult(),
+      auto get_device_op = tfrt::compiler::GetDeviceOp::create(
+          builder, op->getLoc(), device_type, chain_in, dst_device);
+      auto get_tensor_type_op = tfrt::corert::GetDstTensorTypeOp::create(
+          builder, op->getLoc(), tensor_type_type, arg,
+          get_device_op.getResult());
+      auto transfer_op = tfrt::corert::TransferOp::create(
+          builder, op->getLoc(), arg.getType(), arg, get_device_op.getResult(),
           get_tensor_type_op.getResult());
       mlir::Value new_arg = transfer_op.getResult();
       transferred_value_by_device[dst_device] = new_arg;

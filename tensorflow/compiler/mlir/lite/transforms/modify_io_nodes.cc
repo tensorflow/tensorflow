@@ -177,8 +177,9 @@ LogicalResult ModifyIONodesPass::ModifyOutputNodes(
             dequantize_input.getType(), dequantize_op.getLoc());
         // replace the dequantize op by a quantize op
         TypeAttr type_attr = TypeAttr::get(returned_type);
-        auto quantize_op = builder.create<QuantizeOp>(
-            dequantize_op.getLoc(), returned_type, dequantize_input, type_attr);
+        auto quantize_op =
+            QuantizeOp::create(builder, dequantize_op.getLoc(), returned_type,
+                               dequantize_input, type_attr);
         returned_value = quantize_op.getOutput();
       } else {
         output_type.print(llvm::errs() << "Requested output type ");
