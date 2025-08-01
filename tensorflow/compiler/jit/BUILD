@@ -539,6 +539,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -558,7 +559,12 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -1192,10 +1198,14 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:bounds_check",
+        "//third_party/protobuf:protobuf_lite",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -1477,6 +1487,7 @@ tf_cc_test(
     deps = [
         ":flags",
         ":xla_activity_listener",
+        ":xla_activity_proto_cc",
         ":xla_cpu_device",
         ":xla_cpu_jit",
         "//tensorflow/cc:cc_ops",
@@ -1487,9 +1498,15 @@ tf_cc_test(
         "//tensorflow/core:ops",
         "//tensorflow/core:test",
         "//tensorflow/core/common_runtime:direct_session_internal",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:partitioned_function_ops",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//third_party/protobuf",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1513,6 +1530,9 @@ cc_library(
     deps = [
         ":xla_activity_proto_cc",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -1530,7 +1550,10 @@ cc_library(
         ":xla_activity_listener",
         ":xla_activity_proto_cc",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
     ],
     alwayslink = 1,
 )
@@ -1551,6 +1574,9 @@ cc_library(
     deps = [
         ":tf_to_hlo_compiler",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core/framework:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
