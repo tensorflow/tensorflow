@@ -116,9 +116,10 @@ module {
     auto program =
         std::make_unique<HloProgram>(std::move(context), std::move(module));
     auto options = std::make_unique<SerializeOptions>(version());
-    EXPECT_THAT(Serialize(*program, std::move(options)),
-                StatusIs(Not(absl::StatusCode::kOk),
-                         HasSubstr("Failed to serialize StableHLO")));
+    EXPECT_THAT(
+        Serialize(*program, std::move(options)),
+        absl_testing::StatusIs(Not(absl::StatusCode::kOk),
+                               HasSubstr("Failed to serialize StableHLO")));
   }
 }
 
@@ -146,8 +147,9 @@ module {
   serialized.set_data("invalid data");
 
   EXPECT_THAT(Deserialize<HloProgram>(serialized, /*options=*/nullptr),
-              StatusIs(Not(absl::StatusCode::kOk),
-                       HasSubstr("Failed to deserialize StableHLO module")));
+              absl_testing::StatusIs(
+                  Not(absl::StatusCode::kOk),
+                  HasSubstr("Failed to deserialize StableHLO module")));
 }
 
 INSTANTIATE_TEST_SUITE_P(
