@@ -201,6 +201,39 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "manual_matcher",
+    srcs = ["manual_matcher.cc"],
+    hdrs = ["manual_matcher.h"],
+    deps = [
+        ":gumgraph_matcher",
+        "//xla/hlo/tools/hlo_diff:hlo_gumgraph_mappings",
+        "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph",
+        "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:die_if_null",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "manual_matcher_test",
+    srcs = ["manual_matcher_test.cc"],
+    deps = [
+        ":manual_matcher",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/hlo/tools/hlo_diff:hlo_gumgraph_mappings",
+        "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph",
+        "//xla/hlo/tools/hlo_diff/utils:test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_cc_test(
     name = "similarity_test",
     srcs = ["similarity_test.cc"],

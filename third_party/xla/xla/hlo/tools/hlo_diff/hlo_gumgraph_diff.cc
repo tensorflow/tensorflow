@@ -22,6 +22,8 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
@@ -35,6 +37,7 @@
 #include "xla/hlo/tools/hlo_diff/matchers/gumgraph_matcher.h"
 #include "xla/hlo/tools/hlo_diff/matchers/hlo_call_graph_matcher.h"
 #include "xla/hlo/tools/hlo_diff/matchers/hlo_computation_graph_matcher.h"
+#include "xla/hlo/tools/hlo_diff/matchers/manual_matcher.h"
 #include "xla/hlo/tools/hlo_diff/matchers/top_down_matcher.h"
 #include "xla/service/call_graph.h"
 #include "xla/tsl/platform/errors.h"
@@ -46,6 +49,8 @@ namespace {
 
 absl::StatusOr<std::unique_ptr<const HloGumgraphMappings>> FindMappings(
     const HloGumgraph& left, const HloGumgraph& right,
+    absl::Span<const std::pair<absl::string_view, absl::string_view>>
+        manual_mappings = {},
     const MatchOptions& options = {}) {
   LOG(INFO) << "Running Matchers";
   auto mappings = std::make_unique<HloGumgraphMappings>();
@@ -66,6 +71,10 @@ absl::StatusOr<std::unique_ptr<const HloGumgraphMappings>> FindMappings(
       /*visit_unreachable_nodes=*/true));
 
   std::vector<std::unique_ptr<HloGumgraphMatcher>> matchers;
+  if (!manual_mappings.empty()) {
+    matchers.push_back(
+        std::make_unique<ManualMatcher>(&left, &right, manual_mappings));
+  }
   matchers.push_back(
       std::make_unique<GreedySubGraphExactMatcher>(&left, &right));
   matchers.push_back(std::make_unique<GreedyTopDownMatcher>(
@@ -89,8 +98,7 @@ absl::StatusOr<std::unique_ptr<const HloGumgraphMappings>> FindMappings(
 
 absl::StatusOr<HloGumgraphDiffResults> ComputeDiff(const HloModule& left,
                                                    const HloModule& right,
-                                                   const DiffOptions& options,
-                                                   bool run_eval) {
+                                                   const DiffOptions& options) {
   LOG(INFO) << "Initializing left module graph";
   TF_ASSIGN_OR_RETURN(std::unique_ptr<const HloGumgraph> left_graph,
                       HloGumgraph::Create(&left, options.fingerprint_options));
@@ -107,14 +115,15 @@ absl::StatusOr<HloGumgraphDiffResults> ComputeDiff(const HloModule& left,
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<const HloGumgraphMappings> mappings,
-      FindMappings(*left_graph, *right_graph, options.match_options));
+      FindMappings(*left_graph, *right_graph, options.manual_mappings,
+                   options.match_options));
 
   std::unique_ptr<const DiffResult> diff_result =
       ConstructDiffResult(*left_graph, *right_graph, *mappings);
   std::unique_ptr<const DiffSummary> diff_summary =
       ConstructDiffSummary(left, right, *diff_result);
   std::unique_ptr<const DiffEval> diff_eval = nullptr;
-  if (run_eval) {
+  if (options.run_eval) {
     diff_eval = ComputeDiffEval(*left_graph, *right_graph, *mappings,
                                 *diff_result, *diff_summary);
   }

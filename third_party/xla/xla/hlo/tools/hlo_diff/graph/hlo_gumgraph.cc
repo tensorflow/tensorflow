@@ -118,8 +118,8 @@ std::pair<HloInstructionNode*, bool> HloGumgraph::AddNode(
     const HloInstruction& instruction, int unique_node_index) {
   auto node = std::make_unique<HloInstructionNode>(HloInstructionNode{
       .instruction = &instruction, .unique_node_index = unique_node_index});
-  auto [new_node_it, inserted] =
-      instruction_to_node_.try_emplace(&instruction, std::move(node));
+  auto [new_node_it, inserted] = instruction_name_to_node_.try_emplace(
+      instruction.name(), std::move(node));
   return {new_node_it->second.get(), inserted};
 }
 
@@ -219,7 +219,7 @@ HloGumgraph::PrecomputeGenerations() {
   LOG(INFO) << "Precomputing generations";
   std::vector<HloInstructionNode*> zero_indegrees;
   absl::flat_hash_map<const HloInstructionNode*, int> indegrees;
-  for (const auto& [_, node] : instruction_to_node_) {
+  for (const auto& [_, node] : instruction_name_to_node_) {
     if (node->parents.empty()) {
       zero_indegrees.push_back(node.get());
       continue;
