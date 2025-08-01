@@ -1576,7 +1576,6 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
   auto result_types = op.getResultTypes();
   auto num_results = op.getNumResults();
 
-  xla::Shape token_shape = xla::TypeToShape(result_types[num_results - 1]);
   std::vector<xla::Shape> subshapes;
   for (const auto& item : llvm::enumerate(result_types)) {
     if (item.index() == num_results - 1) break;
@@ -1663,13 +1662,11 @@ LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
   // stablehlo.infeed produces multiple results. The shape argument expected
   // by the xla client API is a tuple type with two element-types:
   // data_type : A tuple containing all the stablehlo.infeedOp result types
-  // except
-  //             the token type.
+  //             except the token type.
   // token_type : The last result type of stablehlo.infeedOp.
   auto result_types = op.getResultTypes();
   auto num_results = op.getNumResults();
 
-  xla::Shape token_shape = xla::TypeToShape(result_types[num_results - 1]);
   std::vector<xla::Shape> subshapes;
   for (const auto& item : llvm::enumerate(result_types)) {
     if (item.index() == num_results - 1) break;
@@ -4393,7 +4390,6 @@ LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
   auto result_types = op.getResultTypes();
   auto num_results = op.getNumResults();
 
-  xla::Shape token_shape = xla::TypeToShape(result_types[num_results - 1]);
   std::vector<xla::Shape> subshapes;
   for (const auto& item : llvm::enumerate(result_types)) {
     if (item.index() == num_results - 1) break;
@@ -4515,7 +4511,6 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
   auto result_types = op.getResultTypes();
   auto num_results = op.getNumResults();
 
-  xla::Shape token_shape = xla::TypeToShape(result_types[num_results - 1]);
   std::vector<xla::Shape> subshapes;
   for (const auto& item : llvm::enumerate(result_types)) {
     if (item.index() == num_results - 1) break;
