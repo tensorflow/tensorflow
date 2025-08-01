@@ -93,6 +93,13 @@ class TPUEmbeddingV3CheckpointTest(parameterized.TestCase, test.TestCase):
           feature_config=feature_config_2,
           optimizer=tpu_embedding_v2_utils.SGD())
 
+      def fail_initializer(*args, **kwargs):
+        del args, kwargs
+        self.fail("initializer should not be called when restoring")
+
+      assert model2._batch_initialize_tables
+      model2._batch_initialize_tables = fail_initializer
+
     checkpoint = util.Checkpoint(model=model2)
 
     # Load from checkpoint
