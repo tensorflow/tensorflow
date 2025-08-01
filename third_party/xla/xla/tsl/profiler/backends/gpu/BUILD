@@ -9,6 +9,7 @@ cc_library(
     hdrs = ["ondevice_trace_event.h"],
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
+        "//xla/python:__pkg__",
         "//xla/tsl/profiler:internal",
         "//xla/tsl/profiler:xla_profiler_backends",
         "//tensorflow/lite:__pkg__",
@@ -23,6 +24,7 @@ cc_library(
     hdrs = ["ondevice_event_collector.h"],
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
+        "//xla/python:__pkg__",
         "//xla/tsl/profiler:internal",
         "//xla/tsl/profiler:xla_profiler_backends",
         "//tensorflow/lite:__pkg__",
@@ -39,6 +41,7 @@ cc_library(
     hdrs = ["ondevice_event_receiver.h"],
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
+        "//xla/python:__pkg__",
         "//xla/tsl/profiler:internal",
         "//xla/tsl/profiler:xla_profiler_backends",
         "//tensorflow/lite:__pkg__",
