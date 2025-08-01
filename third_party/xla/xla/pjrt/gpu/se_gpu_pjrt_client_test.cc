@@ -186,12 +186,12 @@ TEST(StreamExecutorGpuClientTest, MemorySpace) {
               StreamExecutorGpuHbmMemorySpace::kKindId);
     EXPECT_THAT(
         device->memory_space_by_kind(StreamExecutorGpuHbmMemorySpace::kKind),
-        IsOkAndHolds(memory_space));
+        absl_testing::IsOkAndHolds(memory_space));
     EXPECT_EQ(device->memory_spaces().size(), 2);
     auto* pinned = device->memory_spaces()[1];
     EXPECT_EQ(pinned->kind_id(), PinnedHostMemorySpace::kKindId);
     EXPECT_THAT(device->memory_space_by_kind(PinnedHostMemorySpace::kKind),
-                IsOkAndHolds(pinned));
+                absl_testing::IsOkAndHolds(pinned));
   }
 }
 
@@ -1033,8 +1033,9 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostOutOfRange) {
       tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
 
   auto result = buffer->CopyRawToHost(dst, 1, size);
-  EXPECT_THAT(result.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
-                                       HasSubstr("invalid offset 1")));
+  EXPECT_THAT(result.Await(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("invalid offset 1")));
   tsl::port::AlignedSizedFree(dst, tsl::Allocator::kAllocatorAlignment, size);
 }
 
@@ -1640,8 +1641,9 @@ TEST(StreamExecutorGpuClientTest, OpaqueDeviceMemoryDataPointer) {
           buf_sz),
       /*on_done=*/[]() {}));
   std::unique_ptr<PjRtBuffer> hbm_buf = txm->RetrieveBuffer(0);
-  EXPECT_THAT(hbm_buf->GetOnDeviceSizeInBytes(), IsOkAndHolds(buf_sz));
-  EXPECT_THAT(hbm_buf->HostShape(), IsOkAndHolds(shape));
+  EXPECT_THAT(hbm_buf->GetOnDeviceSizeInBytes(),
+              absl_testing::IsOkAndHolds(buf_sz));
+  EXPECT_THAT(hbm_buf->HostShape(), absl_testing::IsOkAndHolds(shape));
   TF_ASSERT_OK(hbm_buf->GetReadyFuture().Await());
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> literal,
                           hbm_buf->ToLiteralSync());
@@ -2076,9 +2078,10 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
   serialized = proto.SerializeAsString();
 
   EXPECT_THAT(client->DeserializeExecutable(serialized, std::nullopt),
-              StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("PjRt client type expected by the serialized "
-                                 "executable: SomeGpuClient")));
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInternal,
+                  HasSubstr("PjRt client type expected by the serialized "
+                            "executable: SomeGpuClient")));
 }
 
 TEST(StreamExecutorGpuClientTest, MlirParameterLayoutIsSetInHlo) {
