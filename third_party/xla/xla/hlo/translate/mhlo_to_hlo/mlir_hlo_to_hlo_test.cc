@@ -61,8 +61,9 @@ func.func @main(%arg0: tensor<?xf32>, %arg1: tensor<1xindex>, %arg2: tensor<1xin
   }
 
   ASSERT_THAT(ConvertMlirHloToHloModule(*module),
-              StatusIs(_, AllOf(HasSubstr("Unable to prepare for XLA export"),
-                                HasSubstr("real_dynamic_slice"))));
+              absl_testing::StatusIs(
+                  _, AllOf(HasSubstr("Unable to prepare for XLA export"),
+                           HasSubstr("real_dynamic_slice"))));
 }
 
 TEST(ConvertMlirHloToHloModuleTest, ConvertsDotGeneralPrecisionConfig) {
