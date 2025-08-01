@@ -76,14 +76,14 @@ TEST(RocmExecutorTest, GetRocmKernel) {
   auto rocm_executor = dynamic_cast<RocmExecutor*>(executor);
   ASSERT_NE(rocm_executor, nullptr);
   EXPECT_THAT(rocm_executor->GetRocmKernel(kernel.get()),
-              IsOkAndHolds(kernel.get()));
+              absl_testing::IsOkAndHolds(kernel.get()));
 
   rocm_executor->UnloadKernel(kernel.get());
   EXPECT_THAT(rocm_executor->GetRocmKernel(kernel.get()),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 
   EXPECT_THAT(rocm_executor->GetRocmKernel(nullptr),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(RocmExecutorTest, CreateUnifiedMemoryAllocatorWorks) {
@@ -136,7 +136,7 @@ TEST(RocmExecutorTest, CreateUnsupportedMemoryAllocatorsFail) {
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
   EXPECT_THAT(executor->CreateMemoryAllocator(MemoryType::kDevice),
-              Not(IsOk()));
+              Not(absl_testing::IsOk()));
 }
 
 }  // namespace
