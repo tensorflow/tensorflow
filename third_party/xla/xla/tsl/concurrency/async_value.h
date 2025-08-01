@@ -467,13 +467,13 @@ class AsyncValue {
 
   // Returns the TypeInfoTable instance (there is one per process).
   using TypeInfoTable = internal::ConcurrentVector<TypeInfo>;
-  static TypeInfoTable* GetTypeInfoTableSingleton();
+  static TypeInfoTable& GetTypeInfoTableSingleton();
 
   // Get the TypeInfo instance for this AsyncValue.
   const TypeInfo& GetTypeInfo() const {
-    TypeInfoTable* type_info_table = AsyncValue::GetTypeInfoTableSingleton();
+    TypeInfoTable& type_info_table = AsyncValue::GetTypeInfoTableSingleton();
     DCHECK_NE(type_id_, 0) << "TypeId must be set";
-    return (*type_info_table)[type_id_ - 1];
+    return type_info_table[type_id_ - 1];
   }
 
   // Adds a waiter list node to the waiter linked list. If the value is
