@@ -1052,8 +1052,8 @@ py_strict_library(
     name = "tpu_embedding_v3",
     srcs = ["tpu_embedding_v3.py"],
     deps = [
-        ":_pywrap_sparse_core_layout",
-        ":_pywrap_tpu_embedding",
+        ":_pywrap_sparse_core_layout",  # buildcleaner: keep
+        ":_pywrap_tpu_embedding",  # buildcleaner: keep
         ":embedding_context_utils",
         ":tpu_embedding_base",
         ":tpu_embedding_v2_utils",
@@ -1070,6 +1070,7 @@ py_strict_library(
         "//tensorflow/python/distribute:tpu_values",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/distribute:values_util",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:dtypes",
@@ -1114,6 +1115,7 @@ tpu_py_strict_test(
         ":tpu_embedding_for_serving",
         ":tpu_embedding_v2_utils",
         ":tpu_embedding_v3",
+        ":tpu_embedding_v3_utils",
         ":tpu_replication",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -1170,6 +1172,7 @@ tpu_py_strict_test(
         ":tpu_embedding_for_serving",
         ":tpu_embedding_v2_utils",
         ":tpu_embedding_v3",
+        ":tpu_embedding_v3_utils",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:distribute_lib",
