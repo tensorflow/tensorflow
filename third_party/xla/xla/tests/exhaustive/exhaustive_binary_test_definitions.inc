@@ -272,13 +272,9 @@ using ExhaustiveF64BinaryTest = Exhaustive32BitOrMoreBinaryTest<F64>;
   TEST_P(ExhaustiveF32BinaryTest, test_name) \
   __VA_ARGS__
 
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
 #define BINARY_TEST_F64(test_name, ...)      \
   TEST_P(ExhaustiveF64BinaryTest, test_name) \
   __VA_ARGS__
-#else
-#define BINARY_TEST_F64(test_name, ...)
-#endif
 
 #define BINARY_TEST(test_name, ...)            \
   BINARY_TEST_F8E4M3FN(test_name, __VA_ARGS__) \

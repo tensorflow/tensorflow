@@ -153,6 +153,7 @@ exhaustive_xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder/lib:constants",
         "//xla/hlo/builder/lib:math",
+        "//xla/tests:xla_test_backend_predicates",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
@@ -231,7 +232,7 @@ exhaustive_xla_test(
     # Partition goal is to get under ~5 minute execution time without needlessly
     # reserving hardware for each shard.
     #
-    # exhasutive_xla_test needs to have all partition names added to allow other
+    # exhaustive_xla_test needs to have all partition names added to allow other
     # build tools to function.
     partitions = {
         "f16_and_smaller": [
@@ -257,6 +258,7 @@ exhaustive_xla_test(
         "//xla:literal",
         "//xla:types",
         "//xla/hlo/builder:xla_builder",
+        "//xla/tests:xla_test_backend_predicates",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
