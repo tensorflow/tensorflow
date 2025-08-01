@@ -143,7 +143,7 @@ TEST_F(TiledHloInstructionTest,
                                           /*runtime_variables=*/{rt0.get()},
                                           /*tile_sizes=*/{16},
                                           /*tile_strides=*/{1}, indexing_map),
-              IsOk());
+              absl_testing::IsOk());
   EXPECT_THAT(
       TiledHloInstruction::Create(p0.get(), /*operands=*/{},
                                   /*runtime_variables=*/{rt0.get(), rt0.get()},
