@@ -128,15 +128,11 @@ class HloModule {
   // the corresponding values in 'replacements'. Replaces the entry computation,
   // if applicable.
   //
-  // This function iterates over all instructions in the module to find
-  // computations to replace. We could speed it up by keeping track of users of
-  // computations.
-  //
-  // N.B.: This function does not update the computations_ field of the
-  // HloModule with the newly added computations. Therefore, along with
-  // invoking this function, if a replacement computation is not already present
-  // in module, it should be separately added into the module using
-  // `AddEmbeddedComputation`.
+  // Note: This function deletes the computations being replaced from the
+  // computations_ field of the HloModule, but it does not add the replacement
+  // computations. Therefore, along with invoking this function, if a
+  // replacement computation is not already present in module, it should be
+  // separately added into the module using `AddEmbeddedComputation`.
   void ReplaceComputations(
       const absl::flat_hash_map<HloComputation*, HloComputation*>&
           replacements);

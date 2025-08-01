@@ -316,58 +316,28 @@ void HloModule::ReplaceComputations(
   std::vector<std::unique_ptr<HloComputation>> new_computations;
   new_computations.reserve(computations_.size());
 
-  for (std::unique_ptr<HloComputation>& computation : computations_) {
-    for (auto* instruction : computation->instructions()) {
-      if (instruction->has_to_apply()) {
-        HloComputation* new_arg = tsl::gtl::FindWithDefault(
-            replacements, instruction->to_apply(), nullptr);
-        if (new_arg != nullptr) {
-          instruction->set_to_apply(new_arg);
-        }
+  for (const auto iter : replacements) {
+    HloComputation* old_computation = iter.first;
+    HloComputation* new_computation = iter.second;
+    for (auto* caller_instruction : old_computation->caller_instructions()) {
+      // TODO(b/434814814): This check shouldn't be necessary, since it's
+      // illegal to refer to a computation in a different module. But it can
+      // happen in practice. Temporarily adding a guard, should be removed when
+      // the code that creates these invalid modules is fixed.
+      if (caller_instruction->parent()->parent() != this) {
         continue;
       }
-      switch (instruction->opcode()) {
-        case HloOpcode::kWhile: {
-          HloComputation* new_condition = tsl::gtl::FindWithDefault(
-              replacements, instruction->while_condition(), nullptr);
-          if (new_condition != nullptr) {
-            instruction->set_while_condition(new_condition);
-          }
-          HloComputation* new_body = tsl::gtl::FindWithDefault(
-              replacements, instruction->while_body(), nullptr);
-          if (new_body != nullptr) {
-            instruction->set_while_body(new_body);
-          }
-          break;
-        }
-        case HloOpcode::kConditional: {
-          for (int b = 0; b < instruction->branch_count(); ++b) {
-            HloComputation* new_computation = tsl::gtl::FindWithDefault(
-                replacements, instruction->branch_computation(b), nullptr);
-            if (new_computation != nullptr) {
-              instruction->set_branch_computation(b, new_computation);
+      caller_instruction->ReplaceCalledComputations(
+          [&](HloComputation* callee) {
+            if (callee == old_computation) {
+              return new_computation;
             }
-          }
-          break;
-        }
-        case HloOpcode::kSelectAndScatter: {
-          HloComputation* new_select = tsl::gtl::FindWithDefault(
-              replacements, instruction->select(), nullptr);
-          if (new_select != nullptr) {
-            instruction->set_select(new_select);
-          }
-          HloComputation* new_scatter = tsl::gtl::FindWithDefault(
-              replacements, instruction->scatter(), nullptr);
-          if (new_scatter != nullptr) {
-            instruction->set_scatter(new_scatter);
-          }
-          break;
-        }
-        default:
-          break;
-      }
+            return callee;
+          });
     }
+  }
 
+  for (std::unique_ptr<HloComputation>& computation : computations_) {
     if (replacements.find(computation.get()) == replacements.end()) {
       new_computations.push_back(std::move(computation));
     } else {
