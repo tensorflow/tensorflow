@@ -262,7 +262,7 @@ void PjRtCApiClient::InitAttributes() {
       pjrt::FindExtension<PJRT_CrossHostTransfers_Extension>(
           c_api, PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers);
   if (extension != nullptr) {
-    attributes_["support_cross_host_transfers"] = true;
+    attributes_["supports_cross_host_transfers"] = true;
   }
 }
 
