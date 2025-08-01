@@ -66,7 +66,8 @@ se::StreamExecutor* GpuExecutor() {
   return platform->ExecutorForDevice(0).value();
 }
 
-std::unique_ptr<AllGatherStartThunk> CreateAllGatherStartThunk() {
+std::unique_ptr<AllGatherStartThunk> CreateAllGatherStartThunk(
+    const BufferAllocation& alloc0, const BufferAllocation& alloc1) {
   auto create_replica_groups =
       [](const std::vector<std::vector<int64_t>>& replica_groups) {
         std::vector<ReplicaGroup> result;
@@ -100,8 +101,6 @@ std::unique_ptr<AllGatherStartThunk> CreateAllGatherStartThunk() {
   Thunk::ThunkInfo thunk_info;
   std::vector<std::unique_ptr<Thunk>> thunks;
 
-  BufferAllocation alloc0(1, 16 * 4, 0);
-  BufferAllocation alloc1(1, 16 * 4, 0);
   BufferAllocation::Slice slice0(&alloc0, 0, 16 * 4);
   BufferAllocation::Slice slice1(&alloc1, 0, 16 * 4);
 
@@ -115,13 +114,12 @@ std::unique_ptr<AllGatherStartThunk> CreateAllGatherStartThunk() {
       std::vector<CollectiveThunk::Buffer>({buffer}), false);
 }
 
-std::unique_ptr<CopyThunk> CreateCopyThunk() {
-  BufferAllocation alloc0(0, 1024, 0);
+std::unique_ptr<CopyThunk> CreateCopyThunk(const BufferAllocation& alloc0) {
   BufferAllocation::Slice slice0(&alloc0, 0, 1024);
   return std::make_unique<CopyThunk>(Thunk::ThunkInfo(), slice0, slice0, 1024);
 }
 
-std::unique_ptr<GemmThunk> CreateGemmThunk() {
+std::unique_ptr<GemmThunk> CreateGemmThunk(const BufferAllocation& alloc1) {
   se::StreamExecutor* executor = GpuExecutor();
   auto config = GemmConfig::For(
       ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
@@ -130,7 +128,6 @@ std::unique_ptr<GemmThunk> CreateGemmThunk() {
       PrecisionConfig::ALG_UNSET, std::nullopt,
       se::blas::kDefaultComputePrecision, false, false,
       executor->GetDeviceDescription().gpu_compute_capability());
-  BufferAllocation alloc1(1, 16 * 4, 0);
   BufferAllocation::Slice slice1(&alloc1, 0, 16 * 4);
   return std::make_unique<GemmThunk>(Thunk::ThunkInfo(), config.value(), slice1,
                                      slice1, slice1, slice1, true);
@@ -147,8 +144,8 @@ std::unique_ptr<CollectiveDoneThunk> CreateAllGatherDoneThunk(
 
 std::unique_ptr<WhileThunk> CreateWhileThunk(
     std::vector<std::unique_ptr<Thunk>> condition_thunks,
-    std::vector<std::unique_ptr<Thunk>> body_thunks) {
-  BufferAllocation alloc(0, 1024, 0);
+    std::vector<std::unique_ptr<Thunk>> body_thunks,
+    const BufferAllocation& alloc) {
   BufferAllocation::Slice slice(&alloc, 0, 1024);
 
   return std::make_unique<WhileThunk>(
@@ -180,7 +177,8 @@ TEST(CommandBufferConversionPassTest, ConvertsToCommandBufferThunk) {
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo();
 
   // Create a CopyThunk
-  thunks.push_back(CreateCopyThunk());
+  BufferAllocation alloc0(0, 1024, 0);
+  thunks.push_back(CreateCopyThunk(alloc0));
 
   auto root_thunk =
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
@@ -222,9 +220,11 @@ TEST(CommandBufferConversionPassTest, PartiallyConvertsToCommandBufferThunk) {
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo();
 
   // Create a {CopyThunk, GemmThunk, CopyThunk}
-  thunks.push_back(CreateCopyThunk());
-  thunks.push_back(CreateGemmThunk());
-  thunks.push_back(CreateCopyThunk());
+  BufferAllocation alloc0(0, 1024, 0);
+  BufferAllocation alloc1(1, 16 * 4, 0);
+  thunks.push_back(CreateCopyThunk(alloc0));
+  thunks.push_back(CreateGemmThunk(alloc1));
+  thunks.push_back(CreateCopyThunk(alloc0));
 
   auto root_thunk =
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
@@ -268,7 +268,9 @@ TEST(CommandBufferConversionPassTest, PartiallyConvertsToCommandBufferThunk) {
 TEST(CommandBufferConversionPassTest, ConvertsAsyncPairToCommandBuffer) {
   std::vector<std::unique_ptr<Thunk>> thunks;
   // Create a start thunk
-  thunks.push_back(CreateAllGatherStartThunk());
+  BufferAllocation alloc0(1, 16 * 4, 0);
+  BufferAllocation alloc1(1, 16 * 4, 0);
+  thunks.push_back(CreateAllGatherStartThunk(alloc0, alloc1));
 
   // Create a done thunk
   thunks.push_back(CreateAllGatherDoneThunk(thunks.back().get()));
@@ -309,10 +311,13 @@ TEST(CommandBufferConversionPassTest,
      DontConvertAsyncsIfNonConvertibleThunkInBetween) {
   std::vector<std::unique_ptr<Thunk>> thunks;
   // Create a start thunk
-  thunks.push_back(CreateAllGatherStartThunk());
+  BufferAllocation alloc0(1, 16 * 4, 0);
+  BufferAllocation alloc1(1, 16 * 4, 0);
+  thunks.push_back(CreateAllGatherStartThunk(alloc0, alloc1));
 
   // Create a non-convertible thunk
-  thunks.push_back(CreateCopyThunk());
+  BufferAllocation alloc2(0, 1024, 0);
+  thunks.push_back(CreateCopyThunk(alloc2));
 
   // Create a done thunk
   thunks.push_back(CreateAllGatherDoneThunk(thunks[0].get()));
@@ -339,9 +344,11 @@ TEST(CommandBufferConversionPassTest,
 TEST(CommandBufferConversionPassTest, ConvertCrossedAsyncs) {
   std::vector<std::unique_ptr<Thunk>> thunks;
   // Create start thunk A
-  thunks.push_back(CreateAllGatherStartThunk());
+  BufferAllocation alloc0(1, 16 * 4, 0);
+  BufferAllocation alloc1(1, 16 * 4, 0);
+  thunks.push_back(CreateAllGatherStartThunk(alloc0, alloc1));
   // Create start thunk B
-  thunks.push_back(CreateAllGatherStartThunk());
+  thunks.push_back(CreateAllGatherStartThunk(alloc0, alloc1));
   // Create a done thunk A
   thunks.push_back(CreateAllGatherDoneThunk(thunks[0].get()));
   // Create a done thunk B
@@ -381,13 +388,16 @@ TEST(CommandBufferConversionPassTest, ConvertCrossedAsyncs) {
 TEST(CommandBufferConversionPassTest, ConvertNestedAsyncs) {
   std::vector<std::unique_ptr<Thunk>> thunks;
   // Create start thunk A
-  thunks.push_back(CreateAllGatherStartThunk());
+  BufferAllocation alloc0(1, 16 * 4, 0);
+  BufferAllocation alloc1(1, 16 * 4, 0);
+  thunks.push_back(CreateAllGatherStartThunk(alloc0, alloc1));
   // Create start thunk B
-  thunks.push_back(CreateAllGatherStartThunk());
+  thunks.push_back(CreateAllGatherStartThunk(alloc0, alloc1));
   // Create a done thunk B
   thunks.push_back(CreateAllGatherDoneThunk(thunks[0].get()));
   // Create a convertible thunk C
-  thunks.push_back(CreateGemmThunk());
+  BufferAllocation alloc2(1, 16 * 4, 0);
+  thunks.push_back(CreateGemmThunk(alloc2));
   // Create a done thunk A
   thunks.push_back(CreateAllGatherDoneThunk(thunks[1].get()));
 
@@ -427,19 +437,22 @@ TEST(CommandBufferConversionPassTest, ConvertNestedAsyncs) {
 TEST(CommandBufferConversionPassTest, DontConvertAsyncsIfUnpairedStart) {
   std::vector<std::unique_ptr<Thunk>> thunks;
   // Convertible CopyThunk in the beginning
-  thunks.push_back(CreateCopyThunk());
+  BufferAllocation alloc0(0, 1024, 0);
+  thunks.push_back(CreateCopyThunk(alloc0));
 
   // Start A Thunk
-  thunks.push_back(CreateAllGatherStartThunk());
+  BufferAllocation alloc1(1, 16 * 4, 0);
+  BufferAllocation alloc2(1, 16 * 4, 0);
+  thunks.push_back(CreateAllGatherStartThunk(alloc1, alloc2));
 
   // Start B Thunk
-  thunks.push_back(CreateAllGatherStartThunk());
+  thunks.push_back(CreateAllGatherStartThunk(alloc1, alloc2));
 
   // Done A Thunk
   thunks.push_back(CreateAllGatherDoneThunk(thunks[1].get()));
 
   // Another convertible CopyThunk
-  thunks.push_back(CreateCopyThunk());
+  thunks.push_back(CreateCopyThunk(alloc0));
 
   // Pack the thunks into a root thunk
   auto root_thunk =
@@ -484,16 +497,19 @@ TEST(CommandBufferConversionPassTest, DontConvertAsyncsIfUnpairedStart) {
 TEST(CommandBufferConversionPassTest, ConvertsAsyncPairsMixedWithOtherThunks) {
   std::vector<std::unique_ptr<Thunk>> thunks;
   // Create a start thunk
-  thunks.push_back(CreateAllGatherStartThunk());
+  BufferAllocation alloc0(1, 16 * 4, 0);
+  BufferAllocation alloc1(1, 16 * 4, 0);
+  thunks.push_back(CreateAllGatherStartThunk(alloc0, alloc1));
 
   // Create a done thunk
   thunks.push_back(CreateAllGatherDoneThunk(thunks.back().get()));
 
   // Convertible thunk in the middle
-  thunks.push_back(CreateCopyThunk());
+  BufferAllocation alloc2(0, 1024, 0);
+  thunks.push_back(CreateCopyThunk(alloc2));
 
   // Create a start thunk
-  thunks.push_back(CreateAllGatherStartThunk());
+  thunks.push_back(CreateAllGatherStartThunk(alloc0, alloc1));
 
   // Create a done thunk
   thunks.push_back(CreateAllGatherDoneThunk(thunks.back().get()));
@@ -538,7 +554,8 @@ TEST(CommandBufferConversionPassTest, DontConvertIfNotMinGraphSize) {
   std::vector<std::unique_ptr<Thunk>> thunks;
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo();
 
-  thunks.push_back(CreateCopyThunk());
+  BufferAllocation alloc0(0, 1024, 0);
+  thunks.push_back(CreateCopyThunk(alloc0));
 
   auto root_thunk =
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
@@ -568,14 +585,17 @@ TEST(CommandBufferConversionPassTest, ConvertWhileThunk) {
 
   // Create condition and branch sequences
   std::vector<std::unique_ptr<Thunk>> condition_thunks;
-  condition_thunks.push_back(CreateCopyThunk());
+  BufferAllocation alloc0(0, 1024, 0);
+  condition_thunks.push_back(CreateCopyThunk(alloc0));
 
   std::vector<std::unique_ptr<Thunk>> body_thunks;
-  body_thunks.push_back(CreateGemmThunk());
+  BufferAllocation alloc1(1, 16 * 4, 0);
+  body_thunks.push_back(CreateGemmThunk(alloc1));
 
   // Create a while thunk
-  thunks.push_back(
-      CreateWhileThunk(std::move(condition_thunks), std::move(body_thunks)));
+  BufferAllocation alloc2(0, 1024, 0);
+  thunks.push_back(CreateWhileThunk(std::move(condition_thunks),
+                                    std::move(body_thunks), alloc2));
   auto root_thunk =
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
   DebugOptions debug_options;
@@ -622,10 +642,13 @@ TEST(CommandBufferConversionPassTest,
 
   // Create branch sequences
   std::vector<std::unique_ptr<Thunk>> branch0_thunks;
-  branch0_thunks.push_back(CreateCopyThunk());
+  BufferAllocation alloc0(0, 1024, 0);
+  branch0_thunks.push_back(CreateCopyThunk(alloc0));
 
   std::vector<std::unique_ptr<Thunk>> branch1_thunks;
-  branch1_thunks.push_back(CreateAllGatherStartThunk());
+  BufferAllocation alloc1(1, 16 * 4, 0);
+  BufferAllocation alloc2(1, 16 * 4, 0);
+  branch1_thunks.push_back(CreateAllGatherStartThunk(alloc1, alloc2));
 
   // Create a conditional thunk
   std::vector<std::vector<std::unique_ptr<Thunk>>> branch_thunks;
@@ -662,16 +685,20 @@ TEST(CommandBufferConversionPassTest, ConvertWhileThunkWithAsyncPair) {
 
   // Create condition and branch sequences
   std::vector<std::unique_ptr<Thunk>> condition_thunks;
-  condition_thunks.push_back(CreateCopyThunk());
+  BufferAllocation alloc0(0, 1024, 0);
+  condition_thunks.push_back(CreateCopyThunk(alloc0));
 
   std::vector<std::unique_ptr<Thunk>> body_thunks;
-  body_thunks.push_back(CreateAllGatherStartThunk());
-  body_thunks.push_back(CreateCopyThunk());
+  BufferAllocation alloc1(1, 16 * 4, 0);
+  BufferAllocation alloc2(1, 16 * 4, 0);
+  body_thunks.push_back(CreateAllGatherStartThunk(alloc1, alloc2));
+  body_thunks.push_back(CreateCopyThunk(alloc0));
   body_thunks.push_back(CreateAllGatherDoneThunk(body_thunks[0].get()));
 
   // Create a while thunk
-  thunks.push_back(
-      CreateWhileThunk(std::move(condition_thunks), std::move(body_thunks)));
+  BufferAllocation alloc3(0, 1024, 0);
+  thunks.push_back(CreateWhileThunk(std::move(condition_thunks),
+                                    std::move(body_thunks), alloc3));
   auto root_thunk =
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
   DebugOptions debug_options;
