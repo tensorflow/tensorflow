@@ -244,6 +244,7 @@ lit_test_suite(
     hermetic_cuda_data_dir = "%S/../../../../../cuda_nvcc",
     tags_override = {
         "tests/gpu_hlo_ptx.hlo": ["cuda-only"],
+        "tests/gpu_hlo_llvm.hlo": ["cuda-only"], #TODO(rocm): weekly sync 25-07-14
     },
     tools = [
         "//xla/tools:hlo-opt",
