@@ -87,7 +87,7 @@ REQUIRED_PACKAGES = [
     'libclang >= 13.0.0',
     'opt_einsum >= 2.3.2',
     'packaging',
-    'protobuf>=5.28.0',
+    'protobuf >= 6.31.1, < 8.0.0',
     'requests >= 2.21.0, < 3',
     'setuptools',
     'six >= 1.12.0',
