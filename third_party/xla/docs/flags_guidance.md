@@ -45,14 +45,15 @@ Flag                                                          | Description     
 | :---- | :---- | :----- |
 | `xla_dump_to` | String (filepath) | The folder where pre-optimization HLO files and other artifacts will be placed (see [XLA Tools](https://openxla.org/xla/tools)). |
 
-#### TPU XLA flags
-| Flag | Type | Notes |
-| :---- | :---- | :----- |
-| `xla_tpu_enable_data_parallel_all_reduce_opt` | Boolean (true/false) | Optimization to increase overlap opportunities for DCN (data center networking) all-reduces used for data parallel sharding. |
-| `xla_tpu_data_parallel_opt_different_sized_ops` | Boolean (true/false) | Enables pipelining of data parallel ops across multiple iterations even if their output sizes don't match what can be saved in place in the stacked variables. Can increase memory pressure. |
-| `xla_tpu_spmd_rng_bit_generator_unsafe` | Boolean (true/false) | Whether to run RngBitGenerator HLO in a partitioned way, which is unsafe if deterministic results are expected with different shardings on different parts of the computation. |
-| `xla_tpu_megacore_fusion_allow_ags` | Boolean (true/false) | Allows fusing all-gathers with convolutions/all-reduces. |
-| `xla_tpu_enable_ag_backward_pipelining` | Boolean (true/false) | Pipelines all-gathers (currently megascale all-gathers) backwards through scan loops. |
+### TPU XLA flags
+
+Flag                                            | Type                 | Notes
+:---------------------------------------------- | :------------------- | :----
+`xla_tpu_enable_data_parallel_all_reduce_opt`   | Boolean (true/false) | Optimization to increase overlap opportunities for DCN (data center networking) all-reduces used for data parallel sharding.
+`xla_tpu_data_parallel_opt_different_sized_ops` | Boolean (true/false) | Enables pipelining of data parallel ops across multiple iterations even if their output sizes don't match what can be saved in place in the stacked variables. Can increase memory pressure.
+`xla_tpu_spmd_rng_bit_generator_unsafe`         | Boolean (true/false) | Whether to run RngBitGenerator HLO in a partitioned way, which is unsafe if deterministic results are expected with different shardings on different parts of the computation.
+`xla_tpu_megacore_fusion_allow_ags`             | Boolean (true/false) | Allows fusing all-gathers with convolutions/all-reduces.
+`xla_tpu_enable_ag_backward_pipelining`         | Boolean (true/false) | Pipelines all-gathers (currently megascale all-gathers) backwards through scan loops.
 
 ### GPU XLA flags
 | Flag | Type | Notes |
