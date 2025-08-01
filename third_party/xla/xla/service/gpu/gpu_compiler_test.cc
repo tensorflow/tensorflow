@@ -74,7 +74,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
@@ -386,7 +385,8 @@ ENTRY e {
   std::string xla_gpu_load_autotune_results_from_;
 };
 
-TEST_F(PersistedAutotuningTest, DISABLED_ON_GPU_ROCM(WriteResultsOnEachCompilation)) {
+TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
+
   constexpr absl::string_view kInvalidTextProto = "Invalid!";
   xla_gpu_dump_autotune_results_to_ = GetUniqueTempFilePath(".txt");
 
