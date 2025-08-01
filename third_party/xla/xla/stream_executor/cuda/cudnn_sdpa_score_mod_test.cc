@@ -53,7 +53,8 @@ TEST(CudnnSdpaScoreModTest, CompileFwd) {
   auto next_uid = [&]() -> int64_t { return uid++; };
   Graph graph = std::make_shared<cudnn_frontend::graph::Graph>();
   auto score_mod = std::make_shared<ScoreModFunc>(comp, nullptr);
-  EXPECT_THAT(score_mod->UpdateCudnnMap(*graph, next_uid), IsOk());
+  EXPECT_THAT(score_mod->UpdateCudnnMap(*graph, next_uid),
+              absl_testing::IsOk());
   Tensor attn_score =
       graph->tensor(cudnn_frontend::graph::Tensor_attributes()
                         .set_dim({4, 4, 1024, 1024})
@@ -104,7 +105,8 @@ TEST(CudnnSdpaScoreModTest, CompileBwd) {
   auto next_uid = [&]() -> int64_t { return uid++; };
   Graph graph = std::make_shared<cudnn_frontend::graph::Graph>();
   auto score_mod = std::make_shared<ScoreModFunc>(fwd_comp, bwd_comp);
-  EXPECT_THAT(score_mod->UpdateCudnnMap(*graph, next_uid), IsOk());
+  EXPECT_THAT(score_mod->UpdateCudnnMap(*graph, next_uid),
+              absl_testing::IsOk());
   Tensor attn_score =
       graph->tensor(cudnn_frontend::graph::Tensor_attributes()
                         .set_dim({4, 4, 1024, 1024})

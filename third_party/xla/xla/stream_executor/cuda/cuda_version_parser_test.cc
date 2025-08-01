@@ -28,16 +28,18 @@ using tsl::testing::IsOkAndHolds;
 using tsl::testing::StatusIs;
 
 TEST(CudaVersionParserTest, ValidVersion) {
-  EXPECT_THAT(ParseCudaVersion(12040), IsOkAndHolds(SemanticVersion{12, 4, 0}));
+  EXPECT_THAT(ParseCudaVersion(12040),
+              absl_testing::IsOkAndHolds(SemanticVersion{12, 4, 0}));
 }
 
 TEST(CudaVersionParserTest, LeastSignificantDigitIsIgnored) {
-  EXPECT_THAT(ParseCudaVersion(12041), IsOkAndHolds(SemanticVersion{12, 4, 0}));
+  EXPECT_THAT(ParseCudaVersion(12041),
+              absl_testing::IsOkAndHolds(SemanticVersion{12, 4, 0}));
 }
 
 TEST(CudaVersionParserTest, NegativeIntegerIsNotAValidVersion) {
   EXPECT_THAT(ParseCudaVersion(-42),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

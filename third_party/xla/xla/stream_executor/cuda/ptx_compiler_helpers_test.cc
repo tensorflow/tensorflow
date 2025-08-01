@@ -67,7 +67,7 @@ TEST(PtxCompilerHelpersTest, CreateErrorFromPTXASLogNoError) {
   EXPECT_THAT(CreateErrorFromPTXASLog(kPtxasLogSuccessfulCompilation,
                                       kDefaultArchitecture,
                                       /*cancel_if_reg_spill=*/true),
-              IsOk());
+              absl_testing::IsOk());
 }
 
 TEST(PtxCompilerHelpersTest,
@@ -75,14 +75,14 @@ TEST(PtxCompilerHelpersTest,
   EXPECT_THAT(CreateErrorFromPTXASLog(kPtxasLogRegisterAllocationError,
                                       kDefaultArchitecture,
                                       /*cancel_if_reg_spill=*/true),
-              StatusIs(absl::StatusCode::kResourceExhausted));
+              absl_testing::StatusIs(absl::StatusCode::kResourceExhausted));
 }
 
 TEST(PtxCompilerHelpersTest, CreateErrorFromPTXASLogDetectsPtxAsTooOldError) {
   EXPECT_THAT(
       CreateErrorFromPTXASLog(kPtxasLogTooOldError, kDefaultArchitecture,
                               /*cancel_if_reg_spill=*/true),
-      StatusIs(absl::StatusCode::kUnimplemented));
+      absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 TEST(PtxCompilerHelpersTest,
@@ -90,7 +90,7 @@ TEST(PtxCompilerHelpersTest,
   EXPECT_THAT(CreateErrorFromPTXASLog(kPtxasLogRegisterSpillWarning,
                                       kDefaultArchitecture,
                                       /*cancel_if_reg_spill=*/true),
-              StatusIs(absl::StatusCode::kCancelled));
+              absl_testing::StatusIs(absl::StatusCode::kCancelled));
 }
 
 TEST(PtxCompilerHelpersTest,
@@ -98,7 +98,7 @@ TEST(PtxCompilerHelpersTest,
   EXPECT_THAT(CreateErrorFromPTXASLog(kPtxasLogRegisterSpillWarning,
                                       kDefaultArchitecture,
                                       /*cancel_if_reg_spill=*/false),
-              IsOk());
+              absl_testing::IsOk());
 }
 
 TEST(PtxCompilerHelpersTest, IsPtxRegisterAllocationErrorStatus) {

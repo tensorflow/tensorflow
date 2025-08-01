@@ -78,24 +78,25 @@ TEST_F(CudaStreamTest, Memset32) {
   // Should fail due to the invalid size parameter.
   EXPECT_THAT(stream->Memset32(&buffer, 0xDEADBEEF,
                                kBufferNumElements * sizeof(uint32_t) + 1),
-              ::tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 
   // Should fail due to the non-4-byte-aligned pointer.
   DeviceMemoryBase unaligned_pointer =
       buffer.GetByteSlice(/*offset_bytes=*/1, /*size_bytes=*/0);
   EXPECT_THAT(stream->Memset32(&unaligned_pointer, 0xDEADBEEF,
                                kBufferNumElements * sizeof(uint32_t) + 1),
-              ::tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 
   // Correct call. Should succeed.
   EXPECT_THAT(stream->Memset32(&buffer, 0xDEADBEEF,
                                kBufferNumElements * sizeof(uint32_t)),
-              IsOk());
+              absl_testing::IsOk());
 
   std::array<uint32_t, kBufferNumElements> host_buffer;
-  EXPECT_THAT(stream->MemcpyD2H(buffer, absl::MakeSpan(host_buffer)), IsOk());
+  EXPECT_THAT(stream->MemcpyD2H(buffer, absl::MakeSpan(host_buffer)),
+              absl_testing::IsOk());
 
-  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
   EXPECT_THAT(host_buffer, Each(0xDEADBEEF));
 }
 
@@ -110,17 +111,18 @@ TEST_F(CudaStreamTest, MemZero) {
 
   EXPECT_THAT(stream->Memset32(&buffer, 0xDEADBEEF,
                                kBufferNumElements * sizeof(uint32_t)),
-              IsOk());
+              absl_testing::IsOk());
 
   // We overwrite half the buffer with zeros.
   EXPECT_THAT(
       stream->MemZero(&buffer, kBufferNumElements / 2 * sizeof(uint32_t)),
-      IsOk());
+      absl_testing::IsOk());
 
   std::array<uint32_t, kBufferNumElements> host_buffer;
-  EXPECT_THAT(stream->MemcpyD2H(buffer, absl::MakeSpan(host_buffer)), IsOk());
+  EXPECT_THAT(stream->MemcpyD2H(buffer, absl::MakeSpan(host_buffer)),
+              absl_testing::IsOk());
 
-  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
   // We expect the first half of the buffer to be zeros.
   EXPECT_THAT(
       absl::MakeConstSpan(host_buffer).subspan(0, kBufferNumElements / 2),
@@ -145,12 +147,13 @@ TEST_F(CudaStreamTest, MemcpyHostToDeviceAndBack) {
                 [i = 0]() mutable { return i++; });
 
   EXPECT_THAT(stream->MemcpyH2D(absl::MakeConstSpan(src_buffer), &buffer),
-              IsOk());
+              absl_testing::IsOk());
 
   std::array<uint32_t, kBufferNumElements> host_buffer;
-  EXPECT_THAT(stream->MemcpyD2H(buffer, absl::MakeSpan(host_buffer)), IsOk());
+  EXPECT_THAT(stream->MemcpyD2H(buffer, absl::MakeSpan(host_buffer)),
+              absl_testing::IsOk());
 
-  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
   EXPECT_THAT(host_buffer, ElementsAreArray(src_buffer));
 }
 
@@ -167,16 +170,17 @@ TEST_F(CudaStreamTest, MemcpyDeviceToDevice) {
 
   EXPECT_THAT(stream->Memset32(&buffer1, 0xDEADBEEF,
                                kBufferNumElements * sizeof(uint32_t)),
-              IsOk());
+              absl_testing::IsOk());
 
   EXPECT_THAT(stream->MemcpyD2D(&buffer2, buffer1,
                                 kBufferNumElements * sizeof(uint32_t)),
-              IsOk());
+              absl_testing::IsOk());
 
   std::array<uint32_t, kBufferNumElements> host_buffer;
-  EXPECT_THAT(stream->MemcpyD2H(buffer2, absl::MakeSpan(host_buffer)), IsOk());
+  EXPECT_THAT(stream->MemcpyD2H(buffer2, absl::MakeSpan(host_buffer)),
+              absl_testing::IsOk());
 
-  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
   EXPECT_THAT(host_buffer, Each(0xDEADBEEF));
 }
 
@@ -188,9 +192,9 @@ TEST_F(CudaStreamTest, DoHostCallback) {
   int callback_call_counter = 0;
   EXPECT_THAT(stream->DoHostCallback(
                   [&callback_call_counter]() { callback_call_counter++; }),
-              IsOk());
+              absl_testing::IsOk());
 
-  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
   EXPECT_EQ(callback_call_counter, 1);
 }
 
@@ -208,16 +212,17 @@ TEST_F(CudaStreamTest, LaunchKernel) {
   DeviceMemory<int32_t> b = executor_->AllocateArray<int32_t>(kLength, 0);
   DeviceMemory<int32_t> c = executor_->AllocateArray<int32_t>(kLength, 0);
 
-  EXPECT_THAT(stream->Memset32(&a, 1, kByteLength), IsOk());
-  EXPECT_THAT(stream->Memset32(&b, 2, kByteLength), IsOk());
-  EXPECT_THAT(stream->MemZero(&c, kByteLength), IsOk());
+  EXPECT_THAT(stream->Memset32(&a, 1, kByteLength), absl_testing::IsOk());
+  EXPECT_THAT(stream->Memset32(&b, 2, kByteLength), absl_testing::IsOk());
+  EXPECT_THAT(stream->MemZero(&c, kByteLength), absl_testing::IsOk());
   EXPECT_THAT(add.Launch(ThreadDim(), BlockDim(kLength), stream.get(), a, b, c),
-              IsOk());
+              absl_testing::IsOk());
 
-  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
 
   std::array<int32_t, kLength> host_buffer;
-  EXPECT_THAT(stream->MemcpyD2H(c, absl::MakeSpan(host_buffer)), IsOk());
+  EXPECT_THAT(stream->MemcpyD2H(c, absl::MakeSpan(host_buffer)),
+              absl_testing::IsOk());
   EXPECT_THAT(host_buffer, Each(3));
 }
 
@@ -239,15 +244,15 @@ TEST_F(CudaStreamTest, WaitForEvent) {
   TF_ASSERT_OK_AND_ASSIGN(CudaEvent event,
                           CudaEvent::Create(executor_, /*allow_timing=*/false));
 
-  EXPECT_THAT(stream->WaitFor(&event), IsOk());
+  EXPECT_THAT(stream->WaitFor(&event), absl_testing::IsOk());
 
   bool callback_called = false;
   EXPECT_THAT(
       stream->DoHostCallback([&callback_called]() { callback_called = true; }),
-      IsOk());
+      absl_testing::IsOk());
 
-  EXPECT_THAT(stream->RecordEvent(&event), IsOk());
-  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_THAT(stream->RecordEvent(&event), absl_testing::IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
   EXPECT_TRUE(callback_called);
 }
 
@@ -280,22 +285,22 @@ TEST_F(CudaStreamTest, WaitForOtherStream) {
     absl::MutexLock lock(&mutex);
     execution_order.push_back(ExecutionStage::kBeforeWaitForEvent);
   }),
-              IsOk());
-  EXPECT_THAT(stream1->WaitFor(&event), IsOk());
+              absl_testing::IsOk());
+  EXPECT_THAT(stream1->WaitFor(&event), absl_testing::IsOk());
   EXPECT_THAT(stream1->DoHostCallback([&]() {
     absl::MutexLock lock(&mutex);
     execution_order.push_back(ExecutionStage::kAfterWaitForEvent);
   }),
-              IsOk());
-  EXPECT_THAT(stream2->WaitFor(stream1.get()), IsOk());
+              absl_testing::IsOk());
+  EXPECT_THAT(stream2->WaitFor(stream1.get()), absl_testing::IsOk());
   EXPECT_THAT(stream2->DoHostCallback([&]() {
     absl::MutexLock lock(&mutex);
     execution_order.push_back(ExecutionStage::kAfterWaitForStream);
   }),
-              IsOk());
+              absl_testing::IsOk());
 
-  EXPECT_THAT(stream1->RecordEvent(&event), IsOk());
-  EXPECT_THAT(stream2->BlockHostUntilDone(), IsOk());
+  EXPECT_THAT(stream1->RecordEvent(&event), absl_testing::IsOk());
+  EXPECT_THAT(stream2->BlockHostUntilDone(), absl_testing::IsOk());
   absl::MutexLock lock(&mutex);
   EXPECT_THAT(execution_order,
               ElementsAre(ExecutionStage::kBeforeWaitForEvent,

@@ -226,7 +226,7 @@ TEST_P(CompilationProviderTest,
   CompilationOptions options;
   EXPECT_THAT(compilation_provider()->CompileToRelocatableModule(
                   kDefaultComputeCapability, kStandalonePtx, options),
-              StatusIs(absl::StatusCode::kUnavailable));
+              absl_testing::StatusIs(absl::StatusCode::kUnavailable));
 }
 
 TEST_P(CompilationProviderTest, CompileAndLinkStandaloneModule) {
@@ -268,8 +268,9 @@ TEST_P(CompilationProviderTest,
   CompilationOptions options;
   EXPECT_THAT(compilation_provider()->Compile(kDefaultComputeCapability,
                                               kDependentPtx, options),
-              StatusIs(_, AnyOf(HasSubstr("Undefined reference"),
-                                HasSubstr("Unresolved extern function"))));
+              absl_testing::StatusIs(
+                  _, AnyOf(HasSubstr("Undefined reference"),
+                           HasSubstr("Unresolved extern function"))));
 }
 
 TEST_P(CompilationProviderTest,
@@ -288,8 +289,9 @@ TEST_P(CompilationProviderTest,
   CompilationOptions options;
   EXPECT_THAT(compilation_provider()->CompileAndLink(
                   kDefaultComputeCapability, {Ptx{kDependentPtx}}, options),
-              StatusIs(_, AnyOf(HasSubstr("Undefined reference"),
-                                HasSubstr("Unresolved extern function"))));
+              absl_testing::StatusIs(
+                  _, AnyOf(HasSubstr("Undefined reference"),
+                           HasSubstr("Unresolved extern function"))));
 }
 
 TEST_P(CompilationProviderTest, CompileAndLinkMultipleModulesSucceeds) {
@@ -353,7 +355,7 @@ TEST_P(CompilationProviderTest, CancelsOnRegSpill) {
   EXPECT_THAT(compilation_provider()->CompileAndLink(
                   kDefaultComputeCapability,
                   {Ptx{dependent_ptx}, Ptx{kDependeePtx}}, options),
-              StatusIs(absl::StatusCode::kCancelled));
+              absl_testing::StatusIs(absl::StatusCode::kCancelled));
 
   // This is to make sure we didn't break the PTX and that's why it was failing
   // in the previous assertion.
@@ -361,7 +363,7 @@ TEST_P(CompilationProviderTest, CancelsOnRegSpill) {
   EXPECT_THAT(compilation_provider()->CompileAndLink(
                   kDefaultComputeCapability,
                   {Ptx{dependent_ptx}, Ptx{kDependeePtx}}, options),
-              IsOk());
+              absl_testing::IsOk());
 }
 
 TEST_P(CompilationProviderTest,
@@ -369,7 +371,7 @@ TEST_P(CompilationProviderTest,
   CompilationOptions default_options;
   EXPECT_THAT(compilation_provider()->Compile(CudaComputeCapability{100, 0},
                                               kStandalonePtx, default_options),
-              Not(IsOk()));
+              Not(absl_testing::IsOk()));
 }
 
 TEST_P(CompilationProviderTest,
@@ -383,7 +385,7 @@ TEST_P(CompilationProviderTest,
   EXPECT_THAT(
       compilation_provider()->CompileToRelocatableModule(
           CudaComputeCapability{100, 0}, kStandalonePtx, default_options),
-      Not(IsOk()));
+      Not(absl_testing::IsOk()));
 }
 
 TEST_P(CompilationProviderTest,
@@ -396,7 +398,7 @@ TEST_P(CompilationProviderTest,
   EXPECT_THAT(compilation_provider()->CompileAndLink(
                   CudaComputeCapability{100, 0}, {Ptx{kStandalonePtx}},
                   default_options),
-              Not(IsOk()));
+              Not(absl_testing::IsOk()));
 }
 
 TEST_P(CompilationProviderTest, ParallelCompileReturnsSameResult) {
@@ -416,7 +418,7 @@ TEST_P(CompilationProviderTest, ParallelCompileReturnsSameResult) {
       EXPECT_THAT(
           compilation_provider()->Compile(kDefaultComputeCapability,
                                           kStandalonePtx, CompilationOptions()),
-          IsOkAndHolds(reference_assembly));
+          absl_testing::IsOkAndHolds(reference_assembly));
     });
   }
 }
@@ -445,7 +447,7 @@ TEST_P(CompilationProviderTest,
       EXPECT_THAT(
           compilation_provider()->CompileToRelocatableModule(
               kDefaultComputeCapability, kStandalonePtx, CompilationOptions()),
-          IsOkAndHolds(reference_module));
+          absl_testing::IsOkAndHolds(reference_module));
     });
   }
 }
@@ -471,7 +473,7 @@ TEST_P(CompilationProviderTest, ParallelCompileAndLinkReturnsSameResult) {
       EXPECT_THAT(compilation_provider()->CompileAndLink(
                       kDefaultComputeCapability, {Ptx{kStandalonePtx}},
                       CompilationOptions()),
-                  IsOkAndHolds(reference_assembly));
+                  absl_testing::IsOkAndHolds(reference_assembly));
     });
   }
 }

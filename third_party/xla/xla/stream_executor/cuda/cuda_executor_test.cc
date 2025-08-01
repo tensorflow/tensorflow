@@ -85,14 +85,14 @@ TEST(CudaExecutorTest, GetCudaKernel) {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> kernel,
                             executor->LoadKernel(spec));
     EXPECT_THAT(cuda_executor->GetCudaKernel(kernel.get()),
-                IsOkAndHolds(kernel.get()));
+                absl_testing::IsOkAndHolds(kernel.get()));
 
     cuda_executor->UnloadKernel(kernel.get());
     EXPECT_THAT(cuda_executor->GetCudaKernel(kernel.get()),
-                StatusIs(absl::StatusCode::kNotFound));
+                absl_testing::StatusIs(absl::StatusCode::kNotFound));
 
     EXPECT_THAT(cuda_executor->GetCudaKernel(nullptr),
-                StatusIs(absl::StatusCode::kNotFound));
+                absl_testing::StatusIs(absl::StatusCode::kNotFound));
   };
 
   TF_ASSERT_OK_AND_ASSIGN(KernelLoaderSpec add,
@@ -155,10 +155,10 @@ TEST(CudaExecutorTest,
   constexpr uint64_t kTooBig = 1125899906842624;  // 1 PiB
   EXPECT_THAT(
       allocator->Allocate(kTooBig),
-      StatusIs(_,
-               AnyOf(HasSubstr("failed to allocate 1.00PiB (1125899906842624 "
-                               "bytes) from device collective memory:"),
-                     HasSubstr("out of memory"))));
+      absl_testing::StatusIs(
+          _, AnyOf(HasSubstr("failed to allocate 1.00PiB (1125899906842624 "
+                             "bytes) from device collective memory:"),
+                   HasSubstr("out of memory"))));
 }
 
 TEST(CudaExecutorTest, CreateUnsupportedMemoryAllocatorsFail) {
@@ -167,7 +167,7 @@ TEST(CudaExecutorTest, CreateUnsupportedMemoryAllocatorsFail) {
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
   EXPECT_THAT(executor->CreateMemoryAllocator(MemoryType::kDevice),
-              Not(IsOk()));
+              Not(absl_testing::IsOk()));
 }
 }  // namespace
 }  // namespace stream_executor::gpu

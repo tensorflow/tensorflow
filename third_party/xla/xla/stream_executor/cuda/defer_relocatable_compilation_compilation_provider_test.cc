@@ -52,7 +52,7 @@ TEST(DeferRelocatableCompilationCompilationProviderTest,
       .WillByDefault(Return(false));
   EXPECT_THAT(DeferRelocatableCompilationCompilationProvider::Create(
                   std::move(mock_compilation_provider)),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(DeferRelocatableCompilationCompilationProviderTest,
@@ -64,7 +64,7 @@ TEST(DeferRelocatableCompilationCompilationProviderTest,
       .WillByDefault(Return(true));
   EXPECT_THAT(DeferRelocatableCompilationCompilationProvider::Create(
                   std::move(mock_compilation_provider)),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 constexpr absl::string_view kSomePtxString = "some ptx string";
@@ -89,7 +89,7 @@ TEST(DeferRelocatableCompilationCompilationProviderTest,
   EXPECT_THAT(compilation_provider->CompileToRelocatableModule(
                   kDefaultComputeCapability, kSomePtxString,
                   kDefaultCompilationOptions),
-              IsOk());
+              absl_testing::IsOk());
 }
 
 TEST(DeferRelocatableCompilationCompilationProviderTest,
@@ -132,7 +132,7 @@ TEST(DeferRelocatableCompilationCompilationProviderTest,
                    Ptx{std::string(kSomeOtherPtxString)},
                    some_actual_relocatable_module},
                   kDefaultCompilationOptions),
-              IsOk());
+              absl_testing::IsOk());
 }
 
 TEST(DeferRelocatableCompilationCompilationProviderTest,
@@ -155,7 +155,7 @@ TEST(DeferRelocatableCompilationCompilationProviderTest,
   EXPECT_THAT(
       compilation_provider->Compile(kDefaultComputeCapability, kSomePtxString,
                                     kDefaultCompilationOptions),
-      IsOk());
+      absl_testing::IsOk());
 }
 
 }  // namespace

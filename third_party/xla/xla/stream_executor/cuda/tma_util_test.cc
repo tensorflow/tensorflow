@@ -30,20 +30,20 @@ using ::tsl::testing::StatusIs;
 
 TEST(TmaUtilTest, GetTensorMapDataTypeReturnsCorrectDataType) {
   EXPECT_THAT(GetTensorMapDataType(1),
-              IsOkAndHolds(CU_TENSOR_MAP_DATA_TYPE_UINT8));
+              absl_testing::IsOkAndHolds(CU_TENSOR_MAP_DATA_TYPE_UINT8));
   EXPECT_THAT(GetTensorMapDataType(2),
-              IsOkAndHolds(CU_TENSOR_MAP_DATA_TYPE_UINT16));
+              absl_testing::IsOkAndHolds(CU_TENSOR_MAP_DATA_TYPE_UINT16));
   EXPECT_THAT(GetTensorMapDataType(4),
-              IsOkAndHolds(CU_TENSOR_MAP_DATA_TYPE_UINT32));
+              absl_testing::IsOkAndHolds(CU_TENSOR_MAP_DATA_TYPE_UINT32));
   EXPECT_THAT(GetTensorMapDataType(8),
-              IsOkAndHolds(CU_TENSOR_MAP_DATA_TYPE_UINT64));
+              absl_testing::IsOkAndHolds(CU_TENSOR_MAP_DATA_TYPE_UINT64));
 }
 
 TEST(TmaUtilTest, GetTensorMapDataTypeFailsGracefully) {
   EXPECT_THAT(GetTensorMapDataType(0),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(GetTensorMapDataType(16),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(TmaUtilTest, GetTensorMapSwizzleReturnsCorrectSwizzle) {
