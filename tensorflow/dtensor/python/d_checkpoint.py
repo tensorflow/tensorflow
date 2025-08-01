@@ -367,7 +367,7 @@ class DTrackableSaver(util.TrackableSaver):
         save_path_tensor=file_prefix_tensor,
         reader=reader,
         restore_op_cache=self._restore_op_cache,
-        graph_view=self._graph_view,
+        object_graph_view=self._graph_view,  # Fixed: use object_graph_view instead of graph_view
         options=options,
         saveables_cache=self._saveables_cache)
     restore_lib.CheckpointPosition(

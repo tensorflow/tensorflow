@@ -1,0 +1,31 @@
+pylint: Command line or configuration file:1: UserWarning: 'Exception' is not a proper value for the 'overgeneral-exceptions' option. Use fully qualified name (maybe 'builtins.Exception' ?) instead. This will cease to be checked at runtime when the configuration upgrader is released.
+pylint: Command line or configuration file:1: UserWarning: 'StandardError' is not a proper value for the 'overgeneral-exceptions' option. Use fully qualified name (maybe 'builtins.StandardError' ?) instead. This will cease to be checked at runtime when the configuration upgrader is released.
+pylint: Command line or configuration file:1: UserWarning: 'BaseException' is not a proper value for the 'overgeneral-exceptions' option. Use fully qualified name (maybe 'builtins.BaseException' ?) instead. This will cease to be checked at runtime when the configuration upgrader is released.
+************* Module /Users/priyanshumishra/Documents/tensorflow/tensorflow/tools/ci_build/pylintrc
+tensorflow/tools/ci_build/pylintrc:1:0: E0015: Unrecognized option found: profile, cache-size, files-output, comment, zope, required-attributes, bad-functions, disable-report, no-space-check, ignore-iface-methods, short-func-length, deprecated-members, ignore-exceptions, copyright (unrecognized-option)
+************* Module conv_test
+tensorflow/dtensor/python/tests/conv_test.py:138:41: E0606: Possibly using variable 'input_layout' before assignment (possibly-used-before-assignment)
+tensorflow/dtensor/python/tests/conv_test.py:143:43: E0606: Possibly using variable 'output_layout' before assignment (possibly-used-before-assignment)
+tensorflow/dtensor/python/tests/conv_test.py:213:41: E0606: Possibly using variable 'input_layout' before assignment (possibly-used-before-assignment)
+tensorflow/dtensor/python/tests/conv_test.py:219:36: E0606: Possibly using variable 'output_layout' before assignment (possibly-used-before-assignment)
+************* Module batchparallel_spmd_test
+tensorflow/dtensor/python/tests/batchparallel_spmd_test.py:106:20: E0606: Possibly using variable 'layout_spec' before assignment (possibly-used-before-assignment)
+tensorflow/dtensor/python/tests/batchparallel_spmd_test.py:133:20: E0606: Possibly using variable 'layout_spec' before assignment (possibly-used-before-assignment)
+tensorflow/dtensor/python/tests/batchparallel_spmd_test.py:160:20: E0606: Possibly using variable 'layout_spec' before assignment (possibly-used-before-assignment)
+************* Module python.d_checkpoint
+tensorflow/dtensor/python/d_checkpoint.py:341:13: E1123: Unexpected keyword argument 'graph_view' in constructor call (unexpected-keyword-arg)
+tensorflow/dtensor/python/d_checkpoint.py:341:13: E1120: No value for argument 'object_graph_view' in constructor call (no-value-for-parameter)
+************* Module tf_upgrade
+tensorflow/tools/compatibility/tf_upgrade.py:248:60: E0606: Possibly using variable 'errors' before assignment (possibly-used-before-assignment)
+************* Module osx.arm64.tensorflow_metal_plugin_test
+tensorflow/tools/ci_build/osx/arm64/tensorflow_metal_plugin_test.py:2647:8: E1121: Too many positional arguments for method call (too-many-function-args)
+tensorflow/tools/ci_build/osx/arm64/tensorflow_metal_plugin_test.py:2648:8: E1121: Too many positional arguments for method call (too-many-function-args)
+tensorflow/tools/ci_build/osx/arm64/tensorflow_metal_plugin_test.py:5265:8: E1121: Too many positional arguments for method call (too-many-function-args)
+tensorflow/tools/ci_build/osx/arm64/tensorflow_metal_plugin_test.py:5296:9: E1121: Too many positional arguments for method call (too-many-function-args)
+tensorflow/tools/ci_build/osx/arm64/tensorflow_metal_plugin_test.py:5297:9: E1121: Too many positional arguments for method call (too-many-function-args)
+tensorflow/tools/ci_build/osx/arm64/tensorflow_metal_plugin_test.py:5298:9: E1121: Too many positional arguments for method call (too-many-function-args)
+tensorflow/tools/ci_build/osx/arm64/tensorflow_metal_plugin_test.py:5299:9: E1121: Too many positional arguments for method call (too-many-function-args)
+tensorflow/tools/ci_build/osx/arm64/tensorflow_metal_plugin_test.py:5332:8: E1121: Too many positional arguments for method call (too-many-function-args)
+tensorflow/tools/ci_build/osx/arm64/tensorflow_metal_plugin_test.py:5357:8: E1121: Too many positional arguments for method call (too-many-function-args)
+tensorflow/tools/ci_build/osx/arm64/tensorflow_metal_plugin_test.py:5383:8: E1121: Too many positional arguments for method call (too-many-function-args)
+tensorflow/tools/ci_build/osx/arm64/tensorflow_metal_plugin_test.py:5406:8: E1121: Too many positional arguments for method call (too-many-function-args)

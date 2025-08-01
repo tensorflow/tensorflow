@@ -1,0 +1,8 @@
+pylint: Command line or configuration file:1: UserWarning: 'Exception' is not a proper value for the 'overgeneral-exceptions' option. Use fully qualified name (maybe 'builtins.Exception' ?) instead. This will cease to be checked at runtime when the configuration upgrader is released.
+pylint: Command line or configuration file:1: UserWarning: 'StandardError' is not a proper value for the 'overgeneral-exceptions' option. Use fully qualified name (maybe 'builtins.StandardError' ?) instead. This will cease to be checked at runtime when the configuration upgrader is released.
+pylint: Command line or configuration file:1: UserWarning: 'BaseException' is not a proper value for the 'overgeneral-exceptions' option. Use fully qualified name (maybe 'builtins.BaseException' ?) instead. This will cease to be checked at runtime when the configuration upgrader is released.
+************* Module /Users/priyanshumishra/Documents/tensorflow/tensorflow/tools/ci_build/pylintrc
+tensorflow/tools/ci_build/pylintrc:1:0: E0015: Unrecognized option found: profile, cache-size, files-output, comment, zope, required-attributes, bad-functions, disable-report, no-space-check, ignore-iface-methods, short-func-length, deprecated-members, ignore-exceptions, copyright (unrecognized-option)
+************* Module python.d_checkpoint
+tensorflow/dtensor/python/d_checkpoint.py:295:8: E0203: Access to member '_last_save_object_graph' before its definition line 311 (access-member-before-definition)
+tensorflow/dtensor/python/d_checkpoint.py:345:9: E0203: Access to member '_file_prefix_placeholder' before its definition line 348 (access-member-before-definition)
