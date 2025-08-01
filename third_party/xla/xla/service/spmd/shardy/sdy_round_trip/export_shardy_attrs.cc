@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
@@ -83,12 +85,13 @@ void saveOpShardingPerValueAttr(
 }
 
 // Converts the shardings from `kShardingAttr` into
-// `kShardingRoundTripStringAttr`.
+// `kShardingRoundTripStringAttr`, then removes 'kShardingAttr' from the FuncOp.
 LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
   for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); ++argNum) {
     if (auto oldSharding = funcOp.getArgAttrOfType<TensorShardingAttr>(
             argNum, kShardingAttr)) {
       setFrontendAttribute(funcOp, kShardingRoundTripAttr, oldSharding, argNum);
+      funcOp.removeArgAttr(argNum, kShardingAttr);
     }
   }
 
@@ -116,6 +119,7 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
           customCallOp,
           TensorShardingPerValueAttr::get(customCallOp.getContext(), sharding));
       returnOperand.set(customCallOp.getResult(0));
+      funcOp.removeResultAttr(returnOperand.getOperandNumber(), kShardingAttr);
     }
   }
 
@@ -123,6 +127,7 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
     if (TensorShardingPerValueAttr oldShardingPerValue =
             mlir::sdy::getShardingPerValue(op)) {
       saveOpShardingPerValueAttr(op, oldShardingPerValue);
+      op->removeAttr(kShardingAttr);
     }
     if (auto oldShardingRule =
             op->getAttrOfType<OpShardingRuleAttr>(kShardingRuleAttr)) {
@@ -152,12 +157,15 @@ class SdyRoundTripExportShardyAttrsPass
       }
     }
 
+    mlir::SymbolTable symbolTable(moduleOp);
     SmallVector<NamedAttribute> stablehloMeshes;
     // Saves the MeshOps for StableHLO<->HLO round-trip and removes them from
     // the ModuleOp.
-    for (MeshOp meshOp : moduleOp.getOps<MeshOp>()) {
+    for (MeshOp meshOp :
+         llvm::make_early_inc_range(moduleOp.getOps<MeshOp>())) {
       stablehloMeshes.emplace_back(meshOp.getSymNameAttr(),
                                    meshOp.getMeshAttr());
+      symbolTable.erase(meshOp);
     }
     if (!stablehloMeshes.empty()) {
       setFrontendAttribute(moduleOp, kMeshesRoundTripAttr,
