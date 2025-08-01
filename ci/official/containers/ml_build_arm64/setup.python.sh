@@ -25,7 +25,7 @@ REQUIREMENTS=$2
 
 add-apt-repository ppa:deadsnakes/ppa
 # Install Python packages for this container's version
-if [[ ${VERSION} == "python3.13-nogil" || ${VERSION} == "python3.14-nogil" ]]; then
+if [[ ${VERSION} == "python3.13-nogil" ]]; then
   cat >pythons.txt <<EOF
 $VERSION
 EOF
@@ -43,7 +43,35 @@ $VERSION-venv
 EOF
 fi
 
-/setup.packages.sh pythons.txt
+if [[ ${VERSION} == "python3.14" ]]; then
+  if [[ ! -d Python-3.14.0rc1 ]]; then
+    apt update && apt install -y libssl-dev zlib1g-dev libbz2-dev libreadline-dev libncurses5-dev libffi-dev liblzma-dev
+    wget https://www.python.org/ftp/python/3.14.0/Python-3.14.0rc1.tar.xz
+    tar -xf Python-3.14.0rc1.tar.xz
+  fi
+  pushd Python-3.14.0rc1
+  mkdir -p /python314-0rc1
+  CC=clang-18 CXX=clang++-18 ./configure --prefix /python314-0rc1 --with-ensurepip=install
+  make -j$(nproc)
+  make install -j$(nproc)
+  ln -s /python314-0rc1/bin/python3 /usr/bin/python3.14
+  popd
+elif [[ ${VERSION} == "python3.14-nogil" ]]; then
+  if [[ ! -d Python-3.14.0rc1 ]]; then
+    apt update && apt install -y libssl-dev zlib1g-dev libbz2-dev libreadline-dev libncurses5-dev libffi-dev liblzma-dev
+    wget https://www.python.org/ftp/python/3.14.0/Python-3.14.0rc1.tar.xz
+    tar -xf Python-3.14.0rc1.tar.xz
+  fi
+  pushd Python-3.14.0rc1
+  mkdir -p /python314-0rc1-nogil
+  CC=clang-18 CXX=clang++-18 ./configure --prefix /python314-0rc1-nogil --disable-gil --with-ensurepip=install
+  make -j$(nproc)
+  make install -j$(nproc)
+  ln -s /python314-0rc1-nogil/bin/python3 /usr/bin/python3.14-nogil
+  popd
+else
+  /setup.packages.sh pythons.txt
+fi
 
 # Re-link pyconfig.h from aarch64-linux-gnu into the devtoolset directory
 # for any Python version present
