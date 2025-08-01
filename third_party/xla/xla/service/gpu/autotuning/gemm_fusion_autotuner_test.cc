@@ -1704,8 +1704,6 @@ TEST_F(GemmFusionAutotunerTest, VerifyHopperConfigsAreDifferentFromBlackwell) {
   EXPECT_NE(blackwell_configs_set, hopper_configs_set);
 }
 
-// TODO(b/315957220): Remove the experimental flags once TMA is enabled by
-// default.
 class GemmFusionAutotunerEnableTma : public GemmFusionAutotunerTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
@@ -1713,7 +1711,6 @@ class GemmFusionAutotunerEnableTma : public GemmFusionAutotunerTest {
         GemmFusionAutotunerTest::GetDebugOptionsForTest();
     debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
         DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
-    debug_options.set_xla_gpu_experimental_enable_triton_tma(true);
     return debug_options;
   }
 };

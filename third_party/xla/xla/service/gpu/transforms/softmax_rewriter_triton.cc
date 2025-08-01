@@ -386,6 +386,12 @@ DecideIfShouldFuseAndMaybeSetBlockLevelParameters(
   *backend_config.mutable_fusion_backend_config()
        ->mutable_block_level_fusion_config() =
       tiled_runtime_data.block_level_parameters.ToBlockLevelFusionConfig();
+
+  // Enable TMA for softmax fusions.
+  backend_config.mutable_fusion_backend_config()
+      ->mutable_block_level_fusion_config()
+      ->set_is_tma_allowed(true);
+
   TF_RETURN_IF_ERROR(normalization_fusion->set_backend_config(backend_config));
   VLOG(2) << "Fusing with backend config: " << backend_config.DebugString();
 

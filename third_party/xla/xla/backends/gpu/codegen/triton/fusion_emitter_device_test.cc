@@ -90,7 +90,6 @@ class TmaParameterizedTritonEmitterTest
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TritonEmitterTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_experimental_enable_triton_tma(GetParam());
     return debug_options;
   }
 };
@@ -114,8 +113,6 @@ class TmaAndLayoutParameterizedTritonEmitterTest
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TritonEmitterTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_experimental_enable_triton_tma(
-        GetParam().enable_tma);
     return debug_options;
   }
 };
