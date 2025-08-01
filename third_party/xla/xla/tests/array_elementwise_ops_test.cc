@@ -1421,6 +1421,10 @@ class TotalOrderTest : public ClientLibraryTestRunnerMixin<
       // TODO(b/385004399): Run tests on these types on TPU.
       GTEST_SKIP();
     }
+
+    if (std::is_same_v<T, double> && !test::BackendSupportsFloat64()) {
+      GTEST_SKIP();
+    }
   }
 };
 
@@ -1430,9 +1434,7 @@ using Types =
                      tsl::float8_e5m2, tsl::float8_e5m2fnuz,
                      Eigen::half,
                      Eigen::bfloat16,
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
                      double,
-#endif
                      tsl::float4_e2m1fn, tsl::float8_e8m0fnu,
                      float>;
 

@@ -57,16 +57,12 @@ using TypesF16F32 = ::testing::Types<
 
 using TypesF16F32F64 = ::testing::Types<
     Eigen::half,
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
     double,
-#endif
     float>;
 
 using TypesF16F32F64CF64 = ::testing::Types<
     Eigen::half,
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
     double, complex64,
-#endif
     float>;
 
 #if GOOGLE_CUDA
@@ -99,7 +95,15 @@ TEST_F(DotOperationTest, DotOfInputTupleElem) {
 }
 
 template <typename T>
-class DotOperationTest_F16F32F64CF64 : public DotOperationTest {};
+class DotOperationTest_F16F32F64CF64 : public DotOperationTest {
+ protected:
+  void SetUp() override {
+    if ((std::is_same_v<T, double> || std::is_same_v<T, complex64>) &&
+        !test::BackendSupportsFloat64()) {
+      GTEST_SKIP();
+    }
+  }
+};
 TYPED_TEST_CASE(DotOperationTest_F16F32F64CF64, TypesF16F32F64CF64);
 
 TYPED_TEST(DotOperationTest_F16F32F64CF64, ZeroElementVectorDot) {
@@ -115,7 +119,14 @@ TYPED_TEST(DotOperationTest_F16F32F64CF64, ZeroElementVectorDot) {
 }
 
 template <typename T>
-class DotOperationTest_F16F32F64 : public DotOperationTest {};
+class DotOperationTest_F16F32F64 : public DotOperationTest {
+ protected:
+  void SetUp() override {
+    if (std::is_same_v<T, double> && !test::BackendSupportsFloat64()) {
+      GTEST_SKIP();
+    }
+  }
+};
 TYPED_TEST_CASE(DotOperationTest_F16F32F64, TypesF16F32F64);
 
 TYPED_TEST(DotOperationTest_F16F32F64, TrivialMatrixVectorDot) {
@@ -256,6 +267,13 @@ class SquareMatrixDot : public DotOperationTest {
     Array2D<T> expected({{15.0f, -2.0f}, {-25.0f, 34.0f}});
     ComputeAndCompareR2<T>(&builder, expected,
                            {lhs_handle.get(), rhs_handle.get()}, error_spec_);
+  }
+
+ protected:
+  void SetUp() override {
+    if (std::is_same_v<T, double> && !test::BackendSupportsFloat64()) {
+      GTEST_SKIP();
+    }
   }
 };
 
@@ -621,6 +639,14 @@ class NonsquareMatrixDot : public DotOperationTest {
     ComputeAndCompareR2<T>(&builder, expected,
                            {lhs_handle.get(), rhs_handle.get()}, error_spec_);
   }
+
+ protected:
+  void SetUp() override {
+    if ((std::is_same_v<T, double> || std::is_same_v<T, complex64>) &&
+        !test::BackendSupportsFloat64()) {
+      GTEST_SKIP();
+    }
+  }
 };
 
 TYPED_TEST_CASE(NonsquareMatrixDot, TypesF16F32F64CF64);
@@ -671,7 +697,14 @@ TYPED_TEST(DotOperationTest_F16F32F64CF64, ConcurrentMatMult) {
 }
 
 template <typename T>
-class DotOperationTestForBatchMatMul : public DotOperationTest {};
+class DotOperationTestForBatchMatMul : public DotOperationTest {
+ protected:
+  void SetUp() override {
+    if (std::is_same_v<T, double> && !test::BackendSupportsFloat64()) {
+      GTEST_SKIP();
+    }
+  }
+};
 TYPED_TEST_CASE(DotOperationTestForBatchMatMul, TypesF16F32F64);
 
 // Regression test for b/32055648. The root of the graph is a kFusion of 4
@@ -782,6 +815,14 @@ class DotOperationTestWithCublasLt_F16F32F64CF64 : public DotOperationTest {
 
     execution_options_.mutable_debug_options()->set_xla_gpu_enable_cublaslt(
         enable_cublas_lt);
+  }
+
+ protected:
+  void SetUp() override {
+    if ((std::is_same_v<T, double> || std::is_same_v<T, complex64>) &&
+        !test::BackendSupportsFloat64()) {
+      GTEST_SKIP();
+    }
   }
 };
 TYPED_TEST_CASE(DotOperationTestWithCublasLt_F16F32F64CF64, TypesF16F32F64CF64);
