@@ -42,3 +42,19 @@ tsl_pybind_extension(
         "@nanobind",
     ],
 )
+
+tsl_pybind_extension(
+    name = "gpu_ondevice_tracing",
+    srcs = ["gpu_ondevice_tracing.cc"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/backends/profiler/gpu:ondevice_event_collector",
+        "//xla/backends/profiler/gpu:ondevice_event_receiver",
+        "//xla/backends/profiler/gpu:ondevice_trace_events",
+        "@nanobind",
+    ],
+)
