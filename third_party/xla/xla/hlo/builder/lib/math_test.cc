@@ -215,6 +215,10 @@ class MathTypedTest : public MathTest {
       // TODO(b/385004399): Run tests on these types on TPU.
       GTEST_SKIP();
     }
+
+    if (std::is_same_v<T, double> && !test::BackendSupportsFloat64()) {
+      GTEST_SKIP();
+    }
   }
 };
 
@@ -224,9 +228,7 @@ using TestTypes =
                      tsl::float8_e5m2fnuz,
                      Eigen::half,
                      Eigen::bfloat16,
-#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64
                      double,
-#endif
                      tsl::float4_e2m1fn,
                      float>;
 
@@ -313,8 +315,10 @@ TEST_F(MathTest, SqrtF64) {
   ComputeAndCompareR0<double>(&builder, 0.0f, {&zero_literal}, kErrorSpec);
 }
 
-#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64
 TEST_F(MathTest, ErfInvF64) {
+  if (!test::BackendSupportsFloat64()) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
   auto x = ConstantR1<double>(
       &builder, {-0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1,
@@ -333,7 +337,6 @@ TEST_F(MathTest, ErfInvF64) {
                                   1.1630871536766736};
   ComputeAndCompareR1<double>(&builder, expected, {}, ErrorSpec{1e-15});
 }
-#endif
 
 TEST_F(MathTest, SquareTenValues) {
   XlaBuilder builder(TestName());
