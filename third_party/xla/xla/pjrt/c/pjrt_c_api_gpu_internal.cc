@@ -295,8 +295,8 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
   }
 
   auto gpu_topology = std::make_shared<const xla::GpuTopology>(
-      device_ids, target_config_proto.device_description_str(),
-      sizes.num_slices, sizes.num_hosts_per_slice, sizes.num_devices_per_host);
+      target_config_proto.device_description_str(), sizes.num_slices,
+      sizes.num_hosts_per_slice, sizes.num_devices_per_host);
 
   std::string target_config_attr;
   if (!tsl::protobuf::TextFormat::PrintToString(target_config_proto,
