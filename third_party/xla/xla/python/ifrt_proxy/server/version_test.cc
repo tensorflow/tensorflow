@@ -44,7 +44,7 @@ TEST_P(CompatibleVersionTest, VerifyProtocolVersion) {
   EXPECT_THAT(
       ChooseProtocolVersion(param.client_min_version, param.client_max_version,
                             param.server_min_version, param.server_max_version),
-      IsOk());
+      absl_testing::IsOk());
 }
 
 TEST_P(CompatibleVersionTest, VerifyIfrtSerdesVersionNumber) {
@@ -54,7 +54,7 @@ TEST_P(CompatibleVersionTest, VerifyIfrtSerdesVersionNumber) {
                   SerDesVersionNumber(param.client_max_version),
                   SerDesVersionNumber(param.server_min_version),
                   SerDesVersionNumber(param.server_max_version)),
-              IsOk());
+              absl_testing::IsOk());
 }
 
 INSTANTIATE_TEST_SUITE_P(CompatibleVersionTest, CompatibleVersionTest,
@@ -69,7 +69,7 @@ TEST_P(IncompatibleVersionTest, VerifyProtocolVersion) {
   EXPECT_THAT(
       ChooseProtocolVersion(param.client_min_version, param.client_max_version,
                             param.server_min_version, param.server_max_version),
-      StatusIs(absl::StatusCode::kInvalidArgument));
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_P(IncompatibleVersionTest, VerifyIfrtSerdesVersionNumber) {
@@ -79,7 +79,7 @@ TEST_P(IncompatibleVersionTest, VerifyIfrtSerdesVersionNumber) {
                   SerDesVersionNumber(param.client_max_version),
                   SerDesVersionNumber(param.server_min_version),
                   SerDesVersionNumber(param.server_max_version)),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 INSTANTIATE_TEST_SUITE_P(IncompatibleVersionTest, IncompatibleVersionTest,
