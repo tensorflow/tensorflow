@@ -248,7 +248,7 @@ tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
     const Thunk::ExecuteParams& params) {
   // Short-circuit execution of empty thunk sequence.
   if (ABSL_PREDICT_FALSE(num_thunks_ == 0)) {
-    return Thunk::OkExecuteEventSingleton();
+    return Thunk::OkExecuteEvent();
   }
 
   // Short-circuit execution of single thunk sequence.
@@ -382,7 +382,7 @@ ThunkExecutor::ExecuteSequential(const Thunk::ExecuteParams& params) {
 
   // If we got to the end of the sequence it means that all thunks have
   // succeeded.
-  return Thunk::OkExecuteEventSingleton();
+  return Thunk::OkExecuteEvent();
 }
 
 void ThunkExecutor::ResumeExecuteSequential(
@@ -480,7 +480,7 @@ void ThunkExecutor::Execute(ExecuteState* state,
     Thunk& thunk = *state->executor->thunk_sequence_[id];
     tsl::AsyncValueRef<ExecuteEvent> execute_event =
         ABSL_PREDICT_FALSE(state->abort.load(std::memory_order_relaxed))
-            ? Thunk::OkExecuteEventSingleton()
+            ? Thunk::OkExecuteEvent()
             : TracedExecute(thunk, params);
 
     if (ABSL_PREDICT_TRUE(execute_event.IsAvailable())) {

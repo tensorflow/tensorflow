@@ -178,7 +178,7 @@ XnnFusionThunk::XnnRuntime::Invoke(
 
   // Execute XNNPACK runtime in the caller thread.
   XNN_RETURN_IF_ERROR(xnn_invoke_runtime(runtime));
-  return OkExecuteEventSingleton();
+  return OkExecuteEvent();
 }
 
 absl::Status XnnFusionThunk::XnnRuntime::Release() {

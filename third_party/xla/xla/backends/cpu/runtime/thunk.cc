@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/no_destructor.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
@@ -37,6 +38,11 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme_encode.h"
 
 namespace xla::cpu {
+
+// Ok execute event allocated with the static storage duration.
+static tsl::internal::AsyncValueStorage<Thunk::ExecuteEvent> ok_storage;
+absl::NoDestructor<tsl::AsyncValueOwningRef<Thunk::ExecuteEvent>>
+    Thunk::ok_event_(tsl::MakeAvailableAsyncValueRef<ExecuteEvent>(ok_storage));
 
 absl::string_view Thunk::KindToString(Kind kind) {
   switch (kind) {
@@ -81,10 +87,7 @@ absl::string_view Thunk::KindToString(Kind kind) {
   }
 }
 
-Thunk::Thunk(Kind kind, Info info)
-    : kind_(kind),
-      info_(std::move(info)),
-      ok_event_(OkExecuteEventSingleton()) {}
+Thunk::Thunk(Kind kind, Info info) : kind_(kind), info_(std::move(info)) {}
 
 absl::StatusOr<Thunk::CollectiveExecuteParams>
 Thunk::CollectiveExecuteParams::Create(
@@ -148,15 +151,6 @@ Thunk::CustomCallExecuteParams::CustomCallExecuteParams(
       device_ordinal(device_ordinal),
       intra_op_thread_pool(intra_op_thread_pool),
       ffi_execution_context(ffi_execution_context) {}
-
-tsl::AsyncValueRef<Thunk::ExecuteEvent> Thunk::OkExecuteEventSingleton() {
-  static tsl::AsyncValueOwningRef<ExecuteEvent>* singleton = [] {
-    auto* storage = new tsl::internal::AsyncValueStorage<ExecuteEvent>();
-    return new tsl::AsyncValueOwningRef<ExecuteEvent>(
-        tsl::MakeAvailableAsyncValueRef<ExecuteEvent>(*storage));
-  }();
-  return singleton->AsRef();
-}
 
 Thunk::ExecuteSession::ExecuteSession(int64_t max_workers,
                                       int64_t split_threshold)
