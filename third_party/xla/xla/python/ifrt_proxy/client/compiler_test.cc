@@ -211,9 +211,10 @@ TEST_F(CompilerTest, Compile) {
   EXPECT_THAT(executable->addressable_devices(),
               ElementsAre(&devices[0], &devices[1]));
   EXPECT_THAT(executable->Fingerprint(),
-              IsOkAndHolds(Optional(std::string("fingerprint"))));
-  EXPECT_THAT(executable->GetReadyFuture().Await(),
-              StatusIs(absl::StatusCode::kUnknown, "injected error"));
+              absl_testing::IsOkAndHolds(Optional(std::string("fingerprint"))));
+  EXPECT_THAT(
+      executable->GetReadyFuture().Await(),
+      absl_testing::StatusIs(absl::StatusCode::kUnknown, "injected error"));
 
   EXPECT_EQ(requests_queue.Pop().check_future_request().future_handle(), 5678);
 }

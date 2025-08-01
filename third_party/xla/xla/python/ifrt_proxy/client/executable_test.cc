@@ -177,7 +177,7 @@ TEST_F(LoadedExecutableTest, Metadata) {
   EXPECT_EQ(output_layouts[0]->xla_layout(),
             xla::LayoutUtil::MakeDescendingLayout(/*num_dims=*/2));
   EXPECT_THAT(executable.GetOutputMemoryKinds(),
-              IsOkAndHolds(ElementsAre(ElementsAre("foo"))));
+              absl_testing::IsOkAndHolds(ElementsAre(ElementsAre("foo"))));
 }
 
 // TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
@@ -297,8 +297,9 @@ TEST_F(LoadedExecutableTest, Execute) {
       auto result,
       executable.Execute(absl::MakeSpan(args), exec_options, devices));
 
-  EXPECT_THAT(result.status.Await(),
-              StatusIs(absl::StatusCode::kUnknown, "injected error"));
+  EXPECT_THAT(
+      result.status.Await(),
+      absl_testing::StatusIs(absl::StatusCode::kUnknown, "injected error"));
 
   ASSERT_THAT(result.outputs, SizeIs(2));
 
@@ -341,8 +342,9 @@ TEST_F(LoadedExecutableTest, Execute) {
   auto execute_req = requests_queue.Pop().loaded_executable_execute_request();
   auto check_future_req = requests_queue.Pop().check_future_request();
 
-  EXPECT_THAT(result.status.Await(),
-              StatusIs(absl::StatusCode::kUnknown, "injected error"));
+  EXPECT_THAT(
+      result.status.Await(),
+      absl_testing::StatusIs(absl::StatusCode::kUnknown, "injected error"));
   EXPECT_EQ(execute_req.result_status_handle(),
             check_future_req.future_handle());
 
