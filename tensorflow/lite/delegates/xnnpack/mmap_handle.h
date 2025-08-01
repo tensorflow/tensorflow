@@ -71,7 +71,6 @@ ScopeGuard(F&&) -> ScopeGuard<F>;
 class MMapHandle {
  public:
   using value_type = uint8_t;
-  static constexpr char kUnspecifiedPath[] = "[unspecified]";
 
   MMapHandle() = default;
   ~MMapHandle();
@@ -89,7 +88,7 @@ class MMapHandle {
   // The debug_path is printed along the error messages.
   [[nodiscard /*Mapping a file can fail.*/]]
   bool Map(const FileDescriptorView& fd, size_t offset = 0,
-           const char* debug_path = kUnspecifiedPath);
+           const char* debug_path = nullptr);
 
   // Tries to resize the current mapping.
   //
