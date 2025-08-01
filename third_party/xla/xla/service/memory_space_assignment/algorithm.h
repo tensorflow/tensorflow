@@ -334,6 +334,22 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   absl::StatusOr<HeapSimulator::Result<HloValue>> Finish() override;
 
+  // Finalizes allocations for block-allocated weights.
+  void AllocateBlockAllocatedWeights();
+
+  // Returns the maximum amount of scoped memory that is reserved at any time in
+  // the program.
+  int64_t MaxReservedScopedMemory();
+
+  // Returns the earliest time that chunk can be reserved for a block-allocated
+  // weight where the start time is between [definition_time, use_time] and
+  // use_time and the end time is the use_time. The chunk.end() should be less
+  // than the block_allocated_weights_bytes_limit.
+  std::optional<int64_t> EarliestBlockAllocatedWeightStartTime(
+      int64_t definition_time, int64_t use_time, int64_t buffer_size,
+      int64_t block_allocated_weights_bytes_limit,
+      std::vector<int64_t>& prefetch_end_times);
+
  protected:
   // Given a buffer interval, returns the colocated intervals. Unlike the
   // similar GlobalDecreasingSizeBestFitHeap::GetTransitiveColocations, it
