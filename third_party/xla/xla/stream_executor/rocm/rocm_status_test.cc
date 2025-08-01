@@ -33,17 +33,18 @@ using ::tsl::testing::StatusIs;
 TEST(RocmStatusTest, ToStatusReturnsExpectedStatusCodes) {
   // We only promise hipSuccess to map to Ok, hipErrorOutOfMemory to
   // ResourceExhausted, and everything else to Internal.
-  EXPECT_THAT(ToStatus(hipSuccess), IsOk());
+  EXPECT_THAT(ToStatus(hipSuccess), absl_testing::IsOk());
   EXPECT_THAT(ToStatus(hipErrorOutOfMemory),
-              StatusIs(absl::StatusCode::kResourceExhausted));
+              absl_testing::StatusIs(absl::StatusCode::kResourceExhausted));
   EXPECT_THAT(ToStatus(hipErrorNotInitialized),
-              StatusIs(absl::StatusCode::kInternal));
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST(RocmStatusTest, ToStatusIncludesDetailMessage) {
   constexpr absl::string_view kMyMessage = "Some arbitrary message";
   EXPECT_THAT(ToStatus(hipErrorNotInitialized, kMyMessage),
-              StatusIs(absl::StatusCode::kInternal, HasSubstr(kMyMessage)));
+              absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                     HasSubstr(kMyMessage)));
 }
 
 }  // namespace
