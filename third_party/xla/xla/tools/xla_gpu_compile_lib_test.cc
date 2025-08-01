@@ -67,7 +67,7 @@ TEST_F(XlaCompileLibTest, CompilesForGpuWithDevice) {
   CompilationResult result;
   EXPECT_THAT(CompileExecutable(std::move(module_), BackendType::kGpu,
                                 std::nullopt, result),
-              IsOkAndHolds(Not(IsEmpty())));
+              absl_testing::IsOkAndHolds(Not(IsEmpty())));
   EXPECT_TRUE(result.has_hlo_module()) << result.DebugString();
 }
 
@@ -81,7 +81,7 @@ TEST_F(XlaCompileLibTest, CompilesForGpuWithoutDevice) {
   CompilationResult result;
   EXPECT_THAT(CompileExecutable(std::move(module_), BackendType::kGpu,
                                 std::nullopt, result),
-              IsOkAndHolds(Not(IsEmpty())));
+              absl_testing::IsOkAndHolds(Not(IsEmpty())));
   EXPECT_TRUE(result.has_hlo_module()) << result.DebugString();
 }
 
@@ -131,7 +131,7 @@ TEST_F(XlaCompileLibTest, LoadAutotuneDataGpuDataPresentAndAutotuningEnabled) {
   mod.hlo_module->mutable_config().set_debug_options(opts);
 
   EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   EXPECT_FALSE(gpu::AutotunerUtil::ResultCacheIsEmpty());
 }
 
@@ -156,7 +156,7 @@ TEST_F(XlaCompileLibTest, LoadAutotuneDataGpuDataPresentAndAutotuningDisabled) {
   mod.hlo_module->mutable_config().set_debug_options(opts);
 
   EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
   EXPECT_TRUE(gpu::AutotunerUtil::ResultCacheIsEmpty());
 }
 
@@ -172,7 +172,7 @@ TEST_F(XlaCompileLibTest,
   mod.hlo_module->mutable_config().set_debug_options(opts);
 
   EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
   EXPECT_TRUE(gpu::AutotunerUtil::ResultCacheIsEmpty());
 }
 
@@ -188,7 +188,7 @@ TEST_F(XlaCompileLibTest,
   mod.hlo_module->mutable_config().set_debug_options(opts);
 
   EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
   EXPECT_TRUE(gpu::AutotunerUtil::ResultCacheIsEmpty());
 }
 

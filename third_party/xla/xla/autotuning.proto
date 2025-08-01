@@ -121,5 +121,10 @@ message AutotuningLog {
 
   int64 fusion_count = 8;
 
-  // Next ID: 9
+  // String representation of the selected backend. For fusions that will be
+  // the GPU backend config type. For custom calls it is a target name of the
+  // custom call.
+  string selected_backend = 9;
+
+  // Next ID: 10
 }
