@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
@@ -208,7 +209,7 @@ class PjRtDevice {
   // implementations support allocator_stats, and those that do not will return
   // an Unimplemented error.
   virtual absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() const {
-    return Unimplemented("GetAllocatorStats is not supported");
+    return absl::UnimplementedError("GetAllocatorStats is not supported");
   }
 
   // Returns all memory spaces attached to this device.
@@ -220,7 +221,7 @@ class PjRtDevice {
 
   virtual absl::StatusOr<PjRtMemorySpace*> memory_space_by_kind(
       absl::string_view memory_space_kind) const {
-    return Unimplemented("memory_space_by_kind not implemented");
+    return absl::UnimplementedError("memory_space_by_kind not implemented");
   }
 
   // Returns a platform-specific stream handle that should be used to track when
@@ -229,7 +230,7 @@ class PjRtDevice {
   // all hardware platforms.
   virtual absl::StatusOr<std::intptr_t> GetStreamForExternalReadyEvents()
       const {
-    return Unimplemented(
+    return absl::UnimplementedError(
         "PjRtDevice::GetStreamForExternalReadyEvents only implemented for "
         "GPU");
   }
@@ -248,7 +249,7 @@ class PjRtDevice {
   // implemented by this client.
   virtual absl::StatusOr<bool> PoisonExecution(int32_t launch_id,
                                                absl::Status error) {
-    return Unimplemented("PoisonExecution is not supported");
+    return absl::UnimplementedError("PoisonExecution is not supported");
   }
 };
 
@@ -524,14 +525,15 @@ class PjRtClient {
   // Lookup any PjRtDevice for a given PjRtDevice::id().
   virtual absl::StatusOr<PjRtDevice*> LookupDevice(
       PjRtGlobalDeviceId global_device_id) const {
-    return Unimplemented("LookupDevice is not supported.");
+    return absl::UnimplementedError("LookupDevice is not supported.");
   }
 
   // Return an addressable PjRtDevice for a given
   // PjRtDevice::local_device_id().
   virtual absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
       PjRtLocalDeviceId local_device_id) const {
-    return Unimplemented("LookupAddressableDevice is not supported.");
+    return absl::UnimplementedError(
+        "LookupAddressableDevice is not supported.");
   }
 
   // Updates the client with information about all global processes.
@@ -570,7 +572,8 @@ class PjRtClient {
   // be different.
   virtual absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const {
-    return Unimplemented("GetDefaultDeviceAssignment is not supported.");
+    return absl::UnimplementedError(
+        "GetDefaultDeviceAssignment is not supported.");
   }
 
   // Returns a device-specific default device assignment for multi-slice system.
@@ -582,7 +585,8 @@ class PjRtClient {
   virtual absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, std::optional<int> num_replicas_per_slice,
       int num_partitions, const MultiSliceConfig* multi_slice_config) const {
-    return Unimplemented("Multi slice device assignment is not supported.");
+    return absl::UnimplementedError(
+        "Multi slice device assignment is not supported.");
   }
 
   // Returns the default device layout for a buffer with `element_type` and
@@ -593,34 +597,37 @@ class PjRtClient {
   // "mhlo.layout_mode" attribute.
   virtual absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dims) {
-    return Unimplemented("GetDefaultLayout is not supported.");
+    return absl::UnimplementedError("GetDefaultLayout is not supported.");
   }
 
   // Returns a backend-specific HLO cost analysis visitor.
   virtual absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const {
-    return Unimplemented("GetHloCostAnalysis is not supported.");
+    return absl::UnimplementedError("GetHloCostAnalysis is not supported.");
   }
 
   // Compile `computation` with given `options`.
   virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) {
-    return Unimplemented("Compile with XlaComputation is not supported.");
+    return absl::UnimplementedError(
+        "Compile with XlaComputation is not supported.");
   }
   virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) {
-    return Unimplemented(
+    return absl::UnimplementedError(
         "CompileAndLoad with XlaComputation is not supported.");
   }
 
   // Variant of `Compile` that accepts an MLIR module.
   virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) {
-    return Unimplemented("Compile with MLIR Module is not supported.");
+    return absl::UnimplementedError(
+        "Compile with MLIR Module is not supported.");
   }
   virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       mlir::ModuleOp module, CompileOptions options) {
-    return Unimplemented("CompileAndLoad with MLIR Module is not supported.");
+    return absl::UnimplementedError(
+        "CompileAndLoad with MLIR Module is not supported.");
   }
 
   // Deserializes a serialized executable as produced by
@@ -632,7 +639,8 @@ class PjRtClient {
   // implementations related to the PJRT C API.
   virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
       absl::string_view serialized, std::optional<CompileOptions> options) {
-    return Unimplemented("Deserializing serialized executable not supported.");
+    return absl::UnimplementedError(
+        "Deserializing serialized executable not supported.");
   }
 
   // LoadSerializedExecutable takes the serialized output of PjRtExecutable. The
@@ -645,7 +653,8 @@ class PjRtClient {
   LoadSerializedExecutable(absl::string_view serialized,
                            std::optional<CompileOptions> options,
                            const LoadOptions& load_options) {
-    return Unimplemented("Loading serialized executable not supported.");
+    return absl::UnimplementedError(
+        "Loading serialized executable not supported.");
   }
 
   // Loads the executable returns aa PjRtLoadedExecutable runnable by this
@@ -657,28 +666,30 @@ class PjRtClient {
   virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
       std::unique_ptr<PjRtExecutable> executable,
       const LoadOptions& load_options) {
-    return Unimplemented("Loading executable not supported.");
+    return absl::UnimplementedError("Loading executable not supported.");
   }
 
   // Creates a buffer in the given memory space without initializing or copying
   // any data.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtMemorySpace* memory_space) {
-    return Unimplemented("CreateUninitializedBuffer is not supported.");
+    return absl::UnimplementedError(
+        "CreateUninitializedBuffer is not supported.");
   }
 
   // Creates buffer in the given memory space that carries an error future
   // without allocating memory.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
       absl::Status error, const Shape& shape, PjRtMemorySpace* memory) {
-    return Unimplemented("CreateErrorBuffer not supported.");
+    return absl::UnimplementedError("CreateErrorBuffer not supported.");
   }
 
   // Gets the pointer to the topology description held by the client.
   virtual absl::StatusOr<const PjRtTopologyDescription*>
   GetTopologyDescription() const {
-    return Unimplemented("GetTopologyDescription not supported on platform %s",
-                         platform_name());
+    return absl::UnimplementedError(
+        absl::StrFormat("GetTopologyDescription not supported on platform %s",
+                        platform_name()));
   }
 
   // A client may want to create a buffer, and hand the buffer to other PjRt
@@ -865,10 +876,10 @@ class PjRtClient {
       HostBufferSemantics host_buffer_semantics,
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
       PjRtMemorySpace* memory_space, const Layout* device_layout) {
-    return tsl::errors::Unimplemented(
+    return absl::UnimplementedError(absl::StrCat(
         "BufferFromHostBuffer with PjRtMemorySpace is not implemented on "
         "platform: ",
-        platform_name());
+        platform_name()));
   }
 
   // Note that literal must remain in scope until the transfer has completed, so
@@ -883,10 +894,10 @@ class PjRtClient {
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtMemorySpace* memory_space,
       const Layout* device_layout) {
-    return tsl::errors::Unimplemented(
+    return absl::UnimplementedError(absl::StrCat(
         "BufferFromHostLiteral with PjRtMemorySpace is not implemented on "
         "platform: ",
-        platform_name());
+        platform_name()));
   }
 
   // Creates a PjRtBuffer that is a non-owned view of an on-device
@@ -905,7 +916,8 @@ class PjRtClient {
       void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream = std::nullopt) {
-    return Unimplemented("CreateViewOfDeviceBuffer is not implemented.");
+    return absl::UnimplementedError(
+        "CreateViewOfDeviceBuffer is not implemented.");
   }
 
   // Returns platform-dependent address for the given buffer that is often but
@@ -935,7 +947,8 @@ class PjRtClient {
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                               PjRtDevice* device,
                               PjRtCrossHostRecvNotifier notifier) {
-    return Unimplemented("MakeCrossHostReceiveBuffers is not implemented.");
+    return absl::UnimplementedError(
+        "MakeCrossHostReceiveBuffers is not implemented.");
   }
 
   // Return the PjRtHostMemoryForDeviceManager for this client. It can be
@@ -948,15 +961,15 @@ class PjRtClient {
   // Experimental: Maps memory for fast transfers. May have backend specific
   // alignment requirements (most backends will require at least a page).
   virtual absl::Status DmaMap(void* data, size_t size) {
-    return Unimplemented("DmaMap not supported on platform %s",
-                         platform_name());
+    return absl::UnimplementedError(absl::StrFormat(
+        "DmaMap not supported on platform %s", platform_name()));
   }
 
   // Experimental: Unmaps memory for fast transfers. Caller is responsible to
   // ensure that all data transfers are complete before calling DmaUnmap.
   virtual absl::Status DmaUnmap(void* data) {
-    return Unimplemented("DmaUnmap not supported on platform %s",
-                         platform_name());
+    return absl::UnimplementedError(absl::StrFormat(
+        "DmaUnmap not supported on platform %s", platform_name()));
   }
 
  private:
@@ -1058,7 +1071,7 @@ class PjRtBuffer {
     // Stream is platform-specific. This is intended to support dlpack on GPU
     // and is not expected to be implemented for all hardware platforms.
     virtual absl::Status WaitUntilBufferReadyOnStream(std::intptr_t stream) {
-      return Unimplemented(
+      return absl::UnimplementedError(
           "WaitUntilBufferReadyOnStream is only implemented for GPU.");
     }
 
@@ -1254,7 +1267,8 @@ class PjRtBuffer {
   // buffer will transition to error.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>>
   DonateWithControlDependency(PjRtFuture<> dependency) {
-    return Unimplemented("DonateWithControlDependency is not supported.");
+    return absl::UnimplementedError(
+        "DonateWithControlDependency is not supported.");
   }
 
   // Returns a future that can be used to discover when the data in the
