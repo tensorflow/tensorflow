@@ -395,7 +395,7 @@ TEST_F(DirectSessionMinusAXTest,
   Session::CallableHandle handle;
   EXPECT_THAT(
       session->MakeCallable(MakeCallableOptions({}, {y_ + ":0"}, {}), &handle),
-      ::tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kFailedPrecondition,
           ::testing::HasSubstr("Session has been finalized.")));
 }
@@ -433,7 +433,7 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_ResourceMgrFinalized) {
   TestResource* test_resource = new TestResource();
   EXPECT_THAT(
       rm->Create("", "", test_resource),
-      tsl::testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+      absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
                              ::testing::HasSubstr("ResourceMgr is finalized")));
   test_resource->Unref();
 }
