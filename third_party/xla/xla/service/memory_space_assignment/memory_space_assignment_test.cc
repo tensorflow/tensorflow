@@ -15081,6 +15081,86 @@ ENTRY entry {
             kAlternateMemorySpace);
 }
 
+TEST_F(MemorySpaceAssignmentTest, NoPrefetchWithBandwidthLimitingAsyncStart) {
+  // The negate chain is long enough for asynchronous copy to be inserted
+  // between p1 and add. The prefetch will not happen because the bandwidth
+  // adjustment factor is 0.0.
+  const absl::string_view hlo_string = R"(
+HloModule NegateChain, is_scheduled=true, entry_computation_layout={(f32[2,3]{1,0}, f32[2,3]{1,0})->f32[2,3]{1,0}}
+
+ENTRY %NegateChain (p0: f32[2,3], p1: f32[2,3]) -> f32[2,3] {
+  %p0 = f32[2,3]{1,0} parameter(0)
+  %p1 = f32[2,3]{1,0} parameter(1)
+  %negate = f32[2,3]{1,0} negate(%p0)
+  %negate.1 = f32[2,3]{1,0} negate(%negate)
+  %negate.2 = f32[2,3]{1,0} negate(%negate.1)
+  %negate.3 = f32[2,3]{1,0} negate(%negate.2)
+  %negate.4 = f32[2,3]{1,0} negate(%negate.3)
+  %negate.5 = f32[2,3]{1,0} negate(%negate.4)
+  %negate.6 = f32[2,3]{1,0} negate(%negate.5)
+  ROOT %add = f32[2,3]{1,0} add(%negate.6, %p1)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto async_instruction_bw_adjustment_factor_fn =
+      [&](const HloInstruction* inst) -> std::optional<float> {
+    if (inst->name() == "p1") {
+      return 0.0f;
+    }
+    return std::nullopt;
+  };
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.async_instruction_bw_adjustment_factor_fn =
+      async_instruction_bw_adjustment_factor_fn;
+  XLA_VLOG_LINES(3, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  XLA_VLOG_LINES(3, "After MSA: \n" + module->ToString());
+  HloInstruction* add = FindInstruction(module.get(), "add");
+  EXPECT_EQ(add->operand(1)->shape().layout().memory_space(),
+            kDefaultMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, PrefetchWithoutBandwidthLimitingAsyncStart) {
+  // The negate chain is long enough for asynchronous copy to be inserted
+  // between p1 and add. The prefetch will happen because the bandwidth
+  // adjustment factor is 1.0.
+  const absl::string_view hlo_string = R"(
+HloModule NegateChain, is_scheduled=true, entry_computation_layout={(f32[2,3]{1,0}, f32[2,3]{1,0})->f32[2,3]{1,0}}
+
+ENTRY %NegateChain (p0: f32[2,3], p1: f32[2,3]) -> f32[2,3] {
+  %p0 = f32[2,3]{1,0} parameter(0)
+  %p1 = f32[2,3]{1,0} parameter(1)
+  %negate = f32[2,3]{1,0} negate(%p0)
+  %negate.1 = f32[2,3]{1,0} negate(%negate)
+  %negate.2 = f32[2,3]{1,0} negate(%negate.1)
+  %negate.3 = f32[2,3]{1,0} negate(%negate.2)
+  %negate.4 = f32[2,3]{1,0} negate(%negate.3)
+  %negate.5 = f32[2,3]{1,0} negate(%negate.4)
+  %negate.6 = f32[2,3]{1,0} negate(%negate.5)
+  ROOT %add = f32[2,3]{1,0} add(%negate.6, %p1)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto async_instruction_bw_adjustment_factor_fn =
+      [&](const HloInstruction* inst) -> std::optional<float> {
+    if (inst->name() == "p1") {
+      return 1.0f;
+    }
+    return std::nullopt;
+  };
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.async_instruction_bw_adjustment_factor_fn =
+      async_instruction_bw_adjustment_factor_fn;
+  XLA_VLOG_LINES(3, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  XLA_VLOG_LINES(3, "After MSA: \n" + module->ToString());
+  HloInstruction* add = FindInstruction(module.get(), "add");
+  EXPECT_EQ(add->operand(1)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+}
+
 }  // namespace
 }  // namespace memory_space_assignment
 }  // namespace xla

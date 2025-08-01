@@ -455,8 +455,19 @@ MsaAlgorithm::MsaAlgorithm(HloModule* module, AllocationSequence* allocations,
   if (options.cost_analysis) {
     const std::vector<HloInstruction*>& flattened_instructions =
         hlo_live_range.flattened_instruction_sequence().instructions();
+    int64_t farthest_bandwidth_limiting_async_done_found = -1;
+    float current_bw_adjustment_factor = 1.0f;
     for (int i = 0; i < flattened_instructions.size(); ++i) {
       const HloInstruction* inst = flattened_instructions[i];
+      std::optional<float> bw_adjustment_factor =
+          options.async_instruction_bw_adjustment_factor_fn(inst);
+      if (bw_adjustment_factor.has_value()) {
+        CHECK_EQ(inst->users().size(), 1);
+        current_bw_adjustment_factor = bw_adjustment_factor.value();
+        farthest_bandwidth_limiting_async_done_found = std::max(
+            farthest_bandwidth_limiting_async_done_found,
+            hlo_live_range.instruction_schedule().at(inst->users()[0]));
+      }
       if (inst->opcode() == HloOpcode::kWhile ||
           inst->opcode() == HloOpcode::kConditional) {
         initial_resources[i] = 0;
@@ -469,6 +480,13 @@ MsaAlgorithm::MsaAlgorithm(HloModule* module, AllocationSequence* allocations,
           fingerprint_map_[inst] = fingerprint;
           repeated_inst_map_[fingerprint].push_back(inst);
         }
+      }
+      if (i <= farthest_bandwidth_limiting_async_done_found) {
+        VLOG(2) << "Adjusting initial_resource[" << i << "] "
+                << initial_resources[i] << " " << inst->name()
+                << " because of overlap with bandwidth limiting async start "
+                   "and done instructions.";
+        initial_resources[i] *= current_bw_adjustment_factor;
       }
       VLOG(2) << "Initial resource[" << i << "] = " << initial_resources[i]
               << " (" << inst->name() << ")";

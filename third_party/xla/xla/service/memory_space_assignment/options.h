@@ -78,6 +78,8 @@ using DetermineSplitDimensionFunction =
 using BitcastSplitFn = std::function<absl::StatusOr<int64_t>(
     const HloInstruction* instruction, int64_t split_dim)>;
 using ShapeSizeFn = std::function<int64_t(const Shape&)>;
+using AsyncInstructionBwAdjustmentFactorFn =
+    std::function<std::optional<float>(const HloInstruction*)>;
 using HloPositionOrUse = std::variant<HloPosition, HloUse>;
 
 // MSA allows for custom post-allocation transformations. When a post-allocation
@@ -408,6 +410,15 @@ struct Options {
 
   // The list of defining positions of block allocated weights.
   absl::flat_hash_set<HloPosition> block_allocated_weights_positions;
+
+  // Determines the bandwidth adjustment factor for an async start instruction.
+  // The available bandwidth for instructions between this and the async done
+  // instruction will be multiplied by the factor returned by this function. A
+  // factor of 1.0 means that the full bandwidth is available. A factor of 0.5
+  // means that only half the bandwidth is available.
+  AsyncInstructionBwAdjustmentFactorFn
+      async_instruction_bw_adjustment_factor_fn =
+          [](const HloInstruction*) { return std::nullopt; };
 
   std::string ToString() const;
 };
