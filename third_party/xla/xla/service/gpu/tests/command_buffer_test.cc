@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -34,6 +33,11 @@ class CommandBufferTest : public HloPjRtTestBase,
     DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_graph_enable_concurrent_region(GetParam());
     return debug_options;
+  }
+
+ public:
+  bool IsRocm() {
+    return test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm);
   }
 };
 
@@ -78,7 +82,10 @@ TEST_P(CommandBufferTest, Fusions) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
-TEST_P(CommandBufferTest, DISABLED_ON_GPU_ROCM(TrueFalseConditional)) { //TODO(rocm): weekly-sync-250514
+TEST_P(CommandBufferTest, TrueFalseConditional) { 
+  if (IsRocm()) {
+    GTEST_SKIP() << "Test currently failing on ROCm"; //TODO(rocm): weekly sync 25-07-14
+  }
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
@@ -137,7 +144,10 @@ TEST_P(CommandBufferTest, DISABLED_ON_GPU_ROCM(TrueFalseConditional)) { //TODO(r
   }
 }
 
-TEST_P(CommandBufferTest, DISABLED_ON_GPU_ROCM(IndexConditional)) { //TODO(rocm): weekly-sync-250514
+TEST_P(CommandBufferTest, IndexConditional) { 
+  if (IsRocm()) {
+    GTEST_SKIP() << "Test currently failing on ROCm"; //TODO(rocm): weekly sync 25-07-14
+  }
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
@@ -204,7 +214,10 @@ TEST_P(CommandBufferTest, DISABLED_ON_GPU_ROCM(IndexConditional)) { //TODO(rocm)
   }
 }
 
-TEST_P(CommandBufferTest, DISABLED_ON_GPU_ROCM(WhileLoop)) { //TODO(rocm): weekly-sync-250514
+TEST_P(CommandBufferTest, WhileLoop) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "Test currently failing on ROCm"; //TODO(rocm): weekly sync 25-07-14
+  }
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
