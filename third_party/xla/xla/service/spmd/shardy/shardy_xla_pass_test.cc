@@ -948,5 +948,44 @@ TEST_F(ShardyXLATest, RaggedDotMode1) {
               op::Sharding("{devices=[2,2,1,2]<=[8] last_tile_dim_replicate}"));
 }
 
+TEST_F(ShardyXLATest, PreserveOriginalValueRecoveryTable) {
+  const char* const hloString = R"(
+  HloModule test, entry_computation_layout={(f32[6,3], f32[6,3])->f32[6,3]}, origin_recovery_table={
+    {"reshape.2341"} : {"placeholder_reshape.201"},
+    "
+      ENTRY %recovery_computation.1 (p.1: f32[192]) -> f32[1,192] {
+      %p.1 = f32[192]{0} parameter(0)
+      ROOT %reshape.2 = f32[1,192]{1,0} reshape(%p.1)
+    }
+    "
+  }
+
+  ENTRY %entry {
+    p0 = f32[6,3] parameter(0)
+    p1 = f32[6,3] parameter(1)
+    copy.p0 = f32[6,3] copy(p0)
+    copy.p1 = f32[6,3] copy(p1)
+    add = f32[6,3] add(copy.p0, copy.p1), sharding={devices=[2,1]<=[2]}
+    ROOT result = f32[6,3] copy(add)
+  }
+  )";
+
+  const char* const expected = R"(
+  // CHECK:       {"reshape.2341"} : {"placeholder_reshape.201"},
+  // CHECK-NEXT:  "
+  // CHECK-NEXT:    ENTRY %recovery_computation.1 (p.1: f32[192]) -> f32[1,192] {
+  // CHECK-NEXT:      %p.1 = f32[192]{0} parameter(0)
+  // CHECK-NEXT:      ROOT %reshape.2 = f32[1,192]{1,0} reshape(%p.1)
+  // CHECK-NEXT:    }
+  // CHECK-NEXT:  "
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithSdyImport(module.get());
+  EXPECT_TRUE(*RunFileCheck(module->original_value_recovery_table().ToString(),
+                            expected));
+}
+
 }  // namespace sdy
 }  // namespace xla
