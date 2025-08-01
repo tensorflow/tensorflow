@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Target/TargetMachine.h"
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/codegen/math/rsqrt.h"
 #include "xla/codegen/math/simple_jit_runner.h"
@@ -62,8 +63,10 @@ void CreateOneOverSqrt(llvm::LLVMContext& context, llvm::Module& module,
 JitRunner CreateJitRunnerWithRsqrt(Type type) {
   auto context = std::make_unique<llvm::LLVMContext>();
   auto module = std::make_unique<llvm::Module>("test_module", *context);
+  std::unique_ptr<llvm::TargetMachine> target_machine =
+      xla::codegen::math::CreateHostTargetMachine();
   llvm::Function* rsqrt_func =
-      Rsqrt::CreateDefinition(module.get(), type).value();
+      Rsqrt::CreateDefinition(module.get(), target_machine.get(), type).value();
   rsqrt_func->setLinkage(llvm::Function::ExternalLinkage);
   CreateOneOverSqrt(*context, *module, Type::TypeToIrType(type, *context));
   return JitRunner(std::move(module), std::move(context));
@@ -83,7 +86,10 @@ static void BM_RsqrtVectorized(benchmark::State& state) {
       (function == kRsqrt) ? Rsqrt::Name(intrinsic_type) : "one_over_sqrt";
   auto rsqrt = jit.GetVectorizedFn<num_elements, NativeType, NativeType>(
       function_name, 100'000);
-  std::array<NativeType, num_elements> vec = {1.0, -1.0, 100.0, 1e14};
+  std::array<NativeType, num_elements> vec;
+  for (size_t i = 0; i < num_elements; ++i) {
+    vec[i] = static_cast<NativeType>(100.0 + i * 10.0);
+  }
   for (auto s : state) {
     rsqrt(vec);
   }
@@ -93,6 +99,10 @@ BENCHMARK(BM_RsqrtVectorized<4, F32, kRsqrt>)->MeasureProcessCPUTime();
 BENCHMARK(BM_RsqrtVectorized<4, F32, kOneOverSqrt>)->MeasureProcessCPUTime();
 BENCHMARK(BM_RsqrtVectorized<8, F32, kRsqrt>)->MeasureProcessCPUTime();
 BENCHMARK(BM_RsqrtVectorized<8, F32, kOneOverSqrt>)->MeasureProcessCPUTime();
+BENCHMARK(BM_RsqrtVectorized<2, F64, kRsqrt>)->MeasureProcessCPUTime();
+BENCHMARK(BM_RsqrtVectorized<2, F64, kOneOverSqrt>)->MeasureProcessCPUTime();
+BENCHMARK(BM_RsqrtVectorized<4, F64, kRsqrt>)->MeasureProcessCPUTime();
+BENCHMARK(BM_RsqrtVectorized<4, F64, kOneOverSqrt>)->MeasureProcessCPUTime();
 BENCHMARK(BM_RsqrtVectorized<8, F64, kRsqrt>)->MeasureProcessCPUTime();
 BENCHMARK(BM_RsqrtVectorized<8, F64, kOneOverSqrt>)->MeasureProcessCPUTime();
 }  // namespace xla::codegen::math

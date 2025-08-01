@@ -79,6 +79,7 @@ cc_library(
         "//xla/codegen/math:fptrunc",
         "//xla/codegen/math:intrinsic",
         "//xla/codegen/math:log1p",
+        "//xla/codegen/math:rsqrt",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:map_mhlo_to_scalar_op",

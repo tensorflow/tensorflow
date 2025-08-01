@@ -332,7 +332,7 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
       std::make_unique<llvm::TargetLibraryInfoImpl>(target_triple);
   target_library_info_impl->addVectorizableFunctions(
       PolynomialApproximationsVectorization());
-  codegen::MathFunctionLib math_lib;
+  codegen::MathFunctionLib math_lib(target_machine);
   target_library_info_impl->addVectorizableFunctions(math_lib.Vectorizations());
 
   fam.registerPass(

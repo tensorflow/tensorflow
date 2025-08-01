@@ -189,6 +189,7 @@ cc_library(
         "//xla/codegen/math:intrinsic",
         "//xla/codegen/math:ldexp",
         "//xla/codegen/math:log1p",
+        "//xla/codegen/math:rsqrt",
         "//xla/codegen/math:string_interner",
         "//xla/codegen/math:vec_name_mangler",
         "//xla/service/llvm_ir:llvm_util",
