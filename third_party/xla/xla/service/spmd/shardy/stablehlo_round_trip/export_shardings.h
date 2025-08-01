@@ -37,6 +37,14 @@ HloSharding convertToHloSharding(
         getMeshAttr,
     mlir::ArrayRef<mlir::StringAttr> manualAxes = {});
 
+// Convert the `shardings` on an op into an `xla::HloSharding`.
+HloSharding getHloShardingForOp(
+    mlir::Operation* op,
+    mlir::ArrayRef<mlir::sdy::TensorShardingAttr> shardings,
+    std::function<mlir::sdy::MeshAttr(mlir::sdy::TensorShardingAttr)>
+        getMeshAttr,
+    mlir::ArrayRef<mlir::StringAttr> manualAxes);
+
 // Convert the `shardings` into a `kXlaShardingAttr` representing
 // `xla::HloSharding` and set it on `op`.
 void setHloShardingAttr(
