@@ -31,8 +31,7 @@ TEST(MyPluginCPPTest, HasDeviceCount) {
 TEST(MyPluginCPPTest, GetHloCostAnalysis) {
   auto client = CreateMyPluginPjrtClient();
 
-  EXPECT_THAT(client->GetHloCostAnalysis(),
-              testing::Not(::tsl::testing::IsOk()));
+  EXPECT_THAT(client->GetHloCostAnalysis(), testing::Not(absl_testing::IsOk()));
 }
 
 }  // namespace
