@@ -862,6 +862,7 @@ cc_library(
     ]),
     deps = [
         "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/platform:logging",
     ],
 )
