@@ -1,5 +1,5 @@
 diff --git a/python/versions.bzl b/python/versions.bzl
-index 91e59f9b..576806ca 100644
+index 91e59f9b..d72855db 100644
 --- a/python/versions.bzl
 +++ b/python/versions.bzl
 @@ -21,7 +21,7 @@ LINUX_NAME = "linux"
@@ -121,7 +121,24 @@ index 91e59f9b..576806ca 100644
  }
  
  def _generate_platforms():
-@@ -793,9 +850,6 @@ def get_release_info(platform, python_version, base_url = DEFAULT_RELEASE_BASE_U
+@@ -778,11 +835,15 @@ def get_release_info(platform, python_version, base_url = DEFAULT_RELEASE_BASE_U
+         p, _, _ = platform.partition("-" + FREETHREADED)
+ 
+         if FREETHREADED in platform:
++            if "3.13" in python_version:
++                aarch64_linux_suffix = "lto"
++            else:
++                aarch64_linux_suffix = "pgo+lto"
+             build = "{}+{}-full".format(
+                 FREETHREADED,
+                 {
+                     "aarch64-apple-darwin": "pgo+lto",
+-                    "aarch64-unknown-linux-gnu": "lto",
++                    "aarch64-unknown-linux-gnu": aarch64_linux_suffix,
+                     "ppc64le-unknown-linux-gnu": "lto",
+                     "s390x-unknown-linux-gnu": "lto",
+                     "x86_64-apple-darwin": "pgo+lto",
+@@ -793,9 +854,6 @@ def get_release_info(platform, python_version, base_url = DEFAULT_RELEASE_BASE_U
          else:
              build = "install_only"
  
