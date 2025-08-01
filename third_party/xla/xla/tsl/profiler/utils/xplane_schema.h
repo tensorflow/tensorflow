@@ -66,6 +66,8 @@ TF_CONST_INIT extern const absl::string_view kHostCpusPlaneName;
 TF_CONST_INIT extern const absl::string_view kSyscallsPlaneName;
 // Name of XPlane that contains namescope stack tree.
 TF_CONST_INIT extern const absl::string_view kScopeRangeIdTreePlaneName;
+// Name prefix of XPlane that contains GPU on-device events.
+TF_CONST_INIT extern const absl::string_view kCustomGpuOnDeviceTracePlanePrefix;
 
 // Names of XLines that contain ML-level events.
 TF_CONST_INIT extern const absl::string_view kStepLineName;
@@ -427,6 +429,10 @@ inline std::string TpuPlaneName(int32_t device_ordinal) {
 
 inline std::string GpuPlaneName(int32_t device_ordinal) {
   return absl::StrCat(kGpuPlanePrefix, device_ordinal);
+}
+
+inline std::string GpuOnDeviceTracePlaneName(int32_t instance_id) {
+  return absl::StrCat(kCustomGpuOnDeviceTracePlanePrefix, instance_id);
 }
 
 absl::string_view GetHostEventTypeStr(HostEventType event_type);
