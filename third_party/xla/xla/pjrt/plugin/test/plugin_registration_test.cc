@@ -41,6 +41,7 @@ TEST(PluginRegistrationTest, InvalidPluginName) {
   absl::string_view invalid_plugin_name = "invalid_plugin";
   absl::StatusOr<std::unique_ptr<xla::PjRtClient>> client =
       xla::GetCApiClient(invalid_plugin_name, {}, nullptr);
-  ASSERT_THAT(client.status(), StatusIs(absl::StatusCode::kNotFound));
+  ASSERT_THAT(client.status(),
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 }  // namespace
