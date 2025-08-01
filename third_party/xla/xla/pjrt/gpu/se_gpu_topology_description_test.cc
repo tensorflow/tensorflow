@@ -44,7 +44,6 @@ void CheckDeviceDescription(const PjRtDeviceDescription& device_desc,
 TEST(StreamExecutorGpuTopologyDescriptionTest, SymmetricTopology) {
   std::shared_ptr<xla::GpuTopology> gpu_topology =
       std::make_shared<xla::GpuTopology>(
-          /*device_ids=*/std::vector<int>{0, 1, 2, 3, 4, 5, 6, 7},
           /*platform_version=*/"12.3", /*num_slices=*/2,
           /*num_hosts_per_slice=*/2, /*num_devices_per_host=*/2);
 
@@ -70,7 +69,6 @@ TEST(StreamExecutorGpuTopologyDescriptionTest, SymmetricTopology) {
 TEST(StreamExecutorGpuTopologyDescriptionTest, AsymmetricTopology) {
   std::shared_ptr<xla::GpuTopology> gpu_topology =
       std::make_shared<xla::GpuTopology>(
-          /*device_ids=*/std::vector<int>{0, 1, 2, 3, 4, 5, 6, 7},
           /*platform_version=*/"12.3", /*num_slices=*/-1,
           /*num_hosts_per_slice=*/-1, /*num_devices_per_host=*/-1);
 
@@ -82,15 +80,7 @@ TEST(StreamExecutorGpuTopologyDescriptionTest, AsymmetricTopology) {
   EXPECT_EQ(topology_desc.platform_version(), "12.3");
 
   const auto device_descs = topology_desc.DeviceDescriptions();
-  EXPECT_EQ(device_descs.size(), 8);
-  CheckDeviceDescription(*device_descs[0], 0, 0, 0, 0);
-  CheckDeviceDescription(*device_descs[1], 1, 0, 0, 0);
-  CheckDeviceDescription(*device_descs[2], 2, 0, 0, 0);
-  CheckDeviceDescription(*device_descs[3], 3, 0, 0, 0);
-  CheckDeviceDescription(*device_descs[4], 4, 0, 0, 0);
-  CheckDeviceDescription(*device_descs[5], 5, 0, 0, 0);
-  CheckDeviceDescription(*device_descs[6], 6, 0, 0, 0);
-  CheckDeviceDescription(*device_descs[7], 7, 0, 0, 0);
+  EXPECT_EQ(device_descs.size(), 0);
 }
 
 }  // namespace

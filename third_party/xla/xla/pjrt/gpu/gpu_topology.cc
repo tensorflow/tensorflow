@@ -16,8 +16,6 @@ limitations under the License.
 #include "xla/pjrt/gpu/gpu_topology.h"
 
 #include <memory>
-#include <string>
-#include <vector>
 
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
 
@@ -26,8 +24,6 @@ namespace xla {
 std::unique_ptr<const GpuTopology> GpuTopology::FromProto(
     const GpuTopologyProto& gpu_topology_proto) {
   return std::make_unique<GpuTopology>(
-      std::vector<int>{gpu_topology_proto.device_ids().begin(),
-                       gpu_topology_proto.device_ids().end()},
       gpu_topology_proto.platform_version(), gpu_topology_proto.num_slices(),
       gpu_topology_proto.num_hosts_per_slice(),
       gpu_topology_proto.num_devices_per_host());
@@ -35,8 +31,7 @@ std::unique_ptr<const GpuTopology> GpuTopology::FromProto(
 
 GpuTopologyProto GpuTopology::ToProto() const {
   GpuTopologyProto proto;
-  proto.mutable_device_ids()->Add(device_ids().begin(), device_ids().end());
-  proto.set_platform_version(std::string(platform_version()));
+  proto.set_platform_version(platform_version());
   proto.set_num_slices(num_slices());
   proto.set_num_hosts_per_slice(num_hosts_per_slice());
   proto.set_num_devices_per_host(num_devices_per_host());

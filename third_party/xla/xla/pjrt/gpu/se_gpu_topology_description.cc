@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 
-#include <array>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -65,13 +64,17 @@ namespace xla {
 std::vector<std::unique_ptr<const PjRtDeviceDescription>>
 StreamExecutorGpuTopologyDescription::DeviceDescriptions() const {
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> devices;
+  if (gpu_topology_->number_of_devices() <= 0) {
+    return devices;
+  }
   devices.reserve(gpu_topology_->number_of_devices());
   // Instead of "host", we use "process", as it's more accurate and consistent
   // with PjRt terminology. In a multi-process setting, a host can have multiple
   // processes, e.g., one process per GPU.
   const int32_t num_devices_per_process = gpu_topology_->num_devices_per_host();
   const int32_t num_processes_per_slice = gpu_topology_->num_hosts_per_slice();
-  for (const int device_id : gpu_topology_->device_ids()) {
+  for (int device_id = 0; device_id < gpu_topology_->number_of_devices();
+       ++device_id) {
     // The local_device_id, process_index and slice_index are inferred from the
     // global device id. It requires the global topology is symmetric:
     //  - all slices have the same number of processes.

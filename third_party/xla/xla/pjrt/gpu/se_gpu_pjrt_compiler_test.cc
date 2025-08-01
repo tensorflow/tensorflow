@@ -76,19 +76,16 @@ absl::StatusOr<xla::XlaComputation> GetXlaComputation(
 }
 
 std::shared_ptr<xla::GpuTopology> GetGpuTopology(
-    std::vector<int> device_ids, absl::string_view platform_version,
-    int num_slices, int num_hosts_per_slice, int num_devices_per_host,
-    int core_count_per_chip) {
-  return std::make_shared<xla::GpuTopology>(device_ids, platform_version,
-                                            num_slices, num_hosts_per_slice,
-                                            num_devices_per_host);
+    absl::string_view platform_version, int num_slices, int num_hosts_per_slice,
+    int num_devices_per_host, int core_count_per_chip) {
+  return std::make_shared<xla::GpuTopology>(
+      platform_version, num_slices, num_hosts_per_slice, num_devices_per_host);
 }
 
 TEST(StreamExecutorGpuCompilerTest, NoClientXla) {
   StreamExecutorGpuCompiler compiler;
   StreamExecutorGpuTopologyDescription topology(
-      CudaId(), CudaName(),
-      GetGpuTopology({0, 1}, kFakeDeviceName, 1, 1, 2, 10));
+      CudaId(), CudaName(), GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
   EXPECT_THAT(compiler.Compile(xla::CompileOptions(), computation, topology,
@@ -99,8 +96,7 @@ TEST(StreamExecutorGpuCompilerTest, NoClientXla) {
 TEST(StreamExecutorGpuCompilerTest, TopologyNotSameXla) {
   StreamExecutorGpuCompiler compiler;
   StreamExecutorGpuTopologyDescription topology(
-      CudaId(), CudaName(),
-      GetGpuTopology({0, 1}, kFakeDeviceName, 1, 1, 2, 10));
+      CudaId(), CudaName(), GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
@@ -143,8 +139,7 @@ TEST(StreamExecutorGpuCompilerTest, NoClientMlir) {
       mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
 
   StreamExecutorGpuTopologyDescription topology(
-      CudaId(), CudaName(),
-      GetGpuTopology({0, 1}, kFakeDeviceName, 1, 1, 2, 10));
+      CudaId(), CudaName(), GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
 
   EXPECT_THAT(
       compiler.Compile(xla::CompileOptions(), mlir_module.get(), topology,
@@ -162,8 +157,7 @@ TEST(StreamExecutorGpuCompilerTest, TopologyNotSameMlir) {
       mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
 
   StreamExecutorGpuTopologyDescription topology(
-      CudaId(), CudaName(),
-      GetGpuTopology({0, 1}, kFakeDeviceName, 1, 1, 2, 10));
+      CudaId(), CudaName(), GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
@@ -213,8 +207,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessMlirCanBeSerialized) {
                           GetStreamExecutorGpuClient(GpuClientOptions()));
 
   StreamExecutorGpuTopologyDescription topology(
-      CudaId(), CudaName(),
-      GetGpuTopology({0, 1}, kFakeDeviceName, 1, 1, 2, 10));
+      CudaId(), CudaName(), GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<xla::PjRtExecutable> executable,
