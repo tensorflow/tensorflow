@@ -448,16 +448,15 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://curl.se/download/curl-8.11.0.tar.gz"),
     )
 
-    # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
     tf_http_archive(
         name = "com_github_grpc_grpc",
-        sha256 = "ae14a0de222485fd6e3baf52028c74acbd9ad8d685c813580401d3832cfae9f1",
-        strip_prefix = "grpc-1.72.2",
+        sha256 = "dd6a2fa311ba8441bbefd2764c55b99136ff10f7ea42954be96006a2723d33fc",
+        strip_prefix = "grpc-1.74.0",
         system_build_file = "//third_party/systemlibs:grpc.BUILD",
         patch_file = [
             "@local_xla//third_party/grpc:grpc.patch",
         ],
-        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.72.2.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.74.0.tar.gz"),
     )
 
     tf_http_archive(
