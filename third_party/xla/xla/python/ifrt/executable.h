@@ -258,6 +258,10 @@ class LoadedExecutable
       absl::Span<ArrayRef> args, const ExecuteOptions& options,
       std::optional<DeviceListRef> devices) = 0;
 
+  // Returns the list of devices where the executable has been compiled and
+  // loaded onto.
+  virtual const DeviceListRef& devices() const = 0;
+
   // The following APIs are taken from xla::PjRtLoadedExecutable for fast
   // prototyping.
   // TODO(hyeontaek): Move the following XLA-specific methods to

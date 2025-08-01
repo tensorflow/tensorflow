@@ -34,7 +34,6 @@ limitations under the License.
 
 namespace xla {
 namespace ifrt {
-
 char BasicDeviceList::ID = 0;
 
 DeviceListRef BasicDeviceList::Create(Devices devices) {

@@ -94,6 +94,10 @@ class DeviceList : public tsl::ReferenceCounted<DeviceList>,
   // Returns the hash of devices. This hash is stable only within the process.
   virtual uint64_t hash() const = 0;
 
+  // Returns the fingerprint of devices. This fingerprint is stable within the
+  // process and across processes.
+  virtual uint64_t fingerprint() const;
+
   // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   std::string DebugString() const { return ToString(); }
 

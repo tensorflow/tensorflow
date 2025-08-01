@@ -91,3 +91,9 @@
 *   Changes:
     *   Uses IFRT SerDes versioning to all IFRT type serialization and
     deserialization in addition to existing IFRT Proxy protocol versioning.
+
+## Version kExecutableDevices
+
+*   Added date: 2025-07-18
+*   Changes:
+    *   Added support for `LoadedExecutable::devices()`.
