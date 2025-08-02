@@ -73,8 +73,6 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
                           int local_device_id, int node_id,
                           int slice_index = 0);
 
-  int slice_index() const;
-
   absl::string_view device_vendor() const;
 
   absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;

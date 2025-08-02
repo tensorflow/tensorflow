@@ -1034,7 +1034,7 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
   description_.SetAttributes({
       {"coords", xla::PjRtDeviceAttribute(v_coords)},
       {"device_vendor", options.device_vendor},
-      {"slice_index", static_cast<int64_t>(options.slice_index)},
+      {"partition_index", static_cast<int64_t>(options.slice_index)},
       {"compute_capability",
        xla::PjRtDeviceAttribute(options.compute_capability)},
       {"core_count", static_cast<int64_t>(options.core_count)},
