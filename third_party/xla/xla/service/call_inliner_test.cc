@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -494,6 +495,17 @@ TEST_F(CallInlinerTest, UseShardManualComputationBodyNotInlined) {
   EXPECT_NE(call, nullptr);
   EXPECT_TRUE(call->has_to_apply());
   EXPECT_EQ(call->to_apply()->name(), "xla.sdy.manual_computation_body.4");
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      changed, CallInliner(
+                   /*single_call_site=*/false, /*update_domain=*/false,
+                   /*composites_to_preserve=*/{},
+                   /*uniquify_channel_ids=*/false,
+                   /*should_inline=*/std::nullopt,
+                   /*inline_shardy_manual_computation=*/true)
+                   .Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(FindInstruction(module.get(), xla::HloOpcode::kCall), nullptr);
 }
 
 // Make sure we check the name of the called function contains the string, not
