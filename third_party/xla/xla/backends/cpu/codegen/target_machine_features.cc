@@ -42,6 +42,10 @@ TargetMachineFeatures::TargetMachineFeatures(
   }
 }
 
+const llvm::TargetMachine* TargetMachineFeatures::target_machine() const {
+  return target_machine_;
+}
+
 int32_t TargetMachineFeatures::vectorization_factor_in_bytes() const {
   // Ideally this should be a function of the cache line size (which we can
   // get from llvm::TargetTransformInfo::getCacheLineSize) of the target
