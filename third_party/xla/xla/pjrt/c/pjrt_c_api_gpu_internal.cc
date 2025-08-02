@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_pjrt_client.h"
 #include "xla/python/custom_call_batch_partitioner.h"
 #include "xla/python/custom_partition_callback.h"
 #include "xla/service/compiler.h"
@@ -90,6 +91,7 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
            PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"abort_collectives_on_failure",
            PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
+          {"use_tfrt_gpu_client", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"enable_mock_nccl", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"mock_gpu_topology", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
           {"slice_index", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
@@ -157,6 +159,11 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       it != create_options.end()) {
     abort_collectives_on_failure = std::get<bool>(it->second);
   }
+  bool use_tfrt_gpu_client = false;
+  if (auto it = create_options.find("use_tfrt_gpu_client");
+      it != create_options.end()) {
+    use_tfrt_gpu_client = std::get<bool>(it->second);
+  }
   bool enable_mock_nccl = false;
   if (auto it = create_options.find("enable_mock_nccl");
       it != create_options.end()) {
@@ -185,11 +192,12 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   options.should_stage_host_to_device_transfers =
       should_stage_host_to_device_transfers;
   options.abort_collectives_on_failure = abort_collectives_on_failure;
+  options.use_tfrt_gpu_client = use_tfrt_gpu_client;
   options.enable_mock_nccl = enable_mock_nccl;
   options.mock_gpu_topology = mock_gpu_topology;
   options.slice_index = slice_index;
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
-                        xla::GetStreamExecutorGpuClient(options));
+                        xla::GetXlaPjrtGpuClient(options));
   args->client = pjrt::CreateWrapperClient(std::move(client));
   return nullptr;
 }
