@@ -292,9 +292,9 @@ void QuantizationDriver::QuantizeValue(Value value,
   if (new_value_type == nullptr) return;
 
   auto quantize =
-      builder_.create<quantfork::QuantizeCastOp>(loc, new_value_type, value);
-  auto dequantize = builder_.create<quantfork::DequantizeCastOp>(
-      loc, expressed_type, quantize.getResult());
+      quantfork::QuantizeCastOp::create(builder_, loc, new_value_type, value);
+  auto dequantize = quantfork::DequantizeCastOp::create(
+      builder_, loc, expressed_type, quantize.getResult());
 
   // This attribute is set to distinguish the quantize ops being added by the
   // quantization pass. These ops can be removed without losing original
@@ -364,7 +364,7 @@ void QuantizationDriver::RequantizeValue(Value value, RequantizeStates& states,
     const Type new_type = state.params.castFromExpressedType(expressed_type);
     if (!new_type) return;
     auto requantize_op =
-        builder_.create<quantfork::QuantizeCastOp>(loc, new_type, value);
+        quantfork::QuantizeCastOp::create(builder_, loc, new_type, value);
     value.replaceAllUsesWith(requantize_op);
     requantize_op.getOperation()->replaceUsesOfWith(requantize_op, value);
     // This requantization was defined as required for the result value, so
@@ -401,15 +401,16 @@ void QuantizationDriver::RequantizeValue(Value value, RequantizeStates& states,
     if (!new_type) continue;
 
     auto requantize_op =
-        builder_.create<quantfork::QuantizeCastOp>(loc, new_type, value);
+        quantfork::QuantizeCastOp::create(builder_, loc, new_type, value);
 
     if (clobber_first) {
       dequant_op.setOperand(requantize_op.getResult());
       // All ops requiring this value already use the result of dequant.
       clobber_first = false;
     } else {
-      auto new_dequant_op = builder_.create<quantfork::DequantizeCastOp>(
-          loc, dequant_op.getResult().getType(), requantize_op.getResult());
+      auto new_dequant_op = quantfork::DequantizeCastOp::create(
+          builder_, loc, dequant_op.getResult().getType(),
+          requantize_op.getResult());
       for (auto [op, operand_idx] : state.users) {
         op->setOperand(operand_idx, new_dequant_op.getResult());
       }
@@ -538,7 +539,7 @@ void QuantizationDriver::PreprocessConstantOps() {
         // different users.
         if (uses.size() > 1) {
           auto new_constant_op =
-              builder_.create<arith::ConstantOp>(cst.getLoc(), cst.getValue());
+              arith::ConstantOp::create(builder_, cst.getLoc(), cst.getValue());
           user->setOperand(operand_num, new_constant_op);
         }
       }
