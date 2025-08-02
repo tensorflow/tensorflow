@@ -6677,19 +6677,24 @@ bool HloParserImpl::ParseOriginalValueRecoveryTable(
     if (!ParseOriginalArray(replacing_original_array)) {
       return false;
     }
-    if (!ParseToken(TokKind::kComma, errmsg)) {
-      return false;
+    std::unique_ptr<HloModule> recovery_module;
+    if (lexer_.GetKind() == TokKind::kComma) {
+      if (!ParseToken(TokKind::kComma, errmsg)) {
+        return false;
+      }
+      std::string hlo_string;
+      if (!ParseString(&hlo_string)) {
+        return false;
+      }
+      auto status_or_recovery_module =
+          ParseAndReturnUnverifiedModule(hlo_string);
+      if (!status_or_recovery_module.ok()) {
+        return false;
+      }
+      recovery_module = std::move(status_or_recovery_module.value());
     }
-    std::string hlo_string;
-    if (!ParseString(&hlo_string)) {
-      return false;
-    }
-    auto recovery_module = ParseAndReturnUnverifiedModule(hlo_string);
-    if (!recovery_module.ok()) {
-      return false;
-    }
-    original_value_recovery_table[replaced_original_array] = std::make_pair(
-        replacing_original_array, std::move(recovery_module.value()));
+    original_value_recovery_table[replaced_original_array] =
+        std::make_pair(replacing_original_array, std::move(recovery_module));
   }
 
   lexer_.Lex();

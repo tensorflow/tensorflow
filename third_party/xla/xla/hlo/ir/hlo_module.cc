@@ -1427,16 +1427,20 @@ std::string HloModule::OriginalValueRecoveryTable::ToString(
     // without interferecing with theparseing of the main module the table is
     // associated with.
     const std::string tab(2 * (options.indent_amount()), ' ');
+    std::string recovery_module_string;
+    if (recovery_module) {
+      absl::StrAppend(&recovery_module_string, ",\n", tab, "\"\n",
+                      recovery_module->entry_computation()->ToString(
+                          HloPrintOptions()
+                              .set_print_computation_mode(
+                                  HloPrintOptions::PrintComputationMode::
+                                      kComputationWithEntryKeyword)
+                              .set_indent_amount(options.indent_amount() + 1)),
+                      "\n", tab, "\"");
+    }
     absl::StrAppend(&result, tab, "{", replaced_original_array.ToString(),
-                    "} : {", replacing_original_array.ToString(), "},\n", tab,
-                    "\"\n",
-                    recovery_module->entry_computation()->ToString(
-                        HloPrintOptions()
-                            .set_print_computation_mode(
-                                HloPrintOptions::PrintComputationMode::
-                                    kComputationWithEntryKeyword)
-                            .set_indent_amount(options.indent_amount() + 1)),
-                    "\n", tab, "\"\n");
+                    "} : {", replacing_original_array.ToString(), "}",
+                    recovery_module_string, "\n");
   }
   return result;
 }
@@ -1453,7 +1457,9 @@ OriginalValueRecoveryTableProto HloModule::OriginalValueRecoveryTable::ToProto()
         replaced_original_array.ToProto();
     *entry->mutable_replacing_original_array() =
         replacing_original_array.ToProto();
-    *entry->mutable_recovery_module() = recovery_module->ToProto();
+    if (recovery_module) {
+      *entry->mutable_recovery_module() = recovery_module->ToProto();
+    }
   }
   return original_value_recovery_table_proto;
 }
@@ -1469,12 +1475,15 @@ HloModule::OriginalValueRecoveryTable::FromProto(
                       OriginalArray::FromProto(entry.replaced_original_array()),
                   replacing_original_array = OriginalArray::FromProto(
                       entry.replacing_original_array());
-    const HloModuleProto proto = entry.recovery_module();
-    TF_ASSIGN_OR_RETURN(HloModuleConfig config,
-                        HloModule::CreateModuleConfigFromProto(
-                            proto, GetDebugOptionsFromFlags()));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> recovery_module,
-                        HloModule::CreateFromProto(proto, config));
+    std::unique_ptr<HloModule> recovery_module;
+    if (entry.has_recovery_module()) {
+      const HloModuleProto proto = entry.recovery_module();
+      TF_ASSIGN_OR_RETURN(HloModuleConfig config,
+                          HloModule::CreateModuleConfigFromProto(
+                              proto, GetDebugOptionsFromFlags()));
+      TF_ASSIGN_OR_RETURN(recovery_module,
+                          HloModule::CreateFromProto(proto, config));
+    }
     original_value_recovery_table[replaced_original_array] =
         std::make_pair(replacing_original_array, std::move(recovery_module));
   }
@@ -1491,22 +1500,24 @@ void HloModule::OriginalValueRecoveryTable::AddRecoveryComputation(
   if (!replaced_original_value) {
     return;
   }
-
-  xla::HloComputation::Builder builder("recovery_computation");
-  xla::HloModuleConfig config;
-  auto recovery_module =
-      std::make_unique<xla::HloModule>("recovery_module", config);
-  recovery_module->AddEntryComputation(builder.Build(recovery_computation(
-      builder, replacing_inst->shape(), replaced_inst->shape())));
-
   std::shared_ptr<OriginalValue> replacing_original_value =
       replacing_inst->original_value();
-  // Creates a placeholder original value for the replacing instruction if it
-  // doesn't have one.
-  if (!replacing_original_value) {
-    replacing_original_value = OriginalValue::CreateFromInstruction(
-        replacing_inst, /*prefix=*/"placeholder_");
-    replacing_inst->set_original_value(replacing_original_value);
+  std::unique_ptr<HloModule> recovery_module;
+  if (recovery_computation) {
+    xla::HloComputation::Builder builder("recovery_computation");
+    xla::HloModuleConfig config;
+    recovery_module =
+        std::make_unique<xla::HloModule>("recovery_module", config);
+    recovery_module->AddEntryComputation(builder.Build(recovery_computation(
+        builder, replacing_inst->shape(), replaced_inst->shape())));
+
+    // Creates a placeholder original value for the replacing instruction if it
+    // doesn't have one.
+    if (!replacing_original_value) {
+      replacing_original_value = OriginalValue::CreateFromInstruction(
+          replacing_inst, /*prefix=*/"placeholder_");
+      replacing_inst->set_original_value(replacing_original_value);
+    }
   }
   (*this)[*replaced_original_value->leaf_begin()->second] =
       std::make_pair(*replacing_original_value->leaf_begin()->second,
