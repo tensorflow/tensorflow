@@ -15,20 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_VERSIONING_OP_VERSION_H_
 #define TENSORFLOW_LITE_TOOLS_VERSIONING_OP_VERSION_H_
 
-#include <cstdint>
-#include <vector>
-
-#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
-#include "tensorflow/lite/tools/versioning/op_signature.h"
-
-namespace tflite {
-
-// Returns version of builtin ops by the given signature.
-int GetBuiltinOperatorVersion(const OpSignature& op_sig);
-
-// Update operator's version of the given TFL flatbuffer model.
-void UpdateOpVersion(uint8_t* model_buffer_pointer);
-
-}  // namespace tflite
+#include "tensorflow/compiler/mlir/lite/tools/versioning/op_version.h"
 
 #endif  // TENSORFLOW_LITE_TOOLS_VERSIONING_OP_VERSION_H_
