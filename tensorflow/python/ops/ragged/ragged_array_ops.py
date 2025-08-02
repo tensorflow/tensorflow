@@ -1044,7 +1044,7 @@ def split(value: ragged_tensor.Ragged,
     ValueError: If `num_or_size_splits` is an `int` and less than 1.
     TypeError: If `num_or_size_splits` is not an `int` or 1-D
       list or 1-D `Tensor`.
-    InvalidArgumentError: If the `axis` of `value` cannot be exactly splitted
+    InvalidArgumentError: If the `axis` of `value` cannot be exactly split
       by `num_or_size_splits`.
     InvalidArgumentError: If `num_or_size_splits` is contains negative integers.
     InvalidArgumentError: If `num_or_size_splits`'s static shape is unknown and
