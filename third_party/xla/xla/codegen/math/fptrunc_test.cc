@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/codegen/math/intrinsic.h"
+#include "xla/codegen/math/simple_jit_runner.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::codegen::intrinsics {
@@ -30,4 +31,5 @@ TEST(FpTruncTest, VectorIninsic) {
   EXPECT_EQ(FpTrunc::Name(Type::V(F32, 4), Type::V(BF16, 4)),
             "xla.fptrunc.v4f32.to.v4bf16");
 }
+
 }  // namespace xla::codegen::intrinsics
