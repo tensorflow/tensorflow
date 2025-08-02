@@ -394,48 +394,47 @@ def L2NormValidReduceIndex : Constraint<CPred<
 // TODO(karimnosseir): Add constraints that the kernel code assumes.
 // constraint on axis and depth.
 multiclass L2NormalizePatterns<Op FirstOp, Op SecondOp> {
-  // This pattern constructs L2NormalizationOp from
-  // Mul->Rsqrt->Sum->Square Or
-  // Div->sqrt->Sum->Square
+  // Fuses `(x * rsqrt(sum(square(x))))` or `(x / sqrt(sum(square(x))))`
+  // into a L2NormalizationOp.
   def L2NormalizePattern1#FirstOp#SecondOp : Pat<
                   (FirstOp $x,
                      (SecondOp
                         (TFL_SumOp
                            (TFL_SquareOp:$sq_op $x),
                            (Arith_ConstantOp I32ElementsAttr:$axis),
-                           $keep_dims)),
+                           ConstBoolAttrTrue)),
                      TFL_AF_None),
            (TFL_L2NormalizationOp $x, TFL_AF_None),
            [(L2NormValidReduceIndex $sq_op, $axis)]>;
 
-  // Below patterns for L2Normalize when there is an Add or Maximum
-  // adding or clamping to a small constant scalar.
+  // Fuses L2 norm with a small constant add for numerical stability.
   def L2NormalizePattern2#FirstOp#SecondOp : Pat<
-                    (FirstOp $x,
-                     (SecondOp
-                      (TFL_AddOp
-                       (TFL_SumOp
-                        (TFL_SquareOp:$sq_op $x),
-                        (Arith_ConstantOp I32ElementsAttr:$axis),
-                        $keep_dims),
-                       (Arith_ConstantOp $epsilon), TFL_AF_None)),
-           TFL_AF_None),
-           (TFL_L2NormalizationOp $x, TFL_AF_None),
-           [(L2NormValidReduceIndex $sq_op, $axis),
-            (ConstDoubleValueLessThan<"1e-3"> $epsilon)]>;
+                  (FirstOp $x,
+                    (SecondOp
+                    (TFL_AddOp
+                      (TFL_SumOp
+                      (TFL_SquareOp:$sq_op $x),
+                      (Arith_ConstantOp I32ElementsAttr:$axis),
+                      ConstBoolAttrTrue),
+                      (Arith_ConstantOp $epsilon), TFL_AF_None)),
+          TFL_AF_None),
+          (TFL_L2NormalizationOp $x, TFL_AF_None),
+          [(L2NormValidReduceIndex $sq_op, $axis),
+          (ConstDoubleValueLessThan<"1e-3"> $epsilon)]>;
 
+  // Fuses L2 norm with a small constant maximum for numerical stability.
   def L2NormalizePattern3#FirstOp#SecondOp : Pat<
                     (FirstOp $x,
-                     (SecondOp
+                      (SecondOp
                       (TFL_MaximumOp
-                       (TFL_SumOp
+                        (TFL_SumOp
                         (TFL_SquareOp:$sq_op $x),
                         (Arith_ConstantOp I32ElementsAttr:$axis),
-                        $keep_dims),
-                       (Arith_ConstantOp $epsilon))),
-           TFL_AF_None),
-           (TFL_L2NormalizationOp $x, TFL_AF_None),
-           [(L2NormValidReduceIndex $sq_op, $axis),
+                        ConstBoolAttrTrue),
+                        (Arith_ConstantOp $epsilon))),
+            TFL_AF_None),
+            (TFL_L2NormalizationOp $x, TFL_AF_None),
+            [(L2NormValidReduceIndex $sq_op, $axis),
             (ConstDoubleValueLessThan<"1e-3"> $epsilon)]>;
 
 }
