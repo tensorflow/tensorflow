@@ -495,6 +495,7 @@ xla_cc_test(
     srcs = ["xnn_fusion_test.cc"],
     deps = [
         "//xla:error_spec",
+        "//xla/backends/cpu:xnn_gemm_config",
         "//xla/service:cpu_plugin",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/platform:test",

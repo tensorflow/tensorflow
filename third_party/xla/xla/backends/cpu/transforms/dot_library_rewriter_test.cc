@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/codegen/target_machine_test_base.h"
+#include "xla/backends/cpu/xnn_gemm_config.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -69,6 +70,9 @@ class CpuLibraryTest : public TargetMachineTestBase {
         CreateTargetMachineFeatures(
             /*triple_string=*/"x86_64-unknown-linux-gnu", spec.cpu_name,
             spec.features);
+
+    // Override XnnGemmConfig.
+    GetXnnGemmConfig().SetTestFilter([](const XnnGemm&) { return true; });
 
     // Create an HLO module with the specified input and output data types.
     std::string hlo_text = absl::StrReplaceAll(
