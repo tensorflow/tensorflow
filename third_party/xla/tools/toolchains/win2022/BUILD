@@ -18,6 +18,9 @@ platform(
         "@platforms//os:windows",
         "@bazel_tools//tools/cpp:clang-cl",
     ],
+    exec_properties = {
+        "cache-silo-key": "2025_07_28",
+    },
     remote_execution_properties = """
         properties:{
           name: "container-image"
