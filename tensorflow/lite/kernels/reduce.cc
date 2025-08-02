@@ -252,6 +252,7 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   OpContext op_context(context, node);
+  TF_LITE_ENSURE(context, op_context.axis != nullptr);
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
   if (op_data->scratch_tensor_index == -1) {
     context->AddTensors(context, 4, &op_data->scratch_tensor_index);
