@@ -33,8 +33,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -42,7 +44,9 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/transforms/collectives/async_collective_creator.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/legalize_scheduling_annotations.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -4728,6 +4732,8 @@ static void BM_FindAndExtractBestNodeAvailable(
   std::unique_ptr<DeviceAssignment> default_device_assignment =
       std::make_unique<DeviceAssignment>(device_assignment);
   config.set_static_device_assignment(*default_device_assignment);
+  LOG_FIRST_N(INFO, 1) << "sizeof(HloGraphNode) " << sizeof(HloGraphNode)
+                       << " sizeof(HloEdge) " << sizeof(HloEdge);
 
   BMHelper bm;
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, bm.ParseForBM(hlo, config));
