@@ -13,30 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if TENSORFLOW_USE_ROCM
-
+#include <cstdint>
 #include <memory>
-#include <utility>
+#include <set>
+#include <vector>
 
-#include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
+#include "rocm/include/hip/amd_detail/hip_prof_str.h"
+#include "rocm/include/roctracer/ext/prof_protocol.h"
 #include "xla/backends/profiler/gpu/rocm_collector.h"
 #include "xla/backends/profiler/gpu/rocm_tracer.h"
+#include "xla/tsl/platform/env_time.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
 #include "xla/tsl/profiler/utils/parse_annotation.h"
+#include "xla/tsl/profiler/utils/trace_utils.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
-#include "xla/tsl/util/env_var.h"
-#include "tsl/platform/abi.h"
-#include "tsl/platform/env_time.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/thread_annotations.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 
@@ -272,5 +269,3 @@ auto register_rocm_gpu_tracer_factory = [] {
 
 }  // namespace profiler
 }  // namespace xla
-
-#endif  // TENSORFLOW_USE_ROCM

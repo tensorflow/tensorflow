@@ -13,25 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
-
 #include <stdlib.h>
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 
-#include "absl/container/fixed_array.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
-#include "xla/backends/profiler/gpu/cupti_wrapper.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/util/env_var.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/thread_annotations.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -190,5 +187,3 @@ auto register_gpu_tracer_factory = [] {
 
 }  // namespace profiler
 }  // namespace xla
-
-#endif  // GOOGLE_CUDA

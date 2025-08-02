@@ -13,19 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <gtest/gtest.h>
-
-#if GOOGLE_CUDA
+#include "xla/backends/profiler/gpu/cupti_collector.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "xla/backends/profiler/gpu/cupti_collector.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
-#include "tsl/platform/test.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
@@ -151,5 +152,3 @@ TEST(CuptiCollectorTest, ExportCallbackActivityAndNvtxEvents) {
 }  // namespace
 }  // namespace profiler
 }  // namespace xla
-
-#endif  // GOOGLE_CUDA

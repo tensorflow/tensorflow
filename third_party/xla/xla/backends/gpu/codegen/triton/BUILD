@@ -848,9 +848,13 @@ xla_test(
 cc_library(
     name = "kernel_name_tracer_cuda",
     testonly = True,
-    srcs = if_cuda(["kernel_name_tracer_cuda.cc"]),
+    srcs = ["kernel_name_tracer_cuda.cc"],
     hdrs = ["kernel_name_tracer.h"],
-    tags = ["manual"],  # Need to exclude this from wildcard builds
+    tags = [
+        "cuda-only",
+        "gpu",
+        "manual",  # Need to exclude this from wildcard builds
+    ],
     deps = [
         "//xla/backends/profiler/gpu:cupti_collector",
         "//xla/backends/profiler/gpu:cupti_tracer",
