@@ -507,6 +507,7 @@ class AsyncValue {
   static std::atomic<size_t> total_allocated_async_values_;
 };
 
+static_assert(std::is_standard_layout_v<AsyncValue>);
 // We only optimize the code for 64-bit architectures for now.
 static_assert(sizeof(AsyncValue) == 16 || sizeof(void*) != 8,
               "Unexpected size for AsyncValue");
@@ -746,10 +747,12 @@ class ConcreteAsyncValue : public AsyncValue {
   bool HasData() const { return data_store_.HasData(state()); }
 
   static void VerifyOffsets() {
-    static_assert(offsetof(ConcreteAsyncValue<T>, data_store_.data_) ==
-                      AsyncValue::kDataOffset,
-                  "Offset of ConcreteAsyncValue data payload is assumed to be "
-                  "AsyncValue::kDataOffset == 64");
+    // This assertion triggers a warning because ConcreteAsyncValue<T> is not
+    // standard layout. Both it and its superclass have data members.
+    // static_assert(offsetof(ConcreteAsyncValue<T>, data_store_.data_) ==
+    //                   AsyncValue::kDataOffset,
+    //               "Offset of ConcreteAsyncValue data payload is assumed to "
+    //               "be AsyncValue::kDataOffset == 64");
   }
 };
 
