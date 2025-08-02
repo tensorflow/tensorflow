@@ -74,13 +74,9 @@ class TritonBackendTest : public HloHardwareIndependentTestBase {
                      .value()
                      ->ExecutorForDevice(0)
                      .value(),
-                 &debug_options_, &compiler_) {
-    // TODO(b/315957220): Remove the experimental flags once TMA is enabled by
-    // default.
-    debug_options_.set_xla_gpu_experimental_enable_triton_tma(true);
-  }
+                 &debug_options_, &compiler_) {}
 
-  DebugOptions debug_options_;
+  DebugOptions debug_options_ = GetDebugOptionsForTest();
   NVPTXCompiler compiler_;
   TritonBackend backend_;
 };
