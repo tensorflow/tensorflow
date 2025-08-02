@@ -706,6 +706,16 @@ void MemorySpaceAssignment::RemoveScopedMemoryAssignments(
 absl::Status MemorySpaceAssignment::SimplifyGraph() {
   VLOG(1) << "Simplifying graph...";
 
+  // Preprocess flattened_instructions_ for quick index lookup.
+  absl::flat_hash_map<HloInstruction*, int64_t>
+      instruction_to_flattened_instructions_idx;
+  for (int64_t i = 0; i < flattened_instructions_.size(); ++i) {
+    if (flattened_instructions_[i] == nullptr) {
+      continue;
+    }
+    instruction_to_flattened_instructions_idx[flattened_instructions_[i]] = i;
+  }
+
   absl::flat_hash_set<const HloInstruction*> removed_instructions;
 
   for (HloComputation* computation : module_->MakeNonfusionComputations()) {
@@ -746,10 +756,10 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
           // with a nullptr. This is needed because FixSchedule relies on the
           // logical time that is the index into flattened_instructions_ for
           // scheduling asynchronous copies.
-          auto instruction_it =
-              absl::c_find(flattened_instructions_, instruction);
-          if (instruction_it != flattened_instructions_.end()) {
-            *instruction_it = nullptr;
+          if (instruction_to_flattened_instructions_idx.contains(instruction)) {
+            flattened_instructions_
+                [instruction_to_flattened_instructions_idx[instruction]] =
+                    nullptr;
           }
           TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
           computation_modified = true;
