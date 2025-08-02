@@ -101,7 +101,7 @@ HloModule::HloModule(const std::string& name,
 HloModule::~HloModule() {
   // To avoid dangling references between computations, we first clear all the
   // inter-computation references before deleting any of the computations.
-  for (const auto& computation : computations_) {
+  for (HloComputation* computation : computations()) {
     computation->ClearCalledComputations();
   }
 }
@@ -234,11 +234,14 @@ absl::Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
 
   auto it = absl::c_find_if(
       computations_, [&to_remove](const std::unique_ptr<HloComputation>& comp) {
-        return comp.get() == to_remove;
+        return comp != nullptr && comp.get() == to_remove;
       });
   TF_RET_CHECK(it != computations_.end());
   TF_RET_CHECK(it->get() == to_remove);
-  computations_.erase(it);
+  to_be_deleted_computations_.push_back(std::move(*it));
+  to_be_deleted_computations_.back()->ClearCalledComputations();
+  // Moving a unique_ptr from computations_ to to_be_deleted_computations_ will
+  // morally reset() the unique_ptr in computations_.
   return absl::OkStatus();
 }
 
@@ -252,7 +255,7 @@ HloComputation* HloModule::AddEmbeddedComputation(
 void HloModule::MarkFusionDuplications(
     const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements)
     const {
-  for (const std::unique_ptr<HloComputation>& computation : computations_) {
+  for (const HloComputation* computation : computations()) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kFusion) {
         auto rep =
@@ -274,7 +277,10 @@ void HloModule::MarkFusionDuplications(
 
 void HloModule::MoveComputationsFrom(HloModule* module,
                                      bool make_names_unique) {
-  for (size_t i = 0; i < module->computation_count(); ++i) {
+  for (size_t i = 0; i < module->computations_.size(); ++i) {
+    if (module->computations_[i] == nullptr) {
+      continue;
+    }
     for (auto* instruction : module->computations_[i]->instructions()) {
       instruction->ClearUniqueIdInternal();
     }
@@ -313,10 +319,7 @@ void HloModule::ReplaceComputations(
     const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements) {
   // Replace all uses of non-canonical computations with their
   // representatives.
-  std::vector<std::unique_ptr<HloComputation>> new_computations;
-  new_computations.reserve(computations_.size());
-
-  for (std::unique_ptr<HloComputation>& computation : computations_) {
+  for (HloComputation* computation : computations()) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->has_to_apply()) {
         HloComputation* new_arg = tsl::gtl::FindWithDefault(
@@ -368,18 +371,14 @@ void HloModule::ReplaceComputations(
       }
     }
 
-    if (replacements.find(computation.get()) == replacements.end()) {
-      new_computations.push_back(std::move(computation));
-    } else {
-      topological_sort_.RemoveNode(computation.get());
+    if (replacements.find(computation) != replacements.end()) {
+      CHECK_OK(RemoveEmbeddedComputation(computation));
     }
   }
 
   // Replace entry_computation if necessary.
   entry_computation_ = tsl::gtl::FindWithDefault(
       replacements, entry_computation_, entry_computation_);
-
-  computations_ = std::move(new_computations);
 }
 
 void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
@@ -954,6 +953,19 @@ bool IsUsedOutsideSubcomputation(const HloInstruction& hlo,
 }
 }  // anonymous namespace
 
+void HloModule::CleanupComputations() {
+  if (to_be_deleted_computations_.empty()) {
+    return;
+  }
+  computations_.erase(
+      std::remove_if(computations_.begin(), computations_.end(),
+                     [](const std::unique_ptr<HloComputation>& comp) {
+                       return comp == nullptr;
+                     }),
+      computations_.end());
+  to_be_deleted_computations_.clear();
+}
+
 HloInstruction* HloModule::OutlineExpressionFromComputation(
     absl::Span<HloInstruction* const> instructions_to_outline,
     const std::string& outlined_computation_name, HloComputation* computation) {
@@ -1041,11 +1053,11 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
 }
 
 int64_t HloModule::instruction_count() const {
-  int64_t n = 0;
-  for (const auto& computation : computations_) {
-    n += computation->instruction_count();
+  int64_t num_instructions = 0;
+  for (const auto& computation : computations()) {
+    num_instructions += computation->instruction_count();
   }
-  return n;
+  return num_instructions;
 }
 
 std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
@@ -1077,7 +1089,7 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
     // module).
     absl::flat_hash_set<HloComputation*> nonroot_computations;
     nonroot_computations.reserve(computations_.size() - 1);
-    for (auto& computation : computations_) {
+    for (auto* computation : computations()) {
       for (const HloInstructionInfo& inst :
            computation->instructions_with_info()) {
         if (HloInstruction::MightHaveCalledComputations(inst.opcode())) {
@@ -1096,8 +1108,10 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
     std::vector<HloComputation*> post_order;
     added_computations.reserve(computations_.size());
     post_order.reserve(computations_.size());
-    for (auto& computation : computations_) {
-      if (nonroot_computations.contains(computation.get())) {
+    size_t num_computations = 0;
+    for (auto* computation : computations()) {
+      ++num_computations;
+      if (nonroot_computations.contains(computation)) {
         continue;
       }
       for (HloComputation* embedded_computation :
@@ -1107,22 +1121,22 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
         }
       }
       // Root computations should only be encountered once.
-      CHECK(!added_computations.contains(computation.get()));
-      post_order.push_back(computation.get());
-      added_computations.insert(computation.get());
+      CHECK(!added_computations.contains(computation));
+      post_order.push_back(computation);
+      added_computations.insert(computation);
     }
-    if (post_order.size() != computations_.size()) {
+    if (post_order.size() != num_computations) {
       for (HloComputation* computation : post_order) {
         LOG(ERROR) << "Post Order: " << computation->name() << " ("
                    << computation->parent()->name() << ")";
       }
-      for (auto& computation : computations_) {
+      for (const HloComputation* computation : computations()) {
         LOG(ERROR) << "Computations: " << computation->name() << " ("
                    << computation->parent()->name() << ")";
       }
       LOG(FATAL) << "Mismatch computation count: post_order="
                  << post_order.size()
-                 << " computation_count=" << computations_.size();
+                 << " num_computations=" << num_computations;
     }
     if (!execution_threads.empty()) {
       post_order.erase(std::remove_if(post_order.begin(), post_order.end(),
@@ -1137,7 +1151,7 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
   // post-order.
   std::vector<HloComputation*> post_order;
   post_order.reserve(computations_.size());
-  int num_computations = 0;
+  size_t num_computations = 0;
   for (auto it = topological_sort_.rbegin(); it != topological_sort_.rend();
        ++it) {
     ++num_computations;
@@ -1147,17 +1161,17 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
     }
   }
 
-  if (num_computations != computations_.size()) {
+  if (num_computations != computation_count()) {
     for (HloComputation& computation : topological_sort_) {
       LOG(ERROR) << "Reverse postorder: " << computation.name() << " ("
                  << computation.parent()->name() << ")";
     }
-    for (auto& computation : computations_) {
+    for (const HloComputation* computation : computations()) {
       LOG(ERROR) << "Computations: " << computation->name() << " ("
                  << computation->parent()->name() << ")";
     }
     LOG(FATAL) << "Mismatch computation count: post_order=" << post_order.size()
-               << " computation_count=" << computations_.size();
+               << " computation_count=" << computation_count();
   }
   return post_order;
 }
@@ -1322,6 +1336,7 @@ std::unique_ptr<HloModule> HloModule::Clone(
   auto computation_map_fn = [&context](const HloComputation* c) {
     return context.FindComputation(c);
   };
+
   auto status = ComputationSorter::Sort(
       computation_map_fn, ComputationSorter::IndexAfterMappedElementsFn(),
       computations_, module->computations_);
@@ -1354,6 +1369,7 @@ absl::Status HloModule::RemoveUnusedComputations() {
   for (auto computation : to_remove) {
     TF_RETURN_IF_ERROR(RemoveEmbeddedComputation(computation));
   }
+  CleanupComputations();
   return absl::OkStatus();
 }
 
