@@ -370,6 +370,31 @@ TEST_P(ConvolutionTest, Conv2DWithBiasAndBinaryAddTest) {
   }
 }
 
+TEST_P(ConvolutionTest, Conv2DWithReluSumAndBinaryAddTest) {
+  const absl::string_view outline = R"(
+  HloModule convolution.relu.sum.add.test
+
+  ENTRY convolution.relu.sum.add.test {
+    arg0.1 = $dtype[1,22,22,1] parameter(0)
+    arg0.2 = $dtype[8,8,1,10] parameter(1)
+    arg0.3 = $dtype[1,11,11,10] parameter(2)
+    convolution.0 = $dtype[1,11,11,10] convolution(arg0.1, arg0.2),
+          window={size=8x8 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f
+    const.1 = $pdtype[] constant(0)
+    convert.0 = $dtype[] convert(const.1)
+    bcast.2 = $dtype[1,11,11,10] broadcast(convert.0), dimensions={}
+    maximum.1 = $dtype[1,11,11,10] maximum(convolution.0, bcast.2)
+    const.2 = $dtype[1,11,11,10] constant({...})
+    add.1 = $dtype[1,11,11,10] add(maximum.1, const.2)
+    ROOT add.2 = $dtype[1,11,11,10] add(add.1, arg0.3)
+  })";
+
+  // Optimized HLO must match "SUM" only for precisions that support Elementwise
+  // Add operations
+  RunCompareAndMatchOptimizedHlo(
+      outline, {"RELU", dtype_ == BF16 ? "BINARY_ADD" : "SUM", "BINARY_ADD"});
+}
+
 TEST_P(ConvolutionTest, ToeplitzConstrcutionTest) {
   if (dtype_ == BF16 || dtype_ == F16) {
     GTEST_SKIP() << "Skipping test for " << dtypeString_
