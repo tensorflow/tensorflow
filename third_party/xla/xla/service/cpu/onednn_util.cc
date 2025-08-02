@@ -73,6 +73,8 @@ dnnl::post_ops PopulateOneDnnPostOps(
         break;
       case OneDnnFusionConfig::SUM:
         post_ops.append_sum();
+        // oneDNN does not require an input for SUM post-op.
+        fused_operand_idx++;
         break;
       case OneDnnFusionConfig::BIAS: {
         *bias_md = fused_mds.at(fused_operand_idx);
