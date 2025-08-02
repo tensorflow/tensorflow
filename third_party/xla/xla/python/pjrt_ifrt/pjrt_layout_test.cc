@@ -55,20 +55,20 @@ TEST(PjRtLayoutTest, ByteSize) {
   EXPECT_THAT(
       PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(xla::Layout()))
           ->ByteSize(DType(DType::kToken), Shape({})),
-      IsOkAndHolds(std::nullopt));
+      absl_testing::IsOkAndHolds(std::nullopt));
   EXPECT_THAT(
       PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(xla::Layout()))
           ->ByteSize(DType(DType::kOpaque), Shape({})),
-      IsOkAndHolds(std::nullopt));
+      absl_testing::IsOkAndHolds(std::nullopt));
 
   EXPECT_THAT(PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(
                                      xla::LayoutUtil::MakeDescendingLayout(0)))
                   ->ByteSize(DType(DType::kS32), Shape({})),
-              IsOkAndHolds(Optional(4)));
+              absl_testing::IsOkAndHolds(Optional(4)));
   EXPECT_THAT(PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(
                                      xla::LayoutUtil::MakeDescendingLayout(2)))
                   ->ByteSize(DType(DType::kS32), Shape({3, 2})),
-              IsOkAndHolds(Optional(24)));
+              absl_testing::IsOkAndHolds(Optional(24)));
   EXPECT_THAT(
       PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(xla::Layout(
                              /*minor_to_major=*/{1, 0},
@@ -78,7 +78,7 @@ TEST(PjRtLayoutTest, ByteSize) {
                              /*tail_padding_alignment_in_elements=*/1,
                              /*element_size_in_bits=*/32)))
           ->ByteSize(DType(DType::kS32), Shape({1, 127})),
-      IsOkAndHolds(Optional(4 * (2 * 128))));
+      absl_testing::IsOkAndHolds(Optional(4 * (2 * 128))));
   EXPECT_THAT(
       PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(xla::Layout(
                              /*minor_to_major=*/{1, 0},
@@ -88,7 +88,7 @@ TEST(PjRtLayoutTest, ByteSize) {
                              /*tail_padding_alignment_in_elements=*/1,
                              /*element_size_in_bits=*/4)))
           ->ByteSize(DType(DType::kS4), Shape({1, 1023})),
-      IsOkAndHolds(Optional((2 * 1024) / 2)));
+      absl_testing::IsOkAndHolds(Optional(2 * 1024 / 2)));
 }
 
 TEST(PjRtLayoutTest, ToPjRtLayout) {
