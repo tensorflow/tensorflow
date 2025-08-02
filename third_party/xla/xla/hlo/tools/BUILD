@@ -124,6 +124,7 @@ xla_cc_binary(
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/translate:register",
         "//xla/hlo/translate:stablehlo",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "//xla/mlir_hlo:mhlo_passes",
