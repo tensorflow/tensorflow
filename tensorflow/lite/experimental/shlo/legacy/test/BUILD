@@ -1,3 +1,6 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:LICENSE"])
 
 cc_library(
