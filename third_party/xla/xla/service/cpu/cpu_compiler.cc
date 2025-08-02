@@ -122,6 +122,7 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/logistic_expander.h"
 #include "xla/hlo/transforms/expanders/optimization_barrier_expander.h"
 #include "xla/hlo/transforms/expanders/qr_expander.h"
+#include "xla/hlo/transforms/expanders/ragged_dot_rewriter.h"
 #include "xla/hlo/transforms/expanders/reduce_decomposer.h"
 #include "xla/hlo/transforms/expanders/reshape_decomposer.h"
 #include "xla/hlo/transforms/expanders/rng_bit_generator_expander.h"
@@ -598,6 +599,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   HloPassPipeline pipeline("HLO passes through layout assignment");
   AddHloVerifier(&pipeline);
+  pipeline.AddPass<RaggedDotRewriter>();
   pipeline.AddPass<BatchedGatherScatterNormalizer>();
   pipeline.AddPass<ResultCaster>();
 
