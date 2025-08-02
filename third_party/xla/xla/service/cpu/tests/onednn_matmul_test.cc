@@ -206,6 +206,10 @@ TEST_F(MatmulTest, SimpleTestBF16) {
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-4}));
+  // For BF16, we match the optimized HLO with HLO containing
+  // BINARY_ADD instead of SUM as SUM post-op does not work for
+  // BF16 because element-wise addition is not allowed due to
+  // precision constraints by oneDNN.
   MatchOptimizedHlo(matmul_module_str, matmul_rewrite_str_);
 }
 
@@ -1795,7 +1799,7 @@ TEST_F(MatmulTest, SimpleTestF16WithBiasAndAddFusion) {
   const std::string matmul_module_str =
       CreateMatmulBiasAddAndAddModuleText("f16", "f16");
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-4}));
-  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_add_str_);
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_add_sum_str_);
 }
 
 TEST_F(MatmulTest, SimpleTestF32WithAddFusion_2) {
