@@ -239,5 +239,25 @@ TEST_F(
   EXPECT_TRUE(matched);
 }
 
+TEST_F(GpuAlgebraicSimplifierTest, MultipleDotStrengthReductions) {
+  // Adapted from the AlgebraicSimplifierTest::MultipleDotStrengthReductions.
+  AlgebraicSimplifierOptions options;
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule test
+    ENTRY test {
+      a = c64[256,256] parameter(0)
+      b = c64[256, 256] parameter(1)
+      cd = c64[256, 256] dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      c = f64[2,2] parameter(2)
+      d = f64[2] parameter(3)
+      dd = f64[2] dot(c, d), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      ROOT tuple = (c64[256, 256], f64[2]) tuple(cd, dd)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(GpuAlgebraicSimplifier(options, Ampere()).Run(m.get()).value());
+  EXPECT_EQ(2, m->computation_count());
+}
+
 }  // namespace
 }  // namespace xla::gpu
