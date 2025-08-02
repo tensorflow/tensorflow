@@ -12,6 +12,7 @@ load(
     "if_mkl",
     "mkl_deps",
 )
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",

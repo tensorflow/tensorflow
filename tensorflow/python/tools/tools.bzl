@@ -1,5 +1,6 @@
 """Definitions for using tools like saved_model_cli."""
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "clean_dep", "if_xla_available")
 load("//tensorflow:tensorflow.default.bzl", "tfcompile_target_cpu")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "target_llvm_triple")
@@ -152,8 +153,7 @@ def saved_model_compile_aot(
             "//tensorflow/python/tools:saved_model_cli",
         ],
     )
-
-    native.cc_library(
+    cc_library(
         name = name,
         srcs = _maybe_force_compile(
             [
