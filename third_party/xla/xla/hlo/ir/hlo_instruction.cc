@@ -3551,9 +3551,10 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
   return absl::OkStatus();
 }
 
-bool HloInstruction::IsEffectiveBitcast() const {
-  return opcode_ == HloOpcode::kBitcast ||
-         (opcode_ == HloOpcode::kTranspose &&
+bool HloInstruction::IsEffectiveBitcast(HloOpcode opcode) const {
+  DCHECK_EQ(opcode, opcode_);
+  return opcode == HloOpcode::kBitcast ||
+         (opcode == HloOpcode::kTranspose &&
           ShapeUtil::TransposeIsBitcast(operand(0)->shape(), shape(),
                                         dimensions()));
 }
