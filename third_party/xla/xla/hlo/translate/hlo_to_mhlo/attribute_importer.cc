@@ -419,18 +419,6 @@ mlir::ArrayAttr ConvertOutputOperandAliasing(
   return builder->getArrayAttr(attrs);
 }
 
-absl::StatusOr<mlir::mhlo::SparsityDescriptorAttr> ConvertSparsityDescriptor(
-    xla::SparsityDescriptor sparsity_descriptor, mlir::Builder* builder) {
-  switch (sparsity_descriptor.type()) {
-    case SPARSITY_STRUCTURED_N_M:
-      return mlir::mhlo::SparsityDescriptorAttr::get(
-          builder->getContext(), sparsity_descriptor.dimension(),
-          sparsity_descriptor.n(), sparsity_descriptor.m());
-    default:
-      return InvalidArgument("Unknown sparsity descriptor type");
-  }
-}
-
 absl::StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
     xla::CustomCallApiVersion api_version) {
   TF_ASSIGN_OR_RETURN(auto stablehlo_api_version,

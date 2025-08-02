@@ -156,8 +156,6 @@ absl::StatusOr<int64_t> GetNonContractingDimsNumElements(
 absl::StatusOr<bool> ShouldSwapOperands(const HloInstruction* instr) {
   const HloDotInstruction* dot = DynCast<HloDotInstruction>(instr);
   if (dot == nullptr) return false;
-  // Sparsity is generally not symmetric, so we cannot swap operands.
-  if (dot->sparse_operands()) return false;
   const bool lhs_has_code = HasCodeGeneratingInstructions(dot->operand(0));
   const bool rhs_has_code = HasCodeGeneratingInstructions(dot->operand(1));
   TF_ASSIGN_OR_RETURN(const int64_t lhs_size, GetNonContractingDimsNumElements(

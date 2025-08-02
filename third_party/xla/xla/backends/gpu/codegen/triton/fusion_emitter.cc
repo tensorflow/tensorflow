@@ -906,9 +906,6 @@ absl::StatusOr<ScalarOrTensor> EmitDot(
   VLOG(2) << "EmitDot: " << tiled_hlo_dot.ToString();
   const HloDotInstruction& dot =
       *::xla::Cast<HloDotInstruction>(tiled_hlo_dot.hlo());
-  if (dot.sparse_operands() > 0) {
-    return absl::UnimplementedError("Sparse configuration is not supported");
-  }
   if (!absl::c_all_of(tiled_hlo_dot.operands(),
                       [](const TiledHloInstruction* operand) {
                         return operand->hlo()->opcode() == HloOpcode::kFusion;

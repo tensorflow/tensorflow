@@ -1944,33 +1944,6 @@ ENTRY dot {
 )"
 },
 {
-"DotSparseOperand",
-R"(HloModule dot, entry_computation_layout={(f16[32,32]{1,0}, f16[64,32]{1,0}, u16[32,4]{1,0})->f16[32,32]{1,0}}
-
-ENTRY dot {
-  a = f16[32,32]{1,0} parameter(0)
-  b = f16[64,32]{1,0} parameter(1)
-  meta = u16[32,4]{1,0} parameter(2)
-  ROOT dot = f16[32,32]{1,0} dot(a, b, meta), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
-}
-
-)"
-},
-{
-"DotSparseOperands",
-R"(HloModule dot, entry_computation_layout={(f16[32,32]{1,0}, f16[32,32]{1,0}, u16[32,4]{1,0}, u16[4,32]{1,0})->f16[32,32]{1,0}}
-
-ENTRY dot {
-  a = f16[32,32]{1,0} parameter(0)
-  b = f16[32,32]{1,0} parameter(1)
-  a_meta = u16[32,4]{1,0} parameter(2)
-  b_meta = u16[4,32]{1,0} parameter(3)
-  ROOT dot = f16[32,32]{1,0} dot(a, b, a_meta, b_meta), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4_R.0@2:4
-}
-
-)"
-},
-{
 "DotWithAlgorithm",
 R"(HloModule dot, entry_computation_layout={(f32[2,10]{1,0}, f32[10,2]{1,0})->f32[2]{0}}
 

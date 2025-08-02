@@ -173,15 +173,12 @@ HloInstruction* MakeIotaHlo(HloComputation* computation, const Shape& shape,
 // Creates a Dot HLO instruction and adds it to the computation containing `lhs`
 // and `rhs` (both must be in the same computation). If the result shape has
 // integral element type, an optional preferred_element_type can be specified to
-// override the element type. If 'sparsity' is set, then 'sparse_meta' must also
-// be present (and have the same size).
+// override the element type.
 absl::StatusOr<HloInstruction*> MakeDotHlo(
     HloInstruction* lhs, HloInstruction* rhs,
     const DotDimensionNumbers& dim_numbers,
     const PrecisionConfig& precision_config,
     std::optional<PrimitiveType> preferred_element_type,
-    std::vector<SparsityDescriptor> sparsity = {},
-    absl::Span<HloInstruction* const> sparse_meta = {},
     const OpMetadata* metadata = nullptr);
 
 // Creates a RaggedDot HLO instruction and adds it to the computation containing
