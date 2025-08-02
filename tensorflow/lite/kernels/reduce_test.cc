@@ -1975,5 +1975,13 @@ TEST(ConstAnyOpTest, EmptyInputButScalarOutputKeepDim) {
   EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({false}));
 }
 
+TEST(ConstFloatProdOpTest, EmptyAxis) {
+  const std::vector<float> data = {1.0, 2.0, 3.0, 4.0};
+  ProdOpConstModel m({TensorType_FLOAT32, {4}}, {TensorType_FLOAT32, {1}},
+                     {TensorType_INT32, {}}, {}, false);
+  m.SetInput(data);
+  EXPECT_EQ(m.Invoke(), kTfLiteOk);
+}
+
 }  // namespace
 }  // namespace tflite
