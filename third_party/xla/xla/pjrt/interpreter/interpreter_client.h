@@ -293,7 +293,7 @@ class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
  public:
   explicit InterpreterLoadedExecutable(
       PjRtClient* absl_nonnull client, std::unique_ptr<HloModule> hlo_module,
-      std::unique_ptr<HloEvaluator> hlo_evaluator,
+      std::unique_ptr<HloEvaluatorInterface> hlo_evaluator,
       std::optional<DynamicDimensionInference> dynamic_dimension_inference,
       std::shared_ptr<DeviceAssignment> device_assignment,
       CompileOptions compile_options,
@@ -384,7 +384,7 @@ class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
   PjRtClient* client_ = nullptr;
   std::shared_ptr<HloModule> hlo_module_;
   mutable absl::Mutex hlo_evaluator_lock_;
-  std::unique_ptr<HloEvaluator> hlo_evaluator_
+  std::unique_ptr<HloEvaluatorInterface> hlo_evaluator_
       ABSL_PT_GUARDED_BY(hlo_evaluator_lock_);
   std::optional<DynamicDimensionInference> dynamic_dimension_inference_;
   std::shared_ptr<DeviceAssignment> device_assignment_;
@@ -398,7 +398,7 @@ class InterpreterClient final : public PjRtClient {
   InterpreterClient()
       : InterpreterClient([]() { return std::make_unique<HloEvaluator>(); }) {}
   explicit InterpreterClient(
-      absl::AnyInvocable<std::unique_ptr<HloEvaluator>() const>
+      absl::AnyInvocable<std::unique_ptr<HloEvaluatorInterface>() const>
           hlo_evaluator_factory)
       : hlo_evaluator_factory_(std::move(hlo_evaluator_factory)),
         interpreter_device_{this},
@@ -482,7 +482,7 @@ class InterpreterClient final : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> RunBackend(
       std::unique_ptr<HloModule> hlo_module, CompileOptions& options);
 
-  absl::AnyInvocable<std::unique_ptr<HloEvaluator>() const>
+  absl::AnyInvocable<std::unique_ptr<HloEvaluatorInterface>() const>
       hlo_evaluator_factory_;
   InterpreterDevice interpreter_device_;
   InterpreterMemorySpace interpreter_memory_space_;
