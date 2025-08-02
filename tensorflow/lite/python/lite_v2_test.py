@@ -2338,11 +2338,11 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     def representative_dataset_gen():
       for _ in range(2):
         yield {
-            'x': np.random.uniform(low=0, high=1, size=(1, 1)).astype(
-                np.float32
+            'x': (
+                np.random.uniform(low=0, high=1, size=(1, 1)).astype(np.float32)
             ),
-            'y': np.random.uniform(low=0, high=1, size=(1, 1)).astype(
-                np.float32
+            'y': (
+                np.random.uniform(low=0, high=1, size=(1, 1)).astype(np.float32)
             ),
         }
 
@@ -2441,8 +2441,10 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
         yield (
             'add',
             {
-                'x': np.random.uniform(low=0, high=1, size=(1,)).astype(
-                    np.float32
+                'x': (
+                    np.random.uniform(low=0, high=1, size=(1,)).astype(
+                        np.float32
+                    )
                 ),
             },
         )
@@ -2450,8 +2452,10 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
         yield (
             'sub',
             {
-                'x': np.random.uniform(low=0, high=1, size=(1,)).astype(
-                    np.float32
+                'x': (
+                    np.random.uniform(low=0, high=1, size=(1,)).astype(
+                        np.float32
+                    )
                 ),
             },
         )
@@ -2798,7 +2802,8 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
       def call(self, x):
         return tf.quantization.fake_quant_with_min_max_vars(
-            x, -3.0, 3.0, narrow_range=True)
+            x, -3.0, 3.0, narrow_range=True
+        )
 
     inp = tf.keras.Input(shape=(6, 8, 48), batch_size=1)
     x = _FakeQuantVarsLayer()(inp)
@@ -2990,9 +2995,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     saved_model_dir = os.path.join(self.get_temp_dir(), 'dense_saved_model')
     save.save(model, saved_model_dir)
     k_dense_bias_name = (
-        'sequential/dense/BiasAdd'
-        if is_int16_quantize
-        else 'tfl.pseudo_qconst'
+        'sequential/dense/BiasAdd' if is_int16_quantize else 'tfl.pseudo_qconst'
     )
     quantized_converter = lite.TFLiteConverterV2.from_saved_model(
         saved_model_dir
@@ -3517,16 +3520,12 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     interp.allocate_tensors()
     num_8bit_activations = 0
     num_8bit_weights = 0
-    kernel_name = (
-        'model/conv_wrapper/Conv2D;model/conv_wrapper/'
-        'FakeQuantWithMinMaxVarsPerChannel'
-    )
-
     for detail in interp.get_tensor_details():
+      # The weight tensor has a unique shape of [1, 3, 3, 3].
       if (
           detail['dtype'] == np.int8
           and detail['name']
-          and detail['name'] == kernel_name
+          and list(detail['shape']) == [1, 3, 3, 3]
       ):
         num_8bit_weights += 1
         weights = interp.get_tensor(detail['index'])
@@ -3587,7 +3586,8 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
 
       def call(self, x):
         return tf.quantization.fake_quant_with_min_max_vars(
-            x, -3.0, 3.0, narrow_range=True)
+            x, -3.0, 3.0, narrow_range=True
+        )
 
     inp = tf.keras.Input(shape=(6, 8, 6), batch_size=1)
     x = _FakeQuantVarsLayer()(inp)

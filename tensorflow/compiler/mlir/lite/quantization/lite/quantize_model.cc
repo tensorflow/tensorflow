@@ -126,6 +126,8 @@ absl::Status QuantizeModel(
   pm.addPass(TFL::CreateModifyIONodesPass(input_mlir_type, output_mlir_type));
   // If the first or final ops are not quantized, remove QDQ.
   pm.addPass(TFL::CreatePostQuantizeRemoveQDQPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::TFL::CreateSplitMergedOperandsPass());
   if (failed(pm.run(module.get()))) {
     const std::string err(statusHandler.ConsumeStatus().message());
     return absl::InternalError(err);
