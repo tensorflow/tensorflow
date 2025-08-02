@@ -14,11 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/image_ops.cc
+#include <algorithm>
+#include <cstdint>
+#include <cstdlib>
+#include <limits>
+#include <optional>
+#include <vector>
+
+#include "absl/status/status.h"
 #define EIGEN_USE_THREADS
-
-#include "tensorflow/core/kernels/image/scale_and_translate_op.h"
-
-#include <memory>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
@@ -29,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/image/sampling_kernels.h"
+#include "tensorflow/core/kernels/image/scale_and_translate_op.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
