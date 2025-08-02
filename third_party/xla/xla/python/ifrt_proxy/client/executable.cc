@@ -54,6 +54,7 @@
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt_proxy/client/array.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
@@ -351,6 +352,7 @@ LoadedExecutable::LoadedExecutable(
       addressable_devices_(std::move(addressable_devices)),
       fingerprint_(std::move(fingerprint)),
       ready_future_(std::move(ready_future)),
+      user_context_(xla::ifrt::UserContextScope::current()),
       output_spec_cache_(
           std::make_unique<LoadedExecutable::OutputSpecCache>(this)) {
   // Start host callback pollers.
