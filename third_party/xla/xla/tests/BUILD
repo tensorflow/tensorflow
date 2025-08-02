@@ -286,8 +286,8 @@ cc_library(
     hdrs = ["hlo_pjrt_test_base.h"],
     deps = [
         ":hlo_runner_agnostic_test_base",
-        ":hlo_runner_pjrt_test_utils",
         ":pjrt_client_registry",
+        ":split_phase_utils",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_client",
@@ -3683,10 +3683,10 @@ xla_test(
 )
 
 cc_library(
-    name = "hlo_runner_pjrt_test_utils",
+    name = "split_phase_utils",
     testonly = True,
-    srcs = ["hlo_runner_pjrt_test_utils.cc"],
-    hdrs = ["hlo_runner_pjrt_test_utils.h"],
+    srcs = ["split_phase_utils.cc"],
+    hdrs = ["split_phase_utils.h"],
     deps = [
         "//xla/pjrt:pjrt_client",
         "//xla/service:hlo_runner_pjrt",

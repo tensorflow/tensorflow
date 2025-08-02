@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_TESTS_HLO_RUNNER_PJRT_TEST_UTILS_H_
-#define XLA_TESTS_HLO_RUNNER_PJRT_TEST_UTILS_H_
+#ifndef XLA_TESTS_SPLIT_PHASE_UTILS_H_
+#define XLA_TESTS_SPLIT_PHASE_UTILS_H_
 
 #include <memory>
 
@@ -24,8 +24,8 @@ limitations under the License.
 namespace xla {
 
 // Constructs a HloRunnerPjRt depending on the value of
-// --xla_pjrt_split_phase_mode and --xla_pjrt_split_phase_dir. If
-// --xla_pjrt_split_phase_mode is not set / set to "disabled", this function
+// --xla_hlo_runner_split_phase and --xla_hlo_runner_split_phase_dir. If
+// --xla_hlo_runner_split_phase is not set / set to "disabled", this function
 // returns a standard HloRunnerPjRt.
 std::unique_ptr<HloRunnerPjRt> MakeHloRunnerPjRtSplitPhaseAware(
     std::unique_ptr<PjRtClient> client);
@@ -33,4 +33,4 @@ std::unique_ptr<HloRunnerPjRt> MakeHloRunnerPjRtSplitPhaseAware(
 bool HasPjRtSplitPhaseAwareSwallowExecutionErrors();
 }  // namespace xla
 
-#endif  // XLA_TESTS_HLO_RUNNER_PJRT_TEST_UTILS_H_
+#endif  // XLA_TESTS_SPLIT_PHASE_UTILS_H_
