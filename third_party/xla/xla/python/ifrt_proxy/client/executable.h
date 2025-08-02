@@ -73,7 +73,9 @@ class LoadedExecutable final
   absl::string_view name() const override;
   absl::StatusOr<std::optional<std::string>> Fingerprint() const override;
   absl::StatusOr<std::string> Serialize() const override;
-  xla::ifrt::UserContextRef user_context() const override { return {}; }
+  xla::ifrt::UserContextRef user_context() const override {
+    return user_context_;
+  }
   Future<> GetReadyFuture() const override;
 
   int num_devices() const override;
@@ -145,6 +147,7 @@ class LoadedExecutable final
   const std::vector<xla::ifrt::Device*> addressable_devices_;
   const absl::StatusOr<std::optional<std::string>> fingerprint_;
   const Future<> ready_future_;
+  const xla::ifrt::UserContextRef user_context_;
 
   class OutputSpecCache;
   const std::unique_ptr<OutputSpecCache> output_spec_cache_;

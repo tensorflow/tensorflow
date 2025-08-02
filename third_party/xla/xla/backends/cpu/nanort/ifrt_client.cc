@@ -861,7 +861,7 @@ class NanoExecutable final
     return absl::UnimplementedError("Serialize is not implemented.");
   }
 
-  ifrt::UserContextRef user_context() const override { return {}; }
+  ifrt::UserContextRef user_context() const override { return user_context_; }
 
   ifrt::Future<> GetReadyFuture() const override { return Ready(); }
 
@@ -961,7 +961,8 @@ class NanoExecutable final
         program_shape_(std::move(program_shape)),
         executable_(std::move(executable)),
         input_shardings_(std::move(input_shardings)),
-        output_shardings_(std::move(output_shardings)) {}
+        output_shardings_(std::move(output_shardings)),
+        user_context_(xla::ifrt::UserContextScope::current()) {}
 
   // Converts an OpSharding proto (from an HLO Instruction) to an ifrt
   // sharding.
@@ -1105,6 +1106,7 @@ class NanoExecutable final
   std::unique_ptr<NanoRtExecutable> executable_;
   std::vector<ifrt::ShardingRef> input_shardings_;
   std::vector<ifrt::ShardingRef> output_shardings_;
+  const xla::ifrt::UserContextRef user_context_;
 };
 
 ABSL_ATTRIBUTE_UNUSED char NanoExecutable::ID = 'E';  // NOLINT
