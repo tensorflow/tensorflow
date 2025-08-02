@@ -244,7 +244,6 @@ class StrictQuantizationPattern : public RewritePattern {
       }
 
       auto op_quant_type = GetOpQuantizationType(quantizing_op);
-
       if (op_quant_type == OpQuantizationType::kWeightOnly) {
         return rewriter.notifyMatchFailure(
             quantizing_op,
@@ -280,7 +279,7 @@ class StrictQuantizationPattern : public RewritePattern {
           inputs.push_back(fq_input);
         } else if (auto ele_type = getElementTypeOrSelf(operand_type);
                    ele_type.isF32() || ele_type.isInteger(32) ||
-                   ele_type.isInteger(1)) {
+                   ele_type.isInteger(64) || ele_type.isInteger(1)) {
           // If it's F32 (non-weight-only and non-drq) or I32 or bool, just
           // directly add the input.
           inputs.push_back(operand);
