@@ -1022,7 +1022,7 @@ class LayoutPrinter : public mlir::OpAsmPrinter {
     os_ << symbolRef;
   };
 
-  void printNamedAttribute(mlir::NamedAttribute attr) {
+  void printNamedAttribute(mlir::NamedAttribute attr) override {
     os_ << attr.getName().strref() << " = ";
     printAttribute(attr.getValue());
   }
