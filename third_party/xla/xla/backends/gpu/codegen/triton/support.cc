@@ -687,7 +687,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
-    case HloOpcode::kSetDimensionSize:
       return true;
     default:
       return false;
