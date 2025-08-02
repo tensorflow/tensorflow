@@ -99,9 +99,6 @@ class ReduceWindowRewriter : public HloModulePass {
                           std::vector<Shape>& column_shapes,
                           std::vector<HloInstruction*>& last_cols);
 
-  absl::Status ReplaceReduceWindowWithReshape(
-      HloReduceWindowInstruction* reduce_window);
-
   absl::StatusOr<bool> TryOptimizeCumSumOrProd(
       HloReduceWindowInstruction* reduce_window);
 
