@@ -1364,6 +1364,7 @@ cc_library(
         "transforms/prepare_quantize.cc",
         "transforms/prepare_quantize_dynamic_range.cc",
         "transforms/prepare_quantize_helper.cc",
+        "transforms/quantization/bias_quantizer_pass.cc",
         "transforms/quantization/propagate_qsv_pass.cc",
         "transforms/quantization/quant_utils.cc",
         "transforms/quantize.cc",
