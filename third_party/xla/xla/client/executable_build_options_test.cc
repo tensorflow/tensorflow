@@ -89,6 +89,7 @@ TEST(ExecutableBuildOptionsTest, ProtoRoundTripWorks) {
   p.set_use_shardy_partitioner(true);
   p.set_process_index(13);
   p.set_process_count(14);
+  p.set_slice_size(15);
 
   TF_ASSERT_OK_AND_ASSIGN(const ExecutableBuildOptions options,
                           ExecutableBuildOptionsFromProto(p));
