@@ -49,24 +49,34 @@ absl::StatusOr<std::vector<int64_t>> GetNonContractingDims(
 }
 
 const tsl::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
-    const HloInstruction& dot, const int operand_number) {
+    const HloInstruction& dot, const int operand_number, Side side) {
   const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
-  if (operand_number == 0) {
+  if (side == Side::kInferFromOperand) {
+    side = operand_number == 0 ? Side::kLhs : Side::kRhs;
+  }
+  if (side == Side::kLhs) {
     return dimension_numbers.lhs_batch_dimensions();
   }
   return dimension_numbers.rhs_batch_dimensions();
 }
 
 const tsl::protobuf::RepeatedField<int64_t>& ContractingDimensionsForOperand(
-    const HloInstruction& dot, const int operand_number) {
+    const HloInstruction& dot, const int operand_number, Side side) {
   const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
-  return operand_number == 0 ? dimension_numbers.lhs_contracting_dimensions()
-                             : dimension_numbers.rhs_contracting_dimensions();
+  if (side == Side::kInferFromOperand) {
+    side = operand_number == 0 ? Side::kLhs : Side::kRhs;
+  }
+  return side == Side::kLhs ? dimension_numbers.lhs_contracting_dimensions()
+                            : dimension_numbers.rhs_contracting_dimensions();
 }
 
 absl::StatusOr<int64_t> ContractingDimensionIndex(const HloInstruction& dot,
-                                                  const int operand_number) {
+                                                  const int operand_number,
+                                                  Side side) {
   const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
+  if (side == Side::kInferFromOperand) {
+    side = operand_number == 0 ? Side::kLhs : Side::kRhs;
+  }
   if (operand_number == 0) {
     TF_RET_CHECK(dimension_numbers.lhs_contracting_dimensions().size() == 1);
     return dimension_numbers.lhs_contracting_dimensions(0);
@@ -76,14 +86,15 @@ absl::StatusOr<int64_t> ContractingDimensionIndex(const HloInstruction& dot,
 }
 
 absl::StatusOr<int64_t> NonContractingDimensionIndex(const HloInstruction& dot,
-                                                     const int operand_number) {
+                                                     const int operand_number,
+                                                     Side side) {
   TF_ASSIGN_OR_RETURN(int64_t contracting_dim,
-                      ContractingDimensionIndex(dot, operand_number));
-  TF_ASSIGN_OR_RETURN(
-      std::vector<int64_t> non_contracting_dims,
-      GetNonContractingDims(dot.operand(operand_number)->shape(),
-                            BatchDimensionsForOperand(dot, operand_number),
-                            {contracting_dim}));
+                      ContractingDimensionIndex(dot, operand_number, side));
+  TF_ASSIGN_OR_RETURN(std::vector<int64_t> non_contracting_dims,
+                      GetNonContractingDims(
+                          dot.operand(operand_number)->shape(),
+                          BatchDimensionsForOperand(dot, operand_number, side),
+                          {contracting_dim}));
   TF_RET_CHECK(non_contracting_dims.size() == 1);
   return non_contracting_dims.front();
 }
@@ -102,18 +113,38 @@ DotOperandDims::DotOperandDims(Shape shape,
 
 absl::StatusOr<std::array<DotOperandDims, 2>> DotOperandDims::FromDot(
     const HloInstruction* dot) {
-  TF_ASSIGN_OR_RETURN(auto lhs_dims, FromDotOperand(dot, 0));
-  TF_ASSIGN_OR_RETURN(auto rhs_dims, FromDotOperand(dot, 1));
+  TF_ASSIGN_OR_RETURN(auto lhs_dims, FromDotOperand(dot, 0, Side::kLhs));
+  TF_ASSIGN_OR_RETURN(auto rhs_dims, FromDotOperand(dot, 1, Side::kRhs));
   return std::array<DotOperandDims, 2>{lhs_dims, rhs_dims};
 }
 
+absl::StatusOr<std::array<DotOperandDims, 4>> DotOperandDims::FromScaledDot(
+    const HloInstruction* scaled_dot) {
+  TF_ASSIGN_OR_RETURN(auto lhs_dims, FromDotOperand(scaled_dot, 0, Side::kLhs));
+  DotOperandDims lhs_scale_dims;
+  if (scaled_dot->operand(1)->opcode() != HloOpcode::kConstant ||
+      scaled_dot->operand(1)->shape().dimensions().size() != 0) {
+    TF_ASSIGN_OR_RETURN(lhs_scale_dims,
+                        FromDotOperand(scaled_dot, 1, Side::kLhs));
+  }
+  TF_ASSIGN_OR_RETURN(auto rhs_dims, FromDotOperand(scaled_dot, 2, Side::kRhs));
+  DotOperandDims rhs_scale_dims;
+  if (scaled_dot->operand(3)->opcode() != HloOpcode::kConstant ||
+      scaled_dot->operand(3)->shape().dimensions().size() != 0) {
+    TF_ASSIGN_OR_RETURN(rhs_scale_dims,
+                        FromDotOperand(scaled_dot, 3, Side::kRhs));
+  }
+  return std::array<DotOperandDims, 4>{lhs_dims, lhs_scale_dims, rhs_dims,
+                                       rhs_scale_dims};
+}
+
 absl::StatusOr<DotOperandDims> DotOperandDims::FromDotOperand(
-    const HloInstruction* dot, int operand_idx) {
-  TF_RET_CHECK(operand_idx == 0 || operand_idx == 1);
-  const Shape& shape = dot->operand(operand_idx)->shape();
-  const auto& batch_dims = BatchDimensionsForOperand(*dot, operand_idx);
+    const HloInstruction* dot, int operand_number, Side side) {
+  const Shape& shape = dot->operand(operand_number)->shape();
+  const auto& batch_dims =
+      BatchDimensionsForOperand(*dot, operand_number, side);
   const auto& contracting_dims =
-      ContractingDimensionsForOperand(*dot, operand_idx);
+      ContractingDimensionsForOperand(*dot, operand_number, side);
   TF_ASSIGN_OR_RETURN(
       std::vector<int64_t> non_contracting_dims,
       GetNonContractingDims(shape, batch_dims, contracting_dims));
