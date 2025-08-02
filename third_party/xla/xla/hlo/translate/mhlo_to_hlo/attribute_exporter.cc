@@ -16,18 +16,25 @@ limitations under the License.
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/Support/LLVM.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
+#include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/Base.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_original_value.h"
@@ -35,12 +42,74 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
+#include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+namespace {
+
+mlir::sdy::MeshAttr getSdyMeshAttr(
+    mlir::sdy::TensorShardingAttr sharding,
+    std::optional<mlir::DictionaryAttr> sdy_meshes) {
+  mlir::Attribute mesh_or_ref = sharding.getMeshOrRef();
+  if (auto mesh_ref = mlir::dyn_cast<mlir::FlatSymbolRefAttr>(mesh_or_ref);
+      mesh_ref && sdy_meshes.has_value()) {
+    return mlir::cast<mlir::sdy::MeshAttr>(
+        sdy_meshes->get(mesh_ref.getValue().str()));
+  }
+  if (auto mesh = mlir::dyn_cast<mlir::sdy::MeshAttr>(mesh_or_ref)) {
+    return mesh;
+  }
+  llvm_unreachable("Mesh not found");
+}
+
+OpSharding CreateOpShardingFromSdyShardingList(
+    mlir::Operation* op,
+    mlir::ArrayRef<mlir::sdy::TensorShardingAttr> sdy_shardings,
+    std::optional<mlir::DictionaryAttr> sdy_meshes,
+    mlir::DictionaryAttr frontend_attrs) {
+  std::function<mlir::sdy::MeshAttr(mlir::sdy::TensorShardingAttr)>
+      get_mesh_attr = [&](mlir::sdy::TensorShardingAttr sharding) {
+        return getSdyMeshAttr(sharding, sdy_meshes);
+      };
+
+  mlir::ArrayRef<mlir::StringAttr> manual_axes;
+  if (mlir::sdy::ManualAxesAttr manual_axes_attr =
+          xla::sdy::parseStringAttr<mlir::sdy::ManualAxesAttr>(
+              frontend_attrs, xla::sdy::kManualAxes)) {
+    manual_axes = manual_axes_attr.getValue();
+  }
+
+  return xla::sdy::getHloShardingForOp(op, sdy_shardings, get_mesh_attr,
+                                       manual_axes)
+      .ToProto();
+}
+
+OpSharding CreateOpShardingFromSdySharding(
+    mlir::sdy::TensorShardingAttr sdy_sharding,
+    std::optional<mlir::DictionaryAttr> sdy_meshes,
+    mlir::DictionaryAttr frontend_attrs) {
+  std::function<mlir::sdy::MeshAttr(mlir::sdy::TensorShardingAttr)>
+      get_mesh_attr = [&](mlir::sdy::TensorShardingAttr sharding) {
+        return getSdyMeshAttr(sharding, sdy_meshes);
+      };
+
+  mlir::ArrayRef<mlir::StringAttr> manual_axes;
+  if (mlir::sdy::ManualAxesAttr manual_axes_attr =
+          xla::sdy::parseStringAttr<mlir::sdy::ManualAxesAttr>(
+              frontend_attrs, xla::sdy::kManualAxes)) {
+    manual_axes = manual_axes_attr.getValue();
+  }
+  return xla::sdy::convertToHloSharding(sdy_sharding, get_mesh_attr,
+                                        manual_axes)
+      .ToProto();
+}
+}  // namespace
 
 ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
     mlir::mhlo::ConvDimensionNumbersAttr input) {
@@ -435,4 +504,67 @@ absl::StatusOr<std::vector<int64_t>> ConvertMlirArrayAttrToInt64Array(
   }
   return converted_array;
 }
+
+std::optional<xla::OpSharding> ExtractShardingFromFrontendAttrs(
+    mlir::Operation* op) {
+  if (auto op_frontend_attrs = xla::sdy::getFrontendAttrs(op)) {
+    if (auto sharding_per_value_attr =
+            xla::sdy::parseStringAttr<mlir::sdy::TensorShardingPerValueAttr>(
+                op_frontend_attrs, xla::sdy::kShardingRoundTripAttr)) {
+      auto module = op->getParentOfType<mlir::ModuleOp>();
+      std::optional<mlir::DictionaryAttr> sdy_meshes =
+          xla::sdy::tryGetFrontendAttr<mlir::DictionaryAttr>(
+              module, xla::sdy::kMeshesRoundTripAttr);
+
+      return CreateOpShardingFromSdyShardingList(
+          op, sharding_per_value_attr.getShardings(), sdy_meshes,
+          op_frontend_attrs);
+    }
+  }
+
+  return std::nullopt;
+}
+
+std::optional<xla::OpSharding> ExtractArgShardingFromFrontendAttrs(
+    mlir::func::FuncOp function, int64_t arg_num,
+    std::optional<mlir::DictionaryAttr> sdy_meshes) {
+  if (auto arg_frontend_attrs =
+          xla::sdy::getFuncArgFrontendAttrs(function, arg_num)) {
+    if (auto sdy_sharding =
+            xla::sdy::parseStringAttr<mlir::sdy::TensorShardingAttr>(
+                arg_frontend_attrs, xla::sdy::kShardingRoundTripAttr)) {
+      CHECK(sdy_sharding);
+      return CreateOpShardingFromSdySharding(sdy_sharding, sdy_meshes,
+                                             arg_frontend_attrs);
+    }
+  }
+
+  return std::nullopt;
+}
+
+std::optional<xla::OpSharding> ExtractResultShardingFromFrontendAttrs(
+    mlir::func::FuncOp function, int64_t res_num,
+    std::optional<mlir::DictionaryAttr> sdy_meshes) {
+  mlir::Operation* defining_op =
+      mlir::sdy::getBodyTerminatorOperand(function, res_num).getDefiningOp();
+  if (auto custom_call_op =
+          mlir::dyn_cast_or_null<mlir::mhlo::CustomCallOp>(defining_op)) {
+    llvm::StringRef target_name = custom_call_op.getCallTargetName();
+    if (target_name == xla::sdy::kFuncResultShardingTargetName) {
+      auto op_frontend_attrs = xla::sdy::getFrontendAttrs(custom_call_op);
+      auto sharding_per_value_attr =
+          xla::sdy::parseStringAttr<mlir::sdy::TensorShardingPerValueAttr>(
+              op_frontend_attrs, xla::sdy::kShardingRoundTripAttr);
+      CHECK(sharding_per_value_attr);
+      // We only ever expect one sharding per custom call op.
+      CHECK_EQ(sharding_per_value_attr.size(), 1);
+      mlir::sdy::TensorShardingAttr sharding =
+          sharding_per_value_attr.getSharding(0);
+      return CreateOpShardingFromSdySharding(sharding, sdy_meshes,
+                                             op_frontend_attrs);
+    }
+  }
+  return std::nullopt;
+}
+
 }  // namespace xla
