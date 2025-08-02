@@ -778,6 +778,7 @@ xla_cc_test(
     srcs = ["tma_metadata_test.cc"],
     deps = [
         ":tma_metadata",
+        ":tma_metadata_proto_cc",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
