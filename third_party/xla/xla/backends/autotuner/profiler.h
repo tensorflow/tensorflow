@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
-#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -51,7 +50,8 @@ struct InputBuffers {
   virtual ~InputBuffers() = default;
 };
 
-// Interface to run and profile XLA compiled executables for autotuning.
+// Interface to run and profile XLA compiled executables for autotuning,
+// also manages buffers for the executables.
 class Profiler {
  public:
   virtual ~Profiler() = default;
@@ -93,6 +93,19 @@ class Profiler {
   // must be created by calling CreateInputBuffers from the same profiler.
   virtual absl::StatusOr<ProfileResult> Profile(
       Executable* executable, const InputBuffers& buffers) = 0;
+
+  // Check for red-zone errors i.e out-of-bounds reads/writes to InputBuffers.
+  // This is a no-op if redzone padding bytes are not set in the options.
+  // The buffers are refreshed if needed, so that the buffers can be reused
+  // for subsequent profiling.
+  virtual absl::Status CheckInputBuffers(InputBuffers& buffers) = 0;
+
+  // Compare the on device output buffer against the reference output buffer.
+  // Returns ok if the buffers have the same content, otherwise returns an
+  // error.
+  virtual absl::Status CheckOutputBuffer(ScopedShapedBuffer& output,
+                                         ScopedShapedBuffer& reference,
+                                         float rtol) = 0;
 };
 }  // namespace xla
 
