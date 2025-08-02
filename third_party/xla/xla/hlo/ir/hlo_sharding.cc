@@ -38,11 +38,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
 #include "xla/overflow_util.h"
 #include "xla/printer.h"
+#include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
@@ -382,6 +385,10 @@ HloSharding HloSharding::SingleTuple(const Shape& tuple_shape,
 HloSharding HloSharding::Single(const Shape& shape,
                                 const HloSharding& sharding) {
   return shape.IsTuple() ? SingleTuple(shape, sharding) : sharding;
+}
+
+absl::string_view HloSharding::ShardingFrontendAttrName() {
+  return sdy::toStringView(sdy::kShardingRoundTripAttr);
 }
 
 void HloSharding::Print(Printer* printer, bool include_metadata) const {
