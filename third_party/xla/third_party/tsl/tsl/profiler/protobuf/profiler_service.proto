@@ -73,7 +73,7 @@ message ProfileToolData {
   bytes data = 2;
 }
 
-// Next-ID: 8
+// Next-ID: 9
 message ProfileResponse {
   // Data payload for each required tools.
   repeated ProfileToolData tool_data = 6;
@@ -81,6 +81,9 @@ message ProfileResponse {
   // When we write profiling data directly to repository directory, we need a
   // way to figure out whether the captured trace is empty.
   bool empty_trace = 7;
+
+  // The path to the output file.
+  string output_path = 8;
 
   reserved 1, 2, 3, 4, 5;
 }

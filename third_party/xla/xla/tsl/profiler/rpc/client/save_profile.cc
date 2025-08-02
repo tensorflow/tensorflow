@@ -137,7 +137,8 @@ std::string GetCurrentTimeStampAsString() {
 
 absl::Status SaveXSpace(const std::string& repository_root,
                         const std::string& run, const std::string& host,
-                        const tensorflow::profiler::XSpace& xspace) {
+                        const tensorflow::profiler::XSpace& xspace,
+                        std::string* output_file_path) {
   std::string log_dir = ProfilerJoinPath(repository_root, run);
   VLOG(1) << "Creating " << log_dir;
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(log_dir));
@@ -147,6 +148,9 @@ absl::Status SaveXSpace(const std::string& repository_root,
 
   // Dumps profile data to <repository_root>/<run>/<host>_<port>.<kXPlanePb>
   std::string out_path = ProfilerJoinPath(log_dir, file_name);
+  if (output_file_path != nullptr) {
+    *output_file_path = out_path;
+  }
   LOG(INFO) << "Collecting XSpace to repository: " << out_path;
 
   return WriteBinaryProto(Env::Default(), out_path, xspace);
