@@ -486,38 +486,59 @@ TEST(ParseRepeatedEnumFlagsTest, CommandBufferCmdType) {
   EXPECT_THAT(enabled_types, IsEmpty());
 }
 
+std::vector<DebugOptions::LibraryFusionType> EnabledFusionTypes(
+    const DebugOptions& debug_options, absl::string_view lib) {
+  std::vector<DebugOptions::LibraryFusionType> enabled_types;
+  for (const int enabled_type :
+       lib == "onednn" ? debug_options.xla_cpu_experimental_onednn_fusion_type()
+                       : debug_options.xla_cpu_experimental_xnn_fusion_type()) {
+    enabled_types.push_back(
+        static_cast<DebugOptions::LibraryFusionType>(enabled_type));
+  }
+  return enabled_types;
+}
+
 // Common function to test oneDNN and XNN fusion type.
 void TestLibraryFusionType(absl::string_view lib) {
   DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
-  const auto& enabled_types =
-      lib == "onednn" ? debug_options.xla_cpu_experimental_onednn_fusion_type()
-                      : debug_options.xla_cpu_experimental_xnn_fusion_type();
-
-  // Check that the default setting is empty.
-  ASSERT_THAT(enabled_types, IsEmpty());
-
   // Initialize the flag objects.
   std::vector<tsl::Flag> flag_objects;
   MakeDebugOptionsFlags(&flag_objects, &debug_options);
   std::string flag_name =
       absl::StrCat("--xla_cpu_experimental_", lib, "_fusion_type");
 
-  // Overwriting the default setting.
-  SetXlaFlagsEnvVar(absl::StrCat(flag_name, "=dot,eltwise"));
-  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  {
+    const std::vector<DebugOptions::LibraryFusionType> enabled_types =
+        EnabledFusionTypes(debug_options, lib);
 
-  EXPECT_EQ(enabled_types.size(), 2);
-  EXPECT_THAT(enabled_types,
-              ElementsAre(DebugOptions::LIBRARY_FUSION_TYPE_DOT,
-                          DebugOptions::LIBRARY_FUSION_TYPE_ELTWISE));
+    // Check that the default setting is empty.
+    ASSERT_THAT(enabled_types, IsEmpty());
+  }
 
-  // Adding / removing options from the existing setting.
-  SetXlaFlagsEnvVar(absl::StrCat(flag_name, "=+reduce,-eltwise"));
-  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_types.size(), 2);
-  EXPECT_THAT(enabled_types,
-              ElementsAre(DebugOptions::LIBRARY_FUSION_TYPE_DOT,
-                          DebugOptions::LIBRARY_FUSION_TYPE_REDUCE));
+  {
+    // Overwriting the default setting.
+    SetXlaFlagsEnvVar(absl::StrCat(flag_name, "=dot,eltwise"));
+    ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+
+    const std::vector<DebugOptions::LibraryFusionType> enabled_types =
+        EnabledFusionTypes(debug_options, lib);
+    EXPECT_EQ(enabled_types.size(), 2);
+    EXPECT_THAT(enabled_types,
+                ElementsAre(DebugOptions::LIBRARY_FUSION_TYPE_DOT,
+                            DebugOptions::LIBRARY_FUSION_TYPE_ELTWISE));
+  }
+
+  {
+    // Adding / removing options from the existing setting.
+    SetXlaFlagsEnvVar(absl::StrCat(flag_name, "=+reduce,-eltwise"));
+    ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+    const std::vector<DebugOptions::LibraryFusionType> enabled_types =
+        EnabledFusionTypes(debug_options, lib);
+    EXPECT_EQ(enabled_types.size(), 2);
+    EXPECT_THAT(enabled_types,
+                ElementsAre(DebugOptions::LIBRARY_FUSION_TYPE_DOT,
+                            DebugOptions::LIBRARY_FUSION_TYPE_REDUCE));
+  }
 }
 
 TEST(ParseRepeatedEnumFlagsTest, OneDnnFusionType) {
