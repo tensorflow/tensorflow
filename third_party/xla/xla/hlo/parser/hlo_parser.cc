@@ -3847,6 +3847,7 @@ bool HloParserImpl::ParseSingleSharding(std::optional<HloSharding>& sharding,
   bool replicated = false;
   bool manual = false;
   bool unknown = false;
+  bool unreduced = false;
   bool last_tile_dim_replicate = false;
   bool last_tile_dims = false;
   bool shard_like = false;
@@ -3874,6 +3875,10 @@ bool HloParserImpl::ParseSingleSharding(std::optional<HloSharding>& sharding,
         break;
       case TokKind::kw_unknown:
         unknown = true;
+        lexer_.Lex();
+        break;
+      case TokKind::kw_unreduced:
+        unreduced = true;
         lexer_.Lex();
         break;
       case TokKind::kAttributeName: {
@@ -3959,6 +3964,12 @@ bool HloParserImpl::ParseSingleSharding(std::optional<HloSharding>& sharding,
                    "unknown shardings should not have any devices assigned");
     }
     sharding = HloSharding::Unknown(metadata);
+  } else if (unreduced) {
+    if (!devices.empty()) {
+      return Error(loc,
+                   "unreduced shardings should not have any devices assigned");
+    }
+    sharding = HloSharding::Unreduced(metadata);
   } else {
     if (tile_assignment_dimensions.empty()) {
       return Error(
