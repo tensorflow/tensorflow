@@ -56,10 +56,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/ptrvec.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -78,9 +80,9 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tools/hlo_extractor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -895,7 +897,9 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
     return CustomCallThunk::Create(
         thunk_info, call_target_name, registration->bundle, std::move(ops),
         std::move(res), std::move(attributes),
-        called_computations.empty() ? nullptr : called_computations[0]);
+        called_computations.empty()
+            ? nullptr
+            : called_computations[0]->Clone(/*suffix=*/""));
   };
 
   auto legacy_thunk =
