@@ -110,6 +110,7 @@ xla_cc_test(
     deps = [
         ":constants",
         ":shardy_xla_pass",
+        "//third_party/cppitertools",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
