@@ -6973,6 +6973,9 @@ absl::Status CudnnGraph::PopulateOrUpdateRawCommandBuffer(
 }  // namespace gpu
 
 void initialize_cudnn() {
+  static std::atomic<bool> registered{false};
+  if (registered.load(std::memory_order_acquire)) return;
+
   absl::Status status =
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
           cuda::kCudaPlatformId, "cuDNN",
@@ -6986,7 +6989,9 @@ void initialize_cudnn() {
             return dnn;
           });
 
-  if (!status.ok()) {
+  if (status.ok()) {
+    registered.store(true, std::memory_order_release);
+  } else {
     LOG(INFO) << "Unable to register cuDNN factory: " << status.message();
   }
 }
