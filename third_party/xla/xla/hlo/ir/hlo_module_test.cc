@@ -25,6 +25,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -283,6 +284,21 @@ TEST(HloModuleTest, ClonePreservesUniqueId) {
                   absl::StrCat(instr->unique_id()))
             << "unique_id differs for " << instr->ToString();
       });
+}
+
+TEST(HloModuleTest, CloneWithLayoutCanonicalizationCallback) {
+  bool callback_called = false;
+  LayoutCanonicalizationCallback callback =
+      [&callback_called](const HloModule& module)
+      -> absl::StatusOr<std::pair<std::vector<Shape>, Shape>> {
+    callback_called = true;
+    return std::make_pair(std::vector<Shape>{}, Shape{});
+  };
+  HloModule m("temp_module", HloModuleConfig());
+  m.set_layout_canonicalization_callback(callback);
+  std::unique_ptr<HloModule> clone = m.Clone(kCloneSuffix);
+  TF_ASSERT_OK(clone->layout_canonicalization_callback()(*clone).status());
+  EXPECT_TRUE(callback_called);
 }
 
 TEST(HloModuleTest, AbslHashInstructionOrdering) {
