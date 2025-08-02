@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir {
 namespace TFL {

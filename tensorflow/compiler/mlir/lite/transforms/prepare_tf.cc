@@ -29,14 +29,12 @@ limitations under the License.
 // require access to the TFLite runtime for optimizations as required by the
 // TFLite team.
 
-#include <climits>
 #include <cstdint>
 #include <limits>
 #include <memory>
 #include <utility>
 
 #include "absl/algorithm/container.h"
-#include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
