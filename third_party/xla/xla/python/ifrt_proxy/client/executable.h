@@ -23,18 +23,13 @@
 #include <string>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_set.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/layout.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
