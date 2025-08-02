@@ -989,5 +989,29 @@ ENTRY entry {
       FindInstruction(module.get(), "gte.1"), {}));
 }
 
+TEST_F(HloReplicationAnalysisTest, ExplicitWeightDistribution) {
+  const std::string module_str = R"(
+HloModule main
+
+ENTRY main {
+  arg.0 = f32[32] parameter(0), parameter_replication={false}, sharding={replicated}
+  ROOT all-reduce.0 = f32[32] all-reduce(arg.0), replica_groups={{0,1}}, to_apply={
+    arg.0 = f32[] parameter(0)
+    arg.1 = f32[] parameter(1)
+    ROOT add.0 = add(arg.0, arg.1)
+  }
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           module_str, /*replica_count=*/2));
+  TF_ASSERT_OK_AND_ASSIGN(auto analysis,
+                          HloReplicationAnalysis::Run(
+                              module.get(), /*cross_partition_spmd=*/false));
+  const HloInstruction* param =
+      module->entry_computation()->parameter_instruction(0);
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(param, {}));
+}
+
 }  // namespace
 }  // namespace xla
