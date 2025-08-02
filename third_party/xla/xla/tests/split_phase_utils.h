@@ -13,24 +13,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_TESTS_HLO_RUNNER_PJRT_TEST_UTILS_H_
-#define XLA_TESTS_HLO_RUNNER_PJRT_TEST_UTILS_H_
+#ifndef XLA_TESTS_SPLIT_PHASE_UTILS_H_
+#define XLA_TESTS_SPLIT_PHASE_UTILS_H_
 
 #include <memory>
 
+#include "absl/functional/any_invocable.h"
+#include "xla/hlo/evaluator/hlo_evaluator.h"
+#include "xla/pjrt/interpreter/interpreter_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/hlo_runner_pjrt.h"
 
 namespace xla {
 
 // Constructs a HloRunnerPjRt depending on the value of
-// --xla_pjrt_split_phase_mode and --xla_pjrt_split_phase_dir. If
-// --xla_pjrt_split_phase_mode is not set / set to "disabled", this function
+// --xla_hlo_runner_split_phase and --xla_hlo_runner_split_phase_dir. If
+// --xla_hlo_runner_split_phase is not set / set to "disabled", this function
 // returns a standard HloRunnerPjRt.
 std::unique_ptr<HloRunnerPjRt> MakeHloRunnerPjRtSplitPhaseAware(
     std::unique_ptr<PjRtClient> client);
 
+// Constructs an InterpreterClient depending on the value of
+// --xla_hlo_runner_split_phase and --xla_hlo_runner_split_phase_dir. If
+// --xla_hlo_runner_split_phase is not set / set to "disabled", this function
+// returns a standard InterpreterClient.
+std::unique_ptr<InterpreterClient> MakeInterpreterClientSplitPhaseAware(
+    absl::AnyInvocable<std::unique_ptr<HloEvaluatorInterface>() const>
+        hlo_evaluator_factory);
+
 bool HasPjRtSplitPhaseAwareSwallowExecutionErrors();
 }  // namespace xla
 
-#endif  // XLA_TESTS_HLO_RUNNER_PJRT_TEST_UTILS_H_
+#endif  // XLA_TESTS_SPLIT_PHASE_UTILS_H_

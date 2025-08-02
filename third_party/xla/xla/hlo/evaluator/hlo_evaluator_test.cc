@@ -17,6 +17,7 @@ limitations under the License.
 #include <array>
 #include <complex>
 #include <cstdint>
+#include <functional>
 #include <initializer_list>
 #include <limits>
 #include <memory>
@@ -26,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/base/internal/endian.h"
 #include "absl/container/flat_hash_set.h"
@@ -43,12 +45,14 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/analysis/tuple_points_to_analysis.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/transforms/simplifiers/hlo_element_type_converter.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -62,6 +66,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -69,11 +75,18 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace {
 
-static std::array<bool, 2> use_bf16_params{true, false};
+using ::testing::_;
+using ::testing::Eq;
+using ::testing::Return;
+using ::testing::status::IsOkAndHolds;
+using ::testing::status::StatusIs;
+
+constexpr std::array<bool, 2> kUseBf16Params{true, false};
 
 // Test fixture for the HloEvaluator.
 //
@@ -267,7 +280,7 @@ class HloEvaluatorBf16Test : public ::testing::WithParamInterface<bool>,
 };
 
 INSTANTIATE_TEST_SUITE_P(HloEvaluatorTest_Instantiation, HloEvaluatorBf16Test,
-                         ::testing::ValuesIn(use_bf16_params));
+                         ::testing::ValuesIn(kUseBf16Params));
 
 // Verifies that HloEvaluator evaluates a HLO instruction that performs clamp
 // with 3 operands.
@@ -6731,8 +6744,138 @@ TEST(EvalErrorTest, Payload) {
             internal::EvalErrorDetail::kDynamicValueDependence);
 }
 
+class MockHloEvaluator : public HloEvaluatorInterface {
+ public:
+  MOCK_METHOD(absl::StatusOr<Literal>, Evaluate,
+              (const HloComputation&, absl::Span<const Literal* const>),
+              (override));
+
+  MOCK_METHOD(void, ResetVisitStates, (), (override));
+
+  MOCK_METHOD(void, set_dynamic_dimension_inference,
+              (DynamicDimensionInference*), (override));
+
+  MOCK_METHOD(void, set_use_fast_path, (bool), (override));
+
+  MOCK_METHOD(void, set_custom_call_handler, (CustomCallHandler), (override));
+};
+
+class CachingHloEvaluatorTest : public ::testing::Test {
+ public:
+  void SetUp() override {
+    TF_ASSERT_OK(tsl::Env::Default()->CreateDir(cache_dir_));
+  }
+  void TearDown() override {
+    int64_t num_files_deleted = 0;
+    int64_t num_dirs_deleted = 0;
+    TF_ASSERT_OK(tsl::Env::Default()->DeleteRecursively(
+        cache_dir_, &num_files_deleted, &num_dirs_deleted));
+  }
+
+  std::unique_ptr<CachingHloEvaluator> CreateEvaluator(
+      CachingHloEvaluator::Mode mode, MockHloEvaluator*& wrapped) {
+    auto mock = std::make_unique<::testing::StrictMock<MockHloEvaluator>>();
+    wrapped = mock.get();
+    return std::make_unique<CachingHloEvaluator>(std::move(mock), cache_dir_,
+                                                 mode);
+  }
+
+  // Builds a fake HloComputation that produces a single zero F32 constant val.
+  static std::unique_ptr<HloComputation> CreateFakeComputation() {
+    HloComputation::Builder builder("test");
+    HloInstruction* root = builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0(0.0f)));
+    return builder.Build(root);
+  }
+
+  absl::StatusOr<int64_t> ChildCount() const {
+    std::vector<std::string> children;
+    TF_RETURN_IF_ERROR(tsl::Env::Default()->GetChildren(cache_dir_, &children));
+    return children.size();
+  }
+
+  absl::string_view cache_dir() const { return cache_dir_; }
+
+ private:
+  const std::string cache_dir_ =
+      tsl::io::JoinPath(::testing::TempDir(), "cache_dir");
+};
+
+TEST_F(CachingHloEvaluatorTest, WriteToCacheRepeatedly) {
+  MockHloEvaluator* wrapped = nullptr;
+  std::unique_ptr<CachingHloEvaluator> evaluator =
+      CreateEvaluator(CachingHloEvaluator::kWrite, wrapped);
+  EXPECT_CALL(*wrapped, Evaluate(_, _))
+      .WillRepeatedly([]() -> absl::StatusOr<Literal> {
+        return LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
+      });
+
+  const std::unique_ptr<HloComputation> computation = CreateFakeComputation();
+  const Literal arg0 =
+      LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(100.0f));
+  const Literal arg1 =
+      LiteralUtil::CreateR2<float>({{1.0f, 2.0f}, {3.0f, 4.0f}});
+
+  // For each unique invocation, we expect a new file to be written.
+  ASSERT_THAT(ChildCount(), IsOkAndHolds(0));
+  ASSERT_OK(evaluator->Evaluate(*computation, {}));
+  ASSERT_THAT(ChildCount(), IsOkAndHolds(1));
+  ASSERT_OK(evaluator->Evaluate(*computation, {&arg0}));
+  ASSERT_THAT(ChildCount(), IsOkAndHolds(2));
+  ASSERT_OK(evaluator->Evaluate(*computation, {&arg1}));
+  ASSERT_THAT(ChildCount(), IsOkAndHolds(3));
+  ASSERT_OK(evaluator->Evaluate(*computation, {&arg0, &arg1}));
+  ASSERT_THAT(ChildCount(), IsOkAndHolds(4));
+
+  // Repeated invocations do not affect the cache.
+  ASSERT_OK(evaluator->Evaluate(*computation, {&arg1}));
+  ASSERT_THAT(ChildCount(), IsOkAndHolds(4));
+}
+
+TEST_F(CachingHloEvaluatorTest, ReadFromCache) {
+  const std::unique_ptr<HloComputation> computation = CreateFakeComputation();
+  const Literal arg =
+      LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
+  const Literal result = LiteralUtil::CreateR0(1337.0f);
+  MockHloEvaluator* wrapped = nullptr;
+
+  // Write to the cache first so we can read from it.
+  std::unique_ptr<CachingHloEvaluator> write_evaluator =
+      CreateEvaluator(CachingHloEvaluator::kWrite, wrapped);
+  EXPECT_CALL(*wrapped, Evaluate(_, _))
+      .WillOnce(Return(LiteralUtil::CreateR0(1337.0f)));
+  ASSERT_THAT(write_evaluator->Evaluate(*computation, {&arg}),
+              IsOkAndHolds(Eq(std::ref(result))));
+
+  // Read from the cache.
+  std::unique_ptr<CachingHloEvaluator> read_evaluator =
+      CreateEvaluator(CachingHloEvaluator::kRead, wrapped);
+  // The wrapped evaluator should never be called.
+  EXPECT_CALL(*wrapped, Evaluate(_, _)).Times(0);
+  ASSERT_THAT(read_evaluator->Evaluate(*computation, {&arg}),
+              IsOkAndHolds(Eq(std::ref(result))));
+
+  // Cache miss.
+  ASSERT_THAT(read_evaluator->Evaluate(*computation, {}),
+              StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST_F(CachingHloEvaluatorTest, ReadAndEvaluateIfCacheMiss) {
+  MockHloEvaluator* wrapped = nullptr;
+  std::unique_ptr<CachingHloEvaluator> evaluator = CreateEvaluator(
+      CachingHloEvaluator::kReadAndEvaluateIfCacheMiss, wrapped);
+  const Literal result = LiteralUtil::CreateR0(1337.0f);
+
+  // Cache miss, but still returns the correct result because of the fallback.
+  const std::unique_ptr<HloComputation> computation = CreateFakeComputation();
+  EXPECT_CALL(*wrapped, Evaluate(_, _))
+      .WillOnce(Return(LiteralUtil::CreateR0(1337.0f)));
+  ASSERT_THAT(evaluator->Evaluate(*computation, {}),
+              IsOkAndHolds(Eq(std::ref(result))));
+}
+
 //===----------------------------------------------------------------------===//
-// Perfrormance benchmarks below.
+// Performance benchmarks below.
 //===----------------------------------------------------------------------===//
 
 // Reducing many numbers should be fast because it doesn't create
