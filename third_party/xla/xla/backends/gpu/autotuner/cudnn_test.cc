@@ -136,7 +136,7 @@ TEST_F(CudnnBackendTest, GetSupportedConfigsFromCudnnFusion) {
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           (*hlo_module->entry_computation()->root_instruction()));
-  EXPECT_THAT(configs, IsOkAndHolds(SizeIs(Gt(0))));
+  EXPECT_THAT(configs, absl_testing::IsOkAndHolds(SizeIs(Gt(0))));
 }
 
 TEST_F(CudnnBackendTest, GetSupportedConfigsFromCudnnCustomCall) {
@@ -145,7 +145,7 @@ TEST_F(CudnnBackendTest, GetSupportedConfigsFromCudnnCustomCall) {
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           (*hlo_module->entry_computation()->root_instruction()->operand(0)));
-  EXPECT_THAT(configs, IsOkAndHolds(SizeIs(Gt(0))));
+  EXPECT_THAT(configs, absl_testing::IsOkAndHolds(SizeIs(Gt(0))));
 }
 
 TEST_F(CudnnBackendTest,
@@ -155,7 +155,7 @@ TEST_F(CudnnBackendTest,
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           (*hlo_module->entry_computation()->root_instruction()));
-  EXPECT_THAT(configs, IsOkAndHolds(SizeIs(0)));
+  EXPECT_THAT(configs, absl_testing::IsOkAndHolds(SizeIs(0)));
 }
 
 TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnFusionFails) {
@@ -165,7 +165,8 @@ TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnFusionFails) {
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           (*hlo_module->entry_computation()->root_instruction()));
-  EXPECT_THAT(config, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(config,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(CudnnBackendTest, ApplyConfigToCudnnFusion) {

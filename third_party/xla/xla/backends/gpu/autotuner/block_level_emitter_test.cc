@@ -503,7 +503,7 @@ ENTRY %main {
   )pb"));
 
   // Apply the generated config to the fusion instruction.
-  EXPECT_THAT(backend_.ApplyConfig(*instr, *config), IsOk());
+  EXPECT_THAT(backend_.ApplyConfig(*instr, *config), absl_testing::IsOk());
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_backend_config,
                           instr->backend_config<GpuBackendConfig>());
   // Ensure that the backend config on the instruction matches what was applied.
@@ -551,7 +551,7 @@ ENTRY %main {
   absl::StatusOr<std::unique_ptr<Executable>> executable = backend_.Compile(
       *(module->entry_computation()->root_instruction()), *config);
   // Verify that compilation succeeded and returned a valid executable.
-  EXPECT_THAT(executable, IsOk());
+  EXPECT_THAT(executable, absl_testing::IsOk());
 }
 
 }  // namespace gpu
