@@ -231,6 +231,8 @@ Simple usage:
   report_text = None
   report_filename = args.report_filename
   files_processed = 0
+  errors = []  # Initialize errors to avoid "possibly used before assignment"
+  
   if args.input_file:
     files_processed, report_text, errors = upgrade.process_file(
         args.input_file, args.output_file)
