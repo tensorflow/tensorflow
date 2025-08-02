@@ -732,6 +732,11 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
               contraction->shape(), new_operands)));
 
       auto backend_config = custom_call->backend_config<BackendConfig>();
+      // SUM post-op does not work for BF16 because element-wise addition
+      // is not allowed due to precision constraints by oneDNN.
+      // Hence, the SUM use case is fused as BINARY_ADD for BF16.
+      // This is verified by checking if the output shape of the
+      // custom call matches the addend shape.
       bool can_fuse_sum =
           (ShapeUtil::Equal(custom_call->shape(), addend->shape()) &&
            addend_user_count == 1 &&
