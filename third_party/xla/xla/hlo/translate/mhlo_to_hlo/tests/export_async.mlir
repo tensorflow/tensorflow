@@ -313,6 +313,24 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<20xf32> {
 
 // -----
 
+// CHECK: ENTRY
+func.func @main() -> tensor<8x2xf32> {
+  // CHECK:               %[[TOKEN:.*]] = token[] after-all(), sharding={manual}
+  // CHECK-NEXT:          %[[TUPLED_RECV:.*]] = (f32[8,2], u32[], token[]) recv(%[[TOKEN]]), channel_id=2, is_host_transfer=true,
+  // CHECK-SAME{LITERAL}:   sharding={{manual}, {manual}, {manual}}
+  // CHECK-NEXT:          %[[TUPLED_RECV_DONE:.*]] = (f32[8,2], token[]) recv-done(%[[TUPLED_RECV]]), channel_id=2, is_host_transfer=true,
+  // CHECK-SAME{LITERAL}:   sharding={{manual}, {manual}}
+  // CHECK-NEXT:          %[[GET_TOKEN:.*]] = token[] get-tuple-element(%[[TUPLED_RECV_DONE]]), index=1, sharding={manual}
+  // CHECK-NEXT:          %[[GET_TENSOR:.*]] = f32[8,2] get-tuple-element(%[[TUPLED_RECV_DONE]]), index=0, sharding={manual}
+  // CHECK-NEXT:          ROOT %[[COPY:.*]] = f32[8,2] copy(%[[GET_TENSOR]]), sharding={manual}
+  %0 = mhlo.create_token {mhlo.sharding = "{manual}"} : !mhlo.token
+  %1:2 = "mhlo.recv"(%0) <{channel_handle = #mhlo.channel_handle<handle = 2, type = 3>, is_host_transfer = true}> {mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "_wrapped_callback", _xla_host_transfer_rendezvous = "_wrapped_callback"}, mhlo.sharding = "{{manual}, {manual}}"} : (!mhlo.token) -> (tensor<8x2xf32>, !mhlo.token)
+  %2 = mhlo.copy %1#0 {mhlo.sharding = "{manual}"} : tensor<8x2xf32>
+  return %2 : tensor<8x2xf32>
+}
+
+// -----
+
 // Breaking test case where tf2xla lowers to a send with a single manual
 // sharding annotation on recv.
 
