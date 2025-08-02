@@ -205,7 +205,12 @@ bool DotStrengthReduction::InstructionMatchesPattern(
   const bool rhs_is_vector = (dnums.rhs_batch_dimensions_size() +
                                   dnums.rhs_contracting_dimensions_size() ==
                               rhs->shape().dimensions().size());
-  if (!lhs_is_vector && !rhs_is_vector) {
+  const bool are_both_operands_and_result_s32 =
+      lhs->shape().element_type() == S32 &&
+      rhs->shape().element_type() == S32 && dot->shape().element_type() == S32;
+  // For s32xs32->s32 dots, since its not supported by the h/w we want to
+  // strength reduce it in any case.
+  if (!lhs_is_vector && !rhs_is_vector && !are_both_operands_and_result_s32) {
     return false;
   }
   // Strength-reduce vector-vector dots since they are not supported by
