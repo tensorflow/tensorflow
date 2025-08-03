@@ -45,12 +45,15 @@ limitations under the License.
 
 namespace xla::cpu {
 
-absl::StatusOr<xnn_subgraph_t> XnnDotThunk::BuildDotSubgraph(
+absl::StatusOr<XnnSubgraph> XnnDotThunk::BuildDotSubgraph(
     absl::Span<const Argument> arguments, absl::Span<const Result> results,
     absl::Span<const se::DeviceMemoryBase> arguments_buffers) {
-  xnn_subgraph_t subgraph = nullptr;
-  XNN_RETURN_IF_ERROR(xnn_create_subgraph(/*external_value_ids=*/3,
-                                          /*flags=*/0, &subgraph));
+  TF_ASSIGN_OR_RETURN(XnnSubgraph subgraph,
+                      CreateXnnSubgraph([](xnn_subgraph_t* subgraph) {
+                        return xnn_create_subgraph(
+                            /*external_value_ids=*/3,
+                            /*flags=*/0, subgraph);
+                      }));
 
   uint32_t lhs_id = XNN_INVALID_VALUE_ID;
   uint32_t rhs_id = XNN_INVALID_VALUE_ID;
@@ -74,20 +77,20 @@ absl::StatusOr<xnn_subgraph_t> XnnDotThunk::BuildDotSubgraph(
   xnn_datatype output_dtype = xnn_datatype_fp32;
 
   XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
-      subgraph, input_dtype, lhs_dims.size(), lhs_dims.data(), nullptr,
+      subgraph.get(), input_dtype, lhs_dims.size(), lhs_dims.data(), nullptr,
       /*external_id=*/0, XNN_VALUE_FLAG_EXTERNAL_INPUT, &lhs_id));
 
   XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
-      subgraph, input_dtype, rhs_dims.size(), rhs_dims.data(),
+      subgraph.get(), input_dtype, rhs_dims.size(), rhs_dims.data(),
       capture_rhs_ ? arguments_buffers[1].opaque() : nullptr,
       /*external_id=*/1, XNN_VALUE_FLAG_EXTERNAL_INPUT, &rhs_id));
 
   XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
-      subgraph, output_dtype, out_dims.size(), out_dims.data(), nullptr,
+      subgraph.get(), output_dtype, out_dims.size(), out_dims.data(), nullptr,
       /*external_id=*/2, XNN_VALUE_FLAG_EXTERNAL_OUTPUT, &out_id));
 
   XNN_RETURN_IF_ERROR(xnn_define_batch_matrix_multiply(
-      subgraph, lhs_id, rhs_id, out_id,
+      subgraph.get(), lhs_id, rhs_id, out_id,
       (/*flags=*/dot_canonical_dims_.rhs_canonical ? 0 : XNN_FLAG_TRANSPOSE_B) |
           XNN_FLAG_NO_BROADCAST));
 

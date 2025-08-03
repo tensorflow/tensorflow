@@ -52,7 +52,8 @@ ENTRY AddDotsFunc {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
-  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0), IsOkAndHolds(true));
+  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0),
+              absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(CanFoldTransposeOperandIntoDotTest, BatchedArgRowColTransposeFoldGemm) {
@@ -70,7 +71,8 @@ ENTRY AddDotsFunc {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
-  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0), IsOkAndHolds(true));
+  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0),
+              absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(CanFoldTransposeOperandIntoDotTest, BatchRowTransposeFoldGemm) {
@@ -88,7 +90,8 @@ ENTRY AddDotsFunc {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
-  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0), IsOkAndHolds(true));
+  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0),
+              absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(CanFoldTransposeOperandIntoDotTest,
@@ -107,7 +110,8 @@ ENTRY AddDotsFunc {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
-  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0), IsOkAndHolds(false));
+  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0),
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(CanFoldTransposeOperandIntoDotTest,
@@ -126,7 +130,8 @@ ENTRY AddDotsFunc {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
-  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 1), IsOkAndHolds(false));
+  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 1),
+              absl_testing::IsOkAndHolds(false));
 }
 
 struct GetBatchRowColumnShapeTestParams {
@@ -144,9 +149,10 @@ TEST_P(GetBatchRowColumnShapeTest, ValidShape) {
   const GetBatchRowColumnShapeTestParams& params = GetParam();
 
   Shape shape = ParseShape(params.shape).value();
-  EXPECT_THAT(GetBatchRowColumnShape(shape, params.batch_dims, params.row_dims,
-                                     params.col_dims),
-              IsOkAndHolds(ParseShape(params.expected_shape).value()));
+  EXPECT_THAT(
+      GetBatchRowColumnShape(shape, params.batch_dims, params.row_dims,
+                             params.col_dims),
+      absl_testing::IsOkAndHolds(ParseShape(params.expected_shape).value()));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -240,7 +246,7 @@ ENTRY DotFunc {
                           ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
   EXPECT_THAT(IsMatrixMultiplicationTooSmallForRewriting(*dot, 100),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(GetMatrixSizeRewriteThresholdTest, MatMulSupportedByClassicalEmitters) {
@@ -293,7 +299,7 @@ ENTRY DotFunc {
                           ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
   EXPECT_THAT(IsMatrixMultiplicationTooSmallForRewriting(*dot, 100),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(GetMatrixSizeRewriteThresholdTest, MatMulRightLargeEnoughForRewrite) {
@@ -311,7 +317,7 @@ ENTRY DotFunc {
                           ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
   EXPECT_THAT(IsMatrixMultiplicationTooSmallForRewriting(*dot, 100),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(GetMatrixSizeRewriteThresholdTest, MatMulTogetherLargeEnoughForRewrite) {
@@ -329,7 +335,7 @@ ENTRY DotFunc {
                           ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
   EXPECT_THAT(IsMatrixMultiplicationTooSmallForRewriting(*dot, 100),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
 }
 
 }  // namespace

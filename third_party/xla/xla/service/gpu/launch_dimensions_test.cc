@@ -68,7 +68,7 @@ TEST(LaunchDimensionsTest, ToAndFromProto) {
   LaunchDimensions dimensions{block_dimensions, thread_dimensions};
 
   EXPECT_THAT(LaunchDimensions::FromProto(dimensions.ToProto()),
-              IsOkAndHolds(dimensions));
+              absl_testing::IsOkAndHolds(dimensions));
 }
 
 TEST(LaunchDimensionsTest, FromAndToProto) {
