@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <map>
 #include <memory>
 #include <numeric>
 #include <optional>
