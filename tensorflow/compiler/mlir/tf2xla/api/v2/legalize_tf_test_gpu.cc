@@ -75,7 +75,7 @@ TEST(LegalizeTFTest, WrongDeviceTypeShallFail) {
       kGpuMlirModuleStr,
       ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED,
       "XLA_TPU_JIT");
-  EXPECT_THAT(result, StatusIs(absl::StatusCode::kNotFound));
+  EXPECT_THAT(result, absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 }  // namespace v2
