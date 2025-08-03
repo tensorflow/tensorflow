@@ -1009,8 +1009,6 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/backends/profiler/gpu:cupti_collector",
-        "//xla/backends/profiler/gpu:cupti_tracer",
         "//xla/hlo/ir:hlo",
         "//xla/service:executable",
         "//xla/service:gpu_plugin",
@@ -1027,7 +1025,11 @@ cc_library(
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-    ],
+    ] + if_cuda([
+        # keep sorted
+        "//xla/backends/profiler/gpu:cupti_collector",
+        "//xla/backends/profiler/gpu:cupti_tracer",
+    ]),
 )
 
 xla_test(

@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "xla/backends/profiler/gpu/cupti_pm_sampler.h"
 #include "xla/backends/profiler/gpu/cupti_status.h"
+#include "xla/backends/profiler/gpu/cupti_utils.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/tsl/platform/errors.h"
 
