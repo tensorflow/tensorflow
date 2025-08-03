@@ -1475,7 +1475,7 @@ class ReadySetLt {
         sched_state_.sched_graph.GetNode(gn.GetInstr().operand(0));
     const LatencyEstimator::TimeCost latency =
         sched_state_.latency_estimator->GetLatencyBetween(start, gn);
-    if (gn_cand.has_estimated_connected_send_ready_time) {
+    if (!gn_cand.has_estimated_connected_send_ready_time) {
       HloGraphNode::TimeCost start_ready_time = 0;
       for (const auto& succ : start.GetSuccessors()) {
         // If any successor is not ready skip this logic. We
