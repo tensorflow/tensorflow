@@ -435,6 +435,36 @@ TEST(NanoRtClientTest, ProgramShapeTestInt4) {
       executable->program_shape()->result().layout().element_size_in_bits(), 4);
 }
 
+TEST(NanoRtClientTest, ProgramShapeKeepsLayout) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule layout_test
+
+    ENTRY %main.4 (Arg_0.1: f32[3,3], Arg_1.2: f32[3,3]) -> f32[3,3] {
+      %Arg_0.1 = f32[3,3]{0,1} parameter(0)
+      %Arg_1.2 = f32[3,3]{0,1} parameter(1)
+      ROOT %add.3 = f32[3,3]{0,1} add(%Arg_0.1, %Arg_1.2)
+    }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  XlaComputation computation(hlo_module->ToProto());
+
+  NanoRtClient client;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                          client.Compile(computation));
+  ASSERT_TRUE(executable->program_shape().has_value());
+
+  auto program_shape = executable->program_shape();
+
+  for (size_t i = 0; i < program_shape->parameters_size(); ++i) {
+    EXPECT_EQ(program_shape->parameters()[i].layout().minor_to_major(),
+              absl::Span<const int64_t>({0, 1}));
+  }
+  EXPECT_EQ(program_shape->result().layout().minor_to_major(),
+            absl::Span<const int64_t>({0, 1}));
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//
