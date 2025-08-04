@@ -252,6 +252,78 @@ TEST(PjRtCpuClientTest, HloSnapshot) {
       LiteralUtil::CreateR2<float>({{11.0, 22.0}, {33.0, 44.0}, {55.0, 66.0}}));
 }
 
+TEST(PjRtCpuClientTest, UnoptimizedHloSnapshot) {
+  static constexpr char kProgram[] = R"(
+    HloModule add
+    ENTRY add {
+      x = f32[3,2] parameter(0)
+      y = f32[3,2] parameter(1)
+      ROOT add = f32[3,2] add(x, y)
+    })";
+
+  CpuClientOptions cpu_options;
+  cpu_options.cpu_device_count = 1;
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetPjRtCpuClient(std::move(cpu_options)));
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(kProgram, {}));
+
+  std::string dir = tsl::testing::TmpDir();
+  xla::CompileOptions options;
+  auto* debug_opts = options.executable_build_options.mutable_debug_options();
+  debug_opts->set_xla_dump_to(dir);
+  debug_opts->set_xla_dump_hlo_snapshots(true);
+  debug_opts->set_xla_cpu_dump_unoptimized_hlo_snapshots(true);
+  XlaComputation xla_computation(hlo_module->ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
+                          client->CompileAndLoad(xla_computation, options));
+
+  std::vector<float> data1{1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
+  std::vector<float> data2{10.0, 20.0, 30.0, 40.0, 50.0, 60.0};
+  Shape shape = ShapeUtil::MakeShape(F32, {3, 2});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer1,
+      client->BufferFromHostBuffer(
+          data1.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer2,
+      client->BufferFromHostBuffer(
+          data2.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  auto result = pjrt_executable->Execute(
+      /*argument_handles=*/{{buffer1.get(), buffer2.get()}},
+      /*options=*/{});
+  ASSERT_TRUE(result.ok());
+
+  tsl::FileSystem* fs;
+  ASSERT_TRUE(tsl::Env::Default()->GetFileSystemForFile(dir, &fs).ok());
+
+  std::vector<std::string> paths;
+  ASSERT_TRUE(
+      fs->GetMatchingPaths(dir + "/*.unoptimized_hlo_snapshot.*.pb", &paths)
+          .ok());
+  ASSERT_EQ(paths.size(), 1);
+
+  HloSnapshot snapshot;
+  ASSERT_TRUE(
+      tsl::ReadBinaryProto(tsl::Env::Default(), paths[0], &snapshot).ok());
+
+  ASSERT_EQ(*Literal::CreateFromProto(snapshot.arguments(0)),
+            LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}}));
+  ASSERT_EQ(
+      *Literal::CreateFromProto(snapshot.arguments(1)),
+      LiteralUtil::CreateR2<float>({{10.0, 20.0}, {30.0, 40.0}, {50.0, 60.0}}));
+  ASSERT_EQ(
+      *Literal::CreateFromProto(snapshot.result()),
+      LiteralUtil::CreateR2<float>({{11.0, 22.0}, {33.0, 44.0}, {55.0, 66.0}}));
+}
+
 TEST(PjRtCpuClientTest, AsyncTransferRawData) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
