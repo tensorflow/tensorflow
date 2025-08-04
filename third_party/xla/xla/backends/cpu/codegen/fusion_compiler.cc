@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h"
 #include "mlir/Dialect/Math/IR/Math.h"
@@ -119,6 +120,7 @@ static void AddXlaOpsOptimizationPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createCSEPass());
   pm.addPass(emitters::CreateEraseDeadFunctionsPass());
   pm.addPass(mlir::createCSEPass());
+  pm.addPass(CreateInlinerAndCsePass());
   pm.addNestedPass<mlir::func::FuncOp>(CreatePeelWorkgroupLoopPass());
 }
 
@@ -126,7 +128,6 @@ static void AddLoopTransformationPasses(mlir::OpPassManager& pm,
                                         int32_t vector_width) {
   pm.addNestedPass<mlir::func::FuncOp>(CreateLowerXlaSharedPass());
   pm.addNestedPass<mlir::func::FuncOp>(emitters::CreateLowerXlaToScfPass());
-  pm.addPass(CreateInlinerAndCsePass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -187,13 +188,11 @@ static void AddLoweringPasses(mlir::OpPassManager& pm, int32_t vector_width,
   pm.addPass(emitters::CreateExpandFloatOpsPass(/*aproximate_tanh=*/false));
   pm.addPass(emitters::CreateEraseDeadFunctionsPass());
   pm.addPass(mlir::createLowerAffinePass());
-  pm.addPass(CreateInlinerAndCsePass());
   pm.addPass(mlir::createSCFToControlFlowPass());
   pm.addPass(emitters::CreateLowerXlaMathLibPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateConvertMathToLLVMPass());
   pm.addPass(emitters::CreateLowerToLLVMPass(/*target_type=*/"cpu"));
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
-  pm.addPass(CreateInlinerAndCsePass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 }
@@ -201,7 +200,8 @@ static void AddLoweringPasses(mlir::OpPassManager& pm, int32_t vector_width,
 static int GetLlvmFunctionDefCount(mlir::ModuleOp m) {
   int count = 0;
   m.walk([&count](mlir::LLVM::LLVMFuncOp func) {
-    if (!func.getBody().empty()) {
+    if (!func.getBody().empty() &&
+        func.getLinkage() != mlir::LLVM::Linkage::Internal) {
       count++;
     }
     return mlir::WalkResult::advance();
