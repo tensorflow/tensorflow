@@ -130,7 +130,8 @@ std::string TilingSpace::ToString() const {
   }
   ss << "Root tiles:\n";
   for (const auto& [index, tile] : llvm::enumerate(tiled_roots_)) {
-    ss << index << " root tile: " << tile.ToString() << "\n";
+    ss << index << " root tile: " << tile.ToString(/*print_variables=*/false)
+       << "\n";
   }
   if (!constraints_.IsAlwaysSatisfied()) {
     ss << "Constraints:\n" << constraints_.ToString() << "\n";

@@ -94,7 +94,7 @@ MLIRContext* SymbolicTile::mlir_context() const {
   return tiling_space_->mlir_context();
 }
 
-std::string SymbolicTile::ToString() const {
+std::string SymbolicTile::ToString(bool print_variables) const {
   int64_t num_dimensions = tiling_space_->num_dimensions();
   auto tid_names = GetVarNames(num_dimensions, "tid_");
   auto ts_names = GetVarNames(num_dimensions, "ts_");
@@ -103,13 +103,16 @@ std::string SymbolicTile::ToString() const {
   std::string s;
   llvm::raw_string_ostream ss(s);
 
-  // Tile IDs.
-  ss << '(' << absl::StrJoin(tid_names, ", ") << ')';
-  // Tile size.
-  ss << '[' << absl::StrJoin(ts_names, ", ") << ']';
-  // Runtime identifiers.
-  if (!rt_names.empty()) {
-    ss << '{' << absl::StrJoin(rt_names, ", ") << '}';
+  if (print_variables) {
+    // Tile IDs.
+    ss << '(' << absl::StrJoin(tid_names, ", ") << ')';
+    // Tile size.
+    ss << '[' << absl::StrJoin(ts_names, ", ") << ']';
+    // Runtime identifiers.
+    if (!rt_names.empty()) {
+      ss << '{' << absl::StrJoin(rt_names, ", ") << '}';
+    }
+    ss << " ->";
   }
   SmallVector<std::string, 3> symbol_names;
   symbol_names.reserve(ts_names.size() + rt_names.size());
@@ -119,7 +122,7 @@ std::string SymbolicTile::ToString() const {
     ss << ::xla::ToString(expr, tid_names, symbol_names);
   };
   // Print offsets.
-  ss << " -> offsets [";
+  ss << " offsets [";
   llvm::interleaveComma(offsets(), ss, print_expr);
   ss << "] sizes [";
   llvm::interleaveComma(sizes(), ss, print_expr);

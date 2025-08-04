@@ -20,10 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/container/inlined_vector.h"
-#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/experimental/symbolic_tile.h"
@@ -51,6 +48,11 @@ class SymbolicTiledHloInstruction {
   }
   llvm::ArrayRef<const SymbolicTiledHloInstruction*> operands() const {
     return operands_;
+  }
+
+  // Appends an operand to the end of the operand list.
+  void AppendOperand(SymbolicTiledHloInstruction* operand) {
+    operands_.push_back(operand);
   }
 
   // Returns a string representation of the instruction. Used only for error
@@ -88,9 +90,13 @@ inline bool operator!=(const SymbolicTiledHloInstruction& lhs,
 
 template <typename H>
 H AbslHashValue(H h, const SymbolicTiledHloInstruction& tiled_hlo_instruction) {
-  return H::combine(std::move(h), tiled_hlo_instruction.hlo(),
-                    tiled_hlo_instruction.symbolic_tile(),
-                    tiled_hlo_instruction.operands());
+  h = H::combine(std::move(h), *tiled_hlo_instruction.hlo(),
+                 tiled_hlo_instruction.symbolic_tile());
+  for (const SymbolicTiledHloInstruction* operand :
+       tiled_hlo_instruction.operands()) {
+    h = H::combine(std::move(h), operand);
+  }
+  return h;
 }
 
 }  // namespace xla::gpu::experimental
