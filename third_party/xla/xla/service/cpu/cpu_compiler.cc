@@ -616,7 +616,12 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     return strategy == DotImplementationStrategy::kEigen;
   };
   HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
-    if (!call_library_for_dot(*instr)) return true;
+    if (instr->opcode() != HloOpcode::kDot) {
+      return true;
+    }
+    if (!call_library_for_dot(*instr)) {
+      return true;
+    }
     return !IsDotSupportedByXnn(instr->dot_dimension_numbers(),
                                 instr->operand(0)->shape(),
                                 instr->operand(1)->shape(), instr->shape(),
