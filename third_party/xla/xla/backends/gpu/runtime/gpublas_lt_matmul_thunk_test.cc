@@ -69,6 +69,7 @@ class GpuBlasLtMatmulThunkTest : public HloTestBase {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(true);
     debug_options.set_xla_gpu_enable_triton_gemm(false);
+    debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;
   }
   se::StreamExecutor* default_exec() {
