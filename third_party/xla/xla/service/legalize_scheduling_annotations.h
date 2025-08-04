@@ -44,6 +44,7 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
     bool remove_loop_iteration_annotation_only = false;
     bool run_verification = false;
     bool keep_start_annotation = true;
+    bool deannotate_unsupported_groups = false;
   };
 
   explicit LegalizeSchedulingAnnotations(Config config)

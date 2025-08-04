@@ -153,7 +153,9 @@ absl::StatusOr<bool> RunScheduler(
     HloModule* module, SchedulerConfig sched_config = GetDefaultSchedConfig(),
     std::unique_ptr<LatencyEstimator> latency_estimator =
         std::make_unique<ApproximateLatencyEstimator>(),
-    std::unique_ptr<AsyncTracker> async_tracker = nullptr) {
+    std::unique_ptr<AsyncTracker> async_tracker = nullptr,
+    std::unique_ptr<LegalizeSchedulingAnnotations::Config> legalizer_config =
+        nullptr) {
   AsyncCollectiveCreator::CollectiveCreatorConfig config{
       /*convert_all_reduce=*/HloPredicateTrue,
       /*convert_all_gather=*/HloPredicateTrue,
@@ -161,9 +163,13 @@ absl::StatusOr<bool> RunScheduler(
       /*convert_collective_permute=*/HloPredicateTrue};
   TF_ASSIGN_OR_RETURN(bool value,
                       AsyncCollectiveCreator(std::move(config)).Run(module));
-  TF_ASSIGN_OR_RETURN(value, LegalizeSchedulingAnnotations(
-                                 LegalizeSchedulingAnnotations::Config())
-                                 .Run(module));
+  if (!legalizer_config) {
+    legalizer_config =
+        std::make_unique<LegalizeSchedulingAnnotations::Config>();
+  }
+  TF_ASSIGN_OR_RETURN(
+      value,
+      LegalizeSchedulingAnnotations(std::move(*legalizer_config)).Run(module));
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes =
       [&shape_size_bytes](const Shape& shape) -> int64_t {
     int64_t shape_size = 0;
@@ -3739,6 +3745,63 @@ ENTRY entry {
             GetIndex(new_instruction_sequence, "cp1d"));
   EXPECT_LT(GetIndex(new_instruction_sequence, "c0"),
             GetIndex(new_instruction_sequence, "cp2d"));
+}
+
+TEST_F(LatencyHidingSchedulerTest, DeannotateUnsupportedGroups) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[128,2048,2048]{2,1,0} parameter(1)
+  p2 = f32[512,2048,2048]{2,1,0} parameter(2)
+  cp1s = (f32[512,2048,2048]{2,1,0}, f32[512,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p2), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="0"}
+  cp1d = f32[512,2048,2048]{2,1,0} collective-permute-done(cp1s), frontend_attributes={_scheduling_group_id="0"}
+  cp2s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p1), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="1"}
+  cp2d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp2s), frontend_attributes={_scheduling_group_id="1"}
+  cp3s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(cp2d), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="0"}
+  cp3d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp3s), frontend_attributes={_scheduling_group_id="0"}
+  p0_x1 = f32[16,64,256]{2,1,0} copy(p0), frontend_attributes={_scheduling_group_id="1"}
+  cp1d_x1 = f32[16,64,256]{2,1,0} slice(cp1d), slice={[0:16], [0:64], [0:256]}, frontend_attributes={_scheduling_group_id="1"}
+  p0_x2 = f32[16,64,256]{2,1,0} add(p0_x1, cp1d_x1), frontend_attributes={_scheduling_group_id="1"}
+  c0 = f32[16,256,256]{2,1,0} convolution(p0, p0_x2),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb, frontend_attributes={_scheduling_group_id="0"}
+  ROOT tuple.2 = (f32[16,256,256]{2,1,0}, f32[512,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}) tuple(c0, cp1d, cp3d)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.aggressive_scheduling_policies = true;
+  auto legalizer_config =
+      std::make_unique<LegalizeSchedulingAnnotations::Config>();
+  legalizer_config->deannotate_unsupported_groups = true;
+  TF_EXPECT_OK(RunScheduler(
+      hlo_module.get(), sched_config, std::make_unique<TestLatencyEstimator>(),
+      /*async_tracker=*/nullptr, std::move(legalizer_config)));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+
+  // Check that scheduling group 0 has been de-annotated because it
+  // contain gaps, but group 1 is still annotated.
+  const HloInstruction* cp1s = FindInstruction(hlo_module.get(), "cp1s");
+  const HloInstruction* cp2s = FindInstruction(hlo_module.get(), "cp2s");
+  const HloInstruction* cp3s = FindInstruction(hlo_module.get(), "cp3s");
+  EXPECT_FALSE(
+      cp1s->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_TRUE(
+      cp2s->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_FALSE(
+      cp3s->frontend_attributes().map().contains("_scheduling_group_id"));
 }
 
 TEST_F(LatencyHidingSchedulerTest, SchedulingAnnotationMakesAnotherGroupReady) {
