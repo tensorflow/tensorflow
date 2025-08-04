@@ -1,5 +1,6 @@
 load("@local_xla//xla/tsl:tsl.bzl", "if_macos", "internal_visibility")
 load("@local_xla//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "get_compatible_with_portable", "tf_python_pybind_extension")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
