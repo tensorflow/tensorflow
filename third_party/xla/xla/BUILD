@@ -1270,6 +1270,7 @@ xla_cc_test(
             "@com_google_absl//absl/status:statusor",
             "@com_google_absl//absl/strings",
             "@com_google_googletest//:gtest",
+            "@local_tsl//tsl/platform:protobuf",
         ],
 )
 
