@@ -262,8 +262,11 @@ class WrapEntryWithCallFrame
     auto error = builder.create<cpu::SuccessOp>(error_type);
     builder.create<mlir::func::ReturnOp>(error.getResult());
 
-    op->setAttr("xla.cpu.is_wrapped", mlir::UnitAttr::get(context));
+    op->setAttr("xla.cpu.is_wrapped", builder.getUnitAttr());
     op.setPrivate();
+    op->setAttr("llvm.linkage", mlir::LLVM::LinkageAttr::get(
+                                    context, mlir::LLVM::Linkage::Internal));
+    op->setAttr("always_inline", builder.getUnitAttr());
 
     return mlir::success();
   }
