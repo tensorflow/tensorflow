@@ -1,4 +1,5 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:lit.bzl", "lit_test_suite")
 load("//xla:xla.default.bzl", "xla_cc_binary")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
