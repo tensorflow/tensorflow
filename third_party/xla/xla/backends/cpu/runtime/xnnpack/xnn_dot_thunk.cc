@@ -88,7 +88,8 @@ absl::StatusOr<xnn_subgraph_t> XnnDotThunk::BuildDotSubgraph(
 
   XNN_RETURN_IF_ERROR(xnn_define_batch_matrix_multiply(
       subgraph, lhs_id, rhs_id, out_id,
-      /*flags=*/dot_canonical_dims_.rhs_canonical ? 0 : XNN_FLAG_TRANSPOSE_B));
+      (/*flags=*/dot_canonical_dims_.rhs_canonical ? 0 : XNN_FLAG_TRANSPOSE_B) |
+          XNN_FLAG_NO_BROADCAST));
 
   return subgraph;
 }
