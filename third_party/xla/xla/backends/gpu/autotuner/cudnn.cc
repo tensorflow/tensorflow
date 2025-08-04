@@ -127,9 +127,11 @@ GetCudnnFusionConfigs(const HloInstruction& instr,
       *stream_executor, *DynCast<HloFusionInstruction>(&instr));
   configs.reserve(plan_count);
   for (int plan_id = 0; plan_id < plan_count; ++plan_id) {
-    auto config = std::make_unique<CudnnBackendConfig>();
-    config->set_algo_id(plan_id);
-    configs.push_back(std::move(config));
+    CudnnBackendConfig config;
+    config.set_algo_id(plan_id);
+    auto any = std::make_unique<google::protobuf::Any>();
+    any->PackFrom(config);
+    configs.push_back(std::move(any));
   }
   return configs;
 }
@@ -178,8 +180,9 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
           /*use_fallback=*/false, gpu_conv_config.fusion->mode, numeric_options,
           &runners));
       for (const auto& runner : runners) {
-        configs.push_back(std::make_unique<CudnnBackendConfig>(
-            runner->ToAlgorithmDesc()->ToProto()));
+        auto any = std::make_unique<google::protobuf::Any>();
+        any->PackFrom(runner->ToAlgorithmDesc()->ToProto());
+        configs.push_back(std::move(any));
       }
       return configs;
     }
@@ -194,8 +197,9 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
           /*use_fallback=*/false, numeric_options, &runners,
           gpu_conv_config.serialized_graph));
       for (const auto& runner : runners) {
-        configs.push_back(std::make_unique<CudnnBackendConfig>(
-            runner->ToAlgorithmDesc()->ToProto()));
+        auto any = std::make_unique<google::protobuf::Any>();
+        any->PackFrom(runner->ToAlgorithmDesc()->ToProto());
+        configs.push_back(std::move(any));
       }
       return configs;
     }
@@ -216,8 +220,9 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
           gpu_conv_config.conv_desc,
           /*use_fallback=*/false, nullptr, numeric_options, &runners));
       for (const auto& runner : runners) {
-        configs.push_back(std::make_unique<CudnnBackendConfig>(
-            runner->ToAlgorithmDesc()->ToProto()));
+        auto any = std::make_unique<google::protobuf::Any>();
+        any->PackFrom(runner->ToAlgorithmDesc()->ToProto());
+        configs.push_back(std::move(any));
       }
       return configs;
     }
@@ -277,8 +282,11 @@ absl::Status ApplyConfigToCudnnCustomCall(HloInstruction& instr,
 
 absl::Status CudnnBackend::ApplyConfig(HloInstruction& instr,
                                        const BackendConfig& config) {
-  const CudnnBackendConfig& algorithm_config =
-      static_cast<const CudnnBackendConfig&>(config);
+  CudnnBackendConfig algorithm_config;
+  if (!config.UnpackTo(&algorithm_config)) {
+    return absl::InvalidArgumentError(
+        "Failed to unpack CudnnBackendConfig from Any.");
+  }
   if (instr.opcode() == HloOpcode::kFusion) {
     return ApplyConfigToCudnnFusion(instr, algorithm_config);
   }

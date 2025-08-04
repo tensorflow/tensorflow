@@ -175,7 +175,9 @@ TEST_F(CudnnBackendTest, ApplyConfigToCudnnFusion) {
   config.set_algo_id(1);
   HloInstruction* fusion_instr =
       hlo_module->entry_computation()->root_instruction();
-  TF_ASSERT_OK(backend_.ApplyConfig(*fusion_instr, config));
+  google::protobuf::Any any;
+  any.PackFrom(config);
+  TF_ASSERT_OK(backend_.ApplyConfig(*fusion_instr, any));
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           fusion_instr->backend_config<GpuBackendConfig>());
   EXPECT_EQ(gpu_config.fusion_backend_config().cudnn_fusion_config().plan_id(),
@@ -189,7 +191,9 @@ TEST_F(CudnnBackendTest, ApplyConfigToCudnnCustomCall) {
   config.set_algo_id(1);
   HloInstruction* fusion_instr =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
-  TF_ASSERT_OK(backend_.ApplyConfig(*fusion_instr, config));
+  google::protobuf::Any any;
+  any.PackFrom(config);
+  TF_ASSERT_OK(backend_.ApplyConfig(*fusion_instr, any));
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           fusion_instr->backend_config<GpuBackendConfig>());
   EXPECT_THAT(gpu_config.cudnn_conv_backend_config().algorithm(),

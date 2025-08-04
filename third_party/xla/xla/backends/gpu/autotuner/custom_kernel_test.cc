@@ -148,8 +148,9 @@ TEST_F(CustomKernelBackendTest, ReturnsDefaultConfig) {
       backend_.GetDefaultConfig(
           (*module->entry_computation()->root_instruction()));
   EXPECT_THAT(config, IsOk());
-  EXPECT_THAT(static_cast<const CustomKernelBackendConfig&>(*config.value()),
-              EqualsProto(ExpectedDefaultAlgorithm()));
+  CustomKernelBackendConfig config_proto;
+  ASSERT_TRUE(config.value()->UnpackTo(&config_proto));
+  EXPECT_THAT(config_proto, EqualsProto(ExpectedDefaultAlgorithm()));
 }
 
 TEST_F(CustomKernelBackendTest,
@@ -168,8 +169,10 @@ TEST_F(CustomKernelBackendTest, ApplyConfig) {
                           ParseAndReturnVerifiedModule(kCustomKernelFusionHlo));
   CustomKernelBackendConfig config;
   config.set_kernel_index(2);
+  google::protobuf::Any any;
+  any.PackFrom(config);
   TF_EXPECT_OK(backend_.ApplyConfig(
-      *hlo_module->entry_computation()->root_instruction(), config));
+      *hlo_module->entry_computation()->root_instruction(), any));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(), "CHECK: \"kernel_index\":2"),
               IsOkAndHolds(true));
 }

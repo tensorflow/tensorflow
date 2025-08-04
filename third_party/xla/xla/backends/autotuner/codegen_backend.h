@@ -19,16 +19,16 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "google/protobuf/any.pb.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/executable.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
-using BackendConfig = tsl::protobuf::Message;
+using BackendConfig = google::protobuf::Any;
 
 // Interface for a codegen backend which can compile HLO instructions with
 // different configurations. This can be used to get the supported configs, and

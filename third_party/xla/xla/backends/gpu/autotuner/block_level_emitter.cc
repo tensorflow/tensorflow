@@ -23,6 +23,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -224,12 +225,17 @@ void ExtendConfigsWithTma(
     std::vector<std::unique_ptr<BackendConfig>>& configs) {
   int64_t original_size = configs.size();
   for (int64_t i = 0; i < original_size; ++i) {
-    const BlockLevelFusionConfig* original_config =
-        static_cast<const BlockLevelFusionConfig*>(configs[i].get());
-    BlockLevelFusionConfig new_config = *original_config;
+    BlockLevelFusionConfig original_config;
+    if (!configs[i]->UnpackTo(&original_config)) {
+      // This should not happen based on how configs are created.
+      LOG(ERROR) << "Failed to unpack BlockLevelFusionConfig";
+      continue;
+    }
+    BlockLevelFusionConfig new_config = original_config;
     new_config.set_is_tma_allowed(true);
-    configs.push_back(
-        std::make_unique<BlockLevelFusionConfig>(std::move(new_config)));
+    auto any = std::make_unique<google::protobuf::Any>();
+    any->PackFrom(new_config);
+    configs.push_back(std::move(any));
   }
 }
 }  // namespace
@@ -294,8 +300,9 @@ BlockLevelEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
     config.set_is_tma_allowed(false);  // Can codegen attempt to use TMA?
 
     // Store the config (as a polymorphic BackendConfig).
-    configs.push_back(
-        std::make_unique<BlockLevelFusionConfig>(std::move(config)));
+    auto any = std::make_unique<google::protobuf::Any>();
+    any->PackFrom(config);
+    configs.push_back(std::move(any));
   }
 
   // Allow TMA tuning for Hopper+ devices when TMA flag is passed.
@@ -330,8 +337,9 @@ BlockLevelEmitterBackend::GetDefaultConfig(const HloInstruction& instr) {
           gpu_backend_config.fusion_backend_config();
       // If a BlockLevelFusionConfig is already present, return it directly.
       if (fusion_backend_config.has_block_level_fusion_config()) {
-        return std::make_unique<BlockLevelFusionConfig>(
-            fusion_backend_config.block_level_fusion_config());
+        auto any = std::make_unique<google::protobuf::Any>();
+        any->PackFrom(fusion_backend_config.block_level_fusion_config());
+        return any;
       }
     }
   }
@@ -351,7 +359,9 @@ BlockLevelEmitterBackend::GetDefaultConfig(const HloInstruction& instr) {
   config.set_num_ctas(1);            // Number of thread blocks (CTAs).
   config.set_num_stages(1);          // Number of pipeline stages.
   config.set_is_tma_allowed(false);  // Can codegen attempt to use TMA?
-  return std::make_unique<BlockLevelFusionConfig>(std::move(config));
+  auto any = std::make_unique<google::protobuf::Any>();
+  any->PackFrom(config);
+  return any;
 }
 
 absl::Status BlockLevelEmitterBackend::ApplyConfig(
@@ -366,13 +376,11 @@ absl::Status BlockLevelEmitterBackend::ApplyConfig(
   //     └── FusionBackendConfig
   //         └── BlockLevelFusionConfig
   // Ensure the provided config is of type BlockLevelFusionConfig.
-  if (config.GetDescriptor() != BlockLevelFusionConfig::GetDescriptor()) {
+  BlockLevelFusionConfig block_level_fusion_config;
+  if (!config.UnpackTo(&block_level_fusion_config)) {
     return absl::InvalidArgumentError(
         "Invalid backend config type for BlockLevelFusionConfig.");
   }
-  // Safe to cast now since we've checked the descriptor above.
-  const BlockLevelFusionConfig& block_level_fusion_config =
-      static_cast<const BlockLevelFusionConfig&>(config);
   // Extract the current GPU backend config from the instruction.
   // This contains the nested FusionBackendConfig we want to modify.
   TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,

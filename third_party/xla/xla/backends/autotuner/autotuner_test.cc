@@ -46,16 +46,19 @@ namespace {
 using TestConfig = gpu::CustomFusionConfig;
 
 MATCHER_P(ConfigMatcher, name, "") {
-  const TestConfig& test_config = static_cast<const TestConfig&>(arg);
+  TestConfig test_config;
+  arg.UnpackTo(&test_config);
   return test_config.name() == name;
 }
 
 MATCHER_P(InstructionMatcher, opcode, "") { return arg.opcode() == opcode; }
 
-std::unique_ptr<TestConfig> GetTestConfig(std::string name) {
+std::unique_ptr<google::protobuf::Any> GetTestConfig(std::string name) {
   TestConfig config;
   config.set_name(name);
-  return std::make_unique<TestConfig>(config);
+  auto any = std::make_unique<google::protobuf::Any>();
+  any->PackFrom(config);
+  return any;
 }
 
 class MockCodegenBackend : public CodegenBackend {

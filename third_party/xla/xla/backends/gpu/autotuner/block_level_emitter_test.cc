@@ -47,8 +47,10 @@ using ::tsl::testing::IsOk;
 int CountTmaAllowed(
     const std::vector<std::unique_ptr<BackendConfig>>& configs) {
   return std::count_if(configs.begin(), configs.end(), [](auto& config) {
-    const BlockLevelFusionConfig& actual_config =
-        static_cast<const BlockLevelFusionConfig&>(*config);
+    BlockLevelFusionConfig actual_config;
+    if (!config->UnpackTo(&actual_config)) {
+      return false;
+    }
     return actual_config.is_tma_allowed();
   });
 }
@@ -117,19 +119,15 @@ ENTRY %main {
       backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction())));
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
-  ASSERT_EQ(config->GetDescriptor(), BlockLevelFusionConfig::GetDescriptor())
-      << "Config is not a BlockLevelFusionConfig";
-  // TODO: Use DownCastMessage when :protobuf_lite target is available in OSS.
-  const BlockLevelFusionConfig* block_level_fusion_config =
-      dynamic_cast<const BlockLevelFusionConfig*>(config.get());
-  ASSERT_NE(block_level_fusion_config, nullptr);
+  BlockLevelFusionConfig block_level_fusion_config;
+  ASSERT_TRUE(config->UnpackTo(&block_level_fusion_config));
   // Check that the config matches the proto embedded in the instruction.
-  EXPECT_THAT(*block_level_fusion_config, EqualsProto(R"pb(
-    output_tiles { sizes: 4 sizes: 16 }
-    num_warps: 2
-    num_ctas: 1
-    num_stages: 1
-  )pb"));
+  EXPECT_THAT(block_level_fusion_config, EqualsProto(R"pb(
+                output_tiles { sizes: 4 sizes: 16 }
+                num_warps: 2
+                num_ctas: 1
+                num_stages: 1
+              )pb"));
 }
 
 // Tests that GetDefaultConfig falls back to generating a default
@@ -165,19 +163,16 @@ ENTRY %main {
       backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction())));
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
-  ASSERT_EQ(config->GetDescriptor(), BlockLevelFusionConfig::GetDescriptor())
-      << "Config is not a BlockLevelFusionConfig";
-  const BlockLevelFusionConfig* block_level_fusion_config =
-      dynamic_cast<const BlockLevelFusionConfig*>(config.get());
-  ASSERT_NE(block_level_fusion_config, nullptr);
+  BlockLevelFusionConfig block_level_fusion_config;
+  ASSERT_TRUE(config->UnpackTo(&block_level_fusion_config));
   // Verify that the default config contains default tiles sizes for the
   // dimensions of the input.
-  EXPECT_THAT(*block_level_fusion_config, EqualsProto(R"pb(
-    output_tiles { sizes: 16 sizes: 1 sizes: 16 }
-    num_warps: 1
-    num_ctas: 1
-    num_stages: 1
-  )pb"));
+  EXPECT_THAT(block_level_fusion_config, EqualsProto(R"pb(
+                output_tiles { sizes: 16 sizes: 1 sizes: 16 }
+                num_warps: 1
+                num_ctas: 1
+                num_stages: 1
+              )pb"));
 }
 
 // Tests that GetDefaultConfig correctly handles shapes containing zero-sized
@@ -215,22 +210,19 @@ ENTRY %main {
       backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction())));
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
-  ASSERT_EQ(config->GetDescriptor(), BlockLevelFusionConfig::GetDescriptor())
-      << "Config is not a BlockLevelFusionConfig";
-  const BlockLevelFusionConfig* block_level_fusion_config =
-      dynamic_cast<const BlockLevelFusionConfig*>(config.get());
-  ASSERT_NE(block_level_fusion_config, nullptr);
+  BlockLevelFusionConfig block_level_fusion_config;
+  ASSERT_TRUE(config->UnpackTo(&block_level_fusion_config));
   // Verify the default output tile sizes:
   // - The tile size for the dimension with size 10 is 16
   // - The zero-sized dimension remains zero
   // - The tile size for the dimension with size 5 is 8.
   // Also verify default tuning parameters: 1 warp, 1 CTA, 1 stage.
-  EXPECT_THAT(*block_level_fusion_config, EqualsProto(R"pb(
-    output_tiles { sizes: 16 sizes: 0 sizes: 8 }
-    num_warps: 1
-    num_ctas: 1
-    num_stages: 1
-  )pb"));
+  EXPECT_THAT(block_level_fusion_config, EqualsProto(R"pb(
+                output_tiles { sizes: 16 sizes: 0 sizes: 8 }
+                num_warps: 1
+                num_ctas: 1
+                num_stages: 1
+              )pb"));
 }
 
 // Tests that GetDefaultConfig correctly generates default block-level fusion
@@ -267,20 +259,17 @@ ENTRY %main {
       backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction())));
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
-  ASSERT_EQ(config->GetDescriptor(), BlockLevelFusionConfig::GetDescriptor())
-      << "Config is not a BlockLevelFusionConfig";
-  const BlockLevelFusionConfig* block_level_fusion_config =
-      dynamic_cast<const BlockLevelFusionConfig*>(config.get());
-  ASSERT_NE(block_level_fusion_config, nullptr);
+  BlockLevelFusionConfig block_level_fusion_config;
+  ASSERT_TRUE(config->UnpackTo(&block_level_fusion_config));
   // Check that the config correctly includes tiling info for both tuple
   // elements
-  EXPECT_THAT(*block_level_fusion_config, EqualsProto(R"pb(
-    output_tiles { sizes: 16 sizes: 16 }
-    output_tiles { sizes: 16 sizes: 16 }
-    num_warps: 1
-    num_ctas: 1
-    num_stages: 1
-  )pb"));
+  EXPECT_THAT(block_level_fusion_config, EqualsProto(R"pb(
+                output_tiles { sizes: 16 sizes: 16 }
+                output_tiles { sizes: 16 sizes: 16 }
+                num_warps: 1
+                num_ctas: 1
+                num_stages: 1
+              )pb"));
 }
 
 // Tests that `GetSupportedConfigs` returns a correct list of valid backend
@@ -344,19 +333,14 @@ ENTRY %main {
   // checked them, so we don't inspect them here.
   for (int d0 : {1, 2, 4, 8, 16, 32, 64}) {
     for (int d2 : {1, 2, 4, 8, 16}) {
-      ASSERT_EQ(configs[config_idx]->GetDescriptor(),
-                BlockLevelFusionConfig::GetDescriptor())
-          << "Config is not a BlockLevelFusionConfig";
-      const BlockLevelFusionConfig* block_level_fusion_config =
-          dynamic_cast<const BlockLevelFusionConfig*>(
-              configs[config_idx].get());
-      ASSERT_NE(block_level_fusion_config, nullptr);
+      BlockLevelFusionConfig block_level_fusion_config;
+      ASSERT_TRUE(configs[config_idx]->UnpackTo(&block_level_fusion_config));
 
       // Verify that the config matches the expected proto representation
       // based on the current d0 and d2 tile size values.
       // d1 is fixed at 1
       // Also verify default tuning parameters: 1 warp, 1 CTA, 1 stage.
-      EXPECT_THAT(*block_level_fusion_config,
+      EXPECT_THAT(block_level_fusion_config,
                   EqualsProto(absl::Substitute(
                       R"pb(
                         output_tiles { sizes: $0 sizes: 1 sizes: $1 }
@@ -431,18 +415,14 @@ backend_config={"fusion_backend_config":{"kind":"__triton"}}
   // checked them, so we don't inspect them here.
   for (int d0 : {1, 2, 4, 8, 16}) {
     for (int d2 : {1, 2, 4, 8}) {
-      ASSERT_EQ(configs[i]->GetDescriptor(),
-                BlockLevelFusionConfig::GetDescriptor())
-          << "Config is not a BlockLevelFusionConfig";
-      const BlockLevelFusionConfig* block_level_fusion_config =
-          dynamic_cast<const BlockLevelFusionConfig*>(configs[i].get());
-      ASSERT_NE(block_level_fusion_config, nullptr);
+      BlockLevelFusionConfig block_level_fusion_config;
+      ASSERT_TRUE(configs[i]->UnpackTo(&block_level_fusion_config));
 
       // Validate that tile shape matches expectations:
       // - d0: 10 → tile sizes {1, 2, 4, 8, 16}
       // - d1: 0  → must be tile size 0
       // - d2: 8  → tile sizes {1, 2, 4, 8}
-      EXPECT_THAT(*block_level_fusion_config,
+      EXPECT_THAT(block_level_fusion_config,
                   EqualsProto(absl::Substitute(
                       R"pb(
                         output_tiles { sizes: $0 sizes: 0 sizes: $1 }
@@ -487,20 +467,17 @@ ENTRY %main {
       backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction())));
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
-  ASSERT_EQ(config->GetDescriptor(), BlockLevelFusionConfig::GetDescriptor())
-      << "Config is not a BlockLevelFusionConfig";
-  const BlockLevelFusionConfig* block_level_fusion_config =
-      dynamic_cast<const BlockLevelFusionConfig*>(config.get());
-  ASSERT_NE(block_level_fusion_config, nullptr);
+  BlockLevelFusionConfig block_level_fusion_config;
+  ASSERT_TRUE(config->UnpackTo(&block_level_fusion_config));
   // Verify the contents of the default config:
   // - output_tiles: shape is tiled into [16,16] blocks
   // - num_warps, num_ctas, num_stages are all 1 (basic launch setup)
-  EXPECT_THAT(*block_level_fusion_config, EqualsProto(R"pb(
-    output_tiles { sizes: 16 sizes: 16 }
-    num_warps: 1
-    num_ctas: 1
-    num_stages: 1
-  )pb"));
+  EXPECT_THAT(block_level_fusion_config, EqualsProto(R"pb(
+                output_tiles { sizes: 16 sizes: 16 }
+                num_warps: 1
+                num_ctas: 1
+                num_stages: 1
+              )pb"));
 
   // Apply the generated config to the fusion instruction.
   EXPECT_THAT(backend_.ApplyConfig(*instr, *config), IsOk());
@@ -509,7 +486,7 @@ ENTRY %main {
   // Ensure that the backend config on the instruction matches what was applied.
   EXPECT_THAT(
       gpu_backend_config.fusion_backend_config().block_level_fusion_config(),
-      EqualsProto(*block_level_fusion_config));
+      EqualsProto(block_level_fusion_config));
 }
 
 TEST_F(TritonBlockLevelFusionEmitterBackendTest, Compile) {
