@@ -1287,6 +1287,19 @@ class SubgraphConverter {
       const HloInstruction* root, ValueRange indices);
 
  private:
+  // Converts a ValueRange to a vector of opaque pointers.
+  static std::vector<void*> IndicesToPtrs(ValueRange indices);
+  // Get the cached instruction for the given instruction and indices if it is
+  // available to builder_'s insertion point. Returns nullptr if not found.
+  // If `log_dominance_check` is true, logs a message if the cached instruction
+  // exists but not available at the current insertion point.
+  const SmallVector<Value>* TryGetCachedInstruction(
+      const HloInstruction* instr, ValueRange indices,
+      bool log_dominance_check = false);
+  // Cache the given instruction for the given indices.
+  const SmallVector<Value>& CacheInstruction(const HloInstruction* instr,
+                                             ValueRange indices,
+                                             SmallVector<Value> values);
   const PartitionedComputation& computation_;
   const PartitionedComputation::Subgraph& subgraph_;
   mlir::func::FuncOp this_fn_;
@@ -1340,42 +1353,20 @@ absl::StatusOr<SmallVector<Value>> SubgraphConverter::ProvideOperand(
 
 absl::StatusOr<SmallVector<Value>> SubgraphConverter::EmitInstruction(
     const HloInstruction* instr, ValueRange indices) {
-  std::vector<void*> indices_ptrs;
-  indices_ptrs.reserve(indices.size());
-  for (auto index : indices) {
-    indices_ptrs.push_back(index.getAsOpaquePointer());
-  }
-  auto& entry = cached_instructions_[std::make_pair(instr, indices_ptrs)];
-  // Only use the entry if its parent block is still in scope. Note that this
-  // should always be the case normally - if not, we risk exponential code
-  // size.
-  // TODO(jreiffers): Remove this check / turn it into a failure.
-  if (!entry.empty()) {
-    auto* entry_block = entry.front().getParentBlock();
-    auto* insertion_block = builder_.getInsertionBlock();
-    while (insertion_block != nullptr) {
-      if (insertion_block == entry_block) return entry;
-      if (insertion_block->getParentOp()) {
-        insertion_block = insertion_block->getParentOp()->getBlock();
-      } else {
-        insertion_block = nullptr;
-        VLOG(2) << "Failed dominance check while looking up cache for "
-                << instr->ToShortString()
-                << ". This is a bug in the computation partitioner.";
-      }
-    }
+  if (auto* entry = TryGetCachedInstruction(instr, indices, true)) {
+    return *entry;
   }
 
   if (HloInstruction::IsOpElementwise(instr->opcode())) {
     return EmitElementwiseInstruction(instr, indices);
   }
 
-  TF_ASSIGN_OR_RETURN(entry,
+  TF_ASSIGN_OR_RETURN(auto entry,
                       HloToMlir(instr, this_fn_, indices, provide_operand_fn_,
                                 call_target_provider_, builder_));
   CHECK(!absl::c_linear_search(entry, nullptr))
       << "Failed to lower " << instr->name();
-  return entry;
+  return CacheInstruction(instr, indices, std::move(entry));
 }
 
 absl::StatusOr<SmallVector<Value>>
@@ -1383,12 +1374,6 @@ SubgraphConverter::EmitElementwiseInstruction(const HloInstruction* root,
                                               ValueRange indices) {
   // `root` is elementwise, so we can emit its operands first (recursively).
   // This reduces the size of the call stack.
-  std::vector<void*> indices_ptrs;
-  indices_ptrs.reserve(indices.size());
-  for (auto index : indices) {
-    indices_ptrs.push_back(index.getAsOpaquePointer());
-  }
-
   std::queue<const HloInstruction*> worklist;
   absl::flat_hash_set<const HloInstruction*> visited;
   worklist.push(root);
@@ -1404,7 +1389,7 @@ SubgraphConverter::EmitElementwiseInstruction(const HloInstruction* root,
       for (int i = instr->operand_count() - 1; i >= 0; --i) {
         auto* operand = instr->operand(i);
         if (subgraph_.instructions.contains(operand) &&
-            !cached_instructions_.contains({operand, indices_ptrs}) &&
+            !TryGetCachedInstruction(operand, indices, false) &&
             visited.insert(operand).second) {
           worklist.push(operand);
         }
@@ -1413,12 +1398,67 @@ SubgraphConverter::EmitElementwiseInstruction(const HloInstruction* root,
   }
 
   for (auto* instr : llvm::reverse(pre_order)) {
-    auto& entry = cached_instructions_[{instr, indices_ptrs}];
-    TF_ASSIGN_OR_RETURN(entry,
+    TF_ASSIGN_OR_RETURN(auto entry,
                         HloToMlir(instr, this_fn_, indices, provide_operand_fn_,
                                   call_target_provider_, builder_));
+    CacheInstruction(instr, indices, std::move(entry));
   }
-  return cached_instructions_[{root, indices_ptrs}];
+  return cached_instructions_[{root, IndicesToPtrs(indices)}];
+}
+
+std::vector<void*> SubgraphConverter::IndicesToPtrs(ValueRange indices) {
+  std::vector<void*> indices_ptrs;
+  indices_ptrs.reserve(indices.size());
+  for (auto index : indices) {
+    indices_ptrs.push_back(index.getAsOpaquePointer());
+  }
+  return indices_ptrs;
+}
+
+const SmallVector<Value>* SubgraphConverter::TryGetCachedInstruction(
+    const HloInstruction* instr, ValueRange indices, bool log_dominance_check) {
+  std::vector<void*> indices_ptrs = IndicesToPtrs(indices);
+
+  auto itr = cached_instructions_.find(std::make_pair(instr, indices_ptrs));
+  if (itr == cached_instructions_.end()) {
+    return nullptr;
+  }
+
+  SmallVector<Value>& entry = itr->second;
+  // Only use the entry if its parent block is still in scope. Note that this
+  // should always be the case normally - if not, we risk exponential code
+  // size.
+  if (!entry.empty()) {
+    auto* entry_block = entry.front().getParentBlock();
+    auto* insertion_block = builder_.getInsertionBlock();
+    while (insertion_block != nullptr) {
+      if (insertion_block == entry_block) {
+        return &entry;
+      }
+      if (insertion_block->getParentOp()) {
+        insertion_block = insertion_block->getParentOp()->getBlock();
+      } else {
+        insertion_block = nullptr;
+        if (log_dominance_check) {
+          VLOG(2) << "Failed dominance check while looking up cache for "
+                  << instr->ToShortString()
+                  << ". This is a bug in the computation partitioner.";
+        }
+      }
+    }
+  }
+
+  return nullptr;
+}
+
+const SmallVector<Value>& SubgraphConverter::CacheInstruction(
+    const HloInstruction* instr, ValueRange indices,
+    SmallVector<Value> values) {
+  // We need to insert or assign as it may already exist but in a more nested
+  // scope, this brings the cached value to the higher scope.
+  return cached_instructions_
+      .insert_or_assign({instr, IndicesToPtrs(indices)}, std::move(values))
+      .first->second;
 }
 
 absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
