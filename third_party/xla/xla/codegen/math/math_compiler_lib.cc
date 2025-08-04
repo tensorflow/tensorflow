@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
@@ -115,18 +114,15 @@ void RemoveFromCompilerUsed(
     llvm::Constant* new_array_init =
         llvm::ConstantArray::get(new_array_type, elements);
 
-    // Rename existing llvm.compiler.used so llvm doesn't give our replacement
-    // a suffix due to name collission.
-    compiler_used->setName(absl::StrCat(kCompilerUsedName, ".old"));
-
     // Create a new global llvm.compiler.used with the new contents.
-    new llvm::GlobalVariable(module, new_array_type, false,
-                             llvm::GlobalValue::AppendingLinkage,
-                             new_array_init, kCompilerUsedName);
-    // Replace all uses of the old llvm.compiler.used with the new one.
-    compiler_used->replaceAllUsesWith(module.getNamedGlobal(kCompilerUsedName));
+    auto new_global =
+        new llvm::GlobalVariable(module, new_array_type, false,
+                                 compiler_used->getLinkage(), new_array_init);
+    new_global->copyAttributesFrom(compiler_used);
+    new_global->setSection(compiler_used->getSection());
+    new_global->setAlignment(compiler_used->getAlign());
+    new_global->takeName(compiler_used);
 
-    // Remove the old llvm.compiler.used.
     compiler_used->eraseFromParent();
   }
 }

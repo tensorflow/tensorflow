@@ -15,13 +15,18 @@ limitations under the License.
 
 #include "xla/codegen/math/intrinsic.h"
 
+#include <cctype>
 #include <cstddef>
 #include <optional>
 #include <string>
 #include <variant>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
@@ -50,18 +55,17 @@ std::string LowercaseLLVMPrimitiveTypeName(PrimitiveType type) {
     case S64:
       name[0] = 'i';
       return name;
-    case U1:
-    case U2:
-    case U4:
-    case U8:
-    case U16:
-    case U32:
-    case U64:
-      name[0] = 'u';
-      return name;
     default:
       return name;
   }
+}
+
+PrimitiveType FromLowercaseLLVMTypeName(absl::string_view in) {
+  auto name = std::string(in);
+  if (name[0] == 'i') {
+    name[0] = 's';
+  }
+  return primitive_util::StringToPrimitiveType(name).value();
 }
 }  // namespace
 
@@ -95,6 +99,16 @@ std::string Type::name() const {
                             LowercaseLLVMPrimitiveTypeName(vec.type));
       },
       this);
+}
+
+Type Type::FromName(absl::string_view name) {
+  if (name[0] == 'v') {
+    size_t len = std::isdigit(name[2]) ? 2 : 1;
+    size_t width;
+    CHECK(absl::SimpleAtoi(name.substr(1, len), &width)) << name;
+    return Type(FromLowercaseLLVMTypeName(name.substr(len + 1)), width);
+  }
+  return Type(FromLowercaseLLVMTypeName(name), std::nullopt);
 }
 
 bool Type::is_scalar() const { return std::holds_alternative<Scalar>(*this); }
@@ -179,6 +193,14 @@ mlir::Type Type::TypeToIrType(Type type, mlir::MLIRContext& context) {
     return mlir::VectorType::get(*width, elt_type.value());
   }
   return elt_type.value();
+}
+
+llvm::Type* Type::to_ir_type(llvm::LLVMContext& context) const {
+  return Type::TypeToIrType(*this, context);
+}
+
+mlir::Type Type::to_ir_type(mlir::MLIRContext& context) const {
+  return Type::TypeToIrType(*this, context);
 }
 
 Type Type::TypeFromIrType(mlir::Type type) {

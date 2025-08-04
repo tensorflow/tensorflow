@@ -34,6 +34,8 @@ using ::xla::codegen::intrinsics::Type;
 TEST(IntrinsicTest, TypeName) {
   EXPECT_EQ(Type::S(F32).name(), "f32");
   EXPECT_EQ(Type::V(F32, 4).name(), "v4f32");
+  EXPECT_EQ(Type::V(S8, 16).name(), "v16i8");
+  EXPECT_EQ(Type::V(U8, 2).name(), "v2u8");
 }
 
 TEST(IntrinsicTest, TypeElementType) {
@@ -66,6 +68,17 @@ TEST(IntrinsicTest, VerifySameWidthAndElementType) {
   EXPECT_THAT(
       Type::VerifySameWidthAndElementType(Type::V(F32, 2), Type::V(F32, 4)),
       absl_testing::StatusIs(_, HasSubstr("Expected vector types")));
+}
+
+TEST(IntrinsicTypeTest, FromName) {
+  Type f32 = Type::FromName("f32");
+  EXPECT_TRUE(f32.is_scalar());
+  EXPECT_EQ(f32.element_type(), F32);
+  EXPECT_EQ(f32.vector_width(), std::nullopt);
+  Type v4s8 = Type::FromName("v4s8");
+  EXPECT_TRUE(v4s8.is_vector());
+  EXPECT_EQ(v4s8.element_type(), S8);
+  EXPECT_EQ(v4s8.vector_width(), 4);
 }
 
 }  // namespace

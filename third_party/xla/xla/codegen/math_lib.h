@@ -50,9 +50,9 @@ class MathFunction {
 
   // Returns the LLVM IR function definition for the approximation.
   // Reads the target machine and features from the LLVM module.
-  virtual llvm::Function* CreateDefinition(
-      llvm::Module& module, llvm::TargetMachine* target_machine,
-      absl::Span<const intrinsics::Type> types) const = 0;
+  virtual llvm::Function* CreateDefinition(llvm::Module& module,
+                                           llvm::TargetMachine* target_machine,
+                                           absl::string_view name) const = 0;
 
   // The vectorized function name, e.g. "xla.ldexp.v8f64.v8i32".
   virtual std::string GenerateVectorizedFunctionName(

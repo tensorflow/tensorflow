@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <functional>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -28,8 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
@@ -39,7 +37,6 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Instructions.h"
@@ -79,6 +76,8 @@ limitations under the License.
 
 namespace xla::codegen {
 namespace {
+using ::xla::codegen::intrinsics::Type;
+
 // Allows unpacking a vector of types into individual arguments.
 template <typename F, typename Container, size_t... Is>
 decltype(auto) apply_vector(F&& f, const Container& v,
@@ -90,6 +89,25 @@ template <size_t N, typename F, typename Container>
 decltype(auto) apply_vector(F&& f, const Container& v) {
   return apply_vector(f, v, std::make_index_sequence<N>{});
 }
+
+std::vector<Type> ParseTypesFromFunctionName(absl::string_view function_name) {
+  // The `to` in a typed function name is used to specify the return type, so
+  // we ignore it when parsing the function name.
+  static constexpr absl::string_view kIgnoredParts[] = {"to"};
+  std::vector<Type> types;
+  auto parts = absl::StrSplit(function_name, '.');
+  size_t i = 0;
+  for (absl::string_view part : parts) {
+    // Skip the first two parts, which will be `xla.<func_name>`:
+    if (i++ < 2 || std::find(std::begin(kIgnoredParts), std::end(kIgnoredParts),
+                             part) != std::end(kIgnoredParts)) {
+      continue;
+    }
+    types.push_back(Type::FromName(part));
+  }
+  return types;
+}
+
 }  // namespace
 
 using intrinsics::Type;
@@ -108,9 +126,10 @@ class IntrinsicAdapter : public MathFunction {
     }
   }
 
-  llvm::Function* CreateDefinition(
-      llvm::Module& module, llvm::TargetMachine* target_machine,
-      absl::Span<const Type> types) const override {
+  llvm::Function* CreateDefinition(llvm::Module& module,
+                                   llvm::TargetMachine* target_machine,
+                                   absl::string_view name) const override {
+    std::vector<Type> types = ParseTypesFromFunctionName(name);
     return apply_vector<Intrinsic::kNumArgs>(
                [&](auto... args) {
                  if constexpr (std::is_invocable_v<
@@ -188,17 +207,16 @@ void VisitFunctionCalls(llvm::Module& module,
 // Returns the VecCallInfo that we need to generate definitions for all calls
 // to math approximations in the module. Assumes that the module has already
 // been optimized and that all calls to math approximations are unary.
-absl::flat_hash_map<absl::string_view, absl::flat_hash_set<PrimitiveType>>
+absl::flat_hash_map<absl::string_view, absl::flat_hash_set<absl::string_view>>
 GetCalledApproximatableFunctions(
     llvm::Module& module,
     absl::flat_hash_map<absl::string_view, absl::string_view> targets) {
-  absl::flat_hash_map<absl::string_view, absl::flat_hash_set<PrimitiveType>>
+  absl::flat_hash_map<absl::string_view, absl::flat_hash_set<absl::string_view>>
       called_targets;
   VisitFunctionCalls(module, [&](const llvm::CallInst& call) {
     if (auto it = targets.find(call.getCalledFunction()->getName());
         it != targets.end()) {
-      called_targets[it->second].insert(
-          llvm_ir::PrimitiveTypeFromIrType(call.getArgOperand(0)->getType()));
+      called_targets[it->second].insert(it->first);
     }
   });
   return called_targets;
@@ -245,7 +263,6 @@ std::vector<llvm::VecDesc> MathFunctionLib::Vectorizations() {
 
 void CreateDefinitionAndReplaceDeclaration(llvm::Module& module,
                                            absl::string_view name,
-                                           absl::Span<const Type> types,
                                            llvm::TargetMachine* target_machine,
                                            MathFunction& math_func) {
   // The Vectorization pass may have already inserted a declaration
@@ -256,7 +273,7 @@ void CreateDefinitionAndReplaceDeclaration(llvm::Module& module,
     existing_func->setName(std::string(name) + ".old_decl");
   }
   llvm::Function* definition =
-      math_func.CreateDefinition(module, target_machine, types);
+      math_func.CreateDefinition(module, target_machine, name);
   definition->setLinkage(llvm::Function::InternalLinkage);
   definition->addFnAttr(llvm::Attribute::AlwaysInline);
   llvm::verifyFunction(*definition);
@@ -275,20 +292,14 @@ absl::flat_hash_set<absl::string_view> MathFunctionLib::RewriteMathFunctions(
   // Keep track of the function names we replaced so we can remove them from
   // llvm.compiler.used later.
   absl::flat_hash_set<absl::string_view> replaced_functions;
-  for (const auto& [function_name, dtypes] :
+  for (const auto& [function_name, signatures] :
        GetCalledApproximatableFunctions(module, targets_)) {
     for (const auto& math_func : math_functions_) {
       if (math_func->FunctionName() == function_name) {
-        for (const auto& types :
-             math_func->SupportedVectorTypes(target_machine_)) {
-          auto vector_type = types.front();
-          if (dtypes.contains(vector_type.element_type())) {
-            absl::string_view name = math::StringInterner::Get().Intern(
-                math_func->GenerateVectorizedFunctionName(types));
-            CreateDefinitionAndReplaceDeclaration(module, name, types,
-                                                  target_machine_, *math_func);
-            replaced_functions.insert(name);
-          }
+        for (const auto& signature : signatures) {
+          CreateDefinitionAndReplaceDeclaration(module, signature,
+                                                target_machine_, *math_func);
+          replaced_functions.insert(signature);
         }
       }
     }
@@ -299,11 +310,4 @@ absl::flat_hash_set<absl::string_view> MathFunctionLib::RewriteMathFunctions(
   return replaced_functions;
 }
 
-std::string MathFunction::GenerateVectorizedFunctionName(
-    absl::Span<const Type> types) const {
-  std::vector<std::string> names;
-  std::transform(types.begin(), types.end(), std::back_inserter(names),
-                 std::mem_fn(&Type::name));
-  return absl::StrCat("xla.", FunctionName(), ".", absl::StrJoin(names, "."));
-}
 }  // namespace xla::codegen

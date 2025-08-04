@@ -1338,7 +1338,10 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       }
       if (from_type == F8E5M2) {
         TF_RET_CHECK(to_type != F8E5M2);
-        operand_value = EmitF8e5m2ToF16(operand_value, b_);
+        llvm::Function* fptrunc =
+            codegen::intrinsics::FpTrunc::GetOrInsertDeclaration(
+                module_, IntrinsicType::S(F8E5M2), IntrinsicType::S(F16));
+        operand_value = b_->CreateCall(fptrunc, {operand_value});
         from_type = F16;
         if (from_type == to_type) {
           return operand_value;

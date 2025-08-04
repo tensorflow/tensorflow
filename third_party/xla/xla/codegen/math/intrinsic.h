@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
@@ -60,6 +61,8 @@ class Type : public std::variant<Scalar, Vec> {
   bool is_vector() const;
   PrimitiveType element_type() const;
   std::optional<size_t> vector_width() const;
+  llvm::Type* to_ir_type(llvm::LLVMContext& context) const;
+  mlir::Type to_ir_type(mlir::MLIRContext& context) const;
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const Type& type) {
@@ -90,6 +93,9 @@ class Type : public std::variant<Scalar, Vec> {
 
   // Returns the intrinsic type for the given LLVM type.
   static Type TypeFromIrType(llvm::Type* type);
+
+  // Returns the intrinsic type for the given type name, e.g. v4f32.
+  static Type FromName(absl::string_view name);
 };
 
 // Intrinsics are provided by XLA to expose special features (functions) that
