@@ -1229,6 +1229,10 @@ class AsyncValueOwningRef {
   friend AsyncValueOwningRef<U> MakeAvailableAsyncValueRef(
       internal::AsyncValueStorage<U>&, Args&&...);
 
+  template <typename U>
+  friend AsyncValueOwningRef<U> MakeUnconstructedAsyncValueRef(
+      internal::AsyncValueStorage<U>&);
+
   explicit AsyncValueOwningRef(internal::ConcreteAsyncValue<T>* value)
       : value_(value) {}
 
@@ -1257,7 +1261,8 @@ AsyncValueOwningRef<T> MakeConstructedAsyncValueRef(
   return AsyncValueOwningRef<T>(
       internal::PlacementConstruct<internal::ConcreteAsyncValue<T>>(
           storage.buf(),
-          typename internal::ConcreteAsyncValue<T>::ConstructedPayload{false},
+          typename internal::ConcreteAsyncValue<T>::ConstructedPayload{
+              /*is_refcounted=*/false},
           std::forward<Args>(args)...));
 }
 
@@ -1268,9 +1273,87 @@ AsyncValueOwningRef<T> MakeAvailableAsyncValueRef(
   return AsyncValueOwningRef<T>(
       internal::PlacementConstruct<internal::ConcreteAsyncValue<T>>(
           storage.buf(),
-          typename internal::ConcreteAsyncValue<T>::ConcretePayload{false},
+          typename internal::ConcreteAsyncValue<T>::ConcretePayload{
+              /*is_refcounted=*/false},
           std::forward<Args>(args)...));
 }
+
+// Makes unavailable AsyncValueRef in the provided storage.
+template <typename T>
+AsyncValueOwningRef<T> MakeUnconstructedAsyncValueRef(
+    internal::AsyncValueStorage<T>& storage) {
+  return AsyncValueOwningRef<T>(
+      internal::PlacementConstruct<internal::ConcreteAsyncValue<T>>(
+          storage.buf(),
+          typename internal::ConcreteAsyncValue<T>::UnconstructedPayload{
+              /*is_refcounted=*/false}));
+}
+
+// A helper RAII class that bundles together AsyncValueStorage and an owning
+// ref, which is useful when AsyncValue has to be allocated as a part of a
+// parent object or on a stack.
+//
+// Example:
+//
+// 1. Allocating async value as a part of a parent object:
+//
+//   struct Buffer {
+//     void* base;
+//
+//     // Event that signals that data in 'base' is ready for consumption.
+//     ScopedAsyncValue<Event> ready;
+//   };
+//
+// 2. Allocating async value in a static storage:
+//
+//   static absl::NoDestructor<ScopedAsyncValue<Foo>> foo(...);
+//
+// 3. Allocating async value on a stack:
+//
+//   ScopedAsyncValue<Foo> foo(...);
+//   auto foo_ref = foo.AsRef();
+//
+// WARNING: ScopedAsyncValue lifetime is bound to the lifetime of the parent
+// object (or a function call stack), and derived async value pointers and
+// references will become invalid when the parent object is destroyed. Users
+// must take extra care to ensure that async value references and pointers are
+// not used after the parent object is destroyed (i.e. captured in a callback).
+template <typename T>
+class ScopedAsyncValue {
+ public:
+  ScopedAsyncValue() : ref_(MakeUnconstructedAsyncValueRef<T>(storage_)) {}
+
+  // Type tags to select the correct async value constructor.
+  struct ConstructedTag {};
+  struct AvailableTag {};
+  struct ErrorTag {};
+
+  template <typename... Args>
+  explicit ScopedAsyncValue(ConstructedTag, Args&&... args)
+      : ref_(MakeConstructedAsyncValueRef<T>(storage_,
+                                             std::forward<Args>(args)...)) {}
+
+  template <typename... Args>
+  explicit ScopedAsyncValue(AvailableTag, Args&&... args)
+      : ref_(MakeAvailableAsyncValueRef<T>(storage_,
+                                           std::forward<Args>(args)...)) {}
+
+  template <typename... Args>
+  explicit ScopedAsyncValue(ErrorTag, absl::Status status)
+      : ref_(MakeUnconstructedAsyncValueRef<T>(storage_)) {
+    ref_.AsPtr().SetError(std::move(status));
+  }
+
+  ScopedAsyncValue(ScopedAsyncValue&&) = delete;
+  ScopedAsyncValue& operator=(ScopedAsyncValue&&) = delete;
+
+  AsyncValueRef<T> AsRef() const { return ref_.AsRef(); }
+  AsyncValuePtr<T> AsPtr() const { return ref_.AsPtr(); }
+
+ private:
+  internal::AsyncValueStorage<T> storage_;
+  AsyncValueOwningRef<T> ref_;
+};
 
 }  // namespace tsl
 

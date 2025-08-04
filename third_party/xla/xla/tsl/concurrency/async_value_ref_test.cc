@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -949,6 +950,72 @@ TEST(AsyncValueRefTest, CountDownError) {
   EXPECT_TRUE(count_down_ref_copy.CountDown(1));
   EXPECT_TRUE(ref.IsError());
   EXPECT_EQ(ref.GetError(), absl::InternalError("error"));
+}
+
+TEST(AsyncValueRefTest, UnconstructedScopedAsyncValue) {
+  ScopedAsyncValue<int32_t> scoped_value;
+
+  AsyncValueRef<int32_t> ref = scoped_value.AsRef();
+  EXPECT_FALSE(ref.IsAvailable());
+
+  ref.emplace(42);
+  EXPECT_TRUE(ref.IsAvailable());
+  EXPECT_EQ(*ref, 42);
+}
+
+TEST(AsyncValueRefTest, ConstructedScopedAsyncValue) {
+  ScopedAsyncValue<int32_t> scoped_value(
+      ScopedAsyncValue<int32_t>::ConstructedTag{}, 42);
+
+  AsyncValueRef<int32_t> ref = scoped_value.AsRef();
+  EXPECT_FALSE(ref.IsAvailable());
+
+  ref.SetStateConcrete();
+  EXPECT_TRUE(ref.IsAvailable());
+  EXPECT_EQ(*ref, 42);
+}
+
+TEST(AsyncValueRefTest, AvailableScopedAsyncValue) {
+  ScopedAsyncValue<int32_t> scoped_value(
+      ScopedAsyncValue<int32_t>::AvailableTag{}, 42);
+
+  AsyncValueRef<int32_t> ref = scoped_value.AsRef();
+  EXPECT_TRUE(ref.IsAvailable());
+  EXPECT_EQ(*ref, 42);
+}
+
+TEST(AsyncValueRefTest, ErrorScopedAsyncValue) {
+  ScopedAsyncValue<int32_t> scoped_value(ScopedAsyncValue<int32_t>::ErrorTag{},
+                                         absl::InternalError("test"));
+
+  AsyncValueRef<int32_t> ref = scoped_value.AsRef();
+  EXPECT_TRUE(ref.IsError());
+  EXPECT_EQ(ref.GetError(), absl::InternalError("test"));
+}
+
+TEST(AsyncValueRefTest, StaticScopedAsyncValue) {
+  static absl::NoDestructor<ScopedAsyncValue<int32_t>> scoped_value(
+      ScopedAsyncValue<int32_t>::AvailableTag{}, 42);
+
+  AsyncValueRef<int32_t> ref = scoped_value->AsRef();
+  EXPECT_TRUE(ref.IsAvailable());
+  EXPECT_EQ(*ref, 42);
+}
+
+TEST(AsyncValueRefTest, ScopedAsyncValueDestroyed) {
+  static std::atomic<int32_t> foo_counter{0};
+
+  struct Foo {
+    Foo() { foo_counter++; }
+    ~Foo() { foo_counter--; }
+  };
+
+  {
+    ScopedAsyncValue<Foo> scoped_value(ScopedAsyncValue<Foo>::ConstructedTag{});
+    EXPECT_EQ(foo_counter, 1);
+  }
+
+  EXPECT_EQ(foo_counter, 0);
 }
 
 //===----------------------------------------------------------------------===//
