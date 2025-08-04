@@ -339,9 +339,6 @@ TEST_F(XnnFusionTest, UnsupportedDot) {
 }
 
 TEST_F(XnnFusionTest, UnsupportedBatchDot) {
-  // Override XnnGemmConfig.
-  GetXnnGemmConfig().SetTestFilter([](const XnnGemm&) { return false; });
-
   constexpr absl::string_view kModuleStr = R"(
     HloModule unsupported_dot
 
