@@ -92,6 +92,8 @@ absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetSuccessors(
       }
     } else if (user->opcode() == HloOpcode::kGetTupleElement) {
       ShapeIndex tmp_shape_index = instruction_and_shape_index.shape_index;
+      CHECK(!tmp_shape_index.empty())
+          << "Expected shape index to be non-empty.";
       const auto index = tmp_shape_index.front();
       if (index == user->tuple_index()) {
         // This GTE is for the buffer we're tracking.
