@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "xla/codegen/math/fptrunc.h"
 
-#include <optional>
-#include <string>
-
 #include "absl/log/check.h"
 #include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/IR/Argument.h"
@@ -35,18 +32,32 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::codegen::intrinsics {
+namespace {
+llvm::Function* CreateFunction(llvm::Module* module, Type from, Type to) {
+  DCHECK_OK(Type::VerifySameWidth(from, to));
+  llvm::LLVMContext& context = module->getContext();
+  llvm::FunctionType* function_type = llvm::FunctionType::get(
+      to.to_ir_type(context), {from.to_ir_type(context)},
+      /*isVarArg=*/false);
+  llvm::Function* func = llvm::dyn_cast<llvm::Function>(
+      module->getOrInsertFunction(FpTrunc::Name(from, to), function_type)
+          .getCallee());
+  func->getArg(0)->setName("arg");
+  return func;
+}
+}  // namespace
+
 // Truncates an f32 value (scalar or vector) to bf16 with correct rounding.
 static llvm::Function* TruncateF32ToBf16(llvm::Module* module, Type from,
                                          Type to) {
   llvm::LLVMContext& context = module->getContext();
   llvm::IRBuilder<> builder(context);
-  DCHECK_EQ(from.element_type(), F32);
-  DCHECK_EQ(to.element_type(), BF16);
+  llvm::Function* func = CreateFunction(module, from, to);
 
   // Wraps a scalar type into a vector type if we are building a vector
   // intrinsic declaration.
   auto vec = [&](llvm::Type* scalar_type) -> llvm::Type* {
-    if (from.vector_width()) {
+    if (from.vector_width().has_value()) {
       return llvm::VectorType::get(scalar_type, *from.vector_width(), false);
     }
     return scalar_type;
@@ -54,18 +65,9 @@ static llvm::Function* TruncateF32ToBf16(llvm::Module* module, Type from,
 
   llvm::Type* i16_type = vec(builder.getInt16Ty());
   llvm::Type* i32_type = vec(builder.getInt32Ty());
-  llvm::Type* f32_type = vec(builder.getFloatTy());
   llvm::Type* bf16_type = vec(builder.getBFloatTy());
 
-  llvm::FunctionType* function_type =
-      llvm::FunctionType::get(bf16_type, {f32_type}, false);
-  llvm::Function* func = llvm::dyn_cast<llvm::Function>(
-      module->getOrInsertFunction(FpTrunc::Name(from, to), function_type)
-          .getCallee());
-
   llvm::Argument* arg = func->getArg(0);
-  arg->setName("arg");
-
   llvm::BasicBlock* entry_bb = llvm::BasicBlock::Create(context, "entry", func);
   builder.SetInsertPoint(entry_bb);
 
@@ -97,12 +99,30 @@ static llvm::Function* TruncateF32ToBf16(llvm::Module* module, Type from,
   return func;
 }
 
+static llvm::Function* ExtendF8e5m2ToF16(llvm::Module* module, Type from,
+                                         Type to) {
+  llvm::LLVMContext& context = module->getContext();
+  llvm::IRBuilder<> builder(context);
+  llvm::Function* func = CreateFunction(module, from, to);
+  llvm::BasicBlock* entry_bb = llvm::BasicBlock::Create(context, "entry", func);
+  builder.SetInsertPoint(entry_bb);
+
+  llvm::Value* as_int16 = builder.CreateZExt(
+      func->getArg(0), Type(S16, from.vector_width()).to_ir_type(context));
+  llvm::Value* shifted = builder.CreateShl(as_int16, 8);
+  builder.CreateRet(builder.CreateBitCast(shifted, to.to_ir_type(context)));
+  return func;
+}
+
 absl::StatusOr<llvm::Function*> FpTrunc::CreateDefinition(llvm::Module* module,
                                                           Type from, Type to) {
   TF_RETURN_IF_ERROR(Type::VerifySameWidth(from, to));
 
   if (from.element_type() == F32 && to.element_type() == BF16) {
     return TruncateF32ToBf16(module, from, to);
+  }
+  if (from.element_type() == F8E5M2 && to.element_type() == F16) {
+    return ExtendF8e5m2ToF16(module, from, to);
   }
 
   return Internal("Unsupported fptrunc conversion: from=%s to=%s", from.name(),

@@ -47,7 +47,6 @@ limitations under the License.
 #include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::codegen::math {
