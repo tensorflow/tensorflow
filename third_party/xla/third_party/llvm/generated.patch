@@ -1,54 +1,259 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaOverload.cpp b/clang/lib/Sema/SemaOverload.cpp
---- a/clang/lib/Sema/SemaOverload.cpp
-+++ b/clang/lib/Sema/SemaOverload.cpp
-@@ -8042,8 +8042,8 @@
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/AnalysisBasedWarnings.cpp b/clang/lib/Sema/AnalysisBasedWarnings.cpp
+--- a/clang/lib/Sema/AnalysisBasedWarnings.cpp
++++ b/clang/lib/Sema/AnalysisBasedWarnings.cpp
+@@ -503,8 +503,12 @@
  
-     Candidate.IgnoreObjectArgument =
-         isa<CXXMethodDecl>(Candidate.Function) &&
--        cast<CXXMethodDecl>(Candidate.Function)
--            ->isImplicitObjectMemberFunction() &&
-+        !cast<CXXMethodDecl>(Candidate.Function)
-+             ->isExplicitObjectMemberFunction() &&
-         !isa<CXXConstructorDecl>(Candidate.Function);
- 
-     Candidate.ExplicitCallArguments = Args.size();
-diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/cxx2b-deducing-this.cpp b/clang/test/SemaCXX/cxx2b-deducing-this.cpp
---- a/clang/test/SemaCXX/cxx2b-deducing-this.cpp
-+++ b/clang/test/SemaCXX/cxx2b-deducing-this.cpp
-@@ -1357,3 +1357,35 @@
- }
- 
- }
+   TransferFunctions TF(VD);
+   BackwardDataflowWorklist Worklist(*AC.getCFG(), AC);
++  llvm::DenseSet<const CFGBlock *> Visited;
+   Worklist.enqueueBlock(&VarBlk);
+   while (const CFGBlock *B = Worklist.dequeue()) {
++    if (Visited.contains(B))
++      continue;
++    Visited.insert(B);
+     // First check the current block.
+     for (CFGBlock::const_reverse_iterator ri = B->rbegin(), re = B->rend();
+          ri != re; ++ri) {
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/noreturn-weverything.c b/clang/test/SemaCXX/noreturn-weverything.c
+--- a/clang/test/SemaCXX/noreturn-weverything.c
++++ b/clang/test/SemaCXX/noreturn-weverything.c
+@@ -0,0 +1,15 @@
++// RUN: %clang_cc1 -fsyntax-only %s -Weverything
 +
-+namespace GH147046_regression {
-+
-+template <typename z> struct ai {
-+    ai(z::ah);
++void free(void *);
++typedef void (*set_free_func)(void *);
++struct Method {
++  int nparams;
++  int *param;
 +};
-+
-+template <typename z> struct ak {
-+    template <typename am> void an(am, z);
-+    template <typename am> static void an(am, ai<z>);
-+};
-+template <typename> struct ao {};
-+
-+template <typename ap>
-+auto ar(ao<ap> at) -> decltype(ak<ap>::an(at, 0));
-+// expected-note@-1 {{candidate template ignored: substitution failure [with ap = GH147046_regression::ay]: no matching function for call to 'an'}}
-+
-+class aw;
-+struct ax {
-+    typedef int ah;
-+};
-+struct ay {
-+    typedef aw ah;
-+};
-+
-+ao<ay> az ;
-+ai<ax> bd(0);
-+void f() {
-+    ar(az); // expected-error {{no matching function for call to 'ar'}}
++void selelem_free_method(struct Method* method, void* data) {
++    set_free_func free_func = 0;
++    for (int i = 0; i < method->nparams; ++i)
++        free(&method->param[i]);
++    if (data && free_func)
++        free_func(data);
 +}
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/BranchFolding.cpp b/llvm/lib/CodeGen/BranchFolding.cpp
+--- a/llvm/lib/CodeGen/BranchFolding.cpp
++++ b/llvm/lib/CodeGen/BranchFolding.cpp
+@@ -2103,8 +2103,9 @@
+         DI->eraseFromParent();
+         return;
+       }
+-
+-      DI->setDebugValueUndef();
++      // Move DBG_LABELs without modifying them. Set DBG_VALUEs undef.
++      if (!DI->isDebugLabel())
++        DI->setDebugValueUndef();
+       DI->moveBefore(&*Loc);
+     };
+ 
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/NVPTX/NVPTXInstrInfo.td b/llvm/lib/Target/NVPTX/NVPTXInstrInfo.td
+--- a/llvm/lib/Target/NVPTX/NVPTXInstrInfo.td
++++ b/llvm/lib/Target/NVPTX/NVPTXInstrInfo.td
+@@ -1830,6 +1830,18 @@
+ def : Pat<(declare_scalar_param externalsym:$a, imm:$size),
+           (DECLARE_PARAM_scalar (to_texternsym $a), imm:$size)>;
+ 
++// Call prototype wrapper, this is a dummy instruction that just prints it's
++// operand which is string defining the prototype.
++def SDTCallPrototype : SDTypeProfile<0, 1, [SDTCisInt<0>]>;
++def CallPrototype :
++  SDNode<"NVPTXISD::CallPrototype", SDTCallPrototype,
++         [SDNPHasChain, SDNPOutGlue, SDNPInGlue, SDNPSideEffect]>;
++def ProtoIdent : Operand<i32> { let PrintMethod = "printProtoIdent"; }
++def CALL_PROTOTYPE :
++  NVPTXInst<(outs), (ins ProtoIdent:$ident),
++            "$ident", [(CallPrototype (i32 texternalsym:$ident))]>;
 +
++
+ foreach t = [I32RT, I64RT] in {
+   defvar inst_name = "MOV" # t.Size # "_PARAM";
+   def inst_name : BasicNVPTXInst<(outs t.RC:$dst), (ins t.RC:$src), "mov.b" # t.Size>;
+@@ -1849,6 +1861,32 @@
+ defm ProxyRegB32 : ProxyRegInst<"b32",  B32>;
+ defm ProxyRegB64 : ProxyRegInst<"b64",  B64>;
+ 
++
++// Callseq start and end
++
++// Note: these nodes are marked as SDNPMayStore and SDNPMayLoad because
++// they define the scope in which the declared params may be used. Therefore
++// we add these flags to ensure ld.param and st.param are not sunk or hoisted
++// out of that scope.
++
++def callseq_start : SDNode<"ISD::CALLSEQ_START",
++                           SDCallSeqStart<[SDTCisVT<0, i32>, SDTCisVT<1, i32>]>,
++                           [SDNPHasChain, SDNPOutGlue,
++                            SDNPSideEffect, SDNPMayStore, SDNPMayLoad]>;
++def callseq_end   : SDNode<"ISD::CALLSEQ_END",
++                           SDCallSeqEnd<[SDTCisVT<0, i32>, SDTCisVT<1, i32>]>,
++                           [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue,
++                            SDNPSideEffect, SDNPMayStore, SDNPMayLoad]>;
++
++def Callseq_Start :
++  NVPTXInst<(outs), (ins i32imm:$amt1, i32imm:$amt2),
++            "\\{ // callseq $amt1, $amt2",
++            [(callseq_start timm:$amt1, timm:$amt2)]>;
++def Callseq_End :
++  NVPTXInst<(outs), (ins i32imm:$amt1, i32imm:$amt2),
++            "\\} // callseq $amt1",
++            [(callseq_end timm:$amt1, timm:$amt2)]>;
++
+ //
+ // Load / Store Handling
+ //
+@@ -2392,26 +2430,6 @@
+ def : Pat<(brcond (i1 (setne i1:$a, -1)), bb:$target),
+           (CBranchOther $a, bb:$target)>;
+ 
+-// Call
+-def SDT_NVPTXCallSeqStart : SDCallSeqStart<[SDTCisVT<0, i32>,
+-                                            SDTCisVT<1, i32>]>;
+-def SDT_NVPTXCallSeqEnd   : SDCallSeqEnd<[SDTCisVT<0, i32>, SDTCisVT<1, i32>]>;
+-
+-def callseq_start : SDNode<"ISD::CALLSEQ_START", SDT_NVPTXCallSeqStart,
+-                           [SDNPHasChain, SDNPOutGlue, SDNPSideEffect]>;
+-def callseq_end   : SDNode<"ISD::CALLSEQ_END", SDT_NVPTXCallSeqEnd,
+-                           [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue,
+-                            SDNPSideEffect]>;
+-
+-def Callseq_Start :
+-  NVPTXInst<(outs), (ins i32imm:$amt1, i32imm:$amt2),
+-            "\\{ // callseq $amt1, $amt2",
+-            [(callseq_start timm:$amt1, timm:$amt2)]>;
+-def Callseq_End :
+-  NVPTXInst<(outs), (ins i32imm:$amt1, i32imm:$amt2),
+-            "\\} // callseq $amt1",
+-            [(callseq_end timm:$amt1, timm:$amt2)]>;
+-
+ // trap instruction
+ def trapinst : BasicNVPTXInst<(outs), (ins), "trap", [(trap)]>, Requires<[noPTXASUnreachableBug]>;
+ // Emit an `exit` as well to convey to ptxas that `trap` exits the CFG.
+@@ -2420,18 +2438,6 @@
+ // brkpt instruction
+ def debugtrapinst : BasicNVPTXInst<(outs), (ins), "brkpt", [(debugtrap)]>;
+ 
+-// Call prototype wrapper
+-def SDTCallPrototype : SDTypeProfile<0, 1, [SDTCisInt<0>]>;
+-def CallPrototype :
+-  SDNode<"NVPTXISD::CallPrototype", SDTCallPrototype,
+-         [SDNPHasChain, SDNPOutGlue, SDNPInGlue, SDNPSideEffect]>;
+-def ProtoIdent : Operand<i32> {
+-  let PrintMethod = "printProtoIdent";
+-}
+-def CALL_PROTOTYPE :
+-  NVPTXInst<(outs), (ins ProtoIdent:$ident),
+-            "$ident", [(CallPrototype (i32 texternalsym:$ident))]>;
+-
+ def SDTDynAllocaOp :
+   SDTypeProfile<1, 2, [SDTCisSameAs<0, 1>, SDTCisInt<1>, SDTCisVT<2, i32>]>;
+ 
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/ld-param-sink.ll b/llvm/test/CodeGen/NVPTX/ld-param-sink.ll
+--- a/llvm/test/CodeGen/NVPTX/ld-param-sink.ll
++++ b/llvm/test/CodeGen/NVPTX/ld-param-sink.ll
+@@ -0,0 +1,47 @@
++; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
++; RUN: llc < %s -verify-machineinstrs | FileCheck %s
++; RUN: %if ptxas %{ llc < %s | %ptxas-verify %}
++
++target triple = "nvptx64-nvidia-cuda"
++
++declare ptr @bar(i64)
++declare i64 @baz()
++
++define ptr @foo(i1 %cond) {
++; CHECK-LABEL: foo(
++; CHECK:       {
++; CHECK-NEXT:    .reg .pred %p<2>;
++; CHECK-NEXT:    .reg .b16 %rs<3>;
++; CHECK-NEXT:    .reg .b64 %rd<3>;
++; CHECK-EMPTY:
++; CHECK-NEXT:  // %bb.0: // %entry
++; CHECK-NEXT:    ld.param.b8 %rs1, [foo_param_0];
++; CHECK-NEXT:    and.b16 %rs2, %rs1, 1;
++; CHECK-NEXT:    setp.ne.b16 %p1, %rs2, 0;
++; CHECK-NEXT:    { // callseq 0, 0
++; CHECK-NEXT:    .param .b64 retval0;
++; CHECK-NEXT:    call.uni (retval0), baz, ();
++; CHECK-NEXT:    ld.param.b64 %rd2, [retval0];
++; CHECK-NEXT:    } // callseq 0
++; CHECK-NEXT:    @%p1 bra $L__BB0_2;
++; CHECK-NEXT:  // %bb.1: // %bb
++; CHECK-NEXT:    { // callseq 1, 0
++; CHECK-NEXT:    .param .b64 param0;
++; CHECK-NEXT:    .param .b64 retval0;
++; CHECK-NEXT:    st.param.b64 [param0], %rd2;
++; CHECK-NEXT:    call.uni (retval0), bar, (param0);
++; CHECK-NEXT:    } // callseq 1
++; CHECK-NEXT:  $L__BB0_2: // %common.ret
++; CHECK-NEXT:    st.param.b64 [func_retval0], 0;
++; CHECK-NEXT:    ret;
++entry:
++  %call = call i64 @baz()
++  br i1 %cond, label %common.ret, label %bb
++
++bb:
++  %tmp = call ptr @bar(i64 %call)
++  br label %common.ret
++
++common.ret:
++  ret ptr null
 +}
+diff -ruN --strip-trailing-cr a/llvm/test/DebugInfo/X86/branch-folder-dbg.mir b/llvm/test/DebugInfo/X86/branch-folder-dbg.mir
+--- a/llvm/test/DebugInfo/X86/branch-folder-dbg.mir
++++ b/llvm/test/DebugInfo/X86/branch-folder-dbg.mir
+@@ -9,11 +9,15 @@
+ ## can be killed.
+ ##
+ ## Check DBG_PHIs are deleted rather than hoisted (implicit-check-not).
++##
++## Check DBG_LABELs are hoisted and not modified (and don't cause a crash).
+ 
+ # CHECK: bb.0
+ # CHECK:      CALL64pcrel32 @f, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $rax
+ ## --- Start splice from bb.2.if.else (and debug instructions from bb.1.if.then) ---
++# CHECK-NEXT: DBG_LABEL 0
+ # CHECK-NEXT: DBG_VALUE $noreg, $noreg, ![[#]], !DIExpression(),  debug-location ![[#]]
++# CHECK-NEXT: DBG_LABEL 1
+ # CHECK-NEXT: DBG_VALUE $noreg, $noreg, ![[#]], !DIExpression(),  debug-location ![[#]]
+ # CHECK-NEXT: $edi = MOV32r0 implicit-def dead $eflags, debug-instr-number 2, debug-location !DILocation(line: 0, scope: ![[#]])
+ # CHECK-NEXT: DBG_VALUE $noreg, $noreg, ![[#]], !DIExpression(DW_OP_LLVM_arg, 0),  debug-location ![[#]]
+@@ -98,6 +102,7 @@
+     successors: %bb.3(0x80000000)
+ 
+     DBG_PHI $esp, 3
++    DBG_LABEL 0
+     DBG_VALUE $esi, $noreg, !11, !DIExpression(),  debug-location !13
+     $edi = MOV32r0 implicit-def dead $eflags, debug-instr-number 1, debug-location !14
+     DBG_INSTR_REF !11, !DIExpression(DW_OP_LLVM_arg, 0), dbg-instr-ref(1, 0),  debug-location !13
+@@ -109,6 +114,7 @@
+     successors: %bb.3(0x80000000)
+ 
+     DBG_PHI $esp, 4
++    DBG_LABEL 1
+     DBG_VALUE $esp, $noreg, !11, !DIExpression(), debug-location !13
+     $edi = MOV32r0 implicit-def dead $eflags, debug-instr-number 2, debug-location !16
+     DBG_INSTR_REF !11, !DIExpression(DW_OP_LLVM_arg, 0), dbg-instr-ref(2, 0),  debug-location !13
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -6252,7 +6252,9 @@
+     deps = [
+         ":__support_common",
+         ":__support_macros_config",
++        ":__support_macros_null_check",
+         ":types_wchar_t",
++        ":wchar_utils",
+     ],
+ )
+ 
+@@ -6379,6 +6381,7 @@
+         ":__support_common",
+         ":__support_macros_null_check",
+         ":types_wchar_t",
++        ":wchar_utils",
+     ],
+ )
+ 
