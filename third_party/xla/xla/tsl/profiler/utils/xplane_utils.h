@@ -256,6 +256,8 @@ class AncestorStack {
     }
   }
 
+  const AncestorType& Peek() const { return stack_.back(); }
+
  private:
   const PopFn pop_fn_;
   const IsChildFn is_child_fn_;
