@@ -70,8 +70,8 @@ TEST_F(TilingSpaceTest, SingleOutputParallelDim) {
         1 type: parallel size: 10 dim ID:1
           hlo: %a0 = f32[1000,10]{1,0} exponential(%p0)
     Root tiles:
-      0 root tile: (tid_0, tid_1)[ts_0, ts_1]
-        -> offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+      0 root tile:
+           offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
            strides [1, 1] upper bounds [1000, 10]
   )"));
 }
@@ -104,8 +104,8 @@ TEST_F(TilingSpaceTest, SingleOutputContractionDim) {
         hlo: %dot = bf16[16,2304,16]{2,1,0} dot(%p0, %p1), lhs_batch_dims={1},
         lhs_contracting_dims={2}, rhs_batch_dims={1}, rhs_contracting_dims={2}
     Root tiles:
-      0 root tile: (tid_0, tid_1, tid_2, tid_3)[ts_0, ts_1, ts_2, ts_3]
-        -> offsets [tid_0 * ts_0, tid_1 * ts_1, tid_2 * ts_2]
+      0 root tile:
+           offsets [tid_0 * ts_0, tid_1 * ts_1, tid_2 * ts_2]
            sizes [ts_0, ts_1, ts_2]
            strides [1, 1, 1]
            upper bounds [16, 2304, 16]
@@ -143,8 +143,8 @@ TEST_F(TilingSpaceTest, SingleOutputReductionDim) {
         hlo: %reduce = f32[150,10]{1,0} reduce(%p0.1, %p1.1), dimensions={3,1},
         to_apply=%max
     Root tiles:
-      0 root tile: (tid_0, tid_1, tid_2, tid_3)[ts_0, ts_1, ts_2, ts_3]
-        -> offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+      0 root tile:
+           offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
            strides [1, 1] upper bounds [150, 10]
   )"));
 }
@@ -184,9 +184,9 @@ TEST_F(TilingSpaceTest, VariadicReduce) {
         %reduce = (f32[10]{0}, s32[10]{0}) reduce(%p0, %p1, %p0_init, %p1_init),
         dimensions={0}, to_apply=%min
     Root tiles:
-      0 root tile: (tid_0, tid_1)[ts_0, ts_1] ->
+      0 root tile:
         offsets [tid_0 * ts_0] sizes [ts_0] strides [1] upper bounds [10]
-      1 root tile: (tid_0, tid_1)[ts_0, ts_1] ->
+      1 root tile:
         offsets [tid_0 * ts_0] sizes [ts_0] strides [1] upper bounds [10]
   )"));
 }
@@ -223,8 +223,8 @@ TEST_F(TilingSpaceTest, DynamicSlice) {
         1 bounds: [0, 0] hlo: %of2 = s32[] parameter(2)
         2 bounds: [0, 226] hlo: %of3 = s32[] parameter(3)
     Root tiles:
-      0 root tile: (tid_0, tid_1, tid_2)[ts_0, ts_1, ts_2]{rt_0, rt_1, rt_2}
-        -> offsets [tid_0 * ts_0, tid_1 * ts_1, tid_2 * ts_2]
+      0 root tile:
+           offsets [tid_0 * ts_0, tid_1 * ts_1, tid_2 * ts_2]
            sizes [ts_0, ts_1, ts_2] strides [1, 1, 1] upper bounds [1, 2, 32]
   )"));
 }
@@ -264,11 +264,11 @@ TEST_F(TilingSpaceTest, TwoOutputsParallelDims) {
         3 type: parallel size: 9 dim ID:1
           hlo: %mul = f32[11,9]{1,0} multiply(%p2, %p3)
     Root tiles:
-        0 root tile: (tid_0, tid_1, tid_2, tid_3)[ts_0, ts_1, ts_2, ts_3]
-          -> offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+        0 root tile:
+             offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
              strides [1, 1] upper bounds [10, 8]
-        1 root tile: (tid_0, tid_1, tid_2, tid_3)[ts_0, ts_1, ts_2, ts_3]
-          -> offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+        1 root tile:
+             offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
              strides [1, 1] upper bounds [11, 9]
   )"));
 }

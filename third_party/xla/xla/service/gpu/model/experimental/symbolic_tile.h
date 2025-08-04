@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_TILE_H_
 #define XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_TILE_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
@@ -66,6 +68,12 @@ struct DimTile {
   mlir::AffineExpr stride;
   mlir::AffineExpr upper_bound;
 };
+template <typename H>
+H AbslHashValue(H h, const DimTile& dim_tile) {
+  llvm::hash_code dim_tile_hash = llvm::hash_combine(
+      dim_tile.offset, dim_tile.size, dim_tile.stride, dim_tile.upper_bound);
+  return H::combine(std::move(h), static_cast<size_t>(dim_tile_hash));
+}
 
 class SymbolicTile {
  public:
@@ -78,13 +86,13 @@ class SymbolicTile {
                llvm::ArrayRef<mlir::AffineExpr> strides,
                llvm::ArrayRef<mlir::AffineExpr> upper_bounds);
 
-  std::string ToString() const;
+  std::string ToString(bool print_variables = true) const;
 
   llvm::SmallVector<mlir::AffineExpr> offsets() const;
   llvm::SmallVector<mlir::AffineExpr> sizes() const;
   llvm::SmallVector<mlir::AffineExpr> strides() const;
   llvm::SmallVector<mlir::AffineExpr> upper_bounds() const;
-  llvm::SmallVector<DimTile> dim_tiles() const { return dim_tiles_; }
+  llvm::ArrayRef<DimTile> dim_tiles() const { return dim_tiles_; }
   int64_t num_dim_tiles() const { return dim_tiles_.size(); }
 
   const TilingSpace& tiling_space() const { return *tiling_space_; }
@@ -102,6 +110,15 @@ class SymbolicTile {
   const TilingSpace* tiling_space_;
   llvm::SmallVector<DimTile> dim_tiles_;
 };
+
+template <typename H>
+H AbslHashValue(H h, const SymbolicTile& symbolic_tile) {
+  h = H::combine(std::move(h), &symbolic_tile.tiling_space());
+  for (const DimTile& dim_tile : symbolic_tile.dim_tiles()) {
+    h = H::combine(std::move(h), dim_tile);
+  }
+  return h;
+}
 
 // Returns a DimTile that covers the entire dimension, i.e.
 // offset 0, size = next_power_of_2(dim_size), stride 1, upper_bound = dim_size.
