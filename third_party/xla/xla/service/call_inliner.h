@@ -51,16 +51,20 @@ class CallInliner : public HloModulePass {
   // If `uniquify_channel_ids` is true, the channel ids of the resulting
   // computation will be uniquified.
   // If the callback `should_inline` is provided, only functions callsite for
-  // which it retuns true will be inlined.
+  // which it returns true will be inlined.
+  // If `inline_shardy_manual_computation` is true, manual computation bodies
+  // are inlined.
   explicit CallInliner(
       bool single_call_site = false, bool update_domain = false,
       absl::flat_hash_set<std::string> composites_to_preserve = {},
       bool uniquify_channel_ids = false,
       std::optional<std::function<bool(const CallGraph&, HloInstruction*)>>
-          should_inline = std::nullopt)
+          should_inline = std::nullopt,
+      bool inline_shardy_manual_computation = false)
       : single_call_site_(single_call_site),
         update_domain_(update_domain),
         uniquify_channel_ids_(uniquify_channel_ids),
+        inline_shardy_manual_computation_(inline_shardy_manual_computation),
         composites_to_preserve_(std::move(composites_to_preserve)),
         should_inline_(std::move(should_inline)) {}
   ~CallInliner() override = default;
@@ -86,6 +90,7 @@ class CallInliner : public HloModulePass {
   bool single_call_site_;
   bool update_domain_;
   bool uniquify_channel_ids_;
+  bool inline_shardy_manual_computation_;
   absl::flat_hash_set<std::string> composites_to_preserve_;
   std::optional<
       std::function<bool(const CallGraph& call_graph, HloInstruction*)>>
