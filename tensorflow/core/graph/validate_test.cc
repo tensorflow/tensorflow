@@ -249,7 +249,7 @@ TEST(ValidateGraphHasNoCycleTest, CycleFails) {
 
   EXPECT_THAT(
       graph::ValidateGraphHasNoCycle(graph),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::Code::INVALID_ARGUMENT,
           ::testing::ContainsRegex("Graph is invalid, contains a cycle")));
 }
