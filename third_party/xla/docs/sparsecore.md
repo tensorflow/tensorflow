@@ -1,4 +1,4 @@
-# A deep dive into SparseCore
+# A deep dive into SparseCore for Large Embedding Models (LEM)
 
 SparseCore is a specialized tiled processor engineered for high-performance
 acceleration of workloads that involve irregular, sparse memory access and
