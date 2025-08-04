@@ -165,8 +165,7 @@ class GpuCompiler : public LLVMCompiler {
   virtual absl::Status AddConvAndGemmAutotuningPasses(
       HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
       const CompileOptions& options, HloModule* hlo_module,
-      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-      se::StreamExecutor* stream_exec) {
+      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
     return absl::OkStatus();
   }
 
