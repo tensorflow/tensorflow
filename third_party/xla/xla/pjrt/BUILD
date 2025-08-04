@@ -861,7 +861,11 @@ cc_library(
         "//xla:friends",
     ]),
     deps = [
-        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/base:log_severity",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:hash_container_defaults",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/platform:logging",
     ],
@@ -873,6 +877,8 @@ xla_cc_test(
     deps = [
         ":lru_cache",
         "//xla/hlo/testlib:test",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/random",
         "@com_google_googletest//:gtest_main",
     ],
 )
