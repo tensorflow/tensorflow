@@ -598,7 +598,6 @@ class MultiProcessPoolRunnerTest(test.TestCase):
     self.assertAllEqual(result, [1, 1])
 
   def test_global_pool(self):
-    # test global pool with its workers by passing fn_that_does_nothing to them
     _global_pool.run(fn_that_does_nothing)
 
   def test_nested_pool(self):
