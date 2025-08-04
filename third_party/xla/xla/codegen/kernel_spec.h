@@ -65,6 +65,7 @@ class KernelSpec {
   // locality. However it's up to the backend codegen and runtime to agree
   // on the exact meaning of these dimensions and how they are mapped to the
   // underlying hardware, and how to use them for perfrormance optimization.
+  WorkDimensions work_dimensions() const { return work_dimensions_; }
   NumWorkClusters num_workclusters() const {
     return work_dimensions_.num_work_clusters;
   }

@@ -105,7 +105,7 @@ static const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
   return FindNonTrivialHero(instr_adaptor).instruction();
 }
 
-static emitters::KernelArguments::BufferAlignment GetDefaultBufferAlignment() {
+emitters::KernelArguments::BufferAlignment GetDefaultBufferAlignment() {
   emitters::KernelArguments::BufferAlignment buffer_alignment;
   buffer_alignment.entry_parameter_align_bytes = MinAlign();
   buffer_alignment.xla_allocated_buffer_align_bytes = MinAlign();

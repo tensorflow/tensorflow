@@ -18,11 +18,14 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/mlir_kernel_definition.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 
 namespace xla::cpu {
+
+emitters::KernelArguments::BufferAlignment GetDefaultBufferAlignment();
 
 absl::StatusOr<MlirKernelDefinition> EmitFusionKernel(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,

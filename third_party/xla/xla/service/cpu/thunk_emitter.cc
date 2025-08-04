@@ -70,6 +70,9 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
 #include "xla/backends/cpu/xnn_emitter.h"
 #include "xla/backends/cpu/xnn_fusion.h"
+#include "xla/codegen/emitters/computation_fingerprint.h"
+#include "xla/codegen/emitters/kernel_api_builder.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
@@ -202,6 +205,18 @@ absl::Status HandleReduceAndReduceWindowElementalKernelCompilationOptions(
   SetXlaCpuBackendOptions(llvm_module, llvm_kernel_options);
 
   return absl::OkStatus();
+}
+
+absl::StatusOr<std::string> GetFusionFingerprint(
+    const HloFusionInstruction& fusion,
+    const BufferAssignment& buffer_assignment,
+    const emitters::KernelArguments::BufferAlignment& buffer_alignment) {
+  TF_ASSIGN_OR_RETURN(
+      auto args, emitters::KernelArguments::Create(buffer_assignment,
+                                                   buffer_alignment, &fusion));
+
+  return emitters::GetComputationFingerprint(
+      fusion.fused_instructions_computation(), args.args());
 }
 
 }  // namespace
@@ -889,6 +904,24 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
       options::UseExperimentalLoopFusion(hlo_module_config_) &&
       fusion->fusion_kind() == HloFusionInstruction::FusionKind::kLoop &&
       fusion->fused_expression_root()->opcode() != HloOpcode::kDot) {
+    TF_ASSIGN_OR_RETURN(std::string fingerprint,
+                        GetFusionFingerprint(*fusion, buffer_assignment_,
+                                             GetDefaultBufferAlignment()));
+    if (const auto itr = kernel_spec_cache_.find(fingerprint);
+        itr != kernel_spec_cache_.end()) {
+      const auto& kernel_spec = itr->second;
+      VLOG(1) << "Reusing kernel: " << kernel_spec.name()
+              << " for fusion: " << fusion->name();
+      VLOG(3) << "Fingerprint: " << fingerprint;
+      TF_ASSIGN_OR_RETURN(auto new_kernel_spec,
+                          emitters::GetKernelSpec(
+                              kernel_spec.name(), *fusion, &buffer_assignment_,
+                              kernel_spec.work_dimensions()));
+      return MakeKernelThunkSequence(
+          instruction, new_kernel_spec,
+          /*min_alignment=*/cpu_function_runtime::MinAlign());
+    }
+
     bool use_unique_c_name =
         hlo_module_config_.debug_options()
             .xla_cpu_generate_unique_c_style_kernel_entry_points();
@@ -905,6 +938,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
 
     kernels_.push_back({kernel_spec.name(),
                         std::move(llvm_ir_kernel_source).thread_safe_module()});
+
+    kernel_spec_cache_.insert({fingerprint, kernel_spec});
 
     return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
                                    /*min_alignment=*/MinAlign());
