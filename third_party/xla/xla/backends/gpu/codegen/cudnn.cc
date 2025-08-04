@@ -22,11 +22,11 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -43,7 +43,8 @@ absl::StatusOr<FusionEmissionResult> CuDnnFusion::Emit(
                                         GetDefaultBufferAlignment(), &fusion));
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<CuDnnThunk>(
-      GetComputationFingerprint(fusion.fused_instructions_computation(), {}),
+      emitters::GetComputationFingerprint(
+          fusion.fused_instructions_computation(), {}),
       Thunk::ThunkInfo::WithProfileAnnotation(&fusion),
       kernel_arguments.GetArgumentBufferSlices(),
       kernel_arguments.GetArgumentOutputFlags()));
