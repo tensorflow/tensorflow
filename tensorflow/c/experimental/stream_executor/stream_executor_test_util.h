@@ -45,7 +45,7 @@ void PopulateDefaultTimerFns(SP_TimerFns* timer_fns);
 void PopulateDefaultPlatform(SP_Platform* platform,
                              SP_PlatformFns* platform_fns);
 void PopulateDefaultPlatformRegistrationParams(
-    SE_PlatformRegistrationParams* const params);
+    SE_PlatformRegistrationParams* params);
 
 void DestroyPlatform(SP_Platform* platform);
 void DestroyPlatformFns(SP_PlatformFns* platform_fns);

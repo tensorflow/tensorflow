@@ -537,8 +537,8 @@ absl::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
   TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(c_status.get()));
 
   // Register new platform
-  *device_type = std::string(platform.type);
-  *platform_name = std::string(platform.name);
+  *device_type = platform.type;
+  *platform_name = platform.name;
   std::unique_ptr<stream_executor::CPlatform> cplatform(
       new stream_executor::CPlatform(
           std::move(platform), params.destroy_platform, std::move(platform_fns),
