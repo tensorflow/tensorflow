@@ -486,6 +486,26 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "pjrt_compiler_helper",
+    srcs = ["pjrt_compiler_helper.cc"],
+    hdrs = ["pjrt_compiler_helper.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        ":pjrt_c_api_client",
+        ":pjrt_compiler",
+        ":pjrt_executable",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/pjrt/proto:compile_options_proto_cc",
+        "//xla/pjrt/proto:topology_description_proto_cc",
+        "//xla/service:hlo_proto_cc",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "pjrt_common",
     srcs = ["pjrt_common.cc"],
     hdrs = ["pjrt_common.h"],
