@@ -302,7 +302,7 @@ absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
       /*uniquify_channel_ids=*/true);
   TF_RETURN_IF_ERROR(call_inliner.Run(hlo_module).status());
 
-  if (config.GetDescriptor() == CublasBackendConfig::descriptor()) {
+  if (config.Is<CublasBackendConfig>()) {
     TF_RETURN_IF_ERROR(FissionToCublas(hlo_module,
                                        target_config().device_description,
                                        /*rewrite_to_cublaslt=*/false));
@@ -318,7 +318,7 @@ absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
     return absl::OkStatus();
   }
 
-  if (config.GetDescriptor() == CublasLtBackendConfig::descriptor()) {
+  if (config.Is<CublasLtBackendConfig>()) {
     TF_RETURN_IF_ERROR(FissionToCublas(hlo_module,
                                        target_config().device_description,
                                        /*rewrite_to_cublaslt=*/true));
@@ -336,7 +336,7 @@ absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
     return absl::OkStatus();
   }
 
-  if (config.GetDescriptor() == CustomKernelBackendConfig::descriptor()) {
+  if (config.Is<CustomKernelBackendConfig>()) {
     TF_RETURN_IF_ERROR(
         FissionToCustomKernel(hlo_module, target_config().device_description));
     for (HloComputation* computation : hlo_module->computations()) {

@@ -127,9 +127,11 @@ CublasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.reserve(num_algorithms);
   for (int i = 0; i < num_algorithms; ++i) {
-    auto gemm_key = std::make_unique<CublasLtBackendConfig>();
-    gemm_key->set_algorithm(i);
-    configs.push_back(std::move(gemm_key));
+    CublasLtBackendConfig gemm_key;
+    gemm_key.set_algorithm(i);
+    auto any = std::make_unique<google::protobuf::Any>();
+    any->PackFrom(gemm_key);
+    configs.push_back(std::move(any));
   }
 
   return configs;
@@ -144,13 +146,18 @@ CublasLtBackend::GetDefaultConfig(const HloInstruction& instr) {
 
   AutotuneResult::GemmKey gemm_key;
   gemm_key.set_algorithm(0);
-  return std::make_unique<CublasLtBackendConfig>(gemm_key);
+  auto any = std::make_unique<google::protobuf::Any>();
+  any->PackFrom(gemm_key);
+  return any;
 }
 
 absl::Status CublasLtBackend::ApplyConfig(HloInstruction& instr,
                                           const BackendConfig& config) {
-  const CublasLtBackendConfig& gemm_key =
-      static_cast<const CublasLtBackendConfig&>(config);
+  CublasLtBackendConfig gemm_key;
+  if (!config.UnpackTo(&gemm_key)) {
+    return absl::InvalidArgumentError(
+        "Failed to unpack CublasLtBackendConfig from Any.");
+  }
   TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                       instr.backend_config<GpuBackendConfig>());
   GemmBackendConfig& backend_config = *gpu_config.mutable_gemm_backend_config();
