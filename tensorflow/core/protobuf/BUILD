@@ -197,6 +197,7 @@ tf_proto_library(
         "fingerprint.proto",
     ],
     make_default_target_header_only = True,
+    create_go_proto = True,
     protodeps = [
         ":error_codes_proto_impl",
         "//tensorflow/core/framework:protos_all",
