@@ -52,9 +52,9 @@ cc_library(
 )
 
 cc_library(
-    name = "import_uninlineable_func_calls",
-    srcs = ["import_uninlineable_func_calls.cc"],
-    hdrs = ["import_uninlineable_func_calls.h"],
+    name = "import_func_calls",
+    srcs = ["import_func_calls.cc"],
+    hdrs = ["import_func_calls.h"],
     deps = [
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
@@ -107,8 +107,8 @@ cc_library(
     hdrs = ["pipeline_passes.h"],
     deps = [
         ":import_constants",
+        ":import_func_calls",
         ":import_sdy_custom_calls",
-        ":import_uninlineable_func_calls",
         ":open_while_free_vars_sharding",
         "//xla/mlir_hlo:stablehlo_extension_passes",
         "@llvm-project//mlir:FuncDialect",

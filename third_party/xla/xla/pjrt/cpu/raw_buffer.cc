@@ -117,13 +117,11 @@ CpuRawBuffer::Allocate(PjRtMemorySpace* memory_space, size_t size_bytes) {
 CpuRawBuffer::ImportForeignMemory(
     void* data, absl::AnyInvocable<void() &&> on_delete_callback,
     size_t on_device_bytes_count, PjRtMemorySpace* memory_space) {
-  if ((absl::bit_cast<std::uintptr_t>(data) &
-       (cpu_function_runtime::MinAlign() - 1)) != 0) {
+  if ((absl::bit_cast<std::uintptr_t>(data) & (cpu::MinAlign() - 1)) != 0) {
     return InvalidArgument(
         "Can't create a view of buffer with unaligned data, ptr: %#x is not "
         "aligned to %d bytes. ",
-        reinterpret_cast<std::uintptr_t>(data),
-        cpu_function_runtime::MinAlign());
+        reinterpret_cast<std::uintptr_t>(data), cpu::MinAlign());
   }
   return tsl::MakeRef<CpuRawBuffer>(
       memory_space,
