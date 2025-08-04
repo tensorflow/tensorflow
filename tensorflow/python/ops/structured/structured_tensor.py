@@ -1195,9 +1195,9 @@ class StructuredTensor(extension_type.BatchableExtensionType):
 # should not rely on the fact that some field names are currently disallowed.
 _FIELD_NAME_RE = re.compile('^[a-zA-Z][a-zA-Z0-9_]*$')
 
-#=============================================================================
+# =============================================================================
 # Helper functions
-#=============================================================================
+# =============================================================================
 # TODO(edloper): Move some of these helpers to row_partition.py?
 
 
@@ -1607,7 +1607,7 @@ def _dicts_to_zeros(pyval):
 def _merge_dims_generic(source, outer, inner):
   """Merges outer_axis...inner_axis into a single dimension.
 
-  If outer == inner, this is a NOOP. If inner < outer, then this fials.
+  If outer == inner, this is a NOOP. If inner < outer, then this fails.
   If inner >= source.shape.rank, then the behavior is undefined.
 
   Args:
@@ -1619,7 +1619,6 @@ def _merge_dims_generic(source, outer, inner):
 
   Returns:
     source with outer_axis...inner_axis merged into a single dimension.
-
   """
   if isinstance(source, StructuredTensor):
     return source.merge_dims(outer, inner)
