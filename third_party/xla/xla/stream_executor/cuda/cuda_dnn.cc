@@ -4039,15 +4039,15 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
   using cudnn_frontend::graph::Tensor_attributes;
 
 #if CUDNN_VERSION >= 90000
-  VLOG(4) << "\n bmm1_lhs(q): " << q_descriptor.ToString()
-          << "\n bmm1_rhs(k): " << k_descriptor.ToString()
-          << "\n bmm2_rhs(v): " << v_descriptor.ToString()
-          << "\n out(o): " << o_descriptor.ToString();
+  VLOG(4) << "\n q: " << q_descriptor.ToString()
+          << "\n k: " << k_descriptor.ToString()
+          << "\n v: " << v_descriptor.ToString()
+          << "\n o: " << o_descriptor.ToString();
   if (bias_descriptor) {
-    VLOG(4) << "\n bias(b): " << bias_descriptor->ToString();
+    VLOG(4) << "\n bias: " << bias_descriptor->ToString();
   }
   if (stats_descriptor) {
-    VLOG(4) << "\n activation(s): " << stats_descriptor->ToString();
+    VLOG(4) << "\n stat: " << stats_descriptor->ToString();
   }
 
   cudnn_frontend::graph::Graph graph;
@@ -4299,12 +4299,12 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionF8OperationGraph(
   using cudnn_frontend::graph::Tensor_attributes;
 
 #if CUDNN_VERSION >= 90100
-  VLOG(4) << "\n bmm1_lhs(q): " << q_descriptor.ToString()
-          << "\n bmm1_rhs(k): " << k_descriptor.ToString()
-          << "\n bmm2_rhs(v): " << v_descriptor.ToString()
-          << "\n out(o): " << o_descriptor.ToString() << "\n scale: " << scale;
+  VLOG(4) << "\n q: " << q_descriptor.ToString()
+          << "\n k: " << k_descriptor.ToString()
+          << "\n v: " << v_descriptor.ToString()
+          << "\n o: " << o_descriptor.ToString() << "\n scale: " << scale;
   if (stats_descriptor) {
-    VLOG(4) << "\n activation(s): " << stats_descriptor->ToString();
+    VLOG(4) << "\n stat: " << stats_descriptor->ToString();
   }
 
   cudnn_frontend::graph::Graph graph;
@@ -4432,14 +4432,10 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardF8OperationGraph(
     const dnn::TensorDescriptor& dv_desc, double scale,
     dnn::FMHAMaskKind mask_type) {
 #if CUDNN_VERSION >= 90100
-  VLOG(4) << "\n bmm1_grad_gemm1_rhs(q): " << q_desc.ToString()
-          << "\n bmm1_grad_gemm2_rhs(k): " << k_desc.ToString()
-          << "\n bmm2_grad_gemm1_lhs(p): " << p_desc.ToString()
-          << "\n bmm2_grad_gemm2_rhs(v^t): " << v_desc.ToString()
-          << "\n d_output(do): " << do_desc.ToString()
-          << "\n d_bmm1_lhs(dq): " << dq_desc.ToString()
-          << "\n d_bmm1_rhs(dk): " << dk_desc.ToString()
-          << "\n d_bmm2_rhs(dv): " << dv_desc.ToString()
+  VLOG(4) << "\n q: " << q_desc.ToString() << "\n k: " << k_desc.ToString()
+          << "\n p: " << p_desc.ToString() << "\n v: " << v_desc.ToString()
+          << "\n do: " << do_desc.ToString() << "\n dq: " << dq_desc.ToString()
+          << "\n dk: " << dk_desc.ToString() << "\n dv: " << dv_desc.ToString()
           << "\n scale: " << scale;
 
   using cudnn_frontend::graph::Tensor_attributes;
@@ -4716,14 +4712,10 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     bool force_deterministic, const int sliding_window_length,
     const int max_seg_per_batch, ScoreModFunc* score_mod) {
 #if CUDNN_VERSION >= 90000
-  VLOG(4) << "\n bmm1_grad_gemm1_rhs(q): " << q_desc.ToString()
-          << "\n bmm1_grad_gemm2_rhs(k): " << k_desc.ToString()
-          << "\n bmm2_grad_gemm1_lhs(p): " << p_desc.ToString()
-          << "\n bmm2_grad_gemm2_rhs(v^t): " << v_desc.ToString()
-          << "\n d_output(do): " << do_desc.ToString()
-          << "\n d_bmm1_lhs(dq): " << dq_desc.ToString()
-          << "\n d_bmm1_rhs(dk): " << dk_desc.ToString()
-          << "\n d_bmm2_rhs(dv): " << dv_desc.ToString();
+  VLOG(4) << "\n q: " << q_desc.ToString() << "\n k: " << k_desc.ToString()
+          << "\n p: " << p_desc.ToString() << "\n v: " << v_desc.ToString()
+          << "\n do: " << do_desc.ToString() << "\n dq: " << dq_desc.ToString()
+          << "\n dk: " << dk_desc.ToString() << "\n dv: " << dv_desc.ToString();
 
   using cudnn_frontend::graph::Tensor_attributes;
   cudnn_frontend::graph::Graph graph;
