@@ -1547,7 +1547,8 @@ An op that groups a list of partitioned inputs together. This op
     Variadic<TF_Tensor>:$inputs,
 
     DefaultValuedOptionalAttr<I64Attr, "0">:$partition_dim,
-    OptionalAttr<StrAttr>:$_XlaSharding
+    OptionalAttr<StrAttr>:$_XlaSharding,
+    OptionalAttr<StrAttr>:$_XlaShardingV2
   );
 
   let results = (outs
@@ -1567,7 +1568,8 @@ An op that groups a list of partitioned inputs together. Supports ND sharding.
     Variadic<TF_Tensor>:$inputs,
     I64ArrayAttr:$partition_dims,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$is_packed,
-    OptionalAttr<StrAttr>:$_XlaSharding
+    OptionalAttr<StrAttr>:$_XlaSharding,
+    OptionalAttr<StrAttr>:$_XlaShardingV2
   );
 
   let results = (outs
@@ -1593,7 +1595,8 @@ outputs outside the XLA computation.
     TF_Tensor:$inputs,
 
     DefaultValuedOptionalAttr<I64Attr, "0">:$partition_dim,
-    OptionalAttr<StrAttr>:$_XlaSharding
+    OptionalAttr<StrAttr>:$_XlaSharding,
+    OptionalAttr<StrAttr>:$_XlaShardingV2
   );
 
   let results = (outs
@@ -1617,7 +1620,8 @@ outputs outside the XLA computation. Supports ND sharding.
     TF_Tensor:$inputs,
 
     I64ArrayAttr:$partition_dims,
-    OptionalAttr<StrAttr>:$_XlaSharding
+    OptionalAttr<StrAttr>:$_XlaSharding,
+    OptionalAttr<StrAttr>:$_XlaShardingV2
   );
 
   let results = (outs
