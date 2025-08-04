@@ -161,6 +161,93 @@ TEST_F(ShardyXLATest, NonFlatGraph) {
   EXPECT_EQ(module->computation_count(), 1);
 }
 
+TEST_F(ShardyXLATest, NonFlatWhileComputation) {
+  const char* const hloString = R"(
+    HloModule module
+
+    %foo {
+      %arg = f32[6,3] parameter(0)
+      %multiply = f32[6,3] multiply(arg, arg)
+      ROOT result = f32[6,3] copy(%multiply)
+    }
+
+    %cond1 {
+      %arg = f32[6,3] parameter(0)
+      %dot = f32[] dot(%arg, %arg),
+        lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}
+      ROOT %compare = pred[] compare(%dot, %dot), direction=LT
+    }
+
+    %cond2 {
+      %arg = f32[6,3] parameter(0)
+      %dot = f32[] dot(%arg, %arg),
+        lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}
+      ROOT %compare = pred[] compare(%dot, %dot), direction=LT
+    }
+
+    %loop1 {
+      %arg = f32[6,3] parameter(0)
+      %multiply = f32[6,3] call(%arg), to_apply=%foo
+      %add = f32[6,3] add(multiply, multiply)
+      ROOT result = f32[6,3] copy(%add)
+    }
+
+    %loop2 {
+      %arg = f32[6,3] parameter(0)
+      %multiply = f32[6,3] call(%arg), to_apply=%foo
+      %negate = f32[6,3] negate(multiply)
+      ROOT result = f32[6,3] copy(%negate)
+    }
+
+    ENTRY %entry {
+      %p0 = f32[6,3] parameter(0), sharding={devices=[2,1]<=[2]}
+      %foores = f32[6,3] call(%p0), to_apply=%foo
+      %while.1 = f32[6,3] while(%foores), body=%loop1, condition=%cond1
+      ROOT %while.2 = f32[6,3] while(%while.1), body=%loop2, condition=%cond2
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithStablehloImport(module.get());
+  // Computations refer to: %cond1, %cond2, %loop1, %loop2, %entry.
+  EXPECT_EQ(module->computation_count(), 5);
+}
+
+TEST_F(ShardyXLATest, SharedWhileComputation) {
+  const char* const hloString = R"(
+    HloModule module
+
+    %foo {
+      %arg = f32[6,3] parameter(0)
+      %multiply = f32[6,3] multiply(arg, arg)
+      ROOT result = f32[6,3] copy(%multiply)
+    }
+
+    %cond {
+      %arg = f32[6,3] parameter(0)
+      %dot = f32[] dot(%arg, %arg),
+        lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}
+      ROOT %compare = pred[] compare(%dot, %dot), direction=LT
+    }
+
+    %loop {
+      %arg = f32[6,3] parameter(0)
+      %multiply = f32[6,3] call(%arg), to_apply=%foo
+      %add = f32[6,3] add(multiply, multiply)
+      ROOT result = f32[6,3] copy(%add)
+    }
+
+    ENTRY %entry {
+      %p0 = f32[6,3] parameter(0), sharding={devices=[2,1]<=[2]}
+      %while.1 = f32[6,3] while(%p0), body=%loop, condition=%cond
+      ROOT %while.2 = f32[6,3] while(%while.1), body=%loop, condition=%cond
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithStablehloImport(module.get());
+  // Computations refer to: %cond (x2), %loop (x2), %entry.
+  EXPECT_EQ(module->computation_count(), 5);
+}
+
 TEST_F(ShardyXLATest, CostantSplitter) {
   const char* const hloString = R"(
     HloModule module
