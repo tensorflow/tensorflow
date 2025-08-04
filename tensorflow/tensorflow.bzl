@@ -390,46 +390,58 @@ def lrt_if_needed():
         "//conditions:default": [],
     })
 
-def get_win_copts(is_external = False):
-    WINDOWS_COPTS = [
-        # copybara:uncomment_begin(no MSVC flags in google)
-        # "-DPLATFORM_WINDOWS",
-        # "-DEIGEN_HAS_C99_MATH",
-        # "-DTENSORFLOW_USE_EIGEN_THREADPOOL",
-        # "-DEIGEN_AVOID_STL_ARRAY",
-        # "-Iexternal/gemmlowp",
-        # "-Wno-sign-compare",
-        # "-DNOGDI",
-        # copybara:uncomment_end_and_comment_begin
-        "/DPLATFORM_WINDOWS",
-        "/DEIGEN_HAS_C99_MATH",
-        "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
-        "/DEIGEN_AVOID_STL_ARRAY",
-        "/Iexternal/gemmlowp",
-        "/wd4018",  # -Wno-sign-compare
-        # Bazel's CROSSTOOL currently pass /EHsc to enable exception by
-        # default. We can't pass /EHs-c- to disable exception, otherwise
-        # we will get a waterfall of flag conflict warnings. Wait for
-        # Bazel to fix this.
-        # "/D_HAS_EXCEPTIONS=0",
-        # "/EHs-c-",
-        "/wd4577",
-        "/DNOGDI",
-        # Also see build:windows lines in tensorflow/opensource_only/.bazelrc
-        # where we set some other options globally.
-        # copybara:comment_end
-    ]
+def get_win_copts(
+        is_external = False,
+        is_msvc = False):
+    WINDOWS_COPTS = []
+    if is_msvc:
+        WINDOWS_COPTS += [
+            "/DPLATFORM_WINDOWS",
+            "/DEIGEN_HAS_C99_MATH",
+            "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
+            "/DEIGEN_AVOID_STL_ARRAY",
+            "/Iexternal/gemmlowp",
+            "/wd4018",  # -Wno-sign-compare
+            # Bazel's CROSSTOOL currently pass /EHsc to enable exception by
+            # default. We can't pass /EHs-c- to disable exception, otherwise
+            # we will get a waterfall of flag conflict warnings. Wait for
+            # Bazel to fix this.
+            # "/D_HAS_EXCEPTIONS=0",
+            # "/EHs-c-",
+            "/wd4577",
+            "/DNOGDI",
+            # Also see build:windows lines in tensorflow/opensource_only/.bazelrc
+            # where we set some other options globally.
+        ]
+    else:
+        WINDOWS_COPTS += [
+            "-DPLATFORM_WINDOWS",
+            "-DEIGEN_HAS_C99_MATH",
+            "-DTENSORFLOW_USE_EIGEN_THREADPOOL",
+            "-DEIGEN_AVOID_STL_ARRAY",
+            "-Iexternal/gemmlowp",
+            "-Wno-sign-compare",
+            "-DNOGDI",
+        ]
 
     if is_external:
-        return WINDOWS_COPTS + [if_oss(
-            "/UTF_COMPILE_LIBRARY",
-            "-UTF_COMPILE_LIBRARY",
-        )]
-    else:
-        return WINDOWS_COPTS + [if_oss(
+        if is_msvc:
+            WINDOWS_COPTS.append(
+                "/UTF_COMPILE_LIBRARY",
+            )
+        else:
+            WINDOWS_COPTS.append(
+                "-UTF_COMPILE_LIBRARY",
+            )
+    elif is_msvc:
+        WINDOWS_COPTS.append(
             "/DTF_COMPILE_LIBRARY",
+        )
+    else:
+        WINDOWS_COPTS.append(
             "-DTF_COMPILE_LIBRARY",
-        )]
+        )
+    return WINDOWS_COPTS
 
 def tf_copts(
         android_optimization_level_override = "-O2",
