@@ -68,6 +68,7 @@ class SymbolicExpr {
   int64_t Evaluate(absl::Span<const int64_t> variable_values) const;
   SymbolicExpr ReplaceVariables(absl::Span<const SymbolicExpr> substitutions,
                                 SymbolicExprContext* ctx) const;
+  SymbolicExpr Canonicalize() const;
 
   SymbolicExpr operator+(int64_t v) const;
   SymbolicExpr operator+(SymbolicExpr other) const;

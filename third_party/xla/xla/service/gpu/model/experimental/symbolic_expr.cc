@@ -263,7 +263,7 @@ std::string SymbolicExpr::ToString() const {
     case SymbolicExprType::kMax:
     case SymbolicExprType::kMin: {
       auto bin_op_str = GetBinaryOpString(GetType());
-      return absl::StrCat(bin_op_str, "( ", GetLHS().ToString(), ", ",
+      return absl::StrCat(bin_op_str, "(", GetLHS().ToString(), ", ",
                           GetRHS().ToString(), ")");
     }
     default:
@@ -339,6 +339,9 @@ SymbolicExpr SymbolicExpr::ReplaceVariables(
       LOG(FATAL) << "Substitute not implemented for this type.";
   }
 }
+
+// TODO(b/433697083): Implement canonicalization.
+SymbolicExpr SymbolicExpr::Canonicalize() const { return *this; }
 
 SymbolicExpr SymbolicExpr::operator+(int64_t v) const {
   return *this + GetContext()->CreateConstant(v);
