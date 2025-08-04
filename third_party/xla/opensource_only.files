@@ -145,6 +145,7 @@ xla/third_party/nvshmem/hermetic/nvshmem_redist_init_repository.bzl:
 xla/third_party/nvshmem/nvshmem.BUILD:
 xla/third_party/nvshmem/workspace.bzl:
 xla/third_party/nvtx/LICENSE:
+xla/third_party/onednn_async/LICENSE:
 xla/third_party/ortools/glpk.BUILD:
 xla/third_party/ortools/ortools.patch:
 xla/third_party/pybind11.BUILD:
