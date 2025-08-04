@@ -566,29 +566,4 @@ NB_MODULE(_mlirHlo, m) {
                                        mlirMhloTypeExtensionsGetBoundsSize,
                                        mlirMhloTypeExtensionsGetBoundsElem);
       });
-
-  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
-      m, "SparsityDescriptor", mlirMhloAttributeIsASparsityDescriptor)
-      .def_classmethod(
-          "get",
-          [](nb::object cls, const int64_t dimension, const int64_t n,
-             const int64_t m, MlirContext ctx) {
-            return cls(mlirMhloSparsityDescriptorGet(ctx, dimension, n, m));
-          },
-          nb::arg("cls"), nb::arg("dimension"), nb::arg("n"), nb::arg("m"),
-          nb::arg("context").none() = nb::none(),
-          "Creates a SparseDescriptor attribute with the given sparsity "
-          "configurations.")
-      .def_property_readonly(
-          "dimension",
-          [](MlirAttribute self) {
-            return mlirMhloSparsityDescriptorGetDimension(self);
-          })
-      .def_property_readonly("n",
-                             [](MlirAttribute self) {
-                               return mlirMhloSparsityDescriptorGetN(self);
-                             })
-      .def_property_readonly("m", [](MlirAttribute self) {
-        return mlirMhloSparsityDescriptorGetM(self);
-      });
 }
