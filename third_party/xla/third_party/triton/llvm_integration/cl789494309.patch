@@ -1,0 +1,20 @@
+
+--- a/third_party/amd/include/TritonAMDGPUToLLVM/Passes.h	2025-06-02 05:51:09.000000000 -0700
++++ b/third_party/amd/include/TritonAMDGPUToLLVM/Passes.h	2025-07-31 15:53:03.000000000 -0700
+@@ -1,13 +1,14 @@
+ #ifndef TRITON_THIRD_PARTY_AMD_INCLUDE_TRITONAMDGPUTOLLVM_PASSES_H_
+ #define TRITON_THIRD_PARTY_AMD_INCLUDE_TRITONAMDGPUTOLLVM_PASSES_H_
+ 
++#include <memory>
++
++#include "llvm/IR/Function.h"
+ #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
+ #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+ #include "mlir/Pass/Pass.h"
+ #include "mlir/Transforms/DialectConversion.h"
+ 
+-#include <memory>
+-
+ namespace mlir {
+ 
+ class ModuleOp;
