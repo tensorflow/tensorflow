@@ -2659,32 +2659,29 @@ absl::Status VerifyOriginalValue(const HloModule& module) {
 // collectives).
 absl::Status VerifyChannels(const HloModule& module,
                             const HloVerifierOpts& opts) {
-  // Send/recv instruction must have a unique user. If it is the corresponding
-  // send-done/recv-done operation, channel IDs must match.
+  // 1) Send/recv instruction must have a unique user. If it is the
+  // corresponding send-done/recv-done operation, channel IDs must match.
+  // 2) Host-transfer send/recv instructions that use the same channel must be
+  // exactly the same up to having different operands (but the operands must
+  // still have the same shapes).
+  absl::flat_hash_map<int64_t, std::vector<const HloSendRecvInstruction*>>
+      channel_to_host_transfer_send_recv_instructions;
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
-      auto channel_instr = DynCast<HloChannelInstruction>(instruction);
-      if (!channel_instr || !channel_instr->channel_id()) {
+      auto send_recv_instr = DynCast<HloSendRecvInstruction>(instruction);
+      if (!send_recv_instr || !send_recv_instr->channel_id()) {
         continue;
       }
 
       switch (instruction->opcode()) {
-        case HloOpcode::kSend: {
-          // If the instruction is kSend or kRecv, it can have no users if and
-          // only if it is wrapped in an async call.
-          if (instruction->IsRoot() &&
-              instruction->parent()->IsAsyncComputation()) {
-            break;
-          }
-          TF_RET_CHECK(instruction->users().size() == 1);
-          const HloInstruction* send_done = instruction->users().front();
-          if (send_done->opcode() == HloOpcode::kSendDone) {
-            TF_RETURN_IF_ERROR(CheckSameChannel(instruction, send_done));
-            TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, send_done));
-          }
-          break;
-        }
+        case HloOpcode::kSend:
         case HloOpcode::kRecv: {
+          if (send_recv_instr->is_host_transfer() &&
+              send_recv_instr->channel_id().has_value()) {
+            channel_to_host_transfer_send_recv_instructions
+                [send_recv_instr->channel_id().value()]
+                    .push_back(send_recv_instr);
+          }
           // If the instruction is kSend or kRecv, it can have no users if and
           // only if it is wrapped in an async call.
           if (instruction->IsRoot() &&
@@ -2692,10 +2689,13 @@ absl::Status VerifyChannels(const HloModule& module,
             break;
           }
           TF_RET_CHECK(instruction->users().size() == 1);
-          const HloInstruction* recv_done = instruction->users().front();
-          if (recv_done->opcode() == HloOpcode::kRecvDone) {
-            TF_RETURN_IF_ERROR(CheckSameChannel(instruction, recv_done));
-            TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, recv_done));
+          auto done_opcode = instruction->opcode() == HloOpcode::kSend
+                                 ? HloOpcode::kSendDone
+                                 : HloOpcode::kRecvDone;
+          const HloInstruction* done = instruction->users().front();
+          if (done->opcode() == done_opcode) {
+            TF_RETURN_IF_ERROR(CheckSameChannel(instruction, done));
+            TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, done));
           }
           break;
         }
@@ -2709,6 +2709,27 @@ absl::Status VerifyChannels(const HloModule& module,
     }
   }
 
+  for (const auto& [channel, send_recv_instructions] :
+       channel_to_host_transfer_send_recv_instructions) {
+    if (send_recv_instructions.size() > 1) {
+      const HloSendRecvInstruction* reference = send_recv_instructions[0];
+      for (const HloSendRecvInstruction* send_recv_instruction :
+           send_recv_instructions) {
+        auto eq_operand_shapes = [](const HloInstruction* a,
+                                    const HloInstruction* b) {
+          return ShapeUtil::Equal(a->shape(), b->shape());
+        };
+        if (!reference->Identical(*send_recv_instruction, eq_operand_shapes)) {
+          return Internal(
+              "Host-transfer send/recv instructions that use the same channel "
+              "must be identical up to having different operands. Found "
+              "different instructions with the same channel ID: \n%s \nvs "
+              "\n%s.",
+              reference->ToString(), send_recv_instruction->ToString());
+        }
+      }
+    }
+  }
   return absl::OkStatus();
 }
 

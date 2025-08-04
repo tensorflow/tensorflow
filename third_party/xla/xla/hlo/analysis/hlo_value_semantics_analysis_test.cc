@@ -798,8 +798,8 @@ TEST_F(EinsumDepthAnalysisTest, SendWithRecv) {
       send.0 = (s32[], u32[], token[]) send(s32[] arg_0, token[] arg_1), channel_id=3, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="rendezvous1"}
       send-done.1 = token[] send-done((s32[], u32[], token[]) send.0), channel_id=3, is_host_transfer=true, sharding={maximal device=0}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="rendezvous1"}
 
-      recv.2 = (s32[], u32[], token[]) recv(token[] send-done.1), channel_id=3, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="rendezvous1"}
-      recv-done.3 = (s32[], token[]) recv-done((s32[], u32[], token[]) recv.2), channel_id=3, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="rendezvous1"}
+      recv.2 = (s32[], u32[], token[]) recv(token[] send-done.1), channel_id=4, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="rendezvous1"}
+      recv-done.3 = (s32[], token[]) recv-done((s32[], u32[], token[]) recv.2), channel_id=4, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="rendezvous1"}
 
       get-tuple-element.4 = token[] get-tuple-element((s32[], token[]) recv-done.3), index=1, sharding={maximal device=0}
       ROOT %after-all.2 = token[] after-all(get-tuple-element.4), frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="rendezvous1"}

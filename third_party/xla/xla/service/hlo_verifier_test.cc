@@ -4629,5 +4629,67 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks, VerifySendRecvNoDeadlocks) {
   EXPECT_THAT(verifier().Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
 
+TEST_F(HloVerifierTest, VerifyMatchingSendSameChannel) {
+  const char* const hlo = R"(
+  HloModule module
+  ENTRY test_computation {
+    c0 = f32[] constant(0)
+    after_all = token[] after-all()
+    send0 = (f32[], u32[], token[]) send(c0, after_all), channel_id=1, is_host_transfer=true
+    send0-done = token[] send-done(send0), channel_id=1, is_host_transfer=true
+    c1 = f32[] constant(1)
+    send1 = (f32[], u32[], token[]) send(c1, send0-done), channel_id=1, is_host_transfer=true
+    ROOT send1-done = token[] send-done(send1), channel_id=1, is_host_transfer=true
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_THAT(verifier().Run(module.get()), absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(HloVerifierTest, VerifyMatchingSendSameChannelDifferentShape) {
+  const char* const hlo = R"(
+  HloModule module
+  ENTRY test_computation {
+    c0 = f32[] constant(0)
+    after_all = token[] after-all()
+    send0 = (f32[], u32[], token[]) send(c0, after_all), channel_id=1, is_host_transfer=true
+    send0-done = token[] send-done(send0), channel_id=1, is_host_transfer=true
+    c1 = f32[10] constant(1)
+    send1 = (f32[10], u32[], token[]) send(c1, send0-done), channel_id=1, is_host_transfer=true
+    ROOT send1-done = token[] send-done(send1), channel_id=1, is_host_transfer=true
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_THAT(verifier().Run(module.get()),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInternal,
+                  HasSubstr("Host-transfer send/recv instructions that use the "
+                            "same channel must be identical")));
+}
+
+TEST_F(HloVerifierTest, VerifyMatchingSendSameChannelDifferentAttributes) {
+  const char* const hlo = R"(
+  HloModule module
+  ENTRY test_computation {
+    c0 = f32[] constant(0)
+    after_all = token[] after-all()
+    send0 = (f32[], u32[], token[]) send(c0, after_all), channel_id=1, is_host_transfer=true, frontend_attributes={_xla_host_transfer_rendezvous="_foo"}
+    send0-done = token[] send-done(send0), channel_id=1, is_host_transfer=true
+    c1 = f32[] constant(1)
+    send1 = (f32[], u32[], token[]) send(c1, send0-done), channel_id=1, is_host_transfer=true
+    ROOT send1-done = token[] send-done(send1), channel_id=1, is_host_transfer=true, frontend_attributes={_xla_host_transfer_rendezvous="_bar"}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_THAT(verifier().Run(module.get()),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInternal,
+                  HasSubstr("Host-transfer send/recv instructions that use the "
+                            "same channel must be identical")));
+}
+
 }  // namespace
 }  // namespace xla
