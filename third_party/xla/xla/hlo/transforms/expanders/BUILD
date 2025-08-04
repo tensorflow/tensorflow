@@ -309,6 +309,7 @@ cc_library(
         "//xla/hlo/builder/lib:broadcast",
         "//xla/hlo/builder/lib:constants",
         "//xla/hlo/ir:hlo",
+        "//xla/service:call_inliner",
         "//xla/service:hlo_creation_utils",
         "//xla/service:hlo_module_config",
         "@com_google_absl//absl/container:flat_hash_map",
