@@ -34,7 +34,7 @@ TEST(GetNonContractingDimsTest, Valid) {
   Shape shape = ParseShape("f32[1,2,3,4,5,6]").value();
   EXPECT_THAT(GetNonContractingDims(shape, /*batch_dims=*/{4},
                                     /*contracting_dims=*/{1, 5}),
-              IsOkAndHolds(ElementsAre(0, 2, 3)));
+              absl_testing::IsOkAndHolds(ElementsAre(0, 2, 3)));
 }
 
 TEST(DotOperandDimsTest, Basic) {
