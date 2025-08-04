@@ -3214,6 +3214,9 @@ absl::Status SpmdPartitioningVisitor::HandleTranspose(HloInstruction* hlo) {
 
 absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
   const HloSharding& sharding = hlo->sharding();
+  if (sharding.IsTileMaximal()) {
+    return DefaultAction(hlo);
+  }
 
   const Shape& in_shape = hlo->operand(0)->shape();
   const Shape& out_shape = hlo->shape();
