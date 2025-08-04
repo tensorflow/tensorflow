@@ -254,7 +254,7 @@ class OpcodeFusionTest : public InstructionFusionTest {
  protected:
   bool RunFusion(HloModule* module) {
     absl::StatusOr<bool> did_fusion = CpuInstructionFusion().Run(module);
-    EXPECT_OK(did_fusion);
+    EXPECT_TRUE(did_fusion.ok());
     if (!did_fusion.ok()) {
       return false;
     }
