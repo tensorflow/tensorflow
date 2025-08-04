@@ -1245,6 +1245,38 @@ ENTRY entry (param: f32[]) -> (f32[], f32[], f32[]) {
   EXPECT_FALSE(StructuralEqual(*t1, *t3));
 }
 
+TEST_F(HloInstructionTest, IdenticalSendInstructions) {
+  auto param_0 = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "param_0");
+  auto param_1 = HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {}), "param_1");
+  auto token_0 = HloInstruction::CreateToken();
+  auto token_1 = HloInstruction::CreateToken();
+
+  auto send_0 = HloInstruction::CreateSend(param_0.get(), token_0.get(),
+                                           /*channel_id=*/42,
+                                           /*is_host_transfer=*/true);
+  auto send_1 = HloInstruction::CreateSend(param_1.get(), token_1.get(),
+                                           /*channel_id=*/42,
+                                           /*is_host_transfer=*/true);
+  auto send_2 = HloInstruction::CreateSend(param_1.get(), token_1.get(),
+                                           /*channel_id=*/42,
+                                           /*is_host_transfer=*/false);
+  auto send_3 = HloInstruction::CreateSend(param_1.get(), token_1.get(),
+                                           /*channel_id=*/43,
+                                           /*is_host_transfer=*/true);
+  auto eq_operand_shapes = [](const HloInstruction* a,
+                              const HloInstruction* b) {
+    return ShapeUtil::Equal(a->shape(), b->shape());
+  };
+  EXPECT_TRUE(send_0->Identical(*send_1, eq_operand_shapes));
+  EXPECT_FALSE(send_0->Identical(*send_2, eq_operand_shapes));
+  EXPECT_FALSE(send_0->Identical(*send_3, eq_operand_shapes));
+
+  send_1->set_frontend_attribute("foo", "bar");
+  EXPECT_FALSE(send_0->Identical(*send_1, eq_operand_shapes));
+}
+
 TEST_F(HloInstructionTest, FunctionVisitor) {
   // Verify the function visitor HloInstruction::Accept visits all instructions
   // from a root properly given the following graph:

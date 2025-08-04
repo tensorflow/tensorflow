@@ -820,8 +820,16 @@ bool HloSendRecvInstruction::IdenticalSlowPathIgnoringChannelIdValues(
     const HloInstruction& other,
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
-  // Not yet supported.
-  return false;
+  const auto& casted_other = static_cast<const HloSendRecvInstruction&>(other);
+  if (is_host_transfer_ != casted_other.is_host_transfer()) {
+    return false;
+  }
+  // TODO(b/436212814): In theory, frontend_attributes() are a hint, can be
+  // dropped by the optimizer, and aren't check by the top-level
+  // HloInstruction::Identical(). In practice, they are load-bearing for
+  // host-transfer Send/Recv, even if they shouldn't be.
+  return ::google::protobuf::util::MessageDifferencer::Equivalent(
+      frontend_attributes(), casted_other.frontend_attributes());
 }
 
 // Send instruction produces a tuple of {aliased operand, U32 context}.
