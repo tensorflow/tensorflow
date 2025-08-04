@@ -1728,6 +1728,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "generally (much) faster on our hardware. Set this flag to true to "
       "disable this behavior."));
   flag_list->push_back(tsl::Flag(
+      "xla_cpu_dump_unoptimized_hlo_snapshots",
+      bool_setter_for(
+          &DebugOptions::set_xla_cpu_dump_unoptimized_hlo_snapshots),
+      debug_options->xla_cpu_dump_unoptimized_hlo_snapshots(),
+      "Dump HloSnapshot with an unoptimized HloModule into the --xla_dump_to "
+      "directory. If --xla_dump_hlo_snapshots is not set, this flag is "
+      "ignored."));
+  flag_list->push_back(tsl::Flag(
       "xla_dump_latency_hiding_schedule",
       bool_setter_for(&DebugOptions::set_xla_dump_latency_hiding_schedule),
       debug_options->xla_dump_latency_hiding_schedule(),

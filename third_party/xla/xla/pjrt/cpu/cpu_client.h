@@ -322,7 +322,8 @@ class PjRtCpuExecutable final : public PjRtLoadedExecutable {
       std::unique_ptr<Executable> cpu_executable,
       absl::InlinedVector<BufferAllocation::Index, 4> result_buffer_indices,
       std::vector<LogicalDeviceIds> addressable_device_logical_ids,
-      std::vector<PjRtDevice*> addressable_devices, PjRtCpuClient* client);
+      std::vector<PjRtDevice*> addressable_devices, PjRtCpuClient* client,
+      std::unique_ptr<HloModule> unoptimized_hlo_module);
 
   ~PjRtCpuExecutable() override = default;
 
@@ -466,6 +467,8 @@ class PjRtCpuExecutable final : public PjRtLoadedExecutable {
   bool cheap_computation_;
 
   std::string fingerprint_;
+
+  std::unique_ptr<HloModule> unoptimized_hlo_module_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(
