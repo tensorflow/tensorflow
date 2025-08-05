@@ -791,7 +791,10 @@ TEST_F(ConvRewriterTest, TestInvalidTypes) {
                      ::testing::HasSubstr(
                          "FP8 convolutions are only supported on CUDA "
                          "GPUs with compute capability at least 9.0")));
-  s = ConvRewriter(se::RocmComputeCapability{"gfx942"}).Run(m.get()).status();
+  s = ConvRewriter(
+          se::GpuComputeCapability{se::RocmComputeCapability{"gfx942"}})
+          .Run(m.get())
+          .status();
   EXPECT_THAT(s, absl_testing::StatusIs(
                      absl::StatusCode::kUnimplemented,
                      ::testing::HasSubstr(

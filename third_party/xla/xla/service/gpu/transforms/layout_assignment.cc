@@ -140,7 +140,7 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   // Despite the specialized logic below for Volta, we expect GPUs with Tensor
   // Cores work best using NHWC layouts for cuDNN convolutions---as per
   // https://docs.nvidia.com/deeplearning/performance/dl-performance-convolutional/index.html#tensor-layout.
-  if (auto* cc = std::get_if<se::CudaComputeCapability>(&gpu_version)) {
+  if (auto* cc = gpu_version.cuda_compute_capability()) {
     // TODO(b/383560056): investigate chips below Hopper as well.
     if (cc->IsAtLeast(se::CudaComputeCapability::kHopper)) {
       // With that said, cuDNN's documentation states that NHWC is not supported
@@ -163,12 +163,11 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   }
 
   const bool isFloat16 = (input_ty == F16) || (input_ty == BF16);
-  if (std::holds_alternative<se::CudaComputeCapability>(gpu_version)) {
+  if (const auto* cuda_compute_capability =
+          gpu_version.cuda_compute_capability()) {
     // CUDA:
     // If we're not Volta or not fp16/bfloat16, or not conv2D, the decision is
     // easy: Use NCHW.
-    const auto* cuda_compute_capability =
-        std::get_if<se::CudaComputeCapability>(&gpu_version);
     bool is_volta =
         cuda_compute_capability &&
         cuda_compute_capability->IsAtLeast(se::CudaComputeCapability::kVolta);
@@ -176,16 +175,15 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
         instr->shape().tuple_shapes(0).dimensions().size() != 4) {
       return kAllNCHW;
     }
-  } else if (std::holds_alternative<se::RocmComputeCapability>(gpu_version)) {
+  } else if (auto rocm_compute_capability =
+                 gpu_version.rocm_compute_capability()) {
     // ROCm:
     // If we do not have NHWC layout support or not fp16/bfloat16, or not
     // conv2D, or ROCm NHWC is disabled the decision is to use NCHW.
     bool is_enabled = false;
     TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
                                         /*default_val=*/false, &is_enabled));
-    auto rocm_compute_capability =
-        std::get<se::RocmComputeCapability>(gpu_version);
-    if (!isFloat16 || (!rocm_compute_capability.has_nhwc_layout_support()) ||
+    if (!isFloat16 || (!rocm_compute_capability->has_nhwc_layout_support()) ||
         instr->shape().tuple_shapes(0).dimensions().size() != 4 ||
         !is_enabled) {
       return kAllNCHW;
@@ -447,8 +445,7 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
                       (rhs.type == PrimitiveType::F8E4M3FN ||
                        rhs.type == PrimitiveType::F8E5M2FNUZ);
 
-  const se::CudaComputeCapability* cc =
-      std::get_if<se::CudaComputeCapability>(&gpu_version_);
+  const se::CudaComputeCapability* cc = gpu_version_.cuda_compute_capability();
   const bool both_operands_require_minor_contraction_dims =
       is_s8_to_s32 || (is_fp8 && !(cc && cc->IsBlackwell()));
 

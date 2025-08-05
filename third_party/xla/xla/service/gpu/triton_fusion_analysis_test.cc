@@ -698,8 +698,8 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
   ROOT bc = bf16[2,2,100] broadcast(dot), dimensions={0,1}
 })"));
-  EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::kAmpere, 0})
+  EXPECT_TRUE(GemmFusion(se::GpuComputeCapability{se::CudaComputeCapability{
+                             se::CudaComputeCapability::kAmpere, 0}})
                   .Run(module.get())
                   .value());
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),

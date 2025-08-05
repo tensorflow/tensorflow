@@ -765,8 +765,9 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<DotDecomposer>();
 
   HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
-    const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-        &gpu_target_config.device_description.gpu_compute_capability());
+    const auto* cuda_cc =
+        gpu_target_config.device_description.gpu_compute_capability()
+            .cuda_compute_capability();
     if (cuda_cc != nullptr &&
         !cuda_cc->IsAtLeast(se::CudaComputeCapability::kVolta)) {
       return true;
@@ -1768,8 +1769,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     se::GpuComputeCapability gpu_version =
         gpu_target_config.device_description.gpu_compute_capability();
     pipeline.AddPass<AlgorithmChecker>(gpu_version);
-    const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version);
-    const auto* rocm_cc = std::get_if<se::RocmComputeCapability>(&gpu_version);
+    const auto* cuda_cc = gpu_version.cuda_compute_capability();
+    const auto* rocm_cc = gpu_version.rocm_compute_capability();
 
     // Make sure that dots have at least 1 contracting dimension in the
     // operands. Needs to happen shortly before the dot rewrite, as otherwise
@@ -3021,8 +3022,8 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     pipeline.AddPass<FusionWrapper>(gpu_device_info);
   }
 
-  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-      &gpu_device_info.gpu_compute_capability());
+  const auto* cuda_cc =
+      gpu_device_info.gpu_compute_capability().cuda_compute_capability();
   if (cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) {
     // This needs to run after every pass affecting fusions. The last passes
     // that create new fusions are FusionWrapper and StreamAttributeAnnotator.

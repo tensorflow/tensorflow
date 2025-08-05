@@ -47,7 +47,7 @@ class AMDGPUCompiler : public GpuCompiler {
   AMDGPUCompiler();
 
   absl::Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, se::GpuComputeCapability gpu_version,
+      HloModule* hlo_module, const se::GpuComputeCapability& gpu_version,
       se::dnn::VersionInfo dnn_version,
       const se::SemanticVersion& toolkit_version) override;
 

@@ -340,8 +340,7 @@ absl::Status AMDGPUTargetModuleLinker(
     const std::string& device_bitcode_dir_path) {
   // Link the input module with ROCDL.
 
-  auto compute_capability =
-      std::get_if<se::RocmComputeCapability>(&gpu_version);
+  auto compute_capability = gpu_version.rocm_compute_capability();
   if (!compute_capability) {
     return xla::Internal("Incompatible compute capability was specified.");
   }
@@ -421,8 +420,7 @@ std::pair<std::string, std::string> GetFeatureStrFromGCNArchName(
 std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
     llvm::Triple target_triple, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options) {
-  auto compute_capability =
-      std::get_if<se::RocmComputeCapability>(&gpu_version);
+  auto compute_capability = gpu_version.rocm_compute_capability();
 
   std::string gcn_arch_name = compute_capability->gcn_arch_name();
   auto arch = GetFeatureStrFromGCNArchName(gcn_arch_name);
@@ -606,8 +604,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
         tsl::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
 
-    auto compute_capability =
-        std::get_if<se::RocmComputeCapability>(&gpu_version);
+    auto compute_capability = gpu_version.rocm_compute_capability();
     if (!compute_capability) {
       return xla::Internal("Incompatible compute capability was specified.");
     }

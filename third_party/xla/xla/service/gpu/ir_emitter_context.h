@@ -101,13 +101,11 @@ class IrEmitterContext {
     return gpu_device_info_.gpu_compute_capability();
   }
   se::CudaComputeCapability cuda_compute_capability() const {
-    auto* cc =
-        std::get_if<se::CudaComputeCapability>(&gpu_compute_capability());
+    auto* cc = gpu_compute_capability().cuda_compute_capability();
     return cc != nullptr ? *cc : se::CudaComputeCapability();
   }
   se::RocmComputeCapability rocm_compute_capability() const {
-    auto* cc =
-        std::get_if<se::RocmComputeCapability>(&gpu_compute_capability());
+    auto* cc = gpu_compute_capability().rocm_compute_capability();
     return cc != nullptr ? *cc : se::RocmComputeCapability();
   }
 

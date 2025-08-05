@@ -80,28 +80,26 @@ absl::Status CheckTypes(HloInstruction* conv, const se::GpuComputeCapability cc,
             "but got convolution with FP8 type %s: %s",
             primitive_util::LowercasePrimitiveTypeName(type), conv->ToString());
       }
-      if (!std::holds_alternative<se::CudaComputeCapability>(cc)) {
+      if (!cc.IsCuda()) {
         return Unimplemented(
             "FP8 convolutions are only supported on CUDA GPUs, but got "
             "FP8 convolution on ROCm GPU: %s",
             conv->ToString());
       }
       if (dnn_version >= se::dnn::VersionInfo{9, 8, 0}) {
-        if (!std::get<se::CudaComputeCapability>(cc).IsAtLeastAda()) {
+        if (!cc.cuda_compute_capability()->IsAtLeastAda()) {
           return Unimplemented(
               "FP8 convolutions are only supported on CUDA GPUs with compute "
               "capability at least 8.9, but got "
               "FP8 convolution on GPU with compute capability %s: %s",
-              std::get<se::CudaComputeCapability>(cc).ToString(),
-              conv->ToString());
+              cc.ToString(), conv->ToString());
         }
-      } else if (!std::get<se::CudaComputeCapability>(cc).IsAtLeastHopper()) {
+      } else if (!cc.cuda_compute_capability()->IsAtLeastHopper()) {
         return Unimplemented(
             "FP8 convolutions are only supported on CUDA GPUs with compute "
             "capability at least 9.0, but got "
             "FP8 convolution on GPU with compute capability %s: %s",
-            std::get<se::CudaComputeCapability>(cc).ToString(),
-            conv->ToString());
+            cc.ToString(), conv->ToString());
       }
     }
     return absl::OkStatus();
