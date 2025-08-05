@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace {
@@ -199,7 +200,7 @@ TEST(PjRtCpuClientTest, HloSnapshot) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
                           ParseAndReturnUnverifiedModule(kProgram, {}));
 
-  std::string dir = tsl::testing::TmpDir();
+  std::string dir = tsl::io::JoinPath(tsl::testing::TmpDir(), "HloSnapshot");
   xla::CompileOptions options;
   auto* debug_opts = options.executable_build_options.mutable_debug_options();
   debug_opts->set_xla_dump_to(dir);
@@ -268,7 +269,8 @@ TEST(PjRtCpuClientTest, UnoptimizedHloSnapshot) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
                           ParseAndReturnUnverifiedModule(kProgram, {}));
 
-  std::string dir = tsl::testing::TmpDir();
+  std::string dir =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "UnoptimizedHloSnapshot");
   xla::CompileOptions options;
   auto* debug_opts = options.executable_build_options.mutable_debug_options();
   debug_opts->set_xla_dump_to(dir);
