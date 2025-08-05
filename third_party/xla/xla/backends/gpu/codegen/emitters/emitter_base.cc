@@ -319,7 +319,7 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(&fusion), entry->kernel_name,
-      args.args(), launch_dims, entry->cluster_dim, entry->shmem_bytes));
+      args, launch_dims, entry->cluster_dim, entry->shmem_bytes));
   return result;
 }
 
