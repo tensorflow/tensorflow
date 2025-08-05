@@ -668,5 +668,171 @@ TEST_F(HloConstantFoldingTest, FoldCallToFft) {
   EXPECT_FALSE(result);
 }
 
+TEST_F(HloConstantFoldingTest, InterproceduralSingleCallsite) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    Fn {
+      param0 = f32[8] parameter(0)
+      param1 = f32[8] parameter(1)
+      iota = f32[8] iota(), iota_dimension=0
+      add.0 = f32[8] add(param0, iota)
+      ROOT add.1 = f32[8] add(add.0, param1)
+    }
+
+    ENTRY entry {
+      entry.param = f32[8] parameter(0)
+      constant.0 = f32[8] constant({1, -1, 1, -1, 1, -1, 1, -1})
+      ROOT call = f32[8] call(constant.0, entry.param), to_apply=Fn
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  HloComputation* fn = module->GetComputationWithName("Fn");
+  EXPECT_THAT(fn->root_instruction(),
+              GmockMatch(m::Add(m::Constant(), m::Parameter(1))));
+}
+
+TEST_F(HloConstantFoldingTest, InterproceduralMultipleCallsites) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    Fn {
+      param0 = f32[8] parameter(0)
+      param1 = f32[8] parameter(1)
+      iota = f32[8] iota(), iota_dimension=0
+      add.0 = f32[8] add(param0, iota)
+      ROOT add.1 = f32[8] add(add.0, param1)
+    }
+
+    ENTRY entry {
+      entry.param0 = f32[8] parameter(0)
+      entry.param1 = f32[8] parameter(1)
+      constant.0 = f32[8] constant({1, -1, 1, -1, 1, -1, 1, -1})
+      call.0 = f32[8] call(constant.0, entry.param0), to_apply=Fn
+      call.1 = f32[8] call(constant.0, entry.param1), to_apply=Fn
+      ROOT add = f32[8] add(call.0, call.1)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  HloComputation* fn = module->GetComputationWithName("Fn");
+  EXPECT_THAT(fn->root_instruction(),
+              GmockMatch(m::Add(m::Constant(), m::Parameter(1))));
+}
+
+TEST_F(HloConstantFoldingTest,
+       InterproceduralMultipleCallsitesDifferentConstants) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    Fn {
+      param0 = f32[8] parameter(0)
+      param1 = f32[8] parameter(1)
+      iota = f32[8] iota(), iota_dimension=0
+      add.0 = f32[8] add(param0, iota)
+      ROOT add.1 = f32[8] add(add.0, param1)
+    }
+
+    ENTRY entry {
+      entry.param0 = f32[8] parameter(0)
+      entry.param1 = f32[8] parameter(1)
+      constant.0 = f32[8] constant({1, -1, 1, -1, 1, -1, 1, -1})
+      constant.1 = f32[8] constant({2, -2, 2, -2, 2, -2, 2, -2})
+      call.0 = f32[8] call(constant.0, entry.param0), to_apply=Fn
+      call.1 = f32[8] call(constant.1, entry.param1), to_apply=Fn
+      ROOT add = f32[8] add(call.0, call.1)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_FALSE(result);
+}
+
+TEST_F(HloConstantFoldingTest, InterproceduralMultipleCallsitesSomeConstants) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    Fn {
+      param0 = f32[] parameter(0)
+      param1 = f32[] parameter(1)
+      param2 = f32[] parameter(2)
+      param3 = f32[] parameter(3)
+      mul = f32[] multiply(param0, param1)
+      sub = f32[] subtract(mul, param2)
+      ROOT add = f32[] add(sub, param3)
+    }
+
+    ENTRY entry {
+      entry.param = f32[] parameter(0)
+      constant.0 = f32[] constant(1)
+      constant.1 = f32[] constant(2)
+      call.0 = f32[] call(constant.0, constant.1, entry.param, constant.1), to_apply=Fn
+      call.1 = f32[] call(constant.0, entry.param, constant.0, constant.1), to_apply=Fn
+      ROOT add = f32[] add(call.0, call.1)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  HloComputation* fn = module->GetComputationWithName("Fn");
+  EXPECT_THAT(fn->root_instruction(),
+              GmockMatch(m::Add(m::Subtract(m::Multiply(m::ConstantScalar(1),
+                                                        m::Parameter(1)),
+                                            m::Parameter(2)),
+                                m::ConstantScalar(2))));
+}
+
+TEST_F(HloConstantFoldingTest,
+       InterproceduralMultipleCallsitesSomeDifferentConstants) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    Fn {
+      param0 = f32[8] parameter(0)
+      param1 = f32[8] parameter(1)
+      param2 = f32[8] parameter(2)
+      iota = f32[8] iota(), iota_dimension=0
+      add.0 = f32[8] add(param0, iota)
+      add.1 = f32[8] add(add.0, param1)
+      ROOT sub = f32[8] subtract(add.1, param2)
+    }
+
+    ENTRY entry {
+      entry.param0 = f32[8] parameter(0)
+      entry.param1 = f32[8] parameter(1)
+      constant.0 = f32[8] constant({1, -1, 1, -1, 1, -1, 1, -1})
+      constant.1 = f32[8] constant({2, -2, 2, -2, 2, -2, 2, -2})
+      call.0 = f32[8] call(constant.0, entry.param0, constant.0), to_apply=Fn
+      call.1 = f32[8] call(constant.1, entry.param1, constant.0), to_apply=Fn
+      ROOT add = f32[8] add(call.0, call.1)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  HloComputation* fn = module->GetComputationWithName("Fn");
+  EXPECT_THAT(fn->root_instruction(),
+              GmockMatch(m::Subtract(m::Add(m::Add(), m::Parameter(1)),
+                                     m::Constant())));
+}
+
 }  // namespace
 }  // namespace xla
