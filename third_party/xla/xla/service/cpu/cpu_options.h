@@ -44,8 +44,8 @@ inline constexpr absl::string_view kFoldAllConstants =
     "xla_cpu_fold_all_constants";
 inline constexpr absl::string_view kSmallWhileLoopByteThreshold =
     "xla_cpu_small_while_loop_byte_threshold";
-inline constexpr absl::string_view kUseExperimentalLoopFusion =
-    "xla_cpu_use_experimental_loop_fusion";
+inline constexpr absl::string_view kDisableNewFusionEmitters =
+    "xla_cpu_disable_new_fusion_emitters";
 inline constexpr absl::string_view kFlattenAfterFusion =
     "xla_cpu_flatten_after_fusion";
 
