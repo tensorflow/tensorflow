@@ -162,6 +162,20 @@ TEST_F(WhileLoopSimplifierTest, LoopWithOneIterationSimplified) {
               op::Tuple(op::Add(), op::Multiply()));
 }
 
+TEST_F(WhileLoopSimplifierTest, LoopWithOneIterationSimplifiedOpMetadata) {
+  auto m = MakeModuleWithSimpleLoop(/*num_iters=*/1);
+  m->entry_computation()->root_instruction()->set_metadata_op_name("while");
+  m->entry_computation()
+      ->root_instruction()
+      ->while_body()
+      ->root_instruction()
+      ->set_metadata_op_name("while/tuple");
+  ASSERT_TRUE(WhileLoopSimplifier().Run(m.get()).value());
+  // We want "while/tuple", not "while/while/tuple"
+  EXPECT_EQ(m->entry_computation()->root_instruction()->metadata().op_name(),
+            "while/tuple");
+}
+
 TEST_F(WhileLoopSimplifierTest,
        LoopWithOneIterationTupleELementLoopBoundSimplified) {
   auto m = MakeModuleWithSimpleLoopTupleElementLoopBound(/*num_iters=*/1);

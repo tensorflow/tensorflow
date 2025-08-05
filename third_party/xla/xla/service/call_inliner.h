@@ -79,6 +79,9 @@ class CallInliner : public HloModulePass {
   // inlining.
   virtual bool IsInlineableCallOp(HloInstruction* instruction) const;
 
+  // Maximum length of an op_name that can be formed during inlining.
+  static constexpr int kMaxOpNameSize = 1024;
+
  private:
   absl::StatusOr<bool> InlineAndLegalize(
       const CallGraph& call_graph, HloComputation* computation,
