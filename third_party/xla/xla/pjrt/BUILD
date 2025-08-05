@@ -807,6 +807,7 @@ cc_library(
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
