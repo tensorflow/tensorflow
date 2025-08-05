@@ -114,9 +114,11 @@ std::unique_ptr<AllGatherStartThunk> CreateAllGatherStartThunk(
       std::vector<CollectiveThunk::Buffer>({buffer}), false);
 }
 
-std::unique_ptr<CopyThunk> CreateCopyThunk(const BufferAllocation& alloc0) {
+std::unique_ptr<DeviceToDeviceCopyThunk> CreateCopyThunk(
+    const BufferAllocation& alloc0) {
   BufferAllocation::Slice slice0(&alloc0, 0, 1024);
-  return std::make_unique<CopyThunk>(Thunk::ThunkInfo(), slice0, slice0, 1024);
+  return std::make_unique<DeviceToDeviceCopyThunk>(Thunk::ThunkInfo(), slice0,
+                                                   slice0, 1024);
 }
 
 std::unique_ptr<GemmThunk> CreateGemmThunk(const BufferAllocation& alloc1) {
