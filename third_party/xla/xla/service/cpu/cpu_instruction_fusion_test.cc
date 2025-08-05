@@ -1145,21 +1145,21 @@ static constexpr absl::string_view kReduceModuleString = R"(
 )";
 
 TEST_F(InstructionFusionTest, SkipReduceComputationsIfFusionEmitters) {
-  auto mod_config = GetModuleConfigForTest();
-  auto debug_options = GetDebugOptionsForTest();
-  (*debug_options.mutable_xla_backend_extra_options())
-      [options::kUseExperimentalLoopFusion] = "true";
-  mod_config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           kReduceModuleString, mod_config));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kReduceModuleString));
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           CpuInstructionFusion().Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
 TEST_F(InstructionFusionTest, NoSkipReduceComputationsIfNoFusionEmitters) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kReduceModuleString));
+  auto mod_config = GetModuleConfigForTest();
+  auto debug_options = GetDebugOptionsForTest();
+  (*debug_options.mutable_xla_backend_extra_options())
+      [options::kDisableNewFusionEmitters] = "true";
+  mod_config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kReduceModuleString, mod_config));
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           CpuInstructionFusion().Run(module.get()));
   EXPECT_TRUE(changed);
