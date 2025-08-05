@@ -204,7 +204,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
 
   return std::unique_ptr<PjRtClient>(new PjRtCpuClient(
       options.process_id, std::move(devices), std::move(options.collectives),
-      num_threads, options.asynchronous, options.legacy_memory_space_behavior,
+      num_threads, options.asynchronous,
       std::move(options.customize_hlo_module_config)));
 }
 
@@ -239,7 +239,7 @@ static std::vector<CpuTopology::CpuDevice> GetCpuDevices(
 PjRtCpuClient::PjRtCpuClient(
     int process_index, std::vector<std::unique_ptr<PjRtCpuDevice>> devices,
     std::shared_ptr<cpu::CpuCollectives> collectives, size_t num_threads,
-    bool asynchronous, bool legacy_memory_space_behavior,
+    bool asynchronous,
     std::function<void(HloModuleConfig&)> customize_hlo_module_config)
     : process_index_(process_index),
       owned_devices_(std::move(devices)),
@@ -287,32 +287,25 @@ PjRtCpuClient::PjRtCpuClient(
     // Use the device id to construct a globally unique memory space id.
     const int id = device->id();
 
-    if (legacy_memory_space_behavior) {
-      auto memory_space = std::make_unique<UnpinnedHostMemorySpace>(id, device);
-      cpu_device->AttachMemorySpace(memory_space.get());
-      memory_spaces_.push_back(memory_space.get());
-      owned_memory_spaces_.push_back(std::move(memory_space));
-    } else {
-      // The first attached memory space is returned as the default by
-      // PjRtCpuDevice, so attach the device memory space first.
-      auto cpu_device_memory_space =
-          std::make_unique<CpuDeviceMemorySpace>(id * 3 + 0, device);
-      cpu_device->AttachMemorySpace(cpu_device_memory_space.get());
-      memory_spaces_.push_back(cpu_device_memory_space.get());
-      owned_memory_spaces_.push_back(std::move(cpu_device_memory_space));
+    // The first attached memory space is returned as the default by
+    // PjRtCpuDevice, so attach the device memory space first.
+    auto cpu_device_memory_space =
+        std::make_unique<CpuDeviceMemorySpace>(id * 3 + 0, device);
+    cpu_device->AttachMemorySpace(cpu_device_memory_space.get());
+    memory_spaces_.push_back(cpu_device_memory_space.get());
+    owned_memory_spaces_.push_back(std::move(cpu_device_memory_space));
 
-      auto pinned_memory_space =
-          std::make_unique<PinnedHostMemorySpace>(id * 3 + 1, device);
-      cpu_device->AttachMemorySpace(pinned_memory_space.get());
-      memory_spaces_.push_back(pinned_memory_space.get());
-      owned_memory_spaces_.push_back(std::move(pinned_memory_space));
+    auto pinned_memory_space =
+        std::make_unique<PinnedHostMemorySpace>(id * 3 + 1, device);
+    cpu_device->AttachMemorySpace(pinned_memory_space.get());
+    memory_spaces_.push_back(pinned_memory_space.get());
+    owned_memory_spaces_.push_back(std::move(pinned_memory_space));
 
-      auto unpinned_memory_space =
-          std::make_unique<UnpinnedHostMemorySpace>(id * 3 + 2, device);
-      cpu_device->AttachMemorySpace(unpinned_memory_space.get());
-      memory_spaces_.push_back(unpinned_memory_space.get());
-      owned_memory_spaces_.push_back(std::move(unpinned_memory_space));
-    }
+    auto unpinned_memory_space =
+        std::make_unique<UnpinnedHostMemorySpace>(id * 3 + 2, device);
+    cpu_device->AttachMemorySpace(unpinned_memory_space.get());
+    memory_spaces_.push_back(unpinned_memory_space.get());
+    owned_memory_spaces_.push_back(std::move(unpinned_memory_space));
   }
   VLOG(1) << "PjRtCpuClient created.";
 }

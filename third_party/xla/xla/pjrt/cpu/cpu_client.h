@@ -247,7 +247,7 @@ class PjRtCpuClient final : public CommonPjRtClient {
   PjRtCpuClient(
       int process_index, std::vector<std::unique_ptr<PjRtCpuDevice>> devices,
       std::shared_ptr<cpu::CpuCollectives> collectives, size_t num_threads,
-      bool asynchronous, bool legacy_memory_space_behavior,
+      bool asynchronous,
       std::function<void(HloModuleConfig&)> customize_hlo_module_config);
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileInternal(

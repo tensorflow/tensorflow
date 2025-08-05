@@ -117,24 +117,6 @@ TEST(PjRtCpuClientTest, MemorySpace) {
   }
 }
 
-TEST(PjRtCpuClientTest, LegacyMemorySpace) {
-  CpuClientOptions options;
-  options.legacy_memory_space_behavior = true;
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(std::move(options)));
-  ASSERT_GE(client->devices().size(), 1);
-
-  ASSERT_EQ(client->memory_spaces().size(),
-            client->addressable_devices().size());
-  for (auto* device : client->devices()) {
-    TF_ASSERT_OK_AND_ASSIGN(auto* memory_space, device->default_memory_space());
-    EXPECT_THAT(device->memory_spaces(), ElementsAre(memory_space));
-    EXPECT_EQ(memory_space->kind(), UnpinnedHostMemorySpace::kKind);
-    EXPECT_EQ(memory_space->kind_id(), UnpinnedHostMemorySpace::kKindId);
-    EXPECT_THAT(device->memory_space_by_kind(UnpinnedHostMemorySpace::kKind),
-                absl_testing::IsOkAndHolds(memory_space));
-  }
-}
-
 TEST(PjRtCpuClientTest, DonationWithExecutionError) {
   static constexpr char kProgram[] =
       R"(
