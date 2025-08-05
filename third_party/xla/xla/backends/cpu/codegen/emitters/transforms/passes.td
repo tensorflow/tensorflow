@@ -46,8 +46,9 @@ def LowerXlaSharedPass :
   }];
 
   let dependentDialects = [
-    "xla::XlaDialect",
+    "mlir::LLVM::LLVMDialect",
     "mlir::scf::SCFDialect",
+    "xla::XlaDialect",
   ];
 
   let constructor = "CreateLowerXlaSharedPass()";

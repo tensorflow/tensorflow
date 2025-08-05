@@ -14,6 +14,8 @@ func.func @forall_op(%input: tensor<1024x32x2xf32>) -> (tensor<1024x32x2xf32>) {
   }
   func.return %double : tensor<1024x32x2xf32>
 }
+// CHECK: #[[LOOP_UNROLL:.*]] = #llvm.loop_unroll<disable = true>
+// CHECK: #[[LOOP_ANNOTATION:.*]] = #llvm.loop_annotation<unroll = #[[LOOP_UNROLL]]>
 // CHECK-DAG: [[CONST_0:%.*]] = arith.constant 0 : index
 // CHECK-DAG: [[CONST_1:%.*]] = arith.constant 1 : index
 // CHECK-DAG: [[CONST_2:%.*]] = arith.constant 2 : index
@@ -23,3 +25,11 @@ func.func @forall_op(%input: tensor<1024x32x2xf32>) -> (tensor<1024x32x2xf32>) {
 // CHECK: [[FOR_ALL_1:%.*]] = scf.for [[IV_1:%.*]] = [[CONST_0]] to [[CONST_32]] step [[CONST_1]]
 // CHECK: [[FOR_ALL_2:%.*]] = scf.for [[IV_2:%.*]] = [[CONST_0]] to [[CONST_1024]] step [[CONST_1]]
 // CHECK: tensor.extract {{%.*\[}}[[IV_2]], [[IV_1]], [[IV_0]]{{\]}}
+// CHECK: scf.yield
+// CHECK-NEXT: }
+// CHECK-NOT: loop_annotation
+// CHECK: scf.yield
+// CHECK-NEXT: } {loop_annotation = #[[LOOP_ANNOTATION]]}
+// CHECK: scf.yield
+// CHECK-NEXT: } {loop_annotation = #[[LOOP_ANNOTATION]]}
+
