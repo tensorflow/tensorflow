@@ -143,8 +143,10 @@ cc_library(
         "//xla/hlo/analysis:while_loop_analysis",
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:ptrvec",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:buffer_assignment",
+        "//xla/service:call_graph",
         "//xla/service:custom_call_status",
         "//xla/service:custom_call_target_registry",
         "//xla/service:hlo_proto_cc",
@@ -160,6 +162,8 @@ cc_library(
         "//xla/service/gpu/kernels:custom_kernel_fusion",
         "//xla/stream_executor:stream",
         "//xla/tools:hlo_extractor",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -171,8 +175,6 @@ cc_library(
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

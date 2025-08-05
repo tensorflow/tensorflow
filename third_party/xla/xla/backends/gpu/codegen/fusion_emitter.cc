@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 
-#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -23,7 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/Attributes.h"
@@ -116,7 +115,7 @@ std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,
 absl::StatusOr<llvm::Function*> BuildKernelPrototype(
     IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
     const std::string& suggested_name,
-    absl::Span<const emitters::KernelArgument> arguments,
+    const emitters::KernelArguments& arguments,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder) {
   return BuildKernelPrototypeFromUniqueName(
       ir_emitter_context, impl_fn_name,
@@ -127,7 +126,7 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototype(
 absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
     IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
     const std::string& unique_kernel_name,
-    absl::Span<const emitters::KernelArgument> arguments,
+    const emitters::KernelArguments& arguments,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder) {
   // Create the kernel and add it to the module.
   auto* llvm_module = ir_emitter_context.llvm_module();
@@ -136,7 +135,8 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
   int addrspace = llvm::Triple(llvm_module->getTargetTriple()).isSPIR() ? 1 : 0;
   llvm::FunctionType* kernel_type = llvm::FunctionType::get(
       /*Result=*/llvm::Type::getVoidTy(context),
-      std::vector<llvm::Type*>(arguments.size(), builder->getPtrTy(addrspace)),
+      std::vector<llvm::Type*>(arguments.args().size(),
+                               builder->getPtrTy(addrspace)),
       /*isVarArg=*/false);
   llvm::Function* kernel =
       llvm::Function::Create(kernel_type, llvm::GlobalValue::ExternalLinkage,
@@ -157,8 +157,7 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
   // Get the original function to extract attributes.
   auto impl_func = llvm_module->getFunction(impl_fn_name);
 
-  for (size_t arg_idx = 0; arg_idx < arguments.size(); ++arg_idx) {
-    const emitters::KernelArgument& kernel_argument = arguments[arg_idx];
+  for (auto&& [arg_idx, kernel_argument] : llvm::enumerate(arguments.args())) {
     // Get the original argument to extract attributes from if they exist.
     llvm::Argument* impl_arg = impl_func ? impl_func->getArg(arg_idx) : nullptr;
     llvm::Argument& llvm_arg = *kernel->getArg(arg_idx);
