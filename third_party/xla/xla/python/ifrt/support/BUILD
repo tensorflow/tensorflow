@@ -27,6 +27,7 @@ cc_library(
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:RegisterAllDialects",
         "@shardy//shardy/dialect/sdy/ir:register",
         "@stablehlo//:register",
     ],
