@@ -131,3 +131,27 @@ func.func private @foobar(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@
   %0 = stablehlo.multiply %arg0, %arg0 {mhlo.frontend_attributes = {_xla_compute_type = "host"}} : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
+
+// -----
+
+// CHECK-LABEL: func @same_func_call_one_inlineable_one_uninlineable
+func.func @same_func_call_one_inlineable_one_uninlineable(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
+  // CHECK-NEXT: %[[NC:.*]] = sdy.named_computation<"foo">(%arg0) (%arg1: tensor<8x2xi32>) {
+  // CHECK-NEXT:   %[[MULT:.*]] = stablehlo.multiply %arg1, %arg1 : tensor<8x2xi32>
+  // CHECK-NEXT:   sdy.return %[[MULT]] : tensor<8x2xi32>
+  // CHECK-NEXT: }
+  // CHECK-SAME: (tensor<8x2xi32>) -> tensor<8x2xi32>
+  // CHECK-NEXT: %[[CALL:.*]] = call @foo(%arg0) {mhlo.frontend_attributes = {inlineable = "true"}}
+  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[NC]], %[[CALL]] : tensor<8x2xi32>
+  // CHECK-NEXT: return %[[ADD]] : tensor<8x2xi32>
+  %0 = call @foo(%arg0) {mhlo.frontend_attributes = {inlineable = "false"}} : (tensor<8x2xi32>) -> tensor<8x2xi32>
+  %1 = call @foo(%arg0) {mhlo.frontend_attributes = {inlineable = "true"}} : (tensor<8x2xi32>) -> tensor<8x2xi32>
+  %2 = stablehlo.add %0, %1 : tensor<8x2xi32>
+  return %2 : tensor<8x2xi32>
+}
+
+// CHECK: func private @foo
+func.func private @foo(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
+  %0 = stablehlo.multiply %arg0, %arg0 : tensor<8x2xi32>
+  return %0 : tensor<8x2xi32>
+}
