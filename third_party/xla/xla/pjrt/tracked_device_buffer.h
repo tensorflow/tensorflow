@@ -294,7 +294,7 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
                       tsl::RCReference<RawSEDeviceMemory> device_memory,
                       absl::Span<const std::shared_ptr<BufferSequencingEvent>>
                           definition_events);
-  ~TrackedDeviceBuffer();
+  ~TrackedDeviceBuffer() override;
 
   std::vector<tsl::RCReference<tsl::AsyncValue>> GetAsyncValueDefinitionEvents()
       override {
