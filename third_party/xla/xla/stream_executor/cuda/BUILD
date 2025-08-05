@@ -513,6 +513,7 @@ xla_cc_test(
         ":cudnn_sdpa_score_mod",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/tsl/cuda:cudart",  # build_cleaner: keep
         "//xla/tsl/cuda:cudnn",  # build_cleaner: keep
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
