@@ -209,7 +209,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 #endif
   opts.set_xla_cpu_use_fusion_emitters(true);
   opts.set_xla_cpu_use_thunk_runtime(true);
-  opts.set_xla_cpu_use_xnnpack(false);
+  opts.set_xla_cpu_use_xnnpack(true);
   opts.set_xla_cpu_experimental_xnn_graph_fusion_mode(
       DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED);
   opts.set_xla_cpu_parallel_codegen_split_count(32);
