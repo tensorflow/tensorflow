@@ -15,10 +15,15 @@ limitations under the License.
 
 #include "tensorflow/python/grappler/model_analyzer.h"
 
-#include <iomanip>
+#include <ostream>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 
 namespace tensorflow {
