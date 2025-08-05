@@ -318,6 +318,7 @@ absl::StatusOr<bool> UnrollInternal(HloInstruction* while_op,
   }
   TF_RETURN_IF_ERROR(
       computation->ReplaceInstruction(while_op, unrolled_body_call_op));
+  unrolled_body_call_op->set_metadata_op_name("");
   for (HloInstruction* call : new_calls) {
     TF_RETURN_IF_ERROR(CallInliner::Inline(call).status());
   }

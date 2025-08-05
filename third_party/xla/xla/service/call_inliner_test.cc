@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -822,11 +823,23 @@ ENTRY main {
             expected_module->ToFingerprint(options));
 }
 
-TEST_F(CallInlinerTest, InliningMergesOpMetadata) {
+TEST_F(CallInlinerTest, InliningMergesOpMetadataRecursively) {
   const char* hlo = R"(
+
+cond {
+  input = f32[128,32] parameter(0)
+  ROOT c0 = pred[] constant(0), metadata={op_name="while/cond"}
+}
+
+body {
+  input = f32[128,32] parameter(0)
+  ROOT convert = f32[128,32] convert(input), metadata={op_name="while/body"}
+}
+
 callee {
   input = f32[128,32] parameter(0)
-  ROOT y = f32[128,32] negate(input), metadata={op_name="y"}
+  ROOT while = f32[128,32] while(input), metadata={op_name="while"},
+    condition=cond, body=body
 }
 
 ENTRY main {
@@ -839,8 +852,69 @@ ENTRY main {
   ASSERT_THAT(CallInliner().Run(m.get()), ::tsl::testing::IsOkAndHolds(true));
 
   auto root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::While());
+  EXPECT_EQ(root->metadata().op_name(), "x/while");
+  EXPECT_EQ(root->while_condition()->root_instruction()->metadata().op_name(),
+            "x/while/cond");
+  EXPECT_EQ(root->while_body()->root_instruction()->metadata().op_name(),
+            "x/while/body");
+}
+
+TEST_F(CallInlinerTest, InliningMergesOpNoEmbeddedRecursion) {
+  const char* hlo = R"(
+
+reducer {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+callee {
+  input = f32[128,32] parameter(0)
+  const = f32[] constant(0)
+  ROOT reduce = f32[128] reduce(input, const), dimensions={1}, to_apply=reducer, metadata={op_name="reduce"}
+}
+
+ENTRY main {
+  input = f32[128,32] parameter(0)
+  ROOT result = f32[128] call(input), to_apply=callee, metadata={op_name="x"}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+  CallInliner call_inliner;
+  EXPECT_THAT(call_inliner.Run(m.get()), ::tsl::testing::IsOkAndHolds(true));
+
+  auto root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Reduce());
+  EXPECT_EQ(root->metadata().op_name(), "x/reduce");
+  EXPECT_EQ(root->to_apply()->root_instruction()->metadata().op_name(), "");
+}
+
+TEST_F(CallInlinerTest, InliningDoesNotDuplicateLongOpNames) {
+  const char* hlo = R"(
+callee {
+  input = f32[128,32] parameter(0)
+  ROOT y = f32[128,32] negate(input), metadata={op_name="y"}
+}
+
+ENTRY main {
+  input = f32[128,32] parameter(0)
+  ROOT result = f32[128,32] call(input), to_apply=callee
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+  auto root = m->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Call());
+  OpMetadata metadata = root->metadata();
+  metadata.set_op_name(std::string(CallInliner::kMaxOpNameSize, 'x'));
+  root->set_metadata(metadata);
+  ASSERT_THAT(CallInliner().Run(m.get()), ::tsl::testing::IsOkAndHolds(true));
+
+  root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Negate());
-  EXPECT_EQ(root->metadata().op_name(), "x/y");
+  EXPECT_EQ(root->metadata().op_name(), "y");
 }
 
 TEST_F(CallInlinerTest, InliningCallBack) {

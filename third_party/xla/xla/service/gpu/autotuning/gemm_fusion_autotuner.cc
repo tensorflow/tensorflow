@@ -552,7 +552,9 @@ absl::Status RewriteGemmFusionToCall(HloInstruction* fusion_instr) {
       computation->AddInstruction(HloInstruction::CreateCall(
           fusion_instr->shape(), fusion_instr->operands(),
           fusion_instr->fused_instructions_computation()));
-  return computation->ReplaceInstruction(fusion_instr, call);
+  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(fusion_instr, call));
+  call->set_metadata_op_name("");
+  return absl::OkStatus();
 }
 
 absl::Status RewriteGemmFusionToCustomKernelFusion(
@@ -568,6 +570,7 @@ absl::Status RewriteGemmFusionToCustomKernelFusion(
           fusion_instr->shape(), fusion_instr->operands(),
           fusion_instr->fused_instructions_computation()));
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(fusion_instr, call));
+  call->set_metadata_op_name("");
   HloPassPipeline pipeline("autotuner_custom_kernel_fusion_rewriter");
   pipeline.AddPass<CallInliner>();
   pipeline.AddPass<CustomKernelFusionRewriter>(&device_description,
