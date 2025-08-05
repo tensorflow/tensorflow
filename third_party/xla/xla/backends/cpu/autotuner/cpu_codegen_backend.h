@@ -73,6 +73,8 @@ class CpuCodegenBackend : public CodegenBackend {
                                  /*executor=*/nullptr, options);
   }
 
+  bool CanProduceWrongResults() const override { return false; }
+
  private:
   std::string name_;
   Compiler* compiler_;

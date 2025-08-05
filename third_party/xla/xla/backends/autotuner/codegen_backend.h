@@ -57,6 +57,9 @@ class CodegenBackend {
   // Apply config to the given HLO instruction.
   virtual absl::Status ApplyConfig(HloInstruction& instr,
                                    const BackendConfig& config) = 0;
+
+  // Returns true if the backend can produce numerically wrong results.
+  virtual bool CanProduceWrongResults() const = 0;
 };
 
 }  // namespace xla

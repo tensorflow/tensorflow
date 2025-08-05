@@ -47,6 +47,8 @@ class TritonBackend : public GpuCodegenBackend {
   absl::Status ApplyConfig(HloInstruction& instr,
                            const BackendConfig& config) override;
 
+  bool CanProduceWrongResults() const override { return true; }
+
  private:
   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> hlo_module,

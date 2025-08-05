@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/autotuner/autotuner.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/service/executable.h"
+#include "xla/service/shaped_buffer.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -81,46 +83,20 @@ absl::StatusOr<Autotuner::Config> Autotuner::GetBestConfig(
   std::vector<absl::StatusOr<std::unique_ptr<Executable>>> executables =
       CompileAll(instr, supported_configs);
 
-  std::vector<Config> compiled_configs;
-  std::vector<std::unique_ptr<Executable>> compiled_executables;
-  for (int i = 0; i < supported_configs.size(); ++i) {
-    if (executables[i].ok()) {
-      compiled_configs.push_back(std::move(supported_configs[i]));
-      compiled_executables.push_back(std::move(executables[i].value()));
-    } else {
+  std::vector<ExecutableCandidate> executable_candidates;
+  for (int i = 0; i < executables.size(); ++i) {
+    if (!executables[i].ok()) {
       VLOG(2) << "Failed to compile config " << i << ": "
               << executables[i].status();
-    }
-  }
-  VLOG(1) << "Successfully compiled " << compiled_configs.size()
-          << " configs out of " << supported_configs.size() << " configs.";
-
-  TF_ASSIGN_OR_RETURN(
-      std::vector<absl::StatusOr<ProfileResult>> results,
-      profiler_->ProfileWithSharedBuffers(std::move(compiled_executables)));
-  VLOG(1) << "Profiling results: " << results.size();
-  CHECK_EQ(results.size(), compiled_configs.size());
-
-  absl::Duration min_duration = absl::InfiniteDuration();
-  Config best_config{nullptr, nullptr};
-  for (int i = 0; i < results.size(); ++i) {
-    if (!results[i].ok()) {
-      VLOG(2) << "Failed to profile config " << i << ": "
-              << results[i].status();
       continue;
     }
-    VLOG(3) << "Config " << i << " ("
-            << compiled_configs[i].backend_config->ShortDebugString()
-            << ") duration: " << results[i].value().duration;
-    if (results[i].value().duration < min_duration) {
-      min_duration = results[i].value().duration;
-      best_config = std::move(compiled_configs[i]);
-    }
+    executable_candidates.push_back(
+        {std::move(supported_configs[i]), std::move(executables[i].value())});
   }
-  if (best_config.codegen_backend == nullptr) {
-    return absl::InternalError("No valid config found!");
-  }
-  return best_config;
+  VLOG(1) << "Successfully compiled " << executable_candidates.size()
+          << " configs out of " << supported_configs.size() << " configs.";
+
+  return ProfileAndPickBest(executable_candidates);
 }
 
 Autotuner::InstructionsByFingerprint Autotuner::GetAutotuningCandidates(
@@ -199,6 +175,95 @@ std::vector<absl::StatusOr<std::unique_ptr<Executable>>> Autotuner::CompileAll(
   }
   counter.Wait();
   return executables;
+}
+
+absl::StatusOr<Autotuner::Config> Autotuner::ProfileAndPickBest(
+    std::vector<ExecutableCandidate>& candidates) {
+  if (candidates.empty()) {
+    return absl::InternalError("No executables to profile!");
+  }
+  VLOG(1) << "Profiling " << candidates.size() << " executable candidates.";
+  Config best_config{nullptr, nullptr};
+  absl::Duration min_duration = absl::InfiniteDuration();
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<InputBuffers> input_buffers,
+      profiler_->CreateInputBuffers(candidates[0].executable.get()));
+
+  std::optional<ScopedShapedBuffer> reference_output;
+  if (autotune_config_.check_buffers) {
+    TF_ASSIGN_OR_RETURN(reference_output,
+                        GetReferenceOutput(candidates, *input_buffers));
+  }
+
+  for (int i = 0; i < candidates.size(); ++i) {
+    absl::StatusOr<ProfileResult> profile_result =
+        profiler_->Profile(candidates[i].executable.get(), *input_buffers);
+    if (!profile_result.ok()) {
+      VLOG(2) << "Failed to profile config " << i << ": "
+              << profile_result.status();
+      continue;
+    }
+    VLOG(3) << "Config " << i << " ("
+            << candidates[i].config.backend_config->ShortDebugString()
+            << ") duration: " << profile_result.value().duration;
+
+    if (autotune_config_.check_buffers) {
+      CHECK(reference_output.has_value());
+      CHECK(profile_result.value().output_buffer.has_value());
+      absl::Status status = CheckBuffers(
+          *input_buffers, profile_result.value().output_buffer.value(),
+          reference_output.value());
+      if (!status.ok()) {
+        continue;
+      }
+    }
+
+    if (profile_result.value().duration < min_duration) {
+      min_duration = profile_result.value().duration;
+      best_config = std::move(candidates[i].config);
+    }
+  }
+  if (best_config.codegen_backend == nullptr) {
+    return absl::InternalError("No valid config found!");
+  }
+  return best_config;
+}
+
+absl::StatusOr<ScopedShapedBuffer> Autotuner::GetReferenceOutput(
+    std::vector<ExecutableCandidate>& candidates, InputBuffers& input_buffers) {
+  for (auto& candidate : candidates) {
+    if (candidate.config.codegen_backend->CanProduceWrongResults()) {
+      continue;
+    }
+    absl::StatusOr<ProfileResult> profile_result =
+        profiler_->Profile(candidate.executable.get(), input_buffers);
+    if (!profile_result.ok()) {
+      continue;
+    }
+    if (profile_result.value().output_buffer.has_value()) {
+      return std::move(profile_result.value().output_buffer.value());
+    }
+  }
+  return absl::InternalError("No reference output found!");
+}
+
+absl::Status Autotuner::CheckBuffers(InputBuffers& input_buffers,
+                                     ScopedShapedBuffer& output_buffer,
+                                     ScopedShapedBuffer& reference_output) {
+  absl::Status status = profiler_->CheckInputBuffers(input_buffers);
+  if (!status.ok()) {
+    VLOG(2) << "Input buffers check failed: " << status;
+    CHECK(!autotune_config_.crash_on_check_failure);
+    return status;
+  }
+  status = profiler_->CheckOutputBuffer(output_buffer, reference_output,
+                                        autotune_config_.relative_tolerance);
+  if (!status.ok()) {
+    VLOG(2) << "Output buffers check failed: " << status;
+    return status;
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace xla
