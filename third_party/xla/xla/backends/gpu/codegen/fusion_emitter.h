@@ -103,13 +103,13 @@ class KernelFusionInterface : public FusionInterface {
 absl::StatusOr<llvm::Function*> BuildKernelPrototype(
     IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
     const std::string& suggested_name,
-    absl::Span<const emitters::KernelArgument> arguments,
+    const emitters::KernelArguments& arguments,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder);
 
 absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
     IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
     const std::string& unique_kernel_name,
-    absl::Span<const emitters::KernelArgument> arguments,
+    const emitters::KernelArguments& arguments,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder);
 
 // Compute the kernel name. The opcode string may contain "-" which cannot be

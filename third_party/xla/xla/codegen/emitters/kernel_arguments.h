@@ -84,6 +84,9 @@ class KernelArguments {
       const BufferAlignment& buffer_alignment,
       const HloInstruction* hlo_instruction);
 
+  explicit KernelArguments(std::vector<KernelArgument>&& args)
+      : args_(std::move(args)) {}
+
   const std::vector<KernelArgument>& args() const { return args_; }
 
   std::vector<BufferAllocation::Slice> GetArgumentBufferSlices() const {
@@ -105,9 +108,6 @@ class KernelArguments {
   }
 
  private:
-  explicit KernelArguments(std::vector<KernelArgument> args)
-      : args_(std::move(args)) {}
-
   std::vector<KernelArgument> args_;
 };
 

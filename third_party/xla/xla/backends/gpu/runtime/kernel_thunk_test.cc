@@ -47,7 +47,7 @@ using Kind = Thunk::Kind;
 TEST(KernelThunkTest, CreateWithDefaultValues) {
   KernelThunk thunk(Thunk::ThunkInfo(),
                     /*kernel_name=*/"",
-                    /*kernel_arguments=*/{},
+                    /*kernel_arguments=*/emitters::KernelArguments({}),
                     /*launch_dimensions=*/LaunchDimensions(),
                     /*cluster_dim=*/se::ClusterDim(),
                     /*shmem_bytes=*/0,
@@ -82,12 +82,14 @@ TEST(KernelThunkTest, CreateAndGettersAndToString) {
   arg0.set_written(false);
   arg1.set_written(true);
 
+  emitters::KernelArguments kernel_arguments({arg0, arg1});
+
   LaunchDimensions launch_dimensions(se::BlockDim(32, 31, 30),
                                      se::ThreadDim(256, 255, 254));
 
   KernelThunk thunk(thunk_info,
                     /*kernel_name=*/"kernel123",
-                    /*kernel_arguments=*/{arg0, arg1},
+                    /*kernel_arguments=*/kernel_arguments,
                     /*launch_dimensions=*/launch_dimensions,
                     /*cluster_dim=*/se::ClusterDim(8, 7, 6),
                     /*shmem_bytes=*/1024,
@@ -124,6 +126,8 @@ TEST(KernelThunkTest, ToProto) {
   arg0.set_written(false);
   arg1.set_written(true);
 
+  emitters::KernelArguments kernel_arguments({arg0, arg1});
+
   LaunchDimensions launch_dimensions(se::BlockDim(32, 31, 30),
                                      se::ThreadDim(256, 255, 254));
 
@@ -140,8 +144,9 @@ TEST(KernelThunkTest, ToProto) {
 
   KernelThunk thunk(thunk_info,
                     /*kernel_name=*/"kernel123",
-                    /*kernel_arguments=*/{arg0, arg1}, launch_dimensions,
-                    se::ClusterDim(8, 7, 6),
+                    /*kernel_arguments=*/kernel_arguments,
+                    /*launch_dimensions=*/launch_dimensions,
+                    /*cluster_dim=*/se::ClusterDim(8, 7, 6),
                     /*shmem_bytes=*/1024,
                     /*tma_metadata=*/tma_metadata);
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
@@ -204,6 +209,8 @@ TEST(KernelThunkTest, ToAndFromProto) {
   arg0.set_written(false);
   arg1.set_written(true);
 
+  emitters::KernelArguments kernel_arguments({arg0, arg1});
+
   LaunchDimensions launch_dimensions(se::BlockDim(32, 31, 30),
                                      se::ThreadDim(256, 255, 254));
   se::ClusterDim cluster_dim(8, 7, 6);
@@ -221,9 +228,9 @@ TEST(KernelThunkTest, ToAndFromProto) {
   tma_metadata.arg_index_to_tma_info.emplace(/*arg_index=*/0,
                                              std::move(descriptor));
 
-  KernelThunk thunk(thunk_info, std::string{kKernelName},
-                    /*kernel_arguments=*/{arg0, arg1}, launch_dimensions,
-                    cluster_dim, kSharedMemoryBytes, tma_metadata);
+  KernelThunk thunk(thunk_info, std::string{kKernelName}, kernel_arguments,
+                    launch_dimensions, cluster_dim, kSharedMemoryBytes,
+                    tma_metadata);
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   ASSERT_TRUE(proto.has_kernel_thunk());
   TF_ASSERT_OK_AND_ASSIGN(

@@ -221,7 +221,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     TF_ASSIGN_OR_RETURN(
         llvm::Function * kernel,
         BuildKernelPrototype(ir_emitter_context, impl_fn_name,
-                             suggested_kernel_name, kernel_arguments.args(),
+                             suggested_kernel_name, kernel_arguments,
                              launch_dimensions, &builder));
 
     PopulateNvvmAnnotations(ir_emitter_context.llvm_module(), kernel,
@@ -259,7 +259,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(&fusion), entry->kernel_name,
-      kernel_arguments.args(), entry->launch_dimensions, entry->cluster_dim,
+      kernel_arguments, entry->launch_dimensions, entry->cluster_dim,
       entry->shmem_bytes, entry->tma_metadata));
 
   return result;
