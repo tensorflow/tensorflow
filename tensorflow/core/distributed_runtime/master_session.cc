@@ -519,7 +519,7 @@ class RunManyGraphs {
  public:
   explicit RunManyGraphs(int num) : calls_(num), pending_(num) {}
 
-  ~RunManyGraphs() {}
+  ~RunManyGraphs() = default;
 
   // Returns the index-th call.
   struct Call {

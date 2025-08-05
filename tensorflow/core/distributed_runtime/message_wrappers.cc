@@ -819,7 +819,7 @@ void NonOwnedProtoRunGraphResponse::AddPartitionGraph(
   *graph_def = partition_graph;
 }
 
-MutableRunStepResponseWrapper::~MutableRunStepResponseWrapper() {}
+MutableRunStepResponseWrapper::~MutableRunStepResponseWrapper() = default;
 
 size_t InMemoryRunStepResponse::num_tensors() const { return tensors_.size(); }
 

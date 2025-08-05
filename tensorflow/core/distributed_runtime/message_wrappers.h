@@ -49,7 +49,7 @@ namespace tensorflow {
 // TensorFlow master.
 class RunStepRequestWrapper {
  public:
-  virtual ~RunStepRequestWrapper() {}
+  virtual ~RunStepRequestWrapper() = default;
 
   // REQUIRED: session_handle must be returned by a CreateSession call
   // to the same master service.
@@ -250,7 +250,7 @@ class ProtoRunStepRequest : public RunStepRequestWrapper {
 // TensorFlow worker.
 class RunGraphRequestWrapper {
  public:
-  virtual ~RunGraphRequestWrapper() {}
+  virtual ~RunGraphRequestWrapper() = default;
 
   // The session handle used to register the graph. If empty, a single global
   // namespace is used.
@@ -475,7 +475,7 @@ class ProtoRunGraphRequest : public RunGraphRequestWrapper {
 // is always used as a mutable pointer.
 class MutableRunGraphResponseWrapper {
  public:
-  virtual ~MutableRunGraphResponseWrapper() {}
+  virtual ~MutableRunGraphResponseWrapper() = default;
 
   // A list of tensors corresponding to those requested by
   // `RunGraphRequest.recv_key`.

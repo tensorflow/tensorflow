@@ -72,7 +72,7 @@ class RemoteRendezvous : public Rendezvous {
 class RendezvousMgrInterface {
  public:
   RendezvousMgrInterface() = default;
-  virtual ~RendezvousMgrInterface() {}
+  virtual ~RendezvousMgrInterface() = default;
 
   // Returns Rendezvous supporting send and recv among workers in the
   // "step_id".  The caller takes ownership of one reference on the
