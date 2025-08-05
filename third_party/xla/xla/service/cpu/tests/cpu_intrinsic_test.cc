@@ -186,19 +186,26 @@ IntrinsicTestSpec CpuUnaryIntrinsicTestCases[] = {
         HloOpcode::kRsqrt, F32, true, kTriple_x86_64, "+avx512f",
         R"(CHECK: fmul <16 x float>{{.*}} splat (float -5.000000e-01)"},
 
+    // F16 tanh is implemented via upcast to F32; should have the same
+    // vectorized IR.
+    IntrinsicTestSpec{
+        HloOpcode::kTanh, F16, true, kTriple_x86_64, "",
+        R"(CHECK: fcmp {{(fast )?(uge|olt)}} <8 x float> %{{[^,]+}}, splat (float
+        0xC01FFEC880000000)"},
+
     IntrinsicTestSpec{
         HloOpcode::kTanh, F32, true, kTriple_x86_64, "",
-        R"(CHECK: fcmp fast uge <4 x float> %wide.load, splat (float
+        R"(CHECK: fcmp {{(fast )?(uge|olt)}} <4 x float> %{{[^,]+}}, splat (float
         0xC01FFEC880000000)"},
 
     IntrinsicTestSpec{
         HloOpcode::kTanh, F32, true, kTriple_x86_64, "+avx",
-        R"(CHECK: fcmp fast uge <8 x float> %wide.load, splat (float
+        R"(CHECK: fcmp {{(fast )?(uge|olt)}} <8 x float> %{{[^,]+}}, splat (float
         0xC01FFEC880000000)"},
 
     IntrinsicTestSpec{
         HloOpcode::kTanh, F32, true, kTriple_android_arm, "",
-        R"(CHECK: fcmp fast uge <4 x float> %wide.load, splat (float
+        R"(CHECK: fcmp {{(fast )?(uge|olt)}} <4 x float> %{{[^,]+}}, splat (float
         0xC01FFEC880000000)"},
 
     IntrinsicTestSpec{
