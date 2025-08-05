@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -49,15 +50,16 @@ inline void LogOptions(const XlaCompiler::Options& options) {
           << ",allow_cpu_custom_calls=" << options.allow_cpu_custom_calls
           << ",populate_resource_manager=" << options.populate_resource_manager
           << ",alias_passthrough_params=" << options.alias_passthrough_params
-          << ",detailed_logging=" << options.detailed_logging << "]";
+          << ",detailed_logging=" << options.detailed_logging
+          << ",dump_dir=" << options.dump_dir << "]";
 }
 }  // namespace
 
 XlaCompiler::Options GenerateCompilerOptions(
     const XlaDeviceCompiler& xla_device_compiler,
     const FunctionLibraryRuntime& function_library, DeviceBase* device,
-    se::Stream* stream, const XlaPlatformInfo& platform_info,
-    bool has_ref_vars) {
+    se::Stream* stream, const XlaPlatformInfo& platform_info, bool has_ref_vars,
+    absl::string_view dump_dir) {
   XlaCompiler::Options options;
   options.client = static_cast<xla::LocalClient*>(xla_device_compiler.client());
   if (stream != nullptr) {
@@ -77,6 +79,7 @@ XlaCompiler::Options GenerateCompilerOptions(
   // passthrough parameters without performing a copy.
   options.alias_passthrough_params =
       !has_ref_vars && !platform_info.is_on_xla_device();
+  options.dump_dir = dump_dir;
 
   LogOptions(options);
   return options;

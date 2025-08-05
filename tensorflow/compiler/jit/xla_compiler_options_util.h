@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_COMPILER_OPTIONS_UTIL_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_COMPILER_OPTIONS_UTIL_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -32,8 +33,8 @@ XlaCompiler::Options GenerateCompilerOptions(
     const DeviceCompiler<xla::LocalExecutable, xla::LocalClient>&
         xla_device_compiler,
     const FunctionLibraryRuntime& function_library, DeviceBase* device,
-    se::Stream* stream, const XlaPlatformInfo& platform_info,
-    bool has_ref_vars);
+    se::Stream* stream, const XlaPlatformInfo& platform_info, bool has_ref_vars,
+    absl::string_view dump_dir = "");
 
 // Returns created options for XLA compiler when TFRT-TPU is used.
 XlaCompiler::Options GenerateCompilerOptionsForTfrtTpu(
