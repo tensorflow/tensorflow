@@ -99,23 +99,6 @@ class numeric_limits<tsl::quint16> : public numeric_limits<tsl::uint16> {};
 template <>
 class numeric_limits<tsl::qint32> : public numeric_limits<tsl::int32> {};
 
-// Templates from <type_traits> are not permitted to be specialized by users,
-// and doing so may be ignored or cause an error. As a transitional measure,
-// since tensorflow was specializing is_signed for some time, poison uses by
-// specializing with an empty struct (missing the `value` member).
-//
-// TODO(b/392034954): Delete these invalid specializations.
-template <>
-struct is_signed<tsl::qint8> {};
-template <>
-struct is_signed<tsl::quint8> {};
-template <>
-struct is_signed<tsl::qint16> {};
-template <>
-struct is_signed<tsl::quint16> {};
-template <>
-struct is_signed<tsl::qint32> {};
-
 }  // namespace std
 
 #endif  // XLA_TSL_FRAMEWORK_TYPE_TRAITS_H_
