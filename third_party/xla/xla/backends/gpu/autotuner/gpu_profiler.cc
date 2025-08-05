@@ -22,17 +22,20 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/backends/autotuner/profiler.h"
-#include "xla/executable_run_options.h"
+#include "xla/backends/gpu/runtime/buffer_comparator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/platform/errors.h"
@@ -81,11 +84,16 @@ std::unique_ptr<GpuProfiler> GpuProfiler::Create(
 
 absl::StatusOr<std::unique_ptr<InputBuffers>> GpuProfiler::CreateInputBuffers(
     const Executable* executable) {
+  if (!executable->has_module()) {
+    return absl::InvalidArgumentError(
+        "Cannot create input buffers, the executable does not have an "
+        "attatched HloModule.");
+  }
   TF_ASSIGN_OR_RETURN(
       RedzoneBuffers buffers,
       RedzoneBuffers::FromComputation(
           *executable->module().entry_computation(), allocator_.get(),
-          stream_.get(), RedzoneBuffers::BuffersToCreate::kAllInputsAllOutputs,
+          stream_.get(), RedzoneBuffers::BuffersToCreate::kAllInputs,
           options_.should_init_buffers,
           /*should_check_correctness=*/true, options_.redzone_padding_bytes));
   auto gpu_buffers = std::make_unique<GpuInputBuffers>();
@@ -143,6 +151,37 @@ absl::StatusOr<ExecutionOutput> GpuProfiler::Execute(
   ServiceExecutableRunOptions service_run_options(run_options);
   return executable->ExecuteAsyncOnStreamWrapper(&service_run_options,
                                                  std::move(inputs));
+}
+
+absl::Status GpuProfiler::CheckInputBuffers(InputBuffers& buffers) {
+  if (options_.redzone_padding_bytes == 0) {
+    return absl::OkStatus();
+  }
+  const GpuInputBuffers& gpu_buffers =
+      tsl::down_cast<const GpuInputBuffers&>(buffers);
+  const RedzoneBuffers& rz_buffers = gpu_buffers.redzone_buffers;
+  TF_ASSIGN_OR_RETURN(se::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
+                      rz_buffers.RedzoneAllocator().CheckRedzones());
+  if (rz_check_status.ok()) {
+    return absl::OkStatus();
+  }
+  LOG(ERROR) << "Red zone modified";
+  return absl::InternalError(rz_check_status.RedzoneFailureMsg());
+}
+
+absl::Status GpuProfiler::CheckOutputBuffer(ScopedShapedBuffer& output,
+                                            ScopedShapedBuffer& reference,
+                                            float rtol) {
+  BufferComparator comparator(output.on_device_shape(), rtol);
+
+  TF_ASSIGN_OR_RETURN(
+      bool outputs_match,
+      comparator.CompareEqual(stream_.get(), output.root_buffer(),
+                              reference.root_buffer()));
+  if (outputs_match) {
+    return absl::OkStatus();
+  }
+  return absl::InternalError("Output buffer does not match reference buffer.");
 }
 
 }  // namespace gpu

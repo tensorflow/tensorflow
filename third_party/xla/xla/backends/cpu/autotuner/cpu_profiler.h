@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/executable.h"
 #include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/shaped_buffer.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
@@ -44,6 +45,16 @@ class CpuProfiler : public Profiler {
 
   absl::StatusOr<ProfileResult> Profile(Executable* executable,
                                         const InputBuffers& buffers) override;
+
+  absl::Status CheckInputBuffers(InputBuffers& buffers) override {
+    return absl::UnimplementedError("InputBuffers check for CPU.");
+  }
+
+  absl::Status CheckOutputBuffer(ScopedShapedBuffer& output,
+                                 ScopedShapedBuffer& reference,
+                                 float rtol) override {
+    return absl::UnimplementedError("Output buffer check for CPU.");
+  }
 
  protected:
   explicit CpuProfiler(ProfileOptions options) : options_(options) {}

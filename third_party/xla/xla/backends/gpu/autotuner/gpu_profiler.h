@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/redzone_buffers.h"
+#include "xla/service/shaped_buffer.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
@@ -33,6 +34,7 @@ namespace xla {
 namespace gpu {
 
 struct GpuInputBuffers : public InputBuffers {
+  // We only use the input buffers from the redzone buffers.
   RedzoneBuffers redzone_buffers;
 };
 
@@ -41,11 +43,20 @@ class GpuProfiler : public Profiler {
   static std::unique_ptr<GpuProfiler> Create(
       stream_executor::StreamExecutor* stream_executor, ProfileOptions options);
 
+  // The input buffers shapes are taken from the attatched HloModule to the
+  // executable.
+  // TODO(b/407494793): Add a better way to get the input buffer shapes.
   absl::StatusOr<std::unique_ptr<InputBuffers>> CreateInputBuffers(
       const Executable* executable) override;
 
   absl::StatusOr<ProfileResult> Profile(Executable* executable,
                                         const InputBuffers& buffers) override;
+
+  absl::Status CheckInputBuffers(InputBuffers& buffers) override;
+
+  absl::Status CheckOutputBuffer(ScopedShapedBuffer& output,
+                                 ScopedShapedBuffer& reference,
+                                 float rtol) override;
 
  private:
   explicit GpuProfiler(
