@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/shaped_buffer.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -87,6 +88,12 @@ class MockProfiler : public Profiler {
               (override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<InputBuffers>>, CreateInputBuffers,
               (const Executable* executable), (override));
+  MOCK_METHOD(absl::Status, CheckInputBuffers, (InputBuffers & buffers),
+              (override));
+  MOCK_METHOD(absl::Status, CheckOutputBuffer,
+              (ScopedShapedBuffer & output, ScopedShapedBuffer& reference,
+               float rtol),
+              (override));
 };
 
 using ::testing::_;

@@ -50,6 +50,7 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service:executable",
         "//xla/service:maybe_owning_device_memory",
+        "//xla/service:shaped_buffer",
         "//xla/service/cpu:cpu_executable",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/memory",

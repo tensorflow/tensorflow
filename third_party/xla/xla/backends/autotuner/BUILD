@@ -66,6 +66,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:executable",
+        "//xla/service:shaped_buffer",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status_matchers",
