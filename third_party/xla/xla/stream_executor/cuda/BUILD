@@ -502,15 +502,18 @@ cc_library(
     ],
 )
 
-xla_test(
+xla_cc_test(
     name = "cudnn_sdpa_score_mod_test",
     srcs = ["cudnn_sdpa_score_mod_test.cc"],
-    backends = ["gpu"],
-    tags = ["cuda-only"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     deps = [
         ":cudnn_sdpa_score_mod",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/tsl/cuda:cudnn",  # build_cleaner: keep
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
