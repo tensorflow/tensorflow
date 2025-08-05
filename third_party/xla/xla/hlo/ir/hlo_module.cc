@@ -1486,9 +1486,13 @@ void HloModule::OriginalValueRecoveryTable::AddRecoveryComputation(
     if (!replacing_original_value) {
       replacing_original_value = OriginalValue::CreateFromInstruction(
           replacing_inst, /*prefix=*/"placeholder_");
+      if (!replacing_original_value) {
+        return;
+      }
       replacing_inst->set_original_value(replacing_original_value);
     }
   }
+
   (*this)[*replaced_original_value->leaf_begin()->second] =
       std::make_pair(*replacing_original_value->leaf_begin()->second,
                      std::move(recovery_module));

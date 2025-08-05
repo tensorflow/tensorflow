@@ -19,6 +19,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/instruction_fusion.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -121,7 +122,6 @@ TEST_F(PropagateOriginalValueTest, CallInlinerNoCallInstructionName) {
                             CallInliner(/*single_call_site=*/false));
 }
 
-// Test merging reshape and broadcast.
 TEST_F(OriginalValueRecoveryTableTest,
        AlgebraicSimplifierReshapeAndBroadcastMerged) {
   constexpr absl::string_view hlo_string = R"(
@@ -148,6 +148,28 @@ ENTRY %ReshapeAndBroadcastMerged (param0: f32[5]) -> f32[1,2,3,5,1] {
 
   AlgebraicSimplifierOptions options;
   RunAndFilecheckHloRewrite(hlo_string, AlgebraicSimplifier(options));
+}
+
+TEST_F(OriginalValueRecoveryTableTest, FailedToGetPlaceholderOriginalValue) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule test
+
+ENTRY %main (param0: (f32[5]{0}, f32[5]{0})) -> f32[1,2,3,5,1] {
+  %param = (f32[5]{0}, f32[5]{0}) parameter(0)
+  %get-tuple-element = f32[5]{0} get-tuple-element(%param), index=1
+  %reshape = f32[1,5,1]{2,1,0} reshape(%get-tuple-element), origin={{"reshape"}}
+  ROOT %broadcast = f32[1,2,3,5,1]{4,3,2,1,0} broadcast(%reshape), dimensions={0,3,4}
+}
+
+  )";
+
+  AlgebraicSimplifierOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          AlgebraicSimplifier(options).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_TRUE(module->original_value_recovery_table().empty());
 }
 
 }  // namespace
