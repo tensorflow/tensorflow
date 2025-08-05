@@ -582,6 +582,7 @@ bzl_library(
     # This .bzl file is only used in OSS and references OSS paths. Therefore it cannot be parsed
     # correctly by the parse test in g3.
     # copybara:uncomment parse_tests = False,
+    # copybara:uncomment deps = ["@rules_cc//cc:core_rules"],
 )
 
 bzl_library(
@@ -600,6 +601,7 @@ bzl_library(
     # copybara:uncomment parse_tests = False,
     deps = [
         ":build_config_root_bzl",
+        # copybara:uncomment "@rules_cc//cc:core_rules",
         "//xla/tsl:tsl_bzl",
         "@local_xla//third_party/py/rules_pywrap:pywrap_bzl",
     ],

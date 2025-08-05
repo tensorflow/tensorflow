@@ -5,6 +5,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load(
     "//xla/tsl:package_groups.bzl",
     "DEFAULT_LOAD_VISIBILITY",
@@ -66,7 +67,7 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = [
 ])
 
 def xla_cc_binary(deps = [], copts = tsl_copts(), **kwargs):
-    native.cc_binary(deps = deps + _XLA_SHARED_OBJECT_SENSITIVE_DEPS, copts = copts, **kwargs)
+    cc_binary(deps = deps + _XLA_SHARED_OBJECT_SENSITIVE_DEPS, copts = copts, **kwargs)
 
 def xla_cc_test(
         name,

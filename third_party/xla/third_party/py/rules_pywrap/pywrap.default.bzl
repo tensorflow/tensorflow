@@ -1,5 +1,6 @@
 # TODO(b/356020232): remove entire file and all usages after migration is done
 load("@python_version_repo//:py_version.bzl", "USE_PYWRAP_RULES")
+load("@rules_cc//cc:cc_import.bzl", "cc_import")
 load(
     "//third_party/py/rules_pywrap:pywrap.impl.bzl",
     _pybind_extension = "pybind_extension",
@@ -136,7 +137,7 @@ def pywrap_aware_cc_import(name, **kwargs):
     if use_pywrap_rules():
         pass
     else:
-        native.cc_import(
+        cc_import(
             name = name,
             **kwargs
         )

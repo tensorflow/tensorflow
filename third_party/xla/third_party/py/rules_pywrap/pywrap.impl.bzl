@@ -1,4 +1,7 @@
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain", "use_cpp_toolchain")
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_import.bzl", "cc_import")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//python:py_library.bzl", "py_library")
 
 PywrapInfo = provider(
@@ -280,8 +283,7 @@ def pywrap_library(
         actual_common_deps = common_deps
         if pywrap_index >= actual_pywrap_count:
             actual_common_deps = common_deps + starlark_only_common_deps
-
-        native.cc_binary(
+        cc_binary(
             name = shared_object_name,
             srcs = [],
             deps = [":%s" % pywrap_name] + actual_common_deps,
@@ -383,8 +385,7 @@ def _construct_common_binary(
         dependent_common_lib_package,
         False,
     ) + _construct_linkopt_version_script(actual_version_script, False)
-
-    native.cc_binary(
+    cc_binary(
         name = linux_binary_name,
         deps = deps + ([actual_version_script] if actual_version_script else []),
         linkstatic = True,
@@ -398,8 +399,7 @@ def _construct_common_binary(
         compatible_with = compatible_with,
         local_defines = local_defines,
     )
-
-    native.cc_binary(
+    cc_binary(
         name = win_binary_name,
         deps = deps,
         linkstatic = True,
@@ -423,8 +423,7 @@ def _construct_common_binary(
         dependent_common_lib_package,
         True,
     ) + _construct_linkopt_version_script(actual_version_script, True)
-
-    native.cc_binary(
+    cc_binary(
         name = darwin_binary_name,
         deps = deps + ([actual_version_script] if actual_version_script else []),
         linkstatic = True,
@@ -458,8 +457,7 @@ def _construct_common_binary(
     )
 
     import_name = "%s_import" % name
-
-    native.cc_import(
+    cc_import(
         name = import_name,
         shared_library = "%s" % name,
         interface_library = select({
@@ -471,7 +469,7 @@ def _construct_common_binary(
     )
 
     cc_lib_name = "%s_cc_library" % name
-    native.cc_library(
+    cc_library(
         name = cc_lib_name,
         deps = [":%s" % import_name],
         testonly = testonly,
@@ -887,7 +885,7 @@ def python_extension(
 
     # If no wrapping is requested, this target will simply remain unused and
     # never compiled
-    native.cc_library(
+    cc_library(
         name = wrapped_cc_library_name,
         deps = cc_library_deps,
         srcs = srcs,
@@ -905,7 +903,7 @@ def python_extension(
     )
 
     cc_library_name = "_%s_cc_library" % name
-    native.cc_library(
+    cc_library(
         name = cc_library_name,
         deps = _if_wrapped_py_init(
             wrap_py_init,
@@ -979,7 +977,7 @@ def _wrap_cc_select(name, dep_type, deps):
     if type(deps) == _SELECT_TYPE:
         wrapping_select_target = "_{}_{}".format(name, dep_type)
         if dep_type == "deps":
-            native.cc_library(
+            cc_library(
                 name = wrapping_select_target,
                 deps = deps,
             )
@@ -1352,7 +1350,7 @@ def _construct_inverse_common_lib_filters(common_lib_filters):
         new_common_lib_k = common_lib_v
         if type(common_lib_v) == _LIST_TYPE or type(common_lib_v) == _SELECT_TYPE:
             new_common_lib_k = "_%s_common_lib_filter" % common_lib_k.rsplit("/", 1)[-1]
-            native.cc_library(
+            cc_library(
                 name = new_common_lib_k,
                 deps = common_lib_v,
             )
