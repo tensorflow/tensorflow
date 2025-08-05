@@ -1478,6 +1478,55 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.ml
  }
  
  // -----
+@@ -318,6 +357,9 @@
+ 
+ // -----
+ 
++////////
++// SqrtOp
++
+ // CHECK-LABEL: func @fold_sqrt
+ func.func @fold_sqrt() -> (tensor<f32>) {
+   // CHECK: [[RESULT0:%.*]] = stablehlo.constant dense<2.0{{.*}}> : tensor<f32>
+@@ -327,7 +369,37 @@
+   func.return %1 : tensor<f32>
+ }
+ 
+-// -----
++//
++
++////////
++// SetDimensionSizeOp
++
++// CHECK-LABEL: func.func @fold_set_dimension_size
++// CHECK-SAME:   ([[ARG0:%.+]]: tensor<10xf32>)
++func.func @fold_set_dimension_size(%arg0: tensor<10xf32>) -> tensor<10xf32> {
++  // CHECK-NOT: stablehlo.set_dimension_size
++  // CHECK: return [[ARG0]]
++  %c = stablehlo.constant dense<10> : tensor<i32>
++  %0 = stablehlo.set_dimension_size %arg0, %c, dim = 0 : (tensor<10xf32>, tensor<i32>) -> tensor<10xf32>
++  return %0 : tensor<10xf32>
++}
++
++// -----
++
++// Don't fold when set_dimension_size result is bounded.
++// CHECK-LABEL: func.func @no_fold_set_dimension_size
++func.func @no_fold_set_dimension_size(%arg0: tensor<10xf32>) -> tensor<?xf32, #stablehlo.bounds<10>> {
++  %c = stablehlo.constant dense<10> : tensor<i32>
++  // CHECK: [[RESULT0:%.+]] = stablehlo.set_dimension_size
++  // CHECK-NEXT: return [[RESULT0]]
++  %0 = stablehlo.set_dimension_size %arg0, %c, dim = 0 : (tensor<10xf32>, tensor<i32>) -> tensor<?xf32, #stablehlo.bounds<10>>
++  return %0 : tensor<?xf32, #stablehlo.bounds<10>>
++}
++
++// -----
++
++////////
++// TransposeOp
+ 
+ // CHECK-LABEL: func @eval_transpose
+ func.func @eval_transpose() -> (tensor<2x3x2xi32>, tensor<2x4x3xi32>, tensor<4x3x2xi32>) {
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_probe_instrumentation.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_probe_instrumentation.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_probe_instrumentation.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_probe_instrumentation.mlir
@@ -2175,4 +2224,49 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
          });
    }
  
+@@ -813,6 +836,36 @@
+   };
+ };
+ 
++// Pattern: set_dim_size(op, size, dim) -> op [op[dim] == size]
++struct FoldSetDimensionSizeOpPattern
++    : public ShapeOpRewritePattern<SetDimensionSizeOp> {
++  using ShapeOpRewritePattern::ShapeOpRewritePattern;
++
++  LogicalResult matchAndRewrite(SetDimensionSizeOp op,
++                                PatternRewriter& rewriter) const override {
++    auto resultType = op.getType();
++    // No need to verify static shape or dtype here since we aren't evaluating
++    // dtype, just folding set_dim_size ops with no semantic meaning.
++
++    SplatElementsAttr cstSplatAttr;
++    matchPattern(op.getSize(), m_Constant(&cstSplatAttr));
++    if (!cstSplatAttr)
++      return rewriter.notifyMatchFailure(op, "size operand not constant");
++
++    // Compare to the dimension size, not the bound size.
++    // We can't fold and change shapes, but we do want to fold meaningless
++    // set_dim_size ops that use a constant to set a static dimension size
++    // like `set_dim_size(X, 2, dim=0) : (tensor<2xf32>) -> tensor<2xf32>`
++    if (cstSplatAttr.getSplatValue<APInt>() !=
++        resultType.getDimSize(op.getDimension()))
++      return rewriter.notifyMatchFailure(op,
++                                         "dim size does not match result type");
++
++    rewriter.replaceAllOpUsesWith(op, op.getOperand());
++    return success();
++  }
++};
++
+ struct FoldSignOpPattern : public ShapeOpRewritePattern<SignOp> {
+   using ShapeOpRewritePattern::ShapeOpRewritePattern;
+ 
+@@ -1388,6 +1441,7 @@
+   patterns->add<FoldRemOpPattern>(context, options, benefit);
+   patterns->add<FoldReshapeOpPattern>(context, options, benefit);
+   patterns->add<FoldSelectOpPattern>(context, options, benefit);
++  patterns->add<FoldSetDimensionSizeOpPattern>(context, options, benefit);
+   patterns->add<FoldSignOpPattern>(context, options, benefit);
+   patterns->add<FoldSliceOpPattern>(context, options, benefit);
+   patterns->add<FoldSubtractOpPattern>(context, options, benefit);
 
