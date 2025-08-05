@@ -40,6 +40,9 @@ limitations under the License.
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/autotuner/cublas.h"
+#include "xla/backends/gpu/autotuner/cublaslt.h"
 #include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -334,22 +337,41 @@ bool NVPTXCompiler::RequiresCollectiveScheduleLinearizer(
 absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
     HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
     const CompileOptions& options, HloModule* hlo_module,
-    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
+    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
+    se::StreamExecutor* stream_exec) {
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
   if (hlo_module->config()
           .debug_options()
-          .xla_gpu_experimental_disable_binary_libraries()) {
+          .xla_gpu_experimental_disable_binary_libraries() ||
+      debug_options.xla_gpu_autotune_level() == 0 ||
+      debug_options.xla_gpu_exclude_nondeterministic_ops()) {
     return absl::OkStatus();
   }
-  if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
-    pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
-  }
-  // On Ampere or later, GemmAlgorithmPicker just provides a way to "warmup" the
-  // execution. But we already do that during GemmFusionAutotuner pass. In that
-  // case, we do a recursive compilation call that has
-  // 'is_autotuning_compilation' set to true.
-  if (!std::get<se::CudaComputeCapability>(gpu_version).IsAtLeastAmpere() ||
-      options.is_autotuning_compilation) {
-    pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
+
+  // TODO(b/407495801): Cached Gemm as well as Conv autotuning results are
+  // loaded in the GpuConvAlgorithmPicker but should be loaded in the autotuner.
+  pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
+
+  if (debug_options.xla_gpu_experimental_use_autotuner_pass()) {
+    std::vector<std::unique_ptr<CodegenBackend>> backends;
+    backends.push_back(
+        std::make_unique<CublasBackend>(stream_exec, &debug_options, this));
+    backends.push_back(
+        std::make_unique<CublasLtBackend>(stream_exec, &debug_options, this));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<AutotunerPass> autotuner_pass,
+        AutotunerPass::Create(std::move(backends), stream_exec, thread_pool));
+    pipeline->AddPass(std::move(autotuner_pass));
+  } else {
+    // On Ampere or later, GemmAlgorithmPicker just provides a way to "warmup"
+    // the
+    // execution. But we already do that during GemmFusionAutotuner pass. In
+    // that case, we do a recursive compilation call that has
+    // 'is_autotuning_compilation' set to true.
+    if (!std::get<se::CudaComputeCapability>(gpu_version).IsAtLeastAmpere() ||
+        options.is_autotuning_compilation) {
+      pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
+    }
   }
   return absl::OkStatus();
 }

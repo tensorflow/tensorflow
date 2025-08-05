@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/service/gpu/amdgpu_compiler.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -24,6 +25,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
+#include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -41,6 +44,7 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/service/float_support.h"
 #include "xla/service/gpu/alias_info.h"
+#include "xla/service/gpu/autotuning/autotuner_pass.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/conv_algorithm_picker.h"
 #include "xla/service/gpu/autotuning/gemm_algorithm_picker.h"
@@ -70,9 +74,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
@@ -232,11 +233,35 @@ bool AMDGPUCompiler::RequiresCollectiveScheduleLinearizer(
 absl::Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
     HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
     const CompileOptions& options, HloModule* hlo_module,
-    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
-  if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
-    pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
+    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
+    se::StreamExecutor* stream_exec) {
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_experimental_disable_binary_libraries() ||
+      debug_options.xla_gpu_autotune_level() == 0 ||
+      debug_options.xla_gpu_exclude_nondeterministic_ops()) {
+    return absl::OkStatus();
   }
-  pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
+
+  // TODO(b/407495801): Cached Gemm as well as Conv autotuning results are
+  // loaded in the GpuConvAlgorithmPicker but should be loaded in the autotuner.
+  pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  // TODO: b/407494793 - Add proper support for ROCM. Currently the Cublas
+  // backend uses the same API as rocBLAS.
+  if (debug_options.xla_gpu_experimental_use_autotuner_pass()) {
+    backends.push_back(
+        std::make_unique<CublasBackend>(stream_exec, &debug_options, this));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<AutotunerPass> autotuner_pass,
+        AutotunerPass::Create(std::move(backends), stream_exec, thread_pool));
+    pipeline->AddPass(std::move(autotuner_pass));
+  } else {
+    pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
+  }
+
   return absl::OkStatus();
 }
 
