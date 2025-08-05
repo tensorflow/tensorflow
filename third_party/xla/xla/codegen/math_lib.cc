@@ -70,6 +70,7 @@ limitations under the License.
 #include "xla/codegen/math/log1p.h"
 #include "xla/codegen/math/rsqrt.h"
 #include "xla/codegen/math/string_interner.h"
+#include "xla/codegen/math/tanh.h"
 #include "xla/codegen/math/vec_name_mangler.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/xla_data.pb.h"
@@ -186,6 +187,8 @@ MathFunctionLib::MathFunctionLib(llvm::TargetMachine* target_machine)
       std::make_unique<IntrinsicAdapter<intrinsics::Erf>>());
   math_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::Rsqrt>>());
+  math_functions_.push_back(
+      std::make_unique<IntrinsicAdapter<intrinsics::Tanh>>());
 }
 
 namespace {

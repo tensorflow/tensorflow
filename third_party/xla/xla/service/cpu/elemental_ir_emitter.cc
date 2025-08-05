@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/codegen/math/exp.h"
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/codegen/math/rsqrt.h"
+#include "xla/codegen/math/tanh.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/cpu/elemental_math_emitter.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -44,6 +45,12 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(
     PrimitiveType prim_type, llvm::Value* value) {
+  if (prim_type == F32 || prim_type == F16) {
+    llvm::Function* tanh =
+        xla::codegen::intrinsics::Tanh::GetOrInsertDeclaration(
+            module(), Type::TypeFromIrType(value->getType()));
+    return b()->CreateCall(tanh, value);
+  }
   return xla::cpu::EmitTanh(module(), *b(), prim_type, value);
 }
 

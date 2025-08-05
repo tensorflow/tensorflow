@@ -1,4 +1,4 @@
-/* Copyright 2018 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,19 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/llvm_ir/math_ops.h"
+#include "xla/codegen/math/tanh.h"
 
 #include <array>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
+#include "xla/codegen/math/intrinsic.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 
-namespace xla {
-namespace llvm_ir {
+namespace xla::codegen::intrinsics {
+
+namespace {
 
 llvm::Value* EmitFastTanh(llvm::IRBuilderBase* b, llvm::Value* input,
                           bool with_fma) {
@@ -140,5 +144,40 @@ llvm::Value* EmitFastTanhF64(llvm::IRBuilderBase* b, llvm::Value* input,
   return b->CreateFDiv(numerator, denominator);
 }
 
-}  // namespace llvm_ir
-}  // namespace xla
+}  // namespace
+
+absl::StatusOr<llvm::Function*> Tanh::CreateDefinition(llvm::Module* module,
+                                                       Type type) {
+  CHECK(type.element_type() == F32 || type.element_type() == F64 ||
+        type.element_type() == F16)
+      << "Unsupported type: " << type.name();
+  llvm::Type* input_type = Type::TypeToIrType(type, module->getContext());
+  CHECK(input_type != nullptr);
+
+  llvm::Function* func = Tanh::GetOrInsertDeclaration(module, type);
+  llvm::Argument* input_x_arg = func->getArg(0);
+  input_x_arg->setName("input_x");
+  llvm::BasicBlock* entry_bb =
+      llvm::BasicBlock::Create(module->getContext(), "entry", func);
+  llvm::IRBuilder<> builder(entry_bb);
+
+  llvm::Value* result;
+  if (type.element_type() == F64) {
+    result = EmitFastTanhF64(&builder, input_x_arg, /*with_fma=*/true);
+  } else if (type.element_type() == F32) {
+    result = EmitFastTanh(&builder, input_x_arg, /*with_fma=*/true);
+  } else if (type.element_type() == F16) {
+    llvm::Value* f32_input = builder.CreateFPCast(
+        input_x_arg,
+        Type(F32, type.vector_width()).to_ir_type(module->getContext()),
+        "f16_to_f32");
+    result = EmitFastTanh(&builder, f32_input, /*with_fma=*/true);
+    result = builder.CreateFPCast(result, input_x_arg->getType(), "f32_to_f16");
+  } else {
+    LOG(FATAL) << "Unsupported type: " << type.name();
+  }
+  builder.CreateRet(result);
+  return func;
+}
+
+}  // namespace xla::codegen::intrinsics

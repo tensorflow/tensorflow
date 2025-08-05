@@ -389,3 +389,35 @@ xla_cc_test(
         "@llvm-project//llvm:ir_headers",
     ],
 )
+
+cc_library(
+    name = "tanh",
+    srcs = ["tanh.cc"],
+    hdrs = ["tanh.h"],
+    deps = [
+        ":intrinsic",
+        "//xla:xla_data_proto_cc",
+        "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+xla_cc_test(
+    name = "tanh_test",
+    srcs = ["tanh_test.cc"],
+    deps = [
+        ":intrinsic",
+        ":simple_jit_runner",
+        ":tanh",
+        ":test_matchers",
+        "//xla:xla_data_proto_cc",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)

@@ -281,7 +281,6 @@ cc_library(
         "//xla/codegen/math:string_interner",
         "//xla/codegen/math:vec_name_mangler",
         "//xla/service/llvm_ir:llvm_util",
-        "//xla/service/llvm_ir:math_ops",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Analysis",

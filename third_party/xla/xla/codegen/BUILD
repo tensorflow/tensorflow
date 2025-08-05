@@ -191,6 +191,7 @@ cc_library(
         "//xla/codegen/math:log1p",
         "//xla/codegen/math:rsqrt",
         "//xla/codegen/math:string_interner",
+        "//xla/codegen/math:tanh",
         "//xla/codegen/math:vec_name_mangler",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/container:flat_hash_map",

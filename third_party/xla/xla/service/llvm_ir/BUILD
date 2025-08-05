@@ -307,16 +307,6 @@ cc_library(
 )
 
 cc_library(
-    name = "math_ops",
-    srcs = ["math_ops.cc"],
-    hdrs = ["math_ops.h"],
-    deps = [
-        ":llvm_util",
-        "@llvm-project//llvm:Core",
-    ],
-)
-
-cc_library(
     name = "ir_builder_mixin",
     srcs = [],
     hdrs = ["ir_builder_mixin.h"],

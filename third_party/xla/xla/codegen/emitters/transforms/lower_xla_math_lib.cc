@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/codegen/math/log1p.h"
 #include "xla/codegen/math/rsqrt.h"
+#include "xla/codegen/math/tanh.h"
 
 namespace xla {
 namespace emitters {
@@ -243,6 +244,32 @@ class RsqrtPattern : public mlir::OpRewritePattern<mlir::math::RsqrtOp> {
   mlir::ModuleOp& module_op_;
 };
 
+class LowerTanhOpPattern : public mlir::OpRewritePattern<mlir::math::TanhOp> {
+ public:
+  LowerTanhOpPattern(mlir::MLIRContext* context, mlir::ModuleOp& module_op)
+      : OpRewritePattern(context), module_op_(module_op) {}
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::math::TanhOp op, mlir::PatternRewriter& rewriter) const override {
+    mlir::Type type = op.getType();
+
+    if (!type.isF32() || !type.isF16()) {
+      return rewriter.notifyMatchFailure(op, "unsupported type");
+    }
+
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    auto tanh_decl = codegen::intrinsics::Tanh::GetOrInsertDeclaration(
+        rewriter, module_op_, Type::TypeFromIrType(type));
+    auto call_op = b.create<mlir::func::CallOp>(tanh_decl, op.getOperand());
+    rewriter.replaceOp(op, call_op->getResults());
+    return mlir::success();
+  }
+
+ private:
+  mlir::ModuleOp& module_op_;
+};
+
 class LowerXlaMathLibPass
     : public impl::LowerXlaMathLibPassBase<LowerXlaMathLibPass> {
  public:
@@ -253,8 +280,8 @@ class LowerXlaMathLibPass
     mlir::ModuleOp module_op = getOperation();
     mlir::RewritePatternSet patterns(&getContext());
     patterns.add<LowerExpOpPattern, LowerLog1pPattern, LowerErfPattern,
-                 LowerTruncF32BF16FPattern, RsqrtPattern>(&getContext(),
-                                                          module_op);
+                 LowerTruncF32BF16FPattern, RsqrtPattern, LowerTanhOpPattern>(
+        &getContext(), module_op);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(module_op, std::move(patterns)))) {
