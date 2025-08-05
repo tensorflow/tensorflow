@@ -442,6 +442,10 @@ class SdyRoundTripDedupMeshesPass
 
     MeshToAxisMap duplicateMeshesToAxisMap =
         buildDuplicateMeshesToAxisMap(moduleOp);
+    if (duplicateMeshesToAxisMap.empty()) {
+      // No meshes to dedup.
+      return;
+    }
     dedupMeshes(moduleOp, symbolTable, duplicateMeshesToAxisMap);
     eraseMeshes(symbolTable, duplicateMeshesToAxisMap);
   }
