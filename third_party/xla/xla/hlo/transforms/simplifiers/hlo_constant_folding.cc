@@ -38,6 +38,8 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -238,6 +240,44 @@ bool IsFoldable(
   }
   return true;
 }
+
+absl::StatusOr<bool> PropagateIdenticalConstantArguments(
+    HloComputation* computation) {
+  // For each parameter, figure out if all the arguments passed to that
+  // parameter in the various call sites are identical constants.
+  std::vector<bool> identical_constant_parameters(computation->num_parameters(),
+                                                  true);
+  for (int i = 0; i < computation->num_parameters(); ++i) {
+    for (HloInstruction* call_site : computation->caller_instructions()) {
+      if (call_site->operand(i)->opcode() != HloOpcode::kConstant ||
+          (call_site->operand(i)->literal() !=
+           computation->caller_instructions()[0]->operand(i)->literal())) {
+        identical_constant_parameters[i] = false;
+        break;
+      }
+    }
+  }
+  // If *all* parameters are identical constants, we can let the regular
+  // constant-folding path handle it.
+  if (absl::c_all_of(identical_constant_parameters, [](bool b) { return b; })) {
+    return false;
+  }
+
+  bool changed = false;
+  for (int i = 0; i < computation->num_parameters(); ++i) {
+    if (identical_constant_parameters[i]) {
+      HloInstruction* parameter = computation->parameter_instruction(i);
+      const HloInstruction* constant =
+          computation->caller_instructions()[0]->operand(i);
+      TF_RETURN_IF_ERROR(parameter->ReplaceAllUsesWith(
+          computation->AddInstruction(constant->Clone())));
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
 }  // namespace
 
 absl::StatusOr<bool> HloConstantFolding::Run(
@@ -256,8 +296,26 @@ absl::StatusOr<bool> HloConstantFolding::Run(
   // For each computation, cache whether we can fold all the instructions in it.
   absl::flat_hash_map<HloComputation*, bool> is_foldable_computation;
 
-  for (auto* computation :
-       module->MakeNonfusionComputations(execution_threads)) {
+  std::vector<HloComputation*> computations =
+      module->MakeNonfusionComputations(execution_threads);
+
+  // Visit computations in reverse post-order, so that we can propagate constant
+  // arguments from callers to callees.
+  for (auto it = computations.rbegin(); it != computations.rend(); ++it) {
+    HloComputation* computation = *it;
+    // If the computation is only used by call instructions, check whether for
+    // any of the parameters of the computation, the argument passed by the
+    // call-sites is always the same constant. In that case, we can sink the
+    // parameter into the computation before we perform constant folding on its
+    // body.
+    if (absl::c_all_of(computation->caller_instructions(),
+                       [](HloInstruction* instruction) {
+                         return instruction->opcode() == HloOpcode::kCall;
+                       })) {
+      TF_ASSIGN_OR_RETURN(bool did_change,
+                          PropagateIdenticalConstantArguments(computation));
+      changed |= did_change;
+    }
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
       // Skip dead code.
       if (instruction->IsDead()) {
@@ -283,8 +341,6 @@ absl::StatusOr<bool> HloConstantFolding::Run(
       //  - So the only remaining case is where some but not all operands are
       //    broadcasts of constants, e.g. op(constant, broadcast(constant)).
       //
-      // TODO(b/260601110): We may want to specialize calls and propagate
-      // constants into them even if only some operands are constants.
       if (level_ == HloConstantFolding::Level::kDefault &&
           !AnyOperandsConstant(instruction)) {
         continue;
