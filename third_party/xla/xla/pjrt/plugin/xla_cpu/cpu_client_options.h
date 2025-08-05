@@ -34,10 +34,6 @@ struct CpuClientOptions {
   // computations inline.
   bool asynchronous = true;
 
-  // If true, there is only one memory space, "unpinned_host", and it behaves
-  // the same as "device" from the non-legacy behavior.
-  bool legacy_memory_space_behavior = false;
-
   // Number of CPU devices. If not provided, the value of
   // --xla_force_host_platform_device_count is used.
   std::optional<int> cpu_device_count = std::nullopt;
