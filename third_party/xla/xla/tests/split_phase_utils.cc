@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tests/hlo_runner_pjrt_test_utils.h"
+#include "xla/tests/split_phase_utils.h"
 
 #include <cstdint>
 #include <memory>
@@ -69,35 +69,35 @@ std::string AbslUnparseFlag(SplitPhaseMode mode) {
   return "should not reach here";
 }
 
-ABSL_FLAG(SplitPhaseMode, xla_pjrt_split_phase_mode, SplitPhaseMode::kDisabled,
+ABSL_FLAG(SplitPhaseMode, xla_hlo_runner_split_phase, SplitPhaseMode::kDisabled,
           "If set to anything other than \"disabled\", split phase compilation "
           "mode is enabled. Specify \"compile\" to use compile-only mode, in "
           "which executables are compiled and then persisted to disk at the "
-          "path specified by --xla_pjrt_split_phase_dir. Specify \"execute\" "
-          "to use execute-only mode, in which executables are loaded from disk "
-          "and then executed.");
+          "path specified by --xla_hlo_runner_split_phase_dir. Specify "
+          "\"execute\" to use execute-only mode, in which executables are "
+          "loaded from disk and then executed.");
 
 ABSL_FLAG(
-    std::optional<std::string>, xla_pjrt_split_phase_dir, std::nullopt,
+    std::optional<std::string>, xla_hlo_runner_split_phase_dir, std::nullopt,
     "The directory where intermediate results for split-phase compilation are "
-    "persisted. Must be specified if --xla_pjrt_split_phase_mode is set.");
+    "persisted. Must be specified if --xla_hlo_runner_split_phase is set.");
 
 namespace xla {
 
 std::unique_ptr<HloRunnerPjRt> MakeHloRunnerPjRtSplitPhaseAware(
     std::unique_ptr<PjRtClient> client) {
-  const SplitPhaseMode mode = absl::GetFlag(FLAGS_xla_pjrt_split_phase_mode);
+  const SplitPhaseMode mode = absl::GetFlag(FLAGS_xla_hlo_runner_split_phase);
   std::string artifact_dir;
   if (mode != SplitPhaseMode::kDisabled) {
     std::optional<std::string> split_phase_dir =
-        absl::GetFlag(FLAGS_xla_pjrt_split_phase_dir);
+        absl::GetFlag(FLAGS_xla_hlo_runner_split_phase_dir);
     if (!split_phase_dir.has_value()) {
       return nullptr;
     }
     artifact_dir = *std::move(split_phase_dir);
   }
 
-  switch (absl::GetFlag(FLAGS_xla_pjrt_split_phase_mode)) {
+  switch (absl::GetFlag(FLAGS_xla_hlo_runner_split_phase)) {
     case SplitPhaseMode::kDisabled:
       return std::make_unique<HloRunnerPjRt>(std::move(client));
     case SplitPhaseMode::kCompile:
@@ -113,7 +113,7 @@ std::unique_ptr<HloRunnerPjRt> MakeHloRunnerPjRtSplitPhaseAware(
 // Execution errors are swallowed if and only if the split phase mode is set to
 // kCompile.
 bool HasPjRtSplitPhaseAwareSwallowExecutionErrors() {
-  return absl::GetFlag(FLAGS_xla_pjrt_split_phase_mode) ==
+  return absl::GetFlag(FLAGS_xla_hlo_runner_split_phase) ==
          SplitPhaseMode::kCompile;
 }
 
