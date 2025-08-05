@@ -201,21 +201,6 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
   absl::string_view call_op_name_;
 };
 
-// Specific inlining rules when needing to round-trip from MLIR->HLO->MLIR
-// when using Shardy (github.com/openxla/shardy).
-//
-// - shmap_body: We don't want to inline the bodies of JAX shard maps in order
-//   to import them into an `sdy.ManualComputationOp`. This is for the MHLO
-//   round-trip pipeline
-// - kManualComputationBodyFuncName: Same as shmap_body except for the SDY
-//   round-trip pipeline.
-bool InlineUnderShardy(HloInstruction* instruction) {
-  return !(instruction->GetModule()->config().use_shardy_partitioner() &&
-           (absl::StrContains(instruction->to_apply()->name(), "shmap_body") ||
-            absl::StrContains(instruction->to_apply()->name(),
-                              sdy::kManualComputationBodyFuncName.str())));
-}
-
 bool InlineComposites(
     HloInstruction* instruction,
     const absl::flat_hash_set<std::string>& composites_to_preserve) {
@@ -294,8 +279,22 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
     // prerequisites.
     return false;
   }
-  return InlineUnderShardy(instruction) &&
-         InlineComposites(instruction, composites_to_preserve_);
+  if (!inline_shardy_manual_computation_ &&
+      instruction->GetModule()->config().use_shardy_partitioner() &&
+      (absl::StrContains(instruction->to_apply()->name(), "shmap_body") ||
+       absl::StrContains(instruction->to_apply()->name(),
+                         sdy::kManualComputationBodyFuncName.str()))) {
+    // Specific inlining rules when needing to round-trip from MLIR->HLO->MLIR
+    // when using Shardy (github.com/openxla/shardy).
+    //
+    // - shmap_body: We do not want to inline the bodies of JAX shard maps to
+    //   import them into an `sdy.ManualComputationOp`. This is for the MHLO
+    //   round-trip pipeline
+    // - kManualComputationBodyFuncName: Same as shmap_body except for the SDY
+    //   round-trip pipeline.
+    return false;
+  }
+  return InlineComposites(instruction, composites_to_preserve_);
 }
 
 bool CallInliner::ShouldInline(const CallGraph& call_graph,
