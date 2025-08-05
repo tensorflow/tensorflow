@@ -3,6 +3,8 @@
 # This file is used in OSS only. It is not transformed by copybara. Therefore all paths in this
 # file are OSS paths.
 
+load("@rules_cc//cc:cc_library.bzl", _cc_library = "cc_library")
+
 # IMPORTANT: Do not remove this load statement. We rely on that //xla/tsl doesn't exist in g3
 # to prevent g3 .bzl files from loading this file.
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
@@ -36,5 +38,4 @@ def cc_library(name, deps = None, **kwargs):
     if name != "empty":
         deps = deps + ["@local_xla//xla/tsl:bazel_issue_21519"]  # buildifier: disable=list-append
         deps = deps + ["@local_tsl//:bazel_issue_21519"]  # buildifier: disable=list-append
-
-    native.cc_library(name = name, deps = deps, **kwargs)
+    _cc_library(name = name, deps = deps, **kwargs)
