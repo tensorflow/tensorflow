@@ -133,6 +133,58 @@ TEST_F(DotDecomposerTest, DontAddRhsNonContractingDimIfOne) {
                                 op::Shape("f32[64,2]"))));
 }
 
+TEST_F(DotDecomposerTest, AddLhsNonContractingDimIfZero) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = f32[64,4,2,0]{3,2,1,0} parameter(0)
+    p1 = f32[64,4]{1,0} parameter(1)
+    ROOT dot = f32[64,2,0]{2,1,0} dot(p0, p1), lhs_batch_dims={0},
+                                               lhs_contracting_dims={1},
+                                               rhs_batch_dims={0},
+                                               rhs_contracting_dims={1}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
+                          DotDecomposer().Run(module.get()));
+  EXPECT_TRUE(canonicalized);
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Reshape(AllOf(op::Dot(op::Reshape(), op::Reshape(),
+                                        /*lhs_contracting_dim=*/2,
+                                        /*rhs_contracting_dim=*/1),
+                                op::Shape("f32[64,0]"))));
+}
+
+TEST_F(DotDecomposerTest, AddRhsNonContractingDimIfZero) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = f32[64,4]{1,0} parameter(0)
+    p1 = f32[64,4,2,0]{3,2,1,0} parameter(1)
+    ROOT dot = f32[64,2,0]{2,1,0} dot(p0, p1), lhs_batch_dims={0},
+                                                 lhs_contracting_dims={1},
+                                                 rhs_batch_dims={0},
+                                                 rhs_contracting_dims={1}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
+                          DotDecomposer().Run(module.get()));
+  EXPECT_TRUE(canonicalized);
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Reshape(AllOf(op::Dot(op::Reshape(), op::Reshape(),
+                                        /*lhs_contracting_dim=*/1,
+                                        /*rhs_contracting_dim=*/1),
+                                op::Shape("f32[64,0]"))));
+}
+
 template <typename Arg0, typename Arg1, typename Arg2>
 auto SparseDotMatcher(Arg0&& arg0, Arg1&& arg1, Arg2&& arg2) {
   return match::Op()

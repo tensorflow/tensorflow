@@ -123,7 +123,7 @@ absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
 
   std::vector<int64_t> lhs_reshape_dims = batch_dim_sizes;
   std::vector<bool> lhs_reshape_dynamic_dims = batch_dynamic_dims;
-  if (lhs_non_contracting_size > 1) {
+  if (lhs_non_contracting_size != 1) {
     lhs_reshape_dims.push_back(lhs_non_contracting_size);
     lhs_reshape_dynamic_dims.push_back(lhs_non_contracting_dynamic);
   }
@@ -184,7 +184,7 @@ absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
   rhs_reshape_dims.push_back(rhs_contracting_size);
   std::vector<bool> rhs_reshape_dynamic_dims = batch_dynamic_dims;
   rhs_reshape_dynamic_dims.push_back(rhs_contracting_dynamic);
-  if (rhs_non_contracting_size > 1) {
+  if (rhs_non_contracting_size != 1) {
     rhs_reshape_dims.push_back(rhs_non_contracting_size);
     rhs_reshape_dynamic_dims.push_back(rhs_non_contracting_dynamic);
   }
@@ -198,11 +198,11 @@ absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
 
   std::vector<int64_t> dot_dims = batch_dim_sizes;
   std::vector<bool> dot_dynamic_dims = batch_dynamic_dims;
-  if (lhs_non_contracting_size > 1) {
+  if (lhs_non_contracting_size != 1) {
     dot_dims.push_back(lhs_non_contracting_size);
     dot_dynamic_dims.push_back(lhs_non_contracting_dynamic);
   }
-  if (rhs_non_contracting_size > 1) {
+  if (rhs_non_contracting_size != 1) {
     dot_dims.push_back(rhs_non_contracting_size);
     dot_dynamic_dims.push_back(rhs_non_contracting_dynamic);
   }
@@ -213,7 +213,7 @@ absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
     dot_dnums.add_rhs_batch_dimensions(i);
   }
   dot_dnums.add_lhs_contracting_dimensions(
-      num_batch_dims + (lhs_non_contracting_size > 1 ? 1 : 0));
+      num_batch_dims + (lhs_non_contracting_size != 1 ? 1 : 0));
   dot_dnums.add_rhs_contracting_dimensions(num_batch_dims);
 
   // Build sparsity data for the new dot.
@@ -232,7 +232,7 @@ absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
   for (int i = 0; i < original_dot->sparse_operands(); ++i) {
     SparsityDescriptor descriptor = original_dot->sparsity()[i];
     descriptor.set_dimension(num_batch_dims + (descriptor.index() == 0 &&
-                                               lhs_non_contracting_size > 1));
+                                               lhs_non_contracting_size != 1));
     sparsity.push_back(descriptor);
     HloInstruction* meta =
         original_dot->mutable_operand(HloDotInstruction::kOperands + i);
