@@ -149,12 +149,6 @@ static void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   //     emitters::CreateVectorizeLoadsAndStoresPass(/*target_type=*/"cpu"));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  // By setting the max nested bits for unrolling to 1 we in effect only enable
-  // unrolling for the innermost loops.
-  // This keeps the most similarity in numerics with legacy emitters.
-  // TODO(willfroom): Look into allowing unrolling outer loops with small number
-  // of iterations: b/435099666.
-  pm.addNestedPass<mlir::func::FuncOp>(cpu::CreateAddLoopUnrollFlagsPass(1));
 }
 
 static void AddLoweringPasses(mlir::OpPassManager& pm, int32_t vector_width,
