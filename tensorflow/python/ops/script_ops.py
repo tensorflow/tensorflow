@@ -365,7 +365,7 @@ def _internal_py_func(func,
   # Store a reference to the function in the graph to ensure it stays alive
   # as long as the graph lives. When the graph is destroyed, the function
   # is left to the garbage collector for destruction as well.
-  graph._py_funcs_used_in_graph.append(func)  # pylint: disable=protected-access
+  graph._py_funcs_used_in_graph.append(weakref.ref(func))  # pylint: disable=protected-access
 
   if use_eager_py_func:
     result = gen_script_ops.eager_py_func(
