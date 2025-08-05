@@ -25,15 +25,13 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/numbers.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/tsl/platform/statusor.h"
@@ -119,43 +117,8 @@ absl::StatusOr<int> SubprocessCompilationProvider::GetLatestPtxIsaVersion()
   if (exit_status == 0) {
     return absl::InternalError("ptxas succeeded where it was expected to fail");
   }
-  // Output message is of the form:
-  // ptxas application ptx input, line 1; fatal   :
-  // Unsupported .version 99.99; current version is '8.8'
-  std::vector<absl::string_view> chunks = absl::StrSplit(stderr_output, '\'');
-  if (chunks.size() != 3) {
-    return absl::InternalError(absl::StrCat(
-        "Failed to locate PTX ISA version in ptxas error message: ",
-        stderr_output));
-  }
-  std::vector<std::string> major_minor = absl::StrSplit(chunks[1], '.');
-  if (major_minor.size() != 2) {
-    return absl::InternalError(
-        absl::StrFormat("Expected PTX ISA version to be formatted as "
-                        "MAJOR.MINOR, instead got: %s",
-                        chunks[1]));
-  }
-  int major;
-  if (!absl::SimpleAtoi(major_minor[0], &major)) {
-    return absl::InternalError(
-        absl::StrFormat("Failed to parse PTX ISA major version, expected a "
-                        "parsable integer, instead got: %s",
-                        major_minor[0]));
-  }
-  int minor;
-  if (!absl::SimpleAtoi(major_minor[1], &minor)) {
-    return absl::InternalError(
-        absl::StrFormat("Failed to parse PTX ISA minor version, expected a "
-                        "parsable integer, instead got: %s",
-                        major_minor[1]));
-  }
-  if (minor >= 10) {
-    return absl::InternalError(
-        absl::StrFormat("PTX ISA minor version %d is not less than or equal to "
-                        "9, which is assumed for version comparison",
-                        minor));
-  }
-  return major * 10 + minor;
+
+  return GetLatestPtxIsaVersionFromUnsupportedVersionErrorLog(stderr_output);
 }
 
 std::string SubprocessCompilationProvider::name() const {

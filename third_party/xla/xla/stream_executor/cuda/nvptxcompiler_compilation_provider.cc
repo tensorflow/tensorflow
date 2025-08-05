@@ -83,8 +83,7 @@ absl::StatusOr<Assembly> NvptxcompilerCompilationProvider::CompileAndLink(
 
 absl::StatusOr<int> NvptxcompilerCompilationProvider::GetLatestPtxIsaVersion()
     const {
-  return absl::UnimplementedError(
-      "GetLatestPtxIsaVersion is not implemented for " + name() + ".");
+  return GetLatestPtxIsaVersionForNvptxCompiler();
 }
 
 }  // namespace stream_executor::cuda
