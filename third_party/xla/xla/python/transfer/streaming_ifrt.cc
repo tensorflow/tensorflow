@@ -228,9 +228,11 @@ class DmaDestination : public ChunkDestination {
       return absl::OkStatus();
     }
     return semaphore_.DoWork(size, [&](bool is_last_transfer) {
-      return atm_->TransferRawDataToSubBuffer(buffer_index_, data, offset, size,
-                                              is_last_transfer,
-                                              std::move(on_done));
+      return atm_->TransferRawDataToSubBuffer(
+          buffer_index_, data, offset, size, is_last_transfer,
+          [atm = atm_, on_done = std::move(on_done)]() mutable {
+            std::move(on_done)();
+          });
     });
   }
 
