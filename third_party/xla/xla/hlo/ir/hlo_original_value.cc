@@ -122,20 +122,30 @@ std::shared_ptr<OriginalValue> OriginalValue::FromProto(
   return original_value;
 }
 
-std::unique_ptr<OriginalValue> OriginalValue::CreateFromInstruction(
+std::shared_ptr<OriginalValue> OriginalValue::CreateFromInstruction(
     const HloInstruction* instruction, absl::string_view prefix) {
-  auto original_value = std::make_unique<OriginalValue>(instruction->shape());
+  std::shared_ptr<OriginalValue> original_value =
+      std::make_shared<OriginalValue>(instruction->shape());
 
   if (instruction->opcode() == HloOpcode::kGetTupleElement) {
     const auto* tuple = instruction->operand(0);
-    original_value->CopySubtreeFrom(*tuple->original_value(),
+    std::shared_ptr<OriginalValue> tuple_original_value =
+        tuple->original_value();
+    if (!tuple_original_value) {
+      return nullptr;
+    }
+    original_value->CopySubtreeFrom(*tuple_original_value,
                                     {instruction->tuple_index()}, {});
   } else if (instruction->opcode() == HloOpcode::kTuple) {
     for (int64_t operand_number = 0;
          operand_number < instruction->operand_count(); ++operand_number) {
-      original_value->CopySubtreeFrom(
-          *instruction->operand(operand_number)->original_value(), {},
-          {operand_number});
+      auto element_original_value =
+          instruction->operand(operand_number)->original_value();
+      if (!element_original_value) {
+        return nullptr;
+      }
+      original_value->CopySubtreeFrom(*element_original_value, {},
+                                      {operand_number});
     }
   } else {
     for (auto& leaf : original_value->leaves()) {
