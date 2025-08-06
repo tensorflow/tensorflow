@@ -90,7 +90,7 @@ TEST_F(FissionBackendTest, GetSupportedConfigsFromCublasCustomCall) {
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           (*module->entry_computation()->root_instruction()));
-  EXPECT_THAT(configs, IsOkAndHolds(SizeIs(10)));
+  EXPECT_THAT(configs, absl_testing::IsOkAndHolds(SizeIs(10)));
   // The first config is the cublas config.
   AutotuneResult::GemmKey cublas_config;
   EXPECT_TRUE(configs.value().front()->UnpackTo(&cublas_config));
@@ -116,7 +116,8 @@ TEST_F(FissionBackendTest, GetSupportedConfigsForUnsupportedInstructionFails) {
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           (*module->entry_computation()->root_instruction()));
-  EXPECT_THAT(configs.status(), StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(configs.status(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(FissionBackendTest, GetDefaultConfigFails) {
@@ -126,7 +127,8 @@ TEST_F(FissionBackendTest, GetDefaultConfigFails) {
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           (*module->entry_computation()->root_instruction()));
-  EXPECT_THAT(config.status(), StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(config.status(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(FissionBackendTest, ApplyCublasConfigToFusionInstruction) {
@@ -140,7 +142,7 @@ TEST_F(FissionBackendTest, ApplyCublasConfigToFusionInstruction) {
       *hlo_module->entry_computation()->root_instruction(), any));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(),
                            "CHECK: \"selected_algorithm\":\"3\""),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(FissionBackendTest, ApplyCustomKernelConfigToFusionInstruction) {
@@ -153,7 +155,7 @@ TEST_F(FissionBackendTest, ApplyCustomKernelConfigToFusionInstruction) {
   TF_EXPECT_OK(backend_.ApplyConfig(
       *hlo_module->entry_computation()->root_instruction(), any));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(), "CHECK: \"kernel_index\":3"),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 }  // namespace
