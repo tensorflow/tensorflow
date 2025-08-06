@@ -1,6 +1,7 @@
 """Generate custom flex delegate library."""
 
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -120,7 +121,7 @@ def tflite_flex_cc_library(
 
         # Define a custom tensorflow_lib with selective registration.
         # The library will only contain ops exist in provided models.
-        native.cc_library(
+        cc_library(
             name = "%s_tensorflow_lib" % name,
             srcs = if_mobile([
                 clean_dep("//tensorflow/core:portable_op_registrations_and_gradients"),
@@ -163,7 +164,7 @@ def tflite_flex_cc_library(
         delegate_symbol.append(clean_dep("//tensorflow/lite/delegates/flex:delegate_symbol"))
 
     # Define a custom flex delegate with above tensorflow_lib.
-    native.cc_library(
+    cc_library(
         name = name,
         hdrs = [
             clean_dep("//tensorflow/lite/delegates/flex:delegate.h"),
@@ -276,7 +277,7 @@ def tflite_flex_jni_library(
     )
 
     # Define a custom flex_native that depends on above flex_delegate.
-    native.cc_library(
+    cc_library(
         name = "%s_flex_native" % name,
         srcs = [
             clean_dep("//tensorflow/lite/testing:init_tensorflow.h"),
@@ -338,8 +339,7 @@ def tflite_flex_android_library(
         testonly = testonly,
         visibility = visibility,
     )
-
-    native.cc_library(
+    cc_library(
         name = "%s_native" % name,
         srcs = ["libtensorflowlite_flex_jni.so"],
         testonly = testonly,
