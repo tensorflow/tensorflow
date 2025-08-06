@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -71,6 +72,15 @@ struct TestParams {
   AllReduceStrategy all_reduce_strategy;
   int64_t num_elements;
 };
+
+template <typename T>
+std::vector<T> ToVector(const Array<T>& array) {
+  std::vector<T> result;
+  result.reserve(array.num_elements());
+  array.Each(
+      [&](absl::Span<const int64_t> indices, T val) { result.push_back(val); });
+  return result;
+}
 
 class AllReduceKernelTest : public ::testing::Test,
                             public ::testing::WithParamInterface<TestParams> {
@@ -199,8 +209,13 @@ TEST_P(AllReduceKernelTest, KernelTestAddF32) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto results, RunKernel<float>(executors, inputs, ReductionKind::SUM));
 
+  const Literal expected_output_literal =
+      LiteralUtil::CreateFromArray<float>(expected_output);
   for (int i = 0; i < kNumRanks; ++i) {
-    EXPECT_EQ(results[i], expected_output);
+    const Literal actual_output_literal =
+        LiteralUtil::CreateFromArray<float>(results[i]);
+    EXPECT_TRUE(
+        LiteralTestUtil::Equal(expected_output_literal, actual_output_literal));
   }
 }
 

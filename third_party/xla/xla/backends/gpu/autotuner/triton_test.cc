@@ -92,7 +92,7 @@ TEST_F(TritonBackendTest, GetSupportedConfigs) {
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           *(module->entry_computation()->root_instruction()));
-  EXPECT_THAT(configs, IsOk());
+  EXPECT_THAT(configs, absl_testing::IsOk());
   EXPECT_GT(configs.value().size(), 0);
 
   if (backend_.target_config()
@@ -124,7 +124,7 @@ TEST_F(TritonBackendTest, GetSupportedConfigsForUnsupportedInstruction) {
                                           ->root_instruction();
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(*unsupported_instr);
-  EXPECT_THAT(configs, IsOk());
+  EXPECT_THAT(configs, absl_testing::IsOk());
   EXPECT_THAT(configs.value(), testing::IsEmpty());
 }
 
@@ -138,7 +138,7 @@ TEST_F(TritonBackendTest, GetDefaultConfig) {
       backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction()));
 
-  EXPECT_THAT(config, IsOk());
+  EXPECT_THAT(config, absl_testing::IsOk());
   TritonBackendConfig actual_config;
   ASSERT_TRUE(config.value()->UnpackTo(&actual_config));
   EXPECT_THAT(actual_config, EqualsProto(expected_config));
@@ -153,7 +153,8 @@ TEST_F(TritonBackendTest, GetDefaultConfigForUnsupportedInstruction) {
                                           ->root_instruction();
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(*unsupported_instr);
-  EXPECT_THAT(config.status(), StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(config.status(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(TritonBackendTest, Compile) {
@@ -165,7 +166,7 @@ TEST_F(TritonBackendTest, Compile) {
           *(module->entry_computation()->root_instruction())));
   absl::StatusOr<std::unique_ptr<Executable>> executable = backend_.Compile(
       *(module->entry_computation()->root_instruction()), *config);
-  EXPECT_THAT(executable, IsOk());
+  EXPECT_THAT(executable, absl_testing::IsOk());
 }
 
 }  // namespace
