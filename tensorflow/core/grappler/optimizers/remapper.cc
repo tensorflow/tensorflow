@@ -4044,7 +4044,7 @@ absl::Status AddFusedMatMulBiasMulAddAndElu(
   SetFusedOpAttributes(&fused_node, {"BiasAdd", "Elu"});
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(new_mul_node), &status);
   TF_RETURN_IF_ERROR(status);
 
