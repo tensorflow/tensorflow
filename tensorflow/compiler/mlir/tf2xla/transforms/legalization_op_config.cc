@@ -384,6 +384,7 @@ bool IsOpTypeAllowedTf2XlaFallback(const TypeID& type_id) {
             TF::XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInputOp>(),  // NOLINT
         TypeID::get<
             TF::XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp>(),
+        TypeID::get<TF::XlaLocalSparseDenseMatmulOp>(),  // NOLINT
         TypeID::get<TF::XlaSparseGradientsStackOp>(),
         TypeID::get<TF::XlaSpmdFullToShardShapeOp>(),
         TypeID::get<TF::XlaSpmdShardToFullShapeOp>(),
