@@ -66,6 +66,8 @@ TF_CONST_INIT extern const absl::string_view kHostCpusPlaneName;
 TF_CONST_INIT extern const absl::string_view kSyscallsPlaneName;
 // Name of XPlane that contains namescope stack tree.
 TF_CONST_INIT extern const absl::string_view kScopeRangeIdTreePlaneName;
+// Name of XStat that contains profile options.
+TF_CONST_INIT extern const absl::string_view kProfileOptionsName;
 
 // Names of XLines that contain ML-level events.
 TF_CONST_INIT extern const absl::string_view kStepLineName;
