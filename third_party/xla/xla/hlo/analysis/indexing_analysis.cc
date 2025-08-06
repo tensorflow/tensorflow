@@ -1507,6 +1507,7 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
   if (instr->opcode() == HloOpcode::kBitcast) {
     return ComputeOutputToInputBitcastOpIndexing(instr, ctx);
   }
+  // go/keep-sorted start
   if (auto broadcast = DynCast<HloBroadcastInstruction>(instr)) {
     return ComputeOutputToInputBroadcastOpIndexing(broadcast, ctx);
   }
@@ -1516,14 +1517,17 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
   if (auto constant = DynCast<HloConstantInstruction>(instr)) {
     return HloInstructionIndexing{};
   }
+  if (auto convolution = DynCast<HloConvolutionInstruction>(instr)) {
+    return ComputeOutputToInputConvolutionOpIndexing(convolution, ctx);
+  }
   if (auto dot = DynCast<HloDotInstruction>(instr)) {
     return ComputeOutputToInputDotOpIndexing(dot, ctx);
   }
-  if (auto dynamic_slice = DynCast<HloDynamicSliceInstruction>(instr)) {
-    return ComputeOutputToInputDynamicSliceOpIndexing(dynamic_slice, ctx);
-  }
   if (auto dus = DynCast<HloDynamicUpdateSliceInstruction>(instr)) {
     return ComputeOutputToInputDynamicUpdateSliceOpIndexing(dus, ctx);
+  }
+  if (auto dynamic_slice = DynCast<HloDynamicSliceInstruction>(instr)) {
+    return ComputeOutputToInputDynamicSliceOpIndexing(dynamic_slice, ctx);
   }
   if (auto fusion = DynCast<HloFusionInstruction>(instr)) {
     return ComputeOutputToInputFusionOpIndexing(fusion, output_id, ctx);
@@ -1537,14 +1541,14 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
   if (auto pad = DynCast<HloPadInstruction>(instr)) {
     return ComputeOutputToInputPadOpIndexing(pad, ctx);
   }
+  if (auto parameter = DynCast<HloParameterInstruction>(instr)) {
+    return HloInstructionIndexing{};
+  }
   if (auto reduce = DynCast<HloReduceInstruction>(instr)) {
     return ComputeOutputToInputReduceOpIndexing(reduce, ctx);
   }
   if (auto reduce_window = DynCast<HloReduceWindowInstruction>(instr)) {
     return ComputeOutputToInputReduceWindowOpIndexing(reduce_window, ctx);
-  }
-  if (auto convolution = DynCast<HloConvolutionInstruction>(instr)) {
-    return ComputeOutputToInputConvolutionOpIndexing(convolution, ctx);
   }
   if (auto reshape = DynCast<HloReshapeInstruction>(instr)) {
     return ComputeOutputToInputReshapeOpIndexing(reshape, ctx);
@@ -1558,9 +1562,7 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
   if (auto transpose = DynCast<HloTransposeInstruction>(instr)) {
     return ComputeOutputToInputTransposeOpIndexing(transpose, ctx);
   }
-  if (auto parameter = DynCast<HloParameterInstruction>(instr)) {
-    return HloInstructionIndexing{};
-  }
+  // go/keep-sorted end
   LOG(ERROR) << "ComputeOutputToInputIndexing is not implemented for opcode "
              << instr->opcode();
   // If we cannot compute output-to-input indexing, we return std::nullopt for
@@ -1580,6 +1582,7 @@ HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
   if (instr->opcode() == HloOpcode::kBitcast) {
     return ComputeInputToOutputBitcastOpIndexing(instr, ctx);
   }
+  // go/keep-sorted start
   if (auto broadcast = DynCast<HloBroadcastInstruction>(instr)) {
     return ComputeInputToOutputBroadcastOpIndexing(broadcast, ctx);
   }
@@ -1595,12 +1598,13 @@ HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
   if (auto reverse = DynCast<HloReverseInstruction>(instr)) {
     return ComputeReverseOpIndexing(reverse, ctx);
   }
-  if (auto transpose = DynCast<HloTransposeInstruction>(instr)) {
-    return ComputeInputToOutputTransposeOpIndexing(transpose, ctx);
-  }
   if (auto slice = DynCast<HloSliceInstruction>(instr)) {
     return ComputeInputToOutputSliceOpIndexing(slice, ctx);
   }
+  if (auto transpose = DynCast<HloTransposeInstruction>(instr)) {
+    return ComputeInputToOutputTransposeOpIndexing(transpose, ctx);
+  }
+  // go/keep-sorted end
   if (instr->opcode() == HloOpcode::kTuple) {
     return HloInstructionIndexing::FromIndexingMaps(
         {CreateIdentityMap(instr->shape().tuple_shapes(input_id), ctx)});
