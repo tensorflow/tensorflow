@@ -113,16 +113,26 @@ class AddI32Thunk final : public Thunk {
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams&) final;
 
+  // Pretend that half of the thunks may block, to test that ThunkExecutor
+  // launches such thunks as separate tasks.
+  bool ExecuteMayBlock() const final { return id_ % 2 == 0; }
+
   BufferUses buffer_uses() const final;
   ResourceUses resource_uses() const final;
 
  private:
+  // Use global static counter to generate unique thunk ids.
+  static size_t counter_;
+
+  size_t id_;
   std::vector<BufferAllocation::Slice> srcs_;
   std::vector<BufferAllocation::Slice> dsts_;
   std::vector<std::string>* trace_;
   std::optional<Resource::Kind> shared_resource_;
   bool inject_error_;
 };
+
+size_t AddI32Thunk::counter_ = 0;
 
 std::unique_ptr<Thunk> AddI32Thunk::Create(
     std::string name, std::vector<BufferAllocation::Slice> srcs,
@@ -140,6 +150,7 @@ AddI32Thunk::AddI32Thunk(std::string name,
                          std::optional<Resource::Kind> shared_resource,
                          bool inject_error)
     : Thunk(Kind::kKernel, Info{name}),
+      id_(counter_++),
       srcs_(std::move(srcs)),
       dsts_(std::move(dsts)),
       trace_(trace),

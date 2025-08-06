@@ -100,6 +100,8 @@ class XnnFusionThunk : public Thunk {
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
+  bool ExecuteMayBlock() const final { return true; }
+
   BufferUses buffer_uses() const final;
 
   Options options() const { return options_; }
