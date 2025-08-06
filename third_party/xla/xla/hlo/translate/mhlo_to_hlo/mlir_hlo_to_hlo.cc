@@ -4548,6 +4548,13 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
     }
   }
 
+  // HLO GetTupleElement needs a single sharding,
+  std::optional<xla::OpSharding> sharding = ctx.builder->sharding();
+  if (sharding.has_value() && sharding->type() == xla::OpSharding::TUPLE) {
+    CHECK_GE(ctx.builder->sharding()->tuple_shardings_size(), 2);
+    sharding = ctx.builder->sharding()->tuple_shardings(1);
+  }
+  xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
   value_map[op.getResult(num_results - 1)] =
       xla::GetTupleElement(xla_result, 1);
 
