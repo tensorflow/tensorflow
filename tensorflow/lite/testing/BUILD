@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
 load(
     "//tensorflow:tensorflow.bzl",
