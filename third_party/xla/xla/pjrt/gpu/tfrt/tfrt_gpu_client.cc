@@ -50,9 +50,12 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
+#include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
 #include "xla/debug_options_flags.h"
@@ -100,6 +103,7 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/generic_transfer_manager.h"
 #include "xla/service/global_device_id.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/maybe_owning_device_memory.h"
@@ -992,6 +996,24 @@ RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
   };
 }
 
+absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
+GetLatestIncarnations(
+    absl::Span<PjRtDevice* const> devices,
+    const absl::flat_hash_map<int, IncarnationId>& incarnations) {
+  // Map every device to its incarnation.
+  absl::flat_hash_map<GlobalDeviceId, IncarnationId> device_incarnations;
+  for (const PjRtDevice* device : devices) {
+    int task_id = device->process_index();
+    auto it = incarnations.find(task_id);
+    if (it == incarnations.end()) {
+      return FailedPrecondition("Incarnation for task %d not found", task_id);
+    }
+    GlobalDeviceId device_id(device->global_device_id().value());
+    device_incarnations[device_id] = it->second;
+  }
+  return device_incarnations;
+}
+
 }  // namespace
 
 TfrtGpuMemorySpace::TfrtGpuMemorySpace(int id, PjRtDevice* device,
@@ -1290,6 +1312,7 @@ TfrtGpuClient::TfrtGpuClient(
     std::string platform_name, int process_index, xla::LocalClient* xla_client,
     std::vector<std::unique_ptr<TfrtGpuDevice>> devices,
     bool should_stage_host_to_device_transfers,
+    bool abort_collectives_on_failure,
     MaybeOwning<se::DeviceMemoryAllocator> allocator,
     std::unique_ptr<tsl::Allocator> host_memory_allocator,
     std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
@@ -1300,6 +1323,7 @@ TfrtGpuClient::TfrtGpuClient(
       xla_client_(CHECK_NOTNULL(xla_client)),
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
+      abort_collectives_on_failure_(abort_collectives_on_failure),
       allocator_(std::move(allocator)),
       host_memory_allocator_(std::make_unique<HostMemoryAllocator>(
           std::move(host_memory_allocator))),
@@ -1370,6 +1394,17 @@ absl::StatusOr<PjRtDevice*> TfrtGpuClient::LookupAddressableDevice(
   }
   return InvalidArgument("No matching device found for local_hardware_id %d",
                          local_device_id.value());
+}
+
+void TfrtGpuClient::UpdateGlobalProcessInfo(
+    absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) {
+  if (!abort_collectives_on_failure_) {
+    return;
+  }
+  absl::Status s = ::xla::gpu::UpdateGlobalProcessInfo(infos);
+  if (!s.ok()) {
+    LOG(WARNING) << s;
+  }
 }
 
 absl::StatusOr<Layout> TfrtGpuClient::GetDefaultLayout(
@@ -2562,9 +2597,9 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
   return std::unique_ptr<PjRtClient>(std::make_unique<TfrtGpuClient>(
       std::move(pjrt_platform_name), options.node_id, xla_client,
       std::move(devices), options.should_stage_host_to_device_transfers,
-      std::move(allocator), std::move(host_memory_allocator),
-      std::move(gpu_run_options), std::move(kv_store),
-      std::move(gpu_topology)));
+      options.abort_collectives_on_failure, std::move(allocator),
+      std::move(host_memory_allocator), std::move(gpu_run_options),
+      std::move(kv_store), std::move(gpu_topology)));
 }
 
 TfrtGpuBuffer::TfrtGpuBuffer(
@@ -3762,8 +3797,9 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
        execution_profile(options.execution_profile),
        send_device_memory(std::move(send_device_memory)),
        recv_device_memory(std::move(recv_device_memory)),
-       compute_reservation(std::move(compute_reservation)),
-       client = client_](std::vector<ExecutionInput> execution_inputs) mutable {
+       compute_reservation(std::move(compute_reservation)), client = client_,
+       task_incarnations = options.incarnations](
+          std::vector<ExecutionInput> execution_inputs) mutable {
         VLOG(1) << "execute_fn for " << executable_name
                 << ", launch_id: " << launch_id << ", replica: " << replica
                 << ", device: " << device->DebugString();
@@ -3793,6 +3829,19 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           }
         }
 
+        // Set the incarnations in gpu_run_options.
+        gpu::GpuExecutableRunOptions* gpu_run_options =
+            CHECK_NOTNULL(client->gpu_run_options());
+        absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
+            device_incarnations =
+                GetLatestIncarnations(client->devices(), task_incarnations);
+        if (!device_incarnations.ok()) {
+          VLOG(1) << "Unable to set incarnations in GpuExecutableRunOptions: "
+                  << device_incarnations.status();
+        } else {
+          gpu_run_options->set_incarnations(*std::move(device_incarnations));
+        }
+
         auto stream = device->stream();
         ExecutableRunOptions run_options;
         run_options.set_stream(stream);
@@ -3802,8 +3851,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         run_options.set_device_assignment(device_assignment.get());
         run_options.set_run_id(RunId(launch_id));
         run_options.set_rng_seed(device->GetNewPrngSeed());
-        run_options.set_gpu_executable_run_options(
-            CHECK_NOTNULL(client->gpu_run_options()));
+        run_options.set_gpu_executable_run_options(gpu_run_options);
         run_options.set_launch_id(launch_id);
         run_options.set_local_device_count(client->device_count());
         run_options.set_device_ordinal(device->local_device_id().value());
@@ -3817,6 +3865,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         run_options.set_send_device_memory_function(&send_device_memory);
         run_options.set_recv_device_memory_function(&recv_device_memory);
         run_options.set_execution_profile(execution_profile);
+        std::vector<std::unique_ptr<CliqueKey>> clique_keys;
+        run_options.set_clique_keys(&clique_keys);
 
         // TODO(phawkins): *technically* this should probably happen after
         // calling RunAsync(). But that causes a large performance problem: it
@@ -3909,20 +3959,36 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           tsl::profiler::TraceMe traceme("BlockHostUntilDone");
           status = stream->BlockHostUntilDone();
         }
-        if (!status.ok()) {
-          LOG(ERROR) << "BlockHostUntilDone failed for executable "
-                     << executable_name << " on device "
-                     << device->DebugString() << ", status = " << status;
-          complete_event.SetError(status);
-        } else {
-          complete_event.SetStateConcrete();
-        }
-
         VLOG(1) << "execute_fn for " << executable_name
                 << ", launch_id: " << launch_id << ", replica=" << replica
                 << ", partition=" << partition
                 << ", device: " << device->DebugString()
                 << " is done with status " << status;
+
+        if (!status.ok()) {
+          LOG(ERROR) << "BlockHostUntilDone failed for executable "
+                     << executable_name << " on device "
+                     << device->DebugString() << ", status = " << status;
+          complete_event.SetError(status);
+          return;
+        }
+
+        // If any collective is stale, then the collective may have aborted.
+        // Note that NCCL doesn't provide a way to *know* if the collective was
+        // aborted, but we conservatively assume it was.
+        for (const std::unique_ptr<CliqueKey>& clique_key : clique_keys) {
+          gpu::GpuCliqueKey* gpu_clique_key = CHECK_NOTNULL(
+              tensorflow::down_cast<gpu::GpuCliqueKey*>(clique_key.get()));
+          if (absl::Status s = CheckCliqueKeyIsntStale(*gpu_clique_key);
+              !s.ok()) {
+            VLOG(1) << "GPU clique key " << gpu_clique_key->ToString()
+                    << " is stale";
+            complete_event.SetError(status);
+            return;
+          }
+        }
+
+        complete_event.SetStateConcrete();
       };
 
   auto prepare_inputs =
