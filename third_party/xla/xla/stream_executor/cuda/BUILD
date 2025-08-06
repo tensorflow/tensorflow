@@ -508,7 +508,9 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
-    ],
+    ] + if_google([
+        "not_run:arm",  # TODO(b/339136501): Remove this once we have a cuDNN build for AArch64.
+    ]),
     deps = [
         ":cudnn_sdpa_score_mod",
         "//xla/hlo/ir:hlo",
