@@ -128,14 +128,6 @@ absl::Status MlirToXlaComputation(mlir::ModuleOp module,
       TF_RETURN_IF_ERROR(ExportShardyForGSPMD(module));
     }
 
-    // Export a StableHLO + Shardy module into a pure StableHLO module, to
-    // prepare for a round trip to HLO, such that the Shardy ops and attributes
-    // are preserved when going back to MLIR for Shardy propagation. This is a
-    // no-op if the module is already pure StableHLO.
-    // NOTE: we don't use `use_shardy` because it isn't guaranteed to be true if
-    // the module has Shardy artifacts.
-    xla::sdy::addSdyRoundTripExportPipeline(pm);
-
     if (failed(pm.run(module))) {
       VLOG(1) << "MHLO->HLO lowering passes failed.";
       return diagnostic_handler.ConsumeStatus();
@@ -200,21 +192,6 @@ absl::Status ParseMlirModuleStringAndConvertToXlaComputation(
   return xla::MlirToXlaComputation(*module, xla_computation, use_tuple_args,
                                    return_tuple,
                                    /*exec_build_options=*/nullptr);
-}
-
-absl::Status ExportShardyForHloRoundTrip(mlir::ModuleOp module) {
-  mlir::MLIRContext* context = module.getContext();
-  mlir::PassManager pm(context);
-  xla::sdy::addSdyRoundTripExportPipeline(pm);
-  mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
-  if (!mlir::succeeded(pm.run(module))) {
-    const absl::Status status = diagnostic_handler.ConsumeStatus();
-    return absl::InvalidArgumentError(
-        absl::StrCat("Shardy export for HLO round trip failed;\n\nDetailed "
-                     "error from MLIR: ",
-                     status.message()));
-  }
-  return absl::OkStatus();
 }
 
 absl::Status ExportShardyForGSPMD(mlir::ModuleOp module) {

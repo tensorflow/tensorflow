@@ -104,6 +104,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/source_target_pairs.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -6122,6 +6123,12 @@ absl::Status PrepareForExport(mlir::ModuleOp module) {
   enableVerifier = true;
 #endif
   pm.enableVerifier(enableVerifier);
+
+  // Export a StableHLO + Shardy module into a pure StableHLO module, to
+  // prepare for a round trip to HLO, such that the Shardy ops and attributes
+  // are preserved when going back to MLIR for Shardy propagation. This is a
+  // no-op if the module is already pure StableHLO.
+  xla::sdy::addSdyRoundTripExportPipeline(pm);
 
   pm.addNestedPass<mlir::func::FuncOp>(mhlo::createPrepareForExportPass());
   if (hasShapeOps) {

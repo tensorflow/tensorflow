@@ -165,6 +165,7 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service:source_target_pairs",
         "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:types",
