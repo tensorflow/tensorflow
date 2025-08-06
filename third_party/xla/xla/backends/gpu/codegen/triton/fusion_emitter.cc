@@ -99,6 +99,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -152,6 +153,7 @@ namespace ttir = ::mlir::triton;
 namespace mtx = ::mlir::triton::xla;
 
 using ::llvm::SmallVector;
+using ::mlir::AffineMap;
 using ::mlir::ArrayRef;
 using ::mlir::ShapedType;
 using ::mlir::Type;
@@ -938,28 +940,34 @@ absl::StatusOr<ScalarOrTensor> EmitDot(
       CreateConst(b, accumulator_type, 0.0f, padded_tile_sizes_no_unit_dims)
           .UnwrapTensor();
 
-  auto ci64 = [&](int64_t value) -> Value {
-    return b.create<arith::ConstantOp>(b.getIntegerAttr(b.getI64Type(), value));
+  auto cindex = [&](int64_t value) -> Value {
+    return b.create<arith::ConstantIndexOp>(value);
   };
   TF_ASSIGN_OR_RETURN(int64_t loop_iteration_count,
                       GetDotLoopIterationCount(tiled_hlo_dot));
   auto for_op = b.create<mlir::scf::ForOp>(
-      /*lowerBound=*/ci64(0), /*upperBound=*/ci64(loop_iteration_count),
-      /*step=*/ci64(1), SmallVector<Value>{accumulator});
+      /*lowerBound=*/cindex(0), /*upperBound=*/cindex(loop_iteration_count),
+      /*step=*/cindex(1), SmallVector<Value>{accumulator});
   {  // Loop body.
     mlir::OpBuilder::InsertionGuard g(b);
     b.setInsertionPointToStart(for_op.getBody());
     SmallVector<TensorValue> dot_args;
     Value ki = for_op.getInductionVar();
-    const Value ki_index = Cast(b, ki, b.getIndexType());
-    Value loop_iteration_count_value =
-        CreateConst(b, b.getIndexType(), loop_iteration_count, {})
-            .UnwrapScalar();
     // Nested fusions are tiled with indexing map
     // (pid * loop_iteration_count_value + loop index) -> ....
-    Value computation_index =
-        b.create<arith::MulIOp>(pid, loop_iteration_count_value);
-    computation_index = b.create<arith::AddIOp>(computation_index, ki_index);
+    auto pid_dim = b.getAffineDimExpr(0);
+    auto ki_symbol = b.getAffineSymbolExpr(0);
+    IndexingMap computation_index_map{
+        AffineMap::get(1, 1, {pid_dim * loop_iteration_count + ki_symbol}),
+        {IndexingMap::Variable{
+            tiled_hlo_dot.tile_offsets_indexing()->GetDimensionBound(0),
+            "pid"}},
+        {IndexingMap::Variable{{0, loop_iteration_count - 1}, "k"}},
+        /*rt_vars=*/{}};
+
+    Value computation_index = b.create<xla::ApplyIndexingOp>(
+                                   ValueRange{pid, ki}, computation_index_map)
+                                  .getResult(0);
     for (const TiledHloInstruction* operand : tiled_hlo_dot.operands()) {
       VLOG(3) << "Emitting dot operand: " << operand->ToString();
       const TiledHloFusionInstruction* tiled_fusion_operand =
