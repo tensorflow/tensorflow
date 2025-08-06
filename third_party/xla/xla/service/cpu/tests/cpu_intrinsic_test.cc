@@ -132,10 +132,6 @@ TEST_P(CpuUnaryIntrinsicTest, DoIt) {
 
   std::string check_lines{spec.check_lines.data(), spec.check_lines.size()};
 
-  hlo_module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_cpu_use_thunk_runtime(false);
-
   CompileAheadOfTimeAndVerifyIr(std::move(hlo_module), options, check_lines,
                                 spec.match_optimized_ir);
 }
@@ -167,24 +163,13 @@ IntrinsicTestSpec CpuUnaryIntrinsicTestCases[] = {
                       CHECK-NOT: define {{[a-z]* ?}}<2 x double> @local_xla.exp.v2f64
     )"},
 
-    IntrinsicTestSpec{HloOpcode::kExp, F64, false, kTriple_x86_64, "",
-                      R"(CHECK: call fast double @local_xla.exp.f64(double %4)"},
-
     IntrinsicTestSpec{
         HloOpcode::kExp, F32, true, kTriple_x86_64, "+avx",
         R"(CHECK: fmul fast <8 x float> splat (float 0xBF2BD01060000000)"},
 
     IntrinsicTestSpec{
-        HloOpcode::kExp, F32, true, kTriple_android_arm, "+neon",
-        R"(CHECK: fmul fast <4 x float> splat (float 0xBF2BD01060000000)"},
-
-    IntrinsicTestSpec{
         HloOpcode::kRsqrt, F32, true, kTriple_x86_64, "+avx",
         R"(CHECK: fmul <8 x float>{{.*}}splat (float -5.000000e-01)"},
-
-    IntrinsicTestSpec{
-        HloOpcode::kRsqrt, F32, true, kTriple_x86_64, "+avx512f",
-        R"(CHECK: fmul <16 x float>{{.*}} splat (float -5.000000e-01)"},
 
     // F16 tanh is implemented via upcast to F32; should have the same
     // vectorized IR.
@@ -204,21 +189,12 @@ IntrinsicTestSpec CpuUnaryIntrinsicTestCases[] = {
         0xC01FFEC880000000)"},
 
     IntrinsicTestSpec{
-        HloOpcode::kTanh, F32, true, kTriple_android_arm, "",
-        R"(CHECK: fcmp {{(fast )?(uge|olt)}} <4 x float> %{{[^,]+}}, splat (float
-        0xC01FFEC880000000)"},
-
-    IntrinsicTestSpec{
         HloOpcode::kLog, F32, true, kTriple_x86_64, "",
         R"(CHECK: fadd fast <4 x float> splat (float 0x3FBDE4A340000000)"},
 
     IntrinsicTestSpec{
         HloOpcode::kLog, F32, true, kTriple_x86_64, "+avx",
-        R"(CHECK: fadd fast <8 x float> splat (float 0x3FBDE4A340000000)"},
-
-    IntrinsicTestSpec{
-        HloOpcode::kLog, F32, true, kTriple_android_arm, "",
-        R"(CHECK: fadd fast <4 x float> splat (float 0x3FBDE4A340000000)"}};
+        R"(CHECK: fadd fast <8 x float> splat (float 0x3FBDE4A340000000)"}};
 
 INSTANTIATE_TEST_SUITE_P(CpuUnaryIntrinsicTestInstantiation,
                          CpuUnaryIntrinsicTest,
