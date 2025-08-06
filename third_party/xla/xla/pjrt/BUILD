@@ -785,11 +785,11 @@ xla_cc_test(
     deps = [
         ":mlir_to_hlo",
         "//xla/hlo/testlib:test",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:statusor",
         "@stablehlo//:stablehlo_portable_api",
     ],
 )

@@ -74,19 +74,14 @@ std::optional<mlir::StringRef> FindPotentiallyUnstableDialects(
 
 // Returns a version of StableHLO ~12w old, for forward compatibility with PJRT
 // plugins on a quarterly update cycle.
-std::string GetDefaultStablehloVersion(
-    std::optional<int64_t> plugin_version = std::nullopt);
+std::string GetDefaultStablehloVersion();
 
-// Serialize using MLIR Bytecode Format which does not guarantee forward or
-// backward compatiblity of the dialects used. If passing StableHLO with forward
-// or backward compatibility requirements, use SerializeUsingVersionedStablehlo.
-//
-// VHLO support was added in PJRT plugin version 41.
-//   For plugin_version < 41, returns `SerializeUsingNativeBytecode`.
-//   For plugin_version >= 41, returns `SerializeUsingVersionedStablehlo`.
+// Serialize using MLIR Bytecode Format. This is as stable as the dialects used
+// in the module. I.e. if only StableHLO & SDY are used, will serialize them
+// using VHLO & SDY. If compatibility must be guaranteed for all dialects, use
+// SerializeUsingVersionedStablehlo and FindPotentiallyUnstableDialects.
 absl::StatusOr<std::string> Serialize(mlir::ModuleOp mlir_module,
                                       absl::string_view target,
-                                      std::optional<int64_t> plugin_version,
                                       bool inplace = false);
 
 // Serializes an MLIR module to a portable artifact with forward and backward
@@ -98,9 +93,9 @@ absl::StatusOr<std::string> Serialize(mlir::ModuleOp mlir_module,
 //   `mlir::stablehlo::getCurrentVersion()` for backward compat but not forward.
 //   `mlir::stablehlo::getMinimumVersion()` for maximum forward compatibility.
 //
-// In PJRT, the `requested_target` should be the current version of the PJRT
-// plugin. Serialize will use `min(framework_version, plugin_version)` to
-// serialize. If program contains dialects that aren't supported in StableHLO
+// In PJRT, the `requested_target` should be the current StableHLO version of
+// the PJRT plugin. Serialize will use `min(framework_version, plugin_version)`
+// to serialize. If program contains dialects that aren't supported in StableHLO
 // portable artifacts, use SerializeUsingNativeBytecode.
 //
 // If `allow_mixed_serialization` is true, the serialization will be done
