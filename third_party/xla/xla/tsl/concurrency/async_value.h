@@ -308,8 +308,16 @@ class AsyncValue {
   AsyncValue(const AsyncValue&) = delete;
   AsyncValue& operator=(const AsyncValue&) = delete;
 
-  void NotifyAvailable(State available_state);
   void Destroy();
+
+  // This is called when the value is set into the ConcreteAsyncValue buffer, or
+  // when the IndirectAsyncValue is forwarded to an available AsyncValue, and we
+  // need to change our state and clear out the notifications. The current state
+  // must be unavailable (i.e. kUnconstructed or kConstructed).
+  void NotifyAvailable(State available_state);
+
+  // Executes all the waiters waiting for the value to become available,
+  // starting for the head of the linked list.
   void RunWaiters(WaiterListNode* list);
 
   // IsTypeIdCompatible returns true if the type value stored in this AsyncValue
@@ -1055,6 +1063,36 @@ void AsyncValue::AndThen(Executor& executor, Waiter&& waiter) {
         executor.Execute(std::move(waiter));
       },
       waiters_and_state);
+}
+
+inline void AsyncValue::NotifyAvailable(State available_state) {
+  DCHECK((kind() == Kind::kConcrete || kind() == Kind::kIndirect))
+      << "Should only be used by ConcreteAsyncValue or IndirectAsyncValue";
+
+  DCHECK(available_state == State::kConcrete ||
+         available_state == State::kError);
+
+  // Mark the value as available, ensuring that new queries for the state see
+  // the value that got filled in.
+  auto waiters_and_state = waiters_and_state_.exchange(
+      WaitersAndState(nullptr, available_state), std::memory_order_acq_rel);
+  DCHECK(waiters_and_state.state() == State::kUnconstructed ||
+         waiters_and_state.state() == State::kConstructed);
+
+  RunWaiters(waiters_and_state.waiter());
+}
+
+inline void AsyncValue::RunWaiters(WaiterListNode* list) {
+  while (ABSL_PREDICT_FALSE(list)) {
+    WaiterListNode* node = list;
+    (*node)();
+    list = node->next;
+
+    // Waiter destruction may perform work that needs to run in the same context
+    // that created the waiter.
+    WithContext wc(std::move(node->context));
+    delete node;
+  }
 }
 
 inline void AsyncValue::Destroy() {
